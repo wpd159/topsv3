@@ -1,0 +1,17 @@
+{
+    "url":  "https://topsdojob.com/robots.txt",
+    "statusHttp":  200,
+    "contentType":  "text/plain; charset=UTF-8",
+    "tipoPagina":  "ROBOTS",
+    "title":  "",
+    "metaDescription":  "",
+    "h1":  "",
+    "headings":  [
+
+                 ],
+    "textoPrincipalSanitizado":  "User-agent: * Disallow: /*?*filter= Disallow: /*\u0026filter= Disallow: /*?*sort= Disallow: /*\u0026sort= Disallow: /*?*search= Disallow: /*\u0026search= # (Opcional) bloquear outras params comuns Disallow: /*?*utm_ Disallow: /*\u0026utm_ Sitemap: https://topsdojob.com/sitemap.xml",
+    "observacoesSeo":  [
+
+                       ],
+    "decisaoPreliminar":  "ADAPTAR"
+}

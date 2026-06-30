@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "Executando verificacoes de seguranca do repositorio..."
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "ERRO: nao foi possivel determinar a raiz do repositorio Git." >&2
+  exit 2
+}
+
+cd "$REPO_ROOT"
+
+if [ "${TOPSV3_SIMULAR_POWERSHELL_AUSENTE:-}" = "1" ]; then
+  echo "ERRO: PowerShell nao encontrado. Commit bloqueado." >&2
+  exit 2
+fi
+
+if command -v pwsh >/dev/null 2>&1; then
+  PS_BIN="pwsh"
+elif command -v powershell.exe >/dev/null 2>&1; then
+  PS_BIN="powershell.exe"
+elif command -v powershell >/dev/null 2>&1; then
+  PS_BIN="powershell"
+else
+  echo "ERRO: PowerShell nao encontrado. Commit bloqueado." >&2
+  exit 2
+fi
+
+echo "1/3 Verificando codificacao..."
+"$PS_BIN" -NoProfile -ExecutionPolicy Bypass -File scripts/security/verificar-codificacao.ps1
+
+echo "2/3 Verificando arquivos proibidos..."
+"$PS_BIN" -NoProfile -ExecutionPolicy Bypass -File scripts/security/verificar-arquivos-proibidos.ps1
+
+echo "3/3 Verificando secrets..."
+"$PS_BIN" -NoProfile -ExecutionPolicy Bypass -File scripts/security/verificar-segredos.ps1
+
+echo "Verificacoes de seguranca concluidas."

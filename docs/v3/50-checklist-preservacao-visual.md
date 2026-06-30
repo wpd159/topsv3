@@ -1,0 +1,25 @@
+# Checklist de preservação visual
+
+- [x] Inventário inicial fora do repositório criado.
+- [x] Inventário inicial confirmado como UTF-8 com BOM.
+- [x] Inventário inicial confirmado fora do Git.
+- [x] Diretriz de preservação visual documentada.
+- [x] Proibição de redesign documentada.
+- [x] Banners com dimensões fixas documentados: desktop 1452 x 500 px e mobile 1080 x 900 px.
+- [x] Necessidade de fonte visual atual registrada.
+- [x] `PENDENTE_FONTE_VISUAL_ATUAL` registrado.
+- [x] Skeletons marcados como temporários.
+- [x] Nenhuma nova identidade visual criada.
+- [x] Nenhuma paleta nova criada.
+- [x] Nenhuma tipografia nova definida.
+- [x] Nenhum layout final criado.
+- [x] Nenhum dado real usado.
+- [x] Nenhum conteúdo explícito criado.
+- [x] Nenhuma migration criada.
+- [x] Nenhum SQL criado.
+- [x] Nenhum banco acessado.
+- [x] Nenhuma API externa chamada.
+- [x] Nenhum remote configurado.
+- [x] Nenhum push executado.
+- [x] Nenhum commit executado.
+- [x] ZIP final criado e validado.

@@ -1,0 +1,15 @@
+spring:
+  config:
+    activate:
+      on-profile: local
+
+app:
+  env: ${APP_ENV:local}
+  canonical-domain: ${APP_CANONICAL_DOMAIN:http://localhost}
+
+efi:
+  pix:
+    mock-mode: ${EFI_PIX_MOCK_MODE:true}
+
+server:
+  port: ${TOPSV3_BACKEND_PORT:8080}

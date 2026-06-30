@@ -1,0 +1,32 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.md]
+charset = utf-8
+trim_trailing_whitespace = false
+
+[*.ps1]
+charset = utf-8-bom
+indent_size = 2
+
+[*.{md,sh,toml,json,yml,yaml}]
+charset = utf-8
+
+[*.csv]
+charset = utf-8-bom
+
+[*.java]
+indent_size = 4
+
+[*.{ts,tsx,js,jsx,json,yml,yaml,toml}]
+indent_size = 2
+
+[*.sql]
+indent_size = 2

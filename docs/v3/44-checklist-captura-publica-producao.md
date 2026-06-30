@@ -1,0 +1,36 @@
+# Checklist da captura pública de produção
+
+- [x] inventário inicial criado fora do repositório;
+- [x] script local criado com simulação por padrão;
+- [x] captura executada somente com `-ExecutarCaptura`;
+- [x] somente domínio `https://topsdojob.com` acessado;
+- [x] somente método GET usado;
+- [x] rate limit aplicado;
+- [x] timeout curto aplicado;
+- [x] user-agent identificável usado;
+- [x] lista de bloqueio de caminhos privados aplicada;
+- [x] admin não acessado;
+- [x] login não acessado;
+- [x] API privada não acessada;
+- [x] banco não acessado;
+- [x] VPS não acessada;
+- [x] Efí não acessada;
+- [x] IA externa não acessada;
+- [x] imagens não baixadas;
+- [x] vídeos não baixados;
+- [x] HTML bruto completo não gravado;
+- [x] payload bruto não gravado;
+- [x] telefone/WhatsApp não coletado;
+- [x] conteúdo sensível substituído por marcador quando necessário;
+- [x] arquivos sanitizados criados em `docs/v3/conteudo-publico-capturado/`;
+- [x] nenhuma migration criada;
+- [x] nenhum SQL criado;
+- [x] nenhuma entidade JPA criada;
+- [x] nenhum repository criado;
+- [x] nenhum service de negócio criado;
+- [x] nenhum remote configurado;
+- [x] nenhum push executado;
+- [x] nenhum commit executado;
+- [x] scanners executados;
+- [x] git diff --cached --check aprovado;
+- [x] ZIP final criado e validado.

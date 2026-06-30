@@ -1,0 +1,112 @@
+{
+    "executadaEm":  "2026-06-26T01:21:36.3270152-03:00",
+    "modo":  "captura",
+    "dominioPermitido":  "https://topsdojob.com",
+    "metodoPermitido":  "GET",
+    "totalCapturado":  4,
+    "totalIgnorado":  24,
+    "urlsCapturadas":  [
+                           "https://topsdojob.com/",
+                           "https://topsdojob.com/sobre",
+                           "https://topsdojob.com/sitemap.xml",
+                           "https://topsdojob.com/robots.txt"
+                       ],
+    "urlsIgnoradas":  [
+                          {
+                              "url":  "https://topsdojob.com/como-funciona",
+                              "motivo":  "Falha de GET público ou timeout. Status: 404."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/seguranca",
+                              "motivo":  "Falha de GET público ou timeout. Status: 404."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/anunciar",
+                              "motivo":  "Redirecionou para URL fora do escopo permitido."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/perguntas-frequentes",
+                              "motivo":  "Falha de GET público ou timeout. Status: 404."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/go",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/se",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/mg",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/pa",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/df",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/sp",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/ms",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/mt",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/pr",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/ba",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/sc",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/ce",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/pb",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/am",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/ro",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/pe",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/rj",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/ma",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/pi",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          },
+                          {
+                              "url":  "https://topsdojob.com/acompanhantes/go/aparecida-de-goiania",
+                              "motivo":  "Descoberta no sitemap, não capturada nesta fase por risco de telefone, conteúdo sensível ou volume."
+                          }
+                      ]
+}

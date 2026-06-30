@@ -1,0 +1,40 @@
+title = "Tops do Job V3 gitleaks baseline"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "private-key"
+description = "Chave privada"
+regex = '''-----BEGIN ([A-Z ]*)PRIVATE KEY-----'''
+tags = ["key"]
+
+[[rules]]
+id = "aws-access-key"
+description = "Chave AWS/S3/R2"
+regex = '''AKIA[0-9A-Z]{16}'''
+tags = ["aws", "r2"]
+
+[[rules]]
+id = "literal-config-secret"
+description = "Valor literal em configuracao sensivel"
+regex = '''(?i)(client[_-]?secret|access[_-]?token|refresh[_-]?token|api[_-]?key|secret[_-]?key|authorization|private[_-]?key|certificate|certificado|senha|password|passwd|pwd|token)\s*[:=]\s*['"][^'"]{10,}['"]'''
+tags = ["secret", "literal"]
+
+[[rules]]
+id = "postgres-url-with-password"
+description = "URL PostgreSQL com senha"
+regex = '''postgres(?:ql)?://[^:\s]+:[^@\s]+@[^/\s]+/[^ \s]+'''
+tags = ["database"]
+
+[[rules]]
+id = "authorization-header"
+description = "Header Authorization com valor"
+regex = '''(?i)authorization\s*[:=]\s*['"]?Bearer\s+[A-Za-z0-9._~+/=-]{10,}'''
+tags = ["secret", "header"]
+
+[[rules]]
+id = "jwt-literal"
+description = "JWT literal"
+regex = '''eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}'''
+tags = ["secret", "jwt"]

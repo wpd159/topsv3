@@ -1,0 +1,24 @@
+{
+  "tipo": "FONTE_REAL_AUTORIZADA_EXEMPLO_SANITIZADO",
+  "versao": "2F",
+  "status": "EXEMPLO_FICTICIO_SEM_DADO_REAL",
+  "diretorio_operacional": "DIRETORIO_EXTERNO_OPERACIONAL_FICTICIO",
+  "origem_declarada": "ORIGEM_FICTICIA_AUTORIZADA",
+  "extraido_em": "AAAA-MM-DDTHH:MM:SSZ",
+  "responsavel_geracao": "RESPONSAVEL_FICTICIO",
+  "manifesto": "manifesto-ficticio.json",
+  "checksums": "checksums-ficticio.txt",
+  "confirmacoes": {
+    "fora_do_repositorio": true,
+    "nao_versionavel": true,
+    "sem_acesso_indevido_producao": true,
+    "relatorios_publicos_sanitizados": true
+  },
+  "proibicoes": [
+    "nao_copiar_para_docs_backend_frontend_scripts",
+    "nao_anexar_dado_real_ao_zip",
+    "nao_abrir_arquivo_real_nesta_fase",
+    "nao_calcular_checksum_real_nesta_fase",
+    "nao_executar_importacao_real"
+  ]
+}

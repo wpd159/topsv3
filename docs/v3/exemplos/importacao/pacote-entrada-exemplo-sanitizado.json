@@ -1,0 +1,174 @@
+{
+  "tipo": "EXEMPLO_SANITIZADO_FICTICIO",
+  "fase": "2B",
+  "observacao": "Arquivo ilustrativo sem dump, sem dado real, sem URL real, sem telefone, sem CPF, sem e-mail, sem path de maquina, sem bucket real e sem chave real.",
+  "pacote": {
+    "identificadorLogico": "pacote-ficticio-entrada-2b",
+    "versao": "2B-exemplo",
+    "extraidoEm": "2026-01-01T00:00:00Z",
+    "origem": "origem-legado-ficticia",
+    "observacaoSanitizada": "Somente contrato estrutural; nenhum arquivo deve ser aberto nesta fase."
+  },
+  "arquivos": [
+    {
+      "tipo": "DUMP_BANCO_LEGADO",
+      "nomeLogico": "dump-banco-legado",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/dump-banco-legado",
+      "formatoDeclarado": "dump-sanitizado-ficticio",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "MANIFESTO_MIDIA",
+      "nomeLogico": "manifesto-midia",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/manifesto-midia",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_URLS_PUBLICAS",
+      "nomeLogico": "export-urls-publicas",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-urls-publicas",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_SLUGS",
+      "nomeLogico": "export-slugs",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-slugs",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_METRICAS",
+      "nomeLogico": "export-metricas",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-metricas",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_PAGAMENTOS",
+      "nomeLogico": "export-pagamentos",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-pagamentos",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_CREDITOS",
+      "nomeLogico": "export-creditos",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-creditos",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_PREMIUM",
+      "nomeLogico": "export-premium",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-premium",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": "4444444444444444444444444444444444444444444444444444444444444444",
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_BENEFICIOS",
+      "nomeLogico": "export-beneficios",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-beneficios",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_BANNERS",
+      "nomeLogico": "export-banners",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-banners",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_SEO_CONTEUDOS",
+      "nomeLogico": "export-seo-conteudos",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-seo-conteudos",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_USUARIOS",
+      "nomeLogico": "export-usuarios",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-usuarios",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_ANUNCIOS",
+      "nomeLogico": "export-anuncios",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-anuncios",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "EXPORT_LOCALIDADES",
+      "nomeLogico": "export-localidades",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/export-localidades",
+      "formatoDeclarado": "jsonl-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "RELATORIO_ORIGEM",
+      "nomeLogico": "relatorio-origem",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/relatorio-origem",
+      "formatoDeclarado": "json-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    },
+    {
+      "tipo": "CHECKSUMS",
+      "nomeLogico": "checksums",
+      "status": "DECLARADO",
+      "caminhoDeclaradoSanitizado": "entrada-logica-nao-abrir/checksums",
+      "formatoDeclarado": "json-sanitizado",
+      "tamanhoBytesDeclarado": 0,
+      "checksumSha256": null,
+      "versaoContrato": "2B"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+    "url":  "https://topsdojob.com/sitemap.xml",
+    "statusHttp":  200,
+    "contentType":  "application/xml",
+    "tipoPagina":  "SITEMAP",
+    "title":  "",
+    "metaDescription":  "",
+    "h1":  "",
+    "headings":  [
+
+                 ],
+    "textoPrincipalSanitizado":  "SITEMAP_PUBLICO_LIDO_SOMENTE_PARA_DESCOBERTA",
+    "observacoesSeo":  [
+                           "Não foi armazenado payload bruto do sitemap."
+                       ],
+    "decisaoPreliminar":  "PENDENTE_REVISAO"
+}

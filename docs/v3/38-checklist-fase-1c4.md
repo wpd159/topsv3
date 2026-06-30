@@ -1,0 +1,21 @@
+# Checklist da Fase 1C.4
+
+- [x] inventário inicial criado fora do repositório;
+- [x] rota /anuncios/[slug] criada como skeleton;
+- [x] rota /acompanhantes/[uf]/[cidade] criada como skeleton;
+- [x] rota /acompanhantes/[uf]/[cidade]/[bairro] criada como skeleton;
+- [x] robots local criado sem indexação;
+- [x] sitemap local criado sem produção;
+- [x] nenhum canonical de produção emitido no local;
+- [x] nenhum dado real usado;
+- [x] nenhuma busca real criada;
+- [x] nenhuma API externa chamada;
+- [x] nenhuma migration criada;
+- [x] nenhum SQL criado;
+- [x] nenhum banco acessado;
+- [x] scanners executados;
+- [x] git diff --cached --check aprovado;
+- [x] nenhum remote configurado;
+- [x] nenhum push executado;
+- [x] nenhum commit executado;
+- [x] ZIP final criado e validado.

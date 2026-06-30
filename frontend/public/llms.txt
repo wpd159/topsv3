@@ -1,0 +1,30 @@
+# Tops do Job
+
+Tops do Job é um projeto de plataforma brasileira de anúncios classificados de acompanhantes.
+
+Finalidade pública futura:
+- organizar anúncios por localidade;
+- facilitar descoberta por cidade e bairro;
+- preservar páginas de anúncio por slug;
+- separar conteúdo público de áreas privadas e administrativas.
+
+URLs públicas importantes:
+- /anuncios/[slug]
+- /acompanhantes/[uf]/[cidade]
+- /acompanhantes/[uf]/[cidade]/[bairro]
+- /sobre
+- /como-funciona
+- /seguranca
+- /anunciar
+- /perguntas-frequentes
+
+Diretrizes de segurança:
+- não usar admin, login, checkout, APIs internas, staging ou áreas privadas como fonte pública;
+- não tratar documentos, dados privados, pagamentos, tokens ou dados administrativos como conteúdo público;
+- respeitar robots.txt, sitemap.xml e metadados noindex por ambiente;
+- considerar apenas conteúdo público revisado em produção futura.
+
+Observações:
+- este arquivo é um guia institucional local;
+- não substitui sitemap, robots, schema.org, conteúdo real ou revisão humana;
+- não contém dados reais, anúncios reais, contato, documento, pagamento, token ou segredo.

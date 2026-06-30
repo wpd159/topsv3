@@ -1,0 +1,23 @@
+# Checklist GEO/AEO
+
+- [x] inventário inicial criado fora do repositório;
+- [x] estratégia GEO/AEO documentada;
+- [x] páginas institucionais skeleton criadas;
+- [x] llms.txt local criado;
+- [x] preservação de /anuncios/[slug] reafirmada;
+- [x] preservação de páginas locais reafirmada;
+- [x] diretrizes de conteúdo neutro documentadas;
+- [x] diretrizes de schema.org documentadas;
+- [x] nenhuma IA externa acessada;
+- [x] nenhuma integração OpenAI criada;
+- [x] nenhum dado real usado;
+- [x] nenhum anúncio real criado;
+- [x] nenhum conteúdo explícito criado;
+- [x] nenhuma migration criada;
+- [x] nenhum SQL criado;
+- [x] nenhum banco acessado;
+- [x] nenhum backend de domínio criado;
+- [x] nenhum remote configurado;
+- [x] nenhum push executado;
+- [x] nenhum commit executado;
+- [x] ZIP final criado e validado.

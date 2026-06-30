@@ -1,0 +1,24 @@
+# Checklist da Fase 1C.3
+
+- [x] inventário inicial criado fora do repositório;
+- [x] Request ID implementado;
+- [x] ApiErrorResponse criado;
+- [x] GlobalExceptionHandler criado;
+- [x] códigos de erro padronizados criados;
+- [x] health checks coerentes;
+- [x] OpenAPI atualizado;
+- [x] frontend health ajustado;
+- [x] cliente API local mínimo criado;
+- [x] nenhuma migration criada;
+- [x] nenhum SQL criado;
+- [x] nenhuma entidade JPA de domínio criada;
+- [x] nenhum repository criado;
+- [x] nenhum service de negócio criado;
+- [x] nenhum banco acessado;
+- [x] nenhuma integração externa acessada;
+- [x] scanners executados;
+- [x] git diff --cached --check aprovado;
+- [x] nenhum remote configurado;
+- [x] nenhum push executado;
+- [x] nenhum commit executado;
+- [x] ZIP final criado e validado.

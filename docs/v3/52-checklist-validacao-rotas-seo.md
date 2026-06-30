@@ -1,0 +1,24 @@
+# Checklist de validação de rotas públicas e SEO local
+
+- [x] Inventário inicial fora do repositório criado.
+- [x] Inventário inicial confirmado como UTF-8 com BOM.
+- [x] Inventário inicial confirmado fora do Git.
+- [x] Script de validação criado.
+- [x] `/anuncios/[slug]` validado.
+- [x] Rotas alternativas proibidas verificadas.
+- [x] Páginas locais verificadas.
+- [x] `robots.ts` local verificado.
+- [x] `sitemap.ts` local verificado.
+- [x] Canonical de produção ausente no local.
+- [x] Admin `noindex` verificado.
+- [x] Skeletons temporários verificados.
+- [x] Nenhum dado real usado.
+- [x] Nenhuma imagem real usada.
+- [x] Nenhuma chamada externa criada.
+- [x] Nenhuma migration criada.
+- [x] Nenhum SQL criado.
+- [x] Nenhum banco acessado.
+- [x] Nenhum remote configurado.
+- [x] Nenhum push executado.
+- [x] Nenhum commit executado.
+- [x] ZIP final criado e validado.

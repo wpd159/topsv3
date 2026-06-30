@@ -1,0 +1,24 @@
+{
+    "url":  "https://topsdojob.com/sobre",
+    "statusHttp":  200,
+    "contentType":  "text/html; charset=utf-8",
+    "tipoPagina":  "INSTITUCIONAL",
+    "title":  "Tops do Job - Encontre as melhores acompanhantes",
+    "metaDescription":  "Encontre acompanhantes com fotos reais, anúncios verificados e contato direto em uma plataforma segura, discreta e atualizada diariamente.",
+    "h1":  [
+               "Quem Somos"
+           ],
+    "headings":  [
+                     "Quem Somos",
+                     "Confiança e segurança",
+                     "Legal",
+                     "Navegação",
+                     "Cidades populares",
+                     "Aumente sua visibilidade e apareça para mais clientes"
+                 ],
+    "textoPrincipalSanitizado":  "CONTEUDO_SENSIVEL_NAO_CAPTURADO",
+    "observacoesSeo":  [
+                           "Texto principal suprimido por conter padrão sensível ou rota de anúncio."
+                       ],
+    "decisaoPreliminar":  "PENDENTE_REVISAO"
+}

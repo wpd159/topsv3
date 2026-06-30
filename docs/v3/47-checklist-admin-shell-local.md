@@ -1,0 +1,21 @@
+# Checklist admin shell local
+
+- [x] inventário inicial fora do repositório;
+- [x] /admin criado como skeleton local;
+- [x] páginas placeholder dos módulos admin criadas;
+- [x] componentes admin shell criados;
+- [x] páginas admin marcadas como noindex;
+- [x] nenhuma autenticação real criada;
+- [x] nenhuma ação real criada;
+- [x] nenhum dado real usado;
+- [x] nenhuma API externa chamada;
+- [x] nenhuma migration criada;
+- [x] nenhum SQL criado;
+- [x] nenhum banco acessado;
+- [x] nenhum backend de domínio criado;
+- [x] scanners executados;
+- [x] git diff --cached --check aprovado;
+- [x] nenhum remote configurado;
+- [x] nenhum push executado;
+- [x] nenhum commit executado;
+- [x] ZIP final criado e validado.

@@ -1,0 +1,74 @@
+package br.com.topsdojob.v3.importacao.model;
+
+public enum CodigoPendenciaImportacao {
+    IMPORTADO_OK(SeveridadePendenciaImportacao.INFO),
+    USUARIO_SEM_TELEFONE(SeveridadePendenciaImportacao.ALERTA),
+    USUARIO_DUPLICADO_SUSPEITO(SeveridadePendenciaImportacao.ALERTA),
+    ANUNCIO_SEM_FOTO(SeveridadePendenciaImportacao.ERRO),
+    ANUNCIO_COM_MIDIA_QUEBRADA(SeveridadePendenciaImportacao.ERRO),
+    ANUNCIO_SEM_PRECO(SeveridadePendenciaImportacao.ALERTA),
+    ANUNCIO_SEM_CIDADE(SeveridadePendenciaImportacao.ERRO),
+    SLUG_DUPLICADO(SeveridadePendenciaImportacao.ERRO),
+    PREMIUM_INCONSISTENTE(SeveridadePendenciaImportacao.ERRO),
+    CREDITO_INCONSISTENTE(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PAGAMENTO_SEM_PROVEDOR(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PAGAMENTO_SEM_TXID(SeveridadePendenciaImportacao.ERRO),
+    PAGAMENTO_DUPLICADO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PAGAMENTO_APROVADO_SEM_CREDITO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CREDITO_SEM_PAGAMENTO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PAGAMENTO_COM_CREDITO_DUPLICADO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    STATUS_PAGAMENTO_INCONSISTENTE(SeveridadePendenciaImportacao.BLOQUEANTE),
+    EVENTO_WEBHOOK_DUPLICADO(SeveridadePendenciaImportacao.ERRO),
+    PAGAMENTO_EFI_NAO_CONFIRMADO(SeveridadePendenciaImportacao.ERRO),
+    PAGAMENTO_MERCADO_PAGO_LEGADO(SeveridadePendenciaImportacao.INFO),
+    SEO_PENDENTE(SeveridadePendenciaImportacao.ALERTA),
+    MIDIA_SEM_MANIFESTO(SeveridadePendenciaImportacao.ERRO),
+    MIDIA_CHECKSUM_DIVERGENTE(SeveridadePendenciaImportacao.ERRO),
+    URL_SEM_DECISAO(SeveridadePendenciaImportacao.ALERTA),
+    PACOTE_DESCRITOR_AUSENTE(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_SEM_IDENTIFICADOR(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_SEM_VERSAO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_SEM_EXTRACAO_DECLARADA(SeveridadePendenciaImportacao.ERRO),
+    PACOTE_SEM_ORIGEM(SeveridadePendenciaImportacao.ERRO),
+    PACOTE_SEM_ARQUIVOS(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_ARQUIVO_DUPLICADO(SeveridadePendenciaImportacao.ERRO),
+    PACOTE_ARQUIVO_OBRIGATORIO_AUSENTE(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_CHECKSUM_AUSENTE(SeveridadePendenciaImportacao.ALERTA),
+    PACOTE_CHECKSUM_OBRIGATORIO_AUSENTE(SeveridadePendenciaImportacao.ERRO),
+    DICIONARIO_TIPO_ARQUIVO_AUSENTE(SeveridadePendenciaImportacao.ALERTA),
+    DICIONARIO_ARQUIVO_SEM_CAMPOS(SeveridadePendenciaImportacao.ERRO),
+    DICIONARIO_CAMPO_OBRIGATORIO_SEM_NOME(SeveridadePendenciaImportacao.ERRO),
+    DICIONARIO_CAMPO_SEM_TIPO(SeveridadePendenciaImportacao.ERRO),
+    DICIONARIO_CAMPO_SEM_OBRIGATORIEDADE(SeveridadePendenciaImportacao.ERRO),
+    DICIONARIO_CAMPO_SENSIVEL_SEM_CLASSIFICACAO(SeveridadePendenciaImportacao.ERRO),
+    DICIONARIO_CAMPO_FINANCEIRO_TIPO_INCOMPATIVEL(SeveridadePendenciaImportacao.BLOQUEANTE),
+    DICIONARIO_CAMPO_CREDITO_TIPO_INCOMPATIVEL(SeveridadePendenciaImportacao.BLOQUEANTE),
+    DICIONARIO_DOCUMENTO_PUBLICO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    SANEAMENTO_REGRA_SEM_CODIGO(SeveridadePendenciaImportacao.ERRO),
+    SANEAMENTO_REGRA_SEM_ESCOPO(SeveridadePendenciaImportacao.ERRO),
+    SANEAMENTO_BLOQUEANTE_SEM_DESCRICAO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    SANEAMENTO_PAGAMENTO_SEM_EVIDENCIA(SeveridadePendenciaImportacao.BLOQUEANTE),
+    SANEAMENTO_DOCUMENTO_PRIVADO_PUBLICO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    SANEAMENTO_CREDITO_TIPO_INCOMPATIVEL(SeveridadePendenciaImportacao.BLOQUEANTE),
+    SANEAMENTO_ESCOPO_PRINCIPAL_SEM_REGRA(SeveridadePendenciaImportacao.ERRO),
+    PLANO_ETAPA_SEM_TIPO(SeveridadePendenciaImportacao.ERRO),
+    PLANO_ETAPA_SEM_ORDEM(SeveridadePendenciaImportacao.ERRO),
+    PLANO_ETAPA_CRITICA_SEM_DESCRICAO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PLANO_DEPENDENCIA_INEXISTENTE(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PLANO_ANUNCIO_SEM_DEPENDENCIA_USUARIO_LOCALIDADE(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PLANO_MIDIA_SEM_DEPENDENCIA_ANUNCIO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PLANO_CREDITO_SEM_DEPENDENCIA_PAGAMENTO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PLANO_SEO_URL_SEM_DEPENDENCIA_ANUNCIO_LOCALIDADE(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PLANO_SEM_RELATORIO_DRY_RUN(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PLANO_SEM_BLOQUEIO_PENDENCIA_CRITICA(SeveridadePendenciaImportacao.BLOQUEANTE);
+
+    private final SeveridadePendenciaImportacao severidadePadrao;
+
+    CodigoPendenciaImportacao(SeveridadePendenciaImportacao severidadePadrao) {
+        this.severidadePadrao = severidadePadrao;
+    }
+
+    public SeveridadePendenciaImportacao severidadePadrao() {
+        return severidadePadrao;
+    }
+}

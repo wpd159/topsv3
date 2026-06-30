@@ -1,0 +1,15 @@
+spring:
+  config:
+    activate:
+      on-profile: test
+
+app:
+  env: test
+  canonical-domain: http://localhost
+
+efi:
+  pix:
+    mock-mode: true
+
+server:
+  port: 0
