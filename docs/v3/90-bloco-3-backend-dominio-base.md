@@ -147,3 +147,20 @@ Antes de transformar estes records em entidades JPA, e obrigatorio:
 - definir conversores de enum se necessario;
 - revisar indices/constraints contra uso real;
 - criar testes de persistencia em banco local descartavel.
+
+## Complemento Bloco 4
+
+O Bloco 4 nao transforma os records deste pacote em entidades. Ele cria uma camada separada em `persistence/*`, mantendo `domain/*` como contrato estrutural Java puro.
+
+As pendencias `PENDENTE_JPA_JAKARTA_PERSISTENCE` e `PENDENTE_REPOSITORIES_SPRING_DATA_JPA` foram substituidas, no escopo do codigo, por dependencias minimas adicionadas ao `pom.xml` e repositories minimos. Permanece `PENDENTE_BUILD_MAVEN_LOCAL` enquanto Maven/wrapper e dependencias em cache local nao estiverem disponiveis sem download.
+
+## Complemento Bloco 4.2
+
+O Bloco 4.2 prepara validacao local de build backend/frontend antes de qualquer service, controller ou endpoint. O estado detectado nesta maquina e:
+
+- Java presente, mas como 21 LTS; o backend continua exigindo Java 17 LTS;
+- Maven e Maven Wrapper ausentes;
+- Node/npm presentes;
+- `frontend/node_modules` ausente.
+
+Services/controllers permanecem bloqueados ate build backend validado com ferramentas locais ou decisao expressa documentada.

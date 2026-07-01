@@ -109,3 +109,137 @@ O manifesto validado é sempre o CSV extraído do ZIP, não apenas os objetos em
 O Bloco 3 pode criar apenas domínio Java puro espelhando as migrations auditadas. Enquanto `jakarta.persistence` e Spring Data JPA não estiverem aprovados localmente, é proibido criar entidades JPA anotadas, repositories, datasource de domínio, services de negócio, controllers de domínio ou endpoints funcionais.
 
 Campos sensíveis devem permanecer como hashes, referências ou textos sanitizados. Documento privado não pode virar mídia pública. Auditoria deve usar snapshots sanitizados ou hashes. Pix Efi continua proibido fora de mock/local sem credencial real.
+
+## Bloco 4 - persistência JPA base
+
+Entidades JPA devem permanecer em `br.com.topsdojob.v3.persistence.entity` e repositories em `br.com.topsdojob.v3.persistence.repository`. Os records de `domain/*` continuam como contratos estruturais Java puros.
+
+Repositories do Bloco 4 são mínimos e não devem receber query nativa, regra de negócio, integração externa, controller, endpoint ou service. Migrations e SQL continuam protegidos por revisão específica.
+
+## Bloco 4.2 - build local
+
+Antes de criar services, controllers ou endpoints, execute:
+
+```powershell
+.\scripts\local\validar-build-local.ps1
+```
+
+O script nao instala ferramentas, nao baixa dependencias, nao cria Maven Wrapper, nao executa `npm install`, nao executa `npm ci`, nao acessa banco e nao acessa rede externa. Retorno `2` indica pendencia operacional, como Java 17, Maven/wrapper ou `frontend/node_modules` ausentes.
+
+Sem build backend validado ou decisao expressa documentada, novos services/controllers/endpoints de dominio permanecem bloqueados.
+
+## Bloco 4.3 - gate de toolchain
+
+Use o diagnostico abaixo para levantar a toolchain local:
+
+```powershell
+.\scripts\local\diagnosticar-toolchain-local.ps1
+```
+
+Comandos de instalacao documentados em runbook sao apenas sugestoes para execucao manual/autorizada futura. Nao execute instalacao, download, alteracao de PATH, criacao de wrapper, `npm install` ou `npm ci` sem autorizacao expressa.
+
+## Bloco 4.4 - build local validado
+
+O Bloco 4.4 teve autorizacao expressa para localizar Java 17 LTS, localizar Maven, executar `npm install` no frontend e baixar dependencias publicas necessarias ao build local.
+
+Antes de iniciar um proximo bloco tecnico, execute:
+
+```powershell
+.\scripts\local\validar-build-local.ps1
+.\scripts\local\validar-persistencia-jpa-estatica.ps1
+```
+
+Estado do gate:
+
+- backend compile/test validado com Java 17 e Maven local;
+- frontend lint/build validado com Node/npm local;
+- `frontend/package-lock.json` versionavel;
+- `backend/target`, `frontend/node_modules` e `frontend/.next` proibidos no Git.
+
+Services, controllers e endpoints de dominio continuam proibidos sem fase futura expressamente autorizada. O Bloco 4.4 nao autoriza banco, Flyway, migration nova, SQL novo, seed, importador real, API externa, producao, VPS, remote, push ou commit.
+
+## Bloco 5 - API publica de leitura
+
+O Bloco 5 autoriza apenas services/controllers publicos de leitura em:
+
+- `br.com.topsdojob.v3.application.publico`;
+- `br.com.topsdojob.v3.web.publico`.
+
+Regras:
+
+- somente `GET`;
+- sem admin funcional;
+- sem autenticacao real;
+- sem sessao/token real;
+- sem acao critica;
+- sem financeiro/Pix/Efi funcional;
+- sem moderacao real;
+- sem importador real;
+- sem banco persistente;
+- sem migration ou SQL novo.
+
+DTO publico nao pode expor entidade JPA, documento privado, CPF, IP, user-agent, hash, auditoria, pagamento, credito, e-mail privado, storage key ou midia nao aprovada.
+
+## Bloco 6 - frontend publico e API local
+
+O frontend publico pode consumir apenas a API local de leitura por `frontend/src/lib/api/publicApi.ts`.
+
+Regras:
+
+- `NEXT_PUBLIC_API_BASE_URL` tem prioridade quando configurado;
+- `http://localhost:8080` e fallback somente em ambiente local;
+- nenhum dominio de producao deve ser default;
+- nao usar token, secret, localStorage ou sessionStorage;
+- manter fallback seguro de backend indisponivel;
+- preservar visual atual, sem nova paleta, tipografia ou redesign;
+- nao expor WhatsApp publico enquanto `PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO`;
+- nao expor bucket, storage key, hash ou URL privada enquanto `PENDENTE_URL_PUBLICA_MIDIA_CDN`;
+- rotas alternativas `/perfil`, `/ads`, `/anuncio` e `/acompanhante` continuam proibidas.
+
+Services/controllers/repositorios deste bloco permanecem de leitura. Migration, SQL, banco persistente, Flyway, seed, API externa, producao, VPS, remote, push e commit continuam proibidos sem autorizacao futura expressa.
+
+## Bloco 7 - e2e local descartavel
+
+Validacoes end-to-end locais podem usar somente PostgreSQL descartavel, sem volume persistente e sem pull automatico de imagem.
+
+Regras:
+
+- usar imagem PostgreSQL local versionada, quando disponivel;
+- aplicar migrations V001-V017 sem alterar SQL;
+- dados sinteticos devem ficar apenas em `scripts/local/dados-sinteticos/`;
+- backend local deve usar datasource por env local e `ddl-auto: validate`;
+- smoke HTTP deve apontar somente para localhost;
+- ao final, backend, container e rede devem ser encerrados/removidos;
+- `RESUMO-ENTREGA.md` deve receber metadados reais de validacoes via `-MetadadosExecucao`.
+
+Permanece proibido usar dados reais, dump, arquivo real de entrada, producao, VPS, banco de producao, API externa, Efi real, OpenAI, seed real, admin funcional, autenticacao real, Pix/Efi funcional, importador real, remote, push ou commit.
+
+## Bloco 8 - metricas publicas e WhatsApp local
+
+Endpoints `POST` publicos de metrica sao permitidos somente para:
+
+- registrar visualizacao;
+- registrar clique WhatsApp;
+- avaliar politica backend de contato publico.
+
+Eles nao podem alterar anuncio, pagamento, credito, moderacao, admin ou importacao.
+
+Dados tecnicos devem ser minimizados por hash. IP, User-Agent e referer brutos nao podem ser persistidos nem logados.
+
+WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-whatsapp`. Conteudo `LIVRE` pode liberar sem idade; conteudo `BLOQUEADO` exige confirmacao de idade valida pelo backend.
+
+## Bloco 9 - idade e stories locais
+
+- `POST /api/public/idade/confirmar` usa apenas data de nascimento e declaracao local.
+- `GET /api/public/idade/status` le cookie HttpOnly assinado.
+- `GET /api/public/anuncios/{slug}/stories` retorna lista vazia sem idade e metadata segura com idade.
+- CPF, documento, localStorage, sessionStorage, imagem real, storage key, bucket, hash e URL privada continuam proibidos.
+- Fora de `local`, salt de metricas e segredo de idade ficticios devem falhar.
+- Sem idade confirmada, stories usam motivo `IDADE_NAO_CONFIRMADA`; com idade confirmada e sem CDN/midia publica, usam `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+
+## Bloco 10 - UX de age gate local
+
+- `/anuncios/[slug]` deve manter confirmacao de idade disponivel mesmo se o primeiro detalhe publico retornar indisponivel/404.
+- Apos idade confirmada, o frontend reconsulta o backend com cookie HttpOnly e `credentials: include`.
+- CORS com credentials e permitido somente em `APP_ENV=local` para origens localhost configuradas.
+- O frontend continua proibido de decidir classificacao, usar localStorage/sessionStorage ou liberar conteudo sem retorno do backend.

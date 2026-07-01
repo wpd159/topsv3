@@ -16,13 +16,13 @@ CREATE TABLE arquivo_midia (
   sha256 text,
   etag text,
   status_arquivo text NOT NULL,
-  classificacao_conteudo text NOT NULL DEFAULT 'SAFE_PUBLIC',
+  classificacao_conteudo text NOT NULL DEFAULT 'LIVRE',
   criado_em timestamptz NOT NULL,
   CONSTRAINT arquivo_midia_tamanho_chk CHECK (tamanho_bytes > 0),
   CONSTRAINT arquivo_midia_dimensoes_chk CHECK ((largura IS NULL OR largura > 0) AND (altura IS NULL OR altura > 0)),
   CONSTRAINT arquivo_midia_duracao_chk CHECK (duracao_ms IS NULL OR duracao_ms > 0),
   CONSTRAINT arquivo_midia_status_chk CHECK (status_arquivo IN ('PENDENTE', 'VALIDADO', 'REJEITADO', 'REMOVIDO')),
-  CONSTRAINT arquivo_midia_classificacao_chk CHECK (classificacao_conteudo IN ('SAFE_PUBLIC', 'SEMIEXPLICIT', 'ADULT_RESTRICTED', 'ADULT_EXPLICIT_BLOCKED')),
+  CONSTRAINT arquivo_midia_classificacao_chk CHECK (classificacao_conteudo IN ('LIVRE', 'BLOQUEADO')),
   CONSTRAINT arquivo_midia_sem_placeholder_chk CHECK (lower(chave_objeto) NOT LIKE '%placeholder%')
 );
 
@@ -40,14 +40,14 @@ CREATE TABLE anuncio_midia (
   finalidade text NOT NULL,
   ordem integer NOT NULL,
   status text NOT NULL,
-  classificacao_conteudo text NOT NULL DEFAULT 'SAFE_PUBLIC',
+  classificacao_conteudo text NOT NULL DEFAULT 'LIVRE',
   criado_em timestamptz NOT NULL,
   atualizado_em timestamptz NOT NULL,
   CONSTRAINT anuncio_midia_tipo_chk CHECK (tipo IN ('FOTO', 'VIDEO', 'STORY')),
   CONSTRAINT anuncio_midia_finalidade_chk CHECK (finalidade IN ('CAPA', 'GALERIA', 'STORY')),
   CONSTRAINT anuncio_midia_ordem_chk CHECK (ordem >= 0),
   CONSTRAINT anuncio_midia_status_chk CHECK (status IN ('PENDENTE', 'PUBLICAVEL', 'REJEITADA', 'REMOVIDA')),
-  CONSTRAINT anuncio_midia_classificacao_chk CHECK (classificacao_conteudo IN ('SAFE_PUBLIC', 'SEMIEXPLICIT', 'ADULT_RESTRICTED', 'ADULT_EXPLICIT_BLOCKED')),
+  CONSTRAINT anuncio_midia_classificacao_chk CHECK (classificacao_conteudo IN ('LIVRE', 'BLOQUEADO')),
   CONSTRAINT anuncio_midia_story_consistencia_chk CHECK (
     (tipo = 'STORY' AND finalidade = 'STORY')
     OR (tipo <> 'STORY' AND finalidade <> 'STORY')

@@ -74,3 +74,35 @@ Esta fase não cria:
 - Fase 1C.7: preservação do visual atual, inventário de fonte visual e bloqueio de redesign sem aprovação expressa.
 - Fase 1C.8: validação local estática das rotas públicas e SEO skeleton.
 - Fase 1D: migrations Flyway reais, ainda aguardando revisão reforçada em modo Pro.
+
+## Complemento Bloco 5
+
+O Bloco 5 adiciona endpoints backend publicos de leitura para apoiar futuramente as rotas preservadas:
+
+- `GET /api/public/anuncios/{slug}`;
+- `GET /api/public/acompanhantes/{uf}/{cidade}`;
+- `GET /api/public/acompanhantes/{uf}/{cidade}/{bairro}`;
+- `GET /api/public/seo/rota`.
+
+Esses endpoints nao criam novas rotas publicas de site. Rotas alternativas como `/perfil`, `/ads`, `/anuncio/[id]` e `/acompanhante/[slug]` continuam proibidas.
+
+O frontend visual nao foi alterado neste bloco.
+
+## Complemento Bloco 6
+
+O Bloco 6 conecta as rotas publicas skeleton aos endpoints backend locais de leitura, sem criar rota publica alternativa e sem alterar a diretriz visual.
+
+O endpoint backend `GET /api/public/seo/rota` passa a aceitar tambem:
+
+- `/sitemap.xml`;
+- `/robots.txt`.
+
+Continuam proibidas:
+
+- `/perfil/*`;
+- `/ads/*`;
+- `/anuncio/*`;
+- `/acompanhante/*`;
+- URL absoluta de producao.
+
+As paginas publicas mantem canonical local, `noindex` e fallback seguro quando a API local nao responde.

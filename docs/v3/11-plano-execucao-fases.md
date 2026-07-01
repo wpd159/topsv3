@@ -898,3 +898,84 @@ Gate:
 - nenhum dump ou dado real usado;
 - nenhum `jakarta.persistence` ou Spring Data JPA adicionado sem autorização;
 - `PENDENTE_JPA_JAKARTA_PERSISTENCE` e `PENDENTE_REPOSITORIES_SPRING_DATA_JPA` documentados.
+
+## Bloco 4 - persistencia JPA base local
+
+Objetivo:
+
+- adicionar dependencias minimas de JPA/Spring Data e driver PostgreSQL runtime;
+- criar entidades JPA principais alinhadas ao schema `V001` a `V017`;
+- criar repositories minimos sem query customizada;
+- manter controllers, endpoints, services de negocio, importador real, banco e dados reais bloqueados.
+
+Gate:
+
+- nenhuma migration nova;
+- nenhum SQL alterado;
+- nenhum banco acessado;
+- nenhuma importacao ou ETL real;
+- nenhum controller funcional;
+- nenhum endpoint de dominio;
+- nenhum service de negocio;
+- nenhum remote, push ou commit nesta fase.
+
+## Bloco 5 - API publica minima de leitura
+
+Objetivo:
+
+- criar DTOs publicos, mappers, services read-only e controllers GET para leitura publica;
+- expor detalhe de anuncio por slug, listagem por cidade, listagem por bairro e metadados SEO locais;
+- preservar as rotas publicas frontend `/anuncios/[slug]`, `/acompanhantes/[uf]/[cidade]` e `/acompanhantes/[uf]/[cidade]/[bairro]`;
+- manter admin funcional, autenticacao real, acoes criticas, financeiro, Pix/Efi, moderacao real e importador real bloqueados.
+
+Gate:
+
+- nenhum documento privado ou campo sensivel exposto;
+- nenhum banco persistente acessado;
+- nenhuma migration criada;
+- nenhum SQL alterado;
+- nenhum dado real ou dump usado;
+- nenhum endpoint de escrita;
+- nenhum remote, push ou commit nesta fase.
+
+## Bloco 6 - frontend publico integrado a API local
+
+Objetivo:
+
+- integrar as rotas publicas skeleton ao contrato backend publico de leitura;
+- preservar visual atual sem redesign, nova paleta ou nova tipografia;
+- manter fallback seguro quando backend local estiver indisponivel;
+- corrigir aceite de `/sitemap.xml` e `/robots.txt` no SEO backend local;
+- corrigir paginacao publica para filtrar anuncios publicados/aprovados antes da pagina final.
+
+Gate:
+
+- nenhum dado real, dump, imagem real ou arquivo real de entrada;
+- nenhum WhatsApp publico sem politica aprovada;
+- nenhuma storage key, hash, bucket ou URL privada exposta;
+- nenhuma migration ou SQL alterado;
+- nenhum banco de producao, API externa, producao ou VPS;
+- nenhum admin funcional, autenticacao real, Pix/Efi, financeiro ou moderacao real;
+- nenhum remote, push ou commit nesta fase.
+
+## Bloco 7 - e2e local descartavel
+
+Objetivo:
+
+- executar PostgreSQL local descartavel;
+- aplicar migrations V001-V017 sem alterar SQL;
+- inserir dados sinteticos minimos e neutros;
+- iniciar backend local em profile seguro;
+- executar smoke HTTP da API publica;
+- validar frontend lint/build e backend compile/test.
+
+Gate:
+
+- nenhum volume persistente;
+- nenhum dado real, dump ou arquivo real de entrada;
+- nenhum WhatsApp publico, documento privado, storage key, hash ou bucket exposto;
+- nenhuma migration criada;
+- nenhum SQL de schema alterado;
+- nenhum admin funcional, autenticacao real, Pix/Efi funcional ou importador real;
+- nenhum acesso a producao, VPS, banco de producao, Efi real, OpenAI ou API externa;
+- nenhum remote, push ou commit nesta fase.

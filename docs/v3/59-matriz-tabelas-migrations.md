@@ -24,7 +24,7 @@ Esta matriz registra a cobertura física gerada na Fase 1D para auditoria. Ela n
 | `V006__moderacao.sql` | `revisao_anuncio`, `anuncio_midia_revisao`, `decisao_moderacao` | 3 | Moderação e classificação de conteúdo. |
 | `V007__premium_creditos.sql` | `beneficio_premium`, `beneficio_premium_opcao`, `grupo_ativacao_beneficio`, `ativacao_beneficio`, `movimento_credito`, `saldo_credito_usuario` | 6 | Financeiro, Premium, pacotes/campanhas e créditos. |
 | `V008__financeiro_efi_historico_legado.sql` | `plano_credito`, `pagamento`, `pagamento_evento`, `pagamento_webhook`, `pagamento_conciliacao` | 5 | Pix/Efí modelado, histórico legado e conciliação. |
-| `V009__metricas.sql` | `evento_visualizacao`, `agregado_visualizacao_diaria`, `clique_whatsapp`, `agregado_clique_whatsapp_diario`, `evento_verificacao_etaria` | 5 | Privacidade, métricas e age gate. |
+| `V009__metricas.sql` | `evento_visualizacao`, `agregado_visualizacao_diaria`, `clique_whatsapp`, `agregado_clique_whatsapp_diario`, `evento_verificacao_etaria` | 5 | Privacidade, métricas e verificação etária auditável, sem desbloqueio parcial por visitante. |
 | `V010__seo_urls_redirects.sql` | `seo_url`, `seo_metadado`, `seo_redirect`, `seo_conteudo_pagina` | 4 | SEO, rotas públicas e conteúdo institucional. |
 | `V011__banners.sql` | `banner_espaco`, `banner`, `banner_versao` | 3 | Banners, mídia e rollback futuro. |
 | `V012__comercial_suporte.sql` | `comercial_status`, `comercial_contato`, `comercial_interacao`, `ticket_suporte`, `mensagem_suporte` | 5 | Aquisição, atendimento e LGPD. |

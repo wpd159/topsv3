@@ -6,13 +6,13 @@ type AdminPlaceholderPageProps = {
 };
 
 export function AdminPlaceholderPage({ moduleSlug }: AdminPlaceholderPageProps) {
-  const module = findAdminModule(moduleSlug);
+  const adminModule = findAdminModule(moduleSlug);
 
   return (
-    <AdminShell title={module.title}>
+    <AdminShell title={adminModule.title}>
       <section className="admin-panel" aria-label="Status do módulo">
         <h2>Módulo placeholder</h2>
-        <p>{module.summary}</p>
+        <p>{adminModule.summary}</p>
         <dl className="health-grid compact">
           <div>
             <dt>Estado</dt>
@@ -28,7 +28,7 @@ export function AdminPlaceholderPage({ moduleSlug }: AdminPlaceholderPageProps) 
           </div>
           <div>
             <dt>Perfis futuros</dt>
-            <dd>{module.futureRoles.join(", ")}</dd>
+            <dd>{adminModule.futureRoles.join(", ")}</dd>
           </div>
         </dl>
       </section>

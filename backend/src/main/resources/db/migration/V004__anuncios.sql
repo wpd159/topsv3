@@ -11,7 +11,7 @@ CREATE TABLE anuncio (
   status text NOT NULL,
   status_moderacao text NOT NULL,
   categoria text NOT NULL,
-  classificacao_conteudo text NOT NULL DEFAULT 'SAFE_PUBLIC',
+  classificacao_conteudo text NOT NULL DEFAULT 'LIVRE',
   preco numeric(12,2),
   whatsapp_normalizado text,
   publicado_em timestamptz,
@@ -24,7 +24,7 @@ CREATE TABLE anuncio (
   CONSTRAINT anuncio_slug_formato_chk CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
   CONSTRAINT anuncio_status_chk CHECK (status IN ('RASCUNHO', 'PENDENTE_REVISAO', 'APROVADO', 'PUBLICADO', 'PAUSADO', 'REJEITADO', 'REMOVIDO')),
   CONSTRAINT anuncio_status_moderacao_chk CHECK (status_moderacao IN ('NAO_ENVIADO', 'PENDENTE', 'APROVADO', 'REJEITADO', 'BLOQUEADO')),
-  CONSTRAINT anuncio_classificacao_conteudo_chk CHECK (classificacao_conteudo IN ('SAFE_PUBLIC', 'SEMIEXPLICIT', 'ADULT_RESTRICTED', 'ADULT_EXPLICIT_BLOCKED')),
+  CONSTRAINT anuncio_classificacao_conteudo_chk CHECK (classificacao_conteudo IN ('LIVRE', 'BLOQUEADO')),
   CONSTRAINT anuncio_preco_chk CHECK (preco IS NULL OR preco >= 0),
   CONSTRAINT anuncio_whatsapp_e164_chk CHECK (whatsapp_normalizado IS NULL OR whatsapp_normalizado ~ '^\+[1-9][0-9]{7,14}$'),
   CONSTRAINT anuncio_versao_chk CHECK (versao >= 0)

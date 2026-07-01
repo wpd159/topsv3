@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Tops do Job V3 Local API
   version: 0.0.1
-  description: Contrato mínimo local do skeleton e da camada transversal 1C.3.
+  description: Contrato minimo local do skeleton, camada transversal e API publica de leitura.
 servers:
   - url: http://localhost:8080
     description: backend local
@@ -61,6 +61,290 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/anuncios/{slug}:
+    get:
+      summary: Detalhe publico minimo de anuncio por slug
+      operationId: getPublicAnuncioBySlug
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+      responses:
+        "200":
+          description: anuncio publico encontrado
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnuncioDetalhePublico"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/anuncios/{slug}/visualizacao:
+    post:
+      summary: Registra visualizacao publica local de anuncio
+      description: Registra somente hashes tecnicos; nao armazena IP, User-Agent ou referer brutos. Conteudo LIVRE e aceito sem idade; conteudo BLOQUEADO exige cookie local de idade confirmada.
+      operationId: postPublicAnuncioVisualizacao
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricaPublicaRequest"
+      responses:
+        "200":
+          description: visualizacao registrada localmente
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrarVisualizacaoPublicaResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/anuncios/{slug}/clique-whatsapp:
+    post:
+      summary: Registra clique WhatsApp publico local
+      description: Retorna whatsappUrl somente quando a politica backend autoriza anuncio PUBLICADO, APROVADO, nao removido e com contato valido. Conteudo LIVRE pode liberar sem idade; conteudo BLOQUEADO exige cookie local de idade confirmada.
+      operationId: postPublicAnuncioCliqueWhatsapp
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetricaPublicaRequest"
+      responses:
+        "200":
+          description: clique registrado e politica de contato avaliada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CliqueWhatsappPublicoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/anuncios/{slug}/stories:
+    get:
+      summary: Lista stories publicos autorizados por idade
+      description: Sem cookie de idade confirmada retorna lista vazia e politica negada. Com cookie valido, o backend pode retornar metadata segura de stories LIVRE ou BLOQUEADO autorizados, sem storage key, bucket, hash ou URL privada.
+      operationId: getPublicAnuncioStories
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+      responses:
+        "200":
+          description: politica de stories avaliada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaStoriesPublicos"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/idade/status:
+    get:
+      summary: Consulta status local de confirmacao de idade
+      description: Lê somente cookie HttpOnly local; nao usa CPF, documento, localStorage ou sessionStorage.
+      operationId: getPublicIdadeStatus
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: status de idade avaliado localmente
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusIdadePublica"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/idade/confirmar:
+    post:
+      summary: Confirma idade local por declaracao
+      description: Em ambiente local aceita CORS apenas de origens localhost configuradas, com credentials para receber cookie HttpOnly.
+      description: Recebe somente data de nascimento e declaracao local. Se maior de 18, emite cookie HttpOnly SameSite=Lax; Secure deve ser usado fora de local. Nao usa CPF ou documento.
+      operationId: postPublicIdadeConfirmar
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmarIdadePublicaRequest"
+      responses:
+        "200":
+          description: idade confirmada e cookie emitido
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Set-Cookie:
+              description: Cookie HttpOnly `topsv3_idade_confirmada`; SameSite=Lax; Secure fora de local.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatusIdadePublica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/acompanhantes/{uf}/{cidade}:
+    get:
+      summary: Listagem publica minima por cidade
+      operationId: getPublicAcompanhantesByCidade
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: uf
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z]{2}$"
+        - name: cidade
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Tamanho"
+      responses:
+        "200":
+          description: listagem publica por cidade
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaAnunciosPublica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/acompanhantes/{uf}/{cidade}/{bairro}:
+    get:
+      summary: Listagem publica minima por cidade e bairro
+      operationId: getPublicAcompanhantesByBairro
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: uf
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z]{2}$"
+        - name: cidade
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+        - name: bairro
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Tamanho"
+      responses:
+        "200":
+          description: listagem publica por bairro
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaAnunciosPublica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/seo/rota:
+    get:
+      summary: Metadados SEO locais para rota publica preservada
+      operationId: getPublicSeoRota
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: caminho
+          in: query
+          required: true
+          description: Caminho publico relativo aceito pela V3 local, incluindo rotas publicas, sitemap e robots.
+          schema:
+            type: string
+            examples:
+              - /anuncios/slug-local
+              - /acompanhantes/sp/sao-paulo
+              - /acompanhantes/sp/sao-paulo/bairro-local
+              - /sitemap.xml
+              - /robots.txt
+      responses:
+        "200":
+          description: metadados SEO locais
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeoRotaPublica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   headers:
     RequestId:
@@ -108,7 +392,44 @@ components:
         items:
           type: string
           example: criadoEm,desc
+    Pagina:
+      name: pagina
+      in: query
+      required: false
+      description: Pagina baseada em zero para endpoints publicos.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Tamanho:
+      name: tamanho
+      in: query
+      required: false
+      description: Quantidade de itens por pagina publica.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
   responses:
+    BadRequest:
+      description: Parametro invalido ou rota publica proibida.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    NotFound:
+      description: Recurso publico nao encontrado.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
     InternalError:
       description: Falha inesperada sem detalhes internos.
       headers:
@@ -186,6 +507,472 @@ components:
         - CONFLICT
         - UNPROCESSABLE_ENTITY
         - INTERNAL_ERROR
+    ClassificacaoConteudoPublica:
+      type: string
+      description: Modelo binario da V3; backend decide, frontend nao classifica.
+      enum:
+        - LIVRE
+        - BLOQUEADO
+    MetricaPublicaRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        visitanteLocalId:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+          description: Identificador tecnico local opcional; armazenado somente como hash.
+        origemPais:
+          type:
+            - string
+            - "null"
+          pattern: "^[A-Za-z]{2}$"
+        origemUf:
+          type:
+            - string
+            - "null"
+          pattern: "^[A-Za-z]{2}$"
+        origemCidade:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+        dispositivo:
+          type:
+            - string
+            - "null"
+          enum:
+            - DESKTOP
+            - MOBILE
+            - TABLET
+            - BOT
+            - DESCONHECIDO
+            - null
+    RegistrarVisualizacaoPublicaResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - registrado
+        - slug
+        - eventoId
+        - status
+        - pendenciaStories
+      properties:
+        registrado:
+          type: boolean
+        slug:
+          type: string
+        eventoId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          const: REGISTRADO
+        pendenciaStories:
+          type: string
+          const: PENDENTE_URL_PUBLICA_MIDIA_CDN
+    PoliticaContatoPublico:
+      type: object
+      additionalProperties: false
+      required:
+        - disponivel
+        - motivoPublico
+      properties:
+        disponivel:
+          type: boolean
+        motivoPublico:
+          type: string
+        pendencia:
+          type:
+            - string
+            - "null"
+    CliqueWhatsappPublicoResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - registrado
+        - disponivel
+        - status
+        - politica
+        - pendenciaStories
+      properties:
+        registrado:
+          type: boolean
+        disponivel:
+          type: boolean
+        whatsappUrl:
+          type:
+            - string
+            - "null"
+          description: Unico campo que pode conter URL de WhatsApp autorizada pelo backend; nunca expor whatsapp_normalizado bruto.
+          examples:
+            - https://wa.me/5500000000000
+        status:
+          type: string
+          enum:
+            - REGISTRADO
+            - CONTATO_INDISPONIVEL
+        politica:
+          $ref: "#/components/schemas/PoliticaContatoPublico"
+        pendenciaStories:
+          type: string
+          const: PENDENTE_URL_PUBLICA_MIDIA_CDN
+    ConfirmarIdadePublicaRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - dataNascimento
+        - declaracaoMaioridade
+      properties:
+        dataNascimento:
+          type: string
+          format: date
+          description: Data usada somente para declaracao local de maioridade; nao enviar CPF ou documento.
+        declaracaoMaioridade:
+          type: boolean
+    StatusIdadePublica:
+      type: object
+      additionalProperties: false
+      required:
+        - confirmada
+        - motivoPublico
+      properties:
+        confirmada:
+          type: boolean
+        expiraEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        motivoPublico:
+          type: string
+          enum:
+            - STORIES_AUTORIZADOS
+            - IDADE_NAO_CONFIRMADA
+          enum:
+            - IDADE_CONFIRMADA
+            - IDADE_NAO_CONFIRMADA
+    PoliticaStoryPublico:
+      type: object
+      additionalProperties: false
+      required:
+        - autorizado
+        - motivoPublico
+      properties:
+        autorizado:
+          type: boolean
+        motivoPublico:
+          type: string
+        pendencia:
+          type:
+            - string
+            - "null"
+    StoryPublico:
+      type: object
+      additionalProperties: false
+      required:
+        - urlPublica
+        - pendenciaMidia
+      properties:
+        ordem:
+          type:
+            - integer
+            - "null"
+        tipo:
+          type:
+            - string
+            - "null"
+        finalidade:
+          type:
+            - string
+            - "null"
+        classificacaoConteudo:
+          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        urlPublica:
+          type:
+            - string
+            - "null"
+          description: Permanece nulo enquanto CDN/midia publica real estiver pendente.
+        largura:
+          type:
+            - integer
+            - "null"
+        altura:
+          type:
+            - integer
+            - "null"
+        duracaoMs:
+          type:
+            - integer
+            - "null"
+        mimeType:
+          type:
+            - string
+            - "null"
+        pendenciaMidia:
+          type: string
+          const: PENDENTE_URL_PUBLICA_MIDIA_CDN
+    ListaStoriesPublicos:
+      type: object
+      additionalProperties: false
+      required:
+        - slug
+        - idadeConfirmada
+        - autorizado
+        - stories
+        - politica
+      properties:
+        slug:
+          type: string
+        idadeConfirmada:
+          type: boolean
+        autorizado:
+          type: boolean
+        stories:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryPublico"
+        politica:
+          $ref: "#/components/schemas/PoliticaStoryPublico"
+    AnuncioDetalhePublico:
+      type: object
+      additionalProperties: false
+      required:
+        - slug
+        - titulo
+        - midias
+        - destaque
+        - topo
+        - midiaExtra
+        - story
+        - beneficiosPublicos
+        - pendenciaContatoPublico
+        - seo
+      properties:
+        slug:
+          type: string
+        titulo:
+          type: string
+        descricao:
+          type:
+            - string
+            - "null"
+        preco:
+          type:
+            - number
+            - "null"
+        localizacao:
+          $ref: "#/components/schemas/LocalizacaoPublica"
+        midias:
+          type: array
+          items:
+            $ref: "#/components/schemas/MidiaPublica"
+        destaque:
+          type: boolean
+        topo:
+          type: boolean
+        midiaExtra:
+          type: boolean
+        story:
+          type: boolean
+        beneficiosPublicos:
+          type: array
+          items:
+            type: string
+        contatoPublico:
+          description: Somente o backend pode preencher contato publico. Conteudo LIVRE pode liberar sem idade; conteudo BLOQUEADO depende de cookie local de idade confirmada.
+          type:
+            - string
+            - "null"
+        pendenciaContatoPublico:
+          description: Marcador local enquanto a politica futura de contato publico nao for aprovada.
+          type: string
+          const: PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO
+        publicadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        seo:
+          $ref: "#/components/schemas/SeoRotaPublica"
+    AnuncioCardPublico:
+      type: object
+      additionalProperties: false
+      required:
+        - slug
+        - titulo
+        - midias
+        - destaque
+        - topo
+        - midiaExtra
+        - story
+        - beneficiosPublicos
+      properties:
+        slug:
+          type: string
+        titulo:
+          type: string
+        descricaoResumo:
+          type:
+            - string
+            - "null"
+        preco:
+          type:
+            - number
+            - "null"
+        localizacao:
+          $ref: "#/components/schemas/LocalizacaoPublica"
+        midias:
+          type: array
+          items:
+            $ref: "#/components/schemas/MidiaPublica"
+        destaque:
+          type: boolean
+        topo:
+          type: boolean
+        midiaExtra:
+          type: boolean
+        story:
+          type: boolean
+        beneficiosPublicos:
+          type: array
+          items:
+            type: string
+        publicadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+    ListaAnunciosPublica:
+      type: object
+      additionalProperties: false
+      required:
+        - itens
+        - paginacao
+        - seo
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnuncioCardPublico"
+        paginacao:
+          $ref: "#/components/schemas/PaginacaoPublica"
+        seo:
+          $ref: "#/components/schemas/SeoRotaPublica"
+    LocalizacaoPublica:
+      type: object
+      additionalProperties: false
+      properties:
+        uf:
+          type:
+            - string
+            - "null"
+        cidade:
+          type:
+            - string
+            - "null"
+        cidadeSlug:
+          type:
+            - string
+            - "null"
+        bairro:
+          type:
+            - string
+            - "null"
+        bairroSlug:
+          type:
+            - string
+            - "null"
+        enderecoResumido:
+          type:
+            - string
+            - "null"
+    MidiaPublica:
+      type: object
+      additionalProperties: false
+      properties:
+        tipo:
+          type:
+            - string
+            - "null"
+        finalidade:
+          type:
+            - string
+            - "null"
+        ordem:
+          type:
+            - integer
+            - "null"
+        urlPublica:
+          type:
+            - string
+            - "null"
+          description: Placeholder publico; nao contem storage key privada.
+        largura:
+          type:
+            - integer
+            - "null"
+        altura:
+          type:
+            - integer
+            - "null"
+        mimeType:
+          type:
+            - string
+            - "null"
+    SeoRotaPublica:
+      type: object
+      additionalProperties: false
+      required:
+        - title
+        - description
+        - canonicalPath
+        - robots
+        - tipoRota
+        - indexavelFuturo
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        canonicalPath:
+          type: string
+          examples:
+            - /anuncios/slug-local
+            - /sitemap.xml
+            - /robots.txt
+        robots:
+          type: string
+          enum:
+            - INDEX_FOLLOW
+            - NOINDEX_FOLLOW
+            - NOINDEX_NOFOLLOW
+        tipoRota:
+          type: string
+        indexavelFuturo:
+          type: boolean
+    PaginacaoPublica:
+      type: object
+      additionalProperties: false
+      required:
+        - pagina
+        - tamanho
+        - totalItens
+        - totalPaginas
+      properties:
+        pagina:
+          type: integer
+          minimum: 0
+        tamanho:
+          type: integer
+          minimum: 1
+        totalItens:
+          type: integer
+          minimum: 0
+        totalPaginas:
+          type: integer
+          minimum: 0
     PageMeta:
       type: object
       additionalProperties: false

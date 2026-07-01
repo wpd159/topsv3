@@ -28,7 +28,7 @@ Não foram criadas migrations novas na Fase 1D.5. Nenhum SQL de schema foi alter
 | 6 | `V006__moderacao.sql` | Revisão de anúncios, revisão de mídia e decisões de moderação. |
 | 7 | `V007__premium_creditos.sql` | Premium, ativações, créditos, ledger e saldos. |
 | 8 | `V008__financeiro_efi_historico_legado.sql` | Planos, pagamentos, eventos, webhooks e conciliação. |
-| 9 | `V009__metricas.sql` | Visualizações, cliques WhatsApp, agregados e age gate. |
+| 9 | `V009__metricas.sql` | Visualizações, cliques WhatsApp, agregados e verificação etária auditável, sem desbloqueio parcial. |
 | 10 | `V010__seo_urls_redirects.sql` | URLs, metadados, redirects e conteúdo SEO. |
 | 11 | `V011__banners.sql` | Espaços de banner, banners e versões. |
 | 12 | `V012__comercial_suporte.sql` | Comercial e suporte. |
@@ -125,3 +125,15 @@ Os gates mantidos antes de fase dependente critica sao: revisao Pro do schema, F
 O Bloco 3 criou domínio Java puro para espelhar o schema das migrations sem alterar SQL e sem aplicar banco. Como JPA/Spring Data JPA não estão disponíveis no backend local, não foram criadas entidades JPA anotadas nem repositories.
 
 O schema segue `AGUARDANDO_REVISAO_PRO`. Os marcadores `PENDENTE_JPA_JAKARTA_PERSISTENCE` e `PENDENTE_REPOSITORIES_SPRING_DATA_JPA` continuam bloqueando mapeamento JPA e repositories até decisão futura.
+
+## Complemento Bloco 4
+
+O Bloco 4 cria persistencia JPA base local sobre o schema `V001` a `V017`, sem alterar SQL e sem aplicar banco. O schema permanece `AGUARDANDO_REVISAO_PRO`; a persistencia criada serve como base de codigo local e nao aprova migracao, importador, endpoint ou execucao em banco persistente.
+
+Maven/build local fica pendente quando dependencias JPA ainda nao estiverem em cache local sem download.
+
+## Complemento Bloco 5
+
+O Bloco 5 usa a base JPA apenas para criar API publica minima de leitura. Nenhuma migration nova foi criada, nenhum SQL foi alterado, nenhum Flyway foi executado e nenhum banco foi acessado.
+
+O schema segue `AGUARDANDO_REVISAO_PRO`; os endpoints publicos sao codigo local de leitura e nao aprovam aplicacao de banco persistente, importador real ou fase de dados reais.

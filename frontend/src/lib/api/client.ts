@@ -52,9 +52,10 @@ export async function fetchLocalApi<T>(path: string, options: ApiRequestOptions 
     response = await fetch(buildApiUrl(path), {
       ...fetchOptions,
       cache: fetchOptions.cache ?? "no-store",
+      credentials: fetchOptions.credentials ?? "include",
       headers
     });
-  } catch (error) {
+  } catch {
     throw new ApiClientError("API local indisponível.", 0, requestId);
   }
 

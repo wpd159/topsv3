@@ -1,0 +1,21 @@
+# Checklist Bloco 10 - age gate frontend
+
+- [x] Inventario inicial gerado fora do repositorio.
+- [x] Nao houve consulta SSH a producao.
+- [x] `PENDENTE_CONFIRMACAO_IDADE_STORIES` removido do fluxo ativo.
+- [x] Stories sem idade usam `IDADE_NAO_CONFIRMADA`.
+- [x] Stories com idade e sem CDN usam `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+- [x] Pagina `/anuncios/[slug]` renderiza age gate mesmo quando detalhe inicial falha.
+- [x] Frontend reconsulta detalhe apos confirmacao de idade.
+- [x] Frontend preserva `credentials: include`.
+- [x] Frontend nao usa localStorage/sessionStorage.
+- [x] CORS local usa credentials apenas em `APP_ENV=local`.
+- [x] CORS local nao usa wildcard com credentials.
+- [x] Cookie de idade permanece HttpOnly e SameSite=Lax.
+- [x] `Secure` fica falso em local HTTP e verdadeiro fora de local.
+- [x] Nenhuma migration criada.
+- [x] Nenhum SQL de schema alterado.
+- [x] Nenhum dado real, dump, imagem real, telefone real, CPF ou documento usado.
+- [x] Nenhum admin funcional, autenticacao real, Pix/Efi, financeiro ou importador real criado.
+- [x] Nenhum remote, push ou commit executado.
+- [x] ZIP final gerado com inventario do Bloco 10.

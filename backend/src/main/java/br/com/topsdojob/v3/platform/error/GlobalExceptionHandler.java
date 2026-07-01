@@ -16,6 +16,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -40,6 +41,13 @@ public class GlobalExceptionHandler {
     })
     public ResponseEntity<ApiErrorResponse> handleValidation(Exception exception, HttpServletRequest request) {
         return build(ApiErrorCode.UNPROCESSABLE_ENTITY, request);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<ApiErrorResponse> handleResponseStatus(
+            ResponseStatusException exception,
+            HttpServletRequest request) {
+        return build(fromStatus(exception.getStatusCode().value()), request);
     }
 
     @ExceptionHandler({
@@ -70,5 +78,14 @@ public class GlobalExceptionHandler {
                 request.getRequestURI(),
                 RequestIdContext.current(request));
         return ResponseEntity.status(code.status()).body(response);
+    }
+
+    private ApiErrorCode fromStatus(int statusCode) {
+        for (ApiErrorCode code : ApiErrorCode.values()) {
+            if (code.status().value() == statusCode) {
+                return code;
+            }
+        }
+        return ApiErrorCode.INTERNAL_ERROR;
     }
 }

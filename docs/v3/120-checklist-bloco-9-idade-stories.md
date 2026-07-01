@@ -1,0 +1,39 @@
+# Checklist Bloco 9 - Idade e stories
+
+- [x] Inventario inicial fora do repositorio.
+- [x] MetricaPublicaHashService endurecido.
+- [x] Segredo ficticio permitido apenas em local.
+- [x] Endpoint de confirmar idade criado.
+- [x] Endpoint de status de idade criado.
+- [x] Cookie HttpOnly criado.
+- [x] localStorage/sessionStorage nao usados.
+- [x] CPF nao usado.
+- [x] Documento nao usado.
+- [x] Endpoint de stories criado.
+- [x] Conteudo BLOQUEADO bloqueado sem idade.
+- [x] Conteudo BLOQUEADO liberavel apos idade.
+- [x] Stories bloqueados sem idade.
+- [x] Stories liberaveis apos idade.
+- [x] Pendencia ativa de stories padronizada para `IDADE_NAO_CONFIRMADA` ou `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+- [x] Storage key/hash/bucket nao expostos.
+- [x] Documento privado nao exposto.
+- [x] Frontend integrado sem redesign.
+- [x] PostgreSQL descartavel testado.
+- [x] Backend compile/test executado.
+- [x] Frontend lint/build executado.
+- [x] Nenhum dado real usado.
+- [x] Nenhum dump lido.
+- [x] Nenhuma producao acessada.
+- [x] Nenhuma VPS acessada.
+- [x] Nenhum banco de producao acessado.
+- [x] Nenhuma API externa acessada.
+- [x] Nenhuma migration criada.
+- [x] Nenhum SQL de schema alterado.
+- [x] Nenhum admin funcional criado.
+- [x] Nenhuma autenticacao real criada.
+- [x] Nenhum Pix/Efi funcional criado.
+- [x] Nenhum importador real criado.
+- [x] Nenhum remote configurado.
+- [x] Nenhum push executado.
+- [x] Nenhum commit executado.
+- [x] ZIP final criado e validado.

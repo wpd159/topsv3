@@ -103,3 +103,18 @@ A preservação visual não altera contratos públicos. Enquanto o visual final 
 Status da fonte visual atual nesta fase: `PENDENTE_FONTE_VISUAL_ATUAL`.
 
 Enquanto essa pendência estiver aberta, nenhuma decisão visual final deve ser tomada com base apenas nos skeletons locais.
+
+## Complemento Bloco 6
+
+O Bloco 6 integrou o frontend publico skeleton a API local de leitura sem redesign.
+
+Foram preservados:
+
+- shell publico existente;
+- CSS global existente;
+- paleta atual do skeleton local;
+- tipografia atual do skeleton local;
+- ausencia de imagem real;
+- ausencia de dados reais.
+
+Os paineis adicionados usam classes ja existentes, como `panel`, `muted` e `health-grid`. Eles indicam estado estrutural da API local e fallback seguro, mas nao representam layout final da V3.

@@ -47,6 +47,7 @@ Esse total inclui os arquivos acumulados das fases locais anteriores e o novo ch
 - Fase 2A a 2G: estrutura documental e Java puro do importador saneador, sem fonte real, sem ETL e sem banco.
 - Bloco 3: dominio Java puro espelhando o schema, sem JPA, repositories, services, controllers ou endpoints.
 - Bloco 3.1: correcao nominal curta em `RevisaoAnuncio` e checkpoint local pre-commit.
+- Bloco 4: persistencia JPA base local com entidades e repositories minimos, sem controllers, endpoints, services, importador real, banco, migration ou SQL novo.
 
 ## Commit sugerido
 

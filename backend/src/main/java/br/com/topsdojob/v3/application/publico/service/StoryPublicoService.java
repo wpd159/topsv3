@@ -1,0 +1,177 @@
+package br.com.topsdojob.v3.application.publico.service;
+
+import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
+import br.com.topsdojob.v3.application.publico.dto.PoliticaStoryPublicoDto;
+import br.com.topsdojob.v3.application.publico.dto.StoryPublicoDto;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import jakarta.servlet.http.HttpServletRequest;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+public class StoryPublicoService {
+
+    public static final String PENDENTE_URL_PUBLICA_MIDIA_CDN = "PENDENTE_URL_PUBLICA_MIDIA_CDN";
+
+    private static final String MOTIVO_AUTORIZADO = "STORIES_AUTORIZADOS";
+    private static final String MOTIVO_IDADE_NAO_CONFIRMADA = "IDADE_NAO_CONFIRMADA";
+
+    private final AnuncioRepository anuncioRepository;
+    private final AnuncioMidiaRepository anuncioMidiaRepository;
+    private final ArquivoMidiaRepository arquivoMidiaRepository;
+    private final StoryAnuncioRepository storyRepository;
+    private final IdadePublicaService idadeService;
+
+    public StoryPublicoService(
+            AnuncioRepository anuncioRepository,
+            AnuncioMidiaRepository anuncioMidiaRepository,
+            ArquivoMidiaRepository arquivoMidiaRepository,
+            StoryAnuncioRepository storyRepository,
+            IdadePublicaService idadeService) {
+        this.anuncioRepository = anuncioRepository;
+        this.anuncioMidiaRepository = anuncioMidiaRepository;
+        this.arquivoMidiaRepository = arquivoMidiaRepository;
+        this.storyRepository = storyRepository;
+        this.idadeService = idadeService;
+    }
+
+    @Transactional(readOnly = true)
+    public ListaStoriesPublicosDto listar(String slug, HttpServletRequest request) {
+        String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
+        boolean idadeConfirmada = idadeService.idadeConfirmada(request);
+        if (!idadeConfirmada) {
+            return bloqueadoPorIdade(slugSeguro);
+        }
+
+        AnuncioEntity anuncio = anuncioRepository
+                .findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
+                        slugSeguro,
+                        StatusAnuncio.PUBLICADO,
+                        StatusModeracaoAnuncio.APROVADO)
+                .filter(this::classificacaoLiberavelComIdade)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+
+        List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioId(anuncio.getId()).stream()
+                .filter(this::vinculoStoryElegivel)
+                .toList();
+        if (vinculos.isEmpty()) {
+            return autorizado(slugSeguro, List.of());
+        }
+
+        Map<UUID, AnuncioMidiaEntity> vinculosPorId = vinculos.stream()
+                .collect(Collectors.toMap(AnuncioMidiaEntity::getId, Function.identity()));
+        Map<UUID, ArquivoMidiaEntity> arquivosPorId = arquivoMidiaRepository.findByIdIn(vinculos.stream()
+                        .map(AnuncioMidiaEntity::getArquivoMidiaId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
+
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        List<StoryPublicoDto> stories = storyRepository.findByAnuncioMidiaIdIn(vinculosPorId.keySet()).stream()
+                .filter(story -> storyElegivel(story, now))
+                .map(story -> toDto(story, vinculosPorId.get(story.getAnuncioMidiaId()), arquivosPorId))
+                .filter(java.util.Objects::nonNull)
+                .sorted(Comparator.comparing(
+                        StoryPublicoDto::ordem,
+                        Comparator.nullsLast(Integer::compareTo)))
+                .toList();
+
+        return autorizado(slugSeguro, stories);
+    }
+
+    private ListaStoriesPublicosDto bloqueadoPorIdade(String slug) {
+        return new ListaStoriesPublicosDto(
+                slug,
+                false,
+                false,
+                List.of(),
+                new PoliticaStoryPublicoDto(false, MOTIVO_IDADE_NAO_CONFIRMADA, null));
+    }
+
+    private ListaStoriesPublicosDto autorizado(String slug, List<StoryPublicoDto> stories) {
+        return new ListaStoriesPublicosDto(
+                slug,
+                true,
+                true,
+                stories,
+                new PoliticaStoryPublicoDto(true, MOTIVO_AUTORIZADO, PENDENTE_URL_PUBLICA_MIDIA_CDN));
+    }
+
+    private StoryPublicoDto toDto(
+            StoryAnuncioEntity story,
+            AnuncioMidiaEntity vinculo,
+            Map<UUID, ArquivoMidiaEntity> arquivosPorId) {
+        if (vinculo == null || !classificacaoLiberavelComIdade(vinculo.getClassificacaoConteudo())) {
+            return null;
+        }
+        ArquivoMidiaEntity arquivo = arquivosPorId.get(vinculo.getArquivoMidiaId());
+        if (arquivo == null
+                || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO
+                || !classificacaoLiberavelComIdade(arquivo.getClassificacaoConteudo())) {
+            return null;
+        }
+        return new StoryPublicoDto(
+                story.getOrdem(),
+                enumName(vinculo.getTipo()),
+                enumName(vinculo.getFinalidade()),
+                enumName(vinculo.getClassificacaoConteudo()),
+                null,
+                arquivo.getLargura(),
+                arquivo.getAltura(),
+                arquivo.getDuracaoMs(),
+                arquivo.getMimeType(),
+                PENDENTE_URL_PUBLICA_MIDIA_CDN);
+    }
+
+    private boolean vinculoStoryElegivel(AnuncioMidiaEntity vinculo) {
+        return vinculo != null
+                && vinculo.getStatus() == StatusAnuncioMidia.PUBLICAVEL
+                && (vinculo.getTipo() == TipoAnuncioMidia.STORY || vinculo.getFinalidade() == FinalidadeAnuncioMidia.STORY)
+                && classificacaoLiberavelComIdade(vinculo.getClassificacaoConteudo());
+    }
+
+    private boolean storyElegivel(StoryAnuncioEntity story, OffsetDateTime now) {
+        return story != null
+                && story.getStatus() == StatusStoryAnuncio.PUBLICADO
+                && (story.getInicioEm() == null || !story.getInicioEm().isAfter(now))
+                && (story.getFimEm() == null || story.getFimEm().isAfter(now));
+    }
+
+    private boolean classificacaoLiberavelComIdade(AnuncioEntity anuncio) {
+        return anuncio != null && classificacaoLiberavelComIdade(anuncio.getClassificacaoConteudo());
+    }
+
+    private boolean classificacaoLiberavelComIdade(ClassificacaoConteudo classificacao) {
+        return classificacao == ClassificacaoConteudo.LIVRE || classificacao == ClassificacaoConteudo.BLOQUEADO;
+    }
+
+    private String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
+    }
+}

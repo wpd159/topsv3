@@ -87,9 +87,9 @@ export const adminModules: AdminModule[] = [
 ];
 
 export function findAdminModule(slug: string): AdminModule {
-  const module = adminModules.find((item) => item.slug === slug);
-  if (!module) {
+  const adminModule = adminModules.find((item) => item.slug === slug);
+  if (!adminModule) {
     throw new Error(`Admin module not found: ${slug}`);
   }
-  return module;
+  return adminModule;
 }

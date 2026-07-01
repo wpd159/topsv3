@@ -1,0 +1,42 @@
+# Checklist Bloco 8 - Metricas e WhatsApp
+
+- [x] Inventario inicial fora do repositorio.
+- [x] Classificacao binaria `LIVRE`/`BLOQUEADO` validada.
+- [x] Estados antigos removidos dos fontes versionaveis.
+- [x] Regra de stories com confirmacao de idade documentada.
+- [x] Story sem idade confirmada nao exposto.
+- [x] Story `BLOQUEADO` nao publico sem idade confirmada.
+- [x] Endpoint de visualizacao criado.
+- [x] Endpoint de clique WhatsApp criado.
+- [x] Politica backend de contato publico criada.
+- [x] Hash de dados tecnicos criado.
+- [x] IP bruto nao armazenado.
+- [x] User-Agent bruto nao armazenado.
+- [x] Referer bruto nao armazenado.
+- [x] Salt real nao versionado.
+- [x] Numero sintetico limitado a teste local.
+- [x] Frontend integrado sem redesign.
+- [x] WhatsApp nao exposto fora do endpoint autorizado.
+- [x] Storage key/hash/bucket nao expostos.
+- [x] Documento privado nao exposto.
+- [x] Pagamento/saldo/auditoria nao expostos.
+- [x] Nenhum limite diario comercial criado.
+- [x] PostgreSQL descartavel testado.
+- [x] Backend compile/test executado.
+- [x] Frontend lint/build executado.
+- [x] Nenhum dado real usado.
+- [x] Nenhum dump lido.
+- [x] Nenhuma producao acessada.
+- [x] Nenhuma VPS acessada.
+- [x] Nenhum banco de producao acessado.
+- [x] Nenhuma API externa acessada.
+- [x] Nenhuma migration criada.
+- [x] Nenhum SQL de schema alterado fora da correcao binaria ja aplicada.
+- [x] Nenhum admin funcional criado.
+- [x] Nenhuma autenticacao real criada.
+- [x] Nenhum Pix/Efi funcional criado.
+- [x] Nenhum importador real criado.
+- [x] Nenhum remote configurado.
+- [x] Nenhum push executado.
+- [x] Nenhum commit executado.
+- [x] ZIP final criado e validado.

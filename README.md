@@ -65,9 +65,25 @@ Os nomes padronizados atuais são:
 .\scripts\local\validar-migrations-sql-estatico.ps1
 .\scripts\local\validar-migrations-postgres-descartavel.ps1
 .\scripts\local\validar-fonte-importacao-local.ps1
+.\scripts\local\validar-build-local.ps1
 ```
 
 Esses scripts usam `infra/local/docker-compose.local.yml` e exigem Docker já disponível na máquina. Esta fase não instala ferramentas. Os volumes locais ficam sob `storage-local/`, que é ignorado pelo Git.
+
+Validacao de build local do Bloco 4.2:
+
+- backend exige Java 17 LTS e Maven ou Maven Wrapper ja disponivel sem download;
+- frontend exige Node/npm e `frontend/node_modules` ja existente;
+- os scripts nao executam `npm install`, `npm ci`, download de wrapper, instalacao de Maven, banco, Flyway ou rede externa;
+- enquanto o backend build nao estiver validado, services/controllers/endpoints de dominio continuam bloqueados.
+
+Gate de toolchain do Bloco 4.3:
+
+```powershell
+.\scripts\local\diagnosticar-toolchain-local.ps1
+```
+
+O diagnostico apenas lista Java, Maven, Node/npm, `node_modules` e gerenciadores como winget/choco/scoop. Ele nao instala ferramentas, nao baixa dependencias, nao altera PATH e nao cria Maven Wrapper.
 
 Backend e frontend possuem camada transversal local mínima:
 
@@ -270,3 +286,98 @@ Os comandos de backend/frontend dependem de autorização futura para instalar o
 O Bloco 3 cria uma base local de domínio em Java puro em `backend/src/main/java/br/com/topsdojob/v3/domain`, espelhando estruturalmente as migrations `V001` a `V017` sem acessar banco, sem criar migration, sem alterar SQL e sem iniciar importação real.
 
 Como o `pom.xml` ainda não possui JPA/Spring Data JPA local, não foram criadas entidades JPA anotadas nem repositories. As pendências formais são `PENDENTE_JPA_JAKARTA_PERSISTENCE` e `PENDENTE_REPOSITORIES_SPRING_DATA_JPA`.
+
+## Bloco 4 - persistência JPA base
+
+O Bloco 4 adiciona a camada `backend/src/main/java/br/com/topsdojob/v3/persistence` com entidades JPA e repositories mínimos. Foram adicionadas apenas dependências oficiais mínimas de Spring Data JPA e driver PostgreSQL runtime.
+
+Esta camada não cria controller, endpoint, service de negócio, importador real, migration nova, SQL novo ou acesso a banco. Build Maven local permanece `PENDENTE_BUILD_MAVEN_LOCAL` quando não houver Maven/wrapper e dependências em cache sem download.
+
+## Bloco 4.4 - build local validado
+
+O Bloco 4.4 regularizou a toolchain local com autorizacao expressa e validou build backend/frontend.
+
+Resultado atual:
+
+- Java 17 LTS localizado e usado apenas por processo;
+- Maven 3.9.9 localizado em pasta local do usuario;
+- `npm install` executado no frontend e `frontend/package-lock.json` criado;
+- backend `mvn -q -DskipTests compile` OK;
+- backend `mvn -q test` OK;
+- frontend `npm run lint` OK;
+- frontend `npm run build` OK;
+- `typecheck` nao aplicavel porque nao existe script configurado.
+
+`backend/target`, `frontend/node_modules` e `frontend/.next` permanecem ignorados pelo Git.
+
+O gate de build/toolchain esta validado para o proximo bloco tecnico autorizado. Services, controllers e endpoints de dominio nao foram criados no Bloco 4.4 e continuam dependentes de autorizacao expressa futura.
+
+## Bloco 5 - API publica minima de leitura
+
+O Bloco 5 cria a primeira camada publica de leitura do backend:
+
+- `GET /api/public/anuncios/{slug}`;
+- `GET /api/public/acompanhantes/{uf}/{cidade}`;
+- `GET /api/public/acompanhantes/{uf}/{cidade}/{bairro}`;
+- `GET /api/public/seo/rota`.
+
+Foram criados DTOs, mappers, services `readOnly`, controllers `GET` e repositories derivados simples. A API nao expoe documento privado, CPF, IP, user-agent, hash, auditoria, pagamento, credito, e-mail privado, storage key ou midia nao aprovada.
+
+Frontend publico visual nao foi alterado. Admin funcional, autenticacao real, acoes criticas, financeiro, Pix/Efi, moderacao real, importador real, banco, migration e SQL continuam fora do escopo.
+
+## Bloco 6 - frontend publico integrado a API local
+
+O Bloco 6 integra o frontend publico skeleton aos endpoints locais de leitura do Bloco 5, sem redesign e sem dados reais.
+
+Foram criados `frontend/src/lib/api/publicApi.ts` e `frontend/src/lib/api/publicTypes.ts`. As rotas `/anuncios/[slug]`, `/acompanhantes/[uf]/[cidade]` e `/acompanhantes/[uf]/[cidade]/[bairro]` passam a consumir a API local com fallback seguro quando o backend estiver indisponivel.
+
+O backend tambem aceita `/sitemap.xml` e `/robots.txt` no endpoint `GET /api/public/seo/rota`, mantendo bloqueadas rotas alternativas como `/perfil`, `/ads`, `/anuncio` e `/acompanhante`.
+
+A paginacao publica foi corrigida para filtrar anuncios `PUBLICADO`/`APROVADO` antes da pagina final. `MidiaPublicaDto.urlPublica` segue pendente por seguranca com `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+
+Nao houve nova paleta, nova tipografia, imagem real, WhatsApp publico, storage key, hash, bucket, admin funcional, autenticacao real, Pix/Efi, financeiro, migration, SQL, API externa, producao, VPS, remote, push ou commit.
+
+## Bloco 7 - e2e local descartavel
+
+O Bloco 7 validou o fluxo local completo com PostgreSQL descartavel:
+
+- imagem local usada: `postgres:16`;
+- migrations V001-V017 aplicadas via `psql` ordenado;
+- dados sinteticos minimos aplicados;
+- backend local iniciado em profile `local`;
+- smoke HTTP da API publica executado;
+- frontend lint/build validado;
+- backend compile/test validado;
+- container e rede removidos;
+- nenhum volume persistente criado.
+
+O pacote final deste bloco usa metadados de execucao para preencher corretamente a secao de testes no `RESUMO-ENTREGA.md`.
+
+Nao houve producao, VPS, banco de producao, API externa, dados reais, dump, migration nova, SQL de schema, WhatsApp publico, documento privado, storage key/hash/bucket, remote, push ou commit.
+
+## Bloco 8 - metricas publicas locais e WhatsApp
+
+O Bloco 8 adiciona endpoints publicos locais:
+
+- `POST /api/public/anuncios/{slug}/visualizacao`;
+- `POST /api/public/anuncios/{slug}/clique-whatsapp`.
+
+Os eventos usam hash tecnico para IP/User-Agent/referer e registram dados apenas em banco local descartavel. A politica backend de contato libera WhatsApp para anuncio `LIVRE` sem idade, ou `BLOQUEADO` somente apos confirmacao de idade valida, sempre exigindo `PUBLICADO`, `APROVADO`, sem `removido_em` e contato valido.
+
+Stories seguem bloqueados sem confirmacao de idade usando motivo `IDADE_NAO_CONFIRMADA`. Quando a idade esta confirmada e a midia publica/CDN ainda nao existe, a pendencia e `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+
+## Bloco 9 - confirmacao de idade local e stories
+
+O Bloco 9 adiciona `POST /api/public/idade/confirmar`, `GET /api/public/idade/status` e `GET /api/public/anuncios/{slug}/stories`.
+
+A confirmacao usa declaracao/data de nascimento local, cookie HttpOnly assinado, `SameSite=Lax`, sem CPF, sem documento, sem conta de usuario e sem localStorage/sessionStorage. Fora de `local`, salt/hash de metricas e segredo de idade falham se estiverem ausentes ou ficticios.
+
+Conteudo `BLOQUEADO` nao libera sem idade confirmada, mas pode ser liberado pelo backend apos confirmacao valida. Stories retornam apenas metadata segura enquanto `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+
+## Bloco 10 - UX local de age gate e CORS/cookie
+
+O Bloco 10 corrige a UX local de `/anuncios/[slug]`: quando o detalhe inicial nao retorna por falta de idade confirmada, a pagina ainda renderiza confirmacao local de idade, emite cookie HttpOnly pelo backend e reconsulta o detalhe com `credentials: include`.
+
+O frontend nao decide classificacao nem liberacao de conteudo. Ele apenas confirma idade localmente e reconsulta o backend. CORS com credentials fica limitado a `APP_ENV=local` e origens localhost configuradas; fora de local fica fechado.
+
+Nao houve limite diario comercial, admin funcional, autenticacao real, Pix/Efi, financeiro, moderacao real, importador real, API externa, producao, VPS, remote, push ou commit.

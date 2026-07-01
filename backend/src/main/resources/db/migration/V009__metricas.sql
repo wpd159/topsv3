@@ -112,4 +112,4 @@ CREATE TABLE evento_verificacao_etaria (
 CREATE INDEX evento_verificacao_etaria_usuario_idx ON evento_verificacao_etaria (usuario_id, criado_em);
 CREATE INDEX evento_verificacao_etaria_anuncio_idx ON evento_verificacao_etaria (anuncio_id, criado_em);
 
-COMMENT ON TABLE evento_verificacao_etaria IS 'Registro minimizado de verificacao etaria para age gate e auditoria futura.';
+COMMENT ON TABLE evento_verificacao_etaria IS 'Registro minimizado de verificacao etaria para auditoria futura; nao libera exibicao parcial.';

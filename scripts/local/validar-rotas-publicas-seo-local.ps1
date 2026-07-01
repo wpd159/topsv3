@@ -53,6 +53,30 @@ function Get-ExistingText {
   return $buffer.ToString()
 }
 
+function Get-RelativePath {
+  param([string]$FullName)
+  return ($FullName.Substring($repoRoot.Length).TrimStart('\', '/') -replace '\\', '/')
+}
+
+function Test-IgnoredBuildOutput {
+  param([string]$FullName)
+  $relative = Get-RelativePath $FullName
+  return (
+    $relative -like "backend/target/*" -or
+    $relative -like "frontend/node_modules/*" -or
+    $relative -like "frontend/.next/*" -or
+    $relative -like "frontend/out/*" -or
+    $relative -like "frontend/dist/*" -or
+    $relative -like ".git/*"
+  )
+}
+
+function Test-AllowedLocalSyntheticSql {
+  param([string]$FullName)
+  $relative = Get-RelativePath $FullName
+  return ($relative -like "scripts/local/dados-sinteticos/*.sql")
+}
+
 $publicRouteFiles = @(
   "frontend/src/app/anuncios/[slug]/page.tsx",
   "frontend/src/app/acompanhantes/[uf]/[cidade]/page.tsx",
@@ -199,10 +223,13 @@ $adminShell = if (Test-RepoFile "frontend/src/modules/admin/shell/AdminShell.tsx
 Add-Check "public skeleton marcado como temporario" ($publicShell.Contains("SKELETON LOCAL")) "frontend publico ainda nao e layout final"
 Add-Check "admin skeleton marcado como temporario" ($adminShell.Contains("ADMIN SKELETON LOCAL") -and $adminShell.Contains("apenas estrutural")) "admin ainda nao e funcional"
 
-$sqlFiles = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter *.sql -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\.git\\' })
+$sqlFiles = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter *.sql -ErrorAction SilentlyContinue | Where-Object { -not (Test-IgnoredBuildOutput $_.FullName) })
 $migrationRel = "backend/src/main/resources/db/migration"
 $migrationDir = Get-RepoPath $migrationRel
-$sqlOutsideMigration = @($sqlFiles | Where-Object { -not $_.FullName.StartsWith($migrationDir, [System.StringComparison]::OrdinalIgnoreCase) })
+$sqlOutsideMigration = @($sqlFiles | Where-Object {
+  (-not $_.FullName.StartsWith($migrationDir, [System.StringComparison]::OrdinalIgnoreCase)) -and
+  (-not (Test-AllowedLocalSyntheticSql $_.FullName))
+})
 $invalidMigrationNames = @($sqlFiles | Where-Object {
   $_.FullName.StartsWith($migrationDir, [System.StringComparison]::OrdinalIgnoreCase) -and $_.Name -notmatch '^V[0-9]{3}__[a-z0-9_]+\.sql$'
 })

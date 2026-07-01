@@ -90,7 +90,7 @@ Como nao ha JPA/Spring Data JPA local, a coluna "Classe" representa record Java 
 
 | Pacote | Arquivo | Escopo |
 | --- | --- | --- |
-| `shared` | `ClassificacaoConteudo` | classificacao publica/adulta de anuncio e midia |
+| `shared` | `ClassificacaoConteudo` | classificacao binaria `LIVRE`/`BLOQUEADO` de anuncio e midia |
 | `usuario` | `UsuarioTipos` | status, tipo de conta, papel e tipo de token |
 | `anuncio` | `AnuncioTipos` | status do anuncio, moderacao e publicacao de busca |
 | `midia` | `MidiaTipos` | arquivo, tipo/finalidade/status de midia e story |
@@ -123,3 +123,7 @@ Pendencias de cobertura direta:
 - tabelas de credencial e permissao;
 - tabelas de backup;
 - records individuais para cada `stg_*`, caso a revisao Pro decida que a referencia estrutural unica nao e suficiente.
+
+## Complemento Bloco 4
+
+A matriz JPA passa a ser mantida em `docs/v3/95-matriz-jpa-tabela-repository.md`. O Bloco 4 mapeia 41 tabelas com entidades JPA separadas dos records de dominio e deixa 27 tabelas pendentes ou deliberadamente fora da camada funcional.

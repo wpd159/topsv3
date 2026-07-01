@@ -28,7 +28,7 @@ O objetivo é permitir revisão Pro do schema físico antes de qualquer execuç�
 | `V006__moderacao.sql` | Revisão de anúncio, revisão de mídia e decisão de moderação | Inclui base para classificação e revisão futura, sem fluxo funcional. |
 | `V007__premium_creditos.sql` | Benefícios premium, grupos de ativação, ledger e saldo | Premium é aditivo; ledger possui coerência matemática por direção. |
 | `V008__financeiro_efi_historico_legado.sql` | Planos, pagamentos, eventos, webhook e conciliação | Apenas modelagem; Efí exige Pix e eventos têm idempotência escopada por provedor. |
-| `V009__metricas.sql` | Visualizações, cliques WhatsApp, agregados e age gate | Agregados usam `id` e chaves normalizadas para origem desconhecida. |
+| `V009__metricas.sql` | Visualizações, cliques WhatsApp, agregados e verificação etária auditável | Agregados usam `id` e chaves normalizadas para origem desconhecida; não há desbloqueio parcial por visitante. |
 | `V010__seo_urls_redirects.sql` | URLs, metadados, redirects e conteúdo SEO | Aceita `/sitemap.xml` e `/robots.txt`, bloqueia rotas alternativas e evita múltiplas versões publicadas. |
 | `V011__banners.sql` | Espaços, banners e versões | Rascunho pode existir sem mídia; agendado/publicado exige arquivos e texto alternativo. |
 | `V012__comercial_suporte.sql` | Comercial e suporte | Estrutura futura para aquisição e atendimento, sem regra funcional. |

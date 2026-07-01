@@ -87,7 +87,7 @@ class PacoteEntradaImportacaoTest {
 
     @Test
     void exemploSanitizadoNaoContemUrlTelefoneCpfOuEmailReal() throws IOException {
-        String conteudo = Files.readString(Path.of(
+        String conteudo = Files.readString(repoRoot().resolve(
                 "docs/v3/exemplos/importacao/pacote-entrada-exemplo-sanitizado.json"));
 
         assertThat(Pattern.compile("https?://").matcher(conteudo).find()).isFalse();
@@ -126,5 +126,13 @@ class PacoteEntradaImportacaoTest {
         return resultado.pendencias().stream()
                 .map(pendencia -> pendencia.codigo())
                 .toList();
+    }
+
+    private static Path repoRoot() {
+        Path atual = Path.of("").toAbsolutePath();
+        if (Files.exists(atual.resolve("docs/v3"))) {
+            return atual;
+        }
+        return atual.getParent();
     }
 }

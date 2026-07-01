@@ -29,6 +29,25 @@ function Get-RelativePath {
   return ($FullName.Substring($repoRoot.Length).TrimStart('\', '/') -replace '\\', '/')
 }
 
+function Test-IgnoredBuildOutput {
+  param([string]$FullName)
+  $relative = Get-RelativePath $FullName
+  return (
+    $relative -like "backend/target/*" -or
+    $relative -like "frontend/node_modules/*" -or
+    $relative -like "frontend/.next/*" -or
+    $relative -like "frontend/out/*" -or
+    $relative -like "frontend/dist/*" -or
+    $relative -like ".git/*"
+  )
+}
+
+function Test-AllowedLocalSyntheticSql {
+  param([string]$FullName)
+  $relative = Get-RelativePath $FullName
+  return ($relative -like "scripts/local/dados-sinteticos/*.sql")
+}
+
 function Remove-SqlLineComments {
   param([string]$Text)
   return ([regex]::Replace($Text, '(?m)--.*$', ''))
@@ -36,8 +55,11 @@ function Remove-SqlLineComments {
 
 Add-Check "diretorio de migrations existe" (Test-Path -LiteralPath $migrationDir -PathType Container) $migrationRel
 
-$allSql = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter *.sql -ErrorAction SilentlyContinue)
-$outsideSql = @($allSql | Where-Object { (Get-RelativePath $_.FullName) -notlike "$migrationRel/*" })
+$allSql = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter *.sql -ErrorAction SilentlyContinue | Where-Object { -not (Test-IgnoredBuildOutput $_.FullName) })
+$outsideSql = @($allSql | Where-Object {
+  ((Get-RelativePath $_.FullName) -notlike "$migrationRel/*") -and
+  (-not (Test-AllowedLocalSyntheticSql $_.FullName))
+})
 Add-Check "arquivos .sql apenas no diretorio de migrations" ($outsideSql.Count -eq 0) "fora do diretorio: $($outsideSql.Count)"
 
 $files = @()
