@@ -112,4 +112,29 @@ public class OutboxEventoEntity {
     return atualizadoEm;
   }
 
+  public static OutboxEventoEntity registrarPendente(
+      UUID id,
+      String aggregateTipo,
+      UUID aggregateId,
+      String tipoEvento,
+      String payloadJson,
+      String idempotencyKey,
+      OffsetDateTime criadoEm) {
+    OutboxEventoEntity entity = new OutboxEventoEntity();
+    entity.id = id;
+    entity.aggregateTipo = aggregateTipo;
+    entity.aggregateId = aggregateId;
+    entity.tipoEvento = tipoEvento;
+    entity.payloadJson = payloadJson;
+    entity.status = StatusOutbox.PENDENTE;
+    entity.idempotencyKey = idempotencyKey;
+    entity.tentativas = 0;
+    entity.proximaTentativaEm = null;
+    entity.processadoEm = null;
+    entity.erroResumido = null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
 }

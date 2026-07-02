@@ -1,0 +1,26 @@
+# Checklist Bloco 16.1 - hardening da moderacao
+
+- [x] Inventario inicial executado antes das alteracoes.
+- [x] Nao houve consulta SSH.
+- [x] Nenhuma nova acao administrativa criada.
+- [x] Nenhuma migration criada.
+- [x] Nenhum SQL de schema alterado.
+- [x] `REPROVAR` sem motivo retorna `400`.
+- [x] `REPROVAR` com motivo vazio retorna `400`.
+- [x] `REPROVAR` com motivo sintetico sanitizado passa.
+- [x] E-mail, contato e documento em motivo sao mascarados na auditoria.
+- [x] `requestIdCliente` documentado como reservado para idempotencia futura.
+- [x] OpenAPI nao promete idempotencia atual.
+- [x] Painel frontend renomeado para `AdminModerationPanel`.
+- [x] Frontend continua com `credentials: "include"`.
+- [x] Frontend continua sem `localStorage` ou `sessionStorage`.
+- [x] Auditoria JSON sanitizada registrada como pendencia de revisao Pro.
+- [x] Sem hard delete.
+- [x] Sem e-mail real.
+- [x] Sem upload.
+- [x] Sem pagamento, credito, Pix/Efi.
+- [x] Sem importador real.
+- [x] Sem dado real, dump real ou seed real.
+- [x] Sem producao, VPS ou banco de producao.
+- [x] Sem remote, push ou commit.
+- [x] Nenhuma fase posterior iniciada.

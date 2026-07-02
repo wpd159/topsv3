@@ -226,3 +226,97 @@ p {
   margin: 0 0 10px;
   font-size: 22px;
 }
+
+.admin-auth-form,
+.admin-auth-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.admin-auth-form label {
+  display: grid;
+  gap: 6px;
+  color: #2f3a44;
+}
+
+.admin-auth-form input {
+  min-height: 40px;
+  border: 1px solid #b9c0c7;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.admin-permission-list {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-permission-list li {
+  border: 1px solid #d6d9dd;
+  padding: 10px;
+}
+
+.admin-permission-list span,
+.admin-permission-list small {
+  display: block;
+}
+
+.admin-readonly-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.admin-readonly-list {
+  border: 1px solid #d6d9dd;
+  background: #fbfbfa;
+  padding: 12px;
+}
+
+.admin-readonly-list h3 {
+  margin: 0 0 10px;
+  font-size: 17px;
+}
+
+.admin-readonly-list ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-readonly-list li {
+  border: 1px solid #d6d9dd;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.admin-readonly-list span,
+.admin-readonly-list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.admin-moderation-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.admin-moderation-actions div {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.admin-moderation-actions strong {
+  color: #1f2937;
+  font-size: 0.9rem;
+}

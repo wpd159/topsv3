@@ -1,0 +1,38 @@
+# Checklist Bloco 18 - outbox read-only
+
+- [x] Inventario inicial executado antes das alteracoes.
+- [x] Nao houve consulta SSH.
+- [x] `GET /api/admin/outbox` criado.
+- [x] `GET /api/admin/outbox/{id}` criado.
+- [x] Sem `POST` de outbox.
+- [x] Sem `PUT` de outbox.
+- [x] Sem `PATCH` de outbox.
+- [x] Sem `DELETE` de outbox.
+- [x] `ADMIN` consulta outbox.
+- [x] `MODERADOR` consulta outbox de moderacao.
+- [x] `COMERCIAL` nao consulta outbox de moderacao.
+- [x] `USUARIO` nao consulta admin.
+- [x] Sem sessao retorna `401`.
+- [x] DTOs sanitizados criados.
+- [x] JSON bruto do outbox nao e retornado.
+- [x] Previa sanitizada criada.
+- [x] Frontend admin atualizado com painel read-only.
+- [x] Sem botao de envio.
+- [x] Sem botao de reenvio.
+- [x] Sem botao de marcar enviado.
+- [x] Sem localStorage/sessionStorage.
+- [x] Sem envio real.
+- [x] Sem worker.
+- [x] Sem scheduler.
+- [x] Sem SMTP externo.
+- [x] Sem WhatsApp real.
+- [x] Sem API externa.
+- [x] Sem hard delete.
+- [x] Sem upload.
+- [x] Sem pagamento, credito, Pix ou Efi.
+- [x] Sem importador real.
+- [x] Sem dado real, dump real ou seed real.
+- [x] Sem producao, VPS ou banco de producao.
+- [x] Sem migration nova e sem SQL de schema.
+- [x] Sem remote, push ou commit.
+- [x] Nenhuma fase posterior iniciada.

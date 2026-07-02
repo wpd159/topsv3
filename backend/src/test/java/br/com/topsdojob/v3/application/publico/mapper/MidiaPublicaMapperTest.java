@@ -5,6 +5,7 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static org.assertj.core.api.Assertions.assertThat;
 
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
+import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
@@ -19,7 +20,7 @@ import org.junit.jupiter.api.Test;
 
 class MidiaPublicaMapperTest {
 
-    private final MidiaPublicaMapper mapper = new MidiaPublicaMapper();
+    private final MidiaPublicaMapper mapper = new MidiaPublicaMapper(new MidiaPublicaUrlService());
 
     @Test
     void mapperNaoExpoeDocumentoPrivadoStorageKeyOuHash() {
@@ -47,6 +48,7 @@ class MidiaPublicaMapperTest {
 
         assertThat(midias).hasSize(1);
         assertThat(midias.get(0).urlPublica()).isNull();
+        assertThat(midias.get(0).pendenciaMidia()).isEqualTo(MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
         assertThat(midias.get(0).toString())
                 .doesNotContain("bucket-privado")
                 .doesNotContain("documentos/privado")

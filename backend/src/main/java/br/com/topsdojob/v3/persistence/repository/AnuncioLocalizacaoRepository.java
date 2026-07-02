@@ -9,7 +9,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface AnuncioLocalizacaoRepository extends JpaRepository<AnuncioLocalizacaoEntity, UUID> {
     Optional<AnuncioLocalizacaoEntity> findByAnuncioId(UUID anuncioId);
 
+    List<AnuncioLocalizacaoEntity> findByEstadoId(UUID estadoId);
+
     List<AnuncioLocalizacaoEntity> findByCidadeId(UUID cidadeId);
 
     List<AnuncioLocalizacaoEntity> findByCidadeIdAndBairroId(UUID cidadeId, UUID bairroId);
+
+    List<AnuncioLocalizacaoEntity> findByBairroId(UUID bairroId);
 }

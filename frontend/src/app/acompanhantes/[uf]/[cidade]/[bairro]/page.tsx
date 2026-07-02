@@ -13,6 +13,10 @@ type BairroPageProps = {
   }>;
 };
 
+type ItemComMidia = {
+  midias: readonly { urlPublica: string | null; pendenciaMidia?: string | null }[];
+};
+
 export async function generateMetadata({ params }: BairroPageProps): Promise<Metadata> {
   const { uf, cidade, bairro } = await params;
   return skeletonMetadata(
@@ -54,6 +58,10 @@ export default async function BairroSkeletonPage({ params }: BairroPageProps) {
               <dt>Total local</dt>
               <dd>{listagemApi.data.paginacao.totalItens}</dd>
             </div>
+            <div>
+              <dt>Midia local</dt>
+              <dd>{mediaStatus(listagemApi.data.itens)}</dd>
+            </div>
           </dl>
         </section>
       ) : (
@@ -80,4 +88,17 @@ export default async function BairroSkeletonPage({ params }: BairroPageProps) {
       <SeoPlaceholder routePath={routePath} />
     </PublicRouteShell>
   );
+}
+
+function mediaStatus(itens: readonly ItemComMidia[]): string {
+  const totalMidias = itens.reduce((total, item) => total + item.midias.length, 0);
+  if (totalMidias === 0) {
+    return "sem midia";
+  }
+  if (itens.some((item) => item.midias.some((midia) => Boolean(midia.urlPublica)))) {
+    return "url publica autorizada";
+  }
+  return itens
+    .flatMap((item) => item.midias)
+    .find((midia) => Boolean(midia.pendenciaMidia))?.pendenciaMidia ?? "PENDENTE_URL_PUBLICA_MIDIA_CDN";
 }

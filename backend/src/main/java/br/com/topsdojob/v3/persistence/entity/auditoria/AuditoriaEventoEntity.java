@@ -129,4 +129,33 @@ public class AuditoriaEventoEntity {
     return criadoEm;
   }
 
+  public static AuditoriaEventoEntity registrar(
+      UUID id,
+      UUID atorUsuarioId,
+      String acao,
+      String recursoTipo,
+      UUID recursoId,
+      String antesJson,
+      String depoisJson,
+      String requestId,
+      OffsetDateTime criadoEm) {
+    AuditoriaEventoEntity entity = new AuditoriaEventoEntity();
+    entity.id = id;
+    entity.atorUsuarioId = atorUsuarioId;
+    entity.acao = acao;
+    entity.recursoTipo = recursoTipo;
+    entity.recursoId = recursoId;
+    entity.antesJson = antesJson;
+    entity.depoisJson = depoisJson;
+    entity.antesHash = null;
+    entity.depoisHash = null;
+    entity.requestId = requestId;
+    entity.ipHash = null;
+    entity.userAgentHash = null;
+    entity.origem = OrigemAuditoria.ADMIN;
+    entity.resultado = ResultadoAuditoria.SUCESSO;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
 }

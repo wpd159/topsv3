@@ -16,7 +16,7 @@ public class MetricaPublicaHashService {
 
     public MetricaPublicaHashService(
             @Value("${app.event.hash-salt:}") String salt,
-            @Value("${app.env:local}") String appEnv) {
+            @Value("${app.env:nao_configurado}") String appEnv) {
         this.salt = resolveSalt(salt, appEnv);
     }
 
@@ -34,7 +34,7 @@ public class MetricaPublicaHashService {
     }
 
     private String resolveSalt(String configuredSalt, String appEnv) {
-        String normalizedEnv = appEnv == null ? "local" : appEnv.trim();
+        String normalizedEnv = appEnv == null ? "nao_configurado" : appEnv.trim();
         boolean local = normalizedEnv.equalsIgnoreCase("local");
         String normalizedSalt = configuredSalt == null ? "" : configuredSalt.trim();
         if (local && normalizedSalt.isBlank()) {

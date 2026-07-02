@@ -79,4 +79,28 @@ public class RevisaoAnuncioEntity {
     return finalizadoEm;
   }
 
+  public void finalizar(StatusRevisaoAnuncio novoStatus, OffsetDateTime finalizadoEm) {
+    this.status = novoStatus;
+    this.finalizadoEm = finalizadoEm;
+  }
+
+  public static RevisaoAnuncioEntity abrir(
+      UUID id,
+      UUID anuncioId,
+      TipoRevisaoAnuncio tipo,
+      String payloadSolicitado,
+      UUID criadoPor,
+      OffsetDateTime criadoEm) {
+    RevisaoAnuncioEntity entity = new RevisaoAnuncioEntity();
+    entity.id = id;
+    entity.anuncioId = anuncioId;
+    entity.tipo = tipo;
+    entity.status = StatusRevisaoAnuncio.ABERTA;
+    entity.payloadSolicitado = payloadSolicitado == null ? "{}" : payloadSolicitado;
+    entity.criadoPor = criadoPor;
+    entity.criadoEm = criadoEm;
+    entity.finalizadoEm = null;
+    return entity;
+  }
+
 }

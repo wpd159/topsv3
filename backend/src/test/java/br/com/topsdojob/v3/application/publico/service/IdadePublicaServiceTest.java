@@ -56,6 +56,16 @@ class IdadePublicaServiceTest {
     }
 
     @Test
+    void segredoFicticioFalhaSemAppEnvLocalExplicito() {
+        assertThatThrownBy(() -> new IdadePublicaTokenService("valor_local_ficticio_idade", null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("APP_AGE_GATE_SIGNING_VALUE");
+        assertThatThrownBy(() -> new MetricaPublicaHashService("valor_local_ficticio", null))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("APP_EVENT_HASH_SALT");
+    }
+
+    @Test
     void cookieFicaSecureForaDeLocalComValorConfigurado() {
         IdadePublicaTokenService comprovanteService = new IdadePublicaTokenService("valor_configurado_nao_ficticio", "producao");
 

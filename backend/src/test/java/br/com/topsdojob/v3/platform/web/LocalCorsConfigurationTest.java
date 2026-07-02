@@ -11,9 +11,11 @@ class LocalCorsConfigurationTest {
         LocalCorsConfiguration local = new LocalCorsConfiguration("http://localhost:3000", "local");
         LocalCorsConfiguration producao = new LocalCorsConfiguration("https://topsdojob.com", "producao");
         LocalCorsConfiguration semOrigem = new LocalCorsConfiguration("", "local");
+        LocalCorsConfiguration semEnv = new LocalCorsConfiguration("http://localhost:3000", null);
 
         assertThat(local.localCredentialsEnabled()).isTrue();
         assertThat(producao.localCredentialsEnabled()).isFalse();
         assertThat(semOrigem.localCredentialsEnabled()).isFalse();
+        assertThat(semEnv.localCredentialsEnabled()).isFalse();
     }
 }

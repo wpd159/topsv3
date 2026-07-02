@@ -5,4 +5,7 @@ import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CliqueWhatsappRepository extends JpaRepository<CliqueWhatsappEntity, UUID> {
+    long countByPermitidoTrue();
+
+    long countByPermitidoFalse();
 }

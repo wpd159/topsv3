@@ -151,4 +151,21 @@ public class AnuncioEntity {
     return versao;
   }
 
+  public void aplicarModeracao(
+      StatusAnuncio status,
+      StatusModeracaoAnuncio statusModeracao,
+      ClassificacaoConteudo classificacaoConteudo,
+      OffsetDateTime atualizadoEm) {
+    this.status = status;
+    this.statusModeracao = statusModeracao;
+    this.classificacaoConteudo = classificacaoConteudo;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public void remeterParaRevisao(OffsetDateTime atualizadoEm) {
+    this.status = StatusAnuncio.PENDENTE_REVISAO;
+    this.statusModeracao = StatusModeracaoAnuncio.PENDENTE;
+    this.atualizadoEm = atualizadoEm;
+  }
+
 }

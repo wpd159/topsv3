@@ -30,6 +30,11 @@
 - Fase 2E cria apenas plano de execucao e dry-run estrutural da importacao: Java puro, enums, DTOs/records, catalogo de etapas e validador em memoria. Nao ler dump, nao abrir arquivo real de entrada, nao acessar banco, nao transformar dados, nao importar dados, nao executar ETL, nao criar migration, nao alterar SQL, nao criar entidade JPA, repository, service, controller ou endpoint funcional.
 - Fase 2F cria apenas gate operacional de fonte real autorizada e protecao contra vazamento. Nao usar dump, nao usar dado real, nao abrir arquivo real de entrada, nao acessar banco, nao importar dados, nao executar ETL, nao criar migration, nao alterar SQL, nao criar entidade JPA, repository, service, controller ou endpoint funcional.
 - Fase 2G cria apenas dossie documental de transicao para revisao Pro e fonte real futura. Nao criar nova camada de importador, nao criar codigo Java, nao criar script, nao usar dump, nao usar dado real, nao abrir arquivo real de entrada, nao acessar banco, nao importar dados, nao executar ETL, nao criar migration, nao alterar SQL.
+- Bloco 16 permite somente moderacao funcional local minima: decidir revisao e midia sinteticas com RBAC e auditoria sanitizada. Nao criar hard delete, upload real, e-mail real, pagamento, credito, Pix/Efi, importador real, dado real, migration, SQL de schema, producao, remote, push ou commit.
+- Bloco 16.1 permite somente hardening das acoes do Bloco 16. `REPROVAR` deve exigir `motivo`, `requestIdCliente` deve ficar reservado quando nao houver suporte de schema para idempotencia real, e auditoria JSON sanitizada exige revisao Pro antes de homologacao/producao.
+- Bloco 17 permite somente `SOLICITAR_AJUSTE` em revisao, remeter anuncio para revisao e outbox local pendente quando suportado pelo schema atual. Nao criar envio externo, e-mail real, WhatsApp real, hard delete, upload, pagamento, credito, Pix/Efi, importador real, dado real, migration, SQL de schema, producao, remote, push ou commit.
+- Bloco 17.1 corrige `SOLICITAR_AJUSTE` para acao intermediaria: nao gravar `decisao_moderacao`, nao finalizar revisao, permitir `APROVAR`/`REPROVAR` depois, retornar `409` em duplicidade de outbox pendente e exigir motivo para remeter revisao. Nao criar nova acao administrativa, migration, SQL de schema, envio externo, remote, push ou commit.
+- Bloco 18 permite somente outbox administrativo local read-only por GET, com DTO sanitizado e previa logica. Nao criar envio, reenvio, worker, scheduler, SMTP externo, WhatsApp real, API externa, metodo POST/PUT/PATCH/DELETE de outbox, migration, SQL de schema, dado real, producao, remote, push ou commit.
 
 ## Antes de gerar pacote ou commitar localmente
 
@@ -92,7 +97,9 @@ GEO/AEO/LLM Visibility é transversal, mas não autoriza automação de conteúd
 
 Capturas de produção, quando expressamente autorizadas, devem ser públicas, somente leitura, limitadas por rate, sanitizadas e armazenadas sem HTML bruto completo, imagens, vídeos, telefones, WhatsApp, documentos ou dados privados.
 
-Páginas admin skeleton devem permanecer `noindex`, sem dados reais, sem botões de ação real e sem chamadas a backend. Ações críticas futuras exigirão autenticação, autorização por perfil e auditoria.
+Paginas admin skeleton devem permanecer `noindex` e sem dados reais. A partir do Bloco 16, apenas botoes locais de moderacao minima podem chamar backend autenticado; acoes criticas futuras exigem autorizacao expressa, RBAC e auditoria. Telas com botoes de acao local nao devem ser chamadas de read-only.
+
+Outbox local de moderacao e apenas registro pendente para revisao futura. Sem worker, scheduler, SMTP, WhatsApp, provedor externo ou processamento real ate autorizacao e revisao Pro.
 
 Mudanças visuais devem preservar o visual atual do Tops do Job. Skeletons locais não são referência de layout final; qualquer nova paleta, tipografia, redesign de cards, redesign da home ou mudança estrutural de UX exige aprovação expressa e fonte visual atual inventariada.
 
@@ -243,3 +250,54 @@ WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-what
 - Apos idade confirmada, o frontend reconsulta o backend com cookie HttpOnly e `credentials: include`.
 - CORS com credentials e permitido somente em `APP_ENV=local` para origens localhost configuradas.
 - O frontend continua proibido de decidir classificacao, usar localStorage/sessionStorage ou liberar conteudo sem retorno do backend.
+
+## Bloco 11 - midia publica/CDN local
+
+- URL publica de midia permanece nula enquanto nao houver CDN/storage publico aprovado.
+- A pendencia publica padrao e `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+- Backend e a unica fonte para decidir midia publicavel, classificacao, idade, stories e WhatsApp.
+- DTOs publicos nao podem expor `bucket`, `chaveObjeto`, `storageProvider`, `sha256`, `etag`, URL privada ou documento privado.
+- Frontend pode exibir apenas estado pendente localmente; nao deve criar regra propria de liberacao ou montar URL a partir de campos de storage.
+- Placeholder local so pode existir em fase futura se for explicitamente aprovado, neutro e restrito a local.
+
+## Bloco 12 - autenticacao admin local
+
+- `/api/admin/**` deve exigir sessao autenticada, exceto `POST /api/admin/auth/login`.
+- `/api/public/**` deve permanecer publico.
+- Login admin local usa sessao/cookie; JWT, OAuth e social login continuam proibidos.
+- Respostas de auth admin nao podem retornar senha, hash, token ou cookie.
+- Frontend admin nao pode usar localStorage/sessionStorage nem salvar credencial.
+- Dados admin sinteticos devem ficar somente em `scripts/local/dados-sinteticos/` e nunca em migration.
+- CSRF local desabilitado fica documentado como `PENDENTE_CSRF_ADMIN_PRODUCAO`.
+- Acoes administrativas criticas continuam proibidas ate fase futura expressa.
+
+## Bloco 13 - hardening auth admin
+
+- O arquivo base deve usar `APP_ENV:nao_configurado`.
+- Somente profile local pode defaultar `APP_ENV` para `local`.
+- `/api/health/**`, `/api/public/**` e `POST /api/admin/auth/login` sao as liberacoes publicas conhecidas.
+- `/api/admin/**` exige sessao autenticada.
+- Qualquer outro `/api/**` deve permanecer bloqueado por deny-all.
+- Frontend admin deve usar `credentials: include` e nao pode usar localStorage/sessionStorage.
+- Login/credencial admin nao devem vir pre-preenchidos.
+- `RESUMO-ENTREGA.md` deve refletir metadados reais de testes; sem metadados, usar `nao informado`, nao `Nenhum`.
+- Continuam proibidos endpoints de moderacao real, financeiro/Pix, importador real, production/VPS, remote, push e commit sem autorizacao futura.
+
+## Bloco 14 - admin read-only local
+
+- `application.yml` nao pode defaultar `EFI_PIX_MOCK_MODE` para `true`; somente `application-local.yml` pode usar mock true por padrao local.
+- Endpoints admin read-only permitidos neste bloco usam somente `GET` sob `/api/admin/**`.
+- `ADMIN` pode ler todos os resumos; `MODERADOR` pode ler anuncios/moderacao/midia; `COMERCIAL` pode ler visao geral, anuncios e metricas; `USUARIO` nao acessa admin.
+- DTOs admin read-only nao podem expor documento privado, telefone/WhatsApp real, storage key/hash/bucket, payload sensivel, senha/hash/token/cookie ou dado financeiro sensivel.
+- Frontend admin deve consumir read-only com `credentials: "include"` e continuar sem localStorage/sessionStorage.
+- Continuam proibidos aprovacao, reprovacao, exclusao, upload real, pagamento, credito, Pix/Efi funcional, moderacao real, importador real, seed real, migration/SQL de schema, producao/VPS, remote, push e commit.
+
+## Bloco 15 - admin read-only detalhado
+
+- Health publico deve expor apenas `status`, `app` e `requestId`.
+- Dados de ambiente e Efi mock devem ficar somente em `/api/admin/sistema/status`, restrito a `ADMIN`.
+- Endpoints detalhados admin seguem somente `GET`, com sessao/RBAC.
+- `COMERCIAL` pode consultar anuncios em versao limitada e nao acessa midia ou revisao detalhada.
+- DTOs detalhados nao podem expor documento privado, CPF, telefone bruto, WhatsApp normalizado, storage provider, bucket, chaveObjeto, hash, etag, payload completo, financeiro sensivel, senha/hash/token ou auditoria sensivel.
+- Filtros devem permanecer simples, paginados e sem query nativa.
+- Frontend admin detalhado permanece sem botoes funcionais de acao critica.

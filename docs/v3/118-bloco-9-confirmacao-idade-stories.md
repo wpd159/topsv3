@@ -56,6 +56,8 @@ Stories autorizados retornam somente metadata segura. Enquanto CDN/midia publica
 PENDENTE_URL_PUBLICA_MIDIA_CDN
 ```
 
+O Bloco 11 consolidou essa regra em `MidiaPublicaUrlService`: a URL publica nao pode ser derivada de bucket, chaveObjeto, storageProvider, sha256, etag ou URL privada.
+
 ## Ajuste Bloco 10
 
 A pendencia historica `PENDENTE_CONFIRMACAO_IDADE_STORIES` foi substituida no fluxo ativo. Sem idade confirmada, o endpoint usa `IDADE_NAO_CONFIRMADA`; com idade confirmada e midia/CDN pendente, usa `PENDENTE_URL_PUBLICA_MIDIA_CDN`.

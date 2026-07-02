@@ -473,6 +473,18 @@ function Test-TopsSensitiveKey {
   return ($Key -match '^(password|passwd|pwd|senha|token|access_token|refresh_token|client_secret|clientsecret|api_key|api_token|secret_key|authorization|private_key|certificate|certificado)$' -or $Key -match '(^|[_-])(password|passwd|pwd|senha|token|access[_-]?token|refresh[_-]?token|client[_-]?secret|clientsecret|api[_-]?key|api[_-]?token|secret[_-]?key|authorization|private[_-]?key|certificate|certificado)$')
 }
 
+function Test-TopsAllowedOpenApiSensitiveSchemaLine {
+  param(
+    [string]$Path,
+    [string]$Line
+  )
+  $normalized = $Path -replace '\\', '/'
+  if ($normalized -notmatch '^contracts/openapi/.+\.ya?ml$') { return $false }
+
+  $trimmed = $Line.Trim()
+  return ($trimmed -match '^(type|format|writeOnly|description|nullable|deprecated|example|enum|oneOf|anyOf|allOf|\$ref):')
+}
+
 function Add-TopsSecretFinding {
   param(
     [System.Collections.Generic.List[string]]$Findings,
@@ -571,6 +583,7 @@ function Get-TopsSecretFindingsForBytes {
         if ($next -match '^["''](?<quoted>[^"'']+)["'']') {
           if (-not (Test-TopsAllowedPlaceholderValue $matches["quoted"])) { Add-TopsSecretFinding $findings $Path ($j + 1) "valor sensivel multiline" }
         } elseif ($next.Length -ge 10) {
+          if (Test-TopsAllowedOpenApiSensitiveSchemaLine -Path $Path -Line $next) { break }
           if (-not (Test-TopsAllowedPlaceholderValue $next)) { Add-TopsSecretFinding $findings $Path ($j + 1) "valor sensivel multiline" }
         }
         break

@@ -5,6 +5,7 @@ public record MidiaPublicaDto(
         String finalidade,
         Integer ordem,
         String urlPublica,
+        String pendenciaMidia,
         Integer largura,
         Integer altura,
         String mimeType) {

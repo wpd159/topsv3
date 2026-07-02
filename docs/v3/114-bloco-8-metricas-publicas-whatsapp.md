@@ -68,10 +68,10 @@ Regras:
 - story `BLOQUEADO` nao e publico sem idade confirmada e pode ser liberado pelo backend apos confirmacao valida;
 - nao ha estado intermediario, blur por categoria ou desbloqueio parcial por visitante.
 
-Pendencia registrada quando nao houver confirmacao:
+Motivo registrado quando nao houver confirmacao a partir dos ajustes dos Blocos 9 e 10:
 
 ```text
-PENDENTE_CONFIRMACAO_IDADE_STORIES
+IDADE_NAO_CONFIRMADA
 ```
 
 A pendencia de URL publica de midia/CDN permanece:

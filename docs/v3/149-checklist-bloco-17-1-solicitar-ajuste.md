@@ -1,0 +1,35 @@
+# Checklist Bloco 17.1 - solicitar ajuste
+
+- [x] Inventario inicial executado antes das alteracoes.
+- [x] Nao houve consulta SSH.
+- [x] `SOLICITAR_AJUSTE` nao grava `decisao_moderacao`.
+- [x] `SOLICITAR_AJUSTE` nao finaliza revisao.
+- [x] Revisao permanece `ABERTA` ou `EM_ANALISE` apos `SOLICITAR_AJUSTE`.
+- [x] `APROVAR` ainda funciona apos `SOLICITAR_AJUSTE`.
+- [x] `REPROVAR` ainda funciona apos `SOLICITAR_AJUSTE`.
+- [x] Decisao final anterior bloqueia novo `SOLICITAR_AJUSTE` com `409`.
+- [x] Duplicidade de `SOLICITAR_AJUSTE` com outbox pendente retorna `409`.
+- [x] `SOLICITAR_AJUSTE` exige motivo.
+- [x] Motivo e observacao sao sanitizados e limitados.
+- [x] Auditoria sanitizada registrada.
+- [x] Outbox local pendente registrado.
+- [x] `requestIdCliente` documentado como reservado, sem idempotencia atual.
+- [x] Remeter revisao exige motivo.
+- [x] Remeter revisao sem motivo retorna `400`.
+- [x] Remeter revisao com motivo valido permanece permitido.
+- [x] `COMERCIAL` e `USUARIO` permanecem bloqueados.
+- [x] Sem sessao permanece `401`.
+- [x] OpenAPI atualizado.
+- [x] Frontend local nao indica finalizacao em `SOLICITAR_AJUSTE`.
+- [x] Sem nova acao administrativa.
+- [x] Sem hard delete.
+- [x] Sem e-mail real.
+- [x] Sem WhatsApp real.
+- [x] Sem upload.
+- [x] Sem pagamento, credito, Pix ou Efi.
+- [x] Sem importador real.
+- [x] Sem dado real, dump real ou seed real.
+- [x] Sem producao, VPS ou banco de producao.
+- [x] Sem migration nova e sem SQL de schema.
+- [x] Sem remote, push ou commit.
+- [x] Nenhuma fase posterior iniciada.

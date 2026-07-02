@@ -125,4 +125,11 @@ public class ArquivoMidiaEntity {
     return criadoEm;
   }
 
+  public void aplicarDecisao(
+      StatusArquivoMidia statusArquivo,
+      ClassificacaoConteudo classificacaoConteudo) {
+    this.statusArquivo = statusArquivo;
+    this.classificacaoConteudo = classificacaoConteudo;
+  }
+
 }

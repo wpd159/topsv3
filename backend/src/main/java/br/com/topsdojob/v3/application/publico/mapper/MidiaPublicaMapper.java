@@ -1,6 +1,8 @@
 package br.com.topsdojob.v3.application.publico.mapper;
 
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
+import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
+import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService.ResultadoUrlPublica;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
@@ -16,6 +18,12 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class MidiaPublicaMapper {
+
+    private final MidiaPublicaUrlService urlService;
+
+    public MidiaPublicaMapper(MidiaPublicaUrlService urlService) {
+        this.urlService = urlService;
+    }
 
     public List<MidiaPublicaDto> publicas(
             List<AnuncioMidiaEntity> vinculos,
@@ -41,11 +49,13 @@ public class MidiaPublicaMapper {
         if (!isArquivoPublico(arquivo, idadeConfirmada)) {
             return null;
         }
+        ResultadoUrlPublica urlPublica = urlService.resolver(vinculo, arquivo);
         return new MidiaPublicaDto(
                 enumName(vinculo.getTipo()),
                 enumName(vinculo.getFinalidade()),
                 vinculo.getOrdem(),
-                null,
+                urlPublica.urlPublica(),
+                urlPublica.pendenciaMidia(),
                 arquivo.getLargura(),
                 arquivo.getAltura(),
                 arquivo.getMimeType());

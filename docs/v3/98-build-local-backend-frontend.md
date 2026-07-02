@@ -169,3 +169,9 @@ Resultado:
 - smoke HTTP da API publica passou.
 
 Nenhuma ferramenta nova foi instalada nesta etapa.
+
+## Complemento Bloco 12
+
+O backend passou a depender de `spring-boot-starter-security` e `spring-security-test`.
+
+A validacao local continua usando toolchain local ja disponivel. O bloco permite baixar dependencias Maven publicas necessarias ao build, sem instalar ferramenta, sem acessar producao e sem API externa de negocio.

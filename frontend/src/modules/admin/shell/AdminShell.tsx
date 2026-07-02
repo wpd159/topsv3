@@ -1,4 +1,8 @@
 import { AdminModuleCard } from "./AdminModuleCard";
+import { AdminAuthPanel } from "./AdminAuthPanel";
+import { AdminModerationPanel } from "./AdminModerationPanel";
+import { AdminOutboxPanel } from "./AdminOutboxPanel";
+import { AdminReadonlyPanel } from "./AdminReadonlyPanel";
 import { adminModules } from "./adminModules";
 
 type AdminShellProps = {
@@ -13,14 +17,18 @@ export function AdminShell({ title, children }: AdminShellProps) {
         <span className="status">ADMIN SKELETON LOCAL</span>
         <h1>{title}</h1>
         <p>
-          Este shell é apenas estrutural. Autenticação, RBAC, dados reais e ações administrativas
-          serão implementados em fases futuras.
+          Este shell e local e permanece apenas estrutural. A autenticacao administrativa minima
+          valida sessao, papeis e permissoes, sem dados reais ou acoes de producao.
         </p>
         <div className="admin-notice">
-          Perfis futuros previstos: ADMIN, MODERADOR e COMERCIAL. Nenhuma ação real está disponível.
+          Perfis locais previstos: ADMIN, MODERADOR e COMERCIAL. Apenas moderacao local minima esta disponivel.
         </div>
+        <AdminAuthPanel />
+        <AdminReadonlyPanel />
+        <AdminModerationPanel />
+        <AdminOutboxPanel />
         {children}
-        <nav className="admin-grid" aria-label="Módulos administrativos">
+        <nav className="admin-grid" aria-label="Modulos administrativos">
           {adminModules.map((module) => (
             <AdminModuleCard key={module.slug} module={module} />
           ))}

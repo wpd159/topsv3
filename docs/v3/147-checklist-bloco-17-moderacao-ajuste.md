@@ -1,0 +1,31 @@
+# Checklist Bloco 17 - moderacao ajuste
+
+- [x] Inventario inicial executado antes das alteracoes.
+- [x] Nao houve consulta SSH.
+- [x] `SOLICITAR_AJUSTE` em revisao implementado.
+- [x] `SOLICITAR_AJUSTE` tratado como acao intermediaria local, sem consumir decisao final.
+- [x] `APROVAR` e `REPROVAR` continuam possiveis apos `SOLICITAR_AJUSTE`.
+- [x] Duplicidade de `SOLICITAR_AJUSTE` retorna `409`.
+- [x] `SOLICITAR_AJUSTE` em midia documentado como pendente.
+- [x] `SOLICITAR_AJUSTE` exige motivo.
+- [x] Motivo sanitizado, limitado e mascarado.
+- [x] `POST /api/admin/anuncios/{id}/remeter-revisao` implementado.
+- [x] Remeter revisao exige motivo.
+- [x] Remeter revisao cria `revisao_anuncio` local quando permitido.
+- [x] Remeter revisao duplicada retorna `409`.
+- [x] RBAC aplicado para `ADMIN` e `MODERADOR`.
+- [x] `COMERCIAL` e `USUARIO` nao executam acoes.
+- [x] Sem sessao retorna `401`.
+- [x] Auditoria sanitizada registrada.
+- [x] Outbox local pendente registrado.
+- [x] Sem e-mail real.
+- [x] Sem WhatsApp real.
+- [x] Sem hard delete.
+- [x] Sem upload.
+- [x] Sem pagamento, credito, Pix/Efi.
+- [x] Sem importador real.
+- [x] Sem dado real, dump real ou seed real.
+- [x] Sem producao, VPS ou banco de producao.
+- [x] Sem migration nova e sem SQL de schema.
+- [x] Sem remote, push ou commit.
+- [x] Nenhuma fase posterior iniciada.

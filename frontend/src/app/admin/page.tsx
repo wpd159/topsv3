@@ -8,11 +8,12 @@ export const metadata: Metadata = skeletonMetadata("Admin local skeleton", "/adm
 export default function AdminOverviewPage() {
   return (
     <AdminShell title="Admin local skeleton">
-      <section className="admin-panel" aria-label="Visão geral do admin">
-        <h2>Visão geral</h2>
+      <section className="admin-panel" aria-label="Visao geral do admin">
+        <h2>Visao geral</h2>
         <p>
-          Área local para mapear os módulos administrativos previstos no SDD. Não há autenticação,
-          permissões, dados reais, integração externa ou ação administrativa funcional nesta fase.
+          Area local para mapear os modulos administrativos previstos no SDD. A autenticacao e o RBAC
+          minimos existem apenas para sessao local, sem dados reais, integracao externa ou acao
+          administrativa funcional nesta fase.
         </p>
       </section>
     </AdminShell>

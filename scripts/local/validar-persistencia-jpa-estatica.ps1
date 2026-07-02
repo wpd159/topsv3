@@ -150,9 +150,9 @@ $repositoryFailures = New-Object System.Collections.Generic.List[string]
 foreach ($file in $repositoryFiles) {
   $rel = Get-RelativePath $file.FullName
   $text = [System.IO.File]::ReadAllText($file.FullName)
-  if ($text -notmatch 'extends\s+JpaRepository<[^>]+,\s*UUID>') {
+  if ($text -notmatch 'extends\s+JpaRepository<[^>]+,\s*(UUID|[A-Za-z0-9_]+Entity\.[A-Za-z0-9_]+Id)>') {
     $repositoriesMinimalOk = $false
-    $repositoryFailures.Add("$rel nao estende JpaRepository<..., UUID>")
+    $repositoryFailures.Add("$rel nao estende JpaRepository<..., UUID|IdClass>")
   }
   if ($text -match '@Query|nativeQuery|EntityManager|JdbcTemplate|createQuery|@Modifying|@Lock|delete[A-Z]|\bdelete\s*\(|remove[A-Z]|\bremove\s*\(|update[A-Z]|\bupdate\s*\(') {
     $repositoriesMinimalOk = $false
@@ -184,6 +184,13 @@ $changedControllerService = @($changedJava | Where-Object {
 })
 $controllerServiceNaoPermitido = @($changedControllerService | Where-Object {
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/publico/service/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/auth/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/moderacao/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/readonly/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/auth/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/moderacao/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/readonly/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/security/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/publico/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/platform/*"
 })

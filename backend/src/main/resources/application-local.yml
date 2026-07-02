@@ -39,3 +39,9 @@ efi:
 
 server:
   port: ${TOPSV3_BACKEND_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: ${APP_ADMIN_SESSION_COOKIE_SECURE:false}
+        same-site: lax

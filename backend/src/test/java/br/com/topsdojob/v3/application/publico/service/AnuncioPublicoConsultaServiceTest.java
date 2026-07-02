@@ -37,7 +37,7 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(AnuncioMidiaRepository.class),
                 mock(ArquivoMidiaRepository.class),
                 new AnuncioPublicoMapper(),
-                new MidiaPublicaMapper(),
+                new MidiaPublicaMapper(new MidiaPublicaUrlService()),
                 new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
                 mock(IdadePublicaService.class));
 

@@ -12,6 +12,7 @@ export type MidiaPublicaDto = {
   finalidade: string | null;
   ordem: number | null;
   urlPublica: string | null;
+  pendenciaMidia: string | null;
   largura: number | null;
   altura: number | null;
   mimeType: string | null;

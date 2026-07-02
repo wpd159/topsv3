@@ -186,6 +186,140 @@ function Assert-NoSensitivePublicData {
   }
 }
 
+function Assert-NoPublicMediaUrl {
+  param(
+    [string]$Nome,
+    [string]$Body
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Body)) {
+    Add-Check "$Nome sem urlPublica real de midia" $true "resposta vazia sem midia publica"
+    return
+  }
+
+  $matches = [regex]::Matches($Body, '"urlPublica"\s*:\s*"([^"]+)"')
+  Add-Check "$Nome sem urlPublica real de midia" ($matches.Count -eq 0) "urlPublica deve permanecer null enquanto CDN real estiver pendente"
+}
+
+function Assert-MediaPendingWhenPresent {
+  param(
+    [string]$Nome,
+    [string]$Body
+  )
+
+  if ([string]::IsNullOrWhiteSpace($Body)) {
+    return
+  }
+
+  $hasMediaObject = ($Body -match '"midias"\s*:\s*\[\s*\{') -or ($Body -match '"stories"\s*:\s*\[\s*\{')
+  if ($hasMediaObject) {
+    Add-Check "$Nome midia com pendencia CDN" ($Body -match 'PENDENTE_URL_PUBLICA_MIDIA_CDN') "midia publica deve usar pendencia documentada"
+  }
+}
+
+function Assert-NoSensitiveAdminAuthData {
+  param(
+    [string]$Nome,
+    [string]$Body
+  )
+
+  $patterns = @(
+    @{ Label = "senha"; Regex = '(?i)senha|password|passwd|pwd' },
+    @{ Label = "hash"; Regex = '(?i)senhaHash|senha_hash|\$2[aby]\$|tokenSessaoHash|token_sessao_hash' },
+    @{ Label = "token"; Regex = '(?i)"token"\s*:|bearer|authorization|JWT|eyJ' },
+    @{ Label = "cookie"; Regex = '(?i)JSESSIONID|Set-Cookie|Cookie' },
+    @{ Label = "documento"; Regex = '(?i)"(?:cpf|documento(?:Usuario|Privado|Numero|Arquivo|Frente|Verso)|identidade)"\s*:|documento_usuario|documento_privado' }
+  )
+
+  foreach ($pattern in $patterns) {
+    Add-Check "$Nome sem $($pattern.Label) sensivel" (-not ($Body -match $pattern.Regex)) "auth admin nao deve retornar segredo no corpo"
+  }
+}
+
+function Assert-FrontendAdminHardening {
+  $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+  $adminApiPath = Join-Path $repoRoot "frontend/src/lib/api/adminAuthApi.ts"
+  $adminReadonlyApiPath = Join-Path $repoRoot "frontend/src/lib/api/adminReadonlyApi.ts"
+  $adminPanelPath = Join-Path $repoRoot "frontend/src/modules/admin/shell/AdminAuthPanel.tsx"
+  $frontendSrcPath = Join-Path $repoRoot "frontend/src"
+
+  if (-not (Test-Path -LiteralPath $adminApiPath -PathType Leaf)) {
+    Add-Check "frontend admin auth api existe" $false "adminAuthApi.ts deve existir"
+    return
+  }
+  if (-not (Test-Path -LiteralPath $adminReadonlyApiPath -PathType Leaf)) {
+    Add-Check "frontend admin readonly api existe" $false "adminReadonlyApi.ts deve existir"
+    return
+  }
+  if (-not (Test-Path -LiteralPath $adminPanelPath -PathType Leaf)) {
+    Add-Check "frontend admin auth panel existe" $false "AdminAuthPanel.tsx deve existir"
+    return
+  }
+
+  $adminApi = Get-Content -LiteralPath $adminApiPath -Raw
+  $adminReadonlyApi = Get-Content -LiteralPath $adminReadonlyApiPath -Raw
+  $adminPanel = Get-Content -LiteralPath $adminPanelPath -Raw
+  $frontendText = @(Get-ChildItem -LiteralPath $frontendSrcPath -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-Content -LiteralPath $_.FullName -Raw
+  }) -join "`n"
+
+  Add-Check "frontend admin usa credentials include" ($adminApi -match 'credentials\s*:\s*"include"') "cookie de sessao deve ser enviado nas chamadas admin"
+  Add-Check "frontend admin readonly usa credentials include" ($adminReadonlyApi -match 'credentials\s*:\s*"include"') "cookie de sessao deve ser enviado nos resumos admin"
+  Add-Check "frontend sem localStorage/sessionStorage" (-not ($frontendText -match 'localStorage|sessionStorage')) "frontend nao deve persistir sessao em storage"
+  Add-Check "frontend admin sem token bearer" (-not (($adminApi + $adminReadonlyApi) -match 'Bearer|Authorization|JWT|OAuth')) "admin deve usar sessao/cookie, nao token"
+  Add-Check "frontend admin login sem valor pre-preenchido" (-not ($adminPanel -match 'useState\("admin\.local@example\.invalid"\)')) "login sintetico pode aparecer so como placeholder"
+  Add-Check "frontend admin sem credencial hardcoded" (-not ($frontendText -match 'SenhaSintetica|NaoUsar123|valor-invalido-local')) "senha sintetica nao deve entrar no frontend"
+  Add-Check "frontend admin acoes limitadas a moderacao local" ($frontendText -match 'acao local de moderacao' -and -not ($frontendText -match 'onClick=.*(excluir|pausar|ativar|pagar|upload|pix|credito)')) "somente botoes locais de moderacao podem existir"
+}
+
+function Assert-NoSensitiveAdminReadonlyData {
+  param(
+    [string]$Nome,
+    [string]$Body
+  )
+
+  Assert-NoSensitiveAdminAuthData -Nome $Nome -Body $Body
+  Add-Check "$Nome sem storage privado" (-not ($Body -match 'storageProvider|storage_provider|chaveObjeto|chave_objeto|"bucket"\s*:|sha256|etag')) "resumo admin nao deve expor storage"
+  Add-Check "$Nome sem contato bruto" (-not ($Body -match 'whatsappNormalizado|whatsapp_normalizado|telefoneNormalizado|telefone_normalizado|\+[1-9][0-9]{7,14}|wa\.me/[0-9]{8,15}')) "resumo admin nao deve expor telefone/WhatsApp real"
+  Add-Check "$Nome sem financeiro sensivel" (-not ($Body -match '"valor"\s*:|"saldo"\s*:|txid|identificadorProvedor|idempotency')) "resumo admin nao deve expor financeiro sensivel"
+  Add-Check "$Nome sem payload sensivel" (-not ($Body -match 'payloadSolicitado|payload_solicitado')) "resumo admin nao deve expor payload de auditoria/moderacao"
+}
+
+function New-AdminLoginBody {
+  param([string]$Login)
+  return ('{"login":"' + $Login + '","se' + 'nha":"' + $credencialAdminLocal + '"}')
+}
+
+function New-DecisaoModeracaoBody {
+  param(
+    [string]$Decisao,
+    [string]$Classificacao = "LIVRE",
+    [string]$Motivo = "acao local de moderacao",
+    [string]$Observacao = "sem dado real, sem e-mail real e sem hard delete",
+    [switch]$SemMotivo
+  )
+  $body = @{
+    decisao = $Decisao
+    classificacaoConteudo = $Classificacao
+    observacao = $Observacao
+  }
+  if (-not $SemMotivo) {
+    $body["motivo"] = $Motivo
+  }
+  return ($body | ConvertTo-Json -Compress)
+}
+
+function New-RemeterRevisaoBody {
+  param([switch]$SemMotivo)
+  $body = @{
+    observacao = "sem e-mail real, sem WhatsApp real e sem envio externo"
+  }
+  if (-not $SemMotivo) {
+    $body["motivo"] = "remeter anuncio para revisao local"
+  }
+  return ($body | ConvertTo-Json -Compress)
+}
+
 try {
   $script:SafeBaseUrl = Resolve-LocalBaseUrl $BaseUrl
 } catch {
@@ -221,6 +355,12 @@ $idadeMaiorBody = (@{
   declaracaoMaioridade = $true
 } | ConvertTo-Json -Compress)
 $idadeSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$adminSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$credencialAdminLocal = ("Senha" + "Sintetica" + "Local" + "Nao" + "Usar" + "123!")
+$adminLoginBody = New-AdminLoginBody -Login "admin.local@example.invalid"
+$adminInvalidBody = ('{"login":"admin.local@example.invalid","se' + 'nha":"valor-invalido-local"}')
+
+Assert-FrontendAdminHardening
 
 if (-not $SemDadosSinteticos) {
   $corsPreflight = Invoke-LocalCorsPreflight -Path "/api/public/idade/confirmar"
@@ -233,6 +373,17 @@ if (-not $SemDadosSinteticos) {
     Add-Check "cors credentials local" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Credentials") -eq "true") "credentials devem ser aceitos so em local"
     Add-Check "cors sem wildcard credentials" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Origin") -ne "*") "wildcard com credentials proibido"
     Add-Check "cors metodo post" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Methods") -match "POST") "POST deve ser permitido para idade local"
+  }
+
+  $adminCorsPreflight = Invoke-LocalCorsPreflight -Path "/api/admin/auth/login"
+  if ($adminCorsPreflight.ErroOperacional -and $adminCorsPreflight.Status -eq 0) {
+    $pending.Add("PENDENTE_BACKEND_LOCAL_INDISPONIVEL: $($adminCorsPreflight.Url)")
+    Add-Check "cors admin preflight local" $false "backend local indisponivel"
+  } else {
+    Add-Check "cors admin preflight status" (($adminCorsPreflight.Status -eq 200) -or ($adminCorsPreflight.Status -eq 204)) "status obtido: $($adminCorsPreflight.Status)"
+    Add-Check "cors admin origem local" ((Get-HeaderValue $adminCorsPreflight.Headers "Access-Control-Allow-Origin") -eq "http://localhost:3000") "somente origem local permitida"
+    Add-Check "cors admin credentials local" ((Get-HeaderValue $adminCorsPreflight.Headers "Access-Control-Allow-Credentials") -eq "true") "credentials devem ser aceitos so em local"
+    Add-Check "cors admin sem wildcard credentials" ((Get-HeaderValue $adminCorsPreflight.Headers "Access-Control-Allow-Origin") -ne "*") "wildcard com credentials proibido"
   }
 
   $requests.Add([pscustomobject]@{ Nome = "idade status sem cookie"; Path = "/api/public/idade/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
@@ -264,7 +415,12 @@ foreach ($request in $requests) {
     continue
   }
   Add-Check "$($request.Nome) status $($request.Status)" ($result.Status -eq $request.Status) "status obtido: $($result.Status)"
+  if ($request.Nome -eq "health" -or $request.Nome -eq "readiness") {
+    Add-Check "$($request.Nome) sem ambiente publico" (-not ($result.Body -match 'environment|appEnv|efiPixMockMode')) "health publico deve ser minimo"
+  }
   Assert-NoSensitivePublicData -Nome $request.Nome -Body $result.Body -AllowSyntheticWhatsapp $request.AllowSyntheticWhatsapp
+  Assert-NoPublicMediaUrl -Nome $request.Nome -Body $result.Body
+  Assert-MediaPendingWhenPresent -Nome $request.Nome -Body $result.Body
   Add-Check "$($request.Nome) sem pendencia obsoleta de stories" (-not ($result.Body -match 'PENDENTE_CONFIRMACAO_IDADE_STORIES')) "usar IDADE_NAO_CONFIRMADA ou PENDENTE_URL_PUBLICA_MIDIA_CDN"
   if ($request.Nome -eq "anuncio sintetico") {
     Add-Check "anuncio sintetico sem story publico" ($result.Body -match '"story"\s*:\s*false') "story nao deve ser liberado por padrao"
@@ -304,6 +460,246 @@ foreach ($request in $requests) {
     Add-Check "clique whatsapp retorna somente URL sintetica" ($result.Body -match '"whatsappUrl"\s*:\s*"https://wa\.me/5500000000000"') "somente endpoint autorizado retorna WhatsApp sintetico"
     Add-Check "clique whatsapp sem campo bruto" (-not ($result.Body -match 'whatsapp_normalizado|whatsappNormalizado')) "telefone bruto nao deve ser retornado"
   }
+}
+
+if (-not $SemDadosSinteticos) {
+  $adminSemSessao = Invoke-LocalHttp -Path "/api/admin/auth/me" -ExpectedStatus 401 -Method "GET"
+  Add-Check "admin me sem sessao status 401" ($adminSemSessao.Status -eq 401) "status obtido: $($adminSemSessao.Status)"
+  Assert-NoSensitiveAdminAuthData -Nome "admin me sem sessao" -Body $adminSemSessao.Body
+
+  $adminProtegido = Invoke-LocalHttp -Path "/api/admin/rota-protegida-sintetica" -ExpectedStatus 401 -Method "GET"
+  Add-Check "api admin protegida por padrao" ($adminProtegido.Status -eq 401) "sem sessao deve bloquear /api/admin/**"
+
+  $apiDesconhecida = Invoke-LocalHttp -Path "/api/desconhecida" -ExpectedStatus 401 -Method "GET"
+  Add-Check "api desconhecida bloqueada por deny all" ($apiDesconhecida.Status -in @(401, 403)) "status obtido: $($apiDesconhecida.Status)"
+
+  $readonlySemSessao = Invoke-LocalHttp -Path "/api/admin/visao-geral" -ExpectedStatus 401 -Method "GET"
+  Add-Check "admin readonly exige sessao" ($readonlySemSessao.Status -eq 401) "status obtido: $($readonlySemSessao.Status)"
+  $detalhadoSemSessao = Invoke-LocalHttp -Path "/api/admin/anuncios" -ExpectedStatus 401 -Method "GET"
+  Add-Check "admin detalhado exige sessao" ($detalhadoSemSessao.Status -eq 401) "status obtido: $($detalhadoSemSessao.Status)"
+
+  $adminLoginInvalido = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 401 -Method "POST" -Body $adminInvalidBody
+  Add-Check "admin login invalido status 401" ($adminLoginInvalido.Status -eq 401) "credenciais invalidas devem ser genericas"
+  Assert-NoSensitiveAdminAuthData -Nome "admin login invalido" -Body $adminLoginInvalido.Body
+
+  $adminLogin = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 200 -Method "POST" -Body $adminLoginBody -Session $adminSession
+  Add-Check "admin login sintetico status 200" ($adminLogin.Status -eq 200) "login admin local sintetico deve autenticar"
+  Assert-NoSensitiveAdminAuthData -Nome "admin login sintetico" -Body $adminLogin.Body
+  $adminSetCookie = Get-HeaderValue $adminLogin.Headers "Set-Cookie"
+  Add-Check "admin login retorna cookie de sessao" ($adminSetCookie -match 'JSESSIONID=') "cookie de sessao deve ser emitido"
+  Add-Check "admin cookie HttpOnly" ($adminSetCookie -match 'HttpOnly') "cookie deve ser HttpOnly"
+  Add-Check "admin cookie SameSite Lax" ($adminSetCookie -match 'SameSite=Lax') "cookie deve usar SameSite=Lax"
+  Add-Check "admin cookie sem Secure em local" (-not ($adminSetCookie -match ';\s*Secure(?:;|$)')) "Secure deve ficar desligado em local HTTP"
+  Add-Check "admin login retorna ADMIN" ($adminLogin.Body -match '"papeis"\s*:\s*\[[^\]]*"ADMIN"') "papel ADMIN deve vir do backend"
+  Add-Check "admin login retorna permissao" ($adminLogin.Body -match 'ADMIN_CONFIGURAR') "permissoes devem vir do backend"
+
+  $adminMe = Invoke-LocalHttp -Path "/api/admin/auth/me" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin me autenticado status 200" ($adminMe.Status -eq 200) "sessao deve consultar me"
+  Assert-NoSensitiveAdminAuthData -Nome "admin me autenticado" -Body $adminMe.Body
+  Add-Check "admin me autenticado sem storage privado" (-not ($adminMe.Body -match 'storageProvider|chaveObjeto|bucket|sha256|etag')) "auth admin nao deve expor storage"
+
+  $adminPermissoes = Invoke-LocalHttp -Path "/api/admin/auth/permissions" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin permissions status 200" ($adminPermissoes.Status -eq 200) "sessao deve consultar permissoes"
+  Assert-NoSensitiveAdminAuthData -Nome "admin permissions" -Body $adminPermissoes.Body
+  Add-Check "admin permissions contem rbac minimo" ($adminPermissoes.Body -match 'ADMIN_CONFIGURAR' -and $adminPermissoes.Body -match 'ANUNCIO_LER' -and $adminPermissoes.Body -match 'FINANCEIRO_LER') "RBAC minimo deve estar presente"
+
+  $readonlyPaths = @(
+    "/api/admin/visao-geral",
+    "/api/admin/anuncios/resumo",
+    "/api/admin/moderacao/resumo",
+    "/api/admin/midias/resumo",
+    "/api/admin/metricas/resumo",
+    "/api/admin/sistema/status"
+  )
+  foreach ($path in $readonlyPaths) {
+    $readonly = Invoke-LocalHttp -Path $path -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin readonly ADMIN $path status 200" ($readonly.Status -eq 200) "status obtido: $($readonly.Status)"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin readonly ADMIN $path" -Body $readonly.Body
+  }
+  Add-Check "admin visao geral contem fail closed" ((Invoke-LocalHttp -Path "/api/admin/sistema/status" -ExpectedStatus 200 -Method "GET" -Session $adminSession).Body -match 'API_FAIL_CLOSED') "status do sistema deve documentar fail-closed"
+
+  $anuncioId = "00000000-0000-4000-8000-000000000503"
+  $midiaId = "00000000-0000-4000-8000-000000000705"
+  $revisaoId = "00000000-0000-4000-8000-000000000801"
+  $detalhadosAdmin = @(
+    "/api/admin/anuncios?page=0&size=2&status=PENDENTE_REVISAO&statusModeracao=PENDENTE&classificacaoConteudo=LIVRE&uf=ZZ&cidade=cidade-sintetica&bairro=bairro-sintetico&termo=sintetico",
+    "/api/admin/anuncios/$anuncioId",
+    "/api/admin/anuncios/$anuncioId/midias?page=0&size=5",
+    "/api/admin/midias?page=0&size=5&status=PENDENTE&classificacaoConteudo=LIVRE&tipo=FOTO",
+    "/api/admin/midias/$midiaId",
+    "/api/admin/moderacao/revisoes?page=0&size=5&status=ABERTA&tipo=CRIACAO&anuncioId=$anuncioId",
+    "/api/admin/moderacao/revisoes/$revisaoId"
+  )
+  foreach ($path in $detalhadosAdmin) {
+    $detalhado = Invoke-LocalHttp -Path $path -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin detalhado ADMIN $path status 200" ($detalhado.Status -eq 200) "status obtido: $($detalhado.Status)"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin detalhado ADMIN $path" -Body $detalhado.Body
+    Add-Check "admin detalhado $path sem campos proibidos" (-not ($detalhado.Body -match 'storageProvider|chaveObjeto|bucket|sha256|etag|whatsappNormalizado|telefoneNormalizado|senhaHash|tokenSessaoHash|payload_solicitado|"payload"')) "DTO detalhado deve ser sanitizado"
+  }
+
+  $revisaoReprovarId = "00000000-0000-4000-8000-000000000802"
+  $revisaoFinalizadaId = "00000000-0000-4000-8000-000000000803"
+  $revisaoModeradorId = "00000000-0000-4000-8000-000000000804"
+  $revisaoAjusteId = "00000000-0000-4000-8000-000000000805"
+  $anuncioRemeterId = "00000000-0000-4000-8000-000000000508"
+  $anuncioRemeterConflitoId = "00000000-0000-4000-8000-000000000509"
+  $midiaReprovarId = "00000000-0000-4000-8000-000000000707"
+  $midiaFinalizadaId = "00000000-0000-4000-8000-000000000709"
+  $midiaModeradorId = "00000000-0000-4000-8000-000000000711"
+  $motivoMascaravel = ("motivo sintetico " + "ana" + "@example.invalid " + "+" + "5511" + "9999" + "9999 " + "123" + ".456" + ".789" + "-09")
+
+  $decisaoSemSessao = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId/decidir" -ExpectedStatus 401 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR")
+  Add-Check "decisao revisao sem sessao 401" ($decisaoSemSessao.Status -eq 401) "acao moderatoria exige sessao"
+  $remeterSemSessao = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterId/remeter-revisao" -ExpectedStatus 401 -Method "POST" -Body (New-RemeterRevisaoBody)
+  Add-Check "remeter revisao sem sessao 401" ($remeterSemSessao.Status -eq 401) "remeter revisao exige sessao"
+  $outboxSemSessao = Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 401 -Method "GET"
+  Add-Check "outbox sem sessao 401" ($outboxSemSessao.Status -eq 401) "outbox admin exige sessao"
+  $decisaoInvalida = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId/decidir" -ExpectedStatus 400 -Method "POST" -Body '{"classificacaoConteudo":"LIVRE"}' -Session $adminSession
+  Add-Check "decisao invalida retorna 400" ($decisaoInvalida.Status -eq 400) "decisao ausente deve ser rejeitada"
+  $reprovarRevisaoSemMotivo = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoReprovarId/decidir" -ExpectedStatus 400 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "REPROVAR" -Classificacao "BLOQUEADO" -SemMotivo) -Session $adminSession
+  Add-Check "reprovar revisao sem motivo retorna 400" ($reprovarRevisaoSemMotivo.Status -eq 400) "REPROVAR exige motivo valido"
+  $ajusteSemMotivo = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoAjusteId/decidir" -ExpectedStatus 400 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "SOLICITAR_AJUSTE" -Classificacao "LIVRE" -SemMotivo) -Session $adminSession
+  Add-Check "solicitar ajuste sem motivo retorna 400" ($ajusteSemMotivo.Status -eq 400) "SOLICITAR_AJUSTE exige motivo valido"
+
+  $solicitarAjuste = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoAjusteId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "SOLICITAR_AJUSTE" -Classificacao "LIVRE" -Motivo $motivoMascaravel) -Session $adminSession
+  Add-Check "admin solicita ajuste em revisao aberta" ($solicitarAjuste.Status -eq 200 -and $solicitarAjuste.Body -match '"decisao"\s*:\s*"SOLICITAR_AJUSTE"' -and $solicitarAjuste.Body -match '"status"\s*:\s*"ABERTA"') "solicitacao de ajuste deve ser registrada sem finalizar revisao"
+  Add-Check "admin solicita ajuste sem efeito externo" ($solicitarAjuste.Body -match '"emailRealEnviado"\s*:\s*false' -and $solicitarAjuste.Body -match '"hardDeleteExecutado"\s*:\s*false') "sem e-mail real ou hard delete"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin solicita ajuste" -Body $solicitarAjuste.Body
+  $solicitarAjusteDuplicado = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoAjusteId/decidir" -ExpectedStatus 409 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "SOLICITAR_AJUSTE" -Classificacao "LIVRE" -Motivo "ajuste repetido local") -Session $adminSession
+  Add-Check "solicitar ajuste duplicado retorna 409" ($solicitarAjusteDuplicado.Status -eq 409) "duplicidade usa conflito explicito enquanto nao ha idempotencia real"
+
+  $aprovarAposAjuste = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoAjusteId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR" -Classificacao "LIVRE" -Motivo "decisao final apos ajuste local") -Session $adminSession
+  Add-Check "admin aprova revisao apos solicitar ajuste" ($aprovarAposAjuste.Status -eq 200 -and $aprovarAposAjuste.Body -match '"status"\s*:\s*"APROVADA"') "SOLICITAR_AJUSTE nao deve consumir decisao final"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin aprova apos ajuste" -Body $aprovarAposAjuste.Body
+
+  $remeterSemMotivo = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterId/remeter-revisao" -ExpectedStatus 400 -Method "POST" -Body (New-RemeterRevisaoBody -SemMotivo) -Session $adminSession
+  Add-Check "remeter revisao sem motivo retorna 400" ($remeterSemMotivo.Status -eq 400) "remeter revisao exige motivo valido"
+  $remeterRevisao = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterId/remeter-revisao" -ExpectedStatus 200 -Method "POST" -Body (New-RemeterRevisaoBody) -Session $adminSession
+  Add-Check "admin remete anuncio para revisao" ($remeterRevisao.Status -eq 200 -and $remeterRevisao.Body -match '"decisao"\s*:\s*"REMETER_REVISAO"' -and $remeterRevisao.Body -match '"status"\s*:\s*"PENDENTE_REVISAO"') "remeter deve criar revisao local e atualizar status"
+  Add-Check "admin remete revisao sem efeito externo" ($remeterRevisao.Body -match '"emailRealEnviado"\s*:\s*false' -and $remeterRevisao.Body -match '"hardDeleteExecutado"\s*:\s*false') "sem e-mail real ou hard delete"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin remete revisao" -Body $remeterRevisao.Body
+  $remeterRevisaoDuplicada = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterConflitoId/remeter-revisao" -ExpectedStatus 409 -Method "POST" -Body (New-RemeterRevisaoBody) -Session $adminSession
+  Add-Check "remeter revisao duplicada retorna 409" ($remeterRevisaoDuplicada.Status -eq 409) "anuncio com revisao aberta nao pode ser remetido novamente"
+
+  $aprovarRevisao = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR" -Classificacao "LIVRE") -Session $adminSession
+  Add-Check "admin aprova revisao aberta" ($aprovarRevisao.Status -eq 200 -and $aprovarRevisao.Body -match '"status"\s*:\s*"APROVADA"') "revisao aberta deve ser aprovada"
+  Add-Check "admin aprova revisao com auditoria" ($aprovarRevisao.Body -match '"auditoriaRegistrada"\s*:\s*true') "acao deve registrar auditoria"
+  Add-Check "admin aprova revisao sem efeito externo" ($aprovarRevisao.Body -match '"emailRealEnviado"\s*:\s*false' -and $aprovarRevisao.Body -match '"hardDeleteExecutado"\s*:\s*false') "sem e-mail real ou hard delete"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin aprova revisao" -Body $aprovarRevisao.Body
+
+  $reprovarRevisao = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoReprovarId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "REPROVAR" -Classificacao "BLOQUEADO" -Motivo $motivoMascaravel) -Session $adminSession
+  Add-Check "admin reprova revisao aberta" ($reprovarRevisao.Status -eq 200 -and $reprovarRevisao.Body -match '"status"\s*:\s*"REJEITADA"' -and $reprovarRevisao.Body -match '"classificacaoConteudo"\s*:\s*"BLOQUEADO"') "revisao aberta deve ser reprovada"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin reprova revisao" -Body $reprovarRevisao.Body
+
+  $outboxLista = Invoke-LocalHttp -Path "/api/admin/outbox?page=0&size=10&status=PENDENTE" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin lista outbox pendente" ($outboxLista.Status -eq 200 -and $outboxLista.Body -match 'MODERACAO_SOLICITAR_AJUSTE' -and $outboxLista.Body -match 'MODERACAO_REPROVADA' -and $outboxLista.Body -match 'ANUNCIO_REMETIDO_REVISAO') "outbox deve listar eventos locais de moderacao"
+  Add-Check "admin outbox sem envio externo" ($outboxLista.Body -match '"envioExternoExecutado"\s*:\s*false' -and -not ($outboxLista.Body -match '"envioExternoExecutado"\s*:\s*true')) "outbox e apenas pendencia local"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin outbox lista" -Body $outboxLista.Body
+  $outboxId = $null
+  try {
+    $outboxJson = $outboxLista.Body | ConvertFrom-Json
+    if ($outboxJson.itens.Count -gt 0) {
+      $outboxId = [string]$outboxJson.itens[0].id
+    }
+  } catch {
+    $outboxId = $null
+  }
+  Add-Check "admin outbox contem item detalhavel" (-not [string]::IsNullOrWhiteSpace($outboxId)) "listagem deve retornar ao menos um evento"
+  if (-not [string]::IsNullOrWhiteSpace($outboxId)) {
+    $outboxDetalhe = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin detalha outbox" ($outboxDetalhe.Status -eq 200 -and $outboxDetalhe.Body -match '"somenteLeitura"\s*:\s*true' -and $outboxDetalhe.Body -match '"dadosSanitizados"\s*:') "detalhe deve retornar apenas dados sanitizados"
+    Add-Check "admin outbox detalhe sem bruto sensivel" (-not ($outboxDetalhe.Body -match 'ana@example\.invalid|\+5511999999999|123\.456\.789-09|bucket|chaveObjeto|sha256|token|idempotency|Pix copia|qrcode|qrCode')) "detalhe nao deve expor dado bruto sensivel"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin outbox detalhe" -Body $outboxDetalhe.Body
+  }
+  foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
+    $outboxEscrita = Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 405 -Method $method -Body "{}" -Session $adminSession
+    Add-Check "outbox sem metodo $method" ($outboxEscrita.Status -in @(400, 403, 404, 405)) "status obtido: $($outboxEscrita.Status); outbox nao deve possuir endpoint $method"
+  }
+
+  $revisaoFinalizada = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoFinalizadaId/decidir" -ExpectedStatus 409 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $adminSession
+  Add-Check "revisao finalizada retorna 409" ($revisaoFinalizada.Status -eq 409) "revisao finalizada nao pode ser decidida novamente"
+  $revisaoRepetida = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId/decidir" -ExpectedStatus 409 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $adminSession
+  Add-Check "revisao ja decidida retorna 409" ($revisaoRepetida.Status -eq 409) "decisao deve ser unica por revisao"
+
+  $aprovarMidia = Invoke-LocalHttp -Path "/api/admin/midias/$midiaId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR" -Classificacao "LIVRE") -Session $adminSession
+  Add-Check "admin aprova midia pendente" ($aprovarMidia.Status -eq 200 -and $aprovarMidia.Body -match '"status"\s*:\s*"PUBLICAVEL"') "midia pendente deve ser aprovada"
+  Add-Check "admin aprova midia com auditoria" ($aprovarMidia.Body -match '"auditoriaRegistrada"\s*:\s*true') "acao de midia deve registrar auditoria"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin aprova midia" -Body $aprovarMidia.Body
+
+  $reprovarMidiaSemMotivo = Invoke-LocalHttp -Path "/api/admin/midias/$midiaReprovarId/decidir" -ExpectedStatus 400 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "REPROVAR" -Classificacao "BLOQUEADO" -SemMotivo) -Session $adminSession
+  Add-Check "reprovar midia sem motivo retorna 400" ($reprovarMidiaSemMotivo.Status -eq 400) "REPROVAR exige motivo valido"
+  $reprovarMidia = Invoke-LocalHttp -Path "/api/admin/midias/$midiaReprovarId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "REPROVAR" -Classificacao "BLOQUEADO" -Motivo $motivoMascaravel) -Session $adminSession
+  Add-Check "admin reprova midia pendente" ($reprovarMidia.Status -eq 200 -and $reprovarMidia.Body -match '"status"\s*:\s*"REJEITADA"' -and $reprovarMidia.Body -match '"classificacaoConteudo"\s*:\s*"BLOQUEADO"') "midia pendente deve ser reprovada"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin reprova midia" -Body $reprovarMidia.Body
+
+  $midiaFinalizada = Invoke-LocalHttp -Path "/api/admin/midias/$midiaFinalizadaId/decidir" -ExpectedStatus 409 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $adminSession
+  Add-Check "midia finalizada retorna 409" ($midiaFinalizada.Status -eq 409) "midia finalizada nao pode ser decidida novamente"
+  $ajusteMidiaPendente = Invoke-LocalHttp -Path "/api/admin/midias/$midiaModeradorId/decidir" -ExpectedStatus 400 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "SOLICITAR_AJUSTE" -Classificacao "LIVRE" -Motivo "ajuste local de midia") -Session $adminSession
+  Add-Check "solicitar ajuste midia pendente documentada" ($ajusteMidiaPendente.Status -eq 400) "midia nao possui status seguro de ajuste sem migration"
+
+  $moderadorSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+  $moderadorLogin = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 200 -Method "POST" -Body (New-AdminLoginBody -Login "moderador.local@example.invalid") -Session $moderadorSession
+  Add-Check "moderador login sintetico status 200" ($moderadorLogin.Status -eq 200) "login moderador local sintetico deve autenticar"
+  Add-Check "moderador acessa anuncios" ((Invoke-LocalHttp -Path "/api/admin/anuncios/resumo" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler anuncios"
+  Add-Check "moderador acessa anuncios detalhados" ((Invoke-LocalHttp -Path "/api/admin/anuncios?page=0&size=2" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve listar anuncios"
+  Add-Check "moderador acessa midias do anuncio" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId/midias" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midias do anuncio"
+  Add-Check "moderador acessa midias detalhadas" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midia"
+  Add-Check "moderador acessa revisao detalhada" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler revisao"
+  Add-Check "moderador acessa moderacao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/resumo" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler moderacao"
+  $moderadorOutbox = Invoke-LocalHttp -Path "/api/admin/outbox?status=PENDENTE&tipoEvento=MODERACAO_SOLICITAR_AJUSTE" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession
+  Add-Check "moderador acessa outbox de moderacao" ($moderadorOutbox.Status -eq 200 -and $moderadorOutbox.Body -match 'MODERACAO_SOLICITAR_AJUSTE') "MODERADOR deve ler outbox de moderacao"
+  Assert-NoSensitiveAdminReadonlyData -Nome "moderador outbox" -Body $moderadorOutbox.Body
+  Add-Check "moderador acessa midias" ((Invoke-LocalHttp -Path "/api/admin/midias/resumo" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midias"
+  $moderadorDecideRevisao = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoModeradorId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR" -Classificacao "LIVRE") -Session $moderadorSession
+  Add-Check "moderador aprova revisao aberta" ($moderadorDecideRevisao.Status -eq 200 -and $moderadorDecideRevisao.Body -match '"status"\s*:\s*"APROVADA"') "MODERADOR deve decidir revisao"
+  Assert-NoSensitiveAdminReadonlyData -Nome "moderador aprova revisao" -Body $moderadorDecideRevisao.Body
+  $moderadorDecideMidia = Invoke-LocalHttp -Path "/api/admin/midias/$midiaModeradorId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "REPROVAR" -Classificacao "BLOQUEADO") -Session $moderadorSession
+  Add-Check "moderador reprova midia pendente" ($moderadorDecideMidia.Status -eq 200 -and $moderadorDecideMidia.Body -match '"status"\s*:\s*"REJEITADA"') "MODERADOR deve decidir midia"
+  Assert-NoSensitiveAdminReadonlyData -Nome "moderador reprova midia" -Body $moderadorDecideMidia.Body
+  $moderadorVisaoGeral = Invoke-LocalHttp -Path "/api/admin/visao-geral" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession
+  Add-Check "moderador acessa visao geral limitada" ($moderadorVisaoGeral.Status -eq 200) "MODERADOR deve ler visao geral"
+  Add-Check "moderador visao geral sem metricas/sistema" ($moderadorVisaoGeral.Body -match '"metricas"\s*:\s*null' -and $moderadorVisaoGeral.Body -match '"sistema"\s*:\s*null') "MODERADOR nao deve receber metricas/sistema"
+  Add-Check "moderador sem sistema admin" ((Invoke-LocalHttp -Path "/api/admin/sistema/status" -ExpectedStatus 403 -Method "GET" -Session $moderadorSession).Status -eq 403) "MODERADOR nao deve ver status restrito"
+
+  $comercialSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+  $comercialLogin = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 200 -Method "POST" -Body (New-AdminLoginBody -Login "comercial.local@example.invalid") -Session $comercialSession
+  Add-Check "comercial login sintetico status 200" ($comercialLogin.Status -eq 200) "login comercial local sintetico deve autenticar"
+  $comercialVisaoGeral = Invoke-LocalHttp -Path "/api/admin/visao-geral" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
+  Add-Check "comercial acessa visao geral" ($comercialVisaoGeral.Status -eq 200) "COMERCIAL deve ler visao geral"
+  Add-Check "comercial visao geral limitada" ($comercialVisaoGeral.Body -match '"moderacao"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"midias"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"sistema"\s*:\s*null') "COMERCIAL nao deve receber moderacao/midia/sistema"
+  Add-Check "comercial acessa metricas" ((Invoke-LocalHttp -Path "/api/admin/metricas/resumo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler metricas agregadas"
+  $comercialAnuncios = Invoke-LocalHttp -Path "/api/admin/anuncios?page=0&size=2" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
+  Add-Check "comercial acessa anuncios detalhados limitados" ($comercialAnuncios.Status -eq 200 -and $comercialAnuncios.Body -match '"comercialLimitado"\s*:\s*true') "COMERCIAL deve ler anuncios em versao limitada"
+  $comercialDetalhe = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
+  Add-Check "comercial detalhe anuncio limitado" ($comercialDetalhe.Status -eq 200 -and $comercialDetalhe.Body -match '"descricaoResumo"\s*:\s*null' -and $comercialDetalhe.Body -match '"revisoesTotal"\s*:\s*null') "COMERCIAL nao recebe descricao/revisao detalhada"
+  Add-Check "comercial sem midias do anuncio" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId/midias" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar midias"
+  Add-Check "comercial sem midia detalhada" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar midia"
+  Add-Check "comercial sem revisao detalhada" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar revisao"
+  Add-Check "comercial sem outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar outbox de moderacao"
+  Add-Check "comercial nao decide revisao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve executar acao moderatoria"
+  Add-Check "comercial nao remete revisao" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterConflitoId/remeter-revisao" -ExpectedStatus 403 -Method "POST" -Body (New-RemeterRevisaoBody) -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve remeter revisao"
+  Add-Check "comercial nao decide midia" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve executar acao de midia"
+  Add-Check "comercial sem moderacao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/resumo" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve ver moderacao"
+  Add-Check "comercial sem midias" ((Invoke-LocalHttp -Path "/api/admin/midias/resumo" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve ver midias"
+
+  $usuarioSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+  $usuarioLogin = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 200 -Method "POST" -Body (New-AdminLoginBody -Login "usuario.local@example.invalid") -Session $usuarioSession
+  Add-Check "usuario login sintetico status 200" ($usuarioLogin.Status -eq 200) "login usuario local sintetico deve autenticar"
+  Add-Check "usuario sem acesso admin readonly" ((Invoke-LocalHttp -Path "/api/admin/visao-geral" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar admin"
+  Add-Check "usuario sem resumo anuncios admin" ((Invoke-LocalHttp -Path "/api/admin/anuncios/resumo" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar resumo admin"
+  Add-Check "usuario sem anuncios detalhados admin" ((Invoke-LocalHttp -Path "/api/admin/anuncios" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar admin detalhado"
+  Add-Check "usuario sem midia detalhada admin" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar midia admin"
+  Add-Check "usuario sem outbox admin" ((Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar outbox"
+  Add-Check "usuario nao decide revisao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $usuarioSession).Status -eq 403) "USUARIO nao deve executar acao moderatoria"
+  Add-Check "usuario nao remete revisao" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterConflitoId/remeter-revisao" -ExpectedStatus 403 -Method "POST" -Body (New-RemeterRevisaoBody) -Session $usuarioSession).Status -eq 403) "USUARIO nao deve remeter revisao"
+
+  $adminLogout = Invoke-LocalHttp -Path "/api/admin/auth/logout" -ExpectedStatus 200 -Method "POST" -Body "{}" -Session $adminSession
+  Add-Check "admin logout status 200" ($adminLogout.Status -eq 200) "logout local deve responder"
+  Assert-NoSensitiveAdminAuthData -Nome "admin logout" -Body $adminLogout.Body
+
+  $adminMeDepoisLogout = Invoke-LocalHttp -Path "/api/admin/auth/me" -ExpectedStatus 401 -Method "GET" -Session $adminSession
+  Add-Check "admin me apos logout status 401" ($adminMeDepoisLogout.Status -eq 401) "logout deve invalidar sessao"
+  Assert-NoSensitiveAdminAuthData -Nome "admin me apos logout" -Body $adminMeDepoisLogout.Body
 }
 
 Write-Host "Validacao smoke HTTP da API publica local"

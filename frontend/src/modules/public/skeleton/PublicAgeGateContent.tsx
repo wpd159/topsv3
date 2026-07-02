@@ -75,6 +75,10 @@ export function PublicAgeGateContent({
               <dd>{anuncio.midias.length}</dd>
             </div>
             <div>
+              <dt>Midia local</dt>
+              <dd>{mediaStatus(anuncio.midias)}</dd>
+            </div>
+            <div>
               <dt>WhatsApp publico</dt>
               <dd>{anuncio.contatoPublico ?? "nao exposto"}</dd>
             </div>
@@ -128,4 +132,14 @@ export function PublicAgeGateContent({
       <PublicAgeGateStories slug={slug} enabled={Boolean(anuncio)} />
     </>
   );
+}
+
+function mediaStatus(midias: AnuncioDetalhePublicoDto["midias"]): string {
+  if (midias.length === 0) {
+    return "sem midia";
+  }
+  if (midias.some((midia) => Boolean(midia.urlPublica))) {
+    return "url publica autorizada";
+  }
+  return midias.find((midia) => Boolean(midia.pendenciaMidia))?.pendenciaMidia ?? "PENDENTE_URL_PUBLICA_MIDIA_CDN";
 }

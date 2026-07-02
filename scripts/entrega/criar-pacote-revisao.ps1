@@ -257,7 +257,11 @@ function Read-Metadata {
     }
     $jsonBytes = [System.IO.File]::ReadAllBytes($Path)
     Assert-PackageBytesClean -LogicalPath "METADADOS-EXECUCAO.json" -Bytes $jsonBytes -ZipPath $null
-    return ((ConvertFrom-TopsUtf8Strict -Bytes $jsonBytes -Context "metadados de execucao") | ConvertFrom-Json)
+    $metadata = ((ConvertFrom-TopsUtf8Strict -Bytes $jsonBytes -Context "metadados de execucao") | ConvertFrom-Json)
+    if ($metadata.PSObject.Properties.Name -notcontains "metadados_execucao_informados") {
+      $metadata | Add-Member -NotePropertyName "metadados_execucao_informados" -NotePropertyValue $true
+    }
+    return $metadata
   }
   return [pscustomobject]@{
     projeto = "Tops do Job V3"
@@ -276,6 +280,7 @@ function Read-Metadata {
     commit_executado = $null
     commit_hash = ""
     motivo_sem_commit = ""
+    metadados_execucao_informados = $false
   }
 }
 
@@ -296,12 +301,13 @@ function Add-ListSection {
   param(
     [System.Collections.Generic.List[string]]$Lines,
     [string]$Title,
-    [object[]]$Items
+    [object[]]$Items,
+    [string]$EmptyText = "Nenhum"
   )
   $Lines.Add("")
   $Lines.Add("## $Title")
   if ($Items.Count -eq 0) {
-    $Lines.Add("- Nenhum")
+    $Lines.Add("- $EmptyText")
   } else {
     foreach ($item in $Items) { $Lines.Add("- $item") }
   }
@@ -813,9 +819,10 @@ try {
   Add-SummaryBooleanLine $summaryLines "commit_executado" $metadata.commit_executado
   $summaryLines.Add("- commit_hash: $($metadata.commit_hash)")
   $summaryLines.Add("- motivo_sem_commit: $($metadata.motivo_sem_commit)")
-  Add-ListSection $summaryLines "Testes executados" @($metadata.testes_executados)
-  Add-ListSection $summaryLines "Testes aprovados" @($metadata.testes_aprovados)
-  Add-ListSection $summaryLines "Testes com falha" @($metadata.testes_com_falha)
+  $testesEmptyText = if ((Get-ObjectPropertyValue $metadata "metadados_execucao_informados") -eq $true) { "Nenhum" } else { "nao informado" }
+  Add-ListSection $summaryLines "Testes executados" @($metadata.testes_executados) $testesEmptyText
+  Add-ListSection $summaryLines "Testes aprovados" @($metadata.testes_aprovados) $testesEmptyText
+  Add-ListSection $summaryLines "Testes com falha" @($metadata.testes_com_falha) $testesEmptyText
   Add-ListSection $summaryLines "Arquivos criados" @($created | ForEach-Object { $_.caminho_relativo })
   Add-ListSection $summaryLines "Arquivos modificados" @($modified | ForEach-Object { $_.caminho_relativo })
   Add-ListSection $summaryLines "Arquivos removidos" @($removed)
@@ -828,8 +835,13 @@ try {
     $validationLines.Add("- Comando: ``" + $command.Comando + "``")
     $validationLines.Add("  Exit code: $($command.ExitCode)")
   }
-  $validationLines.Add("- Testes aprovados: $(@($metadata.testes_aprovados).Count)")
-  $validationLines.Add("- Testes com falha: $(@($metadata.testes_com_falha).Count)")
+  if ((Get-ObjectPropertyValue $metadata "metadados_execucao_informados") -eq $true) {
+    $validationLines.Add("- Testes aprovados: $(@($metadata.testes_aprovados).Count)")
+    $validationLines.Add("- Testes com falha: $(@($metadata.testes_com_falha).Count)")
+  } else {
+    $validationLines.Add("- Testes aprovados: nao informado")
+    $validationLines.Add("- Testes com falha: nao informado")
+  }
   $validationLines.Add("- Scanner utilizado: $(if ($metadata.gitleaks_utilizado) { 'gitleaks' } else { 'fallback local' })")
   $validationLines.Add("- Validacao de codificacao: executada antes do pacote")
   $validationLines.Add("- Validacao do manifesto real: CSV extraido do ZIP, importado e comparado")

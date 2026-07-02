@@ -94,4 +94,13 @@ public class AnuncioMidiaEntity {
     return atualizadoEm;
   }
 
+  public void aplicarDecisao(
+      StatusAnuncioMidia status,
+      ClassificacaoConteudo classificacaoConteudo,
+      OffsetDateTime atualizadoEm) {
+    this.status = status;
+    this.classificacaoConteudo = classificacaoConteudo;
+    this.atualizadoEm = atualizadoEm;
+  }
+
 }

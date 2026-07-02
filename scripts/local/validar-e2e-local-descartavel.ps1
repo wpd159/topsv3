@@ -23,6 +23,7 @@ if ([string]::IsNullOrWhiteSpace($RelatorioSaida)) {
 
 $migrationDir = Join-Path $repoRoot "backend/src/main/resources/db/migration"
 $syntheticSql = Join-Path $repoRoot "scripts/local/dados-sinteticos/dados-publicos-minimos.sql"
+$adminSyntheticSql = Join-Path $repoRoot "scripts/local/dados-sinteticos/dados-admin-minimos.sql"
 $apiSmokeScript = Join-Path $repoRoot "scripts/local/validar-api-publica-local.ps1"
 $backendDir = Join-Path $repoRoot "backend"
 $pending = New-Object System.Collections.Generic.List[string]
@@ -43,6 +44,7 @@ $containerRemoved = $false
 $networkRemoved = $false
 $migrationsApplied = $false
 $syntheticApplied = $false
+$adminSyntheticApplied = $false
 $smokeOk = $false
 $mappedPort = $null
 $dbName = "topsv3_e2e"
@@ -256,8 +258,14 @@ function Apply-SyntheticData {
   if ($mkdir.ExitCode -ne 0) { throw "Falha ao preparar pasta de dados sinteticos no container." }
   Copy-FileToContainer -Source $syntheticSql -TargetDir $targetDir
   Invoke-PsqlFile -ContainerPath "$targetDir/dados-publicos-minimos.sql"
+  if (-not (Test-Path -LiteralPath $adminSyntheticSql -PathType Leaf)) {
+    throw "Arquivo de dados admin sinteticos nao encontrado: scripts/local/dados-sinteticos/dados-admin-minimos.sql"
+  }
+  Copy-FileToContainer -Source $adminSyntheticSql -TargetDir $targetDir
+  Invoke-PsqlFile -ContainerPath "$targetDir/dados-admin-minimos.sql"
   $script:syntheticApplied = $true
-  Add-Step "Dados sinteticos minimos aplicados no banco descartavel."
+  $script:adminSyntheticApplied = $true
+  Add-Step "Dados sinteticos publicos e admin minimos aplicados no banco descartavel."
 }
 
 function Wait-Backend {
@@ -289,6 +297,7 @@ function Save-Report {
   $lines.Add("- Migrations aplicadas: $migrationsApplied")
   $lines.Add("- Quantidade de migrations aplicadas: $($appliedMigrations.Count)")
   $lines.Add("- Dados sinteticos aplicados: $syntheticApplied")
+  $lines.Add("- Dados admin sinteticos aplicados: $adminSyntheticApplied")
   $lines.Add("- Backend iniciado: $backendStarted")
   $lines.Add("- Smoke HTTP OK: $smokeOk")
   $lines.Add("- Backend encerrado: $backendStopped")
@@ -309,8 +318,9 @@ function Save-Report {
   $lines.Add("- Nenhum pull/download de imagem foi executado.")
   $lines.Add("- Nenhum volume persistente foi criado.")
   $lines.Add("- Nenhum dado real, dump ou arquivo real de entrada foi usado.")
+  $lines.Add("- Smoke HTTP cobre midia publica sem bucket, chaveObjeto, provider, hash ou URL publica real.")
   $lines.Add("- Nenhuma producao, VPS, banco de producao, API externa, Efi real ou OpenAI foi acessado.")
-  $lines.Add("- Nenhum commit, push ou remote foi executado.")
+  $lines.Add("- Nenhum commit, push ou remote foi executado pelo script de E2E.")
   $parent = Split-Path -Parent $RelatorioSaida
   if ($parent -and -not (Test-Path -LiteralPath $parent -PathType Container)) {
     New-Item -ItemType Directory -Path $parent -Force | Out-Null
@@ -452,6 +462,37 @@ try {
   }
   $smokeOk = $true
   Add-Step "Smoke HTTP da API publica local executado com sucesso."
+  Add-Step "Smoke HTTP validou outbox admin read-only, sanitizacao, RBAC e ausencia de metodos de escrita."
+
+  $auditoriaModeracao = [int](Invoke-PsqlScalar "select count(*) from auditoria_evento where acao in ('MODERACAO_REVISAO_DECIDIR', 'MODERACAO_MIDIA_DECIDIR', 'ANUNCIO_REMETER_REVISAO');")
+  if ($auditoriaModeracao -lt 9) {
+    throw "Auditoria de moderacao local insuficiente: $auditoriaModeracao eventos."
+  }
+  Add-Step "Auditoria de moderacao local registrada com $auditoriaModeracao eventos sanitizados."
+
+  $auditoriaMotivoMascarado = [int](Invoke-PsqlScalar "select count(*) from auditoria_evento where acao in ('MODERACAO_REVISAO_DECIDIR', 'MODERACAO_MIDIA_DECIDIR') and depois_json::text like '%[email-mascarado]%' and depois_json::text like '%[contato-mascarado]%' and depois_json::text like '%[documento-mascarado]%';")
+  if ($auditoriaMotivoMascarado -lt 2) {
+    throw "Auditoria de moderacao local nao registrou motivos mascarados suficientes: $auditoriaMotivoMascarado."
+  }
+  Add-Step "Auditoria de moderacao local mascarou e-mail, contato e documento em motivos sinteticos."
+
+  $decisoesIntermediarias = [int](Invoke-PsqlScalar "select count(*) from decisao_moderacao where decisao = 'SOLICITAR_AJUSTE';")
+  if ($decisoesIntermediarias -ne 0) {
+    throw "SOLICITAR_AJUSTE nao deve ocupar decisao_moderacao: $decisoesIntermediarias registros."
+  }
+  Add-Step "SOLICITAR_AJUSTE nao registrou decisao final em decisao_moderacao."
+
+  $decisoesRevisao = [int](Invoke-PsqlScalar "select count(*) from decisao_moderacao where decisao in ('APROVAR', 'REJEITAR');")
+  if ($decisoesRevisao -lt 4) {
+    throw "Decisoes finais de revisao insuficientes no banco descartavel: $decisoesRevisao."
+  }
+  Add-Step "Decisoes finais de revisao registradas em decisao_moderacao: $decisoesRevisao."
+
+  $outboxModeracao = [int](Invoke-PsqlScalar "select count(*) from outbox_evento where tipo_evento in ('MODERACAO_SOLICITAR_AJUSTE', 'MODERACAO_REPROVADA', 'ANUNCIO_REMETIDO_REVISAO') and status = 'PENDENTE' and processado_em is null;")
+  if ($outboxModeracao -ne 3) {
+    throw "Outbox local de moderacao inesperado: $outboxModeracao eventos pendentes."
+  }
+  Add-Step "Outbox local de moderacao registrou $outboxModeracao eventos pendentes sem envio externo."
 
   $tables = Invoke-PsqlScalar "select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE';"
   Add-Step "Schema descartavel inspecionado com $tables tabelas em public."

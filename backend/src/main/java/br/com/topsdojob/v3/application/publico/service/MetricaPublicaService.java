@@ -82,7 +82,7 @@ public class MetricaPublicaService {
                 anuncio.getSlug(),
                 salvo.getId().toString(),
                 STATUS_REGISTRADO,
-                StoryPublicoService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
+                MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
     }
 
     @Transactional
@@ -117,7 +117,7 @@ public class MetricaPublicaService {
                 politica.disponivel() ? politicaContatoService.whatsappUrl(anuncio, idadeConfirmada) : null,
                 politica.disponivel() ? STATUS_REGISTRADO : STATUS_CONTATO_INDISPONIVEL,
                 politica,
-                StoryPublicoService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
+                MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
     }
 
     private AnuncioEntity buscarAnuncioPublico(String slug, boolean idadeConfirmada) {

@@ -30,6 +30,16 @@ A Fase 2F cria o gate operacional para fonte real autorizada antes de qualquer i
 
 A Fase 2G cria um dossie documental de transicao para revisao Pro e futura fonte real autorizada. Ela consolida o estado da Fase 1D, das Fases 2A a 2F, gates bloqueantes, riscos residuais e proximas fases por dependencia. Nenhuma nova camada de importador foi criada, nenhum dump foi lido, nenhum arquivo real de entrada foi aberto e nenhuma importacao real foi iniciada.
 
+O Bloco 16 cria moderacao funcional local minima para decidir revisoes e midias sinteticas, com RBAC e auditoria sanitizada. Ele nao libera producao, e-mail real, upload, hard delete, pagamento, credito, Pix/Efi, importador real, dado real, migration ou SQL de schema.
+
+O Bloco 16.1 endurece essas mesmas acoes locais: `REPROVAR` exige `motivo`, `requestIdCliente` fica reservado para idempotencia futura, o painel com botoes passa a ser tratado como moderacao local e a auditoria JSON sanitizada permanece pendente de revisao Pro antes de homologacao/producao.
+
+O Bloco 17 adiciona, ainda apenas localmente, `SOLICITAR_AJUSTE` para revisoes de anuncio, `POST /api/admin/anuncios/{id}/remeter-revisao` e outbox local pendente para comunicacoes futuras. Nao ha envio externo, e-mail real, WhatsApp real, hard delete, upload, financeiro, Pix/Efi, dado real, migration ou SQL de schema.
+
+O Bloco 17.1 corrige `SOLICITAR_AJUSTE` para ser acao intermediaria local: nao consome `decisao_moderacao`, nao finaliza a revisao, registra auditoria/outbox pendente e permite `APROVAR` ou `REPROVAR` depois. Duplicidade de ajuste retorna `409`, `requestIdCliente` segue reservado e remeter revisao exige motivo.
+
+O Bloco 18 adiciona outbox administrativo local somente leitura: `GET /api/admin/outbox` e `GET /api/admin/outbox/{id}`. A consulta mostra eventos pendentes, previa e dados sanitizados, sempre com `envioExternoExecutado=false`, sem envio, reenvio, worker, scheduler, API externa, e-mail real ou WhatsApp real.
+
 ## Stack planejada
 
 - Backend: Java 17 LTS com Spring Boot.
@@ -381,3 +391,73 @@ O Bloco 10 corrige a UX local de `/anuncios/[slug]`: quando o detalhe inicial na
 O frontend nao decide classificacao nem liberacao de conteudo. Ele apenas confirma idade localmente e reconsulta o backend. CORS com credentials fica limitado a `APP_ENV=local` e origens localhost configuradas; fora de local fica fechado.
 
 Nao houve limite diario comercial, admin funcional, autenticacao real, Pix/Efi, financeiro, moderacao real, importador real, API externa, producao, VPS, remote, push ou commit.
+
+## Bloco 11 - midia publica/CDN local segura
+
+O Bloco 11 criou checkpoint local antes das alteracoes (`c669d9d`) e consolidou a politica segura de midia publica.
+
+A estrategia escolhida foi a mais restritiva: `urlPublica=null` e `pendenciaMidia=PENDENTE_URL_PUBLICA_MIDIA_CDN` ate existir mapeamento CDN/storage aprovado. Nenhum placeholder, URL sintetica, imagem real ou storage real foi criado.
+
+O backend agora centraliza a politica em `MidiaPublicaUrlService`. Detalhe, listagens e stories nao expoem `bucket`, `chaveObjeto`, `storageProvider`, `sha256`, `etag` ou URL privada. O frontend apenas mostra o estado de midia pendente retornado pelo contrato, sem decidir classificacao ou liberacao.
+
+Stories continuam exigindo idade confirmada. Conteudo `BLOQUEADO` continua liberavel somente apos confirmacao valida pelo backend.
+
+## Bloco 12 - autenticacao admin local e RBAC minimo
+
+O Bloco 12 adiciona Spring Security, sessao/cookie local e endpoints administrativos de autenticacao:
+
+- `POST /api/admin/auth/login`;
+- `POST /api/admin/auth/logout`;
+- `GET /api/admin/auth/me`;
+- `GET /api/admin/auth/permissions`.
+
+O RBAC minimo usa `ADMIN`, `MODERADOR`, `COMERCIAL` e `USUARIO`, com permissoes retornadas pelo backend. O frontend admin apenas reflete sessao/papeis/permissoes, sem localStorage/sessionStorage e sem acoes administrativas reais.
+
+Nao houve migration, SQL de schema, credencial real, admin real, moderacao real, financeiro/Pix, importador real, producao, VPS, remote, push ou commit.
+
+## Bloco 13 - hardening auth admin
+
+O Bloco 13 endurece a autenticacao/RBAC admin local antes de qualquer acao administrativa real.
+
+`application.yml` passa a usar `APP_ENV:nao_configurado`; somente `application-local.yml` assume local. `SecurityConfig` remove `anyRequest().permitAll()` e bloqueia qualquer `/api/**` desconhecida por deny-all. O frontend admin usa `credentials: include` explicitamente e nao preenche login/credencial por padrao.
+
+O empacotador tambem foi corrigido para nao escrever `Testes executados: Nenhum` quando metadados de execucao nao forem informados.
+
+Nao houve migration, SQL de schema, acao administrativa critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.
+
+## Bloco 14 - admin read-only local
+
+O Bloco 14 cria resumos administrativos locais somente leitura para o shell admin:
+
+- `GET /api/admin/visao-geral`;
+- `GET /api/admin/anuncios/resumo`;
+- `GET /api/admin/moderacao/resumo`;
+- `GET /api/admin/midias/resumo`;
+- `GET /api/admin/metricas/resumo`;
+- `GET /api/admin/sistema/status`.
+
+Os endpoints exigem sessao/RBAC. `ADMIN` ve todos os resumos; `MODERADOR` ve anuncios, moderacao e midia; `COMERCIAL` ve visao geral, anuncios e metricas; `USUARIO` nao acessa admin.
+
+O frontend admin consome os contratos com `credentials: "include"` e continua sem localStorage/sessionStorage, sem credencial pre-preenchida e sem botao funcional de aprovacao, rejeicao, exclusao, pagamento, credito, upload, Pix ou moderacao real.
+
+Tambem foi corrigido o default de `EFI_PIX_MOCK_MODE`: `application.yml` fica fail-closed com `false`; apenas `application-local.yml` usa mock `true` por padrao local.
+
+Nao houve migration, SQL de schema, seed real, dado real, acao critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.
+
+## Bloco 15 - admin read-only detalhado
+
+O Bloco 15 adiciona listagens e detalhes sanitizados para anuncios, midia e revisoes administrativas locais:
+
+- `GET /api/admin/anuncios`;
+- `GET /api/admin/anuncios/{id}`;
+- `GET /api/admin/anuncios/{id}/midias`;
+- `GET /api/admin/midias`;
+- `GET /api/admin/midias/{id}`;
+- `GET /api/admin/moderacao/revisoes`;
+- `GET /api/admin/moderacao/revisoes/{id}`.
+
+O health publico foi reduzido para `status`, `app` e `requestId`; ambiente e mock Efi ficam apenas em `/api/admin/sistema/status` para `ADMIN`.
+
+`ADMIN` e `MODERADOR` acessam anuncios/midia/moderacao conforme RBAC. `COMERCIAL` acessa apenas anuncios em versao limitada. `USUARIO` nao acessa admin.
+
+Nao houve migration, SQL de schema, seed real, dado real, acao critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.

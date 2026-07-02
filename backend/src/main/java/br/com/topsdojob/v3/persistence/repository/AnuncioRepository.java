@@ -9,9 +9,21 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
-public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID> {
+public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, JpaSpecificationExecutor<AnuncioEntity> {
+    long countByStatusAndRemovidoEmIsNull(StatusAnuncio status);
+
+    long countByStatusInAndRemovidoEmIsNull(Collection<StatusAnuncio> statuses);
+
+    long countByStatusModeracaoAndRemovidoEmIsNull(StatusModeracaoAnuncio statusModeracao);
+
+    long countByClassificacaoConteudoAndRemovidoEmIsNull(ClassificacaoConteudo classificacaoConteudo);
+
+    long countByWhatsappNormalizadoIsNotNullAndRemovidoEmIsNull();
+
     Optional<AnuncioEntity> findBySlugAndStatusAndStatusModeracaoAndClassificacaoConteudoAndRemovidoEmIsNull(
             String slug,
             StatusAnuncio status,
@@ -29,4 +41,6 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID> {
             StatusModeracaoAnuncio statusModeracao,
             ClassificacaoConteudo classificacaoConteudo,
             Pageable pageable);
+
+    long count(Specification<AnuncioEntity> spec);
 }

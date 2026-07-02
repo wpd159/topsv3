@@ -35,3 +35,22 @@ O admin da V3 será organizado por módulos. A Fase 1C.6B cria apenas o mapa est
 ## Textos SEO do painel atual
 
 Textos SEO do painel administrativo atual serão tratados pelo importador de dados em fase futura. A Fase 1C.6B não continua captura manual de textos da produção.
+
+## Complemento Bloco 12
+
+RBAC local minimo criado para preparar os modulos:
+
+- `ADMIN`;
+- `MODERADOR`;
+- `COMERCIAL`;
+- `USUARIO`.
+
+As permissoes estao documentadas em `docs/v3/53-matriz-permissoes-rbac.md` e `docs/v3/54-mapa-admin-permissoes.md`.
+
+Nenhum modulo administrativo ganhou acao real neste bloco.
+
+## Complemento Bloco 14
+
+O mapa estrutural passa a ter leitura local agregada para visao geral, anuncios, moderacao, midia, metricas e status do sistema.
+
+Essas leituras nao mudam o mapa de modulos e nao liberam acao critica. Modulos de usuarios, premium, creditos, financeiro, SEO, banners, comercial, suporte, backup e auditoria seguem sem funcionalidade real neste bloco.

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Tops do Job V3 Local API
   version: 0.0.1
-  description: Contrato minimo local do skeleton, camada transversal e API publica de leitura.
+  description: Contrato minimo local do skeleton, camada transversal e API publica de leitura. A API segue fail-closed: endpoints nao descritos em /api/** nao devem ficar publicos por acidente.
 servers:
   - url: http://localhost:8080
     description: backend local
@@ -345,7 +345,765 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/auth/login:
+    post:
+      summary: Login administrativo local por sessao
+      description: Autentica usuario administrativo sintetico/local e emite cookie HttpOnly de sessao. Cliente admin deve enviar credentials include. Nao retorna token, senha, hash ou cookie no corpo.
+      operationId: postAdminAuthLogin
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: sessao administrativa local criada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/auth/logout:
+    post:
+      summary: Logout administrativo local
+      description: Invalida a sessao local atual via cookie de sessao com credentials include. Nao executa acao administrativa critica.
+      operationId: postAdminAuthLogout
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: sessao administrativa local encerrada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAuthStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/auth/me:
+    get:
+      summary: Sessao administrativa atual
+      description: Retorna usuario, papeis e permissoes da sessao. Nao retorna senha, hash, token ou cookie.
+      operationId: getAdminAuthMe
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: sessao administrativa local autenticada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/auth/permissions:
+    get:
+      summary: Permissoes administrativas da sessao
+      description: Retorna permissao RBAC derivada do backend. Ainda nao libera acoes administrativas reais.
+      operationId: getAdminAuthPermissions
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: permissoes RBAC da sessao local
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPermissions"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/visao-geral:
+    get:
+      summary: Visao geral administrativa local somente leitura
+      description: Retorna contadores agregados para o shell admin local. Exige sessao/RBAC e nao retorna dado sensivel, documento privado, storage, payload, telefone, senha, hash, token ou cookie.
+      operationId: getAdminVisaoGeral
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: visao geral admin read-only
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminVisaoGeral"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/resumo:
+    get:
+      summary: Resumo administrativo local de anuncios
+      description: Retorna apenas contagens agregadas de anuncios para ADMIN, MODERADOR ou COMERCIAL. Nao retorna WhatsApp real nem dados privados.
+      operationId: getAdminAnunciosResumo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: resumo read-only de anuncios
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminResumoAnuncios"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/moderacao/resumo:
+    get:
+      summary: Resumo administrativo local de moderacao
+      description: Retorna apenas contagens agregadas de filas de moderacao para ADMIN ou MODERADOR. Nao executa aprovacao, reprovacao ou escrita.
+      operationId: getAdminModeracaoResumo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: resumo read-only de moderacao
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminResumoModeracao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/midias/resumo:
+    get:
+      summary: Resumo administrativo local de midias
+      description: Retorna apenas contagens agregadas de midias e arquivos para ADMIN ou MODERADOR. Nao retorna bucket, chave de storage, hash, etag ou URL privada.
+      operationId: getAdminMidiasResumo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: resumo read-only de midias
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminResumoMidias"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/metricas/resumo:
+    get:
+      summary: Resumo administrativo local de metricas
+      description: Retorna contagens agregadas de visualizacoes e cliques WhatsApp para ADMIN ou COMERCIAL. Nao retorna IP, User-Agent, referer, WhatsApp real ou identificador bruto.
+      operationId: getAdminMetricasResumo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: resumo read-only de metricas
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminResumoMetricas"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/sistema/status:
+    get:
+      summary: Status administrativo local do sistema
+      description: Retorna estado operacional local para ADMIN. Informa politica fail-closed e pendencias, sem segredo e sem integracao Efi real.
+      operationId: getAdminSistemaStatus
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: status admin read-only do sistema
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatusSistema"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios:
+    get:
+      summary: Lista administrativa local de anuncios
+      description: Retorna pagina sanitizada de anuncios. COMERCIAL recebe versao limitada. Nao retorna WhatsApp bruto, documento privado, e-mail privado, valor financeiro sensivel, storage ou payload.
+      operationId: getAdminAnuncios
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: statusModeracao
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: classificacaoConteudo
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        - name: uf
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^[A-Za-z]{2}$"
+        - name: cidade
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: bairro
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: termo
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 80
+      responses:
+        "200":
+          description: pagina de anuncios admin read-only
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPaginaAnuncios"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}:
+    get:
+      summary: Detalhe administrativo sanitizado de anuncio
+      description: Retorna detalhe somente leitura. COMERCIAL nao recebe descricao nem contagem detalhada de revisoes.
+      operationId: getAdminAnuncioDetalhe
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: detalhe sanitizado de anuncio
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/midias:
+    get:
+      summary: Lista midias sanitizadas de um anuncio
+      description: Restrito a ADMIN e MODERADOR. Nao retorna bucket, chave, hash, etag, URL privada ou nome original.
+      operationId: getAdminAnuncioMidias
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: pagina de midias do anuncio
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPaginaMidias"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/remeter-revisao:
+    post:
+      summary: Remete anuncio para revisao local
+      description: Restrito a ADMIN e MODERADOR com ANUNCIO_MODERAR. Exige motivo valido. Cria revisao local quando nao houver revisao aberta, atualiza anuncio para PENDENTE_REVISAO/PENDENTE, registra auditoria sanitizada e outbox local pendente ANUNCIO_REMETIDO_REVISAO. Nao envia e-mail, WhatsApp ou evento externo, nao executa hard delete, nao faz upload e nao altera pagamento/credito.
+      operationId: postAdminAnuncioRemeterRevisao
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminRemeterRevisaoRequest"
+      responses:
+        "200":
+          description: anuncio remetido para revisao local
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAcaoModeracaoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/midias:
+    get:
+      summary: Lista administrativa local de midias
+      description: Restrito a ADMIN e MODERADOR. Retorna apenas metadados seguros de midia.
+      operationId: getAdminMidias
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: classificacaoConteudo
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: anuncioId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: pagina de midias admin read-only
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPaginaMidias"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/midias/{id}:
+    get:
+      summary: Detalhe administrativo sanitizado de midia
+      description: Restrito a ADMIN e MODERADOR. Nao retorna storage provider, bucket, chave, hash, etag, URL privada ou nome original.
+      operationId: getAdminMidiaDetalhe
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: detalhe sanitizado de midia
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMidiaDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/midias/{id}/decidir:
+    post:
+      summary: Decisao local de midia administrativa
+      description: Restrito a ADMIN e MODERADOR com MIDIA_REVISAR. Atualiza apenas status/classificacao de midia sintetica/local e registra auditoria sanitizada. REPROVAR exige motivo valido e retorna 400 quando ausente. SOLICITAR_AJUSTE para midia permanece pendente porque nao ha status seguro no schema atual sem migration. Nao apaga arquivo, nao faz upload, nao envia e-mail real e nao retorna bucket, chave, hash ou URL privada.
+      operationId: postAdminMidiaDecidir
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDecidirMidiaRequest"
+      responses:
+        "200":
+          description: decisao de midia registrada localmente
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAcaoModeracaoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/moderacao/revisoes:
+    get:
+      summary: Lista administrativa local de revisoes
+      description: Restrito a ADMIN e MODERADOR. Nao retorna payload de revisao, documento privado ou auditoria sensivel.
+      operationId: getAdminModeracaoRevisoes
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: anuncioId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: pagina de revisoes admin read-only
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPaginaRevisoes"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/moderacao/revisoes/{id}:
+    get:
+      summary: Detalhe administrativo sanitizado de revisao
+      description: Restrito a ADMIN e MODERADOR. Indica somente se existe conteudo solicitado, sem retornar o conteudo.
+      operationId: getAdminModeracaoRevisaoDetalhe
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: detalhe sanitizado de revisao
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRevisaoDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/moderacao/revisoes/{id}/decidir:
+    post:
+      summary: Decisao local de revisao administrativa
+      description: Restrito a ADMIN e MODERADOR com ANUNCIO_MODERAR. APROVAR e REPROVAR sao decisoes finais, registram decisao unica por revisao e finalizam a revisao. SOLICITAR_AJUSTE e acao intermediaria local, exige motivo valido, nao finaliza a revisao e nao cria decisao final em decisao_moderacao. SOLICITAR_AJUSTE registra auditoria sanitizada e outbox local pendente MODERACAO_SOLICITAR_AJUSTE, sem envio externo; duplicidade pendente retorna 409 por chave local de outbox. REPROVAR registra outbox local pendente MODERACAO_REPROVADA. Nao envia e-mail real, nao envia WhatsApp real, nao executa hard delete e nao retorna payload de revisao.
+      operationId: postAdminModeracaoRevisaoDecidir
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDecidirRevisaoRequest"
+      responses:
+        "200":
+          description: acao de moderacao registrada localmente
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAcaoModeracaoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/outbox:
+    get:
+      summary: Lista outbox administrativo local read-only
+      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna apenas eventos locais de outbox em DTO sanitizado, com previa logica de comunicacao e flag envioExternoExecutado=false. Nao envia, reenvia, processa, marca como enviado, aciona worker, scheduler, SMTP, WhatsApp ou API externa. COMERCIAL e USUARIO nao acessam.
+      operationId: getAdminOutbox
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDENTE, PROCESSANDO, PROCESSADO, ERRO, CANCELADO]
+        - name: tipoEvento
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 80
+        - name: entidadeTipo
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 80
+        - name: criadoDe
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: criadoAte
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: outbox local listado em modo somente leitura
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOutboxPagina"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/outbox/{id}:
+    get:
+      summary: Detalha outbox administrativo local read-only
+      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna detalhe sanitizado e previa logica, sem payload bruto sensivel e sem envio externo. Nao existe POST, PUT, PATCH ou DELETE para outbox nesta fase.
+      operationId: getAdminOutboxDetalhe
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: outbox local detalhado em modo somente leitura
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOutboxDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
+  securitySchemes:
+    AdminSessionCookie:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: Sessao administrativa local emitida por `POST /api/admin/auth/login`; cliente deve usar credentials include e o corpo da resposta nunca retorna token ou cookie.
   headers:
     RequestId:
       description: Identificador opaco de correlação da requisição.
@@ -430,6 +1188,33 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
+    Unauthorized:
+      description: Autenticacao necessaria ou credenciais invalidas.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    Forbidden:
+      description: Usuario autenticado sem permissao suficiente.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    Conflict:
+      description: Estado atual impede a transicao solicitada.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
     InternalError:
       description: Falha inesperada sem detalhes internos.
       headers:
@@ -440,14 +1225,848 @@ components:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
   schemas:
+    AdminLoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - login
+        - senha
+      properties:
+        login:
+          type: string
+          description: Login/e-mail administrativo local. Nao usar credencial real.
+          example: admin.local@example.invalid
+        senha:
+          type: string
+          format: password
+          writeOnly: true
+          description: Credencial sintetica local; nunca retorna em resposta.
+    AdminMe:
+      type: object
+      additionalProperties: false
+      required:
+        - autenticado
+        - usuarioId
+        - nome
+        - email
+        - papeis
+        - permissoes
+      properties:
+        autenticado:
+          type: boolean
+          const: true
+        usuarioId:
+          type: string
+          format: uuid
+        nome:
+          type:
+            - string
+            - "null"
+        email:
+          type:
+            - string
+            - "null"
+          description: E-mail sintetico/local reservado; nao usar dado real.
+        papeis:
+          type: array
+          items:
+            type: string
+            enum:
+              - ADMIN
+              - MODERADOR
+              - COMERCIAL
+              - USUARIO
+        permissoes:
+          type: array
+          items:
+            type: string
+        senha:
+          not: {}
+          description: Campo proibido em resposta.
+        senhaHash:
+          not: {}
+          description: Campo proibido em resposta.
+        token:
+          not: {}
+          description: Campo proibido em resposta.
+    AdminPermission:
+      type: object
+      additionalProperties: false
+      required:
+        - codigo
+        - descricao
+      properties:
+        codigo:
+          type: string
+          enum:
+            - ADMIN_CONFIGURAR
+            - SEGURANCA_GERENCIAR
+            - ANUNCIO_LER
+            - ANUNCIO_MODERAR
+            - MIDIA_REVISAR
+            - DOCUMENTO_REVISAR
+            - COMERCIAL_GERENCIAR
+            - SUPORTE_ATENDER
+            - AUDITORIA_LER
+            - FINANCEIRO_LER
+        descricao:
+          type: string
+    AdminPermissions:
+      type: object
+      additionalProperties: false
+      required:
+        - permissoes
+      properties:
+        permissoes:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPermission"
+    AdminAuthStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - autenticado
+        - status
+      properties:
+        autenticado:
+          type: boolean
+        status:
+          type: string
+    AdminContador:
+      type: object
+      additionalProperties: false
+      required:
+        - codigo
+        - rotulo
+        - total
+      properties:
+        codigo:
+          type: string
+        rotulo:
+          type: string
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+    AdminResumoAnuncios:
+      type: object
+      additionalProperties: false
+      required:
+        - totalAtivos
+        - publicados
+        - pendentesRevisao
+        - pausados
+        - bloqueados
+        - comContatoConfigurado
+        - porStatus
+      properties:
+        totalAtivos:
+          type: integer
+          format: int64
+          minimum: 0
+        publicados:
+          type: integer
+          format: int64
+          minimum: 0
+        pendentesRevisao:
+          type: integer
+          format: int64
+          minimum: 0
+        pausados:
+          type: integer
+          format: int64
+          minimum: 0
+        bloqueados:
+          type: integer
+          format: int64
+          minimum: 0
+        comContatoConfigurado:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Contagem agregada; nao retorna telefone ou WhatsApp real.
+        porStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminContador"
+    AdminResumoModeracao:
+      type: object
+      additionalProperties: false
+      required:
+        - revisoesAbertas
+        - revisoesEmAnalise
+        - anunciosPendentesModeracao
+        - anunciosBloqueados
+        - documentosPendentes
+      properties:
+        revisoesAbertas:
+          type: integer
+          format: int64
+          minimum: 0
+        revisoesEmAnalise:
+          type: integer
+          format: int64
+          minimum: 0
+        anunciosPendentesModeracao:
+          type: integer
+          format: int64
+          minimum: 0
+        anunciosBloqueados:
+          type: integer
+          format: int64
+          minimum: 0
+        documentosPendentes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Contagem agregada; nao retorna documento privado.
+    AdminResumoMidias:
+      type: object
+      additionalProperties: false
+      required:
+        - arquivosTotal
+        - arquivosPendentes
+        - arquivosValidados
+        - midiasPublicaveis
+        - midiasPendentes
+        - midiasBloqueadas
+        - storiesPublicados
+        - storiesPendentes
+      properties:
+        arquivosTotal:
+          type: integer
+          format: int64
+          minimum: 0
+        arquivosPendentes:
+          type: integer
+          format: int64
+          minimum: 0
+        arquivosValidados:
+          type: integer
+          format: int64
+          minimum: 0
+        midiasPublicaveis:
+          type: integer
+          format: int64
+          minimum: 0
+        midiasPendentes:
+          type: integer
+          format: int64
+          minimum: 0
+        midiasBloqueadas:
+          type: integer
+          format: int64
+          minimum: 0
+        storiesPublicados:
+          type: integer
+          format: int64
+          minimum: 0
+        storiesPendentes:
+          type: integer
+          format: int64
+          minimum: 0
+    AdminResumoMetricas:
+      type: object
+      additionalProperties: false
+      required:
+        - visualizacoesTotal
+        - cliquesWhatsappTotal
+        - cliquesWhatsappPermitidos
+        - cliquesWhatsappBloqueados
+      properties:
+        visualizacoesTotal:
+          type: integer
+          format: int64
+          minimum: 0
+        cliquesWhatsappTotal:
+          type: integer
+          format: int64
+          minimum: 0
+        cliquesWhatsappPermitidos:
+          type: integer
+          format: int64
+          minimum: 0
+        cliquesWhatsappBloqueados:
+          type: integer
+          format: int64
+          minimum: 0
+    AdminStatusSistema:
+      type: object
+      additionalProperties: false
+      required:
+        - app
+        - ambiente
+        - local
+        - efiPixMockMode
+        - politicaApi
+        - pendenciaCsrf
+      properties:
+        app:
+          type: string
+          const: topsdojob-v3-backend
+        ambiente:
+          type: string
+        local:
+          type: boolean
+        efiPixMockMode:
+          type: boolean
+          description: No arquivo base defaulta false; somente o profile local pode defaultar true.
+        politicaApi:
+          type: string
+          const: API_FAIL_CLOSED
+        pendenciaCsrf:
+          type: string
+          const: PENDENTE_CSRF_ADMIN_PRODUCAO
+    AdminVisaoGeral:
+      type: object
+      additionalProperties: false
+      required:
+        - contadores
+        - anuncios
+        - moderacao
+        - midias
+        - metricas
+        - sistema
+      properties:
+        contadores:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminContador"
+        anuncios:
+          $ref: "#/components/schemas/AdminResumoAnuncios"
+        moderacao:
+          anyOf:
+            - $ref: "#/components/schemas/AdminResumoModeracao"
+            - type: "null"
+        midias:
+          anyOf:
+            - $ref: "#/components/schemas/AdminResumoMidias"
+            - type: "null"
+        metricas:
+          anyOf:
+            - $ref: "#/components/schemas/AdminResumoMetricas"
+            - type: "null"
+        sistema:
+          anyOf:
+            - $ref: "#/components/schemas/AdminStatusSistema"
+            - type: "null"
+    AdminLocalizacaoSanitizada:
+      type: object
+      additionalProperties: false
+      properties:
+        uf:
+          type:
+            - string
+            - "null"
+        cidade:
+          type:
+            - string
+            - "null"
+        bairro:
+          type:
+            - string
+            - "null"
+    AdminAnuncioListaItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type:
+            - string
+            - "null"
+        titulo:
+          type:
+            - string
+            - "null"
+        status:
+          type:
+            - string
+            - "null"
+        statusModeracao:
+          type:
+            - string
+            - "null"
+        classificacaoConteudo:
+          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        localizacao:
+          anyOf:
+            - $ref: "#/components/schemas/AdminLocalizacaoSanitizada"
+            - type: "null"
+        criadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        atualizadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        publicadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        midiasTotal:
+          type:
+            - integer
+            - "null"
+          format: int64
+        revisoesTotal:
+          type:
+            - integer
+            - "null"
+          format: int64
+        contatoConfigurado:
+          type: boolean
+          description: Indicador agregado; nao retorna telefone nem WhatsApp.
+        documentoPendente:
+          type: boolean
+          description: Indicador agregado; nao retorna documento privado.
+        comercialLimitado:
+          type: boolean
+    AdminAnuncioDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/AdminAnuncioListaItem"
+        - type: object
+          additionalProperties: false
+          properties:
+            descricaoResumo:
+              type:
+                - string
+                - "null"
+              description: Texto sanitizado e mascarado; nulo para COMERCIAL.
+            categoria:
+              type:
+                - string
+                - "null"
+            ultimaPublicacaoEm:
+              type:
+                - string
+                - "null"
+              format: date-time
+            precoInformado:
+              type: boolean
+              description: Indicador booleano; nao retorna valor financeiro.
+    AdminMidiaListaItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        anuncioId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        slugAnuncio:
+          type:
+            - string
+            - "null"
+        tipo:
+          type:
+            - string
+            - "null"
+        finalidade:
+          type:
+            - string
+            - "null"
+        ordem:
+          type:
+            - integer
+            - "null"
+        status:
+          type:
+            - string
+            - "null"
+        classificacaoConteudo:
+          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        statusArquivo:
+          type:
+            - string
+            - "null"
+        mimeType:
+          type:
+            - string
+            - "null"
+        tamanhoBytes:
+          type:
+            - integer
+            - "null"
+          format: int64
+        largura:
+          type:
+            - integer
+            - "null"
+        altura:
+          type:
+            - integer
+            - "null"
+        duracaoMs:
+          type:
+            - integer
+            - "null"
+        criadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        atualizadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        arquivoPrivadoOculto:
+          type: boolean
+    AdminMidiaDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/AdminMidiaListaItem"
+        - type: object
+          additionalProperties: false
+          properties:
+            arquivoMidiaId:
+              type:
+                - string
+                - "null"
+              format: uuid
+    AdminRevisaoListaItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        anuncioId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        slugAnuncio:
+          type:
+            - string
+            - "null"
+        tipo:
+          type:
+            - string
+            - "null"
+        status:
+          type:
+            - string
+            - "null"
+        conteudoSolicitadoPresente:
+          type: boolean
+          description: Nao retorna o conteudo solicitado.
+        criadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        finalizadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+    AdminRevisaoDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/AdminRevisaoListaItem"
+        - type: object
+          additionalProperties: false
+          properties:
+            somenteLeitura:
+              type: boolean
+              const: true
+    AdminOutboxPreview:
+      type: object
+      additionalProperties: false
+      description: Previa logica e sanitizada de comunicacao futura. Nao contem destino real, e-mail real, telefone, WhatsApp, documento, storage, financeiro, Pix ou segredo.
+      properties:
+        canalLogico:
+          type:
+            - string
+            - "null"
+        destinoLogicoSanitizado:
+          type:
+            - string
+            - "null"
+        assuntoSanitizado:
+          type:
+            - string
+            - "null"
+        corpoSanitizado:
+          type:
+            - string
+            - "null"
+        envioExternoExecutado:
+          type: boolean
+          const: false
+    AdminOutboxListaItem:
+      type: object
+      additionalProperties: false
+      description: Item read-only de outbox administrativo local. Nao expoe idempotency key, payload bruto, contato real, storage, financeiro ou segredo.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipoEvento:
+          type:
+            - string
+            - "null"
+        entidadeTipo:
+          type:
+            - string
+            - "null"
+        entidadeId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        status:
+          type:
+            - string
+            - "null"
+        criadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        tentativas:
+          type:
+            - integer
+            - "null"
+        proximaTentativaEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        resumoSanitizado:
+          type:
+            - string
+            - "null"
+        previa:
+          $ref: "#/components/schemas/AdminOutboxPreview"
+        envioExternoExecutado:
+          type: boolean
+          const: false
+    AdminOutboxDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/AdminOutboxListaItem"
+        - type: object
+          additionalProperties: false
+          properties:
+            dadosSanitizados:
+              type: object
+              description: Projecao allowlist do conteudo local. O JSON bruto do outbox nao e retornado.
+              additionalProperties: true
+            somenteLeitura:
+              type: boolean
+              const: true
+    AdminOutboxPagina:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminOutboxListaItem"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        last:
+          type: boolean
+    AdminDecisaoModeracaoAcao:
+      type: string
+      description: Em revisoes, APROVAR e REPROVAR sao decisoes finais. SOLICITAR_AJUSTE e acao intermediaria local com auditoria e outbox pendente, sem finalizar revisao e sem gravar decisao_moderacao. Em midia, SOLICITAR_AJUSTE permanece pendente por ausencia de status seguro no schema atual.
+      enum:
+        - APROVAR
+        - REPROVAR
+        - SOLICITAR_AJUSTE
+    AdminDecidirRevisaoRequest:
+      type: object
+      description: Request local de acao sobre revisao. O campo motivo e obrigatorio quando decisao for REPROVAR ou SOLICITAR_AJUSTE; APROVAR pode omitir motivo. APROVAR/REPROVAR finalizam a revisao. SOLICITAR_AJUSTE e intermediario, nao cria decisao final e retorna 409 se ja existir outbox pendente local de ajuste para a revisao.
+      additionalProperties: false
+      required:
+        - decisao
+      properties:
+        decisao:
+          $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
+        classificacaoConteudo:
+          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        motivo:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+          description: Obrigatorio para REPROVAR e SOLICITAR_AJUSTE. Valor vazio, nulo ou apenas espacos retorna 400. O backend sanitiza e mascara e-mail, contato e documento antes de auditoria/outbox.
+        observacao:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+        requestIdCliente:
+          type:
+            - string
+            - "null"
+          description: Reservado para idempotencia futura. Nesta fase local nao deduplica por requestIdCliente, nao garante reprocessamento seguro e nao deve ser usado como contrato de idempotencia. A duplicidade atual de SOLICITAR_AJUSTE e bloqueada por chave local de outbox, retornando 409.
+    AdminDecidirMidiaRequest:
+      type: object
+      description: Request local de decisao de midia. O campo motivo e obrigatorio quando decisao for REPROVAR; APROVAR pode omitir motivo. SOLICITAR_AJUSTE retorna 400 nesta fase porque midia nao possui status seguro de ajuste sem migration.
+      additionalProperties: false
+      required:
+        - decisao
+      properties:
+        decisao:
+          $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
+        classificacaoConteudo:
+          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        motivo:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+          description: Obrigatorio para REPROVAR. Valor vazio, nulo ou apenas espacos retorna 400. O backend sanitiza e mascara e-mail, contato e documento antes de auditoria.
+        observacao:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+        requestIdCliente:
+          type:
+            - string
+            - "null"
+          description: Reservado para idempotencia futura. Nesta fase local nao deduplica, nao garante reprocessamento seguro e nao deve ser usado como contrato de idempotencia.
+    AdminRemeterRevisaoRequest:
+      type: object
+      additionalProperties: false
+      description: Request local para remeter anuncio para revisao. Motivo e obrigatorio, sanitizado e limitado. A acao registra auditoria e outbox local pendente, sem envio externo.
+      required:
+        - motivo
+      properties:
+        motivo:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+          description: Obrigatorio. Valor vazio, nulo ou apenas espacos retorna 400.
+        observacao:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+        requestIdCliente:
+          type:
+            - string
+            - "null"
+          description: Reservado para idempotencia futura. Nesta fase local nao deduplica e nao deve ser usado como garantia operacional.
+    AdminAcaoModeracaoResponse:
+      type: object
+      additionalProperties: false
+      description: Resposta sanitizada; nunca inclui documento privado, storage key, bucket, hash, URL privada, senha, token, IP/UA bruto, payload financeiro ou payload de revisao.
+      properties:
+        id:
+          type: string
+          format: uuid
+        recursoTipo:
+          type: string
+        recursoId:
+          type: string
+          format: uuid
+        decisao:
+          $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
+        status:
+          type: string
+        classificacaoConteudo:
+          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        auditoriaRegistrada:
+          type: boolean
+        emailRealEnviado:
+          type: boolean
+          const: false
+        hardDeleteExecutado:
+          type: boolean
+          const: false
+        requestId:
+          type: string
+        decididoEm:
+          type: string
+          format: date-time
+        mensagem:
+          type: string
+    AdminPaginaAnuncios:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAnuncioListaItem"
+        page:
+          type: integer
+        size:
+          type: integer
+          maximum: 50
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        last:
+          type: boolean
+    AdminPaginaMidias:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminMidiaListaItem"
+        page:
+          type: integer
+        size:
+          type: integer
+          maximum: 50
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        last:
+          type: boolean
+    AdminPaginaRevisoes:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRevisaoListaItem"
+        page:
+          type: integer
+        size:
+          type: integer
+          maximum: 50
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+        last:
+          type: boolean
     HealthResponse:
       type: object
       additionalProperties: false
       required:
         - status
         - app
-        - environment
-        - efiPixMockMode
         - requestId
       properties:
         status:
@@ -456,12 +2075,6 @@ components:
         app:
           type: string
           const: topsdojob-v3-backend
-        environment:
-          type: string
-          const: local
-        efiPixMockMode:
-          type: boolean
-          const: true
         requestId:
           type: string
           example: 11111111-1111-4111-8111-111111111111
@@ -693,7 +2306,7 @@ components:
           type:
             - string
             - "null"
-          description: Permanece nulo enquanto CDN/midia publica real estiver pendente.
+          description: Sempre nulo neste bloco. CDN/midia publica real segue pendente e a URL nao pode ser derivada de bucket, chaveObjeto, provider, hash ou URL privada.
         largura:
           type:
             - integer
@@ -891,6 +2504,9 @@ components:
     MidiaPublica:
       type: object
       additionalProperties: false
+      required:
+        - urlPublica
+        - pendenciaMidia
       properties:
         tipo:
           type:
@@ -908,7 +2524,11 @@ components:
           type:
             - string
             - "null"
-          description: Placeholder publico; nao contem storage key privada.
+          description: Sempre nulo neste bloco. URL publica real exige mapeamento CDN/storage futuro aprovado e nunca pode ser derivada de bucket, chaveObjeto, storageProvider, sha256, etag ou URL privada.
+        pendenciaMidia:
+          type: string
+          const: PENDENTE_URL_PUBLICA_MIDIA_CDN
+          description: Pendencia explicita enquanto nao houver CDN/midia publica real aprovada.
         largura:
           type:
             - integer

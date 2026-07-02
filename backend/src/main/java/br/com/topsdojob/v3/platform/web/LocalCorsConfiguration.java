@@ -17,7 +17,7 @@ public class LocalCorsConfiguration implements WebMvcConfigurer {
 
     public LocalCorsConfiguration(
             @Value("${app.cors.allowed-origins:}") String allowedOrigins,
-            @Value("${app.env:local}") String appEnv) {
+            @Value("${app.env:nao_configurado}") String appEnv) {
         this.allowedOrigins = Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(origin -> !origin.isBlank())

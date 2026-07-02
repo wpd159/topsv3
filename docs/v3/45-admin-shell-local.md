@@ -66,3 +66,29 @@ Autenticação, permissões e RBAC para `ADMIN`, `MODERADOR` e `COMERCIAL` serã
 Moderação real, financeiro, créditos, Pix, auditoria persistente, backup operacional e textos SEO administráveis também ficam para fases futuras.
 
 Textos SEO do painel administrativo atual serão migrados pelo importador de dados, não por captura manual de produção.
+
+## Complemento Bloco 12
+
+O shell admin passa a consumir a autenticacao administrativa local minima:
+
+- `POST /api/admin/auth/login`;
+- `POST /api/admin/auth/logout`;
+- `GET /api/admin/auth/me`;
+- `GET /api/admin/auth/permissions`.
+
+Continua sem dados reais, sem acao administrativa critica, sem moderacao real, sem financeiro/Pix e sem importador real.
+
+## Complemento Bloco 14
+
+O shell admin passa a consumir tambem resumos locais somente leitura:
+
+- `/api/admin/visao-geral`;
+- `/api/admin/anuncios/resumo`;
+- `/api/admin/moderacao/resumo`;
+- `/api/admin/midias/resumo`;
+- `/api/admin/metricas/resumo`;
+- `/api/admin/sistema/status`.
+
+As chamadas usam `credentials: "include"` e exibem apenas contadores/estados agregados. O shell continua sem botoes funcionais de aprovacao, rejeicao, exclusao, pagamento, credito, upload, Pix ou moderacao real.
+
+O frontend nao usa localStorage/sessionStorage e apenas reflete o estado autenticado retornado pelo backend.

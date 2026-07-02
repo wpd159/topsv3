@@ -28,5 +28,6 @@ A V3 preserva como base o comportamento publico atual quando ele ja estiver corr
 ## Pendencias restantes
 
 - CDN/midia publica real permanece `PENDENTE_URL_PUBLICA_MIDIA_CDN`;
+- Bloco 11 consolidou `urlPublica=null` como estrategia local segura ate aprovacao de CDN/storage publico;
 - revisao juridica/moderacao final permanece futura;
 - smoke standalone depende de backend local ja iniciado.

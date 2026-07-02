@@ -1,0 +1,36 @@
+# Checklist Bloco 16 - moderacao local
+
+- [x] Inventario inicial executado antes das alteracoes.
+- [x] Nao houve consulta SSH a producao.
+- [x] `arquivoMidiaId` documentado como identificador interno local/admin.
+- [x] `bucket`, `chaveObjeto`, `storageProvider`, `sha256`, `etag` e URL privada seguem proibidos em DTO admin.
+- [x] `POST /api/admin/moderacao/revisoes/{id}/decidir` criado.
+- [x] `POST /api/admin/midias/{id}/decidir` criado.
+- [x] `APROVAR` e `REPROVAR` implementados.
+- [x] `REPROVAR` exige `motivo` valido a partir do hardening Bloco 16.1.
+- [x] `requestIdCliente` documentado como reservado, sem idempotencia garantida nesta fase.
+- [x] `SOLICITAR_AJUSTE` documentado como pendente.
+- [x] Revisao finalizada retorna conflito.
+- [x] Midia finalizada retorna conflito.
+- [x] Decisao invalida retorna erro de request.
+- [x] `ADMIN` pode decidir revisao e midia.
+- [x] `MODERADOR` pode decidir revisao e midia.
+- [x] `COMERCIAL` nao decide.
+- [x] `USUARIO` nao decide.
+- [x] Sem sessao retorna `401`.
+- [x] Auditoria administrativa sanitizada registrada.
+- [x] Frontend admin usa `credentials: "include"`.
+- [x] Frontend admin segue sem localStorage/sessionStorage.
+- [x] Frontend admin limita botoes a "acao local de moderacao".
+- [x] Painel com acoes locais renomeado para nao ser tratado como read-only.
+- [x] Dados sinteticos cobrem aprovacao, reprovacao e conflitos.
+- [x] OpenAPI atualizado.
+- [x] Sem e-mail real.
+- [x] Sem hard delete.
+- [x] Sem upload real.
+- [x] Sem pagamento, credito, Pix/Efi ou importador real.
+- [x] Sem dado real, dump real ou seed real.
+- [x] Sem migration nova e sem SQL de schema.
+- [x] Revisao Pro exigida antes de ampliar acoes admin.
+- [x] Auditoria JSON sanitizada marcada como pendencia Pro antes de homologacao/producao.
+- [x] Nenhuma fase posterior iniciada.

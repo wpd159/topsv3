@@ -19,10 +19,10 @@ Registra visualizacao publica local.
 
 Regras:
 
-- aceita somente anuncio publico `LIVRE`;
+- aceita anuncio `LIVRE` publico ou `BLOQUEADO` somente quando liberado pelo backend apos idade confirmada;
 - retorna 404 para anuncio inexistente ou nao publicavel;
 - armazena hashes tecnicos, nunca IP/User-Agent/referer brutos;
-- retorna `PENDENTE_CONFIRMACAO_IDADE_STORIES`.
+- retorna `PENDENTE_URL_PUBLICA_MIDIA_CDN` enquanto stories/midia publica real estiverem pendentes.
 
 ### `POST /api/public/anuncios/{slug}/clique-whatsapp`
 
@@ -30,7 +30,7 @@ Registra clique WhatsApp publico local.
 
 Regras:
 
-- aceita somente anuncio publico `LIVRE`;
+- aceita anuncio `LIVRE` publico ou `BLOQUEADO` somente quando liberado pelo backend apos idade confirmada;
 - retorna `whatsappUrl` apenas quando politica backend permitir;
 - nao retorna `whatsapp_normalizado` bruto;
 - nao cria limite diario comercial;
@@ -116,13 +116,14 @@ Campos:
 - `finalidade`;
 - `ordem`;
 - `urlPublica`;
+- `pendenciaMidia`;
 - `largura`;
 - `altura`;
 - `mimeType`.
 
 Nao contem `bucket`, `chaveObjeto`, `sha256`, `etag`, `storageProvider` ou `nomeOriginal`.
 
-`urlPublica` permanece nulo ate definicao futura de geracao CDN/publica segura.
+`urlPublica` permanece nulo ate definicao futura de geracao CDN/publica segura. A V3 local nao gera URL a partir de bucket, chaveObjeto, provider, hash ou URL privada.
 
 Pendencia:
 

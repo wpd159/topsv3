@@ -26,7 +26,7 @@ public class IdadePublicaTokenService {
 
     public IdadePublicaTokenService(
             @Value("${app.age-gate.signing-value:}") String configuredSigningValue,
-            @Value("${app.env:local}") String appEnv) {
+            @Value("${app.env:nao_configurado}") String appEnv) {
         this.local = isLocal(appEnv);
         this.signingValue = resolveSigningValue(configuredSigningValue, this.local);
     }
@@ -100,7 +100,7 @@ public class IdadePublicaTokenService {
     }
 
     private static boolean isLocal(String appEnv) {
-        String normalizedEnv = appEnv == null ? "local" : appEnv.trim();
+        String normalizedEnv = appEnv == null ? "nao_configurado" : appEnv.trim();
         return normalizedEnv.equalsIgnoreCase("local");
     }
 

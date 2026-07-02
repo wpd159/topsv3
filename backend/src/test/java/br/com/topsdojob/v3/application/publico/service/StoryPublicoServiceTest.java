@@ -43,7 +43,8 @@ class StoryPublicoServiceTest {
                 mock(AnuncioMidiaRepository.class),
                 mock(ArquivoMidiaRepository.class),
                 mock(StoryAnuncioRepository.class),
-                idadeService);
+                idadeService,
+                new MidiaPublicaUrlService());
 
         ListaStoriesPublicosDto response = service.listar("anuncio-local", request);
 
@@ -106,14 +107,15 @@ class StoryPublicoServiceTest {
                 anuncioMidiaRepository,
                 arquivoRepository,
                 storyRepository,
-                idadeService);
+                idadeService,
+                new MidiaPublicaUrlService());
 
         ListaStoriesPublicosDto response = service.listar("anuncio-local", request);
 
         assertThat(response.autorizado()).isTrue();
         assertThat(response.stories()).hasSize(1);
         assertThat(response.stories().get(0).pendenciaMidia())
-                .isEqualTo(StoryPublicoService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
+                .isEqualTo(MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
         assertThat(response.toString())
                 .doesNotContain("bucket-privado")
                 .doesNotContain("synthetic/story.bin")

@@ -74,4 +74,23 @@ public class DecisaoModeracaoEntity {
     return criadoEm;
   }
 
+  public static DecisaoModeracaoEntity registrar(
+      UUID id,
+      UUID revisaoAnuncioId,
+      DecisaoModeracao decisao,
+      String motivo,
+      UUID atorUsuarioId,
+      OffsetDateTime criadoEm) {
+    DecisaoModeracaoEntity entity = new DecisaoModeracaoEntity();
+    entity.id = id;
+    entity.revisaoAnuncioId = revisaoAnuncioId;
+    entity.decisao = decisao;
+    entity.motivo = motivo;
+    entity.atorUsuarioId = atorUsuarioId;
+    entity.ipHash = null;
+    entity.userAgentHash = null;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
 }

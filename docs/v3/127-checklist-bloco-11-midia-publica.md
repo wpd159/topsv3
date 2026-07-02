@@ -1,0 +1,26 @@
+# Checklist Bloco 11 - midia publica/CDN local
+
+- [x] Checkpoint local criado antes das alteracoes do bloco.
+- [x] Commit local registrado: `c669d9d feat: consolida base v3 local ate bloco 10`.
+- [x] Nenhum push executado.
+- [x] Nenhum remote configurado.
+- [x] Inventario inicial gerado fora do repositorio apos o checkpoint.
+- [x] Nao houve consulta SSH somente leitura a producao.
+- [x] Estrategia segura escolhida: `urlPublica=null`.
+- [x] Pendencia documentada: `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+- [x] Nenhum placeholder visual ou URL sintetica criada.
+- [x] Service local de politica de URL publica criado.
+- [x] DTO publico de midia inclui `pendenciaMidia`.
+- [x] OpenAPI documenta `urlPublica` nulo e campos privados proibidos.
+- [x] Frontend preserva visual e exibe estado de midia pendente localmente.
+- [x] Stories continuam exigindo idade confirmada.
+- [x] Conteudo `BLOQUEADO` continua liberavel somente apos idade confirmada pelo backend.
+- [x] Smoke HTTP valida ausencia de `urlPublica` real de midia.
+- [x] Smoke HTTP valida ausencia de bucket, chave, provider e hash.
+- [x] E2E local descartavel usa smoke atualizado.
+- [x] Nenhuma migration criada.
+- [x] Nenhum SQL de schema alterado.
+- [x] Nenhum dado real, dump, midia real, telefone real, CPF, documento ou e-mail real usado.
+- [x] Nenhum admin funcional, autenticacao real, Pix/Efi, financeiro ou importador real criado.
+- [x] Nenhuma producao, VPS, banco de producao, Efi real, OpenAI ou API externa acessada.
+- [x] Nenhuma fase posterior iniciada.

@@ -36,8 +36,6 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class StoryPublicoService {
 
-    public static final String PENDENTE_URL_PUBLICA_MIDIA_CDN = "PENDENTE_URL_PUBLICA_MIDIA_CDN";
-
     private static final String MOTIVO_AUTORIZADO = "STORIES_AUTORIZADOS";
     private static final String MOTIVO_IDADE_NAO_CONFIRMADA = "IDADE_NAO_CONFIRMADA";
 
@@ -46,18 +44,21 @@ public class StoryPublicoService {
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final StoryAnuncioRepository storyRepository;
     private final IdadePublicaService idadeService;
+    private final MidiaPublicaUrlService urlService;
 
     public StoryPublicoService(
             AnuncioRepository anuncioRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             StoryAnuncioRepository storyRepository,
-            IdadePublicaService idadeService) {
+            IdadePublicaService idadeService,
+            MidiaPublicaUrlService urlService) {
         this.anuncioRepository = anuncioRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.storyRepository = storyRepository;
         this.idadeService = idadeService;
+        this.urlService = urlService;
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +121,7 @@ public class StoryPublicoService {
                 true,
                 true,
                 stories,
-                new PoliticaStoryPublicoDto(true, MOTIVO_AUTORIZADO, PENDENTE_URL_PUBLICA_MIDIA_CDN));
+                new PoliticaStoryPublicoDto(true, MOTIVO_AUTORIZADO, MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN));
     }
 
     private StoryPublicoDto toDto(
@@ -136,17 +137,18 @@ public class StoryPublicoService {
                 || !classificacaoLiberavelComIdade(arquivo.getClassificacaoConteudo())) {
             return null;
         }
+        MidiaPublicaUrlService.ResultadoUrlPublica urlPublica = urlService.resolver(vinculo, arquivo);
         return new StoryPublicoDto(
                 story.getOrdem(),
                 enumName(vinculo.getTipo()),
                 enumName(vinculo.getFinalidade()),
                 enumName(vinculo.getClassificacaoConteudo()),
-                null,
+                urlPublica.urlPublica(),
                 arquivo.getLargura(),
                 arquivo.getAltura(),
                 arquivo.getDuracaoMs(),
                 arquivo.getMimeType(),
-                PENDENTE_URL_PUBLICA_MIDIA_CDN);
+                urlPublica.pendenciaMidia());
     }
 
     private boolean vinculoStoryElegivel(AnuncioMidiaEntity vinculo) {

@@ -65,7 +65,7 @@ class MetricaPublicaServiceTest {
         verify(eventoRepository).save(captor.capture());
         EventoVisualizacaoEntity salvo = captor.getValue();
         assertThat(response.registrado()).isTrue();
-        assertThat(response.pendenciaStories()).isEqualTo(StoryPublicoService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
+        assertThat(response.pendenciaStories()).isEqualTo(MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
         assertThat(salvo.getIpHash()).isNotBlank().isNotEqualTo("127.0.0.1");
         assertThat(salvo.getUserAgentHash()).isNotEqualTo("Mozilla local");
         assertThat(salvo.getRefererHash()).isNotEqualTo("http://localhost/anuncios/anuncio-local");

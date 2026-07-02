@@ -51,7 +51,7 @@ Nao foi criada query nativa, SQL, migration, banco runtime ou dependencia de Fly
 
 ## Midia publica
 
-`MidiaPublicaDto.urlPublica` permanece nulo por seguranca enquanto a politica de geracao publica de URL/CDN nao for definida.
+`MidiaPublicaDto.urlPublica` permanece nulo por seguranca enquanto a politica de geracao publica de URL/CDN nao for definida. A partir do Bloco 11, o contrato tambem expoe `pendenciaMidia` com `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
 
 Pendencia registrada:
 
