@@ -349,3 +349,31 @@ Bloco 21.1:
 - Expiracao conjunta pode ser calculada e reportada, mas nao executa job real nem altera banco por vencimento.
 - Dados sinteticos Premium devem ficar em `scripts/local/dados-sinteticos/`, nunca em migration.
 - Frontend admin pode exibir status/read-only, sem botao de ativar, comprar, pagar, ajustar credito ou checkout.
+
+## Bloco 23 - creditos e ledger read-only
+
+- Endpoints de creditos/ledger devem ser `GET`, locais e restritos a `ADMIN` com `FINANCEIRO_LER`.
+- DTOs nao podem expor txid, e2eid, copia e cola, QR Code, payload Pix/Efi, valor monetario, chave operacional bruta, documento, contato real ou storage.
+- Frontend `/admin/creditos` pode exibir saldo, movimentos e inconsistencias sanitizadas, sem botao de comprar, pagar, ajustar, estornar, conciliar ou Pix.
+- Dados sinteticos de creditos ficam em `scripts/local/dados-sinteticos/`, nunca em migration.
+- Continuam proibidos credito real, pagamento real, Pix/Efi real, webhook, conciliacao real, ajuste/estorno real, worker/scheduler, migration/SQL de schema, producao/VPS, remote, push e commit sem autorizacao futura.
+
+## Bloco 24 - pagamentos read-only local
+
+- Endpoints de pagamentos devem ser `GET`, locais e restritos a `ADMIN` com `FINANCEIRO_LER`.
+- DTOs nao podem expor valor monetario, evidencia bruta de transacao, identificador bruto de provedor, chave operacional bruta, payload Pix/Efi, QR Code, copia e cola, documento, contato real ou storage.
+- Provedor deve ser classificado por evidencia explicita. Nao presumir Mercado Pago por legado nem Efi sem evidencia.
+- Frontend `/admin/financeiro` pode exibir pagamentos e inconsistencias sanitizadas, sem botao de cobrar, pagar, gerar Pix, processar webhook, conciliar, creditar, estornar ou ajustar.
+- Dados sinteticos de pagamentos ficam em `scripts/local/dados-sinteticos/`, nunca em migration.
+- Continuam proibidos cobranca real, Pix/Efi real, Mercado Pago real, webhook real, conciliacao real, credito real, estorno, worker/scheduler, migration/SQL de schema, producao/VPS, API externa, remote, push e commit sem autorizacao futura.
+
+## Bloco 25 - desempenho read-only
+
+- Endpoints de desempenho devem ser `GET`, locais, sanitizados e protegidos por sessao/RBAC.
+- `ADMIN` e `COMERCIAL` podem ler resumo comercial agregado; `MODERADOR` pode ler apenas desempenho basico de anuncio; `USUARIO` nao acessa admin.
+- DTOs nao podem expor IP, User-Agent, referer bruto, hash interno, documento, contato bruto, storage, pagamento, credito, Pix/Efi, saldo, txid ou valor monetario.
+- Prova de resultado nao pode prometer contratacao, lead, clique ou retorno garantido.
+- Premium pode ser comparado como exposicao/tendencia, mas `promessaResultadoGarantido=false` e `gratuitoLimitado=false` devem permanecer explicitos.
+- Frontend `/admin/desempenho` nao pode ter botao de comprar, pagar, impulsionar, exportar, gerar Pix, ajustar credito, processar pagamento, chamar pixel ou tracking externo.
+- Dados sinteticos de desempenho ficam em `scripts/local/dados-sinteticos/`, nunca em migration.
+- Continuam proibidos producao/VPS, banco de producao, API externa, OpenAI, Efi real, migration/SQL de schema, remote, push e commit sem autorizacao futura.

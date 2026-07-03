@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.repository;
 
 import br.com.topsdojob.v3.persistence.entity.metrica.CliqueWhatsappEntity;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -8,4 +9,8 @@ public interface CliqueWhatsappRepository extends JpaRepository<CliqueWhatsappEn
     long countByPermitidoTrue();
 
     long countByPermitidoFalse();
+
+    long countByAnuncioIdAndPermitidoTrue(UUID anuncioId);
+
+    List<CliqueWhatsappEntity> findByAnuncioId(UUID anuncioId);
 }

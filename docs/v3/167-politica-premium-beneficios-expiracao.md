@@ -84,6 +84,18 @@ Papeis locais:
 
 Nenhum papel ganha autorizacao de compra, ativacao real, credito real, ajuste financeiro ou expiracao real neste bloco.
 
+Creditos/ledger do Bloco 23 sao leitura administrativa separada. Eles podem apontar consistencia entre saldo, movimento e pagamento sintetico, mas nao executam compra, ativacao, ajuste, estorno, conciliacao ou expiracao.
+
+## Complemento Bloco 25 - prova de resultado
+
+Metricas de desempenho podem mostrar comparativo organico/Premium, desde que o texto e os DTOs preservem:
+
+- `promessaResultadoGarantido=false`;
+- `gratuitoLimitado=false`;
+- Premium como exposicao/tendencia;
+- gratuito util e sem limite comercial artificial;
+- ausencia de botao ou endpoint de compra, impulsionamento, Pix/Efi, credito ou tracking externo.
+
 ## Pendencias Pro
 
 - Confirmar por evidencia de producao os nomes e efeitos comerciais finais.

@@ -282,7 +282,7 @@ function Assert-NoSensitiveAdminReadonlyData {
   Assert-NoSensitiveAdminAuthData -Nome $Nome -Body $Body
   Add-Check "$Nome sem storage privado" (-not ($Body -match 'storageProvider|storage_provider|chaveObjeto|chave_objeto|"bucket"\s*:|sha256|etag')) "resumo admin nao deve expor storage"
   Add-Check "$Nome sem contato bruto" (-not ($Body -match 'whatsappNormalizado|whatsapp_normalizado|telefoneNormalizado|telefone_normalizado|\+[1-9][0-9]{7,14}|wa\.me/[0-9]{8,15}')) "resumo admin nao deve expor telefone/WhatsApp real"
-  Add-Check "$Nome sem financeiro sensivel" (-not ($Body -match '"valor"\s*:|"saldo"\s*:|txid|identificadorProvedor|idempotency')) "resumo admin nao deve expor financeiro sensivel"
+  Add-Check "$Nome sem financeiro sensivel" (-not ($Body -match '"valor"\s*:|"saldo"\s*:|"txid"\s*:|txidBruto|identificadorProvedor|idempotency')) "resumo admin nao deve expor financeiro sensivel"
   Add-Check "$Nome sem payload sensivel" (-not ($Body -match 'payloadSolicitado|payload_solicitado')) "resumo admin nao deve expor payload de auditoria/moderacao"
 }
 
@@ -487,6 +487,12 @@ if (-not $SemDadosSinteticos) {
   Add-Check "admin detalhado exige sessao" ($detalhadoSemSessao.Status -eq 401) "status obtido: $($detalhadoSemSessao.Status)"
   $premiumSemSessao = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 401 -Method "GET"
   Add-Check "admin premium exige sessao" ($premiumSemSessao.Status -eq 401) "status obtido: $($premiumSemSessao.Status)"
+  $creditosSemSessao = Invoke-LocalHttp -Path "/api/admin/creditos/consistencia" -ExpectedStatus 401 -Method "GET"
+  Add-Check "admin creditos exige sessao" ($creditosSemSessao.Status -eq 401) "status obtido: $($creditosSemSessao.Status)"
+  $pagamentosSemSessao = Invoke-LocalHttp -Path "/api/admin/pagamentos/consistencia" -ExpectedStatus 401 -Method "GET"
+  Add-Check "admin pagamentos exige sessao" ($pagamentosSemSessao.Status -eq 401) "status obtido: $($pagamentosSemSessao.Status)"
+  $desempenhoSemSessao = Invoke-LocalHttp -Path "/api/admin/desempenho/resumo" -ExpectedStatus 401 -Method "GET"
+  Add-Check "admin desempenho exige sessao" ($desempenhoSemSessao.Status -eq 401) "status obtido: $($desempenhoSemSessao.Status)"
 
   $adminLoginInvalido = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 401 -Method "POST" -Body $adminInvalidBody
   Add-Check "admin login invalido status 401" ($adminLoginInvalido.Status -eq 401) "credenciais invalidas devem ser genericas"
@@ -570,6 +576,91 @@ if (-not $SemDadosSinteticos) {
   foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
     $premiumEscrita = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 405 -Method $method -Body "{}" -Session $adminSession
     Add-Check "premium sem metodo $method" ($premiumEscrita.Status -in @(400, 403, 404, 405)) "status obtido: $($premiumEscrita.Status); premium nao deve possuir endpoint $method"
+  }
+
+  $usuarioCreditoId = "00000000-0000-4000-8000-000000000101"
+  $creditoSaldo = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/saldo" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin creditos saldo" ($creditoSaldo.Status -eq 200 -and $creditoSaldo.Body -match '"saldoProjetado"\s*:\s*140' -and $creditoSaldo.Body -match '"saldoUltimoMovimento"\s*:\s*142') "ADMIN deve ler saldo sintetico sanitizado"
+  Add-Check "admin creditos saldo somente leitura" ($creditoSaldo.Body -match '"somenteLeitura"\s*:\s*true' -and $creditoSaldo.Body -match '"consistente"\s*:\s*false') "saldo sintetico deve sinalizar inconsistencia local"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin creditos saldo" -Body $creditoSaldo.Body
+
+  $creditoMovimentos = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/movimentos?page=0&size=10" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin creditos movimentos" ($creditoMovimentos.Status -eq 200 -and $creditoMovimentos.Body -match '"somenteLeitura"\s*:\s*true' -and $creditoMovimentos.Body -match 'AJUSTE') "ledger sintetico deve ser listado"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin creditos movimentos" -Body $creditoMovimentos.Body
+
+  $creditoConsistencia = Invoke-LocalHttp -Path "/api/admin/creditos/consistencia" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin creditos consistencia" ($creditoConsistencia.Status -eq 200 -and $creditoConsistencia.Body -match 'SALDO_INCONSISTENTE' -and $creditoConsistencia.Body -match 'CREDITO_SEM_PAGAMENTO' -and $creditoConsistencia.Body -match 'PAGAMENTO_APROVADO_SEM_CREDITO') "inconsistencias sinteticas de creditos devem ser detectadas"
+  Add-Check "admin creditos consistencia pendencias" ($creditoConsistencia.Body -match 'REGRA_AJUSTE_CREDITO_PENDENTE' -and $creditoConsistencia.Body -match 'PAGAMENTO_NAO_CONFIRMADO') "pendencias financeiras locais devem ser sinalizadas"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin creditos consistencia" -Body $creditoConsistencia.Body
+
+  $creditoInconsistencias = Invoke-LocalHttp -Path "/api/admin/creditos/inconsistencias" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin creditos inconsistencias" ($creditoInconsistencias.Status -eq 200 -and $creditoInconsistencias.Body -match '"total"\s*:\s*[1-9]') "endpoint dedicado deve listar alertas locais"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin creditos inconsistencias" -Body $creditoInconsistencias.Body
+
+  foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
+    $creditosEscrita = Invoke-LocalHttp -Path "/api/admin/creditos/consistencia" -ExpectedStatus 405 -Method $method -Body "{}" -Session $adminSession
+    Add-Check "creditos sem metodo $method" ($creditosEscrita.Status -in @(400, 403, 404, 405)) "status obtido: $($creditosEscrita.Status); creditos nao deve possuir endpoint $method"
+  }
+
+  $pagamentoEfiId = "00000000-0000-4000-8000-000000000721"
+  $pagamentosLista = Invoke-LocalHttp -Path "/api/admin/pagamentos?page=0&size=10" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin pagamentos lista" ($pagamentosLista.Status -eq 200 -and $pagamentosLista.Body -match '"somenteLeitura"\s*:\s*true' -and $pagamentosLista.Body -match 'EFI' -and $pagamentosLista.Body -match 'MERCADO_PAGO_LEGADO') "pagamentos sinteticos devem ser listados"
+  Add-Check "admin pagamentos lista sem acao real" ($pagamentosLista.Body -notmatch 'copiaECole|qrCode|checkout|cobrancaRealDisponivel"\s*:\s*true') "lista nao deve expor checkout, QR Code ou cobranca real"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin pagamentos lista" -Body $pagamentosLista.Body
+
+  $pagamentoDetalhe = Invoke-LocalHttp -Path "/api/admin/pagamentos/$pagamentoEfiId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin pagamento detalhe efi" ($pagamentoDetalhe.Status -eq 200 -and $pagamentoDetalhe.Body -match '"provedorClassificado"\s*:\s*"EFI"' -and $pagamentoDetalhe.Body -match '"creditoVinculado"\s*:\s*true') "detalhe deve classificar Efi com credito vinculado"
+  Add-Check "admin pagamento detalhe somente leitura" ($pagamentoDetalhe.Body -match '"payloadSensivelOculto"\s*:\s*true' -and $pagamentoDetalhe.Body -match '"pixEfiRealExecutado"\s*:\s*false' -and $pagamentoDetalhe.Body -match '"webhookRealProcessado"\s*:\s*false') "detalhe nao deve executar Pix/Efi ou webhook real"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin pagamento detalhe" -Body $pagamentoDetalhe.Body
+
+  $pagamentoConsistencia = Invoke-LocalHttp -Path "/api/admin/pagamentos/consistencia" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin pagamentos consistencia" ($pagamentoConsistencia.Status -eq 200 -and $pagamentoConsistencia.Body -match 'PAGAMENTO_SEM_TXID' -and $pagamentoConsistencia.Body -match 'PAGAMENTO_APROVADO_SEM_CREDITO' -and $pagamentoConsistencia.Body -match 'CREDITO_SEM_PAGAMENTO') "inconsistencias sinteticas de pagamentos devem ser detectadas"
+  Add-Check "admin pagamentos evidencias" ($pagamentoConsistencia.Body -match 'PAGAMENTO_MERCADO_PAGO_LEGADO' -and $pagamentoConsistencia.Body -match 'PAGAMENTO_PROVEDOR_DESCONHECIDO' -and $pagamentoConsistencia.Body -match 'STATUS_PAGAMENTO_INCONSISTENTE' -and $pagamentoConsistencia.Body -match 'EVENTO_WEBHOOK_DUPLICADO' -and $pagamentoConsistencia.Body -match 'PAGAMENTO_PAYLOAD_SENSIVEL_OCULTO') "evidencias e politicas de provedor devem ser sinalizadas"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin pagamentos consistencia" -Body $pagamentoConsistencia.Body
+
+  $pagamentoInconsistencias = Invoke-LocalHttp -Path "/api/admin/pagamentos/inconsistencias" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin pagamentos inconsistencias" ($pagamentoInconsistencias.Status -eq 200 -and $pagamentoInconsistencias.Body -match '"total"\s*:\s*[1-9]') "endpoint dedicado deve listar alertas locais"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin pagamentos inconsistencias" -Body $pagamentoInconsistencias.Body
+
+  foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
+    $pagamentosEscrita = Invoke-LocalHttp -Path "/api/admin/pagamentos/consistencia" -ExpectedStatus 405 -Method $method -Body "{}" -Session $adminSession
+    Add-Check "pagamentos sem metodo $method" ($pagamentosEscrita.Status -in @(400, 403, 404, 405)) "status obtido: $($pagamentosEscrita.Status); pagamentos nao deve possuir endpoint $method"
+  }
+
+  $desempenhoAnuncioId = "00000000-0000-4000-8000-000000000501"
+  $desempenhoSemMetricasId = "00000000-0000-4000-8000-000000000511"
+  $desempenhoUsuarioId = "00000000-0000-4000-8000-000000000101"
+  $desempenhoAnuncio = Invoke-LocalHttp -Path "/api/admin/desempenho/anuncios/$desempenhoAnuncioId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin desempenho anuncio" ($desempenhoAnuncio.Status -eq 200 -and $desempenhoAnuncio.Body -match '"visualizacoesTotal"\s*:\s*220' -and $desempenhoAnuncio.Body -match '"cliquesWhatsappTotal"\s*:\s*32' -and $desempenhoAnuncio.Body -match '"taxaCliqueView"\s*:\s*0\.1455') "ADMIN deve ler prova de resultado sintetica"
+  Add-Check "admin desempenho sem promessa" ($desempenhoAnuncio.Body -match '"promessaResultadoGarantido"\s*:\s*false' -and $desempenhoAnuncio.Body -match '"gratuitoLimitado"\s*:\s*false') "Premium nao deve prometer resultado nem limitar gratuito"
+  Add-Check "admin desempenho comparativo premium" ($desempenhoAnuncio.Body -match '"visualizacoesComPremium"\s*:\s*180' -and $desempenhoAnuncio.Body -match '"visualizacoesOrganicas"\s*:\s*40') "comparativo deve separar organico e Premium sintetico"
+  Add-Check "admin desempenho sem tracking externo" ($desempenhoAnuncio.Body -match '"trackingExternoExecutado"\s*:\s*false' -and -not ($desempenhoAnuncio.Body -match 'pixel|visitanteHash|ipHash|userAgentHash|refererHash|telefoneNormalizado|whatsappNormalizado|storageProvider|bucket|chaveObjeto|pagamentoId|saldoProjetado')) "endpoint deve ser local, sanitizado e sem pixel externo"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho anuncio" -Body $desempenhoAnuncio.Body
+
+  $desempenhoDiario = Invoke-LocalHttp -Path "/api/admin/desempenho/anuncios/$desempenhoAnuncioId/diario" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin desempenho diario" ($desempenhoDiario.Status -eq 200 -and $desempenhoDiario.Body -match '"premiumAtivo"\s*:\s*true' -and $desempenhoDiario.Body -match '"premiumAtivo"\s*:\s*false') "serie diaria deve evidenciar dias organicos e Premium"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho diario" -Body $desempenhoDiario.Body
+
+  $desempenhoOrigens = Invoke-LocalHttp -Path "/api/admin/desempenho/anuncios/$desempenhoAnuncioId/origens" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin desempenho origens" ($desempenhoOrigens.Status -eq 200 -and $desempenhoOrigens.Body -match 'Cidade Sintetica' -and $desempenhoOrigens.Body -match 'Bairro Sintetico') "origens devem usar cidade/bairro sanitizados"
+  Add-Check "admin desempenho origens sem bruto" (-not ($desempenhoOrigens.Body -match 'hash|ipHash|userAgent|referer|visitante')) "origens nao devem expor identificador bruto"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho origens" -Body $desempenhoOrigens.Body
+
+  $desempenhoAnunciante = Invoke-LocalHttp -Path "/api/admin/desempenho/anunciantes/$desempenhoUsuarioId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin desempenho anunciante" ($desempenhoAnunciante.Status -eq 200 -and $desempenhoAnunciante.Body -match '"anunciosTotal"\s*:\s*[1-9]' -and $desempenhoAnunciante.Body -match '"endpointAnuncianteRealDisponivel"\s*:\s*false') "visao por anunciante deve ser futura/read-only"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho anunciante" -Body $desempenhoAnunciante.Body
+
+  $desempenhoResumo = Invoke-LocalHttp -Path "/api/admin/desempenho/resumo" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin desempenho resumo" ($desempenhoResumo.Status -eq 200 -and $desempenhoResumo.Body -match '"somenteLeitura"\s*:\s*true' -and $desempenhoResumo.Body -match '"trackingExternoExecutado"\s*:\s*false') "resumo deve ser agregado e local"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho resumo" -Body $desempenhoResumo.Body
+
+  $desempenhoVazio = Invoke-LocalHttp -Path "/api/admin/desempenho/anuncios/$desempenhoSemMetricasId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin desempenho fallback vazio" ($desempenhoVazio.Status -eq 200 -and $desempenhoVazio.Body -match '"visualizacoesTotal"\s*:\s*0' -and $desempenhoVazio.Body -match '"cliquesWhatsappTotal"\s*:\s*0') "anuncio sem metrica deve retornar estado vazio estavel"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho vazio" -Body $desempenhoVazio.Body
+
+  foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
+    $desempenhoEscrita = Invoke-LocalHttp -Path "/api/admin/desempenho/resumo" -ExpectedStatus 405 -Method $method -Body "{}" -Session $adminSession
+    Add-Check "desempenho sem metodo $method" ($desempenhoEscrita.Status -in @(400, 403, 404, 405)) "status obtido: $($desempenhoEscrita.Status); desempenho deve ser read-only"
   }
 
   $revisaoReprovarId = "00000000-0000-4000-8000-000000000802"
@@ -721,6 +812,10 @@ if (-not $SemDadosSinteticos) {
   Add-Check "moderador acessa anuncios" ((Invoke-LocalHttp -Path "/api/admin/anuncios/resumo" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler anuncios"
   Add-Check "moderador acessa anuncios detalhados" ((Invoke-LocalHttp -Path "/api/admin/anuncios?page=0&size=2" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve listar anuncios"
   Add-Check "moderador acessa premium readonly" ((Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$anuncioPremiumId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler status premium sanitizado"
+  Add-Check "moderador acessa desempenho de anuncio" ((Invoke-LocalHttp -Path "/api/admin/desempenho/anuncios/$desempenhoAnuncioId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR pode ler desempenho basico de anuncio"
+  Add-Check "moderador sem desempenho agregado comercial" ((Invoke-LocalHttp -Path "/api/admin/desempenho/resumo" -ExpectedStatus 403 -Method "GET" -Session $moderadorSession).Status -eq 403) "MODERADOR nao deve acessar resumo comercial agregado"
+  Add-Check "moderador sem creditos admin" ((Invoke-LocalHttp -Path "/api/admin/creditos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $moderadorSession).Status -eq 403) "MODERADOR nao deve acessar creditos"
+  Add-Check "moderador sem pagamentos admin" ((Invoke-LocalHttp -Path "/api/admin/pagamentos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $moderadorSession).Status -eq 403) "MODERADOR nao deve acessar pagamentos"
   Add-Check "moderador acessa midias do anuncio" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId/midias" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midias do anuncio"
   Add-Check "moderador acessa midias detalhadas" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midia"
   Add-Check "moderador acessa revisao detalhada" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler revisao"
@@ -754,6 +849,10 @@ if (-not $SemDadosSinteticos) {
   Add-Check "comercial visao geral limitada" ($comercialVisaoGeral.Body -match '"moderacao"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"midias"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"sistema"\s*:\s*null') "COMERCIAL nao deve receber moderacao/midia/sistema"
   Add-Check "comercial acessa metricas" ((Invoke-LocalHttp -Path "/api/admin/metricas/resumo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler metricas agregadas"
   Add-Check "comercial acessa premium readonly" ((Invoke-LocalHttp -Path "/api/admin/premium/vencendo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler premium sem dado financeiro sensivel"
+  Add-Check "comercial acessa desempenho resumo" ((Invoke-LocalHttp -Path "/api/admin/desempenho/resumo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler desempenho agregado"
+  Add-Check "comercial acessa desempenho anunciante" ((Invoke-LocalHttp -Path "/api/admin/desempenho/anunciantes/$desempenhoUsuarioId" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler desempenho por anunciante sanitizado"
+  Add-Check "comercial sem creditos admin" ((Invoke-LocalHttp -Path "/api/admin/creditos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar ledger de creditos"
+  Add-Check "comercial sem pagamentos admin" ((Invoke-LocalHttp -Path "/api/admin/pagamentos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar pagamentos"
   $comercialAnuncios = Invoke-LocalHttp -Path "/api/admin/anuncios?page=0&size=2" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
   Add-Check "comercial acessa anuncios detalhados limitados" ($comercialAnuncios.Status -eq 200 -and $comercialAnuncios.Body -match '"comercialLimitado"\s*:\s*true') "COMERCIAL deve ler anuncios em versao limitada"
   $comercialDetalhe = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
@@ -779,6 +878,9 @@ if (-not $SemDadosSinteticos) {
   Add-Check "usuario sem resumo anuncios admin" ((Invoke-LocalHttp -Path "/api/admin/anuncios/resumo" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar resumo admin"
   Add-Check "usuario sem anuncios detalhados admin" ((Invoke-LocalHttp -Path "/api/admin/anuncios" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar admin detalhado"
   Add-Check "usuario sem premium admin" ((Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar premium admin"
+  Add-Check "usuario sem desempenho admin" ((Invoke-LocalHttp -Path "/api/admin/desempenho/resumo" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar desempenho admin"
+  Add-Check "usuario sem creditos admin" ((Invoke-LocalHttp -Path "/api/admin/creditos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar creditos admin"
+  Add-Check "usuario sem pagamentos admin" ((Invoke-LocalHttp -Path "/api/admin/pagamentos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar pagamentos admin"
   Add-Check "usuario sem midia detalhada admin" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar midia admin"
   Add-Check "usuario sem outbox admin" ((Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar outbox"
   if (-not [string]::IsNullOrWhiteSpace($outboxId)) {

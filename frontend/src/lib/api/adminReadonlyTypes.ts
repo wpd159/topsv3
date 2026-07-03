@@ -316,3 +316,193 @@ export type AdminPremiumVencendoResumoDto = {
   calculadoEm: string | null;
   somenteLeitura: boolean;
 };
+
+export type AdminCreditoSaldoDto = {
+  usuarioId: string;
+  saldoProjetado: number | null;
+  saldoCalculadoMovimentos: number | null;
+  saldoUltimoMovimento: number | null;
+  totalMovimentos: number;
+  totalEntradas: number;
+  totalSaidas: number;
+  consistente: boolean;
+  codigosConsistencia: readonly string[];
+  atualizadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminCreditoMovimentoDto = {
+  id: string;
+  usuarioId: string;
+  tipo: string | null;
+  direcao: string | null;
+  quantidade: number | null;
+  saldoAntes: number | null;
+  saldoDepois: number | null;
+  origem: string | null;
+  referenciaTipo: string | null;
+  referenciaId: string | null;
+  chaveOperacionalPresente: boolean;
+  criadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminCreditoPaginaDto<T> = {
+  itens: readonly T[];
+  total: number;
+  pagina: number;
+  tamanho: number;
+  somenteLeitura: boolean;
+};
+
+export type AdminCreditoConsistenciaItemDto = {
+  usuarioId: string | null;
+  movimentoId: string | null;
+  pagamentoId: string | null;
+  codigo: string;
+  severidade: string;
+  mensagem: string;
+  detectadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminCreditoConsistenciaResumoDto = {
+  itens: readonly AdminCreditoConsistenciaItemDto[];
+  total: number;
+  calculadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminPagamentoListaItemDto = {
+  id: string;
+  usuarioId: string;
+  provedorDeclarado: string | null;
+  provedorClassificado: string | null;
+  metodo: string | null;
+  statusInterno: string | null;
+  statusOperacional: string | null;
+  quantidadeCreditos: number | null;
+  moeda: string | null;
+  evidenciaTransacaoPresente: boolean;
+  evidenciaTransacaoMascarada: string | null;
+  evidenciaProvedorPresente: boolean;
+  creditoVinculado: boolean;
+  criadoEm: string | null;
+  atualizadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminPagamentoDetalheDto = AdminPagamentoListaItemDto & {
+  eventosSanitizadosTotal: number;
+  webhooksSanitizadosTotal: number;
+  codigosConsistencia: readonly string[];
+  payloadSensivelOculto: boolean;
+  cobrancaRealDisponivel: boolean;
+  webhookRealProcessado: boolean;
+  pixEfiRealExecutado: boolean;
+};
+
+export type AdminPagamentoPaginaDto<T> = {
+  itens: readonly T[];
+  total: number;
+  pagina: number;
+  tamanho: number;
+  somenteLeitura: boolean;
+};
+
+export type AdminPagamentoConsistenciaItemDto = {
+  usuarioId: string | null;
+  pagamentoId: string | null;
+  movimentoCreditoId: string | null;
+  codigo: string;
+  severidade: string;
+  mensagem: string;
+  detectadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminPagamentoConsistenciaResumoDto = {
+  itens: readonly AdminPagamentoConsistenciaItemDto[];
+  total: number;
+  calculadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminDesempenhoDiarioDto = {
+  dataReferencia: string | null;
+  visualizacoes: number;
+  cliquesWhatsapp: number;
+  taxaCliqueView: number;
+  premiumAtivo: boolean;
+  somenteLeitura: boolean;
+};
+
+export type AdminDesempenhoOrigemDto = {
+  uf: string | null;
+  cidade: string | null;
+  bairro: string | null;
+  visualizacoes: number;
+  cliquesWhatsapp: number;
+  taxaCliqueView: number;
+  origemAgregada: boolean;
+  somenteLeitura: boolean;
+};
+
+export type AdminDesempenhoComparativoPremiumDto = {
+  visualizacoesOrganicas: number;
+  cliquesOrganicos: number;
+  taxaCliqueViewOrganica: number;
+  visualizacoesComPremium: number;
+  cliquesComPremium: number;
+  taxaCliqueViewPremium: number;
+  beneficiosExposicaoAtivos: readonly string[];
+  mensagemSegura: string;
+  promessaResultadoGarantido: boolean;
+  gratuitoLimitado: boolean;
+  somenteLeitura: boolean;
+};
+
+export type AdminDesempenhoAnuncioDto = {
+  anuncioId: string;
+  usuarioId: string | null;
+  slug: string | null;
+  titulo: string | null;
+  visualizacoesTotal: number;
+  cliquesWhatsappTotal: number;
+  taxaCliqueView: number;
+  diario: readonly AdminDesempenhoDiarioDto[];
+  origens: readonly AdminDesempenhoOrigemDto[];
+  comparativoPremium: AdminDesempenhoComparativoPremiumDto;
+  avisoResultado: string;
+  dadosSensiveisOcultos: boolean;
+  trackingExternoExecutado: boolean;
+  somenteLeitura: boolean;
+};
+
+export type AdminDesempenhoAnuncianteDto = {
+  usuarioId: string;
+  anunciosTotal: number;
+  visualizacoesTotal: number;
+  cliquesWhatsappTotal: number;
+  taxaCliqueView: number;
+  anuncios: readonly AdminDesempenhoAnuncioDto[];
+  avisoResultado: string;
+  endpointAnuncianteRealDisponivel: boolean;
+  dadosSensiveisOcultos: boolean;
+  somenteLeitura: boolean;
+};
+
+export type AdminDesempenhoResumoDto = {
+  anunciosComMetricas: number;
+  visualizacoesTotal: number;
+  cliquesWhatsappTotal: number;
+  taxaCliqueView: number;
+  visualizacoesOrganicas: number;
+  visualizacoesComPremium: number;
+  mensagemSegura: string;
+  calculadoEm: string | null;
+  trackingExternoExecutado: boolean;
+  gratuitoLimitado: boolean;
+  dadosSensiveisOcultos: boolean;
+  somenteLeitura: boolean;
+};

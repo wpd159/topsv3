@@ -17,6 +17,7 @@
 | Usuarios | `/admin/usuarios` | ADMIN |
 | Midia | `/admin/midia` | ADMIN, MODERADOR |
 | Premium | `/admin/premium` | ADMIN, COMERCIAL |
+| Desempenho | `/admin/desempenho` | ADMIN, COMERCIAL |
 | Creditos | `/admin/creditos` | ADMIN, COMERCIAL |
 | Financeiro | `/admin/financeiro` | ADMIN |
 | SEO | `/admin/seo` | ADMIN, COMERCIAL |
@@ -40,6 +41,11 @@ O frontend mostra papeis/permissoes, mas a fonte de autorizacao e sempre o backe
 | `GET /api/admin/midias/resumo` | ADMIN, MODERADOR |
 | `GET /api/admin/metricas/resumo` | ADMIN, COMERCIAL |
 | `GET /api/admin/sistema/status` | ADMIN |
+| `GET /api/admin/desempenho/anuncios/{id}` | ADMIN, MODERADOR, COMERCIAL |
+| `GET /api/admin/desempenho/anuncios/{id}/diario` | ADMIN, MODERADOR, COMERCIAL |
+| `GET /api/admin/desempenho/anuncios/{id}/origens` | ADMIN, MODERADOR, COMERCIAL |
+| `GET /api/admin/desempenho/anunciantes/{usuarioId}` | ADMIN, COMERCIAL |
+| `GET /api/admin/desempenho/resumo` | ADMIN, COMERCIAL |
 
 Todos retornam apenas dados agregados e somente leitura. Nenhum endpoint deste bloco executa escrita, aprovacao, reprovacao, exclusao, pagamento, credito, upload, Pix ou importador real.
 

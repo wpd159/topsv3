@@ -231,3 +231,16 @@ Regras consolidadas:
 - beneficios em grupo/pacote/campanha devem expirar de forma coerente no calculo;
 - se grupo expirou, todos os beneficios vinculados sao tratados como expirados;
 - inconsistencias sao reportadas, nao corrigidas automaticamente neste bloco.
+
+## Complemento Bloco 25 - desempenho e prova de resultado
+
+O Bloco 25 compara desempenho organico e Premium apenas como leitura local de exposicao/tendencia.
+
+Regras consolidadas:
+
+- Premium pode ampliar exposicao, mas nao garante contratacao;
+- Premium nao deve prometer lead, clique, contato ou retorno garantido;
+- gratuito nao recebe limite comercial artificial;
+- prova de resultado deve usar metricas agregadas e sanitizadas;
+- IP, User-Agent, referer bruto, hash interno, contato bruto, documento, storage, pagamento e credito ficam fora dos DTOs;
+- o painel admin pode exibir comparativo organico/Premium, mas nao pode acionar compra, pagamento, impulsionamento, exportacao, Pix/Efi, credito ou tracking externo.

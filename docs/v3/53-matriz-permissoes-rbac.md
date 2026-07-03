@@ -44,6 +44,16 @@ A matriz autoriza leitura local dos Blocos 14/15 e, no Bloco 16, apenas decisao 
 | `GET /api/admin/metricas/resumo` | sim | nao | sim | nao |
 | `GET /api/admin/sistema/status` | sim | nao | nao | nao |
 
+## Endpoints de desempenho read-only
+
+| Endpoint | ADMIN | MODERADOR | COMERCIAL | USUARIO |
+| --- | --- | --- | --- | --- |
+| `GET /api/admin/desempenho/anuncios/{id}` | sim | sim | sim | nao |
+| `GET /api/admin/desempenho/anuncios/{id}/diario` | sim | sim | sim | nao |
+| `GET /api/admin/desempenho/anuncios/{id}/origens` | sim | sim | sim | nao |
+| `GET /api/admin/desempenho/anunciantes/{usuarioId}` | sim | nao | sim | nao |
+| `GET /api/admin/desempenho/resumo` | sim | nao | sim | nao |
+
 ## Endpoints detalhados autorizados
 
 | Endpoint | ADMIN | MODERADOR | COMERCIAL | USUARIO |

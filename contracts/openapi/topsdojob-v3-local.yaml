@@ -839,6 +839,417 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/creditos/usuarios/{id}/saldo:
+    get:
+      summary: Saldo de creditos read-only
+      description: Retorna saldo projetado e calculado de usuario sintetico/local para ADMIN com FINANCEIRO_LER. Nao compra, nao ajusta, nao estorna, nao concilia, nao chama Pix/Efi e nao retorna txid, payload de pagamento, documento, telefone ou dado financeiro sensivel.
+      operationId: getAdminCreditoSaldo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: saldo de creditos sanitizado e somente leitura
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreditoSaldo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/creditos/usuarios/{id}/movimentos:
+    get:
+      summary: Ledger de creditos read-only
+      description: Lista movimentos de credito sanitizados em ordem decrescente. Nao retorna chave operacional bruta, txid, valor pago, payload Pix/Efi, contato ou documento privado.
+      operationId: getAdminCreditoMovimentos
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: pagina sanitizada do ledger de creditos
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreditoPaginaMovimentos"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/creditos/consistencia:
+    get:
+      summary: Consistencia de creditos read-only
+      description: Retorna alertas locais de consistencia entre saldo, ledger e pagamentos sinteticos. Nao altera saldo, nao processa pagamento, nao executa conciliacao real, nao agenda worker e nao chama Pix/Efi.
+      operationId: getAdminCreditoConsistencia
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: resumo de consistencia de creditos
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreditoConsistenciaResumo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/creditos/inconsistencias:
+    get:
+      summary: Inconsistencias de creditos read-only
+      description: Alias operacional para listar apenas alertas locais de creditos/ledger. Mantem ADMIN-only e nao executa qualquer acao financeira.
+      operationId: getAdminCreditoInconsistencias
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: inconsistencias locais de creditos
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreditoConsistenciaResumo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/pagamentos:
+    get:
+      summary: Pagamentos read-only
+      description: Lista pagamentos sinteticos/locais sanitizados para ADMIN com FINANCEIRO_LER. Nao cobra, nao gera Pix, nao consulta Efi, nao processa webhook, nao concilia e nao retorna valor pago, evidencia bruta de transacao ou payload financeiro.
+      operationId: getAdminPagamentos
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: pagina sanitizada de pagamentos locais
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPagamentoPagina"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/pagamentos/{id}:
+    get:
+      summary: Detalhe de pagamento read-only
+      description: Retorna detalhe sanitizado de pagamento local. Nao executa cobranca, Pix/Efi, webhook, conciliacao, credito, estorno ou mutation financeira.
+      operationId: getAdminPagamentoDetalhe
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: detalhe sanitizado de pagamento local
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPagamentoDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/pagamentos/consistencia:
+    get:
+      summary: Consistencia de pagamentos read-only
+      description: Retorna alertas locais de consistencia entre pagamentos, evidencias sanitizadas, ledger e conciliacao sintetica. Nao executa processamento financeiro real.
+      operationId: getAdminPagamentoConsistencia
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: resumo de consistencia de pagamentos
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPagamentoConsistenciaResumo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/pagamentos/inconsistencias:
+    get:
+      summary: Inconsistencias de pagamentos read-only
+      description: Alias operacional para listar alertas locais de pagamentos. Mantem ADMIN-only e nao executa cobranca, webhook, conciliacao ou credito real.
+      operationId: getAdminPagamentoInconsistencias
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: inconsistencias locais de pagamentos
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPagamentoConsistenciaResumo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/desempenho/anuncios/{id}:
+    get:
+      summary: Desempenho read-only de anuncio
+      description: Retorna prova de resultado local e sanitizada para um anuncio, com visualizacoes, cliques WhatsApp permitidos, taxa clique/view, origens agregadas e comparativo organico/Premium. Nao expoe IP, User-Agent, hash interno, referer bruto, telefone/WhatsApp bruto, storage, pagamento ou credito. Nao executa pixel, tracking externo, cobranca, impulsionamento ou mutacao.
+      operationId: getAdminDesempenhoAnuncio
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: desempenho sanitizado do anuncio
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDesempenhoAnuncio"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/desempenho/anuncios/{id}/diario:
+    get:
+      summary: Serie diaria de desempenho read-only
+      description: Lista agregados diarios locais de visualizacoes e cliques WhatsApp, marcando dias com beneficio Premium ativo. Nao retorna eventos brutos, IP, User-Agent, hash interno ou referer bruto.
+      operationId: getAdminDesempenhoAnuncioDiario
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: serie diaria sanitizada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminDesempenhoDiario"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/desempenho/anuncios/{id}/origens:
+    get:
+      summary: Origens agregadas de desempenho read-only
+      description: Retorna origem, cidade, bairro, UF e totais agregados de visualizacoes/cliques. Os dados sao sanitizados e nao expoem referer bruto, IP, User-Agent, hash ou identificador de visitante.
+      operationId: getAdminDesempenhoAnuncioOrigens
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: origens agregadas sanitizadas
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminDesempenhoOrigem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/desempenho/anunciantes/{usuarioId}:
+    get:
+      summary: Desempenho agregado por anunciante read-only
+      description: Retorna desempenho agregado local e sanitizado por anunciante para uso administrativo futuro. Mantem endpoint real de anunciante indisponivel nesta fase e nao expoe contato, documento, pagamento, credito ou dado pessoal bruto.
+      operationId: getAdminDesempenhoAnunciante
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: usuarioId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: desempenho agregado do anunciante
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDesempenhoAnunciante"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/desempenho/resumo:
+    get:
+      summary: Resumo agregado de desempenho read-only
+      description: Retorna totais locais agregados de anuncios com metricas, visualizacoes, cliques WhatsApp permitidos e comparativo Premium. Nao garante resultado, nao limita gratuito, nao executa tracking externo e nao dispara acao comercial.
+      operationId: getAdminDesempenhoResumo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: resumo agregado sanitizado
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDesempenhoResumo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}/remeter-revisao:
     post:
       summary: Remete anuncio para revisao local
@@ -2134,6 +2545,601 @@ components:
         somenteLeitura:
           type: boolean
           const: true
+    AdminCreditoSaldo:
+      type: object
+      additionalProperties: false
+      properties:
+        usuarioId:
+          type: string
+          format: uuid
+        saldoProjetado:
+          type:
+            - integer
+            - "null"
+        saldoCalculadoMovimentos:
+          type:
+            - integer
+            - "null"
+        saldoUltimoMovimento:
+          type:
+            - integer
+            - "null"
+        totalMovimentos:
+          type: integer
+        totalEntradas:
+          type: integer
+        totalSaidas:
+          type: integer
+        consistente:
+          type: boolean
+        codigosConsistencia:
+          type: array
+          items:
+            type: string
+        atualizadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+        txid:
+          not: {}
+          description: Campo proibido.
+        payloadPagamento:
+          not: {}
+          description: Campo proibido.
+        chaveOperacionalBruta:
+          not: {}
+          description: Campo proibido.
+    AdminCreditoMovimento:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        usuarioId:
+          type: string
+          format: uuid
+        tipo:
+          type:
+            - string
+            - "null"
+          enum:
+            - ENTRADA
+            - SAIDA
+            - AJUSTE
+            - ESTORNO
+            - null
+        direcao:
+          type:
+            - string
+            - "null"
+          enum:
+            - CREDITO
+            - DEBITO
+            - null
+        quantidade:
+          type:
+            - integer
+            - "null"
+        saldoAntes:
+          type:
+            - integer
+            - "null"
+        saldoDepois:
+          type:
+            - integer
+            - "null"
+        origem:
+          type:
+            - string
+            - "null"
+          enum:
+            - PAGAMENTO
+            - BENEFICIO
+            - AJUSTE_ADMIN
+            - ESTORNO
+            - IMPORTACAO
+            - CAMPANHA
+            - null
+        referenciaTipo:
+          type:
+            - string
+            - "null"
+        referenciaId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        chaveOperacionalPresente:
+          type: boolean
+          description: Indica existencia de chave operacional sem retornar seu conteudo.
+        criadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminCreditoPaginaMovimentos:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCreditoMovimento"
+        total:
+          type: integer
+        pagina:
+          type: integer
+        tamanho:
+          type: integer
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminCreditoConsistenciaItem:
+      type: object
+      additionalProperties: false
+      properties:
+        usuarioId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        movimentoId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        pagamentoId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        codigo:
+          type: string
+          enum:
+            - CREDITO_OK
+            - SALDO_INCONSISTENTE
+            - MOVIMENTO_SEM_ORIGEM
+            - IDEMPOTENCY_KEY_DUPLICADA
+            - CREDITO_SEM_PAGAMENTO
+            - PAGAMENTO_APROVADO_SEM_CREDITO
+            - REGRA_AJUSTE_CREDITO_PENDENTE
+            - QUANTIDADE_INVALIDA
+            - SALDO_NEGATIVO
+            - PAGAMENTO_NAO_CONFIRMADO
+        severidade:
+          type: string
+        mensagem:
+          type: string
+        detectadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminCreditoConsistenciaResumo:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCreditoConsistenciaItem"
+        total:
+          type: integer
+        calculadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminPagamentoListaItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        usuarioId:
+          type: string
+          format: uuid
+        provedorDeclarado:
+          type:
+            - string
+            - "null"
+          enum:
+            - EFI
+            - MERCADO_PAGO_LEGADO
+            - OUTRO_LEGADO
+            - DESCONHECIDO
+            - null
+        provedorClassificado:
+          type:
+            - string
+            - "null"
+          enum:
+            - EFI
+            - MERCADO_PAGO_LEGADO
+            - OUTRO_LEGADO
+            - DESCONHECIDO
+            - null
+        metodo:
+          type:
+            - string
+            - "null"
+          enum:
+            - PIX
+            - LEGADO
+            - DESCONHECIDO
+            - null
+        statusInterno:
+          type:
+            - string
+            - "null"
+        statusOperacional:
+          type:
+            - string
+            - "null"
+          description: Status textual sanitizado do provedor, sem payload ou identificador bruto.
+        quantidadeCreditos:
+          type:
+            - integer
+            - "null"
+        moeda:
+          type:
+            - string
+            - "null"
+        evidenciaTransacaoPresente:
+          type: boolean
+        evidenciaTransacaoMascarada:
+          type:
+            - string
+            - "null"
+        evidenciaProvedorPresente:
+          type: boolean
+        creditoVinculado:
+          type: boolean
+        criadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        atualizadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminPagamentoDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/AdminPagamentoListaItem"
+        - type: object
+          additionalProperties: false
+          properties:
+            eventosSanitizadosTotal:
+              type: integer
+            webhooksSanitizadosTotal:
+              type: integer
+            codigosConsistencia:
+              type: array
+              items:
+                type: string
+            payloadSensivelOculto:
+              type: boolean
+              const: true
+            cobrancaRealDisponivel:
+              type: boolean
+              const: false
+            webhookRealProcessado:
+              type: boolean
+              const: false
+            pixEfiRealExecutado:
+              type: boolean
+              const: false
+    AdminPagamentoPagina:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPagamentoListaItem"
+        total:
+          type: integer
+        pagina:
+          type: integer
+        tamanho:
+          type: integer
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminPagamentoConsistenciaItem:
+      type: object
+      additionalProperties: false
+      properties:
+        usuarioId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        pagamentoId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        movimentoCreditoId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        codigo:
+          type: string
+          enum:
+            - PAGAMENTO_OK
+            - PAGAMENTO_SEM_PROVEDOR
+            - PAGAMENTO_SEM_TXID
+            - PAGAMENTO_DUPLICADO
+            - PAGAMENTO_APROVADO_SEM_CREDITO
+            - CREDITO_SEM_PAGAMENTO
+            - STATUS_PAGAMENTO_INCONSISTENTE
+            - EVENTO_WEBHOOK_DUPLICADO
+            - PAGAMENTO_EFI_NAO_CONFIRMADO
+            - PAGAMENTO_MERCADO_PAGO_LEGADO
+            - PAGAMENTO_PROVEDOR_DESCONHECIDO
+            - PAGAMENTO_PAYLOAD_SENSIVEL_OCULTO
+        severidade:
+          type: string
+        mensagem:
+          type: string
+        detectadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminPagamentoConsistenciaResumo:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPagamentoConsistenciaItem"
+        total:
+          type: integer
+        calculadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminDesempenhoDiario:
+      type: object
+      additionalProperties: false
+      properties:
+        data:
+          type: string
+          format: date
+        visualizacoes:
+          type: integer
+        cliquesWhatsapp:
+          type: integer
+        taxaCliqueView:
+          type: number
+          format: double
+        premiumAtivo:
+          type: boolean
+        origemDados:
+          type: string
+          description: Fonte local agregada ou fallback local, sem evento bruto.
+    AdminDesempenhoOrigem:
+      type: object
+      additionalProperties: false
+      properties:
+        origem:
+          type: string
+        uf:
+          type:
+            - string
+            - "null"
+        cidade:
+          type:
+            - string
+            - "null"
+        bairro:
+          type:
+            - string
+            - "null"
+        visualizacoes:
+          type: integer
+        cliquesWhatsapp:
+          type: integer
+        taxaCliqueView:
+          type: number
+          format: double
+        dadosSensiveisOcultos:
+          type: boolean
+          const: true
+    AdminDesempenhoComparativoPremium:
+      type: object
+      additionalProperties: false
+      properties:
+        visualizacoesComPremium:
+          type: integer
+        visualizacoesOrganicas:
+          type: integer
+        cliquesComPremium:
+          type: integer
+        cliquesOrganicos:
+          type: integer
+        taxaCliqueViewComPremium:
+          type: number
+          format: double
+        taxaCliqueViewOrganica:
+          type: number
+          format: double
+        beneficiosConsiderados:
+          type: array
+          items:
+            type: string
+        promessaResultadoGarantido:
+          type: boolean
+          const: false
+        gratuitoLimitado:
+          type: boolean
+          const: false
+        mensagemSegura:
+          type: string
+          description: Texto sem promessa de resultado garantido.
+    AdminDesempenhoAnuncio:
+      type: object
+      additionalProperties: false
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
+        slug:
+          type:
+            - string
+            - "null"
+        titulo:
+          type:
+            - string
+            - "null"
+        status:
+          type:
+            - string
+            - "null"
+        classificacaoConteudo:
+          type:
+            - string
+            - "null"
+          enum:
+            - LIVRE
+            - BLOQUEADO
+            - null
+        premiumAtivo:
+          type: boolean
+        visualizacoesTotal:
+          type: integer
+        cliquesWhatsappTotal:
+          type: integer
+        taxaCliqueView:
+          type: number
+          format: double
+        periodoInicio:
+          type:
+            - string
+            - "null"
+          format: date
+        periodoFim:
+          type:
+            - string
+            - "null"
+          format: date
+        diario:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDesempenhoDiario"
+        origens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDesempenhoOrigem"
+        comparativoPremium:
+          $ref: "#/components/schemas/AdminDesempenhoComparativoPremium"
+        somenteLeitura:
+          type: boolean
+          const: true
+        dadosSensiveisOcultos:
+          type: boolean
+          const: true
+        trackingExternoExecutado:
+          type: boolean
+          const: false
+    AdminDesempenhoAnunciante:
+      type: object
+      additionalProperties: false
+      properties:
+        usuarioId:
+          type: string
+          format: uuid
+        anunciosTotal:
+          type: integer
+        anunciosComMetricas:
+          type: integer
+        visualizacoesTotal:
+          type: integer
+        cliquesWhatsappTotal:
+          type: integer
+        taxaCliqueView:
+          type: number
+          format: double
+        anuncios:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDesempenhoAnuncio"
+        somenteLeitura:
+          type: boolean
+          const: true
+        dadosSensiveisOcultos:
+          type: boolean
+          const: true
+        endpointAnuncianteRealDisponivel:
+          type: boolean
+          const: false
+    AdminDesempenhoResumo:
+      type: object
+      additionalProperties: false
+      properties:
+        anunciosComMetricas:
+          type: integer
+        visualizacoesTotal:
+          type: integer
+        cliquesWhatsappTotal:
+          type: integer
+        taxaCliqueView:
+          type: number
+          format: double
+        visualizacoesComPremium:
+          type: integer
+        visualizacoesOrganicas:
+          type: integer
+        cliquesComPremium:
+          type: integer
+        cliquesOrganicos:
+          type: integer
+        somenteLeitura:
+          type: boolean
+          const: true
+        dadosSensiveisOcultos:
+          type: boolean
+          const: true
+        trackingExternoExecutado:
+          type: boolean
+          const: false
+        promessaResultadoGarantido:
+          type: boolean
+          const: false
+        gratuitoLimitado:
+          type: boolean
+          const: false
     AdminMidiaListaItem:
       type: object
       additionalProperties: false

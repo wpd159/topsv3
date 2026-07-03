@@ -5,6 +5,19 @@ import type {
   AdminBeneficioAnuncioDto,
   AdminAnuncioDetalheDto,
   AdminAnuncioListaItemDto,
+  AdminCreditoConsistenciaResumoDto,
+  AdminCreditoMovimentoDto,
+  AdminCreditoPaginaDto,
+  AdminCreditoSaldoDto,
+  AdminDesempenhoAnuncianteDto,
+  AdminDesempenhoAnuncioDto,
+  AdminDesempenhoDiarioDto,
+  AdminDesempenhoOrigemDto,
+  AdminDesempenhoResumoDto,
+  AdminPagamentoConsistenciaResumoDto,
+  AdminPagamentoDetalheDto,
+  AdminPagamentoListaItemDto,
+  AdminPagamentoPaginaDto,
   AdminDecidirMidiaRequestDto,
   AdminDecidirRevisaoRequestDto,
   AdminRemeterRevisaoRequestDto,
@@ -157,6 +170,60 @@ export function getAdminPremiumConsistencia(): Promise<AdminAuthResponse<AdminPr
 
 export function getAdminPremiumVencendo(): Promise<AdminAuthResponse<AdminPremiumVencendoResumoDto>> {
   return safeReadonlyFetch("/api/admin/premium/vencendo");
+}
+
+export function getAdminCreditoSaldo(id: string): Promise<AdminAuthResponse<AdminCreditoSaldoDto>> {
+  return safeReadonlyFetch(`/api/admin/creditos/usuarios/${encodeURIComponent(id)}/saldo`);
+}
+
+export function getAdminCreditoMovimentos(
+  id: string
+): Promise<AdminAuthResponse<AdminCreditoPaginaDto<AdminCreditoMovimentoDto>>> {
+  return safeReadonlyFetch(`/api/admin/creditos/usuarios/${encodeURIComponent(id)}/movimentos?page=0&size=10`);
+}
+
+export function getAdminCreditoConsistencia(): Promise<AdminAuthResponse<AdminCreditoConsistenciaResumoDto>> {
+  return safeReadonlyFetch("/api/admin/creditos/consistencia");
+}
+
+export function getAdminCreditoInconsistencias(): Promise<AdminAuthResponse<AdminCreditoConsistenciaResumoDto>> {
+  return safeReadonlyFetch("/api/admin/creditos/inconsistencias");
+}
+
+export function getAdminPagamentos(): Promise<AdminAuthResponse<AdminPagamentoPaginaDto<AdminPagamentoListaItemDto>>> {
+  return safeReadonlyFetch("/api/admin/pagamentos?page=0&size=10");
+}
+
+export function getAdminPagamentoDetalhe(id: string): Promise<AdminAuthResponse<AdminPagamentoDetalheDto>> {
+  return safeReadonlyFetch(`/api/admin/pagamentos/${encodeURIComponent(id)}`);
+}
+
+export function getAdminPagamentoConsistencia(): Promise<AdminAuthResponse<AdminPagamentoConsistenciaResumoDto>> {
+  return safeReadonlyFetch("/api/admin/pagamentos/consistencia");
+}
+
+export function getAdminPagamentoInconsistencias(): Promise<AdminAuthResponse<AdminPagamentoConsistenciaResumoDto>> {
+  return safeReadonlyFetch("/api/admin/pagamentos/inconsistencias");
+}
+
+export function getAdminDesempenhoAnuncio(id: string): Promise<AdminAuthResponse<AdminDesempenhoAnuncioDto>> {
+  return safeReadonlyFetch(`/api/admin/desempenho/anuncios/${encodeURIComponent(id)}`);
+}
+
+export function getAdminDesempenhoDiario(id: string): Promise<AdminAuthResponse<readonly AdminDesempenhoDiarioDto[]>> {
+  return safeReadonlyFetch(`/api/admin/desempenho/anuncios/${encodeURIComponent(id)}/diario`);
+}
+
+export function getAdminDesempenhoOrigens(id: string): Promise<AdminAuthResponse<readonly AdminDesempenhoOrigemDto[]>> {
+  return safeReadonlyFetch(`/api/admin/desempenho/anuncios/${encodeURIComponent(id)}/origens`);
+}
+
+export function getAdminDesempenhoAnunciante(id: string): Promise<AdminAuthResponse<AdminDesempenhoAnuncianteDto>> {
+  return safeReadonlyFetch(`/api/admin/desempenho/anunciantes/${encodeURIComponent(id)}`);
+}
+
+export function getAdminDesempenhoResumo(): Promise<AdminAuthResponse<AdminDesempenhoResumoDto>> {
+  return safeReadonlyFetch("/api/admin/desempenho/resumo");
 }
 
 async function safeReadonlyFetch<T>(path: string, init?: RequestInit): Promise<AdminAuthResponse<T>> {

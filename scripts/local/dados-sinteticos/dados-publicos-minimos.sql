@@ -24,6 +24,28 @@ INSERT INTO usuario (
   0
 ) ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO usuario (
+  id,
+  nome,
+  email_normalizado,
+  telefone_normalizado,
+  status,
+  tipo_conta,
+  criado_em,
+  atualizado_em,
+  versao
+) VALUES (
+  '00000000-0000-4000-8000-000000000102',
+  'Usuario Financeiro Sintetico Local',
+  NULL,
+  NULL,
+  'ATIVO',
+  'ANUNCIANTE',
+  now(),
+  now(),
+  0
+) ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO estado (
   id,
   uf,
@@ -469,6 +491,717 @@ INSERT INTO anuncio (
     now(),
     now(),
     NULL,
+    NULL,
+    0
+  )
+ON CONFLICT (id) DO NOTHING;
+
+-- Bloco 25 - prova de resultado/desempenho sintetica local.
+-- Nao representa tracking externo, Google Analytics, pixel, dado real, IP real, user-agent real, telefone real ou promessa de contratacao.
+
+INSERT INTO anuncio (
+  id,
+  usuario_id,
+  slug,
+  titulo,
+  descricao,
+  status,
+  status_moderacao,
+  categoria,
+  classificacao_conteudo,
+  preco,
+  whatsapp_normalizado,
+  publicado_em,
+  ultima_publicacao_em,
+  criado_em,
+  atualizado_em,
+  removido_em,
+  origem_importacao_id,
+  versao
+) VALUES (
+  '00000000-0000-4000-8000-000000000511',
+  '00000000-0000-4000-8000-000000000101',
+  'anuncio-sintetico-sem-metricas-local',
+  'Anuncio sintetico sem metricas local',
+  'Registro sintetico neutro para validar estado vazio de prova de resultado.',
+  'PUBLICADO',
+  'APROVADO',
+  'SINTETICO',
+  'LIVRE',
+  NULL,
+  '+5500000000000',
+  now() - interval '3 days',
+  now() - interval '3 days',
+  now() - interval '3 days',
+  now() - interval '3 days',
+  NULL,
+  NULL,
+  0
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO anuncio_localizacao (
+  anuncio_id,
+  estado_id,
+  cidade_id,
+  bairro_id,
+  endereco_resumido,
+  latitude,
+  longitude,
+  criado_em,
+  atualizado_em
+) VALUES (
+  '00000000-0000-4000-8000-000000000511',
+  '00000000-0000-4000-8000-000000000201',
+  '00000000-0000-4000-8000-000000000301',
+  '00000000-0000-4000-8000-000000000401',
+  'Endereco sintetico local',
+  NULL,
+  NULL,
+  now(),
+  now()
+) ON CONFLICT (anuncio_id) DO NOTHING;
+
+INSERT INTO documento_busca_anuncio (
+  anuncio_id,
+  texto_busca,
+  estado_id,
+  cidade_id,
+  bairro_id,
+  categoria,
+  preco,
+  status_publicacao,
+  tem_midia_valida,
+  beneficios_ranking_json,
+  ranking_base,
+  atualizado_em
+) VALUES (
+  '00000000-0000-4000-8000-000000000511',
+  'anuncio sintetico sem metricas local cidade sintetica bairro sintetico',
+  '00000000-0000-4000-8000-000000000201',
+  '00000000-0000-4000-8000-000000000301',
+  '00000000-0000-4000-8000-000000000401',
+  'SINTETICO',
+  NULL,
+  'PUBLICAVEL',
+  false,
+  '{}'::jsonb,
+  1,
+  now()
+) ON CONFLICT (anuncio_id) DO NOTHING;
+
+INSERT INTO evento_visualizacao (
+  id,
+  anuncio_id,
+  visitante_hash,
+  ip_hash,
+  user_agent_hash,
+  referer_hash,
+  origem_pais,
+  origem_uf,
+  origem_cidade,
+  dispositivo,
+  request_id,
+  criado_em
+) VALUES
+  ('00000000-0000-4000-8000-000000000801', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0801', 'ip-hash-sintetico-local-0801', 'ua-hash-sintetico-local-0801', 'referer-hash-sintetico-local-0801', 'BR', 'ZZ', 'Cidade Sintetica', 'DESKTOP', 'req-metrica-local-0801', now() - interval '3 days'),
+  ('00000000-0000-4000-8000-000000000802', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0802', 'ip-hash-sintetico-local-0802', 'ua-hash-sintetico-local-0802', 'referer-hash-sintetico-local-0802', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', 'req-metrica-local-0802', now() - interval '1 day'),
+  ('00000000-0000-4000-8000-000000000803', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0803', 'ip-hash-sintetico-local-0803', 'ua-hash-sintetico-local-0803', 'referer-hash-sintetico-local-0803', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', 'req-metrica-local-0803', now())
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO clique_whatsapp (
+  id,
+  anuncio_id,
+  visitante_hash,
+  ip_hash,
+  user_agent_hash,
+  origem_pais,
+  origem_uf,
+  origem_cidade,
+  dispositivo,
+  permitido,
+  motivo_bloqueio,
+  request_id,
+  criado_em
+) VALUES
+  ('00000000-0000-4000-8000-000000000811', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0811', 'ip-hash-sintetico-local-0811', 'ua-hash-sintetico-local-0811', 'BR', 'ZZ', 'Cidade Sintetica', 'DESKTOP', true, NULL, 'req-clique-local-0811', now() - interval '3 days'),
+  ('00000000-0000-4000-8000-000000000812', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0812', 'ip-hash-sintetico-local-0812', 'ua-hash-sintetico-local-0812', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', true, NULL, 'req-clique-local-0812', now() - interval '1 day'),
+  ('00000000-0000-4000-8000-000000000813', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0813', 'ip-hash-sintetico-local-0813', 'ua-hash-sintetico-local-0813', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', true, NULL, 'req-clique-local-0813', now())
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO agregado_visualizacao_diaria (
+  id,
+  anuncio_id,
+  data_referencia,
+  origem_uf,
+  origem_cidade,
+  origem_uf_chave,
+  origem_cidade_chave,
+  total_visualizacoes,
+  visitantes_estimados,
+  atualizado_em
+) VALUES
+  ('00000000-0000-4000-8000-000000000821', '00000000-0000-4000-8000-000000000501', current_date - 3, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 40, 25, now()),
+  ('00000000-0000-4000-8000-000000000822', '00000000-0000-4000-8000-000000000501', current_date - 1, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 80, 45, now()),
+  ('00000000-0000-4000-8000-000000000823', '00000000-0000-4000-8000-000000000501', current_date, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 100, 60, now())
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO agregado_clique_whatsapp_diario (
+  id,
+  anuncio_id,
+  data_referencia,
+  origem_uf,
+  origem_cidade,
+  origem_uf_chave,
+  origem_cidade_chave,
+  total_cliques,
+  visitantes_estimados,
+  atualizado_em
+) VALUES
+  ('00000000-0000-4000-8000-000000000831', '00000000-0000-4000-8000-000000000501', current_date - 3, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 4, 4, now()),
+  ('00000000-0000-4000-8000-000000000832', '00000000-0000-4000-8000-000000000501', current_date - 1, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 12, 10, now()),
+  ('00000000-0000-4000-8000-000000000833', '00000000-0000-4000-8000-000000000501', current_date, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 16, 14, now())
+ON CONFLICT (id) DO NOTHING;
+
+-- Bloco 23 - dados sinteticos locais para creditos/ledger read-only.
+INSERT INTO pagamento (
+  id,
+  usuario_id,
+  plano_credito_id,
+  provedor,
+  metodo,
+  txid,
+  identificador_provedor,
+  valor,
+  moeda,
+  quantidade_creditos,
+  status_interno,
+  status_provedor,
+  expiracao_em,
+  aprovado_em,
+  cancelado_em,
+  creditado_em,
+  idempotency_key,
+  criado_em,
+  atualizado_em
+) VALUES
+  (
+    '00000000-0000-4000-8000-000000000691',
+    '00000000-0000-4000-8000-000000000101',
+    NULL,
+    'DESCONHECIDO',
+    'DESCONHECIDO',
+    NULL,
+    NULL,
+    10.00,
+    'BRL',
+    100,
+    'APROVADO',
+    'APROVADO_LOCAL_SINTETICO',
+    NULL,
+    now() - interval '2 hours',
+    NULL,
+    now() - interval '90 minutes',
+    'credito-sintetico-pagamento-ok',
+    now() - interval '2 hours',
+    now() - interval '90 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000692',
+    '00000000-0000-4000-8000-000000000101',
+    NULL,
+    'DESCONHECIDO',
+    'DESCONHECIDO',
+    NULL,
+    NULL,
+    20.00,
+    'BRL',
+    200,
+    'APROVADO',
+    'APROVADO_LOCAL_SINTETICO',
+    NULL,
+    now() - interval '1 hour',
+    NULL,
+    NULL,
+    'credito-sintetico-pagamento-sem-credito',
+    now() - interval '1 hour',
+    now() - interval '1 hour'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000693',
+    '00000000-0000-4000-8000-000000000101',
+    NULL,
+    'DESCONHECIDO',
+    'DESCONHECIDO',
+    NULL,
+    NULL,
+    5.00,
+    'BRL',
+    50,
+    'AGUARDANDO_PAGAMENTO',
+    'PENDENTE_LOCAL_SINTETICO',
+    now() + interval '1 hour',
+    NULL,
+    NULL,
+    NULL,
+    'credito-sintetico-pagamento-nao-confirmado',
+    now() - interval '30 minutes',
+    now() - interval '30 minutes'
+  )
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO movimento_credito (
+  id,
+  usuario_id,
+  tipo,
+  direcao,
+  quantidade,
+  saldo_antes,
+  saldo_depois,
+  origem,
+  referencia_tipo,
+  referencia_id,
+  idempotency_key,
+  ator_usuario_id,
+  observacao,
+  criado_em
+) VALUES
+  (
+    '00000000-0000-4000-8000-000000000681',
+    '00000000-0000-4000-8000-000000000101',
+    'ENTRADA',
+    'CREDITO',
+    100,
+    0,
+    100,
+    'PAGAMENTO',
+    'PAGAMENTO',
+    '00000000-0000-4000-8000-000000000691',
+    'credito-sintetico-ledger-pagamento-ok',
+    NULL,
+    'Credito sintetico local conciliado; sem pagamento real.',
+    now() - interval '2 hours'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000682',
+    '00000000-0000-4000-8000-000000000101',
+    'SAIDA',
+    'DEBITO',
+    30,
+    100,
+    70,
+    'BENEFICIO',
+    'ATIVACAO_BENEFICIO',
+    '00000000-0000-4000-8000-000000000661',
+    'credito-sintetico-ledger-beneficio',
+    NULL,
+    'Debito sintetico por beneficio local.',
+    now() - interval '110 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000683',
+    '00000000-0000-4000-8000-000000000101',
+    'ENTRADA',
+    'CREDITO',
+    10,
+    70,
+    80,
+    'CAMPANHA',
+    'CAMPANHA',
+    NULL,
+    'credito-sintetico-ledger-campanha',
+    NULL,
+    'Credito sintetico de campanha local.',
+    now() - interval '100 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000684',
+    '00000000-0000-4000-8000-000000000101',
+    'AJUSTE',
+    'CREDITO',
+    5,
+    80,
+    85,
+    'AJUSTE_ADMIN',
+    'AJUSTE_LOCAL',
+    NULL,
+    'credito-sintetico-ledger-ajuste',
+    '00000000-0000-4000-8000-000000000101',
+    'Ajuste sintetico para pendencia Pro; sem ajuste real.',
+    now() - interval '90 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000685',
+    '00000000-0000-4000-8000-000000000101',
+    'ENTRADA',
+    'CREDITO',
+    7,
+    85,
+    92,
+    'PAGAMENTO',
+    NULL,
+    NULL,
+    'credito-sintetico-ledger-sem-pagamento',
+    NULL,
+    'Credito sintetico sem pagamento vinculado para validar alerta.',
+    now() - interval '80 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000686',
+    '00000000-0000-4000-8000-000000000101',
+    'ENTRADA',
+    'CREDITO',
+    50,
+    92,
+    142,
+    'PAGAMENTO',
+    'PAGAMENTO',
+    '00000000-0000-4000-8000-000000000693',
+    'credito-sintetico-ledger-pagamento-pendente',
+    NULL,
+    'Credito sintetico vinculado a pagamento nao aprovado.',
+    now() - interval '70 minutes'
+  )
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO pagamento_conciliacao (
+  id,
+  pagamento_id,
+  movimento_credito_id,
+  origem,
+  status,
+  valor_confirmado,
+  creditos_confirmados,
+  aprovado_em,
+  creditado_em,
+  criado_em
+) VALUES (
+  '00000000-0000-4000-8000-000000000694',
+  '00000000-0000-4000-8000-000000000691',
+  '00000000-0000-4000-8000-000000000681',
+  'IMPORTACAO',
+  'CONCILIADO',
+  10.00,
+  100,
+  now() - interval '2 hours',
+  now() - interval '90 minutes',
+  now()
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO saldo_credito_usuario (
+  usuario_id,
+  saldo_atual,
+  atualizado_em,
+  versao
+) VALUES (
+  '00000000-0000-4000-8000-000000000101',
+  140,
+  now(),
+  1
+)
+ON CONFLICT (usuario_id) DO UPDATE SET
+  saldo_atual = EXCLUDED.saldo_atual,
+  atualizado_em = EXCLUDED.atualizado_em,
+  versao = EXCLUDED.versao;
+
+-- Bloco 24 - pagamentos sinteticos locais read-only.
+INSERT INTO pagamento (
+  id,
+  usuario_id,
+  plano_credito_id,
+  provedor,
+  metodo,
+  txid,
+  identificador_provedor,
+  valor,
+  moeda,
+  quantidade_creditos,
+  status_interno,
+  status_provedor,
+  expiracao_em,
+  aprovado_em,
+  cancelado_em,
+  creditado_em,
+  idempotency_key,
+  criado_em,
+  atualizado_em
+) VALUES
+  (
+    '00000000-0000-4000-8000-000000000721',
+    '00000000-0000-4000-8000-000000000102',
+    NULL,
+    'EFI',
+    'PIX',
+    'pix-efi-local-0721',
+    'efi-local-0721',
+    10.00,
+    'BRL',
+    100,
+    'APROVADO',
+    'CONCLUIDO_LOCAL_SINTETICO',
+    NULL,
+    now() - interval '25 minutes',
+    NULL,
+    now() - interval '20 minutes',
+    'pagamento-sintetico-efi-com-credito',
+    now() - interval '30 minutes',
+    now() - interval '20 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000722',
+    '00000000-0000-4000-8000-000000000102',
+    NULL,
+    'EFI',
+    'PIX',
+    'pix-efi-local-0722',
+    'efi-local-0722',
+    20.00,
+    'BRL',
+    200,
+    'APROVADO',
+    'CONCLUIDO_LOCAL_SINTETICO',
+    NULL,
+    now() - interval '22 minutes',
+    NULL,
+    NULL,
+    'pagamento-sintetico-aprovado-sem-credito',
+    now() - interval '24 minutes',
+    now() - interval '22 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000723',
+    '00000000-0000-4000-8000-000000000102',
+    NULL,
+    'MERCADO_PAGO_LEGADO',
+    'LEGADO',
+    NULL,
+    'mp-legado-local-0723',
+    0.00,
+    'BRL',
+    0,
+    'LEGADO',
+    'IMPORTADO_LEGADO_LOCAL',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    'pagamento-sintetico-mp-legado',
+    now() - interval '21 minutes',
+    now() - interval '21 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000724',
+    '00000000-0000-4000-8000-000000000102',
+    NULL,
+    'EFI',
+    'PIX',
+    NULL,
+    NULL,
+    5.00,
+    'BRL',
+    50,
+    'AGUARDANDO_PAGAMENTO',
+    'PENDENTE_LOCAL_SINTETICO',
+    now() + interval '2 hours',
+    NULL,
+    NULL,
+    NULL,
+    'pagamento-sintetico-efi-pendente',
+    now() - interval '18 minutes',
+    now() - interval '18 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000725',
+    '00000000-0000-4000-8000-000000000102',
+    NULL,
+    'DESCONHECIDO',
+    'DESCONHECIDO',
+    NULL,
+    NULL,
+    0.00,
+    'BRL',
+    0,
+    'AGUARDANDO_PAGAMENTO',
+    'PENDENTE_LOCAL_SINTETICO',
+    now() + interval '1 hour',
+    NULL,
+    NULL,
+    NULL,
+    'pagamento-sintetico-sem-provedor',
+    now() - interval '16 minutes',
+    now() - interval '16 minutes'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000726',
+    '00000000-0000-4000-8000-000000000102',
+    NULL,
+    'EFI',
+    'PIX',
+    'pix-efi-local-0726',
+    'efi-local-0726',
+    3.00,
+    'BRL',
+    30,
+    'APROVADO',
+    'PENDENTE_LOCAL_SINTETICO',
+    NULL,
+    now() - interval '15 minutes',
+    NULL,
+    NULL,
+    'pagamento-sintetico-status-inconsistente',
+    now() - interval '15 minutes',
+    now() - interval '15 minutes'
+  )
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO movimento_credito (
+  id,
+  usuario_id,
+  tipo,
+  direcao,
+  quantidade,
+  saldo_antes,
+  saldo_depois,
+  origem,
+  referencia_tipo,
+  referencia_id,
+  idempotency_key,
+  ator_usuario_id,
+  observacao,
+  criado_em
+) VALUES (
+  '00000000-0000-4000-8000-000000000731',
+  '00000000-0000-4000-8000-000000000102',
+  'ENTRADA',
+  'CREDITO',
+  100,
+  0,
+  100,
+  'PAGAMENTO',
+  'PAGAMENTO',
+  '00000000-0000-4000-8000-000000000721',
+  'pagamento-sintetico-ledger-efi',
+  NULL,
+  'Credito sintetico local vinculado a pagamento Efi; sem cobranca real.',
+  now() - interval '19 minutes'
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO pagamento_conciliacao (
+  id,
+  pagamento_id,
+  movimento_credito_id,
+  origem,
+  status,
+  valor_confirmado,
+  creditos_confirmados,
+  aprovado_em,
+  creditado_em,
+  criado_em
+) VALUES (
+  '00000000-0000-4000-8000-000000000741',
+  '00000000-0000-4000-8000-000000000721',
+  '00000000-0000-4000-8000-000000000731',
+  'WEBHOOK',
+  'CONCILIADO',
+  10.00,
+  100,
+  now() - interval '25 minutes',
+  now() - interval '20 minutes',
+  now()
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO saldo_credito_usuario (
+  usuario_id,
+  saldo_atual,
+  atualizado_em,
+  versao
+) VALUES (
+  '00000000-0000-4000-8000-000000000102',
+  100,
+  now(),
+  1
+)
+ON CONFLICT (usuario_id) DO UPDATE SET
+  saldo_atual = EXCLUDED.saldo_atual,
+  atualizado_em = EXCLUDED.atualizado_em,
+  versao = EXCLUDED.versao;
+
+INSERT INTO pagamento_evento (
+  id,
+  pagamento_id,
+  provedor,
+  provedor_evento_id,
+  tipo_evento,
+  payload_hash,
+  status_provedor,
+  recebido_em,
+  processado_em,
+  resultado
+) VALUES
+  (
+    '00000000-0000-4000-8000-000000000751',
+    '00000000-0000-4000-8000-000000000721',
+    'EFI',
+    'efi-evento-local-0751',
+    'PIX_CONCLUIDO_LOCAL',
+    'payload-hash-sintetico-efi-0751',
+    'CONCLUIDO_LOCAL_SINTETICO',
+    now() - interval '24 minutes',
+    now() - interval '23 minutes',
+    'EVENTO_SANITIZADO_LOCAL'
+  ),
+  (
+    '00000000-0000-4000-8000-000000000752',
+    '00000000-0000-4000-8000-000000000723',
+    'MERCADO_PAGO_LEGADO',
+    'mp-evento-local-0752',
+    'PAGAMENTO_LEGADO_IMPORTADO_LOCAL',
+    'payload-hash-sintetico-mp-0752',
+    'IMPORTADO_LEGADO_LOCAL',
+    now() - interval '20 minutes',
+    now() - interval '20 minutes',
+    'EVENTO_LEGADO_SANITIZADO_LOCAL'
+  )
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO pagamento_webhook (
+  id,
+  provedor,
+  evento_id,
+  txid,
+  payload_hash,
+  origem_ip_hash,
+  validacao_resultado,
+  recebido_em,
+  processado_em,
+  resultado,
+  erro_resumido,
+  tentativas
+) VALUES
+  (
+    '00000000-0000-4000-8000-000000000761',
+    'EFI',
+    'efi-webhook-local-0761',
+    'pix-efi-local-0721',
+    'payload-hash-sintetico-webhook-duplicado',
+    'ip-hash-sintetico-local',
+    'VALIDO',
+    now() - interval '24 minutes',
+    now() - interval '23 minutes',
+    'WEBHOOK_SANITIZADO_LOCAL',
+    NULL,
+    0
+  ),
+  (
+    '00000000-0000-4000-8000-000000000762',
+    'EFI',
+    'efi-webhook-local-0762',
+    'pix-efi-local-0721',
+    'payload-hash-sintetico-webhook-duplicado',
+    'ip-hash-sintetico-local',
+    'VALIDO',
+    now() - interval '23 minutes',
+    now() - interval '22 minutes',
+    'WEBHOOK_DUPLICADO_SANITIZADO_LOCAL',
     NULL,
     0
   )

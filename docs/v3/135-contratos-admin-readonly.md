@@ -26,6 +26,11 @@ Nao existe JWT, OAuth, token no corpo da resposta, localStorage ou sessionStorag
 | `/api/admin/premium/anuncios/{id}/beneficios` | GET | `AdminBeneficioAnuncioDto[]` |
 | `/api/admin/premium/consistencia` | GET | `AdminPremiumConsistenciaResumoDto` |
 | `/api/admin/premium/vencendo` | GET | `AdminPremiumVencendoResumoDto` |
+| `/api/admin/desempenho/anuncios/{id}` | GET | `AdminDesempenhoAnuncioDto` |
+| `/api/admin/desempenho/anuncios/{id}/diario` | GET | `AdminDesempenhoDiarioDto[]` |
+| `/api/admin/desempenho/anuncios/{id}/origens` | GET | `AdminDesempenhoOrigemDto[]` |
+| `/api/admin/desempenho/anunciantes/{usuarioId}` | GET | `AdminDesempenhoAnuncianteDto` |
+| `/api/admin/desempenho/resumo` | GET | `AdminDesempenhoResumoDto` |
 
 ## Respostas de erro
 
@@ -136,3 +141,17 @@ Contratos Premium read-only adicionais:
 - `AdminPremiumVencendoResumoDto`: beneficios vencendo na janela local.
 
 Esses DTOs nao podem retornar valor pago, saldo, credito real, payload de pagamento, telefone/WhatsApp bruto, documento privado, storage key, bucket, hash, URL privada ou auditoria bruta.
+
+## Complemento Bloco 25
+
+Contratos de desempenho read-only adicionais:
+
+- `AdminDesempenhoAnuncioDto`: totais de visualizacao, cliques WhatsApp permitidos, taxa clique/view, serie diaria, origens agregadas e comparativo Premium;
+- `AdminDesempenhoDiarioDto`: data, totais agregados, taxa clique/view e flag de Premium ativo;
+- `AdminDesempenhoOrigemDto`: origem, UF, cidade, bairro e totais agregados, sempre com `dadosSensiveisOcultos=true`;
+- `AdminDesempenhoAnuncianteDto`: agregacao administrativa por anunciante, com `endpointAnuncianteRealDisponivel=false`;
+- `AdminDesempenhoResumoDto`: resumo comercial agregado.
+
+Esses DTOs nao podem retornar IP, User-Agent, referer bruto, hash interno, contato bruto, documento, storage, pagamento, credito, Pix/Efi, saldo, txid, valor monetario, payload financeiro, pixel ou tracking externo.
+
+Premium no desempenho e apenas comparativo de exposicao/tendencia. Os DTOs devem manter `promessaResultadoGarantido=false` e `gratuitoLimitado=false`.

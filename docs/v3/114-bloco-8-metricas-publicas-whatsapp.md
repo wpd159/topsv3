@@ -96,3 +96,17 @@ O frontend:
 ## Fora do escopo
 
 Nao houve producao, VPS, banco de producao, dump, dado real, API externa, Efi real, OpenAI, admin funcional, autenticacao real, Pix/Efi funcional, financeiro funcional, moderacao real, importador real, migration nova ou SQL de schema novo.
+
+## Complemento Bloco 25 - prova de resultado
+
+O Bloco 25 usa as mesmas bases de metricas para leitura administrativa agregada e sanitizada.
+
+Regras adicionais:
+
+- respostas admin retornam visualizacoes, cliques WhatsApp permitidos, taxa clique/view, origem agregada e serie diaria;
+- eventos brutos continuam fora do DTO;
+- IP, User-Agent, referer bruto e hashes internos nao podem ser retornados;
+- origem deve ser agregada e sanitizada;
+- comparativo organico/Premium e informativo e nao garante resultado;
+- gratuito permanece sem limite comercial artificial de clique, contato ou WhatsApp;
+- nao ha pixel, tracking externo, exportacao, API externa ou dado real.

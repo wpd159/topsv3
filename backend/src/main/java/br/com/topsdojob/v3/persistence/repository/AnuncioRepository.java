@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoCont
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -23,6 +24,8 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     long countByClassificacaoConteudoAndRemovidoEmIsNull(ClassificacaoConteudo classificacaoConteudo);
 
     long countByWhatsappNormalizadoIsNotNullAndRemovidoEmIsNull();
+
+    List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNull(UUID usuarioId);
 
     Optional<AnuncioEntity> findBySlugAndStatusAndStatusModeracaoAndClassificacaoConteudoAndRemovidoEmIsNull(
             String slug,

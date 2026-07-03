@@ -94,6 +94,10 @@ O arquivo `scripts/local/dados-sinteticos/dados-publicos-minimos.sql` recebeu so
 
 Nao ha dado real, pagamento real, Pix/Efi, checkout, cobranca ou credito real.
 
+O Bloco 23 passa a complementar esta base com leitura local de creditos/ledger. Essa leitura nao altera Premium, nao ativa beneficio e nao cria credito real.
+
+O Bloco 25 passa a complementar a base Premium com comparativo organico/Premium em prova de resultado local. Essa leitura nao altera beneficio, nao vende impulsionamento, nao promete contratacao, nao limita gratuito e nao cria acao financeira.
+
 ## Frontend/admin
 
 `/admin/premium` deixou de ser placeholder e passou a mostrar painel read-only minimo:

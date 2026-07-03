@@ -185,14 +185,20 @@ $changedControllerService = @($changedJava | Where-Object {
 $controllerServiceNaoPermitido = @($changedControllerService | Where-Object {
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/publico/service/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/auth/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/creditos/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/desempenho/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/moderacao/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/outbox/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/pagamentos/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/premium/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/readonly/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/publico/premium/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/auth/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/creditos/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/desempenho/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/moderacao/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/outbox/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/pagamentos/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/premium/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/readonly/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/security/*" -and

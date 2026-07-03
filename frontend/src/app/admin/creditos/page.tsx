@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
 import { skeletonMetadata } from "../../../lib/seo/localSeo";
-import { AdminPlaceholderPage } from "../../../modules/admin/shell/AdminPlaceholderPage";
+import { AdminCreditosPanel } from "../../../modules/admin/shell/AdminCreditosPanel";
 
-export const metadata: Metadata = skeletonMetadata("Créditos admin skeleton", "/admin/creditos");
+export const metadata: Metadata = skeletonMetadata("Creditos admin local", "/admin/creditos");
 
 export default function AdminCreditosPage() {
-  return <AdminPlaceholderPage moduleSlug="creditos" />;
+  return <AdminCreditosPanel />;
 }

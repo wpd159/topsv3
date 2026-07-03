@@ -58,3 +58,15 @@
 - [x] Sem remote.
 - [x] Sem push.
 - [x] Sem commit.
+
+## Continuidade Bloco 23
+
+- [x] Premium permanece separado de creditos/ledger.
+- [x] Bloco 23 pode consultar creditos localmente, mas nao ativa beneficio, nao compra, nao ajusta e nao cria credito real.
+
+## Continuidade Bloco 25
+
+- [x] Comparativo organico/Premium e apenas informativo.
+- [x] Premium nao promete resultado garantido.
+- [x] Gratuito permanece sem limite comercial artificial.
+- [x] Desempenho read-only nao ativa compra, pagamento, credito, Pix/Efi ou impulsionamento.

@@ -501,6 +501,54 @@ Endpoints admin read-only criados:
 
 O painel `/admin/premium` mostra status, beneficios, vencendo e inconsistencias em dados sinteticos locais. Nao ha compra, checkout, cobranca, Pix/Efi funcional, credito real, ativacao real por dinheiro, job de expiracao, migration, SQL de schema, producao, VPS, API externa, remote, push ou commit.
 
+## Bloco 23 - creditos e ledger read-only
+
+O Bloco 23 adiciona consulta local administrativa de creditos, ledger e consistencia de saldo, usando apenas dados sinteticos e schema existente.
+
+Endpoints admin read-only criados:
+
+- `GET /api/admin/creditos/usuarios/{id}/saldo`;
+- `GET /api/admin/creditos/usuarios/{id}/movimentos`;
+- `GET /api/admin/creditos/consistencia`;
+- `GET /api/admin/creditos/inconsistencias`.
+
+O acesso e restrito a `ADMIN` com `FINANCEIRO_LER`. O painel `/admin/creditos` exibe saldo, movimentos e inconsistencias sem txid, payload Pix/Efi, valor pago, chave operacional bruta, documento, contato real ou storage.
+
+Nao ha compra, pagamento real, credito real, ajuste, estorno, conciliacao real, Pix/Efi funcional, worker, scheduler, migration, SQL de schema, producao, VPS, API externa, remote, push ou commit apos o checkpoint local autorizado.
+
+## Bloco 24 - pagamentos read-only local
+
+O Bloco 24 adiciona leitura administrativa local de pagamentos, Pix/Efi legado e conciliacao apenas como consulta sanitizada.
+
+Endpoints admin read-only criados:
+
+- `GET /api/admin/pagamentos`;
+- `GET /api/admin/pagamentos/{id}`;
+- `GET /api/admin/pagamentos/consistencia`;
+- `GET /api/admin/pagamentos/inconsistencias`.
+
+O acesso e restrito a `ADMIN` com `FINANCEIRO_LER`. O painel `/admin/financeiro` exibe pagamentos e inconsistencias sem valor monetario, evidencia bruta de transacao, identificador bruto de provedor, payload Pix/Efi, QR Code, copia e cola, documento, contato real ou storage.
+
+A classificacao de provedor usa evidencia explicita: Efi somente com evidencia Efi, Mercado Pago legado somente com evidencia de Mercado Pago legado, e desconhecido quando a evidencia for insuficiente.
+
+Nao ha cobranca real, checkout, Pix/Efi real, Mercado Pago real, webhook real, conciliacao real, credito real, estorno, worker, scheduler, migration, SQL de schema, producao, VPS, API externa, remote, push ou commit.
+
+## Bloco 25 - desempenho read-only
+
+O Bloco 25 adiciona prova de resultado administrativa local, somente leitura, com visualizacoes, cliques WhatsApp permitidos, origem agregada e comparativo organico/Premium.
+
+Endpoints admin read-only criados:
+
+- `GET /api/admin/desempenho/anuncios/{id}`;
+- `GET /api/admin/desempenho/anuncios/{id}/diario`;
+- `GET /api/admin/desempenho/anuncios/{id}/origens`;
+- `GET /api/admin/desempenho/anunciantes/{usuarioId}`;
+- `GET /api/admin/desempenho/resumo`.
+
+O painel `/admin/desempenho` exibe dados sinteticos locais, sem IP/User-Agent/referer bruto, hash interno, contato bruto, documento, storage, pagamento, credito, Pix/Efi ou valor monetario.
+
+Premium e comparado apenas como exposicao/tendencia: nao ha promessa de resultado garantido e o gratuito nao recebe limite comercial artificial. Nao ha pixel, tracking externo, exportacao, compra, impulsionamento, migration, SQL de schema, producao, VPS, API externa, remote, push ou commit.
+
 ## Bloco 15 - admin read-only detalhado
 
 O Bloco 15 adiciona listagens e detalhes sanitizados para anuncios, midia e revisoes administrativas locais:

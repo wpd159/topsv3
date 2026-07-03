@@ -37,6 +37,12 @@ export const adminModules: AdminModule[] = [
     futureRoles: ["ADMIN", "COMERCIAL"]
   },
   {
+    slug: "desempenho",
+    title: "Desempenho",
+    summary: "Prova de resultado local com views, cliques WhatsApp e comparativo Premium sem promessa garantida.",
+    futureRoles: ["ADMIN", "COMERCIAL"]
+  },
+  {
     slug: "creditos",
     title: "Créditos",
     summary: "Mapa futuro para saldos, movimentos e ajustes auditáveis.",

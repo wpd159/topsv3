@@ -760,6 +760,12 @@ foreach ($script in @("scripts/security/verificar-codificacao.ps1", "scripts/sec
   $validationCommands.Add($result)
   if ($result.ExitCode -ne 0) { Fail-Package "validacao falhou antes do pacote: $script (exit $($result.ExitCode))" $null }
 }
+if ((Get-ObjectPropertyValue $metadata "metadados_execucao_informados") -ne $true -and $validationCommands.Count -gt 0) {
+  $metadata.testes_executados = @($validationCommands | ForEach-Object { $_.Comando })
+  $metadata.testes_aprovados = @($validationCommands | Where-Object { $_.ExitCode -eq 0 } | ForEach-Object { $_.Comando })
+  $metadata.testes_com_falha = @($validationCommands | Where-Object { $_.ExitCode -ne 0 } | ForEach-Object { $_.Comando })
+  $metadata.metadados_execucao_informados = $true
+}
 
 $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss-fff"
 $zipName = "topsv3-fase-$Fase-$timestamp.zip"
