@@ -9,6 +9,9 @@ import type {
   PublicApiResponse,
   RegistrarVisualizacaoPublicaResponseDto,
   SeoRotaPublicaDto,
+  SolicitarAnuncioPublicoRequestDto,
+  SolicitarAnuncioPublicoResponseDto,
+  SolicitarAnuncioValidationErrorResponseDto,
   StatusIdadePublicaDto
 } from "./publicTypes";
 
@@ -71,6 +74,37 @@ export async function confirmarIdadePublica(
   return safePublicFetch<StatusIdadePublicaDto>("/api/public/idade/confirmar", postOptions(body));
 }
 
+export async function solicitarAnuncioPublico(
+  body: SolicitarAnuncioPublicoRequestDto
+): Promise<PublicApiResponse<SolicitarAnuncioPublicoResponseDto>> {
+  try {
+    const result = await fetchLocalApi<SolicitarAnuncioPublicoResponseDto>(
+      "/api/public/anunciar",
+      postOptions(body)
+    );
+    return {
+      ok: true,
+      data: result.data,
+      status: result.status,
+      requestId: result.requestId,
+      source: "api-local"
+    };
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      const validation = isSolicitarAnuncioValidation(error.details) ? error.details : null;
+      return {
+        ok: false,
+        data: null,
+        status: error.status,
+        requestId: error.requestId,
+        message: validation?.mensagem ?? error.message,
+        validationErrors: validation?.erros
+      };
+    }
+    return unavailable(0, "sem-request-id");
+  }
+}
+
 export async function getStoriesPublicos(slug: string): Promise<PublicApiResponse<ListaStoriesPublicosDto>> {
   return safePublicFetch<ListaStoriesPublicosDto>(`/api/public/anuncios/${pathSegment(slug)}/stories`);
 }
@@ -111,7 +145,9 @@ function pathSegment(value: string): string {
   return encodeURIComponent(normalized);
 }
 
-function postOptions(body: MetricaPublicaRequestDto | ConfirmarIdadePublicaRequestDto): RequestInit {
+function postOptions(
+  body: MetricaPublicaRequestDto | ConfirmarIdadePublicaRequestDto | SolicitarAnuncioPublicoRequestDto
+): RequestInit {
   return {
     method: "POST",
     headers: {
@@ -119,4 +155,14 @@ function postOptions(body: MetricaPublicaRequestDto | ConfirmarIdadePublicaReque
     },
     body: JSON.stringify(body)
   };
+}
+
+function isSolicitarAnuncioValidation(value: unknown): value is SolicitarAnuncioValidationErrorResponseDto {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "criado" in value &&
+    "erros" in value &&
+    Array.isArray((value as { erros?: unknown }).erros)
+  );
 }

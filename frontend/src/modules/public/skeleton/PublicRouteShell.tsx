@@ -1,18 +1,28 @@
 type PublicRouteShellProps = {
   title: string;
   routePattern: string;
+  eyebrow?: string | null;
+  showRoutePattern?: boolean;
   children: React.ReactNode;
 };
 
-export function PublicRouteShell({ title, routePattern, children }: PublicRouteShellProps) {
+export function PublicRouteShell({
+  title,
+  routePattern,
+  eyebrow = "Previa local",
+  showRoutePattern = true,
+  children
+}: PublicRouteShellProps) {
   return (
     <main className="public-route">
       <section className="shell public-shell">
-        <span className="status" data-debug-label="SKELETON LOCAL">
-          Previa local
-        </span>
+        {eyebrow ? (
+          <span className="status" data-debug-label="SKELETON LOCAL">
+            {eyebrow}
+          </span>
+        ) : null}
         <h1>{title}</h1>
-        <p className="route-pattern">Rota preservada: {routePattern}</p>
+        {showRoutePattern ? <p className="route-pattern">Rota preservada: {routePattern}</p> : null}
         <div className="public-content">{children}</div>
       </section>
     </main>

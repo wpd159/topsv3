@@ -81,6 +81,7 @@ Os nomes padronizados atuais são:
 .\scripts\local\validar-fonte-importacao-local.ps1
 .\scripts\local\validar-build-local.ps1
 .\scripts\local\validar-ui-mobile-estatica.ps1
+.\scripts\local\validar-seo-publico-local.ps1
 ```
 
 Esses scripts usam `infra/local/docker-compose.local.yml` e exigem Docker já disponível na máquina. Esta fase não instala ferramentas. Os volumes locais ficam sob `storage-local/`, que é ignorado pelo Git.
@@ -289,6 +290,8 @@ Os documentos de Specification-Driven Development ficam em:
 ```text
 docs/v3
 ```
+
+O SDD central consolidado fica em `docs/v3/SDD.md`, com indice em `docs/v3/SDD-indice-rastreabilidade.md`, decisoes em `docs/v3/SDD-decisoes-consolidadas.md` e pendencias/gates em `docs/v3/SDD-pendencias-gates.md`.
 
 O plano de fases está em `docs/v3/11-plano-execucao-fases.md`.
 
@@ -548,6 +551,22 @@ Endpoints admin read-only criados:
 O painel `/admin/desempenho` exibe dados sinteticos locais, sem IP/User-Agent/referer bruto, hash interno, contato bruto, documento, storage, pagamento, credito, Pix/Efi ou valor monetario.
 
 Premium e comparado apenas como exposicao/tendencia: nao ha promessa de resultado garantido e o gratuito nao recebe limite comercial artificial. Nao ha pixel, tracking externo, exportacao, compra, impulsionamento, migration, SQL de schema, producao, VPS, API externa, remote, push ou commit.
+
+## Bloco 26 - Anuncie gratis local
+
+O Bloco 26 adiciona o funil publico local `/anunciar` e o endpoint `POST /api/public/anunciar` para criar solicitacao sintetica de anuncio.
+
+O fluxo cria anuncio `PENDENTE_REVISAO`, moderacao `PENDENTE`, revisao `ABERTA` e projecao `NAO_PUBLICAVEL`, sem publicacao automatica.
+
+Nao ha upload real, foto real, video real, documento real, pagamento, credito, Pix/Efi, Premium obrigatorio, envio de e-mail, envio de WhatsApp, dado real, migration, SQL de schema, producao, VPS, API externa, remote, push ou commit depois do checkpoint local.
+
+## Bloco 26.2 - wizard, SEO central e Premium preview
+
+O Bloco 26.2 converte `/anunciar` em wizard progressivo local, com envio apenas na revisao final, e adiciona preview administrativo de Premium em `/admin/premium`, sem pagamento, credito, Pix/Efi, checkout, webhook ou ativacao real.
+
+SEO passa a ter documentacao central em `docs/v3/SEO-*.md` e novo gate `scripts/local/validar-seo-publico-local.ps1`, preservando `/anuncios/[slug]`, rotas de cidade/bairro, sitemap, robots, canonical local e admin noindex.
+
+Nao houve redesign, nova paleta, nova tipografia, producao alterada, banco de producao, dado real, migration, SQL de schema, API externa, remote, push ou commit.
 
 ## Bloco 15 - admin read-only detalhado
 

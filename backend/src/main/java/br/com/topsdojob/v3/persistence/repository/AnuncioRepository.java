@@ -15,6 +15,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, JpaSpecificationExecutor<AnuncioEntity> {
+    boolean existsBySlug(String slug);
+
     long countByStatusAndRemovidoEmIsNull(StatusAnuncio status);
 
     long countByStatusInAndRemovidoEmIsNull(Collection<StatusAnuncio> statuses);

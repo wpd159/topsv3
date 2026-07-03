@@ -14,6 +14,7 @@ import type {
   AdminPremiumConsistenciaResumoDto,
   AdminPremiumVencendoResumoDto
 } from "../../../lib/api/adminReadonlyTypes";
+import { AdminPremiumWizard } from "../premium/AdminPremiumWizard";
 import { AdminShell } from "./AdminShell";
 
 const ANUNCIO_PREMIUM_SINTETICO_ID = "00000000-0000-4000-8000-000000000501";
@@ -57,6 +58,7 @@ export function AdminPremiumPanel() {
 
   return (
     <AdminShell title="Premium">
+      <AdminPremiumWizard />
       <section className="admin-panel" aria-label="Premium e beneficios locais">
         <h2>Premium local</h2>
         <p>{data.mensagem}</p>

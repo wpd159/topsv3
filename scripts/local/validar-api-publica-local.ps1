@@ -163,6 +163,9 @@ function Assert-NoSensitivePublicData {
   )
 
   $safeBody = $Body.Replace("PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO", "PENDENTE_POLITICA_EXPOSICAO_CONTATO_PUBLICO")
+  $safeBody = $safeBody.Replace('"pagamentoCriado":false', '"FLAG_FINANCEIRO_NEGADO":false')
+  $safeBody = $safeBody.Replace('"creditoCriado":false', '"FLAG_LEDGER_NEGADO":false')
+  $safeBody = $safeBody.Replace('"premiumObrigatorio":false', '"FLAG_PREMIUM_OBRIGATORIO_NEGADO":false')
   if ($AllowSyntheticWhatsapp) {
     $safeBody = $safeBody.Replace("https://wa.me/5500000000000", "URL_WHATSAPP_SINTETICA_AUTORIZADA")
     $safeBody = $safeBody.Replace("+5500000000000", "TELEFONE_SINTETICO_AUTORIZADO")
@@ -321,6 +324,38 @@ function New-RemeterRevisaoBody {
   return ($body | ConvertTo-Json -Compress)
 }
 
+function New-AnunciarGratisBody {
+  param(
+    [switch]$SemAceite,
+    [switch]$PrecoZero,
+    [switch]$TituloTelefone,
+    [switch]$TituloRedeSocial,
+    [switch]$SemCidade,
+    [switch]$CampoPerigoso
+  )
+  $body = @{
+    nomeExibicao = "Anunciante Sintetica Local"
+    email = "anunciante.local@example.invalid"
+    whatsapp = "+5500000000000"
+    uf = "ZZ"
+    cidade = "Cidade Sintetica"
+    bairro = "Bairro Sintetico"
+    titulo = "Anuncio sintetico para revisao"
+    descricao = "Texto sintetico neutro para validar criacao local sem dado real."
+    preco = 120
+    categoria = "ACOMPANHANTE"
+    aceiteTermos = $true
+    confirmacaoIdade = $true
+  }
+  if ($SemAceite) { $body.aceiteTermos = $false }
+  if ($PrecoZero) { $body.preco = 0 }
+  if ($TituloTelefone) { $body.titulo = "Contato +5511999999999 agora" }
+  if ($TituloRedeSocial) { $body.titulo = "Perfil instagram local" }
+  if ($SemCidade) { $body.cidade = "" }
+  if ($CampoPerigoso) { $body.pagamentoId = "00000000-0000-4000-8000-000000009999" }
+  return ($body | ConvertTo-Json -Compress)
+}
+
 try {
   $script:SafeBaseUrl = Resolve-LocalBaseUrl $BaseUrl
 } catch {
@@ -363,6 +398,10 @@ $adminInvalidBody = ('{"login":"admin.local@example.invalid","se' + 'nha":"valor
 
 Assert-FrontendAdminHardening
 
+$anunciarAnuncioId = $null
+$anunciarRevisaoId = $null
+$anunciarSlugLocal = $null
+
 if (-not $SemDadosSinteticos) {
   $corsPreflight = Invoke-LocalCorsPreflight -Path "/api/public/idade/confirmar"
   if ($corsPreflight.ErroOperacional -and $corsPreflight.Status -eq 0) {
@@ -385,6 +424,48 @@ if (-not $SemDadosSinteticos) {
     Add-Check "cors admin origem local" ((Get-HeaderValue $adminCorsPreflight.Headers "Access-Control-Allow-Origin") -eq "http://localhost:3000") "somente origem local permitida"
     Add-Check "cors admin credentials local" ((Get-HeaderValue $adminCorsPreflight.Headers "Access-Control-Allow-Credentials") -eq "true") "credentials devem ser aceitos so em local"
     Add-Check "cors admin sem wildcard credentials" ((Get-HeaderValue $adminCorsPreflight.Headers "Access-Control-Allow-Origin") -ne "*") "wildcard com credentials proibido"
+  }
+
+  $anunciarInvalidos = @(
+    @{ Nome = "anunciar sem aceite"; Body = New-AnunciarGratisBody -SemAceite; Codigo = "ACEITE_TERMOS_OBRIGATORIO" },
+    @{ Nome = "anunciar preco zero"; Body = New-AnunciarGratisBody -PrecoZero; Codigo = "PRECO_INVALIDO" },
+    @{ Nome = "anunciar telefone no titulo"; Body = New-AnunciarGratisBody -TituloTelefone; Codigo = "TITULO_CONTATO_OU_REDE_SOCIAL" },
+    @{ Nome = "anunciar rede social no titulo"; Body = New-AnunciarGratisBody -TituloRedeSocial; Codigo = "TITULO_CONTATO_OU_REDE_SOCIAL" },
+    @{ Nome = "anunciar cidade ausente"; Body = New-AnunciarGratisBody -SemCidade; Codigo = "CAMPO_OBRIGATORIO" },
+    @{ Nome = "anunciar campo perigoso"; Body = New-AnunciarGratisBody -CampoPerigoso; Codigo = "CAMPO_PERIGOSO" }
+  )
+  foreach ($invalid in $anunciarInvalidos) {
+    $invalidResult = Invoke-LocalHttp -Path "/api/public/anunciar" -ExpectedStatus 400 -Method "POST" -Body $invalid.Body
+    Add-Check "$($invalid.Nome) status 400" ($invalidResult.Status -eq 400) "status obtido: $($invalidResult.Status)"
+    Add-Check "$($invalid.Nome) codigo validacao" ($invalidResult.Body -match $invalid.Codigo) "codigo esperado: $($invalid.Codigo)"
+    Add-Check "$($invalid.Nome) sem criacao" ($invalidResult.Body -match '"criado"\s*:\s*false') "payload invalido nao deve criar solicitacao"
+    Add-Check "$($invalid.Nome) sem efeitos externos" ($invalidResult.Body -match '"uploadRealExecutado"\s*:\s*false' -and $invalidResult.Body -match '"pagamentoCriado"\s*:\s*false' -and $invalidResult.Body -match '"creditoCriado"\s*:\s*false') "validacao nao pode executar upload/financeiro"
+  }
+
+  $anunciarValido = Invoke-LocalHttp -Path "/api/public/anunciar" -ExpectedStatus 201 -Method "POST" -Body (New-AnunciarGratisBody)
+  Add-Check "anunciar gratis status 201" ($anunciarValido.Status -eq 201) "status obtido: $($anunciarValido.Status)"
+  Add-Check "anunciar gratis criou solicitacao" ($anunciarValido.Body -match '"criado"\s*:\s*true' -and $anunciarValido.Body -match '"revisaoCriada"\s*:\s*true') "deve criar anuncio local e revisao"
+  Add-Check "anunciar gratis status nao publico" ($anunciarValido.Body -match '"statusAnuncio"\s*:\s*"PENDENTE_REVISAO"' -and $anunciarValido.Body -match '"statusModeracao"\s*:\s*"PENDENTE"') "status deve ficar pendente"
+  Add-Check "anunciar gratis sem publicacao automatica" ($anunciarValido.Body -match '"publicado"\s*:\s*false' -and $anunciarValido.Body -match '"publicacaoAutomaticaExecutada"\s*:\s*false') "nao publicar automaticamente"
+  Add-Check "anunciar gratis sem upload" ($anunciarValido.Body -match '"uploadRealExecutado"\s*:\s*false') "sem upload real"
+  Add-Check "anunciar gratis sem pagamento credito premium" ($anunciarValido.Body -match '"pagamentoCriado"\s*:\s*false' -and $anunciarValido.Body -match '"creditoCriado"\s*:\s*false' -and $anunciarValido.Body -match '"premiumObrigatorio"\s*:\s*false') "sem pagamento, credito ou paywall"
+  Add-Check "anunciar gratis sem envio real" ($anunciarValido.Body -match '"emailRealEnviado"\s*:\s*false' -and $anunciarValido.Body -match '"whatsappRealEnviado"\s*:\s*false') "sem envio externo"
+  Add-Check "anunciar gratis sem contato bruto" (-not ($anunciarValido.Body -match '\+5500000000000|5500000000000|example\.invalid|whatsappNormalizado|telefoneNormalizado')) "resposta nao deve retornar contato/email"
+  Assert-NoSensitivePublicData -Nome "anunciar gratis sucesso" -Body $anunciarValido.Body -AllowSyntheticWhatsapp $false
+  try {
+    $anunciarJson = $anunciarValido.Body | ConvertFrom-Json
+    $anunciarAnuncioId = [string]$anunciarJson.anuncioId
+    $anunciarRevisaoId = [string]$anunciarJson.revisaoId
+    $anunciarSlugLocal = [string]$anunciarJson.slugLocal
+  } catch {
+    $anunciarAnuncioId = $null
+    $anunciarRevisaoId = $null
+    $anunciarSlugLocal = $null
+  }
+  Add-Check "anunciar gratis retorna ids locais" ((-not [string]::IsNullOrWhiteSpace($anunciarAnuncioId)) -and (-not [string]::IsNullOrWhiteSpace($anunciarRevisaoId))) "ids locais devem existir"
+  if (-not [string]::IsNullOrWhiteSpace($anunciarSlugLocal)) {
+    $anuncioNaoPublicado = Invoke-LocalHttp -Path "/api/public/anuncios/$anunciarSlugLocal" -ExpectedStatus 404 -Method "GET"
+    Add-Check "anunciar gratis nao aparece no publico" ($anuncioNaoPublicado.Status -eq 404) "anuncio pendente nao pode ser detalhe publico"
   }
 
   $requests.Add([pscustomobject]@{ Nome = "idade status sem cookie"; Path = "/api/public/idade/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
@@ -551,6 +632,19 @@ if (-not $SemDadosSinteticos) {
     Add-Check "admin detalhado ADMIN $path status 200" ($detalhado.Status -eq 200) "status obtido: $($detalhado.Status)"
     Assert-NoSensitiveAdminReadonlyData -Nome "admin detalhado ADMIN $path" -Body $detalhado.Body
     Add-Check "admin detalhado $path sem campos proibidos" (-not ($detalhado.Body -match 'storageProvider|chaveObjeto|bucket|sha256|etag|whatsappNormalizado|telefoneNormalizado|senhaHash|tokenSessaoHash|payload_solicitado|"payload"')) "DTO detalhado deve ser sanitizado"
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($anunciarAnuncioId)) {
+    $anunciarAdminAnuncio = Invoke-LocalHttp -Path "/api/admin/anuncios/$anunciarAnuncioId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin ve anuncio criado pelo anunciar gratis" ($anunciarAdminAnuncio.Status -eq 200 -and $anunciarAdminAnuncio.Body -match '"status"\s*:\s*"PENDENTE_REVISAO"' -and $anunciarAdminAnuncio.Body -match '"statusModeracao"\s*:\s*"PENDENTE"') "admin deve ver solicitacao local pendente"
+    Add-Check "admin anuncio anunciar gratis nao publicado" ($anunciarAdminAnuncio.Body -match '"publicadoEm"\s*:\s*null') "solicitacao nao deve publicar automaticamente"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin anuncio anunciar gratis" -Body $anunciarAdminAnuncio.Body
+  }
+  if (-not [string]::IsNullOrWhiteSpace($anunciarRevisaoId)) {
+    $anunciarAdminRevisao = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$anunciarRevisaoId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin ve revisao criada pelo anunciar gratis" ($anunciarAdminRevisao.Status -eq 200 -and $anunciarAdminRevisao.Body -match '"status"\s*:\s*"ABERTA"' -and $anunciarAdminRevisao.Body -match '"tipo"\s*:\s*"CRIACAO"') "revisao deve ficar aberta para moderacao"
+    Add-Check "admin revisao anunciar gratis payload oculto" ($anunciarAdminRevisao.Body -match '"conteudoSolicitadoPresente"\s*:\s*true' -and -not ($anunciarAdminRevisao.Body -match 'payloadSolicitado|payload_solicitado')) "admin read-only nao deve expor payload"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin revisao anunciar gratis" -Body $anunciarAdminRevisao.Body
   }
 
   $anuncioPremiumId = "00000000-0000-4000-8000-000000000501"

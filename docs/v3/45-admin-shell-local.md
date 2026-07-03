@@ -92,3 +92,11 @@ O shell admin passa a consumir tambem resumos locais somente leitura:
 As chamadas usam `credentials: "include"` e exibem apenas contadores/estados agregados. O shell continua sem botoes funcionais de aprovacao, rejeicao, exclusao, pagamento, credito, upload, Pix ou moderacao real.
 
 O frontend nao usa localStorage/sessionStorage e apenas reflete o estado autenticado retornado pelo backend.
+
+## Complemento Bloco 26
+
+O funil publico `/anunciar` cria solicitacao local de anuncio e revisao aberta usando o schema existente.
+
+O admin nao recebeu nova acao. A tela de moderacao local existente pode visualizar a revisao/anuncio sintetico criado, desde que o usuario esteja autenticado com permissao ja prevista.
+
+Continuam proibidos aprovacao automatica, upload real, publicacao automatica, pagamento, credito, Pix/Efi, Premium obrigatorio, dado real e envio externo.

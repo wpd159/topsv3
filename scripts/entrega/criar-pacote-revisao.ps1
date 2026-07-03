@@ -297,6 +297,68 @@ function Add-SummaryBooleanLine {
   }
 }
 
+function Set-MetadataValueIfMissing {
+  param(
+    [object]$Metadata,
+    [string]$Name,
+    [object]$Value
+  )
+  if ($Metadata.PSObject.Properties.Name -notcontains $Name) {
+    $Metadata | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+    return
+  }
+  $current = Get-ObjectPropertyValue $Metadata $Name
+  if ($null -eq $current) {
+    $Metadata.$Name = $Value
+    return
+  }
+  if ($current -is [string] -and [string]::IsNullOrWhiteSpace($current)) {
+    $Metadata.$Name = $Value
+  }
+}
+
+function Complete-MetadataDefaults {
+  param(
+    [object]$Metadata,
+    [object[]]$ManifestRows,
+    [object[]]$ValidationCommands,
+    [string]$RepoRoot
+  )
+
+  $paths = @($ManifestRows | ForEach-Object { [string]$_.caminho_relativo })
+  $createdPaths = @($ManifestRows | Where-Object { $_.tipo_alteracao -eq "CRIADO" } | ForEach-Object { [string]$_.caminho_relativo })
+  $applicationCodeCreated = @($paths | Where-Object {
+      $_ -match '^(backend/src/main/java|backend/src/test/java|frontend/src|contracts/openapi)/' -or
+      $_ -match '^scripts/local/.*\.ps1$'
+    }).Count -gt 0
+  $migrationCreated = @($createdPaths | Where-Object {
+      $_ -match '^backend/src/main/resources/db/migration/.*\.sql$'
+    }).Count -gt 0
+  $sqlCreated = @($createdPaths | Where-Object { $_ -match '\.sql$' }).Count -gt 0
+  $gitleaksFound = $false
+  $gitleaksCommand = Get-Command gitleaks -ErrorAction SilentlyContinue
+  if ($gitleaksCommand) { $gitleaksFound = $true }
+  foreach ($command in $ValidationCommands) {
+    if (($command.Stdout -match 'gitleaks') -and -not ($command.Stdout -match 'fallback local')) {
+      $gitleaksFound = $true
+    }
+  }
+  $headHash = (ConvertFrom-TopsUtf8Strict -Bytes (Invoke-TopsGitBytes -Arguments @("rev-parse", "--short", "HEAD") -WorkingDirectory $RepoRoot -Context "nao foi possivel obter commit atual") -Context "commit atual").Trim()
+
+  Set-MetadataValueIfMissing $Metadata "codigo_aplicacao_criado" $applicationCodeCreated
+  Set-MetadataValueIfMissing $Metadata "migration_criada" $migrationCreated
+  Set-MetadataValueIfMissing $Metadata "sql_criado" $sqlCreated
+  Set-MetadataValueIfMissing $Metadata "integracao_externa_acessada" $false
+  Set-MetadataValueIfMissing $Metadata "fase_seguinte_iniciada" $false
+  Set-MetadataValueIfMissing $Metadata "gitleaks_utilizado" $gitleaksFound
+  Set-MetadataValueIfMissing $Metadata "fallback_utilizado" (-not $gitleaksFound)
+  Set-MetadataValueIfMissing $Metadata "commit_executado" $false
+  Set-MetadataValueIfMissing $Metadata "commit_hash" $headHash
+  $commitExecuted = Get-ObjectPropertyValue $Metadata "commit_executado"
+  $motivo = if ($commitExecuted -eq $true) { "nao aplicavel" } else { "commit nao executado nesta geracao de pacote" }
+  Set-MetadataValueIfMissing $Metadata "motivo_sem_commit" $motivo
+}
+
 function Add-ListSection {
   param(
     [System.Collections.Generic.List[string]]$Lines,
@@ -802,6 +864,7 @@ try {
   $created = @($manifestRows | Where-Object { $_.tipo_alteracao -eq "CRIADO" })
   $modified = @($manifestRows | Where-Object { $_.tipo_alteracao -eq "MODIFICADO" })
   $branch = (ConvertFrom-TopsUtf8Strict -Bytes (Invoke-TopsGitBytes -Arguments @("branch", "--show-current") -WorkingDirectory $repoRoot -Context "nao foi possivel obter branch") -Context "branch").Trim()
+  Complete-MetadataDefaults -Metadata $metadata -ManifestRows @($manifestRows.ToArray()) -ValidationCommands @($validationCommands.ToArray()) -RepoRoot $repoRoot
 
   $summaryLines = New-Object System.Collections.Generic.List[string]
   $summaryLines.Add("# Resumo da entrega")
@@ -844,6 +907,9 @@ try {
   if ((Get-ObjectPropertyValue $metadata "metadados_execucao_informados") -eq $true) {
     $validationLines.Add("- Testes aprovados: $(@($metadata.testes_aprovados).Count)")
     $validationLines.Add("- Testes com falha: $(@($metadata.testes_com_falha).Count)")
+    Add-ListSection $validationLines "Validacoes executadas informadas nos metadados" @($metadata.testes_executados)
+    Add-ListSection $validationLines "Validacoes aprovadas informadas nos metadados" @($metadata.testes_aprovados)
+    Add-ListSection $validationLines "Validacoes com falha informadas nos metadados" @($metadata.testes_com_falha)
   } else {
     $validationLines.Add("- Testes aprovados: nao informado")
     $validationLines.Add("- Testes com falha: nao informado")

@@ -103,6 +103,60 @@ export type ConfirmarIdadePublicaRequestDto = {
   declaracaoMaioridade: boolean;
 };
 
+export type SolicitarAnuncioPublicoRequestDto = {
+  nomeExibicao: string;
+  email: string;
+  whatsapp: string;
+  uf: string;
+  cidade: string;
+  bairro: string;
+  titulo: string;
+  descricao: string;
+  preco: number;
+  categoria: string;
+  aceiteTermos: boolean;
+  confirmacaoIdade: boolean;
+};
+
+export type SolicitarAnuncioPublicoResponseDto = {
+  criado: boolean;
+  anuncioId: string;
+  revisaoId: string;
+  slugLocal: string;
+  statusAnuncio: string;
+  statusModeracao: string;
+  classificacaoConteudo: "LIVRE" | "BLOQUEADO" | string;
+  publicado: boolean;
+  revisaoCriada: boolean;
+  publicacaoAutomaticaExecutada: boolean;
+  uploadRealExecutado: boolean;
+  pagamentoCriado: boolean;
+  creditoCriado: boolean;
+  premiumObrigatorio: boolean;
+  emailRealEnviado: boolean;
+  whatsappRealEnviado: boolean;
+  mensagem: string;
+};
+
+export type SolicitarAnuncioValidationErrorDto = {
+  campo: string;
+  codigo: string;
+  mensagem: string;
+};
+
+export type SolicitarAnuncioValidationErrorResponseDto = {
+  criado: false;
+  mensagem: string;
+  erros: readonly SolicitarAnuncioValidationErrorDto[];
+  publicacaoAutomaticaExecutada: false;
+  uploadRealExecutado: false;
+  pagamentoCriado: false;
+  creditoCriado: false;
+  premiumObrigatorio: false;
+  emailRealEnviado: false;
+  whatsappRealEnviado: false;
+};
+
 export type StatusIdadePublicaDto = {
   confirmada: boolean;
   expiraEm: string | null;
@@ -148,6 +202,7 @@ export type PublicApiUnavailable = {
   status: number;
   requestId: string;
   message: string;
+  validationErrors?: readonly SolicitarAnuncioValidationErrorDto[];
 };
 
 export type PublicApiOk<T> = {

@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Tops do Job V3 Local API
   version: 0.0.1
-  description: Contrato minimo local do skeleton, camada transversal e API publica de leitura. A API segue fail-closed: endpoints nao descritos em /api/** nao devem ficar publicos por acidente.
+  description: Contrato minimo local do skeleton, camada transversal, API publica de leitura e funil local Anuncie gratis. A API segue fail-closed: endpoints nao descritos em /api/** nao devem ficar publicos por acidente.
 servers:
   - url: http://localhost:8080
     description: backend local
@@ -59,6 +59,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/anunciar:
+    post:
+      summary: Cria solicitacao local Anuncie gratis
+      description: Cria apenas anuncio local nao publico e revisao aberta para moderacao. O frontend wizard envia este payload somente na revisao final. Nao publica automaticamente, nao cria upload, nao cria pagamento, nao cria credito, nao acessa Pix/Efi e nao exige Premium.
+      operationId: postPublicAnunciar
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SolicitarAnuncioPublicoRequest"
+      responses:
+        "201":
+          description: solicitacao local criada para revisao
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SolicitarAnuncioPublicoResponse"
+        "400":
+          description: validacao do funil local recusada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SolicitarAnuncioValidationErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/public/anuncios/{slug}:
@@ -1835,6 +1869,237 @@ components:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
   schemas:
+    SolicitarAnuncioPublicoRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - nomeExibicao
+        - whatsapp
+        - uf
+        - cidade
+        - titulo
+        - descricao
+        - preco
+        - aceiteTermos
+        - confirmacaoIdade
+      properties:
+        nomeExibicao:
+          type: string
+          minLength: 3
+          maxLength: 80
+          example: Anunciante Sintetica Local
+        email:
+          type: string
+          description: Opcional; em teste local deve usar dominio reservado `example.invalid`.
+          example: anunciante.local@example.invalid
+        whatsapp:
+          type: string
+          description: Apenas WhatsApp sintetico local permitido no E2E.
+          example: "+5500000000000"
+        uf:
+          type: string
+          minLength: 2
+          maxLength: 2
+          example: ZZ
+        cidade:
+          type: string
+          minLength: 3
+          maxLength: 80
+          example: Cidade Sintetica
+        bairro:
+          type: string
+          minLength: 2
+          maxLength: 80
+          example: Bairro Sintetico
+        titulo:
+          type: string
+          minLength: 10
+          maxLength: 80
+          description: Nao aceita telefone, WhatsApp, URL ou rede social.
+          example: Anuncio sintetico para revisao
+        descricao:
+          type: string
+          minLength: 20
+          maxLength: 600
+          example: Texto sintetico neutro para validar criacao local sem dado real.
+        preco:
+          type: number
+          exclusiveMinimum: 0
+          example: 120
+        categoria:
+          type: string
+          default: ACOMPANHANTE
+          example: ACOMPANHANTE
+        aceiteTermos:
+          type: boolean
+          const: true
+        confirmacaoIdade:
+          type: boolean
+          const: true
+        pagamentoId:
+          not: {}
+          description: Campo proibido neste fluxo.
+        creditoId:
+          not: {}
+          description: Campo proibido neste fluxo.
+        storageKey:
+          not: {}
+          description: Campo proibido neste fluxo.
+        documento:
+          not: {}
+          description: Campo proibido neste fluxo.
+    SolicitarAnuncioPublicoResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - criado
+        - anuncioId
+        - revisaoId
+        - slugLocal
+        - statusAnuncio
+        - statusModeracao
+        - classificacaoConteudo
+        - publicado
+        - revisaoCriada
+        - publicacaoAutomaticaExecutada
+        - uploadRealExecutado
+        - pagamentoCriado
+        - creditoCriado
+        - premiumObrigatorio
+        - emailRealEnviado
+        - whatsappRealEnviado
+        - mensagem
+      properties:
+        criado:
+          type: boolean
+          const: true
+        anuncioId:
+          type: string
+          format: uuid
+        revisaoId:
+          type: string
+          format: uuid
+        slugLocal:
+          type: string
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+        statusAnuncio:
+          type: string
+          const: PENDENTE_REVISAO
+        statusModeracao:
+          type: string
+          const: PENDENTE
+        classificacaoConteudo:
+          type: string
+          enum:
+            - LIVRE
+            - BLOQUEADO
+        publicado:
+          type: boolean
+          const: false
+        revisaoCriada:
+          type: boolean
+          const: true
+        publicacaoAutomaticaExecutada:
+          type: boolean
+          const: false
+        uploadRealExecutado:
+          type: boolean
+          const: false
+        pagamentoCriado:
+          type: boolean
+          const: false
+        creditoCriado:
+          type: boolean
+          const: false
+        premiumObrigatorio:
+          type: boolean
+          const: false
+        emailRealEnviado:
+          type: boolean
+          const: false
+        whatsappRealEnviado:
+          type: boolean
+          const: false
+        mensagem:
+          type: string
+    SolicitarAnuncioValidationError:
+      type: object
+      additionalProperties: false
+      required:
+        - campo
+        - codigo
+        - mensagem
+      properties:
+        campo:
+          type: string
+        codigo:
+          type: string
+          enum:
+            - PAYLOAD_INVALIDO
+            - CAMPO_PERIGOSO
+            - CAMPO_NAO_PERMITIDO
+            - CAMPO_OBRIGATORIO
+            - TAMANHO_INVALIDO
+            - EMAIL_NAO_SINTETICO
+            - WHATSAPP_NAO_SINTETICO
+            - WHATSAPP_OBRIGATORIO
+            - PRECO_OBRIGATORIO
+            - PRECO_INVALIDO
+            - TITULO_CONTATO_OU_REDE_SOCIAL
+            - TITULO_SPAM
+            - ACEITE_TERMOS_OBRIGATORIO
+            - CONFIRMACAO_IDADE_OBRIGATORIA
+            - UF_INVALIDA
+            - CATEGORIA_INVALIDA
+            - LOCALIDADE_SINTETICA_NAO_ENCONTRADA
+        mensagem:
+          type: string
+    SolicitarAnuncioValidationErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - criado
+        - mensagem
+        - erros
+        - publicacaoAutomaticaExecutada
+        - uploadRealExecutado
+        - pagamentoCriado
+        - creditoCriado
+        - premiumObrigatorio
+        - emailRealEnviado
+        - whatsappRealEnviado
+      properties:
+        criado:
+          type: boolean
+          const: false
+        mensagem:
+          type: string
+        erros:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/SolicitarAnuncioValidationError"
+        publicacaoAutomaticaExecutada:
+          type: boolean
+          const: false
+        uploadRealExecutado:
+          type: boolean
+          const: false
+        pagamentoCriado:
+          type: boolean
+          const: false
+        creditoCriado:
+          type: boolean
+          const: false
+        premiumObrigatorio:
+          type: boolean
+          const: false
+        emailRealEnviado:
+          type: boolean
+          const: false
+        whatsappRealEnviado:
+          type: boolean
+          const: false
     AdminLoginRequest:
       type: object
       additionalProperties: false

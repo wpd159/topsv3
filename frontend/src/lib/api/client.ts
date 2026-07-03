@@ -25,13 +25,15 @@ export class ApiClientError extends Error {
   readonly status: number;
   readonly requestId: string;
   readonly error?: ApiErrorResponse;
+  readonly details?: unknown;
 
-  constructor(message: string, status: number, requestId: string, error?: ApiErrorResponse) {
+  constructor(message: string, status: number, requestId: string, error?: ApiErrorResponse, details?: unknown) {
     super(message);
     this.name = "ApiClientError";
     this.status = status;
     this.requestId = requestId;
     this.error = error;
+    this.details = details;
   }
 }
 
@@ -68,7 +70,8 @@ export async function fetchLocalApi<T>(path: string, options: ApiRequestOptions 
       apiError?.message ?? "Erro ao consultar API local.",
       response.status,
       responseRequestId,
-      apiError
+      apiError,
+      body
     );
   }
 

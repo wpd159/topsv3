@@ -168,4 +168,36 @@ public class AnuncioEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public static AnuncioEntity criarSolicitacaoLocal(
+      UUID id,
+      UUID usuarioId,
+      String slug,
+      String titulo,
+      String descricao,
+      String categoria,
+      BigDecimal preco,
+      String whatsappNormalizado,
+      OffsetDateTime criadoEm) {
+    AnuncioEntity entity = new AnuncioEntity();
+    entity.id = id;
+    entity.usuarioId = usuarioId;
+    entity.slug = slug;
+    entity.titulo = titulo;
+    entity.descricao = descricao;
+    entity.status = StatusAnuncio.PENDENTE_REVISAO;
+    entity.statusModeracao = StatusModeracaoAnuncio.PENDENTE;
+    entity.categoria = categoria;
+    entity.classificacaoConteudo = ClassificacaoConteudo.LIVRE;
+    entity.preco = preco;
+    entity.whatsappNormalizado = whatsappNormalizado;
+    entity.publicadoEm = null;
+    entity.ultimaPublicacaoEm = null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    entity.removidoEm = null;
+    entity.origemImportacaoId = null;
+    entity.versao = 0;
+    return entity;
+  }
+
 }

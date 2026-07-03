@@ -221,11 +221,15 @@ $publicoSemMetricasLocais = $publicoReadOnlyText
 $publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@PostMapping\(\s*"/\{slug\}/visualizacao"\s*\)', ''
 $publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@PostMapping\(\s*"/\{slug\}/clique-whatsapp"\s*\)', ''
 $publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@PostMapping\(\s*"/confirmar"\s*\)', ''
+$publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@RequestMapping\("/api/public/anunciar"\)', ''
+$publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@PostMapping\s*\r?\n\s*public ResponseEntity<\?> solicitar', 'public ResponseEntity<?> solicitar'
 $publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '(?m)^import br\.com\.topsdojob\.v3\.application\.admin\.premium\.[^\r\n]+\r?\n', ''
-Add-Check "sem endpoint de acao critica na API publica" (-not ($publicoSemMetricasLocais -match '@PostMapping|@PutMapping|@PatchMapping|@DeleteMapping|@Modifying|@Lock|Pagamento|Pix|/moderacao|Aprovacao|Reprovacao|Aprovar|Reprovar|Admin')) "GET publico e POST local de metrica/WhatsApp"
+$publicoCriticalMatches = [regex]::Matches($publicoSemMetricasLocais, '@PostMapping|@PutMapping|@PatchMapping|@DeleteMapping|@Modifying|@Lock|Pagamento|Pix|/moderacao|Aprovacao|Reprovacao|Aprovar|Reprovar|Admin')
+Add-Check "sem endpoint de acao critica na API publica" ($publicoCriticalMatches.Count -eq 0) "GET publico e POST local de metrica/WhatsApp"
 $changedJavaTextSemContatoAutorizado = $changedJavaText -replace 'https://wa\.me/', ''
 Add-Check "sem uso de banco ou rede em Java alterado" (-not ($changedJavaTextSemContatoAutorizado -match 'DriverManager|DataSource|JdbcTemplate|EntityManager|RestTemplate|WebClient|HttpClient|Socket|URLConnection|https?://')) "camada persistence passiva"
-Add-Check "sem indicio de dado real em Java alterado" (-not ($changedJavaText -match '\b[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}\b|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')) "sem CPF/e-mail literal"
+$changedJavaTextSemEmailReservado = $changedJavaText -replace '[A-Za-z0-9._%+-]+@example\.invalid', ''
+Add-Check "sem indicio de dado real em Java alterado" (-not ($changedJavaTextSemEmailReservado -match '\b[0-9]{3}\.[0-9]{3}\.[0-9]{3}-[0-9]{2}\b|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')) "sem CPF/e-mail literal"
 
 foreach ($failure in $entityFailures) {
   Write-Host "FALHA_ENTIDADE: $failure"

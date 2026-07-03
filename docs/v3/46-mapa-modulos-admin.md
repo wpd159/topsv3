@@ -54,3 +54,9 @@ Nenhum modulo administrativo ganhou acao real neste bloco.
 O mapa estrutural passa a ter leitura local agregada para visao geral, anuncios, moderacao, midia, metricas e status do sistema.
 
 Essas leituras nao mudam o mapa de modulos e nao liberam acao critica. Modulos de usuarios, premium, creditos, financeiro, SEO, banners, comercial, suporte, backup e auditoria seguem sem funcionalidade real neste bloco.
+
+## Complemento Bloco 26
+
+O fluxo `Anuncie gratis` e publico e nao adiciona modulo administrativo novo.
+
+A solicitacao local criada pelo endpoint publico fica visivel no modulo de moderacao existente como anuncio pendente e revisao aberta. Isso nao libera nova acao admin, nao publica automaticamente e nao altera o mapa de permissoes.

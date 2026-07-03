@@ -106,4 +106,29 @@ public class DocumentoBuscaAnuncioEntity {
     return atualizadoEm;
   }
 
+  public static DocumentoBuscaAnuncioEntity criarSolicitacaoLocal(
+      UUID anuncioId,
+      String textoBusca,
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      String categoria,
+      BigDecimal preco,
+      OffsetDateTime atualizadoEm) {
+    DocumentoBuscaAnuncioEntity entity = new DocumentoBuscaAnuncioEntity();
+    entity.anuncioId = anuncioId;
+    entity.textoBusca = textoBusca;
+    entity.estadoId = estadoId;
+    entity.cidadeId = cidadeId;
+    entity.bairroId = bairroId;
+    entity.categoria = categoria;
+    entity.preco = preco;
+    entity.statusPublicacao = StatusPublicacaoBusca.NAO_PUBLICAVEL;
+    entity.temMidiaValida = false;
+    entity.beneficiosRankingJson = "{}";
+    entity.rankingBase = BigDecimal.ZERO;
+    entity.atualizadoEm = atualizadoEm;
+    return entity;
+  }
+
 }

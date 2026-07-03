@@ -29,7 +29,7 @@ export function routeSegment(value: string): string {
 export function skeletonMetadata(title: string, path: string): Metadata {
   return {
     title,
-    description: "Skeleton local da V3, sem dados reais e sem indexação.",
+    description: "Pagina em ambiente de validacao, sem dados reais e sem indexacao.",
     alternates: {
       canonical: localUrl(path)
     },

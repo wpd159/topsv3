@@ -39,7 +39,7 @@ export default async function AnuncioSkeletonPage({ params }: AnuncioPageProps) 
         initialMessage={anuncioApi.ok ? null : anuncioApi.message}
       />
       {seoApi.ok ? (
-        <section className="panel" aria-label="SEO via API local">
+        <section className="panel" aria-label="SEO da rota publica">
           <p>Informacoes locais de rota preservada.</p>
           <dl className="health-grid compact">
             <div>

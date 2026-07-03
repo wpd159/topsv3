@@ -38,6 +38,8 @@
 - Bloco 19 permite apenas `POST /api/admin/outbox/{id}/simular-processamento-local`, restrito a ADMIN, para simulacao local sem envio externo. Pode alterar `PENDENTE -> PROCESSADO` porque o status ja existe, registra auditoria sanitizada e continua proibido criar envio real, worker, scheduler, retry real, API externa, migration, SQL de schema, producao, remote, push ou commit apos o checkpoint autorizado.
 - Bloco 19.1 torna a simulacao fail-closed fora de `APP_ENV=local`. Em `nao_configurado`, vazio, staging, homologacao ou producao, o backend deve retornar `403` antes de alterar status, marcar `PROCESSADO` ou auditar simulacao.
 - Bloco 22 permite somente leitura/calculo local de Premium e beneficios. Endpoints devem ser GET/read-only, Premium deve ser aditivo, gratuito nao pode ganhar limite comercial de clique/contato/WhatsApp, e continuam proibidos compra real, checkout, cobranca, Pix/Efi funcional, credito real, ativacao real por dinheiro, job de expiracao, migration, SQL de schema, producao, remote, push ou commit.
+- Bloco 26 permite somente funil local `Anuncie gratis`: `POST /api/public/anunciar` pode criar solicitacao sintetica nao publica e revisao aberta. Nao criar publicacao automatica, upload real, pagamento, credito, Pix/Efi, Premium obrigatorio, envio real, dado real, migration, SQL de schema, producao, remote, push ou commit depois do checkpoint local.
+- Bloco 26.2 permite somente wizard progressivo de `/anunciar`, preview Premium local e documentacao/validacao SEO. Nao criar pagamento, credito, Pix/Efi, checkout, webhook, ativacao real, upload, dado real, migration, SQL de schema, producao, remote, push ou commit.
 
 ## Antes de gerar pacote ou commitar localmente
 
@@ -49,6 +51,7 @@ Execute:
 .\scripts\security\verificar-segredos.ps1
 .\scripts\local\validar-migrations-sql-estatico.ps1
 .\scripts\local\validar-migrations-postgres-descartavel.ps1
+.\scripts\local\validar-seo-publico-local.ps1
 git diff --cached --check
 ```
 
@@ -73,6 +76,8 @@ Arquivos textuais em UTF-16, UTF-32, com byte NUL ou controles inválidos são b
 ## Documentação
 
 Mudanças de arquitetura devem atualizar os documentos em `docs/v3` e, quando aplicável, registrar ADR.
+
+Use `docs/v3/SDD.md` como documento central da V3. Consulte tambem `docs/v3/SDD-indice-rastreabilidade.md`, `docs/v3/SDD-decisoes-consolidadas.md` e `docs/v3/SDD-pendencias-gates.md` antes de abrir novo bloco tecnico.
 
 Contratos de API futuros devem seguir os padrões em `docs/v3/32-padroes-api-erros-paginacao.md` e `docs/v3/33-padroes-logs-auditoria-observabilidade.md`. Entidades JPA não devem ser expostas como DTO público.
 
@@ -377,3 +382,21 @@ Bloco 21.1:
 - Frontend `/admin/desempenho` nao pode ter botao de comprar, pagar, impulsionar, exportar, gerar Pix, ajustar credito, processar pagamento, chamar pixel ou tracking externo.
 - Dados sinteticos de desempenho ficam em `scripts/local/dados-sinteticos/`, nunca em migration.
 - Continuam proibidos producao/VPS, banco de producao, API externa, OpenAI, Efi real, migration/SQL de schema, remote, push e commit sem autorizacao futura.
+
+## Bloco 26 - Anuncie gratis local
+
+- Endpoint publico permitido: `POST /api/public/anunciar`.
+- A solicitacao deve nascer nao publica: `PENDENTE_REVISAO`, `PENDENTE`, revisao `ABERTA` e busca `NAO_PUBLICAVEL`.
+- Frontend `/anunciar` deve ser progressivo quando o bloco exigir wizard, usar apenas dados sinteticos locais e nao pode usar `localStorage`, `sessionStorage`, scroll lock, botao flutuante ou animacao automatica.
+- O backend deve bloquear campos perigosos e retornar `400` para validacao, nunca `500` por erro de payload.
+- Gratuito continua util e nao recebe limite comercial artificial de WhatsApp, clique ou contato.
+- Continuam proibidos upload real, foto real, video real, documento real, pagamento, credito, Pix/Efi, Premium obrigatorio, envio real, dado real, migration/SQL de schema, producao/VPS, API externa, remote, push e commit depois do checkpoint local.
+
+## Bloco 26.2 - SEO central e Premium preview
+
+- `/anunciar` deve enviar payload somente na revisao final.
+- Premium em `/admin/premium` pode ter preview local, mas nao pode comprar, cobrar, gerar Pix, chamar Efi, criar credito, checkout, webhook ou ativar beneficio real.
+- SEO passa a usar `docs/v3/SEO-*.md` e `scripts/local/validar-seo-publico-local.ps1`.
+- Rotas `/anuncios/[slug]`, `/acompanhantes/[uf]/[cidade]`, `/acompanhantes/[uf]/[cidade]/[bairro]` e `/anunciar` devem ser preservadas.
+- Paginas publicas nao devem exibir texto tecnico como "skeleton" ou "API local".
+- `noindex` publico local so pode ser removido em cutover aprovado.

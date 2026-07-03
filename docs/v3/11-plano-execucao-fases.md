@@ -979,3 +979,25 @@ Gate:
 - nenhum admin funcional, autenticacao real, Pix/Efi funcional ou importador real;
 - nenhum acesso a producao, VPS, banco de producao, Efi real, OpenAI ou API externa;
 - nenhum remote, push ou commit nesta fase.
+
+## Bloco 26.2 - wizard, SEO central e Premium preview
+
+Objetivo:
+
+- converter `/anunciar` em wizard progressivo local;
+- criar preview Premium administrativo local sem efeito financeiro;
+- centralizar SEO como prioridade da V3;
+- criar validacao estatica SEO publica local.
+
+Gate:
+
+- envio de `/anunciar` apenas na revisao final;
+- sem upload real;
+- sem publicacao automatica;
+- sem pagamento, credito, Pix/Efi, checkout ou webhook;
+- Premium preview sem ativacao real;
+- rotas publicas preservadas;
+- sitemap sem API e sem dominio de producao em local;
+- admin noindex preservado;
+- sem textos publicos "skeleton" ou "API local";
+- nenhum dado real, producao, VPS, banco de producao, API externa, migration, SQL de schema, remote, push ou commit.
