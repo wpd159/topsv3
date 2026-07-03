@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
@@ -103,7 +104,8 @@ class ListagemPublicaConsultaServiceTest {
                 anuncioRepository,
                 new AnuncioPublicoMapper(),
                 anuncioConsultaService,
-                seoService);
+                seoService,
+                mock(PremiumPublicoMapper.class));
 
         ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20);
 

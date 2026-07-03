@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
+import { AdminPremiumPanel } from "../../../modules/admin/shell/AdminPremiumPanel";
 import { skeletonMetadata } from "../../../lib/seo/localSeo";
-import { AdminPlaceholderPage } from "../../../modules/admin/shell/AdminPlaceholderPage";
 
 export const metadata: Metadata = skeletonMetadata("Premium admin skeleton", "/admin/premium");
 
 export default function AdminPremiumPage() {
-  return <AdminPlaceholderPage moduleSlug="premium" />;
+  return <AdminPremiumPanel />;
 }

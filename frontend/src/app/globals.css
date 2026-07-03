@@ -11,16 +11,20 @@ body {
   margin: 0;
   background: #f7f7f5;
   color: #1f2933;
+  min-width: 0;
 }
 
 main {
+  width: 100%;
   min-height: 100vh;
   padding: 32px;
 }
 
 .shell {
+  width: 100%;
   max-width: 920px;
   margin: 0 auto;
+  min-width: 0;
 }
 
 .status {
@@ -42,11 +46,12 @@ h1 {
 p {
   max-width: 680px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .health-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
   gap: 12px;
   margin: 24px 0;
 }
@@ -56,6 +61,8 @@ p {
   border: 1px solid #d6d9dd;
   background: #ffffff;
   padding: 16px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .health-grid dt {
@@ -67,6 +74,7 @@ p {
 .health-grid dd {
   margin: 0;
   overflow-wrap: anywhere;
+  word-break: break-word;
   font-weight: 700;
 }
 
@@ -91,7 +99,8 @@ p {
   border: 1px solid #1f2933;
   background: #1f2933;
   color: #ffffff;
-  padding: 9px 12px;
+  min-height: 44px;
+  padding: 10px 14px;
   font: inherit;
   cursor: pointer;
 }
@@ -131,15 +140,19 @@ p {
 }
 
 .public-route {
+  width: 100%;
   background: #f7f7f5;
 }
 
 .public-shell {
-  max-width: 960px;
+  width: 100%;
+  max-width: 1080px;
+  min-width: 0;
 }
 
 .route-pattern {
-  display: inline-block;
+  display: block;
+  width: 100%;
   max-width: 100%;
   margin: 4px 0 22px;
   padding: 8px 10px;
@@ -150,10 +163,254 @@ p {
 }
 
 .public-content {
-  max-width: 760px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.public-home-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.public-home-hero,
+.public-locality-header,
+.public-detail-layout,
+.public-seo-block,
+.public-empty-state {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid #d6d9dd;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.public-home-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 320px);
+  gap: 18px;
+  align-items: end;
+}
+
+.public-home-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.public-home-actions a,
+.public-card-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid #1f2933;
+  background: #1f2933;
+  color: #ffffff;
+  padding: 10px 12px;
+  text-decoration: none;
+  text-align: center;
+}
+
+.public-locality-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 360px);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.public-locality-header h2 {
+  margin: 14px 0 8px;
+  font-size: 28px;
+}
+
+.public-locality-header p,
+.public-seo-block p,
+.public-empty-state p,
+.public-card-body p,
+.public-detail-copy p,
+.public-contact-action p,
+.public-section-heading p {
+  overflow-wrap: anywhere;
+}
+
+.public-locality-meta {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.public-locality-meta div {
+  border: 1px solid #d6d9dd;
+  background: #fbfbfa;
+  padding: 12px;
+  min-width: 0;
+}
+
+.public-locality-meta dt {
+  color: #53606c;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.public-locality-meta dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.public-anuncio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.public-anuncio-card {
+  display: grid;
+  border: 1px solid #d6d9dd;
+  background: #ffffff;
+  min-width: 0;
+}
+
+.public-card-body {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.public-card-heading {
+  display: grid;
+  gap: 6px;
+}
+
+.public-card-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.public-card-heading span,
+.public-card-location,
+.public-policy-note {
+  color: #53606c;
+}
+
+.public-card-body p {
+  margin: 0;
+}
+
+.public-media-placeholder {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 260px;
+  aspect-ratio: 4 / 3;
+  border: 1px solid #d6d9dd;
+  background: #fbfbfa;
+  color: #53606c;
+  padding: 16px;
+  text-align: center;
+}
+
+.public-media-placeholder span,
+.public-media-placeholder small {
+  overflow-wrap: anywhere;
+}
+
+.public-media-placeholder strong {
+  color: #1f2933;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.compact-media {
+  min-height: 180px;
+  aspect-ratio: 3 / 2;
+  border-width: 0 0 1px;
+}
+
+.public-badge-list,
+.public-benefit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-badge-list li,
+.public-benefit-list li {
+  max-width: 100%;
+  border: 1px solid #d6d9dd;
+  background: #fbfbfa;
+  color: #1f2933;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+}
+
+.public-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.public-detail-copy {
+  min-width: 0;
+}
+
+.public-detail-copy h2 {
+  margin: 14px 0 10px;
+  font-size: 28px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.public-detail-meta {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+}
+
+.public-contact-action {
+  display: grid;
+  gap: 10px;
+}
+
+.public-stories-flow {
+  margin-top: 18px;
+}
+
+.public-section-heading h2,
+.public-seo-block h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+}
+
+.public-empty-state {
+  margin-top: 18px;
+  color: #53606c;
+}
+
+.public-empty-state strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #1f2933;
+  font-size: 18px;
+}
+
+.public-empty-state p,
+.public-seo-block p {
+  margin: 0;
 }
 
 .seo-placeholder {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   margin-top: 22px;
   padding: 18px;
   border: 1px solid #d6d9dd;
@@ -319,4 +576,40 @@ p {
 .admin-moderation-actions strong {
   color: #1f2937;
   font-size: 0.9rem;
+}
+
+@media (max-width: 760px) {
+  main {
+    padding: 18px;
+  }
+
+  h1 {
+    font-size: 28px;
+  }
+
+  .public-home-hero,
+  .public-locality-header,
+  .public-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .public-locality-header h2,
+  .public-detail-copy h2 {
+    font-size: 24px;
+  }
+
+  .public-media-placeholder {
+    min-height: 220px;
+  }
+
+  .compact-media {
+    min-height: 170px;
+  }
+
+  .local-inline-form,
+  .local-action,
+  .public-home-actions a,
+  .public-card-link {
+    width: 100%;
+  }
 }

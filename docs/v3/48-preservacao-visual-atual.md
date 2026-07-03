@@ -118,3 +118,15 @@ Foram preservados:
 - ausencia de dados reais.
 
 Os paineis adicionados usam classes ja existentes, como `panel`, `muted` e `health-grid`. Eles indicam estado estrutural da API local e fallback seguro, mas nao representam layout final da V3.
+
+## Complemento Bloco 21
+
+O Bloco 21 aplicou melhorias pequenas de paridade visual publica local, sem redesenhar o site.
+
+A fonte visual completa continua pendente, mas foi realizada consulta SSH somente leitura porque este bloco exigia preservar o comportamento visual atual quando houvesse duvida. A consulta confirmou que a producao atual roda como aplicacao Next compilada e possui assets publicos no release ativo, mas o codigo fonte visual completo nao estava disponivel no release consultado.
+
+Nada foi alterado em producao. Nao houve deploy, reinicio, SQL, acesso a banco, leitura de `.env`, exibicao de segredo, copia de dump, copia de dado real ou download de midia.
+
+A V3 local passou a ter componentes publicos reutilizaveis para home, listagens, card, detalhe, placeholder de midia, CTA de contato, stories protegidos, estado vazio e bloco SEO local. Esses componentes usam a paleta e tipografia ja existentes no skeleton local, mantem rotas preservadas e nao representam layout final.
+
+Status da fonte visual completa apos o Bloco 21: `PENDENTE_FONTE_VISUAL_COMPLETA`.

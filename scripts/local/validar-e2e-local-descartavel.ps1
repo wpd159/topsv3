@@ -462,7 +462,7 @@ try {
   }
   $smokeOk = $true
   Add-Step "Smoke HTTP da API publica local executado com sucesso."
-  Add-Step "Smoke HTTP validou outbox admin read-only, sanitizacao, RBAC e ausencia de metodos de escrita."
+  Add-Step "Smoke HTTP validou outbox admin read-only, preview sanitizado, simulacao local, RBAC e ausencia de envio real."
 
   $auditoriaModeracao = [int](Invoke-PsqlScalar "select count(*) from auditoria_evento where acao in ('MODERACAO_REVISAO_DECIDIR', 'MODERACAO_MIDIA_DECIDIR', 'ANUNCIO_REMETER_REVISAO');")
   if ($auditoriaModeracao -lt 9) {
@@ -475,6 +475,12 @@ try {
     throw "Auditoria de moderacao local nao registrou motivos mascarados suficientes: $auditoriaMotivoMascarado."
   }
   Add-Step "Auditoria de moderacao local mascarou e-mail, contato e documento em motivos sinteticos."
+
+  $auditoriaOutboxSimulacao = [int](Invoke-PsqlScalar "select count(*) from auditoria_evento where acao = 'OUTBOX_SIMULACAO_LOCAL' and recurso_tipo = 'OUTBOX_EVENTO' and depois_json ->> 'envioExternoExecutado' = 'false' and depois_json ->> 'payloadBrutoExposto' = 'false';")
+  if ($auditoriaOutboxSimulacao -lt 1) {
+    throw "Auditoria de simulacao local de outbox nao registrada."
+  }
+  Add-Step "Auditoria de simulacao local de outbox registrada sem payload bruto e sem envio externo."
 
   $decisoesIntermediarias = [int](Invoke-PsqlScalar "select count(*) from decisao_moderacao where decisao = 'SOLICITAR_AJUSTE';")
   if ($decisoesIntermediarias -ne 0) {
@@ -489,10 +495,16 @@ try {
   Add-Step "Decisoes finais de revisao registradas em decisao_moderacao: $decisoesRevisao."
 
   $outboxModeracao = [int](Invoke-PsqlScalar "select count(*) from outbox_evento where tipo_evento in ('MODERACAO_SOLICITAR_AJUSTE', 'MODERACAO_REPROVADA', 'ANUNCIO_REMETIDO_REVISAO') and status = 'PENDENTE' and processado_em is null;")
-  if ($outboxModeracao -ne 3) {
-    throw "Outbox local de moderacao inesperado: $outboxModeracao eventos pendentes."
+  if ($outboxModeracao -ne 2) {
+    throw "Outbox local de moderacao inesperado: $outboxModeracao eventos pendentes apos simulacao."
   }
-  Add-Step "Outbox local de moderacao registrou $outboxModeracao eventos pendentes sem envio externo."
+  Add-Step "Outbox local de moderacao preservou $outboxModeracao eventos pendentes sem envio externo."
+
+  $outboxSimulado = [int](Invoke-PsqlScalar "select count(*) from outbox_evento where tipo_evento in ('MODERACAO_SOLICITAR_AJUSTE', 'MODERACAO_REPROVADA', 'ANUNCIO_REMETIDO_REVISAO') and status = 'PROCESSADO' and processado_em is not null;")
+  if ($outboxSimulado -ne 1) {
+    throw "Outbox local de moderacao simulado inesperado: $outboxSimulado eventos processados."
+  }
+  Add-Step "Outbox local de moderacao teve $outboxSimulado evento PROCESSADO por simulacao local sem envio real."
 
   $tables = Invoke-PsqlScalar "select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE';"
   Add-Step "Schema descartavel inspecionado com $tables tabelas em public."

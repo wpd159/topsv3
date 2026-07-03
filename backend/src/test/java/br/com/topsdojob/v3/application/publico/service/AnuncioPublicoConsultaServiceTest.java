@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.SeoPublicoMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
@@ -39,7 +40,8 @@ class AnuncioPublicoConsultaServiceTest {
                 new AnuncioPublicoMapper(),
                 new MidiaPublicaMapper(new MidiaPublicaUrlService()),
                 new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
-                mock(IdadePublicaService.class));
+                mock(IdadePublicaService.class),
+                mock(PremiumPublicoMapper.class));
 
         assertThatThrownBy(() -> service.buscarPorSlug("slug-local"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->

@@ -1,8 +1,8 @@
 import "./globals.css";
 
 export const metadata = {
-  title: "Tops do Job V3",
-  description: "Skeleton local do Tops do Job V3"
+  title: "Tops do Job",
+  description: "Previa local do Tops do Job"
 };
 
 export default function RootLayout({

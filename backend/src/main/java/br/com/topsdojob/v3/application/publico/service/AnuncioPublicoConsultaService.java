@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -38,6 +39,7 @@ public class AnuncioPublicoConsultaService {
     private final MidiaPublicaMapper midiaMapper;
     private final SeoPublicoConsultaService seoService;
     private final IdadePublicaService idadeService;
+    private final PremiumPublicoMapper premiumMapper;
 
     public AnuncioPublicoConsultaService(
             AnuncioRepository anuncioRepository,
@@ -47,7 +49,8 @@ public class AnuncioPublicoConsultaService {
             AnuncioPublicoMapper anuncioMapper,
             MidiaPublicaMapper midiaMapper,
             SeoPublicoConsultaService seoService,
-            IdadePublicaService idadeService) {
+            IdadePublicaService idadeService,
+            PremiumPublicoMapper premiumMapper) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -56,6 +59,7 @@ public class AnuncioPublicoConsultaService {
         this.midiaMapper = midiaMapper;
         this.seoService = seoService;
         this.idadeService = idadeService;
+        this.premiumMapper = premiumMapper;
     }
 
     @Transactional(readOnly = true)
@@ -82,7 +86,8 @@ public class AnuncioPublicoConsultaService {
                 anuncio,
                 localizacao(anuncio.getId()),
                 midias(anuncio.getId(), idadeConfirmada),
-                seoService.paraAnuncio(slugSeguro));
+                seoService.paraAnuncio(slugSeguro),
+                premiumMapper.flags(anuncio));
     }
 
     LocalizacaoPublicaDto localizacao(UUID anuncioId) {

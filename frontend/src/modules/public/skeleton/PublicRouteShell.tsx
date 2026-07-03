@@ -8,9 +8,11 @@ export function PublicRouteShell({ title, routePattern, children }: PublicRouteS
   return (
     <main className="public-route">
       <section className="shell public-shell">
-        <span className="status">SKELETON LOCAL</span>
+        <span className="status" data-debug-label="SKELETON LOCAL">
+          Previa local
+        </span>
         <h1>{title}</h1>
-        <p className="route-pattern">{routePattern}</p>
+        <p className="route-pattern">Rota preservada: {routePattern}</p>
         <div className="public-content">{children}</div>
       </section>
     </main>

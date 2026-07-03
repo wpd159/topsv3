@@ -2,6 +2,7 @@ import { ApiClientError, fetchLocalApi } from "./client";
 import type { AdminAuthResponse } from "./adminAuthTypes";
 import type {
   AdminAcaoModeracaoResponseDto,
+  AdminBeneficioAnuncioDto,
   AdminAnuncioDetalheDto,
   AdminAnuncioListaItemDto,
   AdminDecidirMidiaRequestDto,
@@ -11,7 +12,13 @@ import type {
   AdminMidiaListaItemDto,
   AdminOutboxDetalheDto,
   AdminOutboxListaItemDto,
+  AdminOutboxPreviewRenderizadaDto,
+  AdminOutboxSimularProcessamentoRequestDto,
+  AdminOutboxSimularProcessamentoResponseDto,
   AdminPaginaDto,
+  AdminPremiumAnuncioStatusDto,
+  AdminPremiumConsistenciaResumoDto,
+  AdminPremiumVencendoResumoDto,
   AdminRevisaoDetalheDto,
   AdminRevisaoListaItemDto,
   AdminResumoAnunciosDto,
@@ -80,6 +87,23 @@ export function getAdminOutboxDetalhe(id: string): Promise<AdminAuthResponse<Adm
   return safeReadonlyFetch(`/api/admin/outbox/${encodeURIComponent(id)}`);
 }
 
+export function getAdminOutboxPreview(id: string): Promise<AdminAuthResponse<AdminOutboxPreviewRenderizadaDto>> {
+  return safeReadonlyFetch(`/api/admin/outbox/${encodeURIComponent(id)}/preview`);
+}
+
+export function simularAdminOutboxProcessamentoLocal(
+  id: string,
+  request: AdminOutboxSimularProcessamentoRequestDto = {}
+): Promise<AdminAuthResponse<AdminOutboxSimularProcessamentoResponseDto>> {
+  return safeReadonlyFetch(`/api/admin/outbox/${encodeURIComponent(id)}/simular-processamento-local`, {
+    method: "POST",
+    body: JSON.stringify(request),
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+}
+
 export function decidirAdminRevisao(
   id: string,
   request: AdminDecidirRevisaoRequestDto
@@ -117,6 +141,22 @@ export function remeterAdminAnuncioParaRevisao(
       "Content-Type": "application/json"
     }
   });
+}
+
+export function getAdminPremiumAnuncioStatus(id: string): Promise<AdminAuthResponse<AdminPremiumAnuncioStatusDto>> {
+  return safeReadonlyFetch(`/api/admin/premium/anuncios/${encodeURIComponent(id)}`);
+}
+
+export function getAdminPremiumBeneficios(id: string): Promise<AdminAuthResponse<readonly AdminBeneficioAnuncioDto[]>> {
+  return safeReadonlyFetch(`/api/admin/premium/anuncios/${encodeURIComponent(id)}/beneficios`);
+}
+
+export function getAdminPremiumConsistencia(): Promise<AdminAuthResponse<AdminPremiumConsistenciaResumoDto>> {
+  return safeReadonlyFetch("/api/admin/premium/consistencia");
+}
+
+export function getAdminPremiumVencendo(): Promise<AdminAuthResponse<AdminPremiumVencendoResumoDto>> {
+  return safeReadonlyFetch("/api/admin/premium/vencendo");
 }
 
 async function safeReadonlyFetch<T>(path: string, init?: RequestInit): Promise<AdminAuthResponse<T>> {

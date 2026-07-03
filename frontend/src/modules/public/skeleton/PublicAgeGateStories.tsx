@@ -18,8 +18,9 @@ type AgeState = "pendente" | "confirmada" | "negada" | "indisponivel";
 
 export function PublicAgeGateStories({ slug, enabled }: PublicAgeGateStoriesProps) {
   const [ageState, setAgeState] = useState<AgeState>("pendente");
-  const [birthDate, setBirthDate] = useState("1990-01-01");
+  const [birthDate, setBirthDate] = useState("");
   const [stories, setStories] = useState<ListaStoriesPublicosDto | null>(null);
+  const birthDateIsValid = isValidBirthDate(birthDate);
 
   useEffect(() => {
     if (!enabled) {
@@ -54,7 +55,7 @@ export function PublicAgeGateStories({ slug, enabled }: PublicAgeGateStoriesProp
   }, [ageState, enabled, slug]);
 
   async function handleConfirm() {
-    if (!enabled) {
+    if (!enabled || !birthDateIsValid) {
       return;
     }
     const response = await confirmarIdadePublica({
@@ -93,7 +94,7 @@ export function PublicAgeGateStories({ slug, enabled }: PublicAgeGateStoriesProp
               max="2008-01-01"
             />
           </label>
-          <button className="local-action" type="button" onClick={handleConfirm} disabled={!enabled}>
+          <button className="local-action" type="button" onClick={handleConfirm} disabled={!enabled || !birthDateIsValid}>
             Confirmar idade
           </button>
         </div>
@@ -101,4 +102,15 @@ export function PublicAgeGateStories({ slug, enabled }: PublicAgeGateStoriesProp
       {ageState === "negada" ? <p>idade nao confirmada</p> : null}
     </section>
   );
+}
+
+function isValidBirthDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+  return value <= "2008-01-01";
 }

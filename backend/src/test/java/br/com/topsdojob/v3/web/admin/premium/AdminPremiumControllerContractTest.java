@@ -1,0 +1,37 @@
+package br.com.topsdojob.v3.web.admin.premium;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import org.junit.jupiter.api.Test;
+
+class AdminPremiumControllerContractTest {
+
+    @Test
+    void premiumAdminPossuiSomenteGetsReadOnly() throws Exception {
+        String controller = Files.readString(Path.of(
+                "src",
+                "main",
+                "java",
+                "br",
+                "com",
+                "topsdojob",
+                "v3",
+                "web",
+                "admin",
+                "premium",
+                "AdminPremiumController.java"));
+
+        assertThat(controller)
+                .contains("@GetMapping")
+                .contains("@PreAuthorize")
+                .doesNotContain("@PostMapping")
+                .doesNotContain("@PutMapping")
+                .doesNotContain("@PatchMapping")
+                .doesNotContain("@DeleteMapping")
+                .doesNotContain("ativar")
+                .doesNotContain("comprar")
+                .doesNotContain("pagar");
+    }
+}

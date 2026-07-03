@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { getAnuncioPublico, getSeoRotaPublica } from "../../../lib/api/publicApi";
 import { routeSegment, skeletonMetadata } from "../../../lib/seo/localSeo";
+import { PublicSeoTextBlock } from "../../../modules/public/components/PublicSeoTextBlock";
 import { PublicAgeGateContent } from "../../../modules/public/skeleton/PublicAgeGateContent";
 import { PublicRouteShell } from "../../../modules/public/skeleton/PublicRouteShell";
 import { SeoPlaceholder } from "../../../modules/public/skeleton/SeoPlaceholder";
@@ -14,7 +15,7 @@ type AnuncioPageProps = {
 
 export async function generateMetadata({ params }: AnuncioPageProps): Promise<Metadata> {
   const { slug } = await params;
-  return skeletonMetadata("Anúncio local skeleton", `/anuncios/${routeSegment(slug)}`);
+  return skeletonMetadata("Anuncio - Tops do Job", `/anuncios/${routeSegment(slug)}`);
 }
 
 export default async function AnuncioSkeletonPage({ params }: AnuncioPageProps) {
@@ -26,10 +27,10 @@ export default async function AnuncioSkeletonPage({ params }: AnuncioPageProps) 
   ]);
 
   return (
-    <PublicRouteShell title="Anúncio local skeleton" routePattern="/anuncios/[slug]">
+    <PublicRouteShell title="Anuncio" routePattern="/anuncios/[slug]">
       <p>
-        Esta rota existe apenas para preservar o contrato público da V3 em ambiente local. Nenhum
-        anúncio real, foto real, contato, preço, localização ou conteúdo sensível é carregado.
+        Previa local com dados sinteticos e placeholders seguros. Nenhum anuncio real, foto real,
+        contato, preco, localizacao ou conteudo sensivel e carregado.
       </p>
       <PublicAgeGateContent
         slug={slug}
@@ -39,7 +40,7 @@ export default async function AnuncioSkeletonPage({ params }: AnuncioPageProps) 
       />
       {seoApi.ok ? (
         <section className="panel" aria-label="SEO via API local">
-          <p>SEO local recebido da API publica de leitura.</p>
+          <p>Informacoes locais de rota preservada.</p>
           <dl className="health-grid compact">
             <div>
               <dt>Canonical</dt>
@@ -52,6 +53,7 @@ export default async function AnuncioSkeletonPage({ params }: AnuncioPageProps) 
           </dl>
         </section>
       ) : null}
+      <PublicSeoTextBlock routePath={routePath} />
       <SeoPlaceholder routePath={routePath} />
     </PublicRouteShell>
   );

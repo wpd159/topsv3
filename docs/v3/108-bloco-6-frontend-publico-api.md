@@ -147,3 +147,22 @@ O frontend continuou sem redesign e `npm run lint`/`npm run build` passaram. A A
 A rota `/anuncios/[slug]` passa a usar componente client-side isolado para registrar visualizacao local e solicitar WhatsApp pelo endpoint autorizado.
 
 O componente nao usa localStorage, sessionStorage, token, cookie de sessao ou tracking externo. Ele nao decide classificacao e apenas reflete a resposta backend.
+
+## Complemento Bloco 21
+
+O Bloco 21 substituiu a apresentacao publica puramente tecnica por componentes locais de paridade visual leve:
+
+- home local;
+- grid de anuncios;
+- card publico;
+- cabecalho de localidade;
+- detalhe publico;
+- placeholder de midia;
+- CTA de contato mediado pelo backend;
+- stories protegidos;
+- estado vazio;
+- bloco SEO local.
+
+As rotas continuaram as mesmas e o frontend segue consumindo apenas a API local configurada. O WhatsApp bruto deixou de ser renderizado; o componente mostra somente estado seguro de autorizacao quando o backend local libera contato.
+
+Nao houve redesign, imagem real, dado real, storage real, CDN real, API externa, producao, remote, push ou commit.

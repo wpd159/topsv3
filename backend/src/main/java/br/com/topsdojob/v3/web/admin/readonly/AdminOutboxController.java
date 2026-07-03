@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.web.admin.readonly;
 
+import br.com.topsdojob.v3.application.admin.outbox.template.AdminOutboxPreviewRenderizadaDto;
+import br.com.topsdojob.v3.application.admin.outbox.template.AdminOutboxPreviewService;
 import br.com.topsdojob.v3.application.admin.readonly.AdminOutboxConsultaService;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminOutboxDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminOutboxListaItemDto;
@@ -22,9 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminOutboxController {
 
     private final AdminOutboxConsultaService service;
+    private final AdminOutboxPreviewService previewService;
 
-    public AdminOutboxController(AdminOutboxConsultaService service) {
+    public AdminOutboxController(
+            AdminOutboxConsultaService service,
+            AdminOutboxPreviewService previewService) {
         this.service = service;
+        this.previewService = previewService;
     }
 
     @GetMapping
@@ -47,5 +53,13 @@ public class AdminOutboxController {
             @PathVariable UUID id,
             @AuthenticationPrincipal AdminUserPrincipal actor) {
         return service.detalhar(id, actor);
+    }
+
+    @GetMapping("/{id}/preview")
+    @PreAuthorize("hasRole('ADMIN') or (hasRole('MODERADOR') and hasAuthority('ANUNCIO_MODERAR'))")
+    public AdminOutboxPreviewRenderizadaDto preview(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AdminUserPrincipal actor) {
+        return previewService.preview(id, actor);
     }
 }

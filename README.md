@@ -40,6 +40,10 @@ O Bloco 17.1 corrige `SOLICITAR_AJUSTE` para ser acao intermediaria local: nao c
 
 O Bloco 18 adiciona outbox administrativo local somente leitura: `GET /api/admin/outbox` e `GET /api/admin/outbox/{id}`. A consulta mostra eventos pendentes, previa e dados sanitizados, sempre com `envioExternoExecutado=false`, sem envio, reenvio, worker, scheduler, API externa, e-mail real ou WhatsApp real.
 
+O Bloco 19 adiciona simulacao local de processamento de outbox: `POST /api/admin/outbox/{id}/simular-processamento-local`, restrito a `ADMIN`. A simulacao altera `PENDENTE -> PROCESSADO` usando status ja existente, registra auditoria sanitizada e continua com `envioExternoExecutado=false`, sem envio real, reenvio, worker, scheduler, API externa, migration ou SQL de schema.
+
+O Bloco 19.1 endurece esse endpoint: ele so funciona quando `APP_ENV=local`. Fora de local, incluindo `nao_configurado` ou `staging`, o backend retorna `403` antes de alterar outbox, marcar `PROCESSADO` ou registrar auditoria de simulacao.
+
 ## Stack planejada
 
 - Backend: Java 17 LTS com Spring Boot.
@@ -76,6 +80,7 @@ Os nomes padronizados atuais são:
 .\scripts\local\validar-migrations-postgres-descartavel.ps1
 .\scripts\local\validar-fonte-importacao-local.ps1
 .\scripts\local\validar-build-local.ps1
+.\scripts\local\validar-ui-mobile-estatica.ps1
 ```
 
 Esses scripts usam `infra/local/docker-compose.local.yml` e exigem Docker já disponível na máquina. Esta fase não instala ferramentas. Os volumes locais ficam sob `storage-local/`, que é ignorado pelo Git.
@@ -443,6 +448,58 @@ O frontend admin consome os contratos com `credentials: "include"` e continua se
 Tambem foi corrigido o default de `EFI_PIX_MOCK_MODE`: `application.yml` fica fail-closed com `false`; apenas `application-local.yml` usa mock `true` por padrao local.
 
 Nao houve migration, SQL de schema, seed real, dado real, acao critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.
+
+## Bloco 20 - templates locais e preview sanitizado de outbox
+
+O Bloco 20 adiciona `GET /api/admin/outbox/{id}/preview` para renderizar previa local sanitizada de comunicacoes de moderacao a partir do outbox.
+
+Templates locais criados: `MODERACAO_SOLICITAR_AJUSTE`, `MODERACAO_REPROVADA`, `ANUNCIO_REMETIDO_REVISAO`, `MODERACAO_MIDIA_REPROVADA` e `GENERICO_OUTBOX_MODERACAO`.
+
+O preview retorna `envioExternoExecutado=false` e `somentePreview=true`, usa placeholders neutros, mascara contato/documento e bloqueia storage, segredo, Pix e financeiro. Nao altera status, nao marca `PROCESSADO`, nao envia, nao reenvia, nao cria worker, scheduler, retry ou provider externo.
+
+## Bloco 21 - paridade visual publica local
+
+O Bloco 21 aplica melhorias visuais pequenas nas paginas publicas locais, sem redesign e sem nova identidade visual.
+
+Foram adicionados componentes publicos para home, listagens, card, detalhe de anuncio, placeholder de midia, CTA de contato mediado pelo backend, stories protegidos, estado vazio e bloco SEO local.
+
+As rotas preservadas continuam:
+
+- `/anuncios/[slug]`;
+- `/acompanhantes/[uf]/[cidade]`;
+- `/acompanhantes/[uf]/[cidade]/[bairro]`.
+
+O frontend nao renderiza WhatsApp bruto, nao monta URL de midia, nao usa imagem real, nao usa dado real e nao decide classificacao. Conteudo `BLOQUEADO` e stories continuam dependentes do backend e da confirmacao de idade.
+
+Mobile permanece sem scroll lock, sem `document.body.style.overflow`, sem elemento flutuante solto, sem animacao automatica, sem `position: fixed/absolute/sticky` e sem `100vw`.
+
+Nao houve producao alterada, banco, SQL/migration, Pix/Efi, OpenAI, API externa, importador real, remote, push ou commit.
+
+## Bloco 21.1 - evidencias visuais e age gate
+
+O Bloco 21.1 corrige a auditoria visual do Bloco 21:
+
+- gera prints desktop/mobile em `docs/v3/evidencias/bloco-21/`;
+- remove data pre-preenchida do age gate publico e dos stories;
+- desabilita `Confirmar idade` ate data valida;
+- suaviza textos publicos tecnicos;
+- reforca contencao mobile;
+- prepara metadados de pacote para listar validacoes executadas no `RESUMO-ENTREGA.md`.
+
+Os prints usam somente ambiente local, PostgreSQL descartavel, dados sinteticos, backend/frontend locais e Edge headless local. Nao usam producao, dado real, midia real, WhatsApp real, storage key, bucket ou hash.
+
+## Bloco 22 - Premium e beneficios locais
+
+O Bloco 22 adiciona leitura/calculo local de Premium e beneficios, preservando Premium atual e mantendo o gratuito util, sem limite comercial de clique, contato ou WhatsApp.
+
+Endpoints admin read-only criados:
+
+- `GET /api/admin/premium/anuncios/{id}`;
+- `GET /api/admin/premium/anuncios/{id}/beneficios`;
+- `GET /api/admin/premium/consistencia`;
+- `GET /api/admin/premium/vencendo`.
+
+O painel `/admin/premium` mostra status, beneficios, vencendo e inconsistencias em dados sinteticos locais. Nao ha compra, checkout, cobranca, Pix/Efi funcional, credito real, ativacao real por dinheiro, job de expiracao, migration, SQL de schema, producao, VPS, API externa, remote, push ou commit.
 
 ## Bloco 15 - admin read-only detalhado
 

@@ -34,6 +34,14 @@ A consulta admin read-only pode exibir:
 
 A consulta deve sempre indicar `envioExternoExecutado=false`.
 
+## Preview por template local
+
+O Bloco 20 permite renderizar previa sanitizada por template local em:
+
+- `GET /api/admin/outbox/{id}/preview`
+
+Essa previa e apenas visualizacao administrativa. Ela nao envia, nao reenvia, nao marca como entregue, nao altera status e nao chama provider externo.
+
 ## Sanitizacao obrigatoria
 
 A API deve mascarar ou bloquear:
@@ -67,4 +75,6 @@ Qualquer envio real exige fase separada com:
 
 ## Estado atual
 
-O Bloco 18 criou somente leitura local. Nao ha entrega real, nao ha processamento de fila e nao ha alteracao de status do outbox.
+O Bloco 18 criou somente leitura local. O Bloco 19 adiciona simulacao local controlada. O Bloco 20 adiciona preview sanitizado por template local.
+
+Na simulacao do Bloco 19, `PENDENTE -> PROCESSADO` significa apenas processamento local sintetico. Nao ha entrega real, fila real, worker, scheduler, retry real, SMTP, WhatsApp, webhook ou API externa.

@@ -6,6 +6,7 @@ import {
   registrarCliqueWhatsappPublico,
   registrarVisualizacaoPublica
 } from "../../../lib/api/publicApi";
+import { PublicContatoAction } from "../components/PublicContatoAction";
 
 type PublicMetricActionsProps = {
   slug: string;
@@ -16,7 +17,7 @@ type ContactState =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "unavailable"; message: string }
-  | { kind: "available"; whatsappUrl: string };
+  | { kind: "available" };
 
 export function PublicMetricActions({ slug, enabled }: PublicMetricActionsProps) {
   const [viewStatus, setViewStatus] = useState("pendente");
@@ -49,8 +50,8 @@ export function PublicMetricActions({ slug, enabled }: PublicMetricActionsProps)
     const response = await registrarCliqueWhatsappPublico(slug, {
       dispositivo: "DESCONHECIDO"
     });
-    if (response.ok && response.data.disponivel && response.data.whatsappUrl) {
-      setContact({ kind: "available", whatsappUrl: response.data.whatsappUrl });
+    if (response.ok && response.data.disponivel) {
+      setContact({ kind: "available" });
       return;
     }
     setContact({ kind: "unavailable", message: "contato indisponivel" });
@@ -60,7 +61,7 @@ export function PublicMetricActions({ slug, enabled }: PublicMetricActionsProps)
     <section className="panel" aria-label="Metricas publicas locais">
       <dl className="health-grid compact">
         <div>
-          <dt>Visualizacao local</dt>
+          <dt>Visualizacao</dt>
           <dd>{viewStatus}</dd>
         </div>
         <div>
@@ -68,11 +69,13 @@ export function PublicMetricActions({ slug, enabled }: PublicMetricActionsProps)
           <dd>PENDENTE_URL_PUBLICA_MIDIA_CDN</dd>
         </div>
       </dl>
-      <button className="local-action" type="button" onClick={handleContactClick} disabled={!enabled || contact.kind === "loading"}>
-        Ver WhatsApp
-      </button>
-      {contact.kind === "available" ? <p>{contact.whatsappUrl}</p> : null}
-      {contact.kind === "unavailable" ? <p>{contact.message}</p> : null}
+      <PublicContatoAction
+        enabled={enabled}
+        loading={contact.kind === "loading"}
+        status={contact.kind === "available" ? "available" : contact.kind === "unavailable" ? "unavailable" : "idle"}
+        unavailableMessage={contact.kind === "unavailable" ? contact.message : null}
+        onClick={handleContactClick}
+      />
     </section>
   );
 }

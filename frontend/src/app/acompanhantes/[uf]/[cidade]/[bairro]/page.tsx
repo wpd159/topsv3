@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 
 import { getListagemBairroPublica, getSeoRotaPublica } from "../../../../../lib/api/publicApi";
 import { routeSegment, skeletonMetadata } from "../../../../../lib/seo/localSeo";
+import { PublicAnuncioGrid } from "../../../../../modules/public/components/PublicAnuncioGrid";
+import { PublicEmptyState } from "../../../../../modules/public/components/PublicEmptyState";
+import { PublicLocalidadeHeader } from "../../../../../modules/public/components/PublicLocalidadeHeader";
+import { PublicSeoTextBlock } from "../../../../../modules/public/components/PublicSeoTextBlock";
 import { PublicRouteShell } from "../../../../../modules/public/skeleton/PublicRouteShell";
 import { SeoPlaceholder } from "../../../../../modules/public/skeleton/SeoPlaceholder";
 
@@ -13,14 +17,10 @@ type BairroPageProps = {
   }>;
 };
 
-type ItemComMidia = {
-  midias: readonly { urlPublica: string | null; pendenciaMidia?: string | null }[];
-};
-
 export async function generateMetadata({ params }: BairroPageProps): Promise<Metadata> {
   const { uf, cidade, bairro } = await params;
   return skeletonMetadata(
-    "Bairro local skeleton",
+    "Acompanhantes por bairro - Tops do Job",
     `/acompanhantes/${routeSegment(uf)}/${routeSegment(cidade)}/${routeSegment(bairro)}`
   );
 }
@@ -35,44 +35,35 @@ export default async function BairroSkeletonPage({ params }: BairroPageProps) {
 
   return (
     <PublicRouteShell
-      title="Bairro local skeleton"
+      title="Acompanhantes por bairro"
       routePattern="/acompanhantes/[uf]/[cidade]/[bairro]"
     >
       <p>
-        Esta página existe somente como skeleton local. Não há conteúdo adulto real, busca,
-        geolocalização real, anúncio, mídia, contato, telefone ou chamada a API externa.
+        Esta pagina existe somente como previa local. Nao ha conteudo adulto real, busca,
+        geolocalizacao real, anuncio, midia, contato, telefone ou chamada a API externa.
       </p>
+      <PublicLocalidadeHeader
+        title="Acompanhantes locais no bairro"
+        routeLabel="/acompanhantes/[uf]/[cidade]/[bairro]"
+        totalItens={listagemApi.ok ? listagemApi.data.paginacao.totalItens : null}
+        status={listagemApi.ok ? "Disponivel" : "Indisponivel"}
+        locationParts={[uf, cidade, bairro]}
+      />
       {listagemApi.ok ? (
-        <section className="panel" aria-label="API publica local">
-          <p>API publica local respondeu ao contrato de listagem por bairro.</p>
-          <dl className="health-grid compact">
-            <div>
-              <dt>Status</dt>
-              <dd>{listagemApi.status}</dd>
-            </div>
-            <div>
-              <dt>Itens retornados</dt>
-              <dd>{listagemApi.data.itens.length}</dd>
-            </div>
-            <div>
-              <dt>Total local</dt>
-              <dd>{listagemApi.data.paginacao.totalItens}</dd>
-            </div>
-            <div>
-              <dt>Midia local</dt>
-              <dd>{mediaStatus(listagemApi.data.itens)}</dd>
-            </div>
-          </dl>
-        </section>
+        <PublicAnuncioGrid
+          items={listagemApi.data.itens}
+          emptyTitle="Nenhum anuncio local"
+          emptyMessage="A listagem por bairro esta disponivel, mas nao retornou itens locais."
+        />
       ) : (
-        <section className="panel muted" aria-label="Fallback local">
-          <p>{listagemApi.message}</p>
-          <p>A pagina permanece segura quando o backend local nao esta disponivel.</p>
-        </section>
+        <PublicEmptyState
+          title="Listagem local indisponivel"
+          message={`${listagemApi.message}. A pagina permanece segura quando o backend local nao esta disponivel.`}
+        />
       )}
       {seoApi.ok ? (
         <section className="panel" aria-label="SEO via API local">
-          <p>SEO local recebido da API publica de leitura.</p>
+          <p>Informacoes locais de rota preservada.</p>
           <dl className="health-grid compact">
             <div>
               <dt>Canonical</dt>
@@ -85,20 +76,8 @@ export default async function BairroSkeletonPage({ params }: BairroPageProps) {
           </dl>
         </section>
       ) : null}
+      <PublicSeoTextBlock routePath={routePath} />
       <SeoPlaceholder routePath={routePath} />
     </PublicRouteShell>
   );
-}
-
-function mediaStatus(itens: readonly ItemComMidia[]): string {
-  const totalMidias = itens.reduce((total, item) => total + item.midias.length, 0);
-  if (totalMidias === 0) {
-    return "sem midia";
-  }
-  if (itens.some((item) => item.midias.some((midia) => Boolean(midia.urlPublica)))) {
-    return "url publica autorizada";
-  }
-  return itens
-    .flatMap((item) => item.midias)
-    .find((midia) => Boolean(midia.pendenciaMidia))?.pendenciaMidia ?? "PENDENTE_URL_PUBLICA_MIDIA_CDN";
 }

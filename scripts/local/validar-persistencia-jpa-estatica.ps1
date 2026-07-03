@@ -186,9 +186,14 @@ $controllerServiceNaoPermitido = @($changedControllerService | Where-Object {
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/publico/service/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/auth/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/moderacao/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/outbox/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/premium/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/admin/readonly/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/application/publico/premium/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/auth/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/moderacao/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/outbox/*" -and
+  $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/premium/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/admin/readonly/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/security/*" -and
   $_ -notlike "backend/src/main/java/br/com/topsdojob/v3/web/publico/*" -and
@@ -210,6 +215,7 @@ $publicoSemMetricasLocais = $publicoReadOnlyText
 $publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@PostMapping\(\s*"/\{slug\}/visualizacao"\s*\)', ''
 $publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@PostMapping\(\s*"/\{slug\}/clique-whatsapp"\s*\)', ''
 $publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '@PostMapping\(\s*"/confirmar"\s*\)', ''
+$publicoSemMetricasLocais = $publicoSemMetricasLocais -replace '(?m)^import br\.com\.topsdojob\.v3\.application\.admin\.premium\.[^\r\n]+\r?\n', ''
 Add-Check "sem endpoint de acao critica na API publica" (-not ($publicoSemMetricasLocais -match '@PostMapping|@PutMapping|@PatchMapping|@DeleteMapping|@Modifying|@Lock|Pagamento|Pix|/moderacao|Aprovacao|Reprovacao|Aprovar|Reprovar|Admin')) "GET publico e POST local de metrica/WhatsApp"
 $changedJavaTextSemContatoAutorizado = $changedJavaText -replace 'https://wa\.me/', ''
 Add-Check "sem uso de banco ou rede em Java alterado" (-not ($changedJavaTextSemContatoAutorizado -match 'DriverManager|DataSource|JdbcTemplate|EntityManager|RestTemplate|WebClient|HttpClient|Socket|URLConnection|https?://')) "camada persistence passiva"

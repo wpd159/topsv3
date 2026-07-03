@@ -1,0 +1,26 @@
+# Checklist - Bloco 20
+
+- [x] Inventario inicial gerado fora do repositorio.
+- [x] Catalogo local de templates criado em Java.
+- [x] Endpoint `GET /api/admin/outbox/{id}/preview` criado.
+- [x] DTO de preview renderizado criado.
+- [x] `ADMIN` acessa preview.
+- [x] `MODERADOR` acessa preview de outbox de moderacao.
+- [x] `COMERCIAL` nao acessa preview.
+- [x] `USUARIO` nao acessa preview.
+- [x] Sem sessao retorna `401`.
+- [x] Outbox inexistente retorna `404`.
+- [x] Preview mascara e-mail, contato e documento.
+- [x] Preview bloqueia storage, bucket, hash, segredo, Pix e financeiro.
+- [x] Preview nao retorna payload bruto integral.
+- [x] Preview nao altera status.
+- [x] Preview nao marca `PROCESSADO`.
+- [x] Preview nao executa envio externo.
+- [x] Frontend admin exibe botao `Ver previa`.
+- [x] Frontend admin nao cria botao enviar, reenviar ou marcar enviado.
+- [x] OpenAPI atualizado.
+- [x] Documentacao atualizada.
+- [x] Sem migration.
+- [x] Sem SQL de schema.
+- [x] Sem producao, VPS, banco de producao, dados reais ou API externa.
+- [x] Sem remote, push ou commit.

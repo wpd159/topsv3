@@ -107,3 +107,14 @@ Nao houve migration, alteracao de SQL de schema, acao critica, moderacao real, f
 O Bloco 15 adicionou listagens e detalhes read-only de anuncios, midia e revisoes, preservando o mesmo contrato de sessao/RBAC do Bloco 14.
 
 O health publico deixou de expor ambiente e `efiPixMockMode`; esses dados continuam disponiveis apenas em `/api/admin/sistema/status`.
+
+## Complemento Bloco 22
+
+O Bloco 22 adiciona endpoints read-only de Premium:
+
+- `GET /api/admin/premium/anuncios/{id}`;
+- `GET /api/admin/premium/anuncios/{id}/beneficios`;
+- `GET /api/admin/premium/consistencia`;
+- `GET /api/admin/premium/vencendo`.
+
+Eles seguem sessao/RBAC, usam DTOs sanitizados e nao retornam valor pago, saldo, credito real, payload de pagamento, telefone bruto, documento privado ou storage. Nao criam acao de compra, ativacao, checkout, cobranca, Pix/Efi ou expiracao real.

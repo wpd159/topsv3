@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.PaginacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
@@ -41,6 +42,7 @@ public class ListagemPublicaConsultaService {
     private final AnuncioPublicoMapper anuncioMapper;
     private final AnuncioPublicoConsultaService anuncioConsultaService;
     private final SeoPublicoConsultaService seoService;
+    private final PremiumPublicoMapper premiumMapper;
 
     public ListagemPublicaConsultaService(
             EstadoRepository estadoRepository,
@@ -50,7 +52,8 @@ public class ListagemPublicaConsultaService {
             AnuncioRepository anuncioRepository,
             AnuncioPublicoMapper anuncioMapper,
             AnuncioPublicoConsultaService anuncioConsultaService,
-            SeoPublicoConsultaService seoService) {
+            SeoPublicoConsultaService seoService,
+            PremiumPublicoMapper premiumMapper) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
@@ -59,6 +62,7 @@ public class ListagemPublicaConsultaService {
         this.anuncioMapper = anuncioMapper;
         this.anuncioConsultaService = anuncioConsultaService;
         this.seoService = seoService;
+        this.premiumMapper = premiumMapper;
     }
 
     @Transactional(readOnly = true)
@@ -120,7 +124,8 @@ public class ListagemPublicaConsultaService {
                 .map(anuncio -> anuncioMapper.toCard(
                         anuncio,
                         toLocalizacao(estado, cidade, bairro, localizacaoPorAnuncio.get(anuncio.getId())),
-                        anuncioConsultaService.midias(anuncio.getId())))
+                        anuncioConsultaService.midias(anuncio.getId()),
+                        premiumMapper.flags(anuncio)))
                 .toList();
 
         String uf = estado.getUf();

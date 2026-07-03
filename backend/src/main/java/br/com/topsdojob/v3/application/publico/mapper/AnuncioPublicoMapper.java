@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.dto.AnuncioDetalhePublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import java.util.List;
 import org.springframework.stereotype.Component;
@@ -18,7 +19,9 @@ public class AnuncioPublicoMapper {
     public AnuncioCardPublicoDto toCard(
             AnuncioEntity anuncio,
             LocalizacaoPublicaDto localizacao,
-            List<MidiaPublicaDto> midias) {
+            List<MidiaPublicaDto> midias,
+            PremiumPublicoFlagsDto premium) {
+        PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioCardPublicoDto(
                 anuncio.getSlug(),
                 anuncio.getTitulo(),
@@ -26,11 +29,11 @@ public class AnuncioPublicoMapper {
                 anuncio.getPreco(),
                 localizacao,
                 List.copyOf(midias),
-                false,
-                false,
-                !midias.isEmpty(),
-                false,
-                List.of(),
+                flags.destaqueAtivo(),
+                flags.topoAtivo(),
+                flags.possuiMidiaExtra() || !midias.isEmpty(),
+                flags.possuiStories() && !midias.isEmpty(),
+                flags.beneficiosPublicos(),
                 anuncio.getPublicadoEm());
     }
 
@@ -38,7 +41,9 @@ public class AnuncioPublicoMapper {
             AnuncioEntity anuncio,
             LocalizacaoPublicaDto localizacao,
             List<MidiaPublicaDto> midias,
-            SeoRotaPublicaDto seo) {
+            SeoRotaPublicaDto seo,
+            PremiumPublicoFlagsDto premium) {
+        PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioDetalhePublicoDto(
                 anuncio.getSlug(),
                 anuncio.getTitulo(),
@@ -46,11 +51,11 @@ public class AnuncioPublicoMapper {
                 anuncio.getPreco(),
                 localizacao,
                 List.copyOf(midias),
-                false,
-                false,
-                !midias.isEmpty(),
-                false,
-                List.of(),
+                flags.destaqueAtivo(),
+                flags.topoAtivo(),
+                flags.possuiMidiaExtra() || !midias.isEmpty(),
+                flags.possuiStories() && !midias.isEmpty(),
+                flags.beneficiosPublicos(),
                 null,
                 PENDENTE_POLITICA_WHATSAPP,
                 anuncio.getPublicadoEm(),

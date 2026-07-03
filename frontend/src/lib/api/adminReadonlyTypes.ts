@@ -145,6 +145,19 @@ export type AdminOutboxPreviewDto = {
   envioExternoExecutado: boolean;
 };
 
+export type AdminOutboxPreviewRenderizadaDto = {
+  id: string;
+  tipoEvento: string | null;
+  status: string | null;
+  assuntoSanitizado: string | null;
+  corpoSanitizado: string | null;
+  canalPrevisto: string | null;
+  envioExternoExecutado: boolean;
+  somentePreview: boolean;
+  camposMascarados: readonly string[];
+  pendencias: readonly string[];
+};
+
 export type AdminOutboxListaItemDto = {
   id: string;
   tipoEvento: string | null;
@@ -162,6 +175,23 @@ export type AdminOutboxListaItemDto = {
 export type AdminOutboxDetalheDto = AdminOutboxListaItemDto & {
   dadosSanitizados: Record<string, unknown>;
   somenteLeitura: boolean;
+};
+
+export type AdminOutboxSimularProcessamentoRequestDto = {
+  observacao?: string;
+  requestIdCliente?: string;
+};
+
+export type AdminOutboxSimularProcessamentoResponseDto = {
+  id: string;
+  statusAntes: string | null;
+  statusDepois: string | null;
+  statusAlterado: boolean;
+  envioExternoExecutado: boolean;
+  auditoriaRegistrada: boolean;
+  requestId: string;
+  processadoEm: string;
+  mensagem: string;
 };
 
 export type AdminDecisaoModeracaoAcao = "APROVAR" | "REPROVAR" | "SOLICITAR_AJUSTE";
@@ -201,4 +231,88 @@ export type AdminAcaoModeracaoResponseDto = {
   requestId: string;
   decididoEm: string;
   mensagem: string;
+};
+
+export type AdminBeneficioAnuncioDto = {
+  id: string;
+  beneficioCodigo: string | null;
+  beneficioNome: string | null;
+  escopo: string | null;
+  statusOriginal: string | null;
+  statusCalculado: string | null;
+  inicioEm: string | null;
+  fimEm: string | null;
+  venceEmBreve: boolean;
+  grupoVinculado: boolean;
+  grupoId: string | null;
+  grupoTipo: string | null;
+  grupoStatus: string | null;
+  grupoFimEm: string | null;
+  codigosConsistencia: readonly string[];
+  inconsistente: boolean;
+  somenteLeitura: boolean;
+};
+
+export type AdminPremiumAnuncioStatusDto = {
+  anuncioId: string;
+  slug: string | null;
+  titulo: string | null;
+  premiumAtivo: boolean;
+  destaqueAtivo: boolean;
+  topoAtivo: boolean;
+  possuiStories: boolean;
+  possuiMidiaExtra: boolean;
+  beneficiosAtivos: number;
+  beneficiosExpirados: number;
+  beneficiosVencendo: number;
+  inconsistenciasTotal: number;
+  codigosConsistencia: readonly string[];
+  calculadoEm: string | null;
+  somenteLeitura: boolean;
+  compraOuAtivacaoRealDisponivel: boolean;
+  acoesFinanceirasDisponiveis: boolean;
+  gratuitoLimitadoPorContato: boolean;
+};
+
+export type AdminPremiumConsistenciaItemDto = {
+  anuncioId: string | null;
+  slug: string | null;
+  ativacaoId: string | null;
+  beneficioCodigo: string | null;
+  codigo: string;
+  severidade: string;
+  mensagem: string;
+  statusCalculado: string | null;
+  fimEm: string | null;
+  grupoId: string | null;
+  grupoStatus: string | null;
+  grupoFimEm: string | null;
+  detectadoEm: string | null;
+};
+
+export type AdminPremiumConsistenciaResumoDto = {
+  itens: readonly AdminPremiumConsistenciaItemDto[];
+  total: number;
+  calculadoEm: string | null;
+  somenteLeitura: boolean;
+};
+
+export type AdminPremiumVencendoItemDto = {
+  anuncioId: string | null;
+  slug: string | null;
+  ativacaoId: string;
+  beneficioCodigo: string | null;
+  statusCalculado: string | null;
+  fimEm: string | null;
+  diasRestantes: number;
+  grupoVinculado: boolean;
+  somenteLeitura: boolean;
+};
+
+export type AdminPremiumVencendoResumoDto = {
+  itens: readonly AdminPremiumVencendoItemDto[];
+  total: number;
+  janelaDias: number;
+  calculadoEm: string | null;
+  somenteLeitura: boolean;
 };

@@ -137,4 +137,11 @@ public class OutboxEventoEntity {
     return entity;
   }
 
+  public void marcarProcessadoPorSimulacaoLocal(OffsetDateTime processadoEm) {
+    this.status = StatusOutbox.PROCESSADO;
+    this.processadoEm = processadoEm;
+    this.erroResumido = null;
+    this.atualizadoEm = processadoEm;
+  }
+
 }

@@ -721,6 +721,124 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/premium/anuncios/{id}:
+    get:
+      summary: Status Premium read-only de anuncio
+      description: Retorna calculo local sanitizado de Premium/beneficios para ADMIN, MODERADOR ou COMERCIAL. Nao compra, nao ativa, nao cobra, nao chama Pix/Efi, nao retorna valor pago, saldo, credito real, payload de pagamento, telefone bruto, storage ou documento privado.
+      operationId: getAdminPremiumAnuncioStatus
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: status Premium sanitizado e somente leitura
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPremiumAnuncioStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/premium/anuncios/{id}/beneficios:
+    get:
+      summary: Beneficios Premium read-only de anuncio
+      description: Lista beneficios calculados de forma sanitizada. Nao retorna custo, preco, saldo, origem financeira detalhada, payload, idempotency key ou dado sensivel.
+      operationId: getAdminPremiumBeneficiosAnuncio
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: beneficios sanitizados do anuncio
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminBeneficioAnuncio"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/premium/consistencia:
+    get:
+      summary: Consistencia Premium read-only
+      description: Retorna inconsistencias locais calculadas em dados sinteticos, incluindo expiracao conjunta por grupo/pacote/campanha. Nao altera banco, nao expira beneficio de verdade, nao agenda job e nao executa acao financeira.
+      operationId: getAdminPremiumConsistencia
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: relatorio de consistencia Premium
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPremiumConsistenciaResumo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/premium/vencendo:
+    get:
+      summary: Beneficios Premium vencendo
+      description: Retorna beneficios vencendo na janela local de sete dias. Somente leitura, sem alerta externo, sem envio, sem checkout, sem Pix/Efi e sem alteracao de credito.
+      operationId: getAdminPremiumVencendo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: beneficios vencendo em janela local
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPremiumVencendoResumo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}/remeter-revisao:
     post:
       summary: Remete anuncio para revisao local
@@ -1067,7 +1185,7 @@ paths:
   /api/admin/outbox/{id}:
     get:
       summary: Detalha outbox administrativo local read-only
-      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna detalhe sanitizado e previa logica, sem payload bruto sensivel e sem envio externo. Nao existe POST, PUT, PATCH ou DELETE para outbox nesta fase.
+      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna detalhe sanitizado e previa logica, sem payload bruto sensivel e sem envio externo. A unica acao de outbox permitida nesta fase e a simulacao local explicita em endpoint separado, restrita a ADMIN.
       operationId: getAdminOutboxDetalhe
       security:
         - AdminSessionCookie: []
@@ -1095,6 +1213,87 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/outbox/{id}/preview:
+    get:
+      summary: Renderiza previa sanitizada local de comunicacao de outbox
+      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Renderiza template local controlado para previa sanitizada, sem payload bruto sensivel, sem destino real e sem envio externo. Retorna envioExternoExecutado=false e somentePreview=true. Nao altera status, nao marca PROCESSADO, nao registra envio, nao aciona worker, scheduler, retry, SMTP, WhatsApp API ou provedor externo. COMERCIAL e USUARIO nao acessam.
+      operationId: getAdminOutboxPreview
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: previa local sanitizada renderizada sem envio externo
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOutboxPreviewRenderizada"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/outbox/{id}/simular-processamento-local:
+    post:
+      summary: Simula processamento local de outbox administrativo
+      description: Restrito a ADMIN e somente operacional quando app.env/APP_ENV for local. Fora de local, incluindo app.env ausente, vazio, nao_configurado ou staging, deve retornar 403 e nao alterar o outbox. Em local, simula processamento de um outbox PENDENTE, registra auditoria sanitizada e pode alterar status para PROCESSADO porque o schema atual permite esse status. PROCESSADO por simulacao local nao equivale a envio real. Nao envia e-mail, WhatsApp, SMS, webhook, SMTP, fila externa ou API externa; nao cria worker, scheduler ou retry real. requestIdCliente e reservado e nao promete idempotencia real.
+      operationId: postAdminOutboxSimularProcessamentoLocal
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminOutboxSimularProcessamentoRequest"
+      responses:
+        "200":
+          description: simulacao local executada sem envio externo
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOutboxSimularProcessamentoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: proibido quando usuario nao e ADMIN ou quando app.env nao e local
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
 components:
@@ -1651,6 +1850,290 @@ components:
             precoInformado:
               type: boolean
               description: Indicador booleano; nao retorna valor financeiro.
+    AdminBeneficioAnuncio:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        beneficioCodigo:
+          type:
+            - string
+            - "null"
+          description: Codigo operacional do beneficio. Nao carrega valor pago.
+        beneficioNome:
+          type:
+            - string
+            - "null"
+        escopo:
+          type:
+            - string
+            - "null"
+          enum:
+            - ANUNCIO
+            - USUARIO
+            - MIDIA
+            - RELATORIO
+            - null
+        statusOriginal:
+          type:
+            - string
+            - "null"
+        statusCalculado:
+          type:
+            - string
+            - "null"
+          enum:
+            - ATIVO
+            - EXPIRADO
+            - VENCENDO
+            - PENDENTE
+            - INATIVO
+            - INCONSISTENTE
+            - null
+        inicioEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        fimEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        venceEmBreve:
+          type: boolean
+        grupoVinculado:
+          type: boolean
+        grupoId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        grupoTipo:
+          type:
+            - string
+            - "null"
+        grupoStatus:
+          type:
+            - string
+            - "null"
+        grupoFimEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        codigosConsistencia:
+          type: array
+          items:
+            type: string
+        inconsistente:
+          type: boolean
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminPremiumAnuncioStatus:
+      type: object
+      additionalProperties: false
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
+        slug:
+          type:
+            - string
+            - "null"
+        titulo:
+          type:
+            - string
+            - "null"
+          description: Titulo sanitizado.
+        premiumAtivo:
+          type: boolean
+        destaqueAtivo:
+          type: boolean
+        topoAtivo:
+          type: boolean
+        possuiStories:
+          type: boolean
+        possuiMidiaExtra:
+          type: boolean
+        beneficiosAtivos:
+          type: integer
+        beneficiosExpirados:
+          type: integer
+        beneficiosVencendo:
+          type: integer
+        inconsistenciasTotal:
+          type: integer
+        codigosConsistencia:
+          type: array
+          items:
+            type: string
+        calculadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+        compraOuAtivacaoRealDisponivel:
+          type: boolean
+          const: false
+        acoesFinanceirasDisponiveis:
+          type: boolean
+          const: false
+        gratuitoLimitadoPorContato:
+          type: boolean
+          const: false
+        valorPago:
+          not: {}
+          description: Campo proibido.
+        saldoCredito:
+          not: {}
+          description: Campo proibido.
+        payloadPagamento:
+          not: {}
+          description: Campo proibido.
+    AdminPremiumConsistenciaItem:
+      type: object
+      additionalProperties: false
+      properties:
+        anuncioId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        slug:
+          type:
+            - string
+            - "null"
+        ativacaoId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        beneficioCodigo:
+          type:
+            - string
+            - "null"
+        codigo:
+          type: string
+          enum:
+            - GRUPO_EXPIRADO_COM_BENEFICIO_ATIVO
+            - BENEFICIO_EXPIRADO_ANTES_DO_GRUPO
+            - GRUPO_SEM_BENEFICIOS
+            - DATA_INVALIDA
+            - ORIGEM_DESCONHECIDA
+        severidade:
+          type: string
+        mensagem:
+          type: string
+        statusCalculado:
+          type:
+            - string
+            - "null"
+        fimEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        grupoId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        grupoStatus:
+          type:
+            - string
+            - "null"
+        grupoFimEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        detectadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+    AdminPremiumConsistenciaResumo:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPremiumConsistenciaItem"
+        total:
+          type: integer
+        calculadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminPremiumVencendoItem:
+      type: object
+      additionalProperties: false
+      properties:
+        anuncioId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        slug:
+          type:
+            - string
+            - "null"
+        ativacaoId:
+          type: string
+          format: uuid
+        beneficioCodigo:
+          type:
+            - string
+            - "null"
+        statusCalculado:
+          type:
+            - string
+            - "null"
+        fimEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        diasRestantes:
+          type: integer
+        grupoVinculado:
+          type: boolean
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminPremiumVencendoResumo:
+      type: object
+      additionalProperties: false
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPremiumVencendoItem"
+        total:
+          type: integer
+        janelaDias:
+          type: integer
+          const: 7
+        calculadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
     AdminMidiaListaItem:
       type: object
       additionalProperties: false
@@ -1803,6 +2286,65 @@ components:
         envioExternoExecutado:
           type: boolean
           const: false
+    AdminOutboxPreviewRenderizada:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tipoEvento
+        - status
+        - assuntoSanitizado
+        - corpoSanitizado
+        - canalPrevisto
+        - envioExternoExecutado
+        - somentePreview
+        - camposMascarados
+        - pendencias
+      description: Previa renderizada por template local versionado. Nao contem payload bruto, destino real, e-mail real, telefone, WhatsApp, CPF, documento, storage, bucket, hash, token, Pix, financeiro ou segredo. Nunca representa envio real.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipoEvento:
+          type:
+            - string
+            - "null"
+        status:
+          type:
+            - string
+            - "null"
+          enum: [PENDENTE, PROCESSANDO, PROCESSADO, ERRO, CANCELADO, null]
+        assuntoSanitizado:
+          type:
+            - string
+            - "null"
+          maxLength: 180
+        corpoSanitizado:
+          type:
+            - string
+            - "null"
+          maxLength: 1200
+        canalPrevisto:
+          type:
+            - string
+            - "null"
+          description: Canal logico local de preview; nao indica provedor externo configurado.
+        envioExternoExecutado:
+          type: boolean
+          const: false
+        somentePreview:
+          type: boolean
+          const: true
+        camposMascarados:
+          type: array
+          items:
+            type: string
+          description: Categorias de campos sensiveis detectados e bloqueados/mascarados.
+        pendencias:
+          type: array
+          items:
+            type: string
+          description: Pendencias operacionais para envio real futuro e revisao Pro.
     AdminOutboxListaItem:
       type: object
       additionalProperties: false
@@ -1883,6 +2425,67 @@ components:
           type: integer
         last:
           type: boolean
+    AdminOutboxSimularProcessamentoRequest:
+      type: object
+      additionalProperties: false
+      description: Request opcional para simulacao local. requestIdCliente e reservado para futuro e nao cria idempotencia real nesta fase.
+      properties:
+        observacao:
+          type:
+            - string
+            - "null"
+          maxLength: 240
+          description: Observacao local sanitizada antes de auditoria.
+        requestIdCliente:
+          type:
+            - string
+            - "null"
+          maxLength: 120
+          description: Campo reservado, sem garantia de idempotencia ou reprocessamento seguro.
+    AdminOutboxSimularProcessamentoResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - statusAntes
+        - statusDepois
+        - statusAlterado
+        - envioExternoExecutado
+        - auditoriaRegistrada
+        - requestId
+        - processadoEm
+        - mensagem
+      description: Resultado de simulacao local. Nunca representa envio real.
+      properties:
+        id:
+          type: string
+          format: uuid
+        statusAntes:
+          type:
+            - string
+            - "null"
+          enum: [PENDENTE, PROCESSANDO, PROCESSADO, ERRO, CANCELADO, null]
+        statusDepois:
+          type:
+            - string
+            - "null"
+          enum: [PENDENTE, PROCESSANDO, PROCESSADO, ERRO, CANCELADO, null]
+        statusAlterado:
+          type: boolean
+          description: true quando PENDENTE foi alterado para PROCESSADO por simulacao local.
+        envioExternoExecutado:
+          type: boolean
+          const: false
+        auditoriaRegistrada:
+          type: boolean
+          const: true
+        requestId:
+          type: string
+        processadoEm:
+          type: string
+          format: date-time
+        mensagem:
+          type: string
     AdminDecisaoModeracaoAcao:
       type: string
       description: Em revisoes, APROVAR e REPROVAR sao decisoes finais. SOLICITAR_AJUSTE e acao intermediaria local com auditoria e outbox pendente, sem finalizar revisao e sem gravar decisao_moderacao. Em midia, SOLICITAR_AJUSTE permanece pendente por ausencia de status seguro no schema atual.
@@ -2391,6 +2994,7 @@ components:
           type: boolean
         beneficiosPublicos:
           type: array
+          description: Rotulos publicos sanitizados de beneficios ativos. Nao expoe valor pago, credito, grupo, campanha ou historico.
           items:
             type: string
         contatoPublico:
@@ -2450,6 +3054,7 @@ components:
           type: boolean
         beneficiosPublicos:
           type: array
+          description: Rotulos publicos sanitizados de beneficios ativos. Nao expoe valor pago, credito, grupo, campanha ou historico.
           items:
             type: string
         publicadoEm:

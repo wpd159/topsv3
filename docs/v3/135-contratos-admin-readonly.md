@@ -22,6 +22,10 @@ Nao existe JWT, OAuth, token no corpo da resposta, localStorage ou sessionStorag
 | `/api/admin/midias/resumo` | GET | `AdminResumoMidiasDto` |
 | `/api/admin/metricas/resumo` | GET | `AdminResumoMetricasDto` |
 | `/api/admin/sistema/status` | GET | `AdminStatusSistemaDto` |
+| `/api/admin/premium/anuncios/{id}` | GET | `AdminPremiumAnuncioStatusDto` |
+| `/api/admin/premium/anuncios/{id}/beneficios` | GET | `AdminBeneficioAnuncioDto[]` |
+| `/api/admin/premium/consistencia` | GET | `AdminPremiumConsistenciaResumoDto` |
+| `/api/admin/premium/vencendo` | GET | `AdminPremiumVencendoResumoDto` |
 
 ## Respostas de erro
 
@@ -121,3 +125,14 @@ Contratos detalhados adicionais:
 - `GET /api/admin/moderacao/revisoes/{id}`.
 
 Todos usam pagina sanitizada quando retornam lista e mantem os campos proibidos fora da resposta.
+
+## Complemento Bloco 22
+
+Contratos Premium read-only adicionais:
+
+- `AdminPremiumAnuncioStatusDto`: flags de status, totais e codigos de consistencia, com `somenteLeitura=true`, `compraOuAtivacaoRealDisponivel=false`, `acoesFinanceirasDisponiveis=false` e `gratuitoLimitadoPorContato=false`;
+- `AdminBeneficioAnuncioDto`: beneficio, status original/calculado, janela de vigencia, grupo vinculado e codigos de consistencia;
+- `AdminPremiumConsistenciaResumoDto`: inconsistencias calculadas;
+- `AdminPremiumVencendoResumoDto`: beneficios vencendo na janela local.
+
+Esses DTOs nao podem retornar valor pago, saldo, credito real, payload de pagamento, telefone/WhatsApp bruto, documento privado, storage key, bucket, hash, URL privada ou auditoria bruta.

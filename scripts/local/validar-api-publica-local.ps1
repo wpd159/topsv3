@@ -2,6 +2,7 @@
   [string]$BaseUrl = "http://127.0.0.1:8080",
   [string]$SlugSintetico = "anuncio-sintetico-local",
   [string]$SlugBloqueadoSintetico = "anuncio-sintetico-bloqueado-local",
+  [string]$SlugGratuitoSintetico = "anuncio-sintetico-gratuito-local",
   [string]$UfSintetica = "zz",
   [string]$CidadeSintetica = "cidade-sintetica",
   [string]$BairroSintetico = "bairro-sintetico",
@@ -389,12 +390,14 @@ if (-not $SemDadosSinteticos) {
   $requests.Add([pscustomobject]@{ Nome = "idade status sem cookie"; Path = "/api/public/idade/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "idade menor negada"; Path = "/api/public/idade/confirmar"; Status = 400; Method = "POST"; Body = $idadeMenorBody; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "anuncio sintetico"; Path = "/api/public/anuncios/$SlugSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
+  $requests.Add([pscustomobject]@{ Nome = "anuncio gratuito sintetico"; Path = "/api/public/anuncios/$SlugGratuitoSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "anuncio bloqueado sem idade"; Path = "/api/public/anuncios/$SlugBloqueadoSintetico"; Status = 404; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "cidade sintetica"; Path = "/api/public/acompanhantes/$UfSintetica/$CidadeSintetica"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "bairro sintetico"; Path = "/api/public/acompanhantes/$UfSintetica/$CidadeSintetica/$BairroSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "stories sem idade"; Path = "/api/public/anuncios/$SlugSintetico/stories"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "visualizacao sintetica"; Path = "/api/public/anuncios/$SlugSintetico/visualizacao"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "clique whatsapp sintetico"; Path = "/api/public/anuncios/$SlugSintetico/clique-whatsapp"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $true; Session = $null })
+  $requests.Add([pscustomobject]@{ Nome = "clique whatsapp gratuito sintetico"; Path = "/api/public/anuncios/$SlugGratuitoSintetico/clique-whatsapp"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $true; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "clique bloqueado sem idade"; Path = "/api/public/anuncios/$SlugBloqueadoSintetico/clique-whatsapp"; Status = 404; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "idade maior confirmada"; Path = "/api/public/idade/confirmar"; Status = 200; Method = "POST"; Body = $idadeMaiorBody; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
   $requests.Add([pscustomobject]@{ Nome = "idade status com cookie"; Path = "/api/public/idade/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
@@ -425,6 +428,11 @@ foreach ($request in $requests) {
   if ($request.Nome -eq "anuncio sintetico") {
     Add-Check "anuncio sintetico sem story publico" ($result.Body -match '"story"\s*:\s*false') "story nao deve ser liberado por padrao"
     Add-Check "anuncio sintetico sem midia bloqueada" ($result.Body -match '"midias"\s*:\s*\[\s*\]') "midia BLOQUEADO e story nao devem aparecer"
+    Add-Check "anuncio sintetico premium sanitizado" ($result.Body -match '"destaque"\s*:\s*true' -and $result.Body -match '"beneficiosPublicos"\s*:\s*\[[^\]]*"Destaque"') "beneficio publico deve aparecer sem dado financeiro"
+  }
+  if ($request.Nome -eq "anuncio gratuito sintetico") {
+    Add-Check "anuncio gratuito sem destaque" ($result.Body -match '"destaque"\s*:\s*false' -and $result.Body -match '"topo"\s*:\s*false') "plano gratuito deve permanecer util, sem beneficio premium artificial"
+    Add-Check "anuncio gratuito sem beneficio publico" ($result.Body -match '"beneficiosPublicos"\s*:\s*\[\s*\]') "gratuito nao deve depender de premium"
   }
   if ($request.Nome -eq "idade status sem cookie") {
     Add-Check "idade sem cookie nao confirmada" ($result.Body -match '"confirmada"\s*:\s*false') "idade nao deve ser confirmada sem cookie"
@@ -455,7 +463,7 @@ foreach ($request in $requests) {
   if ($request.Nome -eq "anuncio bloqueado com idade") {
     Add-Check "conteudo bloqueado liberavel com idade" ($result.Body -match ('"slug"\s*:\s*"' + [regex]::Escape($SlugBloqueadoSintetico) + '"')) "backend liberou detalhe apos idade"
   }
-  if ($request.Nome -eq "clique whatsapp sintetico" -or $request.Nome -eq "clique bloqueado com idade") {
+  if ($request.Nome -eq "clique whatsapp sintetico" -or $request.Nome -eq "clique bloqueado com idade" -or $request.Nome -eq "clique whatsapp gratuito sintetico") {
     Add-Check "clique whatsapp disponivel" ($result.Body -match '"disponivel"\s*:\s*true') "politica backend autorizou contato sintetico"
     Add-Check "clique whatsapp retorna somente URL sintetica" ($result.Body -match '"whatsappUrl"\s*:\s*"https://wa\.me/5500000000000"') "somente endpoint autorizado retorna WhatsApp sintetico"
     Add-Check "clique whatsapp sem campo bruto" (-not ($result.Body -match 'whatsapp_normalizado|whatsappNormalizado')) "telefone bruto nao deve ser retornado"
@@ -477,6 +485,8 @@ if (-not $SemDadosSinteticos) {
   Add-Check "admin readonly exige sessao" ($readonlySemSessao.Status -eq 401) "status obtido: $($readonlySemSessao.Status)"
   $detalhadoSemSessao = Invoke-LocalHttp -Path "/api/admin/anuncios" -ExpectedStatus 401 -Method "GET"
   Add-Check "admin detalhado exige sessao" ($detalhadoSemSessao.Status -eq 401) "status obtido: $($detalhadoSemSessao.Status)"
+  $premiumSemSessao = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 401 -Method "GET"
+  Add-Check "admin premium exige sessao" ($premiumSemSessao.Status -eq 401) "status obtido: $($premiumSemSessao.Status)"
 
   $adminLoginInvalido = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 401 -Method "POST" -Body $adminInvalidBody
   Add-Check "admin login invalido status 401" ($adminLoginInvalido.Status -eq 401) "credenciais invalidas devem ser genericas"
@@ -535,6 +545,31 @@ if (-not $SemDadosSinteticos) {
     Add-Check "admin detalhado ADMIN $path status 200" ($detalhado.Status -eq 200) "status obtido: $($detalhado.Status)"
     Assert-NoSensitiveAdminReadonlyData -Nome "admin detalhado ADMIN $path" -Body $detalhado.Body
     Add-Check "admin detalhado $path sem campos proibidos" (-not ($detalhado.Body -match 'storageProvider|chaveObjeto|bucket|sha256|etag|whatsappNormalizado|telefoneNormalizado|senhaHash|tokenSessaoHash|payload_solicitado|"payload"')) "DTO detalhado deve ser sanitizado"
+  }
+
+  $anuncioPremiumId = "00000000-0000-4000-8000-000000000501"
+  $premiumStatus = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$anuncioPremiumId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin premium status anuncio" ($premiumStatus.Status -eq 200 -and $premiumStatus.Body -match '"premiumAtivo"\s*:\s*true' -and $premiumStatus.Body -match '"destaqueAtivo"\s*:\s*true') "ADMIN deve ler status premium sintetico"
+  Add-Check "admin premium sem compra real" ($premiumStatus.Body -match '"compraOuAtivacaoRealDisponivel"\s*:\s*false' -and $premiumStatus.Body -match '"acoesFinanceirasDisponiveis"\s*:\s*false') "endpoint premium deve ser read-only"
+  Add-Check "admin premium gratuito sem limite" ($premiumStatus.Body -match '"gratuitoLimitadoPorContato"\s*:\s*false') "gratuito nao deve ter limite comercial"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin premium status" -Body $premiumStatus.Body
+
+  $premiumBeneficios = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$anuncioPremiumId/beneficios" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin premium beneficios" ($premiumBeneficios.Status -eq 200 -and $premiumBeneficios.Body -match 'DESTAQUE' -and $premiumBeneficios.Body -match 'FOTOS_EXTRA') "beneficios sinteticos devem ser lidos"
+  Add-Check "admin premium beneficio vencendo" ($premiumBeneficios.Body -match '"statusCalculado"\s*:\s*"VENCENDO"') "beneficio vencendo deve aparecer"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin premium beneficios" -Body $premiumBeneficios.Body
+
+  $premiumConsistencia = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin premium consistencia" ($premiumConsistencia.Status -eq 200 -and $premiumConsistencia.Body -match 'GRUPO_EXPIRADO_COM_BENEFICIO_ATIVO' -and $premiumConsistencia.Body -match 'BENEFICIO_EXPIRADO_ANTES_DO_GRUPO') "inconsistencias sinteticas devem ser detectadas"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin premium consistencia" -Body $premiumConsistencia.Body
+
+  $premiumVencendo = Invoke-LocalHttp -Path "/api/admin/premium/vencendo" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin premium vencendo" ($premiumVencendo.Status -eq 200 -and $premiumVencendo.Body -match '"janelaDias"\s*:\s*7' -and $premiumVencendo.Body -match 'FOTOS_EXTRA') "beneficios vencendo devem aparecer"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin premium vencendo" -Body $premiumVencendo.Body
+
+  foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
+    $premiumEscrita = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 405 -Method $method -Body "{}" -Session $adminSession
+    Add-Check "premium sem metodo $method" ($premiumEscrita.Status -in @(400, 403, 404, 405)) "status obtido: $($premiumEscrita.Status); premium nao deve possuir endpoint $method"
   }
 
   $revisaoReprovarId = "00000000-0000-4000-8000-000000000802"
@@ -610,10 +645,53 @@ if (-not $SemDadosSinteticos) {
     Add-Check "admin detalha outbox" ($outboxDetalhe.Status -eq 200 -and $outboxDetalhe.Body -match '"somenteLeitura"\s*:\s*true' -and $outboxDetalhe.Body -match '"dadosSanitizados"\s*:') "detalhe deve retornar apenas dados sanitizados"
     Add-Check "admin outbox detalhe sem bruto sensivel" (-not ($outboxDetalhe.Body -match 'ana@example\.invalid|\+5511999999999|123\.456\.789-09|bucket|chaveObjeto|sha256|token|idempotency|Pix copia|qrcode|qrCode')) "detalhe nao deve expor dado bruto sensivel"
     Assert-NoSensitiveAdminReadonlyData -Nome "admin outbox detalhe" -Body $outboxDetalhe.Body
+    $statusAntesPreview = $null
+    try {
+      $statusAntesPreview = [string](($outboxDetalhe.Body | ConvertFrom-Json).status)
+    } catch {
+      $statusAntesPreview = $null
+    }
+    $outboxPreviewSemSessao = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/preview" -ExpectedStatus 401 -Method "GET"
+    Add-Check "outbox preview sem sessao 401" ($outboxPreviewSemSessao.Status -eq 401) "preview exige sessao admin"
+    $outboxPreview = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/preview" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin renderiza preview outbox" ($outboxPreview.Status -eq 200 -and $outboxPreview.Body -match '"somentePreview"\s*:\s*true' -and $outboxPreview.Body -match '"envioExternoExecutado"\s*:\s*false') "preview deve ser local e sem envio externo"
+    Add-Check "admin preview outbox tem template sanitizado" ($outboxPreview.Body -match '"assuntoSanitizado"\s*:' -and $outboxPreview.Body -match '"corpoSanitizado"\s*:' -and $outboxPreview.Body -match 'nenhuma comunicacao foi enviada|Nenhum envio externo foi executado') "preview deve retornar assunto/corpo sanitizados"
+    Add-Check "admin preview outbox sem bruto sensivel" (-not ($outboxPreview.Body -match 'ana@example\.invalid|\+5511999999999|123\.456\.789-09|bucket-privado|chaveObjeto|sha256|idempotency|Pix copia|qrcode|qrCode|payloadJson')) "preview nao deve expor payload bruto"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin preview outbox" -Body $outboxPreview.Body
+    $outboxDetalheDepoisPreview = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    $statusDepoisPreview = $null
+    try {
+      $statusDepoisPreview = [string](($outboxDetalheDepoisPreview.Body | ConvertFrom-Json).status)
+    } catch {
+      $statusDepoisPreview = $null
+    }
+    Add-Check "preview nao altera status do outbox" (($outboxDetalheDepoisPreview.Status -eq 200) -and $statusAntesPreview -eq $statusDepoisPreview -and $statusDepoisPreview -ne "PROCESSADO") "status antes=$statusAntesPreview depois=$statusDepoisPreview"
+    $outboxSimulacaoSemSessao = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/simular-processamento-local" -ExpectedStatus 401 -Method "POST" -Body "{}"
+    Add-Check "outbox simulacao sem sessao 401" ($outboxSimulacaoSemSessao.Status -eq 401) "simulacao local exige sessao ADMIN"
+    $simulacaoBody = (@{
+      observacao = "simulacao local sem envio externo " + $motivoMascaravel
+      requestIdCliente = "reservado-sem-idempotencia-real"
+    } | ConvertTo-Json -Compress)
+    $outboxSimulacao = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/simular-processamento-local" -ExpectedStatus 200 -Method "POST" -Body $simulacaoBody -Session $adminSession
+    Add-Check "admin simula outbox local" ($outboxSimulacao.Status -eq 200 -and $outboxSimulacao.Body -match '"statusAntes"\s*:\s*"PENDENTE"' -and $outboxSimulacao.Body -match '"statusDepois"\s*:\s*"PROCESSADO"') "simulacao deve processar localmente status existente"
+    Add-Check "admin simulacao outbox sem envio externo" ($outboxSimulacao.Body -match '"envioExternoExecutado"\s*:\s*false' -and -not ($outboxSimulacao.Body -match '"envioExternoExecutado"\s*:\s*true')) "simulacao nao envia comunicacao real"
+    Add-Check "admin simulacao outbox com auditoria" ($outboxSimulacao.Body -match '"auditoriaRegistrada"\s*:\s*true') "simulacao deve registrar auditoria"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin simulacao outbox" -Body $outboxSimulacao.Body
+    $outboxDetalheProcessado = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin detalhe outbox processado local" ($outboxDetalheProcessado.Status -eq 200 -and $outboxDetalheProcessado.Body -match '"status"\s*:\s*"PROCESSADO"') "status deve refletir simulacao local"
+    Assert-NoSensitiveAdminReadonlyData -Nome "admin outbox processado detalhe" -Body $outboxDetalheProcessado.Body
+    $outboxSimulacaoDuplicada = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/simular-processamento-local" -ExpectedStatus 409 -Method "POST" -Body $simulacaoBody -Session $adminSession
+    Add-Check "outbox simulacao duplicada 409" ($outboxSimulacaoDuplicada.Status -eq 409) "outbox fora de PENDENTE nao deve ser simulado novamente"
+    $outboxProcessadoLista = Invoke-LocalHttp -Path "/api/admin/outbox?page=0&size=5&status=PROCESSADO" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+    Add-Check "admin lista outbox processado local" ($outboxProcessadoLista.Status -eq 200 -and $outboxProcessadoLista.Body -match $outboxId) "listagem deve permitir auditar simulacao local"
   }
   foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
     $outboxEscrita = Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 405 -Method $method -Body "{}" -Session $adminSession
     Add-Check "outbox sem metodo $method" ($outboxEscrita.Status -in @(400, 403, 404, 405)) "status obtido: $($outboxEscrita.Status); outbox nao deve possuir endpoint $method"
+  }
+  if (-not [string]::IsNullOrWhiteSpace($outboxId)) {
+    $previewPost = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/preview" -ExpectedStatus 405 -Method "POST" -Body "{}" -Session $adminSession
+    Add-Check "outbox preview sem post de envio" ($previewPost.Status -in @(400, 403, 404, 405)) "preview nao deve possuir endpoint de envio"
   }
 
   $revisaoFinalizada = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoFinalizadaId/decidir" -ExpectedStatus 409 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $adminSession
@@ -642,6 +720,7 @@ if (-not $SemDadosSinteticos) {
   Add-Check "moderador login sintetico status 200" ($moderadorLogin.Status -eq 200) "login moderador local sintetico deve autenticar"
   Add-Check "moderador acessa anuncios" ((Invoke-LocalHttp -Path "/api/admin/anuncios/resumo" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler anuncios"
   Add-Check "moderador acessa anuncios detalhados" ((Invoke-LocalHttp -Path "/api/admin/anuncios?page=0&size=2" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve listar anuncios"
+  Add-Check "moderador acessa premium readonly" ((Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$anuncioPremiumId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler status premium sanitizado"
   Add-Check "moderador acessa midias do anuncio" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId/midias" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midias do anuncio"
   Add-Check "moderador acessa midias detalhadas" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midia"
   Add-Check "moderador acessa revisao detalhada" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler revisao"
@@ -649,6 +728,12 @@ if (-not $SemDadosSinteticos) {
   $moderadorOutbox = Invoke-LocalHttp -Path "/api/admin/outbox?status=PENDENTE&tipoEvento=MODERACAO_SOLICITAR_AJUSTE" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession
   Add-Check "moderador acessa outbox de moderacao" ($moderadorOutbox.Status -eq 200 -and $moderadorOutbox.Body -match 'MODERACAO_SOLICITAR_AJUSTE') "MODERADOR deve ler outbox de moderacao"
   Assert-NoSensitiveAdminReadonlyData -Nome "moderador outbox" -Body $moderadorOutbox.Body
+  if (-not [string]::IsNullOrWhiteSpace($outboxId)) {
+    Add-Check "moderador nao simula outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/simular-processamento-local" -ExpectedStatus 403 -Method "POST" -Body "{}" -Session $moderadorSession).Status -eq 403) "MODERADOR nao deve simular processamento"
+    $moderadorPreview = Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/preview" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession
+    Add-Check "moderador acessa preview outbox moderacao" ($moderadorPreview.Status -eq 200 -and $moderadorPreview.Body -match '"somentePreview"\s*:\s*true') "MODERADOR deve ver preview de moderacao"
+    Assert-NoSensitiveAdminReadonlyData -Nome "moderador preview outbox" -Body $moderadorPreview.Body
+  }
   Add-Check "moderador acessa midias" ((Invoke-LocalHttp -Path "/api/admin/midias/resumo" -ExpectedStatus 200 -Method "GET" -Session $moderadorSession).Status -eq 200) "MODERADOR deve ler midias"
   $moderadorDecideRevisao = Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoModeradorId/decidir" -ExpectedStatus 200 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR" -Classificacao "LIVRE") -Session $moderadorSession
   Add-Check "moderador aprova revisao aberta" ($moderadorDecideRevisao.Status -eq 200 -and $moderadorDecideRevisao.Body -match '"status"\s*:\s*"APROVADA"') "MODERADOR deve decidir revisao"
@@ -668,6 +753,7 @@ if (-not $SemDadosSinteticos) {
   Add-Check "comercial acessa visao geral" ($comercialVisaoGeral.Status -eq 200) "COMERCIAL deve ler visao geral"
   Add-Check "comercial visao geral limitada" ($comercialVisaoGeral.Body -match '"moderacao"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"midias"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"sistema"\s*:\s*null') "COMERCIAL nao deve receber moderacao/midia/sistema"
   Add-Check "comercial acessa metricas" ((Invoke-LocalHttp -Path "/api/admin/metricas/resumo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler metricas agregadas"
+  Add-Check "comercial acessa premium readonly" ((Invoke-LocalHttp -Path "/api/admin/premium/vencendo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler premium sem dado financeiro sensivel"
   $comercialAnuncios = Invoke-LocalHttp -Path "/api/admin/anuncios?page=0&size=2" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
   Add-Check "comercial acessa anuncios detalhados limitados" ($comercialAnuncios.Status -eq 200 -and $comercialAnuncios.Body -match '"comercialLimitado"\s*:\s*true') "COMERCIAL deve ler anuncios em versao limitada"
   $comercialDetalhe = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
@@ -676,6 +762,10 @@ if (-not $SemDadosSinteticos) {
   Add-Check "comercial sem midia detalhada" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar midia"
   Add-Check "comercial sem revisao detalhada" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar revisao"
   Add-Check "comercial sem outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar outbox de moderacao"
+  if (-not [string]::IsNullOrWhiteSpace($outboxId)) {
+    Add-Check "comercial nao simula outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/simular-processamento-local" -ExpectedStatus 403 -Method "POST" -Body "{}" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve simular processamento"
+    Add-Check "comercial nao acessa preview outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/preview" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve ver preview de outbox"
+  }
   Add-Check "comercial nao decide revisao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve executar acao moderatoria"
   Add-Check "comercial nao remete revisao" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterConflitoId/remeter-revisao" -ExpectedStatus 403 -Method "POST" -Body (New-RemeterRevisaoBody) -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve remeter revisao"
   Add-Check "comercial nao decide midia" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve executar acao de midia"
@@ -688,8 +778,13 @@ if (-not $SemDadosSinteticos) {
   Add-Check "usuario sem acesso admin readonly" ((Invoke-LocalHttp -Path "/api/admin/visao-geral" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar admin"
   Add-Check "usuario sem resumo anuncios admin" ((Invoke-LocalHttp -Path "/api/admin/anuncios/resumo" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar resumo admin"
   Add-Check "usuario sem anuncios detalhados admin" ((Invoke-LocalHttp -Path "/api/admin/anuncios" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar admin detalhado"
+  Add-Check "usuario sem premium admin" ((Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar premium admin"
   Add-Check "usuario sem midia detalhada admin" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar midia admin"
   Add-Check "usuario sem outbox admin" ((Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve acessar outbox"
+  if (-not [string]::IsNullOrWhiteSpace($outboxId)) {
+    Add-Check "usuario nao simula outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/simular-processamento-local" -ExpectedStatus 403 -Method "POST" -Body "{}" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve simular processamento"
+    Add-Check "usuario nao acessa preview outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/preview" -ExpectedStatus 403 -Method "GET" -Session $usuarioSession).Status -eq 403) "USUARIO nao deve ver preview de outbox"
+  }
   Add-Check "usuario nao decide revisao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $usuarioSession).Status -eq 403) "USUARIO nao deve executar acao moderatoria"
   Add-Check "usuario nao remete revisao" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterConflitoId/remeter-revisao" -ExpectedStatus 403 -Method "POST" -Body (New-RemeterRevisaoBody) -Session $usuarioSession).Status -eq 403) "USUARIO nao deve remeter revisao"
 

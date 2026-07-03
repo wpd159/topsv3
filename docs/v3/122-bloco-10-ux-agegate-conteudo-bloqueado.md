@@ -31,3 +31,17 @@ A V3 preserva como base o comportamento publico atual quando ele ja estiver corr
 - Bloco 11 consolidou `urlPublica=null` como estrategia local segura ate aprovacao de CDN/storage publico;
 - revisao juridica/moderacao final permanece futura;
 - smoke standalone depende de backend local ja iniciado.
+
+## Complemento Bloco 21
+
+O Bloco 21 manteve a regra do Bloco 10:
+
+- frontend nao decide classificacao;
+- conteudo `BLOQUEADO` continua dependente da confirmacao local de idade e da reconsulta ao backend;
+- stories continuam protegidos por idade;
+- nao foi criado age gate intermediario;
+- nao foi criado blur por categoria intermediaria;
+- nao foi criado desbloqueio parcial por visitante;
+- nao houve localStorage/sessionStorage.
+
+A mudanca foi apenas visual/local: o detalhe do anuncio passou a usar placeholder estavel, metadados seguros e CTA dentro do fluxo normal da pagina.

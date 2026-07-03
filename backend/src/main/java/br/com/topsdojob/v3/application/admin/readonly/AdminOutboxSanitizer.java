@@ -10,7 +10,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-final class AdminOutboxSanitizer {
+public final class AdminOutboxSanitizer {
 
     private static final int VALUE_MAX_LENGTH = 180;
     private static final int BODY_MAX_LENGTH = 360;
@@ -46,7 +46,7 @@ final class AdminOutboxSanitizer {
     private AdminOutboxSanitizer() {
     }
 
-    static Map<String, Object> dadosSanitizados(String dadosJson, ObjectMapper objectMapper) {
+    public static Map<String, Object> dadosSanitizados(String dadosJson, ObjectMapper objectMapper) {
         Map<String, Object> result = new LinkedHashMap<>();
         if (dadosJson == null || dadosJson.isBlank()) {
             result.put("conteudoDisponivel", false);
@@ -71,7 +71,7 @@ final class AdminOutboxSanitizer {
         return result;
     }
 
-    static String resumo(OutboxEventoEntity entity) {
+    public static String resumo(OutboxEventoEntity entity) {
         String base = String.join(
                 " ",
                 safePart(entity.getTipoEvento()),
@@ -81,7 +81,7 @@ final class AdminOutboxSanitizer {
         return AdminTextoSanitizer.resumo(base, 140);
     }
 
-    static AdminOutboxPreviewDto previa(OutboxEventoEntity entity, Map<String, Object> dados) {
+    public static AdminOutboxPreviewDto previa(OutboxEventoEntity entity, Map<String, Object> dados) {
         String tipoEvento = entity.getTipoEvento();
         String assunto = switch (tipoEvento == null ? "" : tipoEvento) {
             case "MODERACAO_SOLICITAR_AJUSTE" -> "Solicitacao local de ajuste pendente";
@@ -109,11 +109,12 @@ final class AdminOutboxSanitizer {
                 false);
     }
 
-    static boolean eventoModeracao(String tipoEvento) {
+    public static boolean eventoModeracao(String tipoEvento) {
         return tipoEvento != null && (
                 tipoEvento.equals("MODERACAO_SOLICITAR_AJUSTE")
                         || tipoEvento.equals("MODERACAO_REPROVADA")
-                        || tipoEvento.equals("ANUNCIO_REMETIDO_REVISAO"));
+                        || tipoEvento.equals("ANUNCIO_REMETIDO_REVISAO")
+                        || tipoEvento.equals("MODERACAO_MIDIA_REPROVADA"));
     }
 
     private static Object safeValue(Object value) {

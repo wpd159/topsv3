@@ -1,0 +1,26 @@
+# Checklist Bloco 19 - simulacao de outbox
+
+- [x] Checkpoint local do Bloco 18 executado.
+- [x] Commit local `ebbb94a` registrado.
+- [x] Inventario inicial do Bloco 19 gerado fora do repositorio.
+- [x] Enums/status de outbox inspecionados.
+- [x] Status `PROCESSADO` usado sem migration.
+- [x] `POST /api/admin/outbox/{id}/simular-processamento-local` criado.
+- [x] Endpoint restrito a `ADMIN`.
+- [x] `MODERADOR` bloqueado para simulacao.
+- [x] `COMERCIAL` bloqueado para simulacao.
+- [x] `USUARIO` bloqueado para simulacao.
+- [x] Sem sessao retorna `401`.
+- [x] Id inexistente retorna `404`.
+- [x] Outbox fora de `PENDENTE` retorna `409`.
+- [x] Simulacao retorna `envioExternoExecutado=false`.
+- [x] Auditoria `OUTBOX_SIMULACAO_LOCAL` registrada.
+- [x] Payload bruto nao e exposto.
+- [x] Frontend exibe botao apenas para `ADMIN`.
+- [x] Frontend usa `credentials: include`.
+- [x] Frontend nao usa `localStorage` ou `sessionStorage`.
+- [x] OpenAPI atualizado.
+- [x] E2E descartavel atualizado para simular item sintetico.
+- [x] Nenhum envio real, worker, scheduler, API externa, migration ou SQL de schema criado.
+- [x] Bloco 19.1 exige `APP_ENV=local` para executar a simulacao.
+- [x] Fora de local retorna `403` sem marcar `PROCESSADO`.

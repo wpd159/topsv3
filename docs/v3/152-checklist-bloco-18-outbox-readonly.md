@@ -4,7 +4,7 @@
 - [x] Nao houve consulta SSH.
 - [x] `GET /api/admin/outbox` criado.
 - [x] `GET /api/admin/outbox/{id}` criado.
-- [x] Sem `POST` de outbox.
+- [x] Sem `POST` de outbox no Bloco 18; no Bloco 19 existe apenas simulacao local explicita restrita a `ADMIN`.
 - [x] Sem `PUT` de outbox.
 - [x] Sem `PATCH` de outbox.
 - [x] Sem `DELETE` de outbox.
@@ -15,6 +15,7 @@
 - [x] Sem sessao retorna `401`.
 - [x] DTOs sanitizados criados.
 - [x] JSON bruto do outbox nao e retornado.
+- [x] Bloco 19 preserva consulta read-only e adiciona apenas `POST /api/admin/outbox/{id}/simular-processamento-local`, sem envio real.
 - [x] Previa sanitizada criada.
 - [x] Frontend admin atualizado com painel read-only.
 - [x] Sem botao de envio.

@@ -35,6 +35,9 @@
 - Bloco 17 permite somente `SOLICITAR_AJUSTE` em revisao, remeter anuncio para revisao e outbox local pendente quando suportado pelo schema atual. Nao criar envio externo, e-mail real, WhatsApp real, hard delete, upload, pagamento, credito, Pix/Efi, importador real, dado real, migration, SQL de schema, producao, remote, push ou commit.
 - Bloco 17.1 corrige `SOLICITAR_AJUSTE` para acao intermediaria: nao gravar `decisao_moderacao`, nao finalizar revisao, permitir `APROVAR`/`REPROVAR` depois, retornar `409` em duplicidade de outbox pendente e exigir motivo para remeter revisao. Nao criar nova acao administrativa, migration, SQL de schema, envio externo, remote, push ou commit.
 - Bloco 18 permite somente outbox administrativo local read-only por GET, com DTO sanitizado e previa logica. Nao criar envio, reenvio, worker, scheduler, SMTP externo, WhatsApp real, API externa, metodo POST/PUT/PATCH/DELETE de outbox, migration, SQL de schema, dado real, producao, remote, push ou commit.
+- Bloco 19 permite apenas `POST /api/admin/outbox/{id}/simular-processamento-local`, restrito a ADMIN, para simulacao local sem envio externo. Pode alterar `PENDENTE -> PROCESSADO` porque o status ja existe, registra auditoria sanitizada e continua proibido criar envio real, worker, scheduler, retry real, API externa, migration, SQL de schema, producao, remote, push ou commit apos o checkpoint autorizado.
+- Bloco 19.1 torna a simulacao fail-closed fora de `APP_ENV=local`. Em `nao_configurado`, vazio, staging, homologacao ou producao, o backend deve retornar `403` antes de alterar status, marcar `PROCESSADO` ou auditar simulacao.
+- Bloco 22 permite somente leitura/calculo local de Premium e beneficios. Endpoints devem ser GET/read-only, Premium deve ser aditivo, gratuito nao pode ganhar limite comercial de clique/contato/WhatsApp, e continuam proibidos compra real, checkout, cobranca, Pix/Efi funcional, credito real, ativacao real por dinheiro, job de expiracao, migration, SQL de schema, producao, remote, push ou commit.
 
 ## Antes de gerar pacote ou commitar localmente
 
@@ -301,3 +304,48 @@ WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-what
 - DTOs detalhados nao podem expor documento privado, CPF, telefone bruto, WhatsApp normalizado, storage provider, bucket, chaveObjeto, hash, etag, payload completo, financeiro sensivel, senha/hash/token ou auditoria sensivel.
 - Filtros devem permanecer simples, paginados e sem query nativa.
 - Frontend admin detalhado permanece sem botoes funcionais de acao critica.
+
+## Bloco 20 - templates e preview de outbox
+
+- `GET /api/admin/outbox/{id}/preview` e endpoint read-only.
+- Preview de outbox deve retornar `envioExternoExecutado=false` e `somentePreview=true`.
+- Preview nao pode alterar status, marcar `PROCESSADO`, auditar envio ou chamar provider externo.
+- Templates locais devem usar placeholders neutros e nao podem conter dado real, URL real, telefone real, WhatsApp real, documento, Pix ou link de pagamento.
+- Frontend pode exibir `Ver previa`, mas nao pode criar enviar, reenviar ou marcar enviado.
+- Envio real permanece proibido ate fase futura com revisao Pro.
+
+## Bloco 21 - ajustes visuais pequenos e mobile estavel
+
+- Melhorias leves de UI/UX sao permitidas somente para espacamento, alinhamento, legibilidade, contraste, hierarquia, responsividade, estados vazios, loading estavel e organizacao de CTA.
+- Redesign, nova identidade visual, nova paleta, nova tipografia, animacoes chamativas e mudanca estrutural nao aprovada continuam proibidos.
+- Mobile nao pode ter elemento solto, dancando, flutuante indevido, sobrepondo conteudo, com scroll horizontal ou causando layout shift perceptivel.
+- `document.body.style.overflow` e scroll lock continuam proibidos.
+- Qualquer `position: fixed`, `position: absolute`, `position: sticky`, `100vw`, animacao ou transform em area publica deve ter justificativa documentada e validacao mobile.
+- Executar `scripts/local/validar-ui-mobile-estatica.ps1` quando houver mudanca visual/frontend no Bloco 21.
+
+Resultado do Bloco 21:
+
+- componentes publicos locais foram adicionados sem nova identidade visual;
+- WhatsApp bruto nao deve ser renderizado no HTML;
+- placeholders de midia podem ser neutros e locais, mas nao podem criar URL, storage ou CDN;
+- consulta a producao, quando estritamente necessaria, deve permanecer somente leitura e documentada;
+- `scripts/local/validar-ui-mobile-estatica.ps1` deve continuar sem alertas ou com justificativa documentada.
+
+Bloco 21.1:
+
+- age gate publico nao pode iniciar com data pre-preenchida;
+- botao de confirmacao de idade deve ficar desabilitado ate data valida;
+- prints de aprovacao visual devem ser gerados localmente e versionados como evidencia do bloco;
+- prints nao podem usar producao, dado real, midia real, WhatsApp real ou storage real;
+- `RESUMO-ENTREGA.md` do pacote deve receber metadados reais de testes quando as validacoes forem executadas.
+
+## Bloco 22 - Premium local read-only
+
+- Premium preserva producao atual e recursos novos so podem ser aditivos.
+- Gratuito continua util e sem limite comercial artificial de cliques, contatos ou WhatsApp.
+- Endpoints Premium admin devem ser GET e sanitizados.
+- Publico pode receber apenas flags/rotulos seguros de beneficio ativo.
+- DTO publico nao pode expor valor pago, credito, grupo, campanha, origem financeira ou historico.
+- Expiracao conjunta pode ser calculada e reportada, mas nao executa job real nem altera banco por vencimento.
+- Dados sinteticos Premium devem ficar em `scripts/local/dados-sinteticos/`, nunca em migration.
+- Frontend admin pode exibir status/read-only, sem botao de ativar, comprar, pagar, ajustar credito ou checkout.

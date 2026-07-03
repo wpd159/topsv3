@@ -107,3 +107,19 @@ Nao houve migration, SQL de schema, dado real, dump, midia real, storage real, a
 ## Complemento Bloco 12
 
 A politica de midia publica segura permanece inalterada. A autenticacao admin local nao cria upload, revisao real, publicacao de midia, storage real ou CDN real.
+
+## Complemento Bloco 21
+
+O Bloco 21 criou placeholder visual local neutro para a midia publica pendente.
+
+Esse placeholder:
+
+- nao usa imagem real;
+- nao usa video real;
+- nao usa URL sintetica de CDN;
+- nao monta URL a partir de storage;
+- nao expoe `bucket`, `chaveObjeto`, `storageProvider`, `sha256`, `etag` ou URL privada;
+- preserva `urlPublica=null` e `PENDENTE_URL_PUBLICA_MIDIA_CDN`;
+- tem dimensao estavel para reduzir salto visual no mobile.
+
+A politica de CDN/storage real permanece pendente para fase futura.

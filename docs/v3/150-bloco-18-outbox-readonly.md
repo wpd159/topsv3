@@ -64,6 +64,14 @@ A API nao retorna:
 
 Mesmo quando o outbox atual ja foi gerado com payload sanitizado, a consulta trata o conteudo como nao confiavel e aplica nova sanitizacao.
 
+## Evolucao no Bloco 19
+
+O Bloco 19 preserva os endpoints GET como consulta sanitizada e adiciona somente a acao explicita:
+
+- `POST /api/admin/outbox/{id}/simular-processamento-local`
+
+Essa acao e restrita a `ADMIN`, serve apenas para simulacao local, registra auditoria e nao envia comunicacao real.
+
 ## Frontend
 
 Foi criado `AdminOutboxPanel` no shell admin local.
@@ -95,3 +103,11 @@ Nao houve consulta SSH. O comportamento necessario foi confirmado por codigo loc
 - Sem migration ou SQL de schema.
 - Sem producao, VPS ou banco de producao.
 - Sem remote, push ou commit.
+
+## Evolucao no Bloco 20
+
+O Bloco 20 adiciona somente o preview sanitizado:
+
+- `GET /api/admin/outbox/{id}/preview`
+
+O preview usa templates locais versionados, retorna `envioExternoExecutado=false` e `somentePreview=true`, nao altera status, nao marca `PROCESSADO`, nao registra envio e nao chama provedor externo.

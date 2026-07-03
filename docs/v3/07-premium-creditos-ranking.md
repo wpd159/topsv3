@@ -218,3 +218,16 @@ A V3 não pode virar produção se:
 - ranking tiver prioridade escondida;
 - `POSICAO_GARANTIDA_TOP20` puder vender mais posições que o inventário permite;
 - ajustes manuais não forem auditados.
+## Complemento Bloco 22 - leitura local
+
+O Bloco 22 implementa apenas leitura/calculo local de Premium e beneficios. Ele nao cria compra, checkout, cobranca, Pix/Efi funcional, credito real, ativacao real por dinheiro, job de expiracao, migration ou SQL de schema.
+
+Regras consolidadas:
+
+- Premium atual deve ser preservado;
+- recursos Premium novos so podem ser aditivos;
+- gratuito continua util;
+- nao ha limite comercial diario de clique, contato ou WhatsApp no gratuito;
+- beneficios em grupo/pacote/campanha devem expirar de forma coerente no calculo;
+- se grupo expirou, todos os beneficios vinculados sao tratados como expirados;
+- inconsistencias sao reportadas, nao corrigidas automaticamente neste bloco.

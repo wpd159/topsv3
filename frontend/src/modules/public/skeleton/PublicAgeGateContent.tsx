@@ -7,7 +7,9 @@ import {
   getAnuncioPublico
 } from "../../../lib/api/publicApi";
 import type { AnuncioDetalhePublicoDto } from "../../../lib/api/publicTypes";
-import { PublicAgeGateStories } from "./PublicAgeGateStories";
+import { PublicAnuncioDetalhe } from "../components/PublicAnuncioDetalhe";
+import { PublicEmptyState } from "../components/PublicEmptyState";
+import { PublicStoriesGate } from "../components/PublicStoriesGate";
 import { PublicMetricActions } from "./PublicMetricActions";
 
 type PublicAgeGateContentProps = {
@@ -26,14 +28,16 @@ export function PublicAgeGateContent({
   initialMessage
 }: PublicAgeGateContentProps) {
   const [anuncio, setAnuncio] = useState<AnuncioDetalhePublicoDto | null>(initialAnuncio);
-  const [birthDate, setBirthDate] = useState("1990-01-01");
+  const [birthDate, setBirthDate] = useState("");
   const [state, setState] = useState<AgeGateState>(
     initialAnuncio ? "conteudo_autorizado" : "aguardando_idade"
   );
   const [message, setMessage] = useState(initialMessage ?? "conteudo indisponivel localmente");
+  const birthDateIsValid = isValidBirthDate(birthDate);
+  const canConfirmAge = birthDateIsValid && state !== "confirmando";
 
   async function handleConfirmAge() {
-    if (state === "confirmando") {
+    if (!canConfirmAge) {
       return;
     }
     setState("confirmando");
@@ -63,44 +67,23 @@ export function PublicAgeGateContent({
   return (
     <>
       {anuncio ? (
-        <section className="panel" aria-label="API publica local">
-          <p>API publica local respondeu ao contrato de leitura do anuncio.</p>
-          <dl className="health-grid compact">
-            <div>
-              <dt>Status</dt>
-              <dd>{state}</dd>
-            </div>
-            <div>
-              <dt>Midias publicas</dt>
-              <dd>{anuncio.midias.length}</dd>
-            </div>
-            <div>
-              <dt>Midia local</dt>
-              <dd>{mediaStatus(anuncio.midias)}</dd>
-            </div>
-            <div>
-              <dt>WhatsApp publico</dt>
-              <dd>{anuncio.contatoPublico ?? "nao exposto"}</dd>
-            </div>
-          </dl>
-          <p>{anuncio.pendenciaContatoPublico ?? "PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO"}</p>
-        </section>
+        <PublicAnuncioDetalhe anuncio={anuncio} status={state} />
       ) : (
-        <section className="panel muted" aria-label="Fallback local">
-          <p>{message}</p>
-          <p>Status inicial da API local: {initialStatus || "indisponivel"}</p>
-        </section>
+        <PublicEmptyState
+          title="Conteudo local protegido"
+          message={`${message}. Verificacao inicial: ${initialStatus || "indisponivel"}.`}
+        />
       )}
 
       <section className="panel" aria-label="Confirmacao de idade local para anuncio">
         <dl className="health-grid compact">
           <div>
-            <dt>Fluxo local</dt>
-            <dd>{state}</dd>
+            <dt>Fluxo</dt>
+            <dd>{formatAgeState(state)}</dd>
           </div>
           <div>
-            <dt>Backend</dt>
-            <dd>{anuncio ? "autorizou" : "nao autorizou"}</dd>
+            <dt>Autorizacao</dt>
+            <dd>{anuncio ? "autorizada" : "pendente"}</dd>
           </div>
         </dl>
         {anuncio ? (
@@ -120,7 +103,7 @@ export function PublicAgeGateContent({
               className="local-action"
               type="button"
               onClick={handleConfirmAge}
-              disabled={state === "confirmando"}
+              disabled={!canConfirmAge}
             >
               Confirmar idade
             </button>
@@ -129,17 +112,33 @@ export function PublicAgeGateContent({
       </section>
 
       <PublicMetricActions slug={slug} enabled={Boolean(anuncio)} />
-      <PublicAgeGateStories slug={slug} enabled={Boolean(anuncio)} />
+      <PublicStoriesGate slug={slug} enabled={Boolean(anuncio)} />
     </>
   );
 }
 
-function mediaStatus(midias: AnuncioDetalhePublicoDto["midias"]): string {
-  if (midias.length === 0) {
-    return "sem midia";
+function isValidBirthDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
   }
-  if (midias.some((midia) => Boolean(midia.urlPublica))) {
-    return "url publica autorizada";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return false;
   }
-  return midias.find((midia) => Boolean(midia.pendenciaMidia))?.pendenciaMidia ?? "PENDENTE_URL_PUBLICA_MIDIA_CDN";
+  return value <= "2008-01-01";
+}
+
+function formatAgeState(state: AgeGateState): string {
+  switch (state) {
+    case "conteudo_autorizado":
+      return "autorizado";
+    case "aguardando_idade":
+      return "aguardando idade";
+    case "confirmando":
+      return "confirmando";
+    case "idade_negada":
+      return "idade nao confirmada";
+    case "indisponivel":
+      return "indisponivel";
+  }
 }
