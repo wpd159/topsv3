@@ -38,3 +38,15 @@ Nao criar rotas alternativas publicas para anuncio:
 - Sitemap final deve ser gerado a partir de dados aprovados, sem URL fraca.
 - JSON-LD final depende de conteudo e midia publica aprovados.
 - Search Console deve ser usado para validar quedas, ganhos e consultas locais apos cutover.
+
+## Bloco 27
+
+O sitemap local controlado passa a preservar exemplos seguros de:
+
+- `/`;
+- `/acompanhantes/go/goiania`;
+- `/acompanhantes/go/goiania/setor-bueno`;
+- `/anuncios/anuncio-exemplo`;
+- `/anunciar`.
+
+Essas URLs sao apenas referencias locais de estrutura. O sitemap final de producao dependera de inventario real aprovado e Search Console completo.

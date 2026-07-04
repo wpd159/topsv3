@@ -10,7 +10,7 @@ export function PublicAnunciarWizardStep({ title, description, children }: Publi
   return (
     <section className="public-wizard-step" aria-label={title}>
       <div className="public-form-heading">
-        <span className="status">Anuncie gratis</span>
+        <span className="status">Anuncie grátis</span>
         <h2>{title}</h2>
         <p>{description}</p>
       </div>

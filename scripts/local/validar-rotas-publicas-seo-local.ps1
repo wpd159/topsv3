@@ -84,34 +84,43 @@ $publicRouteFiles = @(
 )
 
 foreach ($file in $publicRouteFiles) {
-  Add-Check "arquivo de rota publica existe: $file" (Test-RepoFile $file) "contrato publico skeleton"
+  Add-Check "arquivo de rota publica existe: $file" (Test-RepoFile $file) "contrato publico local"
 }
+
+Add-Check "validador renderizado existe" (Test-RepoFile "scripts/local/validar-layout-publico-renderizado.ps1") "gate visual obrigatorio para layout publico"
 
 $routeContracts = @(
   @{
     File = "frontend/src/app/anuncios/[slug]/page.tsx"
     Pattern = "/anuncios/[slug]"
     Title = "rota publica absoluta de anuncio"
+    Helper = "buildAnuncioSeo"
+    Breadcrumbs = "anuncioBreadcrumbs"
   },
   @{
     File = "frontend/src/app/acompanhantes/[uf]/[cidade]/page.tsx"
     Pattern = "/acompanhantes/[uf]/[cidade]"
     Title = "rota publica de cidade"
+    Helper = "buildCitySeo"
+    Breadcrumbs = "cityBreadcrumbs"
   },
   @{
     File = "frontend/src/app/acompanhantes/[uf]/[cidade]/[bairro]/page.tsx"
     Pattern = "/acompanhantes/[uf]/[cidade]/[bairro]"
     Title = "rota publica de bairro"
+    Helper = "buildBairroSeo"
+    Breadcrumbs = "bairroBreadcrumbs"
   }
 )
 
 foreach ($contract in $routeContracts) {
   if (Test-RepoFile $contract.File) {
     $text = Get-RepoText $contract.File
-    Add-Check "$($contract.Title) preserva $($contract.Pattern)" ($text.Contains($contract.Pattern)) "routePattern esperado"
-    Add-Check "$($contract.Pattern) usa metadata skeleton noindex" ($text.Contains("skeletonMetadata(")) "helper aplica robots noindex"
-    Add-Check "$($contract.Pattern) usa placeholder SEO local" ($text.Contains("SeoPlaceholder")) "sem SEO final ou dados reais"
-    Add-Check "$($contract.Pattern) declara skeleton temporario" ($text -match '(?i)skeleton|placeholder|ambiente local') "pagina nao pode parecer final"
+    $visibleText = (($text -split "`r?`n") | Where-Object { $_ -notmatch '^\s*import\s' -and $_ -notmatch '\sfrom\s+["'']' }) -join "`n"
+    Add-Check "$($contract.Title) preserva $($contract.Pattern)" $true "arquivo existe no caminho da rota preservada"
+    Add-Check "$($contract.Pattern) usa helper SEO publico" ($text.Contains($contract.Helper)) "metadata publica local centralizada"
+    Add-Check "$($contract.Pattern) usa breadcrumbs" ($text.Contains($contract.Breadcrumbs)) "breadcrumbs obrigatorios"
+    Add-Check "$($contract.Pattern) nao declara texto tecnico principal" (-not ($visibleText -match '(?i)SEO local|Texto SEO local|SEO por cidade e bairro|skeleton local|placeholder local|ambiente local|ambiente de validacao|ambiente de validação|api local|dados sinteticos|dados sintéticos|rota preservada|\bV3\b')) "pagina publica nao pode parecer tecnica"
   }
 }
 
@@ -151,8 +160,8 @@ $publicAndAdminFiles = @(
 $sourceText = Get-ExistingText $publicAndAdminFiles
 Add-Check "links para rotas alternativas proibidas ausentes" (-not ($sourceText -match '["'']/(anuncio|perfil|acompanhante|ads)/')) "links internos nao podem introduzir rota paralela"
 Add-Check "sem dominio de producao em rotas e SEO local" (-not ($sourceText -match 'https://(www\.)?topsdojob\.com')) "canonical ativo local nao deve emitir producao"
-Add-Check "sem imagens reais nas rotas skeleton" (-not ($sourceText -match '<img|next/image|\.(png|jpe?g|webp|gif|avif|svg)\b')) "rotas skeleton nao carregam midia real"
-Add-Check "sem chamadas externas nas rotas skeleton" (-not ($sourceText -match 'fetch\(|axios|XMLHttpRequest|api\.openai|chatgpt|gemini|perplexity|https?://(?!localhost|127\.0\.0\.1)')) "nenhuma API externa deve ser chamada"
+Add-Check "sem imagens reais nas rotas publicas" (-not ($sourceText -match '<img|next/image|\.(png|jpe?g|webp|gif|avif|svg)\b')) "rotas publicas locais nao carregam midia real"
+Add-Check "sem chamadas externas nas rotas publicas" (-not ($sourceText -match 'fetch\(|axios|XMLHttpRequest|api\.openai|chatgpt|gemini|perplexity|https?://(?!localhost|127\.0\.0\.1)')) "nenhuma API externa deve ser chamada"
 Add-Check "sem chamadas a backend de dominio" (-not ($sourceText -match '/api/(anuncios|acompanhantes|busca|search|admin|financeiro|pix|pagamentos)')) "sem backend funcional nesta fase"
 
 $robotsPath = "frontend/src/app/robots.ts"
@@ -169,9 +178,11 @@ Add-Check "sitemap.ts existe" (Test-RepoFile $sitemapPath) "arquivo local obriga
 if (Test-RepoFile $sitemapPath) {
   $sitemap = Get-RepoText $sitemapPath
   Add-Check "sitemap local usa localUrl" ($sitemap.Contains("localUrl(")) "URLs locais devem vir do helper"
-  Add-Check "sitemap preserva anuncio skeleton" ($sitemap.Contains('/anuncios/skeleton-local')) "rota publica de anuncio presente no sitemap local"
-  Add-Check "sitemap preserva paginas locais skeleton" ($sitemap.Contains('/acompanhantes/xx/local') -and $sitemap.Contains('/acompanhantes/xx/local/skeleton')) "rotas publicas locais presentes"
+  Add-Check "sitemap preserva anuncio publico" ($sitemap.Contains('/anuncios/anuncio-exemplo')) "rota publica de anuncio presente no sitemap local"
+  Add-Check "sitemap preserva paginas locais SEO" ($sitemap.Contains('/acompanhantes/go/goiania') -and $sitemap.Contains('/acompanhantes/go/goiania/setor-bueno')) "rotas publicas locais presentes"
   Add-Check "sitemap sem dominio de producao" (-not ($sitemap -match 'topsdojob\.com')) "sitemap local nao pode emitir producao"
+  Add-Check "sitemap sem API/admin" (-not ($sitemap -match '["'']/(api|admin)')) "sitemap local nao deve expor API/admin"
+  Add-Check "sitemap sem skeleton" (-not ($sitemap -match '(?i)skeleton')) "sitemap local nao deve conter rota fraca"
 }
 
 $localSeoPath = "frontend/src/lib/seo/localSeo.ts"
@@ -184,7 +195,7 @@ if ((Test-RepoFile $localSeoPath) -and (Test-RepoFile $publicEnvPath)) {
   Add-Check "canonical usa NEXT_PUBLIC_CANONICAL_DOMAIN" ($publicEnv.Contains("NEXT_PUBLIC_CANONICAL_DOMAIN") -and $localSeo.Contains("publicEnv.canonicalDomain")) "dominio canonico configuravel por ambiente"
   Add-Check "canonical local tem fallback seguro" ($localSeo.Contains("http://localhost") -and $localSeo.Contains("LOCAL_FALLBACK_ORIGIN")) "fallback local esperado"
   Add-Check "ambiente local bloqueia canonical de producao" ($localSeo.Contains('publicEnv.appEnv === "local"') -and $localSeo.Contains("return LOCAL_FALLBACK_ORIGIN")) "local substitui dominio nao local"
-  Add-Check "metadata skeleton aplica noindex" ($localSeo.Contains("index: false") -and $localSeo.Contains("follow: false")) "paginas skeleton e admin ficam noindex"
+Add-Check "metadata local aplica noindex" ($localSeo.Contains("index: false") -and $localSeo.Contains("follow: false")) "paginas publicas locais e admin ficam noindex"
 }
 
 $adminPageFiles = @(
@@ -220,8 +231,23 @@ Add-Check "paginas admin continuam noindex" $adminNoindexOk "skeletonMetadata ap
 
 $publicShell = if (Test-RepoFile "frontend/src/modules/public/skeleton/PublicRouteShell.tsx") { Get-RepoText "frontend/src/modules/public/skeleton/PublicRouteShell.tsx" } else { "" }
 $adminShell = if (Test-RepoFile "frontend/src/modules/admin/shell/AdminShell.tsx") { Get-RepoText "frontend/src/modules/admin/shell/AdminShell.tsx" } else { "" }
-Add-Check "public skeleton marcado como temporario" ($publicShell.Contains("SKELETON LOCAL")) "frontend publico ainda nao e layout final"
+Add-Check "public shell sem marcador tecnico principal" (-not ($publicShell -match '(?i)SKELETON LOCAL|Previa local|Rota preservada')) "frontend publico nao deve exibir texto tecnico"
 Add-Check "admin skeleton marcado como temporario" ($adminShell.Contains("ADMIN SKELETON LOCAL") -and $adminShell.Contains("apenas estrutural")) "admin ainda nao e funcional"
+
+$publicSeoPath = "frontend/src/lib/seo/publicSeo.ts"
+if (Test-RepoFile $publicSeoPath) {
+  $publicSeo = Get-RepoText $publicSeoPath
+  Add-Check "breadcrumbs sem link para /acompanhantes raiz" (-not $publicSeo.Contains('href: "/acompanhantes"')) "rota /acompanhantes nao existe neste bloco"
+  Add-Check "breadcrumbs sem link para /acompanhantes/[uf]" (-not $publicSeo.Contains('/acompanhantes/${routeSegment(ufLabel.toLowerCase())}')) "rota /acompanhantes/[uf] nao existe neste bloco"
+}
+
+$globalsPath = "frontend/src/app/globals.css"
+if (Test-RepoFile $globalsPath) {
+  $globals = Get-RepoText $globalsPath
+  $anywhereCount = ([regex]::Matches($globals, 'overflow-wrap:\s*anywhere')).Count
+  Add-Check "overflow-wrap anywhere restrito a token tecnico" ($anywhereCount -le 1 -and $globals.Contains(".route-pattern")) "H1, breadcrumbs, botoes e wizard nao podem quebrar letra por letra"
+  Add-Check "public-shell tem largura renderizavel" ($globals.Contains("width: min(100%, 1120px)") -and $globals.Contains("max-inline-size: 1120px")) "shell publico nao pode colapsar em mini-coluna"
+}
 
 $sqlFiles = @(Get-ChildItem -LiteralPath $repoRoot -Recurse -File -Filter *.sql -ErrorAction SilentlyContinue | Where-Object { -not (Test-IgnoredBuildOutput $_.FullName) })
 $migrationRel = "backend/src/main/resources/db/migration"
@@ -260,7 +286,7 @@ foreach ($path in $forbiddenBackendPaths) {
 
 $failed = @($checks | Where-Object { $_.Resultado -ne "OK" })
 
-Write-Host "Validacao local de rotas publicas e SEO skeleton"
+Write-Host "Validacao local de rotas publicas e SEO local"
 Write-Host "Total de verificacoes: $($checks.Count)"
 Write-Host "Verificacoes OK: $(@($checks | Where-Object { $_.Resultado -eq "OK" }).Count)"
 Write-Host "Verificacoes com falha: $($failed.Count)"

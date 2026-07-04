@@ -14,13 +14,11 @@ export function PublicLocalidadeHeader({
   locationParts
 }: PublicLocalidadeHeaderProps) {
   return (
-    <section className="public-locality-header" aria-label="Cabecalho da localidade">
+    <section className="public-locality-header" aria-label="Cabeçalho da localidade">
       <div>
-        <span className="status" data-debug-label="SKELETON LOCAL">
-          Previa local
-        </span>
+        <span className="status">Localidade</span>
         <h2>{title}</h2>
-        <p>{locationParts.filter(Boolean).join(" / ") || "Localidade local"}</p>
+        <p>{locationParts.filter(Boolean).join(" / ") || "Localidade a confirmar"}</p>
       </div>
       <dl className="public-locality-meta">
         <div>
@@ -28,8 +26,8 @@ export function PublicLocalidadeHeader({
           <dd>{routeLabel}</dd>
         </div>
         <div>
-          <dt>Total local</dt>
-          <dd>{totalItens ?? "indisponivel"}</dd>
+          <dt>Total</dt>
+          <dd>{totalItens ?? "indisponível"}</dd>
         </div>
         <div>
           <dt>Status</dt>

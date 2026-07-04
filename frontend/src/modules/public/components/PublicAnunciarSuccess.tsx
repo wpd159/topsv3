@@ -11,12 +11,12 @@ export function PublicAnunciarSuccess({ response }: PublicAnunciarSuccessProps) 
 
   return (
     <div className="public-form-feedback public-form-feedback-success" role="status">
-      <strong>Solicitacao enviada para analise.</strong>
-      <p>Seu anuncio foi recebido e sera revisado antes de aparecer no site.</p>
+      <strong>Solicitação enviada para análise.</strong>
+      <p>Seu anúncio foi recebido e será revisado antes de aparecer no site.</p>
       <ul className="public-success-list">
-        <li>A publicacao nao e automatica.</li>
-        <li>A equipe avaliara as informacoes enviadas.</li>
-        <li>Fotos, videos e impulsionamentos entram em etapas seguras.</li>
+        <li>A publicação não é automática.</li>
+        <li>A equipe avaliará as informações enviadas.</li>
+        <li>Fotos, vídeos e impulsionamentos entram em etapas seguras.</li>
       </ul>
     </div>
   );

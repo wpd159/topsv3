@@ -1,11 +1,19 @@
 import type { Metadata } from "next";
 
-import { getAnuncioPublico, getSeoRotaPublica } from "../../../lib/api/publicApi";
-import { routeSegment, skeletonMetadata } from "../../../lib/seo/localSeo";
-import { PublicSeoTextBlock } from "../../../modules/public/components/PublicSeoTextBlock";
+import { getAnuncioPublico } from "../../../lib/api/publicApi";
+import {
+  anuncioBreadcrumbs,
+  bairroPath,
+  buildAnuncioSeo,
+  cidadePath,
+  displayBairro,
+  displayCity,
+  normalizeUf
+} from "../../../lib/seo/publicSeo";
+import { PublicBreadcrumbs } from "../../../modules/public/components/PublicBreadcrumbs";
+import { PublicInternalLinks } from "../../../modules/public/components/PublicInternalLinks";
+import { PublicSeoIntro } from "../../../modules/public/components/PublicSeoIntro";
 import { PublicAgeGateContent } from "../../../modules/public/skeleton/PublicAgeGateContent";
-import { PublicRouteShell } from "../../../modules/public/skeleton/PublicRouteShell";
-import { SeoPlaceholder } from "../../../modules/public/skeleton/SeoPlaceholder";
 
 type AnuncioPageProps = {
   params: Promise<{
@@ -15,46 +23,65 @@ type AnuncioPageProps = {
 
 export async function generateMetadata({ params }: AnuncioPageProps): Promise<Metadata> {
   const { slug } = await params;
-  return skeletonMetadata("Anuncio - Tops do Job", `/anuncios/${routeSegment(slug)}`);
+  const anuncioApi = await getAnuncioPublico(slug);
+  return buildAnuncioSeo(slug, anuncioApi.ok ? anuncioApi.data : null).metadata;
 }
 
-export default async function AnuncioSkeletonPage({ params }: AnuncioPageProps) {
+export default async function AnuncioSeoPage({ params }: AnuncioPageProps) {
   const { slug } = await params;
-  const routePath = `/anuncios/${routeSegment(slug)}`;
-  const [anuncioApi, seoApi] = await Promise.all([
-    getAnuncioPublico(slug),
-    getSeoRotaPublica(routePath)
-  ]);
+  const anuncioApi = await getAnuncioPublico(slug);
+  const anuncio = anuncioApi.ok ? anuncioApi.data : null;
+  const seo = buildAnuncioSeo(slug, anuncio);
+  const localizacao = anuncio?.localizacao;
+  const uf = normalizeUf(localizacao?.uf ?? "");
+  const cidadeSlug = localizacao?.cidadeSlug ?? localizacao?.cidade ?? "";
+  const bairroSlug = localizacao?.bairroSlug ?? localizacao?.bairro ?? "";
+  const cidadeLabel = localizacao?.cidade ?? (cidadeSlug ? displayCity(cidadeSlug) : "");
+  const bairroLabel = localizacao?.bairro ?? (bairroSlug ? displayBairro(bairroSlug) : "");
+  const localityLinks = [
+    cidadeSlug
+      ? {
+          label: `Acompanhantes em ${cidadeLabel} - ${uf}`,
+          href: cidadePath(uf, cidadeSlug),
+          description: "Ver perfis e bairros da cidade"
+        }
+      : null,
+    cidadeSlug && bairroSlug
+      ? {
+          label: `Acompanhantes em ${bairroLabel}, ${cidadeLabel}`,
+          href: bairroPath(uf, cidadeSlug, bairroSlug),
+          description: "Ver perfis no bairro"
+        }
+      : null,
+    {
+      label: "Anuncie grátis",
+      href: "/anunciar",
+      description: "Envie seu perfil para análise"
+    }
+  ].filter((link): link is { label: string; href: string; description: string } => Boolean(link));
 
   return (
-    <PublicRouteShell title="Anuncio" routePattern="/anuncios/[slug]">
-      <p>
-        Previa local com dados sinteticos e placeholders seguros. Nenhum anuncio real, foto real,
-        contato, preco, localizacao ou conteudo sensivel e carregado.
-      </p>
+    <main className="public-route">
+      <section className="shell public-shell public-seo-page">
+        <header className="public-anuncio-seo-header">
+          <PublicBreadcrumbs items={anuncioBreadcrumbs(anuncio, slug)} />
+          <h1>{seo.h1}</h1>
+          <p>{seo.description}</p>
+        </header>
+        <PublicSeoIntro title="Informações do anúncio">
+          <p>
+            Este perfil mantém a página do anúncio organizada, liga a cidade e bairro quando
+            disponíveis e deixa contato, mídia e conteúdo sensível sob controle de exibição.
+          </p>
+        </PublicSeoIntro>
       <PublicAgeGateContent
         slug={slug}
-        initialAnuncio={anuncioApi.ok ? anuncioApi.data : null}
+        initialAnuncio={anuncio}
         initialStatus={anuncioApi.status}
         initialMessage={anuncioApi.ok ? null : anuncioApi.message}
       />
-      {seoApi.ok ? (
-        <section className="panel" aria-label="SEO da rota publica">
-          <p>Informacoes locais de rota preservada.</p>
-          <dl className="health-grid compact">
-            <div>
-              <dt>Canonical</dt>
-              <dd>{seoApi.data.canonicalPath}</dd>
-            </div>
-            <div>
-              <dt>Robots</dt>
-              <dd>{seoApi.data.robots}</dd>
-            </div>
-          </dl>
-        </section>
-      ) : null}
-      <PublicSeoTextBlock routePath={routePath} />
-      <SeoPlaceholder routePath={routePath} />
-    </PublicRouteShell>
+        <PublicInternalLinks title="Navegação relacionada" links={localityLinks} />
+      </section>
+    </main>
   );
 }

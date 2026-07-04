@@ -5,8 +5,8 @@ import { PublicAnunciarForm } from "../../modules/public/components/PublicAnunci
 import { PublicRouteShell } from "../../modules/public/skeleton/PublicRouteShell";
 
 export const metadata: Metadata = {
-  title: "Anuncie gratis",
-  description: "Envie seu anuncio para analise antes da publicacao no Tops do Job.",
+  title: "Anuncie grátis | Tops do Job",
+  description: "Envie seu anúncio para análise antes da publicação no Tops do Job.",
   alternates: {
     canonical: localUrl("/anunciar")
   },
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 
 export default function AnunciarPage() {
   return (
-    <PublicRouteShell title="Anuncie gratis" routePattern="/anunciar" eyebrow={null} showRoutePattern={false}>
+    <PublicRouteShell title="Anuncie grátis" routePattern="/anunciar" eyebrow={null} showRoutePattern={false}>
       <PublicAnunciarForm />
     </PublicRouteShell>
   );

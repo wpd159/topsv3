@@ -10,13 +10,12 @@ export default function SobrePage() {
   return (
     <PublicRouteShell title="Sobre o Tops do Job" routePattern="/sobre">
       <p>
-        Skeleton local para apresentar a marca Tops do Job como plataforma brasileira de anúncios
-        classificados de acompanhantes, com organização por localidade e páginas públicas
-        preservadas.
+        O Tops do Job organiza anúncios classificados de acompanhantes com navegação por cidade,
+        bairro e perfil.
       </p>
       <p>
-        O conteúdo final será revisado antes de produção. Esta página não usa dados reais,
-        anúncios reais, imagens reais, integração externa ou backend de domínio.
+        A experiência pública prioriza informação clara, moderação e caminhos simples para quem
+        busca ou deseja anunciar.
       </p>
       <SeoPlaceholder routePath="/sobre" />
     </PublicRouteShell>

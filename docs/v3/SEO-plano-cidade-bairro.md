@@ -69,3 +69,15 @@ Durante cutover, remover `noindex` apenas quando:
 - Search Console baseline estiver registrado;
 - redirects estiverem testados;
 - mobile estiver estavel.
+
+## Bloco 27
+
+Padroes implementados localmente:
+
+- cidade: title/H1 `Acompanhantes em [Cidade] - [UF]`;
+- bairro: title/H1 `Acompanhantes em [Bairro], [Cidade] - [UF]`;
+- texto introdutor humano e curto;
+- breadcrumbs;
+- cidade linka bairros e anuncios quando houver dados;
+- bairro linka cidade e anuncios;
+- paginas vazias continuam com mensagem util, sem indexacao local.

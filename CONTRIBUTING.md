@@ -40,6 +40,7 @@
 - Bloco 22 permite somente leitura/calculo local de Premium e beneficios. Endpoints devem ser GET/read-only, Premium deve ser aditivo, gratuito nao pode ganhar limite comercial de clique/contato/WhatsApp, e continuam proibidos compra real, checkout, cobranca, Pix/Efi funcional, credito real, ativacao real por dinheiro, job de expiracao, migration, SQL de schema, producao, remote, push ou commit.
 - Bloco 26 permite somente funil local `Anuncie gratis`: `POST /api/public/anunciar` pode criar solicitacao sintetica nao publica e revisao aberta. Nao criar publicacao automatica, upload real, pagamento, credito, Pix/Efi, Premium obrigatorio, envio real, dado real, migration, SQL de schema, producao, remote, push ou commit depois do checkpoint local.
 - Bloco 26.2 permite somente wizard progressivo de `/anunciar`, preview Premium local e documentacao/validacao SEO. Nao criar pagamento, credito, Pix/Efi, checkout, webhook, ativacao real, upload, dado real, migration, SQL de schema, producao, remote, push ou commit.
+- Bloco 27.1 permite somente correcao visual de SEO publico, breadcrumbs e gate renderizado. Nao criar redesign, nova paleta, nova tipografia, elemento flutuante, scroll lock, migration, SQL, dado real, producao, remote, push ou commit.
 
 ## Antes de gerar pacote ou commitar localmente
 
@@ -52,6 +53,7 @@ Execute:
 .\scripts\local\validar-migrations-sql-estatico.ps1
 .\scripts\local\validar-migrations-postgres-descartavel.ps1
 .\scripts\local\validar-seo-publico-local.ps1
+.\scripts\local\validar-layout-publico-renderizado.ps1
 git diff --cached --check
 ```
 
@@ -86,6 +88,8 @@ A camada transversal implementada na Fase 1C.3 fica restrita a pacotes `platform
 O skeleton público da Fase 1C.4 deve permanecer neutro: páginas públicas locais podem validar rotas e metadados `noindex`, mas não podem carregar dados reais, fotos reais, listagens reais, JSON-LD final, busca real, backend de domínio ou canonical de produção em ambiente local.
 
 `/anuncios/[slug]` é o contrato público absoluto da página de anúncio. Rotas alternativas como `/anuncio/[id]`, `/perfil/[slug]`, `/acompanhante/[slug]` e `/ads/[slug]` são proibidas. Antes de alterar rotas públicas ou SEO local, execute `scripts/local/validar-rotas-publicas-seo-local.ps1`.
+
+Antes de aprovar visualmente home, cidade, bairro, anuncio ou `/anunciar`, execute `scripts/local/validar-layout-publico-renderizado.ps1`. O script deve reprovar mini-coluna, H1 verticalizado, breadcrumb estreito, wizard espremido, scroll horizontal, texto tecnico publico e link para `/acompanhantes` ou `/acompanhantes/[uf]` quando essas rotas nao existirem.
 
 Antes de revisar ou alterar migrations da Fase 1D, execute `scripts/local/validar-migrations-sql-estatico.ps1`. Esse script é textual, não acessa banco e não substitui revisão Pro, validação PostgreSQL descartável ou análise manual de arquitetura.
 
@@ -400,3 +404,14 @@ Bloco 21.1:
 - Rotas `/anuncios/[slug]`, `/acompanhantes/[uf]/[cidade]`, `/acompanhantes/[uf]/[cidade]/[bairro]` e `/anunciar` devem ser preservadas.
 - Paginas publicas nao devem exibir texto tecnico como "skeleton" ou "API local".
 - `noindex` publico local so pode ser removido em cutover aprovado.
+
+## Bloco 27 - SEO publico local
+
+- Cidade deve usar title/H1 `Acompanhantes em [Cidade] - [UF]`.
+- Bairro deve usar title/H1 `Acompanhantes em [Bairro], [Cidade] - [UF]`.
+- Anuncio deve preservar `/anuncios/[slug]`, usar title/description seguros e linkar cidade/bairro quando houver.
+- Breadcrumbs e linkagem interna sao obrigatorios em cidade, bairro e anuncio.
+- Home deve apontar para cidade, bairro, anuncio e `/anunciar`.
+- Sitemap local deve usar `localUrl`, sem API, admin, rotas fracas ou dominio de producao.
+- Robots local permanece bloqueado; remover noindex depende de gate Pro/cutover futuro.
+- Continuam proibidos dado real, midia real, producao alterada, migration, SQL, upload, pagamento, Pix/Efi, email/WhatsApp real, importador real, remote e push.

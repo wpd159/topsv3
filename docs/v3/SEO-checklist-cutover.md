@@ -22,6 +22,10 @@
 - [ ] Validar canonical final sem duplicidade.
 - [ ] Validar title/description das paginas prioritarias.
 - [ ] Revisar paginas de cidade e bairro com foco em `acompanhante em [cidade]`.
+- [ ] Revisar breadcrumbs de cidade, bairro e anuncio.
+- [ ] Revisar linkagem interna home -> cidade/bairro/anuncio/anunciar.
+- [ ] Confirmar que bairros vazios nao entram em indexacao sem gate.
+- [ ] Confirmar que canonical de producao nao foi ativado em ambiente local/staging.
 - [ ] Validar que conteudo bloqueado nao aparece como anuncio publico normal.
 - [ ] Validar que WhatsApp publico continua mediado pelo backend.
 - [ ] remover noindex somente no cutover aprovado.

@@ -117,6 +117,12 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Search Console baseline deve ser registrado antes de cutover.
 - `noindex` local so pode ser removido em cutover aprovado.
 - Paginas publicas finais nao devem exibir "skeleton" ou "API local".
+- Cidade deve usar title/H1 `Acompanhantes em [Cidade] - [UF]`.
+- Bairro deve usar title/H1 `Acompanhantes em [Bairro], [Cidade] - [UF]`.
+- Anuncio deve preservar `/anuncios/[slug]`, com title/description seguros e links para cidade/bairro quando houver.
+- Breadcrumbs sao obrigatorios em cidade, bairro e anuncio.
+- Sitemap local deve usar `localUrl` e nao incluir API, admin, rotas fracas ou dominio de producao.
+- Consulta a producao para SEO so pode ser publica/somente leitura e documentada.
 
 ## Banco e migrations
 

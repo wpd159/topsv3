@@ -10,12 +10,12 @@ export default function PerguntasFrequentesPage() {
   return (
     <PublicRouteShell title="Perguntas frequentes" routePattern="/perguntas-frequentes">
       <p>
-        Skeleton local para futura FAQ institucional sobre a plataforma, páginas públicas,
-        privacidade, moderação, indexação e limites de conteúdo.
+        Reúna respostas simples sobre a plataforma, páginas públicas, privacidade, moderação e
+        limites de conteúdo.
       </p>
       <p>
-        As respostas finais devem ser neutras, revisadas por humano e alinhadas ao SDD. Nenhum
-        schema FAQ final é emitido nesta fase.
+        As orientações devem ser neutras, revisadas e fáceis de entender para visitantes e
+        anunciantes.
       </p>
       <SeoPlaceholder routePath="/perguntas-frequentes" />
     </PublicRouteShell>

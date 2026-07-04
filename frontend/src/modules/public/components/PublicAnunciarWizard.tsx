@@ -34,8 +34,8 @@ const WIZARD_STEPS: readonly WizardStep[] = [
   { id: "localizacao", label: "Local" },
   { id: "contato", label: "Contato" },
   { id: "detalhes", label: "Anuncio" },
-  { id: "midia", label: "Midia" },
-  { id: "revisao", label: "Revisao" },
+  { id: "midia", label: "Mídia" },
+  { id: "revisao", label: "Revisão" },
   { id: "sucesso", label: "Recebido" }
 ];
 
@@ -79,13 +79,13 @@ export function PublicAnunciarWizard() {
   const currentStep = WIZARD_STEPS[currentStepIndex];
   const reviewRows = useMemo(
     () => [
-      ["Nome", form.nomeExibicao || "Nao informado"],
-      ["Cidade", [form.cidade, form.uf].filter(Boolean).join(" - ") || "Nao informada"],
-      ["Bairro", form.bairro || "Nao informado"],
-      ["WhatsApp", form.whatsapp || "Nao informado"],
-      ["Titulo", form.titulo || "Nao informado"],
-      ["Categoria", form.categoria || "Nao informada"],
-      ["Valor", form.preco > 0 ? `R$ ${form.preco}` : "Nao informado"]
+      ["Nome", form.nomeExibicao || "Não informado"],
+      ["Cidade", [form.cidade, form.uf].filter(Boolean).join(" - ") || "Não informada"],
+      ["Bairro", form.bairro || "Não informado"],
+      ["WhatsApp", form.whatsapp || "Não informado"],
+      ["Título", form.titulo || "Não informado"],
+      ["Categoria", form.categoria || "Não informada"],
+      ["Valor", form.preco > 0 ? `R$ ${form.preco}` : "Não informado"]
     ],
     [form]
   );
@@ -118,12 +118,12 @@ export function PublicAnunciarWizard() {
     }
 
     setSubmitting(true);
-    setStatus("Enviando seu anuncio para analise.");
+    setStatus("Enviando seu anúncio para análise.");
     const response = await solicitarAnuncioPublico(normalizedForm(form));
     setSubmitting(false);
     if (response.ok) {
       setSuccess(response.data);
-      setStatus("Solicitacao enviada para analise.");
+      setStatus("Solicitação enviada para análise.");
       setErrors([]);
       setCurrentStepIndex(WIZARD_STEPS.length - 1);
       return;
@@ -131,7 +131,7 @@ export function PublicAnunciarWizard() {
 
     const responseErrors =
       response.validationErrors ?? [{ campo: "payload", codigo: "ERRO_ENVIO", mensagem: "tente novamente em instantes" }];
-    setStatus(response.status === 0 ? "Nao foi possivel enviar agora." : "Revise os campos destacados.");
+    setStatus(response.status === 0 ? "Não foi possível enviar agora." : "Revise os campos destacados.");
     setErrors(responseErrors);
     setCurrentStepIndex(firstStepIndexForErrors(responseErrors));
   }
@@ -164,11 +164,11 @@ export function PublicAnunciarWizard() {
           ) : null}
           {currentStep.id === "sucesso" ? (
             <button className="local-action" type="button" onClick={resetWizard}>
-              Enviar outro anuncio
+              Enviar outro anúncio
             </button>
           ) : (
             <button className="local-action" type="button" onClick={continueWizard} disabled={submitting}>
-              {currentStep.id === "revisao" ? (submitting ? "Enviando" : "Enviar para analise") : "Continuar"}
+              {currentStep.id === "revisao" ? (submitting ? "Enviando" : "Enviar para análise") : "Continuar"}
             </button>
           )}
           <span aria-live="polite">{status}</span>
@@ -179,9 +179,9 @@ export function PublicAnunciarWizard() {
         <h2>Como funciona</h2>
         <ul>
           <li>Voce preenche uma etapa por vez.</li>
-          <li>O envio so acontece na revisao final.</li>
+          <li>O envio só acontece na revisão final.</li>
           <li>A equipe revisa antes de publicar.</li>
-          <li>Fotos, videos e pagamentos nao entram neste fluxo.</li>
+          <li>Fotos, vídeos e pagamentos não entram neste fluxo.</li>
         </ul>
       </aside>
     </div>
@@ -192,14 +192,14 @@ export function PublicAnunciarWizard() {
       case "intro":
         return (
           <PublicAnunciarWizardStep
-            title="Envie seu anuncio para analise"
-            description="O cadastro gratuito continua disponivel. O anuncio so segue para analise depois da revisao final."
+            title="Envie seu anúncio para análise"
+            description="O cadastro gratuito continua disponível. O anúncio só segue para análise depois da revisão final."
           >
             <div className="public-wizard-intro">
-              <strong>Nenhum pagamento e necessario para enviar.</strong>
-              <p>Preencha os dados principais, revise tudo no fim e aguarde a analise antes de qualquer publicacao.</p>
+              <strong>Nenhum pagamento é necessário para enviar.</strong>
+              <p>Preencha os dados principais, revise tudo no fim e aguarde a análise antes de qualquer publicação.</p>
               <ul>
-                <li>Sem publicacao automatica.</li>
+                <li>Sem publicação automática.</li>
                 <li>Sem upload de foto ou documento nesta etapa.</li>
                 <li>Sem Premium obrigatorio para anunciar.</li>
               </ul>
@@ -210,7 +210,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Dados basicos"
-            description="Informe como o anuncio deve ser identificado pela equipe de analise."
+            description="Informe como o anúncio deve ser identificado pela equipe de análise."
           >
             <div className="public-field-grid">
               <label>
@@ -219,7 +219,7 @@ export function PublicAnunciarWizard() {
                   name="nomeExibicao"
                   value={form.nomeExibicao}
                   onChange={(event) => update("nomeExibicao", event.target.value)}
-                  placeholder="Nome que aparecera no anuncio"
+                  placeholder="Nome que aparecerá no anúncio"
                 />
               </label>
               <label>
@@ -238,7 +238,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Localizacao"
-            description="Informe a area principal do anuncio. O bairro pode ficar em branco quando ainda nao estiver definido."
+            description="Informe a área principal do anúncio. O bairro pode ficar em branco quando ainda não estiver definido."
           >
             <div className="public-field-grid">
               <label>
@@ -276,7 +276,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Contato"
-            description="Informe o contato que a equipe deve considerar na analise inicial."
+            description="Informe o contato que a equipe deve considerar na análise inicial."
           >
             <label>
               WhatsApp
@@ -289,34 +289,34 @@ export function PublicAnunciarWizard() {
               />
             </label>
             <div className="public-upload-future" aria-label="Aviso de contato">
-              <strong>O WhatsApp publico nao e liberado por este formulario.</strong>
-              <p>A exibicao publica futura depende de moderacao, politica de contato e retorno do backend.</p>
+              <strong>O WhatsApp público não é liberado por este formulário.</strong>
+              <p>A exibicao publica futura depende de moderacao e politica de contato.</p>
             </div>
           </PublicAnunciarWizardStep>
         );
       case "detalhes":
         return (
           <PublicAnunciarWizardStep
-            title="Detalhes do anuncio"
-            description="Use um titulo claro, sem telefone, redes sociais ou links."
+            title="Detalhes do anúncio"
+            description="Use um título claro, sem telefone, redes sociais ou links."
           >
             <label>
-              Titulo do anuncio
+              Título do anúncio
               <input
                 name="titulo"
                 value={form.titulo}
                 onChange={(event) => update("titulo", event.target.value)}
-                placeholder="Titulo curto e claro"
+                placeholder="Título curto e claro"
                 maxLength={80}
               />
             </label>
             <label>
-              Descricao
+              Descrição
               <textarea
                 name="descricao"
                 value={form.descricao}
                 onChange={(event) => update("descricao", event.target.value)}
-                placeholder="Conte como sera seu anuncio e quais informacoes devem ser analisadas."
+                placeholder="Conte como será seu anúncio e quais informações devem ser analisadas."
                 maxLength={600}
                 rows={5}
               />
@@ -350,11 +350,11 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Fotos e videos"
-            description="A midia fica para uma etapa segura futura. Aqui, nenhum arquivo deve ser enviado."
+            description="A mídia fica para uma etapa segura futura. Aqui, nenhum arquivo deve ser enviado."
           >
             <div className="public-upload-future" aria-label="Upload futuro">
-              <strong>Upload ainda nao esta disponivel neste fluxo.</strong>
-              <p>Fotos, videos e documentos nao sao solicitados aqui. O anuncio segue apenas com texto para analise.</p>
+              <strong>Upload ainda não está disponível neste fluxo.</strong>
+              <p>Fotos, vídeos e documentos não são solicitados aqui. O anúncio segue apenas com texto para análise.</p>
             </div>
           </PublicAnunciarWizardStep>
         );
@@ -380,7 +380,7 @@ export function PublicAnunciarWizard() {
                   checked={form.aceiteTermos}
                   onChange={(event) => update("aceiteTermos", event.target.checked)}
                 />
-                Li e aceito os termos para envio do anuncio.
+                Li e aceito os termos para envio do anúncio.
               </label>
               <label>
                 <input
@@ -388,7 +388,7 @@ export function PublicAnunciarWizard() {
                   checked={form.confirmacaoIdade}
                   onChange={(event) => update("confirmacaoIdade", event.target.checked)}
                 />
-                Confirmo que sou maior de idade e que nao estou enviando documento ou foto nesta etapa.
+                Confirmo que sou maior de idade e que não estou enviando documento ou foto nesta etapa.
               </label>
             </fieldset>
           </PublicAnunciarWizardStep>
@@ -397,7 +397,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Solicitacao recebida"
-            description="O anuncio foi enviado para analise e nao foi publicado automaticamente."
+            description="O anúncio foi enviado para análise e não foi publicado automaticamente."
           >
             <PublicAnunciarSuccess response={success} />
           </PublicAnunciarWizardStep>
@@ -473,7 +473,7 @@ function validate(form: SolicitarAnuncioPublicoRequestDto): SolicitarAnuncioVali
     errors.push({
       campo: "titulo",
       codigo: "TITULO_CONTATO_OU_REDE_SOCIAL",
-      mensagem: "nao coloque telefone, WhatsApp ou rede social no titulo"
+      mensagem: "não coloque telefone, WhatsApp ou rede social no título"
     });
   }
   if (!Number.isFinite(form.preco) || form.preco <= 0) {

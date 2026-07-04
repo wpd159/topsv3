@@ -23,13 +23,13 @@ export function localUrl(path: string): string {
 }
 
 export function routeSegment(value: string): string {
-  return encodeURIComponent(value.trim() || "skeleton-local");
+  return encodeURIComponent(value.trim() || "localidade");
 }
 
 export function skeletonMetadata(title: string, path: string): Metadata {
   return {
     title,
-    description: "Pagina em ambiente de validacao, sem dados reais e sem indexacao.",
+    description: "Pagina do Tops do Job com navegacao publica organizada.",
     alternates: {
       canonical: localUrl(path)
     },

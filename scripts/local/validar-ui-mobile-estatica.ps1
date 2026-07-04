@@ -116,6 +116,19 @@ foreach ($file in $files) {
   }
 }
 
+$globalsPath = Join-Path $repoRoot "frontend/src/app/globals.css"
+if (Test-Path -LiteralPath $globalsPath -PathType Leaf) {
+  $globalsText = [System.IO.File]::ReadAllText($globalsPath)
+  $anywhereMatches = @([regex]::Matches($globalsText, 'overflow-wrap:\s*anywhere'))
+  if ($anywhereMatches.Count -gt 1 -or (-not $globalsText.Contains(".route-pattern"))) {
+    Add-Finding -Findings $findings `
+      -RelativePath "frontend/src/app/globals.css" `
+      -Line 1 `
+      -Category "overflow-wrap-anywhere-publico" `
+      -Snippet "overflow-wrap:anywhere deve ficar restrito a token tecnico, nunca a H1, breadcrumbs, botoes ou wizard publico."
+  }
+}
+
 $undocumented = @($findings | Where-Object { $_.Documentado -ne "SIM" })
 
 Write-Host "Validacao estatica de UI mobile"

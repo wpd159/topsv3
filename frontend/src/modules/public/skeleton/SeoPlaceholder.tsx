@@ -6,20 +6,20 @@ type SeoPlaceholderProps = {
 
 export function SeoPlaceholder({ routePath }: SeoPlaceholderProps) {
   return (
-    <section className="seo-placeholder" aria-label="SEO local">
-      <h2>SEO local seguro</h2>
+    <section className="seo-placeholder" aria-label="Navegação por localidade">
+      <h2>Navegação por localidade</h2>
       <dl className="health-grid compact">
         <div>
-          <dt>Indexação</dt>
-          <dd>noindex</dd>
+          <dt>Organização</dt>
+          <dd>cidade e bairro</dd>
         </div>
         <div>
-          <dt>Canonical local</dt>
+          <dt>Endereço</dt>
           <dd>{localUrl(routePath)}</dd>
         </div>
         <div>
-          <dt>Dados reais</dt>
-          <dd>ausentes</dd>
+          <dt>Exibição</dt>
+          <dd>controlada</dd>
         </div>
       </dl>
     </section>

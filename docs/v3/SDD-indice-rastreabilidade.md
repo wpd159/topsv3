@@ -120,9 +120,15 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Correcao visual e SDD mestre: `docs/v3/181-bloco-26-1-correcao-visual-sdd.md`
 - Wizard, SEO e Premium: `docs/v3/182-bloco-26-2-wizard-seo-premium.md`
 - Checklist Bloco 26.2: `docs/v3/183-checklist-bloco-26-2-wizard-seo-premium.md`
+- Relatorio Bloco 27: `docs/v3/184-bloco-27-seo-publico-cidade-bairro.md`
+- Checklist Bloco 27: `docs/v3/185-checklist-bloco-27-seo-publico-cidade-bairro.md`
+- Auditoria SEO publica de producao: `docs/v3/SEO-auditoria-producao-publica.md`
+- Padroes de metadata publica: `docs/v3/SEO-padroes-metadata-publica.md`
+- Linkagem interna V3: `docs/v3/SEO-linkagem-interna-v3.md`
 - Evidencias Bloco 26: `docs/v3/evidencias/bloco-26/`
 - Evidencias Bloco 26.1: `docs/v3/evidencias/bloco-26-1/`
 - Evidencias Bloco 26.2: `docs/v3/evidencias/bloco-26-2/`
+- Evidencias Bloco 27: `docs/v3/evidencias/bloco-27/`
 
 ## Validacoes principais
 

@@ -54,6 +54,7 @@ Para mudancas visuais publicas:
 - validar ausencia de scroll lock;
 - validar ausencia de `document.body.style.overflow`;
 - executar `scripts/local/validar-ui-mobile-estatica.ps1`;
+- executar `scripts/local/validar-layout-publico-renderizado.ps1` quando houver home, cidade, bairro, anuncio ou `/anunciar`;
 - gerar evidencias desktop/mobile quando a fase exigir.
 
 ## Gate de SEO publico
@@ -71,6 +72,7 @@ Para mudancas em rotas publicas, sitemap, robots, canonical, `/anunciar` ou text
 - confirmar admin `noindex`;
 - confirmar ausencia de textos publicos "skeleton" ou "API local";
 - executar `scripts/local/validar-seo-publico-local.ps1`.
+- executar `scripts/local/validar-layout-publico-renderizado.ps1` para provar ausencia de mini-coluna, H1 verticalizado, breadcrumbs estreitos e wizard espremido.
 
 ## Gate de producao atual
 
@@ -205,6 +207,15 @@ Antes de admin em ambiente nao local:
 - Premium real permanece pendente de fase financeira aprovada.
 - Search Console completo e cutover SEO ficam para fase futura.
 - Remover `noindex` publico somente em cutover aprovado.
+
+## Pendencias do Bloco 27
+
+- Search Console completo ainda pendente.
+- Inventario completo de URLs reais ainda pendente.
+- Revisao Pro de paginas vazias antes de indexacao futura.
+- Gate para bairros vazios antes de producao.
+- Cutover de robots/canonical/indexacao depende de homologacao aprovada.
+- Nenhuma remocao de `noindex` foi feita nesta fase.
 
 ## Proibicoes ate novo bloco autorizado
 

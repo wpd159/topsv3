@@ -15,7 +15,7 @@ import type {
   StatusIdadePublicaDto
 } from "./publicTypes";
 
-const SAFE_UNAVAILABLE_MESSAGE = "conteudo indisponivel localmente";
+const SAFE_UNAVAILABLE_MESSAGE = "conteudo indisponivel no momento";
 
 export async function getAnuncioPublico(slug: string): Promise<PublicApiResponse<AnuncioDetalhePublicoDto>> {
   return safePublicFetch<AnuncioDetalhePublicoDto>(`/api/public/anuncios/${pathSegment(slug)}`);
@@ -141,7 +141,7 @@ function unavailable(status: number, requestId: string): PublicApiResponse<never
 }
 
 function pathSegment(value: string): string {
-  const normalized = value.trim() || "skeleton-local";
+  const normalized = value.trim() || "localidade";
   return encodeURIComponent(normalized);
 }
 

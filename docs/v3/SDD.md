@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 26.2 e aponta para documentos de detalhe, contratos, evidencias e gates.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 27.1 e aponta para documentos de detalhe, contratos, evidencias e gates.
 
 ## 1. Visao geral
 
@@ -81,6 +81,7 @@ Regras:
 - SEO final depende de revisao humana antes de homologacao/producao.
 - SEO e prioridade central da V3 e possui documentos proprios em `docs/v3/SEO-*.md`.
 - O alvo de crescimento organico local e `acompanhante em [cidade]`.
+- Mudancas visuais publicas de SEO exigem `scripts/local/validar-layout-publico-renderizado.ps1`.
 
 ## 5. Classificacao, idade e conteudo bloqueado
 
@@ -350,6 +351,42 @@ Historico resumido:
 - Blocos 22-25: Premium, creditos, pagamentos e prova de resultado read-only;
 - Bloco 26: funil local Anuncie gratis;
 - Bloco 26.1: correcao visual minima de `/anunciar` e consolidacao do SDD central;
-- Bloco 26.2: wizard progressivo de `/anunciar`, Premium preview local e SEO central.
+- Bloco 26.2: wizard progressivo de `/anunciar`, Premium preview local e SEO central;
+- Bloco 27: SEO publico local de cidade, bairro e anuncio;
+- Bloco 27.1: correcao visual obrigatoria, breadcrumbs sem links quebrados e gate renderizado.
 
 Detalhes e rastreabilidade ficam em `docs/v3/SDD-indice-rastreabilidade.md`.
+
+## 21. Bloco 27 - SEO publico local
+
+O Bloco 27 prepara as paginas publicas locais para SEO de cidade, bairro e anuncio, mantendo ambiente local seguro com `noindex` e canonical via `localUrl`.
+
+Padroes consolidados:
+
+- cidade: `Acompanhantes em [Cidade] - [UF] | Tops do Job`;
+- bairro: `Acompanhantes em [Bairro], [Cidade] - [UF] | Tops do Job`;
+- anuncio: title e description seguros a partir do anuncio quando a API local responder;
+- breadcrumbs em cidade, bairro e anuncio;
+- linkagem home -> cidade/bairro/anuncio/anunciar;
+- linkagem cidade -> bairro/anuncio/anunciar;
+- linkagem bairro -> cidade/anuncio/anunciar;
+- linkagem anuncio -> cidade/bairro/anunciar.
+
+A producao foi consultada somente leitura para observar robots, sitemap, title, canonical, description, robots e H1. Nada foi alterado em producao.
+
+Continuam proibidos cutover, dado real, midia real, banco de producao, migration, SQL, upload, email/WhatsApp real, pagamento, credito, Pix/Efi, checkout, webhook, importador real, API externa, remote e push.
+
+## 22. Bloco 27.1 - gate visual renderizado
+
+O Bloco 27.1 corrige a reprovacao visual dos prints do Bloco 27. A causa registrada foi a ausencia de um gate renderizado que medisse largura real de shell, H1, breadcrumbs e wizard; os validadores anteriores aprovavam sinais textuais, mas nao detectavam mini-coluna.
+
+Correcoes consolidadas:
+
+- `.public-shell` com largura responsiva explicita;
+- H1, breadcrumbs, botoes e wizard sem `overflow-wrap:anywhere`;
+- breadcrumbs sem links para `/acompanhantes` e `/acompanhantes/[uf]` enquanto essas rotas nao existirem;
+- textos publicos sem linguagem tecnica como "SEO local", "Texto SEO local", "skeleton local" ou "V3";
+- evidencias novas em `docs/v3/evidencias/bloco-27-1/`;
+- script `scripts/local/validar-layout-publico-renderizado.ps1`.
+
+O Bloco 27 nao deve ser considerado aprovado visualmente sem esse gate OK.

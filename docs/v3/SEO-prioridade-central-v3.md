@@ -48,3 +48,15 @@ Antes de homologacao ou cutover:
 - mapear redirects quando houver mudanca inevitavel;
 - confirmar que paginas publicas nao mostram textos internos de ambiente;
 - confirmar mobile estavel.
+
+## Bloco 27
+
+O Bloco 27 materializa a prioridade SEO nas paginas locais de home, cidade, bairro e anuncio:
+
+- `frontend/src/lib/seo/publicSeo.ts` centraliza metadata publica;
+- cidade mira `Acompanhantes em [Cidade] - [UF]`;
+- bairro mira `Acompanhantes em [Bairro], [Cidade] - [UF]`;
+- anuncio preserva `/anuncios/[slug]` e linka cidade/bairro quando disponivel;
+- breadcrumbs e linkagem interna sao obrigatorios;
+- sitemap local fica sem API, admin, rotas fracas ou dominio de producao;
+- robots local permanece bloqueado ate cutover aprovado.

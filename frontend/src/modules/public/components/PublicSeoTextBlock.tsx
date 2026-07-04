@@ -3,14 +3,14 @@ type PublicSeoTextBlockProps = {
   children?: React.ReactNode;
 };
 
-export function PublicSeoTextBlock({ routePath, children }: PublicSeoTextBlockProps) {
+export function PublicSeoTextBlock({ children }: PublicSeoTextBlockProps) {
   return (
-    <section className="public-seo-block" aria-label="Texto SEO local">
-      <h2>Informacao local</h2>
+    <section className="public-seo-block" aria-label="Conteúdo por cidade e bairro">
+      <h2>Encontre por cidade, bairro e anúncio</h2>
       {children ?? (
         <p>
-          Conteudo textual reservado para a rota {routePath}. A V3 local preserva o caminho publico,
-          mas nao publica SEO final nem dados reais nesta etapa.
+          Use a navegação pública para chegar a perfis por região, consultar anúncios disponíveis e
+          enviar um cadastro para análise.
         </p>
       )}
     </section>

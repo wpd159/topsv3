@@ -20,8 +20,8 @@ export function PublicContatoAction({
       <button className="local-action" type="button" onClick={onClick} disabled={!enabled || loading}>
         Ver WhatsApp
       </button>
-      {status === "available" ? <p>Contato autorizado pelo backend local.</p> : null}
-      {status === "unavailable" ? <p>{unavailableMessage ?? "contato indisponivel"}</p> : null}
+      {status === "available" ? <p>Contato liberado pela política de segurança.</p> : null}
+      {status === "unavailable" ? <p>{unavailableMessage ?? "Contato indisponível no momento."}</p> : null}
     </div>
   );
 }

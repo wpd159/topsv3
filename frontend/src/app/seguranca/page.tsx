@@ -10,12 +10,12 @@ export default function SegurancaPage() {
   return (
     <PublicRouteShell title="Segurança" routePattern="/seguranca">
       <p>
-        Skeleton local para registrar princípios futuros de segurança, privacidade, moderação,
-        revisão humana e separação entre conteúdo público e áreas privadas.
+        O Tops do Job deve separar informações públicas, áreas privadas, conteúdo sensível e
+        processos de moderação.
       </p>
       <p>
-        O texto final não deve prometer verificações ou proteções ainda não implementadas. Esta
-        página não expõe documentos, dados privados, pagamentos, tokens ou áreas administrativas.
+        As informações de segurança devem ser objetivas e não prometer verificações ou proteções
+        que ainda não estejam disponíveis.
       </p>
       <SeoPlaceholder routePath="/seguranca" />
     </PublicRouteShell>

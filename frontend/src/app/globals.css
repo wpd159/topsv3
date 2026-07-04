@@ -3,6 +3,11 @@
   font-family: Arial, Helvetica, sans-serif;
 }
 
+html {
+  width: 100%;
+  max-width: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -11,17 +16,20 @@ body {
   margin: 0;
   background: #f7f7f5;
   color: #1f2933;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
 }
 
 main {
   width: 100%;
+  max-width: 100%;
   min-height: 100vh;
-  padding: 32px;
+  padding: clamp(16px, 3vw, 32px);
 }
 
 .shell {
-  width: 100%;
+  width: min(100%, 920px);
   max-width: 920px;
   margin: 0 auto;
   min-width: 0;
@@ -46,7 +54,8 @@ h1 {
 p {
   max-width: 680px;
   line-height: 1.6;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
 
 .health-grid {
@@ -73,8 +82,8 @@ p {
 
 .health-grid dd {
   margin: 0;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
   font-weight: 700;
 }
 
@@ -157,13 +166,15 @@ p {
 
 .public-route {
   width: 100%;
+  max-width: 100%;
   background: #f7f7f5;
 }
 
 .public-shell {
-  width: 100%;
-  max-width: 1080px;
+  width: min(100%, 1120px);
+  max-width: 1120px;
   min-width: 0;
+  margin-inline: auto;
 }
 
 .route-pattern {
@@ -185,7 +196,6 @@ p {
 }
 
 .public-route,
-.public-shell,
 .public-content,
 .public-anunciar-layout,
 .public-anunciar-form,
@@ -193,6 +203,11 @@ p {
   inline-size: 100%;
   max-inline-size: 100%;
   min-inline-size: 0;
+}
+
+.public-shell {
+  inline-size: min(100%, 1120px);
+  max-inline-size: 1120px;
 }
 
 .public-home-shell {
@@ -237,6 +252,141 @@ p {
   padding: 10px 12px;
   text-decoration: none;
   text-align: center;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.public-seo-page {
+  display: grid;
+  gap: 18px;
+}
+
+.public-breadcrumbs ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-breadcrumbs li {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: max-content;
+  color: #53606c;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.public-breadcrumbs a,
+.public-breadcrumbs span {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.public-breadcrumbs li::after {
+  content: "/";
+  margin-left: 8px;
+  color: #8b95a1;
+}
+
+.public-breadcrumbs li:last-child::after {
+  content: "";
+  margin-left: 0;
+}
+
+.public-breadcrumbs a {
+  color: #174f35;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.public-locality-seo-header,
+.public-anuncio-seo-header,
+.public-seo-intro,
+.public-internal-links {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid #d6d9dd;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.public-locality-seo-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 18px;
+  align-items: end;
+  margin-top: 16px;
+}
+
+.public-locality-seo-heading h1,
+.public-anuncio-seo-header h1 {
+  margin: 0 0 10px;
+  line-height: 1.15;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.public-locality-seo-heading p,
+.public-anuncio-seo-header p,
+.public-seo-intro p,
+.public-internal-links p {
+  margin: 0;
+  max-width: 760px;
+}
+
+.public-locality-seo-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.public-locality-seo-summary span {
+  display: block;
+  border: 1px solid #d6d9dd;
+  background: #fbfbfa;
+  padding: 10px;
+  color: #53606c;
+  overflow-wrap: break-word;
+}
+
+.public-locality-seo-summary a,
+.public-internal-links a {
+  color: #174f35;
+  font-weight: 700;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.public-seo-intro h2,
+.public-internal-links h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+}
+
+.public-internal-links ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-internal-links li {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid #d6d9dd;
+  background: #fbfbfa;
+  padding: 12px;
+}
+
+.public-internal-links span {
+  color: #53606c;
+  overflow-wrap: break-word;
 }
 
 .public-locality-header {
@@ -258,7 +408,7 @@ p {
 .public-detail-copy p,
 .public-contact-action p,
 .public-section-heading p {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-locality-meta {
@@ -283,7 +433,7 @@ p {
 .public-locality-meta dd {
   margin: 0;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-anuncio-grid {
@@ -316,7 +466,7 @@ p {
   margin: 0;
   font-size: 20px;
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-card-heading span,
@@ -345,13 +495,13 @@ p {
 
 .public-media-placeholder span,
 .public-media-placeholder small {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-media-placeholder strong {
   color: #1f2933;
   font-size: 20px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .compact-media {
@@ -377,7 +527,7 @@ p {
   background: #fbfbfa;
   color: #1f2933;
   padding: 6px 8px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-detail-layout {
@@ -395,7 +545,7 @@ p {
   margin: 14px 0 10px;
   font-size: 28px;
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-detail-meta {
@@ -505,7 +655,7 @@ p {
   color: #1f2933;
   font: inherit;
   padding: 10px 12px;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-anunciar-form textarea {
@@ -575,7 +725,7 @@ p {
 
 .public-form-feedback li,
 .public-anunciar-side li {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-form-feedback li span {
@@ -607,7 +757,7 @@ p {
 .public-submit-summary dd {
   margin: 0;
   font-weight: 700;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-submit-row {
@@ -619,7 +769,7 @@ p {
 
 .public-submit-row span {
   color: #53606c;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .public-wizard {
@@ -628,7 +778,7 @@ p {
 
 .public-wizard-progress ol {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 128px), 1fr));
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -666,7 +816,8 @@ p {
 .public-wizard-progress li strong,
 .public-wizard-progress li small {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .public-wizard-progress li small {
@@ -838,7 +989,7 @@ p {
 .admin-readonly-list span,
 .admin-readonly-list small {
   display: block;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .admin-premium-wizard {
@@ -890,7 +1041,7 @@ p {
 
 .admin-premium-progress strong {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .admin-premium-step,
@@ -946,7 +1097,7 @@ p {
 .admin-premium-choice-group small {
   display: block;
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .admin-premium-choice-group small {
@@ -971,7 +1122,7 @@ p {
 
 .admin-premium-actions span {
   color: #53606c;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .admin-moderation-actions {
@@ -1014,6 +1165,7 @@ p {
 
   .public-home-hero,
   .public-locality-header,
+  .public-locality-seo-heading,
   .public-detail-layout,
   .public-anunciar-layout {
     grid-template-columns: 1fr;

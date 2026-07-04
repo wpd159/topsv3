@@ -8,12 +8,12 @@ type PublicAnuncioDetalheProps = {
 
 export function PublicAnuncioDetalhe({ anuncio, status }: PublicAnuncioDetalheProps) {
   return (
-    <section className="public-detail-layout" aria-label="Detalhe publico local">
+    <section className="public-detail-layout" aria-label="Detalhe público do anúncio">
       <PublicMidiaPlaceholder midias={anuncio.midias} />
       <article className="public-detail-copy">
-        <span className="status">Previa local</span>
-        <h2>{anuncio.titulo ?? "Anuncio local"}</h2>
-        <p>{anuncio.descricao ?? "Descricao local indisponivel."}</p>
+        <span className="status">Perfil público</span>
+        <h2>{anuncio.titulo ?? "Anúncio"}</h2>
+        <p>{anuncio.descricao ?? "Descrição indisponível no momento."}</p>
         <dl className="health-grid compact public-detail-meta">
           <div>
             <dt>Status</dt>
@@ -29,7 +29,7 @@ export function PublicAnuncioDetalhe({ anuncio, status }: PublicAnuncioDetalhePr
           </div>
           <div>
             <dt>Contato</dt>
-            <dd>{anuncio.contatoPublico ? "liberado pelo backend" : "nao exposto"}</dd>
+            <dd>{anuncio.contatoPublico ? "mediado pelo sistema" : "não exposto"}</dd>
           </div>
         </dl>
         {anuncio.beneficiosPublicos.length > 0 ? (
@@ -40,7 +40,7 @@ export function PublicAnuncioDetalhe({ anuncio, status }: PublicAnuncioDetalhePr
           </ul>
         ) : null}
         <p className="public-policy-note">
-          {anuncio.pendenciaContatoPublico ?? "PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO"}
+          {anuncio.pendenciaContatoPublico ?? "Contato público sujeito à política de segurança."}
         </p>
       </article>
     </section>
@@ -49,7 +49,7 @@ export function PublicAnuncioDetalhe({ anuncio, status }: PublicAnuncioDetalhePr
 
 function formatPrice(preco: number | null): string {
   if (preco === null) {
-    return "Valor local";
+    return "Consultar";
   }
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -60,7 +60,7 @@ function formatPrice(preco: number | null): string {
 
 function formatLocation(item: AnuncioDetalhePublicoDto["localizacao"]): string {
   if (!item) {
-    return "Localidade local";
+    return "Localidade a confirmar";
   }
-  return [item.bairro, item.cidade, item.uf].filter(Boolean).join(", ") || "Localidade local";
+  return [item.bairro, item.cidade, item.uf].filter(Boolean).join(", ") || "Localidade a confirmar";
 }

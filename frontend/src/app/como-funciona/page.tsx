@@ -10,12 +10,12 @@ export default function ComoFuncionaPage() {
   return (
     <PublicRouteShell title="Como funciona" routePattern="/como-funciona">
       <p>
-        Skeleton local para explicar, em linguagem neutra, como a V3 deverá organizar páginas de
-        anúncio, páginas por cidade, páginas por bairro e conteúdo institucional.
+        Entenda como o Tops do Job organiza anúncios, cidades, bairros e conteúdos institucionais
+        para facilitar a navegação.
       </p>
       <p>
-        Não há busca real, cadastro funcional, login, checkout, Pix, dados reais ou chamada a API
-        externa nesta fase.
+        As informações públicas devem ser claras, revisadas e apresentadas sem prometer recursos
+        que ainda não estejam disponíveis.
       </p>
       <SeoPlaceholder routePath="/como-funciona" />
     </PublicRouteShell>

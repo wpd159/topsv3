@@ -70,7 +70,7 @@ export function PublicAgeGateStories({ slug, enabled }: PublicAgeGateStoriesProp
   }
 
   return (
-    <section className="panel" aria-label="Confirmacao de idade local">
+    <section className="panel" aria-label="Confirmação de idade para stories">
       <dl className="health-grid compact">
         <div>
           <dt>Idade</dt>
@@ -82,7 +82,7 @@ export function PublicAgeGateStories({ slug, enabled }: PublicAgeGateStoriesProp
         </div>
       </dl>
       {ageState === "confirmada" ? (
-        <p>{stories?.politica.pendencia ?? "PENDENTE_URL_PUBLICA_MIDIA_CDN"}</p>
+        <p>{stories?.politica.motivoPublico ?? "Stories disponíveis quando houver mídia aprovada."}</p>
       ) : (
         <div className="local-inline-form">
           <label>
@@ -94,12 +94,17 @@ export function PublicAgeGateStories({ slug, enabled }: PublicAgeGateStoriesProp
               max="2008-01-01"
             />
           </label>
-          <button className="local-action" type="button" onClick={handleConfirm} disabled={!enabled || !birthDateIsValid}>
+          <button
+            className="local-action"
+            type="button"
+            onClick={handleConfirm}
+            disabled={!enabled || !birthDateIsValid}
+          >
             Confirmar idade
           </button>
         </div>
       )}
-      {ageState === "negada" ? <p>idade nao confirmada</p> : null}
+      {ageState === "negada" ? <p>Idade não confirmada.</p> : null}
     </section>
   );
 }

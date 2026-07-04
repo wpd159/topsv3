@@ -54,19 +54,19 @@ export function PublicMetricActions({ slug, enabled }: PublicMetricActionsProps)
       setContact({ kind: "available" });
       return;
     }
-    setContact({ kind: "unavailable", message: "contato indisponivel" });
+    setContact({ kind: "unavailable", message: "Contato indisponível no momento." });
   }
 
   return (
-    <section className="panel" aria-label="Metricas publicas locais">
+    <section className="panel" aria-label="Métricas públicas">
       <dl className="health-grid compact">
         <div>
-          <dt>Visualizacao</dt>
+          <dt>Visualização</dt>
           <dd>{viewStatus}</dd>
         </div>
         <div>
           <dt>Stories</dt>
-          <dd>PENDENTE_URL_PUBLICA_MIDIA_CDN</dd>
+          <dd>protegidos</dd>
         </div>
       </dl>
       <PublicContatoAction

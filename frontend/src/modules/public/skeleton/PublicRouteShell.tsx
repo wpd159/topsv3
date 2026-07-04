@@ -9,20 +9,20 @@ type PublicRouteShellProps = {
 export function PublicRouteShell({
   title,
   routePattern,
-  eyebrow = "Previa local",
-  showRoutePattern = true,
+  eyebrow = null,
+  showRoutePattern = false,
   children
 }: PublicRouteShellProps) {
   return (
     <main className="public-route">
       <section className="shell public-shell">
         {eyebrow ? (
-          <span className="status" data-debug-label="SKELETON LOCAL">
+          <span className="status" data-debug-label="PUBLIC_STATUS">
             {eyebrow}
           </span>
         ) : null}
         <h1>{title}</h1>
-        {showRoutePattern ? <p className="route-pattern">Rota preservada: {routePattern}</p> : null}
+        {showRoutePattern ? <p className="route-pattern">{routePattern}</p> : null}
         <div className="public-content">{children}</div>
       </section>
     </main>

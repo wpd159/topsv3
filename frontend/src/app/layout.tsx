@@ -4,7 +4,7 @@ import type { Metadata, Viewport } from "next";
 
 export const metadata = {
   title: "Tops do Job",
-  description: "Previa local do Tops do Job"
+  description: "Tops do Job"
 } satisfies Metadata;
 
 export const viewport: Viewport = {

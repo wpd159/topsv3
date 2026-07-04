@@ -1,13 +1,18 @@
 import type { Metadata } from "next";
 
-import { getListagemCidadePublica, getSeoRotaPublica } from "../../../../lib/api/publicApi";
-import { routeSegment, skeletonMetadata } from "../../../../lib/seo/localSeo";
+import { getListagemCidadePublica } from "../../../../lib/api/publicApi";
+import {
+  anuncioLinksFromCards,
+  buildCitySeo,
+  cityBreadcrumbs,
+  displayCity,
+  localityLinksFromAnuncios,
+  normalizeUf
+} from "../../../../lib/seo/publicSeo";
 import { PublicAnuncioGrid } from "../../../../modules/public/components/PublicAnuncioGrid";
-import { PublicEmptyState } from "../../../../modules/public/components/PublicEmptyState";
-import { PublicLocalidadeHeader } from "../../../../modules/public/components/PublicLocalidadeHeader";
-import { PublicSeoTextBlock } from "../../../../modules/public/components/PublicSeoTextBlock";
-import { PublicRouteShell } from "../../../../modules/public/skeleton/PublicRouteShell";
-import { SeoPlaceholder } from "../../../../modules/public/skeleton/SeoPlaceholder";
+import { PublicInternalLinks } from "../../../../modules/public/components/PublicInternalLinks";
+import { PublicLocalitySeoHeader } from "../../../../modules/public/components/PublicLocalitySeoHeader";
+import { PublicSeoIntro } from "../../../../modules/public/components/PublicSeoIntro";
 
 type CidadePageProps = {
   params: Promise<{
@@ -18,62 +23,63 @@ type CidadePageProps = {
 
 export async function generateMetadata({ params }: CidadePageProps): Promise<Metadata> {
   const { uf, cidade } = await params;
-  return skeletonMetadata(
-    "Acompanhantes por cidade - Tops do Job",
-    `/acompanhantes/${routeSegment(uf)}/${routeSegment(cidade)}`
-  );
+  return buildCitySeo(uf, cidade).metadata;
 }
 
-export default async function CidadeSkeletonPage({ params }: CidadePageProps) {
+export default async function CidadeSeoPage({ params }: CidadePageProps) {
   const { uf, cidade } = await params;
-  const routePath = `/acompanhantes/${routeSegment(uf)}/${routeSegment(cidade)}`;
-  const [listagemApi, seoApi] = await Promise.all([
-    getListagemCidadePublica(uf, cidade),
-    getSeoRotaPublica(routePath)
-  ]);
+  const seo = buildCitySeo(uf, cidade);
+  const ufLabel = normalizeUf(uf);
+  const cityLabel = displayCity(cidade);
+  const listagemApi = await getListagemCidadePublica(uf, cidade);
+  const items = listagemApi.ok ? listagemApi.data.itens : [];
+  const bairroLinks = localityLinksFromAnuncios(items, ufLabel, cidade);
+  const anuncioLinks = anuncioLinksFromCards(items);
 
   return (
-    <PublicRouteShell title="Acompanhantes por cidade" routePattern="/acompanhantes/[uf]/[cidade]">
-      <p>
-        Previa local com dados sinteticos para conferir a listagem publica. Nao ha busca real,
-        listagem real, dados reais de cidade, anuncio, midia ou integracao externa.
-      </p>
-      <PublicLocalidadeHeader
-        title="Acompanhantes locais"
-        routeLabel="/acompanhantes/[uf]/[cidade]"
-        totalItens={listagemApi.ok ? listagemApi.data.paginacao.totalItens : null}
-        status={listagemApi.ok ? "Disponivel" : "Indisponivel"}
-        locationParts={[uf, cidade]}
-      />
+    <main className="public-route">
+      <section className="shell public-shell public-seo-page">
+        <PublicLocalitySeoHeader
+          h1={seo.h1}
+          description={seo.description}
+          breadcrumbs={cityBreadcrumbs(ufLabel, cidade)}
+          totalItens={listagemApi.ok ? listagemApi.data.paginacao.totalItens : null}
+        />
+        <PublicSeoIntro title={`Guia de acompanhantes em ${cityLabel} - ${ufLabel}`}>
+          <p>
+            A página reúne perfis por cidade e facilita a navegação por bairro, anúncio e cadastro
+            gratuito. A navegação ajuda quem busca acompanhante em {cityLabel} e acompanhantes em
+            {cityLabel} - {ufLabel}, mantendo contato e mídia sob controle de exibição.
+          </p>
+        </PublicSeoIntro>
       {listagemApi.ok ? (
         <PublicAnuncioGrid
-          items={listagemApi.data.itens}
-          emptyTitle="Nenhum anuncio local"
-          emptyMessage="A listagem por cidade esta disponivel, mas nao retornou itens locais."
+          items={items}
+          emptyTitle="Nenhum perfil disponível no momento"
+          emptyMessage={`Ainda não há perfis para ${cityLabel} - ${ufLabel}. Você pode anunciar grátis ou voltar em breve para conferir novas publicações.`}
         />
       ) : (
-        <PublicEmptyState
-          title="Listagem local indisponivel"
-          message={`${listagemApi.message}. A pagina permanece segura quando o backend local nao esta disponivel.`}
+        <PublicAnuncioGrid
+          items={[]}
+          emptyTitle="Perfis temporariamente indisponíveis"
+          emptyMessage={`A página de ${cityLabel} - ${ufLabel} permanece acessível para navegação e cadastro enquanto a listagem é atualizada.`}
         />
       )}
-      {seoApi.ok ? (
-        <section className="panel" aria-label="SEO da rota publica">
-          <p>Informacoes locais de rota preservada.</p>
-          <dl className="health-grid compact">
-            <div>
-              <dt>Canonical</dt>
-              <dd>{seoApi.data.canonicalPath}</dd>
-            </div>
-            <div>
-              <dt>Robots</dt>
-              <dd>{seoApi.data.robots}</dd>
-            </div>
-          </dl>
-        </section>
-      ) : null}
-      <PublicSeoTextBlock routePath={routePath} />
-      <SeoPlaceholder routePath={routePath} />
-    </PublicRouteShell>
+        <PublicInternalLinks
+          title={`Bairros de ${cityLabel}`}
+          links={bairroLinks}
+          emptyText="Os bairros serão exibidos quando houver perfis suficientes para uma navegação útil."
+        />
+        <PublicInternalLinks
+          title="Anúncios relacionados"
+          links={anuncioLinks}
+          emptyText="Novos anúncios serão ligados aqui conforme a cidade tiver perfis disponíveis."
+        />
+        <PublicInternalLinks
+          title="Também pode ajudar"
+          links={[{ label: "Anuncie grátis", href: "/anunciar", description: "Envie seu perfil para análise" }]}
+        />
+      </section>
+    </main>
   );
 }

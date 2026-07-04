@@ -1,13 +1,19 @@
 import type { Metadata } from "next";
 
-import { getListagemBairroPublica, getSeoRotaPublica } from "../../../../../lib/api/publicApi";
-import { routeSegment, skeletonMetadata } from "../../../../../lib/seo/localSeo";
+import { getListagemBairroPublica } from "../../../../../lib/api/publicApi";
+import {
+  anuncioLinksFromCards,
+  bairroBreadcrumbs,
+  buildBairroSeo,
+  cidadePath,
+  displayBairro,
+  displayCity,
+  normalizeUf
+} from "../../../../../lib/seo/publicSeo";
 import { PublicAnuncioGrid } from "../../../../../modules/public/components/PublicAnuncioGrid";
-import { PublicEmptyState } from "../../../../../modules/public/components/PublicEmptyState";
-import { PublicLocalidadeHeader } from "../../../../../modules/public/components/PublicLocalidadeHeader";
-import { PublicSeoTextBlock } from "../../../../../modules/public/components/PublicSeoTextBlock";
-import { PublicRouteShell } from "../../../../../modules/public/skeleton/PublicRouteShell";
-import { SeoPlaceholder } from "../../../../../modules/public/skeleton/SeoPlaceholder";
+import { PublicInternalLinks } from "../../../../../modules/public/components/PublicInternalLinks";
+import { PublicLocalitySeoHeader } from "../../../../../modules/public/components/PublicLocalitySeoHeader";
+import { PublicSeoIntro } from "../../../../../modules/public/components/PublicSeoIntro";
 
 type BairroPageProps = {
   params: Promise<{
@@ -19,65 +25,68 @@ type BairroPageProps = {
 
 export async function generateMetadata({ params }: BairroPageProps): Promise<Metadata> {
   const { uf, cidade, bairro } = await params;
-  return skeletonMetadata(
-    "Acompanhantes por bairro - Tops do Job",
-    `/acompanhantes/${routeSegment(uf)}/${routeSegment(cidade)}/${routeSegment(bairro)}`
-  );
+  return buildBairroSeo(uf, cidade, bairro).metadata;
 }
 
-export default async function BairroSkeletonPage({ params }: BairroPageProps) {
+export default async function BairroSeoPage({ params }: BairroPageProps) {
   const { uf, cidade, bairro } = await params;
-  const routePath = `/acompanhantes/${routeSegment(uf)}/${routeSegment(cidade)}/${routeSegment(bairro)}`;
-  const [listagemApi, seoApi] = await Promise.all([
-    getListagemBairroPublica(uf, cidade, bairro),
-    getSeoRotaPublica(routePath)
-  ]);
+  const seo = buildBairroSeo(uf, cidade, bairro);
+  const ufLabel = normalizeUf(uf);
+  const cityLabel = displayCity(cidade);
+  const bairroLabel = displayBairro(bairro);
+  const listagemApi = await getListagemBairroPublica(uf, cidade, bairro);
+  const items = listagemApi.ok ? listagemApi.data.itens : [];
+  const anuncioLinks = anuncioLinksFromCards(items);
 
   return (
-    <PublicRouteShell
-      title="Acompanhantes por bairro"
-      routePattern="/acompanhantes/[uf]/[cidade]/[bairro]"
-    >
-      <p>
-        Esta pagina existe somente como previa local. Nao ha conteudo adulto real, busca,
-        geolocalizacao real, anuncio, midia, contato, telefone ou chamada a API externa.
-      </p>
-      <PublicLocalidadeHeader
-        title="Acompanhantes locais no bairro"
-        routeLabel="/acompanhantes/[uf]/[cidade]/[bairro]"
-        totalItens={listagemApi.ok ? listagemApi.data.paginacao.totalItens : null}
-        status={listagemApi.ok ? "Disponivel" : "Indisponivel"}
-        locationParts={[uf, cidade, bairro]}
-      />
+    <main className="public-route">
+      <section className="shell public-shell public-seo-page">
+        <PublicLocalitySeoHeader
+          h1={seo.h1}
+          description={seo.description}
+          breadcrumbs={bairroBreadcrumbs(ufLabel, cidade, bairro)}
+          totalItens={listagemApi.ok ? listagemApi.data.paginacao.totalItens : null}
+        />
+        <PublicSeoIntro title={`Guia de acompanhantes em ${bairroLabel}, ${cityLabel}`}>
+          <p>
+            Esta página organiza perfis por bairro para quem procura acompanhante em {bairroLabel}
+            ou acompanhantes em {bairroLabel}, {cityLabel} - {ufLabel}. A navegação mantém o caminho
+            da cidade, os anúncios relacionados e o cadastro gratuito no mesmo fluxo público.
+          </p>
+        </PublicSeoIntro>
       {listagemApi.ok ? (
         <PublicAnuncioGrid
-          items={listagemApi.data.itens}
-          emptyTitle="Nenhum anuncio local"
-          emptyMessage="A listagem por bairro esta disponivel, mas nao retornou itens locais."
+          items={items}
+          emptyTitle="Nenhum perfil disponível no bairro"
+          emptyMessage={`Ainda não há perfis suficientes em ${bairroLabel}, ${cityLabel}. A página fica pronta para receber anúncios quando houver oferta útil.`}
         />
       ) : (
-        <PublicEmptyState
-          title="Listagem local indisponivel"
-          message={`${listagemApi.message}. A pagina permanece segura quando o backend local nao esta disponivel.`}
+        <PublicAnuncioGrid
+          items={[]}
+          emptyTitle="Perfis temporariamente indisponíveis"
+          emptyMessage={`A navegação por ${bairroLabel}, ${cityLabel} permanece organizada enquanto a listagem é atualizada.`}
         />
       )}
-      {seoApi.ok ? (
-        <section className="panel" aria-label="SEO da rota publica">
-          <p>Informacoes locais de rota preservada.</p>
-          <dl className="health-grid compact">
-            <div>
-              <dt>Canonical</dt>
-              <dd>{seoApi.data.canonicalPath}</dd>
-            </div>
-            <div>
-              <dt>Robots</dt>
-              <dd>{seoApi.data.robots}</dd>
-            </div>
-          </dl>
-        </section>
-      ) : null}
-      <PublicSeoTextBlock routePath={routePath} />
-      <SeoPlaceholder routePath={routePath} />
-    </PublicRouteShell>
+        <PublicInternalLinks
+          title={`Voltar para ${cityLabel}`}
+          links={[
+            {
+              label: `Acompanhantes em ${cityLabel} - ${ufLabel}`,
+              href: cidadePath(ufLabel, cidade),
+              description: "Ver todos os bairros e perfis da cidade"
+            }
+          ]}
+        />
+        <PublicInternalLinks
+          title="Anúncios do bairro"
+          links={anuncioLinks}
+          emptyText="Os anúncios serão exibidos aqui quando houver perfis suficientes para este bairro."
+        />
+        <PublicInternalLinks
+          title="Também pode ajudar"
+          links={[{ label: "Anuncie grátis", href: "/anunciar", description: "Envie seu perfil para análise" }]}
+        />
+      </section>
+    </main>
   );
 }

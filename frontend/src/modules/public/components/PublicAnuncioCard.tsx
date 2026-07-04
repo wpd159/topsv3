@@ -11,7 +11,7 @@ export function PublicAnuncioCard({ item }: PublicAnuncioCardProps) {
   const badges = [
     item.destaque ? "Destaque" : null,
     item.topo ? "Topo" : null,
-    item.midiaExtra ? "Midia extra" : null,
+    item.midiaExtra ? "Mídia extra" : null,
     item.story ? "Stories" : null
   ].filter((badge): badge is string => Boolean(badge));
 
@@ -20,10 +20,10 @@ export function PublicAnuncioCard({ item }: PublicAnuncioCardProps) {
       <PublicMidiaPlaceholder midias={item.midias} compact />
       <div className="public-card-body">
         <div className="public-card-heading">
-          <h2>{item.titulo ?? "Anuncio local"}</h2>
+          <h2>{item.titulo ?? "Anúncio"}</h2>
           <span>{formatPrice(item.preco)}</span>
         </div>
-        <p>{item.descricaoResumo ?? "Resumo local indisponivel."}</p>
+        <p>{item.descricaoResumo ?? "Resumo indisponível no momento."}</p>
         <p className="public-card-location">{formatLocation(item.localizacao)}</p>
         {badges.length > 0 ? (
           <ul className="public-badge-list" aria-label="Marcadores do anuncio">
@@ -40,7 +40,7 @@ export function PublicAnuncioCard({ item }: PublicAnuncioCardProps) {
           </ul>
         ) : null}
         <Link className="public-card-link" href={`/anuncios/${item.slug}`}>
-          Ver anuncio
+          Ver anúncio
         </Link>
       </div>
     </article>
@@ -49,7 +49,7 @@ export function PublicAnuncioCard({ item }: PublicAnuncioCardProps) {
 
 function formatPrice(preco: number | null): string {
   if (preco === null) {
-    return "Valor local";
+    return "Consultar";
   }
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -60,7 +60,7 @@ function formatPrice(preco: number | null): string {
 
 function formatLocation(item: AnuncioCardPublicoDto["localizacao"]): string {
   if (!item) {
-    return "Localidade local";
+    return "Localidade a confirmar";
   }
-  return [item.bairro, item.cidade, item.uf].filter(Boolean).join(", ") || "Localidade local";
+  return [item.bairro, item.cidade, item.uf].filter(Boolean).join(", ") || "Localidade a confirmar";
 }

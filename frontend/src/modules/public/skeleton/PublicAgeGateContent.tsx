@@ -24,7 +24,6 @@ type AgeGateState = "conteudo_autorizado" | "aguardando_idade" | "confirmando" |
 export function PublicAgeGateContent({
   slug,
   initialAnuncio,
-  initialStatus,
   initialMessage
 }: PublicAgeGateContentProps) {
   const [anuncio, setAnuncio] = useState<AnuncioDetalhePublicoDto | null>(initialAnuncio);
@@ -32,7 +31,7 @@ export function PublicAgeGateContent({
   const [state, setState] = useState<AgeGateState>(
     initialAnuncio ? "conteudo_autorizado" : "aguardando_idade"
   );
-  const [message, setMessage] = useState(initialMessage ?? "conteudo indisponivel localmente");
+  const [message, setMessage] = useState(initialMessage ?? "Conteúdo indisponível no momento");
   const birthDateIsValid = isValidBirthDate(birthDate);
   const canConfirmAge = birthDateIsValid && state !== "confirmando";
 
@@ -46,7 +45,7 @@ export function PublicAgeGateContent({
       declaracaoMaioridade: true
     });
     if (!ageResponse.ok || !ageResponse.data.confirmada) {
-      setMessage("idade nao confirmada");
+      setMessage("Idade não confirmada.");
       setState("idade_negada");
       return;
     }
@@ -54,7 +53,7 @@ export function PublicAgeGateContent({
     const detailResponse = await getAnuncioPublico(slug);
     if (detailResponse.ok) {
       setAnuncio(detailResponse.data);
-      setMessage("conteudo autorizado pelo backend local");
+      setMessage("Conteúdo liberado para visualização.");
       setState("conteudo_autorizado");
       return;
     }
@@ -70,12 +69,12 @@ export function PublicAgeGateContent({
         <PublicAnuncioDetalhe anuncio={anuncio} status={state} />
       ) : (
         <PublicEmptyState
-          title="Conteudo local protegido"
-          message={`${message}. Verificacao inicial: ${initialStatus || "indisponivel"}.`}
+          title="Conteúdo protegido"
+          message={message || "Confirme sua idade para ver as informações disponíveis."}
         />
       )}
 
-      <section className="panel" aria-label="Confirmacao de idade local para anuncio">
+      <section className="panel" aria-label="Confirmação de idade para anúncio">
         <dl className="health-grid compact">
           <div>
             <dt>Fluxo</dt>
@@ -137,7 +136,7 @@ function formatAgeState(state: AgeGateState): string {
     case "confirmando":
       return "confirmando";
     case "idade_negada":
-      return "idade nao confirmada";
+      return "idade não confirmada";
     case "indisponivel":
       return "indisponivel";
   }

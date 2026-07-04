@@ -6,6 +6,8 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 Fase atual: **Fase 2G - dossie de transicao para revisao Pro**.
 
+Bloco 27.1 adiciona correcao visual obrigatoria para as paginas publicas de SEO e o gate renderizado `scripts/local/validar-layout-publico-renderizado.ps1`, evitando mini-coluna, H1 verticalizado, breadcrumbs quebrados e wizard espremido em desktop/mobile.
+
 Existe skeleton local de backend Spring Boot e frontend Next.js, contrato inicial, documentação físico-conceitual do banco V3, migrations Flyway/PostgreSQL geradas para auditoria, padrões transversais de API/logs/auditoria, implementação local mínima de request id/erros/health, skeleton das rotas públicas críticas com SEO local seguro, estratégia GEO/AEO/LLM Visibility, snapshot sanitizado de textos públicos atuais da produção, shell administrativo local estrutural, diretriz de preservação do visual atual e validação local das rotas públicas/SEO skeleton. As migrations da Fase 1D estão com status `AGUARDANDO_REVISAO_PRO`: não foram aplicadas, Flyway não foi executado e nenhum banco foi acessado. Ainda não existe dado real, busca real, anúncio real, conteúdo público final, fluxo Pix real, autenticação completa, painel admin funcional, frontend público real ou integração externa.
 
 A Fase 1C.6B cria apenas o shell administrativo local e o mapa estrutural dos módulos do admin. Ele não é funcional, não autentica usuário, não executa ação real, não consulta backend, não usa dado real e mantém todas as páginas admin em `noindex`.
@@ -82,6 +84,7 @@ Os nomes padronizados atuais são:
 .\scripts\local\validar-build-local.ps1
 .\scripts\local\validar-ui-mobile-estatica.ps1
 .\scripts\local\validar-seo-publico-local.ps1
+.\scripts\local\validar-layout-publico-renderizado.ps1
 ```
 
 Esses scripts usam `infra/local/docker-compose.local.yml` e exigem Docker já disponível na máquina. Esta fase não instala ferramentas. Os volumes locais ficam sob `storage-local/`, que é ignorado pelo Git.
@@ -150,6 +153,8 @@ Preservação visual da Fase 1C.7:
 - `docs/v3/48-preservacao-visual-atual.md`;
 - `docs/v3/49-inventario-visual-atual.md`;
 - `docs/v3/50-checklist-preservacao-visual.md`.
+
+Mudancas visuais publicas de SEO devem executar `scripts/local/validar-layout-publico-renderizado.ps1`, alem dos validadores estaticos, para provar largura normal de pagina, H1 legivel, breadcrumbs legiveis, wizard legivel e ausencia de scroll horizontal.
 
 Validação local de rotas e SEO da Fase 1C.8:
 
@@ -567,6 +572,14 @@ O Bloco 26.2 converte `/anunciar` em wizard progressivo local, com envio apenas 
 SEO passa a ter documentacao central em `docs/v3/SEO-*.md` e novo gate `scripts/local/validar-seo-publico-local.ps1`, preservando `/anuncios/[slug]`, rotas de cidade/bairro, sitemap, robots, canonical local e admin noindex.
 
 Nao houve redesign, nova paleta, nova tipografia, producao alterada, banco de producao, dado real, migration, SQL de schema, API externa, remote, push ou commit.
+
+## Bloco 27 - SEO publico local
+
+O Bloco 27 prepara home, cidade, bairro e anuncio para SEO publico local, com foco em `acompanhante em [cidade]`, mantendo canonical via `localUrl` e ambiente local `noindex`.
+
+Foram criados helper `frontend/src/lib/seo/publicSeo.ts`, breadcrumbs, intro SEO, linkagem interna e documentos `docs/v3/SEO-auditoria-producao-publica.md`, `docs/v3/SEO-padroes-metadata-publica.md` e `docs/v3/SEO-linkagem-interna-v3.md`.
+
+Nao houve cutover, producao alterada, banco de producao, dado real, midia real, migration, SQL, upload, email, WhatsApp real, pagamento, credito, Pix/Efi, checkout, webhook, importador real, API externa, remote ou push.
 
 ## Bloco 15 - admin read-only detalhado
 
