@@ -217,6 +217,16 @@ Antes de admin em ambiente nao local:
 - Cutover de robots/canonical/indexacao depende de homologacao aprovada.
 - Nenhuma remocao de `noindex` foi feita nesta fase.
 
+## Pendencias do Bloco 28
+
+- Search Console completo ainda precisa ser exportado manualmente.
+- Mapa completo de URLs reais depende de revisao com dados autorizados, sem versionar lista bruta de anuncios.
+- Redirects 301 devem ser testados antes de qualquer cutover.
+- Canonical, sitemap e robots de producao dependem de gate aprovado.
+- Cidades prioritarias dependem de Search Console e conteudo real aprovado.
+- Cutover SEO continua bloqueado ate mapa completo aprovado.
+- Saida bruta externa `C:\topsv3-auditoria-local\seo\bloco-28` nao deve entrar no Git nem no ZIP.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

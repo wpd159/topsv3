@@ -84,3 +84,13 @@ Antes de remover noindex:
 - confirmar canonical de producao;
 - aprovar robots de producao;
 - validar que admin/API continuam fora do sitemap.
+
+## Bloco 28
+
+Metadata de producao observada deve ser preservada por intencao:
+
+- cidade: `Acompanhantes em [Cidade], [UF]`;
+- bairro: `Acompanhantes em [Bairro], [Cidade]`;
+- anuncio: title/H1 publicos preservados apenas por padrao sanitizado nos docs;
+- canonical de producao usa `https://topsdojob.com` somente em ambiente aprovado;
+- local permanece `noindex` e sem canonical de producao.

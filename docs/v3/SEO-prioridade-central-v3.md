@@ -60,3 +60,14 @@ O Bloco 27 materializa a prioridade SEO nas paginas locais de home, cidade, bair
 - breadcrumbs e linkagem interna sao obrigatorios;
 - sitemap local fica sem API, admin, rotas fracas ou dominio de producao;
 - robots local permanece bloqueado ate cutover aprovado.
+
+## Bloco 28
+
+O Bloco 28 transforma SEO em gate operacional de preservacao:
+
+- inventario publico sanitizado de robots, sitemap e metadados;
+- lista bruta completa de URLs reais fora do repositorio;
+- mapa de preservacao versionado apenas com padroes e amostras sanitizadas;
+- Search Console completo pendente de exportacao manual;
+- cutover SEO bloqueado ate mapa completo aprovado;
+- `scripts/local/validar-mapa-preservacao-seo-local.ps1` passa a ser gate obrigatorio.

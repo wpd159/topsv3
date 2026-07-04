@@ -50,3 +50,15 @@ O sitemap local controlado passa a preservar exemplos seguros de:
 - `/anunciar`.
 
 Essas URLs sao apenas referencias locais de estrutura. O sitemap final de producao dependera de inventario real aprovado e Search Console completo.
+
+## Bloco 28
+
+O mapa operacional sanitizado passa a ficar em `docs/v3/SEO-mapa-preservacao-urls-v3.md`.
+
+Regras adicionais:
+
+- nao versionar lista bruta completa de anuncios reais;
+- manter saida bruta do inventario fora do repositorio;
+- tratar slug real de anuncio como sensivel para documentacao;
+- bloquear cutover SEO ate mapa completo aprovado;
+- validar o mapa com `scripts/local/validar-mapa-preservacao-seo-local.ps1`.

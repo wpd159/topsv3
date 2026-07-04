@@ -81,3 +81,14 @@ Padroes implementados localmente:
 - cidade linka bairros e anuncios quando houver dados;
 - bairro linka cidade e anuncios;
 - paginas vazias continuam com mensagem util, sem indexacao local.
+
+## Bloco 28
+
+Inventario publico sanitizado observou:
+
+- 29 URLs de cidade;
+- 21 URLs de bairro;
+- 62 URLs de anuncio;
+- 0 URLs admin/API no sitemap.
+
+As cidades e bairros devem ser priorizados por Search Console e conteudo real aprovado. Nao criar ranking definitivo apenas pela ordem do sitemap.

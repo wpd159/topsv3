@@ -415,3 +415,17 @@ Bloco 21.1:
 - Sitemap local deve usar `localUrl`, sem API, admin, rotas fracas ou dominio de producao.
 - Robots local permanece bloqueado; remover noindex depende de gate Pro/cutover futuro.
 - Continuam proibidos dado real, midia real, producao alterada, migration, SQL, upload, pagamento, Pix/Efi, email/WhatsApp real, importador real, remote e push.
+
+## Bloco 28 - mapa SEO e cutover
+
+Antes de qualquer homologacao/cutover SEO:
+
+- execute `scripts/local/validar-mapa-preservacao-seo-local.ps1`;
+- nao versione lista bruta completa de anuncios reais;
+- mantenha saida bruta de inventario fora do repositorio;
+- preserve `/anuncios/[slug]`, `/acompanhantes/[uf]/[cidade]` e `/acompanhantes/[uf]/[cidade]/[bairro]`;
+- nao recrie `/anuncio/[id]`, `/perfil/[slug]`, `/acompanhante/[slug]` ou `/ads/[slug]`;
+- nao remova `noindex` local;
+- nao configure canonical de producao em ambiente local;
+- trate Search Console completo como exportacao manual pendente;
+- mantenha o SDD e `docs/v3` como fonte de continuidade para outro chat/ferramenta.

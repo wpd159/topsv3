@@ -581,6 +581,26 @@ Foram criados helper `frontend/src/lib/seo/publicSeo.ts`, breadcrumbs, intro SEO
 
 Nao houve cutover, producao alterada, banco de producao, dado real, midia real, migration, SQL, upload, email, WhatsApp real, pagamento, credito, Pix/Efi, checkout, webhook, importador real, API externa, remote ou push.
 
+## Bloco 28 - preservacao SEO operacional
+
+O Bloco 28 adiciona inventario SEO publico sanitizado, mapa de preservacao de URLs, baseline Search Console, plano de 301 e plano canonical/sitemap/robots.
+
+Regras:
+
+- producao publica pode ser consultada apenas em modo somente leitura;
+- lista bruta completa de anuncios reais fica fora do repositorio;
+- documentos versionados usam contagens, padroes e amostras sanitizadas;
+- cutover SEO fica bloqueado ate mapa completo aprovado;
+- Search Console completo depende de exportacao manual futura;
+- nao configurar remote, nao executar push e nao fazer commit depois das alteracoes do Bloco 28.
+
+Scripts:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/seo-inventario-producao-publica.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-mapa-preservacao-seo-local.ps1
+```
+
 ## Bloco 15 - admin read-only detalhado
 
 O Bloco 15 adiciona listagens e detalhes sanitizados para anuncios, midia e revisoes administrativas locais:

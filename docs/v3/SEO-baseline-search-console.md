@@ -21,12 +21,14 @@ Sinais fortes de marca/relacionados em 3 meses:
 
 - tops do job;
 - topsdojob;
-- top do job;
-- tops job;
-- tops do job acompanhantes;
-- topsdojob acompanhantes;
-- tops do job goiania;
-- tops do job anuncios.
+- acompanhantes do job;
+- acompanhante job;
+- acompanhante do job;
+- acompanhantes job;
+- job acompanhante;
+- job acompanhantes;
+- site de acompanhantes job;
+- site de acompanhante job.
 
 ## Diagnostico
 
@@ -62,3 +64,5 @@ Este baseline deve ser comparado antes e depois de homologacao/cutover:
 - Export completo do Search Console fica para fase futura autorizada.
 - Validacao por URL e consulta depende de acesso operacional aprovado.
 - Nenhuma decisao de cutover pode ignorar queda forte de marca.
+- Exportacao manual futura deve cobrir Consultas, Paginas, Paises, Dispositivos e Datas nos periodos de 3 meses, 28 dias, 7 dias e ultimas 24 horas quando aplicavel.
+- O template operacional esta em `docs/v3/SEO-baseline-search-console-template.md`.

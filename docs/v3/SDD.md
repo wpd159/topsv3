@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 27.1 e aponta para documentos de detalhe, contratos, evidencias e gates.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 28 e aponta para documentos de detalhe, contratos, evidencias e gates.
 
 ## 1. Visao geral
 
@@ -18,6 +18,7 @@ Estado atual:
 - ambiente 100% local;
 - backend Spring Boot com dominio, persistencia JPA, API publica local e admin local;
 - frontend Next.js com rotas publicas preservadas, admin local e funil publico `/anunciar`;
+- SEO operacional de preservacao com inventario publico sanitizado, mapa de URLs, baseline Search Console e plano de cutover;
 - migrations Flyway V001 a V017 criadas e validadas estaticamente;
 - PostgreSQL descartavel usado para validacoes locais;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
@@ -82,6 +83,9 @@ Regras:
 - SEO e prioridade central da V3 e possui documentos proprios em `docs/v3/SEO-*.md`.
 - O alvo de crescimento organico local e `acompanhante em [cidade]`.
 - Mudancas visuais publicas de SEO exigem `scripts/local/validar-layout-publico-renderizado.ps1`.
+- Mapa de preservacao SEO e cutover exigem `scripts/local/validar-mapa-preservacao-seo-local.ps1`.
+- Lista bruta completa de URLs reais de anuncios nao deve ser versionada.
+- Inventario bruto SEO fica fora do repositorio.
 
 ## 5. Classificacao, idade e conteudo bloqueado
 
@@ -353,7 +357,8 @@ Historico resumido:
 - Bloco 26.1: correcao visual minima de `/anunciar` e consolidacao do SDD central;
 - Bloco 26.2: wizard progressivo de `/anunciar`, Premium preview local e SEO central;
 - Bloco 27: SEO publico local de cidade, bairro e anuncio;
-- Bloco 27.1: correcao visual obrigatoria, breadcrumbs sem links quebrados e gate renderizado.
+- Bloco 27.1: correcao visual obrigatoria, breadcrumbs sem links quebrados e gate renderizado;
+- Bloco 28: inventario SEO de preservacao, mapa de URLs, baseline Search Console e plano de cutover SEO.
 
 Detalhes e rastreabilidade ficam em `docs/v3/SDD-indice-rastreabilidade.md`.
 
@@ -390,3 +395,35 @@ Correcoes consolidadas:
 - script `scripts/local/validar-layout-publico-renderizado.ps1`.
 
 O Bloco 27 nao deve ser considerado aprovado visualmente sem esse gate OK.
+
+## 23. Bloco 28 - preservacao SEO operacional
+
+O Bloco 28 protege o trafego atual antes de qualquer homologacao/cutover.
+
+Estado consolidado:
+
+- commit local de checkpoint do Bloco 27.1: `8575fa5`;
+- producao publica consultada somente leitura por robots, sitemap e metadados limitados;
+- nada foi alterado em producao;
+- saida bruta completa do inventario fica fora do repositorio em `C:\topsv3-auditoria-local\seo\bloco-28`;
+- documentos versionados usam contagens, padroes e amostras sanitizadas;
+- lista bruta de anuncios reais nao foi versionada;
+- Search Console completo permanece pendente de exportacao manual;
+- cutover SEO fica bloqueado ate mapa completo aprovado.
+
+Contagem sanitizada observada:
+
+- home: 1;
+- cidade: 29;
+- bairro: 21;
+- anuncio: 62;
+- institucional: 1;
+- proibido/admin/api: 0;
+- desconhecido: 45.
+
+Gates:
+
+- `scripts/local/seo-inventario-producao-publica.ps1`;
+- `scripts/local/validar-mapa-preservacao-seo-local.ps1`;
+- `scripts/local/validar-seo-publico-local.ps1`;
+- `scripts/local/validar-layout-publico-renderizado.ps1`.

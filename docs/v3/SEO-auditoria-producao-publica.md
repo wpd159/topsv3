@@ -41,9 +41,9 @@ Bairros:
 
 Anuncios:
 
-- `https://topsdojob.com/anuncios/monique-77-acompanhante`
-- `https://topsdojob.com/anuncios/ravena-do-boquete-molhado`
-- `https://topsdojob.com/anuncios/acompanhante-em-londrina`
+- `https://topsdojob.com/anuncios/[slug-publico-amostra-1]`
+- `https://topsdojob.com/anuncios/[slug-publico-amostra-2]`
+- `https://topsdojob.com/anuncios/[slug-publico-amostra-3]`
 
 ## Metadados observados
 
@@ -98,3 +98,7 @@ Padrao de anuncio:
 ## Confirmacao
 
 Nada foi alterado em producao. A consulta foi estritamente publica/somente leitura.
+
+## Bloco 28
+
+O Bloco 28 substitui qualquer exemplo de slug real de anuncio por placeholder sanitizado. A lista bruta completa do sitemap fica fora do repositorio em `C:\topsv3-auditoria-local\seo\bloco-28`.

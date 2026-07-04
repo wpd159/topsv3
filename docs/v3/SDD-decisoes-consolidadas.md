@@ -123,6 +123,12 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Breadcrumbs sao obrigatorios em cidade, bairro e anuncio.
 - Sitemap local deve usar `localUrl` e nao incluir API, admin, rotas fracas ou dominio de producao.
 - Consulta a producao para SEO so pode ser publica/somente leitura e documentada.
+- Bloco 28 adiciona inventario SEO publico sanitizado, mapa de preservacao de URLs, plano de 301, canonical/sitemap/robots e baseline Search Console.
+- Lista bruta completa de URLs reais de anuncios nao deve ser versionada.
+- Saida bruta de inventario SEO fica fora do repositorio.
+- Search Console completo deve ser exportado manualmente em fase futura.
+- Cutover SEO fica bloqueado ate mapa completo aprovado.
+- SDD e docs `docs/v3` sao fonte obrigatoria de continuidade para outros chats/ferramentas.
 
 ## Banco e migrations
 

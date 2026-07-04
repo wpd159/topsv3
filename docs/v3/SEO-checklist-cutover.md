@@ -3,6 +3,9 @@
 ## Antes de homologacao
 
 - [ ] Validar rotas publicas preservadas.
+- [ ] Executar `scripts/local/validar-mapa-preservacao-seo-local.ps1`.
+- [ ] Confirmar que lista bruta de anuncios reais nao foi versionada.
+- [ ] Confirmar que inventario bruto esta fora do repositorio.
 - [ ] Confirmar ausencia de `/perfil`, `/ads`, `/anuncio` e `/acompanhante` como rotas paralelas.
 - [ ] Confirmar que admin permanece `noindex`.
 - [ ] Confirmar que sitemap nao inclui `/api`.
@@ -15,7 +18,9 @@
 ## Antes de producao
 
 - [ ] Registrar baseline do Search Console.
+- [ ] Exportar Search Console manualmente para Consultas, Paginas, Paises, Dispositivos e Datas.
 - [ ] Congelar mapa de URLs.
+- [ ] Aprovar mapa completo de preservacao de URLs.
 - [ ] Testar redirects necessarios.
 - [ ] Validar sitemap final sem URLs fracas.
 - [ ] Validar robots final.
@@ -52,3 +57,5 @@ Cutover SEO nao pode prosseguir se:
 - conteudo de ambiente aparece para visitante;
 - dados reais foram copiados indevidamente para o repo;
 - producao foi alterada sem plano de rollback.
+- mapa completo de preservacao SEO nao foi aprovado;
+- Search Console completo nao foi exportado/revisado.

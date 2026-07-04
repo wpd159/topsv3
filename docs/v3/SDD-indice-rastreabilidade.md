@@ -33,10 +33,19 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Plano cidade/bairro: `docs/v3/SEO-plano-cidade-bairro.md`
 - Checklist SEO cutover: `docs/v3/SEO-checklist-cutover.md`
 - Baseline Search Console: `docs/v3/SEO-baseline-search-console.md`
+- Inventario SEO sanitizado: `docs/v3/SEO-inventario-producao-sanitizado.md`
+- Mapa preservacao URLs V3: `docs/v3/SEO-mapa-preservacao-urls-v3.md`
+- Plano 301: `docs/v3/SEO-plano-redirecionamentos-301.md`
+- Canonical/sitemap/robots cutover: `docs/v3/SEO-canonical-sitemap-robots-cutover.md`
+- Template Search Console: `docs/v3/SEO-baseline-search-console-template.md`
+- Matriz risco trafego: `docs/v3/SEO-matriz-risco-perda-trafego.md`
+- Cidades prioritarias: `docs/v3/SEO-cidades-prioritarias.md`
 - Validacao de rotas e SEO: `docs/v3/51-validacao-rotas-publicas-seo-local.md`
 - Checklist rotas/SEO: `docs/v3/52-checklist-validacao-rotas-seo.md`
 - Script: `scripts/local/validar-rotas-publicas-seo-local.ps1`
 - Script SEO publico: `scripts/local/validar-seo-publico-local.ps1`
+- Script inventario SEO publico: `scripts/local/seo-inventario-producao-publica.ps1`
+- Script validacao mapa SEO: `scripts/local/validar-mapa-preservacao-seo-local.ps1`
 
 ## Visual e mobile
 
@@ -122,6 +131,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 26.2: `docs/v3/183-checklist-bloco-26-2-wizard-seo-premium.md`
 - Relatorio Bloco 27: `docs/v3/184-bloco-27-seo-publico-cidade-bairro.md`
 - Checklist Bloco 27: `docs/v3/185-checklist-bloco-27-seo-publico-cidade-bairro.md`
+- Relatorio Bloco 27.1: `docs/v3/186-bloco-27-1-correcao-visual-seo.md`
+- Checklist Bloco 27.1: `docs/v3/187-checklist-bloco-27-1-correcao-visual-seo.md`
+- Relatorio Bloco 28: `docs/v3/188-bloco-28-inventario-seo-preservacao.md`
+- Checklist Bloco 28: `docs/v3/189-checklist-bloco-28-inventario-seo-preservacao.md`
 - Auditoria SEO publica de producao: `docs/v3/SEO-auditoria-producao-publica.md`
 - Padroes de metadata publica: `docs/v3/SEO-padroes-metadata-publica.md`
 - Linkagem interna V3: `docs/v3/SEO-linkagem-interna-v3.md`
@@ -129,6 +142,8 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 26.1: `docs/v3/evidencias/bloco-26-1/`
 - Evidencias Bloco 26.2: `docs/v3/evidencias/bloco-26-2/`
 - Evidencias Bloco 27: `docs/v3/evidencias/bloco-27/`
+- Evidencias Bloco 27.1: `docs/v3/evidencias/bloco-27-1/`
+- Evidencias Bloco 28: `docs/v3/evidencias/bloco-28/`
 
 ## Validacoes principais
 
@@ -139,6 +154,8 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Persistencia JPA estatica: `scripts/local/validar-persistencia-jpa-estatica.ps1`
 - UI mobile estatica: `scripts/local/validar-ui-mobile-estatica.ps1`
 - SEO publico local: `scripts/local/validar-seo-publico-local.ps1`
+- Mapa preservacao SEO: `scripts/local/validar-mapa-preservacao-seo-local.ps1`
+- Layout publico renderizado: `scripts/local/validar-layout-publico-renderizado.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`
 - Secrets: `scripts/security/verificar-segredos.ps1`

@@ -72,3 +72,13 @@ A home deve apontar para exemplos controlados de cidade, bairro, anuncio e `/anu
 - publicar canonical de producao em ambiente local;
 - deixar admin, API ou rotas fracas no sitemap.
 - aprovar mudanca visual publica sem `scripts/local/validar-layout-publico-renderizado.ps1`.
+
+## Bloco 28
+
+Linkagem interna futura deve respeitar o mapa de preservacao:
+
+- cidade pode linkar bairros existentes e anuncios indexaveis;
+- bairro pode linkar cidade e anuncios indexaveis;
+- anuncio pode linkar cidade/bairro correspondentes;
+- nenhuma linkagem publica deve recriar `/perfil`, `/ads`, `/anuncio` ou `/acompanhante`;
+- paginas sem conteudo util nao devem receber linkagem forte nem entrar no sitemap.
