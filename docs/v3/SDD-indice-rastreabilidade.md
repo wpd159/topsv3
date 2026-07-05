@@ -195,6 +195,14 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 32.1: `docs/v3/evidencias/bloco-32-1/`
 - Auditoria renderizada sintetica: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`
 - Checkpoint Blocos 31/31.1: `790188b`
+- Checkpoint Bloco 32.1: `f6189f0`
+- Relatorio Bloco 33: `docs/v3/214-bloco-33-validacao-wizard-anunciar-sintetico.md`
+- Checklist Bloco 33: `docs/v3/215-checklist-bloco-33-validacao-wizard-anunciar-sintetico.md`
+- Evidencias Bloco 33: `docs/v3/evidencias/bloco-33/`
+- Wizard Anuncie gratis sintetico: `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
+- Relatorio Bloco 33.1: `docs/v3/216-bloco-33-1-correcao-textual-wizard.md`
+- Checklist Bloco 33.1: `docs/v3/217-checklist-bloco-33-1-correcao-textual-wizard.md`
+- Evidencias Bloco 33.1: `docs/v3/evidencias/bloco-33-1/`
 
 ## Validacoes principais
 
@@ -214,6 +222,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Validar SEO com dados sanitizados: `scripts/local/validar-seo-com-dados-sanitizados-local.ps1`
 - Gerar dados sinteticos V3: `scripts/local/gerar-dados-sinteticos-v3-local.ps1`
 - Validar dados sinteticos V3: `scripts/local/validar-dados-sinteticos-v3-local.ps1`
+- Validar wizard Anuncie gratis sintetico: `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`
 - Secrets: `scripts/security/verificar-segredos.ps1`

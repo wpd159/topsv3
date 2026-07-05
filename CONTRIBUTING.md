@@ -508,3 +508,14 @@ No Bloco 29.5, scripts de quarentena devem ficar separados dos scripts de restor
 - Validar home, `/anunciar`, cidade, bairro, Brasilia, anuncio livre, anuncio bloqueado, sitemap e robots em desktop/mobile.
 - `BLOQUEADO` nao pode expor WhatsApp publico indevidamente.
 - Bloco 29 segue adiado; quarentena sem `POST_DATA` nao e staging final.
+
+## Bloco 33 - validacao wizard Anuncie gratis sintetico
+
+- O checkpoint local do Bloco 32.1 deve existir antes das alteracoes do Bloco 33.
+- Validar `/anunciar` com `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`.
+- Docker, quando usado, deve ficar restrito a `topsv3-wizard-sintetico-*`.
+- Prints versionados so podem conter dados sinteticos locais e nunca midia/documento real.
+- O wizard nao pode exibir enum/status/snake_case tecnico ao visitante.
+- O wizard nao pode criar upload real, pagamento, Pix/Efi, checkout, Premium obrigatorio, e-mail real, WhatsApp real, stores ou autopublicacao.
+- Mobile deve permanecer sem scroll horizontal, scroll lock, `document.body.style.overflow`, elemento flutuante solto ou animacao automatica.
+- Bloco 29 segue adiado; quarentena sem `POST_DATA` nao e staging final.

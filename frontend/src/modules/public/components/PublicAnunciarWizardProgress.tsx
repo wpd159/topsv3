@@ -11,7 +11,7 @@ export function PublicAnunciarWizardProgress({ steps, currentIndex }: PublicAnun
     <nav className="public-wizard-progress" aria-label="Progresso do cadastro">
       <ol>
         {steps.map((step, index) => {
-          const status = index < currentIndex ? "Concluida" : index === currentIndex ? "Atual" : "Pendente";
+          const status = index < currentIndex ? "Concluída" : index === currentIndex ? "Atual" : "Pendente";
           return (
             <li key={step.id} aria-current={index === currentIndex ? "step" : undefined}>
               <span>{index + 1}</span>

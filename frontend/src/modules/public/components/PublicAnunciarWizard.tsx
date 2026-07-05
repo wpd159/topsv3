@@ -29,11 +29,11 @@ type WizardStep = {
 };
 
 const WIZARD_STEPS: readonly WizardStep[] = [
-  { id: "intro", label: "Inicio" },
+  { id: "intro", label: "Início" },
   { id: "basicos", label: "Dados" },
   { id: "localizacao", label: "Local" },
   { id: "contato", label: "Contato" },
-  { id: "detalhes", label: "Anuncio" },
+  { id: "detalhes", label: "Anúncio" },
   { id: "midia", label: "Mídia" },
   { id: "revisao", label: "Revisão" },
   { id: "sucesso", label: "Recebido" }
@@ -84,7 +84,7 @@ export function PublicAnunciarWizard() {
       ["Bairro", form.bairro || "Não informado"],
       ["WhatsApp", form.whatsapp || "Não informado"],
       ["Título", form.titulo || "Não informado"],
-      ["Categoria", form.categoria || "Não informada"],
+      ["Categoria", formatCategoriaPublica(form.categoria) || "Não informada"],
       ["Valor", form.preco > 0 ? `R$ ${form.preco}` : "Não informado"]
     ],
     [form]
@@ -104,7 +104,7 @@ export function PublicAnunciarWizard() {
     }
 
     if (currentStep.id !== "revisao") {
-      setStatus("Etapa concluida.");
+      setStatus("Etapa concluída.");
       setCurrentStepIndex((index) => Math.min(index + 1, WIZARD_STEPS.length - 1));
       return;
     }
@@ -178,7 +178,7 @@ export function PublicAnunciarWizard() {
       <aside className="public-anunciar-side" aria-label="Como funciona">
         <h2>Como funciona</h2>
         <ul>
-          <li>Voce preenche uma etapa por vez.</li>
+          <li>Você preenche uma etapa por vez.</li>
           <li>O envio só acontece na revisão final.</li>
           <li>A equipe revisa antes de publicar.</li>
           <li>Fotos, vídeos e pagamentos não entram neste fluxo.</li>
@@ -201,7 +201,7 @@ export function PublicAnunciarWizard() {
               <ul>
                 <li>Sem publicação automática.</li>
                 <li>Sem upload de foto ou documento nesta etapa.</li>
-                <li>Sem Premium obrigatorio para anunciar.</li>
+                <li>Sem Premium obrigatório para anunciar.</li>
               </ul>
             </div>
           </PublicAnunciarWizardStep>
@@ -209,12 +209,12 @@ export function PublicAnunciarWizard() {
       case "basicos":
         return (
           <PublicAnunciarWizardStep
-            title="Dados basicos"
+            title="Dados básicos"
             description="Informe como o anúncio deve ser identificado pela equipe de análise."
           >
             <div className="public-field-grid">
               <label>
-                Nome para exibicao
+                Nome para exibição
                 <input
                   name="nomeExibicao"
                   value={form.nomeExibicao}
@@ -237,7 +237,7 @@ export function PublicAnunciarWizard() {
       case "localizacao":
         return (
           <PublicAnunciarWizardStep
-            title="Localizacao"
+            title="Localização"
             description="Informe a área principal do anúncio. O bairro pode ficar em branco quando ainda não estiver definido."
           >
             <div className="public-field-grid">
@@ -290,7 +290,7 @@ export function PublicAnunciarWizard() {
             </label>
             <div className="public-upload-future" aria-label="Aviso de contato">
               <strong>O WhatsApp público não é liberado por este formulário.</strong>
-              <p>A exibicao publica futura depende de moderacao e politica de contato.</p>
+              <p>A exibição pública futura depende de moderação e política de contato.</p>
             </div>
           </PublicAnunciarWizardStep>
         );
@@ -349,7 +349,7 @@ export function PublicAnunciarWizard() {
       case "midia":
         return (
           <PublicAnunciarWizardStep
-            title="Fotos e videos"
+            title="Fotos e vídeos"
             description="A mídia fica para uma etapa segura futura. Aqui, nenhum arquivo deve ser enviado."
           >
             <div className="public-upload-future" aria-label="Upload futuro">
@@ -361,8 +361,8 @@ export function PublicAnunciarWizard() {
       case "revisao":
         return (
           <PublicAnunciarWizardStep
-            title="Revisao final"
-            description="Confira os dados antes de enviar. O envio acontece somente ao clicar no botao final."
+            title="Revisão final"
+            description="Confira os dados antes de enviar. O envio acontece somente ao clicar no botão final."
           >
             <dl className="public-submit-summary public-wizard-review">
               {reviewRows.map(([label, value]) => (
@@ -373,9 +373,10 @@ export function PublicAnunciarWizard() {
               ))}
             </dl>
             <fieldset className="public-form-checks">
-              <legend>Confirmacoes</legend>
+              <legend>Confirmações</legend>
               <label>
                 <input
+                  name="aceiteTermos"
                   type="checkbox"
                   checked={form.aceiteTermos}
                   onChange={(event) => update("aceiteTermos", event.target.checked)}
@@ -384,6 +385,7 @@ export function PublicAnunciarWizard() {
               </label>
               <label>
                 <input
+                  name="confirmacaoIdade"
                   type="checkbox"
                   checked={form.confirmacaoIdade}
                   onChange={(event) => update("confirmacaoIdade", event.target.checked)}
@@ -396,7 +398,7 @@ export function PublicAnunciarWizard() {
       case "sucesso":
         return (
           <PublicAnunciarWizardStep
-            title="Solicitacao recebida"
+            title="Solicitação recebida"
             description="O anúncio foi enviado para análise e não foi publicado automaticamente."
           >
             <PublicAnunciarSuccess response={success} />
@@ -430,6 +432,19 @@ function normalizedForm(form: SolicitarAnuncioPublicoRequestDto): SolicitarAnunc
   };
 }
 
+function formatCategoriaPublica(categoria: string): string {
+  switch (categoria.trim()) {
+    case "ACOMPANHANTE":
+      return "Acompanhante";
+    case "MASSAGEM":
+      return "Massagem";
+    case "LOCAL_TESTE":
+      return "Outra categoria";
+    default:
+      return "";
+  }
+}
+
 function firstStepIndexForErrors(errors: readonly SolicitarAnuncioValidationErrorDto[]): number {
   for (const error of errors) {
     const index = WIZARD_STEPS.findIndex((step) => STEP_FIELDS[step.id].includes(error.campo));
@@ -458,7 +473,7 @@ function validate(form: SolicitarAnuncioPublicoRequestDto): SolicitarAnuncioVali
     errors.push({ campo: "email", codigo: "EMAIL_NAO_RESERVADO", mensagem: "informe um e-mail permitido nesta etapa" });
   }
   if (form.whatsapp.trim() !== "+5500000000000") {
-    errors.push({ campo: "whatsapp", codigo: "WHATSAPP_INVALIDO", mensagem: "informe um WhatsApp valido para esta etapa" });
+    errors.push({ campo: "whatsapp", codigo: "WHATSAPP_INVALIDO", mensagem: "informe um WhatsApp válido para esta etapa" });
   }
   if (!/^[A-Za-z]{2}$/.test(form.uf.trim())) {
     errors.push({ campo: "uf", codigo: "UF_INVALIDA", mensagem: "informe a sigla do estado" });

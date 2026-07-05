@@ -77,3 +77,17 @@ Os prints do Bloco 32 ficam em `docs/v3/evidencias/bloco-32/prints/` e contêm s
 A mesma base sintetica foi usada para corrigir a apresentacao publica renderizada. O Bloco 32.1 nao usa dados reais, backup, dump, restore, sanitizacao real ou quarentena como staging.
 
 As novas evidencias ficam em `docs/v3/evidencias/bloco-32-1/` e os prints corrigidos continuam contendo somente dados sinteticos locais.
+
+## Bloco 33
+
+A base sintetica foi usada para validar o wizard publico `/anunciar` em ambiente descartavel, com PostgreSQL local temporario, backend local, frontend local e navegador headless local.
+
+Regras adicionais:
+
+- dados do wizard devem usar somente valores sinteticos e dominio reservado `example.invalid`;
+- WhatsApp permitido no fluxo local: `+5500000000000`;
+- a localidade sintetica validada usa `GO`, `Goiania` e `Setor Bueno`;
+- nenhum upload, foto, video, documento, pagamento, credito, Pix/Efi, Premium obrigatorio, e-mail real ou WhatsApp real e permitido;
+- a solicitacao nasce nao publicada e nao pode ser autopublicada pelo wizard.
+
+Evidencias ficam em `docs/v3/evidencias/bloco-33/` e os prints contem somente dados sinteticos locais.

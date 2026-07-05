@@ -338,6 +338,22 @@ Antes de admin em ambiente nao local:
 - `gitleaks` real segue pendente no PATH.
 - Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhooks ou producao.
 
+## Pendencias do Bloco 33
+
+- Wizard `/anunciar` validado localmente com dados sinteticos e prints desktop/mobile.
+- Manter `scripts/local/validar-wizard-anunciar-sintetico-local.ps1` como gate antes de alterar o funil publico.
+- O wizard nao pode ganhar upload real, pagamento, Pix/Efi, checkout, Premium obrigatorio, stores, e-mail real, WhatsApp real, autopublicacao, scroll lock ou elemento mobile flutuante sem fase expressa.
+- `gitleaks` real segue pendente no PATH.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, restore completo, financeiro, Pix/Efi, webhooks ou producao.
+
+## Pendencias do Bloco 33.1
+
+- Textos publicos sem acento do wizard `/anunciar` corrigidos sem alteracao funcional.
+- Validador do wizard reforcado para reprovar textos criticos antigos renderizados ao visitante.
+- Checkpoint local do delta Bloco 33/33.1 permanece pendente para bloco posterior.
+- `gitleaks` real segue pendente no PATH.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, restore completo, financeiro, Pix/Efi, webhooks ou producao.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

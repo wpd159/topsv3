@@ -35,6 +35,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Nao criar limite comercial artificial de clique, contato ou WhatsApp para forcar Premium.
 - Funil `/anunciar` nao exige pagamento, credito, Pix/Efi ou Premium obrigatorio para enviar solicitacao.
 - `/anunciar` pode ser wizard progressivo, mas o payload so deve ser enviado na revisao final.
+- Bloco 33 validou o wizard `/anunciar` localmente em desktop/mobile com dados sinteticos, sem upload real, pagamento, Pix/Efi, Premium obrigatorio, e-mail real, WhatsApp real, stores ou autopublicacao.
+- Bloco 33.1 corrige somente textos publicos/acentuacao do wizard; nao altera regra de negocio, contrato, validacao ou seguranca.
 
 ## WhatsApp mediado pelo backend
 
@@ -151,6 +153,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - O E2E local descartavel usa prefixo default `topsv3-e2e-local`; o wrapper sintetico continua forcando `topsv3-e2e-sintetico`.
 - Bloco 32 cria checkpoint local `790188b` dos Blocos 31/31.1 e valida rotas publicas principais renderizadas com dados sinteticos. Docker fica restrito a `topsv3-render-sintetico-*`, prints versionados devem conter apenas dados sinteticos e `BLOQUEADO` nao pode expor WhatsApp publico indevido.
 - Bloco 32.1 decide que pagina publica nao pode renderizar enum/status/snake_case tecnico ao visitante. `PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO` e `conteudo_autorizado` devem ficar restritos a contrato/codigo, com rotulos publicos humanos na UI. A permissao continua sendo decisao do backend.
+- Bloco 33 cria checkpoint local `f6189f0` do Bloco 32.1 e valida `/anunciar` com recurso Docker descartavel `topsv3-wizard-sintetico-*`. Recursos TopsWI/cripto e `topsv3-bloco29-*` permanecem intocados.
+- Bloco 33.1 mantem o Bloco 33 materialmente OK e deixa o checkpoint do delta Bloco 33/33.1 pendente para bloco posterior, sem commit e sem push.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 

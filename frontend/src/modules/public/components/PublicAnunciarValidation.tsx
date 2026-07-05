@@ -5,7 +5,7 @@ type PublicAnunciarValidationProps = {
 };
 
 const FIELD_LABELS: Record<string, string> = {
-  nomeExibicao: "Nome para exibicao",
+  nomeExibicao: "Nome para exibição",
   email: "E-mail",
   whatsapp: "WhatsApp",
   uf: "Estado",
@@ -17,7 +17,7 @@ const FIELD_LABELS: Record<string, string> = {
   categoria: "Categoria",
   aceiteTermos: "Termos",
   confirmacaoIdade: "Maioridade",
-  payload: "Formulario"
+  payload: "Formulário"
 };
 
 const MESSAGE_BY_CODE: Record<string, string> = {
