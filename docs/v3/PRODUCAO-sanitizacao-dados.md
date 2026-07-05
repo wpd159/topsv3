@@ -61,6 +61,12 @@ O restore bruto local foi iniciado em container exclusivo `topsv3-bloco29-pg17-b
 
 Sanitizacao real nao foi executada. Qualquer nova tentativa deve primeiro resolver o restore sem alterar recursos TopsWI/terceiros e sem versionar dados reais.
 
+## Bloco 30
+
+A sanitizacao real fica adiada para pre-staging/cutover. O ciclo atual nao precisa de dados reais/sanitizados e deve usar somente a base sintetica local validada.
+
+Os 4 erros agregados observados na quarentena do Bloco 29.5 continuam como alerta residual e nao autorizam staging final. A aprovacao de dados sanitizados reais depende de revisao Pro/humana futura.
+
 ## Estado Bloco 29.4
 
 Sanitizacao real continuou bloqueada. O restore bruto falhou novamente mesmo apos limpeza dos recursos proprios e uso de `--single-transaction`.

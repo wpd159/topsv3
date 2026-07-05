@@ -153,6 +153,13 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 29.4: `docs/v3/199-checklist-bloco-29-4-diagnostico-restore-raw.md`
 - Relatorio Bloco 29.5: `docs/v3/200-bloco-29-5-restore-quarentena-sem-postdata.md`
 - Checklist Bloco 29.5: `docs/v3/201-checklist-bloco-29-5-restore-quarentena-sem-postdata.md`
+- Relatorio Bloco 29.6: `docs/v3/202-bloco-29-6-consolidacao-diagnostico-quarentena.md`
+- Checklist Bloco 29.6: `docs/v3/203-checklist-bloco-29-6-consolidacao-diagnostico-quarentena.md`
+- Relatorio Bloco 30: `docs/v3/204-bloco-30-retomada-sem-dados-reais.md`
+- Checklist Bloco 30: `docs/v3/205-checklist-bloco-30-retomada-sem-dados-reais.md`
+- Base sintetica local: `docs/v3/DADOS-sinteticos-local.md`
+- Fixture sintetica local: `backend/src/test/resources/fixtures/v3-dados-sinteticos.json`
+- Checkpoint Blocos 29 a 29.6: `36b94c6`
 - Auditoria SEO publica de producao: `docs/v3/SEO-auditoria-producao-publica.md`
 - Padroes de metadata publica: `docs/v3/SEO-padroes-metadata-publica.md`
 - Linkagem interna V3: `docs/v3/SEO-linkagem-interna-v3.md`
@@ -168,6 +175,8 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 29.3: `docs/v3/evidencias/bloco-29-3/`
 - Evidencias Bloco 29.4: `docs/v3/evidencias/bloco-29-4/`
 - Evidencias Bloco 29.5: `docs/v3/evidencias/bloco-29-5/`
+- Evidencias Bloco 29.6: `docs/v3/evidencias/bloco-29-6/`
+- Evidencias Bloco 30: `docs/v3/evidencias/bloco-30/`
 
 ## Validacoes principais
 
@@ -185,6 +194,8 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Sanitizar DB local: `scripts/local/producao-sanitizar-db-local.ps1`
 - Validar dados sanitizados: `scripts/local/validar-dados-producao-sanitizados-local.ps1`
 - Validar SEO com dados sanitizados: `scripts/local/validar-seo-com-dados-sanitizados-local.ps1`
+- Gerar dados sinteticos V3: `scripts/local/gerar-dados-sinteticos-v3-local.ps1`
+- Validar dados sinteticos V3: `scripts/local/validar-dados-sinteticos-v3-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`
 - Secrets: `scripts/security/verificar-segredos.ps1`

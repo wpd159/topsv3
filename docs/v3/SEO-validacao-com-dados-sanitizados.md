@@ -51,3 +51,15 @@ Nenhum canonical, sitemap, robots de producao, lista bruta de slugs, midia real,
 A quarentena sanitizada pode gerar apenas agregados SEO: URLs preservaveis estimadas, noindex/removidas estimadas, cidades/bairros com conteudo suficiente e pendencias das 45 URLs desconhecidas. Nenhum canonical, sitemap ou robots de producao deve ser alterado.
 
 Resultado: SEO agregado com quarentena sanitizada gerou 520 URLs de anuncio preservaveis estimadas, 3 URLs noindex/removidas estimadas e manteve 45 URLs desconhecidas pendentes.
+
+## Estado Bloco 30
+
+O Bloco 30 encerra a frente de dados reais como gate adiado: a quarentena sanitizada nao sera perseguida agora e nao e staging final. Ela permanece apenas como evidencia agregada auxiliar de SEO, sem POST_DATA e sem validacao transacional final.
+
+O desenvolvimento local da V3 segue com base sintetica versionavel, sem restore novo, sem sanitizacao nova, sem Docker e sem producao. Validacoes publicas, SEO local, sitemap, robots e canonical devem usar fixture sintetica ate que a Opcao A seja cumprida em pre-staging/cutover.
+
+Opcoes consolidadas:
+
+- Opcao A: obrigatoria antes de homologacao/cutover real, com novo backup consistente ou correcao da origem.
+- Opcao B: limitada a insumo auxiliar agregado, nunca base final.
+- Opcao C: bloqueada ate revisao Pro/humana em bloco futuro.

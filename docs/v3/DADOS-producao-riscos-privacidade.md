@@ -43,3 +43,11 @@ O risco principal agora e operacional: nao ha banco sanitizado valido. O raw log
 Mesmo sanitizada, a quarentena sem `POST_DATA` pode nao representar integridade referencial final. Ela reduz risco de exposicao de dados para diagnostico agregado, mas nao elimina a necessidade de backup consistente ou plano local aprovado para orfaos.
 
 Resultado: risco de exposicao versionada segue controlado; risco operacional de integridade permanece por ausencia de `POST_DATA` e por orfandades agregadas no dominio anuncio.
+
+## Risco residual Bloco 30
+
+O Bloco 30 nao acessa producao, VPS, Docker, banco de producao, backup, dump, SQL bruto, log bruto, midia real ou documento real. O risco de exposicao versionada permanece controlado porque o desenvolvimento segue com fixture sintetica local.
+
+O risco operacional da frente de dados reais permanece adiado: a quarentena sanitizada nao e staging final, nao valida transacoes completas e nao substitui a Opcao A. Antes de homologacao/cutover real, continua obrigatorio obter novo backup consistente ou corrigir a origem/backup, com revisao Pro/humana.
+
+Novos arquivos versionaveis do Bloco 30 devem conter apenas dados artificiais, dominio `example.test`, placeholders nao discaveis, metricas agregadas e ausencia de CPF/RG/documento, IP bruto, storage real, token, Pix/Efi real, e-mail real ou WhatsApp real.

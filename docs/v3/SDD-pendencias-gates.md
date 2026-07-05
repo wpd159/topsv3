@@ -296,6 +296,14 @@ Antes de admin em ambiente nao local:
 - Nao executar correcao local de orfaos sem novo bloco aprovado.
 - Manter logs brutos, backup, dump, SQL bruto e dados reais fora do repositorio e do ZIP.
 
+## Pendencias do Bloco 30
+
+- Bloco 29 fica adiado como gate de pre-staging/cutover.
+- Reexecutar frente de dados reais somente com autorizacao expressa, novo backup consistente ou correcao da origem/backup.
+- Gitleaks real continua gate antes de homologacao/producao enquanto ausente no PATH.
+- Validacoes que exigem Docker devem respeitar a politica de nao alterar Docker deste bloco.
+- Base sintetica deve ser mantida sem dados reais, sem midia real, sem telefone/e-mail real e sem payload financeiro real.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

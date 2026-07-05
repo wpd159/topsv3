@@ -467,3 +467,14 @@ No Bloco 29.3, qualquer recurso Docker criado para restore/sanitizacao deve usar
 No Bloco 29.4, a limpeza destrutiva autorizada se limita aos recursos proprios com prefixo `topsv3-bloco29-`. Restore deve usar `--single-transaction`; raw log de `pg_restore` fica apenas fora do repositorio e relatorio versionado deve conter somente classificacao sanitizada.
 
 No Bloco 29.5, scripts de quarentena devem ficar separados dos scripts de restore final. O restore de quarentena usa somente `--section=pre-data`, `--section=data`, `--no-owner`, `--no-privileges`, `--exit-on-error` e `--single-transaction`; nao restaura `POST_DATA`, nao usa `--disable-triggers`, `--clean` ou `--if-exists`, e nao aprova o banco como staging final.
+
+## Bloco 30 - retomada sem dados reais
+
+- O Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover.
+- O desenvolvimento local deve seguir com dados sinteticos versionaveis e validaveis.
+- Dados reais/sanitizados nao sao requisito para o proximo ciclo local.
+- Quarentena sanitizada sem `POST_DATA` nao e staging final, nao e base de importacao definitiva e nao valida comportamento transacional final.
+- Opcao A permanece obrigatoria para homologacao/cutover: novo backup consistente ou correcao da origem/backup.
+- Opcao B e apenas insumo auxiliar agregado de SEO/inventario.
+- Opcao C continua bloqueada ate revisao Pro/humana em novo bloco.
+- Proibido usar producao, VPS, banco de producao, restore novo, sanitizacao nova, correcao de orfaos, Pix/Efi real, pagamento, upload, e-mail real, WhatsApp real, API externa real, remote ou push.

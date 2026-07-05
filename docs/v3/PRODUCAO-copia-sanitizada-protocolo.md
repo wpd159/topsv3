@@ -65,3 +65,9 @@ Nao ha copia sanitizada valida. O raw log ficou fora do repositorio e nao foi ve
 O protocolo passa a permitir uma copia de quarentena sem `POST_DATA`, exclusivamente para diagnostico e SEO agregado. Essa copia deve ser sanitizada imediatamente e nao pode ser tratada como staging final.
 
 Resultado: quarentena sem `POST_DATA` criada com 77 tabelas agregadas e sanitizacao aprovada. Uso permitido continua limitado a diagnostico, SEO e agregados.
+
+## Estado Bloco 30
+
+O restore completo nao sera perseguido agora. O gate de copia sanitizada de producao fica adiado para pre-staging/cutover.
+
+Enquanto isso, o desenvolvimento da V3 segue com dados sinteticos locais. A quarentena sanitizada nao pode ser promovida, nao pode validar comportamento transacional final e nao pode servir de base definitiva de importacao.

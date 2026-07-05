@@ -44,3 +44,11 @@ Nao ha dados sanitizados aprovados. A aplicacao da matriz depende de restore com
 A matriz pode ser aplicada em modo quarentena, sobre banco sem `POST_DATA`, para remover CPF, documento, nome civil, e-mail, telefone, WhatsApp, endereco sensivel, IP, user-agent, token, senha, storage, URL real, payload financeiro e identificadores Pix/Efi. Esse modo nao aprova dados para staging final.
 
 Resultado: matriz aplicada na quarentena e validacao agregada ficou com CPF, e-mail, telefone/WhatsApp, IP, URL/storage e token/Pix/Efi em 0.
+
+## Bloco 30
+
+A matriz de dados sanitizados permanece valida para pre-staging/cutover, mas nao sera executada neste ciclo. O Bloco 30 nao realiza restore novo, sanitizacao nova, correcao de orfaos, SQL em producao ou uso de banco de quarentena como staging final.
+
+Para desenvolvimento local, a referencia passa a ser `docs/v3/DADOS-sinteticos-local.md` e a fixture `backend/src/test/resources/fixtures/v3-dados-sinteticos.json`. Esses dados sao artificiais e nao substituem dados sanitizados de homologacao/cutover.
+
+Campos reais seguem proibidos em documentos e ZIPs versionados: CPF/RG/documento, selfie, nome civil real, e-mail real, telefone/WhatsApp real, endereco especifico real, IP/user-agent bruto, storage/bucket real, URL privada, payload financeiro, token, senha, certificado, log bruto e Pix/Efi real.

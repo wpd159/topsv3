@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 29.6, com Docker/PostgreSQL 17 local validado, falha de restore completo classificada como `POST_DATA / CONSTRAINT-FK`, diagnostico de quarentena sem `POST_DATA` separado do staging final e decisao A/B/C consolidada sem aprovar cutover.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 30, com o Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
 
 ## 1. Visao geral
 
@@ -367,6 +367,7 @@ Historico resumido:
 - Bloco 29.4: recursos `topsv3-bloco29-*` limpos/recriados, restore reexecutado com `--single-transaction`, falha repetida classificada como `CONSTRAINT/FK` em `POST_DATA`, sem restauracao parcial.
 - Bloco 29.5: restore de quarentena sem `POST_DATA`, sanitizacao imediata e diagnosticos agregados, sem aprovar staging final.
 - Bloco 29.6: consolidacao documental e hardening dos scripts de quarentena, sem novo restore, sem nova sanitizacao e sem aprovar staging final.
+- Bloco 30: checkpoint local `36b94c6`, gate Bloco 29 adiado, retomada com fixture sintetica local e validacao de dados sinteticos.
 
 Detalhes e rastreabilidade ficam em `docs/v3/SDD-indice-rastreabilidade.md`.
 
@@ -596,3 +597,34 @@ Decisao consolidada:
 - banco de quarentena nao pode validar comportamento transacional final;
 - Bloco 29 nao esta fechado materialmente;
 - Bloco 29.5 esta aprovado apenas como diagnostico de quarentena sanitizada.
+
+## 31. Bloco 30 - retomada sem dados reais
+
+O Bloco 30 encerra operacionalmente a frente do Bloco 29 como gate adiado e permite continuar a V3 sem depender de backup/restauracao de producao no ciclo atual.
+
+Checkpoint local:
+
+- commit: `36b94c6`;
+- mensagem: `docs: consolida diagnostico quarentena ate bloco 29.6`;
+- remote: vazio;
+- push: nao executado.
+
+Decisao:
+
+- Bloco 29 permanece materialmente aberto e reservado para pre-staging/cutover;
+- dados reais/sanitizados nao sao necessarios para o proximo ciclo de desenvolvimento local;
+- producao continua proibida como bancada de teste;
+- banco de producao continua proibido;
+- novo backup consistente ou correcao da origem/backup continua obrigatorio antes de homologacao/cutover real;
+- quarentena sanitizada sem `POST_DATA` pode apoiar apenas SEO/agregados/inventario, nunca staging final.
+
+Base sintetica local:
+
+- fixture versionavel: `backend/src/test/resources/fixtures/v3-dados-sinteticos.json`;
+- gerador de relatorio: `scripts/local/gerar-dados-sinteticos-v3-local.ps1`;
+- validador: `scripts/local/validar-dados-sinteticos-v3-local.ps1`;
+- cidades: 5;
+- bairros: 9;
+- anuncios: 12;
+- beneficios Premium: 6;
+- metricas agregadas: 6.

@@ -4,9 +4,11 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 29.5 concluido como diagnostico de quarentena sanitizada sem POST_DATA. O restore completo/staging final permanece bloqueado por falha POST_DATA / CONSTRAINT-FK e depende de decisao Pro/humana antes de qualquer uso final.**
+Estado atual: **Bloco 30 em retomada sem dados reais. O Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover; o desenvolvimento da V3 segue com base sintetica local versionavel e validada.**
 
 O Bloco 29.6 consolida documentalmente esse estado, corrige o checklist do Bloco 29.5 e endurece os scripts de quarentena para impedir operacao em recursos Docker fora dos nomes autorizados. Ele nao executa novo restore, nao restaura `POST_DATA`, nao executa nova sanitizacao, nao corrige orfaos e nao aprova staging final.
+
+O checkpoint local dos Blocos 29 a 29.6 foi criado em `36b94c6` com remote vazio. A quarentena sanitizada sem `POST_DATA` continua proibida para staging final, importacao definitiva e validacao transacional final. A Opcao A segue obrigatoria para homologacao/cutover; a Opcao B e apenas insumo auxiliar; a Opcao C permanece bloqueada ate revisao Pro/humana em novo bloco.
 
 Bloco 27.1 adiciona correcao visual obrigatoria para as paginas publicas de SEO e o gate renderizado `scripts/local/validar-layout-publico-renderizado.ps1`, evitando mini-coluna, H1 verticalizado, breadcrumbs quebrados e wizard espremido em desktop/mobile.
 

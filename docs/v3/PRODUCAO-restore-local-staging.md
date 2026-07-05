@@ -56,3 +56,9 @@ A falha repetiu com diagnostico sanitizado `CONSTRAINT/FK` na fase `POST_DATA`. 
 O restore de quarentena sem `POST_DATA` e permitido para diagnostico controlado. Ele nao restaura FKs/constraints/indexes finais, nao aprova staging final e nao deve ser usado para testar comportamento transacional definitivo da V3.
 
 Resultado: restore de quarentena passou, mas o staging final permanece bloqueado porque `POST_DATA` nao foi restaurado.
+
+## Estado Bloco 30
+
+O restore completo fica adiado para pre-staging/cutover. Nao executar novo restore, nao restaurar `POST_DATA`, nao corrigir orfaos e nao usar a quarentena como staging final no ciclo atual.
+
+O desenvolvimento local segue com dados sinteticos versionaveis. Novo backup consistente ou correcao da origem/backup continua obrigatorio antes de homologacao/cutover real.
