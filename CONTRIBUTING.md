@@ -497,3 +497,14 @@ No Bloco 29.5, scripts de quarentena devem ficar separados dos scripts de restor
 - `scripts/local/validar-e2e-local-descartavel.ps1` deve usar default Docker `topsv3-e2e-local` e bloquear prefixos vazios, genericos, `cripto`, TopsWI ou fora de `topsv3-*`.
 - O wrapper sintetico continua usando explicitamente `topsv3-e2e-sintetico`.
 - Bloco 29 segue adiado; quarentena sem `POST_DATA` nao e staging final.
+
+## Bloco 32 - auditoria renderizada publica sintetica
+
+- O checkpoint local dos Blocos 31/31.1 deve existir antes das alteracoes do Bloco 32.
+- Auditoria renderizada sintetica deve usar `scripts/local/validar-publico-renderizado-sintetico-local.ps1`.
+- Docker, quando usado, deve ficar restrito a `topsv3-render-sintetico-*`.
+- Prints versionados so podem conter dados sinteticos locais e nunca midia/documento real.
+- Nao fazer redesign, trocar paleta, trocar tipografia, criar botao flutuante, animacao automatica ou scroll lock.
+- Validar home, `/anunciar`, cidade, bairro, Brasilia, anuncio livre, anuncio bloqueado, sitemap e robots em desktop/mobile.
+- `BLOQUEADO` nao pode expor WhatsApp publico indevidamente.
+- Bloco 29 segue adiado; quarentena sem `POST_DATA` nao e staging final.

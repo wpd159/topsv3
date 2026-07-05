@@ -149,6 +149,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 31 valida localmente API e SEO com base sintetica em ambiente descartavel. O Docker permitido neste bloco fica restrito ao prefixo `topsv3-e2e-sintetico-*`; recursos TopsWI/cripto e `topsv3-bloco29-*` nao podem ser alterados.
 - Bloco 31.1 decide que validadores sinteticos de API/SEO nao podem aprovar por evidencia antiga quando o backend local estiver indisponivel. Por padrao devem retornar pendente com exit code 2; reutilizacao de evidencia existente exige parametro explicito e alerta documentado.
 - O E2E local descartavel usa prefixo default `topsv3-e2e-local`; o wrapper sintetico continua forcando `topsv3-e2e-sintetico`.
+- Bloco 32 cria checkpoint local `790188b` dos Blocos 31/31.1 e valida rotas publicas principais renderizadas com dados sinteticos. Docker fica restrito a `topsv3-render-sintetico-*`, prints versionados devem conter apenas dados sinteticos e `BLOQUEADO` nao pode expor WhatsApp publico indevido.
+- Bloco 32.1 decide que pagina publica nao pode renderizar enum/status/snake_case tecnico ao visitante. `PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO` e `conteudo_autorizado` devem ficar restritos a contrato/codigo, com rotulos publicos humanos na UI. A permissao continua sendo decisao do backend.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 

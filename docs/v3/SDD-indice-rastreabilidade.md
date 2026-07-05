@@ -187,6 +187,14 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - API sintetica: `scripts/local/validar-api-publica-sintetica-local.ps1`
 - SEO sintetico: `scripts/local/validar-seo-sintetico-local.ps1`
 - Checkpoint Bloco 30: `2acc60b`
+- Relatorio Bloco 32: `docs/v3/210-bloco-32-auditoria-renderizada-publica-sintetica.md`
+- Checklist Bloco 32: `docs/v3/211-checklist-bloco-32-auditoria-renderizada-publica-sintetica.md`
+- Evidencias Bloco 32: `docs/v3/evidencias/bloco-32/`
+- Relatorio Bloco 32.1: `docs/v3/212-bloco-32-1-correcao-texto-tecnico-publico.md`
+- Checklist Bloco 32.1: `docs/v3/213-checklist-bloco-32-1-correcao-texto-tecnico-publico.md`
+- Evidencias Bloco 32.1: `docs/v3/evidencias/bloco-32-1/`
+- Auditoria renderizada sintetica: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`
+- Checkpoint Blocos 31/31.1: `790188b`
 
 ## Validacoes principais
 

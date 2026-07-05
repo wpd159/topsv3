@@ -17,7 +17,7 @@ export function PublicAnuncioDetalhe({ anuncio, status }: PublicAnuncioDetalhePr
         <dl className="health-grid compact public-detail-meta">
           <div>
             <dt>Status</dt>
-            <dd>{status}</dd>
+            <dd>{formatarStatusPublico(status)}</dd>
           </div>
           <div>
             <dt>Valor</dt>
@@ -40,11 +40,35 @@ export function PublicAnuncioDetalhe({ anuncio, status }: PublicAnuncioDetalhePr
           </ul>
         ) : null}
         <p className="public-policy-note">
-          {anuncio.pendenciaContatoPublico ?? "Contato público sujeito à política de segurança."}
+          {formatarContatoPublico(anuncio.pendenciaContatoPublico)}
         </p>
       </article>
     </section>
   );
+}
+
+function formatarStatusPublico(status: string): string {
+  switch (status) {
+    case "conteudo_autorizado":
+      return "Conteúdo disponível";
+    case "aguardando_idade":
+      return "Confirmação de idade necessária";
+    case "confirmando":
+      return "Confirmando idade";
+    case "idade_negada":
+      return "Idade não confirmada";
+    case "indisponivel":
+      return "Conteúdo indisponível";
+    default:
+      return "Perfil público";
+  }
+}
+
+function formatarContatoPublico(pendencia: string | null): string {
+  if (!pendencia) {
+    return "Contato mediado pelo Tops do Job.";
+  }
+  return "Contato mediado pelo Tops do Job.";
 }
 
 function formatPrice(preco: number | null): string {

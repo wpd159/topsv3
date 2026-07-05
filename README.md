@@ -4,11 +4,13 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 31 concluido localmente com E2E/API/SEO sintetico. O Bloco 31.1 e a correcao cirurgica de confiabilidade dos validadores sinteticos antes do proximo checkpoint.**
+Estado atual: **Bloco 32.1 concluido e aprovado localmente; Bloco 33 prepara o checkpoint local e valida o wizard publico `/anunciar`.**
 
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 
 O Bloco 31.1 corrige os validadores sinteticos para que API/SEO nao retornem OK por evidencia antiga quando o backend local estiver indisponivel. Por padrao, backend indisponivel deve retornar pendente com exit code 2. Reutilizacao de evidencia existente so pode ocorrer com parametro explicito e alerta documentado.
+
+O checkpoint local dos Blocos 31/31.1 foi criado em `790188b` com a mensagem `test: valida api seo sinteticos ate bloco 31.1`, remote vazio e sem push. O Bloco 32 executou auditoria renderizada sintetica das rotas publicas principais com prints desktop/mobile em `docs/v3/evidencias/bloco-32/prints/`, mas a revisao visual humana reprovou textos tecnicos visiveis em paginas publicas. O Bloco 32.1 corrige a apresentacao para esconder enums/status/snake_case internos, reforca o validador renderizado e gera novas evidencias em `docs/v3/evidencias/bloco-32-1/`, sem redesign e sem dados reais.
 
 O Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover. A quarentena sanitizada sem `POST_DATA` continua proibida para staging final, importacao definitiva e validacao transacional final.
 

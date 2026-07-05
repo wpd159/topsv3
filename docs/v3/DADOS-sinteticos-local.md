@@ -65,3 +65,15 @@ Os validadores sinteticos de API e SEO exigem backend local disponivel por padra
 Compatibilidade por evidencia existente so e permitida com o parametro explicito `-PermitirEvidenciaExistente`, registrando `ALERTA_EVIDENCIA_EXISTENTE_REUTILIZADA` no output e no relatorio.
 
 O E2E descartavel base usa prefixo default `topsv3-e2e-local`. O wrapper sintetico continua usando explicitamente `topsv3-e2e-sintetico` e nao usa recursos de quarentena `topsv3-bloco29-*` como staging.
+
+## Bloco 32
+
+A base sintetica foi usada na auditoria renderizada publica com backend descartavel, frontend local e prints desktop/mobile. O script `scripts/local/validar-publico-renderizado-sintetico-local.ps1` usa prefixo Docker `topsv3-render-sintetico`, renderiza rotas publicas principais e valida que `BLOQUEADO` nao exponha WhatsApp publico indevidamente.
+
+Os prints do Bloco 32 ficam em `docs/v3/evidencias/bloco-32/prints/` e contêm somente dados sinteticos locais.
+
+## Bloco 32.1
+
+A mesma base sintetica foi usada para corrigir a apresentacao publica renderizada. O Bloco 32.1 nao usa dados reais, backup, dump, restore, sanitizacao real ou quarentena como staging.
+
+As novas evidencias ficam em `docs/v3/evidencias/bloco-32-1/` e os prints corrigidos continuam contendo somente dados sinteticos locais.

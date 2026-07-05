@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 31, com E2E/API/SEO sintetico aprovado, Bloco 31.1 dedicado ao hardening dos validadores sinteticos, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 32.1, com checkpoint local `790188b` dos Blocos 31/31.1, E2E/API/SEO sintetico aprovado, hardening dos validadores sinteticos, correcao de textos tecnicos visiveis na UI publica renderizada, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
 
 ## 1. Visao geral
 
@@ -24,6 +24,8 @@ Estado atual:
 - PostgreSQL descartavel usado para validacoes locais;
 - Bloco 31 validado com E2E/API/SEO sintetico local e descartavel;
 - Bloco 31.1 endurece validadores para nao aprovarem por evidencia antiga quando o backend local estiver indisponivel;
+- Bloco 32 valida rotas publicas principais renderizadas com dados sinteticos, desktop/mobile, SEO local e prints versionados sinteticos, mas a revisao visual humana reprovou textos tecnicos visiveis;
+- Bloco 32.1 corrige a UI publica para nao exibir enums/status/snake_case internos, sem mudar regra de seguranca;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites
@@ -81,7 +83,7 @@ Regras:
 - rotas alternativas como `/perfil`, `/ads`, `/anuncio` e `/acompanhante` permanecem proibidas;
 - ambiente local usa `noindex`;
 - canonical de producao nao deve ser emitido em ambiente local;
-- textos publicos nao devem expor termos internos como "skeleton" ou "API local";
+- textos publicos nao devem expor termos internos como "skeleton", "API local", enums, status tecnico, snake_case ou UPPER_SNAKE_CASE;
 - SEO final depende de revisao humana antes de homologacao/producao.
 - SEO e prioridade central da V3 e possui documentos proprios em `docs/v3/SEO-*.md`.
 - O alvo de crescimento organico local e `acompanhante em [cidade]`.

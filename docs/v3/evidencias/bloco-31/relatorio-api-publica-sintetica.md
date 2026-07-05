@@ -1,7 +1,7 @@
 # Relatorio - API publica sintetica Bloco 31
 
 - Resultado: OK_API_PUBLICA_SINTETICA_LOCAL
-- BaseUrl: http://127.0.0.1:18131
+- BaseUrl: http://127.0.0.1:18142
 - Fixture: backend/src/test/resources/fixtures/v3-dados-sinteticos.json
 - Smoke legado executado: True
 - Dados reais usados: nao

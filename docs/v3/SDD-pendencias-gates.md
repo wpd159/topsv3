@@ -320,7 +320,23 @@ Antes de admin em ambiente nao local:
 - Bloco 29 segue adiado para pre-staging/cutover e a quarentena sem `POST_DATA` continua proibida como staging final.
 - `gitleaks` real segue pendente no PATH.
 - Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhooks ou producao.
+
+## Pendencias do Bloco 32
+
+- Auditoria renderizada sintetica automatizada passou com dados locais, mas a revisao visual humana reprovou textos tecnicos visiveis; a correcao fica no Bloco 32.1.
+- Manter prints apenas sinteticos e leves; nunca versionar midia/documento real.
+- Bloco 29 segue adiado para pre-staging/cutover e a quarentena sem `POST_DATA` continua proibida como staging final.
+- `gitleaks` real segue pendente no PATH.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhooks ou producao.
 - Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhook ou producao.
+
+## Pendencias do Bloco 32.1
+
+- Confirmar por prints desktop/mobile que `PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO` e `conteudo_autorizado` nao aparecem em paginas publicas.
+- Manter o validador renderizado falhando para enum/status/snake_case tecnico visivel.
+- Manter anuncio `BLOQUEADO` sem WhatsApp publico indevido.
+- `gitleaks` real segue pendente no PATH.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhooks ou producao.
 
 ## Proibicoes ate novo bloco autorizado
 
