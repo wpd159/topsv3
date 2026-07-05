@@ -478,3 +478,22 @@ No Bloco 29.5, scripts de quarentena devem ficar separados dos scripts de restor
 - Opcao B e apenas insumo auxiliar agregado de SEO/inventario.
 - Opcao C continua bloqueada ate revisao Pro/humana em novo bloco.
 - Proibido usar producao, VPS, banco de producao, restore novo, sanitizacao nova, correcao de orfaos, Pix/Efi real, pagamento, upload, e-mail real, WhatsApp real, API externa real, remote ou push.
+
+## Bloco 31 - validacao sintetica local API/SEO
+
+- O checkpoint do Bloco 30 deve estar commitado localmente antes de alterar o Bloco 31.
+- E2E sintetico deve usar somente recurso Docker com prefixo `topsv3-e2e-sintetico-*`.
+- E proibido parar/remover recurso TopsWI/cripto, `topsv3-bloco29-*` ou terceiros.
+- E proibido executar `docker prune`, `docker system prune`, `docker volume prune`, `docker network prune` ou `docker compose down`.
+- A fixture `v3-dados-sinteticos.json` pode ser aplicada apenas como overlay sintetico em banco descartavel.
+- `BLOQUEADO` nao pode expor WhatsApp publico; listagens normais devem exibir apenas anuncios `LIVRE` publicaveis.
+- Scripts API/SEO sinteticos nao podem retornar OK por evidencia antiga quando o backend estiver indisponivel.
+- Reutilizacao de evidencia existente so pode ocorrer com parametro explicito `-PermitirEvidenciaExistente`, nunca em validacao padrao, e deve registrar `ALERTA_EVIDENCIA_EXISTENTE_REUTILIZADA`.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados.
+
+## Bloco 31.1 - hardening dos validadores sinteticos
+
+- `scripts/local/validar-api-publica-sintetica-local.ps1` e `scripts/local/validar-seo-sintetico-local.ps1` devem retornar pendente com exit code 2 quando o backend local estiver indisponivel por padrao.
+- `scripts/local/validar-e2e-local-descartavel.ps1` deve usar default Docker `topsv3-e2e-local` e bloquear prefixos vazios, genericos, `cripto`, TopsWI ou fora de `topsv3-*`.
+- O wrapper sintetico continua usando explicitamente `topsv3-e2e-sintetico`.
+- Bloco 29 segue adiado; quarentena sem `POST_DATA` nao e staging final.

@@ -35,3 +35,33 @@ Definir a base sintetica local do Bloco 30 para permitir continuidade do desenvo
 ## Limites
 
 A base sintetica nao substitui a revisao Pro/humana nem o gate de pre-staging/cutover com backup consistente. Ela serve apenas para desenvolvimento local, validacoes estaticas, rotas publicas locais, SEO local, admin local, moderacao local, Premium read-only, wizard `/anunciar`, age gate e metricas agregadas.
+
+## Bloco 31
+
+A fixture foi integrada ao E2E local por overlay sintetico gerado em tempo de execucao, sem versionar SQL temporario. O overlay e aplicado apenas no PostgreSQL descartavel do script `scripts/local/validar-e2e-sintetico-local.ps1`.
+
+Regras do overlay:
+
+- usa prefixo Docker `topsv3-e2e-sintetico-*`;
+- aplica migrations V001-V017 antes dos dados;
+- reaproveita seeds sinteticos antigos para os smokes existentes;
+- adiciona cidades, bairros, anuncios e SEO da fixture `v3-dados-sinteticos.json`;
+- grava slugs publicos de cidade sem sufixo de UF quando a rota preservada exige, por exemplo `goiania-go` vira `/acompanhantes/go/goiania`;
+- pula a cidade de controle `ZZ` no overlay para evitar conflito com seed legado `cidade-sintetica`;
+- nao cria volume persistente;
+- nao usa dados reais, backup, dump, quarentena ou producao.
+
+Validacoes aprovadas:
+
+- `validar-e2e-sintetico-local.ps1`;
+- `validar-api-publica-sintetica-local.ps1`;
+- `validar-seo-sintetico-local.ps1`;
+- `validar-dados-sinteticos-v3-local.ps1`.
+
+## Bloco 31.1
+
+Os validadores sinteticos de API e SEO exigem backend local disponivel por padrao. Se o backend estiver indisponivel, devem retornar pendente com exit code 2 e nao podem aprovar por relatorio antigo.
+
+Compatibilidade por evidencia existente so e permitida com o parametro explicito `-PermitirEvidenciaExistente`, registrando `ALERTA_EVIDENCIA_EXISTENTE_REUTILIZADA` no output e no relatorio.
+
+O E2E descartavel base usa prefixo default `topsv3-e2e-local`. O wrapper sintetico continua usando explicitamente `topsv3-e2e-sintetico` e nao usa recursos de quarentena `topsv3-bloco29-*` como staging.

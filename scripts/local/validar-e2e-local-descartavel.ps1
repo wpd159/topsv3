@@ -4,7 +4,10 @@
   [int]$BackendWaitSeconds = 120,
   [int]$BackendPort = 18080,
   [switch]$NaoIniciarDockerDesktop,
-  [switch]$SemDadosSinteticos
+  [switch]$SemDadosSinteticos,
+  [string]$ResourcePrefix = "topsv3-e2e-local",
+  [string]$ApiSmokeScript = "",
+  [string]$FixtureSinteticaPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -24,7 +27,20 @@ if ([string]::IsNullOrWhiteSpace($RelatorioSaida)) {
 $migrationDir = Join-Path $repoRoot "backend/src/main/resources/db/migration"
 $syntheticSql = Join-Path $repoRoot "scripts/local/dados-sinteticos/dados-publicos-minimos.sql"
 $adminSyntheticSql = Join-Path $repoRoot "scripts/local/dados-sinteticos/dados-admin-minimos.sql"
-$apiSmokeScript = Join-Path $repoRoot "scripts/local/validar-api-publica-local.ps1"
+$apiSmokeScriptPath = if ([string]::IsNullOrWhiteSpace($ApiSmokeScript)) {
+  Join-Path $repoRoot "scripts/local/validar-api-publica-local.ps1"
+} elseif ([System.IO.Path]::IsPathRooted($ApiSmokeScript)) {
+  $ApiSmokeScript
+} else {
+  Join-Path $repoRoot ($ApiSmokeScript -replace '/', [IO.Path]::DirectorySeparatorChar)
+}
+$fixtureSinteticaFullPath = if ([string]::IsNullOrWhiteSpace($FixtureSinteticaPath)) {
+  ""
+} elseif ([System.IO.Path]::IsPathRooted($FixtureSinteticaPath)) {
+  $FixtureSinteticaPath
+} else {
+  Join-Path $repoRoot ($FixtureSinteticaPath -replace '/', [IO.Path]::DirectorySeparatorChar)
+}
 $backendDir = Join-Path $repoRoot "backend"
 $pending = New-Object System.Collections.Generic.List[string]
 $steps = New-Object System.Collections.Generic.List[string]
@@ -45,6 +61,7 @@ $networkRemoved = $false
 $migrationsApplied = $false
 $syntheticApplied = $false
 $adminSyntheticApplied = $false
+$fixtureSinteticaApplied = $false
 $smokeOk = $false
 $mappedPort = $null
 $dbName = "topsv3_e2e"
@@ -268,6 +285,184 @@ function Apply-SyntheticData {
   Add-Step "Dados sinteticos publicos e admin minimos aplicados no banco descartavel."
 }
 
+function Convert-ToSqlLiteral {
+  param([object]$Value)
+  if ($null -eq $Value) { return "NULL" }
+  $text = [string]$Value
+  if ([string]::IsNullOrWhiteSpace($text)) { return "NULL" }
+  return "'" + ($text -replace "'", "''") + "'"
+}
+
+function Convert-ToSqlBoolean {
+  param([bool]$Value)
+  if ($Value) { return "true" }
+  return "false"
+}
+
+function New-FixtureUuid {
+  param([int]$Number)
+  return ("00000000-0000-4031-8031-{0:D12}" -f $Number)
+}
+
+function Normalize-SyntheticText {
+  param([string]$Value)
+  if ([string]::IsNullOrWhiteSpace($Value)) { return "" }
+  return $Value.Trim().ToLowerInvariant()
+}
+
+function Get-PublicCitySlug {
+  param(
+    [string]$FixtureSlug,
+    [string]$Uf
+  )
+  $slug = $FixtureSlug.Trim().ToLowerInvariant()
+  $suffix = "-" + $Uf.Trim().ToLowerInvariant()
+  if ($slug.EndsWith($suffix)) {
+    return $slug.Substring(0, $slug.Length - $suffix.Length)
+  }
+  return $slug
+}
+
+function Get-FixtureStatus {
+  param([string]$Status)
+  switch ($Status) {
+    "ATIVO" { return @{ Status = "PUBLICADO"; Moderacao = "APROVADO"; Publicavel = $true } }
+    "PAUSADO" { return @{ Status = "PAUSADO"; Moderacao = "APROVADO"; Publicavel = $false } }
+    "PENDENTE" { return @{ Status = "PENDENTE_REVISAO"; Moderacao = "PENDENTE"; Publicavel = $false } }
+    "REJEITADO" { return @{ Status = "REJEITADO"; Moderacao = "REJEITADO"; Publicavel = $false } }
+    default { return @{ Status = "RASCUNHO"; Moderacao = "NAO_ENVIADO"; Publicavel = $false } }
+  }
+}
+
+function Write-FixtureSyntheticSql {
+  param(
+    [string]$FixturePath,
+    [string]$OutputPath
+  )
+  if (-not (Test-Path -LiteralPath $FixturePath -PathType Leaf)) {
+    throw "Fixture sintetica nao encontrada: $FixturePath"
+  }
+  $data = Get-Content -LiteralPath $FixturePath -Raw | ConvertFrom-Json
+  if ($data.localOnly -ne $true -or $data.noRealData -ne $true) {
+    throw "Fixture sintetica deve declarar localOnly=true e noRealData=true."
+  }
+
+  $lines = New-Object System.Collections.Generic.List[string]
+  $estadoIds = @{}
+  $cidadeIds = @{}
+  $bairroIds = @{}
+  $anuncioIds = @{}
+  $usuarioId = New-FixtureUuid 900
+
+  $lines.Add("-- Overlay sintetico gerado localmente a partir de v3-dados-sinteticos.json.")
+  $lines.Add("-- Nao contem dado real e nao deve ser usado fora de E2E descartavel.")
+  $lines.Add("INSERT INTO usuario (id, nome, email_normalizado, telefone_normalizado, status, tipo_conta, criado_em, atualizado_em, versao) VALUES ('$usuarioId', 'Usuario Fixture Sintetica Bloco 31', NULL, NULL, 'ATIVO', 'ANUNCIANTE', now(), now(), 0) ON CONFLICT (id) DO NOTHING;")
+
+  $cidades = @($data.cidades | Where-Object { $_.controle -ne $true -and $_.uf -ne "ZZ" })
+  $ufs = @($cidades | ForEach-Object { $_.uf } | Sort-Object -Unique)
+  for ($i = 0; $i -lt $ufs.Count; $i++) {
+    $uf = [string]$ufs[$i]
+    $estadoId = New-FixtureUuid (1000 + $i)
+    $estadoIds[$uf] = $estadoId
+    $lines.Add("INSERT INTO estado (id, uf, nome, nome_normalizado, criado_em) VALUES ('$estadoId', '$uf', 'Estado $uf Sintetico', 'estado $($uf.ToLowerInvariant()) sintetico', now()) ON CONFLICT (uf) DO NOTHING;")
+  }
+
+  for ($i = 0; $i -lt $cidades.Count; $i++) {
+    $cidade = $cidades[$i]
+    $cidadeId = New-FixtureUuid (2000 + $i)
+    $cidadeIds[[string]$cidade.slug] = $cidadeId
+    $estadoId = $estadoIds[[string]$cidade.uf]
+    $nome = Convert-ToSqlLiteral $cidade.nome
+    $normalizado = Convert-ToSqlLiteral (Normalize-SyntheticText $cidade.nome)
+    $slug = Convert-ToSqlLiteral (Get-PublicCitySlug ([string]$cidade.slug) ([string]$cidade.uf))
+    $lines.Add("INSERT INTO cidade (id, estado_id, nome, nome_normalizado, slug, criado_em) VALUES ('$cidadeId', '$estadoId', $nome, $normalizado, $slug, now()) ON CONFLICT (estado_id, slug) DO NOTHING;")
+  }
+
+  $bairros = @($data.bairros)
+  for ($i = 0; $i -lt $bairros.Count; $i++) {
+    $bairro = $bairros[$i]
+    $bairroId = New-FixtureUuid (3000 + $i)
+    $bairroIds[[string]$bairro.slug] = $bairroId
+    $cidadeId = $cidadeIds[[string]$bairro.cidadeSlug]
+    if (-not $cidadeId) { continue }
+    $nome = Convert-ToSqlLiteral $bairro.nome
+    $normalizado = Convert-ToSqlLiteral (Normalize-SyntheticText $bairro.nome)
+    $slug = Convert-ToSqlLiteral $bairro.slug
+    $lines.Add("INSERT INTO bairro (id, cidade_id, nome, nome_normalizado, slug, criado_em) VALUES ('$bairroId', '$cidadeId', $nome, $normalizado, $slug, now()) ON CONFLICT (cidade_id, slug) DO NOTHING;")
+  }
+
+  $anuncios = @($data.anuncios)
+  for ($i = 0; $i -lt $anuncios.Count; $i++) {
+    $anuncio = $anuncios[$i]
+    $anuncioId = New-FixtureUuid (4000 + $i)
+    $anuncioIds[[string]$anuncio.slug] = $anuncioId
+    $statusInfo = Get-FixtureStatus ([string]$anuncio.status)
+    $cidadeSlug = [string]$anuncio.cidadeSlug
+    $bairroSlug = if ($null -eq $anuncio.bairroSlug) { "" } else { [string]$anuncio.bairroSlug }
+    $cidadeId = $cidadeIds[$cidadeSlug]
+    if (-not $cidadeId) { continue }
+    $bairroId = if ([string]::IsNullOrWhiteSpace($bairroSlug)) { $null } else { $bairroIds[$bairroSlug] }
+    $cidade = @($data.cidades | Where-Object { $_.slug -eq $cidadeSlug } | Select-Object -First 1)
+    $estadoId = $estadoIds[[string]$cidade.uf]
+    $titulo = Convert-ToSqlLiteral $anuncio.titulo
+    $descricao = Convert-ToSqlLiteral $anuncio.descricaoPerfil
+    $slug = Convert-ToSqlLiteral $anuncio.slug
+    $classificacao = Convert-ToSqlLiteral $anuncio.classificacao
+    $whatsapp = if ([string]$anuncio.whatsappPublico -eq "PLACEHOLDER_NAO_DISCAVEL" -and [string]$anuncio.classificacao -eq "LIVRE") { "'+5500000000000'" } else { "NULL" }
+    $publicado = if ($statusInfo.Publicavel) { "now()" } else { "NULL" }
+    $statusPublicacao = if ($statusInfo.Publicavel -and [string]$anuncio.classificacao -eq "LIVRE") { "PUBLICAVEL" } elseif ([string]$anuncio.status -eq "REJEITADO") { "NOINDEX" } else { "NAO_PUBLICAVEL" }
+    $temMidia = ([string]$anuncio.midia -eq "PLACEHOLDER_SUFFICIENTE" -and [string]$anuncio.classificacao -eq "LIVRE")
+    $bairroSql = if ($bairroId) { "'$bairroId'" } else { "NULL" }
+    $textoBusca = Convert-ToSqlLiteral (([string]$anuncio.titulo) + " " + ([string]$anuncio.descricaoPerfil))
+    $ranking = if ([string]$anuncio.plano -eq "PREMIUM_ATIVO") { "10.0000" } else { "1.0000" }
+
+    $lines.Add("INSERT INTO anuncio (id, usuario_id, slug, titulo, descricao, status, status_moderacao, categoria, classificacao_conteudo, preco, whatsapp_normalizado, publicado_em, ultima_publicacao_em, criado_em, atualizado_em, removido_em, origem_importacao_id, versao) VALUES ('$anuncioId', '$usuarioId', $slug, $titulo, $descricao, '$($statusInfo.Status)', '$($statusInfo.Moderacao)', 'SINTETICO', $classificacao, NULL, $whatsapp, $publicado, $publicado, now(), now(), NULL, NULL, 0) ON CONFLICT (slug) DO NOTHING;")
+    $lines.Add("INSERT INTO anuncio_localizacao (anuncio_id, estado_id, cidade_id, bairro_id, endereco_resumido, latitude, longitude, criado_em, atualizado_em) VALUES ('$anuncioId', '$estadoId', '$cidadeId', $bairroSql, 'Endereco sintetico local', NULL, NULL, now(), now()) ON CONFLICT (anuncio_id) DO NOTHING;")
+    $lines.Add("INSERT INTO documento_busca_anuncio (anuncio_id, texto_busca, estado_id, cidade_id, bairro_id, categoria, preco, status_publicacao, tem_midia_valida, beneficios_ranking_json, ranking_base, atualizado_em) VALUES ('$anuncioId', $textoBusca, '$estadoId', '$cidadeId', $bairroSql, 'SINTETICO', NULL, '$statusPublicacao', $(Convert-ToSqlBoolean $temMidia), '{}'::jsonb, $ranking, now()) ON CONFLICT (anuncio_id) DO NOTHING;")
+  }
+
+  $seoCounter = 0
+  foreach ($route in @($data.rotasCobertas)) {
+    $path = [string]$route
+    if ([string]::IsNullOrWhiteSpace($path)) { continue }
+    if ($path -eq "/") { continue }
+    $seoCounter++
+    $seoId = New-FixtureUuid (5000 + $seoCounter)
+    $tipo = "OUTRO"
+    if ($path -eq "/sitemap.xml") { $tipo = "SITEMAP" }
+    elseif ($path -eq "/robots.txt") { $tipo = "ROBOTS" }
+    elseif ($path.StartsWith("/anuncios/")) { $tipo = "ANUNCIO" }
+    elseif ($path.StartsWith("/acompanhantes/")) {
+      $tipo = if (($path.Split("/")).Count -ge 5) { "BAIRRO" } else { "CIDADE" }
+    }
+    $indexavel = if ($path -match 'demo-goiania-bloqueado|rejeitado|pendente|controle') { "false" } else { "true" }
+    $pathSql = Convert-ToSqlLiteral $path
+    $lines.Add("INSERT INTO seo_url (id, caminho_publico, canonical_path, tipo, entidade_tipo, entidade_id, status_esperado, indexavel, incluir_sitemap, qualidade_status, ultima_validacao_em, motivo_noindex, criado_em, atualizado_em, versao) VALUES ('$seoId', $pathSql, $pathSql, '$tipo', NULL, NULL, 'OK_200', $indexavel, $indexavel, 'APROVADO', now(), NULL, now(), now(), 0) ON CONFLICT (caminho_publico) DO NOTHING;")
+  }
+
+  [System.IO.File]::WriteAllText($OutputPath, (($lines -join "`n") + "`n"), [System.Text.UTF8Encoding]::new($false))
+}
+
+function Apply-SyntheticFixtureData {
+  if ([string]::IsNullOrWhiteSpace($fixtureSinteticaFullPath)) {
+    Add-Step "Fixture sintetica JSON nao informada; overlay Bloco 31 nao aplicado."
+    return
+  }
+  if (-not (Test-Path -LiteralPath $fixtureSinteticaFullPath -PathType Leaf)) {
+    throw "Fixture sintetica JSON nao encontrada: $fixtureSinteticaFullPath"
+  }
+  $tempSql = Join-Path ([IO.Path]::GetTempPath()) ("topsv3-fixture-sintetica-{0}.sql" -f ([guid]::NewGuid().ToString("N")))
+  Write-FixtureSyntheticSql -FixturePath $fixtureSinteticaFullPath -OutputPath $tempSql
+  $targetDir = "/tmp/topsv3-fixture-sintetica"
+  $mkdir = Invoke-Native -FilePath $dockerExe -Arguments @("exec", $pgName, "mkdir", "-p", $targetDir)
+  if ($mkdir.ExitCode -ne 0) { throw "Falha ao preparar pasta de fixture sintetica no container." }
+  Copy-FileToContainer -Source $tempSql -TargetDir $targetDir
+  Invoke-PsqlFile -ContainerPath "$targetDir/$([IO.Path]::GetFileName($tempSql))"
+  Remove-Item -LiteralPath $tempSql -Force -ErrorAction SilentlyContinue
+  $script:fixtureSinteticaApplied = $true
+  Add-Step "Fixture sintetica JSON aplicada como overlay no banco descartavel."
+}
+
 function Wait-Backend {
   param([string]$BaseUrl)
   $deadline = (Get-Date).AddSeconds($BackendWaitSeconds)
@@ -293,11 +488,15 @@ function Save-Report {
   $lines.Add("- Detalhe: $detail")
   $lines.Add("- PostgreSQL executado: $postgresStarted")
   $lines.Add("- Imagem PostgreSQL local: $(if ($postgresImage) { $postgresImage } else { 'NAO_SELECIONADA' })")
+  $lines.Add("- Prefixo Docker: $ResourcePrefix")
+  $lines.Add("- API smoke script: $apiSmokeScriptPath")
+  $lines.Add("- Fixture sintetica JSON: $(if ($fixtureSinteticaFullPath) { $fixtureSinteticaFullPath } else { 'NAO_INFORMADA' })")
   $lines.Add("- Porta PostgreSQL efemera: $(if ($mappedPort) { $mappedPort } else { 'NAO_USADA' })")
   $lines.Add("- Migrations aplicadas: $migrationsApplied")
   $lines.Add("- Quantidade de migrations aplicadas: $($appliedMigrations.Count)")
   $lines.Add("- Dados sinteticos aplicados: $syntheticApplied")
   $lines.Add("- Dados admin sinteticos aplicados: $adminSyntheticApplied")
+  $lines.Add("- Fixture sintetica aplicada: $fixtureSinteticaApplied")
   $lines.Add("- Backend iniciado: $backendStarted")
   $lines.Add("- Smoke HTTP OK: $smokeOk")
   $lines.Add("- Backend encerrado: $backendStopped")
@@ -317,6 +516,7 @@ function Save-Report {
   $lines.Add("## Garantias")
   $lines.Add("- Nenhum pull/download de imagem foi executado.")
   $lines.Add("- Nenhum volume persistente foi criado.")
+  $lines.Add("- Nenhum recurso Docker fora do prefixo informado foi removido pelo script.")
   $lines.Add("- Nenhum dado real, dump ou arquivo real de entrada foi usado.")
   $lines.Add("- Smoke HTTP cobre midia publica sem bucket, chaveObjeto, provider, hash ou URL publica real.")
   $lines.Add("- Nenhuma producao, VPS, banco de producao, API externa, Efi real ou OpenAI foi acessado.")
@@ -331,6 +531,22 @@ function Save-Report {
 
 try {
   Add-Step "Validacao e2e local descartavel iniciada."
+
+  if ($null -eq $ResourcePrefix) { $ResourcePrefix = "" }
+  $ResourcePrefix = $ResourcePrefix.Trim().ToLowerInvariant()
+  $genericPrefixes = @("postgres", "db", "local", "backend", "frontend", "topsv3-postgres", "topsv3-db", "topsv3-local", "topsv3-backend", "topsv3-frontend")
+  if ([string]::IsNullOrWhiteSpace($ResourcePrefix) -or $genericPrefixes -contains $ResourcePrefix) {
+    throw "FALHA_PREFIXO_DOCKER_NAO_AUTORIZADO: prefixo vazio ou generico para E2E local."
+  }
+  if ($ResourcePrefix -notmatch '^topsv3-[a-z0-9-]+$' -or $ResourcePrefix -match 'topswi|cripto' -or $ResourcePrefix.StartsWith("cripto")) {
+    throw "FALHA_PREFIXO_DOCKER_NAO_AUTORIZADO: prefixo Docker inseguro para E2E local: $ResourcePrefix"
+  }
+  if (-not [string]::IsNullOrWhiteSpace($fixtureSinteticaFullPath) -and $ResourcePrefix.StartsWith("topsv3-bloco29")) {
+    throw "Bloco 31 nao pode usar prefixo Docker topsv3-bloco29 para fixture sintetica."
+  }
+  if (-not (Test-Path -LiteralPath $apiSmokeScriptPath -PathType Leaf)) {
+    throw "Script de smoke HTTP nao encontrado: $apiSmokeScriptPath"
+  }
 
   $dockerCommand = Get-Command docker -ErrorAction SilentlyContinue
   if (-not $dockerCommand) {
@@ -369,8 +585,8 @@ try {
   }
 
   $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 12)
-  $pgName = "topsv3-bloco29-e2e-pg-$suffix"
-  $networkName = "topsv3-bloco29-e2e-net-$suffix"
+  $pgName = "$ResourcePrefix-pg-$suffix"
+  $networkName = "$ResourcePrefix-net-$suffix"
   $network = Invoke-Native -FilePath $dockerExe -Arguments @("network", "create", $networkName)
   if ($network.ExitCode -ne 0) { throw "Falha ao criar rede descartavel: $($network.Output -join ' ')" }
   Add-Step "Rede Docker descartavel criada."
@@ -413,6 +629,7 @@ try {
 
   Apply-Migrations
   Apply-SyntheticData
+  Apply-SyntheticFixtureData
 
   $java17 = Find-Java17
   if (-not $java17) {
@@ -454,7 +671,7 @@ try {
   }
   Add-Step "Backend local respondeu health/readiness."
 
-  $apiArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $apiSmokeScript, "-BaseUrl", $baseUrl)
+  $apiArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $apiSmokeScriptPath, "-BaseUrl", $baseUrl)
   if ($SemDadosSinteticos) { $apiArgs += "-SemDadosSinteticos" }
   $api = Invoke-Native -FilePath (Get-Command powershell).Source -Arguments $apiArgs -WorkingDirectory $repoRoot
   if ($api.ExitCode -ne 0) {
@@ -558,6 +775,7 @@ Write-Host "POSTGRES_IMAGE=$(if ($postgresImage) { $postgresImage } else { 'PEND
 Write-Host "MIGRATIONS_APLICADAS=$migrationsApplied"
 Write-Host "MIGRATIONS_COUNT=$($appliedMigrations.Count)"
 Write-Host "DADOS_SINTETICOS_APLICADOS=$syntheticApplied"
+Write-Host "FIXTURE_SINTETICA_APLICADA=$fixtureSinteticaApplied"
 Write-Host "BACKEND_INICIADO=$backendStarted"
 Write-Host "SMOKE_HTTP_OK=$smokeOk"
 Write-Host "BACKEND_ENCERRADO=$backendStopped"

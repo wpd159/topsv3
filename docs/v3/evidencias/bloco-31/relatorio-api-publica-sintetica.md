@@ -1,0 +1,93 @@
+# Relatorio - API publica sintetica Bloco 31
+
+- Resultado: OK_API_PUBLICA_SINTETICA_LOCAL
+- BaseUrl: http://127.0.0.1:18131
+- Fixture: backend/src/test/resources/fixtures/v3-dados-sinteticos.json
+- Smoke legado executado: True
+- Dados reais usados: nao
+- Producao/VPS/API externa acessadas: nao
+
+## Checks
+- OK: smoke legado API publica - validar-api-publica-local.ps1 aprovado
+- OK: fixture localOnly - fixture deve ser local
+- OK: fixture noRealData - fixture nao deve usar dado real
+- OK: anuncio livre demo status - status obtido: 200
+- OK: anuncio livre demo contem esperado - esperado: demo-goiania-livre-premium
+- OK: anuncio livre demo sem proibido - proibido: wa.me/
+- OK: anuncio livre demo sem CPF - resposta publica nao deve expor dado sensivel
+- OK: anuncio livre demo sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: anuncio livre demo sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: anuncio livre demo sem documento - resposta publica nao deve expor dado sensivel
+- OK: anuncio livre demo sem storage - resposta publica nao deve expor dado sensivel
+- OK: anuncio livre demo sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: anuncio livre demo sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: cidade Goiania status - status obtido: 200
+- OK: cidade Goiania contem esperado - esperado: demo-goiania-livre-premium
+- OK: cidade Goiania sem proibido - proibido: demo-goiania-bloqueado
+- OK: cidade Goiania sem CPF - resposta publica nao deve expor dado sensivel
+- OK: cidade Goiania sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: cidade Goiania sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: cidade Goiania sem documento - resposta publica nao deve expor dado sensivel
+- OK: cidade Goiania sem storage - resposta publica nao deve expor dado sensivel
+- OK: cidade Goiania sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: cidade Goiania sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: bairro Setor Bueno status - status obtido: 200
+- OK: bairro Setor Bueno contem esperado - esperado: demo-goiania-livre-premium
+- OK: bairro Setor Bueno sem proibido - proibido: demo-goiania-bloqueado
+- OK: bairro Setor Bueno sem CPF - resposta publica nao deve expor dado sensivel
+- OK: bairro Setor Bueno sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: bairro Setor Bueno sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: bairro Setor Bueno sem documento - resposta publica nao deve expor dado sensivel
+- OK: bairro Setor Bueno sem storage - resposta publica nao deve expor dado sensivel
+- OK: bairro Setor Bueno sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: bairro Setor Bueno sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: cidade Brasilia status - status obtido: 200
+- OK: cidade Brasilia contem esperado - esperado: demo-brasilia-premium-topo
+- OK: cidade Brasilia sem proibido - proibido: demo-brasilia-bloqueado-stories
+- OK: cidade Brasilia sem CPF - resposta publica nao deve expor dado sensivel
+- OK: cidade Brasilia sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: cidade Brasilia sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: cidade Brasilia sem documento - resposta publica nao deve expor dado sensivel
+- OK: cidade Brasilia sem storage - resposta publica nao deve expor dado sensivel
+- OK: cidade Brasilia sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: cidade Brasilia sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: bloqueado sem idade status - status obtido: 404
+- OK: bloqueado sem idade sem proibido - proibido: wa.me/
+- OK: bloqueado sem idade sem CPF - resposta publica nao deve expor dado sensivel
+- OK: bloqueado sem idade sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: bloqueado sem idade sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: bloqueado sem idade sem documento - resposta publica nao deve expor dado sensivel
+- OK: bloqueado sem idade sem storage - resposta publica nao deve expor dado sensivel
+- OK: bloqueado sem idade sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: bloqueado sem idade sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: pendente nao publicado status - status obtido: 404
+- OK: pendente nao publicado sem CPF - resposta publica nao deve expor dado sensivel
+- OK: pendente nao publicado sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: pendente nao publicado sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: pendente nao publicado sem documento - resposta publica nao deve expor dado sensivel
+- OK: pendente nao publicado sem storage - resposta publica nao deve expor dado sensivel
+- OK: pendente nao publicado sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: pendente nao publicado sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: rejeitado nao publicado status - status obtido: 404
+- OK: rejeitado nao publicado sem CPF - resposta publica nao deve expor dado sensivel
+- OK: rejeitado nao publicado sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: rejeitado nao publicado sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: rejeitado nao publicado sem documento - resposta publica nao deve expor dado sensivel
+- OK: rejeitado nao publicado sem storage - resposta publica nao deve expor dado sensivel
+- OK: rejeitado nao publicado sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: rejeitado nao publicado sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: idade sintetica confirmada - status obtido: 200
+- OK: bloqueado com idade status - status obtido: 200
+- OK: bloqueado com idade sem WhatsApp publico - BLOQUEADO nao deve expor WhatsApp publico
+- OK: bloqueado com idade sem CPF - resposta publica nao deve expor dado sensivel
+- OK: bloqueado com idade sem e-mail real - resposta publica nao deve expor dado sensivel
+- OK: bloqueado com idade sem telefone real - resposta publica nao deve expor dado sensivel
+- OK: bloqueado com idade sem documento - resposta publica nao deve expor dado sensivel
+- OK: bloqueado com idade sem storage - resposta publica nao deve expor dado sensivel
+- OK: bloqueado com idade sem token/segredo - resposta publica nao deve expor dado sensivel
+- OK: bloqueado com idade sem payload financeiro - resposta publica nao deve expor dado sensivel
+- OK: clique bloqueado registrado sem liberar contato - BLOQUEADO nao libera contato
+- OK: SEO sintetico via API - VALIDATION_RESULT=OK_SEO_SINTETICO_LOCAL
+
+## Falhas
+- Nenhuma

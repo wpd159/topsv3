@@ -177,6 +177,16 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 29.5: `docs/v3/evidencias/bloco-29-5/`
 - Evidencias Bloco 29.6: `docs/v3/evidencias/bloco-29-6/`
 - Evidencias Bloco 30: `docs/v3/evidencias/bloco-30/`
+- Relatorio Bloco 31: `docs/v3/206-bloco-31-validacao-sintetica-api-seo.md`
+- Checklist Bloco 31: `docs/v3/207-checklist-bloco-31-validacao-sintetica-api-seo.md`
+- Evidencias Bloco 31: `docs/v3/evidencias/bloco-31/`
+- Relatorio Bloco 31.1: `docs/v3/208-bloco-31-1-hardening-validadores-sinteticos.md`
+- Checklist Bloco 31.1: `docs/v3/209-checklist-bloco-31-1-hardening-validadores-sinteticos.md`
+- Evidencias Bloco 31.1: `docs/v3/evidencias/bloco-31-1/`
+- E2E sintetico: `scripts/local/validar-e2e-sintetico-local.ps1`
+- API sintetica: `scripts/local/validar-api-publica-sintetica-local.ps1`
+- SEO sintetico: `scripts/local/validar-seo-sintetico-local.ps1`
+- Checkpoint Bloco 30: `2acc60b`
 
 ## Validacoes principais
 

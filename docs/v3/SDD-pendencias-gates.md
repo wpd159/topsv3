@@ -304,6 +304,24 @@ Antes de admin em ambiente nao local:
 - Validacoes que exigem Docker devem respeitar a politica de nao alterar Docker deste bloco.
 - Base sintetica deve ser mantida sem dados reais, sem midia real, sem telefone/e-mail real e sem payload financeiro real.
 
+## Pendencias do Bloco 31
+
+- Bloco 31 local sintetico: E2E/API/SEO aprovados.
+- Bloco 29 segue adiado para pre-staging/cutover.
+- Quarentena sem `POST_DATA` continua proibida como staging final.
+- `gitleaks` real segue pendente no PATH e permanece gate antes de producao.
+
+## Pendencias do Bloco 31.1
+
+- Validadores sinteticos API/SEO nao podem retornar OK por relatorio antigo quando o backend local estiver indisponivel.
+- Backend indisponivel em validacao padrao deve retornar pendente com exit code 2.
+- Reutilizacao de evidencia existente exige parametro explicito e alerta documentado.
+- Prefixo default do E2E local descartavel deve permanecer `topsv3-e2e-local`; wrapper sintetico deve usar `topsv3-e2e-sintetico`.
+- Bloco 29 segue adiado para pre-staging/cutover e a quarentena sem `POST_DATA` continua proibida como staging final.
+- `gitleaks` real segue pendente no PATH.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhooks ou producao.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhook ou producao.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

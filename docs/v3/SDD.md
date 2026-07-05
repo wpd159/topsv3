@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 30, com o Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 31, com E2E/API/SEO sintetico aprovado, Bloco 31.1 dedicado ao hardening dos validadores sinteticos, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
 
 ## 1. Visao geral
 
@@ -22,6 +22,8 @@ Estado atual:
 - protocolo de copia sanitizada de producao com backup bruto sempre fora do repositorio;
 - migrations Flyway V001 a V017 criadas e validadas estaticamente;
 - PostgreSQL descartavel usado para validacoes locais;
+- Bloco 31 validado com E2E/API/SEO sintetico local e descartavel;
+- Bloco 31.1 endurece validadores para nao aprovarem por evidencia antiga quando o backend local estiver indisponivel;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites
@@ -628,3 +630,40 @@ Base sintetica local:
 - anuncios: 12;
 - beneficios Premium: 6;
 - metricas agregadas: 6.
+
+## 32. Bloco 31 - validacao sintetica API/SEO local
+
+O Bloco 31 consolida o Bloco 30 em commit local e valida a V3 com dados sinteticos em ambiente descartavel/controlado.
+
+Checkpoint local do Bloco 30:
+
+- commit: `2acc60b`;
+- mensagem: `docs: retoma v3 com base sintetica local no bloco 30`;
+- remote: vazio;
+- push: nao executado.
+
+Validacao sintetica:
+
+- script E2E: `scripts/local/validar-e2e-sintetico-local.ps1`;
+- API publica: `scripts/local/validar-api-publica-sintetica-local.ps1`;
+- SEO sintetico: `scripts/local/validar-seo-sintetico-local.ps1`;
+- fixture: `backend/src/test/resources/fixtures/v3-dados-sinteticos.json`;
+- Docker usado: sim, apenas container/rede temporarios `topsv3-e2e-sintetico-*`;
+- imagem local: `postgres:17`;
+- volumes persistentes criados: nao;
+- container/rede temporarios removidos: sim.
+
+Resultado:
+
+- migrations V001-V017 aplicadas em PostgreSQL descartavel;
+- seed sintetico legado aplicado;
+- fixture do Bloco 30 aplicada como overlay;
+- backend local iniciou em profile local;
+- smoke legado API publica aprovado;
+- endpoints `demo-*` da fixture aprovados;
+- SEO sintetico aprovado;
+- `BLOQUEADO` nao expos WhatsApp publico;
+- pendente/rejeitado nao ficaram publicados;
+- dados reais nao foram usados.
+
+O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DATA` continua proibida como staging final.

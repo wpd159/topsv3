@@ -4,7 +4,15 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 30 em retomada sem dados reais. O Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover; o desenvolvimento da V3 segue com base sintetica local versionavel e validada.**
+Estado atual: **Bloco 31 concluido localmente com E2E/API/SEO sintetico. O Bloco 31.1 e a correcao cirurgica de confiabilidade dos validadores sinteticos antes do proximo checkpoint.**
+
+O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
+
+O Bloco 31.1 corrige os validadores sinteticos para que API/SEO nao retornem OK por evidencia antiga quando o backend local estiver indisponivel. Por padrao, backend indisponivel deve retornar pendente com exit code 2. Reutilizacao de evidencia existente so pode ocorrer com parametro explicito e alerta documentado.
+
+O Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover. A quarentena sanitizada sem `POST_DATA` continua proibida para staging final, importacao definitiva e validacao transacional final.
+
+Pro continua obrigatorio antes de homologacao/cutover real com dados reais ou sanitizados, restore completo, financeiro, Pix/Efi, webhooks, integracoes externas ou producao.
 
 O Bloco 29.6 consolida documentalmente esse estado, corrige o checklist do Bloco 29.5 e endurece os scripts de quarentena para impedir operacao em recursos Docker fora dos nomes autorizados. Ele nao executa novo restore, nao restaura `POST_DATA`, nao executa nova sanitizacao, nao corrige orfaos e nao aprova staging final.
 
@@ -700,3 +708,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-dados-
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/diagnosticar-fks-quarentena-sanitizada-local.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-seo-quarentena-sanitizada-local.ps1
 ```
+
+## Bloco 31 - validacao sintetica local API/SEO
+
+O Bloco 31 consolidou o checkpoint local do Bloco 30:
+
+- commit: `2acc60b docs: retoma v3 com base sintetica local no bloco 30`;
+- remote: vazio;
+- push: nao executado.
+
+A validacao local agora pode rodar sem dados reais usando a fixture `backend/src/test/resources/fixtures/v3-dados-sinteticos.json`. O E2E sintetico usa PostgreSQL descartavel em Docker com prefixo exclusivo `topsv3-e2e-sintetico-*`, aplica migrations V001-V017, seeds sinteticos existentes e overlay da fixture.
+
+Scripts:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-e2e-sintetico-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-api-publica-sintetica-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-seo-sintetico-local.ps1
+```
+
+Limites preservados: sem producao, sem VPS, sem banco de producao, sem restore, sem `POST_DATA`, sem sanitizacao real, sem correcao de orfaos, sem quarentena como staging final, sem Pix/Efi real, sem pagamento, sem upload, sem e-mail/WhatsApp real, sem API externa, sem remote e sem push.
