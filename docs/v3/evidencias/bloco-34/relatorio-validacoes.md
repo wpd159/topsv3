@@ -1,0 +1,153 @@
+# Relatorio - validacoes Bloco 34
+
+- Resultado: OK
+- Total de checks: 142
+- Falhas: 0
+- CDP local usado: sim
+- Prints versionados: sim
+- Docker do wizard: prefixo topsv3-bloco34-wizard-paridade quando executado pelo wrapper E2E
+- Recursos de TopsWI/cripto alterados: nao
+- Quarentena usada como staging final: nao
+
+- OK: desktop/inicio: wizard guiado com oito etapas
+- OK: desktop/inicio: uma etapa atual visivel
+- OK: desktop/inicio: sem scroll horizontal
+- OK: desktop/inicio: sem document.body.style.overflow
+- OK: desktop/inicio: sem scroll lock global
+- OK: desktop/inicio: sem elemento fixed/absolute/sticky publico
+- OK: desktop/inicio: sem upload/camera/documento real
+- OK: desktop/inicio: sem link externo no wizard
+- OK: desktop/inicio: sem WhatsApp publico/liberado
+- OK: desktop/inicio: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: desktop/inicio: sem enum/status/snake_case tecnico visivel
+- OK: desktop/inicio: sem texto publico de bastidor
+- OK: desktop: inicio nao e formulario legado unico
+- OK: desktop: validacao amigavel sem 500
+- OK: desktop/validacao: wizard guiado com oito etapas
+- OK: desktop/validacao: uma etapa atual visivel
+- OK: desktop/validacao: sem scroll horizontal
+- OK: desktop/validacao: sem document.body.style.overflow
+- OK: desktop/validacao: sem scroll lock global
+- OK: desktop/validacao: sem elemento fixed/absolute/sticky publico
+- OK: desktop/validacao: sem upload/camera/documento real
+- OK: desktop/validacao: sem link externo no wizard
+- OK: desktop/validacao: sem WhatsApp publico/liberado
+- OK: desktop/validacao: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: desktop/validacao: sem enum/status/snake_case tecnico visivel
+- OK: desktop/validacao: sem texto publico de bastidor
+- OK: desktop: midia e placeholder sem upload real
+- OK: desktop/midia: wizard guiado com oito etapas
+- OK: desktop/midia: uma etapa atual visivel
+- OK: desktop/midia: sem scroll horizontal
+- OK: desktop/midia: sem document.body.style.overflow
+- OK: desktop/midia: sem scroll lock global
+- OK: desktop/midia: sem elemento fixed/absolute/sticky publico
+- OK: desktop/midia: sem upload/camera/documento real
+- OK: desktop/midia: sem link externo no wizard
+- OK: desktop/midia: sem WhatsApp publico/liberado
+- OK: desktop/midia: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: desktop/midia: sem enum/status/snake_case tecnico visivel
+- OK: desktop/midia: sem texto publico de bastidor
+- OK: desktop: categoria exibida como texto publico
+- OK: desktop: sem enum tecnico na revisao
+- OK: desktop/revisao: wizard guiado com oito etapas
+- OK: desktop/revisao: uma etapa atual visivel
+- OK: desktop/revisao: sem scroll horizontal
+- OK: desktop/revisao: sem document.body.style.overflow
+- OK: desktop/revisao: sem scroll lock global
+- OK: desktop/revisao: sem elemento fixed/absolute/sticky publico
+- OK: desktop/revisao: sem upload/camera/documento real
+- OK: desktop/revisao: sem link externo no wizard
+- OK: desktop/revisao: sem WhatsApp publico/liberado
+- OK: desktop/revisao: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: desktop/revisao: sem enum/status/snake_case tecnico visivel
+- OK: desktop/revisao: sem texto publico de bastidor
+- OK: desktop: sem autopublicacao
+- OK: desktop/pos-envio: wizard guiado com oito etapas
+- OK: desktop/pos-envio: uma etapa atual visivel
+- OK: desktop/pos-envio: sem scroll horizontal
+- OK: desktop/pos-envio: sem document.body.style.overflow
+- OK: desktop/pos-envio: sem scroll lock global
+- OK: desktop/pos-envio: sem elemento fixed/absolute/sticky publico
+- OK: desktop/pos-envio: sem upload/camera/documento real
+- OK: desktop/pos-envio: sem link externo no wizard
+- OK: desktop/pos-envio: sem WhatsApp publico/liberado
+- OK: desktop/pos-envio: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: desktop/pos-envio: sem enum/status/snake_case tecnico visivel
+- OK: desktop/pos-envio: sem texto publico de bastidor
+- OK: mobile/inicio: wizard guiado com oito etapas
+- OK: mobile/inicio: uma etapa atual visivel
+- OK: mobile/inicio: sem scroll horizontal
+- OK: mobile/inicio: sem document.body.style.overflow
+- OK: mobile/inicio: sem scroll lock global
+- OK: mobile/inicio: sem elemento fixed/absolute/sticky publico
+- OK: mobile/inicio: sem upload/camera/documento real
+- OK: mobile/inicio: sem link externo no wizard
+- OK: mobile/inicio: sem WhatsApp publico/liberado
+- OK: mobile/inicio: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: mobile/inicio: sem enum/status/snake_case tecnico visivel
+- OK: mobile/inicio: sem texto publico de bastidor
+- OK: mobile: inicio nao e formulario legado unico
+- OK: mobile: validacao amigavel sem 500
+- OK: mobile/validacao: wizard guiado com oito etapas
+- OK: mobile/validacao: uma etapa atual visivel
+- OK: mobile/validacao: sem scroll horizontal
+- OK: mobile/validacao: sem document.body.style.overflow
+- OK: mobile/validacao: sem scroll lock global
+- OK: mobile/validacao: sem elemento fixed/absolute/sticky publico
+- OK: mobile/validacao: sem upload/camera/documento real
+- OK: mobile/validacao: sem link externo no wizard
+- OK: mobile/validacao: sem WhatsApp publico/liberado
+- OK: mobile/validacao: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: mobile/validacao: sem enum/status/snake_case tecnico visivel
+- OK: mobile/validacao: sem texto publico de bastidor
+- OK: mobile: midia e placeholder sem upload real
+- OK: mobile/midia: wizard guiado com oito etapas
+- OK: mobile/midia: uma etapa atual visivel
+- OK: mobile/midia: sem scroll horizontal
+- OK: mobile/midia: sem document.body.style.overflow
+- OK: mobile/midia: sem scroll lock global
+- OK: mobile/midia: sem elemento fixed/absolute/sticky publico
+- OK: mobile/midia: sem upload/camera/documento real
+- OK: mobile/midia: sem link externo no wizard
+- OK: mobile/midia: sem WhatsApp publico/liberado
+- OK: mobile/midia: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: mobile/midia: sem enum/status/snake_case tecnico visivel
+- OK: mobile/midia: sem texto publico de bastidor
+- OK: mobile: categoria exibida como texto publico
+- OK: mobile: sem enum tecnico na revisao
+- OK: mobile/revisao: wizard guiado com oito etapas
+- OK: mobile/revisao: uma etapa atual visivel
+- OK: mobile/revisao: sem scroll horizontal
+- OK: mobile/revisao: sem document.body.style.overflow
+- OK: mobile/revisao: sem scroll lock global
+- OK: mobile/revisao: sem elemento fixed/absolute/sticky publico
+- OK: mobile/revisao: sem upload/camera/documento real
+- OK: mobile/revisao: sem link externo no wizard
+- OK: mobile/revisao: sem WhatsApp publico/liberado
+- OK: mobile/revisao: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: mobile/revisao: sem enum/status/snake_case tecnico visivel
+- OK: mobile/revisao: sem texto publico de bastidor
+- OK: mobile: sem autopublicacao
+- OK: mobile/pos-envio: wizard guiado com oito etapas
+- OK: mobile/pos-envio: uma etapa atual visivel
+- OK: mobile/pos-envio: sem scroll horizontal
+- OK: mobile/pos-envio: sem document.body.style.overflow
+- OK: mobile/pos-envio: sem scroll lock global
+- OK: mobile/pos-envio: sem elemento fixed/absolute/sticky publico
+- OK: mobile/pos-envio: sem upload/camera/documento real
+- OK: mobile/pos-envio: sem link externo no wizard
+- OK: mobile/pos-envio: sem WhatsApp publico/liberado
+- OK: mobile/pos-envio: sem pagamento/Pix/upload/premium/loja visivel como acao
+- OK: mobile/pos-envio: sem enum/status/snake_case tecnico visivel
+- OK: mobile/pos-envio: sem texto publico de bastidor
+- OK: API local do wizard retorna 201 sintetico
+- OK: API local criou solicitacao sintetica
+- OK: API local sem efeito real: publicado
+- OK: API local sem efeito real: publicacaoAutomaticaExecutada
+- OK: API local sem efeito real: uploadRealExecutado
+- OK: API local sem efeito real: pagamentoCriado
+- OK: API local sem efeito real: creditoCriado
+- OK: API local sem efeito real: premiumObrigatorio
+- OK: API local sem efeito real: emailRealEnviado
+- OK: API local sem efeito real: whatsappRealEnviado

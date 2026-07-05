@@ -1,0 +1,25 @@
+# Checklist - Bloco 34
+
+- [x] Checkpoint local dos Blocos 33/33.1 criado.
+- [x] Commit local `b7f5f98` registrado.
+- [x] Remote vazio confirmado.
+- [x] Push nao executado.
+- [x] Escopo antigo de admin/moderacao removido do delta.
+- [x] Admin/moderacao adiado para Bloco 35.
+- [x] Producao consultada somente leitura por pagina publica.
+- [x] Age gate de producao nao aceito nem contornado.
+- [x] Prints publicos de producao gerados sem dado sensivel.
+- [x] Prints V3 local desktop/mobile gerados com dados sinteticos.
+- [x] Wizard V3 local ajustado para CTA e confianca alinhados ao observavel da producao.
+- [x] Stores ausente do wizard.
+- [x] Upload real ausente.
+- [x] Pagamento real ausente.
+- [x] Pix/Efi real ausente.
+- [x] E-mail real ausente.
+- [x] WhatsApp real ausente.
+- [x] Publicacao automatica ausente.
+- [x] Dados reais ausentes.
+- [x] Sem scroll lock e sem `document.body.style.overflow`.
+- [x] Sem redesign, nova paleta, nova tipografia, botao flutuante ou animacao chamativa.
+- [x] Validacoes locais executadas.
+- [x] ZIP limpo de revisao gerado.

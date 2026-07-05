@@ -4,10 +4,10 @@
   [int]$FrontendPort = 18333,
   [int]$DockerWaitSeconds = 180,
   [int]$BackendWaitSeconds = 120,
-  [string]$RelatorioAuditoria = "docs/v3/evidencias/bloco-33-1/relatorio-auditoria-wizard-anunciar.md",
-  [string]$RelatorioUi = "docs/v3/evidencias/bloco-33-1/relatorio-ui-mobile-desktop-wizard.md",
-  [string]$RelatorioValidacoes = "docs/v3/evidencias/bloco-33-1/relatorio-validacoes.md",
-  [string]$PrintsDirectory = "docs/v3/evidencias/bloco-33-1/prints",
+  [string]$RelatorioAuditoria = "docs/v3/evidencias/bloco-34/relatorio-auditoria-wizard-anunciar.md",
+  [string]$RelatorioUi = "docs/v3/evidencias/bloco-34/relatorio-ui-mobile-desktop-wizard-paridade.md",
+  [string]$RelatorioValidacoes = "docs/v3/evidencias/bloco-34/relatorio-validacoes.md",
+  [string]$PrintsDirectory = "docs/v3/evidencias/bloco-34/prints/v3-local",
   [switch]$NoStartFrontend,
   [switch]$NaoIniciarDockerDesktop
 )
@@ -74,7 +74,7 @@ function Invoke-WrapperMode {
     exit 2
   }
 
-  $e2eReport = Resolve-RepoPath "docs/v3/evidencias/bloco-33-1/relatorio-e2e-wizard-anunciar.md"
+  $e2eReport = Resolve-RepoPath "docs/v3/evidencias/bloco-34/relatorio-e2e-wizard-anunciar.md"
   $powershell = (Get-Command powershell -ErrorAction Stop).Source
   $argsBase = @(
     "-NoProfile",
@@ -91,7 +91,7 @@ function Invoke-WrapperMode {
     "-BackendPort",
     "$BackendPort",
     "-ResourcePrefix",
-    "topsv3-wizard-sintetico",
+    "topsv3-bloco34-wizard-paridade",
     "-ApiSmokeScript",
     "scripts/local/validar-wizard-anunciar-sintetico-local.ps1",
     "-FixtureSinteticaPath",
@@ -350,7 +350,22 @@ function wizardMetricsScript() {
       "Solicitacao recebida",
       "Confirmacoes",
       "Etapa concluida",
-      "botao final"
+      "botao final",
+      "V3 local",
+      "dados sintéticos locais",
+      "dados sinteticos locais",
+      "A produção destaca",
+      "A producao destaca",
+      "produção observável",
+      "producao observavel",
+      "ambiente local",
+      "fixture",
+      "mock",
+      "E2E",
+      "validação sintética",
+      "validacao sintetica",
+      "snake_case",
+      "UPPER_SNAKE_CASE"
     ].filter((text) => bodyText.includes(text));
     return {
       title: document.title || "",
@@ -466,7 +481,7 @@ function validateMetrics(label, metrics) {
   addCheck(checks, metrics.waLinks.length === 0, "sem WhatsApp publico/liberado", metrics.waLinks.join(", ") || "nenhum");
   addCheck(checks, !metrics.dangerousText, "sem pagamento/Pix/upload/premium/loja visivel como acao", "texto publico controlado");
   addCheck(checks, metrics.technicalViolations.length === 0, "sem enum/status/snake_case tecnico visivel", metrics.technicalViolations.join(", ") || "nenhum");
-  addCheck(checks, metrics.publicTextViolations.length === 0, "sem texto publico critico sem acento", metrics.publicTextViolations.join(", ") || "nenhum");
+  addCheck(checks, metrics.publicTextViolations.length === 0, "sem texto publico de bastidor", metrics.publicTextViolations.join(", ") || "nenhum");
   return checks.map((check) => ({ ...check, label: `${label}: ${check.label}` }));
 }
 
@@ -494,7 +509,7 @@ async function runFlow(cdp, viewport) {
   addCheck(checks, metrics.bodyText.includes("Revise os campos destacados"), `${viewport.key}: validacao amigavel sem 500`, "mensagem visivel");
   checks.push(...validateMetrics(`${viewport.key}/validacao`, metrics));
 
-  await setField(cdp, "nomeExibicao", `Perfil Sintetico Wizard ${viewport.key}`);
+  await setField(cdp, "nomeExibicao", `Perfil Sintético Wizard ${viewport.key}`);
   await setField(cdp, "email", viewport.email);
   await clickButton(cdp, "Continuar");
   await waitFor(cdp, 'Boolean(document.querySelector("[name=uf]"))', "etapa localizacao");
@@ -509,8 +524,8 @@ async function runFlow(cdp, viewport) {
   await clickButton(cdp, "Continuar");
   await waitFor(cdp, 'Boolean(document.querySelector("[name=titulo]"))', "etapa detalhes");
 
-  await setField(cdp, "titulo", `Perfil sintetico wizard ${viewport.key}`);
-  await setField(cdp, "descricao", "Texto sintetico suficiente para validar o wizard publico local sem dados reais.");
+  await setField(cdp, "titulo", `Perfil sintético wizard ${viewport.key}`);
+  await setField(cdp, "descricao", "Texto sintético suficiente para validar o wizard publico local sem dados reais.");
   await setField(cdp, "preco", "120");
   await setField(cdp, "categoria", "ACOMPANHANTE");
   await clickButton(cdp, "Continuar");
@@ -542,14 +557,14 @@ async function runFlow(cdp, viewport) {
 
 async function validateBackendFlags() {
   const payload = {
-    nomeExibicao: "Perfil Sintetico Wizard API",
+    nomeExibicao: "Perfil Sintético Wizard API",
     email: "wizard.api@example.invalid",
     whatsapp: "+5500000000000",
     uf: "GO",
     cidade: "Goiania",
     bairro: "Setor Bueno",
-    titulo: "Perfil sintetico wizard api",
-    descricao: "Texto sintetico suficiente para validar flags locais do wizard publico.",
+    titulo: "Perfil sintético wizard api",
+    descricao: "Texto sintético suficiente para validar flags locais do wizard publico.",
     preco: 120,
     categoria: "ACOMPANHANTE",
     aceiteTermos: true,
@@ -681,14 +696,14 @@ async function main() {
   else auditLines.push("- Nenhuma");
 
   const validationLines = [
-    "# Relatorio - validacoes Bloco 33.1",
+    "# Relatorio - validacoes Bloco 34",
     "",
     `- Resultado: ${failures.length ? "FALHA" : "OK"}`,
     `- Total de checks: ${allChecks.length}`,
     `- Falhas: ${failures.length}`,
     "- CDP local usado: sim",
     "- Prints versionados: sim",
-    "- Docker do wizard: prefixo topsv3-wizard-sintetico quando executado pelo wrapper E2E",
+    "- Docker do wizard: prefixo topsv3-bloco34-wizard-paridade quando executado pelo wrapper E2E",
     "- Recursos de TopsWI/cripto alterados: nao",
     "- Quarentena usada como staging final: nao",
     ""

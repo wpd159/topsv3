@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 33.1, com checkpoint local `f6189f0` do Bloco 32.1, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, correcao textual publica do wizard, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 34, com checkpoint local `f6189f0` do Bloco 32.1, checkpoint local `b7f5f98` dos Blocos 33/33.1, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, correcao textual publica do wizard, paridade local do wizard com a producao observavel, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
 
 ## 1. Visao geral
 
@@ -28,6 +28,7 @@ Estado atual:
 - Bloco 32.1 corrige a UI publica para nao exibir enums/status/snake_case internos, sem mudar regra de seguranca;
 - Bloco 33 cria checkpoint local do Bloco 32.1 e valida o wizard `/anunciar` em desktop/mobile com dados sinteticos;
 - Bloco 33.1 corrige apenas textos publicos/acentuacao do wizard, sem alteracao funcional, regra de negocio, seguranca, contrato ou fluxo real;
+- Bloco 34 cria checkpoint local dos Blocos 33/33.1 e ajusta a V3 local para paridade do wizard `/anunciar` com a producao observavel, sem ultrapassar age gate, sem dados reais e sem efeitos externos;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites

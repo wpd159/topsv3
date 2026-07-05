@@ -73,7 +73,7 @@ export function PublicAnunciarWizard() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [errors, setErrors] = useState<readonly SolicitarAnuncioValidationErrorDto[]>([]);
   const [success, setSuccess] = useState<SolicitarAnuncioPublicoResponseDto | null>(null);
-  const [status, setStatus] = useState("Comece pelo passo inicial.");
+  const [status, setStatus] = useState("Comece seu cadastro preenchendo as informações principais.");
   const [submitting, setSubmitting] = useState(false);
 
   const currentStep = WIZARD_STEPS[currentStepIndex];
@@ -146,7 +146,7 @@ export function PublicAnunciarWizard() {
     setForm(INITIAL_FORM);
     setErrors([]);
     setSuccess(null);
-    setStatus("Comece pelo passo inicial.");
+    setStatus("Comece seu cadastro preenchendo as informações principais.");
     setCurrentStepIndex(0);
   }
 
@@ -176,12 +176,13 @@ export function PublicAnunciarWizard() {
       </form>
 
       <aside className="public-anunciar-side" aria-label="Como funciona">
-        <h2>Como funciona</h2>
+        <span className="status">Confiança e segurança</span>
+        <h2>Apareça para mais clientes com revisão antes da publicação</h2>
         <ul>
-          <li>Você preenche uma etapa por vez.</li>
-          <li>O envio só acontece na revisão final.</li>
-          <li>A equipe revisa antes de publicar.</li>
-          <li>Fotos, vídeos e pagamentos não entram neste fluxo.</li>
+          <li>Cadastro guiado em etapas curtas.</li>
+          <li>Contato direto só depois das regras públicas futuras.</li>
+          <li>Moderação antes de qualquer exibição pública.</li>
+          <li>Fotos, vídeos e pagamentos ficam fora deste cadastro inicial.</li>
         </ul>
       </aside>
     </div>
@@ -192,11 +193,11 @@ export function PublicAnunciarWizard() {
       case "intro":
         return (
           <PublicAnunciarWizardStep
-            title="Envie seu anúncio para análise"
-            description="O cadastro gratuito continua disponível. O anúncio só segue para análise depois da revisão final."
+            title="Comece seu anúncio gratuito"
+            description="Crie seu anúncio em etapas simples. O envio é gratuito e passa por revisão antes de qualquer publicação."
           >
             <div className="public-wizard-intro">
-              <strong>Nenhum pagamento é necessário para enviar.</strong>
+              <strong>PUBLICAR SEU ANÚNCIO</strong>
               <p>Preencha os dados principais, revise tudo no fim e aguarde a análise antes de qualquer publicação.</p>
               <ul>
                 <li>Sem publicação automática.</li>
@@ -210,7 +211,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Dados básicos"
-            description="Informe como o anúncio deve ser identificado pela equipe de análise."
+            description="Informe como seu perfil deve ser identificado pela equipe de análise."
           >
             <div className="public-field-grid">
               <label>
@@ -276,7 +277,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Contato"
-            description="Informe o contato que a equipe deve considerar na análise inicial."
+            description="Informe o contato para análise inicial. Ele não será liberado publicamente por este wizard."
           >
             <label>
               WhatsApp
@@ -298,7 +299,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Detalhes do anúncio"
-            description="Use um título claro, sem telefone, redes sociais ou links."
+            description="Use um título claro, com foco no anúncio, sem telefone, redes sociais ou links."
           >
             <label>
               Título do anúncio
@@ -350,7 +351,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Fotos e vídeos"
-            description="A mídia fica para uma etapa segura futura. Aqui, nenhum arquivo deve ser enviado."
+            description="A produção valoriza mídia revisada, mas esta etapa local não envia arquivo real."
           >
             <div className="public-upload-future" aria-label="Upload futuro">
               <strong>Upload ainda não está disponível neste fluxo.</strong>

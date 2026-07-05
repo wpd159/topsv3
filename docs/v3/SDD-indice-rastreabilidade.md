@@ -203,6 +203,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Relatorio Bloco 33.1: `docs/v3/216-bloco-33-1-correcao-textual-wizard.md`
 - Checklist Bloco 33.1: `docs/v3/217-checklist-bloco-33-1-correcao-textual-wizard.md`
 - Evidencias Bloco 33.1: `docs/v3/evidencias/bloco-33-1/`
+- Checkpoint Blocos 33/33.1: `b7f5f98`
+- Relatorio Bloco 34: `docs/v3/218-bloco-34-paridade-wizard-producao.md`
+- Checklist Bloco 34: `docs/v3/219-checklist-bloco-34-paridade-wizard-producao.md`
+- Evidencias Bloco 34: `docs/v3/evidencias/bloco-34/`
+- Prints producao Bloco 34: `docs/v3/evidencias/bloco-34/prints/producao/`
+- Prints V3 local Bloco 34: `docs/v3/evidencias/bloco-34/prints/v3-local/`
 
 ## Validacoes principais
 

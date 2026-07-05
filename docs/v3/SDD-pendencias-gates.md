@@ -350,9 +350,17 @@ Antes de admin em ambiente nao local:
 
 - Textos publicos sem acento do wizard `/anunciar` corrigidos sem alteracao funcional.
 - Validador do wizard reforcado para reprovar textos criticos antigos renderizados ao visitante.
-- Checkpoint local do delta Bloco 33/33.1 permanece pendente para bloco posterior.
+- Checkpoint local do delta Bloco 33/33.1 criado no Bloco 34 em `b7f5f98`.
 - `gitleaks` real segue pendente no PATH.
 - Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, restore completo, financeiro, Pix/Efi, webhooks ou producao.
+
+## Pendencias do Bloco 34
+
+- Paridade profunda do wizard de producao ficou limitada pelo age gate publico, que nao foi aceito nem contornado.
+- Admin/moderacao do anuncio criado pelo wizard fica adiado para o Bloco 35.
+- Manter o wizard local sem stores, upload real, pagamento real, Pix/Efi real, e-mail real, WhatsApp real, publicacao automatica, scroll lock ou elemento mobile flutuante.
+- `gitleaks` real segue pendente no PATH.
+- Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, restore completo, financeiro, Pix/Efi, webhooks, importador real ou producao.
 
 ## Proibicoes ate novo bloco autorizado
 

@@ -154,7 +154,10 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 32 cria checkpoint local `790188b` dos Blocos 31/31.1 e valida rotas publicas principais renderizadas com dados sinteticos. Docker fica restrito a `topsv3-render-sintetico-*`, prints versionados devem conter apenas dados sinteticos e `BLOQUEADO` nao pode expor WhatsApp publico indevido.
 - Bloco 32.1 decide que pagina publica nao pode renderizar enum/status/snake_case tecnico ao visitante. `PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO` e `conteudo_autorizado` devem ficar restritos a contrato/codigo, com rotulos publicos humanos na UI. A permissao continua sendo decisao do backend.
 - Bloco 33 cria checkpoint local `f6189f0` do Bloco 32.1 e valida `/anunciar` com recurso Docker descartavel `topsv3-wizard-sintetico-*`. Recursos TopsWI/cripto e `topsv3-bloco29-*` permanecem intocados.
-- Bloco 33.1 mantem o Bloco 33 materialmente OK e deixa o checkpoint do delta Bloco 33/33.1 pendente para bloco posterior, sem commit e sem push.
+- Bloco 33.1 mantem o Bloco 33 materialmente OK; o checkpoint local dos Blocos 33/33.1 foi criado no Bloco 34 em `b7f5f98`, sem remote e sem push.
+- Bloco 34 reorienta o escopo para paridade visual/funcional do wizard `/anunciar` com a producao observavel. Admin/moderacao do anuncio criado pelo wizard fica adiado para o Bloco 35.
+- Bloco 34 decide que nao se completa age gate em producao sem autorizacao explicita. A consulta publica a `/anunciar` ficou limitada ao redirecionamento `/?next=/anunciar` e aos elementos publicos observaveis antes do aceite.
+- Bloco 34 mantem o wizard local sem stores, upload real, pagamento real, Pix/Efi real, e-mail real, WhatsApp real e publicacao automatica.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 

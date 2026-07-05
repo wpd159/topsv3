@@ -838,6 +838,13 @@ p {
   padding: 14px;
 }
 
+.public-wizard-intro strong {
+  display: block;
+  color: #1f2933;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
 .public-wizard-intro ul {
   display: grid;
   gap: 8px;

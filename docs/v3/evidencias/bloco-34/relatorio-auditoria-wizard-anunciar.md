@@ -1,0 +1,163 @@
+# Relatorio - auditoria wizard anunciar sintetico
+
+- Resultado: OK
+- Frontend: http://127.0.0.1:18333
+- Backend sintetico: http://127.0.0.1:18133
+- Rota auditada: /anunciar
+- Fluxo guiado por etapas: sim
+- Dados usados: sinteticos
+- Dados reais usados: nao
+- Producao/VPS/API externa acessadas: nao
+- Upload real: nao
+- Pagamento/Pix/Efi/checkout: nao
+- Premium ativado: nao
+- Publicacao automatica: nao
+- WhatsApp/e-mail real enviado: nao
+- Stores no wizard: ausente
+
+## Checks
+- OK: desktop/inicio: wizard guiado com oito etapas - 8
+- OK: desktop/inicio: uma etapa atual visivel - 1
+- OK: desktop/inicio: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/inicio: sem document.body.style.overflow - vazio
+- OK: desktop/inicio: sem scroll lock global - html=visible; body=visible
+- OK: desktop/inicio: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: desktop/inicio: sem upload/camera/documento real - 0
+- OK: desktop/inicio: sem link externo no wizard - nenhum
+- OK: desktop/inicio: sem WhatsApp publico/liberado - nenhum
+- OK: desktop/inicio: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: desktop/inicio: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: desktop/inicio: sem texto publico de bastidor - nenhum
+- OK: desktop: inicio nao e formulario legado unico - campos visiveis=0
+- OK: desktop: validacao amigavel sem 500 - mensagem visivel
+- OK: desktop/validacao: wizard guiado com oito etapas - 8
+- OK: desktop/validacao: uma etapa atual visivel - 1
+- OK: desktop/validacao: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/validacao: sem document.body.style.overflow - vazio
+- OK: desktop/validacao: sem scroll lock global - html=visible; body=visible
+- OK: desktop/validacao: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: desktop/validacao: sem upload/camera/documento real - 0
+- OK: desktop/validacao: sem link externo no wizard - nenhum
+- OK: desktop/validacao: sem WhatsApp publico/liberado - nenhum
+- OK: desktop/validacao: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: desktop/validacao: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: desktop/validacao: sem texto publico de bastidor - nenhum
+- OK: desktop: midia e placeholder sem upload real - etapa de midia futura
+- OK: desktop/midia: wizard guiado com oito etapas - 8
+- OK: desktop/midia: uma etapa atual visivel - 1
+- OK: desktop/midia: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/midia: sem document.body.style.overflow - vazio
+- OK: desktop/midia: sem scroll lock global - html=visible; body=visible
+- OK: desktop/midia: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: desktop/midia: sem upload/camera/documento real - 0
+- OK: desktop/midia: sem link externo no wizard - nenhum
+- OK: desktop/midia: sem WhatsApp publico/liberado - nenhum
+- OK: desktop/midia: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: desktop/midia: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: desktop/midia: sem texto publico de bastidor - nenhum
+- OK: desktop: categoria exibida como texto publico - Acompanhante
+- OK: desktop: sem enum tecnico na revisao - categoria humanizada
+- OK: desktop/revisao: wizard guiado com oito etapas - 8
+- OK: desktop/revisao: uma etapa atual visivel - 1
+- OK: desktop/revisao: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/revisao: sem document.body.style.overflow - vazio
+- OK: desktop/revisao: sem scroll lock global - html=visible; body=visible
+- OK: desktop/revisao: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: desktop/revisao: sem upload/camera/documento real - 0
+- OK: desktop/revisao: sem link externo no wizard - nenhum
+- OK: desktop/revisao: sem WhatsApp publico/liberado - nenhum
+- OK: desktop/revisao: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: desktop/revisao: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: desktop/revisao: sem texto publico de bastidor - nenhum
+- OK: desktop: sem autopublicacao - mensagem pos-envio
+- OK: desktop/pos-envio: wizard guiado com oito etapas - 8
+- OK: desktop/pos-envio: uma etapa atual visivel - 1
+- OK: desktop/pos-envio: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/pos-envio: sem document.body.style.overflow - vazio
+- OK: desktop/pos-envio: sem scroll lock global - html=visible; body=visible
+- OK: desktop/pos-envio: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: desktop/pos-envio: sem upload/camera/documento real - 0
+- OK: desktop/pos-envio: sem link externo no wizard - nenhum
+- OK: desktop/pos-envio: sem WhatsApp publico/liberado - nenhum
+- OK: desktop/pos-envio: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: desktop/pos-envio: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: desktop/pos-envio: sem texto publico de bastidor - nenhum
+- OK: mobile/inicio: wizard guiado com oito etapas - 8
+- OK: mobile/inicio: uma etapa atual visivel - 1
+- OK: mobile/inicio: sem scroll horizontal - 390px em 390px
+- OK: mobile/inicio: sem document.body.style.overflow - vazio
+- OK: mobile/inicio: sem scroll lock global - html=visible; body=visible
+- OK: mobile/inicio: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: mobile/inicio: sem upload/camera/documento real - 0
+- OK: mobile/inicio: sem link externo no wizard - nenhum
+- OK: mobile/inicio: sem WhatsApp publico/liberado - nenhum
+- OK: mobile/inicio: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: mobile/inicio: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: mobile/inicio: sem texto publico de bastidor - nenhum
+- OK: mobile: inicio nao e formulario legado unico - campos visiveis=0
+- OK: mobile: validacao amigavel sem 500 - mensagem visivel
+- OK: mobile/validacao: wizard guiado com oito etapas - 8
+- OK: mobile/validacao: uma etapa atual visivel - 1
+- OK: mobile/validacao: sem scroll horizontal - 390px em 390px
+- OK: mobile/validacao: sem document.body.style.overflow - vazio
+- OK: mobile/validacao: sem scroll lock global - html=visible; body=visible
+- OK: mobile/validacao: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: mobile/validacao: sem upload/camera/documento real - 0
+- OK: mobile/validacao: sem link externo no wizard - nenhum
+- OK: mobile/validacao: sem WhatsApp publico/liberado - nenhum
+- OK: mobile/validacao: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: mobile/validacao: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: mobile/validacao: sem texto publico de bastidor - nenhum
+- OK: mobile: midia e placeholder sem upload real - etapa de midia futura
+- OK: mobile/midia: wizard guiado com oito etapas - 8
+- OK: mobile/midia: uma etapa atual visivel - 1
+- OK: mobile/midia: sem scroll horizontal - 390px em 390px
+- OK: mobile/midia: sem document.body.style.overflow - vazio
+- OK: mobile/midia: sem scroll lock global - html=visible; body=visible
+- OK: mobile/midia: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: mobile/midia: sem upload/camera/documento real - 0
+- OK: mobile/midia: sem link externo no wizard - nenhum
+- OK: mobile/midia: sem WhatsApp publico/liberado - nenhum
+- OK: mobile/midia: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: mobile/midia: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: mobile/midia: sem texto publico de bastidor - nenhum
+- OK: mobile: categoria exibida como texto publico - Acompanhante
+- OK: mobile: sem enum tecnico na revisao - categoria humanizada
+- OK: mobile/revisao: wizard guiado com oito etapas - 8
+- OK: mobile/revisao: uma etapa atual visivel - 1
+- OK: mobile/revisao: sem scroll horizontal - 390px em 390px
+- OK: mobile/revisao: sem document.body.style.overflow - vazio
+- OK: mobile/revisao: sem scroll lock global - html=visible; body=visible
+- OK: mobile/revisao: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: mobile/revisao: sem upload/camera/documento real - 0
+- OK: mobile/revisao: sem link externo no wizard - nenhum
+- OK: mobile/revisao: sem WhatsApp publico/liberado - nenhum
+- OK: mobile/revisao: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: mobile/revisao: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: mobile/revisao: sem texto publico de bastidor - nenhum
+- OK: mobile: sem autopublicacao - mensagem pos-envio
+- OK: mobile/pos-envio: wizard guiado com oito etapas - 8
+- OK: mobile/pos-envio: uma etapa atual visivel - 1
+- OK: mobile/pos-envio: sem scroll horizontal - 390px em 390px
+- OK: mobile/pos-envio: sem document.body.style.overflow - vazio
+- OK: mobile/pos-envio: sem scroll lock global - html=visible; body=visible
+- OK: mobile/pos-envio: sem elemento fixed/absolute/sticky publico - nenhum
+- OK: mobile/pos-envio: sem upload/camera/documento real - 0
+- OK: mobile/pos-envio: sem link externo no wizard - nenhum
+- OK: mobile/pos-envio: sem WhatsApp publico/liberado - nenhum
+- OK: mobile/pos-envio: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
+- OK: mobile/pos-envio: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: mobile/pos-envio: sem texto publico de bastidor - nenhum
+- OK: API local do wizard retorna 201 sintetico - 201
+- OK: API local criou solicitacao sintetica - true
+- OK: API local sem efeito real: publicado - false
+- OK: API local sem efeito real: publicacaoAutomaticaExecutada - false
+- OK: API local sem efeito real: uploadRealExecutado - false
+- OK: API local sem efeito real: pagamentoCriado - false
+- OK: API local sem efeito real: creditoCriado - false
+- OK: API local sem efeito real: premiumObrigatorio - false
+- OK: API local sem efeito real: emailRealEnviado - false
+- OK: API local sem efeito real: whatsappRealEnviado - false
+
+## Falhas
+- Nenhuma
