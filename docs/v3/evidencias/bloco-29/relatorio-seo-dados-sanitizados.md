@@ -1,0 +1,22 @@
+# Relatorio - SEO com dados sanitizados
+
+- Bloco: 29
+- Slugs reais versionados: nao
+- Lista bruta de anuncios reais versionada: nao
+- Midia real versionada: nao
+
+## Resultado
+
+PENDENTE_DADOS_SANITIZADOS
+
+A validacao SEO com dados sanitizados depende de restore local isolado e sanitizacao executada.
+
+## Metricas pendentes
+
+- URLs de anuncio preservaveis: pendente.
+- URLs noindex/removidas: pendente.
+- URLs que exigem decisao: pendente.
+- Cidades com conteudo suficiente: pendente.
+- Bairros com conteudo suficiente: pendente.
+- Paginas fracas/vazias: pendente.
+- 45 URLs desconhecidas do Bloco 28: pendentes de classificacao de cutover.

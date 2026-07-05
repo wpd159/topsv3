@@ -78,6 +78,12 @@ O SHA-256 deve corresponder ao arquivo efetivamente armazenado dentro do ZIP.
 
 Após a criação do ZIP, o manifesto usado na validação deve ser o CSV extraído do próprio pacote. O script deve exigir UTF-8 com BOM, fazer parsing real do CSV, rejeitar colunas ausentes ou extras, linha vazia, caminho vazio, tipo inválido, tamanho não numérico, SHA-256 inválido, caminho duplicado, caminho absoluto, `..`, barra invertida e qualquer entrada que não exista no ZIP.
 
+## Escopo do manifesto e controles
+
+O `MANIFESTO-ARQUIVOS.csv` cobre apenas arquivos versionaveis criados ou modificados no repositorio desde o inventario inicial. Arquivos de controle do pacote, como `RESUMO-ENTREGA.md` e `RELATORIO-VALIDACOES.md`, sao entradas obrigatorias do ZIP e passam por validacao e scanner, mas nao sao linhas do manifesto de arquivos do repositorio.
+
+Essa separacao evita misturar artefatos gerados pelo empacotador com o conjunto auditado de mudancas do workspace, sem reduzir a validacao dos controles internos.
+
 ## Resumo
 
 `RESUMO-ENTREGA.md` deve conter:

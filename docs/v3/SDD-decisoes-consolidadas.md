@@ -130,6 +130,24 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Cutover SEO fica bloqueado ate mapa completo aprovado.
 - SDD e docs `docs/v3` sao fonte obrigatoria de continuidade para outros chats/ferramentas.
 
+## Copia sanitizada de producao
+
+- Producao serve para observar; copia local serve para testar.
+- Banco de producao nunca e ambiente de teste.
+- Backup bruto nunca entra no repositorio, ZIP, chat ou relatorio versionado com conteudo.
+- Backup autorizado deve ficar fora de `C:\topsv3`.
+- Restore local isolado e sanitizacao sao etapa obrigatoria antes de homologacao com dados realistas.
+- Bloco 29 localizou backup autorizado, mas restore ficou pendente por cliente PostgreSQL compativel ausente.
+- Bloco 29.1 reforcou que o SHA-256 do backup deve bater antes de qualquer restore e que a execucao completa so pode ocorrer com cliente/imagem PostgreSQL 17.x ja disponivel localmente, sem `docker pull` automatico.
+- Bloco 29.2 autorizou exclusivamente `docker pull postgres:17`; todos os `docker run` posteriores devem usar `--pull=never`. Como o Docker daemon estava indisponivel, restore/sanitizacao permaneceram bloqueados.
+- Bloco 29.3 autorizou iniciar Docker Desktop local ja instalado e usar `postgres:17` local. Todos os recursos Docker criados para restore/sanitizacao devem usar prefixo `topsv3-bloco29`; recursos TopsWI/terceiros nao podem ser reutilizados, parados, removidos ou alterados.
+- O Bloco 29.3 nao aprovou restore/sanitizacao: `pg_restore -l` passou, mas o restore bruto falhou com `FALHA_PG_RESTORE_RAW`. Sanitizacao e SEO com dados sanitizados permanecem bloqueados ate decisao segura sobre os recursos proprios parcialmente populados.
+- Bloco 29.4 autorizou limpar/recriar somente recursos `topsv3-bloco29-*` e tornou `--single-transaction` obrigatorio no restore. A falha se repetiu com diagnostico sanitizado `CONSTRAINT/FK` em `POST_DATA`; nao aplicar flags adicionais por suposicao e nao executar sanitizacao sem revisao humana/Pro.
+- Bloco 29.5 autoriza restore de quarentena sem `POST_DATA` apenas para diagnostico, sanitizacao imediata e SEO agregado. O banco de quarentena nao pode ser promovido a staging final e nao substitui restore completo consistente.
+- Bloco 29.6 consolida que a Opcao A e obrigatoria para homologacao/cutover: obter novo backup consistente ou corrigir origem/backup antes de staging final. A Opcao B fica permitida somente como insumo auxiliar de SEO/agregados. A Opcao C fica bloqueada ate revisao Pro/humana em novo bloco, com mapeamento seguro, reversivel e sanitizado.
+- Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
+- Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
+
 ## Banco e migrations
 
 - V001 a V017 sao a base de schema auditada ate aqui.

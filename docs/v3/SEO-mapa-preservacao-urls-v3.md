@@ -37,3 +37,5 @@ O mapa versionado e sanitizado. A lista bruta completa de anuncios reais fica fo
 - Mapa completo de URLs reais com status de anuncio, sem versionar lista bruta.
 - Decisao por URL de anuncio removido, pausado, bloqueado ou nao indexavel.
 - Teste de redirects antes de qualquer deploy.
+- Validacao com dados sanitizados do Bloco 29 ficou pendente de restore local isolado.
+- As 45 URLs desconhecidas do Bloco 28 continuam pendentes de classificacao de cutover.

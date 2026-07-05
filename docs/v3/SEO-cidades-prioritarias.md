@@ -32,3 +32,5 @@ Amostras sanitizadas do inventario publico:
 - Cruzar paginas de cidade com cliques/impressao.
 - Identificar cidades com busca local `acompanhante em [cidade]`.
 - Evitar criar paginas de cidade sem conteudo util.
+- Revalidar cidades com dados sanitizados apos restore local isolado.
+- Nao promover cidade/bairro a prioridade definitiva sem dados sanitizados ou Search Console.

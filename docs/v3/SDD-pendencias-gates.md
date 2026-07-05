@@ -227,6 +227,75 @@ Antes de admin em ambiente nao local:
 - Cutover SEO continua bloqueado ate mapa completo aprovado.
 - Saida bruta externa `C:\topsv3-auditoria-local\seo\bloco-28` nao deve entrar no Git nem no ZIP.
 
+## Pendencias do Bloco 29
+
+- Disponibilizar cliente/imagem PostgreSQL compativel com custom format 1.16 em ambiente local autorizado.
+- Executar restore local isolado do backup autorizado.
+- Criar banco bruto local e banco sanitizado local.
+- Executar sanitizacao real de CPF/RG/documento, nome civil, e-mail, telefone/WhatsApp, IP/User-Agent, storage, midia e payloads sensiveis.
+- Validar contagens reais sanitizadas.
+- Validar SEO com dados sanitizados.
+- Classificar 45 URLs desconhecidas do Bloco 28.
+- Manter backup bruto fora do Git, ZIP e `C:\topsv3`.
+
+## Pendencias do Bloco 29.1
+
+- Executar `docker pull postgres:17` somente se o usuario autorizar conscientemente.
+- Reexecutar diagnostico de cliente PostgreSQL compativel.
+- Executar restore local isolado apos cliente 17.x existir localmente.
+- Executar sanitizacao real no banco sanitizado, nunca no banco bruto.
+- Validar ausencia de CPF, e-mail, telefone, IP, storage, URL real, Pix/Efi, token, senha, certificado e payload sensivel.
+- Gerar agregados SEO com dados sanitizados sem listar slugs reais.
+
+## Pendencias do Bloco 29.2
+
+- Disponibilizar Docker daemon local.
+- Reexecutar apenas o download autorizado `docker pull postgres:17` se houver nova tentativa consciente.
+- Confirmar imagem `postgres:17` local.
+- Reexecutar `pg_restore -l` com `--pull=never`.
+- Executar restore local isolado, sanitizacao real e validacoes agregadas.
+- Manter `--pull=never` em todo `docker run` operacional.
+
+## Pendencias do Bloco 29.3
+
+- Decidir tratamento seguro dos recursos proprios parcialmente criados: `topsv3-bloco29-pg17-bruto`, `topsv3-bloco29-pg17-sanitizado`, `topsv3-bloco29-pgdata-bruto`, `topsv3-bloco29-pgdata-sanitizado` e `topsv3-bloco29-net`.
+- Investigar `FALHA_PG_RESTORE_RAW` sem versionar saida bruta, slugs, dados reais ou conteudo sensivel.
+- Nao executar limpeza destrutiva automatica sem autorizacao expressa.
+- Reexecutar restore completo somente com recursos exclusivos `topsv3-bloco29-*` e `docker run --pull=never`.
+- Executar sanitizacao real somente no container/banco sanitizado.
+- Validar ausencia de CPF, e-mail, telefone, IP, storage, URL real, Pix/Efi, token, senha, certificado e payload sensivel.
+- Gerar agregados SEO com dados sanitizados sem listar slugs reais.
+- Preservar TopsWI/terceiros: sem stop, rm, prune, compose down, volume rm ou reutilizacao de recurso externo.
+
+## Pendencias do Bloco 29.4
+
+- Revisar com Pro/humano o raw log externo nao versionado do `pg_restore`.
+- Investigar a falha sanitizada `CONSTRAINT/FK` em fase `POST_DATA`.
+- Nao aplicar `--disable-triggers`, `--clean`, `--if-exists`, `--schema-only`, `--data-only` ou outra flag sem justificativa tecnica aprovada.
+- Manter `--single-transaction` em novas tentativas.
+- Executar restore completo bruto e sanitizado somente apos decisao explicita.
+- Executar sanitizacao real apenas apos restore completo.
+- Validar dados e SEO sanitizados somente apos sanitizacao aprovada.
+- Manter raw logs, backup, dump e qualquer saida bruta fora do repositorio e fora do ZIP.
+- Preservar TopsWI/terceiros: sem stop, rm, prune, compose down, volume rm ou reutilizacao de recurso externo.
+
+## Pendencias do Bloco 29.5
+
+- Revisar com Pro/humano o dossie A/B/C.
+- Caminho final consolidado no Bloco 29.6: Opcao A e obrigatoria para homologacao/cutover; Opcao B e apenas insumo auxiliar; Opcao C permanece bloqueada ate revisao Pro/humana em novo bloco.
+- Classificar em novo bloco, ou por revisao Pro/humana, os 4 erros agregados de sanitizacao registrados como `ALERTA_SANITIZACAO_AGREGADA_NAO_CLASSIFICADA`.
+- Nao promover a quarentena a staging final.
+- Nao iniciar importacao definitiva com dados da quarentena.
+- Nao usar a quarentena para validacao transacional final.
+
+## Pendencias do Bloco 29.6
+
+- Revisao Pro/humana para aprovar caminho A antes de homologacao/cutover.
+- Obter novo backup consistente ou corrigir a origem/backup antes de qualquer staging final.
+- Manter a quarentena apenas como diagnostico agregado e insumo auxiliar.
+- Nao executar correcao local de orfaos sem novo bloco aprovado.
+- Manter logs brutos, backup, dump, SQL bruto e dados reais fora do repositorio e do ZIP.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

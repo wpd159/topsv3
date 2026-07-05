@@ -123,6 +123,8 @@ A seleção do pacote deve comparar o hash do índice Git do inventário inicial
 
 O manifesto validado é sempre o CSV extraído do ZIP, não apenas os objetos em memória do script. `MANIFESTO-ARQUIVOS.csv`, `RESUMO-ENTREGA.md`, `RELATORIO-VALIDACOES.md` e relatórios de testes incluídos passam pelo scanner de secrets.
 
+O manifesto lista apenas arquivos versionaveis criados ou modificados no repositorio desde o inventario inicial. `RESUMO-ENTREGA.md` e `RELATORIO-VALIDACOES.md` sao controles obrigatorios do ZIP, validados e escaneados separadamente.
+
 ## Bloco 3 - backend de domínio base
 
 O Bloco 3 pode criar apenas domínio Java puro espelhando as migrations auditadas. Enquanto `jakarta.persistence` e Spring Data JPA não estiverem aprovados localmente, é proibido criar entidades JPA anotadas, repositories, datasource de domínio, services de negócio, controllers de domínio ou endpoints funcionais.
@@ -429,3 +431,39 @@ Antes de qualquer homologacao/cutover SEO:
 - nao configure canonical de producao em ambiente local;
 - trate Search Console completo como exportacao manual pendente;
 - mantenha o SDD e `docs/v3` como fonte de continuidade para outro chat/ferramenta.
+
+## Bloco 29 - copia sanitizada de producao
+
+Para qualquer trabalho com copia de producao:
+
+- nao use banco de producao como teste;
+- nao gere dump novo sem autorizacao expressa separada;
+- nao coloque backup/dump/CSV bruto em `C:\topsv3`;
+- nao versione backup, dump, CSV bruto, midia, documento ou dado sensivel;
+- use apenas caminhos externos em `C:\topsv3-auditoria-local`;
+- sanitize CPF, documento, nome civil, e-mail, telefone/WhatsApp, IP/User-Agent, storage, midia e payload financeiro;
+- preserve slugs reais apenas dentro do banco sanitizado, nunca em relatorio versionado;
+- nao faça pull/instalacao automatica de ferramenta para abrir dump sensivel;
+- registre pendencia operacional quando o restore local nao puder ser feito com toolchain ja disponivel.
+
+## Bloco 29.1 - restore sanitizado com cliente compativel
+
+Antes de qualquer restore de backup autorizado:
+
+- conferir SHA-256 esperado;
+- diagnosticar cliente PostgreSQL compativel local;
+- preferir imagem/cliente PostgreSQL 17.x ja existente localmente;
+- nao executar `docker pull` ou instalacao sem autorizacao consciente;
+- nao usar producao/VPS como executor;
+- nao converter dump em SQL bruto;
+- nao versionar backup, dump, SQL bruto, midia, documento, slugs reais em lista bruta, payload financeiro, token, certificado ou segredo.
+
+Se nao houver cliente compativel local, registrar `PENDENTE_CLIENTE_POSTGRES_COMPATIVEL` e gerar pacote bloqueado.
+
+No Bloco 29.2, a unica excecao autorizada foi `docker pull postgres:17`. Todo `docker run` posterior deve usar `--pull=never`. Se o pull falhar por Docker, rede ou permissao, a execucao deve parar sem tentar outro download.
+
+No Bloco 29.3, qualquer recurso Docker criado para restore/sanitizacao deve usar o prefixo `topsv3-bloco29`. E proibido reutilizar, parar, remover, limpar ou conectar container, volume, network ou compose de TopsWI/terceiros. Recursos permitidos: `topsv3-bloco29-net`, `topsv3-bloco29-pg17-bruto`, `topsv3-bloco29-pg17-sanitizado`, `topsv3-bloco29-pgdata-bruto` e `topsv3-bloco29-pgdata-sanitizado`.
+
+No Bloco 29.4, a limpeza destrutiva autorizada se limita aos recursos proprios com prefixo `topsv3-bloco29-`. Restore deve usar `--single-transaction`; raw log de `pg_restore` fica apenas fora do repositorio e relatorio versionado deve conter somente classificacao sanitizada.
+
+No Bloco 29.5, scripts de quarentena devem ficar separados dos scripts de restore final. O restore de quarentena usa somente `--section=pre-data`, `--section=data`, `--no-owner`, `--no-privileges`, `--exit-on-error` e `--single-transaction`; nao restaura `POST_DATA`, nao usa `--disable-triggers`, `--clean` ou `--if-exists`, e nao aprova o banco como staging final.

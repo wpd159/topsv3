@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 28 e aponta para documentos de detalhe, contratos, evidencias e gates.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 29.6, com Docker/PostgreSQL 17 local validado, falha de restore completo classificada como `POST_DATA / CONSTRAINT-FK`, diagnostico de quarentena sem `POST_DATA` separado do staging final e decisao A/B/C consolidada sem aprovar cutover.
 
 ## 1. Visao geral
 
@@ -19,6 +19,7 @@ Estado atual:
 - backend Spring Boot com dominio, persistencia JPA, API publica local e admin local;
 - frontend Next.js com rotas publicas preservadas, admin local e funil publico `/anunciar`;
 - SEO operacional de preservacao com inventario publico sanitizado, mapa de URLs, baseline Search Console e plano de cutover;
+- protocolo de copia sanitizada de producao com backup bruto sempre fora do repositorio;
 - migrations Flyway V001 a V017 criadas e validadas estaticamente;
 - PostgreSQL descartavel usado para validacoes locais;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
@@ -359,6 +360,13 @@ Historico resumido:
 - Bloco 27: SEO publico local de cidade, bairro e anuncio;
 - Bloco 27.1: correcao visual obrigatoria, breadcrumbs sem links quebrados e gate renderizado;
 - Bloco 28: inventario SEO de preservacao, mapa de URLs, baseline Search Console e plano de cutover SEO.
+- Bloco 29: backup autorizado localizado, restore local isolado planejado e pendencia de cliente PostgreSQL compativel registrada.
+- Bloco 29.1: SHA-256 do backup autorizado conferido; scripts endurecidos para cliente PostgreSQL 17.x, restore, sanitizacao e validacao agregada; execucao atual segue bloqueada por `PENDENTE_CLIENTE_POSTGRES_COMPATIVEL`.
+- Bloco 29.2: `docker pull postgres:17` autorizado e executado, mas bloqueado por Docker daemon indisponivel; scripts agora exigem `docker run --pull=never` nos fluxos operacionais.
+- Bloco 29.3: Docker daemon local OK, `postgres:17` baixado, `pg_restore -l` OK, recursos `topsv3-bloco29-*` criados e TopsWI/terceiros preservados; restore bruto falhou em `FALHA_PG_RESTORE_RAW`.
+- Bloco 29.4: recursos `topsv3-bloco29-*` limpos/recriados, restore reexecutado com `--single-transaction`, falha repetida classificada como `CONSTRAINT/FK` em `POST_DATA`, sem restauracao parcial.
+- Bloco 29.5: restore de quarentena sem `POST_DATA`, sanitizacao imediata e diagnosticos agregados, sem aprovar staging final.
+- Bloco 29.6: consolidacao documental e hardening dos scripts de quarentena, sem novo restore, sem nova sanitizacao e sem aprovar staging final.
 
 Detalhes e rastreabilidade ficam em `docs/v3/SDD-indice-rastreabilidade.md`.
 
@@ -427,3 +435,164 @@ Gates:
 - `scripts/local/validar-mapa-preservacao-seo-local.ps1`;
 - `scripts/local/validar-seo-publico-local.ps1`;
 - `scripts/local/validar-layout-publico-renderizado.ps1`.
+
+## 24. Bloco 29 - copia sanitizada de producao
+
+O Bloco 29 prepara validacao realista da V3 com copia/backup de producao, sem usar producao como bancada e sem versionar dado sensivel.
+
+Estado consolidado:
+
+- commit local de checkpoint do Bloco 28: `a9a50a3`;
+- backup existente localizado e copiado para pasta externa;
+- caminho externo: `C:\topsv3-auditoria-local\backups\topsdojob-db-20260529-163722.dump`;
+- SHA-256 do backup: `ca1ab4d33e8ac9f484f9c5cf61589014189407c960d1a296cf4b984817f9cee9`;
+- backup bruto nao entrou no Git, ZIP, chat ou relatorio versionado com conteudo;
+- restore local isolado ficou pendente por cliente PostgreSQL compativel ausente;
+- sanitizacao e validacao SEO com dados sanitizados ficaram pendentes do restore.
+
+Decisao tecnica:
+
+- nao fazer pull/instalacao automatica de PostgreSQL 17;
+- nao converter dump em SQL bruto fora de fluxo revisado;
+- nao usar servidor de producao como executor de restore;
+- registrar `PENDENTE_CLIENTE_POSTGRES_COMPATIVEL` sem fingir restore.
+
+Gates novos:
+
+- `scripts/local/producao-localizar-backup-autorizado.ps1`;
+- `scripts/local/producao-restore-local-isolado.ps1`;
+- `scripts/local/producao-sanitizar-db-local.ps1`;
+- `scripts/local/validar-dados-producao-sanitizados-local.ps1`;
+- `scripts/local/validar-seo-com-dados-sanitizados-local.ps1`.
+
+Pendencias:
+
+- disponibilizar cliente/imagem PostgreSQL compativel com custom format 1.16 em ambiente local autorizado;
+- executar restore local isolado;
+- executar sanitizacao;
+- validar contagens reais sanitizadas;
+- validar SEO com dados sanitizados;
+- classificar as 45 URLs desconhecidas do Bloco 28.
+
+## 25. Bloco 29.1 - gate de restore sanitizado
+
+O Bloco 29.1 tenta fechar o restore/sanitizacao com seguranca local. Aprovacao completa exige cliente PostgreSQL 17.x local, restore isolado, banco bruto local, banco sanitizado local, sanitizacao real e validacao SEO agregada.
+
+Estado desta execucao:
+
+- SHA-256 do backup autorizado conferido e aprovado;
+- cliente PostgreSQL 17.x local nao encontrado;
+- apenas `postgres:16` local observado para PostgreSQL;
+- `docker pull postgres:17` documentado como acao manual sugerida, sem execucao automatica;
+- restore, sanitizacao e SEO com dados sanitizados continuam pendentes.
+
+Proibicoes preservadas: sem producao, sem VPS, sem SQL em producao, sem dump novo, sem SQL bruto, sem backup no Git/ZIP, sem dado sensivel versionado, sem remote, sem push e sem commit nao autorizado.
+
+## 26. Bloco 29.2 - PostgreSQL 17 autorizado
+
+O Bloco 29.2 autorizou somente o download local da imagem oficial `postgres:17`.
+
+Estado desta execucao:
+
+- scripts de diagnostico/restore endurecidos com `docker run --pull=never`;
+- `docker pull postgres:17` executado;
+- pull falhou porque o Docker daemon local nao estava disponivel;
+- `pg_restore -l`, restore, banco bruto, banco sanitizado, sanitizacao e SEO com dados sanitizados nao foram executados;
+- status permanece `BLOQUEADO_PENDENTE_CLIENTE_POSTGRES_COMPATIVEL`.
+
+Proibicoes preservadas: sem producao, sem VPS, sem banco de producao, sem SQL em producao, sem dump novo, sem SQL bruto versionado, sem backup no Git/ZIP, sem Pix/Efi real, sem pagamento, sem upload, sem e-mail/WhatsApp real, sem API externa real, sem remote, sem push e sem commit nao autorizado.
+
+## 27. Bloco 29.3 - Docker local e restore isolado
+
+O Bloco 29.3 autorizou iniciar Docker Desktop local ja instalado, executar `docker pull postgres:17` e usar a imagem local somente em recursos Docker exclusivos do Tops do Job V3.
+
+Estado desta execucao:
+
+- Docker Desktop iniciado e Docker daemon local validado;
+- diagnostico `docker ps -a`, `docker network ls`, `docker volume ls` e `docker image ls postgres` executado antes de criar recursos do Tops V3;
+- recursos de TopsWI/terceiros foram apenas observados e preservados;
+- `docker pull postgres:17` concluiu;
+- `pg_restore -l` com `postgres:17` passou;
+- `docker run` operacional manteve `--pull=never` e nomes com prefixo `topsv3-bloco29`;
+- network, volumes e containers exclusivos do Tops V3 foram criados;
+- restore bruto falhou com `FALHA_PG_RESTORE_RAW`;
+- container bruto ficou com restauracao parcial estrutural detectada por contagem agregada de 77 tabelas;
+- container sanitizado foi criado, mas permaneceu sem tabelas restauradas;
+- sanitizacao, validacao de dados e SEO com dados sanitizados nao foram executados.
+
+Recursos Docker permitidos/criados:
+
+- `topsv3-bloco29-net`;
+- `topsv3-bloco29-pg17-bruto`;
+- `topsv3-bloco29-pg17-sanitizado`;
+- `topsv3-bloco29-pgdata-bruto`;
+- `topsv3-bloco29-pgdata-sanitizado`.
+
+Proibicoes preservadas: sem producao, sem VPS, sem banco de producao, sem SQL em producao, sem dump novo, sem SQL bruto versionado, sem backup no Git/ZIP, sem Pix/Efi real, sem pagamento, sem upload, sem e-mail/WhatsApp real, sem API externa real, sem remote, sem push, sem commit nao autorizado, sem `docker prune`, sem `docker compose down` e sem alteracao em recurso TopsWI/terceiro.
+
+## 28. Bloco 29.4 - diagnostico seguro do restore bruto
+
+O Bloco 29.4 autorizou limpar e recriar exclusivamente os recursos Docker proprios `topsv3-bloco29-*` deixados parcialmente populados pela tentativa anterior.
+
+Estado desta execucao:
+
+- recursos `cripto*`/TopsWI foram detectados e preservados;
+- nao houve `docker prune`, `docker system prune`, `docker volume prune`, `docker network prune` ou `docker compose down`;
+- containers, volumes e network proprios `topsv3-bloco29-*` foram limpos e recriados;
+- `pg_restore -l` com `postgres:17` continuou OK;
+- restore bruto foi reexecutado com `--single-transaction`;
+- falha repetida classificada de forma sanitizada como `CONSTRAINT/FK` na fase `POST_DATA`;
+- raw log ficou fora do repositorio em area de auditoria local;
+- bancos bruto e sanitizado ficaram com 0 tabelas apos a falha, evitando nova restauracao parcial;
+- sanitizacao, validacao de dados e SEO com dados sanitizados nao foram executados.
+
+Decisao: nao aplicar flags adicionais por suposicao. A continuidade exige revisao humana/Pro do log bruto externo, sem versionar log bruto, slugs, dados reais ou payload sensivel.
+
+Proibicoes preservadas: sem producao, sem VPS, sem banco de producao, sem SQL em producao, sem dump novo, sem SQL bruto versionado, sem log bruto versionado, sem backup no Git/ZIP, sem Pix/Efi real, sem pagamento, sem upload, sem e-mail/WhatsApp real, sem API externa real, sem remote, sem push e sem commit nao autorizado.
+
+## 29. Bloco 29.5 - restore de quarentena sem POST_DATA
+
+O Bloco 29.5 investiga a falha `POST_DATA / CONSTRAINT-FK` por meio de uma restauracao de quarentena sem `POST_DATA`.
+
+Estado planejado:
+
+- criar/recriar somente `topsv3-bloco29-pg17-quarentena` e `topsv3-bloco29-pgdata-quarentena`;
+- preservar recursos `cripto*`/TopsWI;
+- executar restore com `--section=pre-data`, `--section=data`, `--no-owner`, `--no-privileges`, `--exit-on-error` e `--single-transaction`;
+- nao restaurar constraints/FKs/indexes/finalizacoes de `POST_DATA`;
+- sanitizar imediatamente a quarentena;
+- gerar diagnostico agregado de FK/orfandade e SEO agregado;
+- manter o banco de quarentena fora da aprovacao de staging final.
+
+Decisao: a quarentena pode apoiar inventario, SEO e analise de consistencia, mas nao substitui backup consistente nem restore completo aprovado.
+
+Resultado da execucao:
+
+- restore de quarentena sem `POST_DATA`: OK;
+- sanitizacao e validacao de dados sensiveis: OK, total sensivel 0;
+- FKs previstas no TOC: 76;
+- URLs de anuncio preservaveis estimadas: 520;
+- banco de quarentena aprovado como staging final: nao;
+- decisao A/B/C permanece para revisao humana/Pro.
+
+## 30. Bloco 29.6 - consolidacao do diagnostico de quarentena
+
+O Bloco 29.6 consolida documentalmente o diagnostico do Bloco 29.5 e endurece os scripts para impedir uso de recursos Docker fora dos nomes autorizados.
+
+Estado desta execucao:
+
+- README passa a refletir o estado real do Bloco 29.5/29.6;
+- checklist 29.5 fica consistente com as validacoes reais;
+- 4 erros agregados de sanitizacao sao classificados como `ALERTA_SANITIZACAO_AGREGADA_NAO_CLASSIFICADA`;
+- scripts de quarentena exigem nomes exatos para container, volume, network e banco autorizados;
+- nao houve novo restore, nova sanitizacao, correcao de orfaos ou restauracao de `POST_DATA`.
+
+Decisao consolidada:
+
+- Opcao A e obrigatoria para homologacao/cutover: obter novo backup consistente ou corrigir origem/backup antes de staging final;
+- Opcao B e permitida apenas como insumo auxiliar de SEO/agregados, inventario e analise de consistencia;
+- Opcao C permanece bloqueada ate revisao Pro/humana em novo bloco, com mapeamento seguro, reversivel e sanitizado;
+- banco de quarentena nao pode ser usado como base de importacao definitiva;
+- banco de quarentena nao pode validar comportamento transacional final;
+- Bloco 29 nao esta fechado materialmente;
+- Bloco 29.5 esta aprovado apenas como diagnostico de quarentena sanitizada.

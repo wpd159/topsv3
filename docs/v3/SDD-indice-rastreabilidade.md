@@ -46,6 +46,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Script SEO publico: `scripts/local/validar-seo-publico-local.ps1`
 - Script inventario SEO publico: `scripts/local/seo-inventario-producao-publica.ps1`
 - Script validacao mapa SEO: `scripts/local/validar-mapa-preservacao-seo-local.ps1`
+- Protocolo copia sanitizada: `docs/v3/PRODUCAO-copia-sanitizada-protocolo.md`
+- Sanitizacao de dados: `docs/v3/PRODUCAO-sanitizacao-dados.md`
+- Restore local/staging: `docs/v3/PRODUCAO-restore-local-staging.md`
+- SEO com dados sanitizados: `docs/v3/SEO-validacao-com-dados-sanitizados.md`
+- Matriz campos sanitizados: `docs/v3/DADOS-sanitizados-matriz-campos.md`
+- Riscos privacidade: `docs/v3/DADOS-producao-riscos-privacidade.md`
 
 ## Visual e mobile
 
@@ -135,6 +141,18 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 27.1: `docs/v3/187-checklist-bloco-27-1-correcao-visual-seo.md`
 - Relatorio Bloco 28: `docs/v3/188-bloco-28-inventario-seo-preservacao.md`
 - Checklist Bloco 28: `docs/v3/189-checklist-bloco-28-inventario-seo-preservacao.md`
+- Relatorio Bloco 29: `docs/v3/190-bloco-29-restore-sanitizado-producao.md`
+- Checklist Bloco 29: `docs/v3/191-checklist-bloco-29-restore-sanitizado-producao.md`
+- Relatorio Bloco 29.1: `docs/v3/192-bloco-29-1-restore-sanitizacao-validacao.md`
+- Checklist Bloco 29.1: `docs/v3/193-checklist-bloco-29-1-restore-sanitizacao-validacao.md`
+- Relatorio Bloco 29.2: `docs/v3/194-bloco-29-2-restore-sanitizacao-executado.md`
+- Checklist Bloco 29.2: `docs/v3/195-checklist-bloco-29-2-restore-sanitizacao-executado.md`
+- Relatorio Bloco 29.3: `docs/v3/196-bloco-29-3-restore-sanitizacao-docker-local.md`
+- Checklist Bloco 29.3: `docs/v3/197-checklist-bloco-29-3-restore-sanitizacao-docker-local.md`
+- Relatorio Bloco 29.4: `docs/v3/198-bloco-29-4-diagnostico-restore-raw.md`
+- Checklist Bloco 29.4: `docs/v3/199-checklist-bloco-29-4-diagnostico-restore-raw.md`
+- Relatorio Bloco 29.5: `docs/v3/200-bloco-29-5-restore-quarentena-sem-postdata.md`
+- Checklist Bloco 29.5: `docs/v3/201-checklist-bloco-29-5-restore-quarentena-sem-postdata.md`
 - Auditoria SEO publica de producao: `docs/v3/SEO-auditoria-producao-publica.md`
 - Padroes de metadata publica: `docs/v3/SEO-padroes-metadata-publica.md`
 - Linkagem interna V3: `docs/v3/SEO-linkagem-interna-v3.md`
@@ -144,6 +162,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 27: `docs/v3/evidencias/bloco-27/`
 - Evidencias Bloco 27.1: `docs/v3/evidencias/bloco-27-1/`
 - Evidencias Bloco 28: `docs/v3/evidencias/bloco-28/`
+- Evidencias Bloco 29: `docs/v3/evidencias/bloco-29/`
+- Evidencias Bloco 29.1: `docs/v3/evidencias/bloco-29-1/`
+- Evidencias Bloco 29.2: `docs/v3/evidencias/bloco-29-2/`
+- Evidencias Bloco 29.3: `docs/v3/evidencias/bloco-29-3/`
+- Evidencias Bloco 29.4: `docs/v3/evidencias/bloco-29-4/`
+- Evidencias Bloco 29.5: `docs/v3/evidencias/bloco-29-5/`
 
 ## Validacoes principais
 
@@ -156,6 +180,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - SEO publico local: `scripts/local/validar-seo-publico-local.ps1`
 - Mapa preservacao SEO: `scripts/local/validar-mapa-preservacao-seo-local.ps1`
 - Layout publico renderizado: `scripts/local/validar-layout-publico-renderizado.ps1`
+- Localizar backup autorizado: `scripts/local/producao-localizar-backup-autorizado.ps1`
+- Restore local isolado: `scripts/local/producao-restore-local-isolado.ps1`
+- Sanitizar DB local: `scripts/local/producao-sanitizar-db-local.ps1`
+- Validar dados sanitizados: `scripts/local/validar-dados-producao-sanitizados-local.ps1`
+- Validar SEO com dados sanitizados: `scripts/local/validar-seo-com-dados-sanitizados-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`
 - Secrets: `scripts/security/verificar-segredos.ps1`

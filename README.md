@@ -4,7 +4,9 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Fase atual: **Fase 2G - dossie de transicao para revisao Pro**.
+Estado atual: **Bloco 29.5 concluido como diagnostico de quarentena sanitizada sem POST_DATA. O restore completo/staging final permanece bloqueado por falha POST_DATA / CONSTRAINT-FK e depende de decisao Pro/humana antes de qualquer uso final.**
+
+O Bloco 29.6 consolida documentalmente esse estado, corrige o checklist do Bloco 29.5 e endurece os scripts de quarentena para impedir operacao em recursos Docker fora dos nomes autorizados. Ele nao executa novo restore, nao restaura `POST_DATA`, nao executa nova sanitizacao, nao corrige orfaos e nao aprova staging final.
 
 Bloco 27.1 adiciona correcao visual obrigatoria para as paginas publicas de SEO e o gate renderizado `scripts/local/validar-layout-publico-renderizado.ps1`, evitando mini-coluna, H1 verticalizado, breadcrumbs quebrados e wizard espremido em desktop/mobile.
 
@@ -288,6 +290,8 @@ Ao final de cada execução futura do Codex, deve ser criado um ZIP na Área de 
 
 O inventário inicial deve ser criado antes de qualquer alteração com `scripts/entrega/criar-inventario-inicial.ps1`, fora do repositório, em CSV UTF-8 com BOM. O gerador valida o inventário real antes de usar, bloqueia qualquer alteração fora do índice Git, reabre o ZIP, extrai em diretório temporário, importa o `MANIFESTO-ARQUIVOS.csv` real armazenado no pacote, exige UTF-8 com BOM, compara colunas, caminhos, tipos, tamanhos e hashes com o manifesto esperado, recalcula o SHA-256 dos arquivos extraídos e escaneia os arquivos de controle antes e depois da compactação.
 
+O `MANIFESTO-ARQUIVOS.csv` descreve apenas arquivos versionaveis criados ou modificados no repositorio desde o inventario inicial. `RESUMO-ENTREGA.md` e `RELATORIO-VALIDACOES.md` sao metadados de controle do pacote: entram obrigatoriamente no ZIP, sao validados e escaneados, mas nao aparecem como linhas do manifesto de arquivos do repositorio.
+
 ## Documentação SDD
 
 Os documentos de Specification-Driven Development ficam em:
@@ -457,6 +461,24 @@ Tambem foi corrigido o default de `EFI_PIX_MOCK_MODE`: `application.yml` fica fa
 
 Nao houve migration, SQL de schema, seed real, dado real, acao critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.
 
+## Bloco 15 - admin read-only detalhado
+
+O Bloco 15 adiciona listagens e detalhes sanitizados para anuncios, midia e revisoes administrativas locais:
+
+- `GET /api/admin/anuncios`;
+- `GET /api/admin/anuncios/{id}`;
+- `GET /api/admin/anuncios/{id}/midias`;
+- `GET /api/admin/midias`;
+- `GET /api/admin/midias/{id}`;
+- `GET /api/admin/moderacao/revisoes`;
+- `GET /api/admin/moderacao/revisoes/{id}`.
+
+O health publico foi reduzido para `status`, `app` e `requestId`; ambiente e mock Efi ficam apenas em `/api/admin/sistema/status` para `ADMIN`.
+
+`ADMIN` e `MODERADOR` acessam anuncios/midia/moderacao conforme RBAC. `COMERCIAL` acessa apenas anuncios em versao limitada. `USUARIO` nao acessa admin.
+
+Nao houve migration, SQL de schema, seed real, dado real, acao critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.
+
 ## Bloco 20 - templates locais e preview sanitizado de outbox
 
 O Bloco 20 adiciona `GET /api/admin/outbox/{id}/preview` para renderizar previa local sanitizada de comunicacoes de moderacao a partir do outbox.
@@ -601,20 +623,78 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/seo-inventario
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-mapa-preservacao-seo-local.ps1
 ```
 
-## Bloco 15 - admin read-only detalhado
+## Bloco 29 - copia sanitizada de producao
 
-O Bloco 15 adiciona listagens e detalhes sanitizados para anuncios, midia e revisoes administrativas locais:
+O Bloco 29 prepara restore local isolado de backup autorizado da producao para validar a V3 com dados realistas e sanitizados.
 
-- `GET /api/admin/anuncios`;
-- `GET /api/admin/anuncios/{id}`;
-- `GET /api/admin/anuncios/{id}/midias`;
-- `GET /api/admin/midias`;
-- `GET /api/admin/midias/{id}`;
-- `GET /api/admin/moderacao/revisoes`;
-- `GET /api/admin/moderacao/revisoes/{id}`.
+Regras:
 
-O health publico foi reduzido para `status`, `app` e `requestId`; ambiente e mock Efi ficam apenas em `/api/admin/sistema/status` para `ADMIN`.
+- backup/dump sempre fora de `C:\topsv3`;
+- backup/dump nunca entra no Git ou ZIP;
+- banco de producao nunca e ambiente de teste;
+- midia, documentos, telefone, WhatsApp, e-mail, CPF, storage e payload financeiro nao podem ser versionados;
+- restore local depende de cliente PostgreSQL compativel;
+- sanitizacao e SEO com dados sanitizados sao gates antes de homologacao/cutover.
 
-`ADMIN` e `MODERADOR` acessam anuncios/midia/moderacao conforme RBAC. `COMERCIAL` acessa apenas anuncios em versao limitada. `USUARIO` nao acessa admin.
+Scripts:
 
-Nao houve migration, SQL de schema, seed real, dado real, acao critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/producao-localizar-backup-autorizado.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/producao-restore-local-isolado.ps1 -BackupPath "C:\topsv3-auditoria-local\backups\topsdojob-db-20260529-163722.dump"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/producao-sanitizar-db-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-dados-producao-sanitizados-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-seo-com-dados-sanitizados-local.ps1
+```
+
+## Bloco 29.1 - gate de restore sanitizado
+
+O Bloco 29.1 endurece os scripts para concluir o restore local isolado somente quando houver cliente PostgreSQL 17.x compativel ja disponivel localmente.
+
+O SHA-256 do backup autorizado e conferido antes de qualquer tentativa de restore. Como a maquina local ainda possui apenas `postgres:16`, o restore real permanece bloqueado com `PENDENTE_CLIENTE_POSTGRES_COMPATIVEL`; nao foi feito `docker pull`, instalacao, acesso a VPS/producao, conversao para SQL bruto ou exposicao de conteudo do backup.
+
+Scripts novos/atualizados:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/diagnosticar-cliente-postgres-compativel-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/producao-restore-local-isolado.ps1 -BackupPath "C:\topsv3-auditoria-local\backups\topsdojob-db-20260529-163722.dump" -ExpectedSha256 "ca1ab4d33e8ac9f484f9c5cf61589014189407c960d1a296cf4b984817f9cee9"
+```
+
+## Bloco 29.2 - PostgreSQL 17 autorizado
+
+O Bloco 29.2 autorizou apenas `docker pull postgres:17` para obter a imagem oficial localmente. Antes do pull, os scripts foram endurecidos para que todo `docker run` operacional use `--pull=never`.
+
+O pull foi executado, mas falhou porque o Docker daemon local nao estava disponivel. Por isso, `pg_restore -l`, restore, banco bruto, banco sanitizado, sanitizacao real e validacao SEO com dados sanitizados continuam bloqueados por `PENDENTE_CLIENTE_POSTGRES_COMPATIVEL`.
+
+Nenhum outro download, producao, VPS, SQL bruto, dump novo, backup no Git/ZIP, Pix/Efi real, pagamento, upload, e-mail real, WhatsApp real, API externa, remote, push ou commit foi executado.
+
+## Bloco 29.3 - Docker local e restore isolado
+
+O Bloco 29.3 iniciou/validou Docker Desktop local, executou `docker pull postgres:17` com sucesso e confirmou `pg_restore -l` do backup autorizado usando PostgreSQL 17.
+
+Por seguranca, todos os recursos Docker do Tops do Job V3 usam prefixo `topsv3-bloco29`: network, volumes e containers bruto/sanitizado. Recursos de TopsWI/terceiros foram apenas diagnosticados em modo leitura e preservados; nao houve `docker prune`, `docker compose down`, stop/rm de terceiros ou reutilizacao de container/volume/network externo.
+
+O restore bruto falhou com `FALHA_PG_RESTORE_RAW`. O container bruto ficou parcialmente populado por contagem estrutural agregada, o container sanitizado permaneceu sem tabelas, e sanitizacao/validacao de dados/SEO seguem bloqueadas ate decisao segura de limpeza/reexecucao dos recursos proprios.
+
+## Bloco 29.4 - diagnostico seguro do restore bruto
+
+O Bloco 29.4 limpou e recriou somente recursos Docker proprios `topsv3-bloco29-*`, preservando `cripto*`/TopsWI e sem usar prune/compose down.
+
+O restore foi reexecutado com `--single-transaction`, alem de `--no-owner`, `--no-privileges` e `--exit-on-error`. A falha se repetiu e foi classificada de forma sanitizada como `CONSTRAINT/FK` na fase `POST_DATA`.
+
+O raw log ficou apenas fora do repositorio, em area local de auditoria. Nenhum log bruto, dump, backup, SQL bruto, slug real, midia, documento, token ou payload sensivel foi versionado. Com `--single-transaction`, os bancos bruto e sanitizado permaneceram com 0 tabelas apos a falha.
+
+## Bloco 29.5 - quarentena sem POST_DATA
+
+O Bloco 29.5 prepara diagnostico controlado da falha `POST_DATA / CONSTRAINT-FK` por restore de quarentena sem `POST_DATA`.
+
+O banco de quarentena nao e staging final, nao aprova cutover e nao substitui restore completo consistente. Ele serve apenas para sanitizacao imediata, diagnostico agregado de FK/orfandade e SEO agregado sem versionar dados reais.
+
+Scripts:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/producao-restore-quarentena-sem-postdata.ps1 -BackupPath "C:\topsv3-auditoria-local\backups\topsdojob-db-20260529-163722.dump" -ExpectedSha256 "ca1ab4d33e8ac9f484f9c5cf61589014189407c960d1a296cf4b984817f9cee9"
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/producao-sanitizar-db-quarentena-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-dados-quarentena-sanitizada-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/diagnosticar-fks-quarentena-sanitizada-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-seo-quarentena-sanitizada-local.ps1
+```

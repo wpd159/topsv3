@@ -15,6 +15,8 @@
 | Mudanca brusca de title/H1 | alta | media | preservar intencao principal | gate metadata | restaurar padrao aprovado |
 | Admin/API no sitemap | critica | baixa | validar sitemap sem rotas proibidas | gate mapa SEO | remover e republicar sitemap |
 | Anuncio removido redirecionado para home | alta | media | nao usar redirect generico | gate 301 | desfazer regra |
+| Dados sanitizados indisponiveis | alta | media | executar restore/sanitizacao local antes do cutover | gate Bloco 29 | manter cutover bloqueado |
+| URLs desconhecidas sem classificacao | alta | media | classificar as 45 URLs desconhecidas do Bloco 28 | gate mapa SEO | nao publicar sitemap final |
 
 ## Principio de resposta
 

@@ -369,15 +369,15 @@ try {
   }
 
   $suffix = ([guid]::NewGuid().ToString("N")).Substring(0, 12)
-  $pgName = "topsv3-e2e-pg-$suffix"
-  $networkName = "topsv3-e2e-net-$suffix"
+  $pgName = "topsv3-bloco29-e2e-pg-$suffix"
+  $networkName = "topsv3-bloco29-e2e-net-$suffix"
   $network = Invoke-Native -FilePath $dockerExe -Arguments @("network", "create", $networkName)
   if ($network.ExitCode -ne 0) { throw "Falha ao criar rede descartavel: $($network.Output -join ' ')" }
   Add-Step "Rede Docker descartavel criada."
 
   $credentialArg = ("POSTGRES_" + "PASS" + "WORD") + "=" + $dbSecret
   $run = Invoke-Native -FilePath $dockerExe -Arguments @(
-    "run", "-d",
+    "run", "--pull=never", "-d",
     "--name", $pgName,
     "--network", $networkName,
     "-e", "POSTGRES_DB=$dbName",
