@@ -256,6 +256,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 43: `docs/v3/evidencias/bloco-43/`
 - Checkpoint Bloco 42: `09ffcd3`
 - Controle de pacote com objetivo obrigatorio: `scripts/entrega/criar-pacote-revisao.ps1`
+- Relatorio Bloco 44: `docs/v3/238-bloco-44-gitleaks-real.md`
+- Checklist Bloco 44: `docs/v3/239-checklist-bloco-44-gitleaks-real.md`
+- Evidencias Bloco 44: `docs/v3/evidencias/bloco-44/`
+- Checkpoint Bloco 43: `71404a3`
+- Scanner de segredos com PATH recarregado: `scripts/security/verificar-segredos.ps1`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

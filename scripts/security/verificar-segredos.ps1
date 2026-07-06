@@ -21,6 +21,15 @@ function New-GitleaksResult {
   }
 }
 
+function Sync-ProcessPathFromRegistry {
+  $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  $combined = @($machinePath, $userPath) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+  if ($combined.Count -gt 0) {
+    $env:Path = ($combined -join ";")
+  }
+}
+
 function Invoke-GitleaksScan {
   if ($env:TOPSV3_FORCAR_FALLBACK_GITLEAKS -eq "1") {
     Write-Host "gitleaks PENDENTE: fallback forcado por variavel de ambiente."
@@ -38,6 +47,7 @@ function Invoke-GitleaksScan {
     return (New-GitleaksResult -Status "ERRO" -ExitCode $simulatedCode -Detalhe "simulado")
   }
 
+  Sync-ProcessPathFromRegistry
   $cmd = Get-Command gitleaks -ErrorAction SilentlyContinue
   if (-not $cmd) {
     Write-Host "gitleaks PENDENTE: binário não encontrado no PATH."

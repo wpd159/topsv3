@@ -423,6 +423,16 @@ Antes de admin em ambiente nao local:
 - Fallback local permanece secundario e nao substitui gate definitivo de producao sem decisao formal.
 - Empacotador corrigido para preencher `Objetivo` no `RESUMO-ENTREGA.md` mesmo quando `-ResumoExecucao` ou metadados JSON vierem vazios.
 
+## Pendencias do Bloco 44
+
+- Checkpoint local do Bloco 43 criado em `71404a3`, sem remote e sem push.
+- `winget` encontrado em `C:\Users\WpD\AppData\Local\Microsoft\WindowsApps\winget.exe`.
+- `gitleaks` 8.30.1 instalado via `winget`.
+- Primeiro scan real encontrou 4 achados em `frontend/.next`, artefato ignorado de build local.
+- `frontend/.next` foi removido por ser build/cache ignorado e regeneravel.
+- Scan real final `gitleaks detect --source . --no-git --redact --verbose` passou sem leaks.
+- Fallback local permanece secundario e continua sendo executado pelo scanner de segredos.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;
