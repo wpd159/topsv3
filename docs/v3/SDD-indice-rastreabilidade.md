@@ -280,6 +280,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 48: `docs/v3/247-checklist-bloco-48-auth-rbac-csrf-local.md`
 - Evidencias Bloco 48: `docs/v3/evidencias/bloco-48/`
 - Checkpoint Bloco 47: `7791d11`
+- Validador observabilidade/auditoria local: `scripts/local/validar-observabilidade-auditoria-local.ps1`
+- Relatorio Bloco 49: `docs/v3/248-bloco-49-observabilidade-auditoria-local.md`
+- Checklist Bloco 49: `docs/v3/249-checklist-bloco-49-observabilidade-auditoria-local.md`
+- Evidencias Bloco 49: `docs/v3/evidencias/bloco-49/`
+- Checkpoint Bloco 48: `9bd38f3`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

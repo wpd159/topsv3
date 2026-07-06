@@ -71,6 +71,16 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - O Bloco 48 valida localmente login, cookie HttpOnly/SameSite, logout, bloqueio sem sessao, RBAC `ADMIN`/`MODERADOR`, fallback `/api/**`, CORS local e status de CSRF com dados sinteticos.
 - CSRF local pode permanecer desabilitado apenas para smoke controlado; homologacao/producao exigem revisao Pro de CSRF real, HTTPS, cookie seguro, CORS definitivo e politica de sessao.
 
+## Observabilidade e auditoria
+
+- Request-id deve existir em respostas e logs locais.
+- `RequestIdFilter` deve rodar antes da seguranca para cobrir 401/403.
+- Logs locais de request devem registrar apenas metodo, status, duracao e requestId.
+- Logs nao devem registrar cookie, credencial, documento, contato, IP bruto, user-agent bruto ou stack trace publico.
+- Auditoria administrativa local deve registrar requestId e snapshots JSON sanitizados.
+- IP e user-agent brutos nao devem ser persistidos em auditoria; hashing real e retencao final ficam para homologacao/producao.
+- O Bloco 49 valida observabilidade/auditoria local com dados sinteticos e mantem revisao Pro obrigatoria para logs estruturados JSON finais e auditoria com dados reais.
+
 ## Moderacao
 
 - `REPROVAR` exige motivo.

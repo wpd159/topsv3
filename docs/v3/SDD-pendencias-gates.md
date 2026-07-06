@@ -479,6 +479,17 @@ Antes de admin em ambiente nao local:
 - Nao-local possui `CookieCsrfTokenRepository`, mas homologacao/producao ainda exigem revisao Pro de CSRF real, HTTPS, cookie seguro, CORS definitivo e politica de sessao.
 - Nenhuma producao, VPS, dado real, restore, staging, Pix/Efi real, webhook, API externa ou push foi usado.
 
+## Estado do Bloco 49
+
+- Checkpoint local do Bloco 48 criado em `9bd38f3`, sem remote e sem push.
+- Observabilidade/auditoria local validada com `scripts/local/validar-observabilidade-auditoria-local.ps1`.
+- Resultado: `OK_OBSERVABILIDADE_AUDITORIA_LOCAL`.
+- `RequestIdFilter` passou a rodar antes da seguranca para cobrir 401/403.
+- `AdminSecurityErrorWriter` foi endurecido para UTF-8, JSON via writer e flush explicito.
+- Request-id, logs locais, erros 400/401/403/404/500 e auditoria admin sanitizada foram validados com dados sinteticos.
+- Producao/homologacao ainda exigem logs estruturados JSON finais, hashing real de IP/user-agent, pipeline centralizado, alertas, retencao e revisao Pro de auditoria JSON.
+- Nenhuma producao, VPS, dado real, restore, staging, Pix/Efi real, webhook, API externa ou push foi usado.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

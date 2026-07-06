@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -23,6 +24,7 @@ public class AdminSecurityErrorWriter {
     public void write(HttpServletRequest request, HttpServletResponse response, ApiErrorCode code) throws IOException {
         response.setStatus(code.status().value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
         ApiErrorResponse body = new ApiErrorResponse(
                 Instant.now(),
                 code.status().value(),
@@ -31,6 +33,7 @@ public class AdminSecurityErrorWriter {
                 code.defaultMessage(),
                 request.getRequestURI(),
                 RequestIdContext.current(request));
-        objectMapper.writeValue(response.getOutputStream(), body);
+        objectMapper.writeValue(response.getWriter(), body);
+        response.flushBuffer();
     }
 }
