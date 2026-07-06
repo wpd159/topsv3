@@ -165,12 +165,15 @@ Continua proibido:
 Antes de URL publica de midia:
 
 - politica de storage/CDN aprovada;
+- contrato `docs/v3/HOMOLOGACAO-storage-upload-cdn.md` revisado;
 - separacao de midia publica e privada;
 - regra de documento privado;
 - assinatura/expiracao quando aplicavel;
 - auditoria de acesso;
 - DTO publico sem storage interno;
 - validacao mobile de placeholders/midia.
+- antivirus/moderacao real definidos;
+- rollback de URL publica e invalidacao de cache testados.
 
 ## Gate juridico/documental
 
@@ -507,6 +510,16 @@ Antes de admin em ambiente nao local:
 - Contratos versionados: ambiente, secrets externos, CORS/cookies/CSRF, rollback e monitoramento.
 - `APP_ENV=homologacao`, dominio proprio, banco isolado, secrets fora do Git, cookies seguros, CSRF nao-local, storage pendente, logs/auditoria JSON e rollback ficam definidos como requisitos.
 - Staging real, dados reais/sanitizados, restore, Pix/Efi real, webhook, API externa, remote e push continuam proibidos sem bloco futuro autorizado.
+
+## Estado do Bloco 52
+
+- Checkpoint local do Bloco 51 criado em `eacecaa2`, sem remote e sem push.
+- Contrato tecnico storage/upload/CDN criado sem upload real.
+- O contrato separa midia publica, stories, midia pendente, midia rejeitada e documento privado.
+- URL publica fica permitida apenas para midia aprovada; URL privada, storage key, provider, bucket, hash interno e credenciais continuam fora de DTO publico.
+- Limite gratuito de 2 fotos, Premium/fotos extras e expiracao conjunta de beneficios ficam documentados como regras contratuais.
+- Storage/CDN/upload real, antivirus real, cache/invalidation e rollback real permanecem pendentes de homologacao futura e revisao Pro quando aplicavel.
+- Nenhuma producao, VPS, dado real, upload real, storage real, CDN real, R2/S3 real, API externa, Pix/Efi real, webhook, remote ou push foi usado.
 
 ## Proibicoes ate novo bloco autorizado
 

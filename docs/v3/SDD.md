@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 51, com checkpoint local `f6189f0` do Bloco 32.1, checkpoint local `b7f5f98` dos Blocos 33/33.1, checkpoint local corrigido `9b677ea` do Bloco 34, checkpoint local `00e1a02` do Bloco 35, checkpoint local `e031ea3` do Bloco 36, checkpoint local `a6f431f` do Bloco 37 corrigido, checkpoint local `587e2df` do Bloco 38, checkpoint local `a3e92c0` do Bloco 39, checkpoint local `f67880a` do Bloco 40 corrigido, checkpoint local `46ed655` do Bloco 41, checkpoint local `09ffcd3` do Bloco 42, checkpoint local `71404a3` do Bloco 43, checkpoint local `0603a59` do Bloco 44, checkpoint local `282802d` do Bloco 45, checkpoint local `220c2ba` do Bloco 46, checkpoint local `7791d11` do Bloco 47, checkpoint local `9bd38f3` do Bloco 48, checkpoint local `037f9b22` do Bloco 49, checkpoint local `8757e48a` do Bloco 50, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, paridade local do wizard com a producao observavel, validacao admin/moderacao sintetica local, validacao Premium/beneficios sintetica local, validacao Age Gate/WhatsApp sintetica local aprovada, validacao de midia/fotos/stories sintetica local aprovada, MVP local sintetico consolidado, matriz de prontidao para homologacao/cutover documentada, gitleaks real instalado/validado localmente no Bloco 44, Flyway real local diagnosticado como `PENDENTE_FLYWAY_REAL_LOCAL` no Bloco 45, instalacao Flyway registrada como `PENDENTE_FLYWAY_INSTALACAO_LOCAL` no Bloco 46, Flyway real validado via Docker no Bloco 47 com `OK_FLYWAY_REAL_LOCAL`, Auth/RBAC/CSRF local validado no Bloco 48 com `OK_AUTH_RBAC_CSRF_LOCAL`, observabilidade/auditoria local validada no Bloco 49 com `OK_OBSERVABILIDADE_AUDITORIA_LOCAL`, preflight local de homologacao documentado no Bloco 50 e contrato de homologacao sem deploy documentado no Bloco 51, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 52, com checkpoint local `f6189f0` do Bloco 32.1, checkpoint local `b7f5f98` dos Blocos 33/33.1, checkpoint local corrigido `9b677ea` do Bloco 34, checkpoint local `00e1a02` do Bloco 35, checkpoint local `e031ea3` do Bloco 36, checkpoint local `a6f431f` do Bloco 37 corrigido, checkpoint local `587e2df` do Bloco 38, checkpoint local `a3e92c0` do Bloco 39, checkpoint local `f67880a` do Bloco 40 corrigido, checkpoint local `46ed655` do Bloco 41, checkpoint local `09ffcd3` do Bloco 42, checkpoint local `71404a3` do Bloco 43, checkpoint local `0603a59` do Bloco 44, checkpoint local `282802d` do Bloco 45, checkpoint local `220c2ba` do Bloco 46, checkpoint local `7791d11` do Bloco 47, checkpoint local `9bd38f3` do Bloco 48, checkpoint local `037f9b22` do Bloco 49, checkpoint local `8757e48a` do Bloco 50, checkpoint local `eacecaa2` do Bloco 51, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, paridade local do wizard com a producao observavel, validacao admin/moderacao sintetica local, validacao Premium/beneficios sintetica local, validacao Age Gate/WhatsApp sintetica local aprovada, validacao de midia/fotos/stories sintetica local aprovada, MVP local sintetico consolidado, matriz de prontidao para homologacao/cutover documentada, gitleaks real instalado/validado localmente no Bloco 44, Flyway real local diagnosticado como `PENDENTE_FLYWAY_REAL_LOCAL` no Bloco 45, instalacao Flyway registrada como `PENDENTE_FLYWAY_INSTALACAO_LOCAL` no Bloco 46, Flyway real validado via Docker no Bloco 47 com `OK_FLYWAY_REAL_LOCAL`, Auth/RBAC/CSRF local validado no Bloco 48 com `OK_AUTH_RBAC_CSRF_LOCAL`, observabilidade/auditoria local validada no Bloco 49 com `OK_OBSERVABILIDADE_AUDITORIA_LOCAL`, preflight local de homologacao documentado no Bloco 50, contrato de homologacao sem deploy documentado no Bloco 51 e contrato storage/upload/CDN documentado no Bloco 52, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
 
 ## 1. Visao geral
 
@@ -46,6 +46,7 @@ Estado atual:
 - Bloco 49 cria checkpoint local do Bloco 48 em `9bd38f3`, corrige propagacao de request-id antes da seguranca, endurece o writer de erro 401/403 e valida observabilidade/auditoria local com `OK_OBSERVABILIDADE_AUDITORIA_LOCAL`;
 - Bloco 50 cria checkpoint local do Bloco 49 em `037f9b22` e valida preflight local de homologacao com `OK_PREFLIGHT_HOMOLOGACAO_LOCAL`, separando pronto localmente, pendente para homologacao e bloqueante para producao;
 - Bloco 51 cria checkpoint local do Bloco 50 em `8757e48a` e documenta contrato de homologacao/staging sem deploy, sem staging real e sem dados reais;
+- Bloco 52 cria checkpoint local do Bloco 51 em `eacecaa2` e documenta contrato storage/upload/CDN, separando midia publica, midia privada e documento privado, sem upload/storage/CDN real;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites
@@ -243,6 +244,10 @@ Regras:
 - documento privado nunca e midia publica;
 - upload real esta fora do escopo atual;
 - placeholders publicos devem ser neutros e nao podem simular midia real.
+- contrato storage/upload/CDN de homologacao fica em `docs/v3/HOMOLOGACAO-storage-upload-cdn.md`;
+- midia pendente/rejeitada nao tem URL publica;
+- documento privado usa separacao propria e nunca compartilha prefixo publico;
+- URL publica so pode existir para midia aprovada.
 
 ## 14. Visual, UI e mobile
 
@@ -412,6 +417,7 @@ Historico resumido:
 - Bloco 49: checkpoint local do Bloco 48 criado em `9bd38f3`; `scripts/local/validar-observabilidade-auditoria-local.ps1` validou request-id, logs locais, erros sanitizados e auditoria local com `OK_OBSERVABILIDADE_AUDITORIA_LOCAL`.
 - Bloco 50: checkpoint local do Bloco 49 criado em `037f9b22`; `scripts/local/validar-preflight-homologacao-local.ps1` documenta contratos e gates para homologacao/staging sem executar staging real e retorna `OK_PREFLIGHT_HOMOLOGACAO_LOCAL`.
 - Bloco 51: checkpoint local do Bloco 50 criado em `8757e48a`; contrato documental de homologacao criado com ambiente, secrets externos, CORS, cookies, CSRF, banco isolado, storage, logs, auditoria, rollback e monitoramento, sem deploy.
+- Bloco 52: checkpoint local do Bloco 51 criado em `eacecaa2`; contrato tecnico de storage/upload/CDN criado para homologacao, sem upload real, storage real, CDN real, R2/S3 real ou API externa.
 
 Detalhes e rastreabilidade ficam em `docs/v3/SDD-indice-rastreabilidade.md`.
 

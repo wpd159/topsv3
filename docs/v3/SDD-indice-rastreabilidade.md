@@ -299,6 +299,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Rollback/monitoramento homologacao: `docs/v3/HOMOLOGACAO-rollback-monitoramento.md`
 - Evidencias Bloco 51: `docs/v3/evidencias/bloco-51/`
 - Checkpoint Bloco 50: `8757e48a`
+- Relatorio Bloco 52: `docs/v3/254-bloco-52-contrato-storage-upload-cdn.md`
+- Checklist Bloco 52: `docs/v3/255-checklist-bloco-52-contrato-storage-upload-cdn.md`
+- Contrato storage/upload/CDN: `docs/v3/HOMOLOGACAO-storage-upload-cdn.md`
+- Evidencias Bloco 52: `docs/v3/evidencias/bloco-52/`
+- Checkpoint Bloco 51: `eacecaa2`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

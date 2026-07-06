@@ -54,6 +54,7 @@ Este documento e contrato, nao deploy.
 ## Storage e midia
 
 - Storage/CDN/upload real continuam pendentes.
+- O contrato especifico fica em `docs/v3/HOMOLOGACAO-storage-upload-cdn.md`.
 - Documento privado nunca pode virar midia publica.
 - DTO publico nao pode expor bucket, storage key, provider, hash, etag ou URL privada.
 - Antes de upload real, deve existir contrato de separacao entre midia publica, midia privada e documento privado.

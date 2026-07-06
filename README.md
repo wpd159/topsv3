@@ -4,7 +4,7 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 51 concluido / contrato de homologacao sem deploy criado, com Bloco 50 checkpointado em `8757e48a`, sem dados reais, staging real, producao, remote ou push.**
+Estado atual: **Bloco 52 concluido / contrato storage/upload/CDN criado, com Bloco 51 checkpointado em `eacecaa2`, sem dados reais, upload real, storage/CDN real, remote ou push.**
 
 O checkpoint local do Bloco 40 corrigido foi criado em `f67880a` com a mensagem `test: valida midia publica sintetica ate bloco 40`, remote vazio e sem push. O Bloco 41 consolida o estado do MVP local sintético, cobrindo público renderizado, SEO sintético, wizard `/anunciar`, admin/moderação, Premium/benefícios, Age Gate/WhatsApp, mídia/fotos/stories e E2E sintético, sem criar funcionalidade nova.
 
@@ -25,6 +25,8 @@ O checkpoint local do Bloco 48 foi criado em `9bd38f3` com a mensagem `test: val
 O checkpoint local do Bloco 49 foi criado em `037f9b22` com a mensagem `test: valida observabilidade auditoria local ate bloco 49`, remote vazio e sem push. O Bloco 50 cria `scripts/local/validar-preflight-homologacao-local.ps1` e documenta a separacao entre pronto localmente, pendente para homologacao e bloqueante para producao, sem executar staging real, restore, dados reais, Pix/Efi real, webhook ou API externa.
 
 O checkpoint local do Bloco 50 foi criado em `8757e48a` com a mensagem `docs: valida preflight homologacao local ate bloco 50`, remote vazio e sem push. O Bloco 51 cria o contrato documental de homologacao/staging, definindo ambiente, secrets externos, CORS, cookies, CSRF, banco isolado, storage pendente, logs, auditoria, rollback e monitoramento, sem deploy e sem staging real.
+
+O checkpoint local do Bloco 51 foi criado em `eacecaa2` com a mensagem `docs: define contrato homologacao ate bloco 51`, remote vazio e sem push. O Bloco 52 cria o contrato tecnico de storage/upload/CDN para homologacao, separando midia publica, midia privada e documento privado, sem executar upload real, storage real, CDN real, R2/S3 real ou API externa.
 
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 

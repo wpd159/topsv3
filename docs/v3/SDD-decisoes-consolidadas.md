@@ -50,6 +50,12 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - `urlPublica` permanece nula ate CDN/storage publico aprovado.
 - DTO publico nao expoe bucket, storage key, provider, hash, etag ou URL privada.
 - Upload real continua fora do escopo atual.
+- O Bloco 52 define contrato storage/upload/CDN sem executar upload ou acessar storage real.
+- Midia publica, midia privada operacional e documento privado devem usar separacao de bucket/container.
+- Midia pendente e rejeitada nao podem ter URL publica.
+- URL publica so pode ser criada para midia aprovada.
+- Documento privado nunca compartilha prefixo publico e nunca vira midia publica.
+- Premium/fotos extras e expiracao conjunta de beneficios nao podem apagar fisicamente arquivo sem politica propria.
 
 ## Documento de usuario
 
