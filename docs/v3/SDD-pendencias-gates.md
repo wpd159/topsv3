@@ -391,6 +391,22 @@ Antes de admin em ambiente nao local:
 - Autenticacao/RBAC de producao, auditoria JSON de homologacao/producao, dados reais/sanitizados, financeiro, Pix/Efi, webhooks, importador real e producao continuam exigindo Pro.
 - `gitleaks` real segue pendente no PATH quando nao instalado; fallback local permanece ativo.
 
+## Pendencias do Bloco 37 ao Bloco 40
+
+- Bloco 37 corrigido removeu copy visivel tecnica/local/sintetica e deve permanecer protegido pelos validadores renderizados.
+- Bloco 38 poliu rotulos publicos de status sem alterar regra de autorizacao.
+- Bloco 39 validou Age Gate/WhatsApp sintetico para `LIVRE` e `BLOQUEADO`, mantendo WhatsApp mediado pelo backend.
+- Bloco 40 corrigido validou midia/fotos/stories sinteticos e corrigiu a cadeia de encoding que gerava mojibake em prints publicos.
+- Checkpoint local do Bloco 40 corrigido: `f67880a`.
+
+## Pendencias do Bloco 41
+
+- MVP local sintetico consolidado como base local, nao como aprovacao de homologacao/cutover.
+- Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover.
+- Quarentena sanitizada sem `POST_DATA` continua proibida para staging final.
+- Pro continua obrigatorio antes de dados reais/sanitizados, restore completo, autenticacao/RBAC de producao, financeiro real, Pix/Efi real, webhooks, importador real, homologacao ou producao.
+- `gitleaks` real segue pendente no PATH quando nao instalado; fallback local permanece ativo nas validacoes locais.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

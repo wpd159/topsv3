@@ -175,6 +175,13 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 
+## MVP local sintetico consolidado
+
+- O Bloco 41 consolida o MVP local sintetico como base de continuidade local, nao como autorizacao de homologacao, cutover ou producao.
+- A consolidacao cobre apenas dados sinteticos versionaveis e ambientes descartaveis/controlados.
+- Publico renderizado, SEO sintetico, wizard `/anunciar`, admin/moderacao, Premium/beneficios, Age Gate/WhatsApp, midia/fotos/stories e E2E sintetico devem permanecer gates antes de novas mudancas que afetem esses fluxos.
+- Qualquer uso de dados reais/sanitizados, restore completo, financeiro real, Pix/Efi real, webhook, API externa, storage/CDN real, upload real, importador real, staging final, homologacao ou producao continua dependente de bloco proprio, revisao Pro quando aplicavel e autorizacao expressa.
+
 ## Banco e migrations
 
 - V001 a V017 sao a base de schema auditada ate aqui.

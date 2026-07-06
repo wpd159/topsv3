@@ -241,6 +241,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 40: `docs/v3/231-checklist-bloco-40-midia-publica-sintetica.md`
 - Evidencias Bloco 40: `docs/v3/evidencias/bloco-40/`
 - Validador midia publica sintetica: `scripts/local/validar-midia-publica-sintetica-local.ps1`
+- Relatorio Bloco 41: `docs/v3/232-bloco-41-consolidacao-mvp-local-sintetico.md`
+- Checklist Bloco 41: `docs/v3/233-checklist-bloco-41-consolidacao-mvp-local-sintetico.md`
+- Evidencias Bloco 41: `docs/v3/evidencias/bloco-41/`
+- Checkpoint Bloco 40 corrigido: `f67880a`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
