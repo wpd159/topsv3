@@ -251,6 +251,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Ordem dos proximos blocos: `docs/v3/HOMOLOGACAO-ordem-proximos-blocos.md`
 - Evidencias Bloco 42: `docs/v3/evidencias/bloco-42/`
 - Checkpoint Bloco 41: `46ed655`
+- Relatorio Bloco 43: `docs/v3/236-bloco-43-gitleaks-toolchain.md`
+- Checklist Bloco 43: `docs/v3/237-checklist-bloco-43-gitleaks-toolchain.md`
+- Evidencias Bloco 43: `docs/v3/evidencias/bloco-43/`
+- Checkpoint Bloco 42: `09ffcd3`
+- Controle de pacote com objetivo obrigatorio: `scripts/entrega/criar-pacote-revisao.ps1`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

@@ -251,6 +251,7 @@ function Read-Metadata {
     [string]$FallbackObjective,
     [string]$Fase
   )
+  $defaultObjective = if ([string]::IsNullOrWhiteSpace($FallbackObjective)) { "Pacote de revisao da fase $Fase" } else { $FallbackObjective }
   if ($Path) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
       Fail-Package "arquivo JSON de metadados não encontrado: $Path" $null
@@ -266,7 +267,7 @@ function Read-Metadata {
   return [pscustomobject]@{
     projeto = "Tops do Job V3"
     fase = $Fase
-    objetivo = $FallbackObjective
+    objetivo = $defaultObjective
     codigo_aplicacao_criado = $null
     migration_criada = $null
     sql_criado = $null
@@ -344,7 +345,10 @@ function Complete-MetadataDefaults {
     }
   }
   $headHash = (ConvertFrom-TopsUtf8Strict -Bytes (Invoke-TopsGitBytes -Arguments @("rev-parse", "--short", "HEAD") -WorkingDirectory $RepoRoot -Context "nao foi possivel obter commit atual") -Context "commit atual").Trim()
+  $faseAtual = [string](Get-ObjectPropertyValue $Metadata "fase")
+  if ([string]::IsNullOrWhiteSpace($faseAtual)) { $faseAtual = "NAO_INFORMADA" }
 
+  Set-MetadataValueIfMissing $Metadata "objetivo" "Pacote de revisao da fase $faseAtual"
   Set-MetadataValueIfMissing $Metadata "codigo_aplicacao_criado" $applicationCodeCreated
   Set-MetadataValueIfMissing $Metadata "migration_criada" $migrationCreated
   Set-MetadataValueIfMissing $Metadata "sql_criado" $sqlCreated

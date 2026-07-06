@@ -415,6 +415,14 @@ Antes de admin em ambiente nao local:
 - Pendente antes de homologacao: restore completo aprovado, staging controlado, Flyway real, gitleaks real ou decisao formal, hardening auth/RBAC/CSRF, storage/CDN real, upload real, SEO real e monitoramento.
 - Bloqueante antes de producao: dados reais/sanitizados aprovados, backup/rollback, Pix/Efi/webhooks homologados, financeiro real revisado, auditoria JSON, LGPD/dados sensiveis e decisao humana/Pro onde aplicavel.
 
+## Pendencias do Bloco 43
+
+- Checkpoint local do Bloco 42 criado em `09ffcd3`, sem remote e sem push.
+- `gitleaks` real nao foi encontrado no PATH: `PENDENTE_GITLEAKS_REAL_NO_PATH`.
+- Nenhuma instalacao automatica foi executada.
+- Fallback local permanece secundario e nao substitui gate definitivo de producao sem decisao formal.
+- Empacotador corrigido para preencher `Objetivo` no `RESUMO-ENTREGA.md` mesmo quando `-ResumoExecucao` ou metadados JSON vierem vazios.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;
