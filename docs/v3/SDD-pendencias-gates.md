@@ -457,6 +457,18 @@ Antes de admin em ambiente nao local:
 - Nenhum `docker pull` foi executado.
 - Validacao Flyway real local permanece pendente e continua gate antes de homologacao/producao.
 
+## Estado do Bloco 47
+
+- Checkpoint local do Bloco 46 criado em `220c2ba`, sem remote e sem push.
+- `docker pull flyway/flyway` foi autorizado e executado com sucesso.
+- Imagem local: `flyway/flyway:latest`.
+- Versao observada: Flyway OSS Edition 12.10.0 by Redgate.
+- Validacao Flyway real local: `OK_FLYWAY_REAL_LOCAL`.
+- Migrations V001 a V017 aplicadas em PostgreSQL 17 descartavel.
+- `flyway info`, `migrate`, `validate` e `info` final executados com sucesso.
+- Recursos Docker temporarios `topsv3-flyway-local-*` foram removidos.
+- Homologacao/producao continuam exigindo gates proprios, revisao Pro e ambiente controlado.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

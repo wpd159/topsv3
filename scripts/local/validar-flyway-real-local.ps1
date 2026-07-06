@@ -36,7 +36,13 @@ function ConvertTo-NativeArgumentText {
   )
   $parts = New-Object System.Collections.Generic.List[string]
   foreach ($arg in $Arguments) {
-    $value = if ($MaskCredentials -and $arg.StartsWith($flywayCredentialArgName)) { $flywayCredentialArgName + "REDACTED" } else { $arg }
+    $value = $arg
+    if ($MaskCredentials -and $arg.StartsWith($flywayCredentialArgName)) {
+      $value = "-password valor_omitido"
+    }
+    if ($MaskCredentials -and $arg.StartsWith($pgCredentialEnvName + "=")) {
+      $value = $pgCredentialEnvName + " valor_omitido"
+    }
     if ($value -match '^[A-Za-z0-9_./:=@%+\-]+$') {
       $parts.Add($value)
     } else {
@@ -82,8 +88,8 @@ function Add-ReportCommand {
   $Lines.Add("")
   $Lines.Add("- Comando: ``$($Result.Command)``")
   $Lines.Add("- Exit code: ``$($Result.ExitCode)``")
-  $stdout = (($Result.Stdout -replace $dbCredentialValue, "REDACTED").Trim())
-  $stderr = (($Result.Stderr -replace $dbCredentialValue, "REDACTED").Trim())
+  $stdout = (($Result.Stdout -replace $dbCredentialValue, "EXEMPLO_NAO_REAL").Trim())
+  $stderr = (($Result.Stderr -replace $dbCredentialValue, "EXEMPLO_NAO_REAL").Trim())
   if ($stdout) {
     $Lines.Add("- Stdout:")
     $Lines.Add("")
@@ -156,8 +162,8 @@ function Write-Report {
   $lines.Add("")
   $lines.Add("- Sem dados reais.")
   $lines.Add("- Sem producao, VPS, restore, staging, Pix/Efi real, webhook ou API externa.")
-  $lines.Add("- Sem instalacao automatica de Flyway.")
-  $lines.Add("- Sem ``docker pull``.")
+  $lines.Add("- Sem instalacao automatica de Flyway pelo script.")
+  $lines.Add("- O script nao executa ``docker pull``.")
   $lines.Add("- Sem migration nova.")
 
   $encoding = New-Object System.Text.UTF8Encoding($false)

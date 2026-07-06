@@ -271,6 +271,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 46: `docs/v3/243-checklist-bloco-46-flyway-real-instalacao-validacao.md`
 - Evidencias Bloco 46: `docs/v3/evidencias/bloco-46/`
 - Checkpoint Bloco 45: `282802d`
+- Relatorio Bloco 47: `docs/v3/244-bloco-47-flyway-docker-local.md`
+- Checklist Bloco 47: `docs/v3/245-checklist-bloco-47-flyway-docker-local.md`
+- Evidencias Bloco 47: `docs/v3/evidencias/bloco-47/`
+- Checkpoint Bloco 46: `220c2ba`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
