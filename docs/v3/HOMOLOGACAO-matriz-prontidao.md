@@ -28,6 +28,7 @@
 | Auditoria JSON | Parcial, auditoria sanitizada | Sim, formato e retencao revisados | Sim | Sim | Pode exigir amostras sanitizadas | Sim |
 | LGPD/dados sensiveis | Parcial, politica documental | Sim, decisao juridica e sanitizacao | Sim | Sim | Sim | Sim |
 | Preflight homologacao local | Sim, Bloco 50 documenta contratos e gates | Sim, executar ambiente real separado | Sim se pendencias virarem producao | Sim para gates sensiveis | Sim quando envolver base autorizada | Sim |
+| Contratos criticos cutover | Sim, Bloco 53 consolida contratos documentais | Sim, executar validacoes reais por frente | Sim se contratos nao forem cumpridos | Sim | Sim quando houver base autorizada | Sim |
 
 ## Conclusao
 

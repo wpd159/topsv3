@@ -13,12 +13,13 @@ Nao avancar para homologacao, cutover ou producao sem fechar os gates bloqueante
 5. Definir staging/homologacao real com segredos fora do Git, rede controlada, profiles nao-locais e rollback.
 6. Fechar hardening de auth/RBAC/CSRF/admin para ambiente nao local.
 7. Aprovar o contrato storage/upload/CDN do Bloco 52, incluindo separacao de midia publica, privada e documento privado.
-8. Definir CDN/storage e upload real com buckets/containers, antivirus, cache, invalidacao e rollback em homologacao.
-9. Executar importador real apenas com fonte autorizada, dry-run, relatorios agregados e rollback.
-10. Validar financeiro, Premium, creditos, Pix/Efi e webhooks em homologacao, sem payload sensivel em logs.
-11. Validar SEO real: mapa completo, 301, canonical, sitemap, robots, Search Console e pagina vazia.
-12. Fechar auditoria JSON, monitoramento, backup, rollback e runbook operacional.
-13. Fazer revisao Pro/humana final antes de qualquer cutover.
+8. Aprovar os contratos criticos do Bloco 53: importacao real/dry-run, SEO, financeiro/Pix/Efi/webhooks, backup/rollback, monitoramento e Go/No-Go.
+9. Definir CDN/storage e upload real com buckets/containers, antivirus, cache, invalidacao e rollback em homologacao.
+10. Executar importador real apenas com fonte autorizada, dry-run, relatorios agregados e rollback.
+11. Validar financeiro, Premium, creditos, Pix/Efi e webhooks em homologacao, sem payload sensivel em logs.
+12. Validar SEO real: mapa completo, 301, canonical, sitemap, robots, Search Console e pagina vazia.
+13. Fechar auditoria JSON, monitoramento, backup, rollback e runbook operacional.
+14. Aplicar matriz Go/No-Go e fazer revisao Pro/humana final antes de qualquer cutover.
 
 ## Bloqueios
 

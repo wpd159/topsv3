@@ -125,6 +125,7 @@ Bloqueios:
 Antes de fonte real:
 
 - autorizacao formal;
+- contrato `docs/v3/HOMOLOGACAO-importacao-real-dryrun.md` revisado;
 - diretorio fora do workspace/repositorio;
 - `scripts/local/validar-fonte-importacao-local.ps1` com parametro autorizado;
 - inventario de metadados sem abrir conteudo sensivel;
@@ -143,6 +144,7 @@ Continua proibido:
 
 Antes de Efi real:
 
+- contrato `docs/v3/HOMOLOGACAO-financeiro-pix-efi-webhooks.md` revisado;
 - credenciais fora do Git;
 - ambiente de homologacao separado;
 - politica de segredo;
@@ -520,6 +522,14 @@ Antes de admin em ambiente nao local:
 - Limite gratuito de 2 fotos, Premium/fotos extras e expiracao conjunta de beneficios ficam documentados como regras contratuais.
 - Storage/CDN/upload real, antivirus real, cache/invalidation e rollback real permanecem pendentes de homologacao futura e revisao Pro quando aplicavel.
 - Nenhuma producao, VPS, dado real, upload real, storage real, CDN real, R2/S3 real, API externa, Pix/Efi real, webhook, remote ou push foi usado.
+
+## Estado do Bloco 53
+
+- Checkpoint local do Bloco 52 criado em `d528f7ed`, sem remote e sem push.
+- Contratos criticos de homologacao/cutover consolidados documentalmente.
+- Contratos versionados: importacao real/dry-run, SEO real/cutover, financeiro/Pix/Efi/webhooks, backup/rollback, monitoramento operacional e Go/No-Go.
+- Go/No-Go passa a exigir criterios objetivos para liberar homologacao, bloquear homologacao, liberar cutover e acionar rollback.
+- Nenhuma producao, VPS, dado real, importacao real, restore, staging real, Pix/Efi real, webhook real, API externa real, remote ou push foi usado.
 
 ## Proibicoes ate novo bloco autorizado
 

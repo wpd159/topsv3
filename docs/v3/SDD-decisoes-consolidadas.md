@@ -105,6 +105,14 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Storage/CDN/upload real, Pix/Efi real, webhooks, importador real e financeiro real continuam dependentes de blocos proprios.
 - Backup/rollback, monitoramento e auditoria JSON sanitizada sao gates antes de cutover.
 
+## Contratos criticos de homologacao/cutover
+
+- O Bloco 53 consolida contratos documentais para importacao real/dry-run, SEO real/cutover, financeiro/Pix/Efi/webhooks, backup/rollback, monitoramento operacional e Go/No-Go.
+- Importacao real exige fonte autorizada, dry-run, relatorio de divergencias, rollback e Pro antes de dados reais/sanitizados operacionais.
+- SEO real exige mapa final de URLs, resolucao das 45 URLs desconhecidas se ainda pendentes, 301, canonical, sitemap, robots, Search Console e rollback SEO.
+- Financeiro/Pix/Efi/webhooks exigem homologacao propria, idempotencia, conciliacao, ledger, rollback financeiro e logs sem payload sensivel.
+- Cutover exige matriz Go/No-Go objetiva, backup/rollback testado, monitoramento minimo e decisao humana registrada.
+
 ## Moderacao
 
 - `REPROVAR` exige motivo.

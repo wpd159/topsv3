@@ -26,6 +26,7 @@ Este preflight separa o estado local sintetico da V3 dos requisitos que ainda pr
 - Fechar SEO real: canonical, sitemap, robots, 301, Search Console e validacao de URLs.
 - Planejar backup/rollback testado.
 - Fechar monitoramento, logs estruturados e auditoria JSON final.
+- Revisar os contratos criticos do Bloco 53 antes de qualquer execucao real.
 
 ## Bloqueante antes de producao
 
@@ -59,3 +60,9 @@ Esse resultado significa apenas que o preflight local/documental nao encontrou f
 - Secrets externos: `docs/v3/HOMOLOGACAO-secrets-externos.md`
 - CORS, cookies e CSRF: `docs/v3/HOMOLOGACAO-cors-cookies-csrf.md`
 - Rollback e monitoramento: `docs/v3/HOMOLOGACAO-rollback-monitoramento.md`
+- Importacao real/dry-run: `docs/v3/HOMOLOGACAO-importacao-real-dryrun.md`
+- SEO real/cutover: `docs/v3/HOMOLOGACAO-seo-cutover.md`
+- Financeiro/Pix/Efi/webhooks: `docs/v3/HOMOLOGACAO-financeiro-pix-efi-webhooks.md`
+- Backup/rollback: `docs/v3/HOMOLOGACAO-backup-rollback.md`
+- Monitoramento operacional: `docs/v3/HOMOLOGACAO-monitoramento-operacional.md`
+- Go/No-Go: `docs/v3/HOMOLOGACAO-go-no-go.md`

@@ -68,3 +68,12 @@ Este documento e contrato, nao deploy.
 - Backup/rollback testado.
 - Monitoramento e auditoria JSON revisados.
 - Revisao Pro quando houver dados reais/sanitizados, financeiro, Pix/Efi, webhook, importador real ou cutover.
+
+## Contratos criticos complementares
+
+- Importacao real/dry-run: `docs/v3/HOMOLOGACAO-importacao-real-dryrun.md`
+- SEO real/cutover: `docs/v3/HOMOLOGACAO-seo-cutover.md`
+- Financeiro/Pix/Efi/webhooks: `docs/v3/HOMOLOGACAO-financeiro-pix-efi-webhooks.md`
+- Backup/rollback: `docs/v3/HOMOLOGACAO-backup-rollback.md`
+- Monitoramento operacional: `docs/v3/HOMOLOGACAO-monitoramento-operacional.md`
+- Go/No-Go: `docs/v3/HOMOLOGACAO-go-no-go.md`

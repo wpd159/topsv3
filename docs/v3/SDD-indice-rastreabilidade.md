@@ -304,6 +304,16 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Contrato storage/upload/CDN: `docs/v3/HOMOLOGACAO-storage-upload-cdn.md`
 - Evidencias Bloco 52: `docs/v3/evidencias/bloco-52/`
 - Checkpoint Bloco 51: `eacecaa2`
+- Relatorio Bloco 53: `docs/v3/256-bloco-53-contratos-homologacao-cutover.md`
+- Checklist Bloco 53: `docs/v3/257-checklist-bloco-53-contratos-homologacao-cutover.md`
+- Importacao real/dry-run: `docs/v3/HOMOLOGACAO-importacao-real-dryrun.md`
+- SEO real/cutover: `docs/v3/HOMOLOGACAO-seo-cutover.md`
+- Financeiro/Pix/Efi/webhooks: `docs/v3/HOMOLOGACAO-financeiro-pix-efi-webhooks.md`
+- Backup/rollback: `docs/v3/HOMOLOGACAO-backup-rollback.md`
+- Monitoramento operacional: `docs/v3/HOMOLOGACAO-monitoramento-operacional.md`
+- Matriz Go/No-Go: `docs/v3/HOMOLOGACAO-go-no-go.md`
+- Evidencias Bloco 53: `docs/v3/evidencias/bloco-53/`
+- Checkpoint Bloco 52: `d528f7ed`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
