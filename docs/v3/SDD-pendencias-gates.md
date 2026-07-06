@@ -407,6 +407,14 @@ Antes de admin em ambiente nao local:
 - Pro continua obrigatorio antes de dados reais/sanitizados, restore completo, autenticacao/RBAC de producao, financeiro real, Pix/Efi real, webhooks, importador real, homologacao ou producao.
 - `gitleaks` real segue pendente no PATH quando nao instalado; fallback local permanece ativo nas validacoes locais.
 
+## Pendencias do Bloco 42
+
+- Checkpoint local do Bloco 41 criado em `46ed655`, sem remote e sem push.
+- Matriz de prontidao para homologacao/cutover criada, sem executar producao, restore, dados reais, staging, Pix/Efi, webhook, importador real ou API externa.
+- Pronto localmente: MVP sintetico, validadores locais e documentacao de gates.
+- Pendente antes de homologacao: restore completo aprovado, staging controlado, Flyway real, gitleaks real ou decisao formal, hardening auth/RBAC/CSRF, storage/CDN real, upload real, SEO real e monitoramento.
+- Bloqueante antes de producao: dados reais/sanitizados aprovados, backup/rollback, Pix/Efi/webhooks homologados, financeiro real revisado, auditoria JSON, LGPD/dados sensiveis e decisao humana/Pro onde aplicavel.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

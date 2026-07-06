@@ -4,9 +4,11 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 41 em execução local: checkpoint do Bloco 40 corrigido criado e consolidação do MVP local sintético em validação, sem dados reais e sem efeitos externos.**
+Estado atual: **Bloco 41 concluído / MVP local sintético validado, sem dados reais e sem efeitos externos.**
 
 O checkpoint local do Bloco 40 corrigido foi criado em `f67880a` com a mensagem `test: valida midia publica sintetica ate bloco 40`, remote vazio e sem push. O Bloco 41 consolida o estado do MVP local sintético, cobrindo público renderizado, SEO sintético, wizard `/anunciar`, admin/moderação, Premium/benefícios, Age Gate/WhatsApp, mídia/fotos/stories e E2E sintético, sem criar funcionalidade nova.
+
+O checkpoint local do Bloco 41 foi criado em `46ed655` com a mensagem `docs: consolida mvp local sintetico ate bloco 41`, remote vazio e sem push. O Bloco 42 organiza a matriz de prontidão para homologação/cutover, separando o que está pronto localmente do que ainda bloqueia produção.
 
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 

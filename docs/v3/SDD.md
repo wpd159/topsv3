@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 41, com checkpoint local `f6189f0` do Bloco 32.1, checkpoint local `b7f5f98` dos Blocos 33/33.1, checkpoint local corrigido `9b677ea` do Bloco 34, checkpoint local `00e1a02` do Bloco 35, checkpoint local `e031ea3` do Bloco 36, checkpoint local `a6f431f` do Bloco 37 corrigido, checkpoint local `587e2df` do Bloco 38, checkpoint local `a3e92c0` do Bloco 39, checkpoint local `f67880a` do Bloco 40 corrigido, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, paridade local do wizard com a producao observavel, validacao admin/moderacao sintetica local, validacao Premium/beneficios sintetica local, validacao Age Gate/WhatsApp sintetica local aprovada, validacao de midia/fotos/stories sintetica local aprovada e MVP local sintetico consolidado no Bloco 41, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 42, com checkpoint local `f6189f0` do Bloco 32.1, checkpoint local `b7f5f98` dos Blocos 33/33.1, checkpoint local corrigido `9b677ea` do Bloco 34, checkpoint local `00e1a02` do Bloco 35, checkpoint local `e031ea3` do Bloco 36, checkpoint local `a6f431f` do Bloco 37 corrigido, checkpoint local `587e2df` do Bloco 38, checkpoint local `a3e92c0` do Bloco 39, checkpoint local `f67880a` do Bloco 40 corrigido, checkpoint local `46ed655` do Bloco 41, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, paridade local do wizard com a producao observavel, validacao admin/moderacao sintetica local, validacao Premium/beneficios sintetica local, validacao Age Gate/WhatsApp sintetica local aprovada, validacao de midia/fotos/stories sintetica local aprovada, MVP local sintetico consolidado e matriz de prontidao para homologacao/cutover documentada no Bloco 42, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
 
 ## 1. Visao geral
 
@@ -36,6 +36,7 @@ Estado atual:
 - Bloco 39 cria checkpoint local do Bloco 38 em `587e2df` e valida Age Gate/WhatsApp sintético local para `LIVRE`/`BLOQUEADO`, sem produção, dados reais, restore, Pix/Efi real, pagamento, API externa ou push;
 - Bloco 40 cria checkpoint local do Bloco 39 em `a3e92c0` e valida mídia/fotos/stories sintéticos, placeholders seguros e sanitização de mídia admin/publica, sem upload real, CDN/storage real, dados reais, produção, restore, Pix/Efi real, pagamento, API externa ou push;
 - Bloco 41 cria checkpoint local do Bloco 40 corrigido em `f67880a` e consolida o MVP local sintetico, revalidando os fluxos principais ja cobertos sem criar funcionalidade nova;
+- Bloco 42 cria checkpoint local do Bloco 41 em `46ed655` e documenta a matriz de prontidao para homologacao/cutover, separando pronto localmente, pendente antes de homologacao, bloqueante antes de producao, exige Pro, exige dados reais/sanitizados e exige decisao humana;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites
@@ -392,6 +393,7 @@ Historico resumido:
 - Bloco 39: checkpoint local do Bloco 38 criado em `587e2df`; Age Gate/WhatsApp sintetico local valida `LIVRE` sem age gate, `BLOQUEADO` protegido antes da idade, menor de 18 anos bloqueado, data invalida com 400 e WhatsApp mediado pelo backend.
 - Bloco 40: checkpoint local do Bloco 39 criado em `a3e92c0`; midia publica sintetica valida gratuito ate 2 fotos, Premium com midia extra aditiva, placeholders seguros, stories com idade sem URL real e admin de midia sanitizado.
 - Bloco 41: checkpoint local do Bloco 40 corrigido criado em `f67880a`; MVP local sintetico consolidado com validacoes de publico renderizado, SEO sintetico, wizard, admin/moderacao, Premium/beneficios, Age Gate/WhatsApp, midia/fotos/stories e E2E sintetico.
+- Bloco 42: checkpoint local do Bloco 41 criado em `46ed655`; matriz objetiva de prontidao para homologacao/cutover criada sem executar producao, restore, dados reais, staging, Pix/Efi, webhook, importador real ou API externa.
 
 Detalhes e rastreabilidade ficam em `docs/v3/SDD-indice-rastreabilidade.md`.
 

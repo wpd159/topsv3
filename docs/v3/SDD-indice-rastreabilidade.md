@@ -245,6 +245,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 41: `docs/v3/233-checklist-bloco-41-consolidacao-mvp-local-sintetico.md`
 - Evidencias Bloco 41: `docs/v3/evidencias/bloco-41/`
 - Checkpoint Bloco 40 corrigido: `f67880a`
+- Relatorio Bloco 42: `docs/v3/234-bloco-42-prontidao-homologacao-cutover.md`
+- Checklist Bloco 42: `docs/v3/235-checklist-bloco-42-prontidao-homologacao-cutover.md`
+- Matriz de prontidao: `docs/v3/HOMOLOGACAO-matriz-prontidao.md`
+- Ordem dos proximos blocos: `docs/v3/HOMOLOGACAO-ordem-proximos-blocos.md`
+- Evidencias Bloco 42: `docs/v3/evidencias/bloco-42/`
+- Checkpoint Bloco 41: `46ed655`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

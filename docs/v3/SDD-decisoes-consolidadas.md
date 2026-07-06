@@ -182,6 +182,13 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Publico renderizado, SEO sintetico, wizard `/anunciar`, admin/moderacao, Premium/beneficios, Age Gate/WhatsApp, midia/fotos/stories e E2E sintetico devem permanecer gates antes de novas mudancas que afetem esses fluxos.
 - Qualquer uso de dados reais/sanitizados, restore completo, financeiro real, Pix/Efi real, webhook, API externa, storage/CDN real, upload real, importador real, staging final, homologacao ou producao continua dependente de bloco proprio, revisao Pro quando aplicavel e autorizacao expressa.
 
+## Matriz de prontidao para homologacao/cutover
+
+- O Bloco 42 decide que prontidao local nao equivale a prontidao de homologacao ou producao.
+- A matriz de prontidao deve classificar cada frente como pronta localmente, pendente antes de homologacao, bloqueante antes de producao, exige Pro, exige dados reais/sanitizados ou exige decisao humana.
+- Bloco 29, restore completo, staging/homologacao, Flyway real, gitleaks real, CSRF/auth/RBAC de producao, CDN/storage, upload real, importador real, financeiro, Pix/Efi/webhooks, SEO real, backup/rollback, monitoramento, auditoria JSON e LGPD permanecem gates explicitos.
+- Proximos blocos devem seguir a ordem segura documentada em `docs/v3/HOMOLOGACAO-ordem-proximos-blocos.md`, sem pular para producao, staging final ou dados reais sem autorizacao expressa.
+
 ## Banco e migrations
 
 - V001 a V017 sao a base de schema auditada ate aqui.
