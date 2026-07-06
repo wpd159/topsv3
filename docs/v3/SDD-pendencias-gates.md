@@ -32,6 +32,7 @@ Antes de schema aprovado:
 - validacao SQL estatica;
 - PostgreSQL descartavel;
 - Flyway real quando CLI/imagem estiver disponivel localmente;
+- `scripts/local/validar-flyway-real-local.ps1` deve retornar `0` somente para Flyway real OK, `1` para falha e `2` para pendencia operacional;
 - revisao Pro.
 
 Proibido antes da aprovacao:
@@ -432,6 +433,18 @@ Antes de admin em ambiente nao local:
 - `frontend/.next` foi removido por ser build/cache ignorado e regeneravel.
 - Scan real final `gitleaks detect --source . --no-git --redact --verbose` passou sem leaks.
 - Fallback local permanece secundario e continua sendo executado pelo scanner de segredos.
+
+## Pendencias do Bloco 45
+
+- Checkpoint local do Bloco 44 criado em `0603a59`, sem remote e sem push.
+- Flyway CLI nao foi encontrado no PATH.
+- Imagem `flyway/flyway` nao foi encontrada localmente.
+- Imagens `postgres:16` e `postgres:17` existem localmente, mas PostgreSQL descartavel do Flyway nao foi iniciado porque Flyway real estava ausente.
+- Resultado atual: `PENDENTE_FLYWAY_REAL_LOCAL`.
+- Nenhuma instalacao automatica foi executada.
+- Nenhum `docker pull` foi executado.
+- Nenhum recurso Docker do Flyway foi criado.
+- Validacao Flyway real continua gate antes de homologacao/producao.
 
 ## Proibicoes ate novo bloco autorizado
 

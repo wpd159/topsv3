@@ -74,6 +74,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist final Fase 1D: `docs/v3/68-checklist-final-fase-1d.md`
 - Script estatico: `scripts/local/validar-migrations-sql-estatico.ps1`
 - Script descartavel: `scripts/local/validar-migrations-postgres-descartavel.ps1`
+- Script Flyway real local: `scripts/local/validar-flyway-real-local.ps1`
 
 ## Importador
 
@@ -261,6 +262,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 44: `docs/v3/evidencias/bloco-44/`
 - Checkpoint Bloco 43: `71404a3`
 - Scanner de segredos com PATH recarregado: `scripts/security/verificar-segredos.ps1`
+- Relatorio Bloco 45: `docs/v3/240-bloco-45-flyway-real-local.md`
+- Checklist Bloco 45: `docs/v3/241-checklist-bloco-45-flyway-real-local.md`
+- Evidencias Bloco 45: `docs/v3/evidencias/bloco-45/`
+- Checkpoint Bloco 44: `0603a59`
+- Validador Flyway real local: `scripts/local/validar-flyway-real-local.ps1`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
@@ -286,6 +292,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Validar wizard Anuncie gratis sintetico: `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
 - Validar Premium/beneficios sintetico: `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 - Validar midia publica sintetica: `scripts/local/validar-midia-publica-sintetica-local.ps1`
+- Validar Flyway real local: `scripts/local/validar-flyway-real-local.ps1`
 - Validar copy renderizada publica/admin: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-admin-moderacao-sintetica-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`
