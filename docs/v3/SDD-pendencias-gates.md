@@ -469,6 +469,16 @@ Antes de admin em ambiente nao local:
 - Recursos Docker temporarios `topsv3-flyway-local-*` foram removidos.
 - Homologacao/producao continuam exigindo gates proprios, revisao Pro e ambiente controlado.
 
+## Estado do Bloco 48
+
+- Checkpoint local do Bloco 47 criado em `7791d11`, sem remote e sem push.
+- Auth/RBAC/CSRF local validado com `scripts/local/validar-auth-rbac-csrf-local.ps1`.
+- Resultado: `OK_AUTH_RBAC_CSRF_LOCAL`.
+- Login admin, cookie `HttpOnly`/`SameSite=Lax`, logout, bloqueio sem sessao, RBAC `ADMIN`/`MODERADOR`, fallback `/api/**` e CORS local passaram com dados sinteticos.
+- CSRF local permanece desabilitado apenas para smoke controlado em `APP_ENV=local`.
+- Nao-local possui `CookieCsrfTokenRepository`, mas homologacao/producao ainda exigem revisao Pro de CSRF real, HTTPS, cookie seguro, CORS definitivo e politica de sessao.
+- Nenhuma producao, VPS, dado real, restore, staging, Pix/Efi real, webhook, API externa ou push foi usado.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

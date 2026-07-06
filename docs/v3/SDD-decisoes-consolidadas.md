@@ -68,6 +68,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Frontend admin nao guarda credencial em localStorage/sessionStorage.
 - `/api/admin/**` exige sessao, exceto login.
 - Acoes criticas exigem permissao, auditoria, motivo quando aplicavel e fase expressa.
+- O Bloco 48 valida localmente login, cookie HttpOnly/SameSite, logout, bloqueio sem sessao, RBAC `ADMIN`/`MODERADOR`, fallback `/api/**`, CORS local e status de CSRF com dados sinteticos.
+- CSRF local pode permanecer desabilitado apenas para smoke controlado; homologacao/producao exigem revisao Pro de CSRF real, HTTPS, cookie seguro, CORS definitivo e politica de sessao.
 
 ## Moderacao
 
@@ -193,7 +195,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 
 - V001 a V017 sao a base de schema auditada ate aqui.
 - Validacao estatica e PostgreSQL descartavel passaram.
-- Flyway real ainda depende de CLI/imagem disponivel localmente.
+- Flyway real foi validado localmente via Docker no Bloco 47 com migrations V001 a V017 em PostgreSQL descartavel.
 - Schema segue dependendo de revisao Pro antes de homologacao/producao.
 
 ## Pacote e checkpoint

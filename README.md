@@ -4,7 +4,7 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 47 concluido / Flyway real validado via Docker local em PostgreSQL descartavel, sem dados reais e sem efeitos externos.**
+Estado atual: **Bloco 48 concluido / Auth, RBAC e CSRF local auditados com dados sinteticos e PostgreSQL descartavel, sem dados reais e sem efeitos externos.**
 
 O checkpoint local do Bloco 40 corrigido foi criado em `f67880a` com a mensagem `test: valida midia publica sintetica ate bloco 40`, remote vazio e sem push. O Bloco 41 consolida o estado do MVP local sintético, cobrindo público renderizado, SEO sintético, wizard `/anunciar`, admin/moderação, Premium/benefícios, Age Gate/WhatsApp, mídia/fotos/stories e E2E sintético, sem criar funcionalidade nova.
 
@@ -17,6 +17,8 @@ O checkpoint local do Bloco 44 foi criado em `0603a59` com a mensagem `chore: va
 O checkpoint local do Bloco 45 foi criado em `282802d` com a mensagem `chore: registra pendencia flyway real ate bloco 45`, remote vazio e sem push. O Bloco 46 tentou a instalacao controlada somente pelo pacote exato `Redgate.Flyway`; o `winget search` nao encontrou o pacote, entao ficou registrado `PENDENTE_FLYWAY_INSTALACAO_LOCAL`, sem Chocolatey, Scoop, download manual, `docker pull` ou fallback por `psql`.
 
 O checkpoint local do Bloco 46 foi criado em `220c2ba` com a mensagem `chore: registra pendencia instalacao flyway ate bloco 46`, remote vazio e sem push. O Bloco 47 baixou somente a imagem autorizada `flyway/flyway`, validou Flyway OSS Edition 12.10.0 via Docker contra PostgreSQL 17 descartavel e aplicou/validou migrations V001 a V017 com resultado `OK_FLYWAY_REAL_LOCAL`.
+
+O checkpoint local do Bloco 47 foi criado em `7791d11` com a mensagem `chore: valida flyway docker local ate bloco 47`, remote vazio e sem push. O Bloco 48 criou `scripts/local/validar-auth-rbac-csrf-local.ps1` e validou login admin local, cookie `HttpOnly`/`SameSite=Lax`, logout, bloqueio sem sessao, RBAC `ADMIN`/`MODERADOR`, fallback `/api/**`, CORS local e status de CSRF com resultado `OK_AUTH_RBAC_CSRF_LOCAL`.
 
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 

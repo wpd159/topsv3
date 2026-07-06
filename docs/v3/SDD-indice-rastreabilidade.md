@@ -275,6 +275,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 47: `docs/v3/245-checklist-bloco-47-flyway-docker-local.md`
 - Evidencias Bloco 47: `docs/v3/evidencias/bloco-47/`
 - Checkpoint Bloco 46: `220c2ba`
+- Validador Auth/RBAC/CSRF local: `scripts/local/validar-auth-rbac-csrf-local.ps1`
+- Relatorio Bloco 48: `docs/v3/246-bloco-48-auth-rbac-csrf-local.md`
+- Checklist Bloco 48: `docs/v3/247-checklist-bloco-48-auth-rbac-csrf-local.md`
+- Evidencias Bloco 48: `docs/v3/evidencias/bloco-48/`
+- Checkpoint Bloco 47: `7791d11`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
