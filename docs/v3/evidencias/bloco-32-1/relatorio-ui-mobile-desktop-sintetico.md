@@ -18,7 +18,7 @@
 - /acompanhantes/go/goiania (mobile): larguraDocumento=390, viewport=390, H1=320x64, cards=3
 - /acompanhantes/go/goiania/setor-bueno (mobile): larguraDocumento=390, viewport=390, H1=320x97, cards=2
 - /acompanhantes/df/brasilia (mobile): larguraDocumento=390, viewport=390, H1=320x64, cards=1
-- /anuncios/demo-goiania-livre-premium (mobile): larguraDocumento=390, viewport=390, H1=320x97, cards=0
+- /anuncios/demo-goiania-livre-premium (mobile): larguraDocumento=390, viewport=390, H1=320x64, cards=0
 - /anuncios/demo-goiania-bloqueado (mobile): larguraDocumento=390, viewport=390, H1=320x64, cards=0
 - /sitemap.xml (mobile): larguraDocumento=980, viewport=980, H1=nao-aplicavel, cards=0
 - /robots.txt (mobile): larguraDocumento=980, viewport=980, H1=nao-aplicavel, cards=0

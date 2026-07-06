@@ -34,7 +34,7 @@ class PremiumPublicoMapperTest {
         assertThat(flags.premiumAtivo()).isTrue();
         assertThat(flags.destaqueAtivo()).isTrue();
         assertThat(flags.possuiMidiaExtra()).isTrue();
-        assertThat(flags.beneficiosPublicos()).containsExactly("Destaque", "Midia extra");
+        assertThat(flags.beneficiosPublicos()).containsExactly("Destaque", "Mídia extra");
         assertThat(flags.toString())
                 .doesNotContain("RELATORIO")
                 .doesNotContain("valor")

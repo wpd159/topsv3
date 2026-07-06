@@ -371,6 +371,21 @@ function pageMetricsScript() {
     if (/\b(?:conteudo_autorizado|aguardando_idade)\b/.test(bodyText)) {
       addTechnicalViolation("estado_agegate_interno");
     }
+    const mojibakeLead = String.fromCharCode(0x00c3);
+    const mojibakeContinuation = String.fromCharCode(0x00c2);
+    const replacementChar = String.fromCharCode(0xfffd);
+    const mojibakeHits = [
+      { label: "U+00C3", needle: mojibakeLead },
+      { label: "U+00C2", needle: mojibakeContinuation },
+      { label: "U+FFFD", needle: replacementChar },
+      { label: "demonstra+U+00C3", needle: "demonstra" + mojibakeLead },
+      { label: "Goi+U+00C3", needle: "Goi" + mojibakeLead },
+      { label: "valida+U+00C3", needle: "valida" + mojibakeLead },
+      { label: "p+U+00C3+U+00BA", needle: "p" + mojibakeLead + String.fromCharCode(0x00ba) + "blica" }
+    ].filter((item) => bodyText.includes(item.needle)).map((item) => item.label);
+    if (mojibakeHits.length > 0) {
+      addTechnicalViolation("mojibake_visivel:" + mojibakeHits.join("|"));
+    }
     if (/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/.test(bodyText)) {
       addTechnicalViolation("snake_case_visivel");
     }

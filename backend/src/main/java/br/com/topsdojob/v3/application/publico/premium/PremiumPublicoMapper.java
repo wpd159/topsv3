@@ -61,7 +61,7 @@ public class PremiumPublicoMapper {
         return switch (codigo) {
             case "DESTAQUE" -> "Destaque";
             case "ANUNCIO_TOPO" -> "Topo";
-            case "FOTOS_EXTRA", "VIDEO", "CARROSSEL" -> "Midia extra";
+            case "FOTOS_EXTRA", "VIDEO", "CARROSSEL" -> "Mídia extra";
             case "STORIES" -> "Stories";
             default -> "Premium";
         };

@@ -236,6 +236,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 39: `docs/v3/229-checklist-bloco-39-agegate-whatsapp-sintetico.md`
 - Evidencias Bloco 39: `docs/v3/evidencias/bloco-39/`
 - Validador Age Gate/WhatsApp sintetico: `scripts/local/validar-agegate-whatsapp-sintetico-local.ps1`
+- Checkpoint Bloco 39: `a3e92c0`
+- Relatorio Bloco 40: `docs/v3/230-bloco-40-midia-publica-sintetica.md`
+- Checklist Bloco 40: `docs/v3/231-checklist-bloco-40-midia-publica-sintetica.md`
+- Evidencias Bloco 40: `docs/v3/evidencias/bloco-40/`
+- Validador midia publica sintetica: `scripts/local/validar-midia-publica-sintetica-local.ps1`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
@@ -260,6 +265,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Validar dados sinteticos V3: `scripts/local/validar-dados-sinteticos-v3-local.ps1`
 - Validar wizard Anuncie gratis sintetico: `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
 - Validar Premium/beneficios sintetico: `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
+- Validar midia publica sintetica: `scripts/local/validar-midia-publica-sintetica-local.ps1`
 - Validar copy renderizada publica/admin: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-admin-moderacao-sintetica-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`

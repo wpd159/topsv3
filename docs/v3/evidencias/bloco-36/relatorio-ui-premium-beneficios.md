@@ -92,7 +92,7 @@ Início
 Anúncio de demonstração gratuito
 Anúncio de demonstração gratuito
 
-Perfil de demonstração para validar plano gratuito sem limite comercial de contato.
+Informações públicas do anúncio no Tops do Job.
 
 Informações do anúncio
 
@@ -131,8 +131,13 @@ protegidos
 Ver WhatsApp
 Stories
 
-Stories protegidos ficam disponíveis após co
+Stories protegidos ficam disponíveis após confirmação de idade.
+
+Idade
+pendente
+
 ```
+
 ### mobile admin premium
 
 ```text
@@ -186,7 +191,7 @@ Início
 Anúncio de demonstração gratuito
 Anúncio de demonstração gratuito
 
-Perfil de demonstração para validar plano gratuito sem limite comercial de contato.
+Informações públicas do anúncio no Tops do Job.
 
 Informações do anúncio
 
@@ -225,5 +230,9 @@ protegidos
 Ver WhatsApp
 Stories
 
-Stories protegidos ficam disponíveis após co
+Stories protegidos ficam disponíveis após confirmação de idade.
+
+Idade
+pendente
+
 ```

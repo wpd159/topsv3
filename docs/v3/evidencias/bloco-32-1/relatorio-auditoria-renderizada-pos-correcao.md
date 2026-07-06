@@ -99,7 +99,7 @@
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
-  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
+  - OK: meta description presente - Informações públicas do anúncio no Tops do Job.
   - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
   - OK: H1 presente - Perfil de demonstração Goiânia premium
   - OK: H1 legivel - 1082x37
@@ -239,10 +239,10 @@
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
-  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
+  - OK: meta description presente - Informações públicas do anúncio no Tops do Job.
   - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
   - OK: H1 presente - Perfil de demonstração Goiânia premium
-  - OK: H1 legivel - 320x97
+  - OK: H1 legivel - 320x64
   - OK: shell dentro da viewport - 358px
   - OK: breadcrumbs legiveis - 320px
   - OK: conteudo sintetico esperado - Perfil de demonstra

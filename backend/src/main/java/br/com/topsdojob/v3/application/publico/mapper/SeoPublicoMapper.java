@@ -34,18 +34,36 @@ public class SeoPublicoMapper {
     }
 
     private String titleFor(String canonicalPath, TipoSeoUrl tipo) {
-        return "Tops do Job V3 - " + tipoRota(tipo, canonicalPath);
+        return "Tops do Job - " + rotuloRotaPublica(tipo, canonicalPath);
     }
 
     private String descriptionFor(String canonicalPath, TipoSeoUrl tipo) {
-        return "Metadados publicos locais para " + tipoRota(tipo, canonicalPath) + ".";
+        return switch (tipoEfetivo(tipo, canonicalPath)) {
+            case ANUNCIO -> "Informações públicas do anúncio no Tops do Job.";
+            case CIDADE -> "Acompanhantes disponíveis por cidade no Tops do Job.";
+            case BAIRRO -> "Acompanhantes disponíveis por bairro no Tops do Job.";
+            default -> "Informações públicas do Tops do Job.";
+        };
     }
 
     private String tipoRota(TipoSeoUrl tipo, String canonicalPath) {
+        return tipoEfetivo(tipo, canonicalPath).name();
+    }
+
+    private String rotuloRotaPublica(TipoSeoUrl tipo, String canonicalPath) {
+        return switch (tipoEfetivo(tipo, canonicalPath)) {
+            case ANUNCIO -> "Anúncio";
+            case CIDADE -> "Cidade";
+            case BAIRRO -> "Bairro";
+            default -> "Página";
+        };
+    }
+
+    private TipoSeoUrl tipoEfetivo(TipoSeoUrl tipo, String canonicalPath) {
         if (tipo != null) {
-            return tipo.name();
+            return tipo;
         }
-        return inferirTipo(canonicalPath).name();
+        return inferirTipo(canonicalPath);
     }
 
     private TipoSeoUrl inferirTipo(String canonicalPath) {

@@ -76,6 +76,7 @@ Preparar revisão futura de documentos.
 ler financeiro
 Ler fina
 ```
+
 ### mobile
 
 ```text

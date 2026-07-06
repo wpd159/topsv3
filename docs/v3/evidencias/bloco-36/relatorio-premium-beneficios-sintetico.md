@@ -17,7 +17,7 @@
 - OK: smoke base de API/admin/moderacao - exit=0
 - OK: login admin local sintetico - status=200
 - OK: publico premium ativo visivel - status=200
-- OK: publico premium aditivo - beneficios=Midia extra, Destaque, Stories
+- OK: publico premium aditivo - beneficios=Mídia extra, Destaque, Stories
 - OK: publico premium sem promessa ou acao real - sem checkout/Pix/Efi/pagamento/credito/webhook real ou promessa
 - OK: publico gratuito visivel e util - status=200
 - OK: publico gratuito sem beneficio artificial - beneficios=

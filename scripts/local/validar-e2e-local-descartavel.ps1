@@ -343,7 +343,7 @@ function Write-FixtureSyntheticSql {
   if (-not (Test-Path -LiteralPath $FixturePath -PathType Leaf)) {
     throw "Fixture sintetica nao encontrada: $FixturePath"
   }
-  $data = Get-Content -LiteralPath $FixturePath -Raw | ConvertFrom-Json
+  $data = [System.IO.File]::ReadAllText($FixturePath, [System.Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json
   if ($data.localOnly -ne $true -or $data.noRealData -ne $true) {
     throw "Fixture sintetica deve declarar localOnly=true e noRealData=true."
   }
