@@ -231,6 +231,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Relatorio Bloco 38: `docs/v3/226-bloco-38-polimento-status-publico.md`
 - Checklist Bloco 38: `docs/v3/227-checklist-bloco-38-polimento-status-publico.md`
 - Evidencias Bloco 38: `docs/v3/evidencias/bloco-38/`
+- Checkpoint Bloco 38: `587e2df`
+- Relatorio Bloco 39: `docs/v3/228-bloco-39-agegate-whatsapp-sintetico.md`
+- Checklist Bloco 39: `docs/v3/229-checklist-bloco-39-agegate-whatsapp-sintetico.md`
+- Evidencias Bloco 39: `docs/v3/evidencias/bloco-39/`
+- Validador Age Gate/WhatsApp sintetico: `scripts/local/validar-agegate-whatsapp-sintetico-local.ps1`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

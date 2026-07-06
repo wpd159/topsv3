@@ -5,6 +5,7 @@
   [int]$BackendPort = 18080,
   [switch]$NaoIniciarDockerDesktop,
   [switch]$SemDadosSinteticos,
+  [switch]$SomenteSmokeHttp,
   [string]$ResourcePrefix = "topsv3-e2e-local",
   [string]$ApiSmokeScript = "",
   [string]$FixtureSinteticaPath = ""
@@ -489,6 +490,7 @@ function Save-Report {
   $lines.Add("- PostgreSQL executado: $postgresStarted")
   $lines.Add("- Imagem PostgreSQL local: $(if ($postgresImage) { $postgresImage } else { 'NAO_SELECIONADA' })")
   $lines.Add("- Prefixo Docker: $ResourcePrefix")
+  $lines.Add("- Somente smoke HTTP: $SomenteSmokeHttp")
   $lines.Add("- API smoke script: $apiSmokeScriptPath")
   $lines.Add("- Fixture sintetica JSON: $(if ($fixtureSinteticaFullPath) { $fixtureSinteticaFullPath } else { 'NAO_INFORMADA' })")
   $lines.Add("- Porta PostgreSQL efemera: $(if ($mappedPort) { $mappedPort } else { 'NAO_USADA' })")
@@ -679,13 +681,20 @@ try {
   }
   $smokeOk = $true
   Add-Step "Smoke HTTP da API publica local executado com sucesso."
-  Add-Step "Smoke HTTP validou outbox admin read-only, preview sanitizado, simulacao local, RBAC e ausencia de envio real."
+  if ($SomenteSmokeHttp) {
+    Add-Step "Modo somente smoke HTTP ativado para validador especifico."
+    $tables = Invoke-PsqlScalar "select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE';"
+    Add-Step "Schema descartavel inspecionado com $tables tabelas em public."
+    $result = "OK_E2E_LOCAL_DESCARTAVEL"
+    $detail = "PostgreSQL descartavel, migrations, backend local e smoke HTTP especifico passaram."
+  } else {
+    Add-Step "Smoke HTTP validou outbox admin read-only, preview sanitizado, simulacao local, RBAC e ausencia de envio real."
 
-  $auditoriaModeracao = [int](Invoke-PsqlScalar "select count(*) from auditoria_evento where acao in ('MODERACAO_REVISAO_DECIDIR', 'MODERACAO_MIDIA_DECIDIR', 'ANUNCIO_REMETER_REVISAO');")
-  if ($auditoriaModeracao -lt 9) {
-    throw "Auditoria de moderacao local insuficiente: $auditoriaModeracao eventos."
-  }
-  Add-Step "Auditoria de moderacao local registrada com $auditoriaModeracao eventos sanitizados."
+    $auditoriaModeracao = [int](Invoke-PsqlScalar "select count(*) from auditoria_evento where acao in ('MODERACAO_REVISAO_DECIDIR', 'MODERACAO_MIDIA_DECIDIR', 'ANUNCIO_REMETER_REVISAO');")
+    if ($auditoriaModeracao -lt 9) {
+      throw "Auditoria de moderacao local insuficiente: $auditoriaModeracao eventos."
+    }
+    Add-Step "Auditoria de moderacao local registrada com $auditoriaModeracao eventos sanitizados."
 
   $auditoriaMotivoMascarado = [int](Invoke-PsqlScalar "select count(*) from auditoria_evento where acao in ('MODERACAO_REVISAO_DECIDIR', 'MODERACAO_MIDIA_DECIDIR') and depois_json::text like '%[email-mascarado]%' and depois_json::text like '%[contato-mascarado]%' and depois_json::text like '%[documento-mascarado]%';")
   if ($auditoriaMotivoMascarado -lt 2) {
@@ -723,10 +732,11 @@ try {
   }
   Add-Step "Outbox local de moderacao teve $outboxSimulado evento PROCESSADO por simulacao local sem envio real."
 
-  $tables = Invoke-PsqlScalar "select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE';"
-  Add-Step "Schema descartavel inspecionado com $tables tabelas em public."
-  $result = "OK_E2E_LOCAL_DESCARTAVEL"
-  $detail = "PostgreSQL descartavel, migrations, backend local e smoke HTTP passaram."
+    $tables = Invoke-PsqlScalar "select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE';"
+    Add-Step "Schema descartavel inspecionado com $tables tabelas em public."
+    $result = "OK_E2E_LOCAL_DESCARTAVEL"
+    $detail = "PostgreSQL descartavel, migrations, backend local e smoke HTTP passaram."
+  }
 } catch [System.OperationCanceledException] {
   if ($result -eq "NAO_EXECUTADO") {
     $result = "PENDENTE_E2E_LOCAL_DESCARTAVEL"

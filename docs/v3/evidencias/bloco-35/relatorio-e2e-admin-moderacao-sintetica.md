@@ -5,9 +5,10 @@
 - PostgreSQL executado: True
 - Imagem PostgreSQL local: postgres:16
 - Prefixo Docker: topsv3-admin-sintetico
+- Somente smoke HTTP: False
 - API smoke script: C:\topsv3\scripts\local\validar-admin-moderacao-sintetica-local.ps1
 - Fixture sintetica JSON: C:\topsv3\backend\src\test\resources\fixtures\v3-dados-sinteticos.json
-- Porta PostgreSQL efemera: 51680
+- Porta PostgreSQL efemera: 49622
 - Migrations aplicadas: True
 - Quantidade de migrations aplicadas: 17
 - Dados sinteticos aplicados: True

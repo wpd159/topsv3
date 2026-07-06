@@ -1,0 +1,260 @@
+# Relatorio - Age Gate e WhatsApp sintetico Bloco 39
+
+- Resultado: OK_AGEGATE_WHATSAPP_SINTETICO_LOCAL
+- BaseUrl: http://127.0.0.1:18139
+- Slug LIVRE: anuncio-sintetico-local
+- Slug BLOQUEADO: anuncio-sintetico-bloqueado-local
+- Slug stories: anuncio-sintetico-local
+- Dados reais usados: nao
+- Producao/VPS/API externa acessadas: nao
+- WhatsApp real enviado/aberto: nao
+- Frontend decide WhatsApp/classificacao: nao
+
+## Fluxos validados
+- Anuncio LIVRE acessivel sem age gate.
+- Anuncio BLOQUEADO protegido antes da confirmacao de idade.
+- Confirmacao de idade adulta sintetica emite cookie HttpOnly SameSite=Lax.
+- Data menor de 18 anos e data invalida retornam erro 400 sem cookie de confirmacao.
+- WhatsApp publico e liberado apenas pelo endpoint backend autorizado.
+- Stories exigem confirmacao de idade quando a rota local existe.
+
+## Checks
+- OK: backend local disponivel - readiness respondeu em http://127.0.0.1:18139
+- OK: idade status inicial status 200 - status obtido: 200
+- OK: idade inicial nao confirmada - sem cookie a idade deve iniciar nao confirmada
+- OK: idade status inicial sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade status inicial sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade status inicial sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade status inicial sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade status inicial sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade status inicial sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade status inicial sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status inicial sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade status 200 - status obtido: 200
+- OK: anuncio LIVRE contem slug - LIVRE deve ser acessivel sem age gate
+- OK: anuncio LIVRE sem idade sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio LIVRE sem idade sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio LIVRE sem idade sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio LIVRE sem idade sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio LIVRE sem idade sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio LIVRE sem idade sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio LIVRE sem idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade status 404 - status obtido: 404
+- OK: BLOQUEADO sem idade nao expoe WhatsApp - detalhe bloqueado nao deve expor contato antes da idade
+- OK: anuncio BLOQUEADO sem idade sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO sem idade sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO sem idade sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO sem idade sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO sem idade sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO sem idade sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO sem idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade status 404 - status obtido: 404
+- OK: clique BLOQUEADO sem idade sem contato - endpoint nao deve liberar contato sem idade
+- OK: clique WhatsApp BLOQUEADO sem idade sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO sem idade sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO sem idade sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO sem idade sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO sem idade sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO sem idade sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO sem idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 status 400 - status obtido: 400
+- OK: idade menor sem cookie - menor de idade nao deve receber cookie
+- OK: idade menor erro amigavel - erro deve ser interpretavel sem stack trace
+- OK: idade menor de 18 sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade menor de 18 sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade menor de 18 sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade menor de 18 sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade menor de 18 sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade menor de 18 sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade menor de 18 sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: idade menor de 18 sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida status 400 - status obtido: 400
+- OK: idade invalida sem cookie - data invalida nao deve receber cookie
+- OK: idade invalida erro amigavel - erro deve ser interpretavel sem stack trace
+- OK: idade data invalida sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade data invalida sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade data invalida sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade data invalida sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade data invalida sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade data invalida sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade data invalida sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: idade data invalida sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada status 200 - status obtido: 200
+- OK: idade maior confirmada true - idade adulta sintetica deve confirmar
+- OK: idade emite cookie - cookie de idade deve ser emitido
+- OK: idade cookie HttpOnly - cookie deve ser HttpOnly
+- OK: idade cookie SameSite Lax - cookie deve usar SameSite=Lax
+- OK: idade cookie sem Secure local HTTP - Secure deve permanecer desligado em HTTP local
+- OK: idade maior confirmada sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade maior confirmada sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade maior confirmada sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade maior confirmada sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade maior confirmada sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade maior confirmada sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: idade maior confirmada sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: idade maior confirmada sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: idade status confirmada status 200 - status obtido: 200
+- OK: idade status com cookie confirmada - cookie assinado deve ser aceito
+- OK: anuncio BLOQUEADO com idade status 200 - status obtido: 200
+- OK: BLOQUEADO com idade contem slug - backend liberou detalhe apos idade
+- OK: detalhe BLOQUEADO nao expoe WhatsApp direto - detalhe nao deve conter URL/numero de WhatsApp
+- OK: anuncio BLOQUEADO com idade sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO com idade sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO com idade sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO com idade sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO com idade sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO com idade sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: anuncio BLOQUEADO com idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE status 200 - status obtido: 200
+- OK: clique LIVRE disponivel - LIVRE pode liberar contato pelo backend
+- OK: clique LIVRE URL sintetica - somente URL sintetica autorizada
+- OK: clique WhatsApp LIVRE sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp LIVRE sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp LIVRE sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp LIVRE sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp LIVRE sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp LIVRE sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp LIVRE sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade status 200 - status obtido: 200
+- OK: clique BLOQUEADO com idade disponivel - backend pode liberar contato apos idade conforme politica
+- OK: clique BLOQUEADO URL sintetica - somente URL sintetica autorizada
+- OK: clique WhatsApp BLOQUEADO com idade sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO com idade sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO com idade sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO com idade sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO com idade sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO com idade sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: clique WhatsApp BLOQUEADO com idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade status 200 - status obtido: 200
+- OK: stories sem idade bloqueados - stories exigem idade confirmada
+- OK: stories sem idade motivo atual - motivo backend deve ser atual
+- OK: stories sem idade sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories sem idade sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories sem idade sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories sem idade sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories sem idade sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories sem idade sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories sem idade sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: stories sem idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade status 200 - status obtido: 200
+- OK: stories com idade autorizados - backend autorizou stories apos idade
+- OK: stories sem midia real - sem URL real de midia
+- OK: stories com idade sem CPF - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories com idade sem e-mail real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories com idade sem telefone real - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories com idade sem documento - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories com idade sem segredo - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories com idade sem payload tecnico - resposta publica nao deve expor dado sensivel ou tecnico
+- OK: stories com idade sem copy tecnica 'conteudo_autorizado' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload publico
+- OK: stories com idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload publico
+- OK: frontend chama endpoint backend de WhatsApp - cliente publico deve usar endpoint backend
+- OK: frontend nao monta wa.me no cliente API - frontend nao deve construir URL de WhatsApp
+- OK: frontend publico sem scroll lock/storage/wa.me/copy tecnica - nenhum achado proibido
+
+## Pendencias operacionais
+- Nenhuma
+
+## Falhas
+- Nenhuma

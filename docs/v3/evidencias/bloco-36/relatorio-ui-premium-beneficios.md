@@ -131,7 +131,7 @@ protegidos
 Ver WhatsApp
 Stories
 
-Conteudo BLOQUEADO permanece protegido por c
+Stories protegidos ficam disponíveis após co
 ```
 ### mobile admin premium
 
@@ -225,5 +225,5 @@ protegidos
 Ver WhatsApp
 Stories
 
-Conteudo BLOQUEADO permanece protegido por c
+Stories protegidos ficam disponíveis após co
 ```

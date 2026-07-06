@@ -12,7 +12,7 @@ export function PublicStoriesGate({ slug, enabled }: PublicStoriesGateProps) {
     <section className="public-stories-flow" aria-label="Stories protegidos">
       <div className="public-section-heading">
         <h2>Stories</h2>
-        <p>Conteudo BLOQUEADO permanece protegido por confirmacao de idade.</p>
+        <p>Stories protegidos ficam disponíveis após confirmação de idade.</p>
       </div>
       <PublicAgeGateStories slug={slug} enabled={enabled} />
     </section>
