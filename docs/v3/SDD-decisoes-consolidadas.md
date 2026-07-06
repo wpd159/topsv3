@@ -161,6 +161,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 35 corrige a copy publica de bastidor do wizard, cria checkpoint local corrigido do Bloco 34 em `9b677ea` e valida admin/moderacao sintetica local com `topsv3-admin-sintetico-*`.
 - Bloco 35 decide que a UI admin pode formatar rótulos de enums/status para humanos, sem alterar DTOs, contratos, RBAC, backend ou regras. `UPPER_SNAKE_CASE` nao deve aparecer no texto renderizado admin validado pelo bloco.
 - Bloco 35 confirma que recursos `cripto-*`/TopsWI podem ser detectados por diagnostico, mas nao podem ser parados, removidos, alterados ou usados.
+- Bloco 36 cria checkpoint local do Bloco 35 em `00e1a02` e valida Premium/beneficios sinteticos como leitura/adicao local, sem promessa de contratacao, sem limitar gratuito e sem Pix/Efi real, checkout, pagamento, credito real ou webhook.
+- Bloco 36 decide que a UI admin de Premium deve formatar codigos de beneficio/status/consistencia como rotulos humanos, mantendo DTOs e contratos tecnicos intactos.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 

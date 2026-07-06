@@ -367,6 +367,14 @@ Antes de admin em ambiente nao local:
 - Checkpoint corrigido do Bloco 34 criado em `9b677ea`, sem remote e sem push.
 - Correcao pos-auditoria do Bloco 35 removeu copy publica de bastidor da etapa "Fotos e videos" do wizard `/anunciar`, sem alteracao funcional.
 - Admin/moderacao sintetica local validada com PostgreSQL descartavel e prefixo Docker `topsv3-admin-sintetico-*`.
+- Checkpoint local do Bloco 35 criado no Bloco 36 em `00e1a02`, sem remote e sem push.
+
+## Pendencias do Bloco 36
+
+- Premium/beneficios sinteticos validados com PostgreSQL descartavel e prefixo Docker `topsv3-premium-sintetico-*`.
+- Plano gratuito permanece util e sem limite comercial artificial.
+- Premium permanece aditivo, sem promessa de contratacao ou resultado garantido.
+- Expiracao real automatica, checkout, Pix/Efi real, pagamento real, credito real, webhook e financeiro real continuam bloqueados ate fase propria e revisao Pro.
 - Bloco 29 permanece aberto e adiado para pre-staging/cutover.
 - Quarentena sanitizada sem `POST_DATA` continua proibida para staging final.
 - Autenticacao/RBAC de producao, auditoria JSON de homologacao/producao, dados reais/sanitizados, financeiro, Pix/Efi, webhooks, importador real e producao continuam exigindo Pro.

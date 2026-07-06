@@ -7,7 +7,7 @@
 - Prefixo Docker: topsv3-render-sintetico
 - API smoke script: C:\topsv3\scripts\local\validar-publico-renderizado-sintetico-local.ps1
 - Fixture sintetica JSON: C:\topsv3\backend\src\test\resources\fixtures\v3-dados-sinteticos.json
-- Porta PostgreSQL efemera: 52591
+- Porta PostgreSQL efemera: 62489
 - Migrations aplicadas: True
 - Quantidade de migrations aplicadas: 17
 - Dados sinteticos aplicados: True

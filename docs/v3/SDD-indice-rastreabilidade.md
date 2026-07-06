@@ -215,6 +215,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 35: `docs/v3/evidencias/bloco-35/`
 - Prints admin/moderacao Bloco 35: `docs/v3/evidencias/bloco-35/prints/`
 - Validador admin/moderacao sintetica: `scripts/local/validar-admin-moderacao-sintetica-local.ps1`
+- Checkpoint Bloco 35: `00e1a02`
+- Relatorio Bloco 36: `docs/v3/222-bloco-36-premium-beneficios-sintetico.md`
+- Checklist Bloco 36: `docs/v3/223-checklist-bloco-36-premium-beneficios-sintetico.md`
+- Evidencias Bloco 36: `docs/v3/evidencias/bloco-36/`
+- Prints Premium/beneficios Bloco 36: `docs/v3/evidencias/bloco-36/prints/`
+- Validador Premium/beneficios sintetico: `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
 ## Validacoes principais
 
@@ -236,6 +242,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Gerar dados sinteticos V3: `scripts/local/gerar-dados-sinteticos-v3-local.ps1`
 - Validar dados sinteticos V3: `scripts/local/validar-dados-sinteticos-v3-local.ps1`
 - Validar wizard Anuncie gratis sintetico: `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
+- Validar Premium/beneficios sintetico: `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`
 - Secrets: `scripts/security/verificar-segredos.ps1`

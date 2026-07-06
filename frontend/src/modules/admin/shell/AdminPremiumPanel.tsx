@@ -15,6 +15,7 @@ import type {
   AdminPremiumVencendoResumoDto
 } from "../../../lib/api/adminReadonlyTypes";
 import { AdminPremiumWizard } from "../premium/AdminPremiumWizard";
+import { formatAdminText, formatAdminValue, formatAdminValues } from "./adminDisplay";
 import { AdminShell } from "./AdminShell";
 
 const ANUNCIO_PREMIUM_SINTETICO_ID = "00000000-0000-4000-8000-000000000501";
@@ -77,9 +78,9 @@ export function AdminPremiumPanel() {
               <ul>
                 {data.beneficios.map((item) => (
                   <li key={item.id}>
-                    <span>{item.beneficioCodigo ?? "beneficio local"}</span>
-                    <small>{`${item.statusCalculado ?? "status"} / ${item.grupoStatus ?? "sem grupo"}`}</small>
-                    <small>{item.codigosConsistencia.join(", ") || "PREMIUM_OK"}</small>
+                    <span>{formatAdminValue(item.beneficioCodigo, "beneficio local")}</span>
+                    <small>{`${formatAdminValue(item.statusCalculado, "status")} / ${formatAdminValue(item.grupoStatus, "sem grupo")}`}</small>
+                    <small>{formatAdminValues(item.codigosConsistencia, "premium ok")}</small>
                   </li>
                 ))}
               </ul>
@@ -93,9 +94,9 @@ export function AdminPremiumPanel() {
               <ul>
                 {data.consistencia.itens.slice(0, 5).map((item) => (
                   <li key={`${item.codigo}-${item.ativacaoId ?? item.grupoId ?? item.slug}`}>
-                    <span>{item.codigo}</span>
+                    <span>{formatAdminValue(item.codigo)}</span>
                     <small>{item.slug ?? "sem slug publico"}</small>
-                    <small>{item.mensagem}</small>
+                    <small>{formatAdminText(item.mensagem)}</small>
                   </li>
                 ))}
               </ul>
@@ -110,7 +111,7 @@ export function AdminPremiumPanel() {
             <ul>
               {data.vencendo.itens.slice(0, 5).map((item) => (
                 <li key={item.ativacaoId}>
-                  <span>{item.beneficioCodigo ?? "beneficio local"}</span>
+                  <span>{formatAdminValue(item.beneficioCodigo, "beneficio local")}</span>
                   <small>{`${item.diasRestantes} dias restantes`}</small>
                   <small>{item.slug ?? "sem slug publico"}</small>
                 </li>
