@@ -81,6 +81,14 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - IP e user-agent brutos nao devem ser persistidos em auditoria; hashing real e retencao final ficam para homologacao/producao.
 - O Bloco 49 valida observabilidade/auditoria local com dados sinteticos e mantem revisao Pro obrigatoria para logs estruturados JSON finais e auditoria com dados reais.
 
+## Preflight de homologacao
+
+- O Bloco 50 cria preflight local/documental para homologacao/staging sem executar ambiente real.
+- `OK_PREFLIGHT_HOMOLOGACAO_LOCAL` significa apenas que nao ha falha local concreta nos contratos verificados.
+- Pronto localmente nao equivale a pronto para homologacao, cutover ou producao.
+- Staging/homologacao exigem ambiente proprio, secrets fora do Git, CORS definitivo, CSRF revisado, Flyway/gitleaks repetidos e decisao humana.
+- Producao continua bloqueada por Bloco 29/restore completo, backup/rollback testado, SEO real, storage/upload real, Pix/Efi/webhooks, importador real, auditoria JSON final e LGPD.
+
 ## Moderacao
 
 - `REPROVAR` exige motivo.

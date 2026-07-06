@@ -14,8 +14,8 @@
 | MVP local sintetico | Sim | Nao | Nao | Nao | Nao | Nao |
 | Bloco 29 / restore completo | Parcial, protocolo e diagnostico | Sim, restore completo consistente | Sim | Sim | Sim | Sim |
 | Staging/homologacao | Nao | Sim, ambiente controlado | Sim | Sim | Sim | Sim |
-| Flyway real | Parcial, SQL estatico e PostgreSQL descartavel | Sim, execucao Flyway real | Sim | Sim | Nao | Sim |
-| Gitleaks real | Parcial, fallback local OK | Sim, instalar/decidir gate | Sim para producao | Sim se mantiver fallback | Nao | Sim |
+| Flyway real | Sim, `OK_FLYWAY_REAL_LOCAL` via Docker no Bloco 47 | Sim, repetir em homologacao controlada | Sim se nao repetir/validar no ambiente alvo | Sim | Nao | Sim |
+| Gitleaks real | Sim, gitleaks 8.30.1 validado no Bloco 44 | Sim, repetir como gate operacional/CI | Sim se nao houver gate antes de producao | Sim para politica final | Nao | Sim |
 | CSRF/auth/RBAC producao | Parcial, local validado | Sim, hardening ambiente nao local | Sim | Sim | Nao | Sim |
 | CDN/storage/midia real | Nao, apenas politica e placeholders | Sim, politica e implementacao real | Sim | Sim | Sim se usar midia real | Sim |
 | Upload real | Nao | Sim, fluxo, storage e seguranca | Sim | Sim | Sim | Sim |
@@ -27,6 +27,7 @@
 | Monitoramento | Parcial, logs locais | Sim, observabilidade de homologacao | Sim | Sim | Nao | Sim |
 | Auditoria JSON | Parcial, auditoria sanitizada | Sim, formato e retencao revisados | Sim | Sim | Pode exigir amostras sanitizadas | Sim |
 | LGPD/dados sensiveis | Parcial, politica documental | Sim, decisao juridica e sanitizacao | Sim | Sim | Sim | Sim |
+| Preflight homologacao local | Sim, Bloco 50 documenta contratos e gates | Sim, executar ambiente real separado | Sim se pendencias virarem producao | Sim para gates sensiveis | Sim quando envolver base autorizada | Sim |
 
 ## Conclusao
 

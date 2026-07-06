@@ -285,6 +285,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist Bloco 49: `docs/v3/249-checklist-bloco-49-observabilidade-auditoria-local.md`
 - Evidencias Bloco 49: `docs/v3/evidencias/bloco-49/`
 - Checkpoint Bloco 48: `9bd38f3`
+- Relatorio Bloco 50: `docs/v3/250-bloco-50-preflight-homologacao-local.md`
+- Checklist Bloco 50: `docs/v3/251-checklist-bloco-50-preflight-homologacao-local.md`
+- Preflight homologacao local: `docs/v3/HOMOLOGACAO-preflight-local.md`
+- Evidencias Bloco 50: `docs/v3/evidencias/bloco-50/`
+- Validador preflight homologacao local: `scripts/local/validar-preflight-homologacao-local.ps1`
+- Checkpoint Bloco 49: `037f9b22`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
@@ -311,6 +317,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Validar Premium/beneficios sintetico: `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 - Validar midia publica sintetica: `scripts/local/validar-midia-publica-sintetica-local.ps1`
 - Validar Flyway real local: `scripts/local/validar-flyway-real-local.ps1`
+- Validar preflight homologacao local: `scripts/local/validar-preflight-homologacao-local.ps1`
 - Validar copy renderizada publica/admin: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-admin-moderacao-sintetica-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`

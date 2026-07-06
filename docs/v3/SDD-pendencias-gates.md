@@ -110,8 +110,8 @@ Sequencia obrigatoria:
 Bloqueios:
 
 - fonte real nao autorizada;
-- Flyway real pendente;
-- gitleaks pendente sem decisao formal;
+- Flyway real OK localmente no Bloco 47, mas deve ser repetido em homologacao controlada;
+- gitleaks real OK localmente no Bloco 44, mas deve ser repetido como gate operacional/CI;
 - CSRF producao pendente;
 - auditoria JSON Pro pendente;
 - CDN/storage pendente;
@@ -489,6 +489,15 @@ Antes de admin em ambiente nao local:
 - Request-id, logs locais, erros 400/401/403/404/500 e auditoria admin sanitizada foram validados com dados sinteticos.
 - Producao/homologacao ainda exigem logs estruturados JSON finais, hashing real de IP/user-agent, pipeline centralizado, alertas, retencao e revisao Pro de auditoria JSON.
 - Nenhuma producao, VPS, dado real, restore, staging, Pix/Efi real, webhook, API externa ou push foi usado.
+
+## Estado do Bloco 50
+
+- Checkpoint local do Bloco 49 criado em `037f9b22`, sem remote e sem push.
+- Preflight local de homologacao criado com `scripts/local/validar-preflight-homologacao-local.ps1`.
+- O preflight classifica itens como pronto localmente, pendente antes de homologacao e bloqueante antes de producao.
+- `APP_ENV`, exemplos de ambiente, cookies, CORS, CSRF, storage, midia, Pix/Efi, importador, SEO, backup/rollback, monitoramento, Bloco 29 e Pro ficam documentados como gates objetivos.
+- O resultado local esperado e `OK_PREFLIGHT_HOMOLOGACAO_LOCAL`, sem autorizar staging real, homologacao, cutover ou producao.
+- Nenhuma producao, VPS, dado real, restore, staging, Pix/Efi real, webhook, API externa, remote ou push foi usado.
 
 ## Proibicoes ate novo bloco autorizado
 

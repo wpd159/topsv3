@@ -1,6 +1,6 @@
 # Relatorio wrapper observabilidade/auditoria local - Bloco 49
 
-- Gerado em: 2026-07-06 18:48:15 -03:00
+- Gerado em: 2026-07-06 19:10:34 -03:00
 - Resultado: OK_OBSERVABILIDADE_AUDITORIA_LOCAL
 - Exit code do ambiente descartavel: 0
 - Relatorio do ambiente descartavel: docs/v3/evidencias/bloco-49/relatorio-e2e-observabilidade-auditoria-local.md
