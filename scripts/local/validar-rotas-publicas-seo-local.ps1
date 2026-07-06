@@ -226,13 +226,13 @@ foreach ($path in $adminPageFiles) {
     if (-not $page.Contains("skeletonMetadata(")) { $adminNoindexOk = $false }
   }
 }
-Add-Check "paginas admin existem" $adminAllExist "admin skeleton estrutural da Fase 1C.6B"
+Add-Check "paginas admin existem" $adminAllExist "admin local estrutural e sintetico"
 Add-Check "paginas admin continuam noindex" $adminNoindexOk "skeletonMetadata aplica robots noindex"
 
 $publicShell = if (Test-RepoFile "frontend/src/modules/public/skeleton/PublicRouteShell.tsx") { Get-RepoText "frontend/src/modules/public/skeleton/PublicRouteShell.tsx" } else { "" }
 $adminShell = if (Test-RepoFile "frontend/src/modules/admin/shell/AdminShell.tsx") { Get-RepoText "frontend/src/modules/admin/shell/AdminShell.tsx" } else { "" }
 Add-Check "public shell sem marcador tecnico principal" (-not ($publicShell -match '(?i)SKELETON LOCAL|Previa local|Rota preservada')) "frontend publico nao deve exibir texto tecnico"
-Add-Check "admin skeleton marcado como temporario" ($adminShell.Contains("ADMIN SKELETON LOCAL") -and $adminShell.Contains("apenas estrutural")) "admin ainda nao e funcional"
+Add-Check "admin local marcado sem dados reais" ($adminShell.Contains("PAINEL ADMIN") -and $adminShell.Contains("Area administrativa local") -and $adminShell.Contains("sem dados reais")) "admin local validado no Bloco 35, sem producao"
 
 $publicSeoPath = "frontend/src/lib/seo/publicSeo.ts"
 if (Test-RepoFile $publicSeoPath) {

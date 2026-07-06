@@ -9,6 +9,7 @@ import {
   logoutAdmin
 } from "../../../lib/api/adminAuthApi";
 import type { AdminMeDto, AdminPermissionDto } from "../../../lib/api/adminAuthTypes";
+import { formatAdminValue, formatAdminValues } from "./adminDisplay";
 
 type AuthState = "carregando" | "autenticado" | "nao_autenticado" | "falha";
 
@@ -70,11 +71,11 @@ export function AdminAuthPanel() {
       <dl className="health-grid compact">
         <div>
           <dt>Estado</dt>
-          <dd>{state}</dd>
+          <dd>{formatAdminValue(state)}</dd>
         </div>
         <div>
           <dt>Papeis</dt>
-          <dd>{me?.papeis.join(", ") || "sem sessao"}</dd>
+          <dd>{formatAdminValues(me?.papeis, "sem sessao")}</dd>
         </div>
         <div>
           <dt>Permissoes</dt>
@@ -122,7 +123,7 @@ export function AdminAuthPanel() {
         <ul className="admin-permission-list" aria-label="Permissoes administrativas locais">
           {permissions.map((permission) => (
             <li key={permission.codigo}>
-              <span>{permission.codigo}</span>
+              <span>{formatAdminValue(permission.codigo)}</span>
               <small>{permission.descricao}</small>
             </li>
           ))}

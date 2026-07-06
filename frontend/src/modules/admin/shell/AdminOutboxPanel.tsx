@@ -15,6 +15,7 @@ import type {
   AdminOutboxPreviewRenderizadaDto,
   AdminPaginaDto
 } from "../../../lib/api/adminReadonlyTypes";
+import { formatAdminText, formatAdminValue } from "./adminDisplay";
 
 type OutboxState = {
   pagina: AdminPaginaDto<AdminOutboxListaItemDto> | null;
@@ -111,9 +112,9 @@ export function AdminOutboxPanel() {
             <ul>
               {data.pagina.itens.map((item) => (
                 <li key={item.id}>
-                  <span>{item.tipoEvento ?? "evento local"}</span>
-                  <small>{`${item.status ?? "status"} / ${item.entidadeTipo ?? "entidade"}`}</small>
-                  <small>{item.resumoSanitizado ?? "resumo sanitizado indisponivel"}</small>
+                  <span>{formatAdminValue(item.tipoEvento, "evento local")}</span>
+                  <small>{`${formatAdminValue(item.status, "status")} / ${formatAdminValue(item.entidadeTipo, "entidade")}`}</small>
+                  <small>{formatAdminText(item.resumoSanitizado, "resumo sanitizado indisponivel")}</small>
                   <button type="button" className="local-action" onClick={() => void carregarPreview(item.id)}>
                     Ver previa
                   </button>
@@ -129,18 +130,19 @@ export function AdminOutboxPanel() {
           <ul>
             <li>
               <span>
-                {data.preview?.assuntoSanitizado ?? data.detalhe?.previa?.assuntoSanitizado ?? "sem previa selecionada"}
+                {formatAdminText(data.preview?.assuntoSanitizado ?? data.detalhe?.previa?.assuntoSanitizado, "sem previa selecionada")}
               </span>
-              <small>{data.preview?.canalPrevisto ?? data.detalhe?.previa?.destinoLogicoSanitizado ?? "canal local"}</small>
+              <small>{formatAdminText(data.preview?.canalPrevisto ?? data.detalhe?.previa?.destinoLogicoSanitizado, "canal local")}</small>
               <small>
-                {data.preview?.corpoSanitizado
-                  ?? data.detalhe?.previa?.corpoSanitizado
-                  ?? "previa local, nenhuma comunicacao foi enviada"}
+                {formatAdminText(
+                  data.preview?.corpoSanitizado ?? data.detalhe?.previa?.corpoSanitizado,
+                  "previa local, nenhuma comunicacao foi enviada"
+                )}
               </small>
               <small>{data.previewStatus}</small>
               <small>
                 {data.preview?.camposMascarados.length
-                  ? `campos mascarados: ${data.preview.camposMascarados.join(", ")}`
+                  ? `campos mascarados: ${data.preview.camposMascarados.map((item) => formatAdminValue(item)).join(", ")}`
                   : "campos mascarados aparecem apenas quando detectados"}
               </small>
             </li>
@@ -160,7 +162,7 @@ export function AdminOutboxPanel() {
       </div>
       <dl className="health-grid compact">
         <ReadonlyMetric label="Itens" value={data.pagina?.totalElements} />
-        <ReadonlyMetric label="Detalhe" value={data.detalhe?.status ?? "sem permissao"} />
+        <ReadonlyMetric label="Detalhe" value={formatAdminValue(data.detalhe?.status, "sem permissao")} />
         <ReadonlyMetric label="Somente leitura" value={data.detalhe?.somenteLeitura ? "sim" : "sem detalhe"} />
         <ReadonlyMetric label="Somente previa" value={data.preview?.somentePreview ? "sim" : "sem previa"} />
         <ReadonlyMetric

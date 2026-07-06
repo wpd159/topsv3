@@ -351,7 +351,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Fotos e vídeos"
-            description="A produção valoriza mídia revisada, mas esta etapa local não envia arquivo real."
+            description="As mídias passam por revisão antes de aparecerem publicamente."
           >
             <div className="public-upload-future" aria-label="Upload futuro">
               <strong>Upload ainda não está disponível neste fluxo.</strong>

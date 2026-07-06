@@ -14,14 +14,14 @@ export function AdminShell({ title, children }: AdminShellProps) {
   return (
     <main className="admin-shell">
       <section className="shell admin-shell-inner">
-        <span className="status">ADMIN SKELETON LOCAL</span>
+        <span className="status">PAINEL ADMIN</span>
         <h1>{title}</h1>
         <p>
-          Este shell e local e permanece apenas estrutural. A autenticacao administrativa minima
-          valida sessao, papeis e permissoes, sem dados reais ou acoes de producao.
+          Area administrativa local para validar sessao, papeis e permissoes, sem dados reais ou
+          acoes de producao.
         </p>
         <div className="admin-notice">
-          Perfis locais previstos: ADMIN, MODERADOR e COMERCIAL. Apenas moderacao local minima esta disponivel.
+          Perfis locais previstos: Admin, Moderador e Comercial. Apenas moderacao local minima esta disponivel.
         </div>
         <AdminAuthPanel />
         <AdminReadonlyPanel />

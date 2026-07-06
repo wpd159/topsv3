@@ -209,6 +209,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 34: `docs/v3/evidencias/bloco-34/`
 - Prints producao Bloco 34: `docs/v3/evidencias/bloco-34/prints/producao/`
 - Prints V3 local Bloco 34: `docs/v3/evidencias/bloco-34/prints/v3-local/`
+- Checkpoint Bloco 34 corrigido: `9b677ea`
+- Relatorio Bloco 35: `docs/v3/220-bloco-35-admin-moderacao-sintetica.md`
+- Checklist Bloco 35: `docs/v3/221-checklist-bloco-35-admin-moderacao-sintetica.md`
+- Evidencias Bloco 35: `docs/v3/evidencias/bloco-35/`
+- Prints admin/moderacao Bloco 35: `docs/v3/evidencias/bloco-35/prints/`
+- Validador admin/moderacao sintetica: `scripts/local/validar-admin-moderacao-sintetica-local.ps1`
 
 ## Validacoes principais
 
@@ -221,6 +227,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - SEO publico local: `scripts/local/validar-seo-publico-local.ps1`
 - Mapa preservacao SEO: `scripts/local/validar-mapa-preservacao-seo-local.ps1`
 - Layout publico renderizado: `scripts/local/validar-layout-publico-renderizado.ps1`
+- Admin/moderacao sintetica: `scripts/local/validar-admin-moderacao-sintetica-local.ps1`
 - Localizar backup autorizado: `scripts/local/producao-localizar-backup-autorizado.ps1`
 - Restore local isolado: `scripts/local/producao-restore-local-isolado.ps1`
 - Sanitizar DB local: `scripts/local/producao-sanitizar-db-local.ps1`

@@ -357,10 +357,20 @@ Antes de admin em ambiente nao local:
 ## Pendencias do Bloco 34
 
 - Paridade profunda do wizard de producao ficou limitada pelo age gate publico, que nao foi aceito nem contornado.
-- Admin/moderacao do anuncio criado pelo wizard fica adiado para o Bloco 35.
+- Admin/moderacao do anuncio criado pelo wizard foi validado sinteticamente no Bloco 35.
 - Manter o wizard local sem stores, upload real, pagamento real, Pix/Efi real, e-mail real, WhatsApp real, publicacao automatica, scroll lock ou elemento mobile flutuante.
 - `gitleaks` real segue pendente no PATH.
 - Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, restore completo, financeiro, Pix/Efi, webhooks, importador real ou producao.
+
+## Pendencias do Bloco 35
+
+- Checkpoint corrigido do Bloco 34 criado em `9b677ea`, sem remote e sem push.
+- Correcao pos-auditoria do Bloco 35 removeu copy publica de bastidor da etapa "Fotos e videos" do wizard `/anunciar`, sem alteracao funcional.
+- Admin/moderacao sintetica local validada com PostgreSQL descartavel e prefixo Docker `topsv3-admin-sintetico-*`.
+- Bloco 29 permanece aberto e adiado para pre-staging/cutover.
+- Quarentena sanitizada sem `POST_DATA` continua proibida para staging final.
+- Autenticacao/RBAC de producao, auditoria JSON de homologacao/producao, dados reais/sanitizados, financeiro, Pix/Efi, webhooks, importador real e producao continuam exigindo Pro.
+- `gitleaks` real segue pendente no PATH quando nao instalado; fallback local permanece ativo.
 
 ## Proibicoes ate novo bloco autorizado
 

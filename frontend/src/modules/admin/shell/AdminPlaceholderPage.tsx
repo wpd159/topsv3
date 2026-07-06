@@ -1,4 +1,5 @@
 import { AdminShell } from "./AdminShell";
+import { formatAdminValues } from "./adminDisplay";
 import { findAdminModule } from "./adminModules";
 
 type AdminPlaceholderPageProps = {
@@ -11,12 +12,12 @@ export function AdminPlaceholderPage({ moduleSlug }: AdminPlaceholderPageProps) 
   return (
     <AdminShell title={adminModule.title}>
       <section className="admin-panel" aria-label="Status do módulo">
-        <h2>Módulo placeholder</h2>
+        <h2>Modulo em preparacao</h2>
         <p>{adminModule.summary}</p>
         <dl className="health-grid compact">
           <div>
             <dt>Estado</dt>
-            <dd>skeleton local</dd>
+            <dd>estrutura local preparada</dd>
           </div>
           <div>
             <dt>Dados reais</dt>
@@ -28,7 +29,7 @@ export function AdminPlaceholderPage({ moduleSlug }: AdminPlaceholderPageProps) 
           </div>
           <div>
             <dt>Perfis futuros</dt>
-            <dd>{adminModule.futureRoles.join(", ")}</dd>
+            <dd>{formatAdminValues(adminModule.futureRoles)}</dd>
           </div>
         </dl>
       </section>

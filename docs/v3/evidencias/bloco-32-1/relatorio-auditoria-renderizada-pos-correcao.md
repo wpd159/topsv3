@@ -32,10 +32,10 @@
   - OK: sem scroll lock global - html=visible; body=visible
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Anuncie grátis | Tops do Job
-  - OK: meta description presente - Envie seu anúncio para análise antes da publicação no Tops do Job.
+  - OK: title presente - PUBLICAR SEU ANÚNCIO | Tops do Job
+  - OK: meta description presente - Envie seu anúncio para análise no Tops do Job, sem pagamento, upload ou publicação automática nesta etapa.
   - OK: canonical local seguro - http://localhost/anunciar
-  - OK: H1 presente - Anuncie grátis
+  - OK: H1 presente - PUBLICAR SEU ANÚNCIO
   - OK: H1 legivel - 1120x37
   - OK: shell dentro da viewport - 1120px
 - /acompanhantes/go/goiania (desktop): OK
@@ -172,10 +172,10 @@
   - OK: sem scroll lock global - html=visible; body=visible
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Anuncie grátis | Tops do Job
-  - OK: meta description presente - Envie seu anúncio para análise antes da publicação no Tops do Job.
+  - OK: title presente - PUBLICAR SEU ANÚNCIO | Tops do Job
+  - OK: meta description presente - Envie seu anúncio para análise no Tops do Job, sem pagamento, upload ou publicação automática nesta etapa.
   - OK: canonical local seguro - http://localhost/anunciar
-  - OK: H1 presente - Anuncie grátis
+  - OK: H1 presente - PUBLICAR SEU ANÚNCIO
   - OK: H1 legivel - 358x32
   - OK: shell dentro da viewport - 358px
 - /acompanhantes/go/goiania (mobile): OK

@@ -23,6 +23,7 @@ import type {
   AdminRevisaoDetalheDto,
   AdminRevisaoListaItemDto
 } from "../../../lib/api/adminReadonlyTypes";
+import { formatAdminValue } from "./adminDisplay";
 
 type DetailedState = {
   anuncios: AdminPaginaDto<AdminAnuncioListaItemDto> | null;
@@ -168,7 +169,7 @@ export function AdminModerationPanel() {
           items={data.anuncios?.itens.map((item) => ({
             key: item.id,
             title: item.titulo ?? item.slug ?? item.id,
-            meta: `${item.status ?? "sem status"} / ${item.classificacaoConteudo ?? "sem classificacao"}`,
+            meta: `${formatAdminValue(item.status, "sem status")} / ${formatAdminValue(item.classificacaoConteudo, "sem classificacao")}`,
             detail: item.localizacao
               ? [item.localizacao.uf, item.localizacao.cidade, item.localizacao.bairro].filter(Boolean).join(" - ")
               : "sem localizacao"
@@ -180,7 +181,7 @@ export function AdminModerationPanel() {
           items={data.midias?.itens.map((item) => ({
             key: item.id,
             title: item.slugAnuncio ?? item.id,
-            meta: `${item.tipo ?? "tipo"} / ${item.status ?? "status"}`,
+            meta: `${formatAdminValue(item.tipo, "tipo")} / ${formatAdminValue(item.status, "status")}`,
             detail: `${item.mimeType ?? "mime pendente"} / arquivo privado oculto`
           }))}
         />
@@ -190,15 +191,15 @@ export function AdminModerationPanel() {
           items={data.revisoes?.itens.map((item) => ({
             key: item.id,
             title: item.slugAnuncio ?? item.id,
-            meta: `${item.tipo ?? "tipo"} / ${item.status ?? "status"}`,
+            meta: `${formatAdminValue(item.tipo, "tipo")} / ${formatAdminValue(item.status, "status")}`,
             detail: item.conteudoSolicitadoPresente ? "conteudo solicitado oculto" : "sem conteudo solicitado"
           }))}
         />
       </div>
       <dl className="health-grid compact">
-        <ReadonlyMetric label="Detalhe anuncio" value={data.anuncioDetalhe?.status ?? "sem permissao"} />
-        <ReadonlyMetric label="Detalhe midia" value={data.midiaDetalhe?.status ?? "sem permissao"} />
-        <ReadonlyMetric label="Detalhe revisao" value={data.revisaoDetalhe?.status ?? "sem permissao"} />
+        <ReadonlyMetric label="Detalhe anuncio" value={formatAdminValue(data.anuncioDetalhe?.status, "sem permissao")} />
+        <ReadonlyMetric label="Detalhe midia" value={formatAdminValue(data.midiaDetalhe?.status, "sem permissao")} />
+        <ReadonlyMetric label="Detalhe revisao" value={formatAdminValue(data.revisaoDetalhe?.status, "sem permissao")} />
       </dl>
       <div className="admin-moderation-actions" aria-label="Acoes locais de moderacao">
         <div>

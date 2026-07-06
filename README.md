@@ -4,7 +4,7 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 34 executado localmente: paridade visual/funcional do wizard publico `/anunciar` com a producao observavel, sem dados reais e sem efeitos externos.**
+Estado atual: **Bloco 35 executado localmente: checkpoint corrigido do Bloco 34 e validacao admin/moderacao sintetica local, sem dados reais e sem efeitos externos.**
 
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 
@@ -16,7 +16,9 @@ O checkpoint local do Bloco 32.1 foi criado em `f6189f0` com a mensagem `test: v
 
 O Bloco 33.1 corrige apenas textos publicos sem acento no wizard `/anunciar`, como `Revisão final`, `Solicitação recebida`, `Confirmações`, `Etapa concluída` e `botão final`. Nenhuma regra de negocio, contrato, DTO, rota, validacao, seguranca ou fluxo real foi alterado.
 
-O checkpoint local dos Blocos 33/33.1 foi criado em `b7f5f98` com a mensagem `test: valida wizard anunciar sintetico ate bloco 33.1`, remote vazio e sem push. O Bloco 34 reorienta o escopo para paridade do wizard `/anunciar` com a producao observavel: a consulta publica a `https://topsdojob.com/anunciar` redirecionou para `/?next=/anunciar` com age gate, sem clicar em `Aceitar`; a V3 local recebeu ajustes leves de CTA/confianca para `PUBLICAR SEU ANUNCIO`, mantendo stores, upload real, pagamento, Pix/Efi real, e-mail real, WhatsApp real e publicacao automatica fora do fluxo. Admin/moderacao fica adiado para o Bloco 35.
+O checkpoint local dos Blocos 33/33.1 foi criado em `b7f5f98` com a mensagem `test: valida wizard anunciar sintetico ate bloco 33.1`, remote vazio e sem push. O Bloco 34 reorienta o escopo para paridade do wizard `/anunciar` com a producao observavel: a consulta publica a `https://topsdojob.com/anunciar` redirecionou para `/?next=/anunciar` com age gate, sem clicar em `Aceitar`; a V3 local recebeu ajustes leves de CTA/confianca para `PUBLICAR SEU ANUNCIO`, mantendo stores, upload real, pagamento, Pix/Efi real, e-mail real, WhatsApp real e publicacao automatica fora do fluxo.
+
+O Bloco 35 corrigiu a copy publica de bastidor que bloqueava o checkpoint do Bloco 34, endureceu o validador do wizard e criou o commit local `9b677ea` com a mensagem `test: consolida paridade wizard producao ate bloco 34`, sem remote e sem push. Em seguida validou admin/moderacao sintetica local com `topsv3-admin-sintetico-*`, PostgreSQL descartavel, 1089 checks HTTP OK, prints desktop/mobile de `/admin` e `/admin/moderacao`, auditoria sanitizada, outbox local sem envio externo e UI admin sem `UPPER_SNAKE_CASE` renderizado. Nenhum recurso `cripto-*`/TopsWI foi alterado.
 
 O Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover. A quarentena sanitizada sem `POST_DATA` continua proibida para staging final, importacao definitiva e validacao transacional final.
 

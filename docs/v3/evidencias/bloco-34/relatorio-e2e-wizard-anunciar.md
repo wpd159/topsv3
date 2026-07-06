@@ -7,7 +7,7 @@
 - Prefixo Docker: topsv3-bloco34-wizard-paridade
 - API smoke script: C:\topsv3\scripts\local\validar-wizard-anunciar-sintetico-local.ps1
 - Fixture sintetica JSON: C:\topsv3\backend\src\test\resources\fixtures\v3-dados-sinteticos.json
-- Porta PostgreSQL efemera: 60074
+- Porta PostgreSQL efemera: 59945
 - Migrations aplicadas: True
 - Quantidade de migrations aplicadas: 17
 - Dados sinteticos aplicados: True

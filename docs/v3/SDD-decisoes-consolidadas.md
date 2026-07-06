@@ -158,6 +158,9 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 34 reorienta o escopo para paridade visual/funcional do wizard `/anunciar` com a producao observavel. Admin/moderacao do anuncio criado pelo wizard fica adiado para o Bloco 35.
 - Bloco 34 decide que nao se completa age gate em producao sem autorizacao explicita. A consulta publica a `/anunciar` ficou limitada ao redirecionamento `/?next=/anunciar` e aos elementos publicos observaveis antes do aceite.
 - Bloco 34 mantem o wizard local sem stores, upload real, pagamento real, Pix/Efi real, e-mail real, WhatsApp real e publicacao automatica.
+- Bloco 35 corrige a copy publica de bastidor do wizard, cria checkpoint local corrigido do Bloco 34 em `9b677ea` e valida admin/moderacao sintetica local com `topsv3-admin-sintetico-*`.
+- Bloco 35 decide que a UI admin pode formatar rótulos de enums/status para humanos, sem alterar DTOs, contratos, RBAC, backend ou regras. `UPPER_SNAKE_CASE` nao deve aparecer no texto renderizado admin validado pelo bloco.
+- Bloco 35 confirma que recursos `cripto-*`/TopsWI podem ser detectados por diagnostico, mas nao podem ser parados, removidos, alterados ou usados.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 
