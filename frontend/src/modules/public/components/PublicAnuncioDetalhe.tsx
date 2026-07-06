@@ -24,7 +24,7 @@ export function PublicAnuncioDetalhe({ anuncio, status }: PublicAnuncioDetalhePr
             <dd>{formatPrice(anuncio.preco)}</dd>
           </div>
           <div>
-            <dt>Local</dt>
+            <dt>Localização</dt>
             <dd>{formatLocation(anuncio.localizacao)}</dd>
           </div>
           <div>

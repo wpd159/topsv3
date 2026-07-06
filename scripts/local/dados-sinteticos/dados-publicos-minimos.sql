@@ -14,7 +14,7 @@ INSERT INTO usuario (
   versao
 ) VALUES (
   '00000000-0000-4000-8000-000000000101',
-  'Usuario Sintetico Local',
+  'Usuário de demonstração',
   NULL,
   NULL,
   'ATIVO',
@@ -36,7 +36,7 @@ INSERT INTO usuario (
   versao
 ) VALUES (
   '00000000-0000-4000-8000-000000000102',
-  'Usuario Financeiro Sintetico Local',
+  'Usuário financeiro de demonstração',
   NULL,
   NULL,
   'ATIVO',
@@ -55,8 +55,8 @@ INSERT INTO estado (
 ) VALUES (
   '00000000-0000-4000-8000-000000000201',
   'ZZ',
-  'Estado Sintetico',
-  'estado sintetico',
+  'Estado de demonstração',
+  'estado demonstracao',
   now()
 ) ON CONFLICT (id) DO NOTHING;
 
@@ -70,8 +70,8 @@ INSERT INTO cidade (
 ) VALUES (
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000201',
-  'Cidade Sintetica',
-  'cidade sintetica',
+  'Cidade de demonstração',
+  'cidade demonstracao',
   'cidade-sintetica',
   now()
 ) ON CONFLICT (id) DO NOTHING;
@@ -86,8 +86,8 @@ INSERT INTO bairro (
 ) VALUES (
   '00000000-0000-4000-8000-000000000401',
   '00000000-0000-4000-8000-000000000301',
-  'Bairro Sintetico',
-  'bairro sintetico',
+  'Bairro de demonstração',
+  'bairro demonstracao',
   'bairro-sintetico',
   now()
 ) ON CONFLICT (id) DO NOTHING;
@@ -115,8 +115,8 @@ INSERT INTO anuncio (
   '00000000-0000-4000-8000-000000000501',
   '00000000-0000-4000-8000-000000000101',
   'anuncio-sintetico-local',
-  'Anuncio sintetico local',
-  'Registro sintetico neutro para smoke test local descartavel.',
+  'Anúncio de demonstração',
+  'Perfil de demonstração para validação.',
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
@@ -155,8 +155,8 @@ INSERT INTO anuncio (
   '00000000-0000-4000-8000-000000000503',
   '00000000-0000-4000-8000-000000000101',
   'anuncio-sintetico-pendente-local',
-  'Anuncio sintetico pendente local',
-  'Registro sintetico neutro para validar filas administrativas locais.',
+  'Anúncio de demonstração pendente',
+  'Perfil de demonstração para validação administrativa.',
   'PENDENTE_REVISAO',
   'PENDENTE',
   'SINTETICO',
@@ -195,8 +195,8 @@ INSERT INTO anuncio (
   '00000000-0000-4000-8000-000000000502',
   '00000000-0000-4000-8000-000000000101',
   'anuncio-sintetico-bloqueado-local',
-  'Anuncio sintetico bloqueado local',
-  'Registro sintetico neutro para validar confirmacao de idade local.',
+  'Anúncio de demonstração bloqueado',
+  'Perfil de demonstração protegido por confirmação de idade.',
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
@@ -227,7 +227,7 @@ INSERT INTO anuncio_localizacao (
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
-  'Endereco sintetico local',
+  'Endereço de demonstração',
   NULL,
   NULL,
   now(),
@@ -249,7 +249,7 @@ INSERT INTO anuncio_localizacao (
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
-  'Endereco sintetico local',
+  'Endereço de demonstração',
   NULL,
   NULL,
   now(),
@@ -271,7 +271,7 @@ INSERT INTO anuncio_localizacao (
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
-  'Endereco sintetico local',
+  'Endereço de demonstração',
   NULL,
   NULL,
   now(),
@@ -438,8 +438,8 @@ INSERT INTO anuncio (
     '00000000-0000-4000-8000-000000000504',
     '00000000-0000-4000-8000-000000000101',
     'anuncio-sintetico-reprovar-local',
-    'Anuncio sintetico reprovar local',
-    'Registro sintetico neutro para decisao local de reprovacao.',
+    'Anúncio de demonstração para reprovação',
+    'Perfil de demonstração para decisão de reprovação.',
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
@@ -458,8 +458,8 @@ INSERT INTO anuncio (
     '00000000-0000-4000-8000-000000000505',
     '00000000-0000-4000-8000-000000000101',
     'anuncio-sintetico-finalizado-local',
-    'Anuncio sintetico finalizado local',
-    'Registro sintetico neutro para conflito de revisao finalizada.',
+    'Anúncio de demonstração finalizado',
+    'Perfil de demonstração para conflito de revisão finalizada.',
     'APROVADO',
     'APROVADO',
     'SINTETICO',
@@ -478,8 +478,8 @@ INSERT INTO anuncio (
     '00000000-0000-4000-8000-000000000506',
     '00000000-0000-4000-8000-000000000101',
     'anuncio-sintetico-moderador-local',
-    'Anuncio sintetico moderador local',
-    'Registro sintetico neutro para decisao local por moderador.',
+    'Anúncio de demonstração do moderador',
+    'Perfil de demonstração para decisão por moderador.',
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
@@ -522,8 +522,8 @@ INSERT INTO anuncio (
   '00000000-0000-4000-8000-000000000511',
   '00000000-0000-4000-8000-000000000101',
   'anuncio-sintetico-sem-metricas-local',
-  'Anuncio sintetico sem metricas local',
-  'Registro sintetico neutro para validar estado vazio de prova de resultado.',
+  'Anúncio de demonstração sem métricas',
+  'Perfil de demonstração para validar estado vazio de prova de resultado.',
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
@@ -554,7 +554,7 @@ INSERT INTO anuncio_localizacao (
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
-  'Endereco sintetico local',
+  'Endereço de demonstração',
   NULL,
   NULL,
   now(),
@@ -576,7 +576,7 @@ INSERT INTO documento_busca_anuncio (
   atualizado_em
 ) VALUES (
   '00000000-0000-4000-8000-000000000511',
-  'anuncio sintetico sem metricas local cidade sintetica bairro sintetico',
+  'anuncio demonstracao sem metricas cidade demonstracao bairro demonstracao',
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
@@ -603,9 +603,9 @@ INSERT INTO evento_visualizacao (
   request_id,
   criado_em
 ) VALUES
-  ('00000000-0000-4000-8000-000000000801', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0801', 'ip-hash-sintetico-local-0801', 'ua-hash-sintetico-local-0801', 'referer-hash-sintetico-local-0801', 'BR', 'ZZ', 'Cidade Sintetica', 'DESKTOP', 'req-metrica-local-0801', now() - interval '3 days'),
-  ('00000000-0000-4000-8000-000000000802', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0802', 'ip-hash-sintetico-local-0802', 'ua-hash-sintetico-local-0802', 'referer-hash-sintetico-local-0802', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', 'req-metrica-local-0802', now() - interval '1 day'),
-  ('00000000-0000-4000-8000-000000000803', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0803', 'ip-hash-sintetico-local-0803', 'ua-hash-sintetico-local-0803', 'referer-hash-sintetico-local-0803', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', 'req-metrica-local-0803', now())
+  ('00000000-0000-4000-8000-000000000801', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0801', 'ip-hash-sintetico-local-0801', 'ua-hash-sintetico-local-0801', 'referer-hash-sintetico-local-0801', 'BR', 'ZZ', 'Cidade de demonstração', 'DESKTOP', 'req-metrica-local-0801', now() - interval '3 days'),
+  ('00000000-0000-4000-8000-000000000802', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0802', 'ip-hash-sintetico-local-0802', 'ua-hash-sintetico-local-0802', 'referer-hash-sintetico-local-0802', 'BR', 'ZZ', 'Cidade de demonstração', 'MOBILE', 'req-metrica-local-0802', now() - interval '1 day'),
+  ('00000000-0000-4000-8000-000000000803', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0803', 'ip-hash-sintetico-local-0803', 'ua-hash-sintetico-local-0803', 'referer-hash-sintetico-local-0803', 'BR', 'ZZ', 'Cidade de demonstração', 'MOBILE', 'req-metrica-local-0803', now())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO clique_whatsapp (
@@ -623,9 +623,9 @@ INSERT INTO clique_whatsapp (
   request_id,
   criado_em
 ) VALUES
-  ('00000000-0000-4000-8000-000000000811', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0811', 'ip-hash-sintetico-local-0811', 'ua-hash-sintetico-local-0811', 'BR', 'ZZ', 'Cidade Sintetica', 'DESKTOP', true, NULL, 'req-clique-local-0811', now() - interval '3 days'),
-  ('00000000-0000-4000-8000-000000000812', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0812', 'ip-hash-sintetico-local-0812', 'ua-hash-sintetico-local-0812', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', true, NULL, 'req-clique-local-0812', now() - interval '1 day'),
-  ('00000000-0000-4000-8000-000000000813', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0813', 'ip-hash-sintetico-local-0813', 'ua-hash-sintetico-local-0813', 'BR', 'ZZ', 'Cidade Sintetica', 'MOBILE', true, NULL, 'req-clique-local-0813', now())
+  ('00000000-0000-4000-8000-000000000811', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0811', 'ip-hash-sintetico-local-0811', 'ua-hash-sintetico-local-0811', 'BR', 'ZZ', 'Cidade de demonstração', 'DESKTOP', true, NULL, 'req-clique-local-0811', now() - interval '3 days'),
+  ('00000000-0000-4000-8000-000000000812', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0812', 'ip-hash-sintetico-local-0812', 'ua-hash-sintetico-local-0812', 'BR', 'ZZ', 'Cidade de demonstração', 'MOBILE', true, NULL, 'req-clique-local-0812', now() - interval '1 day'),
+  ('00000000-0000-4000-8000-000000000813', '00000000-0000-4000-8000-000000000501', 'visitante-hash-sintetico-0813', 'ip-hash-sintetico-local-0813', 'ua-hash-sintetico-local-0813', 'BR', 'ZZ', 'Cidade de demonstração', 'MOBILE', true, NULL, 'req-clique-local-0813', now())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO agregado_visualizacao_diaria (
@@ -640,9 +640,9 @@ INSERT INTO agregado_visualizacao_diaria (
   visitantes_estimados,
   atualizado_em
 ) VALUES
-  ('00000000-0000-4000-8000-000000000821', '00000000-0000-4000-8000-000000000501', current_date - 3, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 40, 25, now()),
-  ('00000000-0000-4000-8000-000000000822', '00000000-0000-4000-8000-000000000501', current_date - 1, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 80, 45, now()),
-  ('00000000-0000-4000-8000-000000000823', '00000000-0000-4000-8000-000000000501', current_date, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 100, 60, now())
+  ('00000000-0000-4000-8000-000000000821', '00000000-0000-4000-8000-000000000501', current_date - 3, 'ZZ', 'Cidade de demonstração', 'ZZ', 'cidade-sintetica', 40, 25, now()),
+  ('00000000-0000-4000-8000-000000000822', '00000000-0000-4000-8000-000000000501', current_date - 1, 'ZZ', 'Cidade de demonstração', 'ZZ', 'cidade-sintetica', 80, 45, now()),
+  ('00000000-0000-4000-8000-000000000823', '00000000-0000-4000-8000-000000000501', current_date, 'ZZ', 'Cidade de demonstração', 'ZZ', 'cidade-sintetica', 100, 60, now())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO agregado_clique_whatsapp_diario (
@@ -657,9 +657,9 @@ INSERT INTO agregado_clique_whatsapp_diario (
   visitantes_estimados,
   atualizado_em
 ) VALUES
-  ('00000000-0000-4000-8000-000000000831', '00000000-0000-4000-8000-000000000501', current_date - 3, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 4, 4, now()),
-  ('00000000-0000-4000-8000-000000000832', '00000000-0000-4000-8000-000000000501', current_date - 1, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 12, 10, now()),
-  ('00000000-0000-4000-8000-000000000833', '00000000-0000-4000-8000-000000000501', current_date, 'ZZ', 'Cidade Sintetica', 'ZZ', 'cidade-sintetica', 16, 14, now())
+  ('00000000-0000-4000-8000-000000000831', '00000000-0000-4000-8000-000000000501', current_date - 3, 'ZZ', 'Cidade de demonstração', 'ZZ', 'cidade-sintetica', 4, 4, now()),
+  ('00000000-0000-4000-8000-000000000832', '00000000-0000-4000-8000-000000000501', current_date - 1, 'ZZ', 'Cidade de demonstração', 'ZZ', 'cidade-sintetica', 12, 10, now()),
+  ('00000000-0000-4000-8000-000000000833', '00000000-0000-4000-8000-000000000501', current_date, 'ZZ', 'Cidade de demonstração', 'ZZ', 'cidade-sintetica', 16, 14, now())
 ON CONFLICT (id) DO NOTHING;
 
 -- Bloco 23 - dados sinteticos locais para creditos/ledger read-only.
@@ -778,7 +778,7 @@ INSERT INTO movimento_credito (
     '00000000-0000-4000-8000-000000000691',
     'credito-sintetico-ledger-pagamento-ok',
     NULL,
-    'Credito sintetico local conciliado; sem pagamento real.',
+    'Crédito conciliado para conferência.',
     now() - interval '2 hours'
   ),
   (
@@ -794,7 +794,7 @@ INSERT INTO movimento_credito (
     '00000000-0000-4000-8000-000000000661',
     'credito-sintetico-ledger-beneficio',
     NULL,
-    'Debito sintetico por beneficio local.',
+    'Débito por benefício.',
     now() - interval '110 minutes'
   ),
   (
@@ -810,7 +810,7 @@ INSERT INTO movimento_credito (
     NULL,
     'credito-sintetico-ledger-campanha',
     NULL,
-    'Credito sintetico de campanha local.',
+    'Crédito de campanha.',
     now() - interval '100 minutes'
   ),
   (
@@ -826,7 +826,7 @@ INSERT INTO movimento_credito (
     NULL,
     'credito-sintetico-ledger-ajuste',
     '00000000-0000-4000-8000-000000000101',
-    'Ajuste sintetico para pendencia Pro; sem ajuste real.',
+    'Ajuste administrativo pendente de revisão.',
     now() - interval '90 minutes'
   ),
   (
@@ -842,7 +842,7 @@ INSERT INTO movimento_credito (
     NULL,
     'credito-sintetico-ledger-sem-pagamento',
     NULL,
-    'Credito sintetico sem pagamento vinculado para validar alerta.',
+    'Crédito sem pagamento vinculado para alerta.',
     now() - interval '80 minutes'
   ),
   (
@@ -858,7 +858,7 @@ INSERT INTO movimento_credito (
     '00000000-0000-4000-8000-000000000693',
     'credito-sintetico-ledger-pagamento-pendente',
     NULL,
-    'Credito sintetico vinculado a pagamento nao aprovado.',
+    'Crédito vinculado a pagamento não aprovado.',
     now() - interval '70 minutes'
   )
 ON CONFLICT (id) DO NOTHING;
@@ -1081,7 +1081,7 @@ INSERT INTO movimento_credito (
   '00000000-0000-4000-8000-000000000721',
   'pagamento-sintetico-ledger-efi',
   NULL,
-  'Credito sintetico local vinculado a pagamento Efi; sem cobranca real.',
+  'Crédito vinculado a pagamento Efí para conferência.',
   now() - interval '19 minutes'
 ) ON CONFLICT (id) DO NOTHING;
 
@@ -1223,7 +1223,7 @@ INSERT INTO anuncio_localizacao (
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
-    'Endereco sintetico local',
+    'Endereço de demonstração',
     NULL,
     NULL,
     now(),
@@ -1234,7 +1234,7 @@ INSERT INTO anuncio_localizacao (
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
-    'Endereco sintetico local',
+    'Endereço de demonstração',
     NULL,
     NULL,
     now(),
@@ -1245,7 +1245,7 @@ INSERT INTO anuncio_localizacao (
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
-    'Endereco sintetico local',
+    'Endereço de demonstração',
     NULL,
     NULL,
     now(),
@@ -1439,8 +1439,8 @@ INSERT INTO anuncio (
     '00000000-0000-4000-8000-000000000507',
     '00000000-0000-4000-8000-000000000101',
     'anuncio-sintetico-ajuste-local',
-    'Anuncio sintetico ajuste local',
-    'Registro sintetico neutro para solicitacao local de ajuste.',
+    'Anúncio de demonstração para ajuste',
+    'Perfil de demonstração para solicitação de ajuste.',
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
@@ -1459,8 +1459,8 @@ INSERT INTO anuncio (
     '00000000-0000-4000-8000-000000000508',
     '00000000-0000-4000-8000-000000000101',
     'anuncio-sintetico-remeter-local',
-    'Anuncio sintetico remeter local',
-    'Registro sintetico neutro para remeter revisao local.',
+    'Anúncio de demonstração para revisão',
+    'Perfil de demonstração para remeter revisão.',
     'APROVADO',
     'APROVADO',
     'SINTETICO',
@@ -1479,8 +1479,8 @@ INSERT INTO anuncio (
     '00000000-0000-4000-8000-000000000509',
     '00000000-0000-4000-8000-000000000101',
     'anuncio-sintetico-remeter-conflito-local',
-    'Anuncio sintetico remeter conflito local',
-    'Registro sintetico neutro para conflito de remeter revisao local.',
+    'Anúncio de demonstração com conflito de revisão',
+    'Perfil de demonstração para conflito ao remeter revisão.',
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
@@ -1513,7 +1513,7 @@ INSERT INTO anuncio_localizacao (
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
-    'Endereco sintetico local',
+    'Endereço de demonstração',
     NULL,
     NULL,
     now(),
@@ -1524,7 +1524,7 @@ INSERT INTO anuncio_localizacao (
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
-    'Endereco sintetico local',
+    'Endereço de demonstração',
     NULL,
     NULL,
     now(),
@@ -1535,7 +1535,7 @@ INSERT INTO anuncio_localizacao (
     '00000000-0000-4000-8000-000000000201',
     '00000000-0000-4000-8000-000000000301',
     '00000000-0000-4000-8000-000000000401',
-    'Endereco sintetico local',
+    'Endereço de demonstração',
     NULL,
     NULL,
     now(),
@@ -1612,7 +1612,7 @@ INSERT INTO documento_busca_anuncio (
   atualizado_em
 ) VALUES (
   '00000000-0000-4000-8000-000000000501',
-  'anuncio sintetico local cidade sintetica bairro sintetico',
+  'anuncio demonstracao cidade demonstracao bairro demonstracao',
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
@@ -1654,7 +1654,7 @@ INSERT INTO seo_url (
     false,
     'APROVADO',
     now(),
-    'Smoke test local descartavel',
+    'Validação controlada',
     now(),
     now(),
     0
@@ -1671,7 +1671,7 @@ INSERT INTO seo_url (
     false,
     'APROVADO',
     now(),
-    'Smoke test local descartavel',
+    'Validação controlada',
     now(),
     now(),
     0
@@ -1688,7 +1688,7 @@ INSERT INTO seo_url (
     false,
     'APROVADO',
     now(),
-    'Smoke test local descartavel',
+    'Validação controlada',
     now(),
     now(),
     0
@@ -1705,7 +1705,7 @@ INSERT INTO seo_url (
     false,
     'APROVADO',
     now(),
-    'Smoke test local descartavel',
+    'Validação controlada',
     now(),
     now(),
     0
@@ -1722,7 +1722,7 @@ INSERT INTO seo_url (
     false,
     'APROVADO',
     now(),
-    'Smoke test local descartavel',
+    'Validação controlada',
     now(),
     now(),
     0
@@ -1739,7 +1739,7 @@ INSERT INTO seo_url (
     false,
     'APROVADO',
     now(),
-    'Smoke test local descartavel',
+    'Validação controlada',
     now(),
     now(),
     0
@@ -1772,8 +1772,8 @@ INSERT INTO anuncio (
   '00000000-0000-4000-8000-000000000510',
   '00000000-0000-4000-8000-000000000101',
   'anuncio-sintetico-gratuito-local',
-  'Anuncio sintetico gratuito local',
-  'Registro sintetico neutro para validar plano gratuito sem limite comercial de contato.',
+  'Anúncio de demonstração gratuito',
+  'Perfil de demonstração para validar plano gratuito sem limite comercial de contato.',
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
@@ -1804,7 +1804,7 @@ INSERT INTO anuncio_localizacao (
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
-  'Endereco sintetico local',
+  'Endereço de demonstração',
   NULL,
   NULL,
   now(),
@@ -1826,7 +1826,7 @@ INSERT INTO documento_busca_anuncio (
   atualizado_em
 ) VALUES (
   '00000000-0000-4000-8000-000000000510',
-  'anuncio sintetico gratuito local cidade sintetica bairro sintetico',
+  'anuncio demonstracao gratuito cidade demonstracao bairro demonstracao',
   '00000000-0000-4000-8000-000000000201',
   '00000000-0000-4000-8000-000000000301',
   '00000000-0000-4000-8000-000000000401',
@@ -1849,12 +1849,12 @@ INSERT INTO beneficio_premium (
   ativo,
   criado_em
 ) VALUES
-  ('00000000-0000-4000-8000-000000000611', 'DESTAQUE', 'Destaque sintetico', 'Beneficio sintetico de exposicao adicional.', 'ANUNCIO', true, true, now()),
-  ('00000000-0000-4000-8000-000000000612', 'ANUNCIO_TOPO', 'Anuncio topo sintetico', 'Beneficio sintetico de topo preservado.', 'ANUNCIO', true, true, now()),
-  ('00000000-0000-4000-8000-000000000613', 'FOTOS_EXTRA', 'Fotos extra sinteticas', 'Beneficio sintetico de midia adicional.', 'MIDIA', false, true, now()),
-  ('00000000-0000-4000-8000-000000000614', 'STORIES', 'Stories sinteticos', 'Beneficio sintetico para stories.', 'MIDIA', false, true, now()),
-  ('00000000-0000-4000-8000-000000000615', 'VIDEO', 'Video sintetico', 'Beneficio sintetico para video.', 'MIDIA', false, true, now()),
-  ('00000000-0000-4000-8000-000000000616', 'RELATORIO', 'Relatorio sintetico', 'Beneficio sintetico de relatorio operacional.', 'RELATORIO', false, true, now())
+  ('00000000-0000-4000-8000-000000000611', 'DESTAQUE', 'Destaque de demonstração', 'Benefício de demonstração para exposição adicional.', 'ANUNCIO', true, true, now()),
+  ('00000000-0000-4000-8000-000000000612', 'ANUNCIO_TOPO', 'Anúncio no topo de demonstração', 'Benefício de demonstração para topo preservado.', 'ANUNCIO', true, true, now()),
+  ('00000000-0000-4000-8000-000000000613', 'FOTOS_EXTRA', 'Fotos extras de demonstração', 'Benefício de demonstração para mídia adicional.', 'MIDIA', false, true, now()),
+  ('00000000-0000-4000-8000-000000000614', 'STORIES', 'Stories de demonstração', 'Benefício de demonstração para stories.', 'MIDIA', false, true, now()),
+  ('00000000-0000-4000-8000-000000000615', 'VIDEO', 'Vídeo de demonstração', 'Benefício de demonstração para vídeo.', 'MIDIA', false, true, now()),
+  ('00000000-0000-4000-8000-000000000616', 'RELATORIO', 'Relatório de demonstração', 'Benefício de demonstração para relatório operacional.', 'RELATORIO', false, true, now())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO grupo_ativacao_beneficio (
@@ -1885,7 +1885,7 @@ INSERT INTO grupo_ativacao_beneficio (
     now() + interval '5 days',
     'ATIVO',
     'premium-sintetico-grupo-ativo',
-    'Grupo sintetico local ativo sem compra real.',
+    'Grupo de benefícios ativo.',
     now(),
     now()
   ),
@@ -1901,7 +1901,7 @@ INSERT INTO grupo_ativacao_beneficio (
     now() - interval '5 days',
     'EXPIRADO',
     'premium-sintetico-grupo-expirado',
-    'Grupo sintetico expirado para validar consistencia.',
+    'Grupo de benefícios expirado para conferência.',
     now(),
     now()
   ),
@@ -1917,7 +1917,7 @@ INSERT INTO grupo_ativacao_beneficio (
     now() + interval '10 days',
     'ATIVO',
     'premium-sintetico-beneficio-curto',
-    'Grupo sintetico ativo com beneficio expirado antes do grupo.',
+    'Grupo ativo com benefício expirado antes do grupo.',
     now(),
     now()
   ),
@@ -1933,7 +1933,7 @@ INSERT INTO grupo_ativacao_beneficio (
     now() + interval '20 days',
     'ATIVO',
     'premium-sintetico-grupo-sem-beneficio',
-    'Grupo sintetico sem ativacao para validar relatorio.',
+    'Grupo sem ativação para conferência.',
     now(),
     now()
   )

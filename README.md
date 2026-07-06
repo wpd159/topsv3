@@ -4,7 +4,7 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 36 executado localmente: checkpoint do Bloco 35 e validacao Premium/beneficios sintetica, sem dados reais e sem efeitos externos.**
+Estado atual: **Bloco 37 em execução local: checkpoint do Bloco 36 criado e limpeza de copy visível local/sintética em validação, sem dados reais e sem efeitos externos.**
 
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 
@@ -21,6 +21,8 @@ O checkpoint local dos Blocos 33/33.1 foi criado em `b7f5f98` com a mensagem `te
 O Bloco 35 corrigiu a copy publica de bastidor que bloqueava o checkpoint do Bloco 34, endureceu o validador do wizard e criou o commit local `9b677ea` com a mensagem `test: consolida paridade wizard producao ate bloco 34`, sem remote e sem push. Em seguida validou admin/moderacao sintetica local com `topsv3-admin-sintetico-*`, PostgreSQL descartavel, 1089 checks HTTP OK, prints desktop/mobile de `/admin` e `/admin/moderacao`, auditoria sanitizada, outbox local sem envio externo e UI admin sem `UPPER_SNAKE_CASE` renderizado. Nenhum recurso `cripto-*`/TopsWI foi alterado.
 
 O checkpoint local do Bloco 35 corrigido foi criado em `00e1a02` com a mensagem `test: valida admin moderacao sintetica ate bloco 35`, remote vazio e sem push. O Bloco 36 validou Premium/beneficios com dados sinteticos locais, plano gratuito util, Premium aditivo, beneficio vencendo, beneficio expirado por grupo conjunto, consistencia de expiracao, UI publica/admin sem enum tecnico visivel e ausencia de Pix/Efi real, checkout, pagamento real, credito real, webhook real, API externa, producao ou dados reais.
+
+O checkpoint local do Bloco 36 foi criado em `e031ea3` com a mensagem `test: valida premium beneficios sintetico ate bloco 36`, remote vazio e sem push. O Bloco 37 limpa copy visível pública/admin que ainda parecia bastidor técnico ou fixture, trocando textos como `Anuncio sintetico local`, `Area administrativa local`, `Premium local`, `API local`, `Smoke test local descartavel` e enums de preview por linguagem neutra e acentuada, sem alterar regra de negócio, banco, DTO, rota, Premium, pagamento ou fluxo.
 
 O Bloco 29 permanece materialmente aberto e adiado para pre-staging/cutover. A quarentena sanitizada sem `POST_DATA` continua proibida para staging final, importacao definitiva e validacao transacional final.
 

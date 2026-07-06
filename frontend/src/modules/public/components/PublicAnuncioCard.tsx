@@ -26,14 +26,14 @@ export function PublicAnuncioCard({ item }: PublicAnuncioCardProps) {
         <p>{item.descricaoResumo ?? "Resumo indisponível no momento."}</p>
         <p className="public-card-location">{formatLocation(item.localizacao)}</p>
         {badges.length > 0 ? (
-          <ul className="public-badge-list" aria-label="Marcadores do anuncio">
+          <ul className="public-badge-list" aria-label="Marcadores do anúncio">
             {badges.map((badge) => (
               <li key={badge}>{badge}</li>
             ))}
           </ul>
         ) : null}
         {item.beneficiosPublicos.length > 0 ? (
-          <ul className="public-benefit-list" aria-label="Beneficios publicos">
+          <ul className="public-benefit-list" aria-label="Benefícios públicos">
             {item.beneficiosPublicos.slice(0, 3).map((beneficio) => (
               <li key={beneficio}>{beneficio}</li>
             ))}

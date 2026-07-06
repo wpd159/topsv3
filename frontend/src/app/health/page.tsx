@@ -29,7 +29,7 @@ async function readBackendHealth(): Promise<BackendHealth> {
     }
     return {
       kind: "offline",
-      message: "API local indisponível."
+      message: "Serviço indisponível."
     };
   }
 }
@@ -40,8 +40,8 @@ export default async function HealthPage() {
   return (
     <main>
       <section className="shell">
-        <span className="status">LOCAL</span>
-        <h1>Health local</h1>
+        <span className="status">STATUS</span>
+        <h1>Status do serviço</h1>
         <dl className="health-grid">
           <div>
             <dt>Frontend</dt>
@@ -52,7 +52,7 @@ export default async function HealthPage() {
             <dd>{publicEnv.appEnv}</dd>
           </div>
           <div>
-            <dt>API local</dt>
+            <dt>Serviço</dt>
             <dd>{publicEnv.apiBaseUrl}</dd>
           </div>
           <div>
@@ -63,14 +63,14 @@ export default async function HealthPage() {
 
         {backendHealth.kind === "online" ? (
           <div className="panel">
-            <p>Contrato `/api/health` respondido pela API local.</p>
+            <p>Contrato de status respondido pelo serviço.</p>
             <dl className="health-grid compact">
               <div>
                 <dt>Aplicação</dt>
                 <dd>{backendHealth.result.data.app}</dd>
               </div>
               <div>
-                <dt>Mock Pix</dt>
+                <dt>Pix de teste</dt>
                 <dd>{backendHealth.result.data.efiPixMockMode ? "ativo" : "inativo"}</dd>
               </div>
               <div>
@@ -86,7 +86,7 @@ export default async function HealthPage() {
         ) : (
           <div className="panel muted">
             <p>{backendHealth.message}</p>
-            {backendHealth.requestId ? <p>Request ID local: {backendHealth.requestId}</p> : null}
+            {backendHealth.requestId ? <p>Request ID: {backendHealth.requestId}</p> : null}
           </div>
         )}
       </section>

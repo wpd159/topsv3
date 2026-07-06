@@ -33,13 +33,13 @@ export const adminModules: AdminModule[] = [
   {
     slug: "premium",
     title: "Premium",
-    summary: "Placeholder para benefícios, ativações e regras futuras de destaque.",
+    summary: "Área para benefícios, ativações e regras futuras de destaque.",
     futureRoles: ["ADMIN", "COMERCIAL"]
   },
   {
     slug: "desempenho",
     title: "Desempenho",
-    summary: "Prova de resultado local com views, cliques WhatsApp e comparativo Premium sem promessa garantida.",
+    summary: "Prova de resultado com views, cliques WhatsApp e comparativo Premium sem promessa garantida.",
     futureRoles: ["ADMIN", "COMERCIAL"]
   },
   {
@@ -51,7 +51,7 @@ export const adminModules: AdminModule[] = [
   {
     slug: "financeiro",
     title: "Financeiro",
-    summary: "Estrutura local para pagamentos, conciliação e Pix em fases futuras.",
+    summary: "Estrutura para pagamentos, conciliação e Pix em fases futuras.",
     futureRoles: ["ADMIN"]
   },
   {
@@ -63,7 +63,7 @@ export const adminModules: AdminModule[] = [
   {
     slug: "banners",
     title: "Banners",
-    summary: "Placeholder para espaços, versões e publicação revisada de banners.",
+    summary: "Área para espaços, versões e publicação revisada de banners.",
     futureRoles: ["ADMIN", "COMERCIAL"]
   },
   {
@@ -81,7 +81,7 @@ export const adminModules: AdminModule[] = [
   {
     slug: "backup",
     title: "Backup",
-    summary: "Placeholder para políticas, execuções e testes de restauração.",
+    summary: "Área para políticas, execuções e testes de restauração.",
     futureRoles: ["ADMIN"]
   },
   {

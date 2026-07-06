@@ -148,16 +148,16 @@
 - OK: mobile/pos-envio: sem pagamento/Pix/upload/premium/loja visivel como acao - texto publico controlado
 - OK: mobile/pos-envio: sem enum/status/snake_case tecnico visivel - nenhum
 - OK: mobile/pos-envio: sem texto publico de bastidor - nenhum
-- OK: API local do wizard retorna 201 sintetico - 201
-- OK: API local criou solicitacao sintetica - true
-- OK: API local sem efeito real: publicado - false
-- OK: API local sem efeito real: publicacaoAutomaticaExecutada - false
-- OK: API local sem efeito real: uploadRealExecutado - false
-- OK: API local sem efeito real: pagamentoCriado - false
-- OK: API local sem efeito real: creditoCriado - false
-- OK: API local sem efeito real: premiumObrigatorio - false
-- OK: API local sem efeito real: emailRealEnviado - false
-- OK: API local sem efeito real: whatsappRealEnviado - false
+- OK: API do wizard retorna 201 de demonstração - 201
+- OK: API criou solicitação de demonstração - true
+- OK: API sem efeito real: publicado - false
+- OK: API sem efeito real: publicacaoAutomaticaExecutada - false
+- OK: API sem efeito real: uploadRealExecutado - false
+- OK: API sem efeito real: pagamentoCriado - false
+- OK: API sem efeito real: creditoCriado - false
+- OK: API sem efeito real: premiumObrigatorio - false
+- OK: API sem efeito real: emailRealEnviado - false
+- OK: API sem efeito real: whatsappRealEnviado - false
 
 ## Falhas
 - Nenhuma

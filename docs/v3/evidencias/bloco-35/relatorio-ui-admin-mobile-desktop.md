@@ -41,71 +41,77 @@
 
 ```text
 PAINEL ADMIN
-Admin local
+Admin
 
-Area administrativa local para validar sessao, papeis e permissoes, sem dados reais ou acoes de producao.
+Área administrativa para acompanhar sessões, papéis, permissões e ações autorizadas.
 
-Perfis locais previstos: Admin, Moderador e Comercial. Apenas moderacao local minima esta disponivel.
-Sessao local
+Perfis previstos: Admin, Moderador e Comercial. A moderação mínima está disponível.
+Sessão
 Estado
 autenticado
-Papeis
+Papéis
 Admin
-Permissoes
+Permissões
 10
 Credenciais reais
 ausentes
 
-sessao administrativa local ativa
+sessão administrativa ativa
 
-admin.local@example.invalid
+usuário autenticado
 
 Logout
-admin configurar
-Configurar administracao local futura.
-anuncio ler
-Ler metadados administrativos futuros de anuncios.
-anuncio moderar
-Autorizar moderacao local minima de anuncios.
-auditoria ler
+configurar administração
+Configurar administração futura.
+ler anúncios
+Ler informações administrativas futuras de anúncios.
+moderar anúncios
+Autorizar moderação mínima de anúncios.
+ler auditoria
 Ler auditoria administrativa futura.
-comercial gerenciar
-Preparar autorizacao futura comercial.
-documento revisa
+gerenciar comercial
+Preparar autorização comercial futura.
+revisar documentos
+Preparar revisão futura de documentos.
+ler financeiro
+Ler fina
 ```
 ### mobile
 
 ```text
 PAINEL ADMIN
-Admin local
+Admin
 
-Area administrativa local para validar sessao, papeis e permissoes, sem dados reais ou acoes de producao.
+Área administrativa para acompanhar sessões, papéis, permissões e ações autorizadas.
 
-Perfis locais previstos: Admin, Moderador e Comercial. Apenas moderacao local minima esta disponivel.
-Sessao local
+Perfis previstos: Admin, Moderador e Comercial. A moderação mínima está disponível.
+Sessão
 Estado
 autenticado
-Papeis
+Papéis
 Admin
-Permissoes
+Permissões
 10
 Credenciais reais
 ausentes
 
-sessao administrativa local ativa
+sessão administrativa ativa
 
-admin.local@example.invalid
+usuário autenticado
 
 Logout
-admin configurar
-Configurar administracao local futura.
-anuncio ler
-Ler metadados administrativos futuros de anuncios.
-anuncio moderar
-Autorizar moderacao local minima de anuncios.
-auditoria ler
+configurar administração
+Configurar administração futura.
+ler anúncios
+Ler informações administrativas futuras de anúncios.
+moderar anúncios
+Autorizar moderação mínima de anúncios.
+ler auditoria
 Ler auditoria administrativa futura.
-comercial gerenciar
-Preparar autorizacao futura comercial.
-documento revisa
+gerenciar comercial
+Preparar autorização comercial futura.
+revisar documentos
+Preparar revisão futura de documentos.
+ler financeiro
+Ler fina
 ```

@@ -18,7 +18,7 @@ INSERT INTO usuario (
   versao
 ) VALUES (
   '00000000-0000-4000-8000-000000000901',
-  'Admin Sintetico Local',
+  'Admin de demonstração',
   'admin.local@example.invalid',
   NULL,
   'ATIVO',
@@ -75,9 +75,9 @@ INSERT INTO usuario (
   desativado_em,
   versao
 ) VALUES
-  ('00000000-0000-4000-8000-000000000903', 'Moderador Sintetico Local', 'moderador.local@example.invalid', NULL, 'ATIVO', 'STAFF', now(), NULL, now(), now(), NULL, 0),
-  ('00000000-0000-4000-8000-000000000904', 'Comercial Sintetico Local', 'comercial.local@example.invalid', NULL, 'ATIVO', 'STAFF', now(), NULL, now(), now(), NULL, 0),
-  ('00000000-0000-4000-8000-000000000905', 'Usuario Sintetico Local', 'usuario.local@example.invalid', NULL, 'ATIVO', 'ANUNCIANTE', now(), NULL, now(), now(), NULL, 0)
+  ('00000000-0000-4000-8000-000000000903', 'Moderador de demonstração', 'moderador.local@example.invalid', NULL, 'ATIVO', 'STAFF', now(), NULL, now(), now(), NULL, 0),
+  ('00000000-0000-4000-8000-000000000904', 'Comercial de demonstração', 'comercial.local@example.invalid', NULL, 'ATIVO', 'STAFF', now(), NULL, now(), now(), NULL, 0),
+  ('00000000-0000-4000-8000-000000000905', 'Usuário de demonstração', 'usuario.local@example.invalid', NULL, 'ATIVO', 'ANUNCIANTE', now(), NULL, now(), now(), NULL, 0)
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO credencial_usuario (
@@ -111,11 +111,11 @@ INSERT INTO permissao (
   descricao,
   criado_em
 ) VALUES
-  ('00000000-0000-4000-8000-000000000921', 'ADMIN_CONFIGURAR', 'Configurar administracao local futura.', now()),
+  ('00000000-0000-4000-8000-000000000921', 'ADMIN_CONFIGURAR', 'Configurar administração futura.', now()),
   ('00000000-0000-4000-8000-000000000922', 'SEGURANCA_GERENCIAR', 'Gerenciar seguranca administrativa futura.', now()),
   ('00000000-0000-4000-8000-000000000923', 'ANUNCIO_LER', 'Ler metadados administrativos futuros de anuncios.', now()),
-  ('00000000-0000-4000-8000-000000000924', 'ANUNCIO_MODERAR', 'Autorizar moderacao local minima de anuncios.', now()),
-  ('00000000-0000-4000-8000-000000000925', 'MIDIA_REVISAR', 'Autorizar revisao local minima de midia.', now()),
+  ('00000000-0000-4000-8000-000000000924', 'ANUNCIO_MODERAR', 'Autorizar moderação mínima de anúncios.', now()),
+  ('00000000-0000-4000-8000-000000000925', 'MIDIA_REVISAR', 'Autorizar revisão mínima de mídia.', now()),
   ('00000000-0000-4000-8000-000000000926', 'DOCUMENTO_REVISAR', 'Preparar autorizacao futura de revisao de documentos.', now()),
   ('00000000-0000-4000-8000-000000000927', 'COMERCIAL_GERENCIAR', 'Preparar autorizacao futura comercial.', now()),
   ('00000000-0000-4000-8000-000000000928', 'SUPORTE_ATENDER', 'Preparar autorizacao futura de suporte.', now()),

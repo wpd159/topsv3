@@ -1,6 +1,6 @@
 # SDD Tops do Job V3
 
-Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 36, com checkpoint local `f6189f0` do Bloco 32.1, checkpoint local `b7f5f98` dos Blocos 33/33.1, checkpoint local corrigido `9b677ea` do Bloco 34, checkpoint local `00e1a02` do Bloco 35, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, paridade local do wizard com a producao observavel, validacao admin/moderacao sintetica local, validacao Premium/beneficios sintetica local, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
+Documento central de Specification-Driven Development da V3. Ele consolida o estado local do projeto ate o Bloco 37, com checkpoint local `f6189f0` do Bloco 32.1, checkpoint local `b7f5f98` dos Blocos 33/33.1, checkpoint local corrigido `9b677ea` do Bloco 34, checkpoint local `00e1a02` do Bloco 35, checkpoint local `e031ea3` do Bloco 36, E2E/API/SEO sintetico aprovado, auditoria renderizada publica aprovada, validacao sintetica do wizard `/anunciar`, paridade local do wizard com a producao observavel, validacao admin/moderacao sintetica local, validacao Premium/beneficios sintetica local, limpeza de copy visivel de bastidor em andamento, Bloco 29 adiado como gate de pre-staging/cutover, checkpoint local `36b94c6` dos Blocos 29 a 29.6 e base sintetica local validada para continuidade sem dados reais.
 
 ## 1. Visao geral
 
@@ -31,6 +31,7 @@ Estado atual:
 - Bloco 34 cria checkpoint local dos Blocos 33/33.1 e ajusta a V3 local para paridade do wizard `/anunciar` com a producao observavel, sem ultrapassar age gate, sem dados reais e sem efeitos externos;
 - Bloco 35 cria checkpoint local corrigido do Bloco 34 em `9b677ea` e valida admin/moderacao sintetica local com PostgreSQL descartavel, backend/frontend locais, prints desktop/mobile, auditoria sanitizada e outbox sem envio externo;
 - Bloco 36 cria checkpoint local do Bloco 35 em `00e1a02` e valida Premium/beneficios sinteticos locais, mantendo gratuito util e Premium aditivo sem Pix/Efi real, checkout, pagamento, credito real ou webhook;
+- Bloco 37 cria checkpoint local do Bloco 36 em `e031ea3` e limpa copy visivel publica/admin que parecia bastidor tecnico/local/sintetico, sem alterar regra de negocio, backend funcional, banco, DTO, rota, Premium, pagamento ou fluxo;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites
@@ -382,6 +383,7 @@ Historico resumido:
 - Bloco 34: paridade local do wizard com producao observavel; checkpoint corrigido criado no Bloco 35 em `9b677ea`.
 - Bloco 35: admin/moderacao sintetica validada localmente com `topsv3-admin-sintetico-*`, sem dados reais, sem producao, sem VPS e sem envio externo.
 - Bloco 36: checkpoint local do Bloco 35 criado em `00e1a02`; Premium/beneficios sinteticos validados localmente com `topsv3-premium-sintetico-*`, sem dados reais, sem producao, sem VPS e sem financeiro real.
+- Bloco 37: correcao final de copy renderizada remove `Metadados publicos locais para ANUNCIO`, `Autorizacao`, permissoes cruas e descricoes de autorizacao sem acento dos prints publicos/admin, sem alterar regra de negocio, backend funcional, banco, rotas, DTOs, contratos, Premium ou pagamento.
 
 Detalhes e rastreabilidade ficam em `docs/v3/SDD-indice-rastreabilidade.md`.
 

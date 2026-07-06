@@ -31,7 +31,7 @@ type WizardStep = {
 const WIZARD_STEPS: readonly WizardStep[] = [
   { id: "intro", label: "Início" },
   { id: "basicos", label: "Dados" },
-  { id: "localizacao", label: "Local" },
+  { id: "localizacao", label: "Localização" },
   { id: "contato", label: "Contato" },
   { id: "detalhes", label: "Anúncio" },
   { id: "midia", label: "Mídia" },

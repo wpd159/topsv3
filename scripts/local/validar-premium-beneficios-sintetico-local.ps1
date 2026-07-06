@@ -454,19 +454,26 @@ function pageMetricsScript() {
     if (/contrata[cç][aã]o garantida|resultado garantido|paywall obrigat[oó]rio/i.test(text)) violations.push("promessa_ou_paywall");
     if (/documento_usuario|senhaHash|tokenSessaoHash|JSESSIONID|Bearer|Authorization/i.test(text)) violations.push("segredo_ou_dado_sensivel");
     if (forbiddenAction) violations.push("acao_financeira_visivel");
+    if (/\blocal\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?/i.test(text)) violations.push("copy_bastidor_visivel");
+    if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(text)) violations.push("metadados_publicos_locais_visivel");
+    if (/\bANUNCIO\b/.test(text)) violations.push("enum_anuncio_visivel");
+    if (/Autorizacao|autorizacao/i.test(text)) violations.push("autorizacao_sem_acento_visivel");
+    if (/admin configurar/i.test(text)) violations.push("permissao_admin_configurar_visivel");
+    if (/anuncio ler/i.test(text)) violations.push("permissao_anuncio_ler_visivel");
+    if (/Preparar autorizacao/i.test(text)) violations.push("descricao_autorizacao_sem_acento_visivel");
     if (scrollWidth > innerWidth + 1) violations.push("scroll_horizontal");
     if (body && getComputedStyle(body).overflow === "hidden") violations.push("scroll_lock_body");
     return {
       title: document.title || "",
       textSample: text.slice(0, 900),
       lower,
-      hasPremiumLocal: lower.includes("premium local"),
-      hasCompraBloqueada: lower.includes("compra real") && lower.includes("bloqueada"),
-      hasLimiteGratuitoNaoExiste: lower.includes("limite gratuito") && lower.includes("nao existe"),
+      hasPremiumPanel: lower.includes("premium") && lower.includes("benefícios"),
+      hasAtivacaoIndisponivel: /ativa[cç][aã]o/i.test(text) && /indispon[ií]vel/i.test(text),
+      hasLimiteGratuitoNaoExiste: /limite gratuito/i.test(text) && /n[aã]o existe/i.test(text),
       hasDestaque: text.includes("Destaque") || lower.includes("destaque"),
-      hasMidiaExtra: text.includes("Mídia extra") || text.includes("Midia extra") || lower.includes("midia extra"),
-      hasGratuitoTitle: lower.includes("anuncio sintetico gratuito local"),
-      hasPremiumTitle: lower.includes("anuncio sintetico local"),
+      hasMidiaExtra: text.includes("Mídia extra") || text.includes("Midia extra") || lower.includes("midia extra") || /fotos extras/i.test(text),
+      hasGratuitoTitle: /an[úu]ncio de demonstra[cç][aã]o gratuito/i.test(text),
+      hasPremiumTitle: /an[úu]ncio de demonstra[cç][aã]o/i.test(text),
       scrollWidth,
       innerWidth,
       violations,
@@ -537,8 +544,8 @@ async function main() {
     for (const viewport of viewports) {
       const result = await runViewport(cdp, viewport);
       results.push(result);
-      addCheck(checks, result.adminPremium.hasPremiumLocal, `${viewport.key}: admin premium renderizado`);
-      addCheck(checks, result.adminPremium.hasCompraBloqueada, `${viewport.key}: compra real bloqueada visivel`);
+      addCheck(checks, result.adminPremium.hasPremiumPanel, `${viewport.key}: admin premium renderizado`);
+      addCheck(checks, result.adminPremium.hasAtivacaoIndisponivel, `${viewport.key}: ativacao indisponivel visivel`);
       addCheck(checks, result.adminPremium.hasLimiteGratuitoNaoExiste, `${viewport.key}: limite gratuito inexistente visivel`);
       addCheck(checks, result.publicPremium.hasPremiumTitle && result.publicPremium.hasDestaque, `${viewport.key}: publico premium com destaque`);
       addCheck(checks, result.publicPremium.hasMidiaExtra, `${viewport.key}: publico premium com midia extra`);

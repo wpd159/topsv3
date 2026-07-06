@@ -65,7 +65,7 @@
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: title presente - Acompanhantes em Setor Bueno, Goiânia - GO | Tops do Job
-  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação local organizada.
+  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação organizada.
   - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania/setor-bueno
   - OK: H1 presente - Acompanhantes em Setor Bueno, Goiânia - GO
   - OK: H1 legivel - 784x37
@@ -98,14 +98,14 @@
   - OK: sem scroll lock global - html=visible; body=visible
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Perfil sintetico Goiania livre premium | Tops do Job
-  - OK: meta description presente - Metadados publicos locais para ANUNCIO.
+  - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
+  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
   - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
-  - OK: H1 presente - Perfil sintetico Goiania livre premium
+  - OK: H1 presente - Perfil de demonstração Goiânia premium
   - OK: H1 legivel - 1082x37
   - OK: shell dentro da viewport - 1120px
   - OK: breadcrumbs legiveis - 1082px
-  - OK: conteudo sintetico esperado - Perfil sintetico Goiania livre premium
+  - OK: conteudo sintetico esperado - Perfil de demonstra
 - /anuncios/demo-goiania-bloqueado (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
   - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
@@ -205,7 +205,7 @@
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: title presente - Acompanhantes em Setor Bueno, Goiânia - GO | Tops do Job
-  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação local organizada.
+  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação organizada.
   - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania/setor-bueno
   - OK: H1 presente - Acompanhantes em Setor Bueno, Goiânia - GO
   - OK: H1 legivel - 320x97
@@ -238,14 +238,14 @@
   - OK: sem scroll lock global - html=visible; body=visible
   - OK: sem elemento fixed/absolute/sticky publico - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Perfil sintetico Goiania livre premium | Tops do Job
-  - OK: meta description presente - Metadados publicos locais para ANUNCIO.
+  - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
+  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
   - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
-  - OK: H1 presente - Perfil sintetico Goiania livre premium
-  - OK: H1 legivel - 320x64
+  - OK: H1 presente - Perfil de demonstração Goiânia premium
+  - OK: H1 legivel - 320x97
   - OK: shell dentro da viewport - 358px
   - OK: breadcrumbs legiveis - 320px
-  - OK: conteudo sintetico esperado - Perfil sintetico Goiania livre premium
+  - OK: conteudo sintetico esperado - Perfil de demonstra
 - /anuncios/demo-goiania-bloqueado (mobile): OK
   - OK: HTTP 2xx/3xx - status=200
   - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel

@@ -417,7 +417,7 @@ function Write-FixtureSyntheticSql {
     $ranking = if ([string]$anuncio.plano -eq "PREMIUM_ATIVO") { "10.0000" } else { "1.0000" }
 
     $lines.Add("INSERT INTO anuncio (id, usuario_id, slug, titulo, descricao, status, status_moderacao, categoria, classificacao_conteudo, preco, whatsapp_normalizado, publicado_em, ultima_publicacao_em, criado_em, atualizado_em, removido_em, origem_importacao_id, versao) VALUES ('$anuncioId', '$usuarioId', $slug, $titulo, $descricao, '$($statusInfo.Status)', '$($statusInfo.Moderacao)', 'SINTETICO', $classificacao, NULL, $whatsapp, $publicado, $publicado, now(), now(), NULL, NULL, 0) ON CONFLICT (slug) DO NOTHING;")
-    $lines.Add("INSERT INTO anuncio_localizacao (anuncio_id, estado_id, cidade_id, bairro_id, endereco_resumido, latitude, longitude, criado_em, atualizado_em) VALUES ('$anuncioId', '$estadoId', '$cidadeId', $bairroSql, 'Endereco sintetico local', NULL, NULL, now(), now()) ON CONFLICT (anuncio_id) DO NOTHING;")
+    $lines.Add("INSERT INTO anuncio_localizacao (anuncio_id, estado_id, cidade_id, bairro_id, endereco_resumido, latitude, longitude, criado_em, atualizado_em) VALUES ('$anuncioId', '$estadoId', '$cidadeId', $bairroSql, 'Endereço de demonstração', NULL, NULL, now(), now()) ON CONFLICT (anuncio_id) DO NOTHING;")
     $lines.Add("INSERT INTO documento_busca_anuncio (anuncio_id, texto_busca, estado_id, cidade_id, bairro_id, categoria, preco, status_publicacao, tem_midia_valida, beneficios_ranking_json, ranking_base, atualizado_em) VALUES ('$anuncioId', $textoBusca, '$estadoId', '$cidadeId', $bairroSql, 'SINTETICO', NULL, '$statusPublicacao', $(Convert-ToSqlBoolean $temMidia), '{}'::jsonb, $ranking, now()) ON CONFLICT (anuncio_id) DO NOTHING;")
   }
 

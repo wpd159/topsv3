@@ -6,7 +6,7 @@ import type {
   AdminPermissionsDto
 } from "./adminAuthTypes";
 
-const SAFE_ADMIN_AUTH_MESSAGE = "sessao administrativa local indisponivel";
+const SAFE_ADMIN_AUTH_MESSAGE = "sessão administrativa indisponível";
 
 export async function getAdminMe(): Promise<AdminAuthResponse<AdminMeDto>> {
   return safeAdminFetch<AdminMeDto>("/api/admin/auth/me");

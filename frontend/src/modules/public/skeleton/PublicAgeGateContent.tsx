@@ -81,7 +81,7 @@ export function PublicAgeGateContent({
             <dd>{formatAgeState(state)}</dd>
           </div>
           <div>
-            <dt>Autorizacao</dt>
+            <dt>Autorização</dt>
             <dd>{anuncio ? "autorizada" : "pendente"}</dd>
           </div>
         </dl>

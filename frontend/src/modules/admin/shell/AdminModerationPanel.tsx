@@ -23,7 +23,7 @@ import type {
   AdminRevisaoDetalheDto,
   AdminRevisaoListaItemDto
 } from "../../../lib/api/adminReadonlyTypes";
-import { formatAdminValue } from "./adminDisplay";
+import { formatAdminText, formatAdminValue } from "./adminDisplay";
 
 type DetailedState = {
   anuncios: AdminPaginaDto<AdminAnuncioListaItemDto> | null;
@@ -48,8 +48,8 @@ export function AdminModerationPanel() {
     revisaoDetalhe: null,
     canModerateAnuncio: false,
     canModerateMidia: false,
-    status: "consultando listagens e acoes locais",
-    actionStatus: "nenhuma acao local executada"
+    status: "consultando listagens e ações",
+    actionStatus: "nenhuma ação executada"
   });
 
   useEffect(() => {
@@ -90,7 +90,7 @@ export function AdminModerationPanel() {
       revisaoDetalhe: revisaoDetalhe && revisaoDetalhe.ok ? revisaoDetalhe.data : null,
       canModerateAnuncio,
       canModerateMidia,
-      status: okCount > 0 ? "listagens locais carregadas" : "listagens exigem sessao/permissao",
+      status: okCount > 0 ? "listagens carregadas" : "listagens exigem sessão/permissão",
       actionStatus: current.actionStatus
     }));
   }
@@ -98,24 +98,24 @@ export function AdminModerationPanel() {
   async function handleDecidirRevisao(decisao: "APROVAR" | "REPROVAR" | "SOLICITAR_AJUSTE") {
     const revisao = data.revisaoDetalhe;
     if (!revisao || !data.canModerateAnuncio || !["ABERTA", "EM_ANALISE"].includes(revisao.status ?? "")) {
-      setData((current) => ({ ...current, actionStatus: "acao local de moderacao indisponivel para revisao" }));
+      setData((current) => ({ ...current, actionStatus: "ação de moderação indisponível para revisão" }));
       return;
     }
-    setData((current) => ({ ...current, actionStatus: "executando acao local de moderacao de revisao" }));
+    setData((current) => ({ ...current, actionStatus: "executando ação de moderação de revisão" }));
     const response = await decidirAdminRevisao(revisao.id, {
       decisao,
       classificacaoConteudo: decisao === "REPROVAR" ? "BLOQUEADO" : "LIVRE",
       motivo:
         decisao === "REPROVAR"
-          ? "reprovacao local com motivo obrigatorio"
+          ? "reprovação com motivo obrigatório"
           : decisao === "SOLICITAR_AJUSTE"
-            ? "solicitacao local de ajuste com motivo obrigatorio"
-            : "acao local de moderacao",
-      observacao: "execucao local sem e-mail real"
+            ? "solicitação de ajuste com motivo obrigatório"
+            : "ação de moderação",
+      observacao: "execução sem envio externo"
     });
     setData((current) => ({
       ...current,
-      actionStatus: response.ok ? response.data.mensagem : `falha local ${response.status}`
+      actionStatus: response.ok ? response.data.mensagem : `falha ${response.status}`
     }));
     await loadDetailedData();
   }
@@ -123,19 +123,19 @@ export function AdminModerationPanel() {
   async function handleDecidirMidia(decisao: "APROVAR" | "REPROVAR") {
     const midia = data.midiaDetalhe;
     if (!midia || !data.canModerateMidia || midia.status !== "PENDENTE") {
-      setData((current) => ({ ...current, actionStatus: "acao local de moderacao indisponivel para midia" }));
+      setData((current) => ({ ...current, actionStatus: "ação de moderação indisponível para mídia" }));
       return;
     }
-    setData((current) => ({ ...current, actionStatus: "executando acao local de moderacao de midia" }));
+    setData((current) => ({ ...current, actionStatus: "executando ação de moderação de mídia" }));
     const response = await decidirAdminMidia(midia.id, {
       decisao,
       classificacaoConteudo: decisao === "APROVAR" ? "LIVRE" : "BLOQUEADO",
-      motivo: decisao === "REPROVAR" ? "reprovacao local com motivo obrigatorio" : "acao local de moderacao",
-      observacao: "execucao local sem upload ou exclusao"
+      motivo: decisao === "REPROVAR" ? "reprovação com motivo obrigatório" : "ação de moderação",
+      observacao: "execução sem upload ou exclusão"
     });
     setData((current) => ({
       ...current,
-      actionStatus: response.ok ? response.data.mensagem : `falha local ${response.status}`
+      actionStatus: response.ok ? response.data.mensagem : `falha ${response.status}`
     }));
     await loadDetailedData();
   }
@@ -143,74 +143,74 @@ export function AdminModerationPanel() {
   async function handleRemeterRevisao() {
     const anuncio = data.anuncioDetalhe;
     if (!anuncio || !data.canModerateAnuncio || anuncio.status === "PENDENTE_REVISAO") {
-      setData((current) => ({ ...current, actionStatus: "acao local de moderacao indisponivel para anuncio" }));
+      setData((current) => ({ ...current, actionStatus: "ação de moderação indisponível para anúncio" }));
       return;
     }
-    setData((current) => ({ ...current, actionStatus: "executando acao local de remeter revisao" }));
+    setData((current) => ({ ...current, actionStatus: "remetendo anúncio para revisão" }));
     const response = await remeterAdminAnuncioParaRevisao(anuncio.id, {
-      motivo: "remeter anuncio para revisao local",
-      observacao: "execucao local sem comunicacao real"
+      motivo: "remeter anúncio para revisão",
+      observacao: "execução sem comunicação externa"
     });
     setData((current) => ({
       ...current,
-      actionStatus: response.ok ? response.data.mensagem : `falha local ${response.status}`
+      actionStatus: response.ok ? response.data.mensagem : `falha ${response.status}`
     }));
     await loadDetailedData();
   }
 
   return (
-    <section className="admin-panel" aria-label="Moderacao administrativa local">
-      <h2>Moderacao local</h2>
+    <section className="admin-panel" aria-label="Moderação administrativa">
+      <h2>Moderação</h2>
       <p>{data.status}</p>
       <div className="admin-readonly-columns">
         <ReadonlyList
-          title="Anuncios"
-          emptyLabel="sem anuncios permitidos"
+          title="Anúncios"
+          emptyLabel="sem anúncios permitidos"
           items={data.anuncios?.itens.map((item) => ({
             key: item.id,
-            title: item.titulo ?? item.slug ?? item.id,
-            meta: `${formatAdminValue(item.status, "sem status")} / ${formatAdminValue(item.classificacaoConteudo, "sem classificacao")}`,
+            title: item.titulo ?? formatAdminText(item.slug, item.id),
+            meta: `${formatAdminValue(item.status, "sem status")} / ${formatAdminValue(item.classificacaoConteudo, "sem classificação")}`,
             detail: item.localizacao
               ? [item.localizacao.uf, item.localizacao.cidade, item.localizacao.bairro].filter(Boolean).join(" - ")
-              : "sem localizacao"
+              : "sem localização"
           }))}
         />
         <ReadonlyList
-          title="Midia"
-          emptyLabel="sem midia permitida"
+          title="Mídia"
+          emptyLabel="sem mídia permitida"
           items={data.midias?.itens.map((item) => ({
             key: item.id,
-            title: item.slugAnuncio ?? item.id,
+            title: formatAdminText(item.slugAnuncio, item.id),
             meta: `${formatAdminValue(item.tipo, "tipo")} / ${formatAdminValue(item.status, "status")}`,
             detail: `${item.mimeType ?? "mime pendente"} / arquivo privado oculto`
           }))}
         />
         <ReadonlyList
-          title="Moderacao"
-          emptyLabel="sem revisoes permitidas"
+          title="Moderação"
+          emptyLabel="sem revisões permitidas"
           items={data.revisoes?.itens.map((item) => ({
             key: item.id,
-            title: item.slugAnuncio ?? item.id,
+            title: formatAdminText(item.slugAnuncio, item.id),
             meta: `${formatAdminValue(item.tipo, "tipo")} / ${formatAdminValue(item.status, "status")}`,
-            detail: item.conteudoSolicitadoPresente ? "conteudo solicitado oculto" : "sem conteudo solicitado"
+            detail: item.conteudoSolicitadoPresente ? "conteúdo solicitado oculto" : "sem conteúdo solicitado"
           }))}
         />
       </div>
       <dl className="health-grid compact">
-        <ReadonlyMetric label="Detalhe anuncio" value={formatAdminValue(data.anuncioDetalhe?.status, "sem permissao")} />
-        <ReadonlyMetric label="Detalhe midia" value={formatAdminValue(data.midiaDetalhe?.status, "sem permissao")} />
-        <ReadonlyMetric label="Detalhe revisao" value={formatAdminValue(data.revisaoDetalhe?.status, "sem permissao")} />
+        <ReadonlyMetric label="Detalhe anúncio" value={formatAdminValue(data.anuncioDetalhe?.status, "sem permissão")} />
+        <ReadonlyMetric label="Detalhe mídia" value={formatAdminValue(data.midiaDetalhe?.status, "sem permissão")} />
+        <ReadonlyMetric label="Detalhe revisão" value={formatAdminValue(data.revisaoDetalhe?.status, "sem permissão")} />
       </dl>
-      <div className="admin-moderation-actions" aria-label="Acoes locais de moderacao">
+      <div className="admin-moderation-actions" aria-label="Ações de moderação">
         <div>
-          <strong>Revisao</strong>
+          <strong>Revisão</strong>
           <button
             type="button"
             className="local-action"
             disabled={!data.canModerateAnuncio || !["ABERTA", "EM_ANALISE"].includes(data.revisaoDetalhe?.status ?? "")}
             onClick={() => void handleDecidirRevisao("APROVAR")}
           >
-            acao local de moderacao: aprovar
+            Aprovar revisão
           </button>
           <button
             type="button"
@@ -218,7 +218,7 @@ export function AdminModerationPanel() {
             disabled={!data.canModerateAnuncio || !["ABERTA", "EM_ANALISE"].includes(data.revisaoDetalhe?.status ?? "")}
             onClick={() => void handleDecidirRevisao("REPROVAR")}
           >
-            acao local de moderacao: reprovar
+            Reprovar revisão
           </button>
           <button
             type="button"
@@ -226,7 +226,7 @@ export function AdminModerationPanel() {
             disabled={!data.canModerateAnuncio || !["ABERTA", "EM_ANALISE"].includes(data.revisaoDetalhe?.status ?? "")}
             onClick={() => void handleDecidirRevisao("SOLICITAR_AJUSTE")}
           >
-            acao local intermediaria: solicitar ajuste
+            Solicitar ajuste
           </button>
           <button
             type="button"
@@ -234,18 +234,18 @@ export function AdminModerationPanel() {
             disabled={!data.canModerateAnuncio || !data.anuncioDetalhe || data.anuncioDetalhe.status === "PENDENTE_REVISAO"}
             onClick={() => void handleRemeterRevisao()}
           >
-            acao local de moderacao: remeter para revisao
+            Remeter para revisão
           </button>
         </div>
         <div>
-          <strong>Midia</strong>
+          <strong>Mídia</strong>
           <button
             type="button"
             className="local-action"
             disabled={!data.canModerateMidia || data.midiaDetalhe?.status !== "PENDENTE"}
             onClick={() => void handleDecidirMidia("APROVAR")}
           >
-            acao local de moderacao: aprovar
+            Aprovar mídia
           </button>
           <button
             type="button"
@@ -253,12 +253,12 @@ export function AdminModerationPanel() {
             disabled={!data.canModerateMidia || data.midiaDetalhe?.status !== "PENDENTE"}
             onClick={() => void handleDecidirMidia("REPROVAR")}
           >
-            acao local de moderacao: reprovar
+            Reprovar mídia
           </button>
         </div>
       </div>
       <div className="admin-notice">
-        {data.actionStatus}. Sem exclusao, pausa, ativacao, pagamento, credito, Pix, upload ou e-mail real.
+        {formatAdminText(data.actionStatus)}. Sem exclusão, pausa, ativação, pagamento, crédito, Pix, upload ou envio externo.
       </div>
     </section>
   );

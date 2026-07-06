@@ -9,7 +9,7 @@ import {
   logoutAdmin
 } from "../../../lib/api/adminAuthApi";
 import type { AdminMeDto, AdminPermissionDto } from "../../../lib/api/adminAuthTypes";
-import { formatAdminValue, formatAdminValues } from "./adminDisplay";
+import { formatAdminText, formatAdminValue, formatAdminValues } from "./adminDisplay";
 
 type AuthState = "carregando" | "autenticado" | "nao_autenticado" | "falha";
 
@@ -19,7 +19,7 @@ export function AdminAuthPanel() {
   const [permissions, setPermissions] = useState<readonly AdminPermissionDto[]>([]);
   const [login, setLogin] = useState("");
   const [credencial, setCredencial] = useState("");
-  const [message, setMessage] = useState("consultando sessao administrativa local");
+  const [message, setMessage] = useState("consultando sessão administrativa");
 
   useEffect(() => {
     void refreshSession();
@@ -31,14 +31,14 @@ export function AdminAuthPanel() {
       setMe(null);
       setPermissions([]);
       setState(response.status === 401 ? "nao_autenticado" : "falha");
-      setMessage(response.status === 401 ? "sessao administrativa ausente" : response.message);
+      setMessage(response.status === 401 ? "sessão administrativa ausente" : response.message);
       return;
     }
     const permissionsResponse = await getAdminPermissions();
     setMe(response.data);
     setPermissions(permissionsResponse.ok ? permissionsResponse.data.permissoes : []);
     setState("autenticado");
-    setMessage("sessao administrativa local ativa");
+    setMessage("sessão administrativa ativa");
   }
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
@@ -50,7 +50,7 @@ export function AdminAuthPanel() {
       setMe(null);
       setPermissions([]);
       setState("nao_autenticado");
-      setMessage("credenciais administrativas invalidas ou ausentes");
+      setMessage("credenciais administrativas inválidas ou ausentes");
       return;
     }
     await refreshSession();
@@ -62,23 +62,23 @@ export function AdminAuthPanel() {
     setMe(null);
     setPermissions([]);
     setState("nao_autenticado");
-    setMessage("logout local executado");
+    setMessage("sessão encerrada");
   }
 
   return (
-    <section className="admin-panel" aria-label="Sessao administrativa local">
-      <h2>Sessao local</h2>
+    <section className="admin-panel" aria-label="Sessão administrativa">
+      <h2>Sessão</h2>
       <dl className="health-grid compact">
         <div>
           <dt>Estado</dt>
           <dd>{formatAdminValue(state)}</dd>
         </div>
         <div>
-          <dt>Papeis</dt>
-          <dd>{formatAdminValues(me?.papeis, "sem sessao")}</dd>
+          <dt>Papéis</dt>
+          <dd>{formatAdminValues(me?.papeis, "sem sessão")}</dd>
         </div>
         <div>
-          <dt>Permissoes</dt>
+          <dt>Permissões</dt>
           <dd>{permissions.length}</dd>
         </div>
         <div>
@@ -89,7 +89,7 @@ export function AdminAuthPanel() {
       <p>{message}</p>
       {me ? (
         <div className="admin-auth-actions">
-          <p>{me.email ?? "usuario sintetico local"}</p>
+          <p>usuário autenticado</p>
           <button type="button" className="local-action" onClick={handleLogout}>
             Logout
           </button>
@@ -97,16 +97,16 @@ export function AdminAuthPanel() {
       ) : (
         <form className="admin-auth-form" onSubmit={handleLogin}>
           <label>
-            Login local
+            Login
             <input
               value={login}
               onChange={(event) => setLogin(event.target.value)}
               autoComplete="username"
-              placeholder="admin.local@example.invalid"
+              placeholder="admin@example.invalid"
             />
           </label>
           <label>
-            Credencial local
+            Credencial
             <input
               type="password"
               value={credencial}
@@ -120,11 +120,11 @@ export function AdminAuthPanel() {
         </form>
       )}
       {permissions.length > 0 ? (
-        <ul className="admin-permission-list" aria-label="Permissoes administrativas locais">
+        <ul className="admin-permission-list" aria-label="Permissões administrativas">
           {permissions.map((permission) => (
             <li key={permission.codigo}>
               <span>{formatAdminValue(permission.codigo)}</span>
-              <small>{permission.descricao}</small>
+              <small>{formatAdminText(permission.descricao)}</small>
             </li>
           ))}
         </ul>

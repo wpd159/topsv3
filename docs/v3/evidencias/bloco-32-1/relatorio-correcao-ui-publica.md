@@ -22,7 +22,7 @@ Correcao aplicada sem redesign.
 
 ## Limites preservados
 
-- Sem mudanca de regra de autorizacao.
+- Sem mudanca de regra de autorização.
 - Sem decisao de seguranca no frontend.
 - Sem WhatsApp publico indevido em anuncio `BLOQUEADO`.
 - Sem nova paleta, nova tipografia, animacao, botao flutuante, scroll lock ou `document.body.style.overflow`.

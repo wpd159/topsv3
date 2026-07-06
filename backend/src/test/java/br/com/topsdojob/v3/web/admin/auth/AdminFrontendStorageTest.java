@@ -45,6 +45,7 @@ class AdminFrontendStorageTest {
         assertThat(readonlyApi).doesNotContain("Bearer").doesNotContain("Authorization");
         assertThat(panel).doesNotContain("SenhaSintetica").doesNotContain("NaoUsar123");
         assertThat(panel).doesNotContain("useState(\"admin.local@example.invalid\")");
-        assertThat(panel).contains("placeholder=\"admin.local@example.invalid\"");
+        assertThat(panel).doesNotContain("placeholder=\"admin.local@example.invalid\"");
+        assertThat(panel).contains("placeholder=\"admin@example.invalid\"");
     }
 }

@@ -42,7 +42,7 @@ import type {
   AdminVisaoGeralDto
 } from "./adminReadonlyTypes";
 
-const READONLY_ERROR_MESSAGE = "resumo administrativo local indisponivel";
+const READONLY_ERROR_MESSAGE = "resumo administrativo indisponível";
 
 export function getAdminVisaoGeral(): Promise<AdminAuthResponse<AdminVisaoGeralDto>> {
   return safeReadonlyFetch("/api/admin/visao-geral");

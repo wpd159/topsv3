@@ -221,6 +221,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 36: `docs/v3/evidencias/bloco-36/`
 - Prints Premium/beneficios Bloco 36: `docs/v3/evidencias/bloco-36/prints/`
 - Validador Premium/beneficios sintetico: `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
+- Checkpoint Bloco 36: `e031ea3`
+- Relatorio Bloco 37: `docs/v3/224-bloco-37-limpeza-copy-visivel-sintetica.md`
+- Checklist Bloco 37: `docs/v3/225-checklist-bloco-37-limpeza-copy-visivel-sintetica.md`
+- Evidencias Bloco 37: `docs/v3/evidencias/bloco-37/`
+- Relatorio de limpeza de copy: `docs/v3/evidencias/bloco-37/relatorio-limpeza-copy-visivel.md`
+- Validadores de copy renderizada: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-admin-moderacao-sintetica-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`, `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
 
 ## Validacoes principais
 
@@ -243,6 +249,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Validar dados sinteticos V3: `scripts/local/validar-dados-sinteticos-v3-local.ps1`
 - Validar wizard Anuncie gratis sintetico: `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
 - Validar Premium/beneficios sintetico: `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
+- Validar copy renderizada publica/admin: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-admin-moderacao-sintetica-local.ps1`
 - Codificacao: `scripts/security/verificar-codificacao.ps1`
 - Arquivos proibidos: `scripts/security/verificar-arquivos-proibidos.ps1`
 - Secrets: `scripts/security/verificar-segredos.ps1`

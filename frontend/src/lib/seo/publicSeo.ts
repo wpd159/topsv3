@@ -117,7 +117,7 @@ export function buildBairroSeo(uf: string, cidade: string, bairro: string): Publ
   const h1 = `Acompanhantes em ${bairroLabel}, ${cityLabel} - ${ufLabel}`;
   const title = `${h1}${TITLE_SUFFIX}`;
   const description = compactDescription(
-    `Veja acompanhantes em ${bairroLabel}, ${cityLabel} - ${ufLabel}, com links para a cidade, perfis relacionados e navegação local organizada.`
+    `Veja acompanhantes em ${bairroLabel}, ${cityLabel} - ${ufLabel}, com links para a cidade, perfis relacionados e navegação organizada.`
   );
   return buildMetadata({ title, description, h1, path });
 }
@@ -128,9 +128,10 @@ export function buildAnuncioSeo(slug: string, anuncio: AnuncioDetalhePublicoDto 
   const location = formatLocation(anuncio?.localizacao);
   const h1 = titleBase;
   const title = `${titleBase}${location ? ` em ${location}` : ""}${TITLE_SUFFIX}`;
+  const seoDescription = isTechnicalSeoDescription(anuncio?.seo.description) ? null : anuncio?.seo.description;
   const description = compactDescription(
     safeDisplayText(
-      anuncio?.seo.description ?? anuncio?.descricao,
+      seoDescription ?? anuncio?.descricao,
       location
         ? `Perfil em ${location} com informações públicas, mídia controlada e contato mediado pelo Tops do Job.`
         : "Perfil com informações públicas, mídia controlada e contato mediado pelo Tops do Job."
@@ -268,6 +269,17 @@ function compactDescription(value: string): string {
     return normalized;
   }
   return `${normalized.slice(0, MAX_DESCRIPTION_LENGTH - 1).trimEnd()}.`;
+}
+
+function isTechnicalSeoDescription(value: string | null | undefined): boolean {
+  const original = safeDisplayText(value, "");
+  const normalized = safeDisplayText(value, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return (
+    /metadados publicos locais|API local|sintetico|sintetica|smoke test|descartavel|fixture|mock/i.test(normalized) ||
+    /\bANUNCIO\b/.test(original)
+  );
 }
 
 function titleizeSlug(value: string): string {

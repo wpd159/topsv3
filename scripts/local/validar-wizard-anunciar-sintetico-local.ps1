@@ -327,6 +327,13 @@ function wizardMetricsScript() {
     const technicalViolations = [];
     const add = (type) => { if (!technicalViolations.includes(type)) technicalViolations.push(type); };
     if (/(stack trace|Unhandled Runtime Error|JSON bruto|debug|mock tecnico|placeholder tecnico)/i.test(bodyText)) add("texto_tecnico_generico");
+    if (/\\blocal\\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?/i.test(bodyText)) add("copy_bastidor_visivel");
+    if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(bodyText)) add("metadados_publicos_locais_visivel");
+    if (/\bANUNCIO\b/.test(bodyText)) add("enum_anuncio_visivel");
+    if (/Autorizacao|autorizacao/i.test(bodyText)) add("autorizacao_sem_acento_visivel");
+    if (/admin configurar/i.test(bodyText)) add("permissao_admin_configurar_visivel");
+    if (/anuncio ler/i.test(bodyText)) add("permissao_anuncio_ler_visivel");
+    if (/Preparar autorizacao/i.test(bodyText)) add("descricao_autorizacao_sem_acento_visivel");
     if (/\\b(?:PENDENTE|FALHA|ERRO)_[A-Z0-9_]+\\b/.test(bodyText)) add("status_tecnico_upper_snake");
     if (/\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\\b/.test(bodyText)) add("upper_snake_case_visivel");
     if (/\\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\\b/.test(bodyText)) add("snake_case_visivel");
@@ -518,7 +525,7 @@ async function runFlow(cdp, viewport) {
   addCheck(checks, metrics.bodyText.includes("Revise os campos destacados"), `${viewport.key}: validacao amigavel sem 500`, "mensagem visivel");
   checks.push(...validateMetrics(`${viewport.key}/validacao`, metrics));
 
-  await setField(cdp, "nomeExibicao", `Perfil Sintético Wizard ${viewport.key}`);
+  await setField(cdp, "nomeExibicao", `Perfil de Demonstração Wizard ${viewport.key}`);
   await setField(cdp, "email", viewport.email);
   await clickButton(cdp, "Continuar");
   await waitFor(cdp, 'Boolean(document.querySelector("[name=uf]"))', "etapa localizacao");
@@ -533,8 +540,8 @@ async function runFlow(cdp, viewport) {
   await clickButton(cdp, "Continuar");
   await waitFor(cdp, 'Boolean(document.querySelector("[name=titulo]"))', "etapa detalhes");
 
-  await setField(cdp, "titulo", `Perfil sintético wizard ${viewport.key}`);
-  await setField(cdp, "descricao", "Texto sintético suficiente para validar o wizard publico local sem dados reais.");
+  await setField(cdp, "titulo", `Perfil de demonstração wizard ${viewport.key}`);
+  await setField(cdp, "descricao", "Texto de demonstração suficiente para validar o wizard público.");
   await setField(cdp, "preco", "120");
   await setField(cdp, "categoria", "ACOMPANHANTE");
   await clickButton(cdp, "Continuar");
@@ -566,14 +573,14 @@ async function runFlow(cdp, viewport) {
 
 async function validateBackendFlags() {
   const payload = {
-    nomeExibicao: "Perfil Sintético Wizard API",
+    nomeExibicao: "Perfil de Demonstração Wizard API",
     email: "wizard.api@example.invalid",
     whatsapp: "+5500000000000",
     uf: "GO",
     cidade: "Goiania",
     bairro: "Setor Bueno",
-    titulo: "Perfil sintético wizard api",
-    descricao: "Texto sintético suficiente para validar flags locais do wizard publico.",
+    titulo: "Perfil de demonstração wizard api",
+    descricao: "Texto de demonstração suficiente para validar flags do wizard público.",
     preco: 120,
     categoria: "ACOMPANHANTE",
     aceiteTermos: true,
@@ -586,8 +593,8 @@ async function validateBackendFlags() {
   });
   const json = await response.json();
   const checks = [];
-  addCheck(checks, response.status === 201, "API local do wizard retorna 201 sintetico", response.status);
-  addCheck(checks, json.criado === true, "API local criou solicitacao sintetica", json.criado);
+  addCheck(checks, response.status === 201, "API do wizard retorna 201 de demonstração", response.status);
+  addCheck(checks, json.criado === true, "API criou solicitação de demonstração", json.criado);
   for (const field of [
     "publicado",
     "publicacaoAutomaticaExecutada",
@@ -598,7 +605,7 @@ async function validateBackendFlags() {
     "emailRealEnviado",
     "whatsappRealEnviado"
   ]) {
-    addCheck(checks, json[field] === false, `API local sem efeito real: ${field}`, json[field]);
+    addCheck(checks, json[field] === false, `API sem efeito real: ${field}`, json[field]);
   }
   return checks;
 }

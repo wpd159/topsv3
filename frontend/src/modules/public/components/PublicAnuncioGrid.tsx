@@ -14,7 +14,7 @@ export function PublicAnuncioGrid({ items, emptyTitle, emptyMessage }: PublicAnu
   }
 
   return (
-    <section className="public-anuncio-grid" aria-label="Anuncios publicos locais">
+    <section className="public-anuncio-grid" aria-label="Anúncios públicos">
       {items.map((item) => (
         <PublicAnuncioCard key={item.slug} item={item} />
       ))}

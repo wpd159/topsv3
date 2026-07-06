@@ -419,6 +419,13 @@ function metricsScript() {
     if (/"(?:cpf|documento|rg|identidade)"\\s*:|documento_usuario|documento_privado/i.test(text)) add("documento_visivel");
     if (/\\+55[0-9]{10,13}|wa\\.me\\/[0-9]{8,15}|@[a-z0-9.-]+\\.[a-z]{2,}/i.test(textSemContatoSintetico)) add("contato_bruto_visivel");
     if (/stack trace|Unhandled Runtime Error|Traceback|Exception in thread/i.test(text)) add("erro_tecnico_visivel");
+    if (/\\blocal\\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?/i.test(text)) add("copy_bastidor_visivel");
+    if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(text)) add("metadados_publicos_locais_visivel");
+    if (/\bANUNCIO\b/.test(text)) add("enum_anuncio_visivel");
+    if (/Autorizacao|autorizacao/i.test(text)) add("autorizacao_sem_acento_visivel");
+    if (/admin configurar/i.test(text)) add("permissao_admin_configurar_visivel");
+    if (/anuncio ler/i.test(text)) add("permissao_anuncio_ler_visivel");
+    if (/Preparar autorizacao/i.test(text)) add("descricao_autorizacao_sem_acento_visivel");
     const upperSnakeMatches = Array.from(new Set(text.match(/\\b[A-Z0-9]+_[A-Z0-9_]+\\b/g) || [])).slice(0, 20);
     const snakeMatches = Array.from(new Set(text.match(/\\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\\b/g) || [])).slice(0, 20);
     if (upperSnakeMatches.length) add("upper_snake_case_visivel");
@@ -446,9 +453,9 @@ function metricsScript() {
       title: document.title,
       textSample: text.slice(0, 700),
       panels: document.querySelectorAll(".admin-panel").length,
-      moderationPanel: Boolean(document.querySelector('[aria-label="Moderacao administrativa local"]')),
-      outboxPanel: Boolean(document.querySelector('[aria-label="Outbox administrativo local"]')),
-      loginVisible: text.includes("Sessao local"),
+      moderationPanel: Boolean(document.querySelector('[aria-label="Moderação administrativa"]')),
+      outboxPanel: Boolean(document.querySelector('[aria-label="Outbox administrativo"]')),
+      loginVisible: text.includes("Sessão"),
       horizontalOverflow,
       scrollWidth,
       innerWidth,

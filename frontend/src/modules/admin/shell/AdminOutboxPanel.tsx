@@ -33,11 +33,11 @@ export function AdminOutboxPanel() {
     pagina: null,
     detalhe: null,
     preview: null,
-    status: "consultando outbox local",
-    previewStatus: "previa local nao carregada",
+    status: "consultando outbox",
+    previewStatus: "prévia não carregada",
     podeSimular: false,
     simulando: false,
-    simulacaoStatus: "simulacao local, sem envio externo"
+    simulacaoStatus: "simulação sem envio externo"
   });
 
   useEffect(() => {
@@ -53,18 +53,18 @@ export function AdminOutboxPanel() {
       pagina: pagina.ok ? pagina.data : null,
       detalhe: detalhe && detalhe.ok ? detalhe.data : null,
       preview: null,
-      status: statusOverride ?? (pagina.ok ? "outbox local carregado para simulacao segura" : "outbox exige sessao/permissao"),
-      previewStatus: "previa local aguardando selecao",
+      status: statusOverride ?? (pagina.ok ? "outbox carregado para simulação segura" : "outbox exige sessão/permissão"),
+      previewStatus: "prévia aguardando seleção",
       podeSimular: me.ok && me.data.papeis.includes("ADMIN"),
       simulando: false,
-      simulacaoStatus: "simulacao local, sem envio externo"
+      simulacaoStatus: "simulação sem envio externo"
     });
   }
 
   async function carregarPreview(id: string) {
     setData((current) => ({
       ...current,
-      previewStatus: "renderizando previa local sanitizada"
+      previewStatus: "renderizando prévia sanitizada"
     }));
     const [detalhe, preview] = await Promise.all([getAdminOutboxDetalhe(id), getAdminOutboxPreview(id)]);
     setData((current) => ({
@@ -72,8 +72,8 @@ export function AdminOutboxPanel() {
       detalhe: detalhe.ok ? detalhe.data : current.detalhe,
       preview: preview.ok ? preview.data : null,
       previewStatus: preview.ok
-        ? "previa local, nenhuma comunicacao foi enviada"
-        : "previa indisponivel para esta sessao/permissao"
+        ? "prévia gerada, nenhuma comunicação foi enviada"
+        : "prévia indisponível para esta sessão/permissão"
     }));
   }
 
@@ -84,10 +84,10 @@ export function AdminOutboxPanel() {
     setData((current) => ({
       ...current,
       simulando: true,
-      simulacaoStatus: "simulando processamento local sem envio externo"
+      simulacaoStatus: "simulando processamento sem envio externo"
     }));
     const response = await simularAdminOutboxProcessamentoLocal(data.detalhe.id, {
-      observacao: "simulacao local acionada pelo painel admin",
+      observacao: "simulação acionada pelo painel admin",
       requestIdCliente: "reservado-sem-idempotencia-real"
     });
     if (response.ok) {
@@ -97,46 +97,46 @@ export function AdminOutboxPanel() {
     setData((current) => ({
       ...current,
       simulando: false,
-      simulacaoStatus: "simulacao local nao executada"
+      simulacaoStatus: "simulação não executada"
     }));
   }
 
   return (
-    <section className="admin-panel" aria-label="Outbox administrativo local">
-      <h2>Outbox local</h2>
+    <section className="admin-panel" aria-label="Outbox administrativo">
+      <h2>Outbox</h2>
       <p>{data.status}</p>
       <div className="admin-readonly-columns">
         <div className="admin-readonly-list">
-          <h3>Pendencias</h3>
+          <h3>Pendências</h3>
           {data.pagina?.itens.length ? (
             <ul>
               {data.pagina.itens.map((item) => (
                 <li key={item.id}>
-                  <span>{formatAdminValue(item.tipoEvento, "evento local")}</span>
+                  <span>{formatAdminValue(item.tipoEvento, "evento")}</span>
                   <small>{`${formatAdminValue(item.status, "status")} / ${formatAdminValue(item.entidadeTipo, "entidade")}`}</small>
-                  <small>{formatAdminText(item.resumoSanitizado, "resumo sanitizado indisponivel")}</small>
+                  <small>{formatAdminText(item.resumoSanitizado, "resumo sanitizado indisponível")}</small>
                   <button type="button" className="local-action" onClick={() => void carregarPreview(item.id)}>
-                    Ver previa
+                    Ver prévia
                   </button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p>sem pendencias visiveis</p>
+            <p>sem pendências visíveis</p>
           )}
         </div>
         <div className="admin-readonly-list">
-          <h3>Previa</h3>
+          <h3>Prévia</h3>
           <ul>
             <li>
               <span>
-                {formatAdminText(data.preview?.assuntoSanitizado ?? data.detalhe?.previa?.assuntoSanitizado, "sem previa selecionada")}
+                {formatAdminText(data.preview?.assuntoSanitizado ?? data.detalhe?.previa?.assuntoSanitizado, "sem prévia selecionada")}
               </span>
-              <small>{formatAdminText(data.preview?.canalPrevisto ?? data.detalhe?.previa?.destinoLogicoSanitizado, "canal local")}</small>
+              <small>{formatAdminText(data.preview?.canalPrevisto ?? data.detalhe?.previa?.destinoLogicoSanitizado, "canal")}</small>
               <small>
                 {formatAdminText(
                   data.preview?.corpoSanitizado ?? data.detalhe?.previa?.corpoSanitizado,
-                  "previa local, nenhuma comunicacao foi enviada"
+                  "prévia gerada, nenhuma comunicação foi enviada"
                 )}
               </small>
               <small>{data.previewStatus}</small>
@@ -154,7 +154,7 @@ export function AdminOutboxPanel() {
               disabled={!data.detalhe || data.detalhe.status !== "PENDENTE" || data.simulando}
               onClick={() => void simularProcessamentoLocal()}
             >
-              Simular processamento local
+              Simular processamento
             </button>
           ) : null}
           <small>{data.simulacaoStatus}</small>
@@ -162,16 +162,16 @@ export function AdminOutboxPanel() {
       </div>
       <dl className="health-grid compact">
         <ReadonlyMetric label="Itens" value={data.pagina?.totalElements} />
-        <ReadonlyMetric label="Detalhe" value={formatAdminValue(data.detalhe?.status, "sem permissao")} />
+        <ReadonlyMetric label="Detalhe" value={formatAdminValue(data.detalhe?.status, "sem permissão")} />
         <ReadonlyMetric label="Somente leitura" value={data.detalhe?.somenteLeitura ? "sim" : "sem detalhe"} />
-        <ReadonlyMetric label="Somente previa" value={data.preview?.somentePreview ? "sim" : "sem previa"} />
+        <ReadonlyMetric label="Somente prévia" value={data.preview?.somentePreview ? "sim" : "sem prévia"} />
         <ReadonlyMetric
           label="Envio externo"
-          value={data.preview?.envioExternoExecutado || data.detalhe?.envioExternoExecutado ? "executado" : "nao executado"}
+          value={data.preview?.envioExternoExecutado || data.detalhe?.envioExternoExecutado ? "executado" : "não executado"}
         />
       </dl>
       <div className="admin-notice">
-        Nenhuma comunicacao real enviada. Sem envio, reenvio, worker, scheduler, upload, pagamento, credito ou Pix.
+        Nenhuma comunicação enviada. Sem envio, reenvio, worker, scheduler, upload, pagamento, crédito ou Pix.
       </div>
     </section>
   );
@@ -181,7 +181,7 @@ function ReadonlyMetric({ label, value }: { label: string; value: number | strin
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value ?? "sem permissao"}</dd>
+      <dd>{value ?? "sem permissão"}</dd>
     </div>
   );
 }

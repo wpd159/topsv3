@@ -32,7 +32,7 @@ type ReadonlyData = {
 
 export function AdminReadonlyPanel() {
   const [state, setState] = useState<ReadonlyState>("carregando");
-  const [message, setMessage] = useState("consultando resumos administrativos locais");
+  const [message, setMessage] = useState("consultando resumos administrativos");
   const [data, setData] = useState<ReadonlyData>({
     visaoGeral: null,
     anuncios: null,
@@ -68,23 +68,23 @@ export function AdminReadonlyPanel() {
 
     const available = [visaoGeral, anuncios, moderacao, midias, metricas, sistema].filter((item) => item.ok).length;
     setState(available > 0 ? "disponivel" : "indisponivel");
-    setMessage(available > 0 ? "resumos locais somente leitura carregados" : "resumos exigem sessao/permissao admin");
+    setMessage(available > 0 ? "resumos somente leitura carregados" : "resumos exigem sessão/permissão admin");
   }
 
   return (
-    <section className="admin-panel" aria-label="Resumos administrativos locais">
-      <h2>Resumos locais</h2>
+    <section className="admin-panel" aria-label="Resumos administrativos">
+      <h2>Resumos</h2>
       <p>{message}</p>
       <dl className="health-grid compact">
         <ReadonlyMetric label="Estado" value={state} />
-        <ReadonlyMetric label="Anuncios publicados" value={data.anuncios?.publicados} />
-        <ReadonlyMetric label="Revisoes abertas" value={data.moderacao?.revisoesAbertas} />
-        <ReadonlyMetric label="Midias pendentes" value={data.midias?.midiasPendentes} />
-        <ReadonlyMetric label="Visualizacoes" value={data.metricas?.visualizacoesTotal} />
-        <ReadonlyMetric label="Sistema local" value={data.sistema?.local ? "sim" : data.sistema ? "nao" : "sem sessao"} />
+        <ReadonlyMetric label="Anúncios publicados" value={data.anuncios?.publicados} />
+        <ReadonlyMetric label="Revisões abertas" value={data.moderacao?.revisoesAbertas} />
+        <ReadonlyMetric label="Mídias pendentes" value={data.midias?.midiasPendentes} />
+        <ReadonlyMetric label="Visualizações" value={data.metricas?.visualizacoesTotal} />
+        <ReadonlyMetric label="Sistema" value={data.sistema?.local ? "operacional" : data.sistema ? "indisponível" : "sem sessão"} />
       </dl>
       {data.visaoGeral?.contadores.length ? (
-        <ul className="admin-permission-list" aria-label="Contadores administrativos locais">
+        <ul className="admin-permission-list" aria-label="Contadores administrativos">
           {data.visaoGeral.contadores.map((contador) => (
             <li key={contador.codigo}>
               <span>{contador.rotulo}</span>
@@ -94,8 +94,8 @@ export function AdminReadonlyPanel() {
         </ul>
       ) : null}
       <div className="admin-notice">
-        Somente leitura local. Nenhuma acao de aprovacao, rejeicao, exclusao, pagamento, credito ou upload esta
-        disponivel.
+        Somente leitura. Nenhuma ação de aprovação, rejeição, exclusão, pagamento, crédito ou upload está
+        disponível.
       </div>
     </section>
   );
@@ -105,7 +105,7 @@ function ReadonlyMetric({ label, value }: { label: string; value: number | strin
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value ?? "sem permissao"}</dd>
+      <dd>{value ?? "sem permissão"}</dd>
     </div>
   );
 }

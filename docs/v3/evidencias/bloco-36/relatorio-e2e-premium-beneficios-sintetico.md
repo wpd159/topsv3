@@ -7,7 +7,7 @@
 - Prefixo Docker: topsv3-premium-sintetico
 - API smoke script: C:\topsv3\scripts\local\validar-premium-beneficios-sintetico-local.ps1
 - Fixture sintetica JSON: C:\topsv3\backend\src\test\resources\fixtures\v3-dados-sinteticos.json
-- Porta PostgreSQL efemera: 53001
+- Porta PostgreSQL efemera: 62883
 - Migrations aplicadas: True
 - Quantidade de migrations aplicadas: 17
 - Dados sinteticos aplicados: True
@@ -28,6 +28,7 @@
 
 ## Passos
 - Validacao e2e local descartavel iniciada.
+- Docker daemon indisponivel; tentando iniciar Docker Desktop local instalado.
 - Docker daemon disponivel.
 - Rede Docker descartavel criada.
 - PostgreSQL descartavel iniciado sem volume persistente.

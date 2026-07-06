@@ -10,7 +10,7 @@
     { "slug": "aparecida-de-goiania-go", "nome": "Aparecida de Goiania", "uf": "GO", "controle": false },
     { "slug": "brasilia-df", "nome": "Brasilia", "uf": "DF", "controle": false },
     { "slug": "anapolis-go", "nome": "Anapolis", "uf": "GO", "controle": false },
-    { "slug": "cidade-controle-local-zz", "nome": "Cidade Controle Local", "uf": "ZZ", "controle": true }
+    { "slug": "cidade-controle-local-zz", "nome": "Cidade Controle", "uf": "ZZ", "controle": true }
   ],
   "bairros": [
     { "slug": "setor-bueno", "nome": "Setor Bueno", "cidadeSlug": "goiania-go" },
@@ -21,12 +21,12 @@
     { "slug": "asa-sul", "nome": "Asa Sul", "cidadeSlug": "brasilia-df" },
     { "slug": "asa-norte", "nome": "Asa Norte", "cidadeSlug": "brasilia-df" },
     { "slug": "centro-anapolis", "nome": "Centro", "cidadeSlug": "anapolis-go" },
-    { "slug": "bairro-controle-local", "nome": "Bairro Controle Local", "cidadeSlug": "cidade-controle-local-zz" }
+    { "slug": "bairro-controle-local", "nome": "Bairro Controle", "cidadeSlug": "cidade-controle-local-zz" }
   ],
   "anuncios": [
     {
       "slug": "demo-goiania-livre-premium",
-      "titulo": "Perfil sintetico Goiania livre premium",
+      "titulo": "Perfil de demonstração Goiânia premium",
       "cidadeSlug": "goiania-go",
       "bairroSlug": "setor-bueno",
       "status": "ATIVO",
@@ -35,11 +35,11 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_SUFFICIENTE",
       "whatsappPublico": "PLACEHOLDER_NAO_DISCAVEL",
-      "descricaoPerfil": "Texto sintetico suficiente para validar SEO local sem dado real."
+      "descricaoPerfil": "Perfil de demonstração para validação de navegação pública."
     },
     {
       "slug": "demo-goiania-bloqueado",
-      "titulo": "Perfil sintetico Goiania bloqueado",
+      "titulo": "Perfil de demonstração Goiânia bloqueado",
       "cidadeSlug": "goiania-go",
       "bairroSlug": "jardim-goias",
       "status": "ATIVO",
@@ -48,11 +48,11 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_BLOQUEADO",
       "whatsappPublico": "BLOQUEADO",
-      "descricaoPerfil": "Conteudo sintetico bloqueado para validar age gate e ausencia de WhatsApp publico."
+      "descricaoPerfil": "Perfil de demonstração com conteúdo protegido por confirmação de idade."
     },
     {
       "slug": "demo-goiania-pausado",
-      "titulo": "Perfil sintetico pausado",
+      "titulo": "Perfil de demonstração pausado",
       "cidadeSlug": "goiania-go",
       "bairroSlug": "marista",
       "status": "PAUSADO",
@@ -61,11 +61,11 @@
       "seo": "FRACO",
       "midia": "PLACEHOLDER_INSUFICIENTE",
       "whatsappPublico": "OCULTO",
-      "descricaoPerfil": "Texto sintetico curto."
+      "descricaoPerfil": "Perfil de demonstração com descrição reduzida."
     },
     {
       "slug": "demo-goiania-pendente",
-      "titulo": "Perfil sintetico pendente",
+      "titulo": "Perfil de demonstração pendente",
       "cidadeSlug": "goiania-go",
       "bairroSlug": "campinas",
       "status": "PENDENTE",
@@ -74,11 +74,11 @@
       "seo": "FRACO",
       "midia": "PLACEHOLDER_PENDENTE",
       "whatsappPublico": "OCULTO",
-      "descricaoPerfil": "Caso sintetico para admin e moderacao local."
+      "descricaoPerfil": "Perfil de demonstração para revisão administrativa."
     },
     {
       "slug": "demo-goiania-rejeitado",
-      "titulo": "Perfil sintetico rejeitado",
+      "titulo": "Perfil de demonstração rejeitado",
       "cidadeSlug": "goiania-go",
       "bairroSlug": "centro-goiania",
       "status": "REJEITADO",
@@ -87,11 +87,11 @@
       "seo": "NAO_INDEXAVEL",
       "midia": "PLACEHOLDER_BLOQUEADO",
       "whatsappPublico": "BLOQUEADO",
-      "descricaoPerfil": "Caso sintetico rejeitado para teste negativo."
+      "descricaoPerfil": "Perfil de demonstração rejeitado para validação negativa."
     },
     {
       "slug": "demo-aparecida-ativo-sem-bairro",
-      "titulo": "Perfil sintetico Aparecida sem bairro",
+      "titulo": "Perfil de demonstração Aparecida sem bairro",
       "cidadeSlug": "aparecida-de-goiania-go",
       "bairroSlug": null,
       "status": "ATIVO",
@@ -100,11 +100,11 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_SUFFICIENTE",
       "whatsappPublico": "PLACEHOLDER_NAO_DISCAVEL",
-      "descricaoPerfil": "Caso sintetico ativo sem bairro para listagem de cidade."
+      "descricaoPerfil": "Perfil de demonstração ativo sem bairro para listagem de cidade."
     },
     {
       "slug": "demo-brasilia-premium-topo",
-      "titulo": "Perfil sintetico Brasilia premium topo",
+      "titulo": "Perfil de demonstração Brasília premium topo",
       "cidadeSlug": "brasilia-df",
       "bairroSlug": "asa-sul",
       "status": "ATIVO",
@@ -113,11 +113,11 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_SUFFICIENTE",
       "whatsappPublico": "PLACEHOLDER_NAO_DISCAVEL",
-      "descricaoPerfil": "Caso sintetico para beneficio de anuncio topo e comparacao organica."
+      "descricaoPerfil": "Perfil de demonstração para benefício de anúncio no topo."
     },
     {
       "slug": "demo-brasilia-bloqueado-stories",
-      "titulo": "Perfil sintetico Brasilia bloqueado stories",
+      "titulo": "Perfil de demonstração Brasília bloqueado stories",
       "cidadeSlug": "brasilia-df",
       "bairroSlug": "asa-norte",
       "status": "ATIVO",
@@ -126,11 +126,11 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_BLOQUEADO",
       "whatsappPublico": "BLOQUEADO",
-      "descricaoPerfil": "Caso sintetico para confirmar que stories exigem idade e nao liberam midia publica."
+      "descricaoPerfil": "Perfil de demonstração com stories protegidos por confirmação de idade."
     },
     {
       "slug": "demo-anapolis-ativo",
-      "titulo": "Perfil sintetico Anapolis ativo",
+      "titulo": "Perfil de demonstração Anápolis ativo",
       "cidadeSlug": "anapolis-go",
       "bairroSlug": "centro-anapolis",
       "status": "ATIVO",
@@ -139,11 +139,11 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_SUFFICIENTE",
       "whatsappPublico": "PLACEHOLDER_NAO_DISCAVEL",
-      "descricaoPerfil": "Caso sintetico para rota local de Anapolis."
+      "descricaoPerfil": "Perfil de demonstração para navegação por Anápolis."
     },
     {
       "slug": "demo-controle-status-invalido",
-      "titulo": "Perfil sintetico controle invalido",
+      "titulo": "Perfil de demonstração controle inválido",
       "cidadeSlug": "cidade-controle-local-zz",
       "bairroSlug": "bairro-controle-local",
       "status": "INVALIDO_CONTROLE",
@@ -152,11 +152,11 @@
       "seo": "NAO_INDEXAVEL",
       "midia": "PLACEHOLDER_INSUFICIENTE",
       "whatsappPublico": "OCULTO",
-      "descricaoPerfil": "Caso sintetico negativo controlado; nao usar em listagem publica normal."
+      "descricaoPerfil": "Perfil de demonstração negativo controlado; não usar em listagem pública normal."
     },
     {
       "slug": "demo-goiania-fotos-extra",
-      "titulo": "Perfil sintetico fotos extra",
+      "titulo": "Perfil de demonstração fotos extra",
       "cidadeSlug": "goiania-go",
       "bairroSlug": "setor-bueno",
       "status": "ATIVO",
@@ -165,11 +165,11 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_SUFFICIENTE",
       "whatsappPublico": "PLACEHOLDER_NAO_DISCAVEL",
-      "descricaoPerfil": "Caso sintetico para beneficio de fotos extra ativo."
+      "descricaoPerfil": "Perfil de demonstração para benefício de fotos extras ativo."
     },
     {
       "slug": "demo-goiania-premium-expirado",
-      "titulo": "Perfil sintetico premium expirado",
+      "titulo": "Perfil de demonstração premium expirado",
       "cidadeSlug": "goiania-go",
       "bairroSlug": "jardim-goias",
       "status": "ATIVO",
@@ -178,7 +178,7 @@
       "seo": "FORTE",
       "midia": "PLACEHOLDER_SUFFICIENTE",
       "whatsappPublico": "PLACEHOLDER_NAO_DISCAVEL",
-      "descricaoPerfil": "Caso sintetico para comparar beneficio expirado."
+      "descricaoPerfil": "Perfil de demonstração para comparar benefício expirado."
     }
   ],
   "premiumBeneficios": [

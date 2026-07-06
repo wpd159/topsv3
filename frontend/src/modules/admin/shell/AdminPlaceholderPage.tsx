@@ -12,12 +12,12 @@ export function AdminPlaceholderPage({ moduleSlug }: AdminPlaceholderPageProps) 
   return (
     <AdminShell title={adminModule.title}>
       <section className="admin-panel" aria-label="Status do módulo">
-        <h2>Modulo em preparacao</h2>
+        <h2>Módulo em preparação</h2>
         <p>{adminModule.summary}</p>
         <dl className="health-grid compact">
           <div>
             <dt>Estado</dt>
-            <dd>estrutura local preparada</dd>
+            <dd>estrutura preparada</dd>
           </div>
           <div>
             <dt>Dados reais</dt>

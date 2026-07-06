@@ -58,7 +58,7 @@ export async function fetchLocalApi<T>(path: string, options: ApiRequestOptions 
       headers
     });
   } catch {
-    throw new ApiClientError("API local indisponível.", 0, requestId);
+    throw new ApiClientError("Serviço indisponível.", 0, requestId);
   }
 
   const responseRequestId = response.headers.get("X-Request-Id") ?? requestId;
@@ -67,7 +67,7 @@ export async function fetchLocalApi<T>(path: string, options: ApiRequestOptions 
   if (!response.ok) {
     const apiError = isApiErrorResponse(body) ? body : undefined;
     throw new ApiClientError(
-      apiError?.message ?? "Erro ao consultar API local.",
+      apiError?.message ?? "Erro ao consultar o serviço.",
       response.status,
       responseRequestId,
       apiError,

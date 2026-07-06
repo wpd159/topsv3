@@ -248,7 +248,7 @@ const routes = [
   { key: "cidade-goiania", path: "/acompanhantes/go/goiania", screenshot: "desktop-cidade-goiania", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-goiania-livre-premium" },
   { key: "bairro-setor-bueno", path: "/acompanhantes/go/goiania/setor-bueno", screenshot: "desktop-bairro-setor-bueno", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-goiania-livre-premium" },
   { key: "cidade-brasilia", path: "/acompanhantes/df/brasilia", screenshot: "desktop-cidade-brasilia", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-brasilia-premium-topo" },
-  { key: "anuncio-livre", path: "/anuncios/demo-goiania-livre-premium", screenshot: "desktop-anuncio-livre", type: "page", h1: true, breadcrumbs: true, mustContain: "Perfil sintetico Goiania livre premium" },
+  { key: "anuncio-livre", path: "/anuncios/demo-goiania-livre-premium", screenshot: "desktop-anuncio-livre", type: "page", h1: true, breadcrumbs: true, mustContain: "Perfil de demonstra" },
   { key: "anuncio-bloqueado", path: "/anuncios/demo-goiania-bloqueado", screenshot: "desktop-anuncio-bloqueado", type: "page", h1: true, breadcrumbs: true, mustContain: "Demo Goi", mustNotContain: "wa.me" },
   { key: "sitemap", path: "/sitemap.xml", screenshot: "desktop-sitemap", type: "text", mustContain: "<urlset" },
   { key: "robots", path: "/robots.txt", screenshot: "desktop-robots", type: "text", mustContain: "Disallow" }
@@ -332,8 +332,26 @@ function pageMetricsScript() {
     const addTechnicalViolation = (type) => {
       if (!technicalViolations.includes(type)) technicalViolations.push(type);
     };
-    if (/(skeleton|API local|mock|placeholder t[eé]cnico|stack trace|Unhandled Runtime Error|JSON bruto|debug)/i.test(bodyText)) {
+    if (/(skeleton|\\blocal\\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?|placeholder t[eé]cnico|stack trace|Unhandled Runtime Error|JSON bruto|debug)/i.test(bodyText)) {
       addTechnicalViolation("texto_tecnico_generico");
+    }
+    if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(bodyText)) {
+      addTechnicalViolation("metadados_publicos_locais_visivel");
+    }
+    if (/\bANUNCIO\b/.test(bodyText)) {
+      addTechnicalViolation("enum_anuncio_visivel");
+    }
+    if (/Autorizacao|autorizacao/i.test(bodyText)) {
+      addTechnicalViolation("autorizacao_sem_acento_visivel");
+    }
+    if (/admin configurar/i.test(bodyText)) {
+      addTechnicalViolation("permissao_admin_configurar_visivel");
+    }
+    if (/anuncio ler/i.test(bodyText)) {
+      addTechnicalViolation("permissao_anuncio_ler_visivel");
+    }
+    if (/Preparar autorizacao/i.test(bodyText)) {
+      addTechnicalViolation("descricao_autorizacao_sem_acento_visivel");
     }
     if (/\b(?:PENDENTE|FALHA|ERRO)_[A-Z0-9_]+\b/.test(bodyText)) {
       addTechnicalViolation("status_tecnico_upper_snake");

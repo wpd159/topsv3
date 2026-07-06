@@ -34,7 +34,7 @@ export function AdminPremiumPanel() {
     beneficios: [],
     consistencia: null,
     vencendo: null,
-    mensagem: "consultando beneficios locais"
+    mensagem: "consultando benefícios"
   });
 
   useEffect(() => {
@@ -53,55 +53,55 @@ export function AdminPremiumPanel() {
       beneficios: beneficios.ok ? beneficios.data : [],
       consistencia: consistencia.ok ? consistencia.data : null,
       vencendo: vencendo.ok ? vencendo.data : null,
-      mensagem: status.ok ? "premium local somente leitura carregado" : "premium exige sessao/permissao admin"
+      mensagem: status.ok ? "premium somente leitura carregado" : "premium exige sessão/permissão admin"
     });
   }
 
   return (
     <AdminShell title="Premium">
       <AdminPremiumWizard />
-      <section className="admin-panel" aria-label="Premium e beneficios locais">
-        <h2>Premium local</h2>
+      <section className="admin-panel" aria-label="Premium e benefícios">
+        <h2>Premium</h2>
         <p>{data.mensagem}</p>
         <dl className="health-grid compact">
-          <ReadonlyMetric label="Premium ativo" value={data.status?.premiumAtivo ? "sim" : data.status ? "nao" : "sem sessao"} />
-          <ReadonlyMetric label="Beneficios ativos" value={data.status?.beneficiosAtivos} />
+          <ReadonlyMetric label="Premium ativo" value={data.status?.premiumAtivo ? "sim" : data.status ? "não" : "sem sessão"} />
+          <ReadonlyMetric label="Benefícios ativos" value={data.status?.beneficiosAtivos} />
           <ReadonlyMetric label="Vencendo" value={data.status?.beneficiosVencendo} />
-          <ReadonlyMetric label="Inconsistencias" value={data.consistencia?.total} />
-          <ReadonlyMetric label="Compra real" value={data.status?.compraOuAtivacaoRealDisponivel ? "disponivel" : "bloqueada"} />
-          <ReadonlyMetric label="Limite gratuito" value={data.status?.gratuitoLimitadoPorContato ? "existe" : "nao existe"} />
+          <ReadonlyMetric label="Inconsistências" value={data.consistencia?.total} />
+          <ReadonlyMetric label="Ativação" value={data.status?.compraOuAtivacaoRealDisponivel ? "disponível" : "indisponível"} />
+          <ReadonlyMetric label="Limite gratuito" value={data.status?.gratuitoLimitadoPorContato ? "existe" : "não existe"} />
         </dl>
         <div className="admin-readonly-columns">
           <div className="admin-readonly-list">
-            <h3>Beneficios do anuncio sintetico</h3>
+            <h3>Benefícios do anúncio</h3>
             {data.beneficios.length ? (
               <ul>
                 {data.beneficios.map((item) => (
                   <li key={item.id}>
-                    <span>{formatAdminValue(item.beneficioCodigo, "beneficio local")}</span>
+                    <span>{formatAdminValue(item.beneficioCodigo, "benefício")}</span>
                     <small>{`${formatAdminValue(item.statusCalculado, "status")} / ${formatAdminValue(item.grupoStatus, "sem grupo")}`}</small>
                     <small>{formatAdminValues(item.codigosConsistencia, "premium ok")}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem beneficio visivel para esta sessao</p>
+              <p>sem benefício visível para esta sessão</p>
             )}
           </div>
           <div className="admin-readonly-list">
-            <h3>Consistencia</h3>
+            <h3>Consistência</h3>
             {data.consistencia?.itens.length ? (
               <ul>
                 {data.consistencia.itens.slice(0, 5).map((item) => (
                   <li key={`${item.codigo}-${item.ativacaoId ?? item.grupoId ?? item.slug}`}>
                     <span>{formatAdminValue(item.codigo)}</span>
-                    <small>{item.slug ?? "sem slug publico"}</small>
+                    <small>{item.slug ? "referência de demonstração" : "sem referência pública"}</small>
                     <small>{formatAdminText(item.mensagem)}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem inconsistencia local visivel</p>
+              <p>sem inconsistência visível</p>
             )}
           </div>
         </div>
@@ -111,18 +111,18 @@ export function AdminPremiumPanel() {
             <ul>
               {data.vencendo.itens.slice(0, 5).map((item) => (
                 <li key={item.ativacaoId}>
-                  <span>{formatAdminValue(item.beneficioCodigo, "beneficio local")}</span>
+                  <span>{formatAdminValue(item.beneficioCodigo, "benefício")}</span>
                   <small>{`${item.diasRestantes} dias restantes`}</small>
-                  <small>{item.slug ?? "sem slug publico"}</small>
+                  <small>{item.slug ? "referência de demonstração" : "sem referência pública"}</small>
                 </li>
               ))}
             </ul>
           ) : (
-            <p>sem beneficio vencendo na janela local</p>
+            <p>sem benefício vencendo na janela</p>
           )}
         </div>
         <div className="admin-notice">
-          Somente leitura local. Sem compra, ativacao real, ajuste financeiro, Pix, Efi, checkout, webhook, credito real
+          Somente leitura. Sem compra, ativação, ajuste financeiro, Pix, Efi, checkout, webhook, crédito
           ou limite comercial de WhatsApp/clique/contato no gratuito.
         </div>
       </section>
@@ -134,7 +134,7 @@ function ReadonlyMetric({ label, value }: { label: string; value: number | strin
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value ?? "sem permissao"}</dd>
+      <dd>{value ?? "sem permissão"}</dd>
     </div>
   );
 }

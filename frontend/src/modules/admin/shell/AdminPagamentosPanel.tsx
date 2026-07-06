@@ -15,6 +15,7 @@ import type {
   AdminPagamentoPaginaDto
 } from "../../../lib/api/adminReadonlyTypes";
 import { AdminShell } from "./AdminShell";
+import { formatAdminText, formatAdminValue } from "./adminDisplay";
 
 const PAGAMENTO_SINTETICO_ID = "00000000-0000-4000-8000-000000000721";
 
@@ -32,7 +33,7 @@ export function AdminPagamentosPanel() {
     detalhe: null,
     consistencia: null,
     inconsistencias: null,
-    mensagem: "consultando pagamentos locais"
+    mensagem: "consultando pagamentos"
   });
 
   useEffect(() => {
@@ -51,60 +52,60 @@ export function AdminPagamentosPanel() {
       detalhe: detalhe.ok ? detalhe.data : null,
       consistencia: consistencia.ok ? consistencia.data : null,
       inconsistencias: inconsistencias.ok ? inconsistencias.data : null,
-      mensagem: lista.ok ? "pagamentos locais somente leitura carregados" : "pagamentos exigem sessao ADMIN"
+      mensagem: lista.ok ? "pagamentos somente leitura carregados" : "pagamentos exigem sessão ADMIN"
     });
   }
 
   return (
     <AdminShell title="Financeiro">
-      <section className="admin-panel" aria-label="Pagamentos locais">
-        <h2>Pagamentos locais</h2>
+      <section className="admin-panel" aria-label="Pagamentos">
+        <h2>Pagamentos</h2>
         <p>{data.mensagem}</p>
         <dl className="health-grid compact">
           <ReadonlyMetric label="Pagamentos" value={data.lista?.total} />
-          <ReadonlyMetric label="Inconsistencias" value={data.inconsistencias?.total} />
+          <ReadonlyMetric label="Inconsistências" value={data.inconsistencias?.total} />
           <ReadonlyMetric label="Eventos" value={data.detalhe?.eventosSanitizadosTotal} />
           <ReadonlyMetric label="Webhooks" value={data.detalhe?.webhooksSanitizadosTotal} />
-          <ReadonlyMetric label="Creditos" value={data.detalhe?.quantidadeCreditos} />
-          <ReadonlyMetric label="Provedor" value={data.detalhe?.provedorClassificado} />
+          <ReadonlyMetric label="Créditos" value={data.detalhe?.quantidadeCreditos} />
+          <ReadonlyMetric label="Provedor" value={formatAdminValue(data.detalhe?.provedorClassificado, "sem provedor")} />
         </dl>
         <div className="admin-readonly-columns">
           <div className="admin-readonly-list">
-            <h3>Ultimos registros</h3>
+            <h3>Últimos registros</h3>
             {data.lista?.itens.length ? (
               <ul>
                 {data.lista.itens.map((item) => (
                   <li key={item.id}>
-                    <span>{`${item.provedorClassificado ?? "DESCONHECIDO"} / ${item.statusInterno ?? "STATUS"}`}</span>
-                    <small>{`${item.quantidadeCreditos ?? 0} creditos, ${item.moeda ?? "BRL"}`}</small>
-                    <small>{item.creditoVinculado ? "credito vinculado" : "sem credito vinculado"}</small>
+                    <span>{`${formatAdminValue(item.provedorClassificado, "desconhecido")} / ${formatAdminValue(item.statusInterno, "status")}`}</span>
+                    <small>{`${item.quantidadeCreditos ?? 0} créditos, ${item.moeda ?? "BRL"}`}</small>
+                    <small>{item.creditoVinculado ? "crédito vinculado" : "sem crédito vinculado"}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem pagamento visivel para esta sessao</p>
+              <p>sem pagamento visível para esta sessão</p>
             )}
           </div>
           <div className="admin-readonly-list">
-            <h3>Consistencia</h3>
+            <h3>Consistência</h3>
             {data.consistencia?.itens.length ? (
               <ul>
                 {data.consistencia.itens.slice(0, 8).map((item) => (
                   <li key={`${item.codigo}-${item.pagamentoId ?? item.movimentoCreditoId ?? "geral"}`}>
-                    <span>{item.codigo}</span>
-                    <small>{item.mensagem}</small>
-                    <small>{item.severidade}</small>
+                    <span>{formatAdminValue(item.codigo)}</span>
+                    <small>{formatAdminText(item.mensagem)}</small>
+                    <small>{formatAdminValue(item.severidade)}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem inconsistencia local visivel</p>
+              <p>sem inconsistência visível</p>
             )}
           </div>
         </div>
         <div className="admin-notice">
-          Somente leitura local. Sem cobranca, checkout, Pix/Efi real, webhook real, conciliacao real, credito,
-          estorno, worker, scheduler ou mutation financeira.
+          Somente leitura. Sem cobrança, checkout, Pix/Efi, webhook, conciliação, crédito,
+          estorno, worker, scheduler ou mutação financeira.
         </div>
       </section>
     </AdminShell>
@@ -115,7 +116,7 @@ function ReadonlyMetric({ label, value }: { label: string; value: number | strin
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value ?? "sem permissao"}</dd>
+      <dd>{value ?? "sem permissão"}</dd>
     </div>
   );
 }

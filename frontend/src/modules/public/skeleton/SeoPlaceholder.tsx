@@ -1,5 +1,3 @@
-import { localUrl } from "../../../lib/seo/localSeo";
-
 type SeoPlaceholderProps = {
   routePath: string;
 };
@@ -15,7 +13,7 @@ export function SeoPlaceholder({ routePath }: SeoPlaceholderProps) {
         </div>
         <div>
           <dt>Endereço</dt>
-          <dd>{localUrl(routePath)}</dd>
+          <dd>{routePath}</dd>
         </div>
         <div>
           <dt>Exibição</dt>

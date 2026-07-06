@@ -15,6 +15,7 @@ import type {
   AdminCreditoSaldoDto
 } from "../../../lib/api/adminReadonlyTypes";
 import { AdminShell } from "./AdminShell";
+import { formatAdminText, formatAdminValue } from "./adminDisplay";
 
 const USUARIO_CREDITO_SINTETICO_ID = "00000000-0000-4000-8000-000000000101";
 
@@ -32,7 +33,7 @@ export function AdminCreditosPanel() {
     movimentos: null,
     consistencia: null,
     inconsistencias: null,
-    mensagem: "consultando ledger local"
+    mensagem: "consultando ledger"
   });
 
   useEffect(() => {
@@ -51,22 +52,22 @@ export function AdminCreditosPanel() {
       movimentos: movimentos.ok ? movimentos.data : null,
       consistencia: consistencia.ok ? consistencia.data : null,
       inconsistencias: inconsistencias.ok ? inconsistencias.data : null,
-      mensagem: saldo.ok ? "creditos locais somente leitura carregados" : "creditos exigem sessao ADMIN"
+      mensagem: saldo.ok ? "créditos somente leitura carregados" : "créditos exigem sessão ADMIN"
     });
   }
 
   return (
-    <AdminShell title="Creditos">
-      <section className="admin-panel" aria-label="Creditos e ledger locais">
-        <h2>Creditos locais</h2>
+    <AdminShell title="Créditos">
+      <section className="admin-panel" aria-label="Créditos e ledger">
+        <h2>Créditos</h2>
         <p>{data.mensagem}</p>
         <dl className="health-grid compact">
           <ReadonlyMetric label="Saldo projetado" value={data.saldo?.saldoProjetado} />
           <ReadonlyMetric label="Saldo calculado" value={data.saldo?.saldoCalculadoMovimentos} />
           <ReadonlyMetric label="Movimentos" value={data.saldo?.totalMovimentos} />
           <ReadonlyMetric label="Entradas" value={data.saldo?.totalEntradas} />
-          <ReadonlyMetric label="Saidas" value={data.saldo?.totalSaidas} />
-          <ReadonlyMetric label="Inconsistencias" value={data.inconsistencias?.total} />
+          <ReadonlyMetric label="Saídas" value={data.saldo?.totalSaidas} />
+          <ReadonlyMetric label="Inconsistências" value={data.inconsistencias?.total} />
         </dl>
         <div className="admin-readonly-columns">
           <div className="admin-readonly-list">
@@ -75,36 +76,36 @@ export function AdminCreditosPanel() {
               <ul>
                 {data.movimentos.itens.map((item) => (
                   <li key={item.id}>
-                    <span>{`${item.tipo ?? "MOVIMENTO"} / ${item.direcao ?? "DIRECAO"}`}</span>
-                    <small>{`${item.quantidade ?? 0} creditos, ${item.saldoAntes ?? 0} -> ${item.saldoDepois ?? 0}`}</small>
-                    <small>{`${item.origem ?? "origem local"} / ${item.referenciaTipo ?? "sem referencia"}`}</small>
+                    <span>{`${formatAdminValue(item.tipo, "movimento")} / ${formatAdminValue(item.direcao, "direção")}`}</span>
+                    <small>{`${item.quantidade ?? 0} créditos, ${item.saldoAntes ?? 0} -> ${item.saldoDepois ?? 0}`}</small>
+                    <small>{`${formatAdminValue(item.origem, "origem")} / ${formatAdminValue(item.referenciaTipo, "sem referência")}`}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem movimento visivel para esta sessao</p>
+              <p>sem movimento visível para esta sessão</p>
             )}
           </div>
           <div className="admin-readonly-list">
-            <h3>Consistencia</h3>
+            <h3>Consistência</h3>
             {data.consistencia?.itens.length ? (
               <ul>
                 {data.consistencia.itens.slice(0, 8).map((item) => (
                   <li key={`${item.codigo}-${item.movimentoId ?? item.pagamentoId ?? item.usuarioId}`}>
-                    <span>{item.codigo}</span>
-                    <small>{item.mensagem}</small>
-                    <small>{item.severidade}</small>
+                    <span>{formatAdminValue(item.codigo)}</span>
+                    <small>{formatAdminText(item.mensagem)}</small>
+                    <small>{formatAdminValue(item.severidade)}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem inconsistencia local visivel</p>
+              <p>sem inconsistência visível</p>
             )}
           </div>
         </div>
         <div className="admin-notice">
-          Somente leitura local. Sem compra, checkout, ajuste, estorno, conciliacao real, Pix, Efi, worker,
-          scheduler, credito real ou alteracao de saldo.
+          Somente leitura. Sem compra, checkout, ajuste, estorno, conciliação, Pix, Efi, worker,
+          scheduler, crédito ou alteração de saldo.
         </div>
       </section>
     </AdminShell>
@@ -115,7 +116,7 @@ function ReadonlyMetric({ label, value }: { label: string; value: number | strin
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value ?? "sem permissao"}</dd>
+      <dd>{value ?? "sem permissão"}</dd>
     </div>
   );
 }

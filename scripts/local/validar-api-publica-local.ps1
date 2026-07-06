@@ -273,7 +273,7 @@ function Assert-FrontendAdminHardening {
   Add-Check "frontend admin sem token bearer" (-not (($adminApi + $adminReadonlyApi) -match 'Bearer|Authorization|JWT|OAuth')) "admin deve usar sessao/cookie, nao token"
   Add-Check "frontend admin login sem valor pre-preenchido" (-not ($adminPanel -match 'useState\("admin\.local@example\.invalid"\)')) "login sintetico pode aparecer so como placeholder"
   Add-Check "frontend admin sem credencial hardcoded" (-not ($frontendText -match 'SenhaSintetica|NaoUsar123|valor-invalido-local')) "senha sintetica nao deve entrar no frontend"
-  Add-Check "frontend admin acoes limitadas a moderacao local" ($frontendText -match 'acao local de moderacao' -and -not ($frontendText -match 'onClick=.*(excluir|pausar|ativar|pagar|upload|pix|credito)')) "somente botoes locais de moderacao podem existir"
+  Add-Check "frontend admin acoes limitadas a moderacao" ($frontendText -match 'Aprovar' -and $frontendText -match 'Solicitar ajuste' -and -not ($frontendText -match 'onClick=.*(excluir|pausar|ativar|pagar|upload|pix|credito)')) "somente botoes de moderacao previstos podem existir"
 }
 
 function Assert-NoSensitiveAdminReadonlyData {
@@ -298,7 +298,7 @@ function New-DecisaoModeracaoBody {
   param(
     [string]$Decisao,
     [string]$Classificacao = "LIVRE",
-    [string]$Motivo = "acao local de moderacao",
+    [string]$Motivo = "acao de moderacao",
     [string]$Observacao = "sem dado real, sem e-mail real e sem hard delete",
     [switch]$SemMotivo
   )
@@ -319,7 +319,7 @@ function New-RemeterRevisaoBody {
     observacao = "sem e-mail real, sem WhatsApp real e sem envio externo"
   }
   if (-not $SemMotivo) {
-    $body["motivo"] = "remeter anuncio para revisao local"
+    $body["motivo"] = "remeter anuncio para revisao"
   }
   return ($body | ConvertTo-Json -Compress)
 }
@@ -334,14 +334,14 @@ function New-AnunciarGratisBody {
     [switch]$CampoPerigoso
   )
   $body = @{
-    nomeExibicao = "Anunciante Sintetica Local"
+    nomeExibicao = "Anunciante de demonstracao"
     email = "anunciante.local@example.invalid"
     whatsapp = "+5500000000000"
     uf = "ZZ"
     cidade = "Cidade Sintetica"
     bairro = "Bairro Sintetico"
-    titulo = "Anuncio sintetico para revisao"
-    descricao = "Texto sintetico neutro para validar criacao local sem dado real."
+    titulo = "Anuncio de demonstracao para revisao"
+    descricao = "Texto de demonstracao neutro para validar criacao sem dado real."
     preco = 120
     categoria = "ACOMPANHANTE"
     aceiteTermos = $true
@@ -379,7 +379,7 @@ $metricBody = (@{
   visitanteLocalId = "visitante-sintetico-local"
   origemPais = "BR"
   origemUf = "ZZ"
-  origemCidade = "Cidade Sintetica"
+  origemCidade = "Cidade Demonstracao"
   dispositivo = "DESKTOP"
 } | ConvertTo-Json -Compress)
 $idadeMenorBody = (@{
@@ -619,7 +619,7 @@ if (-not $SemDadosSinteticos) {
   $midiaId = "00000000-0000-4000-8000-000000000705"
   $revisaoId = "00000000-0000-4000-8000-000000000801"
   $detalhadosAdmin = @(
-    "/api/admin/anuncios?page=0&size=2&status=PENDENTE_REVISAO&statusModeracao=PENDENTE&classificacaoConteudo=LIVRE&uf=ZZ&cidade=cidade-sintetica&bairro=bairro-sintetico&termo=sintetico",
+    "/api/admin/anuncios?page=0&size=2&status=PENDENTE_REVISAO&statusModeracao=PENDENTE&classificacaoConteudo=LIVRE&uf=ZZ&cidade=cidade-sintetica&bairro=bairro-sintetico&termo=demonstracao",
     "/api/admin/anuncios/$anuncioId",
     "/api/admin/anuncios/$anuncioId/midias?page=0&size=5",
     "/api/admin/midias?page=0&size=5&status=PENDENTE&classificacaoConteudo=LIVRE&tipo=FOTO",
@@ -736,7 +736,7 @@ if (-not $SemDadosSinteticos) {
   Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho diario" -Body $desempenhoDiario.Body
 
   $desempenhoOrigens = Invoke-LocalHttp -Path "/api/admin/desempenho/anuncios/$desempenhoAnuncioId/origens" -ExpectedStatus 200 -Method "GET" -Session $adminSession
-  Add-Check "admin desempenho origens" ($desempenhoOrigens.Status -eq 200 -and $desempenhoOrigens.Body -match 'Cidade Sintetica' -and $desempenhoOrigens.Body -match 'Bairro Sintetico') "origens devem usar cidade/bairro sanitizados"
+  Add-Check "admin desempenho origens" ($desempenhoOrigens.Status -eq 200 -and $desempenhoOrigens.Body -match 'Cidade de demonstra' -and $desempenhoOrigens.Body -match 'Bairro de demonstra') "origens devem usar cidade/bairro sanitizados"
   Add-Check "admin desempenho origens sem bruto" (-not ($desempenhoOrigens.Body -match 'hash|ipHash|userAgent|referer|visitante')) "origens nao devem expor identificador bruto"
   Assert-NoSensitiveAdminReadonlyData -Nome "admin desempenho origens" -Body $desempenhoOrigens.Body
 

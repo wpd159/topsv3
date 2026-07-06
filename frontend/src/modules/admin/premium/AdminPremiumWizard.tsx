@@ -31,26 +31,26 @@ type PreviewPeriod = {
 };
 
 const STEPS: readonly PremiumStep[] = [
-  { id: "intro", label: "Inicio" },
-  { id: "anuncio", label: "Anuncio" },
-  { id: "beneficios", label: "Beneficios" },
-  { id: "periodo", label: "Periodo" },
-  { id: "revisao", label: "Revisao" },
-  { id: "resultado", label: "Preview" }
+  { id: "intro", label: "Início" },
+  { id: "anuncio", label: "Anúncio" },
+  { id: "beneficios", label: "Benefícios" },
+  { id: "periodo", label: "Período" },
+  { id: "revisao", label: "Revisão" },
+  { id: "resultado", label: "Prévia" }
 ];
 
 const ADS: readonly PreviewAd[] = [
   {
     id: "preview-anuncio-1",
-    title: "Anuncio de exemplo A",
-    location: "Cidade Sintetica - ZZ",
-    status: "PENDENTE_REVISAO"
+    title: "Anúncio de demonstração A",
+    location: "Cidade de demonstração - ZZ",
+    status: "Pendente de revisão"
   },
   {
     id: "preview-anuncio-2",
-    title: "Anuncio de exemplo B",
-    location: "Bairro Sintetico, Cidade Sintetica",
-    status: "PUBLICADO_LOCAL"
+    title: "Anúncio de demonstração B",
+    location: "Bairro de demonstração, Cidade de demonstração",
+    status: "Publicado"
   }
 ];
 
@@ -58,22 +58,22 @@ const BENEFITS: readonly PreviewBenefit[] = [
   {
     code: "ANUNCIO_TOPO",
     label: "Topo da lista",
-    description: "Simula maior exposicao na listagem, sem alterar ranking real."
+    description: "Mostra maior exposição na listagem, sem alterar ranking."
   },
   {
     code: "WHATSAPP_CARD",
     label: "WhatsApp destacado",
-    description: "Mostra como o contato poderia ficar mais visivel quando liberado pelo backend."
+    description: "Mostra como o contato poderia ficar mais visível quando liberado pelo backend."
   },
   {
     code: "FOTOS_EXTRA_5",
     label: "Mais fotos",
-    description: "Reserva a ideia de limite maior de midia para fase futura segura."
+    description: "Reserva a ideia de limite maior de mídia para fase futura segura."
   },
   {
     code: "RELATORIO_DESEMPENHO",
-    label: "Relatorio de desempenho",
-    description: "Relaciona Premium com metricas agregadas, sem promessa de resultado."
+    label: "Relatório de desempenho",
+    description: "Relaciona Premium com métricas agregadas, sem promessa de resultado."
   }
 ];
 
@@ -88,7 +88,7 @@ export function AdminPremiumWizard() {
   const [selectedAdId, setSelectedAdId] = useState(ADS[0].id);
   const [selectedBenefitCodes, setSelectedBenefitCodes] = useState<string[]>(["ANUNCIO_TOPO"]);
   const [selectedDays, setSelectedDays] = useState(PERIODS[1].days);
-  const [message, setMessage] = useState("Preview local sem pagamento, credito ou ativacao real.");
+  const [message, setMessage] = useState("Prévia sem pagamento, crédito ou ativação.");
 
   const currentStep = STEPS[currentStepIndex];
   const selectedAd = ADS.find((item) => item.id === selectedAdId) ?? ADS[0];
@@ -104,7 +104,7 @@ export function AdminPremiumWizard() {
       setMessage(validation);
       return;
     }
-    setMessage("Etapa concluida.");
+    setMessage("Etapa concluída.");
     setCurrentStepIndex((index) => Math.min(index + 1, STEPS.length - 1));
   }
 
@@ -118,7 +118,7 @@ export function AdminPremiumWizard() {
     setSelectedBenefitCodes(["ANUNCIO_TOPO"]);
     setSelectedDays(PERIODS[1].days);
     setCurrentStepIndex(0);
-    setMessage("Preview local sem pagamento, credito ou ativacao real.");
+    setMessage("Prévia sem pagamento, crédito ou ativação.");
   }
 
   function toggleBenefit(code: string) {
@@ -128,10 +128,10 @@ export function AdminPremiumWizard() {
   }
 
   return (
-    <section id="admin-premium-wizard" className="admin-panel admin-premium-wizard" aria-label="Wizard Premium local">
+    <section id="admin-premium-wizard" className="admin-panel admin-premium-wizard" aria-label="Wizard Premium">
       <div className="admin-premium-heading">
-        <h2>Wizard Premium local</h2>
-        <p>Preview administrativo sem compra, Pix, Efi, credito real ou ativacao por dinheiro.</p>
+        <h2>Wizard Premium</h2>
+        <p>Prévia administrativa sem compra, Pix, Efi, crédito ou ativação por dinheiro.</p>
       </div>
       <AdminPremiumWizardProgress steps={STEPS} currentIndex={currentStepIndex} />
       {renderStep()}
@@ -160,22 +160,22 @@ export function AdminPremiumWizard() {
       case "intro":
         return (
           <AdminPremiumWizardStep
-            title="Preparar preview"
-            description="Use este fluxo para simular uma decisao Premium futura sem tocar em financeiro."
+            title="Preparar prévia"
+            description="Use este fluxo para visualizar uma decisão Premium futura sem tocar em financeiro."
           >
             <div className="admin-notice">
-              Nenhum pagamento e criado. Nenhum beneficio e ativado. Nenhum credito, Pix, Efi, checkout ou webhook e chamado.
+              Nenhum pagamento é criado. Nenhum benefício é ativado. Nenhum crédito, Pix, Efi, checkout ou webhook é chamado.
             </div>
           </AdminPremiumWizardStep>
         );
       case "anuncio":
         return (
           <AdminPremiumWizardStep
-            title="Escolha um anuncio de exemplo"
-            description="A lista e fixa e serve apenas para visualizar combinacoes de beneficios."
+            title="Escolha um anúncio de demonstração"
+            description="A lista é fixa e serve apenas para visualizar combinações de benefícios."
           >
             <fieldset className="admin-premium-choice-group">
-              <legend>Anuncios</legend>
+              <legend>Anúncios</legend>
               {ADS.map((item) => (
                 <label key={item.id}>
                   <input
@@ -196,11 +196,11 @@ export function AdminPremiumWizard() {
       case "beneficios":
         return (
           <AdminPremiumWizardStep
-            title="Escolha os beneficios"
-            description="Selecione beneficios para compor a previa. Eles nao serao gravados."
+            title="Escolha os benefícios"
+            description="Selecione benefícios para compor a prévia. Eles não serão gravados."
           >
             <fieldset className="admin-premium-choice-group">
-              <legend>Beneficios</legend>
+              <legend>Benefícios</legend>
               {BENEFITS.map((item) => (
                 <label key={item.code}>
                   <input
@@ -220,11 +220,11 @@ export function AdminPremiumWizard() {
       case "periodo":
         return (
           <AdminPremiumWizardStep
-            title="Escolha o periodo"
-            description="Os periodos sao apenas parametros de preview, sem valor comercial definitivo."
+            title="Escolha o período"
+            description="Os períodos são apenas parâmetros de prévia, sem valor comercial definitivo."
           >
             <fieldset className="admin-premium-choice-group compact-choice">
-              <legend>Periodo</legend>
+              <legend>Período</legend>
               {PERIODS.map((item) => (
                 <label key={item.days}>
                   <input
@@ -235,7 +235,7 @@ export function AdminPremiumWizard() {
                   />
                   <span>
                     <strong>{item.label}</strong>
-                    <small>Sem cobranca nesta etapa</small>
+                    <small>Sem cobrança nesta etapa</small>
                   </span>
                 </label>
               ))}
@@ -245,20 +245,20 @@ export function AdminPremiumWizard() {
       case "revisao":
         return (
           <AdminPremiumWizardStep
-            title="Revisao da previa"
-            description="Confira a combinacao antes de gerar o resultado local."
+            title="Revisão da prévia"
+            description="Confira a combinação antes de gerar o resultado."
           >
             <dl className="public-submit-summary">
               <div>
-                <dt>Anuncio</dt>
+                <dt>Anúncio</dt>
                 <dd>{selectedAd.title}</dd>
               </div>
               <div>
-                <dt>Beneficios</dt>
+                <dt>Benefícios</dt>
                 <dd>{selectedBenefits.map((item) => item.label).join(", ") || "Nenhum"}</dd>
               </div>
               <div>
-                <dt>Periodo</dt>
+                <dt>Período</dt>
                 <dd>{selectedPeriod.label}</dd>
               </div>
               <div>
@@ -271,23 +271,23 @@ export function AdminPremiumWizard() {
       case "resultado":
         return (
           <AdminPremiumWizardStep
-            title="Resultado local"
-            description="A previa foi montada em memoria e nao alterou nenhum registro."
+            title="Resultado"
+            description="A prévia foi montada em memória e não alterou nenhum registro."
           >
             <div className="admin-readonly-list">
               <h3>{selectedAd.title}</h3>
               <ul>
                 <li>
-                  <span>Periodo</span>
+                  <span>Período</span>
                   <small>{selectedPeriod.label}</small>
                 </li>
                 <li>
-                  <span>Beneficios previstos</span>
+                  <span>Benefícios previstos</span>
                   <small>{selectedBenefits.map((item) => item.code).join(", ") || "nenhum"}</small>
                 </li>
                 <li>
                   <span>Financeiro</span>
-                  <small>sem pagamento, credito, Pix, Efi, checkout ou webhook</small>
+                  <small>sem pagamento, crédito, Pix, Efi, checkout ou webhook</small>
                 </li>
               </ul>
             </div>
@@ -300,13 +300,13 @@ export function AdminPremiumWizard() {
 
   function validateStep(step: PremiumStepId): string | null {
     if (step === "anuncio" && !selectedAdId) {
-      return "Selecione um anuncio de exemplo.";
+      return "Selecione um anúncio de demonstração.";
     }
     if (step === "beneficios" && selectedBenefitCodes.length === 0) {
-      return "Selecione pelo menos um beneficio para visualizar.";
+      return "Selecione pelo menos um benefício para visualizar.";
     }
     if (step === "periodo" && !selectedDays) {
-      return "Selecione um periodo.";
+      return "Selecione um período.";
     }
     return null;
   }

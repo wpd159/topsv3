@@ -16,19 +16,16 @@ export function AdminShell({ title, children }: AdminShellProps) {
       <section className="shell admin-shell-inner">
         <span className="status">PAINEL ADMIN</span>
         <h1>{title}</h1>
-        <p>
-          Area administrativa local para validar sessao, papeis e permissoes, sem dados reais ou
-          acoes de producao.
-        </p>
+        <p>Área administrativa para acompanhar sessões, papéis, permissões e ações autorizadas.</p>
         <div className="admin-notice">
-          Perfis locais previstos: Admin, Moderador e Comercial. Apenas moderacao local minima esta disponivel.
+          Perfis previstos: Admin, Moderador e Comercial. A moderação mínima está disponível.
         </div>
         <AdminAuthPanel />
         <AdminReadonlyPanel />
         <AdminModerationPanel />
         <AdminOutboxPanel />
         {children}
-        <nav className="admin-grid" aria-label="Modulos administrativos">
+        <nav className="admin-grid" aria-label="Módulos administrativos">
           {adminModules.map((module) => (
             <AdminModuleCard key={module.slug} module={module} />
           ))}

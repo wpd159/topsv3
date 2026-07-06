@@ -40,7 +40,7 @@ export function AdminDesempenhoPanel() {
     anunciante: null,
     resumo: null,
     vazio: null,
-    mensagem: "consultando prova de resultado local"
+    mensagem: "consultando prova de resultado"
   });
 
   useEffect(() => {
@@ -63,38 +63,38 @@ export function AdminDesempenhoPanel() {
       anunciante: anunciante.ok ? anunciante.data : null,
       resumo: resumo.ok ? resumo.data : null,
       vazio: vazio.ok ? vazio.data : null,
-      mensagem: anuncio.ok ? "prova de resultado local carregada" : "desempenho exige sessao/permissao admin"
+      mensagem: anuncio.ok ? "prova de resultado carregada" : "desempenho exige sessão/permissão admin"
     });
   }
 
   return (
     <AdminShell title="Desempenho">
-      <section className="admin-panel" aria-label="Prova de resultado local">
+      <section className="admin-panel" aria-label="Prova de resultado">
         <h2>Prova de resultado</h2>
         <p>{data.mensagem}</p>
         <dl className="health-grid compact">
-          <ReadonlyMetric label="Visualizacoes" value={data.anuncio?.visualizacoesTotal} />
+          <ReadonlyMetric label="Visualizações" value={data.anuncio?.visualizacoesTotal} />
           <ReadonlyMetric label="Cliques WhatsApp" value={data.anuncio?.cliquesWhatsappTotal} />
           <ReadonlyMetric label="Taxa clique/view" value={formatPercent(data.anuncio?.taxaCliqueView)} />
-          <ReadonlyMetric label="Anuncios com metricas" value={data.resumo?.anunciosComMetricas} />
-          <ReadonlyMetric label="Premium views" value={data.anuncio?.comparativoPremium.visualizacoesComPremium} />
-          <ReadonlyMetric label="Organico views" value={data.anuncio?.comparativoPremium.visualizacoesOrganicas} />
+          <ReadonlyMetric label="Anúncios com métricas" value={data.resumo?.anunciosComMetricas} />
+          <ReadonlyMetric label="Visualizações Premium" value={data.anuncio?.comparativoPremium.visualizacoesComPremium} />
+          <ReadonlyMetric label="Visualizações orgânicas" value={data.anuncio?.comparativoPremium.visualizacoesOrganicas} />
         </dl>
         <div className="admin-readonly-columns">
           <div className="admin-readonly-list">
-            <h3>Diario</h3>
+            <h3>Diário</h3>
             {data.diario.length ? (
               <ul>
                 {data.diario.slice(0, 6).map((item) => (
                   <li key={item.dataReferencia ?? "sem-data"}>
                     <span>{item.dataReferencia ?? "sem data"}</span>
                     <small>{`${item.visualizacoes} views, ${item.cliquesWhatsapp} cliques`}</small>
-                    <small>{item.premiumAtivo ? "periodo com Premium" : "periodo organico"}</small>
+                    <small>{item.premiumAtivo ? "período com Premium" : "período orgânico"}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem dados diarios para esta sessao</p>
+              <p>sem dados diários para esta sessão</p>
             )}
           </div>
           <div className="admin-readonly-list">
@@ -103,28 +103,28 @@ export function AdminDesempenhoPanel() {
               <ul>
                 {data.origens.slice(0, 6).map((item) => (
                   <li key={`${item.uf ?? "uf"}-${item.cidade ?? "cidade"}-${item.bairro ?? "bairro"}`}>
-                    <span>{[item.uf, item.cidade, item.bairro].filter(Boolean).join(" / ") || "origem sintetica"}</span>
+                    <span>{[item.uf, item.cidade, item.bairro].filter(Boolean).join(" / ") || "origem agregada"}</span>
                     <small>{`${item.visualizacoes} views, ${item.cliquesWhatsapp} cliques`}</small>
                     <small>{formatPercent(item.taxaCliqueView)}</small>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p>sem origem agregada visivel</p>
+              <p>sem origem agregada visível</p>
             )}
           </div>
         </div>
         <div className="admin-readonly-list">
-          <h3>Organico e Premium</h3>
+          <h3>Orgânico e Premium</h3>
           <ul>
             <li>
-              <span>Organico</span>
+              <span>Orgânico</span>
               <small>{`${data.anuncio?.comparativoPremium.visualizacoesOrganicas ?? 0} views, ${data.anuncio?.comparativoPremium.cliquesOrganicos ?? 0} cliques`}</small>
             </li>
             <li>
               <span>Premium</span>
               <small>{`${data.anuncio?.comparativoPremium.visualizacoesComPremium ?? 0} views, ${data.anuncio?.comparativoPremium.cliquesComPremium ?? 0} cliques`}</small>
-              <small>{data.anuncio?.comparativoPremium.beneficiosExposicaoAtivos.join(", ") || "sem beneficio ativo"}</small>
+              <small>{data.anuncio?.comparativoPremium.beneficiosExposicaoAtivos.join(", ") || "sem benefício ativo"}</small>
             </li>
           </ul>
         </div>
@@ -132,16 +132,16 @@ export function AdminDesempenhoPanel() {
           <h3>Fallback sem dados</h3>
           <p>
             {data.vazio && data.vazio.visualizacoesTotal === 0
-              ? "anuncio sintetico sem metricas retorna estado vazio estavel"
-              : "fallback indisponivel para esta sessao"}
+              ? "anúncio sem métricas retorna estado vazio estável"
+              : "fallback indisponível para esta sessão"}
           </p>
         </div>
         <div className="admin-notice">
-          Somente leitura local. Sem tracking externo, pixel, exportacao de dado real, promessa de contratacao, limite do
-          gratuito, pagamento, credito, Pix/Efi, compra ou impulsionamento.
+          Somente leitura. Sem tracking externo, pixel, exportação de dado, promessa de contratação, limite do
+          gratuito, pagamento, crédito, Pix/Efi, compra ou impulsionamento.
         </div>
         <p>{data.anuncio?.avisoResultado ?? data.resumo?.mensagemSegura}</p>
-        <p>{data.anunciante ? `${data.anunciante.anunciosTotal} anuncios sinteticos do anunciante local` : "painel real da anunciante fica para fase futura"}</p>
+        <p>{data.anunciante ? `${data.anunciante.anunciosTotal} anúncios do anunciante` : "painel da anunciante fica para fase futura"}</p>
       </section>
     </AdminShell>
   );
@@ -151,14 +151,14 @@ function ReadonlyMetric({ label, value }: { label: string; value: number | strin
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value ?? "sem permissao"}</dd>
+      <dd>{value ?? "sem permissão"}</dd>
     </div>
   );
 }
 
 function formatPercent(value: number | undefined | null): string {
   if (typeof value !== "number") {
-    return "sem permissao";
+    return "sem permissão";
   }
   return `${(value * 100).toFixed(1)}%`;
 }

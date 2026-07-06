@@ -3,18 +3,14 @@ import type { Metadata } from "next";
 import { skeletonMetadata } from "../../lib/seo/localSeo";
 import { AdminShell } from "../../modules/admin/shell/AdminShell";
 
-export const metadata: Metadata = skeletonMetadata("Admin local", "/admin");
+export const metadata: Metadata = skeletonMetadata("Admin", "/admin");
 
 export default function AdminOverviewPage() {
   return (
-    <AdminShell title="Admin local">
-      <section className="admin-panel" aria-label="Visao geral do admin">
-        <h2>Visao geral</h2>
-        <p>
-          Area local para mapear os modulos administrativos previstos no SDD. A autenticacao e o RBAC
-          minimos existem apenas para sessao local, sem dados reais, integracao externa ou acao
-          administrativa funcional nesta fase.
-        </p>
+    <AdminShell title="Admin">
+      <section className="admin-panel" aria-label="Visão geral do admin">
+        <h2>Visão geral</h2>
+        <p>Área para acompanhar os módulos administrativos, autenticação, RBAC e ações autorizadas.</p>
       </section>
     </AdminShell>
   );

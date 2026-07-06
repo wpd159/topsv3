@@ -110,6 +110,13 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Proibido redesign, nova paleta, nova tipografia, animacao automatica e elemento mobile flutuante indevido.
 - Proibido scroll lock e `document.body.style.overflow`.
 
+## Copy visivel
+
+- Telas publicas/admin nao devem exibir bastidor tecnico como `local`, `sintetico`, `mock`, `fixture`, `smoke test`, `descartavel` ou `API local`.
+- Dados de validacao que aparecem em tela devem usar linguagem neutra, como `Anúncio de demonstração`, `Perfil de demonstração`, `Cidade de demonstração` e `Área administrativa`.
+- Slugs, IDs, classes CSS, nomes de scripts e parametros internos podem preservar termos tecnicos quando nao forem copy renderizada.
+- Validadores renderizados devem reprovar copy de bastidor visivel antes de novo checkpoint.
+
 ## SEO central
 
 - SEO e prioridade central da V3.
@@ -163,6 +170,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 35 confirma que recursos `cripto-*`/TopsWI podem ser detectados por diagnostico, mas nao podem ser parados, removidos, alterados ou usados.
 - Bloco 36 cria checkpoint local do Bloco 35 em `00e1a02` e valida Premium/beneficios sinteticos como leitura/adicao local, sem promessa de contratacao, sem limitar gratuito e sem Pix/Efi real, checkout, pagamento, credito real ou webhook.
 - Bloco 36 decide que a UI admin de Premium deve formatar codigos de beneficio/status/consistencia como rotulos humanos, mantendo DTOs e contratos tecnicos intactos.
+- Bloco 37 decide que copy tecnica/sem acento detectada em prints deve ser bloqueada por validadores renderizados. `Metadados publicos locais`, enum `ANUNCIO`, `Autorizacao`, `admin configurar`, `anuncio ler` e `Preparar autorizacao` nao podem aparecer como texto visivel ao usuario.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 
