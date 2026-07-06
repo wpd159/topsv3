@@ -16,6 +16,7 @@ Este preflight separa o estado local sintetico da V3 dos requisitos que ainda pr
 
 ## Pendente antes de homologacao
 
+- Seguir o contrato documental do Bloco 51 em `docs/v3/HOMOLOGACAO-contrato-ambiente.md`.
 - Criar ambiente de homologacao/staging com secrets fora do Git.
 - Definir `APP_ENV` nao-local e profiles de deploy sem versionar credenciais reais.
 - Definir CORS definitivo para dominios autorizados.
@@ -51,3 +52,10 @@ VALIDATION_RESULT=OK_PREFLIGHT_HOMOLOGACAO_LOCAL
 ```
 
 Esse resultado significa apenas que o preflight local/documental nao encontrou falha local concreta. Ele nao autoriza homologacao, staging real, cutover ou producao.
+
+## Contratos complementares
+
+- Ambiente: `docs/v3/HOMOLOGACAO-contrato-ambiente.md`
+- Secrets externos: `docs/v3/HOMOLOGACAO-secrets-externos.md`
+- CORS, cookies e CSRF: `docs/v3/HOMOLOGACAO-cors-cookies-csrf.md`
+- Rollback e monitoramento: `docs/v3/HOMOLOGACAO-rollback-monitoramento.md`

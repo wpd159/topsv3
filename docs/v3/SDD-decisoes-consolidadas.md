@@ -89,6 +89,16 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Staging/homologacao exigem ambiente proprio, secrets fora do Git, CORS definitivo, CSRF revisado, Flyway/gitleaks repetidos e decisao humana.
 - Producao continua bloqueada por Bloco 29/restore completo, backup/rollback testado, SEO real, storage/upload real, Pix/Efi/webhooks, importador real, auditoria JSON final e LGPD.
 
+## Contrato de homologacao sem deploy
+
+- O Bloco 51 define contrato documental de homologacao/staging sem criar ambiente real.
+- Homologacao deve usar `APP_ENV=homologacao`, dominio proprio, banco isolado e secrets fora do Git.
+- CORS deve ser lista explicita; wildcard com credenciais permanece proibido.
+- Cookies nao-locais devem usar `Secure`, `HttpOnly` e `SameSite`.
+- CSRF deve estar habilitado e testado em ambiente nao-local antes de dados reais/sanitizados.
+- Storage/CDN/upload real, Pix/Efi real, webhooks, importador real e financeiro real continuam dependentes de blocos proprios.
+- Backup/rollback, monitoramento e auditoria JSON sanitizada sao gates antes de cutover.
+
 ## Moderacao
 
 - `REPROVAR` exige motivo.

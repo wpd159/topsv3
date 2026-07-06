@@ -291,6 +291,14 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 50: `docs/v3/evidencias/bloco-50/`
 - Validador preflight homologacao local: `scripts/local/validar-preflight-homologacao-local.ps1`
 - Checkpoint Bloco 49: `037f9b22`
+- Relatorio Bloco 51: `docs/v3/252-bloco-51-contrato-homologacao-sem-deploy.md`
+- Checklist Bloco 51: `docs/v3/253-checklist-bloco-51-contrato-homologacao-sem-deploy.md`
+- Contrato ambiente homologacao: `docs/v3/HOMOLOGACAO-contrato-ambiente.md`
+- Secrets externos homologacao: `docs/v3/HOMOLOGACAO-secrets-externos.md`
+- CORS/cookies/CSRF homologacao: `docs/v3/HOMOLOGACAO-cors-cookies-csrf.md`
+- Rollback/monitoramento homologacao: `docs/v3/HOMOLOGACAO-rollback-monitoramento.md`
+- Evidencias Bloco 51: `docs/v3/evidencias/bloco-51/`
+- Checkpoint Bloco 50: `8757e48a`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

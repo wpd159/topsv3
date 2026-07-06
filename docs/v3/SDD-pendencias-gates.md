@@ -102,10 +102,11 @@ Se comportamento publico atual nao estiver claro:
 Sequencia obrigatoria:
 
 1. local validado;
-2. staging;
-3. dry-run real autorizado;
-4. homologacao validada;
-5. producao com backup e rollback.
+2. contrato de homologacao aprovado;
+3. staging real criado em bloco proprio;
+4. dry-run real autorizado;
+5. homologacao validada;
+6. producao com backup e rollback.
 
 Bloqueios:
 
@@ -498,6 +499,14 @@ Antes de admin em ambiente nao local:
 - `APP_ENV`, exemplos de ambiente, cookies, CORS, CSRF, storage, midia, Pix/Efi, importador, SEO, backup/rollback, monitoramento, Bloco 29 e Pro ficam documentados como gates objetivos.
 - O resultado local esperado e `OK_PREFLIGHT_HOMOLOGACAO_LOCAL`, sem autorizar staging real, homologacao, cutover ou producao.
 - Nenhuma producao, VPS, dado real, restore, staging, Pix/Efi real, webhook, API externa, remote ou push foi usado.
+
+## Estado do Bloco 51
+
+- Checkpoint local do Bloco 50 criado em `8757e48a`, sem remote e sem push.
+- Contrato documental de homologacao criado sem deploy.
+- Contratos versionados: ambiente, secrets externos, CORS/cookies/CSRF, rollback e monitoramento.
+- `APP_ENV=homologacao`, dominio proprio, banco isolado, secrets fora do Git, cookies seguros, CSRF nao-local, storage pendente, logs/auditoria JSON e rollback ficam definidos como requisitos.
+- Staging real, dados reais/sanitizados, restore, Pix/Efi real, webhook, API externa, remote e push continuam proibidos sem bloco futuro autorizado.
 
 ## Proibicoes ate novo bloco autorizado
 
