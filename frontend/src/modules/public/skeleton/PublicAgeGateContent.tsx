@@ -77,12 +77,12 @@ export function PublicAgeGateContent({
       <section className="panel" aria-label="Confirmação de idade para anúncio">
         <dl className="health-grid compact">
           <div>
-            <dt>Fluxo</dt>
+            <dt>Status</dt>
             <dd>{formatAgeState(state)}</dd>
           </div>
           <div>
-            <dt>Autorização</dt>
-            <dd>{anuncio ? "autorizada" : "pendente"}</dd>
+            <dt>Acesso</dt>
+            <dd>{anuncio ? "permitido" : "pendente"}</dd>
           </div>
         </dl>
         {anuncio ? (
@@ -130,14 +130,14 @@ function isValidBirthDate(value: string): boolean {
 function formatAgeState(state: AgeGateState): string {
   switch (state) {
     case "conteudo_autorizado":
-      return "autorizado";
+      return "Conteúdo disponível";
     case "aguardando_idade":
-      return "aguardando idade";
+      return "Aguardando confirmação";
     case "confirmando":
-      return "confirmando";
+      return "Confirmando idade";
     case "idade_negada":
-      return "idade não confirmada";
+      return "Idade não confirmada";
     case "indisponivel":
-      return "indisponivel";
+      return "Indisponível";
   }
 }

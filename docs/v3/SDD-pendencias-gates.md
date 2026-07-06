@@ -63,6 +63,7 @@ Para mudancas que renderizam UI publica/admin:
 
 - nao exibir copy de bastidor como `local`, `sintetico`, `mock`, `fixture`, `smoke test`, `descartavel` ou `API local`;
 - nao exibir `Metadados publicos locais`, enum `ANUNCIO`, `Autorizacao`, `admin configurar`, `anuncio ler` ou `Preparar autorizacao` como copy renderizada;
+- nao exibir pares redundantes como `Fluxo autorizado` ou `Autorização autorizada` em telas publicas;
 - usar acentuacao em textos publicos/admin como `anúncio`, `moderação`, `benefícios`, `sessão`, `papéis`, `permissões` e `ações`;
 - manter identificadores tecnicos fora da UI ou formatados por helpers de exibicao;
 - executar validadores renderizados aplicaveis: publico, wizard, admin/moderacao e Premium/beneficios.

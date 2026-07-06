@@ -461,6 +461,8 @@ function pageMetricsScript() {
     if (/admin configurar/i.test(text)) violations.push("permissao_admin_configurar_visivel");
     if (/anuncio ler/i.test(text)) violations.push("permissao_anuncio_ler_visivel");
     if (/Preparar autorizacao/i.test(text)) violations.push("descricao_autorizacao_sem_acento_visivel");
+    if (/Fluxo\s+autorizado/i.test(text)) violations.push("fluxo_autorizado_redundante_visivel");
+    if (/Autoriza[çc][aã]o\s+autorizada/i.test(text)) violations.push("autorizacao_autorizada_redundante_visivel");
     if (scrollWidth > innerWidth + 1) violations.push("scroll_horizontal");
     if (body && getComputedStyle(body).overflow === "hidden") violations.push("scroll_lock_body");
     return {

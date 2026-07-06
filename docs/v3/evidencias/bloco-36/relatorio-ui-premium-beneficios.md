@@ -117,10 +117,10 @@ não exposto
 
 Contato mediado pelo Tops do Job.
 
-Fluxo
-autorizado
-Autorização
-autorizada
+Status
+Conteúdo disponível
+Acesso
+permitido
 
 Conteúdo indisponível no momento
 
@@ -131,7 +131,7 @@ protegidos
 Ver WhatsApp
 Stories
 
-Conteudo BLOQUEADO permanece protegido por confi
+Conteudo BLOQUEADO permanece protegido por c
 ```
 ### mobile admin premium
 
@@ -211,10 +211,10 @@ não exposto
 
 Contato mediado pelo Tops do Job.
 
-Fluxo
-autorizado
-Autorização
-autorizada
+Status
+Conteúdo disponível
+Acesso
+permitido
 
 Conteúdo indisponível no momento
 
@@ -225,5 +225,5 @@ protegidos
 Ver WhatsApp
 Stories
 
-Conteudo BLOQUEADO permanece protegido por confi
+Conteudo BLOQUEADO permanece protegido por c
 ```

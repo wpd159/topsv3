@@ -227,6 +227,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 37: `docs/v3/evidencias/bloco-37/`
 - Relatorio de limpeza de copy: `docs/v3/evidencias/bloco-37/relatorio-limpeza-copy-visivel.md`
 - Validadores de copy renderizada: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-admin-moderacao-sintetica-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`, `scripts/local/validar-wizard-anunciar-sintetico-local.ps1`
+- Checkpoint Bloco 37 corrigido: `a6f431f`
+- Relatorio Bloco 38: `docs/v3/226-bloco-38-polimento-status-publico.md`
+- Checklist Bloco 38: `docs/v3/227-checklist-bloco-38-polimento-status-publico.md`
+- Evidencias Bloco 38: `docs/v3/evidencias/bloco-38/`
+- Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
+- Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
 ## Validacoes principais
 

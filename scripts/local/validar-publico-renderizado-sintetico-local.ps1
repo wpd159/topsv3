@@ -353,6 +353,12 @@ function pageMetricsScript() {
     if (/Preparar autorizacao/i.test(bodyText)) {
       addTechnicalViolation("descricao_autorizacao_sem_acento_visivel");
     }
+    if (/Fluxo\s+autorizado/i.test(bodyText)) {
+      addTechnicalViolation("fluxo_autorizado_redundante_visivel");
+    }
+    if (/Autoriza[çc][aã]o\s+autorizada/i.test(bodyText)) {
+      addTechnicalViolation("autorizacao_autorizada_redundante_visivel");
+    }
     if (/\b(?:PENDENTE|FALHA|ERRO)_[A-Z0-9_]+\b/.test(bodyText)) {
       addTechnicalViolation("status_tecnico_upper_snake");
     }
