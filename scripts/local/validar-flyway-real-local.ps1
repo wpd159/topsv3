@@ -114,7 +114,7 @@ function Write-Report {
   if ($reportDir) { New-Item -ItemType Directory -Path $reportDir -Force | Out-Null }
 
   $lines = New-Object System.Collections.Generic.List[string]
-  $lines.Add("# Relatorio Flyway real local - Bloco 45")
+  $lines.Add("# Relatorio Flyway real local")
   $lines.Add("")
   $lines.Add("## Resultado")
   $lines.Add("")

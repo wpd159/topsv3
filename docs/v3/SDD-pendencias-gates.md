@@ -446,6 +446,17 @@ Antes de admin em ambiente nao local:
 - Nenhum recurso Docker do Flyway foi criado.
 - Validacao Flyway real continua gate antes de homologacao/producao.
 
+## Pendencias do Bloco 46
+
+- Checkpoint local do Bloco 45 criado em `282802d`, sem remote e sem push.
+- `winget` esta disponivel localmente.
+- `flyway` nao foi encontrado no PATH.
+- Pacote exato `Redgate.Flyway` nao foi encontrado via `winget search`.
+- Resultado atual: `PENDENTE_FLYWAY_INSTALACAO_LOCAL`.
+- Nenhuma instalacao alternativa foi executada.
+- Nenhum `docker pull` foi executado.
+- Validacao Flyway real local permanece pendente e continua gate antes de homologacao/producao.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;
