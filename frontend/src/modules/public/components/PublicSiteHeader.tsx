@@ -9,12 +9,12 @@ export function PublicSiteHeader() {
           <strong>do Job</strong>
         </Link>
         <nav className="public-site-nav" aria-label="Navegação principal">
-          <Link href="/acompanhantes/go/goiania">Goiânia</Link>
-          <Link href="/acompanhantes/go/goiania/setor-bueno">Setor Bueno</Link>
+          <Link href="/acompanhantes/go/goiania">Acompanhantes</Link>
           <Link href="/anuncios/demo-goiania-livre-premium">Anúncios</Link>
+          <Link href="/acompanhantes/go/goiania/setor-bueno">Setor Bueno</Link>
         </nav>
         <Link className="public-header-cta" href="/anunciar">
-          Anuncie grátis
+          PUBLICAR SEU ANÚNCIO
         </Link>
       </div>
     </header>

@@ -62,6 +62,9 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist paridade visual producao x V3: `docs/v3/265-checklist-bloco-56-paridade-visual-producao.md`
 - Paridade visual publica fase 1: `docs/v3/266-bloco-57-paridade-visual-publica-fase-1.md`
 - Checklist paridade visual publica fase 1: `docs/v3/267-checklist-bloco-57-paridade-visual-publica-fase-1.md`
+- Transplante visual producao para V3: `docs/v3/268-bloco-58-transplante-visual-producao.md`
+- Checklist transplante visual producao: `docs/v3/269-checklist-bloco-58-transplante-visual-producao.md`
+- Plano de transplante visual: `docs/v3/VISUAL-transplante-producao-v3.md`
 - Diretriz mobile: `docs/v3/161-diretriz-ui-mobile-bloco-21.md`
 - Checklist mobile: `docs/v3/162-checklist-validacao-mobile-bloco-21.md`
 - Script: `scripts/local/validar-ui-mobile-estatica.ps1`
@@ -69,6 +72,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 26.1: `docs/v3/evidencias/bloco-26-1/`
 - Evidencias Bloco 56: `docs/v3/evidencias/bloco-56/`
 - Evidencias Bloco 57: `docs/v3/evidencias/bloco-57/`
+- Evidencias Bloco 58: `docs/v3/evidencias/bloco-58/`
 
 ## Banco e migrations
 

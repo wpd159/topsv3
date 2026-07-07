@@ -1,11 +1,19 @@
 :root {
   color-scheme: light;
   font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --visual-brand: #fc1ead;
+  --visual-brand-hover: #e01a9a;
+  --visual-brand-contrast: #b30078;
+  --visual-brand-soft: #fff0fa;
+  --visual-border: #eadfe5;
+  --visual-text: #151515;
+  --visual-muted: #555555;
 }
 
 html {
   width: 100%;
   max-width: 100%;
+  scrollbar-gutter: stable;
 }
 
 * {
@@ -15,10 +23,12 @@ html {
 body {
   margin: 0;
   background: #ffffff;
-  color: #151515;
+  color: var(--visual-text);
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricprecision;
 }
 
 main {
@@ -875,9 +885,9 @@ main.public-route {
 }
 
 .public-shell {
-  inline-size: min(100%, 1180px);
-  max-inline-size: 1180px;
-  padding-inline: 18px;
+  inline-size: min(100%, 1220px);
+  max-inline-size: 1220px;
+  padding-inline: 24px;
 }
 
 .public-site-header {
@@ -891,11 +901,11 @@ main.public-route {
   grid-template-columns: minmax(150px, 1fr) minmax(0, auto) minmax(130px, auto);
   gap: 18px;
   align-items: center;
-  width: min(100%, 1180px);
-  max-width: 1180px;
+  width: min(100%, 1220px);
+  max-width: 1220px;
   min-width: 0;
   margin-inline: auto;
-  padding: 14px 18px;
+  padding: 20px 24px;
 }
 
 .public-brand {
@@ -911,7 +921,7 @@ main.public-route {
 }
 
 .public-brand strong {
-  color: #c01863;
+  color: var(--visual-brand);
 }
 
 .public-site-nav {
@@ -932,7 +942,7 @@ main.public-route {
 .public-site-nav a:hover,
 .public-breadcrumbs a:hover,
 .public-internal-links a:hover {
-  color: #c01863;
+  color: var(--visual-brand);
 }
 
 .public-header-cta {
@@ -940,14 +950,19 @@ main.public-route {
   align-items: center;
   justify-content: center;
   min-height: 42px;
-  border: 1px solid #c01863;
+  border: 1px solid var(--visual-brand);
   border-radius: 6px;
-  background: #c01863;
+  background: var(--visual-brand);
   color: #ffffff;
   font-weight: 800;
   padding: 9px 14px;
   text-align: center;
   text-decoration: none;
+}
+
+.public-header-cta:hover {
+  border-color: var(--visual-brand-hover);
+  background: var(--visual-brand-hover);
 }
 
 .public-home-shell,
@@ -993,8 +1008,8 @@ main.public-route {
   width: fit-content;
   max-width: 100%;
   border: 0;
-  background: #fce8f1;
-  color: #a01452;
+  background: var(--visual-brand-soft);
+  color: var(--visual-brand-contrast);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
@@ -1028,9 +1043,16 @@ main.public-route {
 .public-hero-cta,
 .public-card-link,
 .public-locality-seo-summary a {
-  border: 1px solid #c01863;
-  background: #c01863;
+  border: 1px solid var(--visual-brand);
+  background: var(--visual-brand);
   color: #ffffff;
+}
+
+.public-hero-cta:hover,
+.public-card-link:hover,
+.public-locality-seo-summary a:hover {
+  border-color: var(--visual-brand-hover);
+  background: var(--visual-brand-hover);
 }
 
 .public-hero-secondary,
@@ -1061,7 +1083,7 @@ main.public-route {
 
 .public-preview-card-primary {
   min-height: 224px;
-  background: linear-gradient(135deg, #3a242d 0%, #6d1d43 100%);
+  background: linear-gradient(135deg, #3a242d 0%, #b30078 100%);
 }
 
 .public-preview-card span,
@@ -1102,7 +1124,7 @@ main.public-route {
 .public-home-directory h2,
 .public-listing-heading h2 {
   margin: 8px 0;
-  color: #151515;
+  color: var(--visual-text);
   font-size: 28px;
   line-height: 1.12;
 }
@@ -1110,7 +1132,7 @@ main.public-route {
 .public-home-directory p,
 .public-listing-heading p {
   margin: 0;
-  color: #555555;
+  color: var(--visual-muted);
 }
 
 .public-home-directory-grid {
@@ -1123,9 +1145,9 @@ main.public-route {
   display: grid;
   justify-content: start;
   align-content: center;
-  border: 1px solid #eadfe5;
+  border: 1px solid var(--visual-border);
   background: #fbf8fa;
-  color: #151515;
+  color: var(--visual-text);
   text-align: left;
 }
 
@@ -1140,7 +1162,7 @@ main.public-route {
 }
 
 .public-breadcrumbs a {
-  color: #a01452;
+  color: var(--visual-brand-contrast);
   font-weight: 700;
 }
 
@@ -1151,7 +1173,7 @@ main.public-route {
 
 .public-locality-seo-heading h1,
 .public-anuncio-seo-header h1 {
-  color: #151515;
+  color: var(--visual-text);
   font-size: clamp(30px, 4vw, 44px);
 }
 
@@ -1160,7 +1182,7 @@ main.public-route {
 .public-seo-intro p,
 .public-internal-links p,
 .public-seo-block p {
-  color: #555555;
+  color: var(--visual-muted);
 }
 
 .public-locality-seo-summary span {
@@ -1204,23 +1226,23 @@ main.public-route {
 }
 
 .public-card-heading span {
-  color: #a01452;
+  color: var(--visual-brand-contrast);
   font-size: 13px;
   font-weight: 800;
 }
 
 .public-card-heading h2 {
-  color: #151515;
+  color: var(--visual-text);
   font-size: 20px;
 }
 
 .public-card-heading strong {
-  color: #151515;
+  color: var(--visual-text);
   font-size: 18px;
 }
 
 .public-card-body p {
-  color: #555555;
+  color: var(--visual-muted);
   font-size: 14px;
   line-height: 1.45;
 }
@@ -1234,7 +1256,7 @@ main.public-route {
 .public-card-secondary-link {
   border-color: #eadfe5;
   background: #ffffff;
-  color: #a01452;
+  color: var(--visual-brand-contrast);
 }
 
 .public-media-placeholder {
@@ -1269,7 +1291,7 @@ main.public-route {
 .public-seo-intro h2,
 .public-internal-links h2,
 .public-seo-block h2 {
-  color: #151515;
+  color: var(--visual-text);
 }
 
 .public-internal-links ul {
@@ -1283,7 +1305,7 @@ main.public-route {
 }
 
 .public-internal-links a {
-  color: #a01452;
+  color: var(--visual-brand-contrast);
 }
 
 .admin-shell {

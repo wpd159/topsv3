@@ -62,7 +62,7 @@ Para mudancas visuais publicas:
 
 Status atual: `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`.
 
-Mitigacao parcial: o Bloco 57 executa paridade visual publica fase 1 em shell/header, home, cards e listagens de cidade/bairro. O gate continua aberto para detalhe de anuncio, wizard `/anunciar`, admin quando aplicavel, comparacao final e revisao humana/Pro.
+Mitigacao parcial: o Bloco 57 executa paridade visual publica fase 1 em shell/header, home, cards e listagens de cidade/bairro. O Bloco 58 identifica `C:\clone\topsdojob-frontend` como fonte visual local de producao, documenta o transplante e aplica apenas a base visual global/header de baixo risco. O gate continua aberto para detalhe de anuncio, wizard `/anunciar`, admin quando aplicavel, comparacao final e revisao humana/Pro.
 
 Antes de homologacao/cutover:
 
@@ -581,6 +581,16 @@ Antes de admin em ambiente nao local:
 - Protocolo VPS restore integral criado apenas como documento.
 - `site.zip` manual registrado como artefato confidencial excepcional, nao pacote oficial.
 - Nenhuma producao, VPS, dado real novo, importacao real, restore, staging real, Pix/Efi real, webhook real, API externa real, remote ou push foi usado.
+
+## Estado do Bloco 58
+
+- Checkpoint local do Bloco 57 criado em `a6487f5b`, sem remote e sem push.
+- `C:\clone\topsdojob-frontend` foi identificado como frontend visual de producao e usado somente em leitura.
+- A raiz `C:\clone` nao respondeu como repositorio Git valido, mas contem o subprojeto frontend valido.
+- O clone possuia alteracoes locais preexistentes e elas foram apenas registradas, sem escrita.
+- Primeira adaptacao visual de baixo risco aplicada na V3: tokens globais, container, CTAs e header publico.
+- Gate `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO` permanece aberto para detalhe de anuncio, wizard `/anunciar`, admin, mobile final e revisao humana/Pro.
+- Nenhuma producao, VPS, dado real, backend, banco, migration, auth/RBAC, importacao real, restore, staging real, Pix/Efi real, pagamento, upload real, CDN/storage real, webhook, API externa, remote ou push foi usado.
 
 ## Proibicoes ate novo bloco autorizado
 
