@@ -65,6 +65,8 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Transplante visual producao para V3: `docs/v3/268-bloco-58-transplante-visual-producao.md`
 - Checklist transplante visual producao: `docs/v3/269-checklist-bloco-58-transplante-visual-producao.md`
 - Plano de transplante visual: `docs/v3/VISUAL-transplante-producao-v3.md`
+- Transplante visual cards/detalhe: `docs/v3/270-bloco-59-transplante-cards-detalhe.md`
+- Checklist transplante cards/detalhe: `docs/v3/271-checklist-bloco-59-transplante-cards-detalhe.md`
 - Diretriz mobile: `docs/v3/161-diretriz-ui-mobile-bloco-21.md`
 - Checklist mobile: `docs/v3/162-checklist-validacao-mobile-bloco-21.md`
 - Script: `scripts/local/validar-ui-mobile-estatica.ps1`
@@ -73,6 +75,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 56: `docs/v3/evidencias/bloco-56/`
 - Evidencias Bloco 57: `docs/v3/evidencias/bloco-57/`
 - Evidencias Bloco 58: `docs/v3/evidencias/bloco-58/`
+- Evidencias Bloco 59: `docs/v3/evidencias/bloco-59/`
 
 ## Banco e migrations
 

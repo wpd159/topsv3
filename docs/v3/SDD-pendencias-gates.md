@@ -62,7 +62,7 @@ Para mudancas visuais publicas:
 
 Status atual: `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`.
 
-Mitigacao parcial: o Bloco 57 executa paridade visual publica fase 1 em shell/header, home, cards e listagens de cidade/bairro. O Bloco 58 identifica `C:\clone\topsdojob-frontend` como fonte visual local de producao, documenta o transplante e aplica apenas a base visual global/header de baixo risco. O gate continua aberto para detalhe de anuncio, wizard `/anunciar`, admin quando aplicavel, comparacao final e revisao humana/Pro.
+Mitigacao parcial: o Bloco 57 executa paridade visual publica fase 1 em shell/header, home, cards e listagens de cidade/bairro. O Bloco 58 identifica `C:\clone\topsdojob-frontend` como fonte visual local de producao, documenta o transplante e aplica apenas a base visual global/header de baixo risco. O Bloco 59 aprofunda cards, grids, placeholders e detalhe publico do anuncio. O gate continua aberto para wizard `/anunciar`, footer/admin quando aplicavel, comparacao final e revisao humana/Pro.
 
 Antes de homologacao/cutover:
 
@@ -590,6 +590,14 @@ Antes de admin em ambiente nao local:
 - O clone possuia alteracoes locais preexistentes e elas foram apenas registradas, sem escrita.
 - Primeira adaptacao visual de baixo risco aplicada na V3: tokens globais, container, CTAs e header publico.
 - Gate `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO` permanece aberto para detalhe de anuncio, wizard `/anunciar`, admin, mobile final e revisao humana/Pro.
+- Nenhuma producao, VPS, dado real, backend, banco, migration, auth/RBAC, importacao real, restore, staging real, Pix/Efi real, pagamento, upload real, CDN/storage real, webhook, API externa, remote ou push foi usado.
+
+## Estado do Bloco 59
+
+- Checkpoint local do Bloco 58 criado em `46a1ff7`, sem remote e sem push.
+- `C:\clone\topsdojob-frontend` segue como fonte visual somente leitura e permanece com as mesmas 3 alteracoes locais preexistentes registradas no Bloco 58.
+- Cards, grid, placeholders e detalhe publico da V3 foram ajustados visualmente sem copiar fetches, auth, upload, stores, pagamento ou regras da producao.
+- Gate `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO` permanece aberto para wizard `/anunciar`, footer/admin quando aplicavel, comparacao visual final e revisao humana/Pro.
 - Nenhuma producao, VPS, dado real, backend, banco, migration, auth/RBAC, importacao real, restore, staging real, Pix/Efi real, pagamento, upload real, CDN/storage real, webhook, API externa, remote ou push foi usado.
 
 ## Proibicoes ate novo bloco autorizado
