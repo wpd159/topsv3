@@ -48,6 +48,8 @@ O checkpoint local do Bloco 59 foi criado em `3111afc` com a mensagem `style: tr
 
 Complementacao de deploy HML do Bloco 60: foi criada configuracao local de GitHub Actions + SSH para `v3.esle.cloud`, usuario `topsv3`, Docker Compose HML, Nginx com `noindex/nofollow/noarchive` e `/robots.txt` com `Disallow: /`. O workflow fica pronto para revisao, mas nenhum deploy, push, acesso a VPS, producao, dado real, Pix/Efi real, webhook real, upload real, e-mail real ou WhatsApp real foi executado.
 
+Bloco 61 registra que a HML esta online em `https://v3.esle.cloud`, com HTTP 80 redirecionando para HTTPS 443, certificado LetsEncrypt em `/etc/letsencrypt/live/v3.esle.cloud/`, `X-Robots-Tag: noindex, nofollow, noarchive`, `/robots.txt` com `Disallow: /` e `GET /api/health` respondendo `UP`. Nenhuma producao, dado real, Pix/Efi real, webhook real, upload real, push ou fase posterior foi usado neste registro.
+
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 
 O Bloco 31.1 corrige os validadores sinteticos para que API/SEO nao retornem OK por evidencia antiga quando o backend local estiver indisponivel. Por padrao, backend indisponivel deve retornar pendente com exit code 2. Reutilizacao de evidencia existente so pode ocorrer com parametro explicito e alerta documentado.

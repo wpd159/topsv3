@@ -622,6 +622,17 @@ Antes de admin em ambiente nao local:
 - Gate aberto: `PENDENTE_HTTPS_HML_ANTES_DO_TESTE_PUBLICO`.
 - Workflow nao foi executado; sem deploy, sem push, sem acesso a VPS, sem producao e sem dados reais.
 
+## Estado do Bloco 61
+
+- HML registrada como online em `https://v3.esle.cloud`.
+- Nginx versionado atualizado para refletir HTTP 80 redirecionando para HTTPS 443.
+- Certificados HML esperados em `/etc/letsencrypt/live/v3.esle.cloud/`.
+- `X-Robots-Tag: noindex, nofollow, noarchive` validado.
+- `/robots.txt` validado com `Disallow: /`.
+- `GET /api/health` validado com status `UP`.
+- O gate `PENDENTE_HTTPS_HML_ANTES_DO_TESTE_PUBLICO` fica fechado para HML navegavel, mas homologacao/cutover/producao seguem bloqueados pelos demais gates.
+- Nenhuma producao, dado real, Pix/Efi real, webhook real, upload real, push ou fase posterior foi usado neste bloco.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

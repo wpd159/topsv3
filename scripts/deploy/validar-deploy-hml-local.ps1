@@ -117,6 +117,9 @@ Add-Check "HealthController mapeia /api/health" ($healthController -match '@Requ
 Add-Check "HealthController responde GET raiz" ($healthController -match '@GetMapping\s*\r?\n\s*public HealthResponse health') "GET /api/health"
 
 Add-Check "nginx dominio HML" ($nginx -match 'server_name\s+v3\.esle\.cloud;') "server_name"
+Add-Check "nginx HTTP redireciona para HTTPS" ($nginx -match 'return\s+301\s+https://\$host\$request_uri;') "porta 80"
+Add-Check "nginx escuta HTTPS 443" ($nginx -match 'listen\s+443\s+ssl') "porta 443"
+Add-Check "nginx usa certificado letsencrypt HML" (($nginx -match '/etc/letsencrypt/live/v3\.esle\.cloud/fullchain\.pem') -and ($nginx -match '/etc/letsencrypt/live/v3\.esle\.cloud/privkey\.pem')) "certificado HML"
 Add-Check "nginx X-Robots-Tag" ($nginx -match 'X-Robots-Tag\s+"noindex, nofollow, noarchive"') "noindex"
 Add-Check "nginx robots Disallow" ($nginx -match 'Disallow:\s+/') "robots.txt"
 Add-Check "nginx proxy frontend" ($nginx -match 'proxy_pass http://127\.0\.0\.1:13000') "frontend"
