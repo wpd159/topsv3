@@ -74,6 +74,10 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Frontend admin nao guarda credencial em localStorage/sessionStorage.
 - `/api/admin/**` exige sessao, exceto login.
 - Acoes criticas exigem permissao, auditoria, motivo quando aplicavel e fase expressa.
+- Login admin deve aplicar lockout: 5 falhas em 15 minutos bloqueiam por 15 minutos por login hash e IP hash.
+- Login inexistente tambem conta para o lockout.
+- Durante bloqueio, login admin retorna `429` com erro generico.
+- Login admin bem-sucedido deve trocar o ID da sessao antes de salvar o `SecurityContext`.
 - O Bloco 48 valida localmente login, cookie HttpOnly/SameSite, logout, bloqueio sem sessao, RBAC `ADMIN`/`MODERADOR`, fallback `/api/**`, CORS local e status de CSRF com dados sinteticos.
 - CSRF local pode permanecer desabilitado apenas para smoke controlado; homologacao/producao exigem revisao Pro de CSRF real, HTTPS, cookie seguro, CORS definitivo e politica de sessao.
 
@@ -118,6 +122,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - O Bloco 54 consolida o ciclo local/sintetico com status `MVP_LOCAL_SINTETICO_VALIDADO`.
 - Esse status e local e nao autoriza homologacao real, cutover ou producao.
 - Revisao Pro/humana deve ocorrer antes de qualquer uso operacional de dados reais/sanitizados, restore completo, staging real, Pix/Efi real, webhook real, importador real, storage/CDN real ou producao.
+- O Bloco 56 registra o `site.zip` manual como artefato excepcional e confidencial de auditoria, nao como pacote oficial.
+- Eventual VPS de restore integral deve seguir o protocolo documental `docs/v3/HOMOLOGACAO-vps-restore-integral-protocolo.md` e producao nunca pode ser bancada.
 - O dossie final passa a ser entrada obrigatoria para decidir proximos blocos de homologacao.
 
 ## Moderacao

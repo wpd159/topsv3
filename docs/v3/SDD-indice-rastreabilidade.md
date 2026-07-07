@@ -107,6 +107,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 
 - Auth admin: `docs/v3/129-bloco-12-auth-admin-local.md`
 - Hardening auth: `docs/v3/133-bloco-13-hardening-auth-admin.md`
+- Hardening Pro login/VPS: `docs/v3/262-bloco-56-hardening-login-vps.md`
+- Checklist hardening Pro login/VPS: `docs/v3/263-checklist-bloco-56-hardening-login-vps.md`
+- Protocolo VPS restore integral: `docs/v3/HOMOLOGACAO-vps-restore-integral-protocolo.md`
+- Evidencias Bloco 56: `docs/v3/evidencias/bloco-56/`
 - Admin read-only: `docs/v3/137-bloco-14-admin-readonly-local.md`
 - Admin detalhado: `docs/v3/141-bloco-15-admin-readonly-detalhado.md`
 - Moderacao minima: `docs/v3/145-bloco-16-moderacao-funcional-local.md`

@@ -4,7 +4,7 @@ Este repositório contém o trabalho inicial da V3 do Tops do Job.
 
 ## Estado atual
 
-Estado atual: **Bloco 55 concluido / ciclo local sintético congelado, com Bloco 54 checkpointado em `30be1db7`, status `MVP_LOCAL_SINTETICO_VALIDADO` e `CICLO_LOCAL_SINTETICO_FECHADO`, sem dados reais, staging real, producao, remote ou push.**
+Estado atual: **BLOQUEADO_PARIDADE_VISUAL_PRODUCAO. O hardening Pro local do Bloco 56 foi aplicado, mas homologacao/cutover nao estao aprovados porque a V3 local ainda nao tem paridade visual com a producao publica atual. Sem dados reais, staging real, producao alterada, VPS acessada, remote ou push.**
 
 O checkpoint local do Bloco 40 corrigido foi criado em `f67880a` com a mensagem `test: valida midia publica sintetica ate bloco 40`, remote vazio e sem push. O Bloco 41 consolida o estado do MVP local sintético, cobrindo público renderizado, SEO sintético, wizard `/anunciar`, admin/moderação, Premium/benefícios, Age Gate/WhatsApp, mídia/fotos/stories e E2E sintético, sem criar funcionalidade nova.
 
@@ -33,6 +33,10 @@ O checkpoint local do Bloco 52 foi criado em `d528f7ed` com a mensagem `docs: de
 O checkpoint local do Bloco 53 foi criado em `0fb2b771` com a mensagem `docs: consolida contratos homologacao cutover ate bloco 53`, remote vazio e sem push. O Bloco 54 cria o dossie final do ciclo local/sintetico, o dossie de revisao Pro/humana e os proximos passos de homologacao, mantendo o status `MVP_LOCAL_SINTETICO_VALIDADO` como local, nao como autorizacao de homologacao real ou producao.
 
 O checkpoint local do Bloco 54 foi criado em `30be1db7` com a mensagem `docs: fecha dossie ciclo local sintetico ate bloco 54`, remote vazio e sem push. O Bloco 55 marca o ciclo local/sintetico como fechado, registra `CICLO_LOCAL_SINTETICO_FECHADO` e recomenda revisao Pro/humana antes de qualquer homologacao real.
+
+O checkpoint final do Bloco 55 foi criado em `4323df90` com a mensagem `docs: congela ciclo local sintetico ate bloco 55`, remote vazio e sem push. O Bloco 56 aplica hardening Pro local no login admin: 5 falhas em 15 minutos bloqueiam por 15 minutos por login hash e IP hash, login bem-sucedido troca o ID da sessão, gitleaks histórico completo passou sem leaks e o protocolo VPS de restore integral foi criado apenas como documento.
+
+Complementacao do Bloco 56: auditoria somente leitura de paridade visual producao x V3 local registrou `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`. As telas publicas/admin locais ainda parecem skeleton tecnico quando comparadas com a producao atual. Homologacao/cutover seguem reprovados ate bloco visual dedicado e revisao humana/Pro.
 
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 

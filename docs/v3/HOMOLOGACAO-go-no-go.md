@@ -11,8 +11,11 @@ Go/No-Go deve ser objetivo, auditavel e conservador. Pronto localmente nao equiv
 - Contrato de ambiente aprovado.
 - Secrets externos definidos fora do Git.
 - CORS/cookies/CSRF nao-local validados.
+- Login admin com lockout/session fixation revisado em ambiente nao-local.
+- Paridade visual com producao aprovada por revisao humana/Pro.
 - Flyway real repetido no ambiente.
 - Gitleaks real repetido.
+- Gitleaks historico completo sem leaks ou achados tratados por decisao formal.
 - Banco de homologacao isolado.
 - Storage/upload/CDN real definido quando o escopo exigir.
 - Backup/rollback testado.
@@ -30,6 +33,8 @@ Go/No-Go deve ser objetivo, auditavel e conservador. Pronto localmente nao equiv
 - Quarentena sem `POST_DATA` promovida a base final.
 - CORS wildcard com credenciais.
 - CSRF nao-local pendente.
+- Login admin sem lockout ou sem mitigacao de session fixation.
+- `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO` aberto.
 - Documento privado publicavel.
 - Storage key ou URL privada em DTO publico.
 - Logs com dado sensivel bruto.
@@ -57,6 +62,7 @@ Go/No-Go deve ser objetivo, auditavel e conservador. Pronto localmente nao equiv
 - Sem monitoramento.
 - Auditoria JSON final pendente quando houver dados reais.
 - Pendencia LGPD/juridica bloqueante.
+- `site.zip` manual, backup, dump ou log bruto tratado como pacote oficial.
 
 ## Criterios de rollback
 

@@ -1,6 +1,6 @@
 # Relatorio Auth/RBAC/CSRF local - Bloco 48
 
-- Gerado em: 2026-07-06 19:10:56 -03:00
+- Gerado em: 2026-07-06 23:12:53 -03:00
 - Base local validada: http://127.0.0.1:18148
 - Resultado: OK_AUTH_RBAC_CSRF_LOCAL
 - Dados usados: sinteticos locais.

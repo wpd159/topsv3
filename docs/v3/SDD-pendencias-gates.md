@@ -58,6 +58,19 @@ Para mudancas visuais publicas:
 - executar `scripts/local/validar-layout-publico-renderizado.ps1` quando houver home, cidade, bairro, anuncio ou `/anunciar`;
 - gerar evidencias desktop/mobile quando a fase exigir.
 
+## Gate de paridade visual producao
+
+Status atual: `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`.
+
+Antes de homologacao/cutover:
+
+- comparar V3 local com producao publica atual em home, cidade, bairro, detalhe de anuncio, `/anunciar` e mobile;
+- preservar header, containers, densidade de listagem, cards, cores, tipografia, botoes, espacamentos e hierarquia observaveis;
+- gerar prints lado a lado ou redigidos quando houver risco de dado real;
+- nao versionar dado real bruto de producao;
+- obter revisao humana/Pro;
+- nao avancar para staging real, VPS, restore, importacao real ou cutover enquanto o bloqueio estiver aberto.
+
 ## Gate de copy visivel
 
 Para mudancas que renderizam UI publica/admin:
@@ -118,6 +131,7 @@ Bloqueios:
 - CDN/storage pendente;
 - Pix/Efi pendente;
 - SEO real pendente;
+- paridade visual com producao pendente (`BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`);
 - deploy/cutover sem rollback.
 
 ## Gate de importador real
@@ -205,6 +219,8 @@ Antes de admin em ambiente nao local:
 - CSRF revisado;
 - cookie seguro;
 - politica de senha/credencial;
+- lockout distribuido/rate limit operacional revisado para multiplas instancias;
+- session fixation validado em HTTPS/cookie Secure;
 - RBAC revisado;
 - rate limit;
 - logs e auditoria;
@@ -552,6 +568,17 @@ Antes de admin em ambiente nao local:
 - Quarentena sem `POST_DATA` segue proibida para staging final.
 - Producao/cutover seguem bloqueados.
 - Nenhuma producao, VPS, dado real, importacao real, restore, staging real, Pix/Efi real, webhook real, API externa real, remote ou push foi usado.
+
+## Estado do Bloco 56
+
+- Checkpoint final do Bloco 55 criado em `4323df90`, sem remote e sem push.
+- Login admin recebeu lockout local por login hash e IP hash: 5 falhas em 15 minutos bloqueiam por 15 minutos.
+- Login inexistente conta para lockout e o erro permanece generico.
+- Login admin bem-sucedido troca o ID da sessao antes de salvar o `SecurityContext`.
+- Gitleaks historico completo executado com 35 commits escaneados e sem leaks.
+- Protocolo VPS restore integral criado apenas como documento.
+- `site.zip` manual registrado como artefato confidencial excepcional, nao pacote oficial.
+- Nenhuma producao, VPS, dado real novo, importacao real, restore, staging real, Pix/Efi real, webhook real, API externa real, remote ou push foi usado.
 
 ## Proibicoes ate novo bloco autorizado
 

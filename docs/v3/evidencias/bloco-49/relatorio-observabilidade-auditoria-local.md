@@ -1,6 +1,6 @@
 # Relatorio observabilidade/auditoria local - Bloco 49
 
-- Gerado em: 2026-07-06 19:10:32 -03:00
+- Gerado em: 2026-07-06 23:13:22 -03:00
 - Base local validada: http://127.0.0.1:18149
 - Resultado: OK_OBSERVABILIDADE_AUDITORIA_LOCAL
 - Dados usados: sinteticos locais.
@@ -30,13 +30,13 @@
 - OK - erro 404 com request id na resposta: Cabecalho X-Request-Id propagado.
 - OK - erro 404 corpo seguro: Corpo de erro com status, codigo e requestId.
 - OK - erro 404 sem dados sigilosos: Corpo sem segredo, documento, contato bruto, IP bruto ou stack trace.
-- OK - log local contem request id obs-bloco49-health-0c59910f812d: Linha de log encontrada sem registrar conteudo bruto.
-- OK - log local contem request id a89d1875-963c-4fbc-9265-c9359a7c7619: Linha de log encontrada sem registrar conteudo bruto.
-- OK - log local contem request id obs-bloco49-400-8a0af4871fdb: Linha de log encontrada sem registrar conteudo bruto.
-- OK - log local contem request id obs-bloco49-401-c8d2119dcfcb: Linha de log encontrada sem registrar conteudo bruto.
-- OK - log local contem request id obs-bloco49-login-6e82ec03319c: Linha de log encontrada sem registrar conteudo bruto.
-- OK - log local contem request id obs-bloco49-403-109d958f68b6: Linha de log encontrada sem registrar conteudo bruto.
-- OK - log local contem request id obs-bloco49-404-83de084e0a26: Linha de log encontrada sem registrar conteudo bruto.
+- OK - log local contem request id obs-bloco49-health-73ba917c8871: Linha de log encontrada sem registrar conteudo bruto.
+- OK - log local contem request id 98682644-f287-4aa0-9851-abdb56e7124e: Linha de log encontrada sem registrar conteudo bruto.
+- OK - log local contem request id obs-bloco49-400-7da1963bd3d0: Linha de log encontrada sem registrar conteudo bruto.
+- OK - log local contem request id obs-bloco49-401-78e185dbb382: Linha de log encontrada sem registrar conteudo bruto.
+- OK - log local contem request id obs-bloco49-login-5f5892fa1777: Linha de log encontrada sem registrar conteudo bruto.
+- OK - log local contem request id obs-bloco49-403-e8f6d87bff32: Linha de log encontrada sem registrar conteudo bruto.
+- OK - log local contem request id obs-bloco49-404-2d498d697ade: Linha de log encontrada sem registrar conteudo bruto.
 - OK - logs dos requests sem dados sigilosos: Linhas filtradas por requestId nao expoem cabecalho, IP bruto, UA bruto ou stack trace.
 - OK - logs dos requests com formato minimo: Log HTTP local inclui evento, status e duracao.
 - OK - logger HTTP minimo: RequestIdFilter nao registra IP bruto, cabecalho sensivel ou query string.

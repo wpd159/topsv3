@@ -27,12 +27,15 @@ public class AdminAuthenticationService {
 
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
+    private final AdminLoginLockoutService lockoutService;
 
     public AdminAuthenticationService(
             AuthenticationManager authenticationManager,
-            SecurityContextRepository securityContextRepository) {
+            SecurityContextRepository securityContextRepository,
+            AdminLoginLockoutService lockoutService) {
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
+        this.lockoutService = lockoutService;
     }
 
     public AdminMeDto login(
@@ -42,17 +45,26 @@ public class AdminAuthenticationService {
         if (request == null || isBlank(request.login()) || isBlank(request.senha())) {
             throw unauthorized();
         }
+        String normalizedLogin = AdminUserDetailsService.normalizarLogin(request.login());
+        AdminLoginLockoutService.LoginAttemptContext attemptContext =
+                lockoutService.context(normalizedLogin, httpRequest);
+        if (lockoutService.isBlocked(attemptContext)) {
+            throw tooManyRequests();
+        }
         try {
             Authentication authentication = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
-                    AdminUserDetailsService.normalizarLogin(request.login()),
+                    normalizedLogin,
                     request.senha()));
+            rotateSessionId(httpRequest);
             SecurityContext context = SecurityContextHolder.createEmptyContext();
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
+            lockoutService.registerSuccess(attemptContext);
             return me(authentication);
         } catch (AuthenticationException exception) {
             SecurityContextHolder.clearContext();
+            lockoutService.registerFailure(attemptContext);
             throw unauthorized();
         }
     }
@@ -95,6 +107,17 @@ public class AdminAuthenticationService {
 
     private ResponseStatusException unauthorized() {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "credenciais invalidas");
+    }
+
+    private ResponseStatusException tooManyRequests() {
+        return new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "credenciais invalidas");
+    }
+
+    private void rotateSessionId(HttpServletRequest request) {
+        if (request != null) {
+            request.getSession();
+            request.changeSessionId();
+        }
     }
 
     private boolean isBlank(String value) {

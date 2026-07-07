@@ -9,6 +9,7 @@ public enum ApiErrorCode {
     NOT_FOUND(HttpStatus.NOT_FOUND, "Recurso não encontrado."),
     CONFLICT(HttpStatus.CONFLICT, "Conflito de estado."),
     UNPROCESSABLE_ENTITY(HttpStatus.UNPROCESSABLE_ENTITY, "Dados inválidos."),
+    TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno inesperado.");
 
     private final HttpStatus status;
