@@ -314,6 +314,13 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Matriz Go/No-Go: `docs/v3/HOMOLOGACAO-go-no-go.md`
 - Evidencias Bloco 53: `docs/v3/evidencias/bloco-53/`
 - Checkpoint Bloco 52: `d528f7ed`
+- Relatorio Bloco 54: `docs/v3/258-bloco-54-dossie-final-ciclo-local.md`
+- Checklist Bloco 54: `docs/v3/259-checklist-bloco-54-dossie-final-ciclo-local.md`
+- Dossie final ciclo local sintetico: `docs/v3/DOSSIE-final-ciclo-local-sintetico.md`
+- Dossie revisao Pro/humana: `docs/v3/DOSSIE-revisao-pro-humana.md`
+- Dossie proximos passos homologacao: `docs/v3/DOSSIE-proximos-passos-homologacao.md`
+- Evidencias Bloco 54: `docs/v3/evidencias/bloco-54/`
+- Checkpoint Bloco 53: `0fb2b771`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 

@@ -113,6 +113,13 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Financeiro/Pix/Efi/webhooks exigem homologacao propria, idempotencia, conciliacao, ledger, rollback financeiro e logs sem payload sensivel.
 - Cutover exige matriz Go/No-Go objetiva, backup/rollback testado, monitoramento minimo e decisao humana registrada.
 
+## Dossie final do ciclo local
+
+- O Bloco 54 consolida o ciclo local/sintetico com status `MVP_LOCAL_SINTETICO_VALIDADO`.
+- Esse status e local e nao autoriza homologacao real, cutover ou producao.
+- Revisao Pro/humana deve ocorrer antes de qualquer uso operacional de dados reais/sanitizados, restore completo, staging real, Pix/Efi real, webhook real, importador real, storage/CDN real ou producao.
+- O dossie final passa a ser entrada obrigatoria para decidir proximos blocos de homologacao.
+
 ## Moderacao
 
 - `REPROVAR` exige motivo.

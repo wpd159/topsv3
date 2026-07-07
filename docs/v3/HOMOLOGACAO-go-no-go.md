@@ -6,6 +6,8 @@ Go/No-Go deve ser objetivo, auditavel e conservador. Pronto localmente nao equiv
 
 ## Go para homologacao
 
+- Dossie final do ciclo local revisado.
+- Revisao Pro/humana registrada.
 - Contrato de ambiente aprovado.
 - Secrets externos definidos fora do Git.
 - CORS/cookies/CSRF nao-local validados.
@@ -19,6 +21,8 @@ Go/No-Go deve ser objetivo, auditavel e conservador. Pronto localmente nao equiv
 
 ## No-Go para homologacao
 
+- Dossie final nao revisado.
+- Pro/humano pendente quando houver dados reais/sanitizados.
 - Remote/push indevido.
 - Secret versionado.
 - Dados reais no repositorio.
