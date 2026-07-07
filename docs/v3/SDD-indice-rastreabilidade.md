@@ -321,6 +321,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Dossie proximos passos homologacao: `docs/v3/DOSSIE-proximos-passos-homologacao.md`
 - Evidencias Bloco 54: `docs/v3/evidencias/bloco-54/`
 - Checkpoint Bloco 53: `0fb2b771`
+- Relatorio Bloco 55: `docs/v3/260-bloco-55-freeze-ciclo-local-sintetico.md`
+- Checklist Bloco 55: `docs/v3/261-checklist-bloco-55-freeze-ciclo-local-sintetico.md`
+- Evidencias Bloco 55: `docs/v3/evidencias/bloco-55/`
+- Checkpoint Bloco 54: `30be1db7`
 - Relatorio de polimento de status publico: `docs/v3/evidencias/bloco-38/relatorio-polimento-status-publico.md`
 - Validadores de status publico: `scripts/local/validar-publico-renderizado-sintetico-local.ps1`, `scripts/local/validar-premium-beneficios-sintetico-local.ps1`
 
