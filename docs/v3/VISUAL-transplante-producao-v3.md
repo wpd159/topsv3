@@ -94,12 +94,15 @@ Foram ajustados tokens de cor, container publico, suavizacao de fonte, header pu
 
 ## Ordem recomendada dos proximos blocos
 
-1. Transplantar card/listagem com paridade mais fina.
-2. Transplantar detalhe de anuncio em bloco isolado.
-3. Transplantar wizard `/anunciar` comparando com a producao observavel.
-4. Ajustar footer publico sem elemento flutuante.
-5. Validar mobile completo.
-6. Revisao humana/Pro antes de homologacao/cutover.
+1. Revisar visualmente header/logo e wizard apos o Bloco 60.
+2. Ajustar footer publico sem elemento flutuante.
+3. Validar mobile completo em home, cidade, bairro, detalhe e `/anunciar`.
+4. Revisao humana/Pro antes de homologacao/cutover.
+
+## Adaptacoes posteriores registradas
+
+- Bloco 59: cards, grids, placeholders e detalhe publico do anuncio.
+- Bloco 60: logo real local em `/logo.webp`, header publico com imagem e wizard `/anunciar` com progresso/card/botoes mais proximos da producao.
 
 ## Riscos
 

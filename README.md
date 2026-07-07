@@ -44,6 +44,10 @@ O Bloco 58 usa o clone local somente leitura `C:\clone\topsdojob-frontend` como 
 
 O checkpoint local do Bloco 58 foi criado em `46a1ff7` com a mensagem `style: inicia transplante visual producao ate bloco 58`, remote vazio e sem push. O Bloco 59 aprofunda o transplante visual em cards, grids, placeholders e detalhe publico do anuncio, sem copiar fetches, auth, upload, stores, pagamento ou regras de negocio da producao.
 
+O checkpoint local do Bloco 59 foi criado em `3111afc` com a mensagem `style: transplanta cards detalhe visual ate bloco 59`, remote vazio e sem push. O Bloco 60 usa a logo real local em `/logo.webp` no header publico e aproxima visualmente o wizard `/anunciar` da referencia do clone de producao, sem alterar fluxo funcional, backend, banco, upload, pagamento, Pix/Efi ou API externa.
+
+Complementacao de deploy HML do Bloco 60: foi criada configuracao local de GitHub Actions + SSH para `v3.esle.cloud`, usuario `topsv3`, Docker Compose HML, Nginx com `noindex/nofollow/noarchive` e `/robots.txt` com `Disallow: /`. O workflow fica pronto para revisao, mas nenhum deploy, push, acesso a VPS, producao, dado real, Pix/Efi real, webhook real, upload real, e-mail real ou WhatsApp real foi executado.
+
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 
 O Bloco 31.1 corrige os validadores sinteticos para que API/SEO nao retornem OK por evidencia antiga quando o backend local estiver indisponivel. Por padrao, backend indisponivel deve retornar pendente com exit code 2. Reutilizacao de evidencia existente so pode ocorrer com parametro explicito e alerta documentado.

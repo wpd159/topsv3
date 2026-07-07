@@ -62,7 +62,7 @@ Para mudancas visuais publicas:
 
 Status atual: `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`.
 
-Mitigacao parcial: o Bloco 57 executa paridade visual publica fase 1 em shell/header, home, cards e listagens de cidade/bairro. O Bloco 58 identifica `C:\clone\topsdojob-frontend` como fonte visual local de producao, documenta o transplante e aplica apenas a base visual global/header de baixo risco. O Bloco 59 aprofunda cards, grids, placeholders e detalhe publico do anuncio. O gate continua aberto para wizard `/anunciar`, footer/admin quando aplicavel, comparacao final e revisao humana/Pro.
+Mitigacao parcial: o Bloco 57 executa paridade visual publica fase 1 em shell/header, home, cards e listagens de cidade/bairro. O Bloco 58 identifica `C:\clone\topsdojob-frontend` como fonte visual local de producao, documenta o transplante e aplica apenas a base visual global/header de baixo risco. O Bloco 59 aprofunda cards, grids, placeholders e detalhe publico do anuncio. O Bloco 60 aplica a logo real local no header publico e aproxima visualmente o wizard `/anunciar`. O gate continua aberto para footer/admin quando aplicavel, comparacao final e revisao humana/Pro.
 
 Antes de homologacao/cutover:
 
@@ -599,6 +599,28 @@ Antes de admin em ambiente nao local:
 - Cards, grid, placeholders e detalhe publico da V3 foram ajustados visualmente sem copiar fetches, auth, upload, stores, pagamento ou regras da producao.
 - Gate `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO` permanece aberto para wizard `/anunciar`, footer/admin quando aplicavel, comparacao visual final e revisao humana/Pro.
 - Nenhuma producao, VPS, dado real, backend, banco, migration, auth/RBAC, importacao real, restore, staging real, Pix/Efi real, pagamento, upload real, CDN/storage real, webhook, API externa, remote ou push foi usado.
+
+## Estado do Bloco 60
+
+- Checkpoint local do Bloco 59 criado em `3111afc`, sem remote e sem push.
+- Header publico passa a usar a logo real local em `/logo.webp`, derivada do clone somente leitura.
+- Wizard `/anunciar` recebeu aproximacao visual de card, progresso, botoes, campos e espacamentos.
+- Gate `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO` permanece aberto para footer/admin quando aplicavel, comparacao visual final e revisao humana/Pro.
+- Nenhuma producao, VPS, dado real, backend, banco, migration, auth/RBAC, importacao real, restore, staging real, Pix/Efi real, pagamento, upload real, CDN/storage real, webhook, API externa, remote ou push foi usado.
+
+## Complementacao deploy HML do Bloco 60
+
+- Configuracao de GitHub Actions + SSH para `v3.esle.cloud` criada localmente.
+- Usuario esperado: `topsv3`.
+- Deploy path esperado: `/opt/topsv3/app/current`.
+- Secrets externos esperados: `/opt/topsv3/secrets/hml.env`.
+- Nginx HML bloqueia indexacao com `X-Robots-Tag` e `Disallow: /`.
+- Complemento corretivo aplicado: backend HML usa `SPRING_PROFILES_ACTIVE=homologacao`, com profile suportado por `backend/src/main/resources/application-homologacao.yml`.
+- Backend compile/test validado pela toolchain local em `scripts/local/validar-build-local.ps1`.
+- Endpoint real de health confirmado: `GET /api/health`.
+- Workflow reforcado para excluir explicitamente `topsv3-auditoria-local`, `logs-brutos-nao-versionar`, `**/*.dump`, `**/*.backup`, `**/*.log`, `**/.env`, `**/*.pem`, `**/*.key` e `**/*.crt`.
+- Gate aberto: `PENDENTE_HTTPS_HML_ANTES_DO_TESTE_PUBLICO`.
+- Workflow nao foi executado; sem deploy, sem push, sem acesso a VPS, sem producao e sem dados reais.
 
 ## Proibicoes ate novo bloco autorizado
 

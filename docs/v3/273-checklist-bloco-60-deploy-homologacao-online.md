@@ -1,0 +1,23 @@
+# Checklist - Bloco 60 deploy HML
+
+- [x] Workflow GitHub Actions criado.
+- [x] Trigger `workflow_dispatch` criado.
+- [x] Trigger `push` para `main` criado.
+- [x] Usuario SSH `topsv3` exigido.
+- [x] Dominio `v3.esle.cloud` exigido.
+- [x] Deploy path `/opt/topsv3/app/current` exigido.
+- [x] Secrets obrigatorios documentados.
+- [x] `/opt/topsv3/secrets/hml.env` obrigatorio.
+- [x] `.git`, `node_modules`, `.next`, `target`, dumps, backups, `.env`, logs e chaves excluidos do pacote SSH.
+- [x] Compose HML criado com containers prefixados `topsv3-hml-*`.
+- [x] PostgreSQL HML isolado.
+- [x] Flyway HML para migrations locais.
+- [x] Backend HML com `APP_ENV=homologacao`.
+- [x] Pix/Efi em modo mock.
+- [x] Frontend HML com canonical/API apontando para `v3.esle.cloud`.
+- [x] Nginx HML com `/api` para backend e `/` para frontend.
+- [x] `X-Robots-Tag` noindex/nofollow/noarchive.
+- [x] `/robots.txt` com `Disallow: /`.
+- [x] Validador local estatico criado.
+- [x] Nenhum deploy executado neste bloco.
+- [x] Nenhuma producao, dado real, Pix/Efi real, webhook real, upload real, e-mail real ou WhatsApp real usado.

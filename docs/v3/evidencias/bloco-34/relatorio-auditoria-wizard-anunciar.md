@@ -18,7 +18,7 @@
 ## Checks
 - OK: desktop/inicio: wizard guiado com oito etapas - 8
 - OK: desktop/inicio: uma etapa atual visivel - 1
-- OK: desktop/inicio: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/inicio: sem scroll horizontal - 1265px em 1280px
 - OK: desktop/inicio: sem document.body.style.overflow - vazio
 - OK: desktop/inicio: sem scroll lock global - html=visible; body=visible
 - OK: desktop/inicio: sem elemento fixed/absolute/sticky publico - nenhum
@@ -32,7 +32,7 @@
 - OK: desktop: validacao amigavel sem 500 - mensagem visivel
 - OK: desktop/validacao: wizard guiado com oito etapas - 8
 - OK: desktop/validacao: uma etapa atual visivel - 1
-- OK: desktop/validacao: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/validacao: sem scroll horizontal - 1265px em 1280px
 - OK: desktop/validacao: sem document.body.style.overflow - vazio
 - OK: desktop/validacao: sem scroll lock global - html=visible; body=visible
 - OK: desktop/validacao: sem elemento fixed/absolute/sticky publico - nenhum
@@ -45,7 +45,7 @@
 - OK: desktop: midia e placeholder sem upload real - etapa de midia futura
 - OK: desktop/midia: wizard guiado com oito etapas - 8
 - OK: desktop/midia: uma etapa atual visivel - 1
-- OK: desktop/midia: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/midia: sem scroll horizontal - 1265px em 1280px
 - OK: desktop/midia: sem document.body.style.overflow - vazio
 - OK: desktop/midia: sem scroll lock global - html=visible; body=visible
 - OK: desktop/midia: sem elemento fixed/absolute/sticky publico - nenhum
@@ -59,7 +59,7 @@
 - OK: desktop: sem enum tecnico na revisao - categoria humanizada
 - OK: desktop/revisao: wizard guiado com oito etapas - 8
 - OK: desktop/revisao: uma etapa atual visivel - 1
-- OK: desktop/revisao: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/revisao: sem scroll horizontal - 1265px em 1280px
 - OK: desktop/revisao: sem document.body.style.overflow - vazio
 - OK: desktop/revisao: sem scroll lock global - html=visible; body=visible
 - OK: desktop/revisao: sem elemento fixed/absolute/sticky publico - nenhum
@@ -72,7 +72,7 @@
 - OK: desktop: sem autopublicacao - mensagem pos-envio
 - OK: desktop/pos-envio: wizard guiado com oito etapas - 8
 - OK: desktop/pos-envio: uma etapa atual visivel - 1
-- OK: desktop/pos-envio: sem scroll horizontal - 1280px em 1280px
+- OK: desktop/pos-envio: sem scroll horizontal - 1265px em 1280px
 - OK: desktop/pos-envio: sem document.body.style.overflow - vazio
 - OK: desktop/pos-envio: sem scroll lock global - html=visible; body=visible
 - OK: desktop/pos-envio: sem elemento fixed/absolute/sticky publico - nenhum

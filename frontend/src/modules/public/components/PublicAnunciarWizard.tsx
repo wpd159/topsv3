@@ -153,6 +153,13 @@ export function PublicAnunciarWizard() {
   return (
     <div className="public-anunciar-layout">
       <form className="public-anunciar-form public-wizard" onSubmit={(event) => event.preventDefault()} noValidate>
+        <div className="public-wizard-card-heading">
+          <span className="status">Anuncie grátis</span>
+          <div>
+            <h2>PUBLICAR SEU ANÚNCIO</h2>
+            <p>Preencha as etapas, revise no final e aguarde a análise antes de qualquer publicação.</p>
+          </div>
+        </div>
         <PublicAnunciarWizardProgress steps={WIZARD_STEPS} currentIndex={currentStepIndex} />
         {renderStep()}
         <PublicAnunciarValidation errors={errors} />

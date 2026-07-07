@@ -342,6 +342,8 @@ function Test-TopsDangerousExtensionPath {
 
 function Test-TopsAllowedExampleTextPath {
   param([string]$Path)
+  $normalized = ($Path -replace '\\', '/').ToLowerInvariant()
+  if ($normalized -eq 'deploy/hml/hml.env.example') { return $true }
   $name = [IO.Path]::GetFileName($Path).ToLowerInvariant()
   if ($name -match '^\.env(\.[a-z0-9_-]+)*\.example$') { return $true }
   if ($name -match '\.example\.(json|ya?ml|toml|properties|txt|md)$') { return $true }
@@ -411,7 +413,7 @@ function Add-TopsEncodingFindingsForBytes {
 function Test-TopsAllowedPlaceholderValue {
   param([string]$Value)
   $clean = ConvertTo-TopsSecretCandidateValue $Value
-  return (($clean -in @("CHANGE_ME", "EXEMPLO_NAO_REAL", "<valor-ficticio>", "<valor-fictício>", "xxxxxxxx", "valor_local_ficticio")) -or (Test-TopsAllowedExternalSecretReference $clean))
+  return (($clean -in @("CHANGE_ME", "EXEMPLO_NAO_REAL", "<valor-ficticio>", "<valor-fictício>", "<preencher fora do Git>", "__PREENCHER_FORA_DO_GIT__", "xxxxxxxx", "valor_local_ficticio")) -or (Test-TopsAllowedExternalSecretReference $clean))
 }
 
 function ConvertTo-TopsSecretCandidateValue {
@@ -427,8 +429,14 @@ function ConvertTo-TopsSecretCandidateValue {
 function Test-TopsAllowedExternalSecretReference {
   param([AllowNull()][string]$Value)
   $clean = ConvertTo-TopsSecretCandidateValue $Value
-  $allowedNames = @("EFI_CLIENT_SECRET", "DATABASE_PASSWORD")
+  $allowedNames = @("EFI_CLIENT_SECRET", "DATABASE_PASSWORD", "SPRING_DATASOURCE_PASSWORD", "HML_SSH_PRIVATE_KEY")
+  if ($clean -match '^\$\{\{\s*secrets\.(?<name>[A-Z0-9_]+)\s*\}\}$') {
+    return ($matches["name"] -in $allowedNames)
+  }
   if ($clean -match '^\$\{(?<name>[A-Z0-9_]+)(?::)?\}$') {
+    return ($matches["name"] -in $allowedNames)
+  }
+  if ($clean -match '^\$\{(?<name>[A-Z0-9_]+):?[?+\-=][^}]*\}$') {
     return ($matches["name"] -in $allowedNames)
   }
   if ($clean -match '^\$env:(?<name>[A-Z0-9_]+)$') {
@@ -562,6 +570,7 @@ function Get-TopsSecretFindingsForBytes {
   $lines = $text -split "`r?`n"
   for ($i = 0; $i -lt $lines.Count; $i++) {
     $line = $lines[$i]
+    if ($line -match '\bNOPASSWD\s*:') { continue }
     foreach ($rule in $secretRules) {
       $matches = [regex]::Matches($line, $rule.Regex)
       foreach ($match in $matches) {

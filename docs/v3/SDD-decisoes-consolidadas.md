@@ -233,6 +233,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 57 decide executar paridade visual publica por fases. A fase 1 pode ajustar shell/header, home, cards e listagens de cidade/bairro, mas nao encerra o gate visual sem revisao completa de detalhe de anuncio, wizard, admin quando aplicavel e aprovacao humana/Pro.
 - Bloco 58 decide usar `C:\clone\topsdojob-frontend` como fonte visual local de producao em modo somente leitura. O transplante deve adaptar visual para a arquitetura V3, nao copiar fetches, auth, modais, scroll lock, dados reais, storage ou regras funcionais da producao.
 - Bloco 59 decide que cards, grids e detalhe publico podem aproximar a composicao visual da producao, mas o contato real continua mediado pelos fluxos V3 e o frontend nao passa a decidir WhatsApp, classificacao, midia publica ou autorizacao.
+- Bloco 60 decide que o header publico deve usar a logo real local em `/logo.webp` e que o wizard `/anunciar` pode aproximar visualmente card, progresso, botoes e espacamentos da producao, sem alterar fluxo funcional, upload, pagamento, Pix/Efi, auth, backend ou banco.
+- A complementacao de deploy HML do Bloco 60 decide que `v3.esle.cloud` deve permanecer `noindex/nofollow/noarchive`, com robots `Disallow: /`, usuario `topsv3`, secrets fora do Git e Pix/Efi em mock. O workflow pode ser versionado, mas deploy/push/VPS dependem de autorizacao operacional posterior.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 

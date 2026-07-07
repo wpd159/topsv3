@@ -12,8 +12,9 @@ export function PublicAnunciarWizardProgress({ steps, currentIndex }: PublicAnun
       <ol>
         {steps.map((step, index) => {
           const status = index < currentIndex ? "Concluída" : index === currentIndex ? "Atual" : "Pendente";
+          const state = index < currentIndex ? "complete" : index === currentIndex ? "current" : "pending";
           return (
-            <li key={step.id} aria-current={index === currentIndex ? "step" : undefined}>
+            <li key={step.id} data-state={state} aria-current={index === currentIndex ? "step" : undefined}>
               <span>{index + 1}</span>
               <strong>{step.label}</strong>
               <small>{status}</small>

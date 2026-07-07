@@ -67,6 +67,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Plano de transplante visual: `docs/v3/VISUAL-transplante-producao-v3.md`
 - Transplante visual cards/detalhe: `docs/v3/270-bloco-59-transplante-cards-detalhe.md`
 - Checklist transplante cards/detalhe: `docs/v3/271-checklist-bloco-59-transplante-cards-detalhe.md`
+- Header/logo/wizard paridade: `docs/v3/272-bloco-60-header-logo-wizard-paridade.md`
+- Checklist header/logo/wizard: `docs/v3/273-checklist-bloco-60-header-logo-wizard-paridade.md`
+- Deploy HML GitHub Actions: `docs/v3/272-bloco-60-deploy-homologacao-online.md`
+- Checklist deploy HML: `docs/v3/273-checklist-bloco-60-deploy-homologacao-online.md`
+- Contrato deploy HML VPS: `docs/v3/HOMOLOGACAO-deploy-github-actions-vps.md`
 - Diretriz mobile: `docs/v3/161-diretriz-ui-mobile-bloco-21.md`
 - Checklist mobile: `docs/v3/162-checklist-validacao-mobile-bloco-21.md`
 - Script: `scripts/local/validar-ui-mobile-estatica.ps1`
@@ -76,6 +81,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencias Bloco 57: `docs/v3/evidencias/bloco-57/`
 - Evidencias Bloco 58: `docs/v3/evidencias/bloco-58/`
 - Evidencias Bloco 59: `docs/v3/evidencias/bloco-59/`
+- Evidencias Bloco 60: `docs/v3/evidencias/bloco-60/`
 
 ## Banco e migrations
 
