@@ -1,0 +1,293 @@
+# Relatorio - auditoria renderizada publica sintetica
+
+- Resultado: OK
+- Frontend: http://127.0.0.1:18332
+- Backend sintetico: http://127.0.0.1:18132
+- Dados reais usados: nao
+- Producao/VPS/API externa acessadas: nao
+- Quarentena usada como staging final: nao
+
+## Rotas
+- / (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Tops do Job | Acompanhantes por cidade e bairro
+  - OK: meta description presente - Navegue por acompanhantes em cidades, bairros e anúncios com contato mediado e cadastro gratuito para análise.
+  - OK: canonical local seguro - http://localhost/
+  - OK: H1 presente - Tops do Job
+  - OK: H1 legivel - 540x58
+  - OK: shell dentro da viewport - 1180px
+- /anunciar (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - PUBLICAR SEU ANÚNCIO | Tops do Job
+  - OK: meta description presente - Envie seu anúncio para análise no Tops do Job, sem pagamento, upload ou publicação automática nesta etapa.
+  - OK: canonical local seguro - http://localhost/anunciar
+  - OK: H1 presente - PUBLICAR SEU ANÚNCIO
+  - OK: H1 legivel - 1144x43
+  - OK: shell dentro da viewport - 1180px
+- /acompanhantes/go/goiania (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Acompanhantes em Goiânia - GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Goiânia - GO com navegação por bairros, perfis disponíveis e contato mediado com segurança.
+  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania
+  - OK: H1 presente - Acompanhantes em Goiânia - GO
+  - OK: H1 legivel - 824x51
+  - OK: shell dentro da viewport - 1180px
+  - OK: breadcrumbs legiveis - 1102px
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/go/goiania/setor-bueno (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Acompanhantes em Setor Bueno, Goiânia - GO | Tops do Job
+  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação organizada.
+  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania/setor-bueno
+  - OK: H1 presente - Acompanhantes em Setor Bueno, Goiânia - GO
+  - OK: H1 legivel - 824x101
+  - OK: shell dentro da viewport - 1180px
+  - OK: breadcrumbs legiveis - 1102px
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/df/brasilia (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Acompanhantes em Brasília - DF | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Brasília - DF com navegação por bairros, perfis disponíveis e contato mediado com segurança.
+  - OK: canonical local seguro - http://localhost/acompanhantes/df/brasilia
+  - OK: H1 presente - Acompanhantes em Brasília - DF
+  - OK: H1 legivel - 824x51
+  - OK: shell dentro da viewport - 1180px
+  - OK: breadcrumbs legiveis - 1102px
+  - OK: conteudo sintetico esperado - demo-brasilia-premium-topo
+- /anuncios/demo-goiania-livre-premium (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
+  - OK: meta description presente - Informações públicas do anúncio no Tops do Job.
+  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
+  - OK: H1 presente - Perfil de demonstração Goiânia premium
+  - OK: H1 legivel - 1106x51
+  - OK: shell dentro da viewport - 1180px
+  - OK: breadcrumbs legiveis - 1106px
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+- /anuncios/demo-goiania-bloqueado (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - sem wa.me/+55
+  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Demo Goiânia Bloqueado | Tops do Job
+  - OK: meta description presente - Perfil com informações públicas, mídia controlada e contato mediado pelo Tops do Job.
+  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-bloqueado
+  - OK: H1 presente - Demo Goiânia Bloqueado
+  - OK: H1 legivel - 1106x51
+  - OK: shell dentro da viewport - 1180px
+  - OK: breadcrumbs legiveis - 1106px
+  - OK: conteudo sintetico esperado - Demo Goi
+  - OK: conteudo proibido ausente - wa.me
+- /sitemap.xml (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1280px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - <urlset
+  - OK: sem dominio de producao - local seguro
+- /robots.txt (desktop): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 1280px em 1280px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - Disallow
+  - OK: sem dominio de producao - local seguro
+- / (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Tops do Job | Acompanhantes por cidade e bairro
+  - OK: meta description presente - Navegue por acompanhantes em cidades, bairros e anúncios com contato mediado e cadastro gratuito para análise.
+  - OK: canonical local seguro - http://localhost/
+  - OK: H1 presente - Tops do Job
+  - OK: H1 legivel - 318x38
+  - OK: shell dentro da viewport - 390px
+- /anunciar (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - PUBLICAR SEU ANÚNCIO | Tops do Job
+  - OK: meta description presente - Envie seu anúncio para análise no Tops do Job, sem pagamento, upload ou publicação automática nesta etapa.
+  - OK: canonical local seguro - http://localhost/anunciar
+  - OK: H1 presente - PUBLICAR SEU ANÚNCIO
+  - OK: H1 legivel - 354x32
+  - OK: shell dentro da viewport - 390px
+- /acompanhantes/go/goiania (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Acompanhantes em Goiânia - GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Goiânia - GO com navegação por bairros, perfis disponíveis e contato mediado com segurança.
+  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania
+  - OK: H1 presente - Acompanhantes em Goiânia - GO
+  - OK: H1 legivel - 312x69
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 312px
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/go/goiania/setor-bueno (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Acompanhantes em Setor Bueno, Goiânia - GO | Tops do Job
+  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação organizada.
+  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania/setor-bueno
+  - OK: H1 presente - Acompanhantes em Setor Bueno, Goiânia - GO
+  - OK: H1 legivel - 312x104
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 312px
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/df/brasilia (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Acompanhantes em Brasília - DF | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Brasília - DF com navegação por bairros, perfis disponíveis e contato mediado com segurança.
+  - OK: canonical local seguro - http://localhost/acompanhantes/df/brasilia
+  - OK: H1 presente - Acompanhantes em Brasília - DF
+  - OK: H1 legivel - 312x69
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 312px
+  - OK: conteudo sintetico esperado - demo-brasilia-premium-topo
+- /anuncios/demo-goiania-livre-premium (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
+  - OK: meta description presente - Informações públicas do anúncio no Tops do Job.
+  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
+  - OK: H1 presente - Perfil de demonstração Goiânia premium
+  - OK: H1 legivel - 316x104
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 316px
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+- /anuncios/demo-goiania-bloqueado (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - sem wa.me/+55
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: title presente - Demo Goiânia Bloqueado | Tops do Job
+  - OK: meta description presente - Perfil com informações públicas, mídia controlada e contato mediado pelo Tops do Job.
+  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-bloqueado
+  - OK: H1 presente - Demo Goiânia Bloqueado
+  - OK: H1 legivel - 316x69
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 316px
+  - OK: conteudo sintetico esperado - Demo Goi
+  - OK: conteudo proibido ausente - wa.me
+- /sitemap.xml (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 980px em 980px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - <urlset
+  - OK: sem dominio de producao - local seguro
+- /robots.txt (mobile): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem scroll horizontal - 980px em 980px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - Disallow
+  - OK: sem dominio de producao - local seguro
+
+## Falhas
+- Nenhuma

@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { PublicBreadcrumbItem } from "../../../lib/seo/publicSeo";
 import { PublicBreadcrumbs } from "./PublicBreadcrumbs";
 
@@ -23,12 +25,13 @@ export function PublicLocalitySeoHeader({
       <PublicBreadcrumbs items={breadcrumbs} />
       <div className="public-locality-seo-heading">
         <div>
+          <span className="public-section-kicker">Tops do Job</span>
           <h1>{h1}</h1>
           <p>{description}</p>
         </div>
         <div className="public-locality-seo-summary">
           <span>{formatTotal(totalItens)}</span>
-          <a href={ctaHref}>{ctaLabel}</a>
+          <Link href={ctaHref}>{ctaLabel}</Link>
         </div>
       </div>
     </header>

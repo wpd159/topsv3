@@ -13,6 +13,7 @@ import {
 import { PublicBreadcrumbs } from "../../../modules/public/components/PublicBreadcrumbs";
 import { PublicInternalLinks } from "../../../modules/public/components/PublicInternalLinks";
 import { PublicSeoIntro } from "../../../modules/public/components/PublicSeoIntro";
+import { PublicSiteHeader } from "../../../modules/public/components/PublicSiteHeader";
 import { PublicAgeGateContent } from "../../../modules/public/skeleton/PublicAgeGateContent";
 
 type AnuncioPageProps = {
@@ -62,6 +63,7 @@ export default async function AnuncioSeoPage({ params }: AnuncioPageProps) {
 
   return (
     <main className="public-route">
+      <PublicSiteHeader />
       <section className="shell public-shell public-seo-page">
         <header className="public-anuncio-seo-header">
           <PublicBreadcrumbs items={anuncioBreadcrumbs(anuncio, slug)} />

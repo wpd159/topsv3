@@ -4,11 +4,11 @@
 - Detalhe: PostgreSQL descartavel, migrations, backend local e smoke HTTP passaram.
 - PostgreSQL executado: True
 - Imagem PostgreSQL local: postgres:16
-- Prefixo Docker: topsv3-e2e-sintetico
+- Prefixo Docker: topsv3-render-bloco57
 - Somente smoke HTTP: False
-- API smoke script: C:\topsv3\scripts\local\validar-api-publica-sintetica-local.ps1
+- API smoke script: C:\Users\WpD\AppData\Local\Temp\topsv3-bloco57-publico-renderizado-wrapper.ps1
 - Fixture sintetica JSON: C:\topsv3\backend\src\test\resources\fixtures\v3-dados-sinteticos.json
-- Porta PostgreSQL efemera: 59750
+- Porta PostgreSQL efemera: 51726
 - Migrations aplicadas: True
 - Quantidade de migrations aplicadas: 17
 - Dados sinteticos aplicados: True
@@ -36,7 +36,7 @@
 - Migrations V001-V017 aplicadas via psql ordenado no PostgreSQL descartavel.
 - Dados sinteticos publicos e admin minimos aplicados no banco descartavel.
 - Fixture sintetica JSON aplicada como overlay no banco descartavel.
-- Backend local iniciado em perfil local na porta 18131.
+- Backend local iniciado em perfil local na porta 18132.
 - Backend local respondeu health/readiness.
 - Smoke HTTP da API publica local executado com sucesso.
 - Smoke HTTP validou outbox admin read-only, preview sanitizado, simulacao local, RBAC e ausencia de envio real.

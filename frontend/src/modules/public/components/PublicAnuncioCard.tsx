@@ -20,11 +20,11 @@ export function PublicAnuncioCard({ item }: PublicAnuncioCardProps) {
       <PublicMidiaPlaceholder midias={item.midias} compact />
       <div className="public-card-body">
         <div className="public-card-heading">
+          <span>{formatLocation(item.localizacao)}</span>
           <h2>{item.titulo ?? "Anúncio"}</h2>
-          <span>{formatPrice(item.preco)}</span>
+          <strong>{formatPrice(item.preco)}</strong>
         </div>
         <p>{item.descricaoResumo ?? "Resumo indisponível no momento."}</p>
-        <p className="public-card-location">{formatLocation(item.localizacao)}</p>
         {badges.length > 0 ? (
           <ul className="public-badge-list" aria-label="Marcadores do anúncio">
             {badges.map((badge) => (
@@ -39,9 +39,19 @@ export function PublicAnuncioCard({ item }: PublicAnuncioCardProps) {
             ))}
           </ul>
         ) : null}
-        <Link className="public-card-link" href={`/anuncios/${item.slug}`}>
-          Ver anúncio
-        </Link>
+        <div className="public-card-actions">
+          <Link className="public-card-link" href={`/anuncios/${item.slug}`}>
+            Ver anúncio
+          </Link>
+          {item.localizacao?.cidadeSlug && item.localizacao.uf ? (
+            <Link
+              className="public-card-secondary-link"
+              href={`/acompanhantes/${item.localizacao.uf.toLowerCase()}/${item.localizacao.cidadeSlug}`}
+            >
+              Ver cidade
+            </Link>
+          ) : null}
+        </div>
       </div>
     </article>
   );

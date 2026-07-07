@@ -13,6 +13,7 @@ import { PublicAnuncioGrid } from "../../../../modules/public/components/PublicA
 import { PublicInternalLinks } from "../../../../modules/public/components/PublicInternalLinks";
 import { PublicLocalitySeoHeader } from "../../../../modules/public/components/PublicLocalitySeoHeader";
 import { PublicSeoIntro } from "../../../../modules/public/components/PublicSeoIntro";
+import { PublicSiteHeader } from "../../../../modules/public/components/PublicSiteHeader";
 
 type CidadePageProps = {
   params: Promise<{
@@ -38,6 +39,7 @@ export default async function CidadeSeoPage({ params }: CidadePageProps) {
 
   return (
     <main className="public-route">
+      <PublicSiteHeader />
       <section className="shell public-shell public-seo-page">
         <PublicLocalitySeoHeader
           h1={seo.h1}
@@ -52,19 +54,23 @@ export default async function CidadeSeoPage({ params }: CidadePageProps) {
             {cityLabel} - {ufLabel}, mantendo contato e mídia sob controle de exibição.
           </p>
         </PublicSeoIntro>
-      {listagemApi.ok ? (
-        <PublicAnuncioGrid
-          items={items}
-          emptyTitle="Nenhum perfil disponível no momento"
-          emptyMessage={`Ainda não há perfis para ${cityLabel} - ${ufLabel}. Você pode anunciar grátis ou voltar em breve para conferir novas publicações.`}
-        />
-      ) : (
-        <PublicAnuncioGrid
-          items={[]}
-          emptyTitle="Perfis temporariamente indisponíveis"
-          emptyMessage={`A página de ${cityLabel} - ${ufLabel} permanece acessível para navegação e cadastro enquanto a listagem é atualizada.`}
-        />
-      )}
+        {listagemApi.ok ? (
+          <PublicAnuncioGrid
+            items={items}
+            title={`Perfis em ${cityLabel}`}
+            summary="Veja perfis disponíveis, destaques e caminhos de contato conforme a liberação pública."
+            emptyTitle="Nenhum perfil disponível no momento"
+            emptyMessage={`Ainda não há perfis para ${cityLabel} - ${ufLabel}. Você pode anunciar grátis ou voltar em breve para conferir novas publicações.`}
+          />
+        ) : (
+          <PublicAnuncioGrid
+            items={[]}
+            title={`Perfis em ${cityLabel}`}
+            summary="A página permanece pronta para listar perfis quando a leitura pública estiver disponível."
+            emptyTitle="Perfis temporariamente indisponíveis"
+            emptyMessage={`A página de ${cityLabel} - ${ufLabel} permanece acessível para navegação e cadastro enquanto a listagem é atualizada.`}
+          />
+        )}
         <PublicInternalLinks
           title={`Bairros de ${cityLabel}`}
           links={bairroLinks}

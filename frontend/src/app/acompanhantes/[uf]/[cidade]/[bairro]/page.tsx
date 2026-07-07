@@ -14,6 +14,7 @@ import { PublicAnuncioGrid } from "../../../../../modules/public/components/Publ
 import { PublicInternalLinks } from "../../../../../modules/public/components/PublicInternalLinks";
 import { PublicLocalitySeoHeader } from "../../../../../modules/public/components/PublicLocalitySeoHeader";
 import { PublicSeoIntro } from "../../../../../modules/public/components/PublicSeoIntro";
+import { PublicSiteHeader } from "../../../../../modules/public/components/PublicSiteHeader";
 
 type BairroPageProps = {
   params: Promise<{
@@ -40,6 +41,7 @@ export default async function BairroSeoPage({ params }: BairroPageProps) {
 
   return (
     <main className="public-route">
+      <PublicSiteHeader />
       <section className="shell public-shell public-seo-page">
         <PublicLocalitySeoHeader
           h1={seo.h1}
@@ -54,19 +56,23 @@ export default async function BairroSeoPage({ params }: BairroPageProps) {
             da cidade, os anúncios relacionados e o cadastro gratuito no mesmo fluxo público.
           </p>
         </PublicSeoIntro>
-      {listagemApi.ok ? (
-        <PublicAnuncioGrid
-          items={items}
-          emptyTitle="Nenhum perfil disponível no bairro"
-          emptyMessage={`Ainda não há perfis suficientes em ${bairroLabel}, ${cityLabel}. A página fica pronta para receber anúncios quando houver oferta útil.`}
-        />
-      ) : (
-        <PublicAnuncioGrid
-          items={[]}
-          emptyTitle="Perfis temporariamente indisponíveis"
-          emptyMessage={`A navegação por ${bairroLabel}, ${cityLabel} permanece organizada enquanto a listagem é atualizada.`}
-        />
-      )}
+        {listagemApi.ok ? (
+          <PublicAnuncioGrid
+            items={items}
+            title={`Perfis no ${bairroLabel}`}
+            summary={`Acompanhe perfis em ${bairroLabel}, com atalhos para cidade, anúncios e cadastro.`}
+            emptyTitle="Nenhum perfil disponível no bairro"
+            emptyMessage={`Ainda não há perfis suficientes em ${bairroLabel}, ${cityLabel}. A página fica pronta para receber anúncios quando houver oferta útil.`}
+          />
+        ) : (
+          <PublicAnuncioGrid
+            items={[]}
+            title={`Perfis no ${bairroLabel}`}
+            summary="A listagem pública será preenchida conforme houver perfis liberados para exibição."
+            emptyTitle="Perfis temporariamente indisponíveis"
+            emptyMessage={`A navegação por ${bairroLabel}, ${cityLabel} permanece organizada enquanto a listagem é atualizada.`}
+          />
+        )}
         <PublicInternalLinks
           title={`Voltar para ${cityLabel}`}
           links={[

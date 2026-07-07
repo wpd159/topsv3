@@ -38,6 +38,8 @@ O checkpoint final do Bloco 55 foi criado em `4323df90` com a mensagem `docs: co
 
 Complementacao do Bloco 56: auditoria somente leitura de paridade visual producao x V3 local registrou `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`. As telas publicas/admin locais ainda parecem skeleton tecnico quando comparadas com a producao atual. Homologacao/cutover seguem reprovados ate bloco visual dedicado e revisao humana/Pro.
 
+O Bloco 57 inicia a fase 1 de paridade visual publica, limitada a shell publico, home, header, containers, tipografia, cores, botoes, cards e listagens de cidade/bairro. O gate `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO` permanece aberto ate revisao visual completa, incluindo detalhe de anuncio, wizard `/anunciar`, admin quando aplicavel e aprovacao humana/Pro.
+
 O Bloco 31 validou a V3 em ambiente local descartavel com dados sinteticos, migrations locais, backend temporario, API publica sintetica e SEO sintetico. O ZIP auditado do Bloco 31 e `C:\Users\WpD\Desktop\topsv3-fase-BLOCO-31-2026-07-05-020816-742.zip`, com SHA-256 `5a79fd40502b69a86b7eb8907c84cddd869df011f458250253b8c3334066451a`.
 
 O Bloco 31.1 corrige os validadores sinteticos para que API/SEO nao retornem OK por evidencia antiga quando o backend local estiver indisponivel. Por padrao, backend indisponivel deve retornar pendente com exit code 2. Reutilizacao de evidencia existente so pode ocorrer com parametro explicito e alerta documentado.

@@ -58,11 +58,17 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Preservacao visual: `docs/v3/48-preservacao-visual-atual.md`
 - Inventario visual: `docs/v3/49-inventario-visual-atual.md`
 - Checklist visual: `docs/v3/50-checklist-preservacao-visual.md`
+- Paridade visual producao x V3: `docs/v3/264-bloco-56-paridade-visual-producao.md`
+- Checklist paridade visual producao x V3: `docs/v3/265-checklist-bloco-56-paridade-visual-producao.md`
+- Paridade visual publica fase 1: `docs/v3/266-bloco-57-paridade-visual-publica-fase-1.md`
+- Checklist paridade visual publica fase 1: `docs/v3/267-checklist-bloco-57-paridade-visual-publica-fase-1.md`
 - Diretriz mobile: `docs/v3/161-diretriz-ui-mobile-bloco-21.md`
 - Checklist mobile: `docs/v3/162-checklist-validacao-mobile-bloco-21.md`
 - Script: `scripts/local/validar-ui-mobile-estatica.ps1`
 - Evidencias Bloco 21: `docs/v3/evidencias/bloco-21/`
 - Evidencias Bloco 26.1: `docs/v3/evidencias/bloco-26-1/`
+- Evidencias Bloco 56: `docs/v3/evidencias/bloco-56/`
+- Evidencias Bloco 57: `docs/v3/evidencias/bloco-57/`
 
 ## Banco e migrations
 

@@ -10,9 +10,9 @@ export function PublicMidiaPlaceholder({ midias = [], compact = false }: PublicM
 
   return (
     <div className={compact ? "public-media-placeholder compact-media" : "public-media-placeholder"}>
-      <span>Mídia pública</span>
-      <strong>{total > 0 ? "Mídia em análise" : "Mídia indisponível"}</strong>
-      <small>Fotos e vídeos só aparecem quando estão aprovados para exibição.</small>
+      <span>Fotos</span>
+      <strong>{total > 0 ? "Fotos em revisão" : "Fotos em breve"}</strong>
+      <small>As imagens aparecem quando estiverem liberadas para exibição.</small>
     </div>
   );
 }

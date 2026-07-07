@@ -229,6 +229,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 36 decide que a UI admin de Premium deve formatar codigos de beneficio/status/consistencia como rotulos humanos, mantendo DTOs e contratos tecnicos intactos.
 - Bloco 37 decide que copy tecnica/sem acento detectada em prints deve ser bloqueada por validadores renderizados. `Metadados publicos locais`, enum `ANUNCIO`, `Autorizacao`, `admin configurar`, `anuncio ler` e `Preparar autorizacao` nao podem aparecer como texto visivel ao usuario.
 - Bloco 38 decide que pares redundantes de status publico tambem sao copy tecnica de apresentacao. `Fluxo autorizado` e `Autorização autorizada` devem ser substituidos por copy natural sem alterar regra de autorizacao.
+- Bloco 56 registra `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`: a V3 local nao pode seguir para homologacao/cutover enquanto parecer skeleton tecnico frente a producao publica atual.
+- Bloco 57 decide executar paridade visual publica por fases. A fase 1 pode ajustar shell/header, home, cards e listagens de cidade/bairro, mas nao encerra o gate visual sem revisao completa de detalhe de anuncio, wizard, admin quando aplicavel e aprovacao humana/Pro.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.
 - Validacao SEO com dados sanitizados depende de restore e sanitizacao concluidos.
 

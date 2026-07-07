@@ -62,6 +62,8 @@ Para mudancas visuais publicas:
 
 Status atual: `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`.
 
+Mitigacao parcial: o Bloco 57 executa paridade visual publica fase 1 em shell/header, home, cards e listagens de cidade/bairro. O gate continua aberto para detalhe de anuncio, wizard `/anunciar`, admin quando aplicavel, comparacao final e revisao humana/Pro.
+
 Antes de homologacao/cutover:
 
 - comparar V3 local com producao publica atual em home, cidade, bairro, detalhe de anuncio, `/anunciar` e mobile;
