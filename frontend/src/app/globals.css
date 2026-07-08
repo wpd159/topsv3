@@ -2929,3 +2929,122 @@ main.public-route {
     padding: 24px 18px;
   }
 }
+
+/* Patch 63.4 - menu mobile enxuto e efeito unico dos botoes publicos. */
+.public-route a,
+.public-route button {
+  -webkit-tap-highlight-color: rgb(252 30 173 / 0.16);
+}
+
+.public-header-login,
+.public-header-register,
+.public-header-cta,
+.production-search-button,
+.public-hero-cta,
+.public-hero-secondary,
+.public-card-link,
+.public-card-secondary-link,
+.public-category-body em,
+.public-footer-cta a,
+.public-footer-cta-row a,
+.public-home-directory-grid a,
+.public-mobile-drawer a,
+.local-action,
+.local-secondary-action {
+  will-change: transform, box-shadow;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.public-header-login:hover,
+.public-header-register:hover,
+.public-header-cta:hover,
+.production-search-button:hover,
+.public-hero-cta:hover,
+.public-hero-secondary:hover,
+.public-card-link:hover,
+.public-card-secondary-link:hover,
+.public-category-body em:hover,
+.public-footer-cta a:hover,
+.public-footer-cta-row a:hover,
+.public-home-directory-grid a:hover,
+.public-mobile-drawer a:hover,
+.local-action:hover:not(:disabled),
+.local-secondary-action:hover:not(:disabled) {
+  box-shadow:
+    0 16px 32px rgb(17 24 39 / 0.08),
+    0 0 28px rgb(252 30 173 / 0.18);
+  transform: translateY(-2px);
+}
+
+.public-header-cta:hover,
+.production-search-button:hover,
+.public-footer-cta a:hover,
+.public-footer-cta-row a:hover,
+.local-action:hover:not(:disabled) {
+  box-shadow:
+    0 18px 34px rgb(252 30 173 / 0.28),
+    0 0 34px rgb(252 30 173 / 0.22);
+}
+
+.public-header-login:active,
+.public-header-register:active,
+.public-header-cta:active,
+.production-search-button:active,
+.public-hero-cta:active,
+.public-hero-secondary:active,
+.public-card-link:active,
+.public-card-secondary-link:active,
+.public-category-body em:active,
+.public-footer-cta a:active,
+.public-footer-cta-row a:active,
+.public-home-directory-grid a:active,
+.public-mobile-drawer a:active,
+.local-action:active:not(:disabled),
+.local-secondary-action:active:not(:disabled) {
+  box-shadow:
+    0 8px 20px rgb(17 24 39 / 0.06),
+    0 0 18px rgb(252 30 173 / 0.14);
+  transform: translateY(0);
+}
+
+@media (max-width: 760px) {
+  .public-mobile-drawer {
+    border-color: #f3d4e8;
+    padding: 16px;
+  }
+
+  .public-mobile-drawer-heading strong {
+    color: #111827;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .public-mobile-drawer nav {
+    gap: 12px;
+    padding-top: 4px;
+  }
+
+  .public-mobile-drawer .public-header-login,
+  .public-mobile-drawer .public-header-register,
+  .public-mobile-drawer .public-header-cta {
+    justify-content: flex-start;
+    min-height: 48px;
+    width: 100%;
+    max-width: 100%;
+    padding: 12px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.15;
+  }
+
+  .public-mobile-drawer .public-header-cta {
+    justify-content: center;
+    font-weight: 800;
+  }
+}

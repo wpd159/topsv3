@@ -18,7 +18,7 @@ const mainLinks: HeaderLink[] = [
 const accountLinks: HeaderLink[] = [
   { href: "/admin", label: "Entrar", className: "public-header-login" },
   { href: "/anunciar", label: "Registrar-se", className: "public-header-register" },
-  { href: "/anunciar", label: "PUBLICAR SEU ANÚNCIO", className: "public-header-cta" }
+  { href: "/admin", label: "PUBLICAR SEU ANÚNCIO", className: "public-header-cta" }
 ];
 
 export function PublicSiteHeader() {
@@ -79,10 +79,10 @@ export function PublicSiteHeader() {
               </button>
             </div>
             <nav aria-label="Menu mobile">
-              {[...mainLinks, ...accountLinks].map((link) => (
+              {accountLinks.map((link) => (
                 <Link
                   key={`mobile-${link.href}-${link.label}`}
-                  className={link.className ?? "public-mobile-link"}
+                  className={link.className}
                   href={link.href}
                   onClick={() => setMenuOpen(false)}
                 >
