@@ -61,6 +61,34 @@ export default function HomePage() {
             mais clientes.
           </p>
         </PublicSeoTextBlock>
+        <section className="public-home-trust" aria-labelledby="public-home-trust-title">
+          <div className="public-home-trust-heading">
+            <h2 id="public-home-trust-title">
+              Confiança que <span>se sente</span> em cada detalhe!
+            </h2>
+            <p>
+              Verificações reais, autenticações constantes e um time dedicado à segurança de quem
+              anuncia e contrata.
+            </p>
+          </div>
+          <div className="public-home-trust-grid">
+            <article className="public-home-trust-card">
+              <span aria-hidden="true">360°</span>
+              <h3>Mídias 360° revisadas</h3>
+              <p>Cada foto e vídeo é verificado pela nossa equipe para garantir que o perfil é real e atualizado.</p>
+            </article>
+            <article className="public-home-trust-card">
+              <span aria-hidden="true">ID</span>
+              <h3>Identidade confirmada</h3>
+              <p>Todos os profissionais passam por verificação documental antes de seus anúncios ficarem públicos.</p>
+            </article>
+            <article className="public-home-trust-card">
+              <span aria-hidden="true">OK</span>
+              <h3>Conteúdo protegido</h3>
+              <p>Fotos e vídeos são armazenados com segurança e auditados regularmente para evitar falsificações.</p>
+            </article>
+          </div>
+        </section>
       </section>
       <PublicSiteFooter />
     </main>

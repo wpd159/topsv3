@@ -59,6 +59,7 @@ Estado atual:
 - Complementacao de deploy HML do Bloco 60 cria workflow GitHub Actions + SSH, Compose HML, Nginx `v3.esle.cloud` com `noindex/nofollow/noarchive` e robots `Disallow: /`, mas nao executa deploy, push, SSH, VPS, producao, dados reais, Pix/Efi real, webhook real, upload real, e-mail real ou WhatsApp real;
 - Bloco 61 registra HML online em `https://v3.esle.cloud`, HTTP 80 redirecionando para HTTPS 443, certificado LetsEncrypt, `X-Robots-Tag` noindex/nofollow/noarchive, robots `Disallow: /` e `GET /api/health` com `UP`, sem producao, dados reais, Pix/Efi real, webhook real, upload real, push ou fase posterior;
 - Bloco 63.2 diagnostica que o HML ainda reflete codigo anterior porque o commit local `159fd91c` do Bloco 63.1 esta `ahead` de `origin/main` e nao foi pushado/deployado; a correcao local remove `Setor Bueno` do header global, adiciona favicon real do clone e mantem `C:\clone` e producao somente leitura;
+- Bloco 63.3 continua o acabamento do shell publico com menu mobile fechado por padrao, microinteracoes em cards/botoes e secao de confianca da producao, sem push e sem criar relatorios novos;
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites

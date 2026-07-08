@@ -15,9 +15,9 @@ export function PublicHomeHero() {
       <div className="production-hero-overlay" />
       <div className="public-home-copy production-home-copy">
         <h1>
-          Encontre <span>acompanhantes</span> perto de você
+          Encontre <span>acompanhantes</span> perto de você!
         </h1>
-        <p>Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.</p>
+        <p>Veja os anúncios de acompanhantes perto de você, com sigilo, segurança e contato direto pelo WhatsApp.</p>
         <div className="production-search-shell" aria-label="Busca visual">
           <div className="production-search-input">Digite cidade, bairro, categoria ou característica...</div>
           <Link className="production-search-button" href="/acompanhantes/go/goiania">

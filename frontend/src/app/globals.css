@@ -2696,3 +2696,236 @@ main.public-route {
     width: 100%;
   }
 }
+
+/* Bloco 63.3 - acabamento de confianca, microinteracoes e menu mobile em fluxo. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.public-mobile-menu-button,
+.public-mobile-drawer {
+  display: none;
+}
+
+.public-mobile-menu-button,
+.public-mobile-drawer button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111827;
+  cursor: pointer;
+}
+
+.public-mobile-menu-button {
+  align-items: center;
+  justify-content: center;
+}
+
+.public-menu-icon {
+  display: grid;
+  gap: 5px;
+  width: 20px;
+}
+
+.public-menu-icon span {
+  display: block;
+  height: 2px;
+  border-radius: 999px;
+  background: #111827;
+}
+
+.public-mobile-drawer {
+  grid-column: 1 / -1;
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid #f1d8e8;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 18px 36px rgb(17 24 39 / 0.08);
+  padding: 14px;
+}
+
+.public-mobile-drawer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.public-mobile-drawer nav {
+  display: grid;
+  gap: 10px;
+}
+
+.public-mobile-drawer a {
+  width: 100%;
+}
+
+.public-home-trust {
+  display: grid;
+  gap: 34px;
+  padding: 48px 0 16px;
+}
+
+.public-home-trust-heading {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.public-home-trust-heading h2 {
+  margin: 0;
+  color: #111827;
+  font-size: clamp(30px, 4vw, 42px);
+  line-height: 1.12;
+}
+
+.public-home-trust-heading h2 span {
+  color: var(--visual-brand);
+}
+
+.public-home-trust-heading p {
+  margin: 0;
+  max-width: 620px;
+  color: #5b6472;
+  font-size: 15px;
+}
+
+.public-home-trust-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.public-home-trust-card {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgb(17 24 39 / 0.04);
+  padding: 30px 22px;
+  text-align: center;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.public-home-trust-card > span {
+  display: inline-grid;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 42px;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.public-home-trust-card h3 {
+  margin: 0;
+  color: #111827;
+  font-size: 18px;
+}
+
+.public-home-trust-card p {
+  margin: 0;
+  color: #5b6472;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.public-home-trust-card:hover,
+.public-anuncio-card:hover,
+.public-home-directory-grid a:hover,
+.public-seo-block:hover,
+.public-internal-links li:hover,
+.public-card-link:hover,
+.public-card-secondary-link:hover,
+.public-header-register:hover,
+.public-mobile-drawer a:hover {
+  border-color: #f7b9de;
+  box-shadow:
+    0 18px 42px rgb(17 24 39 / 0.08),
+    0 0 28px rgb(252 30 173 / 0.16);
+  transform: translateY(-3px);
+}
+
+.public-header-cta:hover,
+.production-search-button:hover,
+.public-footer-cta a:hover,
+.public-footer-cta-row a:hover,
+.local-action:hover:not(:disabled) {
+  box-shadow:
+    0 16px 32px rgb(252 30 173 / 0.26),
+    0 0 32px rgb(252 30 173 / 0.2);
+}
+
+.public-home-trust-card:active,
+.public-category-card:active,
+.public-anuncio-card:active,
+.public-header-cta:active,
+.production-search-button:active,
+.public-card-link:active,
+.public-card-secondary-link:active {
+  transform: translateY(-1px);
+}
+
+@media (max-width: 760px) {
+  .public-site-header-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .public-mobile-menu-button {
+    display: inline-flex;
+    justify-self: end;
+  }
+
+  .public-site-nav,
+  .public-site-actions {
+    display: none;
+  }
+
+  .public-mobile-drawer {
+    display: grid;
+  }
+
+  .public-brand {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .public-brand-region {
+    display: none;
+  }
+
+  .public-home-trust {
+    padding-top: 34px;
+  }
+
+  .public-home-trust-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-home-trust-card {
+    padding: 24px 18px;
+  }
+}
