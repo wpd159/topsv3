@@ -3,6 +3,8 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 
 import { PublicConsentGate } from "../modules/public/components/PublicConsentGate";
+import { PublicSiteFooter } from "../modules/public/components/PublicSiteFooter";
+import { PublicSiteHeader } from "../modules/public/components/PublicSiteHeader";
 
 export const metadata = {
   title: "Tops do Job",
@@ -26,7 +28,9 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
+        <PublicSiteHeader />
         {children}
+        <PublicSiteFooter />
         <PublicConsentGate />
       </body>
     </html>

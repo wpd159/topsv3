@@ -49,13 +49,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.1
     },
     {
-      url: localUrl("/seguranca"),
+      url: localUrl("/aviso-seguranca-whatsapp"),
       lastModified: now,
       changeFrequency: "weekly",
       priority: 0.1
     },
     {
-      url: localUrl("/perguntas-frequentes"),
+      url: localUrl("/faq"),
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.1
+    },
+    {
+      url: localUrl("/consentimento-promocional"),
       lastModified: now,
       changeFrequency: "weekly",
       priority: 0.1

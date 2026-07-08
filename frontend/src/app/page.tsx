@@ -5,8 +5,6 @@ import { localUrl } from "../lib/seo/localSeo";
 import { PublicCategorySection } from "../modules/public/components/PublicCategorySection";
 import { PublicHomeHero } from "../modules/public/components/PublicHomeHero";
 import { PublicSeoTextBlock } from "../modules/public/components/PublicSeoTextBlock";
-import { PublicSiteFooter } from "../modules/public/components/PublicSiteFooter";
-import { PublicSiteHeader } from "../modules/public/components/PublicSiteHeader";
 
 export const metadata: Metadata = {
   title: "Tops do Job | Acompanhantes por cidade e bairro",
@@ -27,7 +25,6 @@ export const metadata: Metadata = {
 export default function HomePage() {
   return (
     <main className="public-route">
-      <PublicSiteHeader />
       <section className="shell public-shell public-home-shell">
         <PublicHomeHero />
         <PublicCategorySection />
@@ -90,7 +87,6 @@ export default function HomePage() {
           </div>
         </section>
       </section>
-      <PublicSiteFooter />
     </main>
   );
 }

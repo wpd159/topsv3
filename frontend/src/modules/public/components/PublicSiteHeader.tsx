@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { LoginModal } from "./clone/LoginModal";
@@ -19,6 +20,7 @@ const mainLinks: HeaderLink[] = [
 ];
 
 export function PublicSiteHeader() {
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -51,6 +53,10 @@ export function PublicSiteHeader() {
   function openRegister() {
     setMenuOpen(false);
     setRegisterOpen(true);
+  }
+
+  if (pathname?.startsWith("/admin")) {
+    return null;
   }
 
   return (

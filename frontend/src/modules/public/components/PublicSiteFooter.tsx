@@ -2,12 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { LoginModal } from "./clone/LoginModal";
 import { RegisterModal } from "./clone/RegisterModal";
 
 export function PublicSiteFooter() {
+  const pathname = usePathname();
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -23,6 +25,10 @@ export function PublicSiteFooter() {
   function openPublishLogin() {
     setNextPath("/anunciar");
     setLoginOpen(true);
+  }
+
+  if (pathname?.startsWith("/admin")) {
+    return null;
   }
 
   return (
@@ -56,14 +62,14 @@ export function PublicSiteFooter() {
           <Link href="/politica-de-privacidade">Política de Privacidade</Link>
           <Link href="/cookies">Política de Cookies</Link>
           <Link href="/politicas/verificacao-etaria">Verificação Etária</Link>
-          <Link href="/seguranca">Aviso de Segurança no WhatsApp</Link>
+          <Link href="/aviso-seguranca-whatsapp">Aviso de Segurança no WhatsApp</Link>
         </nav>
 
         <nav className="public-footer-links" aria-label="Navegação">
           <h2>NAVEGAÇÃO</h2>
           <Link href="/sobre">Sobre o Tops do Job</Link>
-          <Link href="/perguntas-frequentes">Fale Conosco</Link>
-          <Link href="/perguntas-frequentes">Central de ajuda</Link>
+          <Link href="/faq">Fale Conosco</Link>
+          <Link href="/faq">Central de ajuda</Link>
           <Link href="/como-funciona">Blog</Link>
         </nav>
 

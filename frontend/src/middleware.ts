@@ -9,7 +9,11 @@ const protectedPrefixes = [
   "/moderacao",
   "/publicar",
   "/editar",
-  "/checkout"
+  "/checkout",
+  "/chat",
+  "/favoritos",
+  "/indicacoes",
+  "/meus-tickets"
 ];
 
 const sessionCookieNames = ["JSESSIONID", "SESSION"];

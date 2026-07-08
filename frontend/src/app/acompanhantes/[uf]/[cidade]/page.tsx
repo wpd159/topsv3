@@ -13,8 +13,6 @@ import { PublicAnuncioGrid } from "../../../../modules/public/components/PublicA
 import { PublicInternalLinks } from "../../../../modules/public/components/PublicInternalLinks";
 import { PublicLocalitySeoHeader } from "../../../../modules/public/components/PublicLocalitySeoHeader";
 import { PublicSeoIntro } from "../../../../modules/public/components/PublicSeoIntro";
-import { PublicSiteFooter } from "../../../../modules/public/components/PublicSiteFooter";
-import { PublicSiteHeader } from "../../../../modules/public/components/PublicSiteHeader";
 
 type CidadePageProps = {
   params: Promise<{
@@ -40,7 +38,6 @@ export default async function CidadeSeoPage({ params }: CidadePageProps) {
 
   return (
     <main className="public-route">
-      <PublicSiteHeader />
       <section className="shell public-shell public-seo-page">
         <PublicLocalitySeoHeader
           h1={seo.h1}
@@ -87,7 +84,6 @@ export default async function CidadeSeoPage({ params }: CidadePageProps) {
           links={[{ label: "Anuncie grátis", href: "/anunciar", description: "Publique seu anúncio" }]}
         />
       </section>
-      <PublicSiteFooter />
     </main>
   );
 }
