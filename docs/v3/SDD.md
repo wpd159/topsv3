@@ -65,6 +65,7 @@ Estado atual:
 - Patch 63.5 tambem corrige a busca do hero como input digitavel; enquanto nao houver rota final de busca, o submit usa stub publico seguro em /acompanhantes/go/goiania com parametro busca.
 - Patch 63.6 recria no frontend V3 o aviso publico 18+/cookies da producao, com aceite persistido em cookie/localStorage, configuracao de preferencias e rotas publicas para termos, privacidade, cookies e verificacao etaria; o modal nao usa scroll lock nem `document.body.style.overflow`.
 - Patch 63.R reseta o shell publico para comportamento real da producao: header/footer usam modais de login/registro/publicacao, paginas soltas `/entrar` e `/registrar` foram removidas, age gate voltou ao padrao de producao e a guarda de rotas privadas redireciona para a home com modal de entrada.
+- Patch 63.7 preserva o front real aprovado como base visual e remove remendos conflitantes; header, footer, login modal, age gate, cookies, CTAs e menu mobile seguem baseados no clone/producao, enquanto somente o modal de criar conta fica reestruturado em HTML/CSS/React simples para reduzir risco de travamento em Android antigo.
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites

@@ -4,7 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { PublicAuthModal, PublicAuthMode, safeNextPath } from "./PublicAuthModal";
+import { LoginModal } from "./clone/LoginModal";
+import { RegisterModal } from "./clone/RegisterModal";
 
 type HeaderLink = {
   href: string;
@@ -19,7 +20,8 @@ const mainLinks: HeaderLink[] = [
 
 export function PublicSiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [authMode, setAuthMode] = useState<PublicAuthMode>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [nextPath, setNextPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,7 +32,8 @@ export function PublicSiteHeader() {
 
     if (shouldOpenLogin || shouldOpenRegister) {
       setNextPath(next);
-      setAuthMode(shouldOpenRegister ? "register" : "login");
+      setLoginOpen(shouldOpenLogin);
+      setRegisterOpen(shouldOpenRegister);
       params.delete("login");
       params.delete("registro");
       params.delete("next");
@@ -39,10 +42,15 @@ export function PublicSiteHeader() {
     }
   }, []);
 
-  function openAuth(mode: PublicAuthMode, next: string | null = null) {
+  function openLogin(next: string | null = null) {
     setMenuOpen(false);
     setNextPath(next);
-    setAuthMode(mode);
+    setLoginOpen(true);
+  }
+
+  function openRegister() {
+    setMenuOpen(false);
+    setRegisterOpen(true);
   }
 
   return (
@@ -84,13 +92,13 @@ export function PublicSiteHeader() {
         </nav>
 
         <div className="public-site-actions">
-          <button className="public-header-login" type="button" onClick={() => openAuth("login")}>
+          <button className="public-header-login" type="button" onClick={() => openLogin()}>
             Entrar
           </button>
-          <button className="public-header-register" type="button" onClick={() => openAuth("register")}>
+          <button className="public-header-register" type="button" onClick={openRegister}>
             Registrar-se
           </button>
-          <button className="public-header-cta" type="button" onClick={() => openAuth("login", "/anunciar")}>
+          <button className="public-header-cta" type="button" onClick={() => openLogin("/anunciar")}>
             PUBLICAR SEU ANÚNCIO
           </button>
         </div>
@@ -104,20 +112,37 @@ export function PublicSiteHeader() {
               </button>
             </div>
             <nav aria-label="Menu mobile">
-              <button className="public-header-login" type="button" onClick={() => openAuth("login")}>
+              <button className="public-header-login" type="button" onClick={() => openLogin()}>
                 Entrar
               </button>
-              <button className="public-header-register" type="button" onClick={() => openAuth("register")}>
+              <button className="public-header-register" type="button" onClick={openRegister}>
                 Registrar-se
               </button>
-              <button className="public-header-cta" type="button" onClick={() => openAuth("login", "/anunciar")}>
+              <button className="public-header-cta" type="button" onClick={() => openLogin("/anunciar")}>
                 PUBLICAR SEU ANÚNCIO
               </button>
             </nav>
           </div>
         ) : null}
       </div>
-      <PublicAuthModal mode={authMode} nextPath={nextPath} onModeChange={setAuthMode} />
+      <LoginModal
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        onOpenRegister={() => setRegisterOpen(true)}
+        redirectAfterSuccess={nextPath}
+      />
+      <RegisterModal
+        open={registerOpen}
+        onOpenChange={setRegisterOpen}
+        onBackToLogin={() => window.setTimeout(() => setLoginOpen(true), 220)}
+      />
     </header>
   );
+}
+
+function safeNextPath(value?: string | null): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/api/")) {
+    return null;
+  }
+  return value;
 }

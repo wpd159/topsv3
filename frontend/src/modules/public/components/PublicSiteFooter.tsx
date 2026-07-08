@@ -4,11 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { PublicAuthModal, PublicAuthMode } from "./PublicAuthModal";
+import { LoginModal } from "./clone/LoginModal";
+import { RegisterModal } from "./clone/RegisterModal";
 
 export function PublicSiteFooter() {
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const [authMode, setAuthMode] = useState<PublicAuthMode>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const [nextPath, setNextPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -20,7 +22,7 @@ export function PublicSiteFooter() {
 
   function openPublishLogin() {
     setNextPath("/anunciar");
-    setAuthMode("login");
+    setLoginOpen(true);
   }
 
   return (
@@ -100,7 +102,17 @@ export function PublicSiteFooter() {
           ↑ Voltar ao Início
         </button>
       ) : null}
-      <PublicAuthModal mode={authMode} nextPath={nextPath} onModeChange={setAuthMode} />
+      <LoginModal
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        onOpenRegister={() => setRegisterOpen(true)}
+        redirectAfterSuccess={nextPath}
+      />
+      <RegisterModal
+        open={registerOpen}
+        onOpenChange={setRegisterOpen}
+        onBackToLogin={() => window.setTimeout(() => setLoginOpen(true), 220)}
+      />
     </footer>
   );
 }
