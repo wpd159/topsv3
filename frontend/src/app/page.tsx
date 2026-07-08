@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { localUrl } from "../lib/seo/localSeo";
+import { PublicCategorySection } from "../modules/public/components/PublicCategorySection";
 import { PublicHomeHero } from "../modules/public/components/PublicHomeHero";
 import { PublicSeoTextBlock } from "../modules/public/components/PublicSeoTextBlock";
+import { PublicSiteFooter } from "../modules/public/components/PublicSiteFooter";
 import { PublicSiteHeader } from "../modules/public/components/PublicSiteHeader";
 
 export const metadata: Metadata = {
@@ -28,6 +30,7 @@ export default function HomePage() {
       <PublicSiteHeader />
       <section className="shell public-shell public-home-shell">
         <PublicHomeHero />
+        <PublicCategorySection />
         <section className="public-home-directory" aria-label="Principais caminhos">
           <div>
             <span className="public-section-kicker">Explore por região</span>
@@ -59,6 +62,7 @@ export default function HomePage() {
           </p>
         </PublicSeoTextBlock>
       </section>
+      <PublicSiteFooter />
     </main>
   );
 }

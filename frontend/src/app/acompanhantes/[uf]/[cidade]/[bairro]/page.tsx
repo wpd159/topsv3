@@ -14,6 +14,7 @@ import { PublicAnuncioGrid } from "../../../../../modules/public/components/Publ
 import { PublicInternalLinks } from "../../../../../modules/public/components/PublicInternalLinks";
 import { PublicLocalitySeoHeader } from "../../../../../modules/public/components/PublicLocalitySeoHeader";
 import { PublicSeoIntro } from "../../../../../modules/public/components/PublicSeoIntro";
+import { PublicSiteFooter } from "../../../../../modules/public/components/PublicSiteFooter";
 import { PublicSiteHeader } from "../../../../../modules/public/components/PublicSiteHeader";
 
 type BairroPageProps = {
@@ -93,6 +94,7 @@ export default async function BairroSeoPage({ params }: BairroPageProps) {
           links={[{ label: "Anuncie grátis", href: "/anunciar", description: "Envie seu perfil para análise" }]}
         />
       </section>
+      <PublicSiteFooter />
     </main>
   );
 }

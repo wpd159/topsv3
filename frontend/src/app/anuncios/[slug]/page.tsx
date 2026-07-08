@@ -13,6 +13,7 @@ import {
 import { PublicBreadcrumbs } from "../../../modules/public/components/PublicBreadcrumbs";
 import { PublicInternalLinks } from "../../../modules/public/components/PublicInternalLinks";
 import { PublicSeoIntro } from "../../../modules/public/components/PublicSeoIntro";
+import { PublicSiteFooter } from "../../../modules/public/components/PublicSiteFooter";
 import { PublicSiteHeader } from "../../../modules/public/components/PublicSiteHeader";
 import { PublicAgeGateContent } from "../../../modules/public/skeleton/PublicAgeGateContent";
 
@@ -81,9 +82,10 @@ export default async function AnuncioSeoPage({ params }: AnuncioPageProps) {
         initialAnuncio={anuncio}
         initialStatus={anuncioApi.status}
         initialMessage={anuncioApi.ok ? null : anuncioApi.message}
-      />
+        />
         <PublicInternalLinks title="Navegação relacionada" links={localityLinks} />
       </section>
+      <PublicSiteFooter />
     </main>
   );
 }

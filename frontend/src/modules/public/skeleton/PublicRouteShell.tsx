@@ -1,3 +1,6 @@
+import { PublicSiteFooter } from "../components/PublicSiteFooter";
+import { PublicSiteHeader } from "../components/PublicSiteHeader";
+
 type PublicRouteShellProps = {
   title: string;
   routePattern: string;
@@ -15,6 +18,7 @@ export function PublicRouteShell({
 }: PublicRouteShellProps) {
   return (
     <main className="public-route">
+      <PublicSiteHeader />
       <section className="shell public-shell">
         {eyebrow ? (
           <span className="status" data-debug-label="PUBLIC_STATUS">
@@ -25,6 +29,7 @@ export function PublicRouteShell({
         {showRoutePattern ? <p className="route-pattern">{routePattern}</p> : null}
         <div className="public-content">{children}</div>
       </section>
+      <PublicSiteFooter />
     </main>
   );
 }

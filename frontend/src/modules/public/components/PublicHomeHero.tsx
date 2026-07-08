@@ -1,15 +1,29 @@
+import Image from "next/image";
 import Link from "next/link";
 
 export function PublicHomeHero() {
   return (
-    <section className="public-home-hero" aria-label="Home pública">
-      <div className="public-home-copy">
-        <span className="status">Acompanhantes perto de você</span>
-        <h1>Tops do Job</h1>
-        <p>
-          Encontre perfis por cidade e bairro, veja anúncios com contato mediado e anuncie grátis
-          para análise.
-        </p>
+    <section className="public-home-hero production-home-hero" aria-label="Home pública">
+      <Image
+        src="/2151117281.jpg"
+        alt=""
+        fill
+        priority
+        sizes="(max-width: 760px) 100vw, 1220px"
+        className="production-hero-image"
+      />
+      <div className="production-hero-overlay" />
+      <div className="public-home-copy production-home-copy">
+        <h1>
+          Encontre <span>acompanhantes</span> perto de você
+        </h1>
+        <p>Veja anúncios na sua cidade e região, com contato mediado pela V3.</p>
+        <div className="production-search-shell" aria-label="Busca visual">
+          <div className="production-search-input">Digite cidade, bairro, categoria ou característica...</div>
+          <Link className="production-search-button" href="/acompanhantes/go/goiania">
+            Buscar
+          </Link>
+        </div>
         <div className="public-home-primary-actions" aria-label="Ações principais">
           <Link className="public-hero-cta" href="/acompanhantes/go/goiania">
             Ver acompanhantes
@@ -19,7 +33,7 @@ export function PublicHomeHero() {
           </Link>
         </div>
       </div>
-      <div className="public-home-preview" aria-label="Prévia de perfis">
+      <div className="public-home-preview production-home-preview" aria-label="Prévia de perfis">
         <Link href="/anuncios/demo-goiania-livre-premium" className="public-preview-card public-preview-card-primary">
           <span>Destaque</span>
           <strong>Perfil em Goiânia</strong>

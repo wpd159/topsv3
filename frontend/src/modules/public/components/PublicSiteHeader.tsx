@@ -1,5 +1,5 @@
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
 
 export function PublicSiteHeader() {
   return (
@@ -9,8 +9,8 @@ export function PublicSiteHeader() {
           <Image
             src="/logo.webp"
             alt="Tops do Job"
-            width={140}
-            height={50}
+            width={168}
+            height={60}
             priority
             className="public-brand-logo"
           />
@@ -21,9 +21,17 @@ export function PublicSiteHeader() {
           <Link href="/anuncios/demo-goiania-livre-premium">Anúncios</Link>
           <Link href="/acompanhantes/go/goiania/setor-bueno">Setor Bueno</Link>
         </nav>
-        <Link className="public-header-cta" href="/anunciar">
-          PUBLICAR SEU ANÚNCIO
-        </Link>
+        <div className="public-site-actions">
+          <Link className="public-header-login" href="/admin">
+            Entrar
+          </Link>
+          <Link className="public-header-register" href="/anunciar">
+            Registrar-se
+          </Link>
+          <Link className="public-header-cta" href="/anunciar">
+            PUBLICAR SEU ANÚNCIO
+          </Link>
+        </div>
       </div>
     </header>
   );

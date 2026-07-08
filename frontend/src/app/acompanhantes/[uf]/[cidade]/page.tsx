@@ -13,6 +13,7 @@ import { PublicAnuncioGrid } from "../../../../modules/public/components/PublicA
 import { PublicInternalLinks } from "../../../../modules/public/components/PublicInternalLinks";
 import { PublicLocalitySeoHeader } from "../../../../modules/public/components/PublicLocalitySeoHeader";
 import { PublicSeoIntro } from "../../../../modules/public/components/PublicSeoIntro";
+import { PublicSiteFooter } from "../../../../modules/public/components/PublicSiteFooter";
 import { PublicSiteHeader } from "../../../../modules/public/components/PublicSiteHeader";
 
 type CidadePageProps = {
@@ -86,6 +87,7 @@ export default async function CidadeSeoPage({ params }: CidadePageProps) {
           links={[{ label: "Anuncie grátis", href: "/anunciar", description: "Envie seu perfil para análise" }]}
         />
       </section>
+      <PublicSiteFooter />
     </main>
   );
 }
