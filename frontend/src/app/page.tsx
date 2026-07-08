@@ -10,7 +10,7 @@ import { PublicSiteHeader } from "../modules/public/components/PublicSiteHeader"
 
 export const metadata: Metadata = {
   title: "Tops do Job | Acompanhantes por cidade e bairro",
-  description: "Navegue por acompanhantes em cidades, bairros e anúncios com contato mediado e cadastro gratuito para análise.",
+  description: "Veja anúncios de acompanhantes por cidade e bairro, encontre perfis na sua região e publique seu anúncio.",
   alternates: {
     canonical: localUrl("/")
   },
@@ -36,8 +36,8 @@ export default function HomePage() {
             <span className="public-section-kicker">Explore por região</span>
             <h2>Acompanhantes por cidade e bairro</h2>
             <p>
-              Comece pelos caminhos mais usados e acesse perfis, bairros e anúncios com navegação
-              simples.
+              Acesse páginas locais com anúncios de acompanhantes por cidade e continue a busca por
+              regiões próximas.
             </p>
           </div>
           <div className="public-home-directory-grid">
@@ -51,14 +51,14 @@ export default function HomePage() {
             </Link>
             <Link href="/anuncios/demo-goiania-livre-premium">
               <strong>Anúncio em destaque</strong>
-              <span>Ver perfil público</span>
+              <span>Ver anúncio</span>
             </Link>
           </div>
         </section>
         <PublicSeoTextBlock routePath="/">
           <p>
-            Navegue por cidades, bairros e anúncios, ou envie seu perfil em Anuncie grátis para
-            análise antes da publicação.
+            Encontre acompanhantes por cidade, bairro e anúncio. Publique seu anúncio e apareça para
+            mais clientes.
           </p>
         </PublicSeoTextBlock>
       </section>

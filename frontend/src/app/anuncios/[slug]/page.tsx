@@ -58,7 +58,7 @@ export default async function AnuncioSeoPage({ params }: AnuncioPageProps) {
     {
       label: "Anuncie grátis",
       href: "/anunciar",
-      description: "Envie seu perfil para análise"
+      description: "Publique seu anúncio"
     }
   ].filter((link): link is { label: string; href: string; description: string } => Boolean(link));
 

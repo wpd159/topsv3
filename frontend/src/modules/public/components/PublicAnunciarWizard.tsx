@@ -118,12 +118,12 @@ export function PublicAnunciarWizard() {
     }
 
     setSubmitting(true);
-    setStatus("Enviando seu anúncio para análise.");
+    setStatus("Enviando seu anúncio.");
     const response = await solicitarAnuncioPublico(normalizedForm(form));
     setSubmitting(false);
     if (response.ok) {
       setSuccess(response.data);
-      setStatus("Solicitação enviada para análise.");
+      setStatus("Anúncio recebido.");
       setErrors([]);
       setCurrentStepIndex(WIZARD_STEPS.length - 1);
       return;
@@ -157,7 +157,7 @@ export function PublicAnunciarWizard() {
           <span className="status">Anuncie grátis</span>
           <div>
             <h2>PUBLICAR SEU ANÚNCIO</h2>
-            <p>Preencha as etapas, revise no final e aguarde a análise antes de qualquer publicação.</p>
+            <p>Preencha as etapas, revise no final e envie seu anúncio.</p>
           </div>
         </div>
         <PublicAnunciarWizardProgress steps={WIZARD_STEPS} currentIndex={currentStepIndex} />
@@ -175,7 +175,7 @@ export function PublicAnunciarWizard() {
             </button>
           ) : (
             <button className="local-action" type="button" onClick={continueWizard} disabled={submitting}>
-              {currentStep.id === "revisao" ? (submitting ? "Enviando" : "Enviar para análise") : "Continuar"}
+              {currentStep.id === "revisao" ? (submitting ? "Enviando" : "Enviar anúncio") : "Continuar"}
             </button>
           )}
           <span aria-live="polite">{status}</span>
@@ -184,12 +184,12 @@ export function PublicAnunciarWizard() {
 
       <aside className="public-anunciar-side" aria-label="Como funciona">
         <span className="status">Confiança e segurança</span>
-        <h2>Apareça para mais clientes com revisão antes da publicação</h2>
+        <h2>Apareça para mais clientes na sua região</h2>
         <ul>
           <li>Cadastro guiado em etapas curtas.</li>
-          <li>Contato direto só depois das regras públicas futuras.</li>
-          <li>Moderação antes de qualquer exibição pública.</li>
-          <li>Fotos, vídeos e pagamentos ficam fora deste cadastro inicial.</li>
+          <li>Preencha seus dados em poucos passos.</li>
+          <li>Mostre sua cidade, bairro e categoria.</li>
+          <li>Receba contatos de visitantes interessados.</li>
         </ul>
       </aside>
     </div>
@@ -201,14 +201,14 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Comece seu anúncio gratuito"
-            description="Crie seu anúncio em etapas simples. O envio é gratuito e passa por revisão antes de qualquer publicação."
+            description="Crie seu anúncio em etapas simples e apareça para mais clientes."
           >
             <div className="public-wizard-intro">
               <strong>PUBLICAR SEU ANÚNCIO</strong>
-              <p>Preencha os dados principais, revise tudo no fim e aguarde a análise antes de qualquer publicação.</p>
+              <p>Preencha os dados principais, revise tudo no fim e envie seu anúncio.</p>
               <ul>
-                <li>Sem publicação automática.</li>
-                <li>Sem upload de foto ou documento nesta etapa.</li>
+                <li>Cadastro simples e guiado.</li>
+                <li>Fotos e vídeos entram em uma etapa própria.</li>
                 <li>Sem Premium obrigatório para anunciar.</li>
               </ul>
             </div>
@@ -218,7 +218,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Dados básicos"
-            description="Informe como seu perfil deve ser identificado pela equipe de análise."
+            description="Informe como os visitantes devem reconhecer seu perfil."
           >
             <div className="public-field-grid">
               <label>
@@ -284,7 +284,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Contato"
-            description="Informe o contato para análise inicial. Ele não será liberado publicamente por este wizard."
+            description="Informe o contato principal para seu anúncio."
           >
             <label>
               WhatsApp
@@ -297,8 +297,8 @@ export function PublicAnunciarWizard() {
               />
             </label>
             <div className="public-upload-future" aria-label="Aviso de contato">
-              <strong>O WhatsApp público não é liberado por este formulário.</strong>
-              <p>A exibição pública futura depende de moderação e política de contato.</p>
+              <strong>Use um WhatsApp ativo para receber interessados.</strong>
+              <p>O contato aparece conforme as regras do anúncio.</p>
             </div>
           </PublicAnunciarWizardStep>
         );
@@ -324,7 +324,7 @@ export function PublicAnunciarWizard() {
                 name="descricao"
                 value={form.descricao}
                 onChange={(event) => update("descricao", event.target.value)}
-                placeholder="Conte como será seu anúncio e quais informações devem ser analisadas."
+                placeholder="Conte como será seu anúncio e quais informações devem aparecer."
                 maxLength={600}
                 rows={5}
               />
@@ -358,11 +358,11 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Fotos e vídeos"
-            description="As mídias passam por revisão antes de aparecerem publicamente."
+            description="Fotos e vídeos deixam o anúncio mais atrativo."
           >
             <div className="public-upload-future" aria-label="Upload futuro">
-              <strong>Upload ainda não está disponível neste fluxo.</strong>
-              <p>Fotos, vídeos e documentos não são solicitados aqui. O anúncio segue apenas com texto para análise.</p>
+              <strong>Fotos e vídeos entram em uma etapa própria.</strong>
+              <p>Continue agora com as informações principais do seu anúncio.</p>
             </div>
           </PublicAnunciarWizardStep>
         );
@@ -407,7 +407,7 @@ export function PublicAnunciarWizard() {
         return (
           <PublicAnunciarWizardStep
             title="Solicitação recebida"
-            description="O anúncio foi enviado para análise e não foi publicado automaticamente."
+            description="Seu anúncio foi recebido."
           >
             <PublicAnunciarSuccess response={success} />
           </PublicAnunciarWizardStep>

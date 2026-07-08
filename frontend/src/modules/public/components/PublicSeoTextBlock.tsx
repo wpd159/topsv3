@@ -9,8 +9,8 @@ export function PublicSeoTextBlock({ children }: PublicSeoTextBlockProps) {
       <h2>Encontre por cidade, bairro e anúncio</h2>
       {children ?? (
         <p>
-          Use a navegação pública para chegar a perfis por região, consultar anúncios disponíveis e
-          enviar um cadastro para análise.
+          Use a navegação para chegar a perfis por região, consultar anúncios disponíveis e publicar
+          seu anúncio.
         </p>
       )}
     </section>

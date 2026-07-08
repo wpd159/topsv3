@@ -10,28 +10,34 @@ type CategoryCard = {
 
 const categories: readonly CategoryCard[] = [
   {
-    title: "Acompanhante feminina",
-    description: "Perfis femininos em destaque para navegar por cidade e bairro.",
+    title: "Acompanhantes Femininas",
+    description: "Encontre as melhores acompanhantes femininas do Brasil.",
     image: "/cards/acompanhante-feminina.jpg",
     href: "/acompanhantes/go/goiania"
   },
   {
-    title: "Transex e travestis",
-    description: "Categorias preservadas visualmente para futura integração segura.",
+    title: "Sexo Virtual",
+    description: "Videochamadas, conteúdo exclusivo e atendimento online.",
+    image: "/cards/casual.jpg",
+    href: "/anuncios/demo-goiania-livre-premium"
+  },
+  {
+    title: "Acompanhantes Masculinos",
+    description: "Os mais desejados acompanhantes masculinos estão aqui.",
+    image: "/cards/acompanhante-masculino.jpg",
+    href: "/acompanhantes/go/goiania"
+  },
+  {
+    title: "Transex e Travestis",
+    description: "As mais lindas transex e travestis do país te esperam.",
     image: "/cards/acompanhante-trans.jpg",
     href: "/acompanhantes/go/goiania"
   },
   {
     title: "Massagens",
-    description: "Caminhos públicos preparados para listagens e filtros da V3.",
+    description: "Relaxe com massagistas experientes e sensuais.",
     image: "/cards/massagem.jpg",
     href: "/acompanhantes/go/goiania/setor-bueno"
-  },
-  {
-    title: "Encontros casuais",
-    description: "Atalhos visuais sem chamada ao backend antigo da produção.",
-    image: "/cards/casual.jpg",
-    href: "/anuncios/demo-goiania-livre-premium"
   }
 ];
 
@@ -47,11 +53,11 @@ export function PublicCategorySection() {
                 src={category.image}
                 alt=""
                 fill
-                sizes="(max-width: 760px) 100vw, (max-width: 1120px) 50vw, 280px"
+                sizes="(max-width: 760px) 728px, (max-width: 1120px) 50vw, 280px"
               />
+              <span className="public-category-title">{category.title}</span>
             </span>
             <span className="public-category-body">
-              <strong>{category.title}</strong>
               <small>{category.description}</small>
               <em>Ver mais</em>
             </span>

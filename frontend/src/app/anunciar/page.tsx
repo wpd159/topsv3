@@ -6,7 +6,7 @@ import { PublicRouteShell } from "../../modules/public/skeleton/PublicRouteShell
 
 export const metadata: Metadata = {
   title: "PUBLICAR SEU ANÚNCIO | Tops do Job",
-  description: "Envie seu anúncio para análise no Tops do Job, sem pagamento, upload ou publicação automática nesta etapa.",
+  description: "Publique seu anúncio no Tops do Job e apareça para mais clientes na sua cidade.",
   alternates: {
     canonical: localUrl("/anunciar")
   },

@@ -84,7 +84,7 @@ export default async function CidadeSeoPage({ params }: CidadePageProps) {
         />
         <PublicInternalLinks
           title="Também pode ajudar"
-          links={[{ label: "Anuncie grátis", href: "/anunciar", description: "Envie seu perfil para análise" }]}
+          links={[{ label: "Anuncie grátis", href: "/anunciar", description: "Publique seu anúncio" }]}
         />
       </section>
       <PublicSiteFooter />
