@@ -61,6 +61,8 @@ Estado atual:
 - Bloco 63.2 diagnostica que o HML ainda reflete codigo anterior porque o commit local `159fd91c` do Bloco 63.1 esta `ahead` de `origin/main` e nao foi pushado/deployado; a correcao local remove `Setor Bueno` do header global, adiciona favicon real do clone e mantem `C:\clone` e producao somente leitura;
 - Bloco 63.3 continua o acabamento do shell publico com menu mobile fechado por padrao, microinteracoes em cards/botoes e secao de confianca da producao, sem push e sem criar relatorios novos;
 - Patch 63.4 ajusta o menu mobile para exibir somente acoes de conta/publicacao, padroniza microinteracoes de botoes publicos e impede que `PUBLICAR SEU ANUNCIO` navegue direto para `/anunciar` sem login;
+- Patch 63.5 adiciona guarda frontend temporaria para rotas sensiveis (`/admin`, `/anunciar` e areas privadas), cria entrada publica `/entrar`, redireciona publicacao para login e registra pendencia de validacao de sessao profunda no frontend; enforcement de API admin segue no backend;
+- Patch 63.5 tambem corrige a busca do hero como input digitavel; enquanto nao houver rota final de busca, o submit usa stub publico seguro em /acompanhantes/go/goiania com parametro busca.
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites

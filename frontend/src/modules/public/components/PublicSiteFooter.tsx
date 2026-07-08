@@ -62,7 +62,7 @@ export function PublicSiteFooter() {
             presença em uma plataforma com navegação simples, moderação ativa e atualização diária.
           </p>
         </div>
-        <Link href="/admin">PUBLICAR SEU ANÚNCIO</Link>
+        <Link href="/entrar?next=/anunciar">PUBLICAR SEU ANÚNCIO</Link>
       </div>
 
       <div className="public-footer-copy">

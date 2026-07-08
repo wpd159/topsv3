@@ -16,9 +16,9 @@ const mainLinks: HeaderLink[] = [
 ];
 
 const accountLinks: HeaderLink[] = [
-  { href: "/admin", label: "Entrar", className: "public-header-login" },
-  { href: "/anunciar", label: "Registrar-se", className: "public-header-register" },
-  { href: "/admin", label: "PUBLICAR SEU ANÚNCIO", className: "public-header-cta" }
+  { href: "/entrar", label: "Entrar", className: "public-header-login" },
+  { href: "/entrar?modo=registro", label: "Registrar-se", className: "public-header-register" },
+  { href: "/entrar?next=/anunciar", label: "PUBLICAR SEU ANÚNCIO", className: "public-header-cta" }
 ];
 
 export function PublicSiteHeader() {
