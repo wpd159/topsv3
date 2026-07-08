@@ -2,7 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+import { PublicAuthModal, PublicAuthMode, safeNextPath } from "./PublicAuthModal";
 
 type HeaderLink = {
   href: string;
@@ -15,14 +17,33 @@ const mainLinks: HeaderLink[] = [
   { href: "/anuncios/demo-goiania-livre-premium", label: "Anúncios" }
 ];
 
-const accountLinks: HeaderLink[] = [
-  { href: "/entrar", label: "Entrar", className: "public-header-login" },
-  { href: "/entrar?modo=registro", label: "Registrar-se", className: "public-header-register" },
-  { href: "/entrar?next=/anunciar", label: "PUBLICAR SEU ANÚNCIO", className: "public-header-cta" }
-];
-
 export function PublicSiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<PublicAuthMode>(null);
+  const [nextPath, setNextPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const next = safeNextPath(params.get("next"));
+    const shouldOpenLogin = params.get("login") === "1";
+    const shouldOpenRegister = params.get("registro") === "1";
+
+    if (shouldOpenLogin || shouldOpenRegister) {
+      setNextPath(next);
+      setAuthMode(shouldOpenRegister ? "register" : "login");
+      params.delete("login");
+      params.delete("registro");
+      params.delete("next");
+      const cleanSearch = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ""}`);
+    }
+  }, []);
+
+  function openAuth(mode: PublicAuthMode, next: string | null = null) {
+    setMenuOpen(false);
+    setNextPath(next);
+    setAuthMode(mode);
+  }
 
   return (
     <header className="public-site-header" aria-label="Cabeçalho público">
@@ -63,11 +84,15 @@ export function PublicSiteHeader() {
         </nav>
 
         <div className="public-site-actions">
-          {accountLinks.map((link) => (
-            <Link key={`${link.href}-${link.label}`} className={link.className} href={link.href}>
-              {link.label}
-            </Link>
-          ))}
+          <button className="public-header-login" type="button" onClick={() => openAuth("login")}>
+            Entrar
+          </button>
+          <button className="public-header-register" type="button" onClick={() => openAuth("register")}>
+            Registrar-se
+          </button>
+          <button className="public-header-cta" type="button" onClick={() => openAuth("login", "/anunciar")}>
+            PUBLICAR SEU ANÚNCIO
+          </button>
         </div>
 
         {menuOpen ? (
@@ -79,20 +104,20 @@ export function PublicSiteHeader() {
               </button>
             </div>
             <nav aria-label="Menu mobile">
-              {accountLinks.map((link) => (
-                <Link
-                  key={`mobile-${link.href}-${link.label}`}
-                  className={link.className}
-                  href={link.href}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  {link.label}
-                </Link>
-              ))}
+              <button className="public-header-login" type="button" onClick={() => openAuth("login")}>
+                Entrar
+              </button>
+              <button className="public-header-register" type="button" onClick={() => openAuth("register")}>
+                Registrar-se
+              </button>
+              <button className="public-header-cta" type="button" onClick={() => openAuth("login", "/anunciar")}>
+                PUBLICAR SEU ANÚNCIO
+              </button>
             </nav>
           </div>
         ) : null}
       </div>
+      <PublicAuthModal mode={authMode} nextPath={nextPath} onModeChange={setAuthMode} />
     </header>
   );
 }

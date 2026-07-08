@@ -26,18 +26,21 @@ export function middleware(request: NextRequest) {
 
   if (isProtectedRoute && !hasSessionCookie) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/entrar";
+    loginUrl.pathname = "/";
     loginUrl.search = "";
+    loginUrl.searchParams.set("login", "1");
     loginUrl.searchParams.set("next", `${pathname}${search}`);
     return NextResponse.redirect(loginUrl);
   }
 
-  if ((pathname === "/entrar" || pathname === "/registrar") && hasSessionCookie) {
+  if (pathname === "/entrar" || pathname === "/registrar") {
+    const homeUrl = request.nextUrl.clone();
+    homeUrl.pathname = "/";
+    homeUrl.search = "";
+    homeUrl.searchParams.set(pathname === "/registrar" ? "registro" : "login", "1");
     const nextPath = safeNextPath(request.nextUrl.searchParams.get("next"));
-    if (nextPath) {
-      const nextUrl = new URL(nextPath, request.nextUrl.origin);
-      return NextResponse.redirect(nextUrl);
-    }
+    if (nextPath) homeUrl.searchParams.set("next", nextPath);
+    return NextResponse.redirect(homeUrl);
   }
 
   return NextResponse.next();

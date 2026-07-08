@@ -63,6 +63,8 @@ Estado atual:
 - Patch 63.4 ajusta o menu mobile para exibir somente acoes de conta/publicacao, padroniza microinteracoes de botoes publicos e impede que `PUBLICAR SEU ANUNCIO` navegue direto para `/anunciar` sem login;
 - Patch 63.5 adiciona guarda frontend temporaria para rotas sensiveis (`/admin`, `/anunciar` e areas privadas), cria entrada publica `/entrar`, redireciona publicacao para login e registra pendencia de validacao de sessao profunda no frontend; enforcement de API admin segue no backend;
 - Patch 63.5 tambem corrige a busca do hero como input digitavel; enquanto nao houver rota final de busca, o submit usa stub publico seguro em /acompanhantes/go/goiania com parametro busca.
+- Patch 63.6 recria no frontend V3 o aviso publico 18+/cookies da producao, com aceite persistido em cookie/localStorage, configuracao de preferencias e rotas publicas para termos, privacidade, cookies e verificacao etaria; o modal nao usa scroll lock nem `document.body.style.overflow`.
+- Patch 63.R reseta o shell publico para comportamento real da producao: header/footer usam modais de login/registro/publicacao, paginas soltas `/entrar` e `/registrar` foram removidas, age gate voltou ao padrao de producao e a guarda de rotas privadas redireciona para a home com modal de entrada.
 - dados reais, producao, VPS, banco de producao, Efi real e APIs externas fora de uso.
 
 ## 2. Escopo e limites

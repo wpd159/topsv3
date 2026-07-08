@@ -1,7 +1,28 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+
+import { PublicAuthModal, PublicAuthMode } from "./PublicAuthModal";
 
 export function PublicSiteFooter() {
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [authMode, setAuthMode] = useState<PublicAuthMode>(null);
+  const [nextPath, setNextPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleScroll = () => setShowScrollTop(window.scrollY > 400);
+    window.addEventListener("scroll", handleScroll);
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  function openPublishLogin() {
+    setNextPath("/anunciar");
+    setAuthMode("login");
+  }
+
   return (
     <footer className="public-site-footer" aria-label="Rodapé público">
       <div className="public-site-footer-inner">
@@ -29,10 +50,10 @@ export function PublicSiteFooter() {
 
         <nav className="public-footer-links" aria-label="Legal">
           <h2>LEGAL</h2>
-          <Link href="/seguranca">Termos da plataforma</Link>
-          <Link href="/seguranca">Política de Privacidade</Link>
-          <Link href="/seguranca">Política de Cookies</Link>
-          <Link href="/seguranca">Verificação Etária</Link>
+          <Link href="/termos-de-uso">Termos da plataforma</Link>
+          <Link href="/politica-de-privacidade">Política de Privacidade</Link>
+          <Link href="/cookies">Política de Cookies</Link>
+          <Link href="/politicas/verificacao-etaria">Verificação Etária</Link>
           <Link href="/seguranca">Aviso de Segurança no WhatsApp</Link>
         </nav>
 
@@ -62,12 +83,24 @@ export function PublicSiteFooter() {
             presença em uma plataforma com navegação simples, moderação ativa e atualização diária.
           </p>
         </div>
-        <Link href="/entrar?next=/anunciar">PUBLICAR SEU ANÚNCIO</Link>
+        <button type="button" onClick={openPublishLogin}>
+          PUBLICAR SEU ANÚNCIO
+        </button>
       </div>
 
       <div className="public-footer-copy">
         <span>Copyright © {new Date().getFullYear()} Tops do Job. Todos os direitos reservados.</span>
       </div>
+      {showScrollTop ? (
+        <button
+          className="public-scroll-top"
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        >
+          ↑ Voltar ao Início
+        </button>
+      ) : null}
+      <PublicAuthModal mode={authMode} nextPath={nextPath} onModeChange={setAuthMode} />
     </footer>
   );
 }

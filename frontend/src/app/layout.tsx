@@ -2,9 +2,15 @@ import "./globals.css";
 
 import type { Metadata, Viewport } from "next";
 
+import { PublicConsentGate } from "../modules/public/components/PublicConsentGate";
+
 export const metadata = {
   title: "Tops do Job",
-  description: "Tops do Job"
+  description: "Tops do Job",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico"
+  }
 } satisfies Metadata;
 
 export const viewport: Viewport = {
@@ -19,7 +25,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body>{children}</body>
+      <body>
+        {children}
+        <PublicConsentGate />
+      </body>
     </html>
   );
 }

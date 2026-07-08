@@ -1,17 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const CONSENT_KEY = "tops_public_adult_cookie_consent";
-const CONSENT_COOKIE = "tops_public_consent";
-const DAYS_180 = 60 * 60 * 24 * 180;
+const AGE_GATE_COOKIE_NAME = "age_gate_accepted";
+const AGE_GATE_STORAGE_KEY = "age_gate_accepted_until";
+const AGE_GATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const excludedPrefixes = [
   "/admin",
-  "/entrar",
-  "/registrar",
   "/cookies",
   "/termos-de-uso",
   "/politica-de-privacidade",
@@ -20,8 +18,8 @@ const excludedPrefixes = [
 
 export function PublicConsentGate() {
   const pathname = usePathname();
-  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [accepting, setAccepting] = useState(false);
 
   useEffect(() => {
     if (excludedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
@@ -32,23 +30,20 @@ export function PublicConsentGate() {
     setOpen(!hasConsent());
   }, [pathname]);
 
-  function acceptAll() {
-    const value = JSON.stringify({
-      adult: true,
-      necessary: true,
-      functional: true,
-      analytics: true,
-      marketing: true,
-      ts: Date.now()
-    });
-    localStorage.setItem(CONSENT_KEY, value);
-    document.cookie = `${CONSENT_COOKIE}=${encodeURIComponent(value)}; Path=/; Max-Age=${DAYS_180}; SameSite=Lax`;
-    window.dispatchEvent(new CustomEvent("tops:cookie-consent-updated"));
+  function acceptAgeGate() {
+    setAccepting(true);
+    const expiresAt = Date.now() + AGE_GATE_TTL_MS;
+    const maxAgeSeconds = Math.max(1, Math.floor((expiresAt - Date.now()) / 1000));
+    const value = `v1.${expiresAt}`;
+
+    localStorage.setItem(AGE_GATE_STORAGE_KEY, String(expiresAt));
+    document.cookie = `${AGE_GATE_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax`;
     setOpen(false);
+    setAccepting(false);
   }
 
-  function openSettings() {
-    router.push("/cookies");
+  function leaveSite() {
+    window.location.href = "https://www.google.com";
   }
 
   if (!open) {
@@ -65,35 +60,30 @@ export function PublicConsentGate() {
         aria-modal="true"
       >
         <div className="public-consent-icon" aria-hidden="true">
-          18+
+          !
         </div>
         <div className="public-consent-copy">
-          <h2 id="public-consent-title">Informações sobre conteúdo adulto</h2>
+          <h2 id="public-consent-title">Aviso de Conteúdo Adulto</h2>
           <p id="public-consent-description">
             Este site contém conteúdo sexualmente explícito destinado exclusivamente a maiores de 18 anos.
             Se você for menor de idade ou se este tipo de conteúdo for considerado ofensivo, deve sair
             imediatamente.
           </p>
-          <div className="public-consent-experience">
-            <h3>Sua experiência de navegação</h3>
-            <p>
-              Utilizamos cookies necessários para funcionamento do site e, mediante consentimento, cookies
-              funcionais, de analytics e marketing para melhorar sua experiência.
-            </p>
-          </div>
           <p className="public-consent-note">
-            Ao continuar, você declara ser maior de 18 anos e concorda com os{" "}
-            <Link href="/termos-de-uso">Termos de Uso</Link>, a{" "}
-            <Link href="/politica-de-privacidade">Política de Privacidade</Link> e a{" "}
-            <Link href="/cookies">Política de Cookies</Link>.
+            Ao clicar em <b>Aceitar</b>, declaro que sou maior de 18 anos e li os{" "}
+            <Link href="/termos-de-uso">Termos de Uso</Link>.
+          </p>
+          <p className="public-consent-note">
+            O acesso é restrito a maiores de idade. Todos os perfis, imagens e descrições são de caráter
+            adulto. Preferências de navegação ficam em <Link href="/cookies">Política de Cookies</Link>.
           </p>
         </div>
         <div className="public-consent-actions">
-          <button type="button" className="public-consent-primary" onClick={acceptAll}>
-            ACEITAR TODOS
+          <button type="button" className="public-consent-secondary" onClick={leaveSite} disabled={accepting}>
+            Sair
           </button>
-          <button type="button" className="public-consent-secondary" onClick={openSettings}>
-            CONFIGURAÇÕES DE COOKIES
+          <button type="button" className="public-consent-primary" onClick={acceptAgeGate} disabled={accepting}>
+            {accepting ? "Salvando..." : "Aceitar"}
           </button>
         </div>
       </section>
@@ -106,9 +96,21 @@ function hasConsent() {
     return true;
   }
 
-  if (localStorage.getItem(CONSENT_KEY)) {
+  const storageExpiresAt = Number(localStorage.getItem(AGE_GATE_STORAGE_KEY));
+  if (Number.isFinite(storageExpiresAt) && storageExpiresAt > Date.now()) {
     return true;
   }
 
-  return document.cookie.split(";").some((cookie) => cookie.trim().startsWith(`${CONSENT_COOKIE}=`));
+  const rawCookie = document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith(`${AGE_GATE_COOKIE_NAME}=`));
+
+  if (!rawCookie) return false;
+  const rawValue = decodeURIComponent(rawCookie.split("=").slice(1).join("="));
+  if (rawValue === "yes") return true;
+  if (!rawValue.startsWith("v1.")) return false;
+
+  const expiresAt = Number(rawValue.slice(3));
+  return Number.isFinite(expiresAt) && expiresAt > Date.now();
 }
