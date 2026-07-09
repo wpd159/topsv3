@@ -71,15 +71,17 @@ function getAdultMaxDate() {
   return max.toISOString().slice(0, 10)
 }
 
-// Input nativo (sem o componente Input compartilhado): esse componente aplica
-// rounded-3xl + focus-visible:ring + transition-[color,box-shadow] por padrao, e essa
-// combinacao corrompe o repaint em Android antigo. Aqui o campo so troca a cor da
-// borda no foco, sem ring, sem sombra e sem transicao.
+// Input nativo, sem o componente Input compartilhado (que aplica ring animado +
+// transition-[color,box-shadow]). Foco e feedback usam apenas border-color e um
+// box-shadow estatico (sem animacao pesada), para nao repetir o bug de repaint
+// que essa combinacao causava em Chrome Android antigo.
 function fieldClass(...classes: Array<string | false | undefined>) {
   return cn(
     'w-full rounded-3xl border border-gray-500/40 bg-gray-200 pl-10 pr-3 py-3 text-base text-gray-900',
-    'placeholder:text-gray-500 outline-none focus:border-[#FC1EAD]',
-    'disabled:cursor-not-allowed disabled:opacity-50',
+    'placeholder:text-gray-500 outline-none',
+    'transition-[border-color,box-shadow] duration-150',
+    'focus:border-[#FC1EAD] focus:shadow-[0_0_0_3px_rgba(252,30,173,0.14),0_0_14px_rgba(252,30,173,0.18)]',
+    'disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none',
     ...classes
   )
 }
@@ -88,7 +90,7 @@ export function RegisterForm({
   refId,
   onSuccess,
   onBackToLogin,
-  submitSource = 'CADASTRO_MODAL',
+  submitSource = 'CADASTRO_PAGINA',
   className,
 }: RegisterFormProps) {
   const credentialField = 'sen' + 'ha'
@@ -589,6 +591,7 @@ export function RegisterForm({
         <p className="text-center text-sm text-gray-600 mt-4">
           Ja tem uma conta?{' '}
           <button
+            type="button"
             onClick={onBackToLogin}
             className="text-[#FC1EAD] font-medium hover:underline"
           >
