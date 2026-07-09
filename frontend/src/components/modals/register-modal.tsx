@@ -24,6 +24,16 @@ export function RegisterModal({
     setMounted(true)
   }, [])
 
+  // Enquanto aberto, marca o documentElement para o CSS global esconder
+  // toda a árvore por trás do portal (evita vazamento/ghosting no Android antigo).
+  useEffect(() => {
+    if (!open) return
+    document.documentElement.setAttribute('data-register-modal-open', 'true')
+    return () => {
+      document.documentElement.removeAttribute('data-register-modal-open')
+    }
+  }, [open])
+
   if (!open || !mounted) return null
 
   const close = () => onOpenChange(false)
@@ -33,7 +43,8 @@ export function RegisterModal({
   // que camadas do Hero sejam compostas visualmente por cima do cadastro.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-white sm:flex sm:items-center sm:justify-center sm:bg-black/60 sm:p-6"
+      data-register-portal-root
+      className="fixed inset-0 z-[2147483647] isolate overflow-y-auto bg-white [contain:paint] sm:flex sm:items-center sm:justify-center sm:bg-black/60 sm:p-6"
       style={{ WebkitOverflowScrolling: 'touch' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) close()
