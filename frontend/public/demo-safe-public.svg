@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200" role="img" aria-label="Demo local conteudo livre">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8d8e7"/>
+      <stop offset="100%" stop-color="#fdf7fb"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1200" fill="url(#bg)"/>
+  <circle cx="400" cy="330" r="130" fill="#f5b8d6"/>
+  <rect x="210" y="510" width="380" height="360" rx="120" fill="#f7c7df"/>
+  <rect x="120" y="940" width="560" height="110" rx="55" fill="#ffffff" opacity="0.9"/>
+  <text x="400" y="985" text-anchor="middle" font-size="42" font-family="Arial, Helvetica, sans-serif" fill="#222222">
+    Conteudo livre local
+  </text>
+  <text x="400" y="1040" text-anchor="middle" font-size="28" font-family="Arial, Helvetica, sans-serif" fill="#555555">
+    Demo para validar card publico
+  </text>
+</svg>

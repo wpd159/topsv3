@@ -27,6 +27,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - `LIVRE` aparece sem confirmacao de idade.
 - `BLOQUEADO` so pode ser liberado de forma controlada apos confirmacao de idade pelo backend.
 - Stories exigem confirmacao de idade.
+- 2026-07-08 (Fase 6): portado o age gate 18+ global do clone (aviso unico "sou maior de idade", sem coleta de data de nascimento) e a pagina real `/cookies`. E' um gate de autodeclaracao do visitante, separado da verificacao real de idade por conteudo (`idade/confirmar`, ja existente, nao alterado) — nao introduz estado de classificacao intermediario, so decide se o aviso aparece ou nao. Endpoints `/api/public/compliance/age-gate/*` e `/compliance/policies` nao existem no backend (auditado); aceite do aviso cai em persistencia local (cookie + localStorage) quando a chamada falha, para nao travar o visitante.
 
 ## Gratuito util
 
@@ -167,6 +168,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Proibido redesign, nova paleta, nova tipografia, animacao automatica e elemento mobile flutuante indevido.
 - Proibido scroll lock e `document.body.style.overflow`.
 - 2026-07-08: autorizada reconstrucao fiel do frontend publico usando `C:\clone\topsdojob-frontend` como especificacao final ("preservar visual atual" passa a significar "fidelidade ao clone real", nao ao CSS de patch acumulado). Fase 0 (snapshot local `snapshot/frontend-pre-clone-2026-07-08`) e Fase 1 (dependencias de UI reais do clone: Tailwind v4, Radix, shadcn deps, Heroicons/Lucide, Framer Motion, etc.) concluidas. Preflight do Tailwind permanece desligado (so `theme.css` + `utilities.css`) ate a troca real dos componentes nas proximas fases, para nao alterar visual antes da hora.
+- 2026-07-08 (Fase 5, modais): auditado `contracts/openapi/topsdojob-v3-local.yaml` e `backend/src/main/java/.../web` — so existe `AdminAuthController` (`/api/admin/auth/*`); nao ha endpoint publico real de login/cadastro/recuperar-senha/confirmar-conta. Modais de login/criar conta/recuperar senha/confirmar conta portados fielmente do clone e apontados para `/api/public/auth/*` (convencao ja usada no restante do contrato publico) como adapter seguro — falha graciosamente (sem tocar endpoint de admin) ate o backend implementar. Modal de criar conta usa `modal={false}` no Radix Dialog (unica excecao estrutural, visual identico) para nao aplicar scroll-lock/focus-trap que trava Android antigo.
 
 ## Copy visivel
 

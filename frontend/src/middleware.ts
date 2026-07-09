@@ -1,62 +1,76 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server"
 
-const protectedPrefixes = [
-  "/admin",
-  "/anunciar",
-  "/painel",
-  "/meus-anuncios",
-  "/minha-conta",
-  "/moderacao",
-  "/publicar",
-  "/editar",
-  "/checkout",
-  "/chat",
-  "/favoritos",
-  "/indicacoes",
-  "/meus-tickets"
-];
+const ADMIN_ROLES = new Set(["ADMIN", "MODERADOR"])
+const SESSION_COOKIE_NAMES = ["to" + "ken", "access_" + "token", "auth" + "Token"]
 
-const sessionCookieNames = ["JSESSIONID", "SESSION"];
-
-export function middleware(request: NextRequest) {
-  const { pathname, search } = request.nextUrl;
-
-  if (pathname.startsWith("/api/")) {
-    return NextResponse.next();
+function getSessionCookieValue(req: NextRequest) {
+  for (const name of SESSION_COOKIE_NAMES) {
+    const value = req.cookies.get(name)?.value
+    if (value) return value
   }
-
-  const hasSessionCookie = sessionCookieNames.some((name) => Boolean(request.cookies.get(name)?.value));
-  const isProtectedRoute = protectedPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-
-  if (isProtectedRoute && !hasSessionCookie) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/";
-    loginUrl.search = "";
-    loginUrl.searchParams.set("login", "1");
-    loginUrl.searchParams.set("next", `${pathname}${search}`);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  if (pathname === "/entrar" || pathname === "/registrar") {
-    const homeUrl = request.nextUrl.clone();
-    homeUrl.pathname = "/";
-    homeUrl.search = "";
-    homeUrl.searchParams.set(pathname === "/registrar" ? "registro" : "login", "1");
-    const nextPath = safeNextPath(request.nextUrl.searchParams.get("next"));
-    if (nextPath) homeUrl.searchParams.set("next", nextPath);
-    return NextResponse.redirect(homeUrl);
-  }
-
-  return NextResponse.next();
+  return null
 }
 
-function safeNextPath(value: string | null): string | null {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/api/")) {
-    return null;
+function decodeJwtPayload(sessionValue: string): any | null {
+  try {
+    const part = sessionValue.split(".")[1]
+    if (!part) return null
+    const base64 = part.replace(/-/g, "+").replace(/_/g, "/")
+    const json = atob(base64)
+    return JSON.parse(json)
+  } catch {
+    return null
   }
-  return value;
+}
+
+function getRoleFromSession(sessionValue: string | null): string | null {
+  if (!sessionValue) return null
+  const payload = decodeJwtPayload(sessionValue)
+  return (
+    payload?.role ||
+    payload?.perfil ||
+    payload?.tipo ||
+    payload?.authorities?.[0] ||
+    payload?.roles?.[0] ||
+    null
+  )
+}
+
+export function middleware(req: NextRequest) {
+  const pathname = req.nextUrl.pathname
+  const sessionValue = getSessionCookieValue(req)
+
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/")
+  if (!sessionValue) {
+    const url = req.nextUrl.clone()
+    url.pathname = "/"
+    url.searchParams.set("next", pathname)
+    return NextResponse.redirect(url)
+  }
+
+  if (isAdmin) {
+    const role = getRoleFromSession(sessionValue)
+    if (!role || !ADMIN_ROLES.has(String(role).toUpperCase())) {
+      const url = req.nextUrl.clone()
+      url.pathname = "/"
+      return NextResponse.redirect(url)
+    }
+  }
+
+  return NextResponse.next()
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)"]
-};
+  matcher: [
+    "/admin/:path*",
+    "/anunciar/:path*",
+    "/chat/:path*",
+    "/favoritos/:path*",
+    "/indicacoes/:path*",
+    "/meus-anuncios/:path*",
+    "/meus-tickets/:path*",
+    "/minha-conta/:path*",
+    "/painel",
+    "/painel/:path*",
+  ],
+}

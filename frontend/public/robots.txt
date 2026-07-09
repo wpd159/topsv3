@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /*?*filter=
+Disallow: /*&filter=
+Disallow: /*?*sort=
+Disallow: /*&sort=
+Disallow: /*?*search=
+Disallow: /*&search=
+
+# (Opcional) bloquear outras params comuns
+Disallow: /*?*utm_
+Disallow: /*&utm_
+
+Sitemap: https://topsdojob.com/sitemap.xml

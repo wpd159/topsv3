@@ -85,9 +85,17 @@ services:
     build:
       context: ../../frontend
       args:
-        NEXT_PUBLIC_APP_ENV: homologacao
-        NEXT_PUBLIC_CANONICAL_DOMAIN: https://${HML_DOMAIN:-v3.esle.cloud}
-        NEXT_PUBLIC_API_BASE_URL: https://${HML_DOMAIN:-v3.esle.cloud}
+        # Reset do frontend V3 (copia fiel do clone real, sem renomear env vars
+        # no codigo copiado): o clone usa NEXT_PUBLIC_SITE_URL/NEXT_PUBLIC_API_URL
+        # nativamente em todo o src/. NEXT_PUBLIC_API_URL ja inclui o prefixo
+        # /api/public porque o codigo do clone chama caminhos sem prefixo
+        # (ex.: `${API}/anuncios`) e o contrato real da V3 vive sob /api/public.
+        # Endpoints do clone sem equivalente em /api/public (auth, kyc,
+        # localidades, site-content, etc.) continuam retornando 404 e degradam
+        # graciosamente (o proprio codigo do clone trata isso) - ver pendencias
+        # no SDD.
+        NEXT_PUBLIC_SITE_URL: https://${HML_DOMAIN:-v3.esle.cloud}
+        NEXT_PUBLIC_API_URL: https://${HML_DOMAIN:-v3.esle.cloud}/api/public
       dockerfile_inline: |
         FROM node:22.13.1-alpine AS deps
         WORKDIR /app
@@ -95,12 +103,10 @@ services:
         RUN npm ci
         FROM node:22.13.1-alpine AS build
         WORKDIR /app
-        ARG NEXT_PUBLIC_APP_ENV
-        ARG NEXT_PUBLIC_CANONICAL_DOMAIN
-        ARG NEXT_PUBLIC_API_BASE_URL
-        ENV NEXT_PUBLIC_APP_ENV=$NEXT_PUBLIC_APP_ENV
-        ENV NEXT_PUBLIC_CANONICAL_DOMAIN=$NEXT_PUBLIC_CANONICAL_DOMAIN
-        ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+        ARG NEXT_PUBLIC_SITE_URL
+        ARG NEXT_PUBLIC_API_URL
+        ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
+        ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
         COPY --from=deps /app/node_modules ./node_modules
         COPY . .
         RUN npm run build
@@ -116,9 +122,8 @@ services:
         EXPOSE 3000
         CMD ["npm", "run", "start", "--", "-p", "3000", "-H", "0.0.0.0"]
     environment:
-      NEXT_PUBLIC_APP_ENV: homologacao
-      NEXT_PUBLIC_CANONICAL_DOMAIN: https://${HML_DOMAIN:-v3.esle.cloud}
-      NEXT_PUBLIC_API_BASE_URL: https://${HML_DOMAIN:-v3.esle.cloud}
+      NEXT_PUBLIC_SITE_URL: https://${HML_DOMAIN:-v3.esle.cloud}
+      NEXT_PUBLIC_API_URL: https://${HML_DOMAIN:-v3.esle.cloud}/api/public
       NEXT_TELEMETRY_DISABLED: "1"
     ports:
       - "127.0.0.1:${HML_FRONTEND_PORT:-13000}:3000"

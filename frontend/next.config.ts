@@ -1,0 +1,202 @@
+import type { NextConfig } from "next"
+
+function toRemotePattern(origin?: string | null) {
+  if (!origin) return null
+
+  try {
+    const url = new URL(origin)
+    return {
+      protocol: url.protocol.replace(":", "") as "http" | "https",
+      hostname: url.hostname,
+      ...(url.port ? { port: url.port } : {}),
+    }
+  } catch {
+    return null
+  }
+}
+
+function toOrigin(pattern: { protocol: "http" | "https"; hostname: string; port?: string }) {
+  return `${pattern.protocol}://${pattern.hostname}${pattern.port ? `:${pattern.port}` : ""}`
+}
+
+const dynamicImageOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+  "https://topsdojob.com",
+  "https://backend.topsdojob.com",
+  process.env.NEXT_PUBLIC_SITE_URL,
+  process.env.NEXT_PUBLIC_API_URL,
+]
+  .map(toRemotePattern)
+  .filter((item): item is NonNullable<ReturnType<typeof toRemotePattern>> => Boolean(item))
+
+const dynamicOrigins = Array.from(new Set(dynamicImageOrigins.map(toOrigin)))
+const securityOrigins =
+  process.env.NODE_ENV === "production"
+    ? dynamicOrigins.filter((origin) => !origin.includes("localhost") && !origin.includes("127.0.0.1"))
+    : dynamicOrigins
+const r2PublicAssetOrigin = "https://pub-567428d3703244d483815a05a1e0e0d9.r2.dev"
+// R2 private bucket presigned URLs (docs) commonly use the account endpoint:
+// https://<accountId>.r2.cloudflarestorage.com/...
+const r2CloudflareStorageWildcard = "https://*.r2.cloudflarestorage.com"
+
+function toWsOrigin(origin?: string | null) {
+  if (!origin) return null
+
+  try {
+    const url = new URL(origin)
+    const protocol = url.protocol === "https:" ? "wss" : "ws"
+    return `${protocol}://${url.hostname}${url.port ? `:${url.port}` : ""}`
+  } catch {
+    return null
+  }
+}
+
+const connectOrigins = Array.from(
+  new Set(
+    [
+      "'self'",
+      ...securityOrigins,
+      toWsOrigin(process.env.NEXT_PUBLIC_API_URL),
+      r2CloudflareStorageWildcard,
+      "https://www.googletagmanager.com",
+      "https://www.google-analytics.com",
+      "https://region1.google-analytics.com",
+      "https://vitals.vercel-insights.com",
+      "https://va.vercel-scripts.com",
+      "https://nominatim.openstreetmap.org",
+      "https://overpass-api.de",
+    ].filter((item): item is string => Boolean(item))
+  )
+)
+
+const mediaOrigins = Array.from(
+  new Set([
+    "'self'",
+    "blob:",
+    "data:",
+    ...securityOrigins,
+    r2PublicAssetOrigin,
+    r2CloudflareStorageWildcard,
+  ])
+)
+
+const imageOrigins = Array.from(
+  new Set([
+    "'self'",
+    "data:",
+    "blob:",
+    ...securityOrigins,
+    r2PublicAssetOrigin,
+    r2CloudflareStorageWildcard,
+    "https://images.unsplash.com",
+    "https://images.pexels.com",
+    "https://cdn.pixabay.com",
+    "https://www.google.com",
+    "https://www.google-analytics.com",
+    "https://region1.google-analytics.com",
+    "https://www.googletagmanager.com",
+  ])
+)
+
+const frameOrigins = Array.from(
+  new Set([
+    "'self'",
+    "blob:",
+    "data:",
+    ...securityOrigins,
+    r2CloudflareStorageWildcard,
+    "https://www.google.com",
+    "https://www.youtube.com",
+    "https://player.vimeo.com",
+  ])
+)
+
+const securityHeaders = [
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'self'",
+      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://va.vercel-scripts.com",
+      "style-src 'self' 'unsafe-inline'",
+      `img-src ${imageOrigins.join(" ")}`,
+      `media-src ${mediaOrigins.join(" ")}`,
+      `connect-src ${connectOrigins.join(" ")}`,
+      `frame-src ${frameOrigins.join(" ")}`,
+      "font-src 'self' data:",
+      "worker-src 'self' blob:",
+      "form-action 'self'",
+      process.env.NODE_ENV === "production" ? "upgrade-insecure-requests" : "",
+    ]
+      .filter(Boolean)
+      .join("; "),
+  },
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), payment=(), usb=(), accelerometer=(), gyroscope=()",
+  },
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=31536000; includeSubDomains; preload",
+  },
+]
+
+const nextConfig: NextConfig = {
+  output: "standalone",
+
+  async redirects() {
+    const temas = ["acompanhantes", "garotas-de-programa", "anuncios-adultos"] as const
+    return temas.map((tema) => ({
+      source: `/blog/${tema}/:cidade`,
+      destination: `/blog/cidade/${tema}/:cidade`,
+      permanent: true,
+    }))
+  },
+
+  images: {
+    remotePatterns: [
+      ...dynamicImageOrigins,
+      { protocol: "https", hostname: "images.unsplash.com" },
+      { protocol: "https", hostname: "images.pexels.com" },
+      { protocol: "https", hostname: "cdn.pixabay.com" },
+      { protocol: "https", hostname: "cebkahlbbdmvzhfaruad.supabase.co" },
+      { protocol: "https", hostname: "pub-567428d3703244d483815a05a1e0e0d9.r2.dev" },
+      { protocol: "https", hostname: "2eb7af56d1fc180174ab864e81adeacf.r2.cloudflarestorage.com" },
+    ],
+  },
+
+  async headers() {
+    const noindex = [
+      { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+    ]
+
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      { source: "/admin/:path*", headers: noindex },
+      { source: "/anunciar", headers: noindex },
+      { source: "/anunciar/:path*", headers: noindex },
+      { source: "/chat", headers: noindex },
+      { source: "/chat/:path*", headers: noindex },
+      { source: "/favoritos", headers: noindex },
+      { source: "/favoritos/:path*", headers: noindex },
+      { source: "/indicacoes", headers: noindex },
+      { source: "/indicacoes/:path*", headers: noindex },
+      { source: "/meus-anuncios", headers: noindex },
+      { source: "/meus-anuncios/:path*", headers: noindex },
+      { source: "/meus-tickets", headers: noindex },
+      { source: "/meus-tickets/:path*", headers: noindex },
+      { source: "/minha-conta", headers: noindex },
+      { source: "/minha-conta/:path*", headers: noindex },
+    ]
+  },
+}
+
+export default nextConfig

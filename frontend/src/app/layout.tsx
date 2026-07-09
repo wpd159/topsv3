@@ -1,38 +1,103 @@
-import "./globals.css";
+// src/app/layout.tsx
 
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next"
+import Script from "next/script"
+import "./globals.css"
 
-import { PublicConsentGate } from "../modules/public/components/PublicConsentGate";
-import { PublicSiteFooter } from "../modules/public/components/PublicSiteFooter";
-import { PublicSiteHeader } from "../modules/public/components/PublicSiteHeader";
+import Footer from "@/components/layout/footer"
+import HeaderWrapper from "@/components/layout/header-wrapper"
+import AbrirTicketButton from "@/components/layout/ticket-button"
+import { AuthProvider } from "@/context/AuthContext"
+import { Toaster } from "sonner"
+import { AgeGateModal } from "@/components/modals/age-gate-modal"
+import { SitePopupManager } from "@/components/site/site-popup-manager"
+import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
+import { SensitiveImageUnlockProvider } from "@/components/compliance/sensitive-image-unlock-provider"
 
-export const metadata = {
-  title: "Tops do Job",
-  description: "Tops do Job",
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon.ico"
-  }
-} satisfies Metadata;
+export const metadata: Metadata = {
+  metadataBase: new URL("https://topsdojob.com"),
+  title: "Tops do Job - Encontre as melhores acompanhantes",
+  description:
+    "Encontre acompanhantes com fotos reais, anúncios verificados e contato direto em uma plataforma segura, discreta e atualizada diariamente.",
+  verification: {
+    other: {
+      "msvalidate.01": "355836399E63074CDD49A338612E13C3",
+    },
+  },
+  openGraph: {
+    title: "Tops do Job - Encontre as melhores acompanhantes",
+    description:
+      "Encontre acompanhantes com fotos reais, anúncios verificados e contato direto em uma plataforma segura, discreta e atualizada diariamente.",
+    url: "https://topsdojob.com",
+    siteName: "Tops do Job",
+    locale: "pt_BR",
+    type: "website",
+  },
+}
 
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1
-};
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "Tops do Job",
+  url: "https://topsdojob.com",
+  potentialAction: {
+    "@type": "SearchAction",
+    target: "https://topsdojob.com/anuncios?busca={search_term_string}",
+    "query-input": "required name=search_term_string",
+  },
+}
 
 export default function RootLayout({
-  children
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+  children,
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="pt-BR">
-      <body>
-        <PublicSiteHeader />
-        {children}
-        <PublicSiteFooter />
-        <PublicConsentGate />
+      <head>
+        <meta charSet="utf-8" />
+        <Script
+          src="https://www.googletagmanager.com/gtag/js?id=G-E0CNBH6WPM"
+          strategy="afterInteractive"
+        />
+        <Script id="ga4-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            window.gtag = gtag;
+            gtag('js', new Date());
+            gtag('config', 'G-E0CNBH6WPM');
+          `}
+        </Script>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+        />
+      </head>
+
+      <body className="antialiased bg-white text-[#111] w-[100vw] overflow-x-hidden">
+        <AuthProvider>
+          <SensitiveImageUnlockProvider>
+            <WhatsAppSafetyProvider>
+              <AgeGateModal
+                termsHref="/termos-de-uso"
+                denyRedirect="https://www.google.com"
+              />
+
+              <HeaderWrapper />
+              <SitePopupManager />
+
+              <main className="relative max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
+                {children}
+              </main>
+
+              <Footer />
+              <AbrirTicketButton />
+              <Toaster position="top-right" richColors closeButton expand />
+            </WhatsAppSafetyProvider>
+          </SensitiveImageUnlockProvider>
+        </AuthProvider>
       </body>
     </html>
-  );
+  )
 }

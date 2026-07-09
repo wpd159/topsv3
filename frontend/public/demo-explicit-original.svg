@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200" role="img" aria-label="Original demo local bloqueio forte">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#140d18"/>
+      <stop offset="100%" stop-color="#7e2756"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1200" fill="url(#bg)"/>
+  <circle cx="405" cy="285" r="145" fill="#ffe0ec"/>
+  <rect x="190" y="470" width="420" height="450" rx="140" fill="#ffbfd9"/>
+  <rect x="130" y="925" width="540" height="92" rx="46" fill="#ffffff" opacity="0.92"/>
+  <text x="400" y="982" text-anchor="middle" font-size="38" font-family="Arial, Helvetica, sans-serif" fill="#111111">
+    Conteudo liberado apos verificacao forte
+  </text>
+</svg>
