@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
-import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
@@ -72,8 +71,18 @@ function getAdultMaxDate() {
   return max.toISOString().slice(0, 10)
 }
 
-const registerInputClass =
-  'transition-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none sm:transition-[color,box-shadow] sm:focus-visible:ring-[3px] sm:focus-visible:ring-ring/50'
+// Input nativo (sem o componente Input compartilhado): esse componente aplica
+// rounded-3xl + focus-visible:ring + transition-[color,box-shadow] por padrao, e essa
+// combinacao corrompe o repaint em Android antigo. Aqui o campo so troca a cor da
+// borda no foco, sem ring, sem sombra e sem transicao.
+function fieldClass(...classes: Array<string | false | undefined>) {
+  return cn(
+    'w-full rounded-3xl border border-gray-500/40 bg-gray-200 pl-10 pr-3 py-3 text-base text-gray-900',
+    'placeholder:text-gray-500 outline-none focus:border-[#FC1EAD]',
+    'disabled:cursor-not-allowed disabled:opacity-50',
+    ...classes
+  )
+}
 
 export function RegisterForm({
   refId,
@@ -359,7 +368,7 @@ export function RegisterForm({
       <div className="mt-4 space-y-4">
         <div className="relative">
           <UserIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <Input
+          <input
             type="text"
             placeholder="Nome de usuario (NOME VISIVEL NA PLATAFORMA)"
             value={username}
@@ -368,7 +377,7 @@ export function RegisterForm({
               if (erros.username) setErros((p) => ({ ...p, username: undefined }))
             }}
             onBlur={handleBlurUsername}
-            className={cn(registerInputClass, 'pl-10 py-5', erros.username && 'border-red-400')}
+            className={fieldClass(erros.username && 'border-red-400')}
           />
           {erros.username && (
             <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -379,14 +388,13 @@ export function RegisterForm({
 
         <div className="relative">
           <CalendarDaysIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-          <Input
+          <input
             type="date"
             value={dataNascimento}
             onChange={(e) => setDataNascimento(e.target.value)}
             max={dataNascimentoMax}
-            className={cn(
-              registerInputClass,
-              'register-date-input h-9 min-h-9 pl-10 py-1 leading-5',
+            className={fieldClass(
+              'register-date-input h-9 min-h-9 py-1 leading-5',
               dataNascimentoComErro && 'border-red-400'
             )}
           />
@@ -404,7 +412,7 @@ export function RegisterForm({
 
         <div className="relative">
           <PhoneIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <Input
+          <input
             type="tel"
             placeholder="Telefone"
             value={phone}
@@ -414,7 +422,7 @@ export function RegisterForm({
             }}
             onBlur={handleBlurTelefone}
             maxLength={15}
-            className={cn(registerInputClass, 'pl-10 py-5', erros.telefone && 'border-red-400')}
+            className={fieldClass(erros.telefone && 'border-red-400')}
           />
           {erros.telefone && (
             <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -425,7 +433,7 @@ export function RegisterForm({
 
         <div className="relative">
           <EnvelopeIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <Input
+          <input
             type="email"
             placeholder="Seu e-mail"
             value={email}
@@ -434,11 +442,7 @@ export function RegisterForm({
               if (erros.email) setErros((p) => ({ ...p, email: undefined }))
             }}
             onBlur={handleBlurEmail}
-            className={cn(
-              registerInputClass,
-              'pl-10 py-5',
-              ((email && !emailValid) || erros.email) && 'border-red-400'
-            )}
+            className={fieldClass(((email && !emailValid) || erros.email) && 'border-red-400')}
           />
           {email && !emailValid && (
             <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -454,7 +458,7 @@ export function RegisterForm({
 
         <div className="relative">
           <LockClosedIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <Input
+          <input
             ref={passwordInputRef}
             type={showPassword ? 'text' : 'password'}
             placeholder="Senha"
@@ -462,7 +466,7 @@ export function RegisterForm({
             onChange={(e) => setPassword(e.target.value)}
             onFocus={handlePasswordFocus}
             onBlur={handlePasswordBlur}
-            className={cn(registerInputClass, 'pl-10 pr-10 py-5')}
+            className={fieldClass('pr-10')}
           />
           <button
             type="button"
@@ -518,12 +522,12 @@ export function RegisterForm({
 
         <div className="relative mt-2">
           <LockClosedIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <Input
+          <input
             type={showConfirmPassword ? 'text' : 'password'}
             placeholder="Confirmar senha"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className={cn(registerInputClass, 'pl-10 pr-10 py-5')}
+            className={fieldClass('pr-10')}
           />
           <button
             type="button"
@@ -586,7 +590,7 @@ export function RegisterForm({
           Ja tem uma conta?{' '}
           <button
             onClick={onBackToLogin}
-            className="text-[#FC1EAD] font-medium hover:underline transition"
+            className="text-[#FC1EAD] font-medium hover:underline"
           >
             Entrar
           </button>

@@ -110,10 +110,6 @@ export function LoginModal({
     return '/registrar'
   }, [registerNext])
 
-  const shouldOpenRegisterPage = () =>
-    typeof window !== 'undefined' &&
-    window.matchMedia('(max-width: 767px)').matches
-
   useEffect(() => {
     if (!redirectTarget) return
 
@@ -129,11 +125,6 @@ export function LoginModal({
     onOpenChange(false)
 
     window.setTimeout(() => {
-      if (shouldOpenRegisterPage()) {
-        router.push(registerHref)
-        return
-      }
-
       if (onOpenRegister) {
         onOpenRegister()
         return

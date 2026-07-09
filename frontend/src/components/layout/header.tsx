@@ -40,18 +40,6 @@ export default function Header() {
     window.setTimeout(action, MOBILE_OVERLAY_CLOSE_MS)
   }
 
-  const isMobileViewport = () =>
-    typeof window !== "undefined" &&
-    window.matchMedia("(max-width: 767px)").matches
-
-  const getRegisterHref = (nextPath?: string | null) => {
-    if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
-      return `/registrar?next=${encodeURIComponent(nextPath)}`
-    }
-
-    return "/registrar"
-  }
-
   const go = (to: string) => {
     if (open) {
       closeSheetThen(() => router.push(to))
@@ -74,18 +62,6 @@ export default function Header() {
 
   const openRegister = (nextPath?: string | null) => {
     setRedirectAfterLogin(nextPath ?? null)
-
-    const navigateToRegisterPage = () => router.push(getRegisterHref(nextPath))
-
-    if (isMobileViewport()) {
-      if (open) {
-        closeSheetThen(navigateToRegisterPage)
-        return
-      }
-
-      navigateToRegisterPage()
-      return
-    }
 
     if (open) {
       closeSheetThen(() => setRegisterModalOpen(true))
