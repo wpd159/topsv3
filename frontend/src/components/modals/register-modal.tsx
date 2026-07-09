@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { XMarkIcon } from '@heroicons/react/24/outline'
 import { RegisterForm } from '@/components/auth/register-form'
 
@@ -16,17 +18,22 @@ export function RegisterModal({
   onBackToLogin,
   refId,
 }: RegisterModalProps) {
-  if (!open) return null
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!open || !mounted) return null
 
   const close = () => onOpenChange(false)
 
-  return (
-    // Overlay proprio (sem Radix Dialog/portal/focus-trap/scroll-lock/backdrop-filter):
-    // em Android antigo essa combinacao trava a rolagem e a digitacao no formulario.
-    // O overlay fixed cobre a tela e rola por conta propria; sem bloquear o body e
-    // sem transform no card.
+  // Portal simples direto em document.body. Sem Radix, sem focus trap,
+  // sem scroll lock e sem no intermediario. No Android antigo, isso evita
+  // que camadas do Hero sejam compostas visualmente por cima do cadastro.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/60 sm:flex sm:items-center sm:justify-center sm:p-6"
+      className="fixed inset-0 z-50 overflow-y-auto bg-white sm:flex sm:items-center sm:justify-center sm:bg-black/60 sm:p-6"
       style={{ WebkitOverflowScrolling: 'touch' }}
       onClick={(e) => {
         if (e.target === e.currentTarget) close()
@@ -54,6 +61,7 @@ export function RegisterModal({
           }}
         />
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
