@@ -119,6 +119,12 @@ export function RegisterFormSteps({
   const [loading, setLoading] = useState(false)
   const [terms, setTerms] = useState({ uso: false, privacidade: false, promo: true })
   const [erros, setErros] = useState<{ email?: string; username?: string; telefone?: string }>({})
+  // Divergencia de "Confirmar senha" nao e recalculada a cada tecla (isso
+  // montava/desmontava a mensagem/icone abaixo do campo a cada caractere e
+  // disparava o ghosting em Chrome Android antigo). So e verificada no blur
+  // do campo e ao clicar em Continuar; DOM e classes do input ficam
+  // estaveis durante a digitacao.
+  const [confirmPasswordError, setConfirmPasswordError] = useState(false)
 
   const validation = validatePassword(password)
   const passwordOk = Object.values(validation).every(Boolean)
@@ -246,7 +252,13 @@ export function RegisterFormSteps({
     else setShowPasswordWarning(false)
   }
 
+  const handleConfirmPasswordBlur = () => {
+    setConfirmPasswordError(confirmPassword.length > 0 && confirmPassword !== password)
+  }
+
   const handleContinue = () => {
+    setConfirmPasswordError(confirmPassword.length > 0 && confirmPassword !== password)
+
     if (!step1Valid) {
       toast.warning('Preencha e-mail, senha e confirmação corretamente')
       return
@@ -451,7 +463,8 @@ export function RegisterFormSteps({
               placeholder="Confirmar senha"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className={fieldClass('pr-10')}
+              onBlur={handleConfirmPasswordBlur}
+              className={fieldClass('pr-10', confirmPasswordError && 'border-red-400')}
             />
             <button
               type="button"
@@ -460,11 +473,13 @@ export function RegisterFormSteps({
             >
               {showConfirmPassword ? <EyeSlashIcon className="w-5 h-5" /> : <EyeIcon className="w-5 h-5" />}
             </button>
-            {confirmPassword && confirmPassword !== password && (
-              <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
-                <ExclamationTriangleIcon className="w-4 h-4" /> As senhas nao coincidem.
-              </p>
-            )}
+            <p className="mt-1 min-h-[1rem] text-xs text-red-600 flex items-center gap-1">
+              {confirmPasswordError && (
+                <>
+                  <ExclamationTriangleIcon className="w-4 h-4" /> As senhas nao coincidem.
+                </>
+              )}
+            </p>
           </div>
 
           <Button
