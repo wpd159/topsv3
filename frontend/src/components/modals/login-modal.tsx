@@ -29,12 +29,14 @@ interface LoginModalProps {
   open: boolean
   onOpenChange: (value: boolean) => void
   redirectAfterSuccess?: string | null
+  onOpenRegister?: () => void
 }
 
 export function LoginModal({
   open,
   onOpenChange,
   redirectAfterSuccess,
+  onOpenRegister,
 }: LoginModalProps) {
   const router = useRouter()
   const { login } = useAuth()
@@ -99,15 +101,6 @@ export function LoginModal({
     return '/meus-anuncios'
   }, [queryRedirectTarget, redirectAfterSuccess])
 
-  const registerNext = redirectAfterSuccess || queryRedirectTarget
-  const registerHref = useMemo(() => {
-    if (registerNext && registerNext.startsWith('/') && !registerNext.startsWith('//')) {
-      return `/registrar?next=${encodeURIComponent(registerNext)}`
-    }
-
-    return '/registrar'
-  }, [registerNext])
-
   useEffect(() => {
     if (!redirectTarget) return
 
@@ -121,7 +114,14 @@ export function LoginModal({
 
   const handleOpenRegister = () => {
     onOpenChange(false)
-    window.setTimeout(() => router.push(registerHref), 180)
+    window.setTimeout(() => {
+      if (onOpenRegister) {
+        onOpenRegister()
+        return
+      }
+
+      window.dispatchEvent(new CustomEvent('tops:open-register'))
+    }, 180)
   }
 
   const handleLogin = async () => {

@@ -18,6 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { LoginModal } from "@/components/modals/login-modal"
+import { RegisterModal } from "@/components/modals/register-modal"
 import { HeaderSkeleton } from "./header-skeleton"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
 
@@ -27,19 +28,33 @@ function safeNext(value: string | null) {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : null
 }
 
-// Le ?login=1&next=... na home (usado por /registrar ao voltar para "Ja tenho
-// conta") e abre o LoginModal. Isolado em Suspense para nao tirar as demais
-// rotas do prerender estatico por causa do useSearchParams.
-function LoginQueryListener({ onDetected }: { onDetected: (next: string | null) => void }) {
+function AuthModalQueryListener({
+  onLogin,
+  onRegister,
+}: {
+  onLogin: (next: string | null) => void
+  onRegister: (next: string | null, refId: number | null) => void
+}) {
   const params = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
-    if (params.get("login") !== "1") return
-    onDetected(safeNext(params.get("next")))
+    const loginRequested = params.get("login") === "1"
+    const registerRequested = params.get("register") === "1"
+    if (!loginRequested && !registerRequested) return
+
+    const next = safeNext(params.get("next"))
+    if (registerRequested) {
+      const refValue = params.get("ref")
+      const parsedRef = refValue ? Number(refValue) : null
+      onRegister(next, parsedRef && Number.isFinite(parsedRef) ? parsedRef : null)
+    } else {
+      onLogin(next)
+    }
+
     router.replace(pathname, { scroll: false })
-  }, [params, pathname, router, onDetected])
+  }, [params, pathname, router, onLogin, onRegister])
 
   return null
 }
@@ -49,6 +64,8 @@ export default function Header() {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [loginModalOpen, setLoginModalOpen] = useState(false)
+  const [registerModalOpen, setRegisterModalOpen] = useState(false)
+  const [registerRefId, setRegisterRefId] = useState<number | null>(null)
   const [redirectAfterLogin, setRedirectAfterLogin] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -57,14 +74,6 @@ export default function Header() {
   const closeSheetThen = (action: () => void) => {
     setOpen(false)
     window.setTimeout(action, MOBILE_OVERLAY_CLOSE_MS)
-  }
-
-  const getRegisterHref = (nextPath?: string | null) => {
-    if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
-      return `/registrar?next=${encodeURIComponent(nextPath)}`
-    }
-
-    return "/registrar"
   }
 
   const go = (to: string) => {
@@ -87,15 +96,19 @@ export default function Header() {
     setLoginModalOpen(true)
   }
 
-  const openRegister = (nextPath?: string | null) => {
-    const navigateToRegisterPage = () => router.push(getRegisterHref(nextPath))
+  const openRegister = (nextPath?: string | null, refId?: number | null) => {
+    const showRegisterModal = () => {
+      setRedirectAfterLogin(nextPath ?? null)
+      setRegisterRefId(refId ?? null)
+      setRegisterModalOpen(true)
+    }
 
     if (open) {
-      closeSheetThen(navigateToRegisterPage)
+      closeSheetThen(showRegisterModal)
       return
     }
 
-    navigateToRegisterPage()
+    showRegisterModal()
   }
 
   const openPublishFlow = () => {
@@ -105,6 +118,16 @@ export default function Header() {
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 500)
     return () => clearTimeout(timeout)
+  }, [])
+
+  useEffect(() => {
+    const handleOpenRegister = () => {
+      setRedirectAfterLogin(null)
+      setRegisterRefId(null)
+      setRegisterModalOpen(true)
+    }
+    window.addEventListener('tops:open-register', handleOpenRegister)
+    return () => window.removeEventListener('tops:open-register', handleOpenRegister)
   }, [])
 
   if (loading) return <HeaderSkeleton />
@@ -261,7 +284,10 @@ export default function Header() {
       </header>
 
       <Suspense fallback={null}>
-        <LoginQueryListener onDetected={(next) => openLogin(next ?? undefined)} />
+        <AuthModalQueryListener
+          onLogin={(next) => openLogin(next ?? undefined)}
+          onRegister={(next, refId) => openRegister(next, refId)}
+        />
       </Suspense>
 
       {/* Modal */}
@@ -269,6 +295,19 @@ export default function Header() {
         open={loginModalOpen}
         onOpenChange={setLoginModalOpen}
         redirectAfterSuccess={redirectAfterLogin}
+        onOpenRegister={() => {
+          setLoginModalOpen(false)
+          window.setTimeout(() => setRegisterModalOpen(true), MOBILE_OVERLAY_CLOSE_MS)
+        }}
+      />
+      <RegisterModal
+        open={registerModalOpen}
+        onOpenChange={setRegisterModalOpen}
+        refId={registerRefId}
+        onBackToLogin={() => {
+          setRegisterModalOpen(false)
+          window.setTimeout(() => setLoginModalOpen(true), MOBILE_OVERLAY_CLOSE_MS)
+        }}
       />
     </>
   )

@@ -35,8 +35,8 @@ function apiUrl(path: string) {
   return `${base}${path}`
 }
 
-// Checagem de duplicidade: cancelavel via AbortController (usada no blur e
-// ao avancar de etapa, nunca no mount).
+// Checagem de duplicidade cancelavel via AbortController, usada no blur e
+// novamente antes do envio; nunca e disparada no mount.
 export async function checkDuplicidade(
   params: { email?: string; username?: string; telefone?: string },
   signal?: AbortSignal
