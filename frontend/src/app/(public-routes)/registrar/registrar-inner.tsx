@@ -1,7 +1,7 @@
 "use client"
 
 import { useSearchParams, useRouter } from "next/navigation"
-import { RegisterForm } from "@/components/auth/register-form"
+import { RegisterFormSteps } from "@/components/auth/register-form-steps"
 
 function getSafeNext(value: string | null) {
   if (!value) return null
@@ -23,7 +23,7 @@ export default function RegistrarPageInner() {
   return (
     <section data-register-page className="min-h-screen bg-white px-4 py-6 sm:px-6 sm:py-10">
       <div className="mx-auto w-full max-w-lg">
-        <RegisterForm
+        <RegisterFormSteps
           refId={ref ? Number(ref) : null}
           submitSource="CADASTRO_PAGINA"
           onSuccess={handleSuccess}
