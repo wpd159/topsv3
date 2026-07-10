@@ -1,7 +1,7 @@
 package br.com.topsdojob.v3.persistence.repository;
 
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import java.util.List;
 import java.util.UUID;
@@ -15,7 +15,7 @@ public interface AnuncioMidiaRepository
         extends JpaRepository<AnuncioMidiaEntity, UUID>, JpaSpecificationExecutor<AnuncioMidiaEntity> {
     long countByStatus(StatusAnuncioMidia status);
 
-    long countByClassificacaoConteudo(ClassificacaoConteudo classificacaoConteudo);
+    long countByVisibilidadeMidia(VisibilidadeMidia visibilidadeMidia);
 
     long countByAnuncioId(UUID anuncioId);
 

@@ -33,8 +33,8 @@
 
 - Validacao smoke HTTP da API publica local
 - BaseUrl=http://127.0.0.1:18135
-- Total de verificacoes: 1089
-- Verificacoes OK: 1089
+- Total de verificacoes: 1080
+- Verificacoes OK: 1080
 - Verificacoes com falha: 0
 - VALIDATION_RESULT=OK_API_PUBLICA_LOCAL
 

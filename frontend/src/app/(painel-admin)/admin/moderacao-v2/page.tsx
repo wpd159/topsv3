@@ -1,5 +1,4 @@
-import { Suspense } from 'react'
-import { ModeracaoV2List } from '@/features/moderation-v2/components/moderacao-v2-list'
+import { ModeracaoV2MediaQueue } from '@/features/moderation-v2/components/moderacao-v2-media-gallery'
 
 export default function ModeracaoV2Page() {
   return (
@@ -10,9 +9,7 @@ export default function ModeracaoV2Page() {
           Fila operacional e detalhe focado em decisão.
         </p>
       </div>
-      <Suspense fallback={<div className="py-12 text-center text-sm text-gray-500">Carregando lista…</div>}>
-        <ModeracaoV2List />
-      </Suspense>
+      <ModeracaoV2MediaQueue />
     </section>
   )
 }

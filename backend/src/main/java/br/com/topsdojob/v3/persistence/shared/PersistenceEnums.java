@@ -4,10 +4,6 @@ public final class PersistenceEnums {
   private PersistenceEnums() {
   }
 
-  public enum ClassificacaoConteudo {
-    LIVRE, BLOQUEADO
-  }
-
   public enum StatusUsuario {
     ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO
   }
@@ -25,7 +21,7 @@ public final class PersistenceEnums {
   }
 
   public enum StatusModeracaoAnuncio {
-    NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO, BLOQUEADO
+    NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO
   }
 
   public enum StatusPublicacaoBusca {
@@ -45,7 +41,7 @@ public final class PersistenceEnums {
   }
 
   public enum StatusAnuncioMidia {
-    PENDENTE, PUBLICAVEL, REJEITADA, REMOVIDA
+    PENDENTE, AJUSTE_SOLICITADO, PUBLICAVEL, REJEITADA, REMOVIDA
   }
 
   public enum StatusStoryAnuncio {

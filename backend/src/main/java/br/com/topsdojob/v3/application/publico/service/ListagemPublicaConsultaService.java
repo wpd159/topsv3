@@ -16,7 +16,6 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.List;
@@ -110,11 +109,10 @@ public class ListagemPublicaConsultaService {
 
         Page<AnuncioEntity> anuncios = anuncioIds.isEmpty()
                 ? Page.empty(pageable)
-                : anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndClassificacaoConteudoAndRemovidoEmIsNull(
+                : anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                         anuncioIds,
                         StatusAnuncio.PUBLICADO,
                         StatusModeracaoAnuncio.APROVADO,
-                        ClassificacaoConteudo.LIVRE,
                         pageable);
 
         Map<UUID, AnuncioLocalizacaoEntity> localizacaoPorAnuncio = localizacoes.stream()

@@ -72,7 +72,7 @@ $rotas = @(
   "/acompanhantes/go/goiania/setor-bueno",
   "/acompanhantes/df/brasilia",
   "/anuncios/demo-goiania-livre-premium",
-  "/anuncios/demo-goiania-bloqueado",
+  "/anuncios/demo-goiania-midia-restrita",
   "/sitemap.xml",
   "/robots.txt"
 )

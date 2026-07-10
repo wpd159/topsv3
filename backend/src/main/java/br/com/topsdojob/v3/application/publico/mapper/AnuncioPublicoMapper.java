@@ -16,6 +16,12 @@ public class AnuncioPublicoMapper {
     public static final String PENDENTE_POLITICA_WHATSAPP =
             "PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO";
 
+    private final MidiaPublicaSeguraPolicy midiaPolicy;
+
+    public AnuncioPublicoMapper(MidiaPublicaSeguraPolicy midiaPolicy) {
+        this.midiaPolicy = midiaPolicy;
+    }
+
     public AnuncioCardPublicoDto toCard(
             AnuncioEntity anuncio,
             LocalizacaoPublicaDto localizacao,
@@ -28,7 +34,7 @@ public class AnuncioPublicoMapper {
                 resumo(anuncio.getDescricao()),
                 anuncio.getPreco(),
                 localizacao,
-                List.copyOf(midias),
+                midiaPolicy.paraCard(midias),
                 flags.destaqueAtivo(),
                 flags.topoAtivo(),
                 flags.possuiMidiaExtra() || !midias.isEmpty(),

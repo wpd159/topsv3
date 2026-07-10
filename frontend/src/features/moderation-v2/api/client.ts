@@ -1,6 +1,7 @@
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import type {
   AdminAuditLogItem,
+  ModerationMediaItem,
   ModerationAnuncioDetail,
   ModerationRevisionDetail,
   ModerationRevisionQueueItem,
@@ -61,14 +62,13 @@ export function notifyModerationDataUpdated() {
 
 export async function approveAnuncioApi(
   id: number,
-  classification: string,
   reason: string
 ): Promise<Record<string, unknown>> {
   const res = await fetch(`${apiBase()}/anuncios/${id}/aprovar`, {
     method: 'PUT',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ classification, reason }),
+    body: JSON.stringify({ reason }),
   })
   if (!res.ok) {
     const t = await res.text().catch(() => '')
@@ -109,22 +109,33 @@ export async function alterarStatusStaffApi(
   return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
 }
 
-export async function updateStaffClassificationApi(
-  id: number,
-  classification: string,
-  reason: string
-): Promise<ModerationAnuncioDetail> {
-  const res = await fetch(`${apiBase()}/anuncios/staff/${id}/classification`, {
-    method: 'PUT',
+export async function decidirMidiaApi(
+  id: string | number,
+  acao: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE',
+  visibilidadeMidia?: 'LIVRE' | 'RESTRITA_18',
+  motivo?: string
+): Promise<Record<string, unknown>> {
+  const res = await fetch(`${apiBase()}/api/admin/midias/${encodeURIComponent(String(id))}/decidir`, {
+    method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ classification, reason }),
+    body: JSON.stringify({ acao, visibilidadeMidia, motivo: motivo?.trim() || undefined }),
   })
   if (!res.ok) {
     const t = await res.text().catch(() => '')
-    throw new Error(t || `Classificação falhou (${res.status})`)
+    throw new Error(t || `Decisão de mídia falhou (${res.status})`)
   }
-  return corrigirEstruturaTexto(await res.json()) as ModerationAnuncioDetail
+  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
+}
+
+export async function fetchAdminMidiasV3(): Promise<ModerationMediaItem[]> {
+  const res = await fetch(`${apiBase()}/api/admin/midias?page=0&size=100`, {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new Error(`Falha ao carregar mídias (${res.status})`)
+  const data = corrigirEstruturaTexto(await res.json()) as { itens?: ModerationMediaItem[] }
+  return Array.isArray(data.itens) ? data.itens : []
 }
 
 export async function fetchComplianceAuditForAnuncio(anuncioId: number): Promise<AdminAuditLogItem[]> {

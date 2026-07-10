@@ -131,6 +131,22 @@ html, body { --removed-body-scroll-bar-size: 0px !important; }
   body {
     @apply bg-background text-foreground;
   }
+  main,
+  section,
+  article,
+  nav,
+  header,
+  footer {
+    min-width: 0;
+  }
+  h1,
+  h2,
+  h3,
+  p,
+  a,
+  button {
+    overflow-wrap: break-word;
+  }
 }
 
 /* ===== Compliance blur (conteúdo restrito) ===== */

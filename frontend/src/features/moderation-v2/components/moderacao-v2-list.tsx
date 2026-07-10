@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { fetchPremiumBenefitsDashboardAds } from '@/lib/admin-premium-benefits-api'
 import {
-  labelClassificacaoDashboard,
   matchesAltoTrafegoZeroCliqueAlert,
   matchesComViewsSemClique,
   matchesStrategicAltoTrafego,
@@ -55,13 +54,10 @@ import {
   type ModerationListSort,
 } from '../lib/queue'
 import {
-  MOD_V2_QUERY_CLASSIFICACAO,
   MOD_V2_QUERY_CIDADE,
   MOD_V2_QUERY_FILTRO,
-  QUERY_CLASSIFICACAO_SEM,
   hasDashboardUrlDrilldown,
   parseCidadeQuery,
-  parseClassificacaoQuery,
   parseDashboardStrategicFiltro,
   premiumDashboardFilterForStrategic,
 } from '../lib/url-dashboard-filters'
@@ -389,7 +385,6 @@ export function ModeracaoV2List() {
   const searchParams = useSearchParams()
   const searchParamsKey = searchParams.toString()
   const strategicFiltro = parseDashboardStrategicFiltro(searchParams.get(MOD_V2_QUERY_FILTRO))
-  const classificacaoQuery = parseClassificacaoQuery(searchParams.get(MOD_V2_QUERY_CLASSIFICACAO))
   const cidadeQuery = parseCidadeQuery(searchParams.get(MOD_V2_QUERY_CIDADE))
 
   const [rows, setRows] = useState<ModerationStaffListItem[]>([])
@@ -406,7 +401,7 @@ export function ModeracaoV2List() {
   const [premiumDrilldownError, setPremiumDrilldownError] = useState<string | null>(null)
 
   const premiumApiFilter = premiumDashboardFilterForStrategic(strategicFiltro)
-  const hasDrilldown = hasDashboardUrlDrilldown(strategicFiltro, classificacaoQuery, cidadeQuery)
+  const hasDrilldown = hasDashboardUrlDrilldown(strategicFiltro, cidadeQuery)
   /** Cruzar drill-down sempre com “todos” os status — evita interseção acidental com “fila” no 1º render. */
   const moderationFilterForRows: ModerationListFilter = hasDrilldown ? 'todos' : filter
   const operationalFilterActive: ModerationListFilter = hasDrilldown ? 'todos' : filter
@@ -473,7 +468,7 @@ export function ModeracaoV2List() {
 
   useEffect(() => {
     setPage(1)
-  }, [filter, busca, pageSize, sortBy, strategicFiltro, classificacaoQuery, cidadeQuery, premiumDrilldownIds, searchParamsKey])
+  }, [filter, busca, pageSize, sortBy, strategicFiltro, cidadeQuery, premiumDrilldownIds, searchParamsKey])
 
   const revisionAnuncioIds = useMemo(
     () => new Set(revisionQueue.map((q) => Number(q.anuncioId)).filter(Number.isFinite)),
@@ -538,15 +533,6 @@ export function ModeracaoV2List() {
       list = list.filter((r) => matchesAltoTrafegoZeroCliqueAlert(r.visualizacoes, r.cliquesWhatsapp))
     }
 
-    if (classificacaoQuery) {
-      const key = classificacaoQuery.toUpperCase()
-      if (key === QUERY_CLASSIFICACAO_SEM) {
-        list = list.filter((r) => !(r.contentClassification ?? '').trim())
-      } else {
-        list = list.filter((r) => (r.contentClassification ?? '').trim().toUpperCase() === key)
-      }
-    }
-
     if (cidadeQuery) {
       const target = cidadeQuery.trim().toLowerCase()
       list = list.filter((r) => (r.cidadeNome ?? '').trim().toLowerCase() === target)
@@ -556,7 +542,6 @@ export function ModeracaoV2List() {
       console.debug('[ModeracaoV2 drilldown]', {
         searchParams: searchParamsKey,
         strategicFiltro,
-        classificacaoQuery,
         cidadeQuery,
         moderationFilterForRows,
         rowsTotal: rows.length,
@@ -573,7 +558,6 @@ export function ModeracaoV2List() {
     sortBy,
     revisionAnuncioIds,
     strategicFiltro,
-    classificacaoQuery,
     cidadeQuery,
     premiumApiFilter,
     premiumDrilldownIds,
@@ -615,12 +599,6 @@ export function ModeracaoV2List() {
   if (strategicFiltro === 'com-views-sem-clique') dashboardActiveLabels.push('Com views e sem clique no WhatsApp')
   if (strategicFiltro === 'alto-trafego-zero-clique')
     dashboardActiveLabels.push('Muitas views (≥ 200) e zero clique')
-  if (classificacaoQuery) {
-    const k = classificacaoQuery.toUpperCase()
-    const label =
-      k === QUERY_CLASSIFICACAO_SEM ? 'Sem classificação' : labelClassificacaoDashboard(classificacaoQuery)
-    dashboardActiveLabels.push(`Classificação = ${label}`)
-  }
   if (cidadeQuery) dashboardActiveLabels.push(`Cidade = ${cidadeQuery}`)
 
   const cidadeSemCampoNoBackend =

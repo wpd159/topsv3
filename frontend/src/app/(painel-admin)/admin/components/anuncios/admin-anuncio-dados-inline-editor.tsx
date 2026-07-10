@@ -42,8 +42,6 @@ type AnuncioInlineDTO = {
   pontoReferenciaTexto?: string | null
   fotos: string[]
   videosAnuncio?: string[]
-  /** Alinhado ao enum ContentClassification do backend */
-  contentClassification: string
   estadoId?: number | null
   cidadeId?: number | null
   bairroId?: number | null
@@ -69,13 +67,6 @@ const LOCAIS_ATEND = [
   { value: "HOTEL_MOTEL", label: "Hotel/Motel" },
   { value: "MEU_LOCAL", label: "Meu local" },
 ]
-
-const CONTENT_CLASSIFICATION = [
-  { value: "SAFE_PUBLIC", label: "Conteúdo live (público)" },
-  { value: "ADULT_NON_EXPLICIT", label: "Adulto — seminudez" },
-  { value: "ADULT_RESTRICTED", label: "Adulto restrito (verificação)" },
-  { value: "ADULT_EXPLICIT_BLOCKED", label: "Explícito — bloqueio forte" },
-] as const
 
 function isValidEnumValue(value: string, allowed: readonly { value: string }[]) {
   return allowed.some((a) => a.value === value)
@@ -166,12 +157,6 @@ export function AdminAnuncioDadosInlineEditor({ anuncioId, open, onCancel, onSav
           raw.categoria && isValidEnumValue(raw.categoria, CATEGORIAS) ? raw.categoria : ""
         const horarioNormalizado =
           raw.horario && isValidEnumValue(raw.horario, HORARIOS) ? raw.horario : ""
-        const classificacaoNormalizada =
-          raw.contentClassification &&
-          isValidEnumValue(raw.contentClassification, CONTENT_CLASSIFICATION)
-            ? raw.contentClassification
-            : "SAFE_PUBLIC"
-
         if (cancelled) return
 
         setDto({
@@ -186,7 +171,6 @@ export function AdminAnuncioDadosInlineEditor({ anuncioId, open, onCancel, onSav
           fotos: raw.fotos ?? [],
           videosAnuncio: raw.videosAnuncio ?? [],
           preco: precoFormatado,
-          contentClassification: classificacaoNormalizada,
         })
 
         if (raw.estadoId) {
@@ -395,7 +379,6 @@ export function AdminAnuncioDadosInlineEditor({ anuncioId, open, onCancel, onSav
 
     form.append("cidadeId", String(selectedCidade.id))
     form.append("bairroId", String(selectedBairro.id))
-    form.append("contentClassification", dto.contentClassification)
 
     dto.locaisAtendimento.forEach((v) => form.append("locaisAtendimento", v))
     dto.servicos.forEach((v) => form.append("servicos", v))
@@ -500,24 +483,6 @@ export function AdminAnuncioDadosInlineEditor({ anuncioId, open, onCancel, onSav
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1 sm:col-span-2">
-          <Label>Classificação de conteúdo (revisão)</Label>
-          <Select
-            value={dto.contentClassification}
-            onValueChange={(v) => setDto((d) => (d ? { ...d, contentClassification: v } : d))}
-          >
-            <SelectTrigger className="h-10">
-              <SelectValue placeholder="Classificação" />
-            </SelectTrigger>
-            <SelectContent>
-              {CONTENT_CLASSIFICATION.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-3">

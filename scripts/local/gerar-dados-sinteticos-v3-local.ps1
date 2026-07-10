@@ -33,6 +33,7 @@ $data = Get-Content -LiteralPath $fixtureFull -Raw | ConvertFrom-Json
 $cidades = @($data.cidades)
 $bairros = @($data.bairros)
 $anuncios = @($data.anuncios)
+$midias = @($data.midias)
 $beneficios = @($data.premiumBeneficios)
 $metricas = @($data.metricasAgregadas)
 $rotas = @($data.rotasCobertas)
@@ -59,8 +60,8 @@ $lines = @(
   "- cidades: $($cidades.Count)",
   "- bairros: $($bairros.Count)",
   "- anuncios: $($anuncios.Count)",
-  "- anuncios_livre: $(@($anuncios | Where-Object { $_.classificacao -eq 'LIVRE' }).Count)",
-  "- anuncios_bloqueado: $(@($anuncios | Where-Object { $_.classificacao -eq 'BLOQUEADO' }).Count)",
+  "- midias_livre: $(@($midias | Where-Object { $_.visibilidade -eq 'LIVRE' }).Count)",
+  "- midias_restrita_18: $(@($midias | Where-Object { $_.visibilidade -eq 'RESTRITA_18' }).Count)",
   "- anuncios_ativos: $(@($anuncios | Where-Object { $_.status -eq 'ATIVO' }).Count)",
   "- anuncios_pausados: $(@($anuncios | Where-Object { $_.status -eq 'PAUSADO' }).Count)",
   "- anuncios_pendentes: $(@($anuncios | Where-Object { $_.status -eq 'PENDENTE' }).Count)",

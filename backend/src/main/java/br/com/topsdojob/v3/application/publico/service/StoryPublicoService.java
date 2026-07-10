@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.service;
 import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
 import br.com.topsdojob.v3.application.publico.dto.PoliticaStoryPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.StoryPublicoDto;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -11,7 +12,6 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -74,7 +74,6 @@ public class StoryPublicoService {
                         slugSeguro,
                         StatusAnuncio.PUBLICADO,
                         StatusModeracaoAnuncio.APROVADO)
-                .filter(this::classificacaoLiberavelComIdade)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
         List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioId(anuncio.getId()).stream()
@@ -128,13 +127,12 @@ public class StoryPublicoService {
             StoryAnuncioEntity story,
             AnuncioMidiaEntity vinculo,
             Map<UUID, ArquivoMidiaEntity> arquivosPorId) {
-        if (vinculo == null || !classificacaoLiberavelComIdade(vinculo.getClassificacaoConteudo())) {
+        if (vinculo == null || vinculo.getVisibilidadeMidia() != VisibilidadeMidia.RESTRITA_18) {
             return null;
         }
         ArquivoMidiaEntity arquivo = arquivosPorId.get(vinculo.getArquivoMidiaId());
         if (arquivo == null
-                || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO
-                || !classificacaoLiberavelComIdade(arquivo.getClassificacaoConteudo())) {
+                || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO) {
             return null;
         }
         MidiaPublicaUrlService.ResultadoUrlPublica urlPublica = urlService.resolver(vinculo, arquivo);
@@ -142,7 +140,7 @@ public class StoryPublicoService {
                 story.getOrdem(),
                 enumName(vinculo.getTipo()),
                 enumName(vinculo.getFinalidade()),
-                enumName(vinculo.getClassificacaoConteudo()),
+                enumName(vinculo.getVisibilidadeMidia()),
                 urlPublica.urlPublica(),
                 arquivo.getLargura(),
                 arquivo.getAltura(),
@@ -155,7 +153,7 @@ public class StoryPublicoService {
         return vinculo != null
                 && vinculo.getStatus() == StatusAnuncioMidia.PUBLICAVEL
                 && (vinculo.getTipo() == TipoAnuncioMidia.STORY || vinculo.getFinalidade() == FinalidadeAnuncioMidia.STORY)
-                && classificacaoLiberavelComIdade(vinculo.getClassificacaoConteudo());
+                && vinculo.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18;
     }
 
     private boolean storyElegivel(StoryAnuncioEntity story, OffsetDateTime now) {
@@ -163,14 +161,6 @@ public class StoryPublicoService {
                 && story.getStatus() == StatusStoryAnuncio.PUBLICADO
                 && (story.getInicioEm() == null || !story.getInicioEm().isAfter(now))
                 && (story.getFimEm() == null || story.getFimEm().isAfter(now));
-    }
-
-    private boolean classificacaoLiberavelComIdade(AnuncioEntity anuncio) {
-        return anuncio != null && classificacaoLiberavelComIdade(anuncio.getClassificacaoConteudo());
-    }
-
-    private boolean classificacaoLiberavelComIdade(ClassificacaoConteudo classificacao) {
-        return classificacao == ClassificacaoConteudo.LIVRE || classificacao == ClassificacaoConteudo.BLOQUEADO;
     }
 
     private String enumName(Enum<?> value) {

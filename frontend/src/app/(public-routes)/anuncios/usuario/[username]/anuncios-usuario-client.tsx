@@ -5,6 +5,7 @@ import Link from "next/link"
 import { AnuncioCard } from "@/components/anuncios/anuncio-card"
 import { useAuth } from "@/context/AuthContext"
 import { corrigirEstruturaTexto } from "@/lib/text/encoding"
+import type { MidiaPublica } from "@/lib/media/public-media"
 
 type Anuncio = {
   id: number
@@ -13,25 +14,18 @@ type Anuncio = {
   descricao: string
   nomeAnunciante?: string
   usernameAnunciante?: string
-  telefoneAnunciante?: string
   favorito?: boolean
   impulsionado?: boolean
   destaqueAtivo?: boolean
   videoHabilitado?: boolean
   visualizacoes?: number
   preco?: number
-  fotosUrl?: string[]
-  videosAnuncio?: string[]
+  midias?: MidiaPublica[]
   estadoUf?: string | null
   cidadeNome?: string | null
   bairroNome?: string | null
   idade?: number | null
   carrosselDisponivel?: boolean
-  contentClassification?: string | null
-  requiresVisitorVerification?: boolean
-  requiresStrongVerification?: boolean
-  viewerAuthorized?: boolean
-  restrictedPreview?: boolean
   whatsappCardEnabled?: boolean
 }
 
@@ -132,20 +126,13 @@ export default function AnunciosUsuarioClient({ username }: { username: string }
               bairroNome={anuncio.bairroNome ?? null}
               idade={anuncio.idade ?? null}
               valor={`A partir de R$ ${anuncio.preco?.toFixed(2) ?? "0,00"} / hora`}
-              imagens={(Array.isArray(anuncio.fotosUrl) ? anuncio.fotosUrl : []).filter(Boolean)}
-              videos={(Array.isArray(anuncio.videosAnuncio) ? anuncio.videosAnuncio : []).filter(Boolean)}
+              midias={anuncio.midias ?? []}
               descricao={anuncio.descricao}
-              telefone={anuncio.telefoneAnunciante}
               favoritoInicial={anuncio.favorito ?? false}
               destaque={anuncio.destaqueAtivo ?? false}
               visualizacoes={anuncio.visualizacoes ?? 0}
               carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
               videoHabilitado={anuncio.videoHabilitado ?? false}
-              contentClassification={anuncio.contentClassification ?? null}
-              requiresVisitorVerification={anuncio.requiresVisitorVerification ?? false}
-              requiresStrongVerification={anuncio.requiresStrongVerification ?? false}
-              viewerAuthorized={anuncio.viewerAuthorized ?? false}
-              restrictedPreview={anuncio.restrictedPreview ?? false}
               whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
             />
           ))}

@@ -7,7 +7,7 @@ import MainContent from "./componentes/main-content"
 import Sidebar from "./componentes/sidebar"
 import { AnunciosRelacionados } from "./componentes/anuncios-relacionados"
 import { AvisosAdministracao } from "./componentes/avisos-administracao"
-import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
+import type { MidiaPublica } from "@/lib/media/public-media"
 
 type AnuncioUI = {
   id: number
@@ -31,19 +31,12 @@ type AnuncioUI = {
   descricaoAnunciante?: string | null
   usuarioId: number
   descricaoAnuncio?: string | null
-  telefone?: string | null
-  imagens: string[]
-  videos: string[]
+  midias: MidiaPublica[]
   categoria?: string | null
   servicos?: string[]
   locaisAtendimento?: string[]
   linkConteudo?: string | null
   horario?: string | null
-  contentClassification?: string | null
-  requiresVisitorVerification?: boolean
-  requiresStrongVerification?: boolean
-  viewerAuthorized?: boolean
-  restrictedPreview?: boolean
 }
 
 type AnuncioApiPayload = Record<string, any>
@@ -66,20 +59,6 @@ function dedupeStrings(values: unknown): string[] {
 }
 
 function mapAnuncioPayload(slug: string, data: AnuncioApiPayload): AnuncioUI {
-  const fotos =
-    (Array.isArray(data.fotos) && data.fotos.length
-      ? data.fotos
-      : Array.isArray(data.fotosUrl)
-        ? data.fotosUrl
-        : []) ?? []
-
-  const videos =
-    (Array.isArray(data.videos)
-      ? data.videos
-      : Array.isArray(data.videosAnuncio)
-        ? data.videosAnuncio
-        : []) ?? []
-
   return {
     id: data.id,
     slug,
@@ -105,19 +84,12 @@ function mapAnuncioPayload(slug: string, data: AnuncioApiPayload): AnuncioUI {
     tipo: data.categoria ?? "Não informado",
     descricaoAnunciante: data.descricaoAnunciante ?? data.descricao ?? null,
     descricaoAnuncio: data.descricaoAnuncio ?? data.descricao ?? null,
-    telefone: data.telefone ?? null,
-    imagens: dedupeStrings(fotos),
-    videos: dedupeStrings(videos),
+    midias: Array.isArray(data.midias) ? data.midias : [],
     categoria: data.categoria ?? null,
     servicos: dedupeStrings(data.servicos),
     locaisAtendimento: dedupeStrings(data.locaisAtendimento),
     linkConteudo: data.linkConteudo ?? null,
     horario: data.horario ?? null,
-    contentClassification: data.contentClassification ?? null,
-    requiresVisitorVerification: Boolean(data.requiresVisitorVerification),
-    requiresStrongVerification: Boolean(data.requiresStrongVerification),
-    viewerAuthorized: Boolean(data.viewerAuthorized),
-    restrictedPreview: Boolean(data.restrictedPreview),
   }
 }
 
@@ -138,14 +110,9 @@ export default function AnuncioDetalhesPageClient({
     initialData && slug ? mapAnuncioPayload(slug, initialData) : null
   )
   const [imagemAtiva, setImagemAtiva] = useState(0)
-  const [verificationOpen, setVerificationOpen] = useState(false)
   const [reloadMarker, setReloadMarker] = useState(0)
   const visualizacaoRegistradaParaId = useRef<number | null>(null)
   const visualizacaoFetchParaId = useRef<number | null>(null)
-  const shouldRefreshRestrictedInitialData =
-    Boolean(initialData?.restrictedPreview) ||
-    (Boolean(initialData?.requiresVisitorVerification) && !Boolean(initialData?.viewerAuthorized))
-
   useEffect(() => {
     visualizacaoRegistradaParaId.current = null
     visualizacaoFetchParaId.current = null
@@ -156,8 +123,7 @@ export default function AnuncioDetalhesPageClient({
     if (
       reloadMarker === 0 &&
       initialData &&
-      anuncio?.slug === slug &&
-      !shouldRefreshRestrictedInitialData
+      anuncio?.slug === slug
     ) {
       return
     }
@@ -176,7 +142,7 @@ export default function AnuncioDetalhesPageClient({
         setAnuncio(null)
       }
     })()
-  }, [slug, reloadMarker, initialData, anuncio?.slug, shouldRefreshRestrictedInitialData])
+  }, [slug, reloadMarker, initialData, anuncio?.slug])
 
   useEffect(() => {
     if (!anuncio?.id || !slug) return
@@ -189,12 +155,17 @@ export default function AnuncioDetalhesPageClient({
     if (visualizacaoFetchParaId.current === anuncio.id) return
     visualizacaoFetchParaId.current = anuncio.id
 
-    const url = `${base}/anuncios/${anuncio.id}/visualizar`
+    const url = `${base}/api/public/anuncios/${encodeURIComponent(slug)}/visualizacao`
     if (process.env.NODE_ENV === "development") {
       console.debug("[AnuncioDetalhes] registrando visualização", { method: "POST", url })
     }
 
-    void fetch(url, { method: "POST", credentials: "omit" })
+    void fetch(url, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
       .then((res) => {
         if (process.env.NODE_ENV === "development") {
           console.debug("[AnuncioDetalhes] visualizar resposta", res.status, res.ok)
@@ -234,12 +205,7 @@ export default function AnuncioDetalhesPageClient({
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="order-1 flex flex-col gap-6 lg:order-2">
-          <Sidebar
-            anuncio={{
-              ...anuncio,
-              onRequestVerification: () => setVerificationOpen(true),
-            }}
-          />
+          <Sidebar anuncio={anuncio} />
           <AvisosAdministracao />
         </div>
 
@@ -257,17 +223,6 @@ export default function AnuncioDetalhesPageClient({
         categoria={anuncio.categoria}
       />
 
-      <VisitorVerificationModal
-        open={verificationOpen}
-        level={anuncio.requiresStrongVerification ? "REINFORCED" : "LIGHT"}
-        context={{
-          anuncioId: anuncio.id,
-          route: `/anuncios/${anuncio.slug}`,
-          contentClassification: anuncio.contentClassification ?? null,
-        }}
-        onOpenChange={setVerificationOpen}
-        onVerified={() => setReloadMarker((prev) => prev + 1)}
-      />
     </div>
   )
 }

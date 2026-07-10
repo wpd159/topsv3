@@ -373,7 +373,7 @@ Antes de admin em ambiente nao local:
 
 - Confirmar por prints desktop/mobile que `PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO` e `conteudo_autorizado` nao aparecem em paginas publicas.
 - Manter o validador renderizado falhando para enum/status/snake_case tecnico visivel.
-- Manter anuncio `BLOQUEADO` sem WhatsApp publico indevido.
+- Histórico superado: o gate antigo de anúncio global `BLOQUEADO` sem WhatsApp foi substituído por contato mediado disponível para anúncio público/ativo e original `RESTRITA_18` protegido.
 - `gitleaks` real segue pendente no PATH.
 - Pro continua obrigatorio antes de homologacao/cutover real com dados reais/sanitizados, financeiro, Pix/Efi, webhooks ou producao.
 
@@ -423,7 +423,7 @@ Antes de admin em ambiente nao local:
 
 - Bloco 37 corrigido removeu copy visivel tecnica/local/sintetica e deve permanecer protegido pelos validadores renderizados.
 - Bloco 38 poliu rotulos publicos de status sem alterar regra de autorizacao.
-- Bloco 39 validou Age Gate/WhatsApp sintetico para `LIVRE` e `BLOQUEADO`, mantendo WhatsApp mediado pelo backend.
+- Histórico superado: o Bloco 39 validou a regra global então vigente; a migration V018 substitui essa regra por visibilidade individual e contato independente da idade.
 - Bloco 40 corrigido validou midia/fotos/stories sinteticos e corrigiu a cadeia de encoding que gerava mojibake em prints publicos.
 - Checkpoint local do Bloco 40 corrigido: `f67880a`.
 
@@ -467,7 +467,7 @@ Antes de admin em ambiente nao local:
 - Flyway CLI nao foi encontrado no PATH.
 - Imagem `flyway/flyway` nao foi encontrada localmente.
 - Imagens `postgres:16` e `postgres:17` existem localmente, mas PostgreSQL descartavel do Flyway nao foi iniciado porque Flyway real estava ausente.
-- Resultado atual: `PENDENTE_FLYWAY_REAL_LOCAL`.
+- Resultado historico do Bloco 45, superado pelos Blocos 47 e pela validacao da V018: `PENDENTE_FLYWAY_REAL_LOCAL`.
 - Nenhuma instalacao automatica foi executada.
 - Nenhum `docker pull` foi executado.
 - Nenhum recurso Docker do Flyway foi criado.
@@ -495,6 +495,7 @@ Antes de admin em ambiente nao local:
 - `flyway info`, `migrate`, `validate` e `info` final executados com sucesso.
 - Recursos Docker temporarios `topsv3-flyway-local-*` foram removidos.
 - Homologacao/producao continuam exigindo gates proprios, revisao Pro e ambiente controlado.
+- Estado vigente da migration atual: V001 a V018 aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel; V018 consta como `Success` e os recursos temporarios proprios foram removidos.
 
 ## Estado do Bloco 48
 

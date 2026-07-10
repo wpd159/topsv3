@@ -173,9 +173,10 @@ if ($LASTEXITCODE -ne 0) {
 $startedFrontend = $false
 $frontendProcess = $null
 $portOwnersBefore = Get-PortOwners -Port $FrontendPort
-$oldApiBase = $env:NEXT_PUBLIC_API_BASE_URL
+$oldApiBase = $env:NEXT_PUBLIC_API_URL
 $oldAppEnv = $env:NEXT_PUBLIC_APP_ENV
 $oldCanonical = $env:NEXT_PUBLIC_CANONICAL_DOMAIN
+$oldSiteUrl = $env:NEXT_PUBLIC_SITE_URL
 
 try {
   if (-not (Test-LocalUrl -Url $frontendBaseUrl)) {
@@ -195,9 +196,10 @@ try {
       exit 2
     }
 
-    $env:NEXT_PUBLIC_API_BASE_URL = $safeBackendUrl
+    $env:NEXT_PUBLIC_API_URL = $safeBackendUrl
     $env:NEXT_PUBLIC_APP_ENV = "local"
     $env:NEXT_PUBLIC_CANONICAL_DOMAIN = "http://localhost"
+    $env:NEXT_PUBLIC_SITE_URL = $frontendBaseUrl
     $stdout = Join-Path $env:TEMP ("topsv3-render-frontend-{0}.out.log" -f ([guid]::NewGuid().ToString("N")))
     $stderr = Join-Path $env:TEMP ("topsv3-render-frontend-{0}.err.log" -f ([guid]::NewGuid().ToString("N")))
     $frontendProcess = Start-Process -FilePath $npm.Source `
@@ -244,12 +246,11 @@ const uiPath = process.env.TOPSV3_RENDER_RELATORIO_UI || "";
 
 const routes = [
   { key: "home", path: "/", screenshot: "desktop-home", type: "page", h1: true, breadcrumbs: false },
-  { key: "anunciar", path: "/anunciar", screenshot: "desktop-anunciar", type: "page", h1: true, breadcrumbs: false },
   { key: "cidade-goiania", path: "/acompanhantes/go/goiania", screenshot: "desktop-cidade-goiania", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-goiania-livre-premium" },
   { key: "bairro-setor-bueno", path: "/acompanhantes/go/goiania/setor-bueno", screenshot: "desktop-bairro-setor-bueno", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-goiania-livre-premium" },
   { key: "cidade-brasilia", path: "/acompanhantes/df/brasilia", screenshot: "desktop-cidade-brasilia", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-brasilia-premium-topo" },
-  { key: "anuncio-livre", path: "/anuncios/demo-goiania-livre-premium", screenshot: "desktop-anuncio-livre", type: "page", h1: true, breadcrumbs: true, mustContain: "Perfil de demonstra" },
-  { key: "anuncio-bloqueado", path: "/anuncios/demo-goiania-bloqueado", screenshot: "desktop-anuncio-bloqueado", type: "page", h1: true, breadcrumbs: true, mustContain: "Demo Goi", mustNotContain: "wa.me" },
+  { key: "anuncio-livre", path: "/anuncios/demo-goiania-livre-premium", screenshot: "desktop-anuncio-livre", type: "page", h1: true, breadcrumbs: false, mustContain: "Perfil de demonstra" },
+  { key: "anuncio-midia-restrita", path: "/anuncios/demo-goiania-midia-restrita", screenshot: "desktop-anuncio-midia-restrita", type: "page", h1: true, breadcrumbs: false, restricted: true, mustContain: "Demo Goi", mustNotContain: "wa.me" },
   { key: "sitemap", path: "/sitemap.xml", screenshot: "desktop-sitemap", type: "text", mustContain: "<urlset" },
   { key: "robots", path: "/robots.txt", screenshot: "desktop-robots", type: "text", mustContain: "Disallow" }
 ];
@@ -397,11 +398,27 @@ function pageMetricsScript() {
       const tag = el.tagName.toLowerCase();
       const className = String(el.className || "");
       const id = String(el.id || "");
-      return tag !== "next-route-announcer" && tag !== "nextjs-portal" && !id.startsWith("__next") && !className.includes("nextjs");
+      const r = el.getBoundingClientRect();
+      const visible = r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+      return visible && tag !== "next-route-announcer" && tag !== "nextjs-portal" && !id.startsWith("__next") && !className.includes("nextjs");
     }).map((el) => {
       const cs = getComputedStyle(el);
-      return { tag: el.tagName.toLowerCase(), className: String(el.className || ""), position: cs.position };
-    }).filter((item) => /^(fixed|absolute|sticky)$/i.test(item.position)).slice(0, 20);
+      return {
+        tag: el.tagName.toLowerCase(),
+        className: String(el.className || ""),
+        position: cs.position,
+        interactive: el.matches("button, a, input, [role=button]"),
+        inDialog: Boolean(el.closest('[role="dialog"]')),
+        inGallery: Boolean(el.closest('.public-anuncio-gallery'))
+      };
+    }).filter((item) => /^(fixed|sticky)$/i.test(item.position) && item.interactive && !item.inDialog && !item.inGallery).slice(0, 20);
+    const cardRects = Array.from(document.querySelectorAll(".public-anuncio-card")).map((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, width: r.width };
+    });
+    const gallerySources = Array.from(document.querySelectorAll('.public-anuncio-gallery img[src], .public-anuncio-gallery video[src]'))
+      .map((el) => el.getAttribute('src') || '')
+      .filter(Boolean);
     return {
       title: document.title || "",
       description: document.querySelector('meta[name="description"]')?.getAttribute("content") || "",
@@ -418,6 +435,11 @@ function pageMetricsScript() {
       shellRect: rect(".public-shell"),
       breadcrumbsRect: rect(".public-breadcrumbs"),
       cardCount: document.querySelectorAll(".public-anuncio-card").length,
+      cardRects,
+      galleryRect: rect(".public-anuncio-gallery"),
+      contactRect: rect(".public-contact-cta"),
+      contactVisible: Array.from(document.querySelectorAll('.public-contact-cta button')).some((el) => /WhatsApp/i.test(el.textContent || '')),
+      gallerySources,
       hasWhatsappUrl: /wa\\.me\\/|\\+55\\d{8,}/i.test(bodyText) || /wa\\.me\\/|\\+55\\d{8,}/i.test(document.documentElement.outerHTML),
       technicalText: technicalViolations.length > 0,
       technicalViolations,
@@ -438,11 +460,11 @@ function validate(route, viewport, metrics, status, textBody) {
     ? metrics.technicalViolations.join(", ")
     : "nenhuma categoria tecnica visivel";
   addCheck(checks, !metrics.technicalText, "sem texto tecnico/enum/status interno visivel", technicalDetail);
-  addCheck(checks, !metrics.hasWhatsappUrl || route.key !== "anuncio-bloqueado", "BLOQUEADO sem WhatsApp publico", route.key === "anuncio-bloqueado" ? "sem wa.me/+55" : "nao aplicavel");
+  addCheck(checks, !metrics.hasWhatsappUrl, "sem telefone ou URL de WhatsApp no HTML publico", "contato permanece mediado pelo endpoint de clique");
   addCheck(checks, metrics.documentWidth <= metrics.viewportWidth + 2, "sem scroll horizontal", `${metrics.documentWidth}px em ${metrics.viewportWidth}px`);
   addCheck(checks, !metrics.bodyStyleOverflow, "sem document.body.style.overflow", metrics.bodyStyleOverflow || "vazio");
   addCheck(checks, metrics.htmlOverflowX !== "hidden" && metrics.bodyOverflowX !== "hidden", "sem scroll lock global", `html=${metrics.htmlOverflowX}; body=${metrics.bodyOverflowX}`);
-  addCheck(checks, metrics.positioned.length === 0, "sem elemento fixed/absolute/sticky publico", metrics.positioned.map((p) => `${p.tag}.${p.className}`).join("; ") || "nenhum");
+  addCheck(checks, metrics.positioned.length === 0, "sem controle flutuante publico indevido", metrics.positioned.map((p) => `${p.tag}.${p.className}`).join("; ") || "nenhum");
   addCheck(checks, metrics.forbiddenRoutes.length === 0, "sem rotas publicas proibidas", metrics.forbiddenRoutes.join(", ") || "nenhuma");
 
   if (route.type === "page") {
@@ -454,6 +476,20 @@ function validate(route, viewport, metrics, status, textBody) {
     addCheck(checks, metrics.shellRect && metrics.shellRect.width >= (viewport.key === "desktop" ? 700 : 300), "shell dentro da viewport", metrics.shellRect ? `${Math.round(metrics.shellRect.width)}px` : "ausente");
     if (route.breadcrumbs) {
       addCheck(checks, metrics.breadcrumbsRect && metrics.breadcrumbsRect.width >= (viewport.key === "desktop" ? 300 : 220), "breadcrumbs legiveis", metrics.breadcrumbsRect ? `${Math.round(metrics.breadcrumbsRect.width)}px` : "ausente");
+    }
+    if (route.key.startsWith("cidade-") || route.key.startsWith("bairro-")) {
+      addCheck(checks, metrics.cardCount > 0, "cards publicos presentes", `cards=${metrics.cardCount}`);
+      addCheck(checks, metrics.cardRects.every((card) => card.left >= -1 && card.right <= metrics.viewportWidth + 1 && card.width <= metrics.viewportWidth + 1), "cards dentro da viewport", `cards=${metrics.cardRects.length}`);
+    }
+    if (route.key.startsWith("anuncio-")) {
+      addCheck(checks, metrics.galleryRect && metrics.galleryRect.width >= (viewport.key === "desktop" ? 500 : 280), "galeria sem mini-coluna", metrics.galleryRect ? `${Math.round(metrics.galleryRect.width)}px` : "ausente");
+      addCheck(checks, metrics.galleryRect && metrics.galleryRect.x >= -1 && metrics.galleryRect.x + metrics.galleryRect.width <= metrics.viewportWidth + 1, "galeria dentro da viewport", metrics.galleryRect ? `${Math.round(metrics.galleryRect.width)}px` : "ausente");
+      addCheck(checks, metrics.contactRect && metrics.contactRect.x >= -1 && metrics.contactRect.x + metrics.contactRect.width <= metrics.viewportWidth + 1, "CTA dentro da viewport", metrics.contactRect ? `${Math.round(metrics.contactRect.width)}px` : "ausente");
+      addCheck(checks, metrics.contactVisible, "contato visivel sem age gate", metrics.contactVisible ? "visivel" : "ausente");
+    }
+    if (route.restricted) {
+      const unsafeSources = metrics.gallerySources.filter((source) => /^https?:/i.test(source) || /\/api\/.*(?:midia|media)/i.test(source));
+      addCheck(checks, unsafeSources.length === 0, "original restrito ausente do DOM", unsafeSources.join(", ") || "ausente");
     }
     if (route.mustContain) {
       addCheck(checks, textBody.includes(route.mustContain), "conteudo sintetico esperado", route.mustContain);
@@ -510,6 +546,15 @@ async function main() {
     await cdp.connect();
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: frontendBaseUrl });
+    await delay(300);
+    await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const expiresAt = Date.now() + 86400000;
+        localStorage.setItem("age_gate_accepted_until", String(expiresAt));
+        document.cookie = "age_gate_accepted=" + encodeURIComponent("v1." + expiresAt) + "; Path=/; SameSite=Lax";
+      })()`
+    });
 
     for (const viewport of viewports) {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
@@ -659,9 +704,10 @@ main().catch((error) => {
   Remove-Item -LiteralPath $tempScript -Force -ErrorAction SilentlyContinue
   exit $nodeExit
 } finally {
-  $env:NEXT_PUBLIC_API_BASE_URL = $oldApiBase
+  $env:NEXT_PUBLIC_API_URL = $oldApiBase
   $env:NEXT_PUBLIC_APP_ENV = $oldAppEnv
   $env:NEXT_PUBLIC_CANONICAL_DOMAIN = $oldCanonical
+  $env:NEXT_PUBLIC_SITE_URL = $oldSiteUrl
   if ($startedFrontend -and $frontendProcess -and -not $frontendProcess.HasExited) {
     Stop-Process -Id $frontendProcess.Id -Force -ErrorAction SilentlyContinue
   }

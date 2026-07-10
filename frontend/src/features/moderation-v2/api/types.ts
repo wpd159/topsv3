@@ -25,8 +25,6 @@ export type ModerationStaffListItem = {
   cliquesWhatsapp?: number | null
   thumbnailUrl?: string | null
   thumbnailIsVideo?: boolean | null
-  /** Valor de `ContentClassification` no anúncio (lista staff). */
-  contentClassification?: string | null
   /** Nome da cidade (DTO staff; drill-down do dashboard). */
   cidadeNome?: string | null
 }
@@ -44,7 +42,7 @@ export type ModerationAnuncioDetail = {
   status?: string | null
   descricao?: string | null
   linkConteudo?: string | null
-  contentClassification?: string | null
+  midias?: ModerationMediaItem[] | null
   slug?: string | null
   locaisAtendimento?: string[] | null
   servicos?: string[] | null
@@ -104,7 +102,6 @@ export type VisitorVerificationAuditItem = {
   ipMasked?: string | null
   userAgentHash?: string | null
   visitorSessionId?: string | null
-  contentClassification?: string | null
   route?: string | null
   createdAt: string
   createdAtIso?: string | null
@@ -117,6 +114,18 @@ export type ModerationRevisionMediaItem = {
   mediaType: string
   sourceType: string
   removable: boolean
+  visibilidadeMidia?: VisibilidadeMidia | null
+  statusModeracao?: string | null
+}
+export type VisibilidadeMidia = 'LIVRE' | 'RESTRITA_18'
+
+export type ModerationMediaItem = {
+  id: string | number
+  url?: string | null
+  tipo: 'FOTO' | 'VIDEO' | 'STORY'
+  visibilidadeMidia?: VisibilidadeMidia | null
+  statusModeracao?: string | null
+  ordem?: number | null
 }
 
 export type ModerationRevisionChange = {
@@ -132,8 +141,6 @@ export type ModerationRevisionDetail = {
   source: string
   submittedByEmail?: string | null
   submittedAt?: string | null
-  currentContentClassification?: string | null
-  pendingContentClassification?: string | null
   changedFields?: string[] | null
   changes?: ModerationRevisionChange[] | null
   pendingFotos?: string[] | null
@@ -141,9 +148,3 @@ export type ModerationRevisionDetail = {
   pendingVideos?: string[] | null
   pendingMediaItems?: ModerationRevisionMediaItem[] | null
 }
-
-export type ModerationClassification =
-  | 'SAFE_PUBLIC'
-  | 'ADULT_NON_EXPLICIT'
-  | 'ADULT_EXPLICIT_BLOCKED'
-  | 'ADULT_RESTRICTED'

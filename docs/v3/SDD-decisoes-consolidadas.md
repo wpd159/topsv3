@@ -17,17 +17,17 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - O dominio publico alvo da V3 e `topsdojob.com`.
 - A prioridade de produto e liquidez/base de anuncios, nao receita imediata.
 
-## Classificacao binaria
+## Visibilidade individual de mídia
 
-- A V3 usa apenas `LIVRE` e `BLOQUEADO`.
-- Estados intermediarios publicos ficam removidos da regra vigente.
-- Frontend nao decide classificacao.
-- Moderacao futura decide `LIVRE` ou `BLOQUEADO`.
-- Nao ha age gate intermediario, blur por categoria intermediaria ou desbloqueio parcial por visitante.
-- `LIVRE` aparece sem confirmacao de idade.
-- `BLOQUEADO` so pode ser liberado de forma controlada apos confirmacao de idade pelo backend.
-- Stories exigem confirmacao de idade.
-- 2026-07-08 (Fase 6): portado o age gate 18+ global do clone (aviso unico "sou maior de idade", sem coleta de data de nascimento) e a pagina real `/cookies`. E' um gate de autodeclaracao do visitante, separado da verificacao real de idade por conteudo (`idade/confirmar`, ja existente, nao alterado) — nao introduz estado de classificacao intermediario, so decide se o aviso aparece ou nao. Endpoints `/api/public/compliance/age-gate/*` e `/compliance/policies` nao existem no backend (auditado); aceite do aviso cai em persistencia local (cookie + localStorage) quando a chamada falha, para nao travar o visitante.
+- Não existe classificação etária global ativa no anúncio.
+- O único enum etário ativo é `VisibilidadeMidia`, com `LIVRE` e `RESTRITA_18`, associado ao ID real da mídia.
+- Foto exige decisão individual; vídeo e story são sempre `RESTRITA_18` e o backend rejeita tentativa de `LIVRE`.
+- Pendência, rejeição e solicitação de ajuste são estados de moderação, não visibilidades.
+- Mídia restrita exige autorização etária real do backend e não expõe original, preload ou metadata antes dela.
+- Página, texto, localização, SEO e contato não são bloqueados por mídia restrita.
+- A migration `V018__visibilidade_individual_midia.sql` faz o backfill conservador e remove as colunas globais somente depois dele.
+- V001 a V018 foram aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel; V018 consta como `Success` e os recursos Docker temporarios proprios foram removidos.
+- Toda decisão anterior sobre classificação global `LIVRE`/`BLOQUEADO`, inclusive bloqueio de contato, é histórica e está superada.
 
 ## Gratuito util
 
@@ -42,13 +42,15 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 ## WhatsApp mediado pelo backend
 
 - Frontend nao monta nem exibe WhatsApp bruto por conta propria.
-- Backend decide se contato pode ser liberado.
-- Conteudo bloqueado nao libera WhatsApp publico como anuncio normal.
+- Backend valida se o anúncio está público e ativo e medeia o contato.
+- Visibilidade da mídia e confirmação de idade não condicionam o contato.
+- Telefone ou WhatsApp bruto não aparece no HTML público ou metadata; o endpoint de clique preserva métricas e auditoria mínima.
 
 ## Midia segura
 
 - Documento privado nunca e publicavel.
 - `urlPublica` permanece nula ate CDN/storage publico aprovado.
+- Original `RESTRITA_18` permanece nulo no DTO público sem autorização etária válida.
 - DTO publico nao expoe bucket, storage key, provider, hash, etag ou URL privada.
 - Upload real continua fora do escopo atual.
 - O Bloco 52 define contrato storage/upload/CDN sem executar upload ou acessar storage real.
@@ -229,7 +231,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 31 valida localmente API e SEO com base sintetica em ambiente descartavel. O Docker permitido neste bloco fica restrito ao prefixo `topsv3-e2e-sintetico-*`; recursos TopsWI/cripto e `topsv3-bloco29-*` nao podem ser alterados.
 - Bloco 31.1 decide que validadores sinteticos de API/SEO nao podem aprovar por evidencia antiga quando o backend local estiver indisponivel. Por padrao devem retornar pendente com exit code 2; reutilizacao de evidencia existente exige parametro explicito e alerta documentado.
 - O E2E local descartavel usa prefixo default `topsv3-e2e-local`; o wrapper sintetico continua forcando `topsv3-e2e-sintetico`.
-- Bloco 32 cria checkpoint local `790188b` dos Blocos 31/31.1 e valida rotas publicas principais renderizadas com dados sinteticos. Docker fica restrito a `topsv3-render-sintetico-*`, prints versionados devem conter apenas dados sinteticos e `BLOQUEADO` nao pode expor WhatsApp publico indevido.
+- Histórico superado do Bloco 32: o checkpoint `790188b` validou a regra global então vigente; Docker permaneceu restrito a `topsv3-render-sintetico-*` e prints somente sintéticos.
 - Bloco 32.1 decide que pagina publica nao pode renderizar enum/status/snake_case tecnico ao visitante. `PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO` e `conteudo_autorizado` devem ficar restritos a contrato/codigo, com rotulos publicos humanos na UI. A permissao continua sendo decisao do backend.
 - Bloco 33 cria checkpoint local `f6189f0` do Bloco 32.1 e valida `/anunciar` com recurso Docker descartavel `topsv3-wizard-sintetico-*`. Recursos TopsWI/cripto e `topsv3-bloco29-*` permanecem intocados.
 - Bloco 33.1 mantem o Bloco 33 materialmente OK; o checkpoint local dos Blocos 33/33.1 foi criado no Bloco 34 em `b7f5f98`, sem remote e sem push.
@@ -246,7 +248,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 56 registra `BLOQUEADO_PARIDADE_VISUAL_PRODUCAO`: a V3 local nao pode seguir para homologacao/cutover enquanto parecer skeleton tecnico frente a producao publica atual.
 - Bloco 57 decide executar paridade visual publica por fases. A fase 1 pode ajustar shell/header, home, cards e listagens de cidade/bairro, mas nao encerra o gate visual sem revisao completa de detalhe de anuncio, wizard, admin quando aplicavel e aprovacao humana/Pro.
 - Bloco 58 decide usar `C:\clone\topsdojob-frontend` como fonte visual local de producao em modo somente leitura. O transplante deve adaptar visual para a arquitetura V3, nao copiar fetches, auth, modais, scroll lock, dados reais, storage ou regras funcionais da producao.
-- Bloco 59 decide que cards, grids e detalhe publico podem aproximar a composicao visual da producao, mas o contato real continua mediado pelos fluxos V3 e o frontend nao passa a decidir WhatsApp, classificacao, midia publica ou autorizacao.
+- Bloco 59 decide que cards, grids e detalhe público podem aproximar a composição visual da produção, mas o contato continua mediado e o frontend não decide WhatsApp, visibilidade de mídia ou autorização.
 - Bloco 60 decide que o header publico deve usar a logo real local em `/logo.webp` e que o wizard `/anunciar` pode aproximar visualmente card, progresso, botoes e espacamentos da producao, sem alterar fluxo funcional, upload, pagamento, Pix/Efi, auth, backend ou banco.
 - A complementacao de deploy HML do Bloco 60 decide que `v3.esle.cloud` deve permanecer `noindex/nofollow/noarchive`, com robots `Disallow: /`, usuario `topsv3`, secrets fora do Git e Pix/Efi em mock. O workflow pode ser versionado, mas deploy/push/VPS dependem de autorizacao operacional posterior.
 - Nao instalar ou baixar ferramenta/imagem automaticamente para abrir dump sensivel.

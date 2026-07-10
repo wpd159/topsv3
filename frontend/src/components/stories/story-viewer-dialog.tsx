@@ -321,7 +321,7 @@ export function StoryViewerDialog({
       )
     }
 
-    if (viewerItem.viewerState === "BLOQUEADO") {
+    if (viewerItem.viewerState === "IDADE_NAO_CONFIRMADA") {
       return (
         <StoryStateCard
           title="Conteudo restrito apenas para maiores de 18 anos"
@@ -582,11 +582,11 @@ export function StoryViewerDialog({
 
         <VisitorVerificationModal
           open={verificationOpen}
-          level={viewerItem?.requiresStrongVerification ? "STRONG" : "REINFORCED"}
+          level="LIGHT"
           context={{
             anuncioId: viewerItem?.anuncioId ?? undefined,
             route: viewerItem?.anuncioSlug ? `/anuncios/${viewerItem.anuncioSlug}` : "/stories",
-            contentClassification: viewerItem?.contentClassification ?? null,
+            midiaId: String(viewerItem?.storyId ?? currentFeedItem?.storyId ?? ""),
           }}
           onOpenChange={setVerificationOpen}
           onVerified={async () => {

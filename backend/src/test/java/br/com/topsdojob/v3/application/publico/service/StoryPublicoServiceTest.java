@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -16,7 +17,6 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -56,7 +56,7 @@ class StoryPublicoServiceTest {
     }
 
     @Test
-    void storyBloqueadoApareceComIdadeConfirmadaSemStorageOuHash() {
+    void storyRestritoApareceComIdadeConfirmadaSemStorageOuHash() {
         UUID anuncioId = UUID.randomUUID();
         UUID arquivoId = UUID.randomUUID();
         UUID vinculoId = UUID.randomUUID();
@@ -69,7 +69,6 @@ class StoryPublicoServiceTest {
 
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         set(anuncio, "id", anuncioId);
-        set(anuncio, "classificacaoConteudo", ClassificacaoConteudo.BLOQUEADO);
         AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
         set(vinculo, "id", vinculoId);
         set(vinculo, "anuncioId", anuncioId);
@@ -77,7 +76,7 @@ class StoryPublicoServiceTest {
         set(vinculo, "tipo", TipoAnuncioMidia.STORY);
         set(vinculo, "finalidade", FinalidadeAnuncioMidia.STORY);
         set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
-        set(vinculo, "classificacaoConteudo", ClassificacaoConteudo.BLOQUEADO);
+        set(vinculo, "visibilidadeMidia", VisibilidadeMidia.RESTRITA_18);
         ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
         set(arquivo, "id", arquivoId);
         set(arquivo, "bucket", "bucket-privado");
@@ -86,7 +85,6 @@ class StoryPublicoServiceTest {
         set(arquivo, "mimeType", "video/mp4");
         set(arquivo, "duracaoMs", 1000);
         set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
-        set(arquivo, "classificacaoConteudo", ClassificacaoConteudo.BLOQUEADO);
         StoryAnuncioEntity story = entity(StoryAnuncioEntity.class);
         set(story, "anuncioMidiaId", vinculoId);
         set(story, "status", StatusStoryAnuncio.PUBLICADO);

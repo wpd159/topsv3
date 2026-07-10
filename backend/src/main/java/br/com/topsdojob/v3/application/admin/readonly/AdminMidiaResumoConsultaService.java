@@ -1,10 +1,10 @@
 package br.com.topsdojob.v3.application.admin.readonly;
 
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminResumoMidiasDto;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
@@ -35,7 +35,7 @@ public class AdminMidiaResumoConsultaService {
                 arquivoRepository.countByStatusArquivo(StatusArquivoMidia.VALIDADO),
                 anuncioMidiaRepository.countByStatus(StatusAnuncioMidia.PUBLICAVEL),
                 anuncioMidiaRepository.countByStatus(StatusAnuncioMidia.PENDENTE),
-                anuncioMidiaRepository.countByClassificacaoConteudo(ClassificacaoConteudo.BLOQUEADO),
+                anuncioMidiaRepository.countByVisibilidadeMidia(VisibilidadeMidia.RESTRITA_18),
                 storyRepository.countByStatus(StatusStoryAnuncio.PUBLICADO),
                 storyRepository.countByStatus(StatusStoryAnuncio.PENDENTE));
     }

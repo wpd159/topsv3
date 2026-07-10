@@ -3,13 +3,13 @@ package br.com.topsdojob.v3.application.admin.readonly;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.util.Map;
@@ -45,7 +45,7 @@ public class AdminMidiaDetalhadaConsultaService {
             int page,
             int size,
             StatusAnuncioMidia status,
-            ClassificacaoConteudo classificacaoConteudo,
+            VisibilidadeMidia visibilidadeMidia,
             TipoAnuncioMidia tipo,
             UUID anuncioId) {
         var pageable = AdminReadOnlyPageRequest.of(
@@ -53,7 +53,7 @@ public class AdminMidiaDetalhadaConsultaService {
                 size,
                 Sort.by(Sort.Order.desc("atualizadoEm"), Sort.Order.desc("criadoEm"), Sort.Order.asc("id")));
         Page<AnuncioMidiaEntity> result = anuncioMidiaRepository.findAll(
-                midiaSpec(status, classificacaoConteudo, tipo, anuncioId),
+                midiaSpec(status, visibilidadeMidia, tipo, anuncioId),
                 pageable);
         return page(result);
     }
@@ -85,7 +85,7 @@ public class AdminMidiaDetalhadaConsultaService {
                 enumName(midia.getFinalidade()),
                 midia.getOrdem(),
                 enumName(midia.getStatus()),
-                enumName(midia.getClassificacaoConteudo()),
+                enumName(midia.getVisibilidadeMidia()),
                 arquivo == null ? null : enumName(arquivo.getStatusArquivo()),
                 arquivo == null ? null : arquivo.getMimeType(),
                 arquivo == null ? null : arquivo.getTamanhoBytes(),
@@ -126,7 +126,7 @@ public class AdminMidiaDetalhadaConsultaService {
                 enumName(midia.getFinalidade()),
                 midia.getOrdem(),
                 enumName(midia.getStatus()),
-                enumName(midia.getClassificacaoConteudo()),
+                enumName(midia.getVisibilidadeMidia()),
                 arquivo == null ? null : enumName(arquivo.getStatusArquivo()),
                 arquivo == null ? null : arquivo.getMimeType(),
                 arquivo == null ? null : arquivo.getTamanhoBytes(),
@@ -140,7 +140,7 @@ public class AdminMidiaDetalhadaConsultaService {
 
     private Specification<AnuncioMidiaEntity> midiaSpec(
             StatusAnuncioMidia status,
-            ClassificacaoConteudo classificacaoConteudo,
+            VisibilidadeMidia visibilidadeMidia,
             TipoAnuncioMidia tipo,
             UUID anuncioId) {
         return (root, query, builder) -> {
@@ -148,8 +148,8 @@ public class AdminMidiaDetalhadaConsultaService {
             if (status != null) {
                 predicate = builder.and(predicate, builder.equal(root.get("status"), status));
             }
-            if (classificacaoConteudo != null) {
-                predicate = builder.and(predicate, builder.equal(root.get("classificacaoConteudo"), classificacaoConteudo));
+            if (visibilidadeMidia != null) {
+                predicate = builder.and(predicate, builder.equal(root.get("visibilidadeMidia"), visibilidadeMidia));
             }
             if (tipo != null) {
                 predicate = builder.and(predicate, builder.equal(root.get("tipo"), tipo));

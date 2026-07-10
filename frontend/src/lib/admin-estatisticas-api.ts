@@ -14,7 +14,6 @@ export type AdminPerformanceItem = {
   taxaConversao: number
   posicaoRanking?: number
   cidadeNome?: string | null
-  contentClassification?: string | null
 }
 
 export type AdminPerformanceResponse = {

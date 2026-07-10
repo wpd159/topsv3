@@ -126,7 +126,7 @@ paths:
   /api/public/anuncios/{slug}/visualizacao:
     post:
       summary: Registra visualizacao publica local de anuncio
-      description: Registra somente hashes tecnicos; nao armazena IP, User-Agent ou referer brutos. Conteudo LIVRE e aceito sem idade; conteudo BLOQUEADO exige cookie local de idade confirmada.
+      description: Registra somente hashes tecnicos; nao armazena IP, User-Agent ou referer brutos. A visualizacao do anuncio nao depende da autorizacao de suas midias restritas.
       operationId: postPublicAnuncioVisualizacao
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -161,7 +161,7 @@ paths:
   /api/public/anuncios/{slug}/clique-whatsapp:
     post:
       summary: Registra clique WhatsApp publico local
-      description: Retorna whatsappUrl somente quando a politica backend autoriza anuncio PUBLICADO, APROVADO, nao removido e com contato valido. Conteudo LIVRE pode liberar sem idade; conteudo BLOQUEADO exige cookie local de idade confirmada.
+      description: Retorna whatsappUrl somente quando a politica backend autoriza anuncio PUBLICADO, APROVADO, nao removido e com contato valido. O contato nao depende de confirmacao de idade nem da visibilidade das midias.
       operationId: postPublicAnuncioCliqueWhatsapp
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -196,7 +196,7 @@ paths:
   /api/public/anuncios/{slug}/stories:
     get:
       summary: Lista stories publicos autorizados por idade
-      description: Sem cookie de idade confirmada retorna lista vazia e politica negada. Com cookie valido, o backend pode retornar metadata segura de stories LIVRE ou BLOQUEADO autorizados, sem storage key, bucket, hash ou URL privada.
+      description: Stories sao sempre RESTRITA_18. Sem cookie de idade confirmada retorna lista vazia e politica negada; com cookie valido o backend pode retornar metadata segura, sem storage key, bucket, hash ou URL privada.
       operationId: getPublicAnuncioStories
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -644,11 +644,6 @@ paths:
           required: false
           schema:
             type: string
-        - name: classificacaoConteudo
-          in: query
-          required: false
-          schema:
-            $ref: "#/components/schemas/ClassificacaoConteudoPublica"
         - name: uf
           in: query
           required: false
@@ -1343,11 +1338,11 @@ paths:
           required: false
           schema:
             type: string
-        - name: classificacaoConteudo
+        - name: visibilidadeMidia
           in: query
           required: false
           schema:
-            $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+            $ref: "#/components/schemas/VisibilidadeMidia"
         - name: tipo
           in: query
           required: false
@@ -1411,7 +1406,7 @@ paths:
   /api/admin/midias/{id}/decidir:
     post:
       summary: Decisao local de midia administrativa
-      description: Restrito a ADMIN e MODERADOR com MIDIA_REVISAR. Atualiza apenas status/classificacao de midia sintetica/local e registra auditoria sanitizada. REPROVAR exige motivo valido e retorna 400 quando ausente. SOLICITAR_AJUSTE para midia permanece pendente porque nao ha status seguro no schema atual sem migration. Nao apaga arquivo, nao faz upload, nao envia e-mail real e nao retorna bucket, chave, hash ou URL privada.
+      description: Restrito a ADMIN e MODERADOR com MIDIA_REVISAR. Atualiza o status de moderacao e a visibilidade individual da midia por ID, com auditoria sanitizada. Foto aprovada exige LIVRE ou RESTRITA_18; video e story aceitam somente RESTRITA_18. REPROVAR e SOLICITAR_AJUSTE exigem motivo valido. Nao apaga arquivo, nao faz upload, nao envia e-mail real e nao retorna bucket, chave, hash ou URL privada.
       operationId: postAdminMidiaDecidir
       security:
         - AdminSessionCookie: []
@@ -1958,7 +1953,6 @@ components:
         - slugLocal
         - statusAnuncio
         - statusModeracao
-        - classificacaoConteudo
         - publicado
         - revisaoCriada
         - publicacaoAutomaticaExecutada
@@ -1988,11 +1982,6 @@ components:
         statusModeracao:
           type: string
           const: PENDENTE
-        classificacaoConteudo:
-          type: string
-          enum:
-            - LIVRE
-            - BLOQUEADO
         publicado:
           type: boolean
           const: false
@@ -2464,8 +2453,6 @@ components:
           type:
             - string
             - "null"
-        classificacaoConteudo:
-          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
         localizacao:
           anyOf:
             - $ref: "#/components/schemas/AdminLocalizacaoSanitizada"
@@ -3292,14 +3279,6 @@ components:
           type:
             - string
             - "null"
-        classificacaoConteudo:
-          type:
-            - string
-            - "null"
-          enum:
-            - LIVRE
-            - BLOQUEADO
-            - null
         premiumAtivo:
           type: boolean
         visualizacoesTotal:
@@ -3437,8 +3416,10 @@ components:
           type:
             - string
             - "null"
-        classificacaoConteudo:
-          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        visibilidadeMidia:
+          anyOf:
+            - $ref: "#/components/schemas/VisibilidadeMidia"
+            - type: "null"
         statusArquivo:
           type:
             - string
@@ -3773,8 +3754,6 @@ components:
       properties:
         decisao:
           $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
-        classificacaoConteudo:
-          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
         motivo:
           type:
             - string
@@ -3793,21 +3772,21 @@ components:
           description: Reservado para idempotencia futura. Nesta fase local nao deduplica por requestIdCliente, nao garante reprocessamento seguro e nao deve ser usado como contrato de idempotencia. A duplicidade atual de SOLICITAR_AJUSTE e bloqueada por chave local de outbox, retornando 409.
     AdminDecidirMidiaRequest:
       type: object
-      description: Request local de decisao de midia. O campo motivo e obrigatorio quando decisao for REPROVAR; APROVAR pode omitir motivo. SOLICITAR_AJUSTE retorna 400 nesta fase porque midia nao possui status seguro de ajuste sem migration.
+      description: Decisao individual por ID de midia. Foto exige visibilidade em APROVAR; video e story aceitam somente RESTRITA_18. Motivo e obrigatorio em REPROVAR e SOLICITAR_AJUSTE.
       additionalProperties: false
       required:
         - decisao
       properties:
         decisao:
           $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
-        classificacaoConteudo:
-          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        visibilidadeMidia:
+          $ref: "#/components/schemas/VisibilidadeMidia"
         motivo:
           type:
             - string
             - "null"
           maxLength: 240
-          description: Obrigatorio para REPROVAR. Valor vazio, nulo ou apenas espacos retorna 400. O backend sanitiza e mascara e-mail, contato e documento antes de auditoria.
+          description: Obrigatorio para REPROVAR e SOLICITAR_AJUSTE. Valor vazio, nulo ou apenas espacos retorna 400. O backend sanitiza e mascara e-mail, contato e documento antes de auditoria.
         observacao:
           type:
             - string
@@ -3858,8 +3837,10 @@ components:
           $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
         status:
           type: string
-        classificacaoConteudo:
-          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        visibilidadeMidia:
+          anyOf:
+            - $ref: "#/components/schemas/VisibilidadeMidia"
+            - type: "null"
         auditoriaRegistrada:
           type: boolean
         emailRealEnviado:
@@ -3994,12 +3975,12 @@ components:
         - CONFLICT
         - UNPROCESSABLE_ENTITY
         - INTERNAL_ERROR
-    ClassificacaoConteudoPublica:
+    VisibilidadeMidia:
       type: string
-      description: Modelo binario da V3; backend decide, frontend nao classifica.
+      description: Visibilidade individual vinculada ao ID da midia. Video e story aceitam somente RESTRITA_18.
       enum:
         - LIVRE
-        - BLOQUEADO
+        - RESTRITA_18
     MetricaPublicaRequest:
       type: object
       additionalProperties: false
@@ -4159,6 +4140,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - visibilidadeMidia
         - urlPublica
         - pendenciaMidia
       properties:
@@ -4174,13 +4156,13 @@ components:
           type:
             - string
             - "null"
-        classificacaoConteudo:
-          $ref: "#/components/schemas/ClassificacaoConteudoPublica"
+        visibilidadeMidia:
+          $ref: "#/components/schemas/VisibilidadeMidia"
         urlPublica:
           type:
             - string
             - "null"
-          description: Sempre nulo neste bloco. CDN/midia publica real segue pendente e a URL nao pode ser derivada de bucket, chaveObjeto, provider, hash ou URL privada.
+          description: Nulo sem autorizacao ou enquanto CDN/storage real estiver pendente. Nunca pode ser derivado de bucket, chaveObjeto, provider, hash ou URL privada.
         largura:
           type:
             - integer
@@ -4198,8 +4180,9 @@ components:
             - string
             - "null"
         pendenciaMidia:
-          type: string
-          const: PENDENTE_URL_PUBLICA_MIDIA_CDN
+          type:
+            - string
+            - "null"
     ListaStoriesPublicos:
       type: object
       additionalProperties: false
@@ -4269,7 +4252,7 @@ components:
           items:
             type: string
         contatoPublico:
-          description: Somente o backend pode preencher contato publico. Conteudo LIVRE pode liberar sem idade; conteudo BLOQUEADO depende de cookie local de idade confirmada.
+          description: Somente o backend pode preencher contato publico. O contato de anuncio publico e ativo nao depende de confirmacao de idade ou visibilidade de midia.
           type:
             - string
             - "null"
@@ -4381,9 +4364,15 @@ components:
       type: object
       additionalProperties: false
       required:
+        - id
+        - visibilidadeMidia
+        - autorizada
         - urlPublica
         - pendenciaMidia
       properties:
+        id:
+          type: string
+          format: uuid
         tipo:
           type:
             - string
@@ -4396,15 +4385,20 @@ components:
           type:
             - integer
             - "null"
+        visibilidadeMidia:
+          $ref: "#/components/schemas/VisibilidadeMidia"
+        autorizada:
+          type: boolean
         urlPublica:
           type:
             - string
             - "null"
-          description: Sempre nulo neste bloco. URL publica real exige mapeamento CDN/storage futuro aprovado e nunca pode ser derivada de bucket, chaveObjeto, storageProvider, sha256, etag ou URL privada.
+          description: Nulo para midia RESTRITA_18 sem autorizacao e enquanto CDN/storage real estiver pendente. Nunca pode ser derivado de bucket, chaveObjeto, storageProvider, sha256, etag ou URL privada.
         pendenciaMidia:
-          type: string
-          const: PENDENTE_URL_PUBLICA_MIDIA_CDN
-          description: Pendencia explicita enquanto nao houver CDN/midia publica real aprovada.
+          type:
+            - string
+            - "null"
+          description: Pendencia explicita de autorizacao ou CDN/storage; nula quando a URL autorizada estiver disponivel.
         largura:
           type:
             - integer

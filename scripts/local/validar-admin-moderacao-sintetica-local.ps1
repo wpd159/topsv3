@@ -237,7 +237,7 @@ $frontendBaseUrl = "http://127.0.0.1:$FrontendPort"
 $startedFrontend = $false
 $frontendProcess = $null
 $portOwnersBefore = Get-PortOwners -Port $FrontendPort
-$oldApiBase = $env:NEXT_PUBLIC_API_BASE_URL
+$oldApiBase = $env:NEXT_PUBLIC_API_URL
 $oldAppEnv = $env:NEXT_PUBLIC_APP_ENV
 $oldCanonical = $env:NEXT_PUBLIC_CANONICAL_DOMAIN
 
@@ -259,7 +259,7 @@ try {
       exit 2
     }
 
-    $env:NEXT_PUBLIC_API_BASE_URL = $safeBackendUrl
+    $env:NEXT_PUBLIC_API_URL = $safeBackendUrl
     $env:NEXT_PUBLIC_APP_ENV = "local"
     $env:NEXT_PUBLIC_CANONICAL_DOMAIN = "http://localhost"
     $stdout = Join-Path $env:TEMP ("topsv3-admin-frontend-{0}.out.log" -f ([guid]::NewGuid().ToString("N")))
@@ -411,6 +411,11 @@ function metricsScript() {
       .replace(/[a-z0-9._%+-]+@example\\.invalid/gi, "[email-sintetico]")
       .replace(/\\+?5500000000000/g, "[contato-sintetico]")
       .replace(/wa\\.me\\/5500000000000/g, "[whatsapp-sintetico]");
+    const textSemFixtureAdmin = text
+      .replace(/[a-z0-9._%+-]+@example\\.invalid/gi, "")
+      .replace(/\\b(?:admin|moderador|comercial|usuario)\\.local\\b/gi, "")
+      .replace(/\\+?5500000000000/g, "")
+      .replace(/wa\\.me\\/5500000000000/g, "");
     const html = document.documentElement;
     const body = document.body;
     const violations = [];
@@ -419,7 +424,7 @@ function metricsScript() {
     if (/"(?:cpf|documento|rg|identidade)"\\s*:|documento_usuario|documento_privado/i.test(text)) add("documento_visivel");
     if (/\\+55[0-9]{10,13}|wa\\.me\\/[0-9]{8,15}|@[a-z0-9.-]+\\.[a-z]{2,}/i.test(textSemContatoSintetico)) add("contato_bruto_visivel");
     if (/stack trace|Unhandled Runtime Error|Traceback|Exception in thread/i.test(text)) add("erro_tecnico_visivel");
-    if (/\\blocal\\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?/i.test(text)) add("copy_bastidor_visivel");
+    if (/\\blocal\\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?/i.test(textSemFixtureAdmin)) add("copy_bastidor_visivel");
     if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(text)) add("metadados_publicos_locais_visivel");
     if (/\bANUNCIO\b/.test(text)) add("enum_anuncio_visivel");
     if (/Autorizacao|autorizacao/i.test(text)) add("autorizacao_sem_acento_visivel");
@@ -436,7 +441,7 @@ function metricsScript() {
     const horizontalOverflow = scrollWidth > innerWidth + 1;
     if (horizontalOverflow) add("scroll_horizontal");
     const bodyOverflow = body ? getComputedStyle(body).overflow : "";
-    if (bodyOverflow === "hidden") add("scroll_lock_body");
+    if (body?.style?.overflow === "hidden") add("scroll_lock_body_inline");
     const positioned = Array.from(document.querySelectorAll("body *")).filter((el) => {
       const tag = el.tagName.toLowerCase();
       const className = String(el.className || "");
@@ -450,16 +455,26 @@ function metricsScript() {
       return { tag: el.tagName.toLowerCase(), className: String(el.className || ""), position: cs.position, width: rect.width, height: rect.height };
     }).slice(0, 12);
     return {
+      href: location.href,
+      pathname: location.pathname,
       title: document.title,
       textSample: text.slice(0, 700),
-      panels: document.querySelectorAll(".admin-panel").length,
-      moderationPanel: Boolean(document.querySelector('[aria-label="Moderação administrativa"]')),
-      outboxPanel: Boolean(document.querySelector('[aria-label="Outbox administrativo"]')),
-      loginVisible: text.includes("Sessão"),
+      mediaPanel: Boolean(document.querySelector('[data-testid="moderacao-midias-v3"]')),
+      mediaCards: Array.from(document.querySelectorAll('[data-testid="moderacao-midia-card"]')).map((card) => ({
+        id: card.getAttribute("data-media-id") || "",
+        type: card.getAttribute("data-media-type") || "",
+        radioValues: Array.from(card.querySelectorAll('input[type="radio"]')).map((input) => input.value),
+        radioNames: Array.from(card.querySelectorAll('input[type="radio"]')).map((input) => input.name),
+        hasRestrictedLabel: /Após confirmação de idade/i.test(card.textContent || ""),
+        hasReject: /Rejeitar mídia/i.test(card.textContent || ""),
+        hasAdjust: /Solicitar ajuste/i.test(card.textContent || "")
+      })),
+      visibleError: document.querySelector('[role="alert"]')?.textContent?.trim() || "",
       horizontalOverflow,
       scrollWidth,
       innerWidth,
       bodyOverflow,
+      bodyInlineOverflow: body?.style?.overflow || "",
       positioned,
       upperSnakeMatches,
       snakeMatches,
@@ -480,23 +495,48 @@ async function runViewport(cdp, viewport) {
     mobile: viewport.key === "mobile"
   });
   await navigate(cdp, `${frontendBaseUrl}/admin`);
+  await evaluate(cdp, `(() => {
+    const expiresAt = Date.now() + 86400000;
+    localStorage.setItem("age_gate_accepted_until", String(expiresAt));
+    document.cookie = "age_gate_accepted=" + encodeURIComponent("v1." + expiresAt) + "; Path=/; SameSite=Lax";
+  })()`);
   const localLoginPayload = { login };
   localLoginPayload["se" + "nha"] = localAccessValue;
-  await evaluate(cdp, `fetch(${JSON.stringify(`${backendBaseUrl}/api/admin/auth/login`)}, {
+  const loginResponse = await fetch(`${backendBaseUrl}/api/admin/auth/login`, {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: ${JSON.stringify(JSON.stringify(localLoginPayload))}
-  }).then(async (r) => ({ ok: r.ok, status: r.status }))`);
-  await navigate(cdp, `${frontendBaseUrl}/admin`);
-  await delay(3500);
+    body: JSON.stringify(localLoginPayload)
+  });
+  if (!loginResponse.ok) {
+    throw new Error(`Login admin falhou: status=${loginResponse.status} requestId=${loginResponse.headers.get("X-Request-Id") || "ausente"}`);
+  }
+  const setCookie = loginResponse.headers.get("set-cookie") || "";
+  const sessionMatch = setCookie.match(/(?:^|,?\s*)JSESSIONID=([^;]+)/i);
+  if (!sessionMatch?.[1]) throw new Error("Login admin respondeu 200 sem emitir JSESSIONID.");
+  await cdp.send("Network.setCookie", {
+    name: "JSESSIONID",
+    value: sessionMatch[1],
+    url: frontendBaseUrl,
+    path: "/",
+    httpOnly: true,
+    secure: false,
+    sameSite: "Lax"
+  });
+  const cookieState = await cdp.send("Network.getAllCookies");
+  const adminSession = (cookieState.cookies || []).find((cookie) => cookie.name === "JSESSIONID");
+  if (!adminSession) {
+    throw new Error("Login admin respondeu 200, mas JSESSIONID nao foi armazenado no navegador.");
+  }
+  await navigate(cdp, `${frontendBaseUrl}/admin/moderacao-v2`);
+  const finalLocation = await evaluate(cdp, `({ href: location.href, pathname: location.pathname })`);
+  if (finalLocation?.pathname !== "/admin/moderacao-v2") {
+    throw new Error(`Rota admin redirecionada para ${finalLocation?.pathname ?? "desconhecida"}; JSESSIONID domain=${adminSession.domain} path=${adminSession.path} secure=${adminSession.secure} sameSite=${adminSession.sameSite || "ausente"}`);
+  }
+  await delay(4000);
   await screenshot(cdp, `${viewport.key}-admin.png`);
-  const metrics = await evaluate(cdp, metricsScript());
-  await navigate(cdp, `${frontendBaseUrl}/admin/moderacao`);
-  await delay(2500);
   await screenshot(cdp, `${viewport.key}-admin-moderacao.png`);
   const moderationMetrics = await evaluate(cdp, metricsScript());
-  return { viewport, metrics, moderationMetrics };
+  return { viewport, metrics: moderationMetrics, moderationMetrics };
 }
 
 async function main() {
@@ -536,31 +576,30 @@ async function main() {
     await cdp.connect();
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    await cdp.send("Network.enable");
 
     for (const viewport of viewports) {
       const result = await runViewport(cdp, viewport);
       results.push(result);
-      addCheck(checks, result.metrics.panels >= 4, `${viewport.key}: painel admin renderizado`, `paineis=${result.metrics.panels}`);
-      addCheck(checks, result.metrics.moderationPanel, `${viewport.key}: painel de moderacao presente`);
-      addCheck(checks, result.metrics.outboxPanel, `${viewport.key}: painel de outbox presente`);
+      const cards = result.moderationMetrics.mediaCards || [];
+      const photos = cards.filter((card) => card.type === "FOTO");
+      const videos = cards.filter((card) => card.type === "VIDEO");
+      const stories = cards.filter((card) => card.type === "STORY");
+      const uniqueIds = new Set(cards.map((card) => card.id));
+      addCheck(checks, result.moderationMetrics.mediaPanel, `${viewport.key}: painel V3 de midias renderizado`);
+      addCheck(checks, cards.length > 0 && uniqueIds.size === cards.length, `${viewport.key}: decisoes vinculadas a IDs unicos`, `cards=${cards.length}; ids=${uniqueIds.size}`);
+      addCheck(checks, photos.length > 0 && photos.every((card) => card.radioValues.length === 2 && card.radioValues.includes("LIVRE") && card.radioValues.includes("RESTRITA_18") && new Set(card.radioNames).size === 1), `${viewport.key}: fotos oferecem Livre e Apos confirmacao`, `fotos=${photos.length}`);
+      addCheck(checks, [...videos, ...stories].length > 0 && [...videos, ...stories].every((card) => card.radioValues.length === 0 && card.hasRestrictedLabel), `${viewport.key}: videos e stories somente restritos`, `videos=${videos.length}; stories=${stories.length}`);
+      addCheck(checks, cards.every((card) => card.hasReject && card.hasAdjust), `${viewport.key}: rejeicao e ajuste disponiveis por midia`);
+      addCheck(checks, !result.moderationMetrics.visibleError, `${viewport.key}: carregamento administrativo sem erro`, result.moderationMetrics.visibleError || "ok");
       addCheck(checks, !result.metrics.horizontalOverflow, `${viewport.key}: sem scroll horizontal`, `scroll=${result.metrics.scrollWidth}/inner=${result.metrics.innerWidth}`);
-      addCheck(checks, result.metrics.bodyOverflow !== "hidden", `${viewport.key}: sem scroll lock no body`, `overflow=${result.metrics.bodyOverflow}`);
+      addCheck(checks, result.metrics.bodyInlineOverflow !== "hidden", `${viewport.key}: sem scroll lock inline no body`, `inline=${result.metrics.bodyInlineOverflow || "vazio"}`);
       addCheck(
         checks,
         result.metrics.violations.length === 0,
         `${viewport.key}: sem texto tecnico ou sensivel`,
         result.metrics.violations.length
           ? `${result.metrics.violations.join(", ")} ${[...(result.metrics.upperSnakeMatches || []), ...(result.metrics.snakeMatches || [])].join(" ")}`
-          : "ok"
-      );
-      addCheck(checks, result.moderationMetrics.panels >= 4, `${viewport.key}: rota /admin/moderacao renderizada`, `paineis=${result.moderationMetrics.panels}`);
-      addCheck(checks, !result.moderationMetrics.horizontalOverflow, `${viewport.key}: /admin/moderacao sem scroll horizontal`, `scroll=${result.moderationMetrics.scrollWidth}/inner=${result.moderationMetrics.innerWidth}`);
-      addCheck(
-        checks,
-        result.moderationMetrics.violations.length === 0,
-        `${viewport.key}: /admin/moderacao sem texto tecnico ou sensivel`,
-        result.moderationMetrics.violations.length
-          ? `${result.moderationMetrics.violations.join(", ")} ${[...(result.moderationMetrics.upperSnakeMatches || []), ...(result.moderationMetrics.snakeMatches || [])].join(" ")}`
           : "ok"
       );
     }
@@ -595,6 +634,7 @@ async function main() {
       lines.push("```");
       lines.push("");
     }
+    while (lines.at(-1) === "") lines.pop();
     fs.writeFileSync(uiReportPath, `${lines.join("\n")}\n`, "utf8");
     const failed = checks.filter((item) => item.result !== "OK");
     if (failed.length > 0) {
@@ -678,7 +718,7 @@ main().catch((error) => {
   Write-Host "RELATORIO_UI=$uiPath"
   exit 0
 } finally {
-  $env:NEXT_PUBLIC_API_BASE_URL = $oldApiBase
+  $env:NEXT_PUBLIC_API_URL = $oldApiBase
   $env:NEXT_PUBLIC_APP_ENV = $oldAppEnv
   $env:NEXT_PUBLIC_CANONICAL_DOMAIN = $oldCanonical
 

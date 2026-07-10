@@ -5,7 +5,6 @@ import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.UUID;
@@ -34,7 +33,6 @@ public class AdminAnuncioDetalhadoController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) StatusAnuncio status,
             @RequestParam(required = false) StatusModeracaoAnuncio statusModeracao,
-            @RequestParam(required = false) ClassificacaoConteudo classificacaoConteudo,
             @RequestParam(required = false) String uf,
             @RequestParam(required = false) String cidade,
             @RequestParam(required = false) String bairro,
@@ -45,7 +43,6 @@ public class AdminAnuncioDetalhadoController {
                 size,
                 status,
                 statusModeracao,
-                classificacaoConteudo,
                 uf,
                 cidade,
                 bairro,

@@ -1,5 +1,5 @@
-export type StoryPreviewState = "AVAILABLE" | "BLOCKED" | "UNAVAILABLE"
-export type StoryViewerState = "LIBERADO" | "BLOQUEADO" | "INDISPONIVEL" | "ERRO_DADOS"
+export type StoryPreviewState = "AVAILABLE" | "IDADE_NAO_CONFIRMADA" | "UNAVAILABLE"
+export type StoryViewerState = "LIBERADO" | "IDADE_NAO_CONFIRMADA" | "INDISPONIVEL" | "ERRO_DADOS"
 
 export type StoryItem = {
   storyId: string | number
@@ -8,10 +8,6 @@ export type StoryItem = {
   usuarioUsername?: string | null
   displayUsername?: string | null
   profileNavigable?: boolean | null
-  contentClassification?: string | null
-  requiresVisitorVerification?: boolean | null
-  requiresStrongVerification?: boolean | null
-  viewerAuthorized?: boolean | null
   previewState?: StoryPreviewState | null
   previewUrl?: string | null
   tipo: "IMAGE" | "VIDEO"
@@ -25,10 +21,6 @@ export type StoryViewerItem = {
   usuarioUsername?: string | null
   displayUsername?: string | null
   profileNavigable?: boolean | null
-  contentClassification?: string | null
-  requiresVisitorVerification?: boolean | null
-  requiresStrongVerification?: boolean | null
-  viewerAuthorized?: boolean | null
   viewerState: StoryViewerState
   midiaUrl?: string | null
   tipo: "IMAGE" | "VIDEO"

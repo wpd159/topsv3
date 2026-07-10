@@ -19,7 +19,6 @@ import br.com.topsdojob.v3.persistence.entity.metrica.EventoVisualizacaoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.CliqueWhatsappRepository;
 import br.com.topsdojob.v3.persistence.repository.EventoVisualizacaoRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.Optional;
@@ -49,8 +48,7 @@ class MetricaPublicaServiceTest {
                 eventoRepository,
                 mock(CliqueWhatsappRepository.class),
                 new MetricaPublicaHashService("valor_local_ficticio", "local"),
-                new PoliticaContatoPublicoService(),
-                mock(IdadePublicaService.class));
+                new PoliticaContatoPublicoService());
         MockHttpServletRequest http = new MockHttpServletRequest();
         http.setRemoteAddr("127.0.0.1");
         http.addHeader("User-Agent", "Mozilla local");
@@ -90,8 +88,7 @@ class MetricaPublicaServiceTest {
                 mock(EventoVisualizacaoRepository.class),
                 cliqueRepository,
                 new MetricaPublicaHashService("valor_local_ficticio", "local"),
-                new PoliticaContatoPublicoService(),
-                mock(IdadePublicaService.class));
+                new PoliticaContatoPublicoService());
 
         CliqueWhatsappPublicoResponseDto response = service.registrarCliqueWhatsapp(
                 "anuncio-local",
@@ -112,7 +109,6 @@ class MetricaPublicaServiceTest {
         set(anuncio, "slug", "anuncio-local");
         set(anuncio, "status", StatusAnuncio.PUBLICADO);
         set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
-        set(anuncio, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
         set(anuncio, "whatsappNormalizado", whatsapp);
         return anuncio;
     }

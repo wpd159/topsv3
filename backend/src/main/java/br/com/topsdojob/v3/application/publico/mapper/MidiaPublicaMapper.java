@@ -3,9 +3,9 @@ package br.com.topsdojob.v3.application.publico.mapper;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService.ResultadoUrlPublica;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
@@ -36,7 +36,7 @@ public class MidiaPublicaMapper {
             Map<UUID, ArquivoMidiaEntity> arquivosPorId,
             boolean idadeConfirmada) {
         return vinculos.stream()
-                .filter(vinculo -> isVinculoPublico(vinculo, idadeConfirmada))
+                .filter(this::isVinculoPublico)
                 .map(vinculo -> toDto(vinculo, arquivosPorId.get(vinculo.getArquivoMidiaId()), idadeConfirmada))
                 .filter(java.util.Objects::nonNull)
                 .sorted(Comparator.comparing(
@@ -46,14 +46,20 @@ public class MidiaPublicaMapper {
     }
 
     private MidiaPublicaDto toDto(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo, boolean idadeConfirmada) {
-        if (!isArquivoPublico(arquivo, idadeConfirmada)) {
+        if (!isArquivoPublico(arquivo)) {
             return null;
         }
-        ResultadoUrlPublica urlPublica = urlService.resolver(vinculo, arquivo);
+        boolean autorizada = vinculo.getVisibilidadeMidia() == VisibilidadeMidia.LIVRE || idadeConfirmada;
+        ResultadoUrlPublica urlPublica = autorizada
+                ? urlService.resolver(vinculo, arquivo)
+                : new ResultadoUrlPublica(null, "MIDIA_RESTRITA_IDADE");
         return new MidiaPublicaDto(
+                vinculo.getId(),
                 enumName(vinculo.getTipo()),
                 enumName(vinculo.getFinalidade()),
                 vinculo.getOrdem(),
+                enumName(vinculo.getVisibilidadeMidia()),
+                autorizada,
                 urlPublica.urlPublica(),
                 urlPublica.pendenciaMidia(),
                 arquivo.getLargura(),
@@ -61,23 +67,17 @@ public class MidiaPublicaMapper {
                 arquivo.getMimeType());
     }
 
-    private boolean isVinculoPublico(AnuncioMidiaEntity vinculo, boolean idadeConfirmada) {
+    private boolean isVinculoPublico(AnuncioMidiaEntity vinculo) {
         return vinculo != null
                 && vinculo.getStatus() == StatusAnuncioMidia.PUBLICAVEL
                 && vinculo.getTipo() != TipoAnuncioMidia.STORY
                 && vinculo.getFinalidade() != FinalidadeAnuncioMidia.STORY
-                && isClassificacaoPublicavel(vinculo.getClassificacaoConteudo(), idadeConfirmada);
+                && vinculo.getVisibilidadeMidia() != null;
     }
 
-    private boolean isArquivoPublico(ArquivoMidiaEntity arquivo, boolean idadeConfirmada) {
+    private boolean isArquivoPublico(ArquivoMidiaEntity arquivo) {
         return arquivo != null
-                && arquivo.getStatusArquivo() == StatusArquivoMidia.VALIDADO
-                && isClassificacaoPublicavel(arquivo.getClassificacaoConteudo(), idadeConfirmada);
-    }
-
-    private boolean isClassificacaoPublicavel(ClassificacaoConteudo classificacao, boolean idadeConfirmada) {
-        return classificacao == ClassificacaoConteudo.LIVRE
-                || (idadeConfirmada && classificacao == ClassificacaoConteudo.BLOQUEADO);
+                && arquivo.getStatusArquivo() == StatusArquivoMidia.VALIDADO;
     }
 
     private String enumName(Enum<?> value) {

@@ -34,7 +34,6 @@ type PerformanceItem = {
   taxaConversao: number
   posicaoRanking: number
   cidadeNome?: string | null
-  contentClassification?: string | null
 }
 
 type PerformanceResponse = {

@@ -99,7 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
+      const adminRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
+      const endpoint = adminRoute ? '/api/admin/auth/me' : '/auth/me'
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
         credentials: 'include',
       })
 
@@ -113,7 +115,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null
       }
 
-      const data = corrigirEstruturaTexto((await res.json()) as Usuario)
+      const raw = corrigirEstruturaTexto(await res.json()) as Usuario & {
+        autenticado?: boolean
+        usuarioId?: string
+        nome?: string | null
+        papeis?: string[]
+      }
+
+      if (adminRoute) {
+        if (!raw.autenticado) {
+          setUsuario(null)
+          return null
+        }
+        const cargo = raw.papeis?.includes('ADMIN') ? 'ADMIN' : raw.papeis?.includes('MODERADOR') ? 'MODERADOR' : ''
+        if (!cargo) {
+          setUsuario(null)
+          return null
+        }
+        const adminUser: Usuario = {
+          id: 0,
+          username: raw.email?.split('@')[0] || 'admin',
+          nomeCompleto: raw.nome ?? null,
+          email: raw.email ?? '',
+          telefone: null,
+          estadoId: null,
+          cidadeId: null,
+          bairroId: null,
+          localizacao: null,
+          cidade: null,
+          descricao: null,
+          twoFactorAtivo: false,
+          totalAnuncios: 0,
+          totalDocumentos: 0,
+          creditos: 0,
+          totalIndicados: 0,
+          creditosIndicacaoGanhos: 0,
+          creditosPorIndicacao: 0,
+          linkIndicacao: '',
+          status: 'ATIVO',
+          cargo,
+        }
+        setUsuario(adminUser)
+        return adminUser
+      }
+
+      const data = raw
 
       const localizacaoFinal =
         (data.localizacao ?? null) ||

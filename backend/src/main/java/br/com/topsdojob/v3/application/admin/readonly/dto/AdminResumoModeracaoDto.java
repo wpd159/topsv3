@@ -4,6 +4,6 @@ public record AdminResumoModeracaoDto(
         long revisoesAbertas,
         long revisoesEmAnalise,
         long anunciosPendentesModeracao,
-        long anunciosBloqueados,
+        long anunciosRejeitados,
         long documentosPendentes) {
 }

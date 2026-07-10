@@ -195,7 +195,7 @@ export function WizardPreview({
                     pontoReferenciaTexto={previewReference || null}
                     idade={idade}
                     valor={previewPrice}
-                    imagens={previewMedia}
+                    previewImagens={previewMedia}
                     descricao={previewDescription}
                     destaque={premiumChoice === 'destaque'}
                     carrosselDisponivel={false}

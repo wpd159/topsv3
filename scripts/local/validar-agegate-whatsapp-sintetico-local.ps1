@@ -6,7 +6,7 @@
   [string]$RelatorioSaida = "docs/v3/evidencias/bloco-39/relatorio-agegate-whatsapp-sintetico.md",
   [string]$RelatorioE2E = "docs/v3/evidencias/bloco-39/relatorio-e2e-agegate-whatsapp-sintetico.md",
   [string]$SlugLivre = "anuncio-sintetico-local",
-  [string]$SlugBloqueado = "anuncio-sintetico-bloqueado-local",
+  [string]$SlugMidiaRestrita = "anuncio-sintetico-midia-restrita-local",
   [string]$SlugStories = "anuncio-sintetico-local",
   [switch]$NaoIniciarDockerDesktop
 )
@@ -209,16 +209,16 @@ function Save-Report {
   $lines.Add("- Resultado: $Resultado")
   $lines.Add("- BaseUrl: $script:SafeBaseUrl")
   $lines.Add("- Slug LIVRE: $SlugLivre")
-  $lines.Add("- Slug BLOQUEADO: $SlugBloqueado")
+  $lines.Add("- Slug com mídia restrita: $SlugMidiaRestrita")
   $lines.Add("- Slug stories: $SlugStories")
   $lines.Add("- Dados reais usados: nao")
   $lines.Add("- Producao/VPS/API externa acessadas: nao")
   $lines.Add("- WhatsApp real enviado/aberto: nao")
-  $lines.Add("- Frontend decide WhatsApp/classificacao: nao")
+  $lines.Add("- Frontend decide WhatsApp/visibilidade: não")
   $lines.Add("")
   $lines.Add("## Fluxos validados")
   $lines.Add("- Anuncio LIVRE acessivel sem age gate.")
-  $lines.Add("- Anuncio BLOQUEADO protegido antes da confirmacao de idade.")
+  $lines.Add("- Mídia RESTRITA_18 protegida antes da confirmação de idade, sem bloquear a página ou o contato.")
   $lines.Add("- Confirmacao de idade adulta sintetica emite cookie HttpOnly SameSite=Lax.")
   $lines.Add("- Data menor de 18 anos e data invalida retornam erro 400 sem cookie de confirmacao.")
   $lines.Add("- WhatsApp publico e liberado apenas pelo endpoint backend autorizado.")
@@ -281,18 +281,6 @@ Add-Check "anuncio LIVRE contem slug" ($livre.Body -match [regex]::Escape($SlugL
 Assert-NoSensitivePublicData -Nome "anuncio LIVRE sem idade" -Body $livre.Body
 Assert-NoTechnicalCopy -Nome "anuncio LIVRE sem idade" -Body $livre.Body
 
-$bloqueadoSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugBloqueado"
-Assert-Status $bloqueadoSemIdade 404 "anuncio BLOQUEADO sem idade"
-Add-Check "BLOQUEADO sem idade nao expoe WhatsApp" (-not ($bloqueadoSemIdade.Body -match 'wa\.me/|\+55[0-9]')) "detalhe bloqueado nao deve expor contato antes da idade"
-Assert-NoSensitivePublicData -Nome "anuncio BLOQUEADO sem idade" -Body $bloqueadoSemIdade.Body
-Assert-NoTechnicalCopy -Nome "anuncio BLOQUEADO sem idade" -Body $bloqueadoSemIdade.Body
-
-$cliqueBloqueadoSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugBloqueado/clique-whatsapp" -Method "POST" -Body $metricBody
-Assert-Status $cliqueBloqueadoSemIdade 404 "clique WhatsApp BLOQUEADO sem idade"
-Add-Check "clique BLOQUEADO sem idade sem contato" (-not ($cliqueBloqueadoSemIdade.Body -match 'wa\.me/|\+55[0-9]')) "endpoint nao deve liberar contato sem idade"
-Assert-NoSensitivePublicData -Nome "clique WhatsApp BLOQUEADO sem idade" -Body $cliqueBloqueadoSemIdade.Body
-Assert-NoTechnicalCopy -Nome "clique WhatsApp BLOQUEADO sem idade" -Body $cliqueBloqueadoSemIdade.Body
-
 $menor = Invoke-LocalHttp -Path "/api/public/idade/confirmar" -Method "POST" -Body $idadeMenorBody
 Assert-Status $menor 400 "idade menor de 18"
 Add-Check "idade menor sem cookie" (-not (Get-HeaderValue $menor.Headers "Set-Cookie")) "menor de idade nao deve receber cookie"
@@ -322,12 +310,14 @@ $statusConfirmado = Invoke-LocalHttp -Path "/api/public/idade/status" -Session $
 Assert-Status $statusConfirmado 200 "idade status confirmada"
 Add-Check "idade status com cookie confirmada" ($statusConfirmado.Body -match '"confirmada"\s*:\s*true') "cookie assinado deve ser aceito"
 
-$bloqueadoComIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugBloqueado" -Session $idadeSession
-Assert-Status $bloqueadoComIdade 200 "anuncio BLOQUEADO com idade"
-Add-Check "BLOQUEADO com idade contem slug" ($bloqueadoComIdade.Body -match [regex]::Escape($SlugBloqueado)) "backend liberou detalhe apos idade"
-Add-Check "detalhe BLOQUEADO nao expoe WhatsApp direto" (-not ($bloqueadoComIdade.Body -match 'wa\.me/|\+55[0-9]')) "detalhe nao deve conter URL/numero de WhatsApp"
-Assert-NoSensitivePublicData -Nome "anuncio BLOQUEADO com idade" -Body $bloqueadoComIdade.Body
-Assert-NoTechnicalCopy -Nome "anuncio BLOQUEADO com idade" -Body $bloqueadoComIdade.Body
+$restritaSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita"
+Assert-Status $restritaSemIdade 200 "anuncio com midia restrita sem idade"
+Add-Check "pagina com midia restrita permanece publica" ($restritaSemIdade.Body -match [regex]::Escape($SlugMidiaRestrita)) "titulo, descricao e pagina independem da idade"
+Add-Check "visibilidade restrita exposta por midia" ($restritaSemIdade.Body -match '"visibilidadeMidia"\s*:\s*"RESTRITA_18"') "DTO identifica a regra individual"
+Add-Check "midia restrita nao autorizada sem idade" ($restritaSemIdade.Body -match '"autorizada"\s*:\s*false') "backend decide autorizacao"
+Add-Check "original restrito ausente sem idade" (-not ($restritaSemIdade.Body -match '"urlPublica"\s*:\s*"[^\"]+"')) "DTO preserva placeholder sem URL original"
+Assert-NoSensitivePublicData -Nome "anuncio com midia restrita sem idade" -Body $restritaSemIdade.Body
+Assert-NoTechnicalCopy -Nome "anuncio com midia restrita sem idade" -Body $restritaSemIdade.Body
 
 $cliqueLivre = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugLivre/clique-whatsapp" -Method "POST" -Body $metricBody
 Assert-Status $cliqueLivre 200 "clique WhatsApp LIVRE"
@@ -336,12 +326,12 @@ Add-Check "clique LIVRE URL sintetica" ($cliqueLivre.Body -match '"whatsappUrl"\
 Assert-NoSensitivePublicData -Nome "clique WhatsApp LIVRE" -Body $cliqueLivre.Body -AllowSyntheticWhatsapp $true
 Assert-NoTechnicalCopy -Nome "clique WhatsApp LIVRE" -Body $cliqueLivre.Body
 
-$cliqueBloqueadoComIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugBloqueado/clique-whatsapp" -Method "POST" -Body $metricBody -Session $idadeSession
-Assert-Status $cliqueBloqueadoComIdade 200 "clique WhatsApp BLOQUEADO com idade"
-Add-Check "clique BLOQUEADO com idade disponivel" ($cliqueBloqueadoComIdade.Body -match '"disponivel"\s*:\s*true') "backend pode liberar contato apos idade conforme politica"
-Add-Check "clique BLOQUEADO URL sintetica" ($cliqueBloqueadoComIdade.Body -match '"whatsappUrl"\s*:\s*"https://wa\.me/5500000000000"') "somente URL sintetica autorizada"
-Assert-NoSensitivePublicData -Nome "clique WhatsApp BLOQUEADO com idade" -Body $cliqueBloqueadoComIdade.Body -AllowSyntheticWhatsapp $true
-Assert-NoTechnicalCopy -Nome "clique WhatsApp BLOQUEADO com idade" -Body $cliqueBloqueadoComIdade.Body
+$cliqueRestritoSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita/clique-whatsapp" -Method "POST" -Body $metricBody
+Assert-Status $cliqueRestritoSemIdade 200 "clique WhatsApp com midia restrita sem idade"
+Add-Check "contato independe da idade" ($cliqueRestritoSemIdade.Body -match '"disponivel"\s*:\s*true') "backend libera contato para anuncio publico ativo sem cookie de idade"
+Add-Check "contato permanece mediado" ($cliqueRestritoSemIdade.Body -match '"whatsappUrl"\s*:\s*"https://wa\.me/5500000000000"') "URL sintetica retorna apenas no endpoint de clique"
+Assert-NoSensitivePublicData -Nome "clique WhatsApp com midia restrita sem idade" -Body $cliqueRestritoSemIdade.Body -AllowSyntheticWhatsapp $true
+Assert-NoTechnicalCopy -Nome "clique WhatsApp com midia restrita sem idade" -Body $cliqueRestritoSemIdade.Body
 
 $storiesSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugStories/stories"
 Assert-Status $storiesSemIdade 200 "stories sem idade"
@@ -365,7 +355,7 @@ if (Test-Path -LiteralPath $publicApiPath -PathType Leaf) {
   Add-Check "frontend nao monta wa.me no cliente API" (-not ($publicApi -match 'wa\.me/|api\.whatsapp\.com')) "frontend nao deve construir URL de WhatsApp"
 }
 if (Test-Path -LiteralPath $publicModules -PathType Container) {
-  $moduleHits = @(rg -n "document\.body\.style\.overflow|wa\.me/|api\.whatsapp\.com|localStorage|sessionStorage|Conteudo BLOQUEADO|confirmacao de idade" $publicModules 2>$null)
+  $moduleHits = @(rg -n "document\.body\.style\.overflow|wa\.me/|api\.whatsapp\.com|localStorage|sessionStorage" $publicModules 2>$null)
   $moduleDetail = if ($moduleHits.Count -eq 0) { "nenhum achado proibido" } else { (($moduleHits | Select-Object -First 5) -join " | ") }
   Add-Check "frontend publico sem scroll lock/storage/wa.me/copy tecnica" ($moduleHits.Count -eq 0) $moduleDetail
 }

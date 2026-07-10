@@ -1,6 +1,5 @@
 package br.com.topsdojob.v3.domain.anuncio;
 
-import br.com.topsdojob.v3.domain.shared.ClassificacaoConteudo;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -14,7 +13,6 @@ public record Anuncio(
     AnuncioTipos.Status status,
     AnuncioTipos.StatusModeracao statusModeracao,
     String categoria,
-    ClassificacaoConteudo classificacaoConteudo,
     BigDecimal preco,
     String whatsappNormalizado,
     OffsetDateTime publicadoEm,

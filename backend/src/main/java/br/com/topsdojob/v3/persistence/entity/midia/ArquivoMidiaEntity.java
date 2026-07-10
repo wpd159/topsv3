@@ -1,6 +1,5 @@
 package br.com.topsdojob.v3.persistence.entity.midia;
 
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -58,10 +57,6 @@ public class ArquivoMidiaEntity {
   @Column(name = "status_arquivo")
   private StatusArquivoMidia statusArquivo;
 
-  @Enumerated(EnumType.STRING)
-  @Column(name = "classificacao_conteudo")
-  private ClassificacaoConteudo classificacaoConteudo;
-
   @Column(name = "criado_em")
   private OffsetDateTime criadoEm;
 
@@ -117,19 +112,12 @@ public class ArquivoMidiaEntity {
     return statusArquivo;
   }
 
-  public ClassificacaoConteudo getClassificacaoConteudo() {
-    return classificacaoConteudo;
-  }
-
   public OffsetDateTime getCriadoEm() {
     return criadoEm;
   }
 
-  public void aplicarDecisao(
-      StatusArquivoMidia statusArquivo,
-      ClassificacaoConteudo classificacaoConteudo) {
+  public void aplicarDecisao(StatusArquivoMidia statusArquivo) {
     this.statusArquivo = statusArquivo;
-    this.classificacaoConteudo = classificacaoConteudo;
   }
 
 }

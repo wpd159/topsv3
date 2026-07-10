@@ -9,7 +9,6 @@ public record AdminAnuncioListaItemDto(
         String titulo,
         String status,
         String statusModeracao,
-        String classificacaoConteudo,
         AdminLocalizacaoSanitizadaDto localizacao,
         OffsetDateTime criadoEm,
         OffsetDateTime atualizadoEm,

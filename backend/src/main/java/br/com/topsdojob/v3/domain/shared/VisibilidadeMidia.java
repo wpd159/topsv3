@@ -1,6 +1,6 @@
 package br.com.topsdojob.v3.domain.shared;
 
-public enum ClassificacaoConteudo {
+public enum VisibilidadeMidia {
   LIVRE,
-  BLOQUEADO
+  RESTRITA_18
 }

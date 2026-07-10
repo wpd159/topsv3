@@ -34,7 +34,7 @@ public class AdminModeracaoResumoConsultaService {
                 revisaoRepository.countByStatus(StatusRevisaoAnuncio.ABERTA),
                 revisaoRepository.countByStatus(StatusRevisaoAnuncio.EM_ANALISE),
                 anuncioRepository.countByStatusModeracaoAndRemovidoEmIsNull(StatusModeracaoAnuncio.PENDENTE),
-                anuncioRepository.countByStatusModeracaoAndRemovidoEmIsNull(StatusModeracaoAnuncio.BLOQUEADO),
+                anuncioRepository.countByStatusModeracaoAndRemovidoEmIsNull(StatusModeracaoAnuncio.REJEITADO),
                 documentosPendentes);
     }
 }

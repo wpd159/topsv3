@@ -7,7 +7,6 @@ public record AdminResumoAnunciosDto(
         long publicados,
         long pendentesRevisao,
         long pausados,
-        long bloqueados,
         long comContatoConfigurado,
         List<AdminContadorDto> porStatus) {
 }

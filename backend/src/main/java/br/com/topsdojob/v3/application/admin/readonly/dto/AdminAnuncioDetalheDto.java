@@ -11,7 +11,6 @@ public record AdminAnuncioDetalheDto(
         String status,
         String statusModeracao,
         String categoria,
-        String classificacaoConteudo,
         AdminLocalizacaoSanitizadaDto localizacao,
         OffsetDateTime criadoEm,
         OffsetDateTime atualizadoEm,

@@ -1,80 +1,56 @@
 package br.com.topsdojob.v3.application.publico.service;
 
-import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
-import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
-import java.time.OffsetDateTime;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class PoliticaContatoPublicoServiceTest {
 
     private final PoliticaContatoPublicoService service = new PoliticaContatoPublicoService();
 
     @Test
-    void liberaWhatsappSomenteParaAnuncioLivrePublicadoAprovadoNaoRemovidoComContatoValido() {
-        AnuncioEntity anuncio = anuncio(
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO,
-                ClassificacaoConteudo.LIVRE,
-                null,
-                "+5500000000000");
+    void contatoDisponivelParaAnuncioPublicoAtivoSemDecisaoEtaria() {
+        AnuncioEntity anuncio = anuncio(StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, null, "+5500000000000");
 
         assertThat(service.podeExporContato(anuncio)).isTrue();
         assertThat(service.whatsappUrl(anuncio)).isEqualTo("https://wa.me/5500000000000");
     }
 
     @Test
-    void bloqueiaWhatsappParaClassificacaoBloqueadaOuAnuncioRemovido() {
-        AnuncioEntity bloqueado = anuncio(
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO,
-                ClassificacaoConteudo.BLOQUEADO,
-                null,
-                "+5500000000000");
-        AnuncioEntity removido = anuncio(
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO,
-                ClassificacaoConteudo.LIVRE,
-                OffsetDateTime.now(),
-                "+5500000000000");
+    void contatoIndependeDaGaleriaEDaConfirmacaoDeIdade() {
+        AnuncioEntity anuncio = anuncio(StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, null, "+5500000000000");
 
-        assertThat(service.podeExporContato(bloqueado)).isFalse();
-        assertThat(service.podeExporContato(removido)).isFalse();
-        assertThat(service.whatsappUrl(bloqueado)).isNull();
-        assertThat(service.whatsappUrl(removido)).isNull();
+        assertThat(service.avaliar(anuncio).disponivel()).isTrue();
     }
 
     @Test
-    void liberaWhatsappBloqueadoSomenteComIdadeConfirmada() {
-        AnuncioEntity bloqueado = anuncio(
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO,
-                ClassificacaoConteudo.BLOQUEADO,
-                null,
-                "+5500000000000");
+    void contatoNegadoParaAnuncioNaoPublicadoRejeitadoOuRemovido() {
+        assertThat(service.podeExporContato(anuncio(StatusAnuncio.PAUSADO, StatusModeracaoAnuncio.APROVADO, null, "+5500000000000"))).isFalse();
+        assertThat(service.podeExporContato(anuncio(StatusAnuncio.REJEITADO, StatusModeracaoAnuncio.REJEITADO, null, "+5500000000000"))).isFalse();
+        assertThat(service.podeExporContato(anuncio(StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, java.time.OffsetDateTime.now(), "+5500000000000"))).isFalse();
+    }
 
-        assertThat(service.podeExporContato(bloqueado, false)).isFalse();
-        assertThat(service.podeExporContato(bloqueado, true)).isTrue();
-        assertThat(service.whatsappUrl(bloqueado, true)).isEqualTo("https://wa.me/5500000000000");
+    @Test
+    void contatoInvalidoNaoEhExposto() {
+        assertThat(service.whatsappUrl(anuncio(StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, null, "62999999999"))).isNull();
     }
 
     private AnuncioEntity anuncio(
             StatusAnuncio status,
-            StatusModeracaoAnuncio statusModeracao,
-            ClassificacaoConteudo classificacao,
-            OffsetDateTime removidoEm,
+            StatusModeracaoAnuncio moderacao,
+            java.time.OffsetDateTime removidoEm,
             String whatsapp) {
-        AnuncioEntity anuncio = entity(AnuncioEntity.class);
-        set(anuncio, "status", status);
-        set(anuncio, "statusModeracao", statusModeracao);
-        set(anuncio, "classificacaoConteudo", classificacao);
-        set(anuncio, "removidoEm", removidoEm);
-        set(anuncio, "whatsappNormalizado", whatsapp);
-        return anuncio;
+        AnuncioEntity entity = org.mockito.Mockito.mock(AnuncioEntity.class);
+        org.mockito.Mockito.when(entity.getId()).thenReturn(UUID.randomUUID());
+        org.mockito.Mockito.when(entity.getStatus()).thenReturn(status);
+        org.mockito.Mockito.when(entity.getStatusModeracao()).thenReturn(moderacao);
+        org.mockito.Mockito.when(entity.getRemovidoEm()).thenReturn(removidoEm);
+        org.mockito.Mockito.when(entity.getWhatsappNormalizado()).thenReturn(whatsapp);
+        return entity;
     }
 }

@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
+import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
@@ -22,7 +23,6 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.List;
@@ -79,11 +79,10 @@ class ListagemPublicaConsultaServiceTest {
         when(cidadeRepository.findByEstadoIdAndSlug(estadoId, "sao-paulo")).thenReturn(Optional.of(cidade));
         when(localizacaoRepository.findByCidadeId(cidadeId))
                 .thenReturn(List.of(localizacaoPublicada, localizacaoNaoPublicada));
-        when(anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndClassificacaoConteudoAndRemovidoEmIsNull(
+        when(anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 eq(List.of(anuncioPublicadoId, anuncioRascunhoId)),
                 eq(StatusAnuncio.PUBLICADO),
                 eq(StatusModeracaoAnuncio.APROVADO),
-                eq(ClassificacaoConteudo.LIVRE),
                 any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(anuncioPublicado), PageRequest.of(0, 20), 1));
         when(anuncioConsultaService.midias(anuncioPublicadoId)).thenReturn(List.of());
@@ -102,7 +101,7 @@ class ListagemPublicaConsultaServiceTest {
                 bairroRepository,
                 localizacaoRepository,
                 anuncioRepository,
-                new AnuncioPublicoMapper(),
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 anuncioConsultaService,
                 seoService,
                 mock(PremiumPublicoMapper.class));
@@ -113,11 +112,10 @@ class ListagemPublicaConsultaServiceTest {
         assertThat(dto.itens().get(0).slug()).isEqualTo("anuncio-publicado");
         assertThat(dto.paginacao().totalItens()).isEqualTo(1);
         verify(localizacaoRepository).findByCidadeId(cidadeId);
-        verify(anuncioRepository).findByIdInAndStatusAndStatusModeracaoAndClassificacaoConteudoAndRemovidoEmIsNull(
+        verify(anuncioRepository).findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 eq(List.of(anuncioPublicadoId, anuncioRascunhoId)),
                 eq(StatusAnuncio.PUBLICADO),
                 eq(StatusModeracaoAnuncio.APROVADO),
-                eq(ClassificacaoConteudo.LIVRE),
                 any(Pageable.class));
     }
 }

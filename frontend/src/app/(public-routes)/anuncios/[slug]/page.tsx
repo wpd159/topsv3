@@ -6,6 +6,7 @@ import { shouldIndexAnuncio } from "@/lib/seo/anuncio-indexing"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { ServerApiError, serverApiFetchJson } from "@/lib/server-api"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
+import { selecionarCapaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
 
 const SAFE_COMPLIANCE_IMAGE_ABSOLUTE = buildPublicUrl("/2151117281.jpg")
 
@@ -55,7 +56,8 @@ export async function generateMetadata({
       cidadeNome: data?.cidadeNome,
       bairroNome: data?.bairroNome,
     })
-    const imagem = resolvePublicSeoImage(data?.fotos?.[0] || data?.fotosUrl?.[0])
+    const capa = selecionarCapaPublicaSegura(data?.midias as MidiaPublica[] | undefined)
+    const imagem = resolvePublicSeoImage(capa?.urlPublica)
     const indexavel = shouldIndexAnuncio(data)
 
     const title = gerarTituloSeoAnuncio({

@@ -21,7 +21,7 @@ const FALLBACK_POLICIES: Required<PoliciesResponse> = {
   adultPrivacyPolicy:
     'O acesso a conteudo adulto restrito gera registros minimos de seguranca e auditoria, com IP mascarado, hash de user agent e identificador pseudonimo de sessao.',
   restrictedContentTerms:
-    'Conteudos classificados como ADULT_RESTRICTED e ADULT_EXPLICIT_BLOCKED exigem verificacao valida. O uso indevido pode gerar bloqueio e revogacao de acesso.',
+    'Fotos restritas, videos e stories exigem confirmacao valida de idade. O uso indevido pode gerar bloqueio e revogacao de acesso.',
   legalAccessNotice:
     'Este ambiente contem material sensivel destinado exclusivamente a maiores de 18 anos devidamente verificados.',
 }

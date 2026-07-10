@@ -14,7 +14,6 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import jakarta.servlet.http.HttpServletRequest;
@@ -79,7 +78,6 @@ public class AnuncioPublicoConsultaService {
                         slugSeguro,
                         StatusAnuncio.PUBLICADO,
                         StatusModeracaoAnuncio.APROVADO)
-                .filter(found -> classificacaoPublicavel(found.getClassificacaoConteudo(), idadeConfirmada))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
         return anuncioMapper.toDetalhe(
@@ -110,11 +108,6 @@ public class AnuncioPublicoConsultaService {
         Map<UUID, ArquivoMidiaEntity> arquivos = arquivoMidiaRepository.findByIdIn(arquivoIds).stream()
                 .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
         return midiaMapper.publicas(vinculos, arquivos, idadeConfirmada);
-    }
-
-    private boolean classificacaoPublicavel(ClassificacaoConteudo classificacao, boolean idadeConfirmada) {
-        return classificacao == ClassificacaoConteudo.LIVRE
-                || (idadeConfirmada && classificacao == ClassificacaoConteudo.BLOQUEADO);
     }
 
     private LocalizacaoPublicaDto toLocalizacaoPlaceholder(AnuncioLocalizacaoEntity localizacao) {

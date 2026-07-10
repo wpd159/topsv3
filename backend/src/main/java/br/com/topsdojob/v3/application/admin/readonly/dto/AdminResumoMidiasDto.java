@@ -6,7 +6,7 @@ public record AdminResumoMidiasDto(
         long arquivosValidados,
         long midiasPublicaveis,
         long midiasPendentes,
-        long midiasBloqueadas,
+        long midiasRestritas18,
         long storiesPublicados,
         long storiesPendentes) {
 }

@@ -148,12 +148,12 @@ WHERE table_schema NOT IN ('pg_catalog','information_schema','pg_toast')
   AND table_schema NOT LIKE 'pg_toast_temp_%'
   AND column_name ~* '(status|situacao)';
 INSERT INTO topsv3_agregados
-SELECT 'colunas_classificacao', count(*)
+SELECT 'colunas_visibilidade', count(*)
 FROM information_schema.columns
 WHERE table_schema NOT IN ('pg_catalog','information_schema','pg_toast')
   AND table_schema NOT LIKE 'pg_temp_%'
   AND table_schema NOT LIKE 'pg_toast_temp_%'
-  AND column_name ~* '(classificacao|conteudo|moderacao)';
+  AND column_name ~* '(visibilidade|conteudo|moderacao)';
 INSERT INTO topsv3_agregados
 SELECT 'colunas_cidade_uf_bairro', count(*)
 FROM information_schema.columns
@@ -240,7 +240,7 @@ $lines.Add("## Agregados estruturais e SEO")
 foreach ($line in $aggregateLines) { $lines.Add("- $line") }
 $lines.Add("")
 $lines.Add("## Observacoes")
-$lines.Add("- Contagem total de anuncios, status, classificacao LIVRE/BLOQUEADO, cidade/UF/bairro e Premium dependem de mapeamento Pro se o schema legado nao usar nomes detectaveis.")
+$lines.Add("- Contagem total de anúncios, status, visibilidade de mídia LIVRE/RESTRITA_18, cidade/UF/bairro e Premium dependem de mapeamento Pro se o schema legado não usar nomes detectáveis.")
 $lines.Add("- Registros que exigem revisao manual permanecem agregados e sem valores reais.")
 Write-Report -Lines @($lines.ToArray())
 

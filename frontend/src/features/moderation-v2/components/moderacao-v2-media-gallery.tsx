@@ -20,8 +20,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
-import { removerFotosStaffApi, removerMidiaRevisaoStaffApi } from '../api/client'
-import type { ModerationRevisionDetail } from '../api/types'
+import { useAuth } from '@/context/AuthContext'
+import { decidirMidiaApi, fetchAdminMidiasV3, removerFotosStaffApi, removerMidiaRevisaoStaffApi } from '../api/client'
+import type { ModerationMediaItem, ModerationRevisionDetail, VisibilidadeMidia } from '../api/types'
 
 type PhotoLightboxItem = {
   key: string
@@ -34,6 +35,120 @@ type RevisionPhotoRow = {
   url: string
   mediaId?: number
   removable: boolean
+}
+
+export function MediaDecisionCard({
+  item,
+  disabled,
+  onReload,
+}: {
+  item: ModerationMediaItem
+  disabled: boolean
+  onReload: () => Promise<void>
+}) {
+  const forcedRestricted = item.tipo === 'VIDEO' || item.tipo === 'STORY'
+  const [visibility, setVisibility] = useState<VisibilidadeMidia | ''>(
+    forcedRestricted ? 'RESTRITA_18' : item.visibilidadeMidia ?? ''
+  )
+  const [busy, setBusy] = useState(false)
+
+  const decide = async (acao: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE') => {
+    if (busy || disabled) return
+    if (acao === 'APROVAR' && !forcedRestricted && !visibility) {
+      toast.error('Selecione Livre ou Após confirmação de idade para esta foto.')
+      return
+    }
+    const motivo = acao === 'APROVAR' ? undefined : window.prompt('Informe o motivo da decisão:')?.trim()
+    if (acao !== 'APROVAR' && !motivo) return
+
+    setBusy(true)
+    try {
+      await decidirMidiaApi(
+        item.id,
+        acao,
+        acao === 'APROVAR' ? (forcedRestricted ? 'RESTRITA_18' : visibility || undefined) : undefined,
+        motivo
+      )
+      toast.success('Decisão individual da mídia registrada.')
+      await onReload()
+    } catch (error) {
+      toast.error(error instanceof Error ? corrigirTextoCorrompido(error.message) : 'Falha ao decidir mídia.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      data-testid="moderacao-midia-card"
+      data-media-id={String(item.id)}
+      data-media-type={item.tipo}
+      className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-gray-900">{item.tipo}</span>
+        <span className="font-mono text-[10px] text-gray-500">{String(item.id)}</span>
+      </div>
+      {forcedRestricted ? (
+        <p className="mt-3 rounded-lg bg-pink-50 px-3 py-2 text-sm font-medium text-pink-900">
+          Após confirmação de idade
+        </p>
+      ) : (
+        <fieldset className="mt-3 space-y-2 text-sm">
+          <legend className="mb-2 text-xs font-medium text-gray-600">Visibilidade obrigatória</legend>
+          <label className="flex items-center gap-2">
+            <input type="radio" name={`visibilidade-${item.id}`} value="LIVRE" checked={visibility === 'LIVRE'} onChange={() => setVisibility('LIVRE')} disabled={disabled || busy} />
+            Livre
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name={`visibilidade-${item.id}`} value="RESTRITA_18" checked={visibility === 'RESTRITA_18'} onChange={() => setVisibility('RESTRITA_18')} disabled={disabled || busy} />
+            Após confirmação de idade
+          </label>
+        </fieldset>
+      )}
+      <div className="mt-3 grid gap-2">
+        <Button type="button" size="sm" disabled={disabled || busy} onClick={() => void decide('APROVAR')}>Aprovar mídia</Button>
+        <Button type="button" size="sm" variant="outline" disabled={disabled || busy} onClick={() => void decide('SOLICITAR_AJUSTE')}>Solicitar ajuste</Button>
+        <Button type="button" size="sm" variant="destructive" disabled={disabled || busy} onClick={() => void decide('REPROVAR')}>Rejeitar mídia</Button>
+      </div>
+    </div>
+  )
+}
+
+export function ModeracaoV2MediaQueue() {
+  const { usuario } = useAuth()
+  const [items, setItems] = useState<ModerationMediaItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const canModerate = usuario?.cargo === 'ADMIN' || usuario?.cargo === 'MODERADOR'
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setItems(await fetchAdminMidiasV3())
+    } catch (reason) {
+      setError(reason instanceof Error ? corrigirTextoCorrompido(reason.message) : 'Falha ao carregar mídias.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  if (loading) return <p className="py-12 text-center text-sm text-gray-500">Carregando mídias...</p>
+  if (error) return <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>
+  if (items.length === 0) return <p className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">Nenhuma mídia disponível para moderação.</p>
+
+  return (
+    <div data-testid="moderacao-midias-v3" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      {items.map((item) => (
+        <MediaDecisionCard key={String(item.id)} item={item} disabled={!canModerate} onReload={load} />
+      ))}
+    </div>
+  )
 }
 
 const REVISION_PREVIEW_TIMEOUT_MS = 15000
@@ -204,6 +319,7 @@ function LazyModerationVideo({
 
 export type ModeracaoV2MediaGalleryProps = {
   anuncioId: number
+  midiasPublicadas?: ModerationMediaItem[]
   fotosPublicadas: string[]
   videosPublicados: string[]
   revision: ModerationRevisionDetail | null
@@ -214,6 +330,7 @@ export type ModeracaoV2MediaGalleryProps = {
 
 export function ModeracaoV2MediaGallery({
   anuncioId,
+  midiasPublicadas = [],
   fotosPublicadas,
   videosPublicados,
   revision,
@@ -377,6 +494,17 @@ export function ModeracaoV2MediaGallery({
       </p>
 
       <div className="mt-6 space-y-8">
+        {midiasPublicadas.length > 0 ? (
+          <div className="rounded-xl border border-pink-200 bg-pink-50/40 p-4">
+            <h3 className="text-sm font-semibold text-gray-900">Decisão individual por mídia</h3>
+            <p className="mt-1 text-xs text-gray-600">A decisão permanece vinculada ao ID da mídia, mesmo após reordenação.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {midiasPublicadas.map((item) => (
+                <MediaDecisionCard key={String(item.id)} item={item} disabled={!canModerate || removedLogical} onReload={onReload} />
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Badge variant="outline" className="border-slate-300 bg-white text-[11px] font-semibold text-slate-800">

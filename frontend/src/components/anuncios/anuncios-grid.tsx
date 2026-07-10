@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/context/AuthContext"
 import { corrigirEstruturaTexto } from "@/lib/text/encoding"
+import { type MidiaPublica } from "@/lib/media/public-media"
 import { AnuncioCard } from "./anuncio-card"
 
 type OrdenacaoDistancia = "MAIOR" | "MENOR"
@@ -15,12 +16,10 @@ interface Anuncio {
   descricao: string
   localizacao: string
   preco: number
-  fotosUrl: string[]
-  videosAnuncio?: string[]
+  midias?: MidiaPublica[]
   nomeAnunciante?: string
   usernameAnunciante?: string
   cidadeAnunciante?: string
-  telefoneAnunciante?: string
   favorito?: boolean
   impulsionado?: boolean
   destaqueAtivo?: boolean
@@ -35,11 +34,6 @@ interface Anuncio {
   pontoReferenciaTexto?: string | null
   idade?: number | null
   carrosselDisponivel?: boolean
-  contentClassification?: string | null
-  requiresVisitorVerification?: boolean
-  requiresStrongVerification?: boolean
-  viewerAuthorized?: boolean
-  restrictedPreview?: boolean
   whatsappCardEnabled?: boolean
 }
 
@@ -233,20 +227,13 @@ export default function AnunciosGrid({
             pontoReferenciaTexto={anuncio.pontoReferenciaTexto ?? null}
             idade={anuncio.idade ?? null}
             valor={`A partir de R$ ${anuncio.preco?.toFixed(2) ?? "0,00"} / hora`}
-            imagens={(Array.isArray(anuncio.fotosUrl) ? anuncio.fotosUrl : []).filter(Boolean)}
-            videos={(Array.isArray(anuncio.videosAnuncio) ? anuncio.videosAnuncio : []).filter(Boolean)}
+            midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
-            telefone={anuncio.telefoneAnunciante}
             favoritoInicial={anuncio.favorito ?? false}
             destaque={anuncio.destaqueAtivo ?? false}
             visualizacoes={anuncio.visualizacoes ?? 0}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
-            contentClassification={anuncio.contentClassification ?? null}
-            requiresVisitorVerification={anuncio.requiresVisitorVerification ?? false}
-            requiresStrongVerification={anuncio.requiresStrongVerification ?? false}
-            viewerAuthorized={anuncio.viewerAuthorized ?? false}
-            restrictedPreview={anuncio.restrictedPreview ?? false}
             whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
             onAccessUpdated={() => setReloadMarker((prev) => prev + 1)}
           />

@@ -19,7 +19,7 @@ function shuffleBundles<T>(list: T[]): T[] {
 
 function previewExigeBloqueio(item?: StoryItem) {
   if (!item) return false
-  return item.previewState === "BLOCKED"
+  return item.previewState === "IDADE_NAO_CONFIRMADA"
 }
 
 function StoryPreviewAvatar({ bundle, first }: { bundle: StoryBundle; first?: StoryItem }) {

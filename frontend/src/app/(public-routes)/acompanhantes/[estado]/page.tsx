@@ -5,6 +5,7 @@ import AnuncioCard from "@/components/anuncios/anuncio-card"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import { gerarDescricaoSeoEstado, gerarTituloSeoEstado } from "@/lib/seo/public-metadata"
 import { serverApiFetchJson } from "@/lib/server-api"
+import { selecionarCapaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { getEstadoNomePorUf } from "@/lib/seo/acompanhantes-navigation"
@@ -31,10 +32,8 @@ interface AnuncioSeoDTO {
   slug: string
   titulo: string
   preco?: number
-  fotosUrl?: string[]
-  videosAnuncio?: string[]
+  midias?: MidiaPublica[]
   descricao?: string
-  telefoneAnunciante?: string
   nomeAnunciante?: string
   usernameAnunciante?: string
   visualizacoes?: number
@@ -46,11 +45,6 @@ interface AnuncioSeoDTO {
   destaqueAtivo?: boolean
   videoHabilitado?: boolean
   carrosselDisponivel?: boolean
-  contentClassification?: string
-  requiresVisitorVerification?: boolean
-  requiresStrongVerification?: boolean
-  viewerAuthorized?: boolean
-  restrictedPreview?: boolean
   whatsappCardEnabled?: boolean
 }
 
@@ -278,7 +272,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
       position: index + 1,
       name: anuncio.titulo,
       url: buildPublicUrl(buildPublicPath("anuncios", anuncio.slug)),
-      image: anuncio.fotosUrl?.[0] || undefined,
+      image: selecionarCapaPublicaSegura(anuncio.midias)?.urlPublica || undefined,
     })),
   }
 
@@ -322,21 +316,14 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
             bairroNome={anuncio.bairroNome ?? null}
             idade={anuncio.idade}
             valor={`A partir de R$ ${Number(anuncio.preco ?? 0).toFixed(2)} / hora`}
-            imagens={Array.isArray(anuncio.fotosUrl) ? anuncio.fotosUrl : []}
-            videos={Array.isArray(anuncio.videosAnuncio) ? anuncio.videosAnuncio : []}
+            midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
-            telefone={anuncio.telefoneAnunciante}
             nomeAnunciante={anuncio.nomeAnunciante}
             usernameAnunciante={anuncio.usernameAnunciante}
             visualizacoes={anuncio.visualizacoes ?? 0}
             destaque={anuncio.destaqueAtivo ?? false}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
-            contentClassification={anuncio.contentClassification ?? null}
-            requiresVisitorVerification={anuncio.requiresVisitorVerification ?? false}
-            requiresStrongVerification={anuncio.requiresStrongVerification ?? false}
-            viewerAuthorized={anuncio.viewerAuthorized ?? false}
-            restrictedPreview={anuncio.restrictedPreview ?? false}
             whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
           />
         ))}

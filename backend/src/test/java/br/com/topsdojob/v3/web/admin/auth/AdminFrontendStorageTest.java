@@ -28,24 +28,22 @@ class AdminFrontendStorageTest {
 
     @Test
     void frontendAdminUsaCookieDeSessaoSemCredencialHardcoded() throws Exception {
-        String api = Files.readString(Path.of("..", "frontend", "src", "lib", "api", "adminAuthApi.ts"));
-        String readonlyApi = Files.readString(Path.of("..", "frontend", "src", "lib", "api", "adminReadonlyApi.ts"));
+        String api = Files.readString(Path.of("..", "frontend", "src", "context", "AuthContext.tsx"));
+        String readonlyApi = Files.readString(Path.of(
+                "..", "frontend", "src", "features", "moderation-v2", "api", "client.ts"));
         String panel = Files.readString(Path.of(
                 "..",
                 "frontend",
                 "src",
-                "modules",
-                "admin",
-                "shell",
-                "AdminAuthPanel.tsx"));
+                "components",
+                "modals",
+                "login-modal.tsx"));
 
-        assertThat(api).contains("credentials: \"include\"");
-        assertThat(readonlyApi).contains("credentials: \"include\"");
+        assertThat(api).containsPattern("credentials:\\s*['\"]include['\"]");
+        assertThat(readonlyApi).containsPattern("credentials:\\s*['\"]include['\"]");
         assertThat(api).doesNotContain("Bearer").doesNotContain("Authorization");
         assertThat(readonlyApi).doesNotContain("Bearer").doesNotContain("Authorization");
         assertThat(panel).doesNotContain("SenhaSintetica").doesNotContain("NaoUsar123");
-        assertThat(panel).doesNotContain("useState(\"admin.local@example.invalid\")");
-        assertThat(panel).doesNotContain("placeholder=\"admin.local@example.invalid\"");
-        assertThat(panel).contains("placeholder=\"admin@example.invalid\"");
+        assertThat(panel).doesNotContain("admin.local@example.invalid");
     }
 }

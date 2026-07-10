@@ -12,7 +12,7 @@ public record AdminMidiaDetalheDto(
         String finalidade,
         Integer ordem,
         String status,
-        String classificacaoConteudo,
+        String visibilidadeMidia,
         String statusArquivo,
         String mimeType,
         Long tamanhoBytes,

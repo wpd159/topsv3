@@ -1,9 +1,9 @@
 package br.com.topsdojob.v3.persistence.entity.midia;
 
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -45,8 +45,8 @@ public class AnuncioMidiaEntity {
   private StatusAnuncioMidia status;
 
   @Enumerated(EnumType.STRING)
-  @Column(name = "classificacao_conteudo")
-  private ClassificacaoConteudo classificacaoConteudo;
+  @Column(name = "visibilidade_midia")
+  private VisibilidadeMidia visibilidadeMidia;
 
   @Column(name = "criado_em")
   private OffsetDateTime criadoEm;
@@ -82,8 +82,8 @@ public class AnuncioMidiaEntity {
     return status;
   }
 
-  public ClassificacaoConteudo getClassificacaoConteudo() {
-    return classificacaoConteudo;
+  public VisibilidadeMidia getVisibilidadeMidia() {
+    return visibilidadeMidia;
   }
 
   public OffsetDateTime getCriadoEm() {
@@ -96,10 +96,15 @@ public class AnuncioMidiaEntity {
 
   public void aplicarDecisao(
       StatusAnuncioMidia status,
-      ClassificacaoConteudo classificacaoConteudo,
+      VisibilidadeMidia visibilidadeMidia,
       OffsetDateTime atualizadoEm) {
     this.status = status;
-    this.classificacaoConteudo = classificacaoConteudo;
+    this.visibilidadeMidia = visibilidadeMidia;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public void reordenar(Integer ordem, OffsetDateTime atualizadoEm) {
+    this.ordem = ordem;
     this.atualizadoEm = atualizadoEm;
   }
 

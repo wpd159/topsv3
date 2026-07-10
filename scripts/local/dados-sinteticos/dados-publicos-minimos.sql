@@ -101,7 +101,6 @@ INSERT INTO anuncio (
   status,
   status_moderacao,
   categoria,
-  classificacao_conteudo,
   preco,
   whatsapp_normalizado,
   publicado_em,
@@ -120,7 +119,6 @@ INSERT INTO anuncio (
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
-  'LIVRE',
   NULL,
   '+5500000000000',
   now(),
@@ -141,7 +139,6 @@ INSERT INTO anuncio (
   status,
   status_moderacao,
   categoria,
-  classificacao_conteudo,
   preco,
   whatsapp_normalizado,
   publicado_em,
@@ -160,7 +157,6 @@ INSERT INTO anuncio (
   'PENDENTE_REVISAO',
   'PENDENTE',
   'SINTETICO',
-  'LIVRE',
   NULL,
   NULL,
   NULL,
@@ -181,7 +177,6 @@ INSERT INTO anuncio (
   status,
   status_moderacao,
   categoria,
-  classificacao_conteudo,
   preco,
   whatsapp_normalizado,
   publicado_em,
@@ -194,13 +189,12 @@ INSERT INTO anuncio (
 ) VALUES (
   '00000000-0000-4000-8000-000000000502',
   '00000000-0000-4000-8000-000000000101',
-  'anuncio-sintetico-bloqueado-local',
-  'Anúncio de demonstração bloqueado',
+  'anuncio-sintetico-midia-restrita-local',
+  'Anúncio de demonstração com mídia restrita',
   'Perfil de demonstração protegido por confirmação de idade.',
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
-  'BLOQUEADO',
   NULL,
   '+5500000000000',
   now(),
@@ -292,13 +286,12 @@ INSERT INTO arquivo_midia (
   sha256,
   etag,
   status_arquivo,
-  classificacao_conteudo,
   criado_em
 ) VALUES (
   '00000000-0000-4000-8000-000000000701',
   'LOCAL_SINTETICO',
   'bucket-sintetico-local',
-  'synthetic/story-bloqueado.bin',
+  'synthetic/story-restrita-18.bin',
   NULL,
   'video/mp4',
   1,
@@ -308,7 +301,6 @@ INSERT INTO arquivo_midia (
   NULL,
   NULL,
   'VALIDADO',
-  'BLOQUEADO',
   now()
 ) ON CONFLICT (id) DO NOTHING;
 
@@ -326,7 +318,38 @@ INSERT INTO arquivo_midia (
   sha256,
   etag,
   status_arquivo,
-  classificacao_conteudo,
+  criado_em
+) VALUES (
+  '00000000-0000-4000-8000-000000000720',
+  'LOCAL_SINTETICO',
+  'bucket-sintetico-local',
+  'synthetic/foto-restrita-18.bin',
+  NULL,
+  'image/jpeg',
+  1,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  'VALIDADO',
+  now()
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO arquivo_midia (
+  id,
+  storage_provider,
+  bucket,
+  chave_objeto,
+  nome_original,
+  mime_type,
+  tamanho_bytes,
+  largura,
+  altura,
+  duracao_ms,
+  sha256,
+  etag,
+  status_arquivo,
   criado_em
 ) VALUES (
   '00000000-0000-4000-8000-000000000704',
@@ -342,7 +365,6 @@ INSERT INTO arquivo_midia (
   NULL,
   NULL,
   'PENDENTE',
-  'LIVRE',
   now()
 ) ON CONFLICT (id) DO NOTHING;
 
@@ -354,7 +376,7 @@ INSERT INTO anuncio_midia (
   finalidade,
   ordem,
   status,
-  classificacao_conteudo,
+  visibilidade_midia,
   criado_em,
   atualizado_em
 ) VALUES (
@@ -365,7 +387,7 @@ INSERT INTO anuncio_midia (
   'STORY',
   0,
   'PUBLICAVEL',
-  'BLOQUEADO',
+  'RESTRITA_18',
   now(),
   now()
 ) ON CONFLICT (id) DO NOTHING;
@@ -378,7 +400,31 @@ INSERT INTO anuncio_midia (
   finalidade,
   ordem,
   status,
-  classificacao_conteudo,
+  visibilidade_midia,
+  criado_em,
+  atualizado_em
+) VALUES (
+  '00000000-0000-4000-8000-000000000721',
+  '00000000-0000-4000-8000-000000000502',
+  '00000000-0000-4000-8000-000000000720',
+  'FOTO',
+  'CAPA',
+  0,
+  'PUBLICAVEL',
+  'RESTRITA_18',
+  now(),
+  now()
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO anuncio_midia (
+  id,
+  anuncio_id,
+  arquivo_midia_id,
+  tipo,
+  finalidade,
+  ordem,
+  status,
+  visibilidade_midia,
   criado_em,
   atualizado_em
 ) VALUES (
@@ -389,7 +435,7 @@ INSERT INTO anuncio_midia (
   'CAPA',
   0,
   'PENDENTE',
-  'LIVRE',
+  NULL,
   now(),
   now()
 ) ON CONFLICT (id) DO NOTHING;
@@ -423,7 +469,6 @@ INSERT INTO anuncio (
   status,
   status_moderacao,
   categoria,
-  classificacao_conteudo,
   preco,
   whatsapp_normalizado,
   publicado_em,
@@ -443,7 +488,6 @@ INSERT INTO anuncio (
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
-    'LIVRE',
     NULL,
     NULL,
     NULL,
@@ -463,7 +507,6 @@ INSERT INTO anuncio (
     'APROVADO',
     'APROVADO',
     'SINTETICO',
-    'LIVRE',
     NULL,
     NULL,
     NULL,
@@ -483,7 +526,6 @@ INSERT INTO anuncio (
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
-    'LIVRE',
     NULL,
     NULL,
     NULL,
@@ -508,7 +550,6 @@ INSERT INTO anuncio (
   status,
   status_moderacao,
   categoria,
-  classificacao_conteudo,
   preco,
   whatsapp_normalizado,
   publicado_em,
@@ -527,7 +568,6 @@ INSERT INTO anuncio (
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
-  'LIVRE',
   NULL,
   '+5500000000000',
   now() - interval '3 days',
@@ -1267,7 +1307,6 @@ INSERT INTO arquivo_midia (
   sha256,
   etag,
   status_arquivo,
-  classificacao_conteudo,
   criado_em
 ) VALUES
   (
@@ -1284,7 +1323,6 @@ INSERT INTO arquivo_midia (
     NULL,
     NULL,
     'PENDENTE',
-    'LIVRE',
     now()
   ),
   (
@@ -1301,7 +1339,6 @@ INSERT INTO arquivo_midia (
     NULL,
     NULL,
     'VALIDADO',
-    'LIVRE',
     now()
   ),
   (
@@ -1318,7 +1355,6 @@ INSERT INTO arquivo_midia (
     NULL,
     NULL,
     'PENDENTE',
-    'LIVRE',
     now()
   )
 ON CONFLICT (id) DO NOTHING;
@@ -1331,7 +1367,7 @@ INSERT INTO anuncio_midia (
   finalidade,
   ordem,
   status,
-  classificacao_conteudo,
+  visibilidade_midia,
   criado_em,
   atualizado_em
 ) VALUES
@@ -1343,7 +1379,7 @@ INSERT INTO anuncio_midia (
     'GALERIA',
     1,
     'PENDENTE',
-    'LIVRE',
+    NULL,
     now(),
     now()
   ),
@@ -1367,7 +1403,7 @@ INSERT INTO anuncio_midia (
     'CAPA',
     0,
     'PENDENTE',
-    'LIVRE',
+    NULL,
     now(),
     now()
   )
@@ -1424,7 +1460,6 @@ INSERT INTO anuncio (
   status,
   status_moderacao,
   categoria,
-  classificacao_conteudo,
   preco,
   whatsapp_normalizado,
   publicado_em,
@@ -1444,7 +1479,6 @@ INSERT INTO anuncio (
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
-    'LIVRE',
     NULL,
     NULL,
     NULL,
@@ -1464,7 +1498,6 @@ INSERT INTO anuncio (
     'APROVADO',
     'APROVADO',
     'SINTETICO',
-    'LIVRE',
     NULL,
     NULL,
     NULL,
@@ -1484,7 +1517,6 @@ INSERT INTO anuncio (
     'PENDENTE_REVISAO',
     'PENDENTE',
     'SINTETICO',
-    'LIVRE',
     NULL,
     NULL,
     NULL,
@@ -1661,8 +1693,8 @@ INSERT INTO seo_url (
   ),
   (
     '00000000-0000-4000-8000-000000000606',
-    '/anuncios/anuncio-sintetico-bloqueado-local',
-    '/anuncios/anuncio-sintetico-bloqueado-local',
+    '/anuncios/anuncio-sintetico-midia-restrita-local',
+    '/anuncios/anuncio-sintetico-midia-restrita-local',
     'ANUNCIO',
     'ANUNCIO',
     '00000000-0000-4000-8000-000000000502',
@@ -1758,7 +1790,6 @@ INSERT INTO anuncio (
   status,
   status_moderacao,
   categoria,
-  classificacao_conteudo,
   preco,
   whatsapp_normalizado,
   publicado_em,
@@ -1777,7 +1808,6 @@ INSERT INTO anuncio (
   'PUBLICADO',
   'APROVADO',
   'SINTETICO',
-  'LIVRE',
   NULL,
   '+5500000000000',
   now() - interval '2 days',

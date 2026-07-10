@@ -166,10 +166,10 @@ $idadeBody = (@{ dataNascimento = "1990-01-01"; declaracaoMaioridade = $true } |
 
 $checksHttp = @(
   @{ Nome = "anuncio livre demo"; Path = "/api/public/anuncios/demo-goiania-livre-premium"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
-  @{ Nome = "cidade Goiania"; Path = "/api/public/acompanhantes/go/goiania"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "demo-goiania-bloqueado" },
-  @{ Nome = "bairro Setor Bueno"; Path = "/api/public/acompanhantes/go/goiania/setor-bueno"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "demo-goiania-bloqueado" },
-  @{ Nome = "cidade Brasilia"; Path = "/api/public/acompanhantes/df/brasilia"; Status = 200; Session = $null; DeveConter = "demo-brasilia-premium-topo"; NaoConter = "demo-brasilia-bloqueado-stories" },
-  @{ Nome = "bloqueado sem idade"; Path = "/api/public/anuncios/demo-goiania-bloqueado"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "wa.me/" },
+  @{ Nome = "cidade Goiania"; Path = "/api/public/acompanhantes/go/goiania"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
+  @{ Nome = "bairro Setor Bueno"; Path = "/api/public/acompanhantes/go/goiania/setor-bueno"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
+  @{ Nome = "cidade Brasilia"; Path = "/api/public/acompanhantes/df/brasilia"; Status = 200; Session = $null; DeveConter = "demo-brasilia-premium-topo"; NaoConter = "wa.me/" },
+  @{ Nome = "midia restrita sem idade"; Path = "/api/public/anuncios/demo-goiania-midia-restrita"; Status = 200; Session = $null; DeveConter = "RESTRITA_18"; NaoConter = "wa.me/" },
   @{ Nome = "pendente nao publicado"; Path = "/api/public/anuncios/demo-goiania-pendente"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" },
   @{ Nome = "rejeitado nao publicado"; Path = "/api/public/anuncios/demo-goiania-rejeitado"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" }
 )
@@ -185,13 +185,12 @@ foreach ($item in $checksHttp) {
 $idade = Invoke-LocalJson -Path "/api/public/idade/confirmar" -Method "POST" -Body $idadeBody -Session $idadeSession
 Add-Check "idade sintetica confirmada" ($idade.Status -eq 200) "status obtido: $($idade.Status)"
 
-$bloqueadoComIdade = Invoke-LocalJson -Path "/api/public/anuncios/demo-goiania-bloqueado" -Session $idadeSession
-Add-Check "bloqueado com idade status" ($bloqueadoComIdade.Status -eq 200) "status obtido: $($bloqueadoComIdade.Status)"
-Add-Check "bloqueado com idade sem WhatsApp publico" (-not ($bloqueadoComIdade.Body -match 'wa\.me/|\+55[0-9]')) "BLOQUEADO nao deve expor WhatsApp publico"
-Assert-NoSensitivePublicData -Nome "bloqueado com idade" -Body $bloqueadoComIdade.Body
+$restritaComIdade = Invoke-LocalJson -Path "/api/public/anuncios/demo-goiania-midia-restrita" -Session $idadeSession
+Add-Check "midia restrita com idade status" ($restritaComIdade.Status -eq 200) "status obtido: $($restritaComIdade.Status)"
+Assert-NoSensitivePublicData -Nome "midia restrita com idade" -Body $restritaComIdade.Body
 
-$cliqueBloqueado = Invoke-LocalJson -Path "/api/public/anuncios/demo-goiania-bloqueado/clique-whatsapp" -Method "POST" -Body (@{ visitanteLocalId = "visitante-bloco31"; origemPais = "BR"; origemUf = "GO"; origemCidade = "Goiania"; dispositivo = "DESKTOP" } | ConvertTo-Json -Compress) -Session $idadeSession
-Add-Check "clique bloqueado registrado sem liberar contato" ($cliqueBloqueado.Status -eq 200 -and $cliqueBloqueado.Body -match '"disponivel"\s*:\s*false' -and -not ($cliqueBloqueado.Body -match 'wa\.me/|\+55[0-9]')) "BLOQUEADO nao libera contato"
+$cliqueRestritoSemIdade = Invoke-LocalJson -Path "/api/public/anuncios/demo-goiania-midia-restrita/clique-whatsapp" -Method "POST" -Body (@{ visitanteLocalId = "visitante-bloco31"; origemPais = "BR"; origemUf = "GO"; origemCidade = "Goiania"; dispositivo = "DESKTOP" } | ConvertTo-Json -Compress)
+Add-Check "contato com midia restrita independe da idade" ($cliqueRestritoSemIdade.Status -eq 200 -and $cliqueRestritoSemIdade.Body -match '"disponivel"\s*:\s*true') "contato mediado permanece disponivel sem cookie de idade"
 
 $seoScript = Resolve-RepoPath "scripts/local/validar-seo-sintetico-local.ps1"
 if (Test-Path -LiteralPath $seoScript -PathType Leaf) {

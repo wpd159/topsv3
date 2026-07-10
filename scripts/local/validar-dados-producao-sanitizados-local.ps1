@@ -73,7 +73,7 @@ function Write-Pending {
     "## Contagens",
     "- Total de anuncios: pendente.",
     "- Total por status: pendente.",
-    "- Total por classificacao LIVRE/BLOQUEADO: pendente.",
+    "- Total por visibilidade de mídia LIVRE/RESTRITA_18: pendente.",
     "- Total por cidade/UF/bairro: pendente.",
     "- Slugs duplicados: pendente.",
     "- Premium ativo/expirado: pendente.",
@@ -185,7 +185,7 @@ SELECT 'tabela_midia_detectada=' || count(*)::text FROM midia
 UNION ALL
 SELECT 'colunas_status=' || count(*)::text FROM cols WHERE column_name ~* '(status|situacao)'
 UNION ALL
-SELECT 'colunas_classificacao=' || count(*)::text FROM cols WHERE column_name ~* '(classificacao|conteudo|moderacao)'
+SELECT 'colunas_visibilidade=' || count(*)::text FROM cols WHERE column_name ~* '(visibilidade|conteudo|moderacao)'
 UNION ALL
 SELECT 'colunas_cidade_uf_bairro=' || count(*)::text FROM cols WHERE column_name ~* '(cidade|uf|estado|bairro)'
 UNION ALL
@@ -224,7 +224,7 @@ $lines.Add("")
 $lines.Add("## Contagens de negocio")
 $lines.Add("- Total de anuncios: agregado pela tabela detectada quando schema restaurado permitir.")
 $lines.Add("- Total por status: validacao estrutural de coluna registrada sem valores brutos.")
-$lines.Add("- Total por classificacao LIVRE/BLOQUEADO: validacao estrutural de coluna registrada sem valores brutos.")
+$lines.Add("- Total por visibilidade de mídia LIVRE/RESTRITA_18: validação estrutural de coluna registrada sem valores brutos.")
 $lines.Add("- Total por cidade/UF/bairro: validacao estrutural de coluna registrada sem valores brutos.")
 $lines.Add("- Slugs duplicados: apenas contagem, sem lista bruta.")
 $lines.Add("- Premium ativo/expirado: apenas agregado quando colunas existirem.")

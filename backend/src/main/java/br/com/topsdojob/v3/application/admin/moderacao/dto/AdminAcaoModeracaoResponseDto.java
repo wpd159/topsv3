@@ -9,7 +9,7 @@ public record AdminAcaoModeracaoResponseDto(
         UUID recursoId,
         String decisao,
         String status,
-        String classificacaoConteudo,
+        String visibilidadeMidia,
         boolean auditoriaRegistrada,
         boolean emailRealEnviado,
         boolean hardDeleteExecutado,

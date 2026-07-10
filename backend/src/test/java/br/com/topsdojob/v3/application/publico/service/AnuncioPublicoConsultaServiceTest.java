@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
+import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.SeoPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
@@ -37,7 +38,7 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(AnuncioLocalizacaoRepository.class),
                 mock(AnuncioMidiaRepository.class),
                 mock(ArquivoMidiaRepository.class),
-                new AnuncioPublicoMapper(),
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 new MidiaPublicaMapper(new MidiaPublicaUrlService()),
                 new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
                 mock(IdadePublicaService.class),

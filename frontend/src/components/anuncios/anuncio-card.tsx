@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { SensitiveImage } from "@/components/compliance/sensitive-image"
-import { cn } from "@/lib/utils"
+import { selecionarGaleriaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
 import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import {
@@ -31,10 +31,9 @@ type AnuncioCardProps = {
   pontoReferenciaTexto?: string | null
   idade?: number | null
   valor: string
-  imagens: string[]
-  videos?: string[]
+  midias?: MidiaPublica[]
+  previewImagens?: string[]
   descricao?: string
-  telefone?: string
   nomeAnunciante?: string
   usernameAnunciante?: string
   favoritoInicial?: boolean
@@ -44,11 +43,6 @@ type AnuncioCardProps = {
   visualizacoes?: number
   carrosselDisponivel?: boolean
   videoHabilitado?: boolean
-  contentClassification?: string | null
-  requiresVisitorVerification?: boolean
-  requiresStrongVerification?: boolean
-  viewerAuthorized?: boolean
-  restrictedPreview?: boolean
   whatsappCardEnabled?: boolean
   onAccessUpdated?: () => void
   previewMode?: boolean
@@ -97,10 +91,9 @@ export function AnuncioCard({
   pontoReferenciaTexto,
   idade,
   valor,
-  imagens,
-  videos = [],
+  midias = [],
+  previewImagens = [],
   descricao,
-  telefone,
   usernameAnunciante,
   favoritoInicial = false,
   onDesfavoritar,
@@ -109,11 +102,6 @@ export function AnuncioCard({
   visualizacoes = 0,
   carrosselDisponivel = false,
   videoHabilitado = false,
-  contentClassification = null,
-  requiresVisitorVerification = false,
-  requiresStrongVerification = false,
-  viewerAuthorized = false,
-  restrictedPreview = false,
   whatsappCardEnabled = false,
   onAccessUpdated,
   previewMode = false,
@@ -163,36 +151,22 @@ export function AnuncioCard({
     })
   }
 
-  const midias = useMemo(() => {
-    const safeImgs = (Array.isArray(imagens) ? imagens : [])
-      .filter(Boolean)
-      .filter((s) => !badSrcs.has(s))
-
-    const safeVids = videoHabilitado
-      ? (Array.isArray(videos) ? videos : [])
-          .filter(Boolean)
-          .filter((s) => !badSrcs.has(s))
-      : []
-
-    const all = [
-      ...safeVids.map((src) => ({ type: "video" as const, src })),
-      ...safeImgs.map((src) => ({ type: "image" as const, src })),
-    ]
-
-    return all
-  }, [imagens, videos, badSrcs, videoHabilitado])
-
-  const whatsappUrl = useMemo(() => {
-    const tel = (telefone ?? "").trim()
-    if (!tel) return null
-
-    let numero = tel.replace(/\D/g, "")
-    if (!numero) return null
-    if (!numero.startsWith("55")) numero = "55" + numero
-
-    const mensagem = encodeURIComponent("Olá, vi seu anúncio no Tops do Job!")
-    return `https://wa.me/${numero}?text=${mensagem}`
-  }, [telefone])
+  const midiasSeguras = useMemo(() => {
+    if (previewMode) {
+      return previewImagens.filter(Boolean).map((urlPublica, ordem) => ({
+        id: `preview-${ordem}`,
+        tipo: "FOTO" as const,
+        finalidade: ordem === 0 ? "CAPA" as const : "GALERIA" as const,
+        ordem,
+        visibilidadeMidia: "LIVRE" as const,
+        autorizada: true,
+        urlPublica,
+      }))
+    }
+    return selecionarGaleriaPublicaSegura(midias).filter(
+      (midia) => !badSrcs.has(midia.urlPublica ?? "")
+    )
+  }, [badSrcs, midias, previewImagens, previewMode])
 
   const [index, setIndex] = useState(0)
   const [favorito, setFavorito] = useState(favoritoInicial)
@@ -200,36 +174,36 @@ export function AnuncioCard({
   const [views, setViews] = useState(visualizacoes)
 
   useEffect(() => {
-    if (!midias.length) {
+    if (!midiasSeguras.length) {
       if (index !== 0) setIndex(0)
       return
     }
-    if (index > midias.length - 1) setIndex(0)
-  }, [midias.length, index])
+    if (index > midiasSeguras.length - 1) setIndex(0)
+  }, [midiasSeguras.length, index])
 
   useEffect(() => {
-    if (!carrosselDisponivel || midias.length <= 1 || typeof window === "undefined") return
+    if (!carrosselDisponivel || midiasSeguras.length <= 1 || typeof window === "undefined") return
 
     const candidates = [
-      midias[(index + 1) % midias.length],
-      midias[(index - 1 + midias.length) % midias.length],
+      midiasSeguras[(index + 1) % midiasSeguras.length],
+      midiasSeguras[(index - 1 + midiasSeguras.length) % midiasSeguras.length],
     ]
 
     candidates.forEach((media) => {
-      if (media?.type !== "image" || !media.src) return
+      if (!media?.urlPublica) return
       const img = new window.Image()
-      img.src = media.src
+      img.src = media.urlPublica
     })
-  }, [carrosselDisponivel, index, midias])
+  }, [carrosselDisponivel, index, midiasSeguras])
 
   const next = () => {
-    if (!midias.length) return
-    setIndex((i) => (i + 1) % midias.length)
+    if (!midiasSeguras.length) return
+    setIndex((i) => (i + 1) % midiasSeguras.length)
   }
 
   const prev = () => {
-    if (!midias.length) return
-    setIndex((i) => (i - 1 + midias.length) % midias.length)
+    if (!midiasSeguras.length) return
+    setIndex((i) => (i - 1 + midiasSeguras.length) % midiasSeguras.length)
   }
 
   const toggleFavorito = async (e: MouseEvent<HTMLButtonElement>) => {
@@ -280,8 +254,6 @@ export function AnuncioCard({
   const handleWhatsAppClick = async (e: MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation()
     if (previewMode) return
-    if (!whatsappUrl) return
-
     if (typeof window !== "undefined" && (window as any).gtag) {
       ;(window as any).gtag("event", "click_whatsapp", {
         event_category: "engagement",
@@ -290,14 +262,16 @@ export function AnuncioCard({
     }
 
     if (!API) {
-      openWhatsAppWarning({ url: whatsappUrl })
+      toast.error("Contato indisponível no momento.")
       return
     }
 
     try {
-      const res = await fetch(`${API}/cliques-whatsapp/${encodeURIComponent(slugRota)}`, {
+      const res = await fetch(`${API}/api/public/anuncios/${encodeURIComponent(slugRota)}/clique-whatsapp`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
       })
 
       if (!res.ok) {
@@ -305,12 +279,17 @@ export function AnuncioCard({
         const message =
           payload?.message ||
           payload?.error ||
-          "Verificação 18+ obrigatória para acessar o WhatsApp deste anúncio."
+          "Contato indisponível para este anúncio."
         toast.error(message)
         return
       }
 
-      openWhatsAppWarning({ url: whatsappUrl })
+      const payload = await res.json().catch(() => null)
+      if (!payload?.disponivel || typeof payload?.whatsappUrl !== "string") {
+        toast.error("Contato indisponível para este anúncio.")
+        return
+      }
+      openWhatsAppWarning({ url: payload.whatsappUrl })
     } catch {
       toast.error("Não foi possível validar o acesso ao WhatsApp agora.")
     }
@@ -332,7 +311,7 @@ export function AnuncioCard({
   }
 
   const anuncioHref = `/anuncios/${encodeURIComponent(slugRota)}`
-  const midiaAtual = midias[index]
+  const midiaAtual = midiasSeguras[index]
   const nomeExibido = corrigirTextoCorrompido(nome)
   const descricaoExibida = corrigirTextoCorrompido(
     descricao ?? "Anúncio sem descrição ainda. Abra para ver mais detalhes."
@@ -340,7 +319,7 @@ export function AnuncioCard({
 
   return (
     <div
-      className={`group relative mx-auto block w-full max-w-[360px] rounded-xl bg-white transition-all duration-300 hover:shadow-lg ${
+      className={`public-anuncio-card group relative mx-auto block w-full max-w-[360px] rounded-xl bg-white transition-all duration-300 hover:shadow-lg ${
         destaque
           ? "border-2 border-pink-500 shadow-pink-200 hover:shadow-pink-300"
           : "border border-gray-200 hover:border-gray-300"
@@ -348,39 +327,20 @@ export function AnuncioCard({
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-gray-50">
         {midiaAtual ? (
-          midiaAtual.type === "video" ? (
-            <video
-              key={midiaAtual.src}
-              src={midiaAtual.src}
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-              controls
-              muted
-              playsInline
-              onError={() => markBad(midiaAtual.src)}
+          <div className="absolute inset-0">
+            <SensitiveImage
+              midia={midiaAtual}
+              anuncioId={id}
+              anuncioSlug={slugRota}
+              alt={nomeExibido}
+              fill
+              sizes="(max-width: 768px) 100vw, 360px"
+              className="transition-transform duration-500 group-hover:scale-[1.02]"
+              onVerificationSuccess={onAccessUpdated}
+              onAbrirPaginaDoAnuncio={handleVerAnuncio}
+              onError={() => markBad(midiaAtual.urlPublica ?? "")}
             />
-          ) : (
-            <div className="absolute inset-0">
-              <SensitiveImage
-                anuncioId={id}
-                anuncioSlug={slugRota}
-                anuncioNome={nomeExibido}
-                cidade={cidadeNome ?? null}
-                contentClassification={contentClassification}
-                src={midiaAtual.src}
-                alt={nomeExibido}
-                fill
-                sizes="(max-width: 768px) 100vw, 360px"
-                className={cn("transition-transform duration-500 group-hover:scale-[1.02]")}
-                requiresVisitorVerification={requiresVisitorVerification}
-                requiresStrongVerification={requiresStrongVerification}
-                viewerAuthorized={viewerAuthorized}
-                deferCompliancePreview
-                onVerificationSuccess={onAccessUpdated}
-                onAbrirPaginaDoAnuncio={handleVerAnuncio}
-                onError={() => markBad(midiaAtual.src)}
-              />
-            </div>
-          )
+          </div>
         ) : (
           <EmptyMediaState />
         )}
@@ -413,7 +373,7 @@ export function AnuncioCard({
           </div>
         )}
 
-        {!previewMode && carrosselDisponivel && midias.length > 1 && (
+        {!previewMode && carrosselDisponivel && midiasSeguras.length > 1 && (
           <>
             <button
               type="button"
@@ -478,7 +438,7 @@ export function AnuncioCard({
           <p className="text-sm font-bold text-pink-600">{valor}</p>
 
           <div className="flex flex-wrap gap-2">
-            {whatsappUrl && whatsappCardEnabled && !previewMode && (
+            {whatsappCardEnabled && !previewMode && (
               <Button
                 className="flex-1 bg-[#25D366] px-3 py-1 text-xs font-medium text-white hover:bg-[#20bd5a]"
                 onClick={handleWhatsAppClick}

@@ -1,6 +1,5 @@
 package br.com.topsdojob.v3.persistence.entity.anuncio;
 
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import jakarta.persistence.Column;
@@ -46,10 +45,6 @@ public class AnuncioEntity {
 
   @Column(name = "categoria")
   private String categoria;
-
-  @Enumerated(EnumType.STRING)
-  @Column(name = "classificacao_conteudo")
-  private ClassificacaoConteudo classificacaoConteudo;
 
   @Column(name = "preco", precision = 12, scale = 2)
   private BigDecimal preco;
@@ -111,10 +106,6 @@ public class AnuncioEntity {
     return categoria;
   }
 
-  public ClassificacaoConteudo getClassificacaoConteudo() {
-    return classificacaoConteudo;
-  }
-
   public BigDecimal getPreco() {
     return preco;
   }
@@ -154,11 +145,9 @@ public class AnuncioEntity {
   public void aplicarModeracao(
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,
-      ClassificacaoConteudo classificacaoConteudo,
       OffsetDateTime atualizadoEm) {
     this.status = status;
     this.statusModeracao = statusModeracao;
-    this.classificacaoConteudo = classificacaoConteudo;
     this.atualizadoEm = atualizadoEm;
   }
 
@@ -187,7 +176,6 @@ public class AnuncioEntity {
     entity.status = StatusAnuncio.PENDENTE_REVISAO;
     entity.statusModeracao = StatusModeracaoAnuncio.PENDENTE;
     entity.categoria = categoria;
-    entity.classificacaoConteudo = ClassificacaoConteudo.LIVRE;
     entity.preco = preco;
     entity.whatsappNormalizado = whatsappNormalizado;
     entity.publicadoEm = null;

@@ -9,24 +9,24 @@
 
 ## Checks
 
-- OK: desktop: painel admin renderizado (paineis=5)
-- OK: desktop: painel de moderacao presente (ok)
-- OK: desktop: painel de outbox presente (ok)
-- OK: desktop: sem scroll horizontal (scroll=1265/inner=1280)
-- OK: desktop: sem scroll lock no body (overflow=visible)
+- OK: desktop: painel V3 de midias renderizado (ok)
+- OK: desktop: decisoes vinculadas a IDs unicos (cards=12; ids=12)
+- OK: desktop: fotos oferecem Livre e Apos confirmacao (fotos=9)
+- OK: desktop: videos e stories somente restritos (videos=1; stories=2)
+- OK: desktop: rejeicao e ajuste disponiveis por midia (ok)
+- OK: desktop: carregamento administrativo sem erro (ok)
+- OK: desktop: sem scroll horizontal (scroll=1274/inner=1280)
+- OK: desktop: sem scroll lock inline no body (inline=vazio)
 - OK: desktop: sem texto tecnico ou sensivel (ok)
-- OK: desktop: rota /admin/moderacao renderizada (paineis=5)
-- OK: desktop: /admin/moderacao sem scroll horizontal (scroll=1265/inner=1280)
-- OK: desktop: /admin/moderacao sem texto tecnico ou sensivel (ok)
-- OK: mobile: painel admin renderizado (paineis=5)
-- OK: mobile: painel de moderacao presente (ok)
-- OK: mobile: painel de outbox presente (ok)
+- OK: mobile: painel V3 de midias renderizado (ok)
+- OK: mobile: decisoes vinculadas a IDs unicos (cards=12; ids=12)
+- OK: mobile: fotos oferecem Livre e Apos confirmacao (fotos=9)
+- OK: mobile: videos e stories somente restritos (videos=1; stories=2)
+- OK: mobile: rejeicao e ajuste disponiveis por midia (ok)
+- OK: mobile: carregamento administrativo sem erro (ok)
 - OK: mobile: sem scroll horizontal (scroll=390/inner=390)
-- OK: mobile: sem scroll lock no body (overflow=visible)
+- OK: mobile: sem scroll lock inline no body (inline=vazio)
 - OK: mobile: sem texto tecnico ou sensivel (ok)
-- OK: mobile: rota /admin/moderacao renderizada (paineis=5)
-- OK: mobile: /admin/moderacao sem scroll horizontal (scroll=390/inner=390)
-- OK: mobile: /admin/moderacao sem texto tecnico ou sensivel (ok)
 
 ## Prints
 
@@ -40,79 +40,106 @@
 ### desktop
 
 ```text
-PAINEL ADMIN
-Admin
+VISÃO GERAL
 
-Área administrativa para acompanhar sessões, papéis, permissões e ações autorizadas.
+Dashboard
+Progresso do wizard
 
-Perfis previstos: Admin, Moderador e Comercial. A moderação mínima está disponível.
-Sessão
-Estado
-autenticado
-Papéis
-Admin
-Permissões
-10
-Credenciais reais
-ausentes
+OPERAÇÃO
 
-sessão administrativa ativa
+Anúncios
+Usuários
+Tickets
+Denúncias
 
-usuário autenticado
+MONETIZAÇÃO
 
-Logout
-configurar administração
-Configurar administração futura.
-ler anúncios
-Ler informações administrativas futuras de anúncios.
-moderar anúncios
-Autorizar moderação mínima de anúncios.
-ler auditoria
-Ler auditoria administrativa futura.
-gerenciar comercial
-Preparar autorização comercial futura.
-revisar documentos
-Preparar revisão futura de documentos.
-ler financeiro
-Ler fina
+Relatórios de receita
+Planos e créditos
+Benefícios premium
+Indicações
+
+MODERAÇÃO E SEGURANÇA
+
+Compliance
+Auditoria administrativa
+Aceites jurídicos
+Logs visitantes
+Documentos visitantes
+
+CONTEÚDO E COMUNICAÇÃO
+
+Avisos
+Textos do site
+Categorias da home
+Blog
+FAQs
+Sugestões
+
+CONFIGURAÇÕES
+
+Configurações de compliance
+Gerenciar staff
+AD
+admin.local
+admin.local@example.invalid
+Moderação v2
+
+Fila operacional e detalhe focado em decisão.
+
+FOTO
+00000000-0000-4000-8000-000000000711
+Visibilidade obrigatória
+Livre
+Após confirmação de idade
+Aprovar mídia
+Solicitar ajuste
+Rejeitar mídia
+FOTO
+00000000-0
 ```
 
 ### mobile
 
 ```text
-PAINEL ADMIN
-Admin
+Moderação v2
 
-Área administrativa para acompanhar sessões, papéis, permissões e ações autorizadas.
+Fila operacional e detalhe focado em decisão.
 
-Perfis previstos: Admin, Moderador e Comercial. A moderação mínima está disponível.
-Sessão
-Estado
-autenticado
-Papéis
-Admin
-Permissões
-10
-Credenciais reais
-ausentes
+FOTO
+00000000-0000-4000-8000-000000000711
+Visibilidade obrigatória
+Livre
+Após confirmação de idade
+Aprovar mídia
+Solicitar ajuste
+Rejeitar mídia
+FOTO
+00000000-0000-4000-8000-000000000709
+Visibilidade obrigatória
+Livre
+Após confirmação de idade
+Aprovar mídia
+Solicitar ajuste
+Rejeitar mídia
+FOTO
+00000000-0000-4000-8000-000000000707
+Visibilidade obrigatória
+Livre
+Após confirmação de idade
+Aprovar mídia
+Solicitar ajuste
+Rejeitar mídia
+FOTO
+00000000-0000-4000-8000-000000000705
+Visibilidade obrigatória
+Livre
+Após confirmação de idade
+Aprovar mídia
+Solicitar ajuste
+Rejeitar mídia
+VIDEO
+00000000-0000-4031-8031-000000007005
 
-sessão administrativa ativa
-
-usuário autenticado
-
-Logout
-configurar administração
-Configurar administração futura.
-ler anúncios
-Ler informações administrativas futuras de anúncios.
-moderar anúncios
-Autorizar moderação mínima de anúncios.
-ler auditoria
-Ler auditoria administrativa futura.
-gerenciar comercial
-Preparar autorização comercial futura.
-revisar documentos
-Preparar revisão futura de documentos.
-ler financeiro
-Ler fina
+Após confirmaçã
 ```

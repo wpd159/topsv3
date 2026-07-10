@@ -33,7 +33,7 @@ Estado atual:
 - Bloco 36 cria checkpoint local do Bloco 35 em `00e1a02` e valida Premium/beneficios sinteticos locais, mantendo gratuito util e Premium aditivo sem Pix/Efi real, checkout, pagamento, credito real ou webhook;
 - Bloco 37 cria checkpoint local do Bloco 36 em `e031ea3` e limpa copy visivel publica/admin que parecia bastidor tecnico/local/sintetico, sem alterar regra de negocio, backend funcional, banco, DTO, rota, Premium, pagamento ou fluxo;
 - Bloco 38 cria checkpoint local do Bloco 37 corrigido em `a6f431f` e troca rótulos públicos redundantes de status/acesso por copy natural, sem alterar regra de negócio, backend, banco, DTO, rota, contrato, autorização, Premium ou pagamento;
-- Bloco 39 cria checkpoint local do Bloco 38 em `587e2df` e valida Age Gate/WhatsApp sintético local para `LIVRE`/`BLOQUEADO`, sem produção, dados reais, restore, Pix/Efi real, pagamento, API externa ou push;
+- Histórico superado: o Bloco 39 criou checkpoint local do Bloco 38 em `587e2df` e validou a regra global `LIVRE`/`BLOQUEADO` então vigente;
 - Bloco 40 cria checkpoint local do Bloco 39 em `a3e92c0` e valida mídia/fotos/stories sintéticos, placeholders seguros e sanitização de mídia admin/publica, sem upload real, CDN/storage real, dados reais, produção, restore, Pix/Efi real, pagamento, API externa ou push;
 - Bloco 41 cria checkpoint local do Bloco 40 corrigido em `f67880a` e consolida o MVP local sintetico, revalidando os fluxos principais ja cobertos sem criar funcionalidade nova;
 - Bloco 42 cria checkpoint local do Bloco 41 em `46ed655` e documenta a matriz de prontidao para homologacao/cutover, separando pronto localmente, pendente antes de homologacao, bloqueante antes de producao, exige Pro, exige dados reais/sanitizados e exige decisao humana;
@@ -140,24 +140,20 @@ Regras:
 - Lista bruta completa de URLs reais de anuncios nao deve ser versionada.
 - Inventario bruto SEO fica fora do repositorio.
 
-## 5. Classificacao, idade e conteudo bloqueado
+## 5. Visibilidade individual de mídia e idade
 
-A classificacao publica da V3 e binaria:
+A regra global de classificação etária do anúncio foi superada. O anúncio não possui classificação etária ativa; cada mídia é moderada por seu ID real com `VisibilidadeMidia`:
 
-- `LIVRE`: pode ser exibido publicamente;
-- `BLOQUEADO`: nao aparece como anuncio publico normal; detalhe, stories e contato so podem ser avaliados apos confirmacao de idade pelo backend e conforme politica de midia/contato.
+- foto: `LIVRE` ou `RESTRITA_18`, com decisão explícita antes da aprovação;
+- vídeo: sempre `RESTRITA_18`;
+- story: sempre `RESTRITA_18`;
+- rejeição, pendência e solicitação de ajuste permanecem estados de moderação, nunca valores de visibilidade.
 
-Regras:
+O backend é a fonte da decisão. Mídia `RESTRITA_18` não entrega URL original sem autorização etária válida reconhecida pelo backend; placeholder seguro permanece obrigatório enquanto storage/CDN protegido não estiver disponível. Título, descrição, cidade, bairro, página pública, breadcrumb, SEO textual e contato não dependem da idade ou da visibilidade da galeria. A confirmação local usa cookie HttpOnly assinado, sem CPF, documento, conta, localStorage ou sessionStorage.
 
-- frontend nao decide classificacao;
-- backend e a fonte da decisao;
-- `LIVRE` aparece sem confirmacao de idade;
-- `BLOQUEADO` depende de confirmacao de idade pelo backend para qualquer liberacao controlada;
-- stories exigem confirmacao de idade;
-- nao existe gradacao publica intermediaria;
-- nao existe age gate intermediario por categoria;
-- nao existe blur por categoria intermediaria;
-- confirmacao de idade local usa cookie HttpOnly assinado, sem CPF, documento, conta, localStorage ou sessionStorage.
+Registros anteriores sobre anúncio global `LIVRE`/`BLOQUEADO` são históricos e estão expressamente superados por esta seção e pela migration `V018__visibilidade_individual_midia.sql`.
+
+A migration atual V018 foi aplicada e validada com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel, com `migrate`, `validate` e `info` aprovados e estado `Success`; o resultado vigente e `OK_FLYWAY_REAL_LOCAL`.
 
 ## 6. WhatsApp, contato e metricas
 
@@ -169,7 +165,9 @@ Regras:
 - clique de WhatsApp passa pelo endpoint publico local;
 - metricas minimizam IP, User-Agent e referer por hash;
 - gratuito continua util e nao recebe limite comercial artificial de clique, contato ou WhatsApp;
-- conteudo `BLOQUEADO` nao pode liberar WhatsApp publico como anuncio normal.
+- anúncio público e ativo mantém contato mesmo sem foto livre ou antes da confirmação de idade;
+- anúncio pausado, rejeitado, removido ou não publicado não libera contato;
+- telefone bruto não aparece no payload geral, HTML, metadata ou JSON-LD.
 
 ## 7. Premium e beneficios
 
@@ -405,7 +403,7 @@ Historico resumido:
 - Fase 1D: migrations V001 a V017;
 - Fase 2A-2G: importador estrutural e gates de fonte real;
 - Blocos 3-4: dominio e persistencia JPA;
-- Blocos 5-10: API publica, frontend publico, e2e, metricas, idade e UX de conteudo bloqueado;
+- Histórico superado dos Blocos 5-10: API pública, frontend público, E2E, métricas, idade e UX da regra global antiga;
 - Blocos 11-15: midia segura, auth/admin e read-only detalhado;
 - Blocos 16-20: moderacao, outbox e templates;
 - Bloco 21: paridade visual e mobile estavel;
@@ -431,7 +429,7 @@ Historico resumido:
 - Bloco 36: checkpoint local do Bloco 35 criado em `00e1a02`; Premium/beneficios sinteticos validados localmente com `topsv3-premium-sintetico-*`, sem dados reais, sem producao, sem VPS e sem financeiro real.
 - Bloco 37: correcao final de copy renderizada remove `Metadados publicos locais para ANUNCIO`, `Autorizacao`, permissoes cruas e descricoes de autorizacao sem acento dos prints publicos/admin, sem alterar regra de negocio, backend funcional, banco, rotas, DTOs, contratos, Premium ou pagamento.
 - Bloco 38: checkpoint local do Bloco 37 corrigido criado em `a6f431f`; `Fluxo autorizado` e `Autorização autorizada` deixam de aparecer como pares públicos, substituidos por `Status / Conteúdo disponível` e `Acesso / permitido`.
-- Bloco 39: checkpoint local do Bloco 38 criado em `587e2df`; Age Gate/WhatsApp sintetico local valida `LIVRE` sem age gate, `BLOQUEADO` protegido antes da idade, menor de 18 anos bloqueado, data invalida com 400 e WhatsApp mediado pelo backend.
+- Histórico superado do Bloco 39: checkpoint `587e2df` validou a regra global então vigente; não representa a decisão ativa após V018.
 - Bloco 40: checkpoint local do Bloco 39 criado em `a3e92c0`; midia publica sintetica valida gratuito ate 2 fotos, Premium com midia extra aditiva, placeholders seguros, stories com idade sem URL real e admin de midia sanitizado.
 - Bloco 41: checkpoint local do Bloco 40 corrigido criado em `f67880a`; MVP local sintetico consolidado com validacoes de publico renderizado, SEO sintetico, wizard, admin/moderacao, Premium/beneficios, Age Gate/WhatsApp, midia/fotos/stories e E2E sintetico.
 - Bloco 42: checkpoint local do Bloco 41 criado em `46ed655`; matriz objetiva de prontidao para homologacao/cutover criada sem executar producao, restore, dados reais, staging, Pix/Efi, webhook, importador real ou API externa.
@@ -742,7 +740,7 @@ Resultado:
 - smoke legado API publica aprovado;
 - endpoints `demo-*` da fixture aprovados;
 - SEO sintetico aprovado;
-- `BLOQUEADO` nao expos WhatsApp publico;
+- Histórico superado: o gate global então vigente não expôs WhatsApp público;
 - pendente/rejeitado nao ficaram publicados;
 - dados reais nao foram usados.
 

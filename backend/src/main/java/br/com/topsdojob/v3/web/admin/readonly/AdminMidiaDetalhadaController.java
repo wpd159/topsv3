@@ -4,7 +4,7 @@ import br.com.topsdojob.v3.application.admin.readonly.AdminMidiaDetalhadaConsult
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.util.UUID;
@@ -31,10 +31,10 @@ public class AdminMidiaDetalhadaController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) StatusAnuncioMidia status,
-            @RequestParam(required = false) ClassificacaoConteudo classificacaoConteudo,
+            @RequestParam(required = false) VisibilidadeMidia visibilidadeMidia,
             @RequestParam(required = false) TipoAnuncioMidia tipo,
             @RequestParam(required = false) UUID anuncioId) {
-        return service.listar(page, size, status, classificacaoConteudo, tipo, anuncioId);
+        return service.listar(page, size, status, visibilidadeMidia, tipo, anuncioId);
     }
 
     @GetMapping("/{id}")

@@ -3,7 +3,6 @@
 import type { PremiumBenefitDashboardFilter } from '@/lib/admin-premium-benefits-api'
 
 export const MOD_V2_QUERY_FILTRO = 'filtro'
-export const MOD_V2_QUERY_CLASSIFICACAO = 'classificacao'
 export const MOD_V2_QUERY_CIDADE = 'cidade'
 
 export type DashboardStrategicFiltro =
@@ -30,15 +29,6 @@ export function parseDashboardStrategicFiltro(raw: string | null): DashboardStra
   return null
 }
 
-/** Valor canônico na URL para linha “Sem classificação” do dashboard. */
-export const QUERY_CLASSIFICACAO_SEM = 'SEM_CLASSIFICACAO'
-
-export function parseClassificacaoQuery(raw: string | null): string | null {
-  if (raw == null) return null
-  const t = raw.trim()
-  return t || null
-}
-
 export function parseCidadeQuery(raw: string | null): string | null {
   if (raw == null) return null
   const t = raw.trim()
@@ -56,8 +46,7 @@ export function premiumDashboardFilterForStrategic(
 
 export function hasDashboardUrlDrilldown(
   filtro: DashboardStrategicFiltro | null,
-  classificacao: string | null,
   cidade: string | null
 ): boolean {
-  return !!(filtro || classificacao || cidade)
+  return !!(filtro || cidade)
 }

@@ -11,7 +11,6 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
@@ -60,7 +59,6 @@ public class AdminAnuncioDetalhadoConsultaService {
             int size,
             StatusAnuncio status,
             StatusModeracaoAnuncio statusModeracao,
-            ClassificacaoConteudo classificacaoConteudo,
             String uf,
             String cidade,
             String bairro,
@@ -75,7 +73,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                 size,
                 Sort.by(Sort.Order.desc("atualizadoEm"), Sort.Order.desc("criadoEm"), Sort.Order.asc("id")));
         Page<AnuncioEntity> result = anuncioRepository.findAll(
-                anuncioSpec(status, statusModeracao, classificacaoConteudo, idsLocalizacao, termo),
+                anuncioSpec(status, statusModeracao, idsLocalizacao, termo),
                 pageable);
         Map<UUID, AdminLocalizacaoSanitizadaDto> localizacoes = localizacaoSupport.carregar(
                 result.getContent().stream().map(AnuncioEntity::getId).toList());
@@ -109,7 +107,6 @@ public class AdminAnuncioDetalhadoConsultaService {
                 enumName(anuncio.getStatus()),
                 enumName(anuncio.getStatusModeracao()),
                 anuncio.getCategoria(),
-                enumName(anuncio.getClassificacaoConteudo()),
                 localizacao,
                 anuncio.getCriadoEm(),
                 anuncio.getAtualizadoEm(),
@@ -141,7 +138,6 @@ public class AdminAnuncioDetalhadoConsultaService {
                 AdminTextoSanitizer.resumo(anuncio.getTitulo(), 120),
                 enumName(anuncio.getStatus()),
                 enumName(anuncio.getStatusModeracao()),
-                enumName(anuncio.getClassificacaoConteudo()),
                 localizacao,
                 anuncio.getCriadoEm(),
                 anuncio.getAtualizadoEm(),
@@ -165,7 +161,6 @@ public class AdminAnuncioDetalhadoConsultaService {
     private Specification<AnuncioEntity> anuncioSpec(
             StatusAnuncio status,
             StatusModeracaoAnuncio statusModeracao,
-            ClassificacaoConteudo classificacaoConteudo,
             Set<UUID> idsLocalizacao,
             String termo) {
         return (root, query, builder) -> {
@@ -175,9 +170,6 @@ public class AdminAnuncioDetalhadoConsultaService {
             }
             if (statusModeracao != null) {
                 predicate = builder.and(predicate, builder.equal(root.get("statusModeracao"), statusModeracao));
-            }
-            if (classificacaoConteudo != null) {
-                predicate = builder.and(predicate, builder.equal(root.get("classificacaoConteudo"), classificacaoConteudo));
             }
             if (idsLocalizacao != null) {
                 predicate = builder.and(predicate, root.get("id").in(idsLocalizacao));

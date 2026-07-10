@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { HeartIcon as HeartOutline } from '@heroicons/react/24/outline'
 import { AnuncioCard } from '@/components/anuncios/anuncio-card'
 import { useAuth } from '@/context/AuthContext'
+import type { MidiaPublica } from '@/lib/media/public-media'
 
 type Anuncio = {
   id: number
@@ -12,14 +13,12 @@ type Anuncio = {
   descricao: string
   localizacao: string
   preco: number
-  fotosUrl: string[]
-  videosAnuncio?: string[]
+  midias?: MidiaPublica[]
   destaqueAtivo?: boolean
   carrosselDisponivel?: boolean
   videoHabilitado?: boolean
   nomeAnunciante?: string
   usernameAnunciante?: string
-  telefoneAnunciante?: string
   favorito?: boolean
   whatsappCardEnabled?: boolean
 }
@@ -83,10 +82,8 @@ export default function FavoritosPage() {
             usernameAnunciante={a.usernameAnunciante}
             cidadeNome={a.localizacao ?? 'Não informado'}
             valor={`A partir de R$ ${a.preco?.toFixed(2).replace('.', ',')} / hora`}
-            imagens={a.fotosUrl?.length > 0 ? a.fotosUrl : []}
-            videos={Array.isArray(a.videosAnuncio) ? a.videosAnuncio : []}
+            midias={a.midias ?? []}
             descricao={a.descricao}
-            telefone={a.telefoneAnunciante}
             favoritoInicial={true}
             destaque={a.destaqueAtivo ?? false}
             carrosselDisponivel={a.carrosselDisponivel ?? false}

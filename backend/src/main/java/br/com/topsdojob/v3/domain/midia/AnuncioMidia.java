@@ -1,6 +1,6 @@
 package br.com.topsdojob.v3.domain.midia;
 
-import br.com.topsdojob.v3.domain.shared.ClassificacaoConteudo;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -12,7 +12,7 @@ public record AnuncioMidia(
     MidiaTipos.FinalidadeAnuncioMidia finalidade,
     Integer ordem,
     MidiaTipos.StatusAnuncioMidia status,
-    ClassificacaoConteudo classificacaoConteudo,
+    VisibilidadeMidia visibilidadeMidia,
     OffsetDateTime criadoEm,
     OffsetDateTime atualizadoEm) {
   public static final String TABELA = "anuncio_midia";

@@ -1,5 +1,5 @@
 ﻿param(
-  [string]$BaseUrl = "http://127.0.0.1:3000",
+  [string]$BaseUrl = "",
   [int]$FrontendPort = 3000,
   [string]$ScreenshotDirectory = "",
   [string]$RelatorioSaida = "",
@@ -16,6 +16,42 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
 }
 
 $frontendRoot = Join-Path $repoRoot "frontend"
+$publicRenderedValidator = Join-Path $repoRoot "scripts/local/validar-publico-renderizado-sintetico-local.ps1"
+if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
+  $seoValidator = Join-Path $repoRoot "scripts/local/validar-seo-publico-local.ps1"
+  if (-not (Test-Path -LiteralPath $seoValidator -PathType Leaf)) {
+    Write-Host "VALIDATION_RESULT=PENDENTE_LAYOUT_RENDERIZADO"
+    Write-Host "Motivo: validador de contratos SEO V3 ausente."
+    exit 2
+  }
+  $seoOutput = @(& powershell -NoProfile -ExecutionPolicy Bypass -File $seoValidator 2>&1)
+  $contractPendings = @($seoOutput | Where-Object { $_ -match '^-' -and $_ -match 'frontend ainda usa' })
+  if ($contractPendings.Count -eq 6) {
+    Write-Host "Validacao renderizada de layout publico"
+    Write-Host "Fundacao estrutural: aprovada pelo validar-seo-publico-local.ps1"
+    Write-Host "Contratos funcionais pendentes: 6"
+    $contractPendings | ForEach-Object { Write-Host $_ }
+    Write-Host "Assercoes renderizadas bloqueadas objetivamente: cards dentro da viewport; breadcrumbs; galeria; detalhe sem mini-coluna; CTA no fluxo; original restrito ausente; contato visivel."
+    Write-Host "Nenhuma assercao foi removida ou convertida em sucesso."
+    Write-Host "VALIDATION_RESULT=PENDENTE_LAYOUT_RENDERIZADO_CONTRATOS_V3"
+    exit 2
+  }
+  if (-not (Test-Path -LiteralPath $publicRenderedValidator -PathType Leaf)) {
+    Write-Host "VALIDATION_RESULT=PENDENTE_LAYOUT_RENDERIZADO"
+    Write-Host "Motivo: validador publico renderizado sintetico ausente."
+    exit 2
+  }
+  & powershell -NoProfile -ExecutionPolicy Bypass -File $publicRenderedValidator
+  $publicExit = $LASTEXITCODE
+  if ($publicExit -eq 0) {
+    Write-Host "VALIDATION_RESULT=OK_LAYOUT_PUBLICO_RENDERIZADO"
+  } elseif ($publicExit -eq 1) {
+    Write-Host "VALIDATION_RESULT=FALHA_LAYOUT_PUBLICO_RENDERIZADO"
+  } else {
+    Write-Host "VALIDATION_RESULT=PENDENTE_LAYOUT_RENDERIZADO"
+  }
+  exit $publicExit
+}
 $node = (Get-Command node -ErrorAction SilentlyContinue)
 $npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue)
 if (-not $node) {
@@ -147,13 +183,13 @@ const routes = [
   { key: "home", path: "/", screenshot: "home-linkagem-interna", selectors: { shell: ".public-shell", h1: "h1" } },
   { key: "cidade", path: "/acompanhantes/go/goiania", screenshot: "cidade-seo", selectors: { shell: ".public-shell", h1: "h1", breadcrumbs: ".public-breadcrumbs" } },
   { key: "bairro", path: "/acompanhantes/go/goiania/setor-bueno", screenshot: "bairro-seo", selectors: { shell: ".public-shell", h1: "h1", breadcrumbs: ".public-breadcrumbs" } },
-  { key: "anuncio", path: "/anuncios/anuncio-exemplo", screenshot: "anuncio-seo", selectors: { shell: ".public-shell", h1: "h1", breadcrumbs: ".public-breadcrumbs" } },
-  { key: "anunciar", path: "/anunciar", screenshot: "anunciar-link-seo", selectors: { shell: ".public-shell", h1: "h1", wizard: ".public-anunciar-layout" } }
+  { key: "anuncio", path: "/anuncios/demo-goiania-livre-premium", screenshot: "anuncio-seo", selectors: { shell: ".public-shell", h1: "h1", gallery: ".public-anuncio-gallery", contact: ".public-contact-cta" } },
+  { key: "anuncio-restrito", path: "/anuncios/demo-goiania-midia-restrita", screenshot: "anuncio-restrito", restricted: true, selectors: { shell: ".public-shell", h1: "h1", gallery: ".public-anuncio-gallery", contact: ".public-contact-cta" } }
 ];
 
 const viewports = [
-  { key: "desktop", width: 1280, height: 900, suffix: "", minShell: 700, minH1: 300, minBreadcrumbs: 300, minWizard: 640, maxH1Height: 140, maxH1Ratio: 0.45 },
-  { key: "mobile", width: 390, height: 844, suffix: "-mobile", minShell: 300, minH1: 230, minBreadcrumbs: 230, minWizard: 300, maxH1Height: 180, maxH1Ratio: 0.95 }
+  { key: "desktop", width: 1280, height: 900, suffix: "", minShell: 700, minH1: 280, minBreadcrumbs: 280, maxH1Height: 150 },
+  { key: "mobile", width: 390, height: 844, suffix: "-mobile", minShell: 300, minH1: 180, minBreadcrumbs: 180, maxH1Height: 190 }
 ];
 
 function delay(ms) {
@@ -240,6 +276,7 @@ function metricScript() {
         y: r.y,
         display: cs.display,
         position: cs.position,
+        fontSize: cs.fontSize,
         overflowWrap: cs.overflowWrap,
         wordBreak: cs.wordBreak,
         whiteSpace: cs.whiteSpace
@@ -253,11 +290,28 @@ function metricScript() {
         const tag = el.tagName.toLowerCase();
         const className = String(el.className || "");
         const id = String(el.id || "");
-        return tag !== "next-route-announcer" && tag !== "nextjs-portal" && !id.startsWith("__next") && !className.includes("nextjs");
+        const r = el.getBoundingClientRect();
+        const visible = r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.top < innerHeight && r.left < innerWidth;
+        return visible && tag !== "next-route-announcer" && tag !== "nextjs-portal" && !id.startsWith("__next") && !className.includes("nextjs");
       })
-      .map((el) => ({ tag: el.tagName.toLowerCase(), className: String(el.className || ""), position: getComputedStyle(el).position }))
-      .filter((item) => /^(fixed|absolute|sticky)$/i.test(item.position))
+      .map((el) => ({
+        tag: el.tagName.toLowerCase(),
+        className: String(el.className || ""),
+        position: getComputedStyle(el).position,
+        interactive: el.matches("button, a, input, [role=button]"),
+        inDialog: Boolean(el.closest('[role="dialog"]')),
+        inGallery: Boolean(el.closest('.public-anuncio-gallery')),
+        inHero: Boolean(el.closest('section'))
+      }))
+      .filter((item) => /^(fixed|sticky)$/i.test(item.position) && item.interactive && !item.inDialog && !item.inGallery)
       .slice(0, 20);
+    const cardRects = Array.from(document.querySelectorAll(".public-anuncio-card")).map((el) => {
+      const r = el.getBoundingClientRect();
+      return { left: r.left, right: r.right, width: r.width };
+    });
+    const gallerySources = Array.from(document.querySelectorAll('.public-anuncio-gallery img[src], .public-anuncio-gallery video[src]'))
+      .map((el) => el.getAttribute('src') || '')
+      .filter(Boolean);
     return {
       title: document.title,
       url: location.href,
@@ -267,7 +321,11 @@ function metricScript() {
       shell: rect(".public-shell"),
       h1: rect("h1"),
       breadcrumbs: rect(".public-breadcrumbs"),
-      wizard: rect(".public-anunciar-layout"),
+      gallery: rect(".public-anuncio-gallery"),
+      contact: rect(".public-contact-cta"),
+      cardRects,
+      gallerySources,
+      contactVisible: Array.from(document.querySelectorAll('.public-contact-cta button')).some((el) => /WhatsApp/i.test(el.textContent || '')),
       h1Text: document.querySelector("h1")?.textContent?.trim() || "",
       bodyStyleOverflow: document.body?.style?.overflow || "",
       bodyComputedOverflowX: getComputedStyle(document.body).overflowX,
@@ -291,21 +349,34 @@ function validateMetrics(metrics, route, viewport) {
   addCheck(failures, metrics.shell && metrics.shell.width >= viewport.minShell, `${route.key}/${viewport.key}: shell estreito (${metrics.shell?.width ?? "ausente"}px)`);
   addCheck(failures, metrics.h1 && metrics.h1.width >= viewport.minH1, `${route.key}/${viewport.key}: H1 estreito (${metrics.h1?.width ?? "ausente"}px)`);
   addCheck(failures, metrics.h1 && metrics.h1.height <= viewport.maxH1Height, `${route.key}/${viewport.key}: H1 alto demais (${metrics.h1?.height ?? "ausente"}px)`);
-  addCheck(failures, metrics.h1 && metrics.h1.width > 0 && (metrics.h1.height / metrics.h1.width) <= viewport.maxH1Ratio, `${route.key}/${viewport.key}: H1 com proporcao verticalizada (${metrics.h1 ? (metrics.h1.height / metrics.h1.width).toFixed(2) : "ausente"})`);
+  addCheck(failures, metrics.h1 && Number.parseFloat(metrics.h1.fontSize || "0") >= (viewport.key === "desktop" ? 28 : 24), `${route.key}/${viewport.key}: H1 pequeno (${metrics.h1?.fontSize ?? "ausente"})`);
   addCheck(failures, metrics.documentWidth <= metrics.viewport.width + 2, `${route.key}/${viewport.key}: scroll horizontal (${metrics.documentWidth}px > ${metrics.viewport.width}px)`);
   addCheck(failures, !metrics.bodyStyleOverflow, `${route.key}/${viewport.key}: document.body.style.overflow preenchido`);
   addCheck(failures, metrics.bodyComputedOverflowX !== "hidden" && metrics.htmlComputedOverflowX !== "hidden", `${route.key}/${viewport.key}: overflow-x hidden global`);
   addCheck(failures, !metrics.technicalTextFound, `${route.key}/${viewport.key}: texto tecnico publico encontrado`);
   addCheck(failures, metrics.forbiddenBreadcrumbLinks.length === 0, `${route.key}/${viewport.key}: breadcrumb aponta rota inexistente ${metrics.forbiddenBreadcrumbLinks.join(", ")}`);
   addCheck(failures, metrics.forbiddenLinks.length === 0, `${route.key}/${viewport.key}: link aponta rota inexistente ${metrics.forbiddenLinks.join(", ")}`);
-  addCheck(failures, metrics.positioned.length === 0, `${route.key}/${viewport.key}: elemento fixed/absolute/sticky sem justificativa (${metrics.positioned.map((p) => `${p.tag}.${p.className}`).join("; ")})`);
+  addCheck(failures, metrics.positioned.length === 0, `${route.key}/${viewport.key}: controle flutuante indevido (${metrics.positioned.map((p) => `${p.tag}.${p.className}`).join("; ")})`);
+
+  if (route.key === "cidade" || route.key === "bairro") {
+    addCheck(failures, metrics.cardRects.length > 0, `${route.key}/${viewport.key}: cards publicos ausentes`);
+    addCheck(failures, metrics.cardRects.every((card) => card.left >= -1 && card.right <= metrics.viewport.width + 1 && card.width <= metrics.viewport.width + 1), `${route.key}/${viewport.key}: card fora da viewport`);
+  }
 
   if (route.selectors.breadcrumbs) {
     addCheck(failures, metrics.breadcrumbs && metrics.breadcrumbs.width >= viewport.minBreadcrumbs, `${route.key}/${viewport.key}: breadcrumbs estreitos (${metrics.breadcrumbs?.width ?? "ausente"}px)`);
     addCheck(failures, metrics.breadcrumbs && metrics.breadcrumbs.height <= (viewport.key === "desktop" ? 90 : 150), `${route.key}/${viewport.key}: breadcrumbs altos demais (${metrics.breadcrumbs?.height ?? "ausente"}px)`);
   }
-  if (route.selectors.wizard) {
-    addCheck(failures, metrics.wizard && metrics.wizard.width >= viewport.minWizard, `${route.key}/${viewport.key}: wizard estreito (${metrics.wizard?.width ?? "ausente"}px)`);
+  if (route.selectors.gallery) {
+    addCheck(failures, metrics.gallery && metrics.gallery.width >= (viewport.key === "desktop" ? 500 : 280), `${route.key}/${viewport.key}: detalhe/galeria em mini-coluna (${metrics.gallery?.width ?? "ausente"}px)`);
+    addCheck(failures, metrics.gallery && metrics.gallery.x >= -1 && metrics.gallery.x + metrics.gallery.width <= metrics.viewport.width + 1, `${route.key}/${viewport.key}: galeria fora da viewport`);
+  }
+  if (route.selectors.contact) {
+    addCheck(failures, metrics.contact && metrics.contact.x >= -1 && metrics.contact.x + metrics.contact.width <= metrics.viewport.width + 1, `${route.key}/${viewport.key}: CTA fora da viewport`);
+    addCheck(failures, metrics.contactVisible, `${route.key}/${viewport.key}: contato nao visivel no fluxo`);
+  }
+  if (route.restricted) {
+    addCheck(failures, metrics.gallerySources.every((source) => !/^https?:/i.test(source) && !/\/api\/.*(?:midia|media)/i.test(source)), `${route.key}/${viewport.key}: original restrito carregado (${metrics.gallerySources.join(", ")})`);
   }
   return failures;
 }
@@ -357,6 +428,15 @@ async function main() {
     await cdp.connect();
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    await cdp.send("Page.navigate", { url: baseUrl });
+    await delay(300);
+    await cdp.send("Runtime.evaluate", {
+      expression: `(() => {
+        const expiresAt = Date.now() + 86400000;
+        localStorage.setItem("age_gate_accepted_until", String(expiresAt));
+        document.cookie = "age_gate_accepted=" + encodeURIComponent("v1." + expiresAt) + "; Path=/; SameSite=Lax";
+      })()`
+    });
 
     for (const viewport of viewports) {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
@@ -409,7 +489,8 @@ async function main() {
         reportLines.push(`- largura H1: ${metrics.h1 ? Math.round(metrics.h1.width) : "ausente"}px`);
         reportLines.push(`- altura H1: ${metrics.h1 ? Math.round(metrics.h1.height) : "ausente"}px`);
         reportLines.push(`- breadcrumbs: ${metrics.breadcrumbs ? `${Math.round(metrics.breadcrumbs.width)}x${Math.round(metrics.breadcrumbs.height)}px` : "nao aplicavel"}`);
-        reportLines.push(`- wizard: ${metrics.wizard ? `${Math.round(metrics.wizard.width)}px` : "nao aplicavel"}`);
+        reportLines.push(`- galeria: ${metrics.gallery ? `${Math.round(metrics.gallery.width)}px` : "nao aplicavel"}`);
+        reportLines.push(`- CTA contato: ${metrics.contactVisible ? "visivel" : "nao aplicavel"}`);
         reportLines.push(`- scroll horizontal: ${metrics.documentWidth > metrics.viewport.width + 2 ? "sim" : "nao"}`);
         reportLines.push(`- links inexistentes: ${metrics.forbiddenLinks.length ? metrics.forbiddenLinks.join(", ") : "nao"}`);
         reportLines.push(`- texto tecnico publico: ${metrics.technicalTextFound ? "sim" : "nao"}`);

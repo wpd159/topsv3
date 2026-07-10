@@ -74,7 +74,7 @@ export default function RootLayout({
         />
       </head>
 
-      <body className="antialiased bg-white text-[#111] w-[100vw] overflow-x-hidden">
+      <body className="min-w-0 w-full antialiased bg-white text-[#111]">
         <AuthProvider>
           <SensitiveImageUnlockProvider>
             <WhatsAppSafetyProvider>

@@ -1,35 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  formatarClassificacaoConteudo,
-  formatarStatusVerificacaoAnunciante,
-} from '@/lib/compliance/content-classification'
 
 type Dashboard = {
-  restrictedContentCount?: number
   auditLogCount?: number
   visitorEventCount?: number
   criticalVisitorEvents?: number
   activeVisitorTokens?: number
   flaggedRiskSessions?: number
-}
-
-type RestrictedContent = {
-  anuncioId: number
-  titulo: string
-  slug: string
-  classification: string
-  status: string
-  usuarioId: number
-  username: string
-  advertiserVerificationStatus: string
-  criadoEm: string
 }
 
 type AuditLog = {
@@ -50,7 +32,6 @@ type VisitorEvent = {
   authorizationStatus: string
   challengeLevel?: string
   challengeResult?: string
-  contentClassification?: string
   riskScore?: number
   decision?: string
   reasonCode?: string
@@ -88,7 +69,6 @@ type CriticalEvent = {
   visitorSessionId?: string | null
   route?: string | null
   anuncioId?: number | null
-  contentClassification?: string | null
   challengeLevel?: string | null
   challengeResult?: string | null
   authorizationStatus?: string | null
@@ -179,10 +159,8 @@ type ComplianceFetchResult<T> =
   | { ok: false; label: string; message: string }
 
 export default function AdminCompliancePage() {
-  const router = useRouter()
   const API = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
   const [dashboard, setDashboard] = useState<Dashboard>({})
-  const [restrictedContent, setRestrictedContent] = useState<RestrictedContent[]>([])
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [visitorEvents, setVisitorEvents] = useState<VisitorEvent[]>([])
   const [riskProfiles, setRiskProfiles] = useState<RiskProfile[]>([])
@@ -247,7 +225,6 @@ export default function AdminCompliancePage() {
     try {
       const [
         dashboardRes,
-        restrictedRes,
         logsRes,
         visitorRes,
         visitorDocRes,
@@ -256,7 +233,6 @@ export default function AdminCompliancePage() {
         settingsRes,
       ] = await Promise.all([
         fetchJson<Dashboard>('/admin/compliance/dashboard', 'Resumo'),
-        fetchJson<RestrictedContent[]>('/admin/compliance/restricted-content', 'Conteudo restrito'),
         fetchJson<AuditLog[]>('/admin/compliance/audit-logs', 'Logs administrativos'),
         fetchJson<VisitorEvent[]>('/admin/compliance/visitor-events', 'Eventos de visitantes'),
         fetchJson<VisitorDocSubmission[]>('/admin/compliance/visitor-document-submissions', 'Documentos de visitantes'),
@@ -267,7 +243,6 @@ export default function AdminCompliancePage() {
 
       const errors = [
         dashboardRes,
-        restrictedRes,
         logsRes,
         visitorRes,
         visitorDocRes,
@@ -280,7 +255,6 @@ export default function AdminCompliancePage() {
 
       if (dashboardRes.ok) setDashboard(dashboardRes.data)
       setDashboardLoaded(dashboardRes.ok)
-      if (restrictedRes.ok) setRestrictedContent(Array.isArray(restrictedRes.data) ? restrictedRes.data : [])
       if (logsRes.ok) setAuditLogs(Array.isArray(logsRes.data) ? logsRes.data : [])
       if (visitorRes.ok) setVisitorEvents(Array.isArray(visitorRes.data) ? visitorRes.data : [])
       if (visitorDocRes.ok) setVisitorDocSubmissions(Array.isArray(visitorDocRes.data) ? visitorDocRes.data : [])
@@ -416,13 +390,12 @@ export default function AdminCompliancePage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-bold text-gray-800">Compliance e Conteudo Restrito</h1>
         <p className="text-sm text-gray-500">
-          Governanca operacional para verificacoes, classificacao de conteudo, auditoria e politicas.
+          Governanca operacional para verificacoes de idade, auditoria e politicas.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4 xl:grid-cols-8">
         {[
-          ['Conteudos restritos', dashboard.restrictedContentCount ?? 0],
           ['Logs administrativos', dashboard.auditLogCount ?? 0],
           ['Eventos de visitantes', dashboard.visitorEventCount ?? 0],
           ['Eventos criticos', dashboard.criticalVisitorEvents ?? 0],
@@ -446,59 +419,6 @@ export default function AdminCompliancePage() {
           </ul>
         </div>
       )}
-
-      <div id="restricted-content" className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">Conteudo classificado como restrito</h2>
-        <p className="mb-4 text-sm text-gray-500">
-          Fila de triagem. A classificacao, aprovacao e reprovacao acontecem no detalhe do anuncio.
-        </p>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-gray-500">
-                <th className="py-3 pr-4">Anuncio</th>
-                <th className="py-3 pr-4">Classificacao</th>
-                <th className="py-3 pr-4">Status</th>
-                <th className="py-3 pr-4">Anunciante</th>
-                <th className="py-3">Moderacao</th>
-              </tr>
-            </thead>
-            <tbody>
-              {restrictedContent.map((item) => (
-                <tr key={item.anuncioId} className="border-b">
-                  <td className="py-3 pr-4">
-                    <div className="font-medium text-gray-900">{item.titulo}</div>
-                    <div className="text-xs text-gray-500">/{item.slug}</div>
-                  </td>
-                  <td className="py-3 pr-4">{formatarClassificacaoConteudo(item.classification)}</td>
-                  <td className="py-3 pr-4">{item.status}</td>
-                  <td className="py-3 pr-4">
-                    <div>{item.username}</div>
-                    <div className="text-xs text-gray-500">
-                      {formatarStatusVerificacaoAnunciante(item.advertiserVerificationStatus)}
-                    </div>
-                  </td>
-                  <td className="py-3">
-                    <Button size="sm" variant="outline" onClick={() => router.push(`/admin/moderacao-v2/${item.anuncioId}`)}>
-                      Abrir moderacao
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {restrictedContent.length === 0 && (
-                <tr>
-                  <td className="py-4 text-gray-500" colSpan={5}>
-                    {hasLoadError('Conteudo restrito')
-                      ? 'Erro ao carregar conteudo restrito.'
-                      : 'Nenhum conteudo restrito identificado.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       <div id="admin-logs" className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -742,7 +662,7 @@ export default function AdminCompliancePage() {
                   <td className="py-3 pr-4 font-mono text-xs text-gray-700">{event.visitorSessionId || '-'}</td>
                   <td className="py-3 pr-4">{event.riskScore ?? '-'}</td>
                   <td className="py-3 pr-4">{event.decision || event.authorizationStatus || '-'}</td>
-                  <td className="py-3 pr-4 text-gray-600">{event.reasonCode || event.contentClassification || '-'}</td>
+                  <td className="py-3 pr-4 text-gray-600">{event.reasonCode || '-'}</td>
                   <td className="py-3">{new Date(event.createdAt).toLocaleString('pt-BR')}</td>
                 </tr>
               ))}

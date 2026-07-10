@@ -358,6 +358,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 
 ## Validacoes principais
 
+- Regra vigente de visibilidade individual: `backend/src/main/java/br/com/topsdojob/v3/domain/shared/VisibilidadeMidia.java`
+- Backfill e remoção da classificação global: `backend/src/main/resources/db/migration/V018__visibilidade_individual_midia.sql`
+- Evidencia Flyway real V001-V018/PostgreSQL 17.10: `docs/v3/evidencias/bloco-45/relatorio-flyway-real-local.md`
+- Contrato público/administrativo: `contracts/openapi/topsdojob-v3-local.yaml`
+- Política central de mídia pública segura: `backend/src/main/java/br/com/topsdojob/v3/application/publico/mapper/MidiaPublicaSeguraPolicy.java`, `frontend/src/lib/media/public-media.ts`
+
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`
 - E2E descartavel: `scripts/local/validar-e2e-local-descartavel.ps1`

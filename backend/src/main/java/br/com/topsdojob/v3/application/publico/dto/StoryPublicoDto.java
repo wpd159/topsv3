@@ -4,7 +4,7 @@ public record StoryPublicoDto(
         Integer ordem,
         String tipo,
         String finalidade,
-        String classificacaoConteudo,
+        String visibilidadeMidia,
         String urlPublica,
         Integer largura,
         Integer altura,

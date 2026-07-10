@@ -9,7 +9,7 @@ export function PublicChrome({ children }: { children: React.ReactNode }) {
       <HeaderWrapper />
       <SitePopupManager />
 
-      <main className="relative max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
+      <main className="public-shell relative max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
         {children}
       </main>
 

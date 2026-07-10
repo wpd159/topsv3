@@ -1,28 +1,5 @@
 import type { AdminPerformanceItem } from '@/lib/admin-estatisticas-api'
 
-/** Labels de negócio para enum `ContentClassification` (apenas apresentação — backend inalterado). */
-export const CLASSIFICATION_LABEL: Record<string, string> = {
-  SAFE_PUBLIC: 'Livre',
-  ADULT_NON_EXPLICIT: 'Semiexplícito',
-  ADULT_RESTRICTED: 'Restrito',
-  ADULT_EXPLICIT_BLOCKED: 'Bloqueado',
-}
-
-/** Ordem fixa das classificações usadas na moderação v3 v2; outras ficam depois por views. */
-const CLASSIFICATION_SORT_ORDER = [
-  'SAFE_PUBLIC',
-  'ADULT_NON_EXPLICIT',
-  'ADULT_EXPLICIT_BLOCKED',
-  'ADULT_RESTRICTED',
-] as const
-
-/** Exibe label amigável; valores desconhecidos mantêm o código original. */
-export function labelClassificacaoDashboard(codigo: string): string {
-  const k = (codigo ?? '').trim()
-  if (!k || k === '—') return 'Sem classificação'
-  return CLASSIFICATION_LABEL[k] ?? k
-}
-
 export function worstConversionWithTraffic(
   items: AdminPerformanceItem[],
   minViews = 100,
@@ -62,49 +39,6 @@ export function aggregateByCity(items: AdminPerformanceItem[]): CidadeAggRow[] {
     }))
     .sort((a, b) => b.views - a.views)
     .slice(0, 12)
-}
-
-export type ClassificacaoAggRow = {
-  classe: string
-  ativos: number
-  views: number
-  cliques: number
-  conversao: number
-}
-
-export function aggregateByClassification(items: AdminPerformanceItem[]): ClassificacaoAggRow[] {
-  const m = new Map<string, { views: number; clicks: number; ativos: number }>()
-  for (const i of items) {
-    const k = (i.contentClassification ?? '').trim() || '—'
-    const cur = m.get(k) ?? { views: 0, clicks: 0, ativos: 0 }
-    cur.views += Number(i.visualizacoes ?? 0)
-    cur.clicks += Number(i.cliquesWhatsapp ?? 0)
-    cur.ativos += 1
-    m.set(k, cur)
-  }
-  const rows = [...m.entries()]
-    .map(([classe, v]) => ({
-      classe,
-      ativos: v.ativos,
-      views: v.views,
-      cliques: v.clicks,
-      conversao: v.views <= 0 ? 0 : Math.round((v.clicks / v.views) * 10000) / 100,
-    }))
-    .filter((r) => r.ativos > 0 || r.views > 0)
-
-  const orderIndex = (c: string) => {
-    const i = (CLASSIFICATION_SORT_ORDER as readonly string[]).indexOf(c)
-    return i === -1 ? CLASSIFICATION_SORT_ORDER.length : i
-  }
-
-  return rows
-    .sort((a, b) => {
-      const da = orderIndex(a.classe)
-      const db = orderIndex(b.classe)
-      if (da !== db) return da - db
-      return b.views - a.views
-    })
-    .slice(0, 16)
 }
 
 export function pctAnunciosSemClique(items: AdminPerformanceItem[]): number {

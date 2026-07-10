@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon, MapPinIcon } from '@heroicons/react/24/solid'
 import { SensitiveImage } from '@/components/compliance/sensitive-image'
 import { buildLocalizacaoLabel } from '@/lib/location'
+import { selecionarCapaPublicaSegura, type MidiaPublica } from '@/lib/media/public-media'
 
 interface AnuncioRelacionado {
   id: number
@@ -15,15 +16,11 @@ interface AnuncioRelacionado {
   cidadeNome?: string | null
   bairroNome?: string | null
   localizacao?: string | null
-  fotosUrl?: string[]
+  midias?: MidiaPublica[]
   slug?: string
   impulsionado?: boolean
   destaqueAtivo?: boolean
   categoria?: string | null
-  contentClassification?: string | null
-  requiresVisitorVerification?: boolean
-  requiresStrongVerification?: boolean
-  viewerAuthorized?: boolean
 }
 
 interface AnunciosRelacionadosProps {
@@ -193,10 +190,7 @@ export function AnunciosRelacionados({
             const hrefAnuncio = `/anuncios/${encodeURIComponent(slugRota)}`
 
             const localizacaoLabel = buildLocalizacaoLabel(anuncio, 'compact')
-            const srcCapa =
-              Array.isArray(anuncio.fotosUrl) && anuncio.fotosUrl[0]?.trim()
-                ? anuncio.fotosUrl[0]
-                : '/icone-sem-foto.png'
+            const capa = selecionarCapaPublicaSegura(anuncio.midias)
 
             return (
               <Link
@@ -207,23 +201,22 @@ export function AnunciosRelacionados({
                 className="w-[185px] shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-1 hover:border-pink-200 md:w-full"
               >
                 <div className="relative h-[150px] w-full bg-gray-100">
-                  <SensitiveImage
-                    anuncioId={anuncio.id}
-                    anuncioSlug={slugRota}
-                    anuncioNome={anuncio.titulo}
-                    cidade={anuncio.cidadeNome ?? null}
-                    contentClassification={anuncio.contentClassification ?? null}
-                    src={srcCapa}
-                    alt={anuncio.titulo}
-                    fill
-                    sizes="(max-width: 768px) 185px, 25vw"
-                    className="object-cover"
-                    requiresVisitorVerification={Boolean(anuncio.requiresVisitorVerification)}
-                    requiresStrongVerification={Boolean(anuncio.requiresStrongVerification)}
-                    viewerAuthorized={Boolean(anuncio.viewerAuthorized)}
-                    deferCompliancePreview
-                    onAbrirPaginaDoAnuncio={() => router.push(hrefAnuncio)}
-                  />
+                  {capa ? (
+                    <SensitiveImage
+                      midia={capa}
+                      anuncioId={anuncio.id}
+                      anuncioSlug={slugRota}
+                      alt={anuncio.titulo}
+                      fill
+                      sizes="(max-width: 768px) 185px, 25vw"
+                      className="object-cover"
+                      onAbrirPaginaDoAnuncio={() => router.push(hrefAnuncio)}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center bg-gray-100 px-4 text-center text-xs text-gray-500">
+                      Mídia indisponível
+                    </div>
+                  )}
                   {anuncio.destaqueAtivo && (
                     <span className="absolute left-3 top-3 z-[25] rounded-full bg-pink-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
                       Em destaque

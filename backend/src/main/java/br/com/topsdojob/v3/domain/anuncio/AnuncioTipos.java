@@ -18,8 +18,7 @@ public final class AnuncioTipos {
     NAO_ENVIADO,
     PENDENTE,
     APROVADO,
-    REJEITADO,
-    BLOQUEADO
+    REJEITADO
   }
 
   public enum StatusPublicacaoBusca {

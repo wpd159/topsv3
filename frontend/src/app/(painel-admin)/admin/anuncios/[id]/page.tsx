@@ -17,10 +17,6 @@ import AdminAnuncioStoriesSection from '../../components/anuncios/admin-anuncio-
 import DocumentosUsuarioSection from '../../components/documentos-usuarios-section'
 import ReprovarAnuncioDialog from '../../components/anuncios/reprovar-anuncio-dialog'
 import { toast } from 'sonner'
-import {
-  classificacaoEstaDefinida,
-  formatarClassificacaoConteudo,
-} from '@/lib/compliance/content-classification'
 import { corrigirEstruturaTexto, corrigirTextoCorrompido } from '@/lib/text/encoding'
 
 import {
@@ -56,7 +52,6 @@ type AnuncioStaffDetalhe = {
   status?: string | null
   descricao?: string | null
   linkConteudo?: string | null
-  contentClassification?: string | null
 
   locaisAtendimento?: string[] | null
   servicos?: string[] | null
@@ -96,16 +91,12 @@ type AnuncioRevisionDetail = {
   source: string
   submittedByEmail?: string | null
   submittedAt?: string | null
-  currentContentClassification?: string | null
-  pendingContentClassification?: string | null
   changedFields?: string[] | null
   changes?: { field: string; label: string; currentValue?: string | null; pendingValue?: string | null }[] | null
   pendingFotos?: string[] | null
   pendingVideos?: string[] | null
   pendingMediaItems?: AnuncioRevisionPendingMediaItem[] | null
 }
-
-type ModerationClassification = 'SAFE_PUBLIC' | 'ADULT_NON_EXPLICIT' | 'ADULT_EXPLICIT_BLOCKED'
 
 type AdminEditSnapshotDTO = {
   id: number
@@ -118,7 +109,6 @@ type AdminEditSnapshotDTO = {
   servicos: string[]
   descricao?: string | null
   linkConteudo?: string | null
-  contentClassification?: string | null
   cidadeId?: number | null
   bairroId?: number | null
   fotos: string[]
@@ -135,38 +125,6 @@ type AdminEditFormState = {
   servicos: string[]
   descricao: string
   linkConteudo: string
-  contentClassification: string
-}
-
-const EDIT_CLASSIFICATION_OPTIONS = [
-  { value: 'SAFE_PUBLIC', label: 'Conteúdo live (público)' },
-  { value: 'ADULT_NON_EXPLICIT', label: 'Adulto — seminudez' },
-  { value: 'ADULT_RESTRICTED', label: 'Adulto restrito (verificação)' },
-  { value: 'ADULT_EXPLICIT_BLOCKED', label: 'Explícito — bloqueio forte' },
-] as const
-
-const MODERATION_CLASSIFICATION_OPTIONS: Array<{
-  value: ModerationClassification
-  label: string
-  helper: string
-}> = [
-  { value: 'SAFE_PUBLIC', label: 'Conteúdo live', helper: 'Nível leve e público.' },
-  { value: 'ADULT_NON_EXPLICIT', label: 'Conteúdo com seminudez', helper: 'Nível médio sem bloqueio forte.' },
-  { value: 'ADULT_EXPLICIT_BLOCKED', label: 'Conteúdo explícito', helper: 'Bloqueio com foto borrada.' },
-]
-
-function normalizarClassificacaoModeracao(value?: string | null): ModerationClassification {
-  switch (value) {
-    case 'SAFE_PUBLIC':
-      return 'SAFE_PUBLIC'
-    case 'ADULT_EXPLICIT_BLOCKED':
-      return 'ADULT_EXPLICIT_BLOCKED'
-    case 'ADULT_RESTRICTED':
-    case 'ADULT_NON_EXPLICIT':
-      return 'ADULT_NON_EXPLICIT'
-    default:
-      return 'SAFE_PUBLIC'
-  }
 }
 
 export default function DetalhesAnuncioPage() {
@@ -189,8 +147,6 @@ export default function DetalhesAnuncioPage() {
   const [openRejeitar, setOpenRejeitar] = useState(false)
   const [motivoRejeicao, setMotivoRejeicao] = useState('')
   const [changingStatus, setChangingStatus] = useState(false)
-  const [selectedClassification, setSelectedClassification] =
-    useState<ModerationClassification>('ADULT_NON_EXPLICIT')
   const [moderationFeedback, setModerationFeedback] = useState<{
     type: 'error' | 'info'
     message: string
@@ -302,11 +258,6 @@ export default function DetalhesAnuncioPage() {
           : typeof raw.preco === 'number'
             ? String(raw.preco)
             : String(raw.preco)
-      const cc =
-        raw.contentClassification && EDIT_CLASSIFICATION_OPTIONS.some((o) => o.value === raw.contentClassification)
-          ? raw.contentClassification
-          : 'SAFE_PUBLIC'
-
       setEditForm({
         titulo: corrigirTextoCorrompido(raw.titulo ?? ''),
         categoria: raw.categoria ?? '',
@@ -316,7 +267,6 @@ export default function DetalhesAnuncioPage() {
         servicos: Array.isArray(raw.servicos) ? raw.servicos : [],
         descricao: corrigirTextoCorrompido(raw.descricao ?? ''),
         linkConteudo: corrigirTextoCorrompido(raw.linkConteudo ?? ''),
-        contentClassification: cc,
       })
     } catch (e) {
       toast.error('Não foi possível carregar o painel de edição.')
@@ -361,7 +311,6 @@ export default function DetalhesAnuncioPage() {
       fd.append('horario', editForm.horario ?? '')
       fd.append('descricao', editForm.descricao ?? '')
       fd.append('linkConteudo', editForm.linkConteudo ?? '')
-      fd.append('contentClassification', editForm.contentClassification)
 
       // Localização: usa a do snapshot (backend exige).
       if (editSnapshot.cidadeId) fd.append('cidadeId', String(editSnapshot.cidadeId))
@@ -455,15 +404,8 @@ export default function DetalhesAnuncioPage() {
   }, [recarregarAnuncioERevisao])
 
   useEffect(() => {
-    const classificationFromModeration =
-      revision?.pendingContentClassification ?? anuncio?.contentClassification
-
-    setSelectedClassification(normalizarClassificacaoModeracao(classificationFromModeration))
-  }, [revision?.pendingContentClassification, anuncio?.contentClassification])
-
-  useEffect(() => {
     setModerationFeedback(null)
-  }, [selectedClassification, idParam])
+  }, [idParam])
 
   const getBadgeColor = (status?: string | null) => {
     switch (status) {
@@ -620,13 +562,6 @@ export default function DetalhesAnuncioPage() {
       setMediaActionBusy(false)
     }
   }
-  const classificationValue = revision?.pendingContentClassification ?? anuncio?.contentClassification ?? null
-  const classificationDefined = classificacaoEstaDefinida(classificationValue)
-  const selectedClassificationLabel = formatarClassificacaoConteudo(selectedClassification)
-  const selectedClassificationIsRestricted = selectedClassification !== 'SAFE_PUBLIC'
-  const currentClassificationIsRestricted =
-    classificationDefined && normalizarClassificacaoModeracao(classificationValue) !== 'SAFE_PUBLIC'
-
   /** Retorna true se navegou para outro anúncio da fila. */
   const tentarNavegarFila = () => {
     if (nextId) {
@@ -646,10 +581,7 @@ export default function DetalhesAnuncioPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({
-          classification: selectedClassification,
-          reason: 'Classificação definida na tela única de moderação do anúncio.',
-        }),
+        body: JSON.stringify({ reason: 'Aprovação registrada na tela de moderação do anúncio.' }),
       })
       if (!res.ok) {
         throw new Error(await readApiError(res, 'Falha ao aprovar anúncio.'))
@@ -967,23 +899,6 @@ export default function DetalhesAnuncioPage() {
               </div>
 
               <div className="space-y-3 rounded-lg border border-pink-200 bg-white p-4">
-                <p className="text-sm font-semibold text-gray-900">Classificação de conteúdo (persistida)</p>
-                <select
-                  className="h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm"
-                  value={editForm.contentClassification}
-                  onChange={(e) => setEditForm((p) => (p ? { ...p, contentClassification: e.target.value } : p))}
-                >
-                  {EDIT_CLASSIFICATION_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-                  Esta classificação é salva no endpoint de edição staff e entra na revisão pendente (ou no anúncio se não estiver ativo).
-                </div>
-
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-gray-900">Remover fotos publicadas</p>
                   <p className="text-xs text-gray-600">
@@ -1022,106 +937,11 @@ export default function DetalhesAnuncioPage() {
         </div>
       ) : null}
 
-      <div className="mb-6 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <div className="space-y-3">
-            <div>
-              <h2 className="text-base font-semibold text-gray-900">Classificação de conteúdo e aprovação</h2>
-              <p className="text-sm text-gray-500">
-                Esta tela é a fonte operacional da decisão. A classificação escolhida aqui é exatamente a enviada no clique de aprovar.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {classificationDefined ? (
-                <Badge className="border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-50">
-                  Classificação atual: {formatarClassificacaoConteudo(classificationValue)}
-                </Badge>
-              ) : (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-50">
-                  SEM CLASSIFICAÇÃO DEFINIDA
-                </Badge>
-              )}
-
-              {currentClassificationIsRestricted ? (
-                <Badge className="border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-50">
-                  CONTEÚDO RESTRITO
-                </Badge>
-              ) : null}
-
-              {isModerationPending ? (
-                <Badge className="border border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-50">
-                  Seleção para aprovação: {selectedClassificationLabel}
-                </Badge>
-              ) : null}
-            </div>
-
-            <div className="grid gap-2 sm:grid-cols-3">
-              {MODERATION_CLASSIFICATION_OPTIONS.map((option) => {
-                const active = selectedClassification === option.value
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    disabled={!isModerationPending}
-                    onClick={() => setSelectedClassification(option.value)}
-                    className={[
-                      'rounded-2xl border px-4 py-3 text-left transition',
-                      active
-                        ? 'border-[#FC1EAD]/40 bg-[#FC1EAD]/10 shadow-sm'
-                        : 'border-gray-200 bg-white hover:border-pink-200 hover:bg-pink-50/40',
-                      !isModerationPending && 'cursor-not-allowed opacity-70',
-                    ].join(' ')}
-                    title={option.helper}
-                  >
-                    <p className="text-sm font-semibold text-gray-900">{option.label}</p>
-                    <p className="mt-1 text-xs text-gray-500">{option.helper}</p>
-                  </button>
-                )
-              })}
-            </div>
-
-            <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-3 text-xs text-gray-600">
-              {!classificationDefined
-                ? 'Anúncios antigos sem classificação continuam públicos até classificação manual. O bloqueio só passa a valer quando você definir a classificação nesta tela.'
-                : isModerationPending
-                  ? 'Ao clicar em Aprovar, o backend usa exatamente esta seleção e aplica a decisão no anúncio.'
-                  : 'Sem moderação pendente, esta área fica apenas para consulta do que já foi decidido.'}
-            </div>
-          </div>
-
-          <div className="space-y-3 rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">Validações da aprovação</p>
-              <p className="mt-1 text-xs text-gray-500">
-                O anúncio só é aprovado se a classificação escolhida nesta tela for aceita pelo backend.
-              </p>
-            </div>
-
-            {selectedClassificationIsRestricted ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-                Conteúdo restrito exige age gate no frontend e proteção de mídias no backend. A decisão de aprovação é sempre do anúncio.
-              </div>
-            ) : (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">
-                Conteúdo live pode seguir pela aprovação normal desta mesma tela.
-              </div>
-            )}
-
-            {moderationFeedback ? (
-              <div
-                className={`rounded-xl border px-3 py-3 text-sm ${
-                  moderationFeedback.type === 'error'
-                    ? 'border-red-200 bg-red-50 text-red-700'
-                    : 'border-sky-200 bg-sky-50 text-sky-700'
-                }`}
-              >
-                {moderationFeedback.message}
-              </div>
-            ) : null}
-          </div>
+      {moderationFeedback ? (
+        <div className={`mb-6 rounded-xl border px-4 py-3 text-sm ${moderationFeedback.type === 'error' ? 'border-red-200 bg-red-50 text-red-700' : 'border-sky-200 bg-sky-50 text-sky-700'}`}>
+          {moderationFeedback.message}
         </div>
-      </div>
+      ) : null}
 
       {(hasPendingRevision || revision) && (
         <div className="mb-6 rounded-xl border-2 border-amber-300 bg-amber-50/90 p-5 shadow-sm">
@@ -1134,7 +954,7 @@ export default function DetalhesAnuncioPage() {
             </div>
             <p className="text-sm text-amber-900">
               {anuncio.status === "ATIVO"
-                ? "O anúncio permanece ativo no ar até a decisão. A revisão contém um snapshot completo do que será publicado ao aprovar (texto, localização, classificação e mídias). As seções abaixo separam: referência do que já está publicado e itens adicionais ou alterações propostas na revisão."
+                ? "O anúncio permanece ativo no ar até a decisão. A revisão contém um snapshot completo do que será publicado ao aprovar (texto, localização e mídias). As seções abaixo separam o conteúdo publicado dos itens propostos."
                 : "Este anúncio aguarda decisão de moderação. Revise os campos e as mídias da revisão antes de aprovar ou rejeitar."}
             </p>
             {revision ? (

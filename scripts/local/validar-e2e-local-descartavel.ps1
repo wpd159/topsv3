@@ -253,14 +253,14 @@ function Apply-Migrations {
   $mkdir = Invoke-Native -FilePath $dockerExe -Arguments @("exec", $pgName, "mkdir", "-p", $targetDir)
   if ($mkdir.ExitCode -ne 0) { throw "Falha ao preparar pasta de migrations no container." }
   $files = @(Get-ChildItem -LiteralPath $migrationDir -File -Filter "V*.sql" | Sort-Object Name)
-  if ($files.Count -ne 17) { throw "Quantidade esperada de migrations V001-V017 nao encontrada: $($files.Count)" }
+  if ($files.Count -ne 18) { throw "Quantidade esperada de migrations V001-V018 nao encontrada: $($files.Count)" }
   foreach ($file in $files) {
     Copy-FileToContainer -Source $file.FullName -TargetDir $targetDir
     Invoke-PsqlFile -ContainerPath "$targetDir/$($file.Name)"
     $appliedMigrations.Add($file.Name)
   }
   $script:migrationsApplied = $true
-  Add-Step "Migrations V001-V017 aplicadas via psql ordenado no PostgreSQL descartavel."
+  Add-Step "Migrations V001-V018 aplicadas via psql ordenado no PostgreSQL descartavel."
 }
 
 function Apply-SyntheticData {
@@ -408,18 +408,37 @@ function Write-FixtureSyntheticSql {
     $titulo = Convert-ToSqlLiteral $anuncio.titulo
     $descricao = Convert-ToSqlLiteral $anuncio.descricaoPerfil
     $slug = Convert-ToSqlLiteral $anuncio.slug
-    $classificacao = Convert-ToSqlLiteral $anuncio.classificacao
-    $whatsapp = if ([string]$anuncio.whatsappPublico -eq "PLACEHOLDER_NAO_DISCAVEL" -and [string]$anuncio.classificacao -eq "LIVRE") { "'+5500000000000'" } else { "NULL" }
+    $whatsapp = if ([string]$anuncio.whatsappPublico -eq "PLACEHOLDER_NAO_DISCAVEL" -and $statusInfo.Publicavel) { "'+5500000000000'" } else { "NULL" }
     $publicado = if ($statusInfo.Publicavel) { "now()" } else { "NULL" }
-    $statusPublicacao = if ($statusInfo.Publicavel -and [string]$anuncio.classificacao -eq "LIVRE") { "PUBLICAVEL" } elseif ([string]$anuncio.status -eq "REJEITADO") { "NOINDEX" } else { "NAO_PUBLICAVEL" }
-    $temMidia = ([string]$anuncio.midia -eq "PLACEHOLDER_SUFFICIENTE" -and [string]$anuncio.classificacao -eq "LIVRE")
+    $statusPublicacao = if ($statusInfo.Publicavel) { "PUBLICAVEL" } elseif ([string]$anuncio.status -eq "REJEITADO") { "NOINDEX" } else { "NAO_PUBLICAVEL" }
+    $temMidia = ([string]$anuncio.midia -eq "PLACEHOLDER_SUFFICIENTE")
     $bairroSql = if ($bairroId) { "'$bairroId'" } else { "NULL" }
     $textoBusca = Convert-ToSqlLiteral (([string]$anuncio.titulo) + " " + ([string]$anuncio.descricaoPerfil))
     $ranking = if ([string]$anuncio.plano -eq "PREMIUM_ATIVO") { "10.0000" } else { "1.0000" }
 
-    $lines.Add("INSERT INTO anuncio (id, usuario_id, slug, titulo, descricao, status, status_moderacao, categoria, classificacao_conteudo, preco, whatsapp_normalizado, publicado_em, ultima_publicacao_em, criado_em, atualizado_em, removido_em, origem_importacao_id, versao) VALUES ('$anuncioId', '$usuarioId', $slug, $titulo, $descricao, '$($statusInfo.Status)', '$($statusInfo.Moderacao)', 'SINTETICO', $classificacao, NULL, $whatsapp, $publicado, $publicado, now(), now(), NULL, NULL, 0) ON CONFLICT (slug) DO NOTHING;")
+    $lines.Add("INSERT INTO anuncio (id, usuario_id, slug, titulo, descricao, status, status_moderacao, categoria, preco, whatsapp_normalizado, publicado_em, ultima_publicacao_em, criado_em, atualizado_em, removido_em, origem_importacao_id, versao) VALUES ('$anuncioId', '$usuarioId', $slug, $titulo, $descricao, '$($statusInfo.Status)', '$($statusInfo.Moderacao)', 'SINTETICO', NULL, $whatsapp, $publicado, $publicado, now(), now(), NULL, NULL, 0) ON CONFLICT (slug) DO NOTHING;")
     $lines.Add("INSERT INTO anuncio_localizacao (anuncio_id, estado_id, cidade_id, bairro_id, endereco_resumido, latitude, longitude, criado_em, atualizado_em) VALUES ('$anuncioId', '$estadoId', '$cidadeId', $bairroSql, 'Endereço de demonstração', NULL, NULL, now(), now()) ON CONFLICT (anuncio_id) DO NOTHING;")
     $lines.Add("INSERT INTO documento_busca_anuncio (anuncio_id, texto_busca, estado_id, cidade_id, bairro_id, categoria, preco, status_publicacao, tem_midia_valida, beneficios_ranking_json, ranking_base, atualizado_em) VALUES ('$anuncioId', $textoBusca, '$estadoId', '$cidadeId', $bairroSql, 'SINTETICO', NULL, '$statusPublicacao', $(Convert-ToSqlBoolean $temMidia), '{}'::jsonb, $ranking, now()) ON CONFLICT (anuncio_id) DO NOTHING;")
+  }
+
+  $midias = @($data.midias)
+  for ($i = 0; $i -lt $midias.Count; $i++) {
+    $midia = $midias[$i]
+    $anuncioId = $anuncioIds[[string]$midia.anuncioSlug]
+    if (-not $anuncioId) { continue }
+    $arquivoId = New-FixtureUuid (6000 + $i)
+    $anuncioMidiaId = New-FixtureUuid (7000 + $i)
+    $tipo = [string]$midia.tipo
+    $mimeType = if ($tipo -eq "FOTO") { "image/jpeg" } else { "video/mp4" }
+    $finalidade = if ($tipo -eq "STORY") { "STORY" } elseif ($i -eq 0) { "CAPA" } else { "GALERIA" }
+    $statusModeracao = [string]$midia.statusModeracao
+    $statusArquivo = if ($statusModeracao -eq "PENDENTE") { "PENDENTE" } else { "VALIDADO" }
+    $statusMidia = if ($statusModeracao -eq "APROVADO") { "PUBLICAVEL" } elseif ($statusModeracao -eq "REJEITADO") { "REJEITADA" } else { "PENDENTE" }
+    $visibilidade = if ($null -eq $midia.visibilidade) { "NULL" } else { Convert-ToSqlLiteral ([string]$midia.visibilidade) }
+    $chave = Convert-ToSqlLiteral ("synthetic/" + [string]$midia.id + ".bin")
+
+    $lines.Add("INSERT INTO arquivo_midia (id, storage_provider, bucket, chave_objeto, nome_original, mime_type, tamanho_bytes, largura, altura, duracao_ms, sha256, etag, status_arquivo, criado_em) VALUES ('$arquivoId', 'LOCAL_SINTETICO', 'bucket-sintetico-local', $chave, NULL, '$mimeType', 1, NULL, NULL, NULL, NULL, NULL, '$statusArquivo', now()) ON CONFLICT (id) DO NOTHING;")
+    $lines.Add("INSERT INTO anuncio_midia (id, anuncio_id, arquivo_midia_id, tipo, finalidade, ordem, status, visibilidade_midia, criado_em, atualizado_em) VALUES ('$anuncioMidiaId', '$anuncioId', '$arquivoId', '$tipo', '$finalidade', $i, '$statusMidia', $visibilidade, now(), now()) ON CONFLICT (id) DO NOTHING;")
   }
 
   $seoCounter = 0
@@ -436,7 +455,7 @@ function Write-FixtureSyntheticSql {
     elseif ($path.StartsWith("/acompanhantes/")) {
       $tipo = if (($path.Split("/")).Count -ge 5) { "BAIRRO" } else { "CIDADE" }
     }
-    $indexavel = if ($path -match 'demo-goiania-bloqueado|rejeitado|pendente|controle') { "false" } else { "true" }
+    $indexavel = if ($path -match 'rejeitado|pendente|controle') { "false" } else { "true" }
     $pathSql = Convert-ToSqlLiteral $path
     $lines.Add("INSERT INTO seo_url (id, caminho_publico, canonical_path, tipo, entidade_tipo, entidade_id, status_esperado, indexavel, incluir_sitemap, qualidade_status, ultima_validacao_em, motivo_noindex, criado_em, atualizado_em, versao) VALUES ('$seoId', $pathSql, $pathSql, '$tipo', NULL, NULL, 'OK_200', $indexavel, $indexavel, 'APROVADO', now(), NULL, now(), now(), 0) ON CONFLICT (caminho_publico) DO NOTHING;")
   }

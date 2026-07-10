@@ -32,13 +32,14 @@ function Get-RelativePath {
   return ($FullName.Substring($repoRoot.Length).TrimStart('\', '/') -replace '\\', '/')
 }
 
-function Test-AllowedBinaryClassificationMigration {
+function Test-AllowedMediaVisibilityMigration {
   param([string]$RelPath)
 
   $allowed = @(
     "backend/src/main/resources/db/migration/V004__anuncios.sql",
     "backend/src/main/resources/db/migration/V005__midia_stories_documentos.sql",
-    "backend/src/main/resources/db/migration/V009__metricas.sql"
+    "backend/src/main/resources/db/migration/V009__metricas.sql",
+    "backend/src/main/resources/db/migration/V018__visibilidade_individual_midia.sql"
   )
   if ($allowed -notcontains $RelPath) {
     return $false
@@ -166,7 +167,7 @@ $changedJava = @($changedFiles | Where-Object { $_ -like "backend/src/main/java/
 $changedSqlOrMigration = @($changedFiles | Where-Object {
   ($_ -like "$migrationRel/*" -or $_ -like "*.sql") -and
   $_ -notlike "scripts/local/dados-sinteticos/*" -and
-  -not (Test-AllowedBinaryClassificationMigration $_)
+  -not (Test-AllowedMediaVisibilityMigration $_)
 })
 Add-Check "sem SQL de schema indevido ou migration nao autorizada" ($changedSqlOrMigration.Count -eq 0) "arquivos: $($changedSqlOrMigration.Count)"
 

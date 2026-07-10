@@ -7,7 +7,7 @@
   [string]$RelatorioE2E = "docs/v3/evidencias/bloco-40/relatorio-e2e-midia-publica-sintetica.md",
   [string]$SlugPremium = "anuncio-sintetico-local",
   [string]$SlugGratuito = "anuncio-sintetico-gratuito-local",
-  [string]$SlugBloqueado = "anuncio-sintetico-bloqueado-local",
+  [string]$SlugMidiaRestrita = "anuncio-sintetico-midia-restrita-local",
   [string]$SlugPendente = "anuncio-sintetico-pendente-local",
   [switch]$NaoIniciarDockerDesktop
 )
@@ -252,7 +252,7 @@ function Save-Report {
   $lines.Add("- BaseUrl: $script:SafeBaseUrl")
   $lines.Add("- Slug Premium: $SlugPremium")
   $lines.Add("- Slug gratuito: $SlugGratuito")
-  $lines.Add("- Slug BLOQUEADO: $SlugBloqueado")
+  $lines.Add("- Slug com mídia restrita: $SlugMidiaRestrita")
   $lines.Add("- Slug pendente: $SlugPendente")
   $lines.Add("- Dados reais usados: não")
   $lines.Add("- Upload real/CDN/storage real/API externa: não")
@@ -262,7 +262,7 @@ function Save-Report {
   $lines.Add("- Gratuito útil com limite local de até 2 fotos públicas sintéticas.")
   $lines.Add("- Premium com benefício de mídia extra aditivo e sem promessa de contratação.")
   $lines.Add("- Mídia pendente permanece em placeholder seguro.")
-  $lines.Add("- BLOQUEADO não expõe mídia sensível antes da confirmação de idade.")
+  $lines.Add("- A página e o contato permanecem públicos; a mídia RESTRITA_18 não expõe o original antes da confirmação de idade.")
   $lines.Add("- Stories exigem idade e, quando liberados, retornam apenas pendência segura de CDN local.")
   $lines.Add("- Admin lê mídia sanitizada, sem bucket, chave de storage, provider, hash ou URL privada.")
   $lines.Add("")
@@ -333,20 +333,27 @@ Assert-Status $pendente 404 "anuncio pendente com midia nao publico"
 Assert-NoPublicSensitiveMediaPayload -Nome "pendente publico" -Body $pendente.Body
 Assert-NoTechnicalVisibleCopy -Nome "pendente publico" -Body $pendente.Body
 
-$bloqueadoSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugBloqueado"
-Assert-Status $bloqueadoSemIdade 404 "BLOQUEADO sem idade"
-Add-Check "BLOQUEADO sem idade sem midia sensivel" (-not ($bloqueadoSemIdade.Body -match 'urlPublica|mimeType|PENDENTE_URL_PUBLICA_MIDIA_CDN|wa\.me/|\+55[0-9]')) "sem detalhe de midia antes da idade"
-Assert-NoPublicSensitiveMediaPayload -Nome "BLOQUEADO sem idade" -Body $bloqueadoSemIdade.Body
-Assert-NoTechnicalVisibleCopy -Nome "BLOQUEADO sem idade" -Body $bloqueadoSemIdade.Body
+$restritaSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita"
+Assert-Status $restritaSemIdade 200 "anuncio com midia restrita sem idade"
+$restritaSemIdadeJson = Get-Json $restritaSemIdade
+$restritaSemIdadeMidias = @($restritaSemIdadeJson.midias)
+Add-Check "pagina com midia restrita permanece publica" ($restritaSemIdade.Body -match [regex]::Escape($SlugMidiaRestrita)) "anuncio publico nao depende da visibilidade da galeria"
+Add-Check "original restrito ausente sem idade" (@($restritaSemIdadeMidias | Where-Object { $_.visibilidadeMidia -eq 'RESTRITA_18' -and ($_.autorizada -ne $false -or -not [string]::IsNullOrWhiteSpace([string]$_.urlPublica)) }).Count -eq 0) "midias restritas retornam autorizada=false e urlPublica nula"
+Assert-NoPublicSensitiveMediaPayload -Nome "midia restrita sem idade" -Body $restritaSemIdade.Body
+Assert-NoTechnicalVisibleCopy -Nome "midia restrita sem idade" -Body $restritaSemIdade.Body
 
-$bloqueadoComIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugBloqueado" -Session $idadeSession
-Assert-Status $bloqueadoComIdade 200 "BLOQUEADO com idade"
-$bloqueadoComIdadeJson = Get-Json $bloqueadoComIdade
-$bloqueadoMidias = @($bloqueadoComIdadeJson.midias)
-Assert-PublicMediaItems -Nome "BLOQUEADO midias com idade" -Items $bloqueadoMidias
-Assert-SeoCopyNatural -Nome "BLOQUEADO com idade" -Json $bloqueadoComIdadeJson
-Assert-NoPublicSensitiveMediaPayload -Nome "BLOQUEADO com idade" -Body $bloqueadoComIdade.Body
-Assert-NoTechnicalVisibleCopy -Nome "BLOQUEADO com idade" -Body $bloqueadoComIdade.Body
+$contatoRestritoSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita/clique-whatsapp" -Method "POST" -Body (@{ visitanteLocalId = "visitante-midia-restrita"; dispositivo = "DESKTOP" } | ConvertTo-Json -Compress)
+Assert-Status $contatoRestritoSemIdade 200 "contato com midia restrita sem idade"
+Add-Check "contato independe da visibilidade e idade" ($contatoRestritoSemIdade.Body -match '"disponivel"\s*:\s*true') "endpoint mediado libera contato para anuncio publico ativo"
+
+$restritaComIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita" -Session $idadeSession
+Assert-Status $restritaComIdade 200 "anuncio com midia restrita e idade"
+$restritaComIdadeJson = Get-Json $restritaComIdade
+$restritaComIdadeMidias = @($restritaComIdadeJson.midias)
+Assert-PublicMediaItems -Nome "midias restritas com idade" -Items $restritaComIdadeMidias
+Assert-SeoCopyNatural -Nome "midia restrita com idade" -Json $restritaComIdadeJson
+Assert-NoPublicSensitiveMediaPayload -Nome "midia restrita com idade" -Body $restritaComIdade.Body
+Assert-NoTechnicalVisibleCopy -Nome "midia restrita com idade" -Body $restritaComIdade.Body
 
 $storiesSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugPremium/stories"
 Assert-Status $storiesSemIdade 200 "stories sem idade"

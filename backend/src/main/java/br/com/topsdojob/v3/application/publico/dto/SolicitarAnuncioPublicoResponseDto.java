@@ -9,7 +9,6 @@ public record SolicitarAnuncioPublicoResponseDto(
         String slugLocal,
         String statusAnuncio,
         String statusModeracao,
-        String classificacaoConteudo,
         boolean publicado,
         boolean revisaoCriada,
         boolean publicacaoAutomaticaExecutada,

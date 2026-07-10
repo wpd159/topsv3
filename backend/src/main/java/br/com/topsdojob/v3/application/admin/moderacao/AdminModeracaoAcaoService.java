@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequ
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.OutboxEventoEntity;
@@ -20,7 +21,6 @@ import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DecisaoModeracao;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -102,7 +102,6 @@ public class AdminModeracaoAcaoService {
         AnuncioEntity anuncio = anuncioRepository.findById(revisao.getAnuncioId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio da revisao nao encontrado"));
         OffsetDateTime agora = OffsetDateTime.now();
-        ClassificacaoConteudo classificacao = classificacaoOuAtual(request.classificacaoConteudo(), anuncio.getClassificacaoConteudo());
         String antes = snapshotRevisao(revisao, anuncio, null, null);
 
         if (decisao == AdminDecisaoModeracaoAcao.SOLICITAR_AJUSTE) {
@@ -118,10 +117,10 @@ public class AdminModeracaoAcaoService {
                     : StatusAnuncio.REJEITADO;
             StatusModeracaoAnuncio novoStatusModeracao = decisao == AdminDecisaoModeracaoAcao.APROVAR
                     ? StatusModeracaoAnuncio.APROVADO
-                    : statusModeracaoReprovada(classificacao);
+                    : StatusModeracaoAnuncio.REJEITADO;
 
             revisao.finalizar(novoStatusRevisao, agora);
-            anuncio.aplicarModeracao(novoStatusAnuncio, novoStatusModeracao, classificacao, agora);
+            anuncio.aplicarModeracao(novoStatusAnuncio, novoStatusModeracao, agora);
 
             decisaoRepository.save(DecisaoModeracaoEntity.registrar(
                     UUID.randomUUID(),
@@ -168,7 +167,7 @@ public class AdminModeracaoAcaoService {
                 revisao.getId(),
                 decisao.name(),
                 revisao.getStatus().name(),
-                anuncio.getClassificacaoConteudo().name(),
+                null,
                 true,
                 false,
                 false,
@@ -188,14 +187,11 @@ public class AdminModeracaoAcaoService {
                 decisao,
                 request == null ? null : request.motivo(),
                 request == null ? null : request.observacao());
-        if (decisao == AdminDecisaoModeracaoAcao.SOLICITAR_AJUSTE) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "solicitar ajuste de midia pendente sem status compativel no schema atual");
-        }
         AnuncioMidiaEntity midia = anuncioMidiaRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
-        if (midia.getStatus() != StatusAnuncioMidia.PENDENTE) {
+        if (midia.getStatus() != StatusAnuncioMidia.PENDENTE
+                && midia.getStatus() != StatusAnuncioMidia.AJUSTE_SOLICITADO
+                && midia.getStatus() != StatusAnuncioMidia.PUBLICAVEL) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "midia ja finalizada");
         }
         if (documentoUsuarioRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(midia.getArquivoMidiaId())) {
@@ -205,17 +201,31 @@ public class AdminModeracaoAcaoService {
         ArquivoMidiaEntity arquivo = arquivoMidiaRepository.findById(midia.getArquivoMidiaId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
         OffsetDateTime agora = OffsetDateTime.now();
-        ClassificacaoConteudo classificacao = classificacaoOuAtual(request.classificacaoConteudo(), midia.getClassificacaoConteudo());
+        VisibilidadeMidia visibilidade = visibilidadeParaDecisao(midia, request, decisao);
         String antes = snapshotMidia(midia, arquivo, null, null);
 
-        StatusAnuncioMidia novoStatusMidia = decisao == AdminDecisaoModeracaoAcao.APROVAR
-                ? StatusAnuncioMidia.PUBLICAVEL
-                : StatusAnuncioMidia.REJEITADA;
-        StatusArquivoMidia novoStatusArquivo = decisao == AdminDecisaoModeracaoAcao.APROVAR
-                ? StatusArquivoMidia.VALIDADO
-                : StatusArquivoMidia.REJEITADO;
-        midia.aplicarDecisao(novoStatusMidia, classificacao, agora);
-        arquivo.aplicarDecisao(novoStatusArquivo, classificacao);
+        StatusAnuncioMidia novoStatusMidia = switch (decisao) {
+            case APROVAR -> StatusAnuncioMidia.PUBLICAVEL;
+            case REPROVAR -> StatusAnuncioMidia.REJEITADA;
+            case SOLICITAR_AJUSTE -> StatusAnuncioMidia.AJUSTE_SOLICITADO;
+        };
+        StatusArquivoMidia novoStatusArquivo = switch (decisao) {
+            case APROVAR -> StatusArquivoMidia.VALIDADO;
+            case REPROVAR -> StatusArquivoMidia.REJEITADO;
+            case SOLICITAR_AJUSTE -> StatusArquivoMidia.PENDENTE;
+        };
+        midia.aplicarDecisao(novoStatusMidia, visibilidade, agora);
+        arquivo.aplicarDecisao(novoStatusArquivo);
+
+        if (decisao == AdminDecisaoModeracaoAcao.SOLICITAR_AJUSTE) {
+            registrarOutboxLocal(
+                    "ANUNCIO_MIDIA",
+                    midia.getId(),
+                    "MODERACAO_MIDIA_SOLICITAR_AJUSTE",
+                    snapshotMidia(midia, arquivo, decisao, motivo),
+                    "MODERACAO_MIDIA_SOLICITAR_AJUSTE:" + midia.getId() + ":" + agora,
+                    agora);
+        }
 
         String depois = snapshotMidia(midia, arquivo, decisao, motivo);
         auditoriaRepository.save(AuditoriaEventoEntity.registrar(
@@ -235,7 +245,7 @@ public class AdminModeracaoAcaoService {
                 midia.getId(),
                 decisao.name(),
                 midia.getStatus().name(),
-                midia.getClassificacaoConteudo().name(),
+                enumName(midia.getVisibilidadeMidia()),
                 true,
                 false,
                 false,
@@ -300,7 +310,7 @@ public class AdminModeracaoAcaoService {
                 anuncio.getId(),
                 "REMETER_REVISAO",
                 anuncio.getStatus().name(),
-                anuncio.getClassificacaoConteudo().name(),
+                null,
                 true,
                 false,
                 false,
@@ -360,19 +370,21 @@ public class AdminModeracaoAcaoService {
         return atual;
     }
 
-    private StatusModeracaoAnuncio statusModeracaoReprovada(ClassificacaoConteudo classificacao) {
-        return classificacao == ClassificacaoConteudo.BLOQUEADO
-                ? StatusModeracaoAnuncio.BLOQUEADO
-                : StatusModeracaoAnuncio.REJEITADO;
-    }
-
-    private ClassificacaoConteudo classificacaoOuAtual(
-            ClassificacaoConteudo solicitada,
-            ClassificacaoConteudo atual) {
-        if (solicitada != null) {
-            return solicitada;
+    private VisibilidadeMidia visibilidadeParaDecisao(
+            AnuncioMidiaEntity midia,
+            AdminDecidirMidiaRequestDto request,
+            AdminDecisaoModeracaoAcao decisao) {
+        VisibilidadeMidia solicitada = request == null ? null : request.visibilidadeMidia();
+        if (midia.getTipo() == TipoAnuncioMidia.VIDEO || midia.getTipo() == TipoAnuncioMidia.STORY) {
+            if (solicitada == VisibilidadeMidia.LIVRE) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "video e story exigem visibilidade RESTRITA_18");
+            }
+            return VisibilidadeMidia.RESTRITA_18;
         }
-        return atual == null ? ClassificacaoConteudo.LIVRE : atual;
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR && solicitada == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "visibilidade obrigatoria para aprovar foto");
+        }
+        return solicitada != null ? solicitada : midia.getVisibilidadeMidia();
     }
 
     private String motivoSeguro(String motivo, String observacao) {
@@ -394,7 +406,6 @@ public class AdminModeracaoAcaoService {
         values.put("statusRevisao", enumName(revisao.getStatus()));
         values.put("statusAnuncio", enumName(anuncio.getStatus()));
         values.put("statusModeracao", enumName(anuncio.getStatusModeracao()));
-        values.put("classificacaoConteudo", enumName(anuncio.getClassificacaoConteudo()));
         values.put("decisao", enumName(decisao));
         values.put("motivoSanitizado", motivoSanitizado);
         values.put("payloadSolicitadoOculto", true);
@@ -414,7 +425,7 @@ public class AdminModeracaoAcaoService {
         values.put("statusMidia", enumName(midia.getStatus()));
         values.put("statusArquivo", enumName(arquivo.getStatusArquivo()));
         values.put("tipo", enumName(midia.getTipo()));
-        values.put("classificacaoConteudo", enumName(midia.getClassificacaoConteudo()));
+        values.put("visibilidadeMidia", enumName(midia.getVisibilidadeMidia()));
         values.put("decisao", enumName(decisao));
         values.put("motivoSanitizado", motivoSanitizado);
         values.put("arquivoPrivadoOculto", true);
@@ -433,7 +444,6 @@ public class AdminModeracaoAcaoService {
         values.put("revisaoId", revisao == null ? null : revisao.getId());
         values.put("statusAnuncio", enumName(anuncio.getStatus()));
         values.put("statusModeracao", enumName(anuncio.getStatusModeracao()));
-        values.put("classificacaoConteudo", enumName(anuncio.getClassificacaoConteudo()));
         values.put("motivoSanitizado", motivoSanitizado);
         values.put("payloadSolicitadoOculto", true);
         values.put("emailRealEnviado", false);

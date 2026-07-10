@@ -20,7 +20,6 @@ import UltimosUsuariosTable from '../ultimos-usuarios-table'
 import { MOD_V2_QUERY_CIDADE } from '@/features/moderation-v2/lib/url-dashboard-filters'
 import {
   aggregateByCity,
-  aggregateByClassification,
   cidadeAbaixoDaMediaResumo,
   countAltoTrafegoZeroClique,
   matchesStrategicAltoTrafego,
@@ -130,7 +129,6 @@ export function StrategicAdminDashboard() {
   const base = perf?.rankingPorCliques ?? []
 
   const cityRows = useMemo(() => aggregateByCity(base), [base])
-  const classRows = useMemo(() => aggregateByClassification(base), [base])
 
   const topConv = useMemo(() => (perf?.topPorConversao ?? []).slice(0, 5), [perf?.topPorConversao])
   const piorConv = useMemo(() => worstConversionWithTraffic(base, 100, 5), [base])
@@ -284,7 +282,7 @@ export function StrategicAdminDashboard() {
 
       <StrategicConversionRankings topConversao={topConv} piorConversao={piorConv} loading={loadingTables} />
 
-      <StrategicAnalysisTables cidadeRows={cityRows} classificacaoRows={classRows} loading={loadingTables} />
+      <StrategicAnalysisTables cidadeRows={cityRows} loading={loadingTables} />
 
       <MonetizationOpportunitiesStrip cards={monetizationCards} loading={premiumLoading && perfLoading} />
 

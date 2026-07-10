@@ -5,7 +5,6 @@
  * - PUT /anuncios/{id}/aprovar: fila — PENDENTE OU revisão aberta.
  * - PUT /anuncios/{id}/rejeitar: revisão aberta OU PENDENTE sem revisão.
  * - PUT /anuncios/staff/{id}/status: ATIVO | PAUSADO | REJEITADO.
- * - PUT /anuncios/staff/{id}/classification: classificação sem passar pelo /aprovar (MOD/ADMIN).
  * - DELETE /anuncios/staff/{id}?motivo= : remoção apenas lógica (somente ADMIN).
  */
 
@@ -37,10 +36,6 @@ import { Textarea } from '@/components/ui/textarea'
 import DocumentosUsuarioSection from '@/app/(painel-admin)/admin/components/documentos-usuarios-section'
 import AdminAnuncioStoriesSection from '@/app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section'
 import { useAuth } from '@/context/AuthContext'
-import {
-  classificacaoEstaDefinida,
-  formatarClassificacaoConteudo,
-} from '@/lib/compliance/content-classification'
 import { enviarIndexNowNoCliente, montarUrlsIndexNowAnuncio } from '@/lib/seo/indexnow-client'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
 import { normalizarCategoria } from '@/utils/normalizer'
@@ -59,7 +54,6 @@ import {
   notifyModerationDataUpdated,
   rejectAnuncioApi,
   removerAnuncioLogicamenteStaffApi,
-  updateStaffClassificationApi,
 } from '../api/client'
 import type {
   AdminAuditLogItem,
@@ -70,14 +64,6 @@ import type {
 import { ModeracaoV2AuditTimeline } from './moderacao-v2-audit-timeline'
 import { AnuncioStaffEditForm } from './anuncio-staff-edit-form'
 import { ModeracaoV2MediaGallery } from './moderacao-v2-media-gallery'
-
-type ModerationClassUi = 'SAFE_PUBLIC' | 'ADULT_NON_EXPLICIT' | 'ADULT_EXPLICIT_BLOCKED'
-
-const CLASS_CARDS: Array<{ value: ModerationClassUi; label: string; helper: string }> = [
-  { value: 'SAFE_PUBLIC', label: 'Conteúdo live', helper: 'Público leve.' },
-  { value: 'ADULT_NON_EXPLICIT', label: 'Seminudez', helper: 'Adulto sem bloqueio forte.' },
-  { value: 'ADULT_EXPLICIT_BLOCKED', label: 'Explícito bloqueado', helper: 'Bloqueio forte de mídia.' },
-]
 
 /** Benefícios ativáveis pelo painel (STORIES permanece fora). Códigos alinhados ao enum FeatureCodigo (backend). */
 const PREMIUM_ACTIVATABLE_OPTIONS = [
@@ -135,22 +121,6 @@ function rotuloStatusPremium(b: PremiumBeneficioAtivoRow): string {
   }
   if (st === 'ATIVO') return 'Ativo'
   return b.status?.trim() || '—'
-}
-
-function normalizarModeracaoClass(value?: string | null): ModerationClassUi {
-  switch (value) {
-    case 'ADULT_EXPLICIT_BLOCKED':
-      return 'ADULT_EXPLICIT_BLOCKED'
-    case 'ADULT_RESTRICTED':
-    case 'ADULT_NON_EXPLICIT':
-      return 'ADULT_NON_EXPLICIT'
-    default:
-      return 'SAFE_PUBLIC'
-  }
-}
-
-function apiClassFromUi(ui: ModerationClassUi): string {
-  return ui
 }
 
 function texto(v?: string | null, fb = '—') {
@@ -269,7 +239,6 @@ function mergeStaffDetailFromPublicAnuncioPayload(
   takeStr('username', 'usernameAnunciante')
   takeStr('nomeCompleto', 'nomeAnunciante')
   takeStr('categoria', 'categoria')
-  takeStr('contentClassification', 'contentClassification')
   takeNum('visualizacoes', 'visualizacoes')
   if (typeof payload.pendingRevision === 'boolean') {
     out.pendingRevision = payload.pendingRevision
@@ -299,8 +268,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
   const [anuncio, setAnuncio] = useState<ModerationAnuncioDetail | null>(null)
   const [revision, setRevision] = useState<ModerationRevisionDetail | null>(null)
   const [loading, setLoading] = useState(true)
-  const [selClass, setSelClass] = useState<ModerationClassUi>('ADULT_NON_EXPLICIT')
-  const [classMotivo, setClassMotivo] = useState('Ajuste de classificação na moderação v2.')
   const [busy, setBusy] = useState(false)
   /** Evita dupla chamada à API antes do re-render de `busy` (ex.: duplo clique). */
   const staffDecisionLockRef = useRef(false)
@@ -329,8 +296,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
       ])
       setAnuncio(r ? a : clearPendingRevisionState(a))
       setRevision(r)
-      const src = r?.pendingContentClassification ?? a.contentClassification
-      setSelClass(normalizarModeracaoClass(src))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao carregar.')
       setAnuncio(null)
@@ -446,11 +411,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
     staffDecisionLockRef.current = true
     try {
       setBusy(true)
-      const payload = await approveAnuncioApi(
-        anuncioId,
-        apiClassFromUi(selClass),
-        'Classificação definida na moderação v2.'
-      )
+      const payload = await approveAnuncioApi(anuncioId, 'Aprovação registrada na moderação v2.')
       toast.success('Decisão registrada (aprovação).')
       notifyModerationDataUpdated()
       void enviarIndexNowNoCliente(
@@ -532,26 +493,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
       toast.error(e instanceof Error ? corrigirTextoCorrompido(e.message) : 'Falha ao rejeitar.')
     } finally {
       staffDecisionLockRef.current = false
-      setBusy(false)
-    }
-  }
-
-  const handleApplyClassificationOnly = async () => {
-    const reason = classMotivo.trim() || 'Classificação na moderação v2.'
-    try {
-      setBusy(true)
-      const updated = await updateStaffClassificationApi(anuncioId, apiClassFromUi(selClass), reason)
-      setAnuncio(updated)
-      toast.success('Classificação atualizada.')
-      notifyModerationDataUpdated()
-      if (isAdmin) {
-        try {
-          setAuditLogs(await fetchComplianceAuditForAnuncio(anuncioId))
-        } catch {}
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? corrigirTextoCorrompido(e.message) : 'Falha ao aplicar classificação.')
-    } finally {
       setBusy(false)
     }
   }
@@ -804,11 +745,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
   )
 
   const latestAuditLog = auditLogs[0] ?? null
-  const latestClassificationLog =
-    auditLogs.find((log) => {
-      const haystack = `${log.actionType ?? ''} ${log.details ?? ''}`.toLowerCase()
-      return haystack.includes('classifica') || haystack.includes('classification')
-    }) ?? null
   const latestPremiumHistory = historicoPremium[0] ?? null
 
   const publishedPhotoCount = anuncio?.fotosUrl?.length ?? 0
@@ -817,7 +753,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
     (revision?.pendingMediaItems?.length ?? 0) +
     (revision?.pendingFotos?.length ?? 0) +
     (revision?.pendingVideos?.length ?? 0)
-  const hasExplicitClassification = anuncio?.contentClassification === 'ADULT_EXPLICIT_BLOCKED'
   const hasActivePremium = activePremiumCount > 0
   const hasActiveVideo =
     premiumJaAtivoOuAgendado.has('VIDEO_1') || premiumJaAtivoOuAgendado.has('VIDEO') || publishedVideoCount > 0
@@ -832,9 +767,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
       ? { label: 'REVISÃO', className: 'border-amber-200 bg-amber-50 text-amber-900' }
       : null,
     removedLogical ? { label: 'REMOVIDO', className: 'border-rose-200 bg-rose-50 text-rose-900' } : null,
-    hasExplicitClassification
-      ? { label: 'EXPLÍCITO', className: 'border-red-200 bg-red-50 text-red-800' }
-      : null,
   ].filter(Boolean) as Array<{ label: string; className: string }>
 
   if (loading) {
@@ -1057,7 +989,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
               <p className="mt-1 text-2xl font-bold tabular-nums text-[#f0198f]">{metricasAnuncio.conv}</p>
             </div>
           </div>
-          {(latestAuditLog || latestClassificationLog || latestPremiumHistory) ? (
+          {(latestAuditLog || latestPremiumHistory) ? (
             <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50/70 p-4">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Logs operacionais</p>
               <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
@@ -1068,16 +1000,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
                     <p className="text-xs text-gray-600">
                       {texto(latestAuditLog.actorEmail)}{' '}
                       {latestAuditLog.createdAt ? `· ${formatShortDateTime(latestAuditLog.createdAt)}` : ''}
-                    </p>
-                  </div>
-                ) : null}
-                {latestClassificationLog ? (
-                  <div>
-                    <p className="text-xs font-medium text-gray-500">Última classificação</p>
-                    <p className="font-semibold text-gray-900">{texto(latestClassificationLog.actionType)}</p>
-                    <p className="text-xs text-gray-600">
-                      {texto(latestClassificationLog.actorEmail)}{' '}
-                      {latestClassificationLog.createdAt ? `· ${formatShortDateTime(latestClassificationLog.createdAt)}` : ''}
                     </p>
                   </div>
                 ) : null}
@@ -1102,72 +1024,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
               </div>
             </div>
           ) : null}
-        </section>
-
-        <section id="sec-compliance" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm scroll-mt-24">
-          <div id="sec-classificacao-atual" className="scroll-mt-24 border-b border-gray-100 pb-4">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">COMPLIANCE</p>
-            <p className="mt-1.5 text-base font-semibold leading-snug text-gray-900">
-              {classificacaoEstaDefinida(anuncio.contentClassification)
-                ? formatarClassificacaoConteudo(anuncio.contentClassification)
-                : 'Sem classificação definida'}
-            </p>
-            {revision?.pendingContentClassification &&
-            revision.pendingContentClassification.trim() !== (anuncio.contentClassification ?? '').trim() ? (
-              <p className="mt-2 rounded-lg border border-amber-100 bg-amber-50/80 px-3 py-2 text-sm text-amber-950">
-                <span className="font-medium text-amber-900">Revisão pendente — classificação proposta: </span>
-                {formatarClassificacaoConteudo(revision.pendingContentClassification)}
-              </p>
-            ) : null}
-          </div>
-
-          <h2 className="mt-4 text-base font-semibold text-gray-900">Classificação de conteúdo</h2>
-          <p className="mt-3 text-sm text-gray-600">
-            Nível aplicável ao anúncio. Na fila, o mesmo valor é enviado em <code className="text-xs">/aprovar</code>.
-            Fora da fila, use &quot;Aplicar agora&quot; ({' '}
-            <code className="text-xs">/staff/&#123;id&#125;/classification</code>).
-          </p>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            {CLASS_CARDS.map((c) => (
-              <button
-                key={c.value}
-                type="button"
-                onClick={() => setSelClass(c.value)}
-                disabled={!isStaffModeration || removedLogical}
-                className={[
-                  'rounded-xl border px-4 py-3 text-left transition',
-                  selClass === c.value
-                    ? 'border-[#f0198f] bg-pink-50 shadow-sm'
-                    : 'border-gray-200 bg-white hover:border-pink-200',
-                  (!isStaffModeration || removedLogical) ? 'cursor-not-allowed opacity-60' : '',
-                ].join(' ')}
-              >
-                <p className="text-sm font-semibold text-gray-900">{c.label}</p>
-                <p className="mt-1 text-xs text-gray-500">{c.helper}</p>
-              </button>
-            ))}
-          </div>
-          <div className="mt-4 space-y-2">
-            <label className="text-xs font-medium text-gray-600">Motivo / observação (auditoria)</label>
-            <Textarea
-              value={classMotivo}
-              onChange={(e) => setClassMotivo(e.target.value)}
-              className="min-h-[72px]"
-              disabled={!isStaffModeration || removedLogical}
-            />
-          </div>
-          {isStaffModeration && !removedLogical && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" disabled={busy} onClick={() => void handleApplyClassificationOnly()}>
-                Aplicar classificação agora
-              </Button>
-              {needsDecision && (
-                <span className="self-center text-xs text-gray-500">
-                  Ou use Aprovar no topo para publicar com esta classificação.
-                </span>
-              )}
-            </div>
-          )}
         </section>
 
         {revision &&
@@ -1225,6 +1081,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
         <section id="sec-midia" className="scroll-mt-24">
           <ModeracaoV2MediaGallery
             anuncioId={anuncioId}
+            midiasPublicadas={anuncio.midias ?? []}
             fotosPublicadas={anuncio.fotosUrl ?? []}
             videosPublicados={anuncio.videosUrl ?? []}
             revision={revision}

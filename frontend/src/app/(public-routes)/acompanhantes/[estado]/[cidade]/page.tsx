@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import AnuncioCard from "@/components/anuncios/anuncio-card"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import { serverApiFetchJson } from "@/lib/server-api"
+import { type MidiaPublica } from "@/lib/media/public-media"
 import {
   CidadeSeoAggregate,
   gerarBreadcrumbSchemaCidade,
@@ -43,10 +44,8 @@ interface AnuncioSeoDTO {
   slug: string
   titulo: string
   preco?: number
-  fotosUrl?: string[]
-  videosAnuncio?: string[]
+  midias?: MidiaPublica[]
   descricao?: string
-  telefoneAnunciante?: string
   nomeAnunciante?: string
   usernameAnunciante?: string
   visualizacoes?: number
@@ -58,11 +57,6 @@ interface AnuncioSeoDTO {
   destaqueAtivo?: boolean
   videoHabilitado?: boolean
   carrosselDisponivel?: boolean
-  contentClassification?: string
-  requiresVisitorVerification?: boolean
-  requiresStrongVerification?: boolean
-  viewerAuthorized?: boolean
-  restrictedPreview?: boolean
   whatsappCardEnabled?: boolean
 }
 
@@ -157,7 +151,9 @@ function criarFallbackAgregado(
     categoriasPrincipais: [],
     cidadesRelacionadas: [],
     possuiStories: false,
-    possuiConteudoRestrito: data.content.some((item) => item.requiresVisitorVerification),
+    possuiConteudoRestrito: data.content.some((item) =>
+      item.midias?.some((midia) => midia.visibilidadeMidia === "RESTRITA_18")
+    ),
     possuiDestaques: false,
     possuiRecentes: false,
   }
@@ -252,7 +248,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
 
   return (
     <main className="mx-auto w-full space-y-8 px-4 py-10">
-      <nav className="mb-6 text-sm text-gray-600">
+      <nav className="public-breadcrumbs mb-6 text-sm text-gray-600">
         <Link href="/" className="hover:text-pink-600">
           Home
         </Link>
@@ -289,21 +285,14 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
             bairroNome={anuncio.bairroNome ?? null}
             idade={anuncio.idade}
             valor={`A partir de R$ ${Number(anuncio.preco ?? 0).toFixed(2)} / hora`}
-            imagens={Array.isArray(anuncio.fotosUrl) ? anuncio.fotosUrl : []}
-            videos={Array.isArray(anuncio.videosAnuncio) ? anuncio.videosAnuncio : []}
+            midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
-            telefone={anuncio.telefoneAnunciante}
             nomeAnunciante={anuncio.nomeAnunciante}
             usernameAnunciante={anuncio.usernameAnunciante}
             visualizacoes={anuncio.visualizacoes ?? 0}
             destaque={anuncio.destaqueAtivo ?? false}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
-            contentClassification={anuncio.contentClassification ?? null}
-            requiresVisitorVerification={anuncio.requiresVisitorVerification ?? false}
-            requiresStrongVerification={anuncio.requiresStrongVerification ?? false}
-            viewerAuthorized={anuncio.viewerAuthorized ?? false}
-            restrictedPreview={anuncio.restrictedPreview ?? false}
             whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
           />
         ))}

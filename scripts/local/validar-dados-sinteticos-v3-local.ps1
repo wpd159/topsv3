@@ -67,6 +67,7 @@ $failures = New-Object System.Collections.Generic.List[string]
 $cidades = @($data.cidades)
 $bairros = @($data.bairros)
 $anuncios = @($data.anuncios)
+$midias = @($data.midias)
 $beneficios = @($data.premiumBeneficios)
 $metricas = @($data.metricasAgregadas)
 $rotas = @($data.rotasCobertas)
@@ -86,9 +87,14 @@ Assert-True (@($cidades | Where-Object { $_.slug -eq "anapolis-go" }).Count -eq 
 foreach ($status in @("ATIVO", "PAUSADO", "PENDENTE", "REJEITADO", "INVALIDO_CONTROLE")) {
   Assert-True (@($anuncios | Where-Object { $_.status -eq $status }).Count -ge 1) "Status sintetico ausente: $status."
 }
-foreach ($classificacao in @("LIVRE", "BLOQUEADO")) {
-  Assert-True (@($anuncios | Where-Object { $_.classificacao -eq $classificacao }).Count -ge 1) "Classificacao sintetica ausente: $classificacao."
+foreach ($visibilidade in @("LIVRE", "RESTRITA_18")) {
+  Assert-True (@($midias | Where-Object { $_.visibilidade -eq $visibilidade }).Count -ge 1) "Visibilidade sintetica ausente: $visibilidade."
 }
+Assert-True (@($midias | Where-Object { $_.tipo -eq "FOTO" -and $_.visibilidade -eq "LIVRE" }).Count -ge 1) "Foto LIVRE sintetica ausente."
+Assert-True (@($midias | Where-Object { $_.tipo -eq "FOTO" -and $_.visibilidade -eq "RESTRITA_18" }).Count -ge 1) "Foto RESTRITA_18 sintetica ausente."
+Assert-True (@($midias | Where-Object { $_.tipo -eq "VIDEO" -and $_.visibilidade -eq "RESTRITA_18" }).Count -ge 1) "Video deve ser RESTRITA_18."
+Assert-True (@($midias | Where-Object { $_.tipo -eq "STORY" -and $_.visibilidade -eq "RESTRITA_18" }).Count -ge 1) "Story deve ser RESTRITA_18."
+Assert-True (@($midias | Where-Object { $_.statusModeracao -eq "PENDENTE" -and $null -eq $_.visibilidade }).Count -ge 1) "Midia pendente deve permanecer sem visibilidade publicada."
 foreach ($plano in @("GRATUITO", "PREMIUM_ATIVO", "PREMIUM_EXPIRADO")) {
   Assert-True (@($anuncios | Where-Object { $_.plano -eq $plano }).Count -ge 1) "Plano sintetico ausente: $plano."
 }
@@ -97,7 +103,7 @@ Assert-True (@($anuncios | Where-Object { $_.bairroSlug }).Count -ge 1) "Caso co
 Assert-True (@($anuncios | Where-Object { $_.seo -eq "FORTE" }).Count -ge 1) "Caso SEO forte ausente."
 Assert-True (@($anuncios | Where-Object { $_.seo -eq "FRACO" }).Count -ge 1) "Caso SEO fraco ausente."
 Assert-True (@($anuncios | Where-Object { $_.midia -eq "PLACEHOLDER_INSUFICIENTE" }).Count -ge 1) "Caso sem midia suficiente ausente."
-Assert-True (@($anuncios | Where-Object { $_.classificacao -eq "BLOQUEADO" -and $_.whatsappPublico -eq "BLOQUEADO" }).Count -ge 1) "BLOQUEADO deve bloquear WhatsApp publico."
+Assert-True (@($anuncios | Where-Object { $_.slug -eq "demo-goiania-midia-restrita" -and $_.whatsappPublico -eq "PLACEHOLDER_NAO_DISCAVEL" }).Count -eq 1) "Anuncio ativo com midia restrita deve manter contato mediado."
 Assert-True ($beneficios.Count -ge 5) "Beneficios premium sinteticos insuficientes."
 Assert-True (@($beneficios | Where-Object { $_.status -eq "ATIVO" }).Count -ge 1) "Beneficio ativo ausente."
 Assert-True (@($beneficios | Where-Object { $_.status -eq "EXPIRADO" }).Count -ge 1) "Beneficio expirado ausente."
@@ -106,10 +112,10 @@ Assert-True (@($metricas | Where-Object { $_.origem -eq "ORGANICO_LOCAL" }).Coun
 Assert-True (@($metricas | Where-Object { $_.origem -eq "PREMIUM_LOCAL" }).Count -ge 1) "Metrica premium local ausente."
 Assert-True ($rotas.Count -ge 8) "Rotas sinteticas cobertas insuficientes."
 Assert-True ($adminCasos.Count -ge 4) "Casos admin sinteticos insuficientes."
-Assert-True ($data.regrasSeguranca.frontendDecideClassificacao -eq $false) "Frontend nao pode decidir classificacao."
-Assert-True ($data.regrasSeguranca.backendFonteClassificacao -eq $true) "Backend deve ser fonte da classificacao."
-Assert-True ($data.regrasSeguranca.bloqueadoLiberaWhatsappPublico -eq $false) "BLOQUEADO nao pode liberar WhatsApp publico."
-Assert-True ($data.regrasSeguranca.bloqueadoExibeMidiaPublica -eq $false) "BLOQUEADO nao pode exibir midia publica."
+Assert-True ($data.regrasSeguranca.frontendDecideVisibilidade -eq $false) "Frontend nao pode decidir visibilidade."
+Assert-True ($data.regrasSeguranca.backendFonteVisibilidade -eq $true) "Backend deve ser fonte da visibilidade."
+Assert-True ($data.regrasSeguranca.contatoIndependeIdade -eq $true) "Contato de anuncio publico ativo deve independer da idade."
+Assert-True ($data.regrasSeguranca.originalRestritoSemIdade -eq $false) "Original restrito nao pode ser entregue sem idade."
 
 $forbiddenPatterns = @(
   @{ Label = "CPF"; Regex = '(^|[^0-9])[0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2}([^0-9]|$)' },
@@ -131,8 +137,8 @@ foreach ($pattern in $forbiddenPatterns) {
 Write-Host "CIDADES=$($cidades.Count)"
 Write-Host "BAIRROS=$($bairros.Count)"
 Write-Host "ANUNCIOS=$($anuncios.Count)"
-Write-Host "ANUNCIOS_LIVRE=$(@($anuncios | Where-Object { $_.classificacao -eq 'LIVRE' }).Count)"
-Write-Host "ANUNCIOS_BLOQUEADO=$(@($anuncios | Where-Object { $_.classificacao -eq 'BLOQUEADO' }).Count)"
+Write-Host "MIDIAS_LIVRE=$(@($midias | Where-Object { $_.visibilidade -eq 'LIVRE' }).Count)"
+Write-Host "MIDIAS_RESTRITA_18=$(@($midias | Where-Object { $_.visibilidade -eq 'RESTRITA_18' }).Count)"
 Write-Host "PREMIUM_ATIVO=$(@($anuncios | Where-Object { $_.plano -eq 'PREMIUM_ATIVO' }).Count)"
 Write-Host "PREMIUM_EXPIRADO=$(@($anuncios | Where-Object { $_.plano -eq 'PREMIUM_EXPIRADO' }).Count)"
 Write-Host "GRATUITO=$(@($anuncios | Where-Object { $_.plano -eq 'GRATUITO' }).Count)"

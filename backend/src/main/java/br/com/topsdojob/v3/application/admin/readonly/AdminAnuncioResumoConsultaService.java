@@ -3,7 +3,6 @@ package br.com.topsdojob.v3.application.admin.readonly;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminContadorDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminResumoAnunciosDto;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import java.util.Arrays;
 import java.util.List;
@@ -24,7 +23,6 @@ public class AdminAnuncioResumoConsultaService {
         long publicados = anuncioRepository.countByStatusAndRemovidoEmIsNull(StatusAnuncio.PUBLICADO);
         long pendentes = anuncioRepository.countByStatusAndRemovidoEmIsNull(StatusAnuncio.PENDENTE_REVISAO);
         long pausados = anuncioRepository.countByStatusAndRemovidoEmIsNull(StatusAnuncio.PAUSADO);
-        long bloqueados = anuncioRepository.countByClassificacaoConteudoAndRemovidoEmIsNull(ClassificacaoConteudo.BLOQUEADO);
         long contato = anuncioRepository.countByWhatsappNormalizadoIsNotNullAndRemovidoEmIsNull();
         long ativos = anuncioRepository.countByStatusInAndRemovidoEmIsNull(List.of(
                 StatusAnuncio.PENDENTE_REVISAO,
@@ -37,7 +35,6 @@ public class AdminAnuncioResumoConsultaService {
                 publicados,
                 pendentes,
                 pausados,
-                bloqueados,
                 contato,
                 Arrays.stream(StatusAnuncio.values())
                         .map(status -> new AdminContadorDto(

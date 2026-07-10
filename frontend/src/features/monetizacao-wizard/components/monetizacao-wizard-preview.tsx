@@ -98,8 +98,7 @@ function PreviewCardColumn({
           pontoReferenciaTexto={snapshot.location.pontoReferenciaTexto ?? null}
           idade={snapshot.idade}
           valor={snapshot.price}
-          imagens={snapshot.images}
-          videos={snapshot.videos}
+          previewImagens={snapshot.images}
           descricao={snapshot.description}
           destaque={snapshot.destaque}
           carrosselDisponivel={snapshot.carrosselDisponivel}

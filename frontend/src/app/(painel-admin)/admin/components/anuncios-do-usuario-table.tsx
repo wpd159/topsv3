@@ -40,7 +40,6 @@ function formatStatusLabel(status: string) {
   const labels: Record<string, string> = {
     ATIVO: 'Ativo',
     PENDENTE: 'Pendente',
-    BLOQUEADO: 'Bloqueado',
     INATIVO: 'Inativo',
     REJEITADO: 'Rejeitado',
     PAUSADO: 'Pausado',
@@ -55,7 +54,6 @@ function getBadgeStyle(status: string) {
       return 'bg-green-100 text-green-700 border-green-300'
     case 'PENDENTE':
       return 'bg-yellow-100 text-yellow-700 border-yellow-300'
-    case 'BLOQUEADO':
     case 'INATIVO':
     case 'REJEITADO':
     case 'PAUSADO':

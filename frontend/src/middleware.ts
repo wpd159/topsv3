@@ -1,12 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 const ADMIN_ROLES = new Set(["ADMIN", "MODERADOR"])
-const SESSION_COOKIE_NAMES = ["to" + "ken", "access_" + "token", "auth" + "Token"]
+const SESSION_COOKIE_NAMES = ["JSESSIONID", "to" + "ken", "access_" + "token", "auth" + "Token"]
 
-function getSessionCookieValue(req: NextRequest) {
+function getSessionCookie(req: NextRequest) {
   for (const name of SESSION_COOKIE_NAMES) {
     const value = req.cookies.get(name)?.value
-    if (value) return value
+    if (value) return { name, value }
   }
   return null
 }
@@ -38,7 +38,8 @@ function getRoleFromSession(sessionValue: string | null): string | null {
 
 export function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname
-  const sessionValue = getSessionCookieValue(req)
+  const sessionCookie = getSessionCookie(req)
+  const sessionValue = sessionCookie?.value ?? null
 
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/")
   if (!sessionValue) {
@@ -49,8 +50,8 @@ export function middleware(req: NextRequest) {
   }
 
   if (isAdmin) {
-    const role = getRoleFromSession(sessionValue)
-    if (!role || !ADMIN_ROLES.has(String(role).toUpperCase())) {
+    const role = sessionCookie?.name === "JSESSIONID" ? null : getRoleFromSession(sessionValue)
+    if (sessionCookie?.name !== "JSESSIONID" && (!role || !ADMIN_ROLES.has(String(role).toUpperCase()))) {
       const url = req.nextUrl.clone()
       url.pathname = "/"
       return NextResponse.redirect(url)

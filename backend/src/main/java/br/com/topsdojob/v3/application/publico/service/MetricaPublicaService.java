@@ -11,7 +11,6 @@ import br.com.topsdojob.v3.persistence.entity.metrica.EventoVisualizacaoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.CliqueWhatsappRepository;
 import br.com.topsdojob.v3.persistence.repository.EventoVisualizacaoRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DispositivoMetrica;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
@@ -37,21 +36,18 @@ public class MetricaPublicaService {
     private final CliqueWhatsappRepository cliqueWhatsappRepository;
     private final MetricaPublicaHashService hashService;
     private final PoliticaContatoPublicoService politicaContatoService;
-    private final IdadePublicaService idadeService;
 
     public MetricaPublicaService(
             AnuncioRepository anuncioRepository,
             EventoVisualizacaoRepository eventoVisualizacaoRepository,
             CliqueWhatsappRepository cliqueWhatsappRepository,
             MetricaPublicaHashService hashService,
-            PoliticaContatoPublicoService politicaContatoService,
-            IdadePublicaService idadeService) {
+            PoliticaContatoPublicoService politicaContatoService) {
         this.anuncioRepository = anuncioRepository;
         this.eventoVisualizacaoRepository = eventoVisualizacaoRepository;
         this.cliqueWhatsappRepository = cliqueWhatsappRepository;
         this.hashService = hashService;
         this.politicaContatoService = politicaContatoService;
-        this.idadeService = idadeService;
     }
 
     @Transactional
@@ -60,8 +56,7 @@ public class MetricaPublicaService {
             RegistrarVisualizacaoPublicaRequestDto request,
             HttpServletRequest httpRequest) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
-        boolean idadeConfirmada = idadeService.idadeConfirmada(httpRequest);
-        AnuncioEntity anuncio = buscarAnuncioPublico(slugSeguro, idadeConfirmada);
+        AnuncioEntity anuncio = buscarAnuncioPublico(slugSeguro);
         DadosTecnicos dados = dadosTecnicos(request, httpRequest);
         EventoVisualizacaoEntity evento = EventoVisualizacaoEntity.registrar(
                 UUID.randomUUID(),
@@ -91,9 +86,8 @@ public class MetricaPublicaService {
             CliqueWhatsappPublicoRequestDto request,
             HttpServletRequest httpRequest) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
-        boolean idadeConfirmada = idadeService.idadeConfirmada(httpRequest);
-        AnuncioEntity anuncio = buscarAnuncioPublico(slugSeguro, idadeConfirmada);
-        PoliticaContatoPublicoDto politica = politicaContatoService.avaliar(anuncio, idadeConfirmada);
+        AnuncioEntity anuncio = buscarAnuncioPublico(slugSeguro);
+        PoliticaContatoPublicoDto politica = politicaContatoService.avaliar(anuncio);
         DadosTecnicos dados = dadosTecnicos(request, httpRequest);
         CliqueWhatsappEntity clique = CliqueWhatsappEntity.registrar(
                 UUID.randomUUID(),
@@ -114,25 +108,19 @@ public class MetricaPublicaService {
         return new CliqueWhatsappPublicoResponseDto(
                 true,
                 politica.disponivel(),
-                politica.disponivel() ? politicaContatoService.whatsappUrl(anuncio, idadeConfirmada) : null,
+                politica.disponivel() ? politicaContatoService.whatsappUrl(anuncio) : null,
                 politica.disponivel() ? STATUS_REGISTRADO : STATUS_CONTATO_INDISPONIVEL,
                 politica,
                 MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
     }
 
-    private AnuncioEntity buscarAnuncioPublico(String slug, boolean idadeConfirmada) {
+    private AnuncioEntity buscarAnuncioPublico(String slug) {
         return anuncioRepository
                 .findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                         slug,
                         StatusAnuncio.PUBLICADO,
                         StatusModeracaoAnuncio.APROVADO)
-                .filter(anuncio -> classificacaoPublicavel(anuncio.getClassificacaoConteudo(), idadeConfirmada))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
-    }
-
-    private boolean classificacaoPublicavel(ClassificacaoConteudo classificacao, boolean idadeConfirmada) {
-        return classificacao == ClassificacaoConteudo.LIVRE
-                || (idadeConfirmada && classificacao == ClassificacaoConteudo.BLOQUEADO);
     }
 
     private DadosTecnicos dadosTecnicos(RegistrarVisualizacaoPublicaRequestDto request, HttpServletRequest httpRequest) {

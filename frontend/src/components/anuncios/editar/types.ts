@@ -13,7 +13,6 @@ export type AnuncioEditAPI = {
   horario?: string | null
   descricao?: string | null
   linkConteudo?: string | null
-  contentClassification?: string | null
   locaisAtendimento?: string[] | null
   localAtendimento?: string | null
   servicos?: string[] | null

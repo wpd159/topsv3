@@ -19,7 +19,6 @@ import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepositor
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
@@ -70,7 +69,7 @@ public class SolicitarAnuncioPublicoService {
             "usuarioId",
             "status",
             "statusModeracao",
-            "classificacaoConteudo",
+            "visibilidadeMidia",
             "publicadoEm",
             "premium",
             "premiumObrigatorio",
@@ -181,7 +180,6 @@ public class SolicitarAnuncioPublicoService {
                 slug,
                 StatusAnuncio.PENDENTE_REVISAO.name(),
                 StatusModeracaoAnuncio.PENDENTE.name(),
-                ClassificacaoConteudo.LIVRE.name(),
                 false,
                 true,
                 false,
@@ -313,7 +311,6 @@ public class SolicitarAnuncioPublicoService {
         payload.put("bairroInformado", request.bairro() != null);
         payload.put("statusInicial", StatusAnuncio.PENDENTE_REVISAO.name());
         payload.put("statusModeracaoInicial", StatusModeracaoAnuncio.PENDENTE.name());
-        payload.put("classificacaoInicial", ClassificacaoConteudo.LIVRE.name());
         payload.put("uploadRealExecutado", false);
         payload.put("pagamentoCriado", false);
         payload.put("creditoCriado", false);

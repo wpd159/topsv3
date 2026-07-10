@@ -8,9 +8,9 @@
 - Somente smoke HTTP: True
 - API smoke script: C:\topsv3\scripts\local\validar-midia-publica-sintetica-local.ps1
 - Fixture sintetica JSON: C:\topsv3\backend\src\test\resources\fixtures\v3-dados-sinteticos.json
-- Porta PostgreSQL efemera: 63405
+- Porta PostgreSQL efemera: 52948
 - Migrations aplicadas: True
-- Quantidade de migrations aplicadas: 17
+- Quantidade de migrations aplicadas: 18
 - Dados sinteticos aplicados: True
 - Dados admin sinteticos aplicados: True
 - Fixture sintetica aplicada: True
@@ -33,7 +33,7 @@
 - Rede Docker descartavel criada.
 - PostgreSQL descartavel iniciado sem volume persistente.
 - PostgreSQL descartavel respondeu ao pg_isready.
-- Migrations V001-V017 aplicadas via psql ordenado no PostgreSQL descartavel.
+- Migrations V001-V018 aplicadas via psql ordenado no PostgreSQL descartavel.
 - Dados sinteticos publicos e admin minimos aplicados no banco descartavel.
 - Fixture sintetica JSON aplicada como overlay no banco descartavel.
 - Backend local iniciado em perfil local na porta 18140.

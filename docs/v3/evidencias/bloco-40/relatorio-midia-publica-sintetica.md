@@ -4,7 +4,7 @@
 - BaseUrl: http://127.0.0.1:18140
 - Slug Premium: anuncio-sintetico-local
 - Slug gratuito: anuncio-sintetico-gratuito-local
-- Slug BLOQUEADO: anuncio-sintetico-bloqueado-local
+- Slug com mídia restrita: anuncio-sintetico-midia-restrita-local
 - Slug pendente: anuncio-sintetico-pendente-local
 - Dados reais usados: não
 - Upload real/CDN/storage real/API externa: não
@@ -14,7 +14,7 @@
 - Gratuito útil com limite local de até 2 fotos públicas sintéticas.
 - Premium com benefício de mídia extra aditivo e sem promessa de contratação.
 - Mídia pendente permanece em placeholder seguro.
-- BLOQUEADO não expõe mídia sensível antes da confirmação de idade.
+- A página e o contato permanecem públicos; a mídia RESTRITA_18 não expõe o original antes da confirmação de idade.
 - Stories exigem idade e, quando liberados, retornam apenas pendência segura de CDN local.
 - Admin lê mídia sanitizada, sem bucket, chave de storage, provider, hash ou URL privada.
 
@@ -104,58 +104,75 @@
 - OK: pendente publico sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload renderizavel
 - OK: pendente publico sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload renderizavel
 - OK: pendente publico sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade status 404 - status obtido: 404
-- OK: BLOQUEADO sem idade sem midia sensivel - sem detalhe de midia antes da idade
-- OK: BLOQUEADO sem idade sem bucket - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem storage key - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem provider - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem hash - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem url privada - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem CDN/storage real - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem documento privado - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem WhatsApp real - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO sem idade sem copy tecnica 'demonstra+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'Goi+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'valida+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'p+U+00C3+U+00BA' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'Metadados públicos locais' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'Metadados publicos locais' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO sem idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade status 200 - status obtido: 200
-- OK: BLOQUEADO com idade SEO sem metadados tecnicos - title/description SEO devem ser naturais
-- OK: BLOQUEADO com idade SEO sem enum ANUNCIO como copy - tipoRota tecnico pode existir, mas title/description nao podem exibir ANUNCIO
-- OK: BLOQUEADO com idade SEO sem V3 tecnico - metadata publica nao deve expor bastidor V3
-- OK: BLOQUEADO com idade sem bucket - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem storage key - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem provider - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem hash - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem url privada - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem CDN/storage real - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem documento privado - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem WhatsApp real - payload nao deve expor dado real/sensivel de midia
-- OK: BLOQUEADO com idade sem copy tecnica 'demonstra+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'Goi+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'valida+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'p+U+00C3+U+00BA' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'Metadados públicos locais' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'Metadados publicos locais' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload renderizavel
-- OK: BLOQUEADO com idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: anuncio com midia restrita sem idade status 200 - status obtido: 200
+- OK: pagina com midia restrita permanece publica - anuncio publico nao depende da visibilidade da galeria
+- OK: original restrito ausente sem idade - midias restritas retornam autorizada=false e urlPublica nula
+- OK: midia restrita sem idade sem bucket - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem storage key - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem provider - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem hash - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem url privada - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem CDN/storage real - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem documento privado - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem WhatsApp real - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita sem idade sem copy tecnica 'demonstra+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'Goi+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'valida+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'p+U+00C3+U+00BA' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'Metadados públicos locais' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'Metadados publicos locais' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita sem idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: contato com midia restrita sem idade status 200 - status obtido: 200
+- OK: contato independe da visibilidade e idade - endpoint mediado libera contato para anuncio publico ativo
+- OK: anuncio com midia restrita e idade status 200 - status obtido: 200
+- OK: midias restritas com idade sem campo storageProvider - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo storage_provider - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo bucket - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo storageBucket - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo chaveObjeto - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo chave_objeto - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo storageKey - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo sha256 - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo hash - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo etag - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo urlPrivada - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem campo privateUrl - DTO publico de midia deve ser sanitizado
+- OK: midias restritas com idade sem URL publica real - urlPublica deve permanecer nula em ambiente local
+- OK: midias restritas com idade usa pendencia CDN segura - pendenciaMidia=PENDENTE_URL_PUBLICA_MIDIA_CDN
+- OK: midia restrita com idade SEO sem metadados tecnicos - title/description SEO devem ser naturais
+- OK: midia restrita com idade SEO sem enum ANUNCIO como copy - tipoRota tecnico pode existir, mas title/description nao podem exibir ANUNCIO
+- OK: midia restrita com idade SEO sem V3 tecnico - metadata publica nao deve expor bastidor V3
+- OK: midia restrita com idade sem bucket - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem storage key - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem provider - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem hash - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem url privada - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem CDN/storage real - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem documento privado - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem WhatsApp real - payload nao deve expor dado real/sensivel de midia
+- OK: midia restrita com idade sem copy tecnica 'demonstra+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'Goi+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'valida+U+00C3' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'p+U+00C3+U+00BA' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'Metadados públicos locais' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'Metadados publicos locais' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'Autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'admin configurar' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'anuncio ler' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'Preparar autorizacao' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'smoke test' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'fixture' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'mock' - copy tecnica nao deve aparecer em payload renderizavel
+- OK: midia restrita com idade sem copy tecnica 'API local' - copy tecnica nao deve aparecer em payload renderizavel
 - OK: stories sem idade status 200 - status obtido: 200
 - OK: stories sem idade bloqueados - stories nao devem abrir sem idade
 - OK: stories sem idade sem bucket - payload nao deve expor dado real/sensivel de midia
@@ -243,8 +260,6 @@
 - OK: admin detalhe midia sem WhatsApp real - payload nao deve expor dado real/sensivel de midia
 - OK: admin detalhe midia marca arquivo privado oculto - admin nao expõe storage/chave/hash e marca ocultacao
 - OK: admin detalhe sem documento privado publico - arquivoPrivadoOculto=true
-- OK: placeholder de midia com copy publica acentuada - copy publica sem bastidor tecnico
-- OK: placeholder sem texto tecnico/storage - placeholder fica no fluxo publico
 - OK: SEO publico sem metadados tecnicos - copy SEO deve ser natural
 
 ## Pendências operacionais

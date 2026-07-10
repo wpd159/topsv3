@@ -61,7 +61,7 @@ const AUDIT_ACTION_TITLE: Record<string, string> = {
   ANUNCIO_MOD_APPROVED: 'Aprovação na moderação',
   ANUNCIO_MOD_REJECTED: 'Reprovação na moderação',
   ANUNCIO_STAFF_EDITED: 'Edição pelo staff',
-  CLASSIFICATION_CHANGED: 'Alteração de classificação de conteúdo',
+  VISIBILIDADE_MIDIA_ALTERADA: 'Alteração de visibilidade da mídia',
   REVIEW_DECISION: 'Decisão de revisão / remoderação',
   REVIEW_STARTED: 'Revisão iniciada',
   PREMIUM_BENEFIT_GRANTED: 'Benefício premium concedido',
@@ -122,8 +122,8 @@ function auditCategory(actionType: string): string {
     case 'ANUNCIO_MOD_APPROVED':
     case 'ANUNCIO_MOD_REJECTED':
       return 'Moderação'
-    case 'CLASSIFICATION_CHANGED':
-      return 'Classificação'
+    case 'VISIBILIDADE_MIDIA_ALTERADA':
+      return 'Visibilidade da mídia'
     case 'REVIEW_DECISION':
     case 'REVIEW_STARTED':
       return 'Remoderação / revisão'
@@ -200,8 +200,6 @@ function buildRows(
     if (dec && dec !== '—') lines.push(`Decisão automática: ${dec}`)
     const reason = texto(ev.reason, '')
     if (reason && reason !== '—') lines.push(`Motivo: ${reason}`)
-    const cc = texto(ev.contentClassification, '')
-    if (cc && cc !== '—') lines.push(`Classificação de contexto: ${cc}`)
     const route = texto(ev.route, '')
     if (route && route !== '—') lines.push(`Rota: ${route}`)
 
@@ -252,7 +250,7 @@ export function ModeracaoV2AuditTimeline({
           Cliques WhatsApp: <strong>{wa}</strong>
         </p>
         <p className="mt-2 text-xs text-slate-600">
-          Linha do tempo do anúncio #{anuncioId}: <code className="text-[11px]">admin_audit_logs</code> (aprovação, classificação, mídia,
+          Linha do tempo do anúncio #{anuncioId}: <code className="text-[11px]">admin_audit_logs</code> (aprovação, visibilidade de mídia,
           benefícios premium quando registrados), eventos de verificação etária com este <code className="text-[11px]">anuncioId</code>, e o
           marco de criação. Lista “Histórico” na seção premium complementa benefícios. Ordem cronológica crescente. Horários
           exibidos em <span className="font-mono">America/Sao_Paulo</span> (Brasília); instantes ISO com offset vêm do backend

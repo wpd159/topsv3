@@ -1,14 +1,13 @@
 package br.com.topsdojob.v3.application.publico.mapper;
 
-import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
-import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
-import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ClassificacaoConteudo;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
@@ -16,112 +15,89 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class MidiaPublicaMapperTest {
 
-    private final MidiaPublicaMapper mapper = new MidiaPublicaMapper(new MidiaPublicaUrlService());
+    private MidiaPublicaUrlService urlService;
+    private MidiaPublicaMapper mapper;
 
-    @Test
-    void mapperNaoExpoeDocumentoPrivadoStorageKeyOuHash() {
-        UUID arquivoId = UUID.randomUUID();
-        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
-        set(vinculo, "arquivoMidiaId", arquivoId);
-        set(vinculo, "tipo", TipoAnuncioMidia.FOTO);
-        set(vinculo, "finalidade", FinalidadeAnuncioMidia.GALERIA);
-        set(vinculo, "ordem", 1);
-        set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
-        set(vinculo, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
-
-        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
-        set(arquivo, "id", arquivoId);
-        set(arquivo, "bucket", "bucket-privado");
-        set(arquivo, "chaveObjeto", "documentos/privado/frente.png");
-        set(arquivo, "sha256", "a".repeat(64));
-        set(arquivo, "mimeType", "image/png");
-        set(arquivo, "largura", 640);
-        set(arquivo, "altura", 480);
-        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
-        set(arquivo, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
-
-        List<MidiaPublicaDto> midias = mapper.publicas(List.of(vinculo), Map.of(arquivoId, arquivo));
-
-        assertThat(midias).hasSize(1);
-        assertThat(midias.get(0).urlPublica()).isNull();
-        assertThat(midias.get(0).pendenciaMidia()).isEqualTo(MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
-        assertThat(midias.get(0).toString())
-                .doesNotContain("bucket-privado")
-                .doesNotContain("documentos/privado")
-                .doesNotContain("aaaaaaaa");
+    @BeforeEach
+    void setUp() {
+        urlService = mock(MidiaPublicaUrlService.class);
+        mapper = new MidiaPublicaMapper(urlService);
     }
 
     @Test
-    void mapperBloqueiaMidiaNaoAprovadaParaPublicacao() {
+    void fotoLivreEhAutorizadaSemIdade() {
         UUID arquivoId = UUID.randomUUID();
-        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
-        set(vinculo, "arquivoMidiaId", arquivoId);
-        set(vinculo, "status", StatusAnuncioMidia.PENDENTE);
-        set(vinculo, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
+        AnuncioMidiaEntity midia = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, arquivoId, 0);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId);
+        when(urlService.resolver(midia, arquivo)).thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica("/foto-livre", null));
 
-        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
-        set(arquivo, "id", arquivoId);
-        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
-        set(arquivo, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
+        var result = mapper.publicas(List.of(midia), Map.of(arquivoId, arquivo), false);
 
-        assertThat(mapper.publicas(List.of(vinculo), Map.of(arquivoId, arquivo))).isEmpty();
+        assertThat(result).singleElement().satisfies(dto -> {
+            assertThat(dto.visibilidadeMidia()).isEqualTo("LIVRE");
+            assertThat(dto.autorizada()).isTrue();
+            assertThat(dto.urlPublica()).isEqualTo("/foto-livre");
+        });
     }
 
     @Test
-    void mapperBloqueiaMidiaComClassificacaoBloqueada() {
+    void fotoRestritaNaoEntregaOriginalSemIdade() {
         UUID arquivoId = UUID.randomUUID();
-        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
-        set(vinculo, "arquivoMidiaId", arquivoId);
-        set(vinculo, "tipo", TipoAnuncioMidia.FOTO);
-        set(vinculo, "finalidade", FinalidadeAnuncioMidia.GALERIA);
-        set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
-        set(vinculo, "classificacaoConteudo", ClassificacaoConteudo.BLOQUEADO);
+        AnuncioMidiaEntity midia = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, arquivoId, 0);
 
-        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
-        set(arquivo, "id", arquivoId);
-        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
-        set(arquivo, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
+        var result = mapper.publicas(List.of(midia), Map.of(arquivoId, arquivo(arquivoId)), false);
 
-        assertThat(mapper.publicas(List.of(vinculo), Map.of(arquivoId, arquivo))).isEmpty();
+        assertThat(result).singleElement().satisfies(dto -> {
+            assertThat(dto.autorizada()).isFalse();
+            assertThat(dto.urlPublica()).isNull();
+            assertThat(dto.pendenciaMidia()).isEqualTo("MIDIA_RESTRITA_IDADE");
+        });
     }
 
     @Test
-    void mapperLiberaMidiaBloqueadaComIdadeConfirmada() {
+    void fotoRestritaEntregaSomenteAposIdadeValida() {
         UUID arquivoId = UUID.randomUUID();
-        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
-        set(vinculo, "arquivoMidiaId", arquivoId);
-        set(vinculo, "tipo", TipoAnuncioMidia.FOTO);
-        set(vinculo, "finalidade", FinalidadeAnuncioMidia.GALERIA);
-        set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
-        set(vinculo, "classificacaoConteudo", ClassificacaoConteudo.BLOQUEADO);
+        AnuncioMidiaEntity midia = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, arquivoId, 0);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId);
+        when(urlService.resolver(midia, arquivo)).thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica("/foto-autorizada", null));
 
-        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
-        set(arquivo, "id", arquivoId);
-        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
-        set(arquivo, "classificacaoConteudo", ClassificacaoConteudo.BLOQUEADO);
-
-        assertThat(mapper.publicas(List.of(vinculo), Map.of(arquivoId, arquivo), true)).hasSize(1);
+        assertThat(mapper.publicas(List.of(midia), Map.of(arquivoId, arquivo), true))
+                .singleElement().extracting(dto -> dto.urlPublica()).isEqualTo("/foto-autorizada");
     }
 
     @Test
-    void mapperNaoExpoeStorySemConfirmacaoDeIdadeMesmoLivre() {
+    void midiaPendenteOuRejeitadaNaoEhPublicada() {
         UUID arquivoId = UUID.randomUUID();
-        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
-        set(vinculo, "arquivoMidiaId", arquivoId);
-        set(vinculo, "tipo", TipoAnuncioMidia.STORY);
-        set(vinculo, "finalidade", FinalidadeAnuncioMidia.STORY);
-        set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
-        set(vinculo, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
+        AnuncioMidiaEntity pendente = midia(TipoAnuncioMidia.FOTO, null, arquivoId, 0);
+        when(pendente.getStatus()).thenReturn(StatusAnuncioMidia.PENDENTE);
+        AnuncioMidiaEntity rejeitada = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, arquivoId, 1);
+        when(rejeitada.getStatus()).thenReturn(StatusAnuncioMidia.REJEITADA);
 
-        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
-        set(arquivo, "id", arquivoId);
-        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
-        set(arquivo, "classificacaoConteudo", ClassificacaoConteudo.LIVRE);
+        assertThat(mapper.publicas(List.of(pendente, rejeitada), Map.of(arquivoId, arquivo(arquivoId)), true)).isEmpty();
+    }
 
-        assertThat(mapper.publicas(List.of(vinculo), Map.of(arquivoId, arquivo))).isEmpty();
+    private AnuncioMidiaEntity midia(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade, UUID arquivoId, int ordem) {
+        AnuncioMidiaEntity entity = mock(AnuncioMidiaEntity.class);
+        when(entity.getId()).thenReturn(UUID.randomUUID());
+        when(entity.getArquivoMidiaId()).thenReturn(arquivoId);
+        when(entity.getTipo()).thenReturn(tipo);
+        when(entity.getFinalidade()).thenReturn(tipo == TipoAnuncioMidia.STORY ? FinalidadeAnuncioMidia.STORY : FinalidadeAnuncioMidia.GALERIA);
+        when(entity.getStatus()).thenReturn(StatusAnuncioMidia.PUBLICAVEL);
+        when(entity.getVisibilidadeMidia()).thenReturn(visibilidade);
+        when(entity.getOrdem()).thenReturn(ordem);
+        return entity;
+    }
+
+    private ArquivoMidiaEntity arquivo(UUID id) {
+        ArquivoMidiaEntity entity = mock(ArquivoMidiaEntity.class);
+        when(entity.getId()).thenReturn(id);
+        when(entity.getStatusArquivo()).thenReturn(StatusArquivoMidia.VALIDADO);
+        when(entity.getMimeType()).thenReturn("image/webp");
+        return entity;
     }
 }
