@@ -40,6 +40,9 @@ interface RegisterFormProps {
   onBackToLogin?: () => void
   submitSource?: string
   className?: string
+  // Uso exclusivo de diagnostico: pula o fetch dos 3 documentos juridicos no
+  // mount, mantendo os fallbacks ja inicializados em documentosJuridicos.
+  diagnosticSkipLegalContentLoad?: boolean
 }
 
 function isValidDateInput(value: string) {
@@ -81,6 +84,7 @@ export function RegisterForm({
   onBackToLogin,
   submitSource = 'CADASTRO_MODAL',
   className,
+  diagnosticSkipLegalContentLoad = false,
 }: RegisterFormProps) {
   const credentialField = 'sen' + 'ha'
   const credentialConfirmField = 'confirmar' + 'Sen' + 'ha'
@@ -144,6 +148,8 @@ export function RegisterForm({
   }, [passwordOk])
 
   useEffect(() => {
+    if (diagnosticSkipLegalContentLoad) return
+
     let ativo = true
 
     Promise.all([
@@ -162,7 +168,7 @@ export function RegisterForm({
     return () => {
       ativo = false
     }
-  }, [])
+  }, [diagnosticSkipLegalContentLoad])
 
   const allFieldsValid =
     username.trim().length >= 3 &&
