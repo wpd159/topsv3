@@ -9,6 +9,7 @@ import { formatPhone, validateEmail, validatePassword } from '@/utils/formatter'
 import { fetchPublicSiteContent, getFallbackSiteContent, type SiteContentEntry } from '@/lib/site-content'
 import { toast } from 'sonner'
 import { getPublicLogoUrl } from '@/lib/public-site-assets'
+import { BirthDateField } from '@/components/forms/birth-date-field'
 import {
   UserIcon,
   EnvelopeIcon,
@@ -16,7 +17,6 @@ import {
   EyeIcon,
   EyeSlashIcon,
   PhoneIcon,
-  CalendarDaysIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 
@@ -39,36 +39,6 @@ interface RegisterFormProps {
   onBackToLogin?: () => void
   submitSource?: string
   className?: string
-}
-
-function isValidDateInput(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-
-  const parsed = new Date(`${value}T00:00:00`)
-  if (Number.isNaN(parsed.getTime())) return false
-
-  return parsed.toISOString().slice(0, 10) === value
-}
-
-function isAtLeast18(value: string) {
-  if (!isValidDateInput(value)) return false
-
-  const birth = new Date(`${value}T00:00:00`)
-  const today = new Date()
-  let age = today.getFullYear() - birth.getFullYear()
-  const monthDiff = today.getMonth() - birth.getMonth()
-
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
-    age -= 1
-  }
-
-  return age >= 18
-}
-
-function getAdultMaxDate() {
-  const today = new Date()
-  const max = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
-  return max.toISOString().slice(0, 10)
 }
 
 // Input nativo, sem o componente Input compartilhado (que aplica ring animado +
@@ -123,11 +93,9 @@ export function RegisterForm({
   const validation = validatePassword(password)
   const passwordOk = Object.values(validation).every(Boolean)
   const emailValid = validateEmail(email)
+  // BirthDateField so emite um valor (ISO) quando a data digitada e valida e
+  // atende a maioridade minima; string vazia cobre incompleto/invalido/menor.
   const dataNascimentoPreenchida = dataNascimento.trim().length > 0
-  const dataNascimentoValida = !dataNascimentoPreenchida || isValidDateInput(dataNascimento)
-  const maioridadeOk = !dataNascimentoPreenchida || isAtLeast18(dataNascimento)
-  const dataNascimentoComErro = dataNascimentoPreenchida && (!dataNascimentoValida || !maioridadeOk)
-  const dataNascimentoMax = getAdultMaxDate()
 
   const phoneClean = phone.replace(/\D/g, '')
   const missingTerms = !terms.uso || !terms.privacidade
@@ -180,8 +148,6 @@ export function RegisterForm({
     phoneClean.length >= 10 &&
     emailValid &&
     dataNascimentoPreenchida &&
-    dataNascimentoValida &&
-    maioridadeOk &&
     passwordOk &&
     credenciaisConferem &&
     terms.uso &&
@@ -202,9 +168,7 @@ export function RegisterForm({
     if (erros.username) return 'Troque o nome de usuario'
     if (erros.telefone) return 'Troque o telefone'
 
-    if (!dataNascimentoPreenchida) return 'Preencha a data de nascimento'
-    if (!dataNascimentoValida) return 'Corrija a data de nascimento'
-    if (!maioridadeOk) return 'Cadastro permitido apenas para maiores de 18 anos'
+    if (!dataNascimentoPreenchida) return 'Preencha a data de nascimento corretamente'
     if (!password.trim()) return 'Preencha a senha'
     if (!confirmPassword.trim()) return 'Confirme a senha'
     if (passwordMismatch) return 'Confirme a senha corretamente'
@@ -318,6 +282,7 @@ export function RegisterForm({
           username: username.trim(),
           email: email.trim().toLowerCase(),
           telefone: phoneClean,
+          dataNascimento,
           [credentialField]: password,
           [credentialConfirmField]: confirmPassword,
           refId: refId || undefined,
@@ -388,29 +353,11 @@ export function RegisterForm({
           )}
         </div>
 
-        <div className="relative">
-          <CalendarDaysIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-          <input
-            type="date"
-            value={dataNascimento}
-            onChange={(e) => setDataNascimento(e.target.value)}
-            max={dataNascimentoMax}
-            className={fieldClass(
-              'register-date-input h-9 min-h-9 py-1 leading-5',
-              dataNascimentoComErro && 'border-red-400'
-            )}
-          />
-          {dataNascimentoPreenchida && !dataNascimentoValida && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-red-600">
-              <ExclamationTriangleIcon className="h-4 w-4" /> Data de nascimento invalida.
-            </p>
-          )}
-          {dataNascimentoPreenchida && dataNascimentoValida && !maioridadeOk && (
-            <p className="mt-1 flex items-center gap-1 text-xs text-red-600">
-              <ExclamationTriangleIcon className="h-4 w-4" /> Cadastro permitido apenas para maiores de 18 anos.
-            </p>
-          )}
-        </div>
+        <BirthDateField
+          value={dataNascimento}
+          onChange={setDataNascimento}
+          minimumAge={18}
+        />
 
         <div className="relative">
           <PhoneIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />

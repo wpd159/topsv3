@@ -15,8 +15,9 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { WizardKycState } from '../types'
 import type { PublishGuardState } from '../wizard-utils'
-import { formatCpf, getAdultMaxDate } from '../wizard-utils'
+import { formatCpf } from '../wizard-utils'
 import { Field } from './wizard-ui'
+import { BirthDateField } from '@/components/forms/birth-date-field'
 
 type DocumentMode = 'sides' | 'pdf'
 
@@ -158,12 +159,11 @@ export function WizardKycModal({
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Field label="Nascimento">
-                      <Input
-                        type="date"
-                        max={getAdultMaxDate()}
+                      <BirthDateField
                         value={kyc.dataNascimento}
-                        onChange={(event) => onPatchKyc({ dataNascimento: event.target.value })}
+                        onChange={(value) => onPatchKyc({ dataNascimento: value })}
                         className="h-11 text-base"
+                        minimumAge={18}
                       />
                     </Field>
 
