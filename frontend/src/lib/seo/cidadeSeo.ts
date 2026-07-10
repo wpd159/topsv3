@@ -4,6 +4,7 @@ import {
 } from "@/lib/seo/programmatic-content"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import { buildPublicUrl } from "@/lib/seo/public-url"
 
 export interface CidadeSeoCategoria {
   codigo: string
@@ -71,7 +72,7 @@ interface AnuncioSeoItem {
   fotosUrl?: string[]
 }
 
-const SEO_IMAGE_FALLBACK = "https://topsdojob.com/2151117281.jpg"
+const SEO_IMAGE_FALLBACK = buildPublicUrl("/2151117281.jpg")
 
 function isComplianceOrBackendImage(url?: string | null) {
   if (!url) return true
@@ -252,23 +253,6 @@ export function gerarBreadcrumbSchemaCidade(baseUrl: string, dados: CidadeSeoAgg
   }
 }
 
-export function gerarFaqSchemaCidade(editorial: CidadeSeoEditorial) {
-  if (!editorial.faq.length) return null
-
-  return {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    mainEntity: editorial.faq.map((item) => ({
-      "@type": "Question",
-      name: item.pergunta,
-      acceptedAnswer: {
-        "@type": "Answer",
-        text: item.resposta,
-      },
-    })),
-  }
-}
-
 export function gerarItemListSchemaCidade(baseUrl: string, anuncios: AnuncioSeoItem[]) {
   if (!anuncios.length) return null
 
@@ -284,11 +268,6 @@ export function gerarItemListSchemaCidade(baseUrl: string, anuncios: AnuncioSeoI
       image: resolveSeoImage(anuncio.fotosUrl?.[0]),
     })),
   }
-}
-
-export function getSiteBaseUrl() {
-  const env = process.env.NEXT_PUBLIC_SITE_URL
-  return (env ?? "https://topsdojob.com").replace(/\/$/, "")
 }
 
 export function formatarResumoAtualizacao(dados: CidadeSeoAggregate) {

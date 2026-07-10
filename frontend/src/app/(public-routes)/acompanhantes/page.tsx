@@ -5,6 +5,7 @@ import {
   buscarCidadesAtivasSeo,
 } from "@/lib/seo/acompanhantes-navigation"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
+import { buildPublicUrl } from "@/lib/seo/public-url"
 
 export const revalidate = 3600
 
@@ -13,13 +14,13 @@ export const metadata: Metadata = {
   description:
     "Encontre acompanhantes na sua cidade e região. Explore páginas locais com anúncios ativos, bairros e contato direto.",
   alternates: {
-    canonical: "https://topsdojob.com/acompanhantes",
+    canonical: buildPublicUrl("/acompanhantes"),
   },
   openGraph: {
     title: "Acompanhantes em sua cidade | Tops do Job",
     description:
       "Encontre acompanhantes na sua cidade e região. Explore páginas locais com anúncios ativos, bairros e contato direto.",
-    url: "https://topsdojob.com/acompanhantes",
+    url: buildPublicUrl("/acompanhantes"),
     type: "website",
     siteName: "Tops do Job",
     locale: "pt_BR",

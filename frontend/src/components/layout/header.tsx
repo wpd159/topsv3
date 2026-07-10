@@ -23,6 +23,8 @@ import { HeaderSkeleton } from "./header-skeleton"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
 
 const MOBILE_OVERLAY_CLOSE_MS = 220
+const HEADER_CTA_NEON =
+  "shadow-[0_0_14px_rgba(252,30,173,0.16)] transition-shadow duration-200 hover:shadow-[0_0_20px_rgba(252,30,173,0.28)] active:shadow-[0_0_12px_rgba(252,30,173,0.22)]"
 
 function safeNext(value: string | null) {
   return value && value.startsWith("/") && !value.startsWith("//") ? value : null
@@ -184,7 +186,7 @@ export default function Header() {
 
           <Button
             variant="outline"
-            className="border-gray-300 text-gray-700 hover:bg-gray-100 py-5"
+            className={`border-gray-300 text-gray-700 hover:bg-gray-100 py-5 ${HEADER_CTA_NEON}`}
             onClick={() => openRegister()}
           >
             Registrar-se
@@ -192,7 +194,7 @@ export default function Header() {
 
           <Button
             variant="default"
-            className="bg-[#FC1EAD] hover:bg-[#e01a9a] cursor-pointer text-white font-semibold px-5 py-5"
+            className={`bg-[#FC1EAD] hover:bg-[#e01a9a] cursor-pointer text-white font-semibold px-5 py-5 ${HEADER_CTA_NEON}`}
             onClick={openPublishFlow}
           >
             PUBLICAR SEU ANÚNCIO
@@ -264,14 +266,14 @@ export default function Header() {
 
                   <Button
                     variant="outline"
-                    className="border-gray-300 text-gray-700 hover:bg-gray-100 justify-start"
+                    className={`border-gray-300 text-gray-700 hover:bg-gray-100 justify-start ${HEADER_CTA_NEON}`}
                     onClick={() => openRegister()}
                   >
                     Registrar-se
                   </Button>
 
                   <Button
-                    className="bg-[#FC1EAD] hover:bg-[#e01a9a] text-white font-semibold justify-start"
+                    className={`bg-[#FC1EAD] hover:bg-[#e01a9a] text-white font-semibold justify-start ${HEADER_CTA_NEON}`}
                     onClick={openPublishFlow}
                   >
                     PUBLICAR SEU ANÚNCIO

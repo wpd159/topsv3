@@ -39,8 +39,8 @@ export function gerarConteudoSeoBairro(params: SeoContentBairroParams): SeoConte
   })
 
   return {
-    title: `${labelAcompanhantesBairroCidade(params.bairroNome, params.cidadeNome)} | Tops do Job`,
-    h1: labelAcompanhantesBairroCidade(params.bairroNome, params.cidadeNome),
+    title: `${labelAcompanhantesBairroCidade(params.bairroNome, params.cidadeNome)} - ${params.estadoUf} | Tops do Job`,
+    h1: `${labelAcompanhantesBairroCidade(params.bairroNome, params.cidadeNome)} - ${params.estadoUf}`,
     metaDescription: seo.description,
     resumoTopo: seo.resumoTopo,
     intro: seo.intro,
@@ -52,6 +52,7 @@ export function gerarConteudoSeoBairro(params: SeoContentBairroParams): SeoConte
 }
 
 export function gerarBreadcrumbSchemaBairro(
+  baseUrl: string,
   bairroNome: string,
   cidadeNome: string,
   estadoUf: string,
@@ -66,31 +67,31 @@ export function gerarBreadcrumbSchemaBairro(
         "@type": "ListItem",
         position: 1,
         name: "Home",
-        item: "https://topsdojob.com",
+        item: baseUrl,
       },
       {
         "@type": "ListItem",
         position: 2,
         name: "Acompanhantes",
-        item: "https://topsdojob.com/acompanhantes",
+        item: `${baseUrl}/acompanhantes`,
       },
       {
         "@type": "ListItem",
         position: 3,
         name: estadoUf,
-        item: `https://topsdojob.com/acompanhantes/${estadoUf.toLowerCase()}`,
+        item: `${baseUrl}/acompanhantes/${estadoUf.toLowerCase()}`,
       },
       {
         "@type": "ListItem",
         position: 4,
         name: labelAcompanhantesCidade(cidadeNome),
-        item: `https://topsdojob.com/acompanhantes/${estadoUf.toLowerCase()}/${cidadeSlug}`,
+        item: `${baseUrl}/acompanhantes/${estadoUf.toLowerCase()}/${cidadeSlug}`,
       },
       {
         "@type": "ListItem",
         position: 5,
         name: labelAcompanhantesBairro(bairroNome),
-        item: `https://topsdojob.com/acompanhantes/${estadoUf.toLowerCase()}/${cidadeSlug}/${bairroSlug}`,
+        item: `${baseUrl}/acompanhantes/${estadoUf.toLowerCase()}/${cidadeSlug}/${bairroSlug}`,
       },
     ],
   }

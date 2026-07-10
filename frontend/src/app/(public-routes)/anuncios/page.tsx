@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import AnunciosPageClient from "./anuncios-page-client"
+import { buildPublicUrl } from "@/lib/seo/public-url"
 
 function parsePositivePage(value?: string) {
   const parsed = Number(value)
@@ -26,7 +27,7 @@ export async function generateMetadata({
   const possuiFiltrosLocais = Boolean(
     searchParams.estadoId || searchParams.cidadeId || searchParams.bairroId
   )
-  const url = new URL("https://topsdojob.com/anuncios")
+  const url = new URL(buildPublicUrl("/anuncios"))
 
   if (page > 1) url.searchParams.set("page", String(page))
   if (busca) url.searchParams.set("busca", busca)
@@ -39,19 +40,19 @@ export async function generateMetadata({
     ? `Resultados para ${busca}`
     : categoria && categoria !== "TODOS"
       ? `Anúncios em ${categoria.toLowerCase().replace(/_/g, " ")}`
-      : "Anúncios com fotos reais e contato direto"
+      : "Anúncios de acompanhantes por cidade"
 
   const titleBase = busca
     ? `${contextoBusca} | Tops do Job`
-    : "Anúncios e acompanhantes - Fotos reais e contato direto | Tops do Job"
+    : "Anúncios de acompanhantes por cidade | Tops do Job"
 
   const title = page > 1 ? `${titleBase} | Página ${page}` : titleBase
 
   const descriptionBase = busca
-    ? `Veja resultados para ${busca} com perfis atualizados, fotos reais e navegação segura na plataforma Tops do Job.`
+    ? `Veja resultados para ${busca} e acesse os perfis publicados no Tops do Job.`
     : possuiFiltrosLocais
-      ? "Explore anúncios filtrados por localização com fotos reais, navegação intuitiva e contato direto na plataforma Tops do Job."
-      : "Explore anúncios com fotos reais, contato direto e navegação segura. Veja perfis atualizados e encontre opções em diversas cidades do Brasil."
+      ? "Explore anúncios filtrados por localização e acesse as informações publicadas em cada perfil."
+      : "Explore anúncios de acompanhantes e encontre perfis publicados em diferentes cidades do Brasil."
 
   const description = page > 1 ? `${descriptionBase} Página ${page}.` : descriptionBase
   const indexavel = !busca && !possuiFiltrosLocais && (!categoria || categoria === "TODOS")

@@ -46,6 +46,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Script SEO publico: `scripts/local/validar-seo-publico-local.ps1`
 - Script inventario SEO publico: `scripts/local/seo-inventario-producao-publica.ps1`
 - Script validacao mapa SEO: `scripts/local/validar-mapa-preservacao-seo-local.ps1`
+- Origem/canonical publico por ambiente: `frontend/src/lib/seo/public-url.ts`
+- Metadata local e anuncio: `frontend/src/lib/seo/public-metadata.ts`
+- Conteudo e FAQ estruturado compartilhado: `frontend/src/lib/seo/programmatic-content.ts`
+- Rotas publicas atuais: `frontend/src/app/(public-routes)/acompanhantes/[estado]`, `frontend/src/app/(public-routes)/anuncios/[slug]`
+- Sitemap e robots atuais: `frontend/src/app/sitemap.ts`, `frontend/src/app/robots.ts`
 - Protocolo copia sanitizada: `docs/v3/PRODUCAO-copia-sanitizada-protocolo.md`
 - Sanitizacao de dados: `docs/v3/PRODUCAO-sanitizacao-dados.md`
 - Restore local/staging: `docs/v3/PRODUCAO-restore-local-staging.md`

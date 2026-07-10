@@ -24,7 +24,7 @@ export function gerarTituloSeoEstado(params: {
 }) {
   const estadoNome = corrigirTextoCorrompido(params.estadoNome)
   const sufixo = params.page && params.page > 0 ? ` | Página ${params.page + 1}` : ""
-  return `Acompanhantes em ${estadoNome} (${params.estadoUf}) - Cidades e contato direto | Tops do Job${sufixo}`
+  return `Acompanhantes em ${estadoNome} - ${params.estadoUf} | Tops do Job${sufixo}`
 }
 
 export function gerarDescricaoSeoEstado(params: {
@@ -35,73 +35,10 @@ export function gerarDescricaoSeoEstado(params: {
 }) {
   const estadoNome = corrigirTextoCorrompido(params.estadoNome)
   const base = montarDescricaoPagina([
-    `Explore ${params.totalAnuncios} anúncios ativos em ${estadoNome}.`,
+    `Veja ${params.totalAnuncios} anúncios ativos de acompanhantes em ${estadoNome}.`,
     params.totalCidades > 0
-      ? `Navegue por ${params.totalCidades} cidades com fotos nos perfis, filtros locais e contato direto em uma plataforma segura.`
-      : `Veja perfis com fotos publicadas nos anúncios, navegação por localização e contato direto em uma plataforma segura e atualizada.`,
-  ])
-
-  return params.page && params.page > 0 ? limitarDescricao(`${base} Página ${params.page + 1}.`) : base
-}
-
-export function gerarTituloSeoCidade(params: {
-  cidadeNome: string
-  estadoUf: string
-  page?: number
-}) {
-  const cidadeNome = corrigirTextoCorrompido(params.cidadeNome)
-  const sufixo = params.page && params.page > 0 ? ` | Página ${params.page + 1}` : ""
-  return `Acompanhantes em ${cidadeNome}, ${params.estadoUf} - Fotos nos perfis e contato direto | Tops do Job${sufixo}`
-}
-
-export function gerarDescricaoSeoCidade(params: {
-  cidadeNome: string
-  estadoNome: string
-  totalAnuncios: number
-  totalBairros: number
-  totalRecentes: number
-  page?: number
-}) {
-  const cidadeNome = corrigirTextoCorrompido(params.cidadeNome)
-  const estadoNome = corrigirTextoCorrompido(params.estadoNome)
-  const base = montarDescricaoPagina([
-    `Encontre acompanhantes em ${cidadeNome}, ${estadoNome}, com ${params.totalAnuncios} anúncios ativos.`,
-    params.totalBairros > 0
-      ? `A página organiza a navegação por ${params.totalBairros} bairros e filtros locais.`
-      : `A página reúne perfis com fotos publicadas nos anúncios e contato direto em um ambiente atualizado.`,
-    params.totalRecentes > 0
-      ? `${params.totalRecentes} anúncios recentes ajudam a destacar movimentação atual da cidade.`
-      : `Use os cards e links internos para continuar a navegação com contexto local.`,
-  ])
-
-  return params.page && params.page > 0 ? limitarDescricao(`${base} Página ${params.page + 1}.`) : base
-}
-
-export function gerarTituloSeoBairro(params: {
-  bairroNome: string
-  cidadeNome: string
-  estadoUf: string
-  page?: number
-}) {
-  const bairroNome = corrigirTextoCorrompido(params.bairroNome)
-  const cidadeNome = corrigirTextoCorrompido(params.cidadeNome)
-  const sufixo = params.page && params.page > 0 ? ` | Página ${params.page + 1}` : ""
-  return `Acompanhantes em ${bairroNome}, ${cidadeNome} - Fotos nos perfis e contato direto | Tops do Job${sufixo}`
-}
-
-export function gerarDescricaoSeoBairro(params: {
-  bairroNome: string
-  cidadeNome: string
-  estadoNome: string
-  totalAnuncios: number
-  page?: number
-}) {
-  const bairroNome = corrigirTextoCorrompido(params.bairroNome)
-  const cidadeNome = corrigirTextoCorrompido(params.cidadeNome)
-  const estadoNome = corrigirTextoCorrompido(params.estadoNome)
-  const base = montarDescricaoPagina([
-    `Explore anúncios em ${bairroNome}, ${cidadeNome}, ${estadoNome}, com fotos publicadas nos anúncios, perfis atualizados e contato direto.`,
-    `A navegação por bairro ajuda a comparar anúncios ativos e continuar a busca com contexto local.`,
+      ? `Navegue por ${params.totalCidades} cidades e acesse páginas locais com perfis e bairros relacionados.`
+      : `Acesse os perfis publicados e continue a navegação pelas localidades disponíveis.`,
   ])
 
   return params.page && params.page > 0 ? limitarDescricao(`${base} Página ${params.page + 1}.`) : base

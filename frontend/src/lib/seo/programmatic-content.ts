@@ -20,7 +20,6 @@ interface SeoProgramaticoParams {
 }
 
 interface SeoProgramaticoResult {
-  title: string
   description: string
   h1: string
   resumoTopo: string
@@ -105,11 +104,6 @@ export function gerarSeoProgramaticoLocal(params: SeoProgramaticoParams): SeoPro
       ? bairroCidadeLabel.replace("Acompanhantes", "acompanhantes")
       : ""
   const bairroSingularLabel = bairroBuscaLabel.replace("acompanhantes", "uma acompanhante")
-
-  const title =
-    params.tipo === "bairro" && bairroNome
-      ? `${bairroCidadeLabel} - fotos nos perfis e contato direto | Tops do Job`
-      : `Acompanhantes em ${cidadeNome} - fotos nos perfis e contato direto | Tops do Job`
 
   const description =
     params.tipo === "bairro" && bairroNome
@@ -239,7 +233,6 @@ export function gerarSeoProgramaticoLocal(params: SeoProgramaticoParams): SeoPro
         ]
 
   return {
-    title,
     description,
     h1,
     resumoTopo,
@@ -253,6 +246,19 @@ export function gerarSeoProgramaticoLocal(params: SeoProgramaticoParams): SeoPro
   }
 }
 
-export function transformarParagrafosEmHtml(paragrafos: string[]) {
-  return paragrafos.map((paragrafo) => `<p>${paragrafo}</p>`).join("\n")
+export function gerarFaqSchema(itens: SeoFaqItem[]) {
+  if (!itens.length) return null
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: itens.map((item) => ({
+      "@type": "Question",
+      name: item.pergunta,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: item.resposta,
+      },
+    })),
+  }
 }

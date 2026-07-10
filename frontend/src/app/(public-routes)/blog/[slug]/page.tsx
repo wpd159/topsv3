@@ -1,11 +1,8 @@
 import type { Metadata } from "next"
 import { fetchPublicBlogPost } from "@/lib/blog-api"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
+import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 import BlogPostPageClient from "./blog-post-page-client"
-
-function siteBase() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://topsdojob.com").replace(/\/$/, "")
-}
 
 export async function generateMetadata({
   params,
@@ -21,7 +18,7 @@ export async function generateMetadata({
     }
   }
 
-  const canonical = `${siteBase()}/blog/${encodeURIComponent(slug)}`
+  const canonical = buildPublicUrl(buildPublicPath("blog", slug))
 
   return {
     title: post.seoTitle || `${post.titulo} | Tops do Job Blog`,

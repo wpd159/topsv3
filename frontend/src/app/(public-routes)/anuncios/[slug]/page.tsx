@@ -5,14 +5,15 @@ import { gerarDescricaoSeoAnuncio, gerarTituloSeoAnuncio } from "@/lib/seo/publi
 import { shouldIndexAnuncio } from "@/lib/seo/anuncio-indexing"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { ServerApiError, serverApiFetchJson } from "@/lib/server-api"
+import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 
-const SAFE_COMPLIANCE_IMAGE_ABSOLUTE = "https://topsdojob.com/2151117281.jpg"
+const SAFE_COMPLIANCE_IMAGE_ABSOLUTE = buildPublicUrl("/2151117281.jpg")
 
 function isComplianceAssetUrl(url?: string | null) {
   if (!url) return false
 
   try {
-    const parsed = new URL(url, "https://topsdojob.com")
+    const parsed = new URL(url, buildPublicUrl("/"))
     return (
       parsed.hostname.includes("backend.topsdojob.com") ||
       parsed.pathname.includes("/compliance/assets/")
@@ -41,7 +42,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>
 }): Promise<Metadata> {
   const { slug } = await params
-  const url = `https://topsdojob.com/anuncios/${slug}`
+  const url = buildPublicUrl(buildPublicPath("anuncios", slug))
 
   try {
     const data = await loadInitialAnuncio(slug)
@@ -93,12 +94,8 @@ export async function generateMetadata({
     }
   } catch {
     return {
-      title: "Anúncio | Tops do Job",
-      description:
-        "Confira este anúncio com fotos reais, informações atualizadas e contato direto na plataforma Tops do Job.",
-      alternates: {
-        canonical: url,
-      },
+      title: "Anúncio não encontrado | Tops do Job",
+      description: "O anúncio solicitado não está disponível.",
       robots: {
         index: false,
         follow: true,

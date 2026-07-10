@@ -9,22 +9,25 @@ import { Toaster } from "sonner"
 import { AgeGateModal } from "@/components/modals/age-gate-modal"
 import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
 import { SensitiveImageUnlockProvider } from "@/components/compliance/sensitive-image-unlock-provider"
+import { buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
+
+const publicSiteBaseUrl = getPublicSiteBaseUrl()
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://topsdojob.com"),
-  title: "Tops do Job - Encontre as melhores acompanhantes",
+  metadataBase: new URL(publicSiteBaseUrl),
+  title: "Tops do Job | Acompanhantes por cidade e bairro",
   description:
-    "Encontre acompanhantes com fotos reais, anúncios verificados e contato direto em uma plataforma segura, discreta e atualizada diariamente.",
+    "Encontre anúncios de acompanhantes por cidade e bairro, explore perfis publicados e acesse as formas de contato disponíveis em cada anúncio.",
   verification: {
     other: {
       "msvalidate.01": "355836399E63074CDD49A338612E13C3",
     },
   },
   openGraph: {
-    title: "Tops do Job - Encontre as melhores acompanhantes",
+    title: "Tops do Job | Acompanhantes por cidade e bairro",
     description:
-      "Encontre acompanhantes com fotos reais, anúncios verificados e contato direto em uma plataforma segura, discreta e atualizada diariamente.",
-    url: "https://topsdojob.com",
+      "Encontre anúncios de acompanhantes por cidade e bairro, explore perfis publicados e acesse as formas de contato disponíveis em cada anúncio.",
+    url: publicSiteBaseUrl,
     siteName: "Tops do Job",
     locale: "pt_BR",
     type: "website",
@@ -35,10 +38,10 @@ const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   name: "Tops do Job",
-  url: "https://topsdojob.com",
+  url: publicSiteBaseUrl,
   potentialAction: {
     "@type": "SearchAction",
-    target: "https://topsdojob.com/anuncios?busca={search_term_string}",
+    target: `${buildPublicUrl("/anuncios")}?busca={search_term_string}`,
     "query-input": "required name=search_term_string",
   },
 }

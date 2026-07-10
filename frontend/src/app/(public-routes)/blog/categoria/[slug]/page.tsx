@@ -8,12 +8,9 @@ import {
   PROGRAMMATIC_BLOG_TEMAS,
 } from "@/lib/programmatic-blog-api"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
+import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 
 const FALLBACK_IMAGE = getPublicLogoUrl()
-
-function siteBase() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://topsdojob.com").replace(/\/$/, "")
-}
 
 function isProgrammaticTemaSlug(slug: string): boolean {
   return (PROGRAMMATIC_BLOG_TEMAS as readonly string[]).includes(slug)
@@ -34,7 +31,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
   const label = titleCaseFromSlug(slug)
-  const canonical = `${siteBase()}/blog/categoria/${encodeURIComponent(slug)}`
+  const canonical = buildPublicUrl(buildPublicPath("blog", "categoria", slug))
   return {
     title: `${label} | Blog Tops do Job`,
     description: `Posts e guias na categoria ${label}.`,

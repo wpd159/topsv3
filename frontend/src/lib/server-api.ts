@@ -51,10 +51,12 @@ export async function buildServerApiHeaders(extraHeaders?: HeadersInit) {
 
 export async function serverApiFetch(input: string, init: RequestInit = {}) {
   const headers = await buildServerApiHeaders(init.headers)
+  const hasNextCachePolicy = "next" in init
+
   return fetch(input, {
     ...init,
     headers,
-    cache: init.cache ?? "no-store",
+    ...(!init.cache && !hasNextCachePolicy ? { cache: "no-store" as const } : {}),
   })
 }
 

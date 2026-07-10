@@ -7,6 +7,13 @@ import { gerarDescricaoSeoEstado, gerarTituloSeoEstado } from "@/lib/seo/public-
 import { serverApiFetchJson } from "@/lib/server-api"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import { getEstadoNomePorUf } from "@/lib/seo/acompanhantes-navigation"
+import {
+  buildPublicPath,
+  buildPublicUrl,
+  getPublicSiteBaseUrl,
+  parsePublicPage,
+} from "@/lib/seo/public-url"
 
 export const revalidate = 3600
 
@@ -66,36 +73,6 @@ interface PageResponse<T> {
   size?: number
 }
 
-const ESTADOS_UF_PARA_NOME: Record<string, string> = {
-  AC: "Acre",
-  AL: "Alagoas",
-  AP: "Amapá",
-  AM: "Amazonas",
-  BA: "Bahia",
-  CE: "Ceará",
-  DF: "Distrito Federal",
-  ES: "Espírito Santo",
-  GO: "Goiás",
-  MA: "Maranhão",
-  MT: "Mato Grosso",
-  MS: "Mato Grosso do Sul",
-  MG: "Minas Gerais",
-  PA: "Pará",
-  PB: "Paraíba",
-  PR: "Paraná",
-  PE: "Pernambuco",
-  PI: "Piauí",
-  RJ: "Rio de Janeiro",
-  RN: "Rio Grande do Norte",
-  RS: "Rio Grande do Sul",
-  RO: "Rondônia",
-  RR: "Roraima",
-  SC: "Santa Catarina",
-  SP: "São Paulo",
-  SE: "Sergipe",
-  TO: "Tocantins",
-}
-
 async function buscarAnunciosPorEstado(
   estado: string,
   page: number = 0
@@ -138,7 +115,7 @@ async function buscarCidadesPorEstado(estado: string): Promise<CidadeAtivaDTO[]>
   }
 }
 
-function gerarBreadcrumbSchemaEstado(estadoUf: string) {
+function gerarBreadcrumbSchemaEstado(baseUrl: string, estadoUf: string) {
   return {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -147,19 +124,19 @@ function gerarBreadcrumbSchemaEstado(estadoUf: string) {
         "@type": "ListItem",
         position: 1,
         name: "Home",
-        item: "https://topsdojob.com",
+        item: baseUrl,
       },
       {
         "@type": "ListItem",
         position: 2,
         name: "Acompanhantes",
-        item: "https://topsdojob.com/acompanhantes",
+        item: `${baseUrl}/acompanhantes`,
       },
       {
         "@type": "ListItem",
         position: 3,
         name: estadoUf,
-        item: `https://topsdojob.com/acompanhantes/${estadoUf.toLowerCase()}`,
+        item: `${baseUrl}/acompanhantes/${estadoUf.toLowerCase()}`,
       },
     ],
   }
@@ -212,7 +189,13 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const { estado } = await params
-  const page = parseInt((await searchParams).page || "0", 10)
+  const page = parsePublicPage((await searchParams).page)
+  if (page === null) {
+    return {
+      title: "Página inválida | Tops do Job",
+      robots: { index: false, follow: true },
+    }
+  }
   const [data, cidadesPorEstado] = await Promise.all([
     buscarAnunciosPorEstado(estado, page),
     buscarCidadesPorEstado(estado),
@@ -220,12 +203,11 @@ export async function generateMetadata({
 
   const estadoUf = estado.toUpperCase()
   const estadoNome =
-    data.content?.[0]?.estadoNome || ESTADOS_UF_PARA_NOME[estadoUf] || estadoUf
+    data.content?.[0]?.estadoNome || getEstadoNomePorUf(estadoUf)
 
   const totalCidades = cidadesPorEstado.length
 
-  const url = `https://topsdojob.com/acompanhantes/${estado}`
-  const canonicalUrl = page === 0 ? url : `${url}?page=${page}`
+  const canonicalUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado), page)
 
   const title = gerarTituloSeoEstado({
     estadoNome,
@@ -266,7 +248,8 @@ export async function generateMetadata({
 
 export default async function EstadoPage({ params, searchParams }: PageProps) {
   const { estado } = await params
-  const page = parseInt((await searchParams).page || "0", 10)
+  const page = parsePublicPage((await searchParams).page)
+  if (page === null) notFound()
 
   const data = await buscarAnunciosPorEstado(estado, page)
   const cidadesPorEstado = await buscarCidadesPorEstado(estado)
@@ -277,13 +260,15 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
 
   const estadoUf = (data.content[0]?.estadoUf || estado).toUpperCase()
   const estadoNome =
-    data.content[0]?.estadoNome || ESTADOS_UF_PARA_NOME[estadoUf] || estadoUf
+    data.content[0]?.estadoNome || getEstadoNomePorUf(estadoUf)
 
   const h1 = `Acompanhantes em ${estadoNome} – ${estadoUf}`
   const descricaoTopo = `Encontre acompanhantes em ${estadoNome}. Veja perfis ativos por cidade, com fotos nos anúncios, contato direto e navegação local.`
   const seoContent = gerarConteudoSeoEstado(estadoNome, estadoUf)
 
-  const breadcrumbSchema = gerarBreadcrumbSchemaEstado(estadoUf)
+  const baseUrl = getPublicSiteBaseUrl()
+  const estadoPath = buildPublicPath("acompanhantes", estado)
+  const breadcrumbSchema = gerarBreadcrumbSchemaEstado(baseUrl, estadoUf)
 
   const itemListSchema = {
     "@context": "https://schema.org",
@@ -292,7 +277,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
       "@type": "ListItem",
       position: index + 1,
       name: anuncio.titulo,
-      url: `https://topsdojob.com/anuncios/${anuncio.slug}`,
+      url: buildPublicUrl(buildPublicPath("anuncios", anuncio.slug)),
       image: anuncio.fotosUrl?.[0] || undefined,
     })),
   }
@@ -302,7 +287,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
     .sort((a, b) => a.cidadeNome.localeCompare(b.cidadeNome))
     .slice(0, 15)
 
-  const url = `https://topsdojob.com/acompanhantes/${estado}`
+  const url = buildPublicUrl(estadoPath)
 
   return (
     <main className="w-full mx-auto px-4 py-10 space-y-8">
@@ -367,7 +352,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
         <nav className="flex justify-center items-center gap-2 py-8 border-t">
           {page > 0 && (
             <Link
-              href={page === 1 ? `/acompanhantes/${estado}` : `/acompanhantes/${estado}?page=${page - 1}`}
+              href={page === 1 ? estadoPath : `${estadoPath}?page=${page - 1}`}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
             >
               ← Anterior
@@ -380,7 +365,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
               return (
                 <Link
                   key={pageNum}
-                  href={pageNum === 0 ? `/acompanhantes/${estado}` : `/acompanhantes/${estado}?page=${pageNum}`}
+                  href={pageNum === 0 ? estadoPath : `${estadoPath}?page=${pageNum}`}
                   className={`px-3 py-2 rounded-lg ${
                     page === pageNum
                       ? "bg-pink-600 text-white"
@@ -395,7 +380,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
 
           {page < data.totalPages - 1 && (
             <Link
-              href={`/acompanhantes/${estado}?page=${page + 1}`}
+              href={`${estadoPath}?page=${page + 1}`}
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
             >
               Próxima →
@@ -418,7 +403,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
             {cidadesOrdenadas.map((cidadeItem) => (
               <Link
                 key={cidadeItem.cidadeSlug}
-                href={`/acompanhantes/${estado}/${cidadeItem.cidadeSlug}`}
+                href={buildPublicPath("acompanhantes", estado, cidadeItem.cidadeSlug)}
                 className="px-4 py-2 bg-pink-100 text-pink-700 rounded-lg hover:bg-pink-200 transition text-center text-sm font-medium"
               >
                 {labelAcompanhantesCidade(cidadeItem.cidadeNome)}

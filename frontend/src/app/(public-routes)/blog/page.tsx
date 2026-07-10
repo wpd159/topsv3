@@ -1,16 +1,17 @@
 import type { Metadata } from "next"
 import { BlogContent } from "@/components/blog/blog-content"
+import { buildPublicUrl } from "@/lib/seo/public-url"
 
 export const metadata: Metadata = {
   title: "Blog | Tops do Job",
   description: "Conteúdo institucional, guias e novidades do Tops do Job.",
   alternates: {
-    canonical: "https://topsdojob.com/blog",
+    canonical: buildPublicUrl("/blog"),
   },
   openGraph: {
     title: "Blog | Tops do Job",
     description: "Conteúdo institucional, guias e novidades do Tops do Job.",
-    url: "https://topsdojob.com/blog",
+    url: buildPublicUrl("/blog"),
     type: "website",
     siteName: "Tops do Job",
     locale: "pt_BR",

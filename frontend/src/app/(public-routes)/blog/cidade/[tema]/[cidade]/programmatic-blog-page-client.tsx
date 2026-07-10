@@ -3,17 +3,14 @@
 import Link from "next/link"
 import { ArrowLeftIcon } from "@heroicons/react/24/solid"
 import type { ProgrammaticBlogPublic } from "@/lib/programmatic-blog-api"
-
-function siteBase() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://topsdojob.com").replace(/\/$/, "")
-}
+import { getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 
 export default function ProgrammaticBlogPageClient({
   data,
 }: {
   data: ProgrammaticBlogPublic
 }) {
-  const base = siteBase()
+  const base = getPublicSiteBaseUrl()
 
   return (
     <main className="min-h-screen bg-white">

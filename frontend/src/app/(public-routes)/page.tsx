@@ -2,9 +2,9 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import Hero from "@/components/layout/hero"
 import CategoriasSection from "@/components/layout/categoria-section"
-import SegurancaSection from "@/components/layout/seguranca-section"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
+import { buildPublicUrl } from "@/lib/seo/public-url"
 
 export const dynamic = "force-static"
 export const revalidate = 3600
@@ -13,13 +13,13 @@ export const metadata: Metadata = {
   description:
     "Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.",
   alternates: {
-    canonical: "https://topsdojob.com",
+    canonical: buildPublicUrl("/"),
   },
   openGraph: {
     title: "Acompanhantes perto de você | Tops do Job",
     description:
       "Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.",
-    url: "https://topsdojob.com",
+    url: buildPublicUrl("/"),
     type: "website",
     siteName: "Tops do Job",
     locale: "pt_BR",
@@ -105,7 +105,6 @@ export default async function Home() {
       <Hero />
       <CategoriasSection />
       <HomeCidadesPopulares cidades={cidades} />
-      <SegurancaSection />
     </>
   )
 }

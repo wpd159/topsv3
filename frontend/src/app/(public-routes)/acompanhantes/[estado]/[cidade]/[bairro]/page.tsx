@@ -13,6 +13,13 @@ import {
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
 import { isBairroIndexavelLocal } from "@/lib/seo/local-indexing"
+import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
+import {
+  buildPublicPath,
+  buildPublicUrl,
+  getPublicSiteBaseUrl,
+  parsePublicPage,
+} from "@/lib/seo/public-url"
 
 export const revalidate = 3600
 
@@ -120,7 +127,13 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const { estado, cidade, bairro } = await params
-  const page = parseInt((await searchParams).page || "0", 10)
+  const page = parsePublicPage((await searchParams).page)
+  if (page === null) {
+    return {
+      title: "Página inválida | Tops do Job",
+      robots: { index: false, follow: true },
+    }
+  }
 
   const data = await buscarAnunciosPorBairro(estado, cidade, bairro, page)
 
@@ -141,8 +154,10 @@ export async function generateMetadata({
   const estadoNome = primeiroAnuncio.estadoNome || estado.toUpperCase()
   const estadoUf = (primeiroAnuncio.estadoUf || estado).toUpperCase()
 
-  const url = `https://topsdojob.com/acompanhantes/${estado}/${cidade}/${bairro}`
-  const canonicalUrl = page === 0 ? url : `${url}?page=${page}`
+  const canonicalUrl = buildPublicUrl(
+    buildPublicPath("acompanhantes", estado, cidade, bairro),
+    page
+  )
 
   const seo = gerarConteudoSeoBairro({
     bairroNome,
@@ -186,7 +201,8 @@ export async function generateMetadata({
 
 export default async function BairroPage({ params, searchParams }: PageProps) {
   const { estado, cidade, bairro } = await params
-  const page = parseInt((await searchParams).page || "0", 10)
+  const page = parsePublicPage((await searchParams).page)
+  if (page === null) notFound()
 
   const data = await buscarAnunciosPorBairro(estado, cidade, bairro, page)
   const bairrosPorCidade = await buscarBairrosPorCidade(estado, cidade)
@@ -213,7 +229,12 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
     bairros: outrosBairros.map((bairroItem: any) => bairroItem.bairroNome).filter(Boolean),
   })
 
+  const baseUrl = getPublicSiteBaseUrl()
+  const estadoPath = buildPublicPath("acompanhantes", estado)
+  const cidadePath = buildPublicPath("acompanhantes", estado, cidade)
+  const bairroPath = buildPublicPath("acompanhantes", estado, cidade, bairro)
   const breadcrumbSchema = gerarBreadcrumbSchemaBairro(
+    baseUrl,
     bairroNome,
     cidadeNome,
     estadoUf,
@@ -228,12 +249,13 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
       "@type": "ListItem",
       position: index + 1,
       name: anuncio.titulo,
-      url: `https://topsdojob.com/anuncios/${anuncio.slug}`,
+      url: buildPublicUrl(buildPublicPath("anuncios", anuncio.slug)),
       image: anuncio.fotosUrl?.[0] || undefined,
     })),
   }
 
-  const url = `https://topsdojob.com/acompanhantes/${estado}/${cidade}/${bairro}`
+  const faqSchema = page === 0 ? gerarFaqSchema(seo.faq) : null
+  const url = buildPublicUrl(bairroPath)
   const bairroLabel = labelAcompanhantesBairro(bairroNome)
   const bairroComparacaoTitulo = bairroLabel.replace("Acompanhantes", "Como comparar anúncios")
   const bairroSingularTitulo = `${bairroLabel.replace("Acompanhantes", "Acompanhante")}, ${cidadeNome}: como refinar sua busca`
@@ -249,11 +271,11 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
           Acompanhantes
         </Link>
         <span className="mx-2">/</span>
-        <Link href={`/acompanhantes/${estado}`} className="hover:text-pink-600">
+        <Link href={estadoPath} className="hover:text-pink-600">
           {estadoUf}
         </Link>
         <span className="mx-2">/</span>
-        <Link href={`/acompanhantes/${estado}/${cidade}`} className="hover:text-pink-600">
+        <Link href={cidadePath} className="hover:text-pink-600">
           {labelAcompanhantesCidade(cidadeNome)}
         </Link>
         <span className="mx-2">/</span>
@@ -299,14 +321,18 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
         ))}
       </div>
 
-      <section className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6">
-        <h2 className="text-2xl font-bold text-gray-900">{seo.h1}</h2>
-        <div className="space-y-3 text-gray-700">
-          {seo.intro.map((paragrafo) => (
-            <p key={paragrafo}>{paragrafo}</p>
-          ))}
-        </div>
-      </section>
+      {page === 0 && (
+        <section className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Perfis disponíveis em {bairroNome}, {cidadeNome}
+          </h2>
+          <div className="space-y-3 text-gray-700">
+            {seo.intro.map((paragrafo) => (
+              <p key={paragrafo}>{paragrafo}</p>
+            ))}
+          </div>
+        </section>
+      )}
 
       {page === 0 && seo.comparacao.length > 0 && (
         <section className="space-y-4 border-t pt-8">
@@ -319,14 +345,16 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
         </section>
       )}
 
-      <section className="border-t pt-8">
-        <h2 className="text-2xl font-bold text-gray-900">{bairroSingularTitulo}</h2>
-        <div className="mt-3 max-w-3xl space-y-3 text-sm leading-relaxed text-gray-600">
-          {seo.singular.map((paragrafo) => (
-            <p key={paragrafo}>{paragrafo}</p>
-          ))}
-        </div>
-      </section>
+      {page === 0 && (
+        <section className="border-t pt-8">
+          <h2 className="text-2xl font-bold text-gray-900">{bairroSingularTitulo}</h2>
+          <div className="mt-3 max-w-3xl space-y-3 text-sm leading-relaxed text-gray-600">
+            {seo.singular.map((paragrafo) => (
+              <p key={paragrafo}>{paragrafo}</p>
+            ))}
+          </div>
+        </section>
+      )}
 
       {data.totalPages > 1 && (
         <nav className="flex items-center justify-center gap-2 border-t py-8">
@@ -334,8 +362,8 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
             <Link
               href={
                 page === 1
-                  ? `/acompanhantes/${estado}/${cidade}/${bairro}`
-                  : `/acompanhantes/${estado}/${cidade}/${bairro}?page=${page - 1}`
+                  ? bairroPath
+                  : `${bairroPath}?page=${page - 1}`
               }
               className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
             >
@@ -351,8 +379,8 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
                   key={pageNum}
                   href={
                     pageNum === 0
-                      ? `/acompanhantes/${estado}/${cidade}/${bairro}`
-                      : `/acompanhantes/${estado}/${cidade}/${bairro}?page=${pageNum}`
+                      ? bairroPath
+                      : `${bairroPath}?page=${pageNum}`
                   }
                   className={`rounded-lg px-3 py-2 ${
                     page === pageNum
@@ -368,7 +396,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
 
           {page < data.totalPages - 1 && (
             <Link
-              href={`/acompanhantes/${estado}/${cidade}/${bairro}?page=${page + 1}`}
+              href={`${bairroPath}?page=${page + 1}`}
               className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
             >
               Próxima →
@@ -377,7 +405,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
         </nav>
       )}
 
-      {outrosBairros.length > 0 && (
+      {page === 0 && outrosBairros.length > 0 && (
         <section className="space-y-4 border-t pt-8">
           <h2 className="text-2xl font-bold text-gray-900">
             Acompanhantes em outros bairros de {cidadeNome}
@@ -391,7 +419,12 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
             {outrosBairros.map((bairroItem: any) => (
               <Link
                 key={bairroItem.bairroSlug}
-                href={`/acompanhantes/${estado}/${cidade}/${bairroItem.bairroSlug}`}
+                href={buildPublicPath(
+                  "acompanhantes",
+                  estado,
+                  cidade,
+                  bairroItem.bairroSlug
+                )}
                 className="rounded-lg bg-pink-100 px-4 py-2 text-center text-sm font-medium text-pink-700 transition hover:bg-pink-200"
               >
                 {labelAcompanhantesBairro(bairroItem.bairroNome)}
@@ -401,7 +434,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
         </section>
       )}
 
-      {seo.faq.length > 0 && (
+      {page === 0 && seo.faq.length > 0 && (
         <section className="space-y-4 border-t pt-8">
           <h2 className="text-2xl font-bold text-gray-900">Perguntas frequentes sobre a página</h2>
           <div className="space-y-3">
@@ -419,6 +452,13 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
       />
+
+      {faqSchema && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+        />
+      )}
 
       <script
         type="application/ld+json"

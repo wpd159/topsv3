@@ -10,16 +10,21 @@ import {
   gerarConteudoProgramaticoCidade,
   gerarDescricaoMetadataCidade,
   gerarDescricaoTopoCidade,
-  gerarFaqSchemaCidade,
   gerarItemListSchemaCidade,
   gerarTituloMetadataCidade,
-  getSiteBaseUrl,
 } from "@/lib/seo/cidadeSeo"
 import {
   labelAcompanhantesBairro,
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
+import {
+  buildPublicPath,
+  buildPublicUrl,
+  getPublicSiteBaseUrl,
+  parsePublicPage,
+} from "@/lib/seo/public-url"
 
 export const revalidate = 3600
 
@@ -77,8 +82,8 @@ function formatarNomeCidade(slug: string) {
     .join(" ")
 }
 
-function buildCityHref(estado: string, cidade: string, page: number) {
-  return page <= 0 ? `/acompanhantes/${estado}/${cidade}` : `/acompanhantes/${estado}/${cidade}?page=${page}`
+function buildCityHref(cidadePath: string, page: number) {
+  return page <= 0 ? cidadePath : `${cidadePath}?page=${page}`
 }
 
 async function buscarAnunciosPorCidade(
@@ -160,7 +165,13 @@ function criarFallbackAgregado(
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { estado, cidade } = await params
-  const page = parseInt((await searchParams).page || "0", 10)
+  const page = parsePublicPage((await searchParams).page)
+  if (page === null) {
+    return {
+      title: "Página inválida | Tops do Job",
+      robots: { index: false, follow: true },
+    }
+  }
 
   const [data, agregadoBruto] = await Promise.all([
     buscarAnunciosPorCidade(estado, cidade, page),
@@ -179,9 +190,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   }
 
   const agregado = agregadoBruto ?? criarFallbackAgregado(estado, cidade, data)
-  const baseUrl = getSiteBaseUrl()
-  const url = `${baseUrl}/acompanhantes/${estado}/${cidade}`
-  const canonicalUrl = page === 0 ? url : `${url}?page=${page}`
+  const canonicalUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado, cidade), page)
   const indexavel = page === 0 && isCidadeIndexavelLocal(agregado)
 
   return {
@@ -210,7 +219,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
 export default async function CidadePage({ params, searchParams }: PageProps) {
   const { estado, cidade } = await params
-  const page = parseInt((await searchParams).page || "0", 10)
+  const page = parsePublicPage((await searchParams).page)
+  if (page === null) notFound()
 
   const [data, agregadoBruto] = await Promise.all([
     buscarAnunciosPorCidade(estado, cidade, page),
@@ -223,14 +233,14 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
 
   const agregado = agregadoBruto ?? criarFallbackAgregado(estado, cidade, data)
   const editorial = await gerarConteudoProgramaticoCidade(agregado)
-  const baseUrl = getSiteBaseUrl()
+  const baseUrl = getPublicSiteBaseUrl()
+  const estadoPath = buildPublicPath("acompanhantes", estado)
+  const cidadePath = buildPublicPath("acompanhantes", estado, cidade)
   const cidadeLabel = labelAcompanhantesCidade(agregado.cidadeNome)
   const h1 = cidadeLabel
-  const descricaoTopo = `Explore perfis em ${agregado.cidadeNome} com fotos nos perfis, contato direto e navegação por bairros e páginas relacionadas.`
-  const descricaoSingular = `Procurando uma acompanhante em ${agregado.cidadeNome}? Veja perfis ativos, bairros relacionados e opções com contato direto pelo WhatsApp.`
   const descricaoTopoSeo = gerarDescricaoTopoCidade(agregado)
   const breadcrumbSchema = gerarBreadcrumbSchemaCidade(baseUrl, agregado)
-  const faqSchema = page === 0 ? gerarFaqSchemaCidade(editorial) : null
+  const faqSchema = page === 0 ? gerarFaqSchema(editorial.faq) : null
   const itemListSchema =
     page === 0 ? gerarItemListSchemaCidade(baseUrl, data.content.slice(0, 10)) : null
   const bairrosVisiveis = agregado.bairros.slice(0, editorial.modo === "completo" ? 10 : 6)
@@ -238,7 +248,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
   const cidadesRelacionadas = agregado.cidadesRelacionadas
     .filter(isCidadeIndexavelLocal)
     .slice(0, editorial.modo === "completo" ? 8 : 4)
-  const url = `${baseUrl}/acompanhantes/${estado}/${cidade}`
+  const url = buildPublicUrl(cidadePath)
 
   return (
     <main className="mx-auto w-full space-y-8 px-4 py-10">
@@ -251,7 +261,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
           Acompanhantes
         </Link>
         <span className="mx-2">/</span>
-        <Link href={`/acompanhantes/${estado}`} className="hover:text-pink-600">
+        <Link href={estadoPath} className="hover:text-pink-600">
           {agregado.estadoUf}
         </Link>
         <span className="mx-2">/</span>
@@ -261,8 +271,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
       <div className="space-y-4">
         <h1 className="text-4xl font-bold text-gray-900">{h1}</h1>
         <div className="max-w-4xl rounded-2xl border border-pink-100 bg-pink-50/60 px-5 py-4">
-          <p className="text-base leading-7 text-gray-700">{descricaoTopoSeo || descricaoTopo}</p>
-          <p className="mt-3 text-base leading-7 text-gray-700">{descricaoSingular}</p>
+          <p className="text-base leading-7 text-gray-700">{descricaoTopoSeo}</p>
         </div>
       </div>
 
@@ -304,7 +313,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
         <nav className="flex items-center justify-center gap-2 border-t py-8">
           {page > 0 && (
             <Link
-              href={buildCityHref(estado, cidade, page - 1)}
+              href={buildCityHref(cidadePath, page - 1)}
               scroll={false}
               className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
             >
@@ -318,7 +327,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
               return (
                 <Link
                   key={pageNum}
-                  href={buildCityHref(estado, cidade, pageNum)}
+                  href={buildCityHref(cidadePath, pageNum)}
                   scroll={false}
                   className={`rounded-lg px-3 py-2 ${
                     page === pageNum
@@ -334,7 +343,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
 
           {page < data.totalPages - 1 && (
             <Link
-              href={buildCityHref(estado, cidade, page + 1)}
+              href={buildCityHref(cidadePath, page + 1)}
               scroll={false}
               className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
             >
@@ -373,7 +382,12 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
                   {bairrosVisiveis.map((bairroItem) => (
                     <Link
                       key={bairroItem.bairroSlug}
-                      href={`/acompanhantes/${estado}/${cidade}/${bairroItem.bairroSlug}`}
+                      href={buildPublicPath(
+                        "acompanhantes",
+                        estado,
+                        cidade,
+                        bairroItem.bairroSlug
+                      )}
                       className="rounded-lg bg-blue-100 px-4 py-3 text-center text-sm font-medium text-blue-700 transition hover:bg-blue-200"
                     >
                       {labelAcompanhantesBairro(bairroItem.bairroNome)}
@@ -438,7 +452,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
             {cidadesRelacionadas.map((cidadeItem) => (
               <Link
                 key={cidadeItem.cidadeSlug}
-                href={`/acompanhantes/${estado}/${cidadeItem.cidadeSlug}`}
+                href={buildPublicPath("acompanhantes", estado, cidadeItem.cidadeSlug)}
                 className="rounded-lg bg-pink-100 px-4 py-3 text-center text-sm font-medium text-pink-700 transition hover:bg-pink-200"
               >
                 {labelAcompanhantesCidade(cidadeItem.cidadeNome)}

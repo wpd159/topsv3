@@ -1,19 +1,15 @@
 import type { MetadataRoute } from "next"
-
-function getBaseUrl() {
-  const env = process.env.NEXT_PUBLIC_SITE_URL
-  return (env ?? "https://topsdojob.com").replace(/\/$/, "")
-}
+import { getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 
 // Reset do frontend V3 (copia fiel do clone): o clone e o site real de
 // producao e por isso indexa por padrao. Fora do dominio real
 // (local, HML v3.esle.cloud etc.) mantemos bloqueio total de indexacao,
 // para nao duplicar conteudo/nao vazar homologacao pro Google. Nao muda
 // nada do comportamento real de producao.
-const isRealProductionDomain = getBaseUrl() === "https://topsdojob.com"
+const isRealProductionDomain = getPublicSiteBaseUrl() === "https://topsdojob.com"
 
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = getBaseUrl()
+  const baseUrl = getPublicSiteBaseUrl()
 
   if (!isRealProductionDomain) {
     return {

@@ -6,11 +6,7 @@ import {
   isCidadeIndexavelLocal,
   totalAnunciosLocal,
 } from "@/lib/seo/local-indexing"
-
-function getBaseUrl() {
-  const env = process.env.NEXT_PUBLIC_SITE_URL
-  return (env ?? "https://topsdojob.com").replace(/\/$/, "")
-}
+import { buildPublicPath, buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 
 function parseDate(value: any): Date | undefined {
   if (!value) return undefined
@@ -44,7 +40,7 @@ async function mapLimit<T, R>(
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = getBaseUrl()
+  const baseUrl = getPublicSiteBaseUrl()
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
 
   // Rotas realmente estáticas (pode deixar sem lastModified ou com um valor fixo se quiser)
@@ -102,7 +98,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (!slug || typeof slug !== "string") continue
       if (!shouldIndexAnuncio(a)) continue
 
-      const url = `${baseUrl}/anuncios/${encodeURIComponent(slug)}`
+      const url = buildPublicUrl(buildPublicPath("anuncios", slug))
       if (urlSet.has(url)) continue
       urlSet.add(url)
 
@@ -236,7 +232,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       if (!uf || !cidadeSlug || typeof uf !== "string" || typeof cidadeSlug !== "string") continue
       if (!isCidadeIndexavelLocal(c)) continue
 
-      const cidadeUrl = `${baseUrl}/acompanhantes/${uf.toLowerCase()}/${cidadeSlug}`
+      const cidadeUrl = buildPublicUrl(buildPublicPath("acompanhantes", uf, cidadeSlug))
       if (!urlSet.has(cidadeUrl)) {
         urlSet.add(cidadeUrl)
         dynamicCidadeRoutes.push({
@@ -269,7 +265,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // ===== ESTADOS (/acompanhantes/{uf}) =====
   for (const estado of estadoMap.values()) {
-    const url = `${baseUrl}/acompanhantes/${estado.uf.toLowerCase()}`
+    const url = buildPublicUrl(buildPublicPath("acompanhantes", estado.uf))
     if (urlSet.has(url)) continue
     urlSet.add(url)
 
@@ -318,7 +314,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           if (!bairroSlug || typeof bairroSlug !== "string") continue
           if (!isBairroIndexavelLocal(b)) continue
 
-          const url = `${baseUrl}/acompanhantes/${uf.toLowerCase()}/${cidadeSlug}/${bairroSlug}`
+          const url = buildPublicUrl(
+            buildPublicPath("acompanhantes", uf, cidadeSlug, bairroSlug)
+          )
           if (urlSet.has(url)) continue
           urlSet.add(url)
 

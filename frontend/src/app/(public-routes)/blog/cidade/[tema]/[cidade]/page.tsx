@@ -5,12 +5,9 @@ import {
   ProgrammaticBlogAmbiguousError,
 } from "@/lib/programmatic-blog-api"
 import ProgrammaticBlogPageClient from "./programmatic-blog-page-client"
+import { getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 
 export const revalidate = 3600
-
-function siteBase() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || "https://topsdojob.com").replace(/\/$/, "")
-}
 
 export async function generateMetadata({
   params,
@@ -28,7 +25,7 @@ export async function generateMetadata({
       return { title: "Página não encontrada | Blog Tops do Job" }
     }
 
-    const canonical = `${siteBase()}${page.canonicalPath}`
+    const canonical = `${getPublicSiteBaseUrl()}${page.canonicalPath}`
     return {
       title: page.title,
       description: page.metaDescription || undefined,
@@ -83,7 +80,7 @@ export default async function ProgrammaticBlogCityPage({
 
   if (!page) notFound()
 
-  const base = siteBase()
+  const base = getPublicSiteBaseUrl()
   const canonical = `${base}${page.canonicalPath}`
 
   const breadcrumbLd = {
