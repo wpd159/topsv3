@@ -51,6 +51,12 @@ export function formatCpf(value: string) {
     .replace(/\.(\d{3})(\d)/, '.$1-$2')
 }
 
+export function getAdultMaxDate() {
+  const today = new Date()
+  const max = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
+  return max.toISOString().slice(0, 10)
+}
+
 export function selectClassName() {
   return 'h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2'
 }

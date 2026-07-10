@@ -11,9 +11,7 @@ import {
 } from '@heroicons/react/24/outline'
 import {
   acceptAgeGate,
-  AGE_GATE_TTL_DAYS,
   fetchAgeGateStatus,
-  persistAgeGateClient,
   readAgeGateClientStatus,
 } from '@/lib/compliance/age-gate-storage'
 
@@ -34,6 +32,7 @@ export function AgeGateModal({
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [legalNotice, setLegalNotice] = useState(DEFAULT_LEGAL_NOTICE)
+  const [accepting, setAccepting] = useState(false)
 
   useEffect(() => {
     if (pathname === '/termos-de-uso' || pathname === '/registrar') {
@@ -81,16 +80,16 @@ export function AgeGateModal({
       .catch(() => null)
   }, [])
 
-  const handleAccept = () => {
-    // Persiste o aceite localmente e fecha o modal de imediato. A chamada
-    // remota é best-effort: se a API falhar/demorar, o fechamento não é afetado.
+  const handleAccept = async () => {
+    setAccepting(true)
     try {
-      persistAgeGateClient(Date.now() + AGE_GATE_TTL_DAYS * 24 * 60 * 60 * 1000)
+      await acceptAgeGate(pathname || '/')
+      setOpen(false)
     } catch {
-      // noop
+      setOpen(true)
+    } finally {
+      setAccepting(false)
     }
-    setOpen(false)
-    void acceptAgeGate(pathname || '/').catch(() => null)
   }
 
   const handleDeny = () => {
@@ -126,22 +125,22 @@ export function AgeGateModal({
 
         <div className="mt-6 grid grid-cols-2 gap-3">
           <Button
-            type="button"
             onClick={handleDeny}
             variant="outline"
             className="h-11 border-gray-300 text-gray-700"
+            disabled={accepting}
           >
             <XCircleIcon className="w-5 h-5 mr-2" />
             Sair
           </Button>
 
           <Button
-            type="button"
-            onClick={handleAccept}
+            onClick={() => void handleAccept()}
             className="h-11 bg-[#FC1EAD] hover:bg-[#e01a9a]"
+            disabled={accepting}
           >
             <CheckCircleIcon className="w-5 h-5 mr-2" />
-            Aceitar
+            {accepting ? 'Salvando...' : 'Aceitar'}
           </Button>
         </div>
 

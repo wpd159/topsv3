@@ -32,7 +32,6 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 import { useAuth } from "@/context/AuthContext"
 import { formatCPF } from "@/utils/formatter"
-import { BirthDateField } from "@/components/forms/birth-date-field"
 
 type EstadoItem = { id: number; nome: string }
 type CidadeItem = { id: number; nome: string }
@@ -42,6 +41,36 @@ type PreviewFile = {
   url: string
   mime: string
   name: string
+}
+
+function isValidDateInput(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return false
+
+  return parsed.toISOString().slice(0, 10) === value
+}
+
+function isAtLeast18(value: string) {
+  if (!isValidDateInput(value)) return false
+
+  const birth = new Date(`${value}T00:00:00`)
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const monthDiff = today.getMonth() - birth.getMonth()
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1
+  }
+
+  return age >= 18
+}
+
+function getAdultMaxDate() {
+  const today = new Date()
+  const max = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
+  return max.toISOString().slice(0, 10)
 }
 
 export default function PerfilCompletoModal() {
@@ -86,9 +115,11 @@ export default function PerfilCompletoModal() {
   const previewUrlsRef = useRef<{ frente?: string; verso?: string }>({})
 
   const [erros, setErros] = useState<{ cpf?: string }>({})
-  // BirthDateField so emite valor (ISO) quando a data digitada e valida e
-  // maior de idade; string vazia cobre incompleto/invalido/menor.
   const dataNascimentoPreenchida = form.dataNascimento.trim().length > 0
+  const dataNascimentoValida = !dataNascimentoPreenchida || isValidDateInput(form.dataNascimento)
+  const maioridadeOk = !dataNascimentoPreenchida || isAtLeast18(form.dataNascimento)
+  const dataNascimentoComErro = dataNascimentoPreenchida && (!dataNascimentoValida || !maioridadeOk)
+  const dataNascimentoMax = getAdultMaxDate()
 
   useEffect(() => {
     if (!isPrivileged) setOpen(!!usuario && !perfilCompleto)
@@ -303,6 +334,16 @@ export default function PerfilCompletoModal() {
       return
     }
 
+    if (!dataNascimentoValida) {
+      toast.error("Informe uma data de nascimento válida.")
+      return
+    }
+
+    if (!maioridadeOk) {
+      toast.error("Você precisa ter pelo menos 18 anos para concluir o cadastro.")
+      return
+    }
+
     try {
       setLoading(true)
 
@@ -411,14 +452,26 @@ export default function PerfilCompletoModal() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>Data de nascimento</Label>
-                  <BirthDateField
+                  <Input
+                    type="date"
                     name="dataNascimento"
                     value={form.dataNascimento}
-                    onChange={(value) => setForm((prev) => ({ ...prev, dataNascimento: value }))}
+                    onChange={handleChange}
+                    max={dataNascimentoMax}
                     disabled={loading}
-                    className="mt-1"
-                    minimumAge={18}
+                    className={cn(
+                      inputClass,
+                      "mt-1 pr-4",
+                      dataNascimentoComErro && "border-red-500"
+                    )}
                   />
+                  {dataNascimentoComErro ? (
+                    <p className="mt-1 text-xs text-red-500">
+                      {dataNascimentoValida
+                        ? "Você precisa ter pelo menos 18 anos para concluir o cadastro."
+                        : "Informe uma data de nascimento válida."}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
@@ -9,7 +10,6 @@ import { formatPhone, validateEmail, validatePassword } from '@/utils/formatter'
 import { fetchPublicSiteContent, getFallbackSiteContent, type SiteContentEntry } from '@/lib/site-content'
 import { toast } from 'sonner'
 import { getPublicLogoUrl } from '@/lib/public-site-assets'
-import { BirthDateField } from '@/components/forms/birth-date-field'
 import {
   UserIcon,
   EnvelopeIcon,
@@ -17,6 +17,7 @@ import {
   EyeIcon,
   EyeSlashIcon,
   PhoneIcon,
+  CalendarDaysIcon,
   ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline'
 
@@ -41,26 +42,44 @@ interface RegisterFormProps {
   className?: string
 }
 
-// Input nativo, sem o componente Input compartilhado (que aplica ring animado +
-// transition-[color,box-shadow]). Foco e feedback usam apenas border-color e um
-// box-shadow estatico (sem animacao pesada), para nao repetir o bug de repaint
-// que essa combinacao causava em Chrome Android antigo.
-function fieldClass(...classes: Array<string | false | undefined>) {
-  return cn(
-    'w-full rounded-3xl border border-gray-500/40 bg-gray-200 pl-10 pr-3 py-3 text-base text-gray-900',
-    'placeholder:text-gray-500 outline-none',
-    'transition-[border-color,box-shadow] duration-150',
-    'focus:border-[#FC1EAD] focus:shadow-[0_0_0_3px_rgba(252,30,173,0.14),0_0_14px_rgba(252,30,173,0.18)]',
-    'disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none',
-    ...classes
-  )
+function isValidDateInput(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+
+  const parsed = new Date(`${value}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return false
+
+  return parsed.toISOString().slice(0, 10) === value
 }
+
+function isAtLeast18(value: string) {
+  if (!isValidDateInput(value)) return false
+
+  const birth = new Date(`${value}T00:00:00`)
+  const today = new Date()
+  let age = today.getFullYear() - birth.getFullYear()
+  const monthDiff = today.getMonth() - birth.getMonth()
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1
+  }
+
+  return age >= 18
+}
+
+function getAdultMaxDate() {
+  const today = new Date()
+  const max = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate())
+  return max.toISOString().slice(0, 10)
+}
+
+const registerInputClass =
+  'transition-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none sm:transition-[color,box-shadow] sm:focus-visible:ring-[3px] sm:focus-visible:ring-ring/50'
 
 export function RegisterForm({
   refId,
   onSuccess,
   onBackToLogin,
-  submitSource = 'CADASTRO_PAGINA',
+  submitSource = 'CADASTRO_MODAL',
   className,
 }: RegisterFormProps) {
   const credentialField = 'sen' + 'ha'
@@ -93,9 +112,11 @@ export function RegisterForm({
   const validation = validatePassword(password)
   const passwordOk = Object.values(validation).every(Boolean)
   const emailValid = validateEmail(email)
-  // BirthDateField so emite um valor (ISO) quando a data digitada e valida e
-  // atende a maioridade minima; string vazia cobre incompleto/invalido/menor.
   const dataNascimentoPreenchida = dataNascimento.trim().length > 0
+  const dataNascimentoValida = !dataNascimentoPreenchida || isValidDateInput(dataNascimento)
+  const maioridadeOk = !dataNascimentoPreenchida || isAtLeast18(dataNascimento)
+  const dataNascimentoComErro = dataNascimentoPreenchida && (!dataNascimentoValida || !maioridadeOk)
+  const dataNascimentoMax = getAdultMaxDate()
 
   const phoneClean = phone.replace(/\D/g, '')
   const missingTerms = !terms.uso || !terms.privacidade
@@ -148,6 +169,8 @@ export function RegisterForm({
     phoneClean.length >= 10 &&
     emailValid &&
     dataNascimentoPreenchida &&
+    dataNascimentoValida &&
+    maioridadeOk &&
     passwordOk &&
     credenciaisConferem &&
     terms.uso &&
@@ -168,7 +191,9 @@ export function RegisterForm({
     if (erros.username) return 'Troque o nome de usuario'
     if (erros.telefone) return 'Troque o telefone'
 
-    if (!dataNascimentoPreenchida) return 'Preencha a data de nascimento corretamente'
+    if (!dataNascimentoPreenchida) return 'Preencha a data de nascimento'
+    if (!dataNascimentoValida) return 'Corrija a data de nascimento'
+    if (!maioridadeOk) return 'Cadastro permitido apenas para maiores de 18 anos'
     if (!password.trim()) return 'Preencha a senha'
     if (!confirmPassword.trim()) return 'Confirme a senha'
     if (passwordMismatch) return 'Confirme a senha corretamente'
@@ -282,7 +307,6 @@ export function RegisterForm({
           username: username.trim(),
           email: email.trim().toLowerCase(),
           telefone: phoneClean,
-          dataNascimento,
           [credentialField]: password,
           [credentialConfirmField]: confirmPassword,
           refId: refId || undefined,
@@ -335,7 +359,7 @@ export function RegisterForm({
       <div className="mt-4 space-y-4">
         <div className="relative">
           <UserIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <input
+          <Input
             type="text"
             placeholder="Nome de usuario (NOME VISIVEL NA PLATAFORMA)"
             value={username}
@@ -344,7 +368,7 @@ export function RegisterForm({
               if (erros.username) setErros((p) => ({ ...p, username: undefined }))
             }}
             onBlur={handleBlurUsername}
-            className={fieldClass(erros.username && 'border-red-400')}
+            className={cn(registerInputClass, 'pl-10 py-5', erros.username && 'border-red-400')}
           />
           {erros.username && (
             <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -353,15 +377,34 @@ export function RegisterForm({
           )}
         </div>
 
-        <BirthDateField
-          value={dataNascimento}
-          onChange={setDataNascimento}
-          minimumAge={18}
-        />
+        <div className="relative">
+          <CalendarDaysIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+          <Input
+            type="date"
+            value={dataNascimento}
+            onChange={(e) => setDataNascimento(e.target.value)}
+            max={dataNascimentoMax}
+            className={cn(
+              registerInputClass,
+              'register-date-input h-9 min-h-9 pl-10 py-1 leading-5',
+              dataNascimentoComErro && 'border-red-400'
+            )}
+          />
+          {dataNascimentoPreenchida && !dataNascimentoValida && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-red-600">
+              <ExclamationTriangleIcon className="h-4 w-4" /> Data de nascimento invalida.
+            </p>
+          )}
+          {dataNascimentoPreenchida && dataNascimentoValida && !maioridadeOk && (
+            <p className="mt-1 flex items-center gap-1 text-xs text-red-600">
+              <ExclamationTriangleIcon className="h-4 w-4" /> Cadastro permitido apenas para maiores de 18 anos.
+            </p>
+          )}
+        </div>
 
         <div className="relative">
           <PhoneIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <input
+          <Input
             type="tel"
             placeholder="Telefone"
             value={phone}
@@ -371,7 +414,7 @@ export function RegisterForm({
             }}
             onBlur={handleBlurTelefone}
             maxLength={15}
-            className={fieldClass(erros.telefone && 'border-red-400')}
+            className={cn(registerInputClass, 'pl-10 py-5', erros.telefone && 'border-red-400')}
           />
           {erros.telefone && (
             <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -382,7 +425,7 @@ export function RegisterForm({
 
         <div className="relative">
           <EnvelopeIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <input
+          <Input
             type="email"
             placeholder="Seu e-mail"
             value={email}
@@ -391,7 +434,11 @@ export function RegisterForm({
               if (erros.email) setErros((p) => ({ ...p, email: undefined }))
             }}
             onBlur={handleBlurEmail}
-            className={fieldClass(((email && !emailValid) || erros.email) && 'border-red-400')}
+            className={cn(
+              registerInputClass,
+              'pl-10 py-5',
+              ((email && !emailValid) || erros.email) && 'border-red-400'
+            )}
           />
           {email && !emailValid && (
             <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
@@ -407,7 +454,7 @@ export function RegisterForm({
 
         <div className="relative">
           <LockClosedIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <input
+          <Input
             ref={passwordInputRef}
             type={showPassword ? 'text' : 'password'}
             placeholder="Senha"
@@ -415,7 +462,7 @@ export function RegisterForm({
             onChange={(e) => setPassword(e.target.value)}
             onFocus={handlePasswordFocus}
             onBlur={handlePasswordBlur}
-            className={fieldClass('pr-10')}
+            className={cn(registerInputClass, 'pl-10 pr-10 py-5')}
           />
           <button
             type="button"
@@ -471,12 +518,12 @@ export function RegisterForm({
 
         <div className="relative mt-2">
           <LockClosedIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
-          <input
+          <Input
             type={showConfirmPassword ? 'text' : 'password'}
             placeholder="Confirmar senha"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className={fieldClass('pr-10')}
+            className={cn(registerInputClass, 'pl-10 pr-10 py-5')}
           />
           <button
             type="button"
@@ -538,9 +585,8 @@ export function RegisterForm({
         <p className="text-center text-sm text-gray-600 mt-4">
           Ja tem uma conta?{' '}
           <button
-            type="button"
             onClick={onBackToLogin}
-            className="text-[#FC1EAD] font-medium hover:underline"
+            className="text-[#FC1EAD] font-medium hover:underline transition"
           >
             Entrar
           </button>

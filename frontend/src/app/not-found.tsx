@@ -3,13 +3,11 @@
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { ArrowLeftIcon } from "@heroicons/react/24/solid"
-import { PublicChrome } from "@/components/layout/public-chrome"
 
 export default function NotFound() {
   const router = useRouter()
 
   return (
-    <PublicChrome>
     <main className="min-h-[calc(100vh-100px)] flex flex-col items-center justify-center px-6 text-center">
       {/* Número 404 grande e translúcido */}
       <h1 className="text-[120px] sm:text-[180px] md:text-[220px] font-bold text-gray-200 leading-none select-none">
@@ -37,6 +35,5 @@ export default function NotFound() {
         </Button>
       </div>
     </main>
-    </PublicChrome>
   )
 }

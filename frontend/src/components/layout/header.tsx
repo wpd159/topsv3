@@ -1,7 +1,7 @@
 'use client'
 
-import { Suspense, useEffect, useState } from "react"
-import { useRouter, usePathname, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter, usePathname } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -18,37 +18,18 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { LoginModal } from "@/components/modals/login-modal"
+import { RegisterModal } from "../modals/register-modal"
 import { HeaderSkeleton } from "./header-skeleton"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
 
 const MOBILE_OVERLAY_CLOSE_MS = 220
-
-function safeNext(value: string | null) {
-  return value && value.startsWith("/") && !value.startsWith("//") ? value : null
-}
-
-// Le ?login=1&next=... na home (usado por /registrar ao voltar para "Ja tenho conta")
-// e abre o LoginModal. Isolado em Suspense para nao tirar as demais rotas do
-// prerender estatico por causa do useSearchParams.
-function LoginQueryListener({ onDetected }: { onDetected: (next: string | null) => void }) {
-  const params = useSearchParams()
-  const router = useRouter()
-  const pathname = usePathname()
-
-  useEffect(() => {
-    if (params.get("login") !== "1") return
-    onDetected(safeNext(params.get("next")))
-    router.replace(pathname, { scroll: false })
-  }, [params, pathname, router, onDetected])
-
-  return null
-}
 
 export default function Header() {
   const router = useRouter()
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [loginModalOpen, setLoginModalOpen] = useState(false)
+  const [registerModalOpen, setRegisterModalOpen] = useState(false)
   const [redirectAfterLogin, setRedirectAfterLogin] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -57,6 +38,18 @@ export default function Header() {
   const closeSheetThen = (action: () => void) => {
     setOpen(false)
     window.setTimeout(action, MOBILE_OVERLAY_CLOSE_MS)
+  }
+
+  const isMobileViewport = () =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 767px)").matches
+
+  const getRegisterHref = (nextPath?: string | null) => {
+    if (nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")) {
+      return `/registrar?next=${encodeURIComponent(nextPath)}`
+    }
+
+    return "/registrar"
   }
 
   const go = (to: string) => {
@@ -77,6 +70,29 @@ export default function Header() {
     }
 
     setLoginModalOpen(true)
+  }
+
+  const openRegister = (nextPath?: string | null) => {
+    setRedirectAfterLogin(nextPath ?? null)
+
+    const navigateToRegisterPage = () => router.push(getRegisterHref(nextPath))
+
+    if (isMobileViewport()) {
+      if (open) {
+        closeSheetThen(navigateToRegisterPage)
+        return
+      }
+
+      navigateToRegisterPage()
+      return
+    }
+
+    if (open) {
+      closeSheetThen(() => setRegisterModalOpen(true))
+      return
+    }
+
+    setRegisterModalOpen(true)
   }
 
   const openPublishFlow = () => {
@@ -143,7 +159,7 @@ export default function Header() {
           <Button
             variant="outline"
             className="border-gray-300 text-gray-700 hover:bg-gray-100 py-5"
-            onClick={() => go("/registrar")}
+            onClick={() => openRegister()}
           >
             Registrar-se
           </Button>
@@ -223,7 +239,7 @@ export default function Header() {
                   <Button
                     variant="outline"
                     className="border-gray-300 text-gray-700 hover:bg-gray-100 justify-start"
-                    onClick={() => go("/registrar")}
+                    onClick={() => openRegister()}
                   >
                     Registrar-se
                   </Button>
@@ -241,15 +257,20 @@ export default function Header() {
         </div>
       </header>
 
-      <Suspense fallback={null}>
-        <LoginQueryListener onDetected={(next) => openLogin(next ?? undefined)} />
-      </Suspense>
-
-      {/* Modal */}
+      {/* Modais */}
       <LoginModal
         open={loginModalOpen}
         onOpenChange={setLoginModalOpen}
+        onOpenRegister={() => setRegisterModalOpen(true)}
         redirectAfterSuccess={redirectAfterLogin}
+      />
+
+      <RegisterModal
+        open={registerModalOpen}
+        onOpenChange={setRegisterModalOpen}
+        onBackToLogin={() => {
+          window.setTimeout(() => setLoginModalOpen(true), MOBILE_OVERLAY_CLOSE_MS)
+        }}
       />
     </>
   )
