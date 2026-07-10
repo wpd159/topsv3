@@ -1,0 +1,168 @@
+.page {
+  min-height: 100dvh;
+  width: 100%;
+  background: #ffffff;
+  display: flex;
+  justify-content: center;
+}
+
+.container {
+  width: 100%;
+  max-width: 520px;
+  min-width: 0;
+  padding: 40px 24px;
+  margin: 0 auto;
+}
+
+@media (min-width: 480px) {
+  .container {
+    width: clamp(420px, 90vw, 520px);
+  }
+}
+
+.logo {
+  display: block;
+  height: 40px;
+  width: auto;
+  margin: 0 auto 12px;
+}
+
+.title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111111;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  text-align: center;
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0 0 8px;
+}
+
+.stepLabel {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  margin: 0 0 24px;
+}
+
+.field {
+  margin-bottom: 16px;
+}
+
+.label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.registerField {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  font-size: 16px;
+  color: #111111;
+  background: #f3f4f6;
+  border: 1px solid rgba(107, 114, 128, 0.4);
+  border-radius: 14px;
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.registerField:focus {
+  border-color: #FC1EAD;
+  box-shadow:
+    0 0 0 3px rgba(252, 30, 173, 0.12),
+    0 0 12px rgba(252, 30, 173, 0.16);
+  outline: none;
+}
+
+.registerField:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.fieldErrorText {
+  color: #dc2626;
+}
+
+.fieldErrorArea {
+  min-height: 18px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #dc2626;
+}
+
+.hint {
+  font-size: 12px;
+  color: #6b7280;
+  margin: -8px 0 16px;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: #374151;
+  margin-bottom: 10px;
+}
+
+.checkboxRow input {
+  margin-top: 2px;
+}
+
+.link {
+  color: #FC1EAD;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.actions {
+  margin-top: 24px;
+}
+
+.buttonPrimary {
+  display: block;
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 999px;
+  background: #FC1EAD;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.buttonPrimary:disabled {
+  background: #d1d5db;
+  cursor: not-allowed;
+}
+
+.buttonSecondary {
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 20px;
+  color: #FC1EAD;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.footerText {
+  text-align: center;
+  font-size: 14px;
+  color: #6b7280;
+  margin-top: 20px;
+}

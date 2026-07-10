@@ -4,13 +4,9 @@ import type { Metadata } from "next"
 import Script from "next/script"
 import "./globals.css"
 
-import Footer from "@/components/layout/footer"
-import HeaderWrapper from "@/components/layout/header-wrapper"
-import AbrirTicketButton from "@/components/layout/ticket-button"
 import { AuthProvider } from "@/context/AuthContext"
 import { Toaster } from "sonner"
 import { AgeGateModal } from "@/components/modals/age-gate-modal"
-import { SitePopupManager } from "@/components/site/site-popup-manager"
 import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
 import { SensitiveImageUnlockProvider } from "@/components/compliance/sensitive-image-unlock-provider"
 
@@ -84,15 +80,8 @@ export default function RootLayout({
                 denyRedirect="https://www.google.com"
               />
 
-              <HeaderWrapper />
-              <SitePopupManager />
+              {children}
 
-              <main className="relative max-w-[1500px] mx-auto px-4 sm:px-6 lg:px-8">
-                {children}
-              </main>
-
-              <Footer />
-              <AbrirTicketButton />
               <Toaster position="top-right" richColors closeButton expand />
             </WhatsAppSafetyProvider>
           </SensitiveImageUnlockProvider>

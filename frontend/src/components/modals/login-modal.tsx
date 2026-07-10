@@ -28,14 +28,12 @@ import { getPublicLogoUrl } from '@/lib/public-site-assets'
 interface LoginModalProps {
   open: boolean
   onOpenChange: (value: boolean) => void
-  onOpenRegister?: () => void
   redirectAfterSuccess?: string | null
 }
 
 export function LoginModal({
   open,
   onOpenChange,
-  onOpenRegister,
   redirectAfterSuccess,
 }: LoginModalProps) {
   const router = useRouter()
@@ -110,10 +108,6 @@ export function LoginModal({
     return '/registrar'
   }, [registerNext])
 
-  const shouldOpenRegisterPage = () =>
-    typeof window !== 'undefined' &&
-    window.matchMedia('(max-width: 767px)').matches
-
   useEffect(() => {
     if (!redirectTarget) return
 
@@ -127,20 +121,7 @@ export function LoginModal({
 
   const handleOpenRegister = () => {
     onOpenChange(false)
-
-    window.setTimeout(() => {
-      if (shouldOpenRegisterPage()) {
-        router.push(registerHref)
-        return
-      }
-
-      if (onOpenRegister) {
-        onOpenRegister()
-        return
-      }
-
-      router.push(registerHref)
-    }, 180)
+    window.setTimeout(() => router.push(registerHref), 180)
   }
 
   const handleLogin = async () => {
