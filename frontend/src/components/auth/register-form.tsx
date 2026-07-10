@@ -43,6 +43,17 @@ interface RegisterFormProps {
   // Uso exclusivo de diagnostico: pula o fetch dos 3 documentos juridicos no
   // mount, mantendo os fallbacks ja inicializados em documentosJuridicos.
   diagnosticSkipLegalContentLoad?: boolean
+  // Uso exclusivo de diagnostico: renderiza somente um bloco do JSX atual,
+  // sem alterar classes/componentes. Default "full" preserva o componente
+  // exatamente como e hoje.
+  diagnosticView?:
+    | 'full'
+    | 'header'
+    | 'basic-fields'
+    | 'password'
+    | 'consents'
+    | 'full-without-logo'
+    | 'full-without-password-checklist'
 }
 
 function isValidDateInput(value: string) {
@@ -85,6 +96,7 @@ export function RegisterForm({
   submitSource = 'CADASTRO_MODAL',
   className,
   diagnosticSkipLegalContentLoad = false,
+  diagnosticView = 'full',
 }: RegisterFormProps) {
   const credentialField = 'sen' + 'ha'
   const credentialConfirmField = 'confirmar' + 'Sen' + 'ha'
@@ -209,6 +221,25 @@ export function RegisterForm({
   }
 
   const buttonLabel = getButtonLabel()
+
+  // Visibilidade de diagnostico por bloco. Para diagnosticView="full"
+  // (default), toda condicao abaixo resolve para true e o JSX permanece
+  // identico ao comportamento normal.
+  const isFullView = diagnosticView === 'full'
+  const isFullWithoutLogo = diagnosticView === 'full-without-logo'
+  const isFullWithoutChecklist = diagnosticView === 'full-without-password-checklist'
+  const showHeaderBlock =
+    isFullView || isFullWithoutLogo || isFullWithoutChecklist || diagnosticView === 'header'
+  const showLogo = showHeaderBlock && !isFullWithoutLogo
+  const showBasicFields =
+    isFullView || isFullWithoutLogo || isFullWithoutChecklist || diagnosticView === 'basic-fields'
+  const showPasswordFields =
+    isFullView || isFullWithoutLogo || isFullWithoutChecklist || diagnosticView === 'password'
+  const showChecklistBlock = showChecklist && !isFullWithoutChecklist
+  const showConsents =
+    isFullView || isFullWithoutLogo || isFullWithoutChecklist || diagnosticView === 'consents'
+  const showButton = showConsents
+  const showBackToLogin = isFullView || isFullWithoutLogo || isFullWithoutChecklist
 
   const verificarDuplicidade = async ({
     email,
@@ -348,21 +379,27 @@ export function RegisterForm({
 
   return (
     <div className={cn('w-full', className)}>
-      <div className="flex flex-col items-center gap-2 text-center">
-        <Image
-          src={getPublicLogoUrl()}
-          alt="Logo"
-          width={150}
-          height={50}
-          fetchPriority="high"
-          priority
-          unoptimized
-          className="h-10 w-auto max-w-[180px] object-contain"
-        />
-        <p className="text-sm text-gray-600">Crie sua conta para comecar</p>
-      </div>
+      {showHeaderBlock && (
+        <div className="flex flex-col items-center gap-2 text-center">
+          {showLogo && (
+            <Image
+              src={getPublicLogoUrl()}
+              alt="Logo"
+              width={150}
+              height={50}
+              fetchPriority="high"
+              priority
+              unoptimized
+              className="h-10 w-auto max-w-[180px] object-contain"
+            />
+          )}
+          <p className="text-sm text-gray-600">Crie sua conta para comecar</p>
+        </div>
+      )}
 
       <div className="mt-4 space-y-4">
+        {showBasicFields && (
+        <>
         <div className="relative">
           <UserIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
           <Input
@@ -457,7 +494,11 @@ export function RegisterForm({
             </p>
           )}
         </div>
+        </>
+        )}
 
+        {showPasswordFields && (
+        <>
         <div className="relative">
           <LockClosedIcon className="absolute left-3 top-2.5 w-5 h-5 text-gray-400" />
           <Input
@@ -502,7 +543,7 @@ export function RegisterForm({
           </div>
         )}
 
-        {showChecklist && (
+        {showChecklistBlock && (
           <ul className="mt-2 text-xs text-gray-500 space-y-1">
             {[
               ['Pelo menos 8 caracteres', validation.length],
@@ -544,7 +585,10 @@ export function RegisterForm({
             </p>
           )}
         </div>
+        </>
+        )}
 
+        {showConsents && (
         <div className="space-y-2 mt-4 text-xs">
           <label className="flex items-center gap-1">
             <Checkbox checked={terms.uso} onCheckedChange={(v) => setTerms((t) => ({ ...t, uso: !!v }))} />
@@ -575,19 +619,22 @@ export function RegisterForm({
             Receber e-mails promocionais.
           </label>
         </div>
+        )}
       </div>
 
-      <Button
-        onClick={handleRegister}
-        disabled={!allFieldsValid || loading}
-        className={`w-full py-5 mt-6 font-semibold text-white ${
-          allFieldsValid ? 'bg-[#FC1EAD] hover:bg-[#e01a9a]' : 'bg-gray-300 cursor-not-allowed'
-        }`}
-      >
-        {buttonLabel}
-      </Button>
+      {showButton && (
+        <Button
+          onClick={handleRegister}
+          disabled={!allFieldsValid || loading}
+          className={`w-full py-5 mt-6 font-semibold text-white ${
+            allFieldsValid ? 'bg-[#FC1EAD] hover:bg-[#e01a9a]' : 'bg-gray-300 cursor-not-allowed'
+          }`}
+        >
+          {buttonLabel}
+        </Button>
+      )}
 
-      {onBackToLogin && (
+      {showBackToLogin && onBackToLogin && (
         <p className="text-center text-sm text-gray-600 mt-4">
           Ja tem uma conta?{' '}
           <button
