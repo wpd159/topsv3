@@ -37,5 +37,14 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             StatusModeracaoAnuncio statusModeracao,
             Pageable pageable);
 
+    List<AnuncioEntity> findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
+            StatusAnuncio status,
+            StatusModeracaoAnuncio statusModeracao);
+
+    List<AnuncioEntity> findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
+            Collection<UUID> ids,
+            StatusAnuncio status,
+            StatusModeracaoAnuncio statusModeracao);
+
     long count(Specification<AnuncioEntity> spec);
 }

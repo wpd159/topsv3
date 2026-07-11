@@ -13,7 +13,7 @@ type VisitorVerificationModalProps = {
   open: boolean
   level?: "LIGHT" | "REINFORCED" | "STRONG"
   context?: {
-    anuncioId?: number
+    anuncioId?: string | number
     route?: string
     midiaId?: string
   }

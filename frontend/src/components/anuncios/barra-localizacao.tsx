@@ -21,10 +21,11 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { cn } from "@/lib/utils"
+import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
 
-type EstadoItem = { id: number; nome: string; uf?: string }
-type CidadeItem = { id: number; nome: string }
-type BairroItem = { id: number; nome: string }
+type BairroItem = { id: string; nome: string; slug: string }
+type CidadeItem = { id: string; nome: string; slug: string; bairros: BairroItem[] }
+type EstadoItem = { id: string; nome: string; uf: string; cidades: CidadeItem[] }
 
 function normalizeKey(raw?: string | null) {
   if (!raw) return ""
@@ -88,11 +89,6 @@ function parseLocalFromText(raw: string) {
 export function BarraLocalizacao() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
-
-  const estadoIdParam = searchParams.get("estadoId")
-  const cidadeIdParam = searchParams.get("cidadeId")
-  const bairroIdParam = searchParams.get("bairroId")
   const buscaParam = searchParams.get("busca") || ""
 
   const [busca, setBusca] = useState(buscaParam)
@@ -100,6 +96,7 @@ export function BarraLocalizacao() {
   const [cidades, setCidades] = useState<CidadeItem[]>([])
   const [bairros, setBairros] = useState<BairroItem[]>([])
   const [loadingEstados, setLoadingEstados] = useState(false)
+  const [erroLocalidades, setErroLocalidades] = useState(false)
   const [loadingCidades, setLoadingCidades] = useState(false)
   const [loadingBairros, setLoadingBairros] = useState(false)
   const [openEstado, setOpenEstado] = useState(false)
@@ -108,8 +105,6 @@ export function BarraLocalizacao() {
   const [selectedEstado, setSelectedEstado] = useState<EstadoItem | null>(null)
   const [selectedCidade, setSelectedCidade] = useState<CidadeItem | null>(null)
   const [selectedBairro, setSelectedBairro] = useState<BairroItem | null>(null)
-  const [pendingCidadeKey, setPendingCidadeKey] = useState("")
-  const [pendingBairroKey, setPendingBairroKey] = useState("")
   const [mobileRefinadoresOpen, setMobileRefinadoresOpen] = useState(false)
 
   const didAutoResolveRef = useRef(false)
@@ -190,26 +185,36 @@ export function BarraLocalizacao() {
   }, [])
 
   useEffect(() => {
-    if (!apiUrl) return
-
     const load = async () => {
       try {
         setLoadingEstados(true)
-        const res = await fetch(`${apiUrl}/localidades/estados`, {
-          credentials: "include",
-          cache: "no-store",
-        })
-        if (!res.ok) throw new Error()
-
-        const data = (await res.json()) as EstadoItem[]
-        setEstados(Array.isArray(data) ? data : [])
+        setErroLocalidades(false)
+        const descoberta = await descobrirLocalidadesPublicas()
+        setEstados(descoberta.estados.map((estado) => ({
+          id: estado.uf,
+          nome: estado.nome,
+          uf: estado.uf,
+          cidades: estado.cidades.map((cidade) => ({
+            id: cidade.slug,
+            nome: cidade.nome,
+            slug: cidade.slug,
+            bairros: cidade.bairros.map((bairro) => ({
+              id: bairro.slug,
+              nome: bairro.nome,
+              slug: bairro.slug,
+            })),
+          })),
+        })))
+      } catch {
+        setErroLocalidades(true)
+        setEstados([])
       } finally {
         setLoadingEstados(false)
       }
     }
 
     void load()
-  }, [apiUrl])
+  }, [])
 
   const findEstadoByRaw = useCallback(
     (rawEstado: string) => {
@@ -229,14 +234,24 @@ export function BarraLocalizacao() {
   const applyBusca = useCallback(
     (rawOverride?: string) => {
       const raw = (rawOverride ?? busca).trim()
-      const possuiFiltrosLocaisAtivos = Boolean(selectedEstado || selectedCidade || selectedBairro)
+
+      if (selectedEstado) {
+        const segmentos = [
+          "acompanhantes",
+          selectedEstado.uf.toLowerCase(),
+          selectedCidade?.slug,
+          selectedBairro?.slug,
+        ].filter(Boolean)
+        pushBuscaRoute(`/${segmentos.join("/")}`)
+        return
+      }
 
       if (!raw) {
         setParamsBatch({ busca: undefined })
         return
       }
 
-      if (possuiFiltrosLocaisAtivos || estados.length === 0) {
+      if (estados.length === 0) {
         setParamsBatch({ busca: raw })
         return
       }
@@ -249,16 +264,8 @@ export function BarraLocalizacao() {
           setSelectedEstado(foundEstado)
           setSelectedCidade(null)
           setSelectedBairro(null)
-          setPendingCidadeKey("")
-          setPendingBairroKey("")
           setBusca("")
-
-          setParamsBatch({
-            estadoId: String(foundEstado.id),
-            cidadeId: undefined,
-            bairroId: undefined,
-            busca: undefined,
-          })
+          pushBuscaRoute(`/acompanhantes/${foundEstado.uf.toLowerCase()}`)
           return
         }
       }
@@ -267,18 +274,17 @@ export function BarraLocalizacao() {
         const foundEstado = findEstadoByRaw(parsed.estadoRaw)
         if (foundEstado) {
           setSelectedEstado(foundEstado)
-          setSelectedCidade(null)
+          const foundCidade = foundEstado.cidades.find(
+            (cidade) => normalizeKey(cidade.nome) === normalizeKey(parsed.cidadeRaw)
+          )
+          setSelectedCidade(foundCidade ?? null)
           setSelectedBairro(null)
-          setPendingCidadeKey(normalizeKey(parsed.cidadeRaw))
-          setPendingBairroKey("")
           setBusca("")
-
-          setParamsBatch({
-            estadoId: String(foundEstado.id),
-            cidadeId: undefined,
-            bairroId: undefined,
-            busca: undefined,
-          })
+          if (foundCidade) {
+            pushBuscaRoute(`/acompanhantes/${foundEstado.uf.toLowerCase()}/${foundCidade.slug}`)
+          } else {
+            setParamsBatch({ busca: raw })
+          }
           return
         }
       }
@@ -287,42 +293,39 @@ export function BarraLocalizacao() {
         const foundEstado = findEstadoByRaw(parsed.estadoRaw)
         if (foundEstado) {
           setSelectedEstado(foundEstado)
-          setSelectedCidade(null)
-          setSelectedBairro(null)
-          setPendingCidadeKey(normalizeKey(parsed.cidadeRaw))
-          setPendingBairroKey(normalizeKey(parsed.bairroRaw))
+          const foundCidade = foundEstado.cidades.find(
+            (cidade) => normalizeKey(cidade.nome) === normalizeKey(parsed.cidadeRaw)
+          )
+          const foundBairro = foundCidade?.bairros.find(
+            (bairro) => normalizeKey(bairro.nome) === normalizeKey(parsed.bairroRaw)
+          )
+          setSelectedCidade(foundCidade ?? null)
+          setSelectedBairro(foundBairro ?? null)
           setBusca("")
-
-          setParamsBatch({
-            estadoId: String(foundEstado.id),
-            cidadeId: undefined,
-            bairroId: undefined,
-            busca: undefined,
-          })
+          if (foundCidade && foundBairro) {
+            pushBuscaRoute(
+              `/acompanhantes/${foundEstado.uf.toLowerCase()}/${foundCidade.slug}/${foundBairro.slug}`
+            )
+          } else {
+            setParamsBatch({ busca: raw })
+          }
           return
         }
       }
 
       setParamsBatch({ busca: raw })
     },
-    [busca, estados.length, findEstadoByRaw, selectedEstado, selectedCidade, selectedBairro, setParamsBatch]
+    [busca, estados.length, findEstadoByRaw, pushBuscaRoute, selectedEstado, selectedCidade, selectedBairro, setParamsBatch]
   )
 
   useEffect(() => {
     if (didAutoResolveRef.current) return
     if (!buscaParam.trim()) return
-    if (estadoIdParam || cidadeIdParam || bairroIdParam) return
     if (estados.length === 0) return
 
     didAutoResolveRef.current = true
     applyBusca(buscaParam)
-  }, [applyBusca, bairroIdParam, buscaParam, cidadeIdParam, estadoIdParam, estados.length])
-
-  useEffect(() => {
-    if (!estadoIdParam || estados.length === 0) return
-    const found = estados.find((estado) => estado.id === Number(estadoIdParam)) || null
-    setSelectedEstado(found)
-  }, [estadoIdParam, estados])
+  }, [applyBusca, buscaParam, estados.length])
 
   useEffect(() => {
     setCidades([])
@@ -330,92 +333,21 @@ export function BarraLocalizacao() {
     setSelectedCidade(null)
     setSelectedBairro(null)
 
-    if (!selectedEstado || !apiUrl) return
-
-    const load = async () => {
-      try {
-        setLoadingCidades(true)
-        const res = await fetch(
-          `${apiUrl}/localidades/estados/${selectedEstado.id}/cidades?ativas=true`,
-          { credentials: "include", cache: "no-store" }
-        )
-        if (!res.ok) throw new Error()
-
-        const data = (await res.json()) as CidadeItem[]
-        setCidades(Array.isArray(data) ? data : [])
-      } finally {
-        setLoadingCidades(false)
-      }
-    }
-
-    void load()
-  }, [apiUrl, selectedEstado?.id])
-
-  useEffect(() => {
-    if (!cidadeIdParam || cidades.length === 0) return
-    const found = cidades.find((cidade) => cidade.id === Number(cidadeIdParam)) || null
-    setSelectedCidade(found)
-  }, [cidadeIdParam, cidades])
+    if (!selectedEstado) return
+    setLoadingCidades(true)
+    setCidades(selectedEstado.cidades)
+    setLoadingCidades(false)
+  }, [selectedEstado])
 
   useEffect(() => {
     setBairros([])
     setSelectedBairro(null)
 
-    if (!selectedCidade || !apiUrl) return
-
-    const load = async () => {
-      try {
-        setLoadingBairros(true)
-        const res = await fetch(
-          `${apiUrl}/localidades/cidades/${selectedCidade.id}/bairros?ativas=true`,
-          { credentials: "include", cache: "no-store" }
-        )
-        if (!res.ok) throw new Error()
-
-        const data = (await res.json()) as BairroItem[]
-        setBairros(Array.isArray(data) ? data : [])
-      } finally {
-        setLoadingBairros(false)
-      }
-    }
-
-    void load()
-  }, [apiUrl, selectedCidade?.id])
-
-  useEffect(() => {
-    if (!bairroIdParam || bairros.length === 0) return
-    const found = bairros.find((bairro) => bairro.id === Number(bairroIdParam)) || null
-    setSelectedBairro(found)
-  }, [bairroIdParam, bairros])
-
-  useEffect(() => {
-    if (!pendingCidadeKey || cidades.length === 0) return
-    const found = cidades.find((cidade) => normalizeKey(cidade.nome) === pendingCidadeKey) || null
-    if (!found) return
-
-    setSelectedCidade(found)
-    setPendingCidadeKey("")
-
-    setParamsBatch({
-      cidadeId: String(found.id),
-      bairroId: undefined,
-      busca: busca.trim() || undefined,
-    })
-  }, [bairros.length, busca, cidades, pendingCidadeKey, setParamsBatch])
-
-  useEffect(() => {
-    if (!pendingBairroKey || bairros.length === 0) return
-    const found = bairros.find((bairro) => normalizeKey(bairro.nome) === pendingBairroKey) || null
-    if (!found) return
-
-    setSelectedBairro(found)
-    setPendingBairroKey("")
-
-    setParamsBatch({
-      bairroId: String(found.id),
-      busca: busca.trim() || undefined,
-    })
-  }, [bairros, busca, pendingBairroKey, setParamsBatch])
+    if (!selectedCidade) return
+    setLoadingBairros(true)
+    setBairros(selectedCidade.bairros)
+    setLoadingBairros(false)
+  }, [selectedCidade])
 
   const labelEstado = useMemo(() => {
     if (loadingEstados) return "Carregando estados..."
@@ -456,8 +388,6 @@ export function BarraLocalizacao() {
     setSelectedEstado(null)
     setSelectedCidade(null)
     setSelectedBairro(null)
-    setPendingCidadeKey("")
-    setPendingBairroKey("")
     setCidades([])
     setBairros([])
     setBusca("")
@@ -568,22 +498,19 @@ export function BarraLocalizacao() {
               label={labelEstado}
               items={estados}
               placeholder="Buscar estado..."
-              emptyText={loadingEstados ? "Carregando..." : "Nenhum estado encontrado."}
+              emptyText={
+                loadingEstados
+                  ? "Carregando..."
+                  : erroLocalidades
+                    ? "Não foi possível carregar as localidades."
+                    : "Nenhum estado encontrado."
+              }
               itemToValue={(item) => `${item.nome} ${item.uf ?? ""}`}
               isSelected={(item) => selectedEstado?.id === item.id}
               onSelect={(item) => {
                 setSelectedEstado(item)
                 setOpenEstado(false)
-                setPendingCidadeKey("")
-                setPendingBairroKey("")
                 didAutoResolveRef.current = true
-
-                setParamsBatch({
-                  estadoId: String(item.id),
-                  cidadeId: undefined,
-                  bairroId: undefined,
-                  busca: busca.trim() || undefined,
-                })
               }}
             />
 
@@ -606,14 +533,7 @@ export function BarraLocalizacao() {
               onSelect={(item) => {
                 setSelectedCidade(item)
                 setOpenCidade(false)
-                setPendingBairroKey("")
                 didAutoResolveRef.current = true
-
-                setParamsBatch({
-                  cidadeId: String(item.id),
-                  bairroId: undefined,
-                  busca: busca.trim() || undefined,
-                })
               }}
             />
 
@@ -637,11 +557,6 @@ export function BarraLocalizacao() {
                 setSelectedBairro(item)
                 setOpenBairro(false)
                 didAutoResolveRef.current = true
-
-                setParamsBatch({
-                  bairroId: String(item.id),
-                  busca: busca.trim() || undefined,
-                })
               }}
             />
 
@@ -659,7 +574,7 @@ export function BarraLocalizacao() {
   )
 }
 
-function Combo<T extends { id: number; nome: string }>({
+function Combo<T extends { id: string | number; nome: string }>({
   open,
   onOpenChange,
   disabled,

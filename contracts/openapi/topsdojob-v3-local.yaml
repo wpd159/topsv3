@@ -428,6 +428,33 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/acompanhantes/{uf}:
+    get:
+      summary: Listagem publica por estado
+      operationId: getPublicAcompanhantesByEstado
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: uf
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z]{2}$"
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Tamanho"
+      responses:
+        "200":
+          description: listagem publica por estado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaAnunciosPublica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/acompanhantes/{uf}/{cidade}:
     get:
       summary: Listagem publica minima por cidade
@@ -460,6 +487,8 @@ paths:
                 $ref: "#/components/schemas/ListaAnunciosPublica"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/public/acompanhantes/{uf}/{cidade}/{bairro}:
@@ -500,6 +529,54 @@ paths:
                 $ref: "#/components/schemas/ListaAnunciosPublica"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/localidades:
+    get:
+      summary: Descoberta hierarquica de localidades publicas legitimas
+      operationId: getPublicLocalidades
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: estados, cidades e bairros com anuncios publicos ativos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DescobertaLocalidadesPublica"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/localidades/{uf}/{cidade}:
+    get:
+      summary: Agregado real de cidade para navegacao e SEO
+      operationId: getPublicAgregadoCidade
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: uf
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[A-Za-z]{2}$"
+        - name: cidade
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+      responses:
+        "200":
+          description: agregado publico real da cidade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgregadoCidadePublica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/public/seo/rota:
@@ -532,6 +609,26 @@ paths:
                 $ref: "#/components/schemas/SeoRotaPublica"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/seo/sitemap:
+    get:
+      summary: Descoberta leve de anuncios publicos indexaveis para sitemap
+      operationId: getPublicSeoSitemap
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: anuncios cuja publicacao e indexabilidade foram aprovadas pelo backend
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SitemapAnuncioPublico"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/admin/auth/login:
@@ -4722,6 +4819,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - id
         - slug
         - titulo
         - midias
@@ -4729,10 +4827,14 @@ components:
         - topo
         - midiaExtra
         - story
+        - contatoDisponivel
         - beneficiosPublicos
         - pendenciaContatoPublico
         - seo
       properties:
+        id:
+          type: string
+          format: uuid
         slug:
           type: string
         titulo:
@@ -4744,6 +4846,10 @@ components:
         preco:
           type:
             - number
+            - "null"
+        categoria:
+          type:
+            - string
             - "null"
         localizacao:
           $ref: "#/components/schemas/LocalizacaoPublica"
@@ -4758,6 +4864,8 @@ components:
         midiaExtra:
           type: boolean
         story:
+          type: boolean
+        contatoDisponivel:
           type: boolean
         beneficiosPublicos:
           type: array
@@ -4784,6 +4892,7 @@ components:
       type: object
       additionalProperties: false
       required:
+        - id
         - slug
         - titulo
         - midias
@@ -4791,8 +4900,12 @@ components:
         - topo
         - midiaExtra
         - story
+        - contatoDisponivel
         - beneficiosPublicos
       properties:
+        id:
+          type: string
+          format: uuid
         slug:
           type: string
         titulo:
@@ -4804,6 +4917,10 @@ components:
         preco:
           type:
             - number
+            - "null"
+        categoria:
+          type:
+            - string
             - "null"
         localizacao:
           $ref: "#/components/schemas/LocalizacaoPublica"
@@ -4818,6 +4935,8 @@ components:
         midiaExtra:
           type: boolean
         story:
+          type: boolean
+        contatoDisponivel:
           type: boolean
         beneficiosPublicos:
           type: array
@@ -4835,6 +4954,7 @@ components:
       required:
         - itens
         - paginacao
+        - localidade
         - seo
       properties:
         itens:
@@ -4843,6 +4963,8 @@ components:
             $ref: "#/components/schemas/AnuncioCardPublico"
         paginacao:
           $ref: "#/components/schemas/PaginacaoPublica"
+        localidade:
+          $ref: "#/components/schemas/LocalizacaoPublica"
         seo:
           $ref: "#/components/schemas/SeoRotaPublica"
     LocalizacaoPublica:
@@ -4850,9 +4972,9 @@ components:
       additionalProperties: false
       properties:
         uf:
-          type:
-            - string
-            - "null"
+          type: string
+        estado:
+          type: string
         cidade:
           type:
             - string
@@ -4873,6 +4995,120 @@ components:
           type:
             - string
             - "null"
+    BairroLocalidadePublica:
+      type: object
+      additionalProperties: false
+      required: [nome, slug, totalAnunciosAtivos, ultimaAtualizacao]
+      properties:
+        nome:
+          type: string
+        slug:
+          type: string
+        totalAnunciosAtivos:
+          type: integer
+          format: int64
+        ultimaAtualizacao:
+          type: [string, "null"]
+          format: date-time
+    CidadeLocalidadePublica:
+      type: object
+      additionalProperties: false
+      required: [nome, slug, totalAnunciosAtivos, ultimaAtualizacao, bairros]
+      properties:
+        nome:
+          type: string
+        slug:
+          type: string
+        totalAnunciosAtivos:
+          type: integer
+          format: int64
+        ultimaAtualizacao:
+          type: [string, "null"]
+          format: date-time
+        bairros:
+          type: array
+          items:
+            $ref: "#/components/schemas/BairroLocalidadePublica"
+    EstadoLocalidadePublica:
+      type: object
+      additionalProperties: false
+      required: [uf, nome, totalAnunciosAtivos, ultimaAtualizacao, cidades]
+      properties:
+        uf:
+          type: string
+        nome:
+          type: string
+        totalAnunciosAtivos:
+          type: integer
+          format: int64
+        ultimaAtualizacao:
+          type: [string, "null"]
+          format: date-time
+        cidades:
+          type: array
+          items:
+            $ref: "#/components/schemas/CidadeLocalidadePublica"
+    DescobertaLocalidadesPublica:
+      type: object
+      additionalProperties: false
+      required: [estados]
+      properties:
+        estados:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstadoLocalidadePublica"
+    CategoriaCidadePublica:
+      type: object
+      additionalProperties: false
+      required: [codigo, nome, totalAnunciosAtivos]
+      properties:
+        codigo:
+          type: string
+        nome:
+          type: string
+        totalAnunciosAtivos:
+          type: integer
+          format: int64
+    AgregadoCidadePublica:
+      type: object
+      additionalProperties: false
+      required:
+        - estadoUf
+        - estadoNome
+        - cidadeNome
+        - cidadeSlug
+        - totalAnunciosAtivos
+        - ultimaAtualizacao
+        - bairros
+        - categorias
+        - cidadesRelacionadas
+      properties:
+        estadoUf:
+          type: string
+        estadoNome:
+          type: string
+        cidadeNome:
+          type: string
+        cidadeSlug:
+          type: string
+        totalAnunciosAtivos:
+          type: integer
+          format: int64
+        ultimaAtualizacao:
+          type: [string, "null"]
+          format: date-time
+        bairros:
+          type: array
+          items:
+            $ref: "#/components/schemas/BairroLocalidadePublica"
+        categorias:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoriaCidadePublica"
+        cidadesRelacionadas:
+          type: array
+          items:
+            $ref: "#/components/schemas/CidadeLocalidadePublica"
     MidiaPublica:
       type: object
       additionalProperties: false
@@ -4955,6 +5191,40 @@ components:
           type: string
         indexavelFuturo:
           type: boolean
+    SitemapAnuncioPublico:
+      type: object
+      additionalProperties: false
+      required:
+        - slug
+        - estadoUf
+        - cidadeSlug
+        - atualizadoEm
+        - publico
+        - indexavel
+      properties:
+        slug:
+          type: string
+        estadoUf:
+          type: string
+          minLength: 2
+          maxLength: 2
+        cidadeSlug:
+          type: string
+        bairroSlug:
+          type:
+            - string
+            - "null"
+        atualizadoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        publico:
+          type: boolean
+          const: true
+        indexavel:
+          type: boolean
+          const: true
     PaginacaoPublica:
       type: object
       additionalProperties: false

@@ -10,4 +10,6 @@ public interface BairroRepository extends JpaRepository<BairroEntity, UUID> {
     Optional<BairroEntity> findByCidadeIdAndSlug(UUID cidadeId, String slug);
 
     List<BairroEntity> findBySlug(String slug);
+
+    List<BairroEntity> findByCidadeId(UUID cidadeId);
 }

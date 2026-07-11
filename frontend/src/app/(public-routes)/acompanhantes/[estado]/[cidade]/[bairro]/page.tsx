@@ -7,8 +7,12 @@ import {
 } from "@/lib/seo/seoContentGeneratorBairro"
 import AnuncioCard from "@/components/anuncios/anuncio-card"
 import { StoriesBar } from "@/components/stories/stories-bar"
-import { serverApiFetchJson } from "@/lib/server-api"
-import { selecionarCapaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
+import { selecionarCapaPublicaSegura } from "@/lib/media/public-media"
+import {
+  isPublicCatalogNotFound,
+  listarPublicosPorBairro,
+  obterAgregadoPublicoCidade,
+} from "@/lib/public-catalog-api"
 import {
   labelAcompanhantesBairro,
   labelAcompanhantesCidade,
@@ -35,85 +39,12 @@ interface PageProps {
   }>
 }
 
-interface AnuncioSeoDTO {
-  id: number
-  slug: string
-  titulo: string
-  preco?: number
-  midias?: MidiaPublica[]
-  descricao?: string
-  nomeAnunciante?: string
-  usernameAnunciante?: string
-  visualizacoes?: number
-  cidadeNome?: string
-  bairroNome?: string
-  estadoUf?: string
-  estadoNome?: string
-  idade?: number
-  destaqueAtivo?: boolean
-  videoHabilitado?: boolean
-  carrosselDisponivel?: boolean
-  whatsappCardEnabled?: boolean
-}
-
-interface PageResponse<T> {
-  content: T[]
-  totalPages: number
-  totalElements: number
-  number?: number
-  size?: number
-}
-
-function formatarNomeSlug(slug: string) {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
-    .join(" ")
-}
-
-async function buscarAnunciosPorBairro(
-  estado: string,
-  cidade: string,
-  bairro: string,
-  page: number = 0
-): Promise<PageResponse<AnuncioSeoDTO>> {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    if (!apiUrl) return { content: [], totalPages: 0, totalElements: 0 }
-
-    const data = await serverApiFetchJson<any>(
-      `${apiUrl}/anuncios/por-bairro/${encodeURIComponent(estado)}/${encodeURIComponent(cidade)}/${encodeURIComponent(bairro)}?page=${page}&size=20`,
-      { next: { revalidate: 3600 } }
-    )
-
-    return {
-      content: Array.isArray(data?.content) ? data.content : [],
-      totalPages: Number(data?.totalPages ?? 0),
-      totalElements: Number(data?.totalElements ?? 0),
-      number: data?.number,
-      size: data?.size,
-    }
-  } catch (error) {
-    console.error("Erro ao buscar anúncios por bairro:", error)
-    return { content: [], totalPages: 0, totalElements: 0 }
-  }
-}
-
-async function buscarBairrosPorCidade(estado: string, cidade: string) {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    if (!apiUrl) return []
-
-    const data = await serverApiFetchJson<any[]>(
-      `${apiUrl}/anuncios/bairros-por-cidade/${encodeURIComponent(estado)}/${encodeURIComponent(cidade)}`,
-      { next: { revalidate: 3600 } }
-    )
-    return data
-  } catch (error) {
-    console.error("Erro ao buscar bairros por cidade:", error)
-    return []
-  }
+async function carregarBairro(estado: string, cidade: string, bairro: string, page: number) {
+  const [data, agregadoCidade] = await Promise.all([
+    listarPublicosPorBairro(estado, cidade, bairro, page),
+    obterAgregadoPublicoCidade(estado, cidade),
+  ])
+  return { data, agregadoCidade }
 }
 
 export async function generateMetadata({
@@ -129,24 +60,24 @@ export async function generateMetadata({
     }
   }
 
-  const data = await buscarAnunciosPorBairro(estado, cidade, bairro, page)
-
-  if (!data.content || data.content.length === 0) {
-    return {
-      title: "Acompanhantes não encontradas",
-      description: "Nenhuma acompanhante disponível nesta localidade.",
-      robots: {
-        index: false,
-        follow: true,
-      },
+  let data
+  try {
+    data = (await carregarBairro(estado, cidade, bairro, page)).data
+  } catch (error) {
+    if (isPublicCatalogNotFound(error)) {
+      return {
+        title: "Acompanhantes não encontradas",
+        description: "Nenhuma acompanhante disponível nesta localidade.",
+        robots: { index: false, follow: true },
+      }
     }
+    throw error
   }
 
-  const primeiroAnuncio = data.content[0]
-  const bairroNome = primeiroAnuncio.bairroNome || formatarNomeSlug(bairro)
-  const cidadeNome = primeiroAnuncio.cidadeNome || formatarNomeSlug(cidade)
-  const estadoNome = primeiroAnuncio.estadoNome || estado.toUpperCase()
-  const estadoUf = (primeiroAnuncio.estadoUf || estado).toUpperCase()
+  const bairroNome = data.localidade.bairro as string
+  const cidadeNome = data.localidade.cidade as string
+  const estadoNome = data.localidade.estado
+  const estadoUf = data.localidade.uf
 
   const canonicalUrl = buildPublicUrl(
     buildPublicPath("acompanhantes", estado, cidade, bairro),
@@ -166,7 +97,7 @@ export async function generateMetadata({
   const indexavel =
     page === 0 &&
     isBairroIndexavelLocal({
-      totalAnunciosAtivos: data.totalElements || data.content.length,
+      totalAnunciosAtivos: data.paginacao.totalItens,
     })
 
   return {
@@ -198,21 +129,21 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
   const page = parsePublicPage((await searchParams).page)
   if (page === null) notFound()
 
-  const data = await buscarAnunciosPorBairro(estado, cidade, bairro, page)
-  const bairrosPorCidade = await buscarBairrosPorCidade(estado, cidade)
-
-  if (!data.content || data.content.length === 0) {
-    notFound()
+  let carregado
+  try {
+    carregado = await carregarBairro(estado, cidade, bairro, page)
+  } catch (error) {
+    if (isPublicCatalogNotFound(error)) notFound()
+    throw error
   }
-
-  const primeiroAnuncio = data.content[0]
-  const bairroNome = primeiroAnuncio.bairroNome || formatarNomeSlug(bairro)
-  const cidadeNome = primeiroAnuncio.cidadeNome || formatarNomeSlug(cidade)
-  const estadoNome = primeiroAnuncio.estadoNome || estado.toUpperCase()
-  const estadoUf = (primeiroAnuncio.estadoUf || estado).toUpperCase()
-  const outrosBairros = bairrosPorCidade
-    .filter((b: any) => b.bairroSlug !== bairro)
-    .sort((a: any, b: any) => a.bairroNome.localeCompare(b.bairroNome))
+  const { data, agregadoCidade } = carregado
+  const bairroNome = data.localidade.bairro as string
+  const cidadeNome = data.localidade.cidade as string
+  const estadoNome = data.localidade.estado
+  const estadoUf = data.localidade.uf
+  const outrosBairros = agregadoCidade.bairros
+    .filter((item) => item.bairroSlug !== bairro)
+    .sort((a, b) => a.bairroNome.localeCompare(b.bairroNome))
     .slice(0, 10)
 
   const seo = gerarConteudoSeoBairro({
@@ -220,7 +151,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
     cidadeNome,
     estadoNome,
     estadoUf,
-    bairros: outrosBairros.map((bairroItem: any) => bairroItem.bairroNome).filter(Boolean),
+    bairros: outrosBairros.map((bairroItem) => bairroItem.bairroNome).filter(Boolean),
   })
 
   const baseUrl = getPublicSiteBaseUrl()
@@ -239,7 +170,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
   const itemListSchema = {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    itemListElement: data.content.slice(0, 10).map((anuncio, index) => ({
+    itemListElement: data.itens.slice(0, 10).map((anuncio, index) => ({
       "@type": "ListItem",
       position: index + 1,
       name: anuncio.titulo,
@@ -284,7 +215,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
       <StoriesBar />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {data.content.map((anuncio, index) => (
+        {data.itens.map((anuncio, index) => (
           <AnuncioCard
             key={`${anuncio.id}-${anuncio.slug ?? index}`}
             id={anuncio.id}
@@ -293,13 +224,9 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
             estadoUf={anuncio.estadoUf ?? null}
             cidadeNome={anuncio.cidadeNome ?? null}
             bairroNome={anuncio.bairroNome ?? null}
-            idade={anuncio.idade}
             valor={`A partir de R$ ${Number(anuncio.preco ?? 0).toFixed(2)} / hora`}
             midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
-            nomeAnunciante={anuncio.nomeAnunciante}
-            usernameAnunciante={anuncio.usernameAnunciante}
-            visualizacoes={anuncio.visualizacoes ?? 0}
             destaque={anuncio.destaqueAtivo ?? false}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
@@ -343,7 +270,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
         </section>
       )}
 
-      {data.totalPages > 1 && (
+      {data.paginacao.totalPaginas > 1 && (
         <nav className="flex items-center justify-center gap-2 border-t py-8">
           {page > 0 && (
             <Link
@@ -359,7 +286,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
           )}
 
           <div className="flex gap-1">
-            {Array.from({ length: Math.min(data.totalPages, 5) }).map((_, i) => {
+            {Array.from({ length: Math.min(data.paginacao.totalPaginas, 5) }).map((_, i) => {
               const pageNum = i
               return (
                 <Link
@@ -381,7 +308,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
             })}
           </div>
 
-          {page < data.totalPages - 1 && (
+          {page < data.paginacao.totalPaginas - 1 && (
             <Link
               href={`${bairroPath}?page=${page + 1}`}
               className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
@@ -403,7 +330,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
           </p>
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-            {outrosBairros.map((bairroItem: any) => (
+            {outrosBairros.map((bairroItem) => (
               <Link
                 key={bairroItem.bairroSlug}
                 href={buildPublicPath(
@@ -456,7 +383,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
         <link rel="prev" href={page === 1 ? url : `${url}?page=${page - 1}`} />
       )}
 
-      {page < data.totalPages - 1 && (
+      {page < data.paginacao.totalPaginas - 1 && (
         <link rel="next" href={`${url}?page=${page + 1}`} />
       )}
     </main>

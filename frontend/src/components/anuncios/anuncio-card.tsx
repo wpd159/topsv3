@@ -22,7 +22,7 @@ import {
 } from "@heroicons/react/24/solid"
 
 type AnuncioCardProps = {
-  id: number
+  id: string | number
   slug: string
   nome: string
   estadoUf?: string | null
@@ -33,7 +33,7 @@ type AnuncioCardProps = {
   valor: string
   midias?: MidiaPublica[]
   previewImagens?: string[]
-  descricao?: string
+  descricao?: string | null
   nomeAnunciante?: string
   usernameAnunciante?: string
   favoritoInicial?: boolean

@@ -22,11 +22,15 @@ export function resolverChaveUnlockAnuncio({
   anuncioId,
   anuncioSlug,
 }: {
-  anuncioId?: number | null
+  anuncioId?: string | number | null
   anuncioSlug?: string | null
 }) {
   if (typeof anuncioId === "number" && Number.isFinite(anuncioId)) {
     return `anuncio:${anuncioId}`
+  }
+
+  if (typeof anuncioId === "string" && anuncioId.trim()) {
+    return `anuncio:${anuncioId.trim()}`
   }
 
   const slug = (anuncioSlug ?? "").trim()

@@ -23,7 +23,7 @@ import { useAuth } from '@/context/AuthContext'
 interface DenunciaModalProps {
   open: boolean
   onOpenChange: (v: boolean) => void
-  anuncioId: number
+  anuncioId: string | number
   slug: string
 }
 

@@ -2,11 +2,13 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import {
   agruparCidadesPorEstado,
-  buscarCidadesAtivasSeo,
+  cidadesDaDescobertaPublica,
 } from "@/lib/seo/acompanhantes-navigation"
+import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
 
+export const dynamic = "force-dynamic"
 export const revalidate = 3600
 
 export const metadata: Metadata = {
@@ -28,7 +30,7 @@ export const metadata: Metadata = {
 }
 
 export default async function AcompanhantesIndexPage() {
-  const cidades = await buscarCidadesAtivasSeo()
+  const cidades = cidadesDaDescobertaPublica(await descobrirLocalidadesPublicas())
   const estados = agruparCidadesPorEstado(cidades)
   const cidadesPrincipais = cidades.slice(0, 12)
 

@@ -3,8 +3,11 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import AnuncioCard from "@/components/anuncios/anuncio-card"
 import { StoriesBar } from "@/components/stories/stories-bar"
-import { serverApiFetchJson } from "@/lib/server-api"
-import { type MidiaPublica } from "@/lib/media/public-media"
+import {
+  isPublicCatalogNotFound,
+  listarPublicosPorCidade,
+  obterAgregadoPublicoCidade,
+} from "@/lib/public-catalog-api"
 import {
   CidadeSeoAggregate,
   gerarBreadcrumbSchemaCidade,
@@ -39,124 +42,22 @@ interface PageProps {
   }>
 }
 
-interface AnuncioSeoDTO {
-  id: number
-  slug: string
-  titulo: string
-  preco?: number
-  midias?: MidiaPublica[]
-  descricao?: string
-  nomeAnunciante?: string
-  usernameAnunciante?: string
-  visualizacoes?: number
-  cidadeNome?: string
-  bairroNome?: string
-  estadoUf?: string
-  estadoNome?: string
-  idade?: number
-  destaqueAtivo?: boolean
-  videoHabilitado?: boolean
-  carrosselDisponivel?: boolean
-  whatsappCardEnabled?: boolean
-}
-
-interface PageResponse<T> {
-  content: T[]
-  totalPages: number
-  totalElements: number
-  number?: number
-  size?: number
-}
-
-function formatarNomeCidade(slug: string) {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((parte) => parte.charAt(0).toUpperCase() + parte.slice(1))
-    .join(" ")
-}
-
 function buildCityHref(cidadePath: string, page: number) {
   return page <= 0 ? cidadePath : `${cidadePath}?page=${page}`
 }
 
-async function buscarAnunciosPorCidade(
-  estado: string,
-  cidade: string,
-  page: number = 0
-): Promise<PageResponse<AnuncioSeoDTO>> {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    if (!apiUrl) return { content: [], totalPages: 0, totalElements: 0 }
-
-    const data = await serverApiFetchJson<any>(
-      `${apiUrl}/anuncios/por-cidade/${encodeURIComponent(estado)}/${encodeURIComponent(cidade)}?page=${page}&size=20`,
-      { next: { revalidate: 3600 } }
-    )
-
-    return {
-      content: Array.isArray(data?.content) ? data.content : [],
-      totalPages: Number(data?.totalPages ?? 0),
-      totalElements: Number(data?.totalElements ?? 0),
-      number: data?.number,
-      size: data?.size,
-    }
-  } catch (error) {
-    console.error("Erro ao buscar anúncios por cidade:", error)
-    return { content: [], totalPages: 0, totalElements: 0 }
+async function carregarCidade(estado: string, cidade: string, page: number) {
+  const [data, agregadoBase] = await Promise.all([
+    listarPublicosPorCidade(estado, cidade, page),
+    obterAgregadoPublicoCidade(estado, cidade),
+  ])
+  const agregado: CidadeSeoAggregate = {
+    ...agregadoBase,
+    totalBairrosAtivos: agregadoBase.bairros.length,
+    totalCategoriasAtivas: agregadoBase.categoriasPrincipais.length,
+    shouldIndex: agregadoBase.totalAnunciosAtivos > 0,
   }
-}
-
-async function buscarAgregadoCidade(
-  estado: string,
-  cidade: string
-): Promise<CidadeSeoAggregate | null> {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    if (!apiUrl) return null
-
-    const data = await serverApiFetchJson<CidadeSeoAggregate>(
-      `${apiUrl}/anuncios/seo/cidade/${encodeURIComponent(estado)}/${encodeURIComponent(cidade)}`,
-      { next: { revalidate: 3600 } }
-    )
-    return data
-  } catch (error) {
-    console.error("Erro ao buscar agregado SEO da cidade:", error)
-    return null
-  }
-}
-
-function criarFallbackAgregado(
-  estado: string,
-  cidade: string,
-  data: PageResponse<AnuncioSeoDTO>
-): CidadeSeoAggregate {
-  const primeiroAnuncio = data.content[0]
-
-  return {
-    estadoUf: (primeiroAnuncio?.estadoUf || estado).toUpperCase(),
-    estadoNome: primeiroAnuncio?.estadoNome || (primeiroAnuncio?.estadoUf || estado).toUpperCase(),
-    cidadeNome: primeiroAnuncio?.cidadeNome || formatarNomeCidade(cidade),
-    cidadeSlug: cidade,
-    totalAnunciosAtivos: data.totalElements || data.content.length,
-    totalBairrosAtivos: 0,
-    totalCategoriasAtivas: 1,
-    quantidadeAnunciosDestaque: 0,
-    quantidadeAnunciosRecentes: 0,
-    ultimaAtualizacao: null,
-    shouldIndex: false,
-    robots: "noindex,follow",
-    reasonCodes: ["FALLBACK_SEM_AGREGADOR"],
-    bairros: [],
-    categoriasPrincipais: [],
-    cidadesRelacionadas: [],
-    possuiStories: false,
-    possuiConteudoRestrito: data.content.some((item) =>
-      item.midias?.some((midia) => midia.visibilidadeMidia === "RESTRITA_18")
-    ),
-    possuiDestaques: false,
-    possuiRecentes: false,
-  }
+  return { data, agregado }
 }
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
@@ -169,47 +70,39 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     }
   }
 
-  const [data, agregadoBruto] = await Promise.all([
-    buscarAnunciosPorCidade(estado, cidade, page),
-    buscarAgregadoCidade(estado, cidade),
-  ])
-
-  if ((!data.content || data.content.length === 0) && !agregadoBruto) {
+  try {
+    const { agregado } = await carregarCidade(estado, cidade, page)
+    const canonicalUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado, cidade), page)
+    const indexavel = page === 0 && isCidadeIndexavelLocal(agregado)
     return {
-      title: "Perfis não encontrados",
-      description: "Nenhum perfil ativo foi encontrado nesta localidade.",
-      robots: {
-        index: false,
-        follow: true,
-      },
-    }
-  }
-
-  const agregado = agregadoBruto ?? criarFallbackAgregado(estado, cidade, data)
-  const canonicalUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado, cidade), page)
-  const indexavel = page === 0 && isCidadeIndexavelLocal(agregado)
-
-  return {
-    title: gerarTituloMetadataCidade(agregado, page),
-    description: gerarDescricaoMetadataCidade(agregado, page),
-    alternates: {
-      canonical: canonicalUrl,
-    },
-    openGraph: {
       title: gerarTituloMetadataCidade(agregado, page),
       description: gerarDescricaoMetadataCidade(agregado, page),
-      url: canonicalUrl,
-      type: "website",
-      siteName: "Tops do Job",
-      locale: "pt_BR",
-    },
-    robots: {
-      index: indexavel,
-      follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
-    },
+      alternates: { canonical: canonicalUrl },
+      openGraph: {
+        title: gerarTituloMetadataCidade(agregado, page),
+        description: gerarDescricaoMetadataCidade(agregado, page),
+        url: canonicalUrl,
+        type: "website",
+        siteName: "Tops do Job",
+        locale: "pt_BR",
+      },
+      robots: {
+        index: indexavel,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
+    }
+  } catch (error) {
+    if (isPublicCatalogNotFound(error)) {
+      return {
+        title: "Perfis não encontrados",
+        description: "Nenhum perfil ativo foi encontrado nesta localidade.",
+        robots: { index: false, follow: true },
+      }
+    }
+    throw error
   }
 }
 
@@ -218,16 +111,14 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
   const page = parsePublicPage((await searchParams).page)
   if (page === null) notFound()
 
-  const [data, agregadoBruto] = await Promise.all([
-    buscarAnunciosPorCidade(estado, cidade, page),
-    buscarAgregadoCidade(estado, cidade),
-  ])
-
-  if (!data.content || data.content.length === 0) {
-    notFound()
+  let carregado
+  try {
+    carregado = await carregarCidade(estado, cidade, page)
+  } catch (error) {
+    if (isPublicCatalogNotFound(error)) notFound()
+    throw error
   }
-
-  const agregado = agregadoBruto ?? criarFallbackAgregado(estado, cidade, data)
+  const { data, agregado } = carregado
   const editorial = await gerarConteudoProgramaticoCidade(agregado)
   const baseUrl = getPublicSiteBaseUrl()
   const estadoPath = buildPublicPath("acompanhantes", estado)
@@ -238,7 +129,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
   const breadcrumbSchema = gerarBreadcrumbSchemaCidade(baseUrl, agregado)
   const faqSchema = page === 0 ? gerarFaqSchema(editorial.faq) : null
   const itemListSchema =
-    page === 0 ? gerarItemListSchemaCidade(baseUrl, data.content.slice(0, 10)) : null
+    page === 0 ? gerarItemListSchemaCidade(baseUrl, data.itens.slice(0, 10)) : null
   const bairrosVisiveis = agregado.bairros.slice(0, editorial.modo === "completo" ? 10 : 6)
   const categoriasVisiveis = agregado.categoriasPrincipais.slice(0, editorial.modo === "completo" ? 5 : 3)
   const cidadesRelacionadas = agregado.cidadesRelacionadas
@@ -274,7 +165,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
       <StoriesBar />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {data.content.map((anuncio, index) => (
+        {data.itens.map((anuncio, index) => (
           <AnuncioCard
             key={`${anuncio.id}-${anuncio.slug ?? index}`}
             id={anuncio.id}
@@ -283,13 +174,9 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
             estadoUf={anuncio.estadoUf ?? null}
             cidadeNome={anuncio.cidadeNome ?? null}
             bairroNome={anuncio.bairroNome ?? null}
-            idade={anuncio.idade}
             valor={`A partir de R$ ${Number(anuncio.preco ?? 0).toFixed(2)} / hora`}
             midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
-            nomeAnunciante={anuncio.nomeAnunciante}
-            usernameAnunciante={anuncio.usernameAnunciante}
-            visualizacoes={anuncio.visualizacoes ?? 0}
             destaque={anuncio.destaqueAtivo ?? false}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
@@ -298,7 +185,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
         ))}
       </div>
 
-      {data.totalPages > 1 && (
+      {data.paginacao.totalPaginas > 1 && (
         <nav className="flex items-center justify-center gap-2 border-t py-8">
           {page > 0 && (
             <Link
@@ -311,7 +198,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
           )}
 
           <div className="flex gap-1">
-            {Array.from({ length: Math.min(data.totalPages, 5) }).map((_, index) => {
+            {Array.from({ length: Math.min(data.paginacao.totalPaginas, 5) }).map((_, index) => {
               const pageNum = index
               return (
                 <Link
@@ -330,7 +217,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
             })}
           </div>
 
-          {page < data.totalPages - 1 && (
+          {page < data.paginacao.totalPaginas - 1 && (
             <Link
               href={buildCityHref(cidadePath, page + 1)}
               scroll={false}
@@ -498,7 +385,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
       )}
 
       {page > 0 && <link rel="prev" href={page === 1 ? url : `${url}?page=${page - 1}`} />}
-      {page < data.totalPages - 1 && <link rel="next" href={`${url}?page=${page + 1}`} />}
+      {page < data.paginacao.totalPaginas - 1 && <link rel="next" href={`${url}?page=${page + 1}`} />}
     </main>
   )
 }

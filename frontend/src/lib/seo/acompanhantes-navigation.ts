@@ -1,22 +1,17 @@
-import { corrigirTextoCorrompido } from "@/lib/text/encoding"
-import { serverApiFetchJson } from "@/lib/server-api"
-import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import type { PublicCatalogDiscovery } from "@/lib/public-catalog-api"
 
-export interface CidadeAtivaSeoDTO {
+export interface CidadeNavegacaoPublica {
   estadoUf: string
   cidadeNome: string
   cidadeSlug: string
   ultimaAtualizacao?: string
-  shouldIndex?: boolean
   totalAnunciosAtivos?: number
-  totalAnuncios?: number
-  quantidadeAnuncios?: number
 }
 
 export interface EstadoComCidadesSeo {
   uf: string
   nome: string
-  cidades: CidadeAtivaSeoDTO[]
+  cidades: CidadeNavegacaoPublica[]
 }
 
 export const ESTADOS_UF_PARA_NOME: Record<string, string> = {
@@ -53,35 +48,19 @@ export function getEstadoNomePorUf(uf: string) {
   return ESTADOS_UF_PARA_NOME[uf.toUpperCase()] || uf.toUpperCase()
 }
 
-export async function buscarCidadesAtivasSeo() {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    if (!apiUrl) return []
-
-    const data = await serverApiFetchJson<CidadeAtivaSeoDTO[]>(`${apiUrl}/anuncios/cidades-ativas`, {
-      next: { revalidate: 3600 },
-    })
-    if (!Array.isArray(data)) return []
-
-    return data
-      .filter((item) => item?.estadoUf && item?.cidadeSlug && item?.cidadeNome)
-      .filter(isCidadeIndexavelLocal)
-      .map((item) => ({
-        estadoUf: String(item.estadoUf).toUpperCase(),
-        cidadeNome: corrigirTextoCorrompido(String(item.cidadeNome)),
-        cidadeSlug: String(item.cidadeSlug),
-        ultimaAtualizacao: item.ultimaAtualizacao,
-        shouldIndex: item.shouldIndex,
-        totalAnunciosAtivos: item.totalAnunciosAtivos,
-        totalAnuncios: item.totalAnuncios,
-        quantidadeAnuncios: item.quantidadeAnuncios,
-      })) as CidadeAtivaSeoDTO[]
-  } catch {
-    return []
-  }
+export function cidadesDaDescobertaPublica(descoberta: PublicCatalogDiscovery) {
+  return descoberta.estados.flatMap((estado) =>
+    estado.cidades.map((cidade) => ({
+      estadoUf: estado.uf,
+      cidadeNome: cidade.nome,
+      cidadeSlug: cidade.slug,
+      ultimaAtualizacao: cidade.ultimaAtualizacao ?? undefined,
+      totalAnunciosAtivos: cidade.totalAnunciosAtivos,
+    }))
+  ) satisfies CidadeNavegacaoPublica[]
 }
 
-export function agruparCidadesPorEstado(cidades: CidadeAtivaSeoDTO[]) {
+export function agruparCidadesPorEstado(cidades: CidadeNavegacaoPublica[]) {
   const mapa = new Map<string, EstadoComCidadesSeo>()
 
   for (const cidade of cidades) {

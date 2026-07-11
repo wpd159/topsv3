@@ -18,6 +18,14 @@ public class ListagemPublicaController {
         this.consultaService = consultaService;
     }
 
+    @GetMapping("/{uf}")
+    public ListaAnunciosPublicaDto porEstado(
+            @PathVariable String uf,
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "20") int tamanho) {
+        return consultaService.porEstado(uf, pagina, tamanho);
+    }
+
     @GetMapping("/{uf}/{cidade}")
     public ListaAnunciosPublicaDto porCidade(
             @PathVariable String uf,

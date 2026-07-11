@@ -26,19 +26,23 @@ public class AnuncioPublicoMapper {
             AnuncioEntity anuncio,
             LocalizacaoPublicaDto localizacao,
             List<MidiaPublicaDto> midias,
-            PremiumPublicoFlagsDto premium) {
+            PremiumPublicoFlagsDto premium,
+            boolean contatoDisponivel) {
         PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioCardPublicoDto(
+                anuncio.getId(),
                 anuncio.getSlug(),
                 anuncio.getTitulo(),
                 resumo(anuncio.getDescricao()),
                 anuncio.getPreco(),
+                anuncio.getCategoria(),
                 localizacao,
                 midiaPolicy.paraCard(midias),
                 flags.destaqueAtivo(),
                 flags.topoAtivo(),
                 flags.possuiMidiaExtra() || !midias.isEmpty(),
                 flags.possuiStories() && !midias.isEmpty(),
+                contatoDisponivel,
                 flags.beneficiosPublicos(),
                 anuncio.getPublicadoEm());
     }
@@ -48,19 +52,23 @@ public class AnuncioPublicoMapper {
             LocalizacaoPublicaDto localizacao,
             List<MidiaPublicaDto> midias,
             SeoRotaPublicaDto seo,
-            PremiumPublicoFlagsDto premium) {
+            PremiumPublicoFlagsDto premium,
+            boolean contatoDisponivel) {
         PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioDetalhePublicoDto(
+                anuncio.getId(),
                 anuncio.getSlug(),
                 anuncio.getTitulo(),
                 anuncio.getDescricao(),
                 anuncio.getPreco(),
+                anuncio.getCategoria(),
                 localizacao,
                 List.copyOf(midias),
                 flags.destaqueAtivo(),
                 flags.topoAtivo(),
                 flags.possuiMidiaExtra() || !midias.isEmpty(),
                 flags.possuiStories() && !midias.isEmpty(),
+                contatoDisponivel,
                 flags.beneficiosPublicos(),
                 null,
                 PENDENTE_POLITICA_WHATSAPP,

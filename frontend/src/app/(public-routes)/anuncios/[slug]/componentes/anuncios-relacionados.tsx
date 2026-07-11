@@ -2,14 +2,15 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon, MapPinIcon } from '@heroicons/react/24/solid'
 import { SensitiveImage } from '@/components/compliance/sensitive-image'
 import { buildLocalizacaoLabel } from '@/lib/location'
 import { selecionarCapaPublicaSegura, type MidiaPublica } from '@/lib/media/public-media'
+import type { PublicCatalogCard } from '@/lib/public-catalog-api'
 
 interface AnuncioRelacionado {
-  id: number
+  id: string
   titulo: string
   preco: number
   estadoUf?: string | null
@@ -24,9 +25,8 @@ interface AnuncioRelacionado {
 }
 
 interface AnunciosRelacionadosProps {
-  anuncioIdAtual?: number
-  estadoUf?: string | null
-  cidadeSlug?: string | null
+  anuncioIdAtual?: string
+  anuncios: PublicCatalogCard[]
   cidadeNome?: string | null
   bairroNome?: string | null
   categoria?: string | null
@@ -68,44 +68,37 @@ function ordenarAnuncios(
 
 export function AnunciosRelacionados({
   anuncioIdAtual,
-  estadoUf,
-  cidadeSlug,
+  anuncios: anunciosPublicos,
   cidadeNome,
   bairroNome,
   categoria,
 }: AnunciosRelacionadosProps) {
   const router = useRouter()
-  const [anuncios, setAnuncios] = useState<AnuncioRelacionado[]>([])
   const [autoRotacaoAtiva, setAutoRotacaoAtiva] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!cidadeSlug || !estadoUf) {
-      setAnuncios([])
-      return
-    }
-
-    ;(async () => {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/anuncios/por-cidade/${encodeURIComponent(estadoUf)}/${encodeURIComponent(cidadeSlug)}?page=0&size=16`,
-          { cache: 'no-store', credentials: 'include' }
-        )
-        if (!res.ok) throw new Error('Erro ao carregar anúncios recomendados')
-        const data = await res.json()
-        const lista = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.content)
-            ? data.content
-            : []
-
-        const filtrados = lista.filter((item: AnuncioRelacionado) => item?.id !== anuncioIdAtual)
-        setAnuncios(ordenarAnuncios(filtrados, bairroNome, categoria).slice(0, 8))
-      } catch {
-        setAnuncios([])
-      }
-    })()
-  }, [anuncioIdAtual, bairroNome, categoria, cidadeSlug, estadoUf])
+  const anuncios = useMemo<AnuncioRelacionado[]>(
+    () => ordenarAnuncios(
+      anunciosPublicos
+        .filter((item) => item.id !== anuncioIdAtual)
+        .map((item) => ({
+          id: item.id,
+          titulo: item.titulo,
+          preco: Number(item.preco ?? 0),
+          estadoUf: item.estadoUf,
+          cidadeNome: item.cidadeNome,
+          bairroNome: item.bairroNome,
+          localizacao: item.enderecoResumido,
+          midias: item.midias,
+          slug: item.slug,
+          impulsionado: item.topoAtivo,
+          destaqueAtivo: item.destaqueAtivo,
+          categoria: item.categoria,
+        })),
+      bairroNome,
+      categoria
+    ).slice(0, 8),
+    [anuncioIdAtual, anunciosPublicos, bairroNome, categoria]
+  )
 
   useEffect(() => {
     if (anuncios.length <= 1 || !autoRotacaoAtiva) return

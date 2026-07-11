@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 
 type SensitiveImageProps = {
   midia: MidiaPublica
-  anuncioId?: number | null
+  anuncioId?: string | number | null
   anuncioSlug?: string | null
   alt: string
   className?: string

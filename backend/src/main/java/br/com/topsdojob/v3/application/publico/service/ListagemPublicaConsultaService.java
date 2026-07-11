@@ -27,8 +27,10 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ListagemPublicaConsultaService {
@@ -42,6 +44,7 @@ public class ListagemPublicaConsultaService {
     private final AnuncioPublicoConsultaService anuncioConsultaService;
     private final SeoPublicoConsultaService seoService;
     private final PremiumPublicoMapper premiumMapper;
+    private final PoliticaContatoPublicoService contatoService;
 
     public ListagemPublicaConsultaService(
             EstadoRepository estadoRepository,
@@ -52,7 +55,8 @@ public class ListagemPublicaConsultaService {
             AnuncioPublicoMapper anuncioMapper,
             AnuncioPublicoConsultaService anuncioConsultaService,
             SeoPublicoConsultaService seoService,
-            PremiumPublicoMapper premiumMapper) {
+            PremiumPublicoMapper premiumMapper,
+            PoliticaContatoPublicoService contatoService) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
@@ -62,20 +66,38 @@ public class ListagemPublicaConsultaService {
         this.anuncioConsultaService = anuncioConsultaService;
         this.seoService = seoService;
         this.premiumMapper = premiumMapper;
+        this.contatoService = contatoService;
+    }
+
+    @Transactional(readOnly = true)
+    public ListaAnunciosPublicaDto porEstado(String uf, int pagina, int tamanho) {
+        String ufSeguro = RotaPublicaGuard.uf(uf);
+        Pageable pageable = pageable(pagina, tamanho);
+        EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
+                .orElseThrow(() -> notFound("estado nao encontrado"));
+        return listarLocalizacoes(
+                estado,
+                null,
+                null,
+                localizacaoRepository.findByEstadoId(estado.getId()),
+                pageable);
     }
 
     @Transactional(readOnly = true)
     public ListaAnunciosPublicaDto porCidade(String uf, String cidadeSlug, int pagina, int tamanho) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         String cidadeSegura = RotaPublicaGuard.slug(cidadeSlug, "cidade");
-        RotaPublicaGuard.page(pagina, tamanho);
-        Pageable pageable = PageRequest.of(pagina, tamanho, Sort.by(Sort.Direction.DESC, "publicadoEm")
-                .and(Sort.by("id")));
-
-        return estadoRepository.findByUfIgnoreCase(ufSeguro)
-                .flatMap(estado -> cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
-                        .map(cidade -> listarCidade(estado, cidade, null, pageable)))
-                .orElseGet(() -> vazia(pageable, seoService.paraCidade(ufSeguro, cidadeSegura)));
+        Pageable pageable = pageable(pagina, tamanho);
+        EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
+                .orElseThrow(() -> notFound("estado nao encontrado"));
+        CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
+                .orElseThrow(() -> notFound("cidade nao encontrada"));
+        return listarLocalizacoes(
+                estado,
+                cidade,
+                null,
+                localizacaoRepository.findByCidadeId(cidade.getId()),
+                pageable);
     }
 
     @Transactional(readOnly = true)
@@ -83,26 +105,27 @@ public class ListagemPublicaConsultaService {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         String cidadeSegura = RotaPublicaGuard.slug(cidadeSlug, "cidade");
         String bairroSeguro = RotaPublicaGuard.slug(bairroSlug, "bairro");
-        RotaPublicaGuard.page(pagina, tamanho);
-        Pageable pageable = PageRequest.of(pagina, tamanho, Sort.by(Sort.Direction.DESC, "publicadoEm")
-                .and(Sort.by("id")));
-
-        return estadoRepository.findByUfIgnoreCase(ufSeguro)
-                .flatMap(estado -> cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
-                        .flatMap(cidade -> bairroRepository.findByCidadeIdAndSlug(cidade.getId(), bairroSeguro)
-                                .map(bairro -> listarCidade(estado, cidade, bairro, pageable))))
-                .orElseGet(() -> vazia(pageable, seoService.paraBairro(ufSeguro, cidadeSegura, bairroSeguro)));
+        Pageable pageable = pageable(pagina, tamanho);
+        EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
+                .orElseThrow(() -> notFound("estado nao encontrado"));
+        CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
+                .orElseThrow(() -> notFound("cidade nao encontrada"));
+        BairroEntity bairro = bairroRepository.findByCidadeIdAndSlug(cidade.getId(), bairroSeguro)
+                .orElseThrow(() -> notFound("bairro nao encontrado"));
+        return listarLocalizacoes(
+                estado,
+                cidade,
+                bairro,
+                localizacaoRepository.findByCidadeIdAndBairroId(cidade.getId(), bairro.getId()),
+                pageable);
     }
 
-    private ListaAnunciosPublicaDto listarCidade(
+    private ListaAnunciosPublicaDto listarLocalizacoes(
             EstadoEntity estado,
             CidadeEntity cidade,
             BairroEntity bairro,
+            List<AnuncioLocalizacaoEntity> localizacoes,
             Pageable pageable) {
-        List<AnuncioLocalizacaoEntity> localizacoes = bairro == null
-                ? localizacaoRepository.findByCidadeId(cidade.getId())
-                : localizacaoRepository.findByCidadeIdAndBairroId(cidade.getId(), bairro.getId());
-
         List<UUID> anuncioIds = localizacoes.stream()
                 .map(AnuncioLocalizacaoEntity::getAnuncioId)
                 .toList();
@@ -115,32 +138,51 @@ public class ListagemPublicaConsultaService {
                         StatusModeracaoAnuncio.APROVADO,
                         pageable);
 
+        if (anuncios.isEmpty()) {
+            throw notFound("nenhum anuncio publico encontrado na localidade");
+        }
+
         Map<UUID, AnuncioLocalizacaoEntity> localizacaoPorAnuncio = localizacoes.stream()
                 .collect(Collectors.toMap(AnuncioLocalizacaoEntity::getAnuncioId, Function.identity()));
+        Map<UUID, CidadeEntity> cidades = cidadeRepository.findAllById(localizacoes.stream()
+                        .map(AnuncioLocalizacaoEntity::getCidadeId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(CidadeEntity::getId, Function.identity()));
+        Map<UUID, BairroEntity> bairros = bairroRepository.findAllById(localizacoes.stream()
+                        .map(AnuncioLocalizacaoEntity::getBairroId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(BairroEntity::getId, Function.identity()));
 
         List<AnuncioCardPublicoDto> itens = anuncios.stream()
-                .map(anuncio -> anuncioMapper.toCard(
-                        anuncio,
-                        toLocalizacao(estado, cidade, bairro, localizacaoPorAnuncio.get(anuncio.getId())),
-                        anuncioConsultaService.midias(anuncio.getId()),
-                        premiumMapper.flags(anuncio)))
+                .map(anuncio -> {
+                    AnuncioLocalizacaoEntity localizacao = localizacaoPorAnuncio.get(anuncio.getId());
+                    CidadeEntity cidadeAnuncio = localizacao == null ? cidade : cidades.get(localizacao.getCidadeId());
+                    BairroEntity bairroAnuncio = localizacao == null ? bairro : bairros.get(localizacao.getBairroId());
+                    return anuncioMapper.toCard(
+                            anuncio,
+                            toLocalizacao(estado, cidadeAnuncio, bairroAnuncio, localizacao),
+                            anuncioConsultaService.midias(anuncio.getId()),
+                            premiumMapper.flags(anuncio),
+                            contatoService.podeExporContato(anuncio));
+                })
                 .toList();
 
         String uf = estado.getUf();
-        String cidadeSlug = cidade.getSlug();
+        String cidadeSlug = cidade == null ? null : cidade.getSlug();
+        LocalizacaoPublicaDto localidade = toLocalizacao(estado, cidade, bairro, null);
         return new ListaAnunciosPublicaDto(
                 itens,
                 PaginacaoPublicaDto.from(anuncios),
-                bairro == null
-                        ? seoService.paraCidade(uf, cidadeSlug)
-                        : seoService.paraBairro(uf, cidadeSlug, bairro.getSlug()));
-    }
-
-    private ListaAnunciosPublicaDto vazia(Pageable pageable, br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto seo) {
-        return new ListaAnunciosPublicaDto(
-                List.of(),
-                new PaginacaoPublicaDto(pageable.getPageNumber(), pageable.getPageSize(), 0, 0),
-                seo);
+                localidade,
+                cidade == null
+                        ? seoService.buscarPorCaminho("/acompanhantes/" + uf.toLowerCase())
+                        : bairro == null
+                                ? seoService.paraCidade(uf, cidadeSlug)
+                                : seoService.paraBairro(uf, cidadeSlug, bairro.getSlug()));
     }
 
     private LocalizacaoPublicaDto toLocalizacao(
@@ -150,10 +192,21 @@ public class ListagemPublicaConsultaService {
             AnuncioLocalizacaoEntity localizacao) {
         return new LocalizacaoPublicaDto(
                 estado.getUf(),
-                cidade.getNome(),
-                cidade.getSlug(),
+                estado.getNome(),
+                cidade == null ? null : cidade.getNome(),
+                cidade == null ? null : cidade.getSlug(),
                 bairro == null ? null : bairro.getNome(),
                 bairro == null ? null : bairro.getSlug(),
                 localizacao == null ? null : localizacao.getEnderecoResumido());
+    }
+
+    private Pageable pageable(int pagina, int tamanho) {
+        RotaPublicaGuard.page(pagina, tamanho);
+        return PageRequest.of(pagina, tamanho, Sort.by(Sort.Direction.DESC, "publicadoEm")
+                .and(Sort.by("id")));
+    }
+
+    private ResponseStatusException notFound(String message) {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, message);
     }
 }

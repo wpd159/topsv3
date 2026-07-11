@@ -14,6 +14,9 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.BairroRepository;
+import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
+import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,6 +42,11 @@ public class AnuncioPublicoConsultaService {
     private final SeoPublicoConsultaService seoService;
     private final IdadePublicaService idadeService;
     private final PremiumPublicoMapper premiumMapper;
+    private final EstadoRepository estadoRepository;
+    private final CidadeRepository cidadeRepository;
+    private final BairroRepository bairroRepository;
+    private final PoliticaContatoPublicoService contatoService;
+    private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
 
     public AnuncioPublicoConsultaService(
             AnuncioRepository anuncioRepository,
@@ -49,7 +57,12 @@ public class AnuncioPublicoConsultaService {
             MidiaPublicaMapper midiaMapper,
             SeoPublicoConsultaService seoService,
             IdadePublicaService idadeService,
-            PremiumPublicoMapper premiumMapper) {
+            PremiumPublicoMapper premiumMapper,
+            EstadoRepository estadoRepository,
+            CidadeRepository cidadeRepository,
+            BairroRepository bairroRepository,
+            PoliticaContatoPublicoService contatoService,
+            AnuncioSeoIndexabilidadePolicy indexabilidadePolicy) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -59,6 +72,11 @@ public class AnuncioPublicoConsultaService {
         this.seoService = seoService;
         this.idadeService = idadeService;
         this.premiumMapper = premiumMapper;
+        this.estadoRepository = estadoRepository;
+        this.cidadeRepository = cidadeRepository;
+        this.bairroRepository = bairroRepository;
+        this.contatoService = contatoService;
+        this.indexabilidadePolicy = indexabilidadePolicy;
     }
 
     @Transactional(readOnly = true)
@@ -80,18 +98,24 @@ public class AnuncioPublicoConsultaService {
                         StatusModeracaoAnuncio.APROVADO)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
+        LocalizacaoPublicaDto localizacao = localizacao(anuncio.getId());
+        List<MidiaPublicaDto> midias = midias(anuncio.getId(), idadeConfirmada);
+        List<MidiaPublicaDto> midiasSeo = idadeConfirmada ? midias(anuncio.getId(), false) : midias;
+        boolean indexavel = indexabilidadePolicy.indexavel(anuncio, localizacao, midiasSeo);
+
         return anuncioMapper.toDetalhe(
                 anuncio,
-                localizacao(anuncio.getId()),
-                midias(anuncio.getId(), idadeConfirmada),
-                seoService.paraAnuncio(slugSeguro),
-                premiumMapper.flags(anuncio));
+                localizacao,
+                midias,
+                seoService.paraAnuncio(slugSeguro, indexavel),
+                premiumMapper.flags(anuncio),
+                contatoService.podeExporContato(anuncio));
     }
 
     LocalizacaoPublicaDto localizacao(UUID anuncioId) {
         return localizacaoRepository.findByAnuncioId(anuncioId)
-                .map(this::toLocalizacaoPlaceholder)
-                .orElseGet(() -> new LocalizacaoPublicaDto(null, null, null, null, null, null));
+                .map(this::toLocalizacao)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "localizacao publica nao encontrada"));
     }
 
     List<MidiaPublicaDto> midias(UUID anuncioId) {
@@ -110,13 +134,27 @@ public class AnuncioPublicoConsultaService {
         return midiaMapper.publicas(vinculos, arquivos, idadeConfirmada);
     }
 
-    private LocalizacaoPublicaDto toLocalizacaoPlaceholder(AnuncioLocalizacaoEntity localizacao) {
+    private LocalizacaoPublicaDto toLocalizacao(AnuncioLocalizacaoEntity localizacao) {
+        if (localizacao.getEstadoId() == null || localizacao.getCidadeId() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "localizacao publica incompleta");
+        }
+        var estado = estadoRepository.findById(localizacao.getEstadoId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "estado do anuncio nao encontrado"));
+        var cidade = cidadeRepository.findById(localizacao.getCidadeId())
+                .filter(item -> estado.getId().equals(item.getEstadoId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "cidade do anuncio nao encontrada"));
+        var bairro = localizacao.getBairroId() == null
+                ? null
+                : bairroRepository.findById(localizacao.getBairroId())
+                        .filter(item -> cidade.getId().equals(item.getCidadeId()))
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "bairro do anuncio nao encontrado"));
         return new LocalizacaoPublicaDto(
-                null,
-                null,
-                null,
-                null,
-                null,
+                estado.getUf(),
+                estado.getNome(),
+                cidade.getNome(),
+                cidade.getSlug(),
+                bairro == null ? null : bairro.getNome(),
+                bairro == null ? null : bairro.getSlug(),
                 localizacao.getEnderecoResumido());
     }
 }

@@ -8,9 +8,14 @@ import Sidebar from "./componentes/sidebar"
 import { AnunciosRelacionados } from "./componentes/anuncios-relacionados"
 import { AvisosAdministracao } from "./componentes/avisos-administracao"
 import type { MidiaPublica } from "@/lib/media/public-media"
+import {
+  obterAnuncioPublicoPorSlug,
+  type PublicCatalogCard,
+  type PublicCatalogDetail,
+} from "@/lib/public-catalog-api"
 
 type AnuncioUI = {
-  id: number
+  id: string
   slug: string
   nome: string
   username?: string | null
@@ -29,7 +34,6 @@ type AnuncioUI = {
   valor: string
   tipo: string
   descricaoAnunciante?: string | null
-  usuarioId: number
   descricaoAnuncio?: string | null
   midias: MidiaPublica[]
   categoria?: string | null
@@ -39,64 +43,46 @@ type AnuncioUI = {
   horario?: string | null
 }
 
-type AnuncioApiPayload = Record<string, any>
-
-function dedupeStrings(values: unknown): string[] {
-  if (!Array.isArray(values)) return []
-
-  const seen = new Set<string>()
-  const result: string[] = []
-
-  for (const value of values) {
-    if (typeof value !== "string") continue
-    const normalized = value.trim()
-    if (!normalized || seen.has(normalized)) continue
-    seen.add(normalized)
-    result.push(normalized)
-  }
-
-  return result
-}
-
-function mapAnuncioPayload(slug: string, data: AnuncioApiPayload): AnuncioUI {
+function mapAnuncioPayload(slug: string, data: PublicCatalogDetail): AnuncioUI {
   return {
     id: data.id,
     slug,
     nome: data.titulo ?? "Anúncio",
-    username: data.username ?? data.usernameAnunciante ?? null,
-    idade: data.idade ?? null,
+    username: null,
+    idade: null,
     estadoUf: data.estadoUf ?? null,
     cidadeNome: data.cidadeNome ?? null,
     bairroNome: data.bairroNome ?? null,
-    pontoReferenciaTexto: data.pontoReferenciaTexto ?? null,
-    impulsionado: Boolean(data.impulsionado),
+    pontoReferenciaTexto: data.enderecoResumido ?? null,
+    impulsionado: Boolean(data.topoAtivo),
     destaqueAtivo: Boolean(data.destaqueAtivo),
     carrosselDisponivel: Boolean(data.carrosselDisponivel),
     videoHabilitado: Boolean(data.videoHabilitado),
     whatsappCardEnabled: Boolean(data.whatsappCardEnabled),
-    usuarioId: data.usuarioId,
-    cidade: data.cidade ?? null,
-    localizacao: data.localizacao ?? null,
+    cidade: data.cidadeNome ?? null,
+    localizacao: data.enderecoResumido ?? null,
     valor:
-      data.preco !== undefined
+      data.preco != null
         ? `R$ ${Number(data.preco).toFixed(2)}`
-        : `R$ ${Number(data.valor ?? 0).toFixed(2)}`,
+        : "Valor não informado",
     tipo: data.categoria ?? "Não informado",
-    descricaoAnunciante: data.descricaoAnunciante ?? data.descricao ?? null,
-    descricaoAnuncio: data.descricaoAnuncio ?? data.descricao ?? null,
+    descricaoAnunciante: data.descricao ?? null,
+    descricaoAnuncio: data.descricao ?? null,
     midias: Array.isArray(data.midias) ? data.midias : [],
     categoria: data.categoria ?? null,
-    servicos: dedupeStrings(data.servicos),
-    locaisAtendimento: dedupeStrings(data.locaisAtendimento),
-    linkConteudo: data.linkConteudo ?? null,
-    horario: data.horario ?? null,
+    servicos: [],
+    locaisAtendimento: [],
+    linkConteudo: null,
+    horario: null,
   }
 }
 
 export default function AnuncioDetalhesPageClient({
   initialData,
+  initialRelatedData,
 }: {
-  initialData?: AnuncioApiPayload | null
+  initialData?: PublicCatalogDetail | null
+  initialRelatedData?: PublicCatalogCard[]
 }) {
   const params = useParams<{ slug: string }>()
   const slug =
@@ -111,8 +97,9 @@ export default function AnuncioDetalhesPageClient({
   )
   const [imagemAtiva, setImagemAtiva] = useState(0)
   const [reloadMarker, setReloadMarker] = useState(0)
-  const visualizacaoRegistradaParaId = useRef<number | null>(null)
-  const visualizacaoFetchParaId = useRef<number | null>(null)
+  const [loadError, setLoadError] = useState(false)
+  const visualizacaoRegistradaParaId = useRef<string | null>(null)
+  const visualizacaoFetchParaId = useRef<string | null>(null)
   useEffect(() => {
     visualizacaoRegistradaParaId.current = null
     visualizacaoFetchParaId.current = null
@@ -130,15 +117,11 @@ export default function AnuncioDetalhesPageClient({
 
     ;(async () => {
       try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/anuncios/publico/slug/${encodeURIComponent(slug)}`,
-          { cache: "no-store", credentials: "include" }
-        )
-
-        if (!res.ok) throw new Error(await res.text())
-        const data = await res.json()
+        const data = await obterAnuncioPublicoPorSlug(slug)
+        setLoadError(false)
         setAnuncio(mapAnuncioPayload(slug, data))
       } catch {
+        setLoadError(true)
         setAnuncio(null)
       }
     })()
@@ -189,7 +172,7 @@ export default function AnuncioDetalhesPageClient({
   if (!anuncio) {
     return (
       <div className="mx-auto py-16 text-center text-gray-500">
-        Carregando anúncio...
+        {loadError ? "Não foi possível carregar o anúncio." : "Carregando anúncio..."}
       </div>
     )
   }
@@ -216,8 +199,7 @@ export default function AnuncioDetalhesPageClient({
 
       <AnunciosRelacionados
         anuncioIdAtual={anuncio.id}
-        estadoUf={anuncio.estadoUf}
-        cidadeSlug={slugifyCidade(anuncio.cidadeNome)}
+        anuncios={initialRelatedData ?? []}
         cidadeNome={anuncio.cidadeNome}
         bairroNome={anuncio.bairroNome}
         categoria={anuncio.categoria}
@@ -225,15 +207,4 @@ export default function AnuncioDetalhesPageClient({
 
     </div>
   )
-}
-
-function slugifyCidade(value?: string | null) {
-  if (!value) return null
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
 }

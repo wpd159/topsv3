@@ -2,9 +2,12 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import AnuncioDetalhesPageClient from "./anuncio-detalhes"
 import { gerarDescricaoSeoAnuncio, gerarTituloSeoAnuncio } from "@/lib/seo/public-metadata"
-import { shouldIndexAnuncio } from "@/lib/seo/anuncio-indexing"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
-import { ServerApiError, serverApiFetchJson } from "@/lib/server-api"
+import {
+  isPublicCatalogNotFound,
+  listarPublicosPorCidade,
+  obterAnuncioPublicoPorSlug,
+} from "@/lib/public-catalog-api"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 import { selecionarCapaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
 
@@ -29,12 +32,7 @@ function resolvePublicSeoImage(url?: string | null) {
 }
 
 async function loadInitialAnuncio(slug: string) {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL
-  if (!apiUrl) return null
-
-  return serverApiFetchJson<any>(`${apiUrl}/anuncios/publico/slug/${encodeURIComponent(slug)}`, {
-    next: { revalidate: 0 },
-  })
+  return obterAnuncioPublicoPorSlug(slug)
 }
 
 export async function generateMetadata({
@@ -47,18 +45,16 @@ export async function generateMetadata({
 
   try {
     const data = await loadInitialAnuncio(slug)
-    if (!data) throw new Error("Falha ao buscar anúncio")
-
-    const titulo = corrigirTextoCorrompido(data?.titulo || data?.username) || "Anúncio"
+    const titulo = corrigirTextoCorrompido(data.titulo) || "Anúncio"
     const descricao = gerarDescricaoSeoAnuncio({
       titulo,
-      descricao: data?.descricaoAnuncio || data?.descricao,
+      descricao: data?.descricao,
       cidadeNome: data?.cidadeNome,
       bairroNome: data?.bairroNome,
     })
     const capa = selecionarCapaPublicaSegura(data?.midias as MidiaPublica[] | undefined)
     const imagem = resolvePublicSeoImage(capa?.urlPublica)
-    const indexavel = shouldIndexAnuncio(data)
+    const indexavel = data.indexavelSeo
 
     const title = gerarTituloSeoAnuncio({
       titulo,
@@ -114,13 +110,12 @@ export default async function Page({
   try {
     const { slug } = await params
     const initialData = await loadInitialAnuncio(slug)
-    if (!initialData) {
-      notFound()
-    }
-
-    return <AnuncioDetalhesPageClient initialData={initialData} />
+    const relacionados = initialData.cidadeSlug
+      ? await listarPublicosPorCidade(initialData.estadoUf, initialData.cidadeSlug, 0, 16)
+      : null
+    return <AnuncioDetalhesPageClient initialData={initialData} initialRelatedData={relacionados?.itens ?? []} />
   } catch (error) {
-    if (error instanceof ServerApiError && error.status === 404) {
+    if (isPublicCatalogNotFound(error)) {
       notFound()
     }
 

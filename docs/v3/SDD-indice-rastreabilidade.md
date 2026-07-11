@@ -44,6 +44,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Checklist rotas/SEO: `docs/v3/52-checklist-validacao-rotas-seo.md`
 - Script: `scripts/local/validar-rotas-publicas-seo-local.ps1`
 - Script SEO publico: `scripts/local/validar-seo-publico-local.ps1`
+- Adapter unico do catalogo publico: `frontend/src/lib/public-catalog-api.ts`
+- Controllers dos contratos publicos: `backend/src/main/java/br/com/topsdojob/v3/web/publico/ListagemPublicaController.java`, `backend/src/main/java/br/com/topsdojob/v3/web/publico/LocalidadePublicaController.java` e `backend/src/main/java/br/com/topsdojob/v3/web/publico/AnuncioPublicoController.java`
+- Services de listagem, descoberta e detalhe: `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/ListagemPublicaConsultaService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/LocalidadePublicaConsultaService.java` e `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/AnuncioPublicoConsultaService.java`
+- Contrato OpenAPI dos seis caminhos: `contracts/openapi/topsdojob-v3-local.yaml`
 - Script inventario SEO publico: `scripts/local/seo-inventario-producao-publica.ps1`
 - Script validacao mapa SEO: `scripts/local/validar-mapa-preservacao-seo-local.ps1`
 - Origem/canonical publico por ambiente: `frontend/src/lib/seo/public-url.ts`

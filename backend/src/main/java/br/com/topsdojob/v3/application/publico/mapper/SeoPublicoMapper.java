@@ -22,15 +22,19 @@ public class SeoPublicoMapper {
     }
 
     public SeoRotaPublicaDto fallback(String caminho) {
+        return fallback(caminho, false);
+    }
+
+    public SeoRotaPublicaDto fallback(String caminho, boolean indexavel) {
         String canonicalPath = pathLocalSeguro(caminho);
         TipoSeoUrl tipo = inferirTipo(canonicalPath);
         return new SeoRotaPublicaDto(
                 titleFor(canonicalPath, tipo),
                 descriptionFor(canonicalPath, tipo),
                 canonicalPath,
-                robots(false),
+                robots(indexavel),
                 tipoRota(tipo, canonicalPath),
-                false);
+                indexavel);
     }
 
     private String titleFor(String canonicalPath, TipoSeoUrl tipo) {

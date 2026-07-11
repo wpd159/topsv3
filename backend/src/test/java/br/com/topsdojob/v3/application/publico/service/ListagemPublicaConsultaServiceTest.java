@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.service;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -32,8 +33,115 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 class ListagemPublicaConsultaServiceTest {
+
+    @Test
+    void rejeitaPaginacaoInvalidaCom400() {
+        ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(
+                mock(EstadoRepository.class),
+                mock(CidadeRepository.class),
+                mock(BairroRepository.class),
+                mock(AnuncioLocalizacaoRepository.class),
+                mock(AnuncioRepository.class),
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                mock(AnuncioPublicoConsultaService.class),
+                mock(SeoPublicoConsultaService.class),
+                mock(PremiumPublicoMapper.class),
+                mock(PoliticaContatoPublicoService.class));
+
+        assertThatThrownBy(() -> service.porEstado("SP", -1, 20))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void retorna404ParaEstadoInexistente() {
+        EstadoRepository estadoRepository = mock(EstadoRepository.class);
+        when(estadoRepository.findByUfIgnoreCase("SP")).thenReturn(Optional.empty());
+        ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(
+                estadoRepository,
+                mock(CidadeRepository.class),
+                mock(BairroRepository.class),
+                mock(AnuncioLocalizacaoRepository.class),
+                mock(AnuncioRepository.class),
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                mock(AnuncioPublicoConsultaService.class),
+                mock(SeoPublicoConsultaService.class),
+                mock(PremiumPublicoMapper.class),
+                mock(PoliticaContatoPublicoService.class));
+
+        assertThatThrownBy(() -> service.porEstado("sp", 0, 20))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void retorna404ParaCidadeInexistente() {
+        UUID estadoId = UUID.randomUUID();
+        EstadoEntity estado = entity(EstadoEntity.class);
+        set(estado, "id", estadoId);
+        set(estado, "uf", "SP");
+        EstadoRepository estadoRepository = mock(EstadoRepository.class);
+        CidadeRepository cidadeRepository = mock(CidadeRepository.class);
+        when(estadoRepository.findByUfIgnoreCase("SP")).thenReturn(Optional.of(estado));
+        when(cidadeRepository.findByEstadoIdAndSlug(estadoId, "cidade-ausente"))
+                .thenReturn(Optional.empty());
+
+        ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(
+                estadoRepository,
+                cidadeRepository,
+                mock(BairroRepository.class),
+                mock(AnuncioLocalizacaoRepository.class),
+                mock(AnuncioRepository.class),
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                mock(AnuncioPublicoConsultaService.class),
+                mock(SeoPublicoConsultaService.class),
+                mock(PremiumPublicoMapper.class),
+                mock(PoliticaContatoPublicoService.class));
+
+        assertThatThrownBy(() -> service.porCidade("sp", "cidade-ausente", 0, 20))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void retorna404ParaBairroInexistente() {
+        UUID estadoId = UUID.randomUUID();
+        UUID cidadeId = UUID.randomUUID();
+        EstadoEntity estado = entity(EstadoEntity.class);
+        set(estado, "id", estadoId);
+        set(estado, "uf", "GO");
+        CidadeEntity cidade = entity(CidadeEntity.class);
+        set(cidade, "id", cidadeId);
+        set(cidade, "estadoId", estadoId);
+        set(cidade, "slug", "goiania");
+        EstadoRepository estadoRepository = mock(EstadoRepository.class);
+        CidadeRepository cidadeRepository = mock(CidadeRepository.class);
+        BairroRepository bairroRepository = mock(BairroRepository.class);
+        when(estadoRepository.findByUfIgnoreCase("GO")).thenReturn(Optional.of(estado));
+        when(cidadeRepository.findByEstadoIdAndSlug(estadoId, "goiania")).thenReturn(Optional.of(cidade));
+        when(bairroRepository.findByCidadeIdAndSlug(cidadeId, "bairro-ausente"))
+                .thenReturn(Optional.empty());
+
+        ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(
+                estadoRepository,
+                cidadeRepository,
+                bairroRepository,
+                mock(AnuncioLocalizacaoRepository.class),
+                mock(AnuncioRepository.class),
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                mock(AnuncioPublicoConsultaService.class),
+                mock(SeoPublicoConsultaService.class),
+                mock(PremiumPublicoMapper.class),
+                mock(PoliticaContatoPublicoService.class));
+
+        assertThatThrownBy(() -> service.porBairro("go", "goiania", "bairro-ausente", 0, 20))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
 
     @Test
     void paginaDepoisDeFiltrarAnunciosPublicadosAprovados() {
@@ -104,7 +212,8 @@ class ListagemPublicaConsultaServiceTest {
                 new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 anuncioConsultaService,
                 seoService,
-                mock(PremiumPublicoMapper.class));
+                mock(PremiumPublicoMapper.class),
+                mock(PoliticaContatoPublicoService.class));
 
         ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20);
 

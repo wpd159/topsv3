@@ -29,6 +29,10 @@ public class SeoPublicoConsultaService {
         return mapper.fallback("/anuncios/" + RotaPublicaGuard.slug(slug, "slug"));
     }
 
+    public SeoRotaPublicaDto paraAnuncio(String slug, boolean indexavel) {
+        return mapper.fallback("/anuncios/" + RotaPublicaGuard.slug(slug, "slug"), indexavel);
+    }
+
     public SeoRotaPublicaDto paraCidade(String uf, String cidade) {
         return mapper.fallback("/acompanhantes/"
                 + RotaPublicaGuard.uf(uf).toLowerCase()

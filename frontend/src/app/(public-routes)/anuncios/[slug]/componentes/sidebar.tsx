@@ -17,7 +17,7 @@ const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
 
 type SidebarProps = {
   anuncio: {
-    id: number
+    id: string | number
     slug: string
     nome: string
     username?: string | null

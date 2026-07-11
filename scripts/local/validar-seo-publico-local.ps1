@@ -65,8 +65,10 @@ Add-Check "sitemap existe" (Test-RepoFile $sitemapPath) "sitemap obrigatorio"
 if (Test-RepoFile $sitemapPath) {
   $sitemap = Get-RepoText $sitemapPath
   Add-Check "sitemap usa origem compartilhada" ($sitemap.Contains("getPublicSiteBaseUrl") -and $sitemap.Contains("buildPublicUrl")) "sem gerador canonical concorrente"
-  Add-Check "sitemap filtra anuncios" $sitemap.Contains("shouldIndexAnuncio") "somente anuncio publicavel"
-  Add-Check "sitemap filtra localidades" ($sitemap.Contains("isCidadeIndexavelLocal") -and $sitemap.Contains("isBairroIndexavelLocal")) "nao criar localidade fraca"
+  Add-Check "sitemap usa descoberta SEO backend" $sitemap.Contains("descobrirAnunciosIndexaveisSitemap") "contrato leve deve concentrar indexabilidade no backend"
+  Add-Check "sitemap sem N+1 de detalhes" (-not $sitemap.Contains("obterAnuncioPublicoPorSlug")) "sitemap nao pode consultar detalhe por anuncio"
+  Add-Check "sitemap sem paginacao por estado" (-not $sitemap.Contains("listarPublicosPorEstado")) "descoberta SEO deve ocorrer em uma unica chamada"
+  Add-Check "sitemap usa localidades publicas V3" $sitemap.Contains("descobrirLocalidadesPublicas") "nao criar localidade artificial"
   Add-Check "sitemap sem admin/API" (-not ($sitemap -match '["'']/(admin|api)(/|["''])')) "rotas privadas nao entram no sitemap"
 }
 
@@ -100,19 +102,65 @@ if (Test-RepoFile $headerPath) {
   Add-Check "neon restrito ao header" ($header.Contains("HEADER_CTA_NEON") -and $header.Contains("Registrar-se") -and ($header -match "PUBLICAR SEU AN.NCIO")) "efeito local nos dois CTAs"
 }
 
+$adapterPath = "frontend/src/lib/public-catalog-api.ts"
+$adapterOk = Test-RepoFile $adapterPath
+Add-Check "adapter publico unico existe" $adapterOk "public-catalog-api.ts obrigatorio"
+if ($adapterOk) {
+  $adapter = Get-RepoText $adapterPath
+  $adapterFunctions = @(
+    "listarPublicosPorEstado",
+    "listarPublicosPorCidade",
+    "obterAgregadoPublicoCidade",
+    "listarPublicosPorBairro",
+    "obterAnuncioPublicoPorSlug",
+    "descobrirLocalidadesPublicas"
+  )
+  foreach ($function in $adapterFunctions) {
+    Add-Check "adapter contem $function" $adapter.Contains("export async function $function") "contrato publico V3 obrigatorio"
+  }
+  Add-Check "adapter contem descobrirAnunciosIndexaveisSitemap" $adapter.Contains("export async function descobrirAnunciosIndexaveisSitemap") "contrato SEO leve obrigatorio"
+  Add-Check "politica SEO nao duplicada no frontend" (-not (Test-RepoFile "frontend/src/lib/seo/anuncio-indexing.ts")) "indexabilidade pertence ao backend"
+  Add-Check "adapter nao converte falha em vazio" (-not ($adapter -match '(?s)catch\s*\{\s*return\s*(\[\]|\{\})')) "falha HTTP deve permanecer falha"
+}
+
+$locationFilterPath = "frontend/src/components/anuncios/barra-localizacao.tsx"
+Add-Check "filtros usam descoberta publica V3" (
+  (Test-RepoFile $locationFilterPath) -and
+  (Get-RepoText $locationFilterPath).Contains("descobrirLocalidadesPublicas") -and
+  (-not (Get-RepoText $locationFilterPath).Contains("/localidades/estados"))
+) "Home, filtros e sitemap devem compartilhar a descoberta publica"
+
+$controllerSources = @(
+  "backend/src/main/java/br/com/topsdojob/v3/web/publico/ListagemPublicaController.java",
+  "backend/src/main/java/br/com/topsdojob/v3/web/publico/LocalidadePublicaController.java",
+  "backend/src/main/java/br/com/topsdojob/v3/web/publico/AnuncioPublicoController.java"
+) | ForEach-Object { if (Test-RepoFile $_) { Get-RepoText $_ } } | Out-String
+Add-Check "backend publica os seis contratos" (
+  $controllerSources.Contains('/api/public/acompanhantes') -and
+  $controllerSources.Contains('/api/public/localidades') -and
+  $controllerSources.Contains('/api/public/anuncios') -and
+  $controllerSources.Contains('@GetMapping("/{uf}")') -and
+  $controllerSources.Contains('@GetMapping("/{uf}/{cidade}")') -and
+  $controllerSources.Contains('@GetMapping("/{uf}/{cidade}/{bairro}")') -and
+  $controllerSources.Contains('@GetMapping("/{slug}")')
+) "controllers V3 devem existir sem alias"
+
 $legacyContracts = @(
-  @{ Path = $routeFiles[0]; Pattern = "/anuncios/por-estado/"; Nome = "listagem por estado" },
-  @{ Path = $routeFiles[1]; Pattern = "/anuncios/por-cidade/"; Nome = "listagem por cidade" },
-  @{ Path = $routeFiles[1]; Pattern = "/anuncios/seo/cidade/"; Nome = "agregado SEO de cidade" },
-  @{ Path = $routeFiles[2]; Pattern = "/anuncios/por-bairro/"; Nome = "listagem por bairro" },
-  @{ Path = "frontend/src/app/(public-routes)/anuncios/[slug]/page.tsx"; Pattern = "/anuncios/publico/slug/"; Nome = "detalhe de anuncio" },
-  @{ Path = "frontend/src/app/sitemap.ts"; Pattern = "/anuncios/cidades-ativas"; Nome = "descoberta de localidades" }
+  @{ Pattern = "/anuncios/por-estado/"; Nome = "listagem por estado" },
+  @{ Pattern = "/anuncios/por-cidade/"; Nome = "listagem por cidade" },
+  @{ Pattern = "/anuncios/seo/cidade/"; Nome = "agregado SEO de cidade" },
+  @{ Pattern = "/anuncios/por-bairro/"; Nome = "listagem por bairro" },
+  @{ Pattern = "/anuncios/publico/slug/"; Nome = "detalhe de anuncio" },
+  @{ Pattern = "/anuncios/cidades-ativas"; Nome = "descoberta de localidades" },
+  @{ Pattern = "/anuncios/cidades-por-estado/"; Nome = "cidades por estado" },
+  @{ Pattern = "/anuncios/bairros-por-cidade/"; Nome = "bairros por cidade" }
 )
 
+$frontendSources = Get-ChildItem -LiteralPath (Get-RepoPath "frontend/src") -Recurse -File -Include *.ts,*.tsx |
+  ForEach-Object { [IO.File]::ReadAllText($_.FullName, [Text.UTF8Encoding]::new($false, $false)) } |
+  Out-String
 foreach ($contract in $legacyContracts) {
-  if ((Test-RepoFile $contract.Path) -and (Get-RepoText $contract.Path).Contains($contract.Pattern)) {
-    $pending.Add("$($contract.Nome): frontend ainda usa $($contract.Pattern)")
-  }
+  Add-Check "legado removido: $($contract.Nome)" (-not $frontendSources.Contains($contract.Pattern)) "frontend nao pode usar $($contract.Pattern)"
 }
 
 $failed = @($checks | Where-Object { $_.Resultado -ne "OK" })

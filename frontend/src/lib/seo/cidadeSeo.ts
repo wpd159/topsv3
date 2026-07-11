@@ -35,8 +35,8 @@ export interface CidadeSeoAggregate {
   totalAnunciosAtivos: number
   totalBairrosAtivos: number
   totalCategoriasAtivas: number
-  quantidadeAnunciosDestaque: number
-  quantidadeAnunciosRecentes: number
+  quantidadeAnunciosDestaque?: number
+  quantidadeAnunciosRecentes?: number
   ultimaAtualizacao?: string | null
   shouldIndex: boolean
   robots?: string | null

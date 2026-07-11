@@ -165,11 +165,19 @@ $idadeSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $idadeBody = (@{ dataNascimento = "1990-01-01"; declaracaoMaioridade = $true } | ConvertTo-Json -Compress)
 
 $checksHttp = @(
+  @{ Nome = "descoberta de localidades"; Path = "/api/public/localidades"; Status = 200; Session = $null; DeveConter = "goiania"; NaoConter = "wa.me/" },
+  @{ Nome = "listagem estado GO"; Path = "/api/public/acompanhantes/go"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
   @{ Nome = "anuncio livre demo"; Path = "/api/public/anuncios/demo-goiania-livre-premium"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
   @{ Nome = "cidade Goiania"; Path = "/api/public/acompanhantes/go/goiania"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
+  @{ Nome = "agregado cidade Goiania"; Path = "/api/public/localidades/go/goiania"; Status = 200; Session = $null; DeveConter = "setor-bueno"; NaoConter = "wa.me/" },
   @{ Nome = "bairro Setor Bueno"; Path = "/api/public/acompanhantes/go/goiania/setor-bueno"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
   @{ Nome = "cidade Brasilia"; Path = "/api/public/acompanhantes/df/brasilia"; Status = 200; Session = $null; DeveConter = "demo-brasilia-premium-topo"; NaoConter = "wa.me/" },
   @{ Nome = "midia restrita sem idade"; Path = "/api/public/anuncios/demo-goiania-midia-restrita"; Status = 200; Session = $null; DeveConter = "RESTRITA_18"; NaoConter = "wa.me/" },
+  @{ Nome = "paginacao invalida"; Path = "/api/public/acompanhantes/go?pagina=-1&tamanho=20"; Status = 400; Session = $null; DeveConter = ""; NaoConter = "" },
+  @{ Nome = "estado inexistente"; Path = "/api/public/acompanhantes/xy"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" },
+  @{ Nome = "cidade inexistente"; Path = "/api/public/acompanhantes/go/cidade-inexistente"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" },
+  @{ Nome = "bairro inexistente"; Path = "/api/public/acompanhantes/go/goiania/bairro-inexistente"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" },
+  @{ Nome = "detalhe inexistente"; Path = "/api/public/anuncios/slug-inexistente"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" },
   @{ Nome = "pendente nao publicado"; Path = "/api/public/anuncios/demo-goiania-pendente"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" },
   @{ Nome = "rejeitado nao publicado"; Path = "/api/public/anuncios/demo-goiania-rejeitado"; Status = 404; Session = $null; DeveConter = ""; NaoConter = "" }
 )

@@ -10,4 +10,6 @@ public interface CidadeRepository extends JpaRepository<CidadeEntity, UUID> {
     Optional<CidadeEntity> findByEstadoIdAndSlug(UUID estadoId, String slug);
 
     List<CidadeEntity> findBySlug(String slug);
+
+    List<CidadeEntity> findByEstadoId(UUID estadoId);
 }

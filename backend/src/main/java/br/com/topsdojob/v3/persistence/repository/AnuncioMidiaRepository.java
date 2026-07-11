@@ -22,6 +22,8 @@ public interface AnuncioMidiaRepository
 
     List<AnuncioMidiaEntity> findByAnuncioId(UUID anuncioId);
 
+    List<AnuncioMidiaEntity> findByAnuncioIdIn(Collection<UUID> anuncioIds);
+
     List<AnuncioMidiaEntity> findByIdIn(Collection<UUID> ids);
 
     List<AnuncioMidiaEntity> findByArquivoMidiaId(UUID arquivoMidiaId);

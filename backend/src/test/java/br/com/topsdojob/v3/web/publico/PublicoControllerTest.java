@@ -6,11 +6,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
+import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.PaginacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
+import br.com.topsdojob.v3.application.publico.dto.SitemapAnuncioPublicoDto;
 import br.com.topsdojob.v3.application.publico.service.ListagemPublicaConsultaService;
 import br.com.topsdojob.v3.application.publico.service.SeoPublicoConsultaService;
+import br.com.topsdojob.v3.application.publico.service.SitemapPublicoConsultaService;
 import java.util.List;
+import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 
 class PublicoControllerTest {
@@ -21,6 +25,7 @@ class PublicoControllerTest {
         ListaAnunciosPublicaDto resposta = new ListaAnunciosPublicaDto(
                 List.of(),
                 new PaginacaoPublicaDto(0, 20, 0, 0),
+                new LocalizacaoPublicaDto("SP", "Sao Paulo", "Sao Paulo", "sao-paulo", null, null, null),
                 new SeoRotaPublicaDto(
                         "Titulo",
                         "Descricao",
@@ -54,11 +59,36 @@ class PublicoControllerTest {
                 false);
         when(service.buscarPorCaminho("/anuncios/slug-local")).thenReturn(resposta);
 
-        SeoRotaPublicaDto dto = new SeoPublicoController(service).porRota("/anuncios/slug-local");
+        SeoRotaPublicaDto dto = new SeoPublicoController(service, mock(SitemapPublicoConsultaService.class))
+                .porRota("/anuncios/slug-local");
 
         assertThat(dto.canonicalPath()).isEqualTo("/anuncios/slug-local");
         assertThat(dto.canonicalPath()).doesNotContain("/perfil/");
         assertThat(dto.canonicalPath()).doesNotContain("/ads/");
         assertThat(dto.canonicalPath()).doesNotContain("/anuncio/");
+    }
+
+    @Test
+    void controllerSitemapExpoeSomenteContratoLeveDoBackend() {
+        SeoPublicoConsultaService seoService = mock(SeoPublicoConsultaService.class);
+        SitemapPublicoConsultaService sitemapService = mock(SitemapPublicoConsultaService.class);
+        SitemapAnuncioPublicoDto entrada = new SitemapAnuncioPublicoDto(
+                "perfil-publico",
+                "GO",
+                "goiania",
+                "setor-bueno",
+                OffsetDateTime.parse("2026-07-11T12:00:00-03:00"),
+                true,
+                true);
+        when(sitemapService.listarAnunciosIndexaveis()).thenReturn(List.of(entrada));
+
+        var resposta = new SeoPublicoController(seoService, sitemapService).sitemap();
+
+        assertThat(resposta).containsExactly(entrada);
+        assertThat(resposta.toString())
+                .doesNotContain("storage")
+                .doesNotContain("contato")
+                .doesNotContain("midia");
+        verify(sitemapService).listarAnunciosIndexaveis();
     }
 }

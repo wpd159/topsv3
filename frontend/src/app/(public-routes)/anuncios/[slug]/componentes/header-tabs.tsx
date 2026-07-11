@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 
 type HeaderTabsProps = {
   anuncio: {
-    id?: number
+    id?: string | number
     slug?: string
     nome: string
     cidade?: string | null

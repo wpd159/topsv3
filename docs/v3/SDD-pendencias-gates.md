@@ -98,7 +98,7 @@ Para mudancas em rotas publicas, sitemap, robots, canonical, `/anunciar` ou text
 - confirmar robots local seguro;
 - confirmar admin `noindex`;
 - confirmar ausencia de textos publicos "skeleton" ou "API local";
-- confirmar que as rotas publicas consomem contratos V3 existentes: o frontend resetado ainda aponta seis chamadas de listagem, detalhe e descoberta de localidades para endpoints legados do clone. Isso nao bloqueia o fechamento estrutural atual, mas HTML local dinamico e sitemap completo nao estao aprovados ate a adaptacao funcional;
+- fechado localmente: as rotas publicas, Home e sitemap consomem os seis contratos V3 pelo adapter unico `public-catalog-api.ts`; endpoints legados, fallbacks vazios e adapters concorrentes foram removidos. Permanecem pendentes os gates de homologacao SEO com dados autorizados, mapa final de URLs, 301, canonical, robots e Search Console;
 - confirmar uma unica origem de canonical/schema por ambiente, pagina invalida em 404/noindex e ausencia de canonical em recurso inexistente;
 - manter qualquer melhoria futura de descricao com IA bloqueada ate autorizacao expressa, contrato backend, previa/aceite da anunciante, protecao de dados, limite de custo e fallback para o texto original;
 - executar `scripts/local/validar-seo-publico-local.ps1`.

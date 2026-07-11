@@ -3,10 +3,10 @@ import Link from "next/link"
 import Hero from "@/components/layout/hero"
 import CategoriasSection from "@/components/layout/categoria-section"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
-import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { buildPublicUrl } from "@/lib/seo/public-url"
+import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
 
-export const dynamic = "force-static"
+export const dynamic = "force-dynamic"
 export const revalidate = 3600
 export const metadata: Metadata = {
   title: "Acompanhantes perto de você | Tops do Job",
@@ -26,13 +26,6 @@ export const metadata: Metadata = {
   },
 }
 
-interface CidadeAtivaHomeDTO {
-  estadoUf: string
-  cidadeNome: string
-  cidadeSlug: string
-  shouldIndex?: boolean
-}
-
 interface CidadePopularHome {
   estadoUf: string
   cidadeNome: string
@@ -40,31 +33,18 @@ interface CidadePopularHome {
 }
 
 async function buscarCidadesPopularesHome() {
-  try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    if (!apiUrl) return []
-
-    const response = await fetch(`${apiUrl}/anuncios/cidades-ativas`, {
-      next: { revalidate: 3600 },
-    })
-
-    if (!response.ok) return []
-
-    const data = (await response.json()) as CidadeAtivaHomeDTO[]
-    if (!Array.isArray(data)) return []
-
-    return data
-      .filter((cidade) => cidade?.estadoUf && cidade?.cidadeNome && cidade?.cidadeSlug)
-      .filter((cidade) => cidade.shouldIndex !== false)
-      .slice(0, 12)
-      .map((cidade) => ({
-        estadoUf: String(cidade.estadoUf).toUpperCase(),
-        cidadeNome: corrigirTextoCorrompido(String(cidade.cidadeNome)),
-        cidadeSlug: String(cidade.cidadeSlug),
+  const descoberta = await descobrirLocalidadesPublicas()
+  return descoberta.estados
+    .flatMap((estado) =>
+      estado.cidades.map((cidade) => ({
+        estadoUf: estado.uf,
+        cidadeNome: cidade.nome,
+        cidadeSlug: cidade.slug,
+        totalAnunciosAtivos: cidade.totalAnunciosAtivos,
       }))
-  } catch {
-    return []
-  }
+    )
+    .sort((a, b) => b.totalAnunciosAtivos - a.totalAnunciosAtivos || a.cidadeNome.localeCompare(b.cidadeNome))
+    .slice(0, 12)
 }
 
 function HomeCidadesPopulares({ cidades }: { cidades: CidadePopularHome[] }) {
