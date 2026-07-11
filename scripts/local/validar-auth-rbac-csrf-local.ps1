@@ -283,9 +283,9 @@ function Invoke-DirectAuthRbacCsrfValidation {
     $moderacaoSemSensivel = (Test-NoSensitivePayload -Value $moderacaoResumo.Body) -and ($moderacaoResumo.Body -notmatch "(?i)\bcpf\b|\brg\b|passaporte|numeroDocumento|documentoPrivado|documentoUrl|documentoReal|documentoNumero")
     Add-Check $checks "MODERADOR sem dados sensiveis em moderacao" $moderacaoSemSensivel "Resposta sem identificador documental privado, credencial, cookie ou stack trace."
 
-    $securityConfig = Get-Content (Join-Path $repoRoot "backend/src/main/java/br/com/topsdojob/v3/security/config/SecurityConfig.java") -Raw
-    $appConfig = Get-Content (Join-Path $repoRoot "backend/src/main/resources/application.yml") -Raw
-    $appLocalConfig = Get-Content (Join-Path $repoRoot "backend/src/main/resources/application-local.yml") -Raw
+    $securityConfig = [System.IO.File]::ReadAllText((Join-Path $repoRoot "backend/src/main/java/br/com/topsdojob/v3/security/config/SecurityConfig.java"))
+    $appConfig = [System.IO.File]::ReadAllText((Join-Path $repoRoot "backend/src/main/resources/application.yml"))
+    $appLocalConfig = [System.IO.File]::ReadAllText((Join-Path $repoRoot "backend/src/main/resources/application-local.yml"))
 
     Add-Check $checks "CSRF local documentado no codigo" (($securityConfig -match "csrf\.disable\(\)") -and ($securityConfig -match "local")) "Ambiente local usa CSRF desabilitado para smoke controlado."
     Add-Check $checks "CSRF nao-local usa repositorio CSRF" ($securityConfig -match "CookieCsrfTokenRepository\.withHttpOnlyFalse\(\)") "Configuracao nao-local possui repositorio CSRF."
@@ -299,7 +299,7 @@ function Invoke-DirectAuthRbacCsrfValidation {
         Where-Object { $_.FullName -match "\\admin\\" -or $_.FullName -match "\\modules\\admin\\" }
     $adminUiUnsafe = @()
     foreach ($file in $adminFrontendFiles) {
-        $content = Get-Content $file.FullName -Raw
+        $content = [System.IO.File]::ReadAllText($file.FullName)
         if ($content -match "document\.cookie|localStorage|sessionStorage|error\.stack|stackTrace|<pre>\s*\{\s*JSON\.stringify") {
             $adminUiUnsafe += (Convert-ToRepoRelative $file.FullName)
         }

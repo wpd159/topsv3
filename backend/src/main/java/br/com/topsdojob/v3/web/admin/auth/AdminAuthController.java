@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionsDto;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -38,7 +39,10 @@ public class AdminAuthController {
     }
 
     @GetMapping("/me")
-    public AdminMeDto me(Authentication authentication) {
+    public AdminMeDto me(Authentication authentication, CsrfToken csrfToken) {
+        if (csrfToken != null) {
+            csrfToken.getToken();
+        }
         return authenticationService.me(authentication);
     }
 

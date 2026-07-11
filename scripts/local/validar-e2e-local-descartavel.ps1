@@ -253,14 +253,14 @@ function Apply-Migrations {
   $mkdir = Invoke-Native -FilePath $dockerExe -Arguments @("exec", $pgName, "mkdir", "-p", $targetDir)
   if ($mkdir.ExitCode -ne 0) { throw "Falha ao preparar pasta de migrations no container." }
   $files = @(Get-ChildItem -LiteralPath $migrationDir -File -Filter "V*.sql" | Sort-Object Name)
-  if ($files.Count -ne 18) { throw "Quantidade esperada de migrations V001-V018 nao encontrada: $($files.Count)" }
+  if ($files.Count -ne 19) { throw "Quantidade esperada de migrations V001-V019 nao encontrada: $($files.Count)" }
   foreach ($file in $files) {
     Copy-FileToContainer -Source $file.FullName -TargetDir $targetDir
     Invoke-PsqlFile -ContainerPath "$targetDir/$($file.Name)"
     $appliedMigrations.Add($file.Name)
   }
   $script:migrationsApplied = $true
-  Add-Step "Migrations V001-V018 aplicadas via psql ordenado no PostgreSQL descartavel."
+  Add-Step "Migrations V001-V019 aplicadas via psql ordenado no PostgreSQL descartavel."
 }
 
 function Apply-SyntheticData {

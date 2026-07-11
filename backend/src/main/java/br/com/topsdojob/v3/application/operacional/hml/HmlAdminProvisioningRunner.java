@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
@@ -17,12 +18,18 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
 
     private final String email;
     private final HmlAdminProvisioningService service;
+    private final HmlStoriesFixtureService fixtureService;
+    private final ConfigurableApplicationContext applicationContext;
 
     public HmlAdminProvisioningRunner(
             @Value("${HML_ADMIN_PROVISION_EMAIL:}") String email,
-            HmlAdminProvisioningService service) {
+            HmlAdminProvisioningService service,
+            HmlStoriesFixtureService fixtureService,
+            ConfigurableApplicationContext applicationContext) {
         this.email = email;
         this.service = service;
+        this.fixtureService = fixtureService;
+        this.applicationContext = applicationContext;
     }
 
     @Override
@@ -30,10 +37,17 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
         String runtimeValue = lerCredencial();
         try {
             HmlAdminProvisioningService.ProvisioningResult result = service.provisionar(email, runtimeValue);
+            HmlStoriesFixtureService.FixtureResult fixture = fixtureService.provisionar(runtimeValue);
             String status = result.usuarioCriado() ? "CRIADO" : "ATUALIZADO";
             System.out.println("HML_ADMIN_PROVISION_RESULT=" + status);
+            System.out.println("HML_STORIES_FIXTURE_RESULT="
+                    + fixture.anunciosCriados() + ":"
+                    + fixture.arquivosCriados() + ":"
+                    + fixture.vinculosCriados() + ":"
+                    + (fixture.storyCriado() ? "CRIADO" : "PRESERVADO"));
         } finally {
             runtimeValue = null;
+            applicationContext.close();
         }
     }
 

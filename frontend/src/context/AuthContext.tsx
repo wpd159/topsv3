@@ -13,6 +13,7 @@ import SockJS from 'sockjs-client'
 import { Client, type IMessage } from '@stomp/stompjs'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import { getPublicSession, logoutPublic, type PublicAuthUser } from '@/lib/public-auth-api'
+import { logoutAdmin } from '@/lib/admin-auth-api'
 
 type Usuario = {
   id: string | number
@@ -193,7 +194,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ========= LOGOUT =========
   const logout = async () => {
-    await logoutPublic()
+    const adminRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
+    if (adminRoute) {
+      await logoutAdmin()
+    } else {
+      await logoutPublic()
+    }
     setUsuario(null)
     setNovasMensagens(0)
     if (stompRef.current?.active) stompRef.current.deactivate()

@@ -120,4 +120,28 @@ public class ArquivoMidiaEntity {
     this.statusArquivo = statusArquivo;
   }
 
+  public static ArquivoMidiaEntity criarFixtureHomologacao(
+      UUID id,
+      String chaveObjeto,
+      String mimeType,
+      StatusArquivoMidia statusArquivo,
+      OffsetDateTime criadoEm) {
+    ArquivoMidiaEntity entity = new ArquivoMidiaEntity();
+    entity.id = id;
+    entity.storageProvider = "LOCAL_MOCK";
+    entity.bucket = "topsv3-hml-fixture";
+    entity.chaveObjeto = chaveObjeto;
+    entity.nomeOriginal = null;
+    entity.mimeType = mimeType;
+    entity.tamanhoBytes = 1024L;
+    entity.largura = mimeType.startsWith("image/") ? 1080 : 720;
+    entity.altura = 1920;
+    entity.duracaoMs = mimeType.startsWith("video/") ? 15000 : null;
+    entity.sha256 = null;
+    entity.etag = null;
+    entity.statusArquivo = statusArquivo;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
 }

@@ -19,7 +19,12 @@ export default function PainelLayout({ children }: LayoutProps) {
   useEffect(() => {
     if (carregando) return
 
-    if (!usuario || !["ADMIN", "MODERADOR"].includes(usuario.cargo)) {
+    if (!usuario) {
+      router.replace("/admin/login")
+      return
+    }
+
+    if (!["ADMIN", "MODERADOR"].includes(usuario.cargo)) {
       router.replace("/acesso-negado")
       return
     }

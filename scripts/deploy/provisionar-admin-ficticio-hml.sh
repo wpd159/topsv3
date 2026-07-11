@@ -39,7 +39,7 @@ printf '%s\n' "$runtime_input" | docker compose \
   run --rm -T \
   -e HML_ADMIN_PROVISION_EMAIL="$email" \
   backend \
-  --spring.main.web-application-type=none \
+  --server.port=0 \
   --app.hml-admin-provision.enabled=true
 
 runtime_input=""

@@ -16,9 +16,13 @@ import {
 
 export function SidebarUserFooter() {
   const router = useRouter()
-  const { usuario } = useAuth()
+  const { usuario, logout } = useAuth()
 
   const handleRedirect = () => router.push('/')
+  const handleLogout = async () => {
+    await logout()
+    router.replace('/admin/login')
+  }
 
   const nome = usuario?.nomeCompleto || 'Usuário'
   const username = usuario?.username || 'perfil'
@@ -70,6 +74,12 @@ export function SidebarUserFooter() {
           className="text-sm cursor-pointer hover:bg-muted font-medium px-3 py-2"
         >
           Voltar para o site
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => void handleLogout()}
+          className="text-sm cursor-pointer hover:bg-muted font-medium px-3 py-2"
+        >
+          Sair
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

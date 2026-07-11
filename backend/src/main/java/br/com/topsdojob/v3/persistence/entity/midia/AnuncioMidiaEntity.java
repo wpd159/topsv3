@@ -108,4 +108,28 @@ public class AnuncioMidiaEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public static AnuncioMidiaEntity criarFixtureHomologacao(
+      UUID id,
+      UUID anuncioId,
+      UUID arquivoMidiaId,
+      TipoAnuncioMidia tipo,
+      FinalidadeAnuncioMidia finalidade,
+      Integer ordem,
+      StatusAnuncioMidia status,
+      VisibilidadeMidia visibilidadeMidia,
+      OffsetDateTime criadoEm) {
+    AnuncioMidiaEntity entity = new AnuncioMidiaEntity();
+    entity.id = id;
+    entity.anuncioId = anuncioId;
+    entity.arquivoMidiaId = arquivoMidiaId;
+    entity.tipo = tipo;
+    entity.finalidade = finalidade;
+    entity.ordem = ordem;
+    entity.status = status;
+    entity.visibilidadeMidia = visibilidadeMidia;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
 }

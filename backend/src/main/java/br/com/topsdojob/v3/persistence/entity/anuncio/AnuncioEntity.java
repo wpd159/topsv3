@@ -188,4 +188,33 @@ public class AnuncioEntity {
     return entity;
   }
 
+  public static AnuncioEntity criarFixtureHomologacao(
+      UUID id,
+      UUID usuarioId,
+      String slug,
+      String titulo,
+      StatusAnuncio status,
+      StatusModeracaoAnuncio statusModeracao,
+      OffsetDateTime criadoEm) {
+    AnuncioEntity entity = new AnuncioEntity();
+    entity.id = id;
+    entity.usuarioId = usuarioId;
+    entity.slug = slug;
+    entity.titulo = titulo;
+    entity.descricao = "Conteudo ficticio exclusivo de homologacao.";
+    entity.status = status;
+    entity.statusModeracao = statusModeracao;
+    entity.categoria = "ACOMPANHANTE";
+    entity.preco = null;
+    entity.whatsappNormalizado = null;
+    entity.publicadoEm = status == StatusAnuncio.PUBLICADO ? criadoEm : null;
+    entity.ultimaPublicacaoEm = entity.publicadoEm;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    entity.removidoEm = null;
+    entity.origemImportacaoId = null;
+    entity.versao = 0;
+    return entity;
+  }
+
 }

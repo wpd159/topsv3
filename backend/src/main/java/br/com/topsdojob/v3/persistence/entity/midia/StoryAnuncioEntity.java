@@ -81,4 +81,25 @@ public class StoryAnuncioEntity {
     return atualizadoEm;
   }
 
+  public static StoryAnuncioEntity criarFixtureHomologacao(
+      UUID id,
+      UUID anuncioMidiaId,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      Integer ordem,
+      UUID criadoPor,
+      OffsetDateTime criadoEm) {
+    StoryAnuncioEntity entity = new StoryAnuncioEntity();
+    entity.id = id;
+    entity.anuncioMidiaId = anuncioMidiaId;
+    entity.status = StatusStoryAnuncio.PUBLICADO;
+    entity.inicioEm = inicioEm;
+    entity.fimEm = fimEm;
+    entity.ordem = ordem;
+    entity.criadoPor = criadoPor;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
 }
