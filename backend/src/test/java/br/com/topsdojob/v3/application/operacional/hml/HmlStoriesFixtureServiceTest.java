@@ -10,16 +10,21 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.BairroRepository;
+import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
@@ -44,6 +49,10 @@ class HmlStoriesFixtureServiceTest {
     private CredencialUsuarioRepository credencialRepository;
     private PapelUsuarioRepository papelRepository;
     private AnuncioRepository anuncioRepository;
+    private EstadoRepository estadoRepository;
+    private CidadeRepository cidadeRepository;
+    private BairroRepository bairroRepository;
+    private AnuncioLocalizacaoRepository localizacaoRepository;
     private ArquivoMidiaRepository arquivoRepository;
     private AnuncioMidiaRepository anuncioMidiaRepository;
     private StoryAnuncioRepository storyRepository;
@@ -55,6 +64,10 @@ class HmlStoriesFixtureServiceTest {
         credencialRepository = mock(CredencialUsuarioRepository.class);
         papelRepository = mock(PapelUsuarioRepository.class);
         anuncioRepository = mock(AnuncioRepository.class);
+        estadoRepository = mock(EstadoRepository.class);
+        cidadeRepository = mock(CidadeRepository.class);
+        bairroRepository = mock(BairroRepository.class);
+        localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
         arquivoRepository = mock(ArquivoMidiaRepository.class);
         anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
         storyRepository = mock(StoryAnuncioRepository.class);
@@ -71,13 +84,19 @@ class HmlStoriesFixtureServiceTest {
 
         var result = service.provisionar("Runtime-Seguro-123!");
 
+        assertThat(result.localidadesCriadas()).isEqualTo(3);
+        assertThat(result.localizacoesCriadas()).isEqualTo(3);
         assertThat(result.anunciosCriados()).isEqualTo(3);
-        assertThat(result.arquivosCriados()).isEqualTo(6);
-        assertThat(result.vinculosCriados()).isEqualTo(7);
+        assertThat(result.arquivosCriados()).isEqualTo(12);
+        assertThat(result.vinculosCriados()).isEqualTo(13);
         assertThat(result.storyCriado()).isTrue();
         verify(anuncioRepository, times(3)).save(any(AnuncioEntity.class));
-        verify(arquivoRepository, times(6)).save(any(ArquivoMidiaEntity.class));
-        verify(anuncioMidiaRepository, times(7)).save(any(AnuncioMidiaEntity.class));
+        verify(estadoRepository).save(any());
+        verify(cidadeRepository).save(any());
+        verify(bairroRepository).save(any());
+        verify(localizacaoRepository, times(3)).save(any(AnuncioLocalizacaoEntity.class));
+        verify(arquivoRepository, times(12)).save(any(ArquivoMidiaEntity.class));
+        verify(anuncioMidiaRepository, times(13)).save(any(AnuncioMidiaEntity.class));
         verify(storyRepository).save(any(StoryAnuncioEntity.class));
 
         ArgumentCaptor<AnuncioEntity> anuncioCaptor = ArgumentCaptor.forClass(AnuncioEntity.class);
@@ -90,13 +109,13 @@ class HmlStoriesFixtureServiceTest {
                 .hasSize(1);
 
         ArgumentCaptor<ArquivoMidiaEntity> arquivoCaptor = ArgumentCaptor.forClass(ArquivoMidiaEntity.class);
-        verify(arquivoRepository, times(6)).save(arquivoCaptor.capture());
+        verify(arquivoRepository, times(12)).save(arquivoCaptor.capture());
         assertThat(arquivoCaptor.getAllValues())
                 .filteredOn(item -> item.getStatusArquivo() == StatusArquivoMidia.PENDENTE)
                 .hasSize(1);
 
         ArgumentCaptor<AnuncioMidiaEntity> midiaCaptor = ArgumentCaptor.forClass(AnuncioMidiaEntity.class);
-        verify(anuncioMidiaRepository, times(7)).save(midiaCaptor.capture());
+        verify(anuncioMidiaRepository, times(13)).save(midiaCaptor.capture());
         assertThat(midiaCaptor.getAllValues())
                 .filteredOn(item -> item.getTipo() == TipoAnuncioMidia.VIDEO
                         && item.getStatus() == StatusAnuncioMidia.PUBLICAVEL)
@@ -104,6 +123,11 @@ class HmlStoriesFixtureServiceTest {
         assertThat(midiaCaptor.getAllValues())
                 .filteredOn(item -> item.getStatus() == StatusAnuncioMidia.PENDENTE)
                 .hasSize(1);
+        assertThat(midiaCaptor.getAllValues())
+                .filteredOn(item -> item.getTipo() == TipoAnuncioMidia.FOTO
+                        && item.getStatus() == StatusAnuncioMidia.PUBLICAVEL
+                        && item.getVisibilidadeMidia() == br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.LIVRE)
+                .hasSize(9);
         UUID arquivoCompartilhado = midiaCaptor.getAllValues().stream()
                 .filter(item -> item.getTipo() == TipoAnuncioMidia.STORY)
                 .findFirst()
@@ -134,20 +158,38 @@ class HmlStoriesFixtureServiceTest {
         when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
                 .thenReturn(Optional.of(usuario));
         when(credencialRepository.findByUsuarioId(usuario.getId())).thenReturn(Optional.of(credencial));
-        when(anuncioRepository.existsById(any())).thenReturn(true);
+        AnuncioEntity anuncioExistente = mock(AnuncioEntity.class);
+        when(anuncioRepository.findById(any())).thenReturn(Optional.of(anuncioExistente));
+        when(estadoRepository.existsById(any())).thenReturn(true);
+        when(cidadeRepository.existsById(any())).thenReturn(true);
+        when(bairroRepository.existsById(any())).thenReturn(true);
+        AnuncioLocalizacaoEntity localizacaoExistente = mock(AnuncioLocalizacaoEntity.class);
+        when(localizacaoRepository.findByAnuncioId(any())).thenReturn(Optional.of(localizacaoExistente));
         when(arquivoRepository.existsById(any())).thenReturn(true);
-        when(anuncioMidiaRepository.existsById(any())).thenReturn(true);
+        AnuncioMidiaEntity midiaExistente = mock(AnuncioMidiaEntity.class);
+        when(midiaExistente.getTipo()).thenReturn(TipoAnuncioMidia.FOTO);
+        AnuncioMidiaEntity storyMidiaExistente = mock(AnuncioMidiaEntity.class);
+        when(storyMidiaExistente.getTipo()).thenReturn(TipoAnuncioMidia.STORY);
+        UUID storyMidiaId = UUID.fromString("f1000000-0000-4000-8000-000000000307");
+        when(anuncioMidiaRepository.findById(any())).thenAnswer(invocation ->
+                Optional.of(storyMidiaId.equals(invocation.getArgument(0))
+                        ? storyMidiaExistente
+                        : midiaExistente));
         when(storyRepository.existsById(any())).thenReturn(true);
 
         var result = service("homologacao").provisionar("Runtime-Novo-456!");
 
+        assertThat(result.localidadesCriadas()).isZero();
+        assertThat(result.localizacoesCriadas()).isZero();
         assertThat(result.anunciosCriados()).isZero();
         assertThat(result.arquivosCriados()).isZero();
         assertThat(result.vinculosCriados()).isZero();
         assertThat(result.storyCriado()).isFalse();
-        verify(anuncioRepository, never()).save(any());
+        verify(anuncioRepository, times(3)).save(anuncioExistente);
+        verify(localizacaoRepository, times(3)).save(localizacaoExistente);
         verify(arquivoRepository, never()).save(any());
-        verify(anuncioMidiaRepository, never()).save(any());
+        verify(anuncioMidiaRepository, times(12)).save(midiaExistente);
+        verify(anuncioMidiaRepository, never()).save(storyMidiaExistente);
         verify(storyRepository, never()).save(any());
     }
 
@@ -168,6 +210,10 @@ class HmlStoriesFixtureServiceTest {
                 credencialRepository,
                 papelRepository,
                 anuncioRepository,
+                estadoRepository,
+                cidadeRepository,
+                bairroRepository,
+                localizacaoRepository,
                 arquivoRepository,
                 anuncioMidiaRepository,
                 storyRepository,

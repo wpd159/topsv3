@@ -56,4 +56,21 @@ public class BairroEntity {
     return criadoEm;
   }
 
+  public static BairroEntity criarFixtureHomologacao(
+      UUID id,
+      UUID cidadeId,
+      String nome,
+      String nomeNormalizado,
+      String slug,
+      OffsetDateTime criadoEm) {
+    BairroEntity entity = new BairroEntity();
+    entity.id = id;
+    entity.cidadeId = cidadeId;
+    entity.nome = nome;
+    entity.nomeNormalizado = nomeNormalizado;
+    entity.slug = slug;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
 }

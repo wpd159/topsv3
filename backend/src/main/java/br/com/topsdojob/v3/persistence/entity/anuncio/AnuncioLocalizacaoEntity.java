@@ -97,4 +97,37 @@ public class AnuncioLocalizacaoEntity {
     return entity;
   }
 
+  public static AnuncioLocalizacaoEntity criarFixtureHomologacao(
+      UUID anuncioId,
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      OffsetDateTime criadoEm) {
+    AnuncioLocalizacaoEntity entity = new AnuncioLocalizacaoEntity();
+    entity.anuncioId = anuncioId;
+    entity.estadoId = estadoId;
+    entity.cidadeId = cidadeId;
+    entity.bairroId = bairroId;
+    entity.enderecoResumido = null;
+    entity.latitude = null;
+    entity.longitude = null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
+  public void sincronizarFixtureHomologacao(
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      OffsetDateTime atualizadoEm) {
+    this.estadoId = estadoId;
+    this.cidadeId = cidadeId;
+    this.bairroId = bairroId;
+    this.enderecoResumido = null;
+    this.latitude = null;
+    this.longitude = null;
+    this.atualizadoEm = atualizadoEm;
+  }
+
 }

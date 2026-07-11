@@ -2,6 +2,10 @@ package br.com.topsdojob.v3.application.operacional.hml;
 
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
+import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
+import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
+import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
@@ -9,10 +13,14 @@ import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.BairroRepository;
+import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
@@ -42,12 +50,21 @@ public class HmlStoriesFixtureService {
     private static final UUID ANUNCIO_A_ID = uuid("f1000000-0000-4000-8000-000000000101");
     private static final UUID ANUNCIO_B_ID = uuid("f1000000-0000-4000-8000-000000000102");
     private static final UUID ANUNCIO_INELEGIVEL_ID = uuid("f1000000-0000-4000-8000-000000000103");
+    private static final UUID ESTADO_ID = uuid("f1000000-0000-4000-8000-000000000501");
+    private static final UUID CIDADE_ID = uuid("f1000000-0000-4000-8000-000000000502");
+    private static final UUID BAIRRO_ID = uuid("f1000000-0000-4000-8000-000000000503");
     private static final UUID ARQUIVO_COMPARTILHADO_ID = uuid("f1000000-0000-4000-8000-000000000201");
     private static final UUID ARQUIVO_FOTO_A_ID = uuid("f1000000-0000-4000-8000-000000000202");
     private static final UUID ARQUIVO_VIDEO_A_ID = uuid("f1000000-0000-4000-8000-000000000203");
     private static final UUID ARQUIVO_PENDENTE_ID = uuid("f1000000-0000-4000-8000-000000000204");
     private static final UUID ARQUIVO_FOTO_B_ID = uuid("f1000000-0000-4000-8000-000000000205");
     private static final UUID ARQUIVO_INELEGIVEL_ID = uuid("f1000000-0000-4000-8000-000000000206");
+    private static final UUID ARQUIVO_FOTO_A_2_ID = uuid("f1000000-0000-4000-8000-000000000207");
+    private static final UUID ARQUIVO_FOTO_A_3_ID = uuid("f1000000-0000-4000-8000-000000000208");
+    private static final UUID ARQUIVO_RESTRITO_A_ID = uuid("f1000000-0000-4000-8000-000000000209");
+    private static final UUID ARQUIVO_FOTO_B_2_ID = uuid("f1000000-0000-4000-8000-000000000210");
+    private static final UUID ARQUIVO_FOTO_B_3_ID = uuid("f1000000-0000-4000-8000-000000000211");
+    private static final UUID ARQUIVO_FOTO_B_4_ID = uuid("f1000000-0000-4000-8000-000000000212");
     private static final UUID MIDIA_COMPARTILHADA_ID = uuid("f1000000-0000-4000-8000-000000000301");
     private static final UUID MIDIA_FOTO_A_ID = uuid("f1000000-0000-4000-8000-000000000302");
     private static final UUID MIDIA_VIDEO_A_ID = uuid("f1000000-0000-4000-8000-000000000303");
@@ -55,13 +72,27 @@ public class HmlStoriesFixtureService {
     private static final UUID MIDIA_FOTO_B_ID = uuid("f1000000-0000-4000-8000-000000000305");
     private static final UUID MIDIA_INELEGIVEL_ID = uuid("f1000000-0000-4000-8000-000000000306");
     private static final UUID MIDIA_STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000307");
+    private static final UUID MIDIA_FOTO_A_2_ID = uuid("f1000000-0000-4000-8000-000000000308");
+    private static final UUID MIDIA_FOTO_A_3_ID = uuid("f1000000-0000-4000-8000-000000000309");
+    private static final UUID MIDIA_RESTRITA_A_ID = uuid("f1000000-0000-4000-8000-000000000310");
+    private static final UUID MIDIA_FOTO_B_2_ID = uuid("f1000000-0000-4000-8000-000000000311");
+    private static final UUID MIDIA_FOTO_B_3_ID = uuid("f1000000-0000-4000-8000-000000000312");
+    private static final UUID MIDIA_FOTO_B_4_ID = uuid("f1000000-0000-4000-8000-000000000313");
     private static final UUID STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000401");
+
+    private static final String DESCRICAO_A = "Perfil ficticio de homologacao em Goiania com descricao completa para validar listagens publicas, pagina de detalhe, metadados e indexacao do sitemap sem utilizar dados reais.";
+    private static final String DESCRICAO_B = "Segundo perfil ficticio de homologacao no Setor Bueno, preparado exclusivamente para validar paginacao, descoberta de localidades e renderizacao publica com conteudo seguro.";
+    private static final String DESCRICAO_INELEGIVEL = "Perfil ficticio pausado e mantido apenas para confirmar que anuncios nao publicaveis ficam fora das listagens e do sitemap publico.";
 
     private final String appEnv;
     private final UsuarioRepository usuarioRepository;
     private final CredencialUsuarioRepository credencialRepository;
     private final PapelUsuarioRepository papelRepository;
     private final AnuncioRepository anuncioRepository;
+    private final EstadoRepository estadoRepository;
+    private final CidadeRepository cidadeRepository;
+    private final BairroRepository bairroRepository;
+    private final AnuncioLocalizacaoRepository localizacaoRepository;
     private final ArquivoMidiaRepository arquivoRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final StoryAnuncioRepository storyRepository;
@@ -73,6 +104,10 @@ public class HmlStoriesFixtureService {
             CredencialUsuarioRepository credencialRepository,
             PapelUsuarioRepository papelRepository,
             AnuncioRepository anuncioRepository,
+            EstadoRepository estadoRepository,
+            CidadeRepository cidadeRepository,
+            BairroRepository bairroRepository,
+            AnuncioLocalizacaoRepository localizacaoRepository,
             ArquivoMidiaRepository arquivoRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             StoryAnuncioRepository storyRepository,
@@ -82,6 +117,10 @@ public class HmlStoriesFixtureService {
         this.credencialRepository = credencialRepository;
         this.papelRepository = papelRepository;
         this.anuncioRepository = anuncioRepository;
+        this.estadoRepository = estadoRepository;
+        this.cidadeRepository = cidadeRepository;
+        this.bairroRepository = bairroRepository;
+        this.localizacaoRepository = localizacaoRepository;
         this.arquivoRepository = arquivoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.storyRepository = storyRepository;
@@ -94,10 +133,17 @@ public class HmlStoriesFixtureService {
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         UsuarioEntity usuario = provisionarUsuario(runtimeValue, agora);
 
+        int localidadesCriadas = provisionarLocalidades(agora);
+
         int anunciosCriados = 0;
-        anunciosCriados += criarAnuncioSeAusente(ANUNCIO_A_ID, usuario.getId(), "fixture-stories-hml-a", "Perfil ficticio Stories A", StatusAnuncio.PUBLICADO, agora);
-        anunciosCriados += criarAnuncioSeAusente(ANUNCIO_B_ID, usuario.getId(), "fixture-stories-hml-b", "Perfil ficticio Stories B", StatusAnuncio.PUBLICADO, agora);
-        anunciosCriados += criarAnuncioSeAusente(ANUNCIO_INELEGIVEL_ID, usuario.getId(), "fixture-stories-hml-inelegivel", "Perfil ficticio inelegivel", StatusAnuncio.PAUSADO, agora);
+        anunciosCriados += sincronizarAnuncio(ANUNCIO_A_ID, usuario.getId(), "fixture-stories-hml-a", "Perfil ficticio Stories A", DESCRICAO_A, StatusAnuncio.PUBLICADO, agora);
+        anunciosCriados += sincronizarAnuncio(ANUNCIO_B_ID, usuario.getId(), "fixture-stories-hml-b", "Perfil ficticio Stories B", DESCRICAO_B, StatusAnuncio.PUBLICADO, agora);
+        anunciosCriados += sincronizarAnuncio(ANUNCIO_INELEGIVEL_ID, usuario.getId(), "fixture-stories-hml-inelegivel", "Perfil ficticio inelegivel", DESCRICAO_INELEGIVEL, StatusAnuncio.PAUSADO, agora);
+
+        int localizacoesCriadas = 0;
+        localizacoesCriadas += sincronizarLocalizacao(ANUNCIO_A_ID, agora);
+        localizacoesCriadas += sincronizarLocalizacao(ANUNCIO_B_ID, agora);
+        localizacoesCriadas += sincronizarLocalizacao(ANUNCIO_INELEGIVEL_ID, agora);
 
         List<ArquivoMidiaEntity> arquivos = List.of(
                 arquivo(ARQUIVO_COMPARTILHADO_ID, "fixture/stories/compartilhada.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
@@ -105,16 +151,28 @@ public class HmlStoriesFixtureService {
                 arquivo(ARQUIVO_VIDEO_A_ID, "fixture/stories/video-a.mp4", "video/mp4", StatusArquivoMidia.VALIDADO, agora),
                 arquivo(ARQUIVO_PENDENTE_ID, "fixture/stories/pendente.webp", "image/webp", StatusArquivoMidia.PENDENTE, agora),
                 arquivo(ARQUIVO_FOTO_B_ID, "fixture/stories/foto-b.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
-                arquivo(ARQUIVO_INELEGIVEL_ID, "fixture/stories/inelegivel.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora));
+                arquivo(ARQUIVO_INELEGIVEL_ID, "fixture/stories/inelegivel.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
+                arquivo(ARQUIVO_FOTO_A_2_ID, "fixture/stories/foto-a-2.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
+                arquivo(ARQUIVO_FOTO_A_3_ID, "fixture/stories/foto-a-3.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
+                arquivo(ARQUIVO_RESTRITO_A_ID, "fixture/stories/restrita-a.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
+                arquivo(ARQUIVO_FOTO_B_2_ID, "fixture/stories/foto-b-2.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
+                arquivo(ARQUIVO_FOTO_B_3_ID, "fixture/stories/foto-b-3.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
+                arquivo(ARQUIVO_FOTO_B_4_ID, "fixture/stories/foto-b-4.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora));
         int arquivosCriados = salvarAusentes(arquivos);
 
         List<AnuncioMidiaEntity> vinculos = List.of(
-                midia(MIDIA_COMPARTILHADA_ID, ANUNCIO_A_ID, ARQUIVO_COMPARTILHADO_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, agora),
-                midia(MIDIA_FOTO_A_ID, ANUNCIO_A_ID, ARQUIVO_FOTO_A_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 0, StatusAnuncioMidia.PUBLICAVEL, agora),
-                midia(MIDIA_VIDEO_A_ID, ANUNCIO_A_ID, ARQUIVO_VIDEO_A_ID, TipoAnuncioMidia.VIDEO, FinalidadeAnuncioMidia.GALERIA, 1, StatusAnuncioMidia.PUBLICAVEL, agora),
-                midia(MIDIA_PENDENTE_ID, ANUNCIO_A_ID, ARQUIVO_PENDENTE_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 2, StatusAnuncioMidia.PENDENTE, agora),
-                midia(MIDIA_FOTO_B_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, agora),
-                midia(MIDIA_INELEGIVEL_ID, ANUNCIO_INELEGIVEL_ID, ARQUIVO_INELEGIVEL_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, agora),
+                midia(MIDIA_COMPARTILHADA_ID, ANUNCIO_A_ID, ARQUIVO_COMPARTILHADO_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_FOTO_A_ID, ANUNCIO_A_ID, ARQUIVO_FOTO_A_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 1, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_FOTO_A_2_ID, ANUNCIO_A_ID, ARQUIVO_FOTO_A_2_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 2, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_FOTO_A_3_ID, ANUNCIO_A_ID, ARQUIVO_FOTO_A_3_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 3, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_RESTRITA_A_ID, ANUNCIO_A_ID, ARQUIVO_RESTRITO_A_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 4, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.RESTRITA_18, agora),
+                midia(MIDIA_VIDEO_A_ID, ANUNCIO_A_ID, ARQUIVO_VIDEO_A_ID, TipoAnuncioMidia.VIDEO, FinalidadeAnuncioMidia.GALERIA, 5, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.RESTRITA_18, agora),
+                midia(MIDIA_PENDENTE_ID, ANUNCIO_A_ID, ARQUIVO_PENDENTE_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 6, StatusAnuncioMidia.PENDENTE, VisibilidadeMidia.RESTRITA_18, agora),
+                midia(MIDIA_FOTO_B_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_FOTO_B_2_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_2_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 1, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_FOTO_B_3_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_3_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 2, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_FOTO_B_4_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_4_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 3, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
+                midia(MIDIA_INELEGIVEL_ID, ANUNCIO_INELEGIVEL_ID, ARQUIVO_INELEGIVEL_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
                 AnuncioMidiaEntity.criarFixtureHomologacao(
                         MIDIA_STORY_USUARIO_ID,
                         ANUNCIO_A_ID,
@@ -125,7 +183,7 @@ public class HmlStoriesFixtureService {
                         StatusAnuncioMidia.PUBLICAVEL,
                         VisibilidadeMidia.RESTRITA_18,
                         agora));
-        int vinculosCriados = salvarVinculosAusentes(vinculos);
+        int vinculosCriados = sincronizarVinculos(vinculos, agora);
 
         boolean storyCriado = false;
         if (!storyRepository.existsById(STORY_USUARIO_ID)) {
@@ -139,7 +197,45 @@ public class HmlStoriesFixtureService {
                     agora));
             storyCriado = true;
         }
-        return new FixtureResult(anunciosCriados, arquivosCriados, vinculosCriados, storyCriado);
+        return new FixtureResult(
+                localidadesCriadas,
+                localizacoesCriadas,
+                anunciosCriados,
+                arquivosCriados,
+                vinculosCriados,
+                storyCriado);
+    }
+
+    private int provisionarLocalidades(OffsetDateTime agora) {
+        int criadas = 0;
+        if (!estadoRepository.existsById(ESTADO_ID)) {
+            estadoRepository.save(EstadoEntity.criarFixtureHomologacao(
+                    ESTADO_ID, "GO", "Goias", "goias", agora));
+            criadas++;
+        }
+        if (!cidadeRepository.existsById(CIDADE_ID)) {
+            cidadeRepository.save(CidadeEntity.criarFixtureHomologacao(
+                    CIDADE_ID, ESTADO_ID, "Goiania", "goiania", "goiania", agora));
+            criadas++;
+        }
+        if (!bairroRepository.existsById(BAIRRO_ID)) {
+            bairroRepository.save(BairroEntity.criarFixtureHomologacao(
+                    BAIRRO_ID, CIDADE_ID, "Setor Bueno", "setor bueno", "setor-bueno", agora));
+            criadas++;
+        }
+        return criadas;
+    }
+
+    private int sincronizarLocalizacao(UUID anuncioId, OffsetDateTime agora) {
+        AnuncioLocalizacaoEntity localizacao = localizacaoRepository.findByAnuncioId(anuncioId).orElse(null);
+        if (localizacao == null) {
+            localizacaoRepository.save(AnuncioLocalizacaoEntity.criarFixtureHomologacao(
+                    anuncioId, ESTADO_ID, CIDADE_ID, BAIRRO_ID, agora));
+            return 1;
+        }
+        localizacao.sincronizarFixtureHomologacao(ESTADO_ID, CIDADE_ID, BAIRRO_ID, agora);
+        localizacaoRepository.save(localizacao);
+        return 0;
     }
 
     private UsuarioEntity provisionarUsuario(String runtimeValue, OffsetDateTime agora) {
@@ -169,25 +265,31 @@ public class HmlStoriesFixtureService {
         return usuario;
     }
 
-    private int criarAnuncioSeAusente(
+    private int sincronizarAnuncio(
             UUID id,
             UUID usuarioId,
             String slug,
             String titulo,
+            String descricao,
             StatusAnuncio status,
             OffsetDateTime agora) {
-        if (anuncioRepository.existsById(id)) {
-            return 0;
+        AnuncioEntity anuncio = anuncioRepository.findById(id).orElse(null);
+        if (anuncio == null) {
+            anuncioRepository.save(AnuncioEntity.criarFixtureHomologacao(
+                    id,
+                    usuarioId,
+                    slug,
+                    titulo,
+                    descricao,
+                    status,
+                    StatusModeracaoAnuncio.APROVADO,
+                    agora));
+            return 1;
         }
-        anuncioRepository.save(AnuncioEntity.criarFixtureHomologacao(
-                id,
-                usuarioId,
-                slug,
-                titulo,
-                status,
-                StatusModeracaoAnuncio.APROVADO,
-                agora));
-        return 1;
+        anuncio.sincronizarFixtureHomologacao(
+                titulo, descricao, status, StatusModeracaoAnuncio.APROVADO, agora);
+        anuncioRepository.save(anuncio);
+        return 0;
     }
 
     private ArquivoMidiaEntity arquivo(
@@ -207,6 +309,7 @@ public class HmlStoriesFixtureService {
             FinalidadeAnuncioMidia finalidade,
             int ordem,
             StatusAnuncioMidia status,
+            VisibilidadeMidia visibilidade,
             OffsetDateTime agora) {
         return AnuncioMidiaEntity.criarFixtureHomologacao(
                 id,
@@ -216,7 +319,7 @@ public class HmlStoriesFixtureService {
                 finalidade,
                 ordem,
                 status,
-                VisibilidadeMidia.RESTRITA_18,
+                visibilidade,
                 agora);
     }
 
@@ -231,12 +334,17 @@ public class HmlStoriesFixtureService {
         return criados;
     }
 
-    private int salvarVinculosAusentes(List<AnuncioMidiaEntity> vinculos) {
+    private int sincronizarVinculos(List<AnuncioMidiaEntity> vinculos, OffsetDateTime agora) {
         int criados = 0;
         for (AnuncioMidiaEntity vinculo : vinculos) {
-            if (!anuncioMidiaRepository.existsById(vinculo.getId())) {
+            AnuncioMidiaEntity existente = anuncioMidiaRepository.findById(vinculo.getId()).orElse(null);
+            if (existente == null) {
                 anuncioMidiaRepository.save(vinculo);
                 criados++;
+            } else if (existente.getTipo() != TipoAnuncioMidia.STORY) {
+                existente.aplicarDecisao(vinculo.getStatus(), vinculo.getVisibilidadeMidia(), agora);
+                existente.reordenar(vinculo.getOrdem(), agora);
+                anuncioMidiaRepository.save(existente);
             }
         }
         return criados;
@@ -253,6 +361,8 @@ public class HmlStoriesFixtureService {
     }
 
     public record FixtureResult(
+            int localidadesCriadas,
+            int localizacoesCriadas,
             int anunciosCriados,
             int arquivosCriados,
             int vinculosCriados,

@@ -99,6 +99,7 @@ Para mudancas em rotas publicas, sitemap, robots, canonical, `/anunciar` ou text
 - confirmar admin `noindex`;
 - confirmar ausencia de textos publicos "skeleton" ou "API local";
 - fechado localmente: as rotas publicas, Home e sitemap consomem os seis contratos V3 pelo adapter unico `public-catalog-api.ts`; endpoints legados, fallbacks vazios e adapters concorrentes foram removidos. Permanecem pendentes os gates de homologacao SEO com dados autorizados, mapa final de URLs, 301, canonical, robots e Search Console;
+- pronto localmente para publicar: o provisionador HML existente foi consolidado com localidade, dois anuncios publicos indexaveis, midias livres/restritas e caso negativo, mantendo execucao explicita e idempotente. O HML online permanece sem catalogo ate commit, deploy pelo workflow e execucao operacional autorizada do runner unico;
 - confirmar uma unica origem de canonical/schema por ambiente, pagina invalida em 404/noindex e ausencia de canonical em recurso inexistente;
 - manter qualquer melhoria futura de descricao com IA bloqueada ate autorizacao expressa, contrato backend, previa/aceite da anunciante, protecao de dados, limite de custo e fallback para o texto original;
 - executar `scripts/local/validar-seo-publico-local.ps1`.

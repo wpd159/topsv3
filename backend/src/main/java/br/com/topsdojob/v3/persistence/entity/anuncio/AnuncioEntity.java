@@ -193,6 +193,7 @@ public class AnuncioEntity {
       UUID usuarioId,
       String slug,
       String titulo,
+      String descricao,
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,
       OffsetDateTime criadoEm) {
@@ -201,7 +202,7 @@ public class AnuncioEntity {
     entity.usuarioId = usuarioId;
     entity.slug = slug;
     entity.titulo = titulo;
-    entity.descricao = "Conteudo ficticio exclusivo de homologacao.";
+    entity.descricao = descricao;
     entity.status = status;
     entity.statusModeracao = statusModeracao;
     entity.categoria = "ACOMPANHANTE";
@@ -215,6 +216,26 @@ public class AnuncioEntity {
     entity.origemImportacaoId = null;
     entity.versao = 0;
     return entity;
+  }
+
+  public void sincronizarFixtureHomologacao(
+      String titulo,
+      String descricao,
+      StatusAnuncio status,
+      StatusModeracaoAnuncio statusModeracao,
+      OffsetDateTime atualizadoEm) {
+    this.titulo = titulo;
+    this.descricao = descricao;
+    this.status = status;
+    this.statusModeracao = statusModeracao;
+    this.removidoEm = null;
+    if (status == StatusAnuncio.PUBLICADO) {
+      if (this.publicadoEm == null) {
+        this.publicadoEm = atualizadoEm;
+      }
+      this.ultimaPublicacaoEm = atualizadoEm;
+    }
+    this.atualizadoEm = atualizadoEm;
   }
 
 }

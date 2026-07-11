@@ -41,6 +41,8 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
             String status = result.usuarioCriado() ? "CRIADO" : "ATUALIZADO";
             System.out.println("HML_ADMIN_PROVISION_RESULT=" + status);
             System.out.println("HML_STORIES_FIXTURE_RESULT="
+                    + fixture.localidadesCriadas() + ":"
+                    + fixture.localizacoesCriadas() + ":"
                     + fixture.anunciosCriados() + ":"
                     + fixture.arquivosCriados() + ":"
                     + fixture.vinculosCriados() + ":"

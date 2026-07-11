@@ -52,4 +52,19 @@ public class EstadoEntity {
     return criadoEm;
   }
 
+  public static EstadoEntity criarFixtureHomologacao(
+      UUID id,
+      String uf,
+      String nome,
+      String nomeNormalizado,
+      OffsetDateTime criadoEm) {
+    EstadoEntity entity = new EstadoEntity();
+    entity.id = id;
+    entity.uf = uf;
+    entity.nome = nome;
+    entity.nomeNormalizado = nomeNormalizado;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
 }
