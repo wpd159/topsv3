@@ -41,7 +41,10 @@ export default function ChatWindow({
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const router = useRouter()
 
-  const gerarChatId = (a: number, b: number) => (a < b ? `${a}_${b}` : `${b}_${a}`)
+  const gerarChatId = (a: string | number, b: string | number) => {
+    const ids = [String(a), String(b)].sort()
+    return `${ids[0]}_${ids[1]}`
+  }
 
   useEffect(() => {
     audioRef.current = new Audio("/notification_sound.mp3")

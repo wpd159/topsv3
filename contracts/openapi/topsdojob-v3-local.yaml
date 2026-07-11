@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Tops do Job V3 Local API
   version: 0.0.1
-  description: Contrato minimo local do skeleton, camada transversal, API publica de leitura e funil local Anuncie gratis. A API segue fail-closed: endpoints nao descritos em /api/** nao devem ficar publicos por acidente.
+  description: "Contrato minimo local do skeleton, camada transversal, API publica de leitura e funil local Anuncie gratis. A API segue fail-closed: endpoints nao descritos em /api/** nao devem ficar publicos por acidente."
 servers:
   - url: http://localhost:8080
     description: backend local
@@ -61,6 +61,120 @@ paths:
                 $ref: "#/components/schemas/HealthResponse"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/auth/register:
+    post:
+      summary: Cadastra usuario publico
+      operationId: registerPublicUser
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: Exige o token CSRF inicializado previamente por GET /api/public/auth/me quando CSRF estiver ativo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicRegisterRequest"
+      responses:
+        "201":
+          description: usuario publico cadastrado com credencial protegida por hash
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/public/auth/login:
+    post:
+      summary: Inicia sessao publica
+      operationId: loginPublicUser
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: Exige o token CSRF inicializado previamente por GET /api/public/auth/me quando CSRF estiver ativo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicLoginRequest"
+      responses:
+        "200":
+          description: sessao publica criada com cookie HttpOnly
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicUser"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/public/auth/me:
+    get:
+      summary: Recupera a sessao publica e inicializa o token CSRF
+      operationId: getPublicSession
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: usuario da sessao publica
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicUser"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/public/auth/logout:
+    post:
+      summary: Invalida a sessao publica
+      operationId: logoutPublicUser
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: Exige o token CSRF inicializado previamente por GET /api/public/auth/me quando CSRF estiver ativo.
+      responses:
+        "200":
+          description: sessao publica invalidada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAuthStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/public/usuarios/verificar-duplicidade:
+    get:
+      summary: Verifica duplicidade no cadastro publico
+      operationId: checkPublicUserDuplicate
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: email
+          in: query
+          required: false
+          schema:
+            type: string
+            format: email
+        - name: username
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: telefone
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: resultado individual de duplicidade
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicDuplicateCheck"
+        "400":
+          $ref: "#/components/responses/BadRequest"
   /api/public/anunciar:
     post:
       summary: Cria solicitacao local Anuncie gratis
@@ -1738,6 +1852,11 @@ paths:
           $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
+    PublicSessionCookie:
+      type: apiKey
+      in: cookie
+      name: JSESSIONID
+      description: Sessao publica emitida pelo login; cookie HttpOnly, Secure em HML e SameSite Lax.
     AdminSessionCookie:
       type: apiKey
       in: cookie
@@ -2089,6 +2208,127 @@ components:
         whatsappRealEnviado:
           type: boolean
           const: false
+    PublicRegisterRequest:
+      type: object
+      additionalProperties: true
+      required:
+        - username
+        - email
+        - telefone
+        - dataNascimento
+        - senha
+        - confirmarSenha
+        - acceptedTermsOfUse
+        - acceptedPrivacyPolicy
+      properties:
+        username:
+          type: string
+          minLength: 3
+          maxLength: 120
+        email:
+          type: string
+          format: email
+        telefone:
+          type: string
+        dataNascimento:
+          type: string
+          format: date
+        senha:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 8
+        confirmarSenha:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 8
+        acceptedTermsOfUse:
+          type: boolean
+          const: true
+        acceptedPrivacyPolicy:
+          type: boolean
+          const: true
+        acceptedPromotionalEmails:
+          type: boolean
+    PublicLoginRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - email
+        - senha
+      properties:
+        email:
+          type: string
+          format: email
+        senha:
+          type: string
+          format: password
+          writeOnly: true
+    PublicUser:
+      type: object
+      additionalProperties: false
+      required:
+        - autenticado
+        - id
+        - username
+        - nomeCompleto
+        - email
+        - telefone
+        - status
+        - cargo
+      properties:
+        autenticado:
+          type: boolean
+          const: true
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        nomeCompleto:
+          type:
+            - string
+            - "null"
+        email:
+          type: string
+          format: email
+        telefone:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+        cargo:
+          type: string
+          const: USUARIO
+    PublicAuthStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - autenticado
+        - status
+      properties:
+        autenticado:
+          type: boolean
+          const: false
+        status:
+          type: string
+          const: LOGOUT_OK
+    PublicDuplicateCheck:
+      type: object
+      additionalProperties: false
+      required:
+        - emailExistente
+        - usernameExistente
+        - telefoneExistente
+      properties:
+        emailExistente:
+          type: boolean
+        usernameExistente:
+          type: boolean
+        telefoneExistente:
+          type: boolean
     AdminLoginRequest:
       type: object
       additionalProperties: false

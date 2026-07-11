@@ -24,13 +24,6 @@ const LINKS_SEO = [
   { nome: "Acompanhantes em Cuiabá", href: "/acompanhantes/mt/cuiaba" },
 ]
 
-const PILARES_CONFIANCA = [
-  "Contato direto com os anunciantes",
-  "Privacidade e discrição na navegação",
-  "Anúncios com moderação contínua",
-  "Busca simples, rápida e segura",
-]
-
 export default function Footer() {
   const pathname = usePathname()
   const router = useRouter()
@@ -103,17 +96,6 @@ export default function Footer() {
             <p className="max-w-md text-justify text-sm leading-relaxed text-gray-600">
               {sobreTexto}
             </p>
-
-            <div className="pt-2">
-              <h5 className="mb-3 text-sm font-semibold text-gray-800">Confiança e segurança</h5>
-              <ul className="grid grid-cols-1 gap-2 text-sm text-gray-600 sm:grid-cols-2">
-                {PILARES_CONFIANCA.map((item) => (
-                  <li key={item} className="rounded-full border border-gray-200 bg-gray-50 px-3 py-2">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
 
             <div className="flex items-center gap-3 pt-1">
               <a

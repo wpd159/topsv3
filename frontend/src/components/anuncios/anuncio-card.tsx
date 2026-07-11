@@ -39,7 +39,7 @@ type AnuncioCardProps = {
   favoritoInicial?: boolean
   onDesfavoritar?: (nome: string) => void
   destaque?: boolean
-  usuarioId?: number
+  usuarioId?: string | number
   visualizacoes?: number
   carrosselDisponivel?: boolean
   videoHabilitado?: boolean

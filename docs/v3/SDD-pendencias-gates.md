@@ -637,6 +637,15 @@ Antes de admin em ambiente nao local:
 - O gate `PENDENTE_HTTPS_HML_ANTES_DO_TESTE_PUBLICO` fica fechado para HML navegavel, mas homologacao/cutover/producao seguem bloqueados pelos demais gates.
 - Nenhuma producao, dado real, Pix/Efi real, webhook real, upload real, push ou fase posterior foi usado neste bloco.
 
+## Auth publico essencial
+
+- Fechado localmente: contratos de cadastro, login, `/me`, logout e duplicidade sob `/api/public`.
+- Fechado localmente: cookie de sessao HttpOnly, Secure em HML, SameSite Lax, rotacao de ID no login e invalidacao no logout.
+- Fechado localmente: adapter frontend unico com `credentials: include` e token CSRF.
+- Pendente antes de homologacao funcional: teste E2E HTTP em ambiente descartavel com PostgreSQL e navegador real.
+- Pendente juridico/schema: persistencia versionada dos aceites de termos/privacidade/promocional e da data de nascimento, sem criar coluna improvisada nesta fase.
+- Fora do escopo e ainda pendente: recuperacao/redefinicao de senha, confirmacao/reenvio de conta e 2FA publico.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

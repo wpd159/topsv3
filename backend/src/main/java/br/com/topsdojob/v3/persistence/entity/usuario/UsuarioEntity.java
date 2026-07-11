@@ -128,4 +128,26 @@ public class UsuarioEntity {
     return entity;
   }
 
+  public static UsuarioEntity criarCadastroPublico(
+      UUID id,
+      String nome,
+      String emailNormalizado,
+      String telefoneNormalizado,
+      OffsetDateTime criadoEm) {
+    UsuarioEntity entity = new UsuarioEntity();
+    entity.id = id;
+    entity.nome = nome;
+    entity.emailNormalizado = emailNormalizado;
+    entity.telefoneNormalizado = telefoneNormalizado;
+    entity.status = StatusUsuario.ATIVO;
+    entity.tipoConta = TipoContaUsuario.ANUNCIANTE;
+    entity.emailVerificadoEm = null;
+    entity.telefoneVerificadoEm = null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    entity.desativadoEm = null;
+    entity.versao = 0;
+    return entity;
+  }
+
 }

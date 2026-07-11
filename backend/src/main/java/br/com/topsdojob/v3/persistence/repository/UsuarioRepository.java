@@ -9,4 +9,10 @@ public interface UsuarioRepository extends JpaRepository<UsuarioEntity, UUID> {
   Optional<UsuarioEntity> findByEmailNormalizado(String emailNormalizado);
 
   Optional<UsuarioEntity> findByTelefoneNormalizado(String telefoneNormalizado);
+
+  boolean existsByEmailNormalizado(String emailNormalizado);
+
+  boolean existsByTelefoneNormalizado(String telefoneNormalizado);
+
+  boolean existsByNomeIgnoreCase(String nome);
 }

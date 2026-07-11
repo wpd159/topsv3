@@ -33,7 +33,7 @@ public class LocalCorsConfiguration implements WebMvcConfigurer {
         registry.addMapping("/api/**")
                 .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "OPTIONS")
-                .allowedHeaders("Accept", "Content-Type", RequestIdContext.HEADER_NAME)
+                .allowedHeaders("Accept", "Content-Type", "X-XSRF-TOKEN", RequestIdContext.HEADER_NAME)
                 .exposedHeaders(RequestIdContext.HEADER_NAME)
                 .allowCredentials(true)
                 .maxAge(3600);

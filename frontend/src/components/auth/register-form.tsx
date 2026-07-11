@@ -24,7 +24,7 @@ import {
   fetchLegalDocuments,
   submitRegister,
   type DuplicidadeResposta,
-} from '@/features/auth/register/register-api'
+} from '@/lib/public-auth-api'
 
 interface RegisterFormProps {
   refId?: number | null
@@ -228,13 +228,17 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
     const controller = new AbortController()
     duplicateRequests.current[field] = controller
 
-    const response = await checkDuplicidade({ [field]: value }, controller.signal)
-    if (controller.signal.aborted) return
-
-    setDuplicateErrors((current) => ({
-      ...current,
-      [field]: isDuplicate(field, response) ? duplicateMessage(field) : undefined,
-    }))
+    try {
+      const response = await checkDuplicidade({ [field]: value }, controller.signal)
+      if (controller.signal.aborted) return
+      setDuplicateErrors((current) => ({
+        ...current,
+        [field]: isDuplicate(field, response) ? duplicateMessage(field) : undefined,
+      }))
+    } catch (error) {
+      if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return
+      toast.error('Não foi possível verificar os dados informados.')
+    }
   }
 
   const getButtonLabel = () => {
@@ -263,31 +267,31 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
       return
     }
 
-    const duplicateResponse = await checkDuplicidade({
-      email: values.email,
-      username: values.username,
-      telefone: values.phone,
-    })
-    const nextDuplicateErrors: Partial<Record<DuplicateField, string>> = {}
-
-    for (const field of ['email', 'username', 'telefone'] as const) {
-      if (isDuplicate(field, duplicateResponse)) nextDuplicateErrors[field] = duplicateMessage(field)
-    }
-
-    if (Object.keys(nextDuplicateErrors).length > 0) {
-      setDuplicateErrors(nextDuplicateErrors)
-      toast.error('Ha dados ja cadastrados. Corrija para continuar.')
-      return
-    }
-
-    const dataNascimento = birthDateToIso(values.dataNascimento)
-    if (!dataNascimento) {
-      toast.error('Data de nascimento invalida.')
-      return
-    }
-
     try {
       setLoading(true)
+      const duplicateResponse = await checkDuplicidade({
+        email: values.email,
+        username: values.username,
+        telefone: values.phone,
+      })
+      const nextDuplicateErrors: Partial<Record<DuplicateField, string>> = {}
+
+      for (const field of ['email', 'username', 'telefone'] as const) {
+        if (isDuplicate(field, duplicateResponse)) nextDuplicateErrors[field] = duplicateMessage(field)
+      }
+
+      if (Object.keys(nextDuplicateErrors).length > 0) {
+        setDuplicateErrors(nextDuplicateErrors)
+        toast.error('Ha dados ja cadastrados. Corrija para continuar.')
+        return
+      }
+
+      const dataNascimento = birthDateToIso(values.dataNascimento)
+      if (!dataNascimento) {
+        toast.error('Data de nascimento invalida.')
+        return
+      }
+
       const documentos = await fetchLegalDocuments()
       const originPath =
         typeof window === 'undefined' ? '/' : `${window.location.pathname}${window.location.search}`
@@ -314,6 +318,8 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
 
       toast.success('Conta criada com sucesso!')
       onSuccess?.()
+    } catch {
+      toast.error('Não foi possível concluir o cadastro.')
     } finally {
       setLoading(false)
     }

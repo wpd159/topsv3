@@ -149,7 +149,7 @@ export default function MeusTicketsPage() {
   }, [openChatTicketId])
 
   useEffect(() => {
-    usuarioIdRef.current = usuario?.id
+    usuarioIdRef.current = typeof usuario?.id === 'number' ? usuario.id : undefined
   }, [usuario?.id])
 
   const marcarTicketComoLido = useCallback((ticketId: string, seenAt?: string) => {
@@ -334,7 +334,7 @@ export default function MeusTicketsPage() {
               remetente: formatRemetente(
                 mensagem.enviadoPorRole ?? null,
                 mensagem.enviadoPorId,
-                usuario?.id
+                typeof usuario?.id === 'number' ? usuario.id : undefined
               ),
               texto: String(mensagem.conteudo ?? ''),
               data: formatDateBR(mensagem.enviadoEm),

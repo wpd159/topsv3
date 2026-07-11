@@ -12,9 +12,10 @@ import {
 import SockJS from 'sockjs-client'
 import { Client, type IMessage } from '@stomp/stompjs'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
+import { getPublicSession, logoutPublic, type PublicAuthUser } from '@/lib/public-auth-api'
 
 type Usuario = {
-  id: number
+  id: string | number
   username: string
   nomeCompleto: string | null
   email: string
@@ -53,25 +54,37 @@ type AuthContextType = {
   zerarNovasMensagens: () => void
 
   login: () => Promise<Usuario | null>
-  logout: () => void
+  logout: () => Promise<void>
   refresh: () => Promise<Usuario | null>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
-const AUTH_COOKIE_NAMES = ['to' + 'ken', 'access_' + 'token', 'auth' + 'Token']
 
-function hasClientAuthCookie() {
-  if (typeof document === 'undefined') return false
-  return document.cookie
-    .split('; ')
-    .some((cookie) => AUTH_COOKIE_NAMES.some((name) => cookie.startsWith(`${name}=`)))
+function publicUserToContext(data: PublicAuthUser): Usuario {
+  return {
+    id: data.id,
+    username: data.username,
+    nomeCompleto: data.nomeCompleto,
+    email: data.email,
+    telefone: data.telefone,
+    estadoId: null,
+    cidadeId: null,
+    bairroId: null,
+    localizacao: null,
+    cidade: null,
+    descricao: null,
+    twoFactorAtivo: false,
+    totalAnuncios: 0,
+    totalDocumentos: 0,
+    creditos: 0,
+    totalIndicados: 0,
+    creditosIndicacaoGanhos: 0,
+    creditosPorIndicacao: 0,
+    linkIndicacao: '',
+    status: data.status,
+    cargo: data.cargo,
+  }
 }
-
-function isPublicHomePage() {
-  if (typeof window === 'undefined') return false
-  return window.location.pathname === '/'
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [carregando, setCarregando] = useState(true)
@@ -91,19 +104,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // ========== GET /auth/me ==========
-  const fetchUsuario = async (force = false): Promise<Usuario | null> => {
-    if (!force && isPublicHomePage() && !hasClientAuthCookie()) {
-      setUsuario(null)
-      setCarregando(false)
-      return null
-    }
-
+  const fetchUsuario = async (): Promise<Usuario | null> => {
     try {
       const adminRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
-      const endpoint = adminRoute ? '/api/admin/auth/me' : '/auth/me'
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
-        credentials: 'include',
-      })
+      if (!adminRoute) {
+        const data = await getPublicSession()
+        if (!data) {
+          setUsuario(null)
+          return null
+        }
+        const nextUser = publicUserToContext(data)
+        setUsuario(nextUser)
+        return nextUser
+      }
+
+      const publicBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
+      const backendBase = publicBase.replace(/\/api\/public$/, '')
+      const res = await fetch(`${backendBase}/api/admin/auth/me`, { credentials: 'include' })
 
       if (res.status === 401) {
         setUsuario(null)
@@ -159,22 +176,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return adminUser
       }
 
-      const data = raw
-
-      const localizacaoFinal =
-        (data.localizacao ?? null) ||
-        (typeof data.cidade === 'string' ? data.cidade : null)
-
-      const nextUser = {
-        ...data,
-        localizacao: localizacaoFinal,
-        cidade: data.cidade ?? localizacaoFinal,
-        estadoId: data.estadoId ?? null,
-        cidadeId: data.cidadeId ?? null,
-        bairroId: data.bairroId ?? null,
-      }
-      setUsuario(nextUser)
-      return nextUser
+      setUsuario(null)
+      return null
     } catch (err) {
       setUsuario(null)
       return null
@@ -185,12 +188,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ========= LOGIN =========
   const login = async () => {
-    await new Promise((r) => setTimeout(r, 300))
-    return fetchUsuario(true)
+    return fetchUsuario()
   }
 
   // ========= LOGOUT =========
   const logout = async () => {
+    await logoutPublic()
     setUsuario(null)
     setNovasMensagens(0)
     if (stompRef.current?.active) stompRef.current.deactivate()
@@ -198,12 +201,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const refresh = async () => {
-    return fetchUsuario(true)
+    return fetchUsuario()
   }
 
   useEffect(() => {
     fetchUsuario()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ========= PERFIL COMPLETO =========

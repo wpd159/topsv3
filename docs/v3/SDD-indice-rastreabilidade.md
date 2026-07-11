@@ -363,6 +363,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Evidencia Flyway real V001-V018/PostgreSQL 17.10: `docs/v3/evidencias/bloco-45/relatorio-flyway-real-local.md`
 - Contrato público/administrativo: `contracts/openapi/topsdojob-v3-local.yaml`
 - Política central de mídia pública segura: `backend/src/main/java/br/com/topsdojob/v3/application/publico/mapper/MidiaPublicaSeguraPolicy.java`, `frontend/src/lib/media/public-media.ts`
+- Auth publico essencial: `backend/src/main/java/br/com/topsdojob/v3/web/publico/auth/PublicAuthController.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/auth/PublicAuthenticationService.java`
+- Principal e sessao publica: `backend/src/main/java/br/com/topsdojob/v3/security/publico/PublicUserPrincipal.java`, `backend/src/main/java/br/com/topsdojob/v3/security/config/SecurityConfig.java`
+- Adapter frontend unico de Auth publico: `frontend/src/lib/public-auth-api.ts`
+- Testes Auth publico: `backend/src/test/java/br/com/topsdojob/v3/application/publico/auth/PublicAuthenticationServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/auth/PublicAuthFrontendContractTest.java`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

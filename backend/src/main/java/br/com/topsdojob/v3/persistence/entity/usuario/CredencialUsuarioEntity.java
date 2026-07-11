@@ -63,4 +63,20 @@ public class CredencialUsuarioEntity {
     return criadoEm;
   }
 
+  public static CredencialUsuarioEntity criar(
+      UUID id,
+      UUID usuarioId,
+      String senhaHash,
+      OffsetDateTime criadoEm) {
+    CredencialUsuarioEntity entity = new CredencialUsuarioEntity();
+    entity.id = id;
+    entity.usuarioId = usuarioId;
+    entity.senhaHash = senhaHash;
+    entity.algoritmo = "BCRYPT";
+    entity.alteradaEm = criadoEm;
+    entity.precisaRedefinir = false;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
 }
