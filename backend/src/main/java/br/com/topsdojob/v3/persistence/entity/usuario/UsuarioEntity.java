@@ -150,4 +150,25 @@ public class UsuarioEntity {
     return entity;
   }
 
+  public static UsuarioEntity criarStaffHomologacao(
+      UUID id,
+      String nome,
+      String emailNormalizado,
+      OffsetDateTime criadoEm) {
+    UsuarioEntity entity = new UsuarioEntity();
+    entity.id = id;
+    entity.nome = nome;
+    entity.emailNormalizado = emailNormalizado;
+    entity.telefoneNormalizado = null;
+    entity.status = StatusUsuario.ATIVO;
+    entity.tipoConta = TipoContaUsuario.STAFF;
+    entity.emailVerificadoEm = criadoEm;
+    entity.telefoneVerificadoEm = null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    entity.desativadoEm = null;
+    entity.versao = 0;
+    return entity;
+  }
+
 }

@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+
+email="${1:-admin.stories.hml@example.invalid}"
+case "$email" in
+  *@example.invalid) ;;
+  *) echo "ERRO: use somente e-mail ficticio @example.invalid" >&2; exit 2 ;;
+esac
+
+repo_dir="${TOPSV3_HML_REPO_DIR:-/opt/topsv3/app/current}"
+env_file="${TOPSV3_HML_ENV_FILE:-/opt/topsv3/secrets/hml.env}"
+compose_file="$repo_dir/deploy/hml/docker-compose.yml"
+
+if [ ! -f "$env_file" ] || [ ! -f "$compose_file" ]; then
+  echo "ERRO: contrato HML indisponivel" >&2
+  exit 2
+fi
+
+if [ -t 0 ]; then
+  printf "Senha temporaria de homologacao: " >&2
+  stty -echo
+  IFS= read -r runtime_input
+  stty echo
+  printf "\n" >&2
+else
+  IFS= read -r runtime_input
+fi
+
+if [ "${#runtime_input}" -lt 16 ]; then
+  runtime_input=""
+  echo "ERRO: credencial de runtime muito curta" >&2
+  exit 2
+fi
+
+cd "$repo_dir"
+printf '%s\n' "$runtime_input" | docker compose \
+  --env-file "$env_file" \
+  -f "$compose_file" \
+  run --rm -T \
+  -e HML_ADMIN_PROVISION_EMAIL="$email" \
+  backend \
+  --spring.main.web-application-type=none \
+  --app.hml-admin-provision.enabled=true
+
+runtime_input=""

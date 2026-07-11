@@ -60,6 +60,15 @@ public class PapelUsuarioEntity {
     return entity;
   }
 
+  public static PapelUsuarioEntity criarAdminHomologacao(UUID usuarioId, OffsetDateTime criadoEm) {
+    PapelUsuarioEntity entity = new PapelUsuarioEntity();
+    entity.usuarioId = usuarioId;
+    entity.papel = PapelUsuario.ADMIN;
+    entity.criadoPor = null;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
   public static class PapelUsuarioId implements Serializable {
     private UUID usuarioId;
     private PapelUsuario papel;
