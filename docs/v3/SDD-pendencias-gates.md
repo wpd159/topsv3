@@ -495,7 +495,7 @@ Antes de admin em ambiente nao local:
 - `flyway info`, `migrate`, `validate` e `info` final executados com sucesso.
 - Recursos Docker temporarios `topsv3-flyway-local-*` foram removidos.
 - Homologacao/producao continuam exigindo gates proprios, revisao Pro e ambiente controlado.
-- Estado vigente da migration atual: V001 a V018 aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel; V018 consta como `Success` e os recursos temporarios proprios foram removidos.
+- Estado vigente das migrations: V001 a V019 aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel; V019 consta como `Success` e os recursos temporarios proprios foram removidos.
 
 ## Estado do Bloco 48
 
@@ -540,6 +540,7 @@ Antes de admin em ambiente nao local:
 - Checkpoint local do Bloco 51 criado em `eacecaa2`, sem remote e sem push.
 - Contrato tecnico storage/upload/CDN criado sem upload real.
 - O contrato separa midia publica, stories, midia pendente, midia rejeitada e documento privado.
+- A composicao do feed de Stories com origens `USUARIO` e `ADMINISTRATIVO` foi implementada com V019, singleton e projecao dinamica, sem credito, copia de midia ou linha artificial de Story pago. Antes de homologacao real ainda se exige validar o fluxo com midias reais aprovadas e confirmar metricas do feed sem expor URL privada.
 - URL publica fica permitida apenas para midia aprovada; URL privada, storage key, provider, bucket, hash interno e credenciais continuam fora de DTO publico.
 - Limite gratuito de 2 fotos, Premium/fotos extras e expiracao conjunta de beneficios ficam documentados como regras contratuais.
 - Storage/CDN/upload real, antivirus real, cache/invalidation e rollback real permanecem pendentes de homologacao futura e revisao Pro quando aplicavel.

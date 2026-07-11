@@ -155,7 +155,17 @@ O backend é a fonte da decisão. Mídia `RESTRITA_18` não entrega URL original
 
 Registros anteriores sobre anúncio global `LIVRE`/`BLOQUEADO` são históricos e estão expressamente superados por esta seção e pela migration `V018__visibilidade_individual_midia.sql`.
 
-A migration atual V018 foi aplicada e validada com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel, com `migrate`, `validate` e `info` aprovados e estado `Success`; o resultado vigente e `OK_FLYWAY_REAL_LOCAL`.
+As migrations V001 a V019 foram aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel, com `migrate`, `validate` e `info` aprovados; V019 consta como `Success` e o resultado vigente e `OK_FLYWAY_REAL_LOCAL`.
+
+### Stories de usuario e composicao administrativa
+
+Stories criados pelos anunciantes sao funcionalidade vigente e permanecem integralmente sujeitos ao fluxo atual de creditos, saldo, duracao, inicio, expiracao, renovacao, ordem, status, moderacao, protecao etaria, contratos, metricas, auditoria e telas. Nenhuma implementacao administrativa pode ocultar, substituir, apagar, reduzir, reordenar ou converter esses Stories, nem alterar creditos, saldos ou periodos contratados.
+
+O feed publico implementado coexiste com duas origens: `USUARIO`, preservada como esta, e `ADMINISTRATIVO`, formada dinamicamente pelas midias aprovadas de um anuncio selecionado. A origem administrativa nao consome creditos, nao duplica arquivos, nao cria Story pago falso e nao usa a tabela de Stories pagos com outro significado. `StoryFeedPublicoService` e o compositor unico do feed global: entrega primeiro o grupo administrativo e depois os grupos de usuario na ordem recebida do backend, deduplicando por `arquivo_midia_id` sem modificar o Story pago.
+
+A migration V019 cria a fonte singleton `story_selecao_administrativa`, sem lista de midias. Ativacao, substituicao e desativacao sao atomicas, exclusivas de `ADMIN` e auditadas. Novas midias publicaveis entram e midias rejeitadas, removidas ou invalidas saem por resolucao dinamica. Todas as midias no formato Story exigem confirmacao etaria, sem alterar sua visibilidade original fora do feed; contato do anuncio publico permanece independente.
+
+Antes de remover qualquer codigo relacionado a Stories, e obrigatorio comprovar que ele pertence exclusivamente as ideias canceladas de fixacao permanente no topo, promocao administrativa por creditos, Story administrativo pago falso ou duplicacao fisica de midias, e que nao atende ao fluxo vigente dos anunciantes.
 
 ## 6. WhatsApp, contato e metricas
 

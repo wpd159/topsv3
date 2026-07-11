@@ -26,8 +26,21 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Mídia restrita exige autorização etária real do backend e não expõe original, preload ou metadata antes dela.
 - Página, texto, localização, SEO e contato não são bloqueados por mídia restrita.
 - A migration `V018__visibilidade_individual_midia.sql` faz o backfill conservador e remove as colunas globais somente depois dele.
-- V001 a V018 foram aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel; V018 consta como `Success` e os recursos Docker temporarios proprios foram removidos.
+- V001 a V019 foram aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel; V019 consta como `Success` e os recursos Docker temporarios proprios foram removidos.
 - Toda decisão anterior sobre classificação global `LIVRE`/`BLOQUEADO`, inclusive bloqueio de contato, é histórica e está superada.
+
+## Stories vigentes e feed com duas origens
+
+- Stories criados pelos anunciantes sao funcionalidade vigente, nao legado.
+- Criacao pelo anunciante, creditos, saldo, custo, duracao, inicio, expiracao, renovacao, ordem, status, moderacao, idade, endpoints, contratos, metricas, auditoria e telas devem ser preservados.
+- Stories pagos nao podem ser convertidos em Stories administrativos, cancelados, reordenados ou alterados para viabilizar a origem administrativa.
+- O feed publico tera origens `USUARIO` e `ADMINISTRATIVO`, compostas por um unico servico de leitura.
+- A origem `ADMINISTRATIVO` e uma projecao dinamica das midias aprovadas do anuncio selecionado; nao consome creditos, nao copia arquivos e nao cria linhas artificiais na tabela de Stories pagos.
+- Em coincidencia de midia, o Story do usuario permanece intacto e o contrato de apresentacao evita apenas a repeticao visual no feed.
+- Remocao de codigo de Stories exige prova de orfandade e fica limitada as ideias canceladas de fixacao permanente no topo, promocao administrativa por creditos, Story pago falso ou duplicacao de midia.
+- A V019 materializa apenas a selecao singleton do anuncio. `StoryFeedPublicoService` compoe o feed global, usa namespace para IDs administrativos e preserva UUIDs dos Stories pagos.
+- A deduplicacao compara `arquivo_midia_id`, preserva o Story de usuario e remove somente a repeticao visual da projecao administrativa.
+- O frontend nao embaralha mais os grupos recebidos: administrativo vem primeiro e a ordem relativa dos grupos de usuario permanece a definida pelo backend.
 
 ## Gratuito util
 

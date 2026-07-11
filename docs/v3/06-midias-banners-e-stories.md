@@ -93,6 +93,31 @@ Regras:
 
 ## Stories
 
+### Preservacao integral do fluxo vigente
+
+O sistema de Stories criados pelos anunciantes e funcionalidade vigente, nao legado. Devem ser preservados integralmente criacao pelo anunciante, consumo e validacao de creditos, duracao contratada, inicio, expiracao, renovacao existente, ordem, status, moderacao, protecao etaria, endpoints, contratos, metricas, auditoria, telas e comportamento desktop/mobile.
+
+E proibido converter Story pago em Story administrativo, devolver creditos, alterar saldo, custo, periodo contratado, status, ordem relativa ou registros ativos, expirados e futuros. Qualquer exclusao de entidade, campo, servico, endpoint ou componente de Stories exige prova previa de que o elemento nao pertence ao fluxo vigente dos anunciantes.
+
+### Composicao do feed publico
+
+O feed publico tera duas origens legitimas e coexistentes:
+
+- `USUARIO`: Stories criados pelo anunciante, preservando creditos, validade, expiracao e regras atuais;
+- `ADMINISTRATIVO`: sequencia virtual das fotos e videos aprovados do anuncio selecionado pelo administrador, sem consumo de creditos, copia fisica de midia ou linha artificial em `story_anuncio`.
+
+Um unico servico de leitura deve compor a resposta publica. Ele busca Stories de usuario validos pelas regras vigentes, resolve as midias aprovadas da selecao administrativa ativa, identifica internamente a origem de cada grupo e preserva IDs e contratos proprios. A origem administrativa permanece ativa somente enquanto a selecao administrativa estiver ativa.
+
+Se a mesma midia estiver nas duas origens, o Story pago e preservado e tem precedencia de apresentacao. O compositor evita repeticao visual no mesmo feed por identidade canonica da midia, sem duplicar arquivo ou registro, cancelar, converter ou alterar o Story do anunciante.
+
+Implementacao V3: a migration `V019__selecao_administrativa_stories.sql` cria somente a linha singleton `story_selecao_administrativa`. `StoryFeedPublicoService` resolve dinamicamente a selecao, as midias publicaveis e os Stories pagos vigentes. IDs administrativos usam o namespace `administrativo:{anuncio_midia_id}`; IDs de usuario preservam o UUID de `story_anuncio`. A deduplicacao ocorre por `arquivo_midia_id` exclusivamente na resposta e o grupo administrativo precede os grupos de usuario.
+
+Os endpoints administrativos `GET /api/admin/stories/selecao`, `GET /api/admin/stories/candidatos`, `POST /api/admin/stories/selecao/{anuncioId}` e `DELETE /api/admin/stories/selecao` sao exclusivos de `ADMIN`. Ativacao, substituicao e desativacao bloqueiam a linha singleton e registram auditoria na mesma transacao.
+
+Somente codigo comprovadamente orfao das ideias canceladas de fixacao permanente no topo, promocao administrativa simulada por creditos, Story administrativo pago falso ou duplicacao de midia pode ser removido. O fluxo vigente de Stories dos anunciantes nunca integra esse legado removivel.
+
+### Stories de usuario
+
 Stories devem estar vinculados ao anúncio.
 
 Regras:

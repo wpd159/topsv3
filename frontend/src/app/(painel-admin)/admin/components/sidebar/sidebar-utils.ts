@@ -9,6 +9,7 @@ const MODERATOR_RESTRICTED_ROUTES = [
   '/admin/indicacoes',
   '/admin/termos-footer',
   '/admin/blog',
+  '/admin/stories',
 ]
 
 export const filterSidebarLinksByRole = (links: SidebarLink[], role: string): SidebarLink[] => {

@@ -8,15 +8,6 @@ import type { StoryBundle, StoryItem } from "./stories-types"
 import { getInitials, isExpired, loginPublicoDoBundle, rotuloPublicoDoBundle } from "./stories-types"
 import { StoryViewerDialog } from "./story-viewer-dialog"
 
-function shuffleBundles<T>(list: T[]): T[] {
-  const next = [...list]
-  for (let i = next.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[next[i], next[j]] = [next[j], next[i]]
-  }
-  return next
-}
-
 function previewExigeBloqueio(item?: StoryItem) {
   if (!item) return false
   return item.previewState === "IDADE_NAO_CONFIRMADA"
@@ -71,7 +62,7 @@ export function StoriesBar() {
   const [openViewer, setOpenViewer] = useState(false)
   const [viewerStartIndex, setViewerStartIndex] = useState(0)
 
-  async function fetchStories(options?: { preserveOrder?: boolean }) {
+  async function fetchStories() {
     try {
       setLoading(true)
       const res = await fetch(`${API}/stories/ativos`, { credentials: "include", cache: "no-store" })
@@ -98,7 +89,7 @@ export function StoriesBar() {
         }))
         .filter((bundle) => (bundle?.itens || []).length > 0)
 
-      setBundles(options?.preserveOrder ? sanitized : shuffleBundles(sanitized))
+      setBundles(sanitized)
     } catch (e: any) {
       toast.error(e?.message || "Erro ao carregar stories.")
       setBundles([])
@@ -184,7 +175,7 @@ export function StoriesBar() {
         onOpenChange={setOpenViewer}
         bundles={bundles}
         initialBundleIndex={viewerStartIndex}
-        onVerificationRefresh={() => fetchStories({ preserveOrder: true })}
+        onVerificationRefresh={() => fetchStories()}
       />
     </>
   )

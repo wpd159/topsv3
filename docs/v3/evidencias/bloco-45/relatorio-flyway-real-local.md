@@ -8,7 +8,7 @@
 - Versao Flyway: flyway/flyway:latest
 - Imagem PostgreSQL local selecionada: postgres:17
 - Diretorio de migrations: `backend/src/main/resources/db/migration`
-- Migrations encontradas: 18
+- Migrations encontradas: 19
 
 ## Recursos Docker
 
@@ -17,8 +17,8 @@
 - Network removida: True
 - Container criado: True
 - Container removido: True
-- Network: `topsv3-flyway-local-net-20260710184414`
-- Container: `topsv3-flyway-local-pg17-20260710184414`
+- Network: `topsv3-flyway-local-net-20260710224331`
+- Container: `topsv3-flyway-local-pg17-20260710224331`
 
 ## Passos
 - Network descartavel criada com prefixo topsv3-flyway-local.
@@ -43,27 +43,27 @@ Docker daemon local disponivel.
 
 ### Comando
 
-- Comando: `docker network create topsv3-flyway-local-net-20260710184414`
+- Comando: `docker network create topsv3-flyway-local-net-20260710224331`
 - Exit code: `0`
 - Stdout:
 
 ```text
-80856776f99f84efe2c6cc8a39df84816ce5d264b9dbceb4f5d4f862fe30f073
+113aed6e674e575353f575fc775f1c9d9cb981f032e7011995d44968a95da915
 ```
 
 ### Comando
 
-- Comando: `docker run --pull=never -d --name topsv3-flyway-local-pg17-20260710184414 --network topsv3-flyway-local-net-20260710184414 -e POSTGRES_DB=topsv3_flyway -e POSTGRES_USER=topsv3_flyway -e "POSTGRES_PASSWORD valor_omitido" -p 127.0.0.1::5432 postgres:17`
+- Comando: `docker run --pull=never -d --name topsv3-flyway-local-pg17-20260710224331 --network topsv3-flyway-local-net-20260710224331 -e POSTGRES_DB=topsv3_flyway -e POSTGRES_USER=topsv3_flyway -e "POSTGRES_PASSWORD valor_omitido" -p 127.0.0.1::5432 postgres:17`
 - Exit code: `0`
 - Stdout:
 
 ```text
-326b093142026923d0fc5c9ff32ec2b7b9bb13243df704f878bf71a08ff5e1fd
+a023fc67d54af6bf1d54b9ac8bb57c9d5d69da24f64dc69fce8ceb4eccd1798f
 ```
 
 ### Comando
 
-- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710184414 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql info`
+- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710224331 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql info`
 - Exit code: `0`
 - Stdout:
 
@@ -71,7 +71,7 @@ Docker daemon local disponivel.
 Flyway OSS Edition 12.10.0 by Redgate
 
 See release notes here: https://help.red-gate.com/help/flyway-cli12/help_10.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine
-Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway (PostgreSQL 17.10)
+Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway (PostgreSQL 17.10)
 Schema history table "public"."flyway_schema_history" does not exist yet
 Schema version: << Empty Schema >>
 
@@ -96,12 +96,13 @@ Schema version: << Empty Schema >>
 | Versioned | 016     | indices busca                   | SQL  |              | Pending | No       |
 | Versioned | 017     | constraints finais              | SQL  |              | Pending | No       |
 | Versioned | 018     | visibilidade individual midia   | SQL  |              | Pending | No       |
+| Versioned | 019     | selecao administrativa stories  | SQL  |              | Pending | No       |
 +-----------+---------+---------------------------------+------+--------------+---------+----------+
 ```
 
 ### Comando
 
-- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710184414 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql migrate`
+- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710224331 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql migrate`
 - Exit code: `0`
 - Stdout:
 
@@ -109,9 +110,9 @@ Schema version: << Empty Schema >>
 Flyway OSS Edition 12.10.0 by Redgate
 
 See release notes here: https://help.red-gate.com/help/flyway-cli12/help_10.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine
-Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway (PostgreSQL 17.10)
+Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway (PostgreSQL 17.10)
 Schema history table "public"."flyway_schema_history" does not exist yet
-Successfully validated 18 migrations (execution time 00:00.057s)
+Successfully validated 19 migrations (execution time 00:00.051s)
 Creating Schema History table "public"."flyway_schema_history" ...
 Current version of schema "public": << Empty Schema >>
 Migrating schema "public" to version "001 - extensoes postgresql"
@@ -132,7 +133,8 @@ Migrating schema "public" to version "015 - importacao staging"
 Migrating schema "public" to version "016 - indices busca"
 Migrating schema "public" to version "017 - constraints finais"
 Migrating schema "public" to version "018 - visibilidade individual midia"
-Successfully applied 18 migrations to schema "public", now at version v018 (execution time 00:00.236s)
+Migrating schema "public" to version "019 - selecao administrativa stories"
+Successfully applied 19 migrations to schema "public", now at version v019 (execution time 00:00.267s)
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 A more recent version of Flyway is available. Find out more about Flyway 12.11.0 at https://help.red-gate.com/help/flyway-cli12/help_10.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine
@@ -141,7 +143,7 @@ A more recent version of Flyway is available. Find out more about Flyway 12.11.0
 
 ### Comando
 
-- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710184414 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql validate`
+- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710224331 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql validate`
 - Exit code: `0`
 - Stdout:
 
@@ -149,13 +151,13 @@ A more recent version of Flyway is available. Find out more about Flyway 12.11.0
 Flyway OSS Edition 12.10.0 by Redgate
 
 See release notes here: https://help.red-gate.com/help/flyway-cli12/help_10.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine
-Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway (PostgreSQL 17.10)
-Successfully validated 18 migrations (execution time 00:00.075s)
+Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway (PostgreSQL 17.10)
+Successfully validated 19 migrations (execution time 00:00.076s)
 ```
 
 ### Comando
 
-- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710184414 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql info`
+- Comando: `docker run --pull=never --rm --network topsv3-flyway-local-net-20260710224331 -v "C:\topsv3\backend\src\main\resources\db\migration:/flyway/sql:ro" flyway/flyway:latest -url=jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway -user=topsv3_flyway "-password valor_omitido" -locations=filesystem:/flyway/sql info`
 - Exit code: `0`
 - Stdout:
 
@@ -163,51 +165,52 @@ Successfully validated 18 migrations (execution time 00:00.075s)
 Flyway OSS Edition 12.10.0 by Redgate
 
 See release notes here: https://help.red-gate.com/help/flyway-cli12/help_10.aspx?topic=release-notes-and-older-versions/release-notes-for-flyway-engine
-Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710184414:5432/topsv3_flyway (PostgreSQL 17.10)
-Schema version: 018
+Database: jdbc:postgresql://topsv3-flyway-local-pg17-20260710224331:5432/topsv3_flyway (PostgreSQL 17.10)
+Schema version: 019
 
 +-----------+---------+---------------------------------+------+---------------------+---------+----------+
 | Category  | Version | Description                     | Type | Installed On        | State   | Undoable |
 +-----------+---------+---------------------------------+------+---------------------+---------+----------+
-| Versioned | 001     | extensoes postgresql            | SQL  | 2026-07-10 21:44:21 | Success | No       |
-| Versioned | 002     | usuarios autenticacao           | SQL  | 2026-07-10 21:44:21 | Success | No       |
-| Versioned | 003     | localizacao                     | SQL  | 2026-07-10 21:44:21 | Success | No       |
-| Versioned | 004     | anuncios                        | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 005     | midia stories documentos        | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 006     | moderacao                       | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 007     | premium creditos                | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 008     | financeiro efi historico legado | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 009     | metricas                        | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 010     | seo urls redirects              | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 011     | banners                         | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 012     | comercial suporte               | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 013     | auditoria outbox                | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 014     | backup                          | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 015     | importacao staging              | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 016     | indices busca                   | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 017     | constraints finais              | SQL  | 2026-07-10 21:44:22 | Success | No       |
-| Versioned | 018     | visibilidade individual midia   | SQL  | 2026-07-10 21:44:22 | Success | No       |
+| Versioned | 001     | extensoes postgresql            | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 002     | usuarios autenticacao           | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 003     | localizacao                     | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 004     | anuncios                        | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 005     | midia stories documentos        | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 006     | moderacao                       | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 007     | premium creditos                | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 008     | financeiro efi historico legado | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 009     | metricas                        | SQL  | 2026-07-11 01:43:39 | Success | No       |
+| Versioned | 010     | seo urls redirects              | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 011     | banners                         | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 012     | comercial suporte               | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 013     | auditoria outbox                | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 014     | backup                          | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 015     | importacao staging              | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 016     | indices busca                   | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 017     | constraints finais              | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 018     | visibilidade individual midia   | SQL  | 2026-07-11 01:43:40 | Success | No       |
+| Versioned | 019     | selecao administrativa stories  | SQL  | 2026-07-11 01:43:40 | Success | No       |
 +-----------+---------+---------------------------------+------+---------------------+---------+----------+
 ```
 
 ### Comando
 
-- Comando: `docker rm -f topsv3-flyway-local-pg17-20260710184414`
+- Comando: `docker rm -f topsv3-flyway-local-pg17-20260710224331`
 - Exit code: `0`
 - Stdout:
 
 ```text
-topsv3-flyway-local-pg17-20260710184414
+topsv3-flyway-local-pg17-20260710224331
 ```
 
 ### Comando
 
-- Comando: `docker network rm topsv3-flyway-local-net-20260710184414`
+- Comando: `docker network rm topsv3-flyway-local-net-20260710224331`
 - Exit code: `0`
 - Stdout:
 
 ```text
-topsv3-flyway-local-net-20260710184414
+topsv3-flyway-local-net-20260710224331
 ```
 
 ## Limites preservados

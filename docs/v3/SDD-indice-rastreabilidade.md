@@ -360,13 +360,18 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 
 - Regra vigente de visibilidade individual: `backend/src/main/java/br/com/topsdojob/v3/domain/shared/VisibilidadeMidia.java`
 - Backfill e remoção da classificação global: `backend/src/main/resources/db/migration/V018__visibilidade_individual_midia.sql`
-- Evidencia Flyway real V001-V018/PostgreSQL 17.10: `docs/v3/evidencias/bloco-45/relatorio-flyway-real-local.md`
+- Evidencia Flyway real V001-V019/PostgreSQL 17.10: `docs/v3/evidencias/bloco-45/relatorio-flyway-real-local.md`
 - Contrato público/administrativo: `contracts/openapi/topsdojob-v3-local.yaml`
 - Política central de mídia pública segura: `backend/src/main/java/br/com/topsdojob/v3/application/publico/mapper/MidiaPublicaSeguraPolicy.java`, `frontend/src/lib/media/public-media.ts`
 - Auth publico essencial: `backend/src/main/java/br/com/topsdojob/v3/web/publico/auth/PublicAuthController.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/auth/PublicAuthenticationService.java`
 - Principal e sessao publica: `backend/src/main/java/br/com/topsdojob/v3/security/publico/PublicUserPrincipal.java`, `backend/src/main/java/br/com/topsdojob/v3/security/config/SecurityConfig.java`
 - Adapter frontend unico de Auth publico: `frontend/src/lib/public-auth-api.ts`
 - Testes Auth publico: `backend/src/test/java/br/com/topsdojob/v3/application/publico/auth/PublicAuthenticationServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/auth/PublicAuthFrontendContractTest.java`
+- Selecao administrativa singleton de Stories: `backend/src/main/resources/db/migration/V019__selecao_administrativa_stories.sql`, `backend/src/main/java/br/com/topsdojob/v3/persistence/entity/midia/StorySelecaoAdministrativaEntity.java`
+- Operacao administrativa de Stories: `backend/src/main/java/br/com/topsdojob/v3/application/admin/stories/AdminStorySelecaoService.java`, `backend/src/main/java/br/com/topsdojob/v3/web/admin/stories/AdminStorySelecaoController.java`
+- Compositor publico unico de Stories: `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/StoryFeedPublicoService.java`, `backend/src/main/java/br/com/topsdojob/v3/web/publico/StoryFeedPublicoController.java`
+- Painel de Stories administrativos: `frontend/src/app/(painel-admin)/admin/stories/page.tsx`, `frontend/src/lib/admin-stories-api.ts`
+- Testes da selecao e composicao: `backend/src/test/java/br/com/topsdojob/v3/application/admin/stories/AdminStorySelecaoServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/service/StoryFeedPublicoServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/migration/StorySelecaoAdministrativaMigrationTest.java`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

@@ -307,6 +307,47 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/stories/ativos:
+    get:
+      summary: Compoe o feed publico unico de Stories
+      description: Retorna primeiro a projecao ADMINISTRATIVO ativa e depois os Stories USUARIO vigentes. A deduplicacao usa a identidade canonica do arquivo e preserva o Story pago. Nenhuma URL e entregue antes da confirmacao etaria.
+      operationId: getPublicStoriesFeed
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: feed publico composto
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StoryFeedBundle"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/stories/{storyId}:
+    get:
+      summary: Resolve um item do feed de Stories
+      description: IDs de usuario preservam o UUID do Story pago. Itens administrativos usam prefixo namespaced e sao resolvidos dinamicamente, sem registro de Story.
+      operationId: getPublicStoryViewer
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: storyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: item de Story resolvido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryViewerPublico"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/anuncios/{slug}/stories:
     get:
       summary: Lista stories publicos autorizados por idade
@@ -1484,6 +1525,94 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/stories/selecao:
+    get:
+      summary: Consulta a selecao administrativa de Stories
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: selecao atual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStorySelecao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      summary: Desativa atomicamente a selecao administrativa
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: selecao desativada e auditada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStorySelecao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/stories/selecao/{anuncioId}:
+    post:
+      summary: Ativa ou substitui atomicamente o anuncio administrativo
+      description: Nao cria Story pago, nao consome credito e nao copia midia. Exige anuncio publico, aprovado e com foto ou video publicavel.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: anuncioId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: selecao ativada ou substituida e auditada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStorySelecao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: anuncio inelegivel ou sem midia aprovada
+  /api/admin/stories/candidatos:
+    get:
+      summary: Lista anuncios candidatos aos Stories administrativos
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: termo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: pagina de anuncios publicos e aprovados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStoryCandidatosPagina"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/admin/midias/{id}:
     get:
       summary: Detalhe administrativo sanitizado de midia
@@ -4361,6 +4490,150 @@ components:
           enum:
             - IDADE_CONFIRMADA
             - IDADE_NAO_CONFIRMADA
+    StoryFeedItem:
+      type: object
+      additionalProperties: false
+      required: [storyId, anuncioId, anuncioSlug, profileNavigable, previewState, tipo]
+      properties:
+        storyId:
+          type: string
+        anuncioId:
+          type: string
+          format: uuid
+        anuncioSlug:
+          type: string
+        usuarioUsername:
+          type: [string, "null"]
+        displayUsername:
+          type: [string, "null"]
+        profileNavigable:
+          type: boolean
+        previewState:
+          type: string
+          enum: [AVAILABLE, IDADE_NAO_CONFIRMADA, UNAVAILABLE]
+        previewUrl:
+          type: [string, "null"]
+        tipo:
+          type: string
+          enum: [IMAGE, VIDEO]
+        expiraEm:
+          type: [string, "null"]
+          format: date-time
+    StoryFeedBundle:
+      type: object
+      additionalProperties: false
+      required: [usuarioId, profileNavigable, visto, itens]
+      properties:
+        usuarioId:
+          type: string
+        usuarioUsername:
+          type: [string, "null"]
+        displayUsername:
+          type: [string, "null"]
+        profileNavigable:
+          type: boolean
+        avatarUrl:
+          type: [string, "null"]
+        visto:
+          type: boolean
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryFeedItem"
+    StoryViewerPublico:
+      type: object
+      additionalProperties: false
+      required: [storyId, anuncioId, anuncioSlug, profileNavigable, viewerState, tipo]
+      properties:
+        storyId:
+          type: string
+        anuncioId:
+          type: string
+          format: uuid
+        anuncioSlug:
+          type: string
+        usuarioUsername:
+          type: [string, "null"]
+        displayUsername:
+          type: [string, "null"]
+        profileNavigable:
+          type: boolean
+        viewerState:
+          type: string
+          enum: [LIBERADO, IDADE_NAO_CONFIRMADA, INDISPONIVEL]
+        midiaUrl:
+          type: [string, "null"]
+        tipo:
+          type: string
+          enum: [IMAGE, VIDEO]
+        expiraEm:
+          type: [string, "null"]
+          format: date-time
+        blockedReason:
+          type: [string, "null"]
+    AdminStorySelecao:
+      type: object
+      additionalProperties: false
+      required: [ativa, fotosAprovadas, videosAprovados]
+      properties:
+        ativa:
+          type: boolean
+        anuncioId:
+          type: [string, "null"]
+          format: uuid
+        anuncioSlug:
+          type: [string, "null"]
+        anuncioTitulo:
+          type: [string, "null"]
+        fotosAprovadas:
+          type: integer
+        videosAprovados:
+          type: integer
+        ativadoEm:
+          type: [string, "null"]
+          format: date-time
+        ativadoPorId:
+          type: [string, "null"]
+          format: uuid
+        ativadoPorEmail:
+          type: [string, "null"]
+    AdminStoryCandidato:
+      type: object
+      additionalProperties: false
+      required: [anuncioId, slug, titulo, fotosAprovadas, videosAprovados, selecionado]
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        titulo:
+          type: string
+        fotosAprovadas:
+          type: integer
+        videosAprovados:
+          type: integer
+        selecionado:
+          type: boolean
+    AdminStoryCandidatosPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, page, size, totalElements, totalPages, last]
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminStoryCandidato"
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+        totalPages:
+          type: integer
+        last:
+          type: boolean
     PoliticaStoryPublico:
       type: object
       additionalProperties: false

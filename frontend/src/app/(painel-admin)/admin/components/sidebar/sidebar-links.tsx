@@ -35,6 +35,12 @@ export type SidebarLink = {
 
 export const sidebarLinks: SidebarLink[] = [
   {
+    label: 'Stories administrativos',
+    icon: <SparklesIcon className="h-5 w-5" />,
+    href: '/admin/stories',
+    section: 'Operação',
+  },
+  {
     label: 'Dashboard',
     icon: <ChartPieIcon className="h-5 w-5" />,
     href: '/admin/dashboard',
