@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.auth;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicAuthStatusDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicDuplicidadeDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicLoginRequestDto;
+import br.com.topsdojob.v3.application.publico.auth.dto.PublicProfileUpdateRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicRegisterRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicUserDto;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
@@ -137,6 +138,46 @@ public class PublicAuthenticationService {
 
     @Transactional(readOnly = true)
     public PublicUserDto me(Authentication authentication) {
+        return toDto(authenticatedUser(authentication));
+    }
+
+    @Transactional
+    public PublicUserDto updateProfile(
+            PublicProfileUpdateRequestDto request,
+            Authentication authentication) {
+        UsuarioEntity usuario = authenticatedUser(authentication);
+        if (request == null) {
+            throw badRequest("Dados do perfil obrigatorios.");
+        }
+
+        String username = request.username() == null ? "" : request.username().trim();
+        String telefone = normalizePhone(request.telefone());
+        if (username.length() < 3 || username.length() > 120) {
+            throw badRequest("Nome de usuario invalido.");
+        }
+        if (!PHONE_PATTERN.matcher(telefone).matches()) {
+            throw badRequest("Telefone invalido.");
+        }
+
+        usuarioRepository.findByNomeIgnoreCase(username)
+                .filter(existente -> !existente.getId().equals(usuario.getId()))
+                .ifPresent(existente -> {
+                    throw conflict("Nome de usuario ja cadastrado.");
+                });
+        usuarioRepository.findByTelefoneNormalizado(telefone)
+                .filter(existente -> !existente.getId().equals(usuario.getId()))
+                .ifPresent(existente -> {
+                    throw conflict("Telefone ja cadastrado.");
+                });
+
+        if (!username.equals(usuario.getNome()) || !telefone.equals(usuario.getTelefoneNormalizado())) {
+            usuario.atualizarPerfilPublico(username, telefone, OffsetDateTime.now(ZoneOffset.UTC));
+            usuarioRepository.save(usuario);
+        }
+        return toDto(usuario);
+    }
+
+    private UsuarioEntity authenticatedUser(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof PublicUserPrincipal principal)) {
@@ -146,7 +187,7 @@ public class PublicAuthenticationService {
         if (usuario.getStatus() != StatusUsuario.ATIVO || usuario.getDesativadoEm() != null) {
             throw unauthorized();
         }
-        return toDto(usuario);
+        return usuario;
     }
 
     public PublicAuthStatusDto logout(HttpServletRequest request) {

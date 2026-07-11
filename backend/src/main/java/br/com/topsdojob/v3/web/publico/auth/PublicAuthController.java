@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.publico.auth.dto.PublicAuthErrorDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicAuthStatusDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicDuplicidadeDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicLoginRequestDto;
+import br.com.topsdojob.v3.application.publico.auth.dto.PublicProfileUpdateRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicRegisterRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicUserDto;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,6 +17,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,8 +49,17 @@ public class PublicAuthController {
 
     @GetMapping("/auth/me")
     public PublicUserDto me(Authentication authentication, CsrfToken csrfToken) {
-        csrfToken.getToken();
+        if (csrfToken != null) {
+            csrfToken.getToken();
+        }
         return authenticationService.me(authentication);
+    }
+
+    @PatchMapping("/auth/me")
+    public PublicUserDto updateProfile(
+            @RequestBody(required = false) PublicProfileUpdateRequestDto request,
+            Authentication authentication) {
+        return authenticationService.updateProfile(request, authentication);
     }
 
     @PostMapping("/auth/logout")

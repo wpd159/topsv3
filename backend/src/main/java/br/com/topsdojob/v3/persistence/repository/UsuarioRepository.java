@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface UsuarioRepository extends JpaRepository<UsuarioEntity, UUID> {
   Optional<UsuarioEntity> findByEmailNormalizado(String emailNormalizado);
 
+  Optional<UsuarioEntity> findByNomeIgnoreCase(String nome);
+
   Optional<UsuarioEntity> findByTelefoneNormalizado(String telefoneNormalizado);
 
   boolean existsByEmailNormalizado(String emailNormalizado);

@@ -4,68 +4,6 @@ import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 
 const API = process.env.NEXT_PUBLIC_API_URL
 
-export type PainelRecomendacao = {
-  chave: string
-  titulo: string
-  descricao: string
-  prioridade: 'ALTA' | 'MEDIA' | 'BAIXA'
-  ctaLabel: string
-  ctaTarget: string
-  anuncioId?: number | null
-  anuncioTitulo?: string | null
-}
-
-export type PainelVisibilidade = {
-  anuncioId?: number | null
-  anuncioSlug?: string | null
-  anuncioTitulo: string
-  localizacao?: string | null
-  score: number
-  faixa: string
-  mensagem: string
-  fotos: number
-  recursosPremium: number
-  impulsionado: boolean
-  expiraImpulsionamentoEm?: string | null
-}
-
-export type PainelRankingItem = {
-  anuncioId: number
-  anuncioSlug?: string | null
-  anuncioTitulo: string
-  localizacao?: string | null
-  fotoCapa?: string | null
-  status: string
-  score: number
-  faixa: string
-  impulsionado: boolean
-  recursosPremium: number
-  recursosAtivos: string[]
-  proximoPasso: string
-  proximoPassoDestino: string
-}
-
-export type PainelOverview = {
-  headline: string
-  subheadline: string
-  primaryCtaLabel: string
-  primaryCtaTarget: string
-  secondaryCtaLabel: string
-  secondaryCtaTarget: string
-  totalAnuncios: number
-  anunciosAtivos: number
-  anunciosPendentes: number
-  anunciosPausados: number
-  scoreMedioVisibilidade: number
-  anunciosProntosParaEscalar: number
-  totalRecursosPremiumAtivos: number
-  saldoCreditos: number
-  totalRecomendacoes: number
-  visibilidade: PainelVisibilidade
-  ranking: PainelRankingItem[]
-  recomendacoes: PainelRecomendacao[]
-}
-
 export type PainelPerformanceItem = {
   anuncioId: number
   anuncioSlug?: string | null
@@ -118,10 +56,6 @@ async function fetchPainelJson<T>(path: string): Promise<T> {
   }
 
   return corrigirEstruturaTexto(await res.json()) as T
-}
-
-export function fetchPainelOverview() {
-  return fetchPainelJson<PainelOverview>('/painel-anunciante/visao-geral')
 }
 
 export function fetchPainelPerformance() {

@@ -768,3 +768,12 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - Cadastro, login, `/me`, logout e duplicidade possuem testes de servico e contrato frontend.
 - Recuperacao/redefinicao de senha, confirmacao/reenvio de conta e 2FA publico nao fazem parte desta fase.
 - O bloco `Confiança e segurança` e seus quatro baloes foram removidos do rodape; logo, texto institucional, links legais e redes sociais foram preservados.
+
+## 34. Area autenticada essencial do anunciante
+
+- Rotas integradas nesta fase: `/painel` e `/minha-conta`.
+- A guarda combina a presenca do cookie `JSESSIONID` no middleware com validacao real de `GET /api/public/auth/me` no layout privado.
+- O painel usa somente nome, e-mail, telefone e status retornados pela sessao publica; metricas, anuncios, creditos e recomendacoes nao sao simulados.
+- O perfil reutiliza `GET /api/public/auth/me` e adiciona `PATCH /api/public/auth/me`, com `credentials: include` e CSRF pelo adapter unico `frontend/src/lib/public-auth-api.ts`.
+- Somente nome de usuario e telefone sao editaveis no schema atual. E-mail permanece somente leitura; cidade, descricao, senha, 2FA e exclusao de conta permanecem pendentes de contratos proprios.
+- Nenhuma migration foi necessaria.

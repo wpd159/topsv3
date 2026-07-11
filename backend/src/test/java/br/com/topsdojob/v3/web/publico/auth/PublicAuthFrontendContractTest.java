@@ -20,11 +20,19 @@ class PublicAuthFrontendContractTest {
                 .contains("'/auth/login'")
                 .contains("'/auth/me'")
                 .contains("'/auth/logout'")
+                .contains("updatePublicProfile")
+                .contains("method: 'PATCH'")
                 .contains("/usuarios/verificar-duplicidade")
                 .contains("credentials: 'include'")
                 .contains("csrfHeaderName()")
                 .contains("['X', 'XSRF', 'TOKEN'].join('-')")
                 .doesNotContain("/api/admin/auth");
+        String controller = Files.readString(Path.of(
+                "src", "main", "java", "br", "com", "topsdojob", "v3", "web", "publico", "auth",
+                "PublicAuthController.java"));
+        assertThat(controller)
+                .contains("if (csrfToken != null)")
+                .contains("csrfToken.getToken()");
         assertThat(FRONTEND.resolve(Path.of("features", "auth", "register", "register-api.ts")))
                 .doesNotExist();
     }
@@ -38,6 +46,40 @@ class PublicAuthFrontendContractTest {
         assertThat(loginModal).contains("loginPublic").doesNotContain("fetch(`${API}/auth/login`");
         assertThat(registerForm).contains("@/lib/public-auth-api").doesNotContain("features/auth/register/register-api");
         assertThat(authContext).contains("getPublicSession").contains("logoutPublic");
+    }
+
+    @Test
+    void areaPrivadaUsaSessaoPublicaRealSemEndpointsLegados() throws Exception {
+        String middleware = Files.readString(FRONTEND.resolve("middleware.ts"));
+        String privateLayout = Files.readString(FRONTEND.resolve(Path.of("app", "(private-routes)", "layout.tsx")));
+        String guard = Files.readString(FRONTEND.resolve(Path.of("components", "auth", "private-session-guard.tsx")));
+        String painel = Files.readString(FRONTEND.resolve(Path.of("app", "(private-routes)", "painel", "page.tsx")));
+        String perfil = Files.readString(FRONTEND.resolve(Path.of("app", "(private-routes)", "minha-conta", "page.tsx")));
+
+        assertThat(middleware)
+                .contains("SESSION_COOKIE_NAME = 'JSESSIONID'")
+                .contains("url.searchParams.set('login', '1')")
+                .doesNotContain("decodeJwtPayload")
+                .doesNotContain("access_" + "token");
+        assertThat(privateLayout).contains("PrivateSessionGuard");
+        assertThat(guard).contains("useAuth").contains("/?login=1&next=");
+        assertThat(painel)
+                .contains("usuario?.username")
+                .contains("await logout()")
+                .doesNotContain("fetchPainelOverview")
+                .doesNotContain("saldoCreditos");
+        assertThat(perfil)
+                .contains("updatePublicProfile")
+                .contains("await refresh()")
+                .doesNotContain("/usuarios/")
+                .doesNotContain("/creditos/")
+                .doesNotContain("sessionStorage");
+        assertThat(FRONTEND.resolve(Path.of("components", "minha-conta", "informacoes-pessoais-card.tsx")))
+                .doesNotExist();
+        assertThat(FRONTEND.resolve(Path.of("components", "minha-conta", "seguranca-conta-card.tsx")))
+                .doesNotExist();
+        assertThat(FRONTEND.resolve(Path.of("components", "minha-conta", "two-factor-section.tsx")))
+                .doesNotExist();
     }
 
     @Test

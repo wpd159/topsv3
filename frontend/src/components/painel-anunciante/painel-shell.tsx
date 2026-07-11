@@ -13,10 +13,6 @@ type PainelShellProps = {
 
 const NAV_ITEMS = [
   { label: 'Visão geral', href: '/painel' },
-  { label: 'Meus anúncios', href: '/meus-anuncios' },
-  { label: 'Performance', href: '/painel/performance' },
-  { label: 'Créditos e planos', href: '/creditos' },
-  { label: 'Recomendações', href: '/painel#recomendacoes' },
   { label: 'Conta e configurações', href: '/minha-conta' },
 ]
 
@@ -45,10 +41,7 @@ export function PainelShell({ title, description, children }: PainelShellProps) 
         <div className="relative">
           <div className="-mx-1 mt-5 flex snap-x gap-2 overflow-x-auto px-1 pb-1 pr-12 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {NAV_ITEMS.map((item) => {
-              const isActive =
-                item.href === '/painel#recomendacoes'
-                  ? pathname === '/painel'
-                  : pathname === item.href
+              const isActive = pathname === item.href
 
               return (
                 <Link

@@ -4,10 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicLoginRequestDto;
+import br.com.topsdojob.v3.application.publico.auth.dto.PublicProfileUpdateRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicRegisterRequestDto;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -28,6 +30,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
@@ -163,6 +166,62 @@ class PublicAuthenticationServiceTest {
     }
 
     @Test
+    void atualizaSomenteNomeETelefoneSuportadosPeloPerfilPublico() {
+        UsuarioEntity usuario = activeUser();
+        when(usuarioRepository.findById(USER_ID)).thenReturn(Optional.of(usuario));
+        Authentication authentication = publicAuthentication(usuario);
+
+        var response = service.updateProfile(
+                new PublicProfileUpdateRequestDto("Perfil Atualizado", "(62) 98888-7777"),
+                authentication);
+
+        assertThat(response.username()).isEqualTo("Perfil Atualizado");
+        assertThat(response.telefone()).isEqualTo("+5562988887777");
+        verify(usuarioRepository).save(usuario);
+    }
+
+    @Test
+    void perfilInvalidoRetorna400SemPersistir() {
+        UsuarioEntity usuario = activeUser();
+        when(usuarioRepository.findById(USER_ID)).thenReturn(Optional.of(usuario));
+
+        assertThatThrownBy(() -> service.updateProfile(
+                new PublicProfileUpdateRequestDto("x", "123"),
+                publicAuthentication(usuario)))
+                .isInstanceOfSatisfying(PublicAuthException.class, exception ->
+                        assertThat(exception.status()).isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(usuarioRepository, never()).save(any());
+    }
+
+    @Test
+    void atualizacaoDePerfilSemSessaoRetorna401() {
+        assertThatThrownBy(() -> service.updateProfile(
+                new PublicProfileUpdateRequestDto("Perfil Atualizado", "62999999999"),
+                null))
+                .isInstanceOfSatisfying(PublicAuthException.class, exception ->
+                        assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED));
+    }
+
+    @Test
+    void perfilDuplicadoRetorna409() {
+        UsuarioEntity usuario = activeUser();
+        UsuarioEntity outro = UsuarioEntity.criarCadastroPublico(
+                UUID.randomUUID(),
+                "Outro Perfil",
+                "outro@example.invalid",
+                "+5562999990000",
+                OffsetDateTime.now(ZoneOffset.UTC));
+        when(usuarioRepository.findById(USER_ID)).thenReturn(Optional.of(usuario));
+        when(usuarioRepository.findByNomeIgnoreCase("Outro Perfil")).thenReturn(Optional.of(outro));
+
+        assertThatThrownBy(() -> service.updateProfile(
+                new PublicProfileUpdateRequestDto("Outro Perfil", "62999999999"),
+                publicAuthentication(usuario)))
+                .isInstanceOfSatisfying(PublicAuthException.class, exception ->
+                        assertThat(exception.status()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
     void logoutInvalidaSessao() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpSession session = (MockHttpSession) request.getSession(true);
@@ -208,6 +267,13 @@ class PublicAuthenticationServiceTest {
                 "perfil@example.invalid",
                 "+5562999999999",
                 OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    private Authentication publicAuthentication(UsuarioEntity usuario) {
+        return UsernamePasswordAuthenticationToken.authenticated(
+                new PublicUserPrincipal(USER_ID, usuario.getNome(), usuario.getEmailNormalizado()),
+                null,
+                java.util.List.of());
     }
 
     private PublicRegisterRequestDto validRegisterRequest() {

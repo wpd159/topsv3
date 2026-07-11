@@ -371,6 +371,9 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Principal e sessao publica: `backend/src/main/java/br/com/topsdojob/v3/security/publico/PublicUserPrincipal.java`, `backend/src/main/java/br/com/topsdojob/v3/security/config/SecurityConfig.java`
 - Adapter frontend unico de Auth publico: `frontend/src/lib/public-auth-api.ts`
 - Testes Auth publico: `backend/src/test/java/br/com/topsdojob/v3/application/publico/auth/PublicAuthenticationServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/auth/PublicAuthFrontendContractTest.java`
+- Perfil publico autenticado: `PATCH /api/public/auth/me`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/auth/dto/PublicProfileUpdateRequestDto.java`
+- Guarda privada do anunciante: `frontend/src/middleware.ts`, `frontend/src/components/auth/private-session-guard.tsx`, `frontend/src/app/(private-routes)/layout.tsx`
+- Painel e perfil essenciais: `frontend/src/app/(private-routes)/painel/page.tsx`, `frontend/src/app/(private-routes)/minha-conta/page.tsx`
 - Selecao administrativa singleton de Stories: `backend/src/main/resources/db/migration/V019__selecao_administrativa_stories.sql`, `backend/src/main/java/br/com/topsdojob/v3/persistence/entity/midia/StorySelecaoAdministrativaEntity.java`
 - Operacao administrativa de Stories: `backend/src/main/java/br/com/topsdojob/v3/application/admin/stories/AdminStorySelecaoService.java`, `backend/src/main/java/br/com/topsdojob/v3/web/admin/stories/AdminStorySelecaoController.java`
 - Compositor publico unico de Stories: `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/StoryFeedPublicoService.java`, `backend/src/main/java/br/com/topsdojob/v3/web/publico/StoryFeedPublicoController.java`

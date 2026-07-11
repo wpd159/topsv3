@@ -10,6 +10,11 @@ export type PublicAuthUser = {
   cargo: string
 }
 
+export type PublicProfileUpdatePayload = {
+  username: string
+  telefone: string
+}
+
 export type DuplicidadeResposta = {
   emailExistente: boolean
   usernameExistente: boolean
@@ -120,6 +125,14 @@ export async function getPublicSession(): Promise<PublicAuthUser | null> {
     if (error instanceof PublicAuthApiError && error.status === 401) return null
     throw error
   }
+}
+
+export function updatePublicProfile(payload: PublicProfileUpdatePayload) {
+  return publicRequest<PublicAuthUser>('/auth/me', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 export function loginPublic(email: string, credential: string) {

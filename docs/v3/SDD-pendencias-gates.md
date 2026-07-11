@@ -648,6 +648,15 @@ Antes de admin em ambiente nao local:
 - Pendente juridico/schema: persistencia versionada dos aceites de termos/privacidade/promocional e da data de nascimento, sem criar coluna improvisada nesta fase.
 - Fora do escopo e ainda pendente: recuperacao/redefinicao de senha, confirmacao/reenvio de conta e 2FA publico.
 
+## Area autenticada essencial do anunciante
+
+- Fechado localmente: guarda de `/painel` e `/minha-conta` com cookie de sessao e confirmacao por `/api/public/auth/me`.
+- Fechado localmente: reload preserva a sessao pelo backend, sem Web Storage; logout invalida a sessao no backend.
+- Fechado localmente: leitura e edicao de nome de usuario e telefone por adapter unico com CSRF.
+- Pendente de contrato proprio: alteracao de e-mail, cidade, bairro, descricao, senha, 2FA e exclusao de conta.
+- Pendente de fases futuras: dados de anuncios, performance, Premium, creditos e pagamentos no painel.
+- Pendente antes de publicacao: smoke autenticado desktop/mobile no ambiente que receber o delta; esta fase nao autoriza deploy.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

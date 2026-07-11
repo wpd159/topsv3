@@ -106,6 +106,15 @@ public class UsuarioEntity {
     return versao;
   }
 
+  public void atualizarPerfilPublico(
+      String nome,
+      String telefoneNormalizado,
+      OffsetDateTime atualizadoEm) {
+    this.nome = nome;
+    this.telefoneNormalizado = telefoneNormalizado;
+    this.atualizadoEm = atualizadoEm;
+  }
+
   public static UsuarioEntity criarSolicitacaoLocal(
       UUID id,
       String nome,
