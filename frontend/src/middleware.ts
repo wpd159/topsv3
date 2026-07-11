@@ -38,6 +38,11 @@ function getRoleFromSession(sessionValue: string | null): string | null {
 
 export function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname
+
+  if (pathname === "/admin/login") {
+    return NextResponse.next()
+  }
+
   const sessionCookie = getSessionCookie(req)
   const sessionValue = sessionCookie?.value ?? null
 
