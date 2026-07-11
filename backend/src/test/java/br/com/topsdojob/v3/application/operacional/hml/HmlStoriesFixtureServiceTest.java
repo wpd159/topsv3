@@ -27,6 +27,7 @@ import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
@@ -191,6 +192,41 @@ class HmlStoriesFixtureServiceTest {
         verify(anuncioMidiaRepository, times(12)).save(midiaExistente);
         verify(anuncioMidiaRepository, never()).save(storyMidiaExistente);
         verify(storyRepository, never()).save(any());
+    }
+
+    @Test
+    void escolheProximaOrdemLivreQuandoGaleriaDoisJaEstaOcupada() {
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        UUID anuncioAId = UUID.fromString("f1000000-0000-4000-8000-000000000101");
+        UUID midiaCanonicaOrdemDoisId = UUID.fromString("f1000000-0000-4000-8000-000000000308");
+        AnuncioMidiaEntity ocupanteExistente = AnuncioMidiaEntity.criarFixtureHomologacao(
+                UUID.randomUUID(),
+                anuncioAId,
+                UUID.randomUUID(),
+                TipoAnuncioMidia.FOTO,
+                FinalidadeAnuncioMidia.GALERIA,
+                2,
+                StatusAnuncioMidia.PUBLICAVEL,
+                br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.LIVRE,
+                agora);
+        when(anuncioMidiaRepository.findByAnuncioIdIn(any())).thenReturn(List.of(ocupanteExistente));
+
+        service("homologacao").provisionar("Runtime-Seguro-123!");
+
+        ArgumentCaptor<AnuncioMidiaEntity> captor = ArgumentCaptor.forClass(AnuncioMidiaEntity.class);
+        verify(anuncioMidiaRepository, times(13)).save(captor.capture());
+        AnuncioMidiaEntity reconciliada = captor.getAllValues().stream()
+                .filter(item -> midiaCanonicaOrdemDoisId.equals(item.getId()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(reconciliada.getOrdem()).isEqualTo(7);
+        assertThat(captor.getAllValues())
+                .filteredOn(item -> anuncioAId.equals(item.getAnuncioId())
+                        && item.getFinalidade() == FinalidadeAnuncioMidia.GALERIA
+                        && item.getStatus() != StatusAnuncioMidia.REMOVIDA)
+                .extracting(AnuncioMidiaEntity::getOrdem)
+                .doesNotHaveDuplicates();
+        verify(anuncioMidiaRepository, never()).save(ocupanteExistente);
     }
 
     @Test

@@ -32,7 +32,12 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
@@ -335,19 +340,98 @@ public class HmlStoriesFixtureService {
     }
 
     private int sincronizarVinculos(List<AnuncioMidiaEntity> vinculos, OffsetDateTime agora) {
+        Set<UUID> anuncioIds = new HashSet<>();
+        Set<ChaveOrdem> ordensCanonicas = new HashSet<>();
+        for (AnuncioMidiaEntity vinculo : vinculos) {
+            anuncioIds.add(vinculo.getAnuncioId());
+            if (ocupaOrdem(vinculo)) {
+                ordensCanonicas.add(chaveOrdem(vinculo, vinculo.getOrdem()));
+            }
+        }
+
+        Map<ChaveOrdem, UUID> ordensOcupadas = new HashMap<>();
+        for (AnuncioMidiaEntity existente : anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds)) {
+            if (ocupaOrdem(existente)) {
+                ordensOcupadas.put(chaveOrdem(existente, existente.getOrdem()), existente.getId());
+            }
+        }
+
         int criados = 0;
         for (AnuncioMidiaEntity vinculo : vinculos) {
             AnuncioMidiaEntity existente = anuncioMidiaRepository.findById(vinculo.getId()).orElse(null);
             if (existente == null) {
+                int ordemLivre = proximaOrdemLivre(vinculo, ordensOcupadas, ordensCanonicas, null);
+                if (ordemLivre != vinculo.getOrdem()) {
+                    vinculo.reordenar(ordemLivre, agora);
+                }
                 anuncioMidiaRepository.save(vinculo);
+                registrarOrdem(vinculo, ordensOcupadas);
                 criados++;
             } else if (existente.getTipo() != TipoAnuncioMidia.STORY) {
-                existente.aplicarDecisao(vinculo.getStatus(), vinculo.getVisibilidadeMidia(), agora);
-                existente.reordenar(vinculo.getOrdem(), agora);
-                anuncioMidiaRepository.save(existente);
+                int ordemLivre = proximaOrdemLivre(
+                        vinculo, ordensOcupadas, ordensCanonicas, existente.getId());
+                boolean decisaoAlterada = existente.getStatus() != vinculo.getStatus()
+                        || existente.getVisibilidadeMidia() != vinculo.getVisibilidadeMidia();
+                boolean ordemAlterada = !Integer.valueOf(ordemLivre).equals(existente.getOrdem());
+                if (decisaoAlterada) {
+                    existente.aplicarDecisao(vinculo.getStatus(), vinculo.getVisibilidadeMidia(), agora);
+                }
+                if (ordemAlterada) {
+                    removerOrdemDoProprioVinculo(existente, ordensOcupadas);
+                    existente.reordenar(ordemLivre, agora);
+                }
+                if (decisaoAlterada || ordemAlterada) {
+                    anuncioMidiaRepository.save(existente);
+                }
+                registrarOrdem(existente, ordensOcupadas);
             }
         }
         return criados;
+    }
+
+    private int proximaOrdemLivre(
+            AnuncioMidiaEntity vinculo,
+            Map<ChaveOrdem, UUID> ordensOcupadas,
+            Set<ChaveOrdem> ordensCanonicas,
+            UUID idExistente) {
+        int ordem = vinculo.getOrdem();
+        ChaveOrdem pretendida = chaveOrdem(vinculo, ordem);
+        while (true) {
+            ChaveOrdem candidata = chaveOrdem(vinculo, ordem);
+            UUID ocupante = ordensOcupadas.get(candidata);
+            boolean ocupadaPorOutro = ocupante != null && !ocupante.equals(idExistente);
+            boolean reservadaParaOutroCanonico = !candidata.equals(pretendida)
+                    && ordensCanonicas.contains(candidata);
+            if (!ocupadaPorOutro && !reservadaParaOutroCanonico) {
+                return ordem;
+            }
+            ordem++;
+        }
+    }
+
+    private void registrarOrdem(
+            AnuncioMidiaEntity vinculo,
+            Map<ChaveOrdem, UUID> ordensOcupadas) {
+        if (ocupaOrdem(vinculo)) {
+            ordensOcupadas.put(chaveOrdem(vinculo, vinculo.getOrdem()), vinculo.getId());
+        }
+    }
+
+    private void removerOrdemDoProprioVinculo(
+            AnuncioMidiaEntity vinculo,
+            Map<ChaveOrdem, UUID> ordensOcupadas) {
+        ChaveOrdem atual = chaveOrdem(vinculo, vinculo.getOrdem());
+        if (Objects.equals(vinculo.getId(), ordensOcupadas.get(atual))) {
+            ordensOcupadas.remove(atual);
+        }
+    }
+
+    private boolean ocupaOrdem(AnuncioMidiaEntity vinculo) {
+        return vinculo.getStatus() != StatusAnuncioMidia.REMOVIDA;
+    }
+
+    private ChaveOrdem chaveOrdem(AnuncioMidiaEntity vinculo, Integer ordem) {
+        return new ChaveOrdem(vinculo.getAnuncioId(), vinculo.getFinalidade(), ordem);
     }
 
     private void validarAmbiente() {
@@ -358,6 +442,12 @@ public class HmlStoriesFixtureService {
 
     private static UUID uuid(String value) {
         return UUID.fromString(value);
+    }
+
+    private record ChaveOrdem(
+            UUID anuncioId,
+            FinalidadeAnuncioMidia finalidade,
+            Integer ordem) {
     }
 
     public record FixtureResult(
