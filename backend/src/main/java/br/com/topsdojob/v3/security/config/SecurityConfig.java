@@ -18,6 +18,8 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
 
 @Configuration
 @EnableMethodSecurity
@@ -36,13 +38,15 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
-            SecurityContextRepository securityContextRepository) throws Exception {
+            SecurityContextRepository securityContextRepository,
+            CsrfTokenRequestHandler csrfTokenRequestHandler) throws Exception {
         http.cors(Customizer.withDefaults())
                 .csrf(csrf -> {
                     if (local) {
                         csrf.disable();
                     } else {
-                        csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse());
+                        csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                                .csrfTokenRequestHandler(csrfTokenRequestHandler);
                     }
                 })
                 .securityContext(context -> context.securityContextRepository(securityContextRepository))
@@ -130,6 +134,11 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public CsrfTokenRequestHandler csrfTokenRequestHandler() {
+        return new CsrfTokenRequestAttributeHandler();
     }
 
     public boolean csrfDisabledOnlyInLocal() {

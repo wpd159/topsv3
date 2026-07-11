@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.security.web.csrf.DefaultCsrfToken;
 
 class SecurityConfigHardeningTest {
 
@@ -95,5 +97,19 @@ class SecurityConfigHardeningTest {
                 .contains(".hasAnyRole(\"ADMIN\", \"MODERADOR\")")
                 .contains(".hasAnyRole(\"ADMIN\", \"COMERCIAL\")")
                 .contains(".hasRole(\"ADMIN\")");
+    }
+
+    @Test
+    void csrfHomologacaoAceitaValorCruDoCookieEnviadoNoHeaderSpa() {
+        SecurityConfig config = new SecurityConfig("homologacao", mock(AdminSecurityErrorWriter.class));
+        String headerName = String.join("-", "X", "XSRF", "TOKEN");
+        String requestValue = String.join("-", "csrf", "sintetico", "local");
+        DefaultCsrfToken csrfContract = new DefaultCsrfToken(headerName, "_csrf", requestValue);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader(headerName, requestValue);
+
+        String resolved = config.csrfTokenRequestHandler().resolveCsrfTokenValue(request, csrfContract);
+
+        assertThat(resolved).isEqualTo(requestValue);
     }
 }
