@@ -11,7 +11,11 @@ import br.com.topsdojob.v3.application.publico.auth.dto.PublicRegisterRequestDto
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicUserDto;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.csrf.CsrfToken;
@@ -29,9 +33,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class PublicAuthController {
 
     private final PublicAuthenticationService authenticationService;
+    private final boolean sessionCookieSecure;
 
-    public PublicAuthController(PublicAuthenticationService authenticationService) {
+    public PublicAuthController(
+            PublicAuthenticationService authenticationService,
+            @Value("${server.servlet.session.cookie.secure:true}") boolean sessionCookieSecure) {
         this.authenticationService = authenticationService;
+        this.sessionCookieSecure = sessionCookieSecure;
     }
 
     @PostMapping("/auth/register")
@@ -63,8 +71,18 @@ public class PublicAuthController {
     }
 
     @PostMapping("/auth/logout")
-    public PublicAuthStatusDto logout(HttpServletRequest request) {
-        return authenticationService.logout(request);
+    public ResponseEntity<PublicAuthStatusDto> logout(HttpServletRequest request) {
+        PublicAuthStatusDto status = authenticationService.logout(request);
+        ResponseCookie expiredSessionCookie = ResponseCookie.from("JSESSIONID", "")
+                .path("/")
+                .maxAge(Duration.ZERO)
+                .httpOnly(true)
+                .secure(sessionCookieSecure)
+                .sameSite("Lax")
+                .build();
+        return ResponseEntity.ok()
+                .header(HttpHeaders.SET_COOKIE, expiredSessionCookie.toString())
+                .body(status);
     }
 
     @GetMapping("/usuarios/verificar-duplicidade")
