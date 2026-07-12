@@ -680,7 +680,7 @@ Antes de admin em ambiente nao local:
 - Fechado localmente pela V021: fonte canonica de categorias da Home e endpoint `GET /api/public/categorias-home`, sem fallback estatico publico.
 - Fechado localmente: idade calculada no backend e visivel por padrao; `OCULTAR_IDADE` pago e vigente e a unica regra de ocultacao.
 - Pendente de dados autorizados: usuarios historicos sem data de nascimento confiavel permanecem com `idade=null`; o importador aprovado deve mapear somente valores reais/sanitizados autorizados, sem inventar datas.
-- Pendente antes de HML: publicar V021 e reexecutar o provisionador unico para reconciliar os dados ficticios existentes. Esta fase nao autoriza commit, push ou deploy.
+- Operacao HML autorizada desta fase: apos o workflow verde, executar o runner unico com `app.hml-fixture.enabled=true`, sem habilitar `app.hml-admin-provision.enabled` e sem fornecer credencial. Repetir a execucao deve retornar todos os contadores em zero e preservar ADMIN, usuario ficticio, anuncios, midias, Story, locais, servicos e beneficios.
 
 ## Proibicoes ate novo bloco autorizado
 

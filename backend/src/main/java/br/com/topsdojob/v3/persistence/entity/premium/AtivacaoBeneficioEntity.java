@@ -10,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -145,6 +146,80 @@ public class AtivacaoBeneficioEntity {
 
   public OffsetDateTime getCriadoEm() {
     return criadoEm;
+  }
+
+  public static AtivacaoBeneficioEntity criarFixtureHomologacao(
+      UUID id,
+      UUID beneficioId,
+      UUID usuarioId,
+      UUID anuncioId,
+      UUID grupoAtivacaoId,
+      OrigemBeneficio origem,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      StatusAtivacaoBeneficio status,
+      int custoCreditos,
+      BigDecimal preco,
+      String idempotencyKey,
+      OffsetDateTime criadoEm) {
+    AtivacaoBeneficioEntity entity = new AtivacaoBeneficioEntity();
+    entity.id = id;
+    entity.sincronizarFixtureHomologacao(
+        beneficioId,
+        usuarioId,
+        anuncioId,
+        grupoAtivacaoId,
+        origem,
+        inicioEm,
+        fimEm,
+        status,
+        custoCreditos,
+        preco,
+        idempotencyKey);
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
+  public boolean sincronizarFixtureHomologacao(
+      UUID beneficioId,
+      UUID usuarioId,
+      UUID anuncioId,
+      UUID grupoAtivacaoId,
+      OrigemBeneficio origem,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      StatusAtivacaoBeneficio status,
+      int custoCreditos,
+      BigDecimal preco,
+      String idempotencyKey) {
+    boolean alterado = !Objects.equals(this.beneficioId, beneficioId)
+        || !Objects.equals(this.usuarioId, usuarioId)
+        || !Objects.equals(this.anuncioId, anuncioId)
+        || !Objects.equals(this.grupoAtivacaoId, grupoAtivacaoId)
+        || this.origem != origem
+        || !Objects.equals(this.inicioEm, inicioEm)
+        || !Objects.equals(this.fimEm, fimEm)
+        || this.status != status
+        || !Objects.equals(this.custoCreditosSnapshot, custoCreditos)
+        || !Objects.equals(this.precoSnapshot, preco)
+        || !Objects.equals(this.idempotencyKey, idempotencyKey);
+    this.beneficioId = beneficioId;
+    this.opcaoId = null;
+    this.usuarioId = usuarioId;
+    this.anuncioId = anuncioId;
+    this.grupoAtivacaoId = grupoAtivacaoId;
+    this.origem = origem;
+    this.atorUsuarioId = null;
+    this.campanhaCodigo = null;
+    this.inicioEm = inicioEm;
+    this.fimEm = fimEm;
+    this.status = status;
+    this.custoCreditosSnapshot = custoCreditos;
+    this.precoSnapshot = preco;
+    this.idempotencyKey = idempotencyKey;
+    this.revogadaEm = null;
+    this.motivoRevogacao = null;
+    return alterado;
   }
 
 }

@@ -8,6 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -72,6 +73,49 @@ public class BeneficioPremiumEntity {
 
   public OffsetDateTime getCriadoEm() {
     return criadoEm;
+  }
+
+  public static BeneficioPremiumEntity criarFixtureHomologacao(
+      UUID id,
+      String codigo,
+      String nome,
+      String descricao,
+      EscopoBeneficioPremium escopo,
+      boolean afetaRanking,
+      boolean ativo,
+      OffsetDateTime criadoEm) {
+    BeneficioPremiumEntity entity = new BeneficioPremiumEntity();
+    entity.id = id;
+    entity.codigo = codigo;
+    entity.nome = nome;
+    entity.descricao = descricao;
+    entity.escopo = escopo;
+    entity.afetaRanking = afetaRanking;
+    entity.ativo = ativo;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
+  public boolean sincronizarFixtureHomologacao(
+      String codigo,
+      String nome,
+      String descricao,
+      EscopoBeneficioPremium escopo,
+      boolean afetaRanking,
+      boolean ativo) {
+    boolean alterado = !Objects.equals(this.codigo, codigo)
+        || !Objects.equals(this.nome, nome)
+        || !Objects.equals(this.descricao, descricao)
+        || this.escopo != escopo
+        || !Objects.equals(this.afetaRanking, afetaRanking)
+        || !Objects.equals(this.ativo, ativo);
+    this.codigo = codigo;
+    this.nome = nome;
+    this.descricao = descricao;
+    this.escopo = escopo;
+    this.afetaRanking = afetaRanking;
+    this.ativo = ativo;
+    return alterado;
   }
 
 }

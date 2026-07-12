@@ -10,30 +10,42 @@ import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
+import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.CategoriaHomeRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
+import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusGrupoAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoGrupoAtivacaoBeneficio;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -90,6 +102,11 @@ public class HmlStoriesFixtureService {
     private static final UUID MIDIA_FOTO_B_3_ID = uuid("f1000000-0000-4000-8000-000000000312");
     private static final UUID MIDIA_FOTO_B_4_ID = uuid("f1000000-0000-4000-8000-000000000313");
     private static final UUID STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000401");
+    private static final UUID BENEFICIO_OCULTAR_IDADE_ID = uuid("f3000000-0000-4000-8000-000000000001");
+    private static final OffsetDateTime BENEFICIO_ATIVO_INICIO = OffsetDateTime.parse("2025-01-01T00:00:00Z");
+    private static final OffsetDateTime BENEFICIO_ATIVO_FIM = OffsetDateTime.parse("2099-01-01T00:00:00Z");
+    private static final OffsetDateTime BENEFICIO_EXPIRADO_INICIO = OffsetDateTime.parse("2024-01-01T00:00:00Z");
+    private static final OffsetDateTime BENEFICIO_EXPIRADO_FIM = OffsetDateTime.parse("2025-01-01T00:00:00Z");
     private static final List<CategoriaFixture> CATEGORIAS = List.of(
             categoria("f2000000-0000-4000-8000-000000000001", "ACOMPANHANTE_FEMININA", "Acompanhante feminina", "Encontre as melhores acompanhantes femininas.", "/anuncios?categoria=ACOMPANHANTE_FEMININA", "/cards/acompanhante-feminina.jpg", 1, true),
             categoria("f2000000-0000-4000-8000-000000000002", "VENDA_DE_CONTEUDO", "Sexo Virtual", "Videochamadas, conte\u00fado exclusivo e atendimento online.", "/anuncios?categoria=VENDA_DE_CONTEUDO", "/cards/casual.jpg", 2, true),
@@ -115,6 +132,9 @@ public class HmlStoriesFixtureService {
     private final ArquivoMidiaRepository arquivoRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final StoryAnuncioRepository storyRepository;
+    private final BeneficioPremiumRepository beneficioRepository;
+    private final GrupoAtivacaoBeneficioRepository grupoBeneficioRepository;
+    private final AtivacaoBeneficioRepository ativacaoBeneficioRepository;
     private final PasswordEncoder passwordEncoder;
 
     public HmlStoriesFixtureService(
@@ -131,6 +151,9 @@ public class HmlStoriesFixtureService {
             ArquivoMidiaRepository arquivoRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             StoryAnuncioRepository storyRepository,
+            BeneficioPremiumRepository beneficioRepository,
+            GrupoAtivacaoBeneficioRepository grupoBeneficioRepository,
+            AtivacaoBeneficioRepository ativacaoBeneficioRepository,
             PasswordEncoder passwordEncoder) {
         this.appEnv = appEnv;
         this.usuarioRepository = usuarioRepository;
@@ -145,14 +168,17 @@ public class HmlStoriesFixtureService {
         this.arquivoRepository = arquivoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.storyRepository = storyRepository;
+        this.beneficioRepository = beneficioRepository;
+        this.grupoBeneficioRepository = grupoBeneficioRepository;
+        this.ativacaoBeneficioRepository = ativacaoBeneficioRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Transactional
-    public FixtureResult provisionar(String runtimeValue) {
+    public FixtureResult provisionar() {
         validarAmbiente();
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        UsuarioEntity usuario = provisionarUsuario(runtimeValue, agora);
+        UsuarioEntity usuario = provisionarUsuario(agora);
 
         int categoriasCriadas = provisionarCategorias();
         int localidadesCriadas = provisionarLocalidades(agora);
@@ -166,6 +192,7 @@ public class HmlStoriesFixtureService {
         localizacoesCriadas += sincronizarLocalizacao(ANUNCIO_A_ID, agora);
         localizacoesCriadas += sincronizarLocalizacao(ANUNCIO_B_ID, agora);
         localizacoesCriadas += sincronizarLocalizacao(ANUNCIO_INELEGIVEL_ID, agora);
+        int beneficiosCriados = sincronizarBeneficios(usuario.getId(), agora);
 
         List<ArquivoMidiaEntity> arquivos = List.of(
                 arquivo(ARQUIVO_COMPARTILHADO_ID, "fixture/stories/compartilhada.webp", "image/webp", StatusArquivoMidia.VALIDADO, agora),
@@ -226,6 +253,7 @@ public class HmlStoriesFixtureService {
                 anunciosCriados,
                 arquivosCriados,
                 vinculosCriados,
+                beneficiosCriados,
                 storyCriado);
     }
 
@@ -290,7 +318,7 @@ public class HmlStoriesFixtureService {
         return 0;
     }
 
-    private UsuarioEntity provisionarUsuario(String runtimeValue, OffsetDateTime agora) {
+    private UsuarioEntity provisionarUsuario(OffsetDateTime agora) {
         UsuarioEntity usuario = usuarioRepository.findByEmailNormalizado(USUARIO_EMAIL).orElse(null);
         if (usuario == null) {
             usuario = UsuarioEntity.criarCadastroPublico(
@@ -305,20 +333,113 @@ public class HmlStoriesFixtureService {
             usuario.sincronizarDataNascimentoHomologacao(USUARIO_DATA_NASCIMENTO, agora);
             usuarioRepository.save(usuario);
         }
-        String hash = passwordEncoder.encode(runtimeValue);
         CredencialUsuarioEntity credencial = credencialRepository.findByUsuarioId(usuario.getId()).orElse(null);
         if (credencial == null) {
-            credencial = CredencialUsuarioEntity.criar(UUID.randomUUID(), usuario.getId(), hash, agora);
-        } else {
-            credencial.atualizarHashHomologacao(hash, agora);
+            String hashDescartavel = passwordEncoder.encode(UUID.randomUUID().toString());
+            credencial = CredencialUsuarioEntity.criar(
+                    UUID.randomUUID(), usuario.getId(), hashDescartavel, agora);
+            credencialRepository.save(credencial);
         }
-        credencialRepository.save(credencial);
         boolean possuiPapel = papelRepository.findByUsuarioId(usuario.getId()).stream()
                 .anyMatch(item -> item.getPapel() == PapelUsuario.USUARIO);
         if (!possuiPapel) {
             papelRepository.save(PapelUsuarioEntity.criarUsuarioPublico(usuario.getId(), agora));
         }
         return usuario;
+    }
+
+    private int sincronizarBeneficios(UUID usuarioId, OffsetDateTime agora) {
+        int criados = sincronizarCatalogoBeneficio(agora);
+        List<GrupoFixture> grupos = List.of(
+                grupo("f3000000-0000-4000-8000-000000000101", ANUNCIO_A_ID,
+                        TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.COMPRA,
+                        BENEFICIO_ATIVO_INICIO, BENEFICIO_ATIVO_FIM, StatusGrupoAtivacaoBeneficio.ATIVO,
+                        "hml-fixture-ocultar-idade-pago"),
+                grupo("f3000000-0000-4000-8000-000000000102", ANUNCIO_B_ID,
+                        TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.COMPRA,
+                        BENEFICIO_EXPIRADO_INICIO, BENEFICIO_EXPIRADO_FIM, StatusGrupoAtivacaoBeneficio.EXPIRADO,
+                        "hml-fixture-ocultar-idade-expirado"),
+                grupo("f3000000-0000-4000-8000-000000000103", ANUNCIO_B_ID,
+                        TipoGrupoAtivacaoBeneficio.CORTESIA, OrigemBeneficio.CORTESIA,
+                        BENEFICIO_ATIVO_INICIO, BENEFICIO_ATIVO_FIM, StatusGrupoAtivacaoBeneficio.ATIVO,
+                        "hml-fixture-ocultar-idade-cortesia"),
+                grupo("f3000000-0000-4000-8000-000000000104", ANUNCIO_B_ID,
+                        TipoGrupoAtivacaoBeneficio.ADMIN, OrigemBeneficio.ADMIN,
+                        BENEFICIO_ATIVO_INICIO, BENEFICIO_ATIVO_FIM, StatusGrupoAtivacaoBeneficio.ATIVO,
+                        "hml-fixture-ocultar-idade-admin"),
+                grupo("f3000000-0000-4000-8000-000000000105", ANUNCIO_B_ID,
+                        TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.COMPRA,
+                        BENEFICIO_ATIVO_INICIO, BENEFICIO_ATIVO_FIM, StatusGrupoAtivacaoBeneficio.ATIVO,
+                        "hml-fixture-ocultar-idade-gratuito"));
+        for (GrupoFixture grupo : grupos) {
+            GrupoAtivacaoBeneficioEntity existente = grupoBeneficioRepository.findById(grupo.id()).orElse(null);
+            if (existente == null) {
+                grupoBeneficioRepository.save(GrupoAtivacaoBeneficioEntity.criarFixtureHomologacao(
+                        grupo.id(), grupo.tipo(), grupo.origem(), usuarioId, grupo.anuncioId(),
+                        grupo.inicioEm(), grupo.fimEm(), grupo.status(), grupo.chave(), agora));
+                criados++;
+            } else if (existente.sincronizarFixtureHomologacao(
+                    grupo.tipo(), grupo.origem(), usuarioId, grupo.anuncioId(),
+                    grupo.inicioEm(), grupo.fimEm(), grupo.status(), grupo.chave(), agora)) {
+                grupoBeneficioRepository.save(existente);
+            }
+        }
+
+        List<AtivacaoFixture> ativacoes = List.of(
+                ativacao("f3000000-0000-4000-8000-000000000201", grupos.get(0),
+                        StatusAtivacaoBeneficio.ATIVA, 0, new BigDecimal("49.90")),
+                ativacao("f3000000-0000-4000-8000-000000000202", grupos.get(1),
+                        StatusAtivacaoBeneficio.EXPIRADA, 0, new BigDecimal("49.90")),
+                ativacao("f3000000-0000-4000-8000-000000000203", grupos.get(2),
+                        StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO),
+                ativacao("f3000000-0000-4000-8000-000000000204", grupos.get(3),
+                        StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO),
+                ativacao("f3000000-0000-4000-8000-000000000205", grupos.get(4),
+                        StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO));
+        for (AtivacaoFixture ativacao : ativacoes) {
+            AtivacaoBeneficioEntity existente = ativacaoBeneficioRepository.findById(ativacao.id()).orElse(null);
+            if (existente == null) {
+                ativacaoBeneficioRepository.save(AtivacaoBeneficioEntity.criarFixtureHomologacao(
+                        ativacao.id(), BENEFICIO_OCULTAR_IDADE_ID, usuarioId, ativacao.grupo().anuncioId(),
+                        ativacao.grupo().id(), ativacao.grupo().origem(), ativacao.grupo().inicioEm(),
+                        ativacao.grupo().fimEm(), ativacao.status(), ativacao.custoCreditos(),
+                        ativacao.preco(), ativacao.chave(), agora));
+                criados++;
+            } else if (existente.sincronizarFixtureHomologacao(
+                    BENEFICIO_OCULTAR_IDADE_ID, usuarioId, ativacao.grupo().anuncioId(),
+                    ativacao.grupo().id(), ativacao.grupo().origem(), ativacao.grupo().inicioEm(),
+                    ativacao.grupo().fimEm(), ativacao.status(), ativacao.custoCreditos(),
+                    ativacao.preco(), ativacao.chave())) {
+                ativacaoBeneficioRepository.save(existente);
+            }
+        }
+        return criados;
+    }
+
+    private int sincronizarCatalogoBeneficio(OffsetDateTime agora) {
+        BeneficioPremiumEntity existente = beneficioRepository.findById(BENEFICIO_OCULTAR_IDADE_ID).orElse(null);
+        if (existente == null) {
+            beneficioRepository.save(BeneficioPremiumEntity.criarFixtureHomologacao(
+                    BENEFICIO_OCULTAR_IDADE_ID,
+                    "OCULTAR_IDADE",
+                    "Ocultar idade",
+                    "Oculta a idade no anuncio enquanto o beneficio pago estiver vigente.",
+                    EscopoBeneficioPremium.ANUNCIO,
+                    false,
+                    true,
+                    agora));
+            return 1;
+        }
+        if (existente.sincronizarFixtureHomologacao(
+                "OCULTAR_IDADE",
+                "Ocultar idade",
+                "Oculta a idade no anuncio enquanto o beneficio pago estiver vigente.",
+                EscopoBeneficioPremium.ANUNCIO,
+                false,
+                true)) {
+            beneficioRepository.save(existente);
+        }
+        return 0;
     }
 
     private int sincronizarAnuncio(
@@ -525,6 +646,28 @@ public class HmlStoriesFixtureService {
                 uuid(id), identificador, titulo, descricao, destino, imagemPublicaUrl, ordem, ativo);
     }
 
+    private static GrupoFixture grupo(
+            String id,
+            UUID anuncioId,
+            TipoGrupoAtivacaoBeneficio tipo,
+            OrigemBeneficio origem,
+            OffsetDateTime inicioEm,
+            OffsetDateTime fimEm,
+            StatusGrupoAtivacaoBeneficio status,
+            String chave) {
+        return new GrupoFixture(uuid(id), anuncioId, tipo, origem, inicioEm, fimEm, status, chave);
+    }
+
+    private static AtivacaoFixture ativacao(
+            String id,
+            GrupoFixture grupo,
+            StatusAtivacaoBeneficio status,
+            int custoCreditos,
+            BigDecimal preco) {
+        return new AtivacaoFixture(
+                uuid(id), grupo, status, custoCreditos, preco, grupo.chave() + "-ativacao");
+    }
+
     private record ChaveOrdem(
             UUID anuncioId,
             FinalidadeAnuncioMidia finalidade,
@@ -542,6 +685,26 @@ public class HmlStoriesFixtureService {
             boolean ativo) {
     }
 
+    private record GrupoFixture(
+            UUID id,
+            UUID anuncioId,
+            TipoGrupoAtivacaoBeneficio tipo,
+            OrigemBeneficio origem,
+            OffsetDateTime inicioEm,
+            OffsetDateTime fimEm,
+            StatusGrupoAtivacaoBeneficio status,
+            String chave) {
+    }
+
+    private record AtivacaoFixture(
+            UUID id,
+            GrupoFixture grupo,
+            StatusAtivacaoBeneficio status,
+            int custoCreditos,
+            BigDecimal preco,
+            String chave) {
+    }
+
     public record FixtureResult(
             int categoriasCriadas,
             int localidadesCriadas,
@@ -549,6 +712,7 @@ public class HmlStoriesFixtureService {
             int anunciosCriados,
             int arquivosCriados,
             int vinculosCriados,
+            int beneficiosCriados,
             boolean storyCriado) {
     }
 }

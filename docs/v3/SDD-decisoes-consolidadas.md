@@ -293,6 +293,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - A V021 e necessaria porque nao havia tabela/entidade V3 para categorias da Home nem persistencia da data de nascimento ja exigida no cadastro. O catalogo publico de categorias passa a ter uma unica fonte backend.
 - `OCULTAR_IDADE` reutiliza a ativacao Premium existente e sua politica temporal. Somente ativacao vigente com compra de valor positivo ou consumo positivo de creditos oculta a idade; cortesia, admin, ativacao gratuita ou expirada nao ocultam.
 - O backend nunca retorna `dataNascimento` no catalogo publico e o frontend nao calcula idade nem decide ocultacao.
+- O runner HML permanece unico, mas o modo fixture foi desacoplado da senha ADMIN: `app.hml-fixture.enabled=true` executa somente a reconciliacao ficticia, enquanto `app.hml-admin-provision.enabled=true` continua sendo a unica acao que le credencial via `stdin`. A fixture nao atualiza credencial existente e cria segredo aleatorio descartado somente se o usuario ficticio ainda nao possuir credencial.
 
 ## Banco e migrations
 

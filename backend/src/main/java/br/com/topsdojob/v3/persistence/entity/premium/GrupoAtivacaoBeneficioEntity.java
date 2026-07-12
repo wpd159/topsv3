@@ -10,6 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -118,6 +119,58 @@ public class GrupoAtivacaoBeneficioEntity {
 
   public OffsetDateTime getAtualizadoEm() {
     return atualizadoEm;
+  }
+
+  public static GrupoAtivacaoBeneficioEntity criarFixtureHomologacao(
+      UUID id,
+      TipoGrupoAtivacaoBeneficio tipo,
+      OrigemBeneficio origem,
+      UUID usuarioId,
+      UUID anuncioId,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      StatusGrupoAtivacaoBeneficio status,
+      String idempotencyKey,
+      OffsetDateTime criadoEm) {
+    GrupoAtivacaoBeneficioEntity entity = new GrupoAtivacaoBeneficioEntity();
+    entity.id = id;
+    entity.sincronizarFixtureHomologacao(
+        tipo, origem, usuarioId, anuncioId, inicioEm, fimEm, status, idempotencyKey, criadoEm);
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
+  public boolean sincronizarFixtureHomologacao(
+      TipoGrupoAtivacaoBeneficio tipo,
+      OrigemBeneficio origem,
+      UUID usuarioId,
+      UUID anuncioId,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      StatusGrupoAtivacaoBeneficio status,
+      String idempotencyKey,
+      OffsetDateTime atualizadoEm) {
+    boolean alterado = this.tipo != tipo
+        || this.origem != origem
+        || !Objects.equals(this.usuarioId, usuarioId)
+        || !Objects.equals(this.anuncioId, anuncioId)
+        || !Objects.equals(this.validadeInicioEm, inicioEm)
+        || !Objects.equals(this.validadeFimEm, fimEm)
+        || this.status != status
+        || !Objects.equals(this.idempotencyKey, idempotencyKey);
+    this.tipo = tipo;
+    this.origem = origem;
+    this.usuarioId = usuarioId;
+    this.anuncioId = anuncioId;
+    this.atorUsuarioId = null;
+    this.campanhaCodigo = null;
+    this.validadeInicioEm = inicioEm;
+    this.validadeFimEm = fimEm;
+    this.status = status;
+    this.idempotencyKey = idempotencyKey;
+    this.observacao = "Cenario ficticio de homologacao";
+    this.atualizadoEm = atualizadoEm;
+    return alterado;
   }
 
 }

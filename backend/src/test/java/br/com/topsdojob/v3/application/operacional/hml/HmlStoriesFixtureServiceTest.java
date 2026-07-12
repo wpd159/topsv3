@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.operacional.hml;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -15,27 +16,36 @@ import br.com.topsdojob.v3.persistence.entity.conteudo.CategoriaHomeEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
+import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.CategoriaHomeRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
+import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import java.math.BigDecimal;
 import java.lang.reflect.Field;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -62,6 +72,9 @@ class HmlStoriesFixtureServiceTest {
     private ArquivoMidiaRepository arquivoRepository;
     private AnuncioMidiaRepository anuncioMidiaRepository;
     private StoryAnuncioRepository storyRepository;
+    private BeneficioPremiumRepository beneficioRepository;
+    private GrupoAtivacaoBeneficioRepository grupoBeneficioRepository;
+    private AtivacaoBeneficioRepository ativacaoBeneficioRepository;
     private PasswordEncoder passwordEncoder;
 
     @BeforeEach
@@ -78,6 +91,9 @@ class HmlStoriesFixtureServiceTest {
         arquivoRepository = mock(ArquivoMidiaRepository.class);
         anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
         storyRepository = mock(StoryAnuncioRepository.class);
+        beneficioRepository = mock(BeneficioPremiumRepository.class);
+        grupoBeneficioRepository = mock(GrupoAtivacaoBeneficioRepository.class);
+        ativacaoBeneficioRepository = mock(AtivacaoBeneficioRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         when(passwordEncoder.encode(any())).thenReturn("hash-bcrypt-fixture");
         when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
@@ -89,7 +105,7 @@ class HmlStoriesFixtureServiceTest {
     void criaCenarioCompletoSemQualquerDependenciaDeCredito() {
         HmlStoriesFixtureService service = service("homologacao");
 
-        var result = service.provisionar("Runtime-Seguro-123!");
+        var result = service.provisionar();
 
         assertThat(result.categoriasCriadas()).isEqualTo(6);
         assertThat(result.localidadesCriadas()).isEqualTo(3);
@@ -97,6 +113,7 @@ class HmlStoriesFixtureServiceTest {
         assertThat(result.anunciosCriados()).isEqualTo(3);
         assertThat(result.arquivosCriados()).isEqualTo(12);
         assertThat(result.vinculosCriados()).isEqualTo(13);
+        assertThat(result.beneficiosCriados()).isEqualTo(11);
         assertThat(result.storyCriado()).isTrue();
         verify(anuncioRepository, times(3)).save(any(AnuncioEntity.class));
         verify(estadoRepository).save(any());
@@ -107,6 +124,35 @@ class HmlStoriesFixtureServiceTest {
         verify(arquivoRepository, times(12)).save(any(ArquivoMidiaEntity.class));
         verify(anuncioMidiaRepository, times(13)).save(any(AnuncioMidiaEntity.class));
         verify(storyRepository).save(any(StoryAnuncioEntity.class));
+        verify(beneficioRepository).save(any(BeneficioPremiumEntity.class));
+        verify(grupoBeneficioRepository, times(5)).save(any(GrupoAtivacaoBeneficioEntity.class));
+        verify(ativacaoBeneficioRepository, times(5)).save(any(AtivacaoBeneficioEntity.class));
+
+        ArgumentCaptor<String> segredoDescartavel = ArgumentCaptor.forClass(String.class);
+        verify(passwordEncoder).encode(segredoDescartavel.capture());
+        assertThatCode(() -> UUID.fromString(segredoDescartavel.getValue())).doesNotThrowAnyException();
+
+        UUID anuncioAId = UUID.fromString("f1000000-0000-4000-8000-000000000101");
+        UUID anuncioBId = UUID.fromString("f1000000-0000-4000-8000-000000000102");
+        ArgumentCaptor<AtivacaoBeneficioEntity> ativacaoCaptor =
+                ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
+        verify(ativacaoBeneficioRepository, times(5)).save(ativacaoCaptor.capture());
+        assertThat(ativacaoCaptor.getAllValues())
+                .filteredOn(item -> anuncioAId.equals(item.getAnuncioId())
+                        && item.getOrigem() == OrigemBeneficio.COMPRA
+                        && item.getStatus() == StatusAtivacaoBeneficio.ATIVA
+                        && item.getPrecoSnapshot().compareTo(BigDecimal.ZERO) > 0)
+                .hasSize(1);
+        assertThat(ativacaoCaptor.getAllValues())
+                .filteredOn(item -> anuncioBId.equals(item.getAnuncioId()))
+                .hasSize(4)
+                .anySatisfy(item -> assertThat(item.getStatus()).isEqualTo(StatusAtivacaoBeneficio.EXPIRADA))
+                .anySatisfy(item -> assertThat(item.getOrigem()).isEqualTo(OrigemBeneficio.CORTESIA))
+                .anySatisfy(item -> assertThat(item.getOrigem()).isEqualTo(OrigemBeneficio.ADMIN))
+                .anySatisfy(item -> {
+                    assertThat(item.getOrigem()).isEqualTo(OrigemBeneficio.COMPRA);
+                    assertThat(item.getPrecoSnapshot()).isEqualByComparingTo(BigDecimal.ZERO);
+                });
 
         ArgumentCaptor<AnuncioEntity> anuncioCaptor = ArgumentCaptor.forClass(AnuncioEntity.class);
         verify(anuncioRepository, times(3)).save(anuncioCaptor.capture());
@@ -206,8 +252,11 @@ class HmlStoriesFixtureServiceTest {
                         ? storyMidiaExistente
                         : midiaExistente));
         when(storyRepository.existsById(any())).thenReturn(true);
+        when(beneficioRepository.findById(any())).thenReturn(Optional.of(mock(BeneficioPremiumEntity.class)));
+        when(grupoBeneficioRepository.findById(any())).thenReturn(Optional.of(mock(GrupoAtivacaoBeneficioEntity.class)));
+        when(ativacaoBeneficioRepository.findById(any())).thenReturn(Optional.of(mock(AtivacaoBeneficioEntity.class)));
 
-        var result = service("homologacao").provisionar("Runtime-Novo-456!");
+        var result = service("homologacao").provisionar();
 
         assertThat(result.categoriasCriadas()).isZero();
         assertThat(result.localidadesCriadas()).isZero();
@@ -215,6 +264,7 @@ class HmlStoriesFixtureServiceTest {
         assertThat(result.anunciosCriados()).isZero();
         assertThat(result.arquivosCriados()).isZero();
         assertThat(result.vinculosCriados()).isZero();
+        assertThat(result.beneficiosCriados()).isZero();
         assertThat(result.storyCriado()).isFalse();
         verify(anuncioRepository, times(3)).save(anuncioExistente);
         verify(localizacaoRepository, times(3)).save(localizacaoExistente);
@@ -223,6 +273,11 @@ class HmlStoriesFixtureServiceTest {
         verify(anuncioMidiaRepository, times(12)).save(midiaExistente);
         verify(anuncioMidiaRepository, never()).save(storyMidiaExistente);
         verify(storyRepository, never()).save(any());
+        verify(credencialRepository, never()).save(any());
+        verify(passwordEncoder, never()).encode(any());
+        verify(beneficioRepository, never()).save(any());
+        verify(grupoBeneficioRepository, never()).save(any());
+        verify(ativacaoBeneficioRepository, never()).save(any());
     }
 
     @Test
@@ -242,7 +297,7 @@ class HmlStoriesFixtureServiceTest {
                 agora);
         when(anuncioMidiaRepository.findByAnuncioIdIn(any())).thenReturn(List.of(ocupanteExistente));
 
-        service("homologacao").provisionar("Runtime-Seguro-123!");
+        service("homologacao").provisionar();
 
         ArgumentCaptor<AnuncioMidiaEntity> captor = ArgumentCaptor.forClass(AnuncioMidiaEntity.class);
         verify(anuncioMidiaRepository, times(13)).save(captor.capture());
@@ -262,7 +317,7 @@ class HmlStoriesFixtureServiceTest {
 
     @Test
     void recusaFixtureForaDeHomologacao() {
-        assertThatThrownBy(() -> service("producao").provisionar("Runtime-Seguro-123!"))
+        assertThatThrownBy(() -> service("producao").provisionar())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("fora de homologacao");
 
@@ -285,6 +340,9 @@ class HmlStoriesFixtureServiceTest {
                 arquivoRepository,
                 anuncioMidiaRepository,
                 storyRepository,
+                beneficioRepository,
+                grupoBeneficioRepository,
+                ativacaoBeneficioRepository,
                 passwordEncoder);
     }
 }
