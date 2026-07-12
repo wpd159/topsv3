@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 @Entity
@@ -114,6 +115,44 @@ public class AnuncioLocalizacaoEntity {
     entity.criadoEm = criadoEm;
     entity.atualizadoEm = criadoEm;
     return entity;
+  }
+
+  public static AnuncioLocalizacaoEntity criarEdicaoProprietario(
+      UUID anuncioId,
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      OffsetDateTime criadoEm) {
+    AnuncioLocalizacaoEntity entity = new AnuncioLocalizacaoEntity();
+    entity.anuncioId = anuncioId;
+    entity.estadoId = estadoId;
+    entity.cidadeId = cidadeId;
+    entity.bairroId = bairroId;
+    entity.enderecoResumido = null;
+    entity.latitude = null;
+    entity.longitude = null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
+  public void atualizarLocalidade(
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      OffsetDateTime atualizadoEm) {
+    boolean mudouLocalidade = !Objects.equals(this.estadoId, estadoId)
+        || !Objects.equals(this.cidadeId, cidadeId)
+        || !Objects.equals(this.bairroId, bairroId);
+    this.estadoId = estadoId;
+    this.cidadeId = cidadeId;
+    this.bairroId = bairroId;
+    if (mudouLocalidade) {
+      this.enderecoResumido = null;
+      this.latitude = null;
+      this.longitude = null;
+    }
+    this.atualizadoEm = atualizadoEm;
   }
 
   public void sincronizarFixtureHomologacao(

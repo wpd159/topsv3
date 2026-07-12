@@ -8,7 +8,7 @@ import { PainelShell } from '@/components/painel-anunciante/painel-shell'
 import { buscarMeuAnuncio, MeusAnunciosApiError, type MeuAnuncio } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
 
-export function MeuAnuncioDetalheView({ slug, modoEdicao = false }: { slug: string; modoEdicao?: boolean }) {
+export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
   const [anuncio, setAnuncio] = useState<MeuAnuncio | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -39,12 +39,8 @@ export function MeuAnuncioDetalheView({ slug, modoEdicao = false }: { slug: stri
 
   return (
     <PainelShell
-      title={modoEdicao ? 'Editar anúncio' : 'Detalhes do anúncio'}
-      description={
-        modoEdicao
-          ? 'Confira o anúncio selecionado antes de editar.'
-          : 'Consulte os dados atuais vinculados à sua conta.'
-      }
+      title="Detalhes do anúncio"
+      description="Consulte os dados atuais vinculados à sua conta."
     >
       {loading ? (
         <div className="flex min-h-[280px] items-center justify-center rounded-[28px] border border-slate-200 bg-white text-sm text-slate-500 shadow-sm">
@@ -89,18 +85,12 @@ export function MeuAnuncioDetalheView({ slug, modoEdicao = false }: { slug: stri
                 >
                   Voltar
                 </Link>
-                {!modoEdicao ? (
-                  <Link
-                    href={`/meus-anuncios/${encodeURIComponent(anuncio.slug)}/editar`}
-                    className="inline-flex items-center justify-center rounded-lg bg-[#FC1EAD] px-5 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#e01a9a] hover:shadow-sm"
-                  >
-                    Editar anúncio
-                  </Link>
-                ) : (
-                  <p className="self-center text-sm text-slate-500">
-                    Os campos de edição serão integrados em uma fase própria.
-                  </p>
-                )}
+                <Link
+                  href={`/meus-anuncios/${encodeURIComponent(anuncio.slug)}/editar`}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#FC1EAD] px-5 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#e01a9a] hover:shadow-sm"
+                >
+                  Editar anúncio
+                </Link>
               </div>
             </div>
           </div>

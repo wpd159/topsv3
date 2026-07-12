@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCapaDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioLocalizacaoDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
@@ -24,6 +25,9 @@ import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.util.Collection;
 import java.util.List;
@@ -85,17 +89,20 @@ public class MeusAnunciosConsultaService {
 
     @Transactional(readOnly = true)
     public MeuAnuncioDto detalhar(String slug, Authentication authentication) {
+        return mapear(List.of(anuncioDoUsuario(slug, authentication))).get(0);
+    }
+
+    AnuncioEntity anuncioDoUsuario(String slug, Authentication authentication) {
         UUID usuarioId = usuarioAutenticado(authentication).getId();
-        String slugSeguro = slugSeguro(slug);
-        AnuncioEntity anuncio = anuncioRepository.findBySlugAndRemovidoEmIsNull(slugSeguro)
+        AnuncioEntity anuncio = anuncioRepository.findBySlugAndRemovidoEmIsNull(slugSeguro(slug))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         if (!usuarioId.equals(anuncio.getUsuarioId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "anuncio pertence a outro usuario");
         }
-        return mapear(List.of(anuncio)).get(0);
+        return anuncio;
     }
 
-    private UsuarioEntity usuarioAutenticado(Authentication authentication) {
+    UsuarioEntity usuarioAutenticado(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof PublicUserPrincipal principal)) {
@@ -111,7 +118,7 @@ public class MeusAnunciosConsultaService {
         return usuario;
     }
 
-    private String slugSeguro(String slug) {
+    String slugSeguro(String slug) {
         if (slug == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "slug obrigatorio");
         }
@@ -155,10 +162,17 @@ public class MeusAnunciosConsultaService {
                         anuncio.getId(),
                         anuncio.getSlug(),
                         anuncio.getTitulo(),
+                        anuncio.getDescricao(),
+                        anuncio.getCategoria(),
+                        anuncio.getPreco(),
+                        anuncio.getWhatsappNormalizado(),
+                        enumNames(anuncio.getLocaisAtendimento()),
+                        enumNames(anuncio.getServicos()),
                         enumName(anuncio.getStatus()),
                         enumName(anuncio.getStatusModeracao()),
                         localizacao(localizacoes.get(anuncio.getId()), estados, cidades, bairros),
                         capa(vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of()), arquivos),
+                        midias(vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of()), arquivos),
                         anuncio.getAtualizadoEm()))
                 .toList();
     }
@@ -193,6 +207,35 @@ public class MeusAnunciosConsultaService {
         return new MeuAnuncioCapaDto(capa.urlPublica(), !capa.autorizada());
     }
 
+    private List<MeuAnuncioMidiaDto> midias(
+            List<AnuncioMidiaEntity> vinculos,
+            Map<UUID, ArquivoMidiaEntity> arquivos) {
+        Map<UUID, MidiaPublicaDto> publicasPorId = midiaMapper.publicas(vinculos, arquivos, false).stream()
+                .collect(Collectors.toMap(MidiaPublicaDto::id, Function.identity()));
+        return vinculos.stream()
+                .filter(Objects::nonNull)
+                .filter(item -> item.getStatus() != StatusAnuncioMidia.REMOVIDA)
+                .filter(item -> item.getTipo() != TipoAnuncioMidia.STORY)
+                .filter(item -> item.getFinalidade() != FinalidadeAnuncioMidia.STORY)
+                .sorted(java.util.Comparator.comparing(
+                        AnuncioMidiaEntity::getOrdem,
+                        java.util.Comparator.nullsLast(Integer::compareTo)))
+                .map(item -> {
+                    MidiaPublicaDto publica = publicasPorId.get(item.getId());
+                    boolean restrita = item.getVisibilidadeMidia() == br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.RESTRITA_18;
+                    return new MeuAnuncioMidiaDto(
+                            item.getId(),
+                            enumName(item.getTipo()),
+                            enumName(item.getFinalidade()),
+                            item.getOrdem(),
+                            enumName(item.getStatus()),
+                            enumName(item.getVisibilidadeMidia()),
+                            publica == null || restrita ? null : publica.urlPublica(),
+                            restrita);
+                })
+                .toList();
+    }
+
     private <T> List<UUID> ids(Collection<T> entidades, Function<T, UUID> extractor) {
         return entidades.stream().map(extractor).filter(Objects::nonNull).distinct().toList();
     }
@@ -204,5 +247,9 @@ public class MeusAnunciosConsultaService {
 
     private String enumName(Enum<?> value) {
         return value == null ? null : value.name();
+    }
+
+    private List<String> enumNames(Collection<? extends Enum<?>> values) {
+        return values == null ? List.of() : values.stream().map(Enum::name).sorted().toList();
     }
 }

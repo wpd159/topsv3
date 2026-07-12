@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnun
 import java.util.List;
 import java.util.Collection;
 import java.util.UUID;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -20,6 +21,10 @@ public interface RevisaoAnuncioRepository
     boolean existsByAnuncioIdAndStatusIn(UUID anuncioId, Collection<StatusRevisaoAnuncio> statuses);
 
     List<RevisaoAnuncioEntity> findByAnuncioId(UUID anuncioId);
+
+    Optional<RevisaoAnuncioEntity> findFirstByAnuncioIdAndStatusOrderByCriadoEmDesc(
+            UUID anuncioId,
+            StatusRevisaoAnuncio status);
 
     Page<RevisaoAnuncioEntity> findByAnuncioId(UUID anuncioId, Pageable pageable);
 

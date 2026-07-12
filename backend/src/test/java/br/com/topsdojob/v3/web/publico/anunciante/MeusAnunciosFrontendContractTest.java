@@ -16,6 +16,8 @@ class MeusAnunciosFrontendContractTest {
 
         assertThat(adapter)
                 .contains("'/minha-conta/anuncios'")
+                .contains("method: 'PATCH'")
+                .contains("XSRF")
                 .contains("credentials: 'include'")
                 .contains("throw new MeusAnunciosApiError")
                 .doesNotContain("/anuncios/meus")
@@ -30,6 +32,8 @@ class MeusAnunciosFrontendContractTest {
                 Path.of("components", "anuncios", "meu-anuncio-detalhe-view.tsx")));
         String edicao = Files.readString(FRONTEND.resolve(
                 Path.of("app", "(private-routes)", "meus-anuncios", "[slug]", "editar", "page.tsx")));
+        String editor = Files.readString(FRONTEND.resolve(
+                Path.of("components", "anuncios", "meu-anuncio-editor.tsx")));
         String card = Files.readString(FRONTEND.resolve(
                 Path.of("components", "anuncios", "meu-anuncio-card.tsx")));
 
@@ -45,8 +49,18 @@ class MeusAnunciosFrontendContractTest {
                 .contains("error.status === 404")
                 .doesNotContain("fetch(");
         assertThat(edicao)
-                .contains("MeuAnuncioDetalheView")
+                .contains("MeuAnuncioEditor")
                 .doesNotContain("EditarAnuncioWizard");
+        assertThat(editor)
+                .contains("buscarMeuAnuncio")
+                .contains("atualizarMeuAnuncio")
+                .contains("disabled={salvando}")
+                .contains("midia.urlPublica || '/icone-sem-foto.png'")
+                .doesNotContain("fetch(")
+                .doesNotContain("document.body.style.overflow");
+        assertThat(detalhe)
+                .doesNotContain("Os campos de edição serão integrados em uma fase própria")
+                .doesNotContain("modoEdicao");
         assertThat(card)
                 .contains("/editar")
                 .contains("Detalhes")

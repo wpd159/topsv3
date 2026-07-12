@@ -169,10 +169,50 @@ class MeusAnunciosConsultaServiceTest {
         when(anuncioMidiaRepository.findByAnuncioIdIn(any())).thenReturn(List.of(vinculo));
         when(arquivoMidiaRepository.findByIdIn(any())).thenReturn(List.of(arquivo(arquivoId)));
 
-        var capa = service.listar(authentication()).get(0).capa();
+        var resultado = service.listar(authentication()).get(0);
+        var capa = resultado.capa();
 
         assertThat(capa.restrita()).isTrue();
         assertThat(capa.urlPublica()).isNull();
+        assertThat(resultado.midias()).hasSize(1);
+        assertThat(resultado.midias().get(0).restrita()).isTrue();
+        assertThat(resultado.midias().get(0).urlPublica()).isNull();
+        assertThat(resultado.midias().get(0).ordem()).isEqualTo(1);
+    }
+
+    @Test
+    void detalhePreservaOrdemDasMidiasSemExporAsNaoPublicaveis() {
+        stubUsuarioAtivo();
+        AnuncioEntity anuncio = anuncio(ANUNCIO_A_ID, USUARIO_ID, "perfil-midias", StatusAnuncio.PUBLICADO);
+        when(anuncioRepository.findBySlugAndRemovidoEmIsNull("perfil-midias")).thenReturn(Optional.of(anuncio));
+        when(localizacaoRepository.findByAnuncioIdIn(any())).thenReturn(List.of());
+        when(estadoRepository.findAllById(any())).thenReturn(List.of());
+        when(cidadeRepository.findAllById(any())).thenReturn(List.of());
+        when(bairroRepository.findAllById(any())).thenReturn(List.of());
+
+        UUID vinculoPrimeiroId = UUID.fromString("00000000-0000-4000-8000-000000000951");
+        UUID vinculoSegundoId = UUID.fromString("00000000-0000-4000-8000-000000000952");
+        UUID arquivoPrimeiroId = UUID.fromString("00000000-0000-4000-8000-000000000953");
+        UUID arquivoSegundoId = UUID.fromString("00000000-0000-4000-8000-000000000954");
+        AnuncioMidiaEntity primeiro = vinculo(
+                vinculoPrimeiroId, ANUNCIO_A_ID, arquivoPrimeiroId, VisibilidadeMidia.LIVRE, 1);
+        AnuncioMidiaEntity segundo = vinculo(
+                vinculoSegundoId, ANUNCIO_A_ID, arquivoSegundoId, VisibilidadeMidia.LIVRE, 2);
+        ArquivoMidiaEntity arquivoPrimeiro = arquivo(arquivoPrimeiroId);
+        ArquivoMidiaEntity arquivoSegundo = arquivo(arquivoSegundoId);
+        when(anuncioMidiaRepository.findByAnuncioIdIn(any())).thenReturn(List.of(segundo, primeiro));
+        when(arquivoMidiaRepository.findByIdIn(any())).thenReturn(List.of(arquivoPrimeiro, arquivoSegundo));
+        when(urlService.resolver(primeiro, arquivoPrimeiro))
+                .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica("/primeira.svg", null));
+        when(urlService.resolver(segundo, arquivoSegundo))
+                .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica(
+                        null, MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN));
+
+        var midias = service.detalhar("perfil-midias", authentication()).midias();
+
+        assertThat(midias).extracting(item -> item.ordem()).containsExactly(1, 2);
+        assertThat(midias.get(0).urlPublica()).isEqualTo("/primeira.svg");
+        assertThat(midias.get(1).urlPublica()).isNull();
     }
 
     @Test
@@ -233,13 +273,22 @@ class MeusAnunciosConsultaServiceTest {
             UUID anuncioId,
             UUID arquivoId,
             VisibilidadeMidia visibilidade) {
+        return vinculo(id, anuncioId, arquivoId, visibilidade, 1);
+    }
+
+    private AnuncioMidiaEntity vinculo(
+            UUID id,
+            UUID anuncioId,
+            UUID arquivoId,
+            VisibilidadeMidia visibilidade,
+            int ordem) {
         return AnuncioMidiaEntity.criarFixtureHomologacao(
                 id,
                 anuncioId,
                 arquivoId,
                 TipoAnuncioMidia.FOTO,
                 FinalidadeAnuncioMidia.CAPA,
-                1,
+                ordem,
                 StatusAnuncioMidia.PUBLICAVEL,
                 visibilidade,
                 AGORA);

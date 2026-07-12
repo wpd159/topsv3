@@ -780,13 +780,15 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 
 ## 35. Meus anuncios autenticado
 
-- Contratos V3: `GET /api/public/minha-conta/anuncios` e `GET /api/public/minha-conta/anuncios/{slug}`.
+- Contratos V3: `GET /api/public/minha-conta/anuncios`, `GET /api/public/minha-conta/anuncios/{slug}` e `PATCH /api/public/minha-conta/anuncios/{slug}`.
 - O backend resolve o anunciante exclusivamente pelo `PublicUserPrincipal` da sessao `JSESSIONID`; nenhum identificador de usuario e aceito do frontend.
 - A colecao retorna status operacional e de moderacao reais, slug, titulo, localizacao sanitizada e capa processada pela politica publica de midia segura.
 - Slug inexistente retorna `404`; anuncio de outro usuario retorna `403`; ausencia de sessao retorna `401`.
-- O frontend usa somente `frontend/src/lib/meus-anuncios-api.ts` na listagem, detalhe e entrada de edicao. Falha HTTP permanece visivel e nao e convertida em lista vazia.
-- O editor herdado e seus fetches foram removidos. A rota `/meus-anuncios/[slug]/editar` valida propriedade e abre a entrada de edicao, mas a edicao completa permanece pendente de contrato V3 proprio.
-- Nenhuma migration, upload, exclusao, Premium, credito, pagamento, metrica ou OpenAI foi implementado nesta fase.
+- O frontend usa somente `frontend/src/lib/meus-anuncios-api.ts` na listagem, detalhe e edicao. Falha HTTP permanece visivel, o formulario e preservado em erro de validacao e o envio duplo e bloqueado.
+- A edicao permite titulo, descricao, categoria, preco, UF, cidade, bairro, locais de atendimento, servicos e WhatsApp ja persistidos. Proprietario, slug, status, moderacao, publicacao, Premium, creditos, metricas, beneficios, datas publicadas e visibilidade de midia nao integram o request.
+- A regra vigente de moderacao e preservada: a edicao remete o anuncio para `PENDENTE_REVISAO`/`PENDENTE`, cria ou atualiza a revisao aberta e bloqueia com `409` enquanto houver revisao em analise. Slug, `publicado_em` e `ultima_publicacao_em` permanecem inalterados.
+- As midias existentes sao listadas em ordem e somente para leitura; midia restrita ou nao publicavel nunca recebe URL. Upload, exclusao fisica, reordenacao e alteracao de visibilidade permanecem fora desta fase.
+- Horarios/disponibilidade permanecem pendentes porque o modelo V3 atual nao possui persistencia canonica para esses campos. Nenhuma migration, exclusao, Premium, credito, pagamento, metrica ou OpenAI foi implementado nesta fase.
 
 ## 36. Refinamentos visuais publicos
 

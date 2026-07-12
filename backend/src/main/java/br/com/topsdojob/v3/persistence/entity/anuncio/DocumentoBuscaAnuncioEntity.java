@@ -131,4 +131,22 @@ public class DocumentoBuscaAnuncioEntity {
     return entity;
   }
 
+  public void atualizarAposEdicao(
+      String textoBusca,
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      String categoria,
+      BigDecimal preco,
+      OffsetDateTime atualizadoEm) {
+    this.textoBusca = textoBusca;
+    this.estadoId = estadoId;
+    this.cidadeId = cidadeId;
+    this.bairroId = bairroId;
+    this.categoria = categoria;
+    this.preco = preco;
+    this.statusPublicacao = StatusPublicacaoBusca.NAO_PUBLICAVEL;
+    this.atualizadoEm = atualizadoEm;
+  }
+
 }

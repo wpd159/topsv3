@@ -84,6 +84,13 @@ public class RevisaoAnuncioEntity {
     this.finalizadoEm = finalizadoEm;
   }
 
+  public void atualizarSolicitacaoAberta(String payloadSolicitado) {
+    if (this.status != StatusRevisaoAnuncio.ABERTA) {
+      throw new IllegalStateException("somente revisao aberta pode receber atualizacao");
+    }
+    this.payloadSolicitado = payloadSolicitado == null ? "{}" : payloadSolicitado;
+  }
+
   public static RevisaoAnuncioEntity abrir(
       UUID id,
       UUID anuncioId,

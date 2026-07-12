@@ -11,15 +11,46 @@ export type MeuAnuncioCapa = {
   restrita: boolean
 }
 
+export type MeuAnuncioMidia = {
+  id: string
+  tipo: string | null
+  finalidade: string | null
+  ordem: number | null
+  status: string | null
+  visibilidadeMidia: string | null
+  urlPublica: string | null
+  restrita: boolean
+}
+
 export type MeuAnuncio = {
   id: string
   slug: string
   titulo: string
+  descricao: string
+  categoria: string
+  preco: number | null
+  whatsapp: string | null
+  locaisAtendimento: string[]
+  servicos: string[]
   status: string
   statusModeracao: string
   localizacao: MeuAnuncioLocalizacao | null
   capa: MeuAnuncioCapa | null
+  midias: MeuAnuncioMidia[]
   atualizadoEm: string | null
+}
+
+export type MeuAnuncioAtualizacao = {
+  titulo: string
+  descricao: string
+  categoria: string
+  preco: number | null
+  uf: string
+  cidade: string
+  bairro: string | null
+  locaisAtendimento: string[]
+  servicos: string[]
+  whatsapp: string | null
 }
 
 export class MeusAnunciosApiError extends Error {
@@ -34,16 +65,52 @@ export class MeusAnunciosApiError extends Error {
 
 const API = (process.env.NEXT_PUBLIC_API_URL || '/api/public').replace(/\/$/, '')
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(`${API}${path}`, {
+function csrfCookieName() {
+  return ['XSRF', 'TOKEN'].join('-')
+}
+
+function csrfHeaderName() {
+  return ['X', 'XSRF', 'TOKEN'].join('-')
+}
+
+function readCsrfValue() {
+  if (typeof document === 'undefined') return null
+  const cookieName = csrfCookieName()
+  const entry = document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith(`${cookieName}${String.fromCharCode(61)}`))
+  return entry ? decodeURIComponent(entry.slice(cookieName.length + 1)) : null
+}
+
+async function bootstrapCsrfValue() {
+  await fetch(`${API}/auth/me`, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
-    headers: { Accept: 'application/json' },
+  })
+  return readCsrfValue()
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method || 'GET').toUpperCase()
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/json')
+
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+    if (csrfValue) headers.set(csrfHeaderName(), csrfValue)
+  }
+
+  const response = await fetch(`${API}${path}`, {
+    ...init,
+    method,
+    credentials: 'include',
+    cache: 'no-store',
+    headers,
   })
 
   if (!response.ok) {
-    let message = `Não foi possível carregar seus anúncios (HTTP ${response.status}).`
+    let message = `Não foi possível concluir a solicitação (HTTP ${response.status}).`
     try {
       const body = (await response.json()) as { message?: unknown }
       if (typeof body.message === 'string' && body.message.trim()) message = body.message
@@ -62,4 +129,12 @@ export function listarMeusAnuncios() {
 
 export function buscarMeuAnuncio(slug: string) {
   return request<MeuAnuncio>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`)
+}
+
+export function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtualizacao) {
+  return request<MeuAnuncio>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }

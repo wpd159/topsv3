@@ -225,6 +225,45 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Atualiza os campos editaveis de um anuncio do usuario autenticado
+      operationId: updateCurrentUserAd
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+      description: O proprietario e resolvido exclusivamente pela sessao. Slug, datas de publicacao, proprietario, beneficios e midias nao sao alterados. A edicao remete o anuncio para a revisao vigente e preserva a URL publica.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeuAnuncioAtualizacaoRequest"
+      responses:
+        "200":
+          description: anuncio atualizado e remetido para revisao
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeuAnuncio"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/usuarios/verificar-duplicidade:
     get:
       summary: Verifica duplicidade no cadastro publico
@@ -2660,10 +2699,17 @@ components:
         - id
         - slug
         - titulo
+        - descricao
+        - categoria
+        - preco
+        - whatsapp
+        - locaisAtendimento
+        - servicos
         - status
         - statusModeracao
         - localizacao
         - capa
+        - midias
         - atualizadoEm
       properties:
         id:
@@ -2673,6 +2719,28 @@ components:
           type: string
         titulo:
           type: string
+        descricao:
+          type: string
+        categoria:
+          type: string
+        preco:
+          type: [number, "null"]
+          format: double
+        whatsapp:
+          type: [string, "null"]
+          description: Contato do proprio anuncio, disponivel somente neste contrato autenticado.
+        locaisAtendimento:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [A_COMBINAR, HOTEL_MOTEL, MEU_LOCAL]
+        servicos:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
         status:
           type: string
           enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, REMOVIDO]
@@ -2687,9 +2755,60 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MeuAnuncioCapa"
             - type: "null"
+        midias:
+          type: array
+          description: Midias vinculadas em ordem, somente para leitura. Conteudo restrito ou nao publicavel nunca recebe URL.
+          items:
+            $ref: "#/components/schemas/MeuAnuncioMidia"
         atualizadoEm:
           type: [string, "null"]
           format: date-time
+    MeuAnuncioAtualizacaoRequest:
+      type: object
+      additionalProperties: false
+      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, locaisAtendimento, servicos, whatsapp]
+      properties:
+        titulo:
+          type: string
+          minLength: 10
+          maxLength: 80
+        descricao:
+          type: string
+          minLength: 20
+          maxLength: 600
+        categoria:
+          type: string
+          pattern: "^[A-Z0-9_]{3,40}$"
+        preco:
+          type: [number, "null"]
+          minimum: 0.01
+          maximum: 999999.99
+        uf:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        cidade:
+          type: string
+          minLength: 2
+          maxLength: 80
+        bairro:
+          type: [string, "null"]
+          minLength: 2
+          maxLength: 80
+        locaisAtendimento:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [A_COMBINAR, HOTEL_MOTEL, MEU_LOCAL]
+        servicos:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
+        whatsapp:
+          type: [string, "null"]
+          pattern: "^\\+[1-9][0-9]{7,14}$"
     MeuAnuncioLocalizacao:
       type: object
       additionalProperties: false
@@ -2716,6 +2835,30 @@ components:
         restrita:
           type: boolean
           description: Quando true, urlPublica permanece nula e a UI deve exibir placeholder seguro.
+    MeuAnuncioMidia:
+      type: object
+      additionalProperties: false
+      required: [id, tipo, finalidade, ordem, status, visibilidadeMidia, urlPublica, restrita]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          type: [string, "null"]
+        finalidade:
+          type: [string, "null"]
+        ordem:
+          type: [integer, "null"]
+        status:
+          type: [string, "null"]
+        visibilidadeMidia:
+          type: [string, "null"]
+          enum: [LIVRE, RESTRITA_18, null]
+        urlPublica:
+          type: [string, "null"]
+          description: Nula para midia restrita, pendente, rejeitada, removida ou sem URL publica segura.
+        restrita:
+          type: boolean
     PublicDuplicateCheck:
       type: object
       additionalProperties: false

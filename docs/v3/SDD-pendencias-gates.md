@@ -663,7 +663,10 @@ Antes de admin em ambiente nao local:
 - Fechado localmente: `401` sem sessao, `403` para anuncio de terceiro, `404` para slug inexistente e lista vazia apenas quando a conta realmente nao possui anuncios.
 - Fechado localmente: status reais com rotulos humanos, localizacao sanitizada e capa publica segura sem storage, documento ou URL original restrita.
 - Fechado localmente: adapter frontend unico, sem fallback vazio, fetch legado ativo, Stories, Premium, creditos, exclusao ou metricas na tela integrada.
-- Pendente de fase propria: contrato de mutacao e edicao completa, incluindo validacoes de campos e auditoria; a entrada de edicao atual e somente leitura e valida propriedade.
+- Fechado localmente: `PATCH /api/public/minha-conta/anuncios/{slug}` edita somente campos persistidos autorizados, valida propriedade pela sessao e preserva slug, publicacao, beneficios e midias.
+- Fechado localmente: alteracoes de conteudo seguem a moderacao vigente, com revisao aberta rastreavel e `409` durante analise; a projecao publica fica nao publicavel ate nova decisao.
+- Pendente de contrato/schema proprio: horarios e disponibilidade, ausentes do modelo persistido V3 atual.
+- Pendente de contrato seguro: upload, exclusao e reordenacao de midia; a tela atual lista as midias sem permitir mutacao e sem expor URL restrita.
 - Pendente antes de publicacao: smoke autenticado desktop/mobile com conta ficticia contendo zero e multiplos anuncios; esta fase nao autoriza deploy.
 
 ## Refinamentos visuais publicos
