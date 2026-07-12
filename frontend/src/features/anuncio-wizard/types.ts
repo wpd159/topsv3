@@ -12,6 +12,7 @@ export type WizardFormState = {
   servicos: string[]
   descricao: string
   linkConteudo: string
+  whatsapp: string
   estadoId: string
   cidadeId: string
   bairroId: string
@@ -49,6 +50,7 @@ export const initialWizardFormState: WizardFormState = {
   servicos: [],
   descricao: '',
   linkConteudo: '',
+  whatsapp: '',
   estadoId: '',
   cidadeId: '',
   bairroId: '',

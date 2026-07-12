@@ -61,25 +61,40 @@ export function stepIndexFromId(step: WizardStepId) {
   return Math.max(0, wizardStepIds.indexOf(step))
 }
 
-export function validateWizardStep(state: WizardState, step: WizardStepId, perfilCompleto = false): string | null {
+export function validateWizardStep(
+  state: WizardState,
+  step: WizardStepId,
+  perfilCompleto = false,
+  mode: 'create' | 'edit' = 'create'
+): string | null {
   const { form, kyc } = state
   if (step === 'perfil') {
-    if (form.titulo.trim().length < 3 || !form.categoria) {
+    const tituloMinimo = mode === 'edit' ? 10 : 3
+    if (form.titulo.trim().length < tituloMinimo || !form.categoria) {
       return 'Preencha nome e categoria para continuar.'
     }
   }
   if (step === 'localizacao') {
-    if (!form.estadoId || !form.cidadeId || !form.bairroId) {
+    if (!form.estadoId || !form.cidadeId || (mode === 'create' && !form.bairroId)) {
       return 'Escolha estado, cidade e bairro para continuar.'
     }
   }
   if (step === 'servicos') {
     const preco = Number(form.preco.replace(/\D/g, '')) / 100
-    if (!Number.isFinite(preco) || preco <= 0 || !form.horario || form.locaisAtendimento.length === 0 || form.servicos.length === 0) {
-      return 'Informe preço, horário, local de atendimento e ao menos um serviço.'
+    if (
+      !Number.isFinite(preco) ||
+      preco <= 0 ||
+      (mode === 'create' && !form.horario) ||
+      form.locaisAtendimento.length === 0 ||
+      form.servicos.length === 0 ||
+      (mode === 'edit' && form.descricao.trim().length < 20)
+    ) {
+      return mode === 'create'
+        ? 'Informe preço, horário, local de atendimento e ao menos um serviço.'
+        : 'Informe preço, descrição, local de atendimento e ao menos um serviço.'
     }
   }
-  if (step === 'fotos' && form.fotos.length === 0) {
+  if (mode === 'create' && step === 'fotos' && form.fotos.length === 0) {
     return form.fotoNomes.length > 0
       ? 'Selecione novamente as fotos antes de publicar. Arquivos locais não ficam salvos no navegador.'
       : 'Envie ao menos uma foto para seguir.'
@@ -95,25 +110,25 @@ export function validateWizardKycState(state: WizardState): string | null {
   return null
 }
 
-export function useAnuncioWizardStore() {
+export function useAnuncioWizardStore({ persistCache = true }: { persistCache?: boolean } = {}) {
   const [state, dispatch] = useReducer(reducer, initialWizardState)
   const [hydrated, setHydrated] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
 
   useEffect(() => {
-    const cached = loadWizardCache()
+    const cached = persistCache ? loadWizardCache() : null
     if (cached) dispatch({ type: 'hydrate', payload: cached })
     setHydrated(true)
-  }, [])
+  }, [persistCache])
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !persistCache) return
     const timer = window.setTimeout(() => {
       saveWizardCache(state)
       setLastSavedAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
     }, 500)
     return () => window.clearTimeout(timer)
-  }, [hydrated, state])
+  }, [hydrated, persistCache, state])
 
   const currentIndex = stepIndexFromId(state.currentStep)
 
@@ -132,9 +147,13 @@ export function useAnuncioWizardStore() {
   }, [currentIndex])
 
   const reset = useCallback(() => {
-    clearWizardCache()
+    if (persistCache) clearWizardCache()
     dispatch({ type: 'reset' })
     setLastSavedAt(null)
+  }, [persistCache])
+
+  const hydrate = useCallback((payload: WizardState) => {
+    dispatch({ type: 'hydrate', payload })
   }, [])
 
   return {
@@ -151,5 +170,6 @@ export function useAnuncioWizardStore() {
     nextStep,
     previousStep,
     reset,
+    hydrate,
   }
 }

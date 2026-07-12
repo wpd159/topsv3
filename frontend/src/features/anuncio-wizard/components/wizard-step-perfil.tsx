@@ -12,6 +12,7 @@ export function WizardStepPerfil({
   descricaoPerfilCount,
   descricaoPerfilNeedsMore,
   descricaoPerfilRemaining,
+  showProfileDescription = true,
   onTituloChange,
   onCategoriaChange,
   onDescricaoChange,
@@ -23,6 +24,7 @@ export function WizardStepPerfil({
   descricaoPerfilCount: number
   descricaoPerfilNeedsMore: boolean
   descricaoPerfilRemaining: number
+  showProfileDescription?: boolean
   onTituloChange: (value: string) => void
   onCategoriaChange: (value: string) => void
   onDescricaoChange: (value: string) => void
@@ -55,7 +57,7 @@ export function WizardStepPerfil({
             </select>
           </Field>
 
-          <div className="space-y-3 rounded-[22px] border border-zinc-200 bg-white p-4 shadow-sm">
+          {showProfileDescription ? <div className="space-y-3 rounded-[22px] border border-zinc-200 bg-white p-4 shadow-sm">
             <div className="space-y-1">
               <Label className="text-sm font-semibold text-zinc-800">
                 Conte um pouco sobre você
@@ -84,7 +86,7 @@ export function WizardStepPerfil({
               </span>
               <span className="shrink-0 text-zinc-400">{descricaoPerfilCount}/500</span>
             </div>
-          </div>
+          </div> : null}
         </div>
 
         <div className="rounded-[26px] border border-zinc-200 bg-zinc-50/90 p-5 shadow-sm">

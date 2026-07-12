@@ -664,6 +664,7 @@ Antes de admin em ambiente nao local:
 - Fechado localmente: status reais com rotulos humanos, localizacao sanitizada e capa publica segura sem storage, documento ou URL original restrita.
 - Fechado localmente: adapter frontend unico, sem fallback vazio, fetch legado ativo, Stories, Premium, creditos, exclusao ou metricas na tela integrada.
 - Fechado localmente: `PATCH /api/public/minha-conta/anuncios/{slug}` edita somente campos persistidos autorizados, valida propriedade pela sessao e preserva slug, publicacao, beneficios e midias.
+- Fechado localmente: a edicao reutiliza o wizard canonico de criacao em `mode="edit"`; o editor paralelo foi removido, o cache de rascunho da criacao fica isolado e nao ha validacao, formulario ou fluxo concorrente.
 - Fechado localmente: alteracoes de conteudo seguem a moderacao vigente, com revisao aberta rastreavel e `409` durante analise; a projecao publica fica nao publicavel ate nova decisao.
 - Pendente de contrato/schema proprio: horarios e disponibilidade, ausentes do modelo persistido V3 atual.
 - Pendente de contrato seguro: upload, exclusao e reordenacao de midia; a tela atual lista as midias sem permitir mutacao e sem expor URL restrita.

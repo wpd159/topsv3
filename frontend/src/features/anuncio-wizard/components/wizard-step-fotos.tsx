@@ -1,8 +1,10 @@
 'use client'
 
 import { Camera, Crown, PlayCircle, Sparkles } from 'lucide-react'
+import Image from 'next/image'
 import { GaleriaFotos } from '@/components/anuncios/galeria-fotos'
 import { VideoUploader } from '@/components/anuncios/editar/video-uploader'
+import type { MeuAnuncioMidia } from '@/lib/meus-anuncios-api'
 import { StepPanel } from './wizard-ui'
 
 type WizardStepFotosProps = {
@@ -20,6 +22,7 @@ type WizardStepFotosProps = {
   onChangeVideosNovos?: (payload: File[]) => void
   onVideoTouched?: () => void
   canUploadVideos?: boolean
+  readOnlyMedia?: MeuAnuncioMidia[]
 }
 
 export function WizardStepFotos({
@@ -37,7 +40,55 @@ export function WizardStepFotos({
   onChangeVideosNovos,
   onVideoTouched,
   canUploadVideos,
+  readOnlyMedia,
 }: WizardStepFotosProps) {
+  if (readOnlyMedia) {
+    return (
+      <StepPanel>
+        <section className="space-y-5 rounded-[28px] border border-zinc-200/80 bg-white p-5 shadow-[0_18px_60px_rgba(24,24,27,0.04)] sm:p-6">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50 text-zinc-700">
+              <Camera className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold tracking-normal text-zinc-950">Mídias atuais</h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-zinc-600">
+                A edição preserva ordem, moderação e visibilidade. Novos uploads não fazem parte desta etapa.
+              </p>
+            </div>
+          </div>
+
+          {readOnlyMedia.length ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {readOnlyMedia.map((midia) => (
+                <article key={midia.id} className="min-w-0 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
+                  <div className="relative aspect-[4/3] bg-zinc-200">
+                    <Image
+                      src={midia.urlPublica || '/icone-sem-foto.png'}
+                      alt={`Mídia ${midia.ordem ?? ''} do anúncio`}
+                      fill
+                      className="object-cover"
+                      sizes="(max-width: 640px) 100vw, 320px"
+                    />
+                  </div>
+                  <div className="space-y-1 p-4 text-xs text-zinc-600">
+                    <p className="font-semibold text-zinc-900">Ordem {midia.ordem ?? 'não definida'}</p>
+                    <p>{midia.tipo || 'Mídia'} · {midia.status || 'Status indisponível'}</p>
+                    {midia.restrita ? <p>Conteúdo protegido, sem URL exposta.</p> : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-xl bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
+              Este anúncio ainda não possui mídias vinculadas.
+            </p>
+          )}
+        </section>
+      </StepPanel>
+    )
+  }
+
   const hasVideoControls =
     Array.isArray(videosExistentes) ||
     typeof onChangeVideosExistentes === 'function' ||

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,6 +8,14 @@ import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useLocalidades } from '@/hooks/useLocalidades'
 import { cn } from '@/lib/utils'
+import {
+  atualizarMeuAnuncio,
+  buscarMeuAnuncio,
+  MeusAnunciosApiError,
+  type MeuAnuncio,
+  type MeuAnuncioAtualizacao,
+} from '@/lib/meus-anuncios-api'
+import { formatCurrencyBRL } from '@/utils/formatter'
 import {
   completeWizardKyc,
   submitWizardAnuncio,
@@ -31,7 +39,13 @@ import {
   validateWizardStep,
   wizardSteps,
 } from './use-anuncio-wizard-store'
-import type { WizardKycState, WizardStepId } from './types'
+import {
+  initialWizardFormState,
+  initialWizardKycState,
+  type WizardFormState,
+  type WizardKycState,
+  type WizardStepId,
+} from './types'
 import { WizardFinalReview } from './components/wizard-final-review'
 import { WizardKycModal } from './components/wizard-kyc-modal'
 import { WizardPreview } from './components/wizard-preview'
@@ -47,12 +61,46 @@ import {
   type WizardProgressStep,
 } from './wizard-progress'
 
-export default function AnuncioWizard() {
+type AnuncioWizardProps = {
+  mode?: 'create' | 'edit'
+  slug?: string
+}
+
+function editErrorMessage(error: unknown) {
+  if (!(error instanceof MeusAnunciosApiError)) {
+    return error instanceof Error ? error.message : 'Não foi possível carregar o anúncio.'
+  }
+  if (error.status === 401) return 'Sua sessão expirou. Entre novamente para continuar.'
+  if (error.status === 403) return 'Você não tem permissão para editar este anúncio.'
+  if (error.status === 404) return 'Anúncio não encontrado.'
+  if (error.status === 409) return 'Este anúncio está em análise e não pode ser alterado agora.'
+  return error.message
+}
+
+function editPayload(state: WizardFormState): MeuAnuncioAtualizacao {
+  const preco = Number(state.preco.replace(/\D/g, '')) / 100
+  return {
+    titulo: state.titulo,
+    descricao: state.descricao,
+    categoria: state.categoria,
+    preco: Number.isFinite(preco) && preco > 0 ? preco : null,
+    uf: state.estadoUf,
+    cidade: state.cidadeNome,
+    bairro: state.bairroNome.trim() || null,
+    locaisAtendimento: state.locaisAtendimento,
+    servicos: state.servicos,
+    whatsapp: state.whatsapp.trim() || null,
+  }
+}
+
+export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardProps) {
   const router = useRouter()
   const { usuario, carregando, refresh } = useAuth()
+  const isEdit = mode === 'edit'
   const API = process.env.NEXT_PUBLIC_API_URL || ''
-  const localidades = useLocalidades(API)
-  const store = useAnuncioWizardStore()
+  const localidades = useLocalidades(API, mode)
+  const { loadBairros, loadCidades } = localidades
+  const store = useAnuncioWizardStore({ persistCache: !isEdit })
   const {
     state: wizardState,
     hydrated,
@@ -66,12 +114,16 @@ export default function AnuncioWizard() {
     nextStep,
     previousStep,
     reset,
+    hydrate,
   } = store
 
   const state = wizardState.form
   const kyc = wizardState.kyc
   const currentStep = wizardSteps[currentIndex]
   const [publishing, setPublishing] = useState(false)
+  const [editLoading, setEditLoading] = useState(isEdit)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editAnuncio, setEditAnuncio] = useState<MeuAnuncio | null>(null)
   const [fotoPreviewUrls, setFotoPreviewUrls] = useState<string[]>([])
   const [publishGuard, setPublishGuard] = useState<PublishGuardState>(closedPublishGuard)
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -81,6 +133,7 @@ export default function AnuncioWizard() {
   const stepDidMountRef = useRef(false)
   const wizardSessionIdRef = useRef(createWizardProgressSessionId())
   const lastSyncedStepRef = useRef<WizardProgressStep | null>(null)
+  const loadedEditSlugRef = useRef<string | null>(null)
 
   const idade = calculateAge(kyc.dataNascimento || (usuario as any)?.dataNascimento)
   const hasExistingKyc = hasPersistedKyc(usuario)
@@ -106,21 +159,27 @@ export default function AnuncioWizard() {
     profileDescription ||
     'Seu texto de apresentação aparece aqui para aproximar o preview do anúncio real.'
   const previewPrice = state.preco.trim() || 'Consulte valores'
-  const previewMedia = fotoPreviewUrls.length ? fotoPreviewUrls : []
-  const syncProgress = (
-    ultimoStep: WizardProgressStep,
-    status: WizardProgressStatus = 'EM_PREENCHIMENTO',
-    anuncioId?: number | string | null
-  ) => {
-    lastSyncedStepRef.current = ultimoStep
-    return syncWizardProgress({
-      sessionId: wizardSessionIdRef.current,
-      mode: 'create',
-      ultimoStep,
-      status,
-      anuncioId,
-    })
-  }
+  const currentMediaUrls = editAnuncio?.midias
+    .map((midia) => midia.urlPublica)
+    .filter((url): url is string => Boolean(url)) ?? []
+  const previewMedia = fotoPreviewUrls.length ? fotoPreviewUrls : currentMediaUrls
+  const syncProgress = useCallback(
+    (
+      ultimoStep: WizardProgressStep,
+      status: WizardProgressStatus = 'EM_PREENCHIMENTO',
+      anuncioId?: number | string | null
+    ) => {
+      lastSyncedStepRef.current = ultimoStep
+      return syncWizardProgress({
+        sessionId: wizardSessionIdRef.current,
+        mode,
+        ultimoStep,
+        status,
+        anuncioId,
+      })
+    },
+    [mode]
+  )
 
   useEffect(() => {
     const urls = state.fotos.map((file) => URL.createObjectURL(file))
@@ -129,19 +188,60 @@ export default function AnuncioWizard() {
   }, [state.fotos])
 
   useEffect(() => {
-    if (!hydrated) return
-    if (state.estadoId) void localidades.loadCidades(state.estadoId)
-    if (state.cidadeId) void localidades.loadBairros(state.cidadeId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated])
+    if (!isEdit || !hydrated || carregando || !usuario) return
+    if (!slug) {
+      setEditError('Anúncio não encontrado.')
+      setEditLoading(false)
+      return
+    }
+    if (loadedEditSlugRef.current === slug) return
+    loadedEditSlugRef.current = slug
+    setEditLoading(true)
+    setEditError(null)
+
+    void buscarMeuAnuncio(slug)
+      .then((anuncio) => {
+        setEditAnuncio(anuncio)
+        hydrate({
+          currentStep: 'perfil',
+          form: {
+            ...initialWizardFormState,
+            titulo: anuncio.titulo || '',
+            categoria: anuncio.categoria || '',
+            preco: formatCurrencyBRL(anuncio.preco),
+            locaisAtendimento: anuncio.locaisAtendimento || [],
+            servicos: anuncio.servicos || [],
+            descricao: anuncio.descricao || '',
+            whatsapp: anuncio.whatsapp || '',
+            estadoId: anuncio.localizacao?.uf || '',
+            cidadeId: anuncio.localizacao?.cidadeSlug || '',
+            bairroId: anuncio.localizacao?.bairroSlug || '',
+            estadoNome: anuncio.localizacao?.uf || '',
+            estadoUf: anuncio.localizacao?.uf || '',
+            cidadeNome: anuncio.localizacao?.cidade || '',
+            bairroNome: anuncio.localizacao?.bairro || '',
+          },
+          kyc: { ...initialWizardKycState, documentos: [], documentoNomes: [] },
+        })
+      })
+      .catch((error) => setEditError(editErrorMessage(error)))
+      .finally(() => setEditLoading(false))
+  }, [carregando, hydrate, hydrated, isEdit, slug, usuario])
 
   useEffect(() => {
     if (!hydrated) return
-    if (!persistedProfileDescription) return
+    void (async () => {
+      if (state.estadoId) await loadCidades(state.estadoId)
+      if (state.cidadeId) await loadBairros(state.cidadeId)
+    })()
+  }, [hydrated, loadBairros, loadCidades, state.cidadeId, state.estadoId])
+
+  useEffect(() => {
+    if (!hydrated) return
+    if (isEdit || !persistedProfileDescription) return
     if (state.descricaoPerfil.trim().length > 0) return
     updateForm({ descricaoPerfil: persistedProfileDescription })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated, persistedProfileDescription])
+  }, [hydrated, isEdit, persistedProfileDescription, state.descricaoPerfil, updateForm])
 
   useEffect(() => {
     if (!hydrated) return
@@ -161,48 +261,83 @@ export default function AnuncioWizard() {
     const stepId = currentStep.id as WizardProgressStep
     if (lastSyncedStepRef.current === stepId) return
     syncProgress(stepId)
-  }, [currentStep.id, hydrated, usuario])
+  }, [currentStep.id, hydrated, syncProgress, usuario])
 
   useEffect(() => {
     if (!publishGuard.open || hasExistingKyc) return
     if (lastSyncedStepRef.current === 'kyc') return
     syncProgress('kyc')
-  }, [publishGuard.open, hasExistingKyc])
+  }, [publishGuard.open, hasExistingKyc, syncProgress])
 
-  const categoriaLabel = useMemo(
-    () => categorias.find((item) => item.value === state.categoria)?.label || 'Categoria',
+  const categoriaOptions = useMemo(
+    () =>
+      state.categoria && !categorias.some((item) => item.value === state.categoria)
+        ? [...categorias, { value: state.categoria, label: state.categoria.replaceAll('_', ' ') }]
+        : categorias,
     [state.categoria]
+  )
+  const categoriaLabel = useMemo(
+    () => categoriaOptions.find((item) => item.value === state.categoria)?.label || 'Categoria',
+    [categoriaOptions, state.categoria]
   )
 
   const stateOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      localidades.estados.map((item) => ({
+    () => {
+      const options = localidades.estados.map((item) => ({
         id: String(item.id),
         label: item.nome,
         searchLabel: `${item.nome} ${item.uf ?? ''}`,
         subtitle: item.uf ? `UF ${item.uf}` : undefined,
-      })),
-    [localidades.estados]
+      }))
+      if (state.estadoId && !options.some((item) => item.id === state.estadoId)) {
+        options.push({
+          id: state.estadoId,
+          label: state.estadoNome || state.estadoUf,
+          searchLabel: `${state.estadoNome} ${state.estadoUf}`,
+          subtitle: state.estadoUf ? `UF ${state.estadoUf}` : undefined,
+        })
+      }
+      return options
+    },
+    [localidades.estados, state.estadoId, state.estadoNome, state.estadoUf]
   )
 
   const cidadeOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      localidades.cidades.map((item) => ({
+    () => {
+      const options = localidades.cidades.map((item) => ({
         id: String(item.id),
         label: item.nome,
         searchLabel: `${item.nome} ${state.estadoNome} ${state.estadoUf}`,
-      })),
-    [localidades.cidades, state.estadoNome, state.estadoUf]
+      }))
+      if (state.cidadeId && !options.some((item) => item.id === state.cidadeId)) {
+        options.push({
+          id: state.cidadeId,
+          label: state.cidadeNome,
+          searchLabel: `${state.cidadeNome} ${state.estadoNome} ${state.estadoUf}`,
+        })
+      }
+      return options
+    },
+    [localidades.cidades, state.cidadeId, state.cidadeNome, state.estadoNome, state.estadoUf]
   )
 
   const bairroOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      localidades.bairros.map((item) => ({
+    () => {
+      const options = localidades.bairros.map((item) => ({
         id: String(item.id),
         label: item.nome,
         searchLabel: `${item.nome} ${state.cidadeNome} ${state.estadoNome} ${state.estadoUf}`,
-      })),
-    [localidades.bairros, state.cidadeNome, state.estadoNome, state.estadoUf]
+      }))
+      if (state.bairroId && !options.some((item) => item.id === state.bairroId)) {
+        options.push({
+          id: state.bairroId,
+          label: state.bairroNome,
+          searchLabel: `${state.bairroNome} ${state.cidadeNome} ${state.estadoNome} ${state.estadoUf}`,
+        })
+      }
+      return options
+    },
+    [localidades.bairros, state.bairroId, state.bairroNome, state.cidadeNome, state.estadoNome, state.estadoUf]
   )
 
   const toggle = (field: 'locaisAtendimento' | 'servicos', value: string) => {
@@ -247,7 +382,7 @@ export default function AnuncioWizard() {
   }
 
   const validateCurrentStep = () => {
-    const message = validateWizardStep(wizardState, currentStep.id, hasExistingKyc)
+    const message = validateWizardStep(wizardState, currentStep.id, hasExistingKyc, mode)
     if (message) {
       toast.warning(message)
       return false
@@ -258,7 +393,7 @@ export default function AnuncioWizard() {
   const canMoveToStep = (targetIndex: number) => {
     if (targetIndex <= currentIndex) return true
     for (let i = 0; i < targetIndex; i += 1) {
-      const message = validateWizardStep(wizardState, wizardSteps[i].id, hasExistingKyc)
+      const message = validateWizardStep(wizardState, wizardSteps[i].id, hasExistingKyc, mode)
       if (message) {
         toast.warning(message)
         return false
@@ -284,6 +419,7 @@ export default function AnuncioWizard() {
   }
 
   const syncProfileDescriptionIfNeeded = async () => {
+    if (isEdit) return
     if (!usuario?.email) return
 
     const nextDescription = state.descricaoPerfil.trim()
@@ -293,6 +429,19 @@ export default function AnuncioWizard() {
       email: usuario.email,
       descricaoPerfil: nextDescription,
     })
+  }
+
+  const submitEdit = async () => {
+    if (!slug) {
+      toast.error('Anúncio não encontrado.')
+      return
+    }
+
+    const atualizado = await atualizarMeuAnuncio(slug, editPayload(state))
+    setEditAnuncio(atualizado)
+    await syncProgress('concluido', 'AGUARDANDO_MODERACAO', atualizado.id)
+    toast.success('Alterações salvas e enviadas para revisão.')
+    router.push(`/meus-anuncios/${encodeURIComponent(atualizado.slug)}`)
   }
 
   const submitAnuncio = async () => {
@@ -344,7 +493,7 @@ export default function AnuncioWizard() {
   const getFirstInvalidStep = () => {
     const requiredSteps: WizardStepId[] = ['perfil', 'localizacao', 'servicos', 'fotos']
     for (const step of requiredSteps) {
-      const message = validateWizardStep(wizardState, step, hasExistingKyc)
+      const message = validateWizardStep(wizardState, step, hasExistingKyc, mode)
       if (message) return { step, message }
     }
     return null
@@ -356,11 +505,16 @@ export default function AnuncioWizard() {
     publishLockRef.current = true
     try {
       setPublishing(true)
-      if (requiresKyc) await completeKycAndPublish()
+      if (isEdit) await submitEdit()
+      else if (requiresKyc) await completeKycAndPublish()
       else await submitAnuncio()
     } catch (err: any) {
       setPublishGuard(closedPublishGuard)
-      toast.error(err?.message || 'Não foi possível concluir a publicação agora.')
+      toast.error(
+        isEdit
+          ? editErrorMessage(err)
+          : err?.message || 'Não foi possível concluir a publicação agora.'
+      )
     } finally {
       publishLockRef.current = false
       setPublishing(false)
@@ -378,6 +532,11 @@ export default function AnuncioWizard() {
     if (invalid) {
       setStep(invalid.step)
       toast.warning(invalid.message)
+      return
+    }
+
+    if (isEdit) {
+      void runFinalFlow(false)
       return
     }
 
@@ -406,10 +565,11 @@ export default function AnuncioWizard() {
           titulo={state.titulo}
           categoria={state.categoria}
           descricaoPerfil={state.descricaoPerfil}
-          categorias={categorias}
+          categorias={categoriaOptions}
           descricaoPerfilCount={descricaoPerfilCount}
           descricaoPerfilNeedsMore={descricaoPerfilNeedsMore}
           descricaoPerfilRemaining={descricaoPerfilRemaining}
+          showProfileDescription={!isEdit}
           onTituloChange={(value) => updateForm({ titulo: value })}
           onCategoriaChange={(value) => updateForm({ categoria: value })}
           onDescricaoChange={(value) => updateForm({ descricaoPerfil: value.slice(0, 500) })}
@@ -437,12 +597,13 @@ export default function AnuncioWizard() {
           onCidade={handleCidade}
           onBairro={handleBairro}
           onReferencia={(value) => updateForm({ pontoReferenciaTexto: value })}
+          showReference={!isEdit}
         />
       )
     }
 
     if (currentStep.id === 'servicos') {
-      return <WizardStepServicos state={state} onToggle={toggle} onPatch={updateForm} />
+      return <WizardStepServicos state={state} mode={mode} onToggle={toggle} onPatch={updateForm} />
     }
 
     if (currentStep.id === 'fotos') {
@@ -451,6 +612,7 @@ export default function AnuncioWizard() {
           initialFiles={state.fotos}
           fotoNomes={state.fotoNomes}
           onChange={setFotos}
+          readOnlyMedia={isEdit ? editAnuncio?.midias ?? [] : undefined}
         />
       )
     }
@@ -464,6 +626,7 @@ export default function AnuncioWizard() {
           previewReference={previewReference}
           state={state}
           hasVirtual={hasVirtual}
+          photoCount={isEdit ? editAnuncio?.midias.length ?? 0 : undefined}
         />
       )
     }
@@ -472,6 +635,7 @@ export default function AnuncioWizard() {
       <WizardStepPremium
         premiumChoice={state.premiumChoice}
         hasExistingKyc={hasExistingKyc}
+        readOnly={isEdit}
         onSelect={(choice) => updateForm({ premiumChoice: choice })}
       />
     )
@@ -494,18 +658,47 @@ export default function AnuncioWizard() {
     )
   }
 
+  if (isEdit && editLoading) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-20 text-sm text-zinc-500">
+        Carregando anúncio...
+      </div>
+    )
+  }
+
+  if (isEdit && (editError || !editAnuncio)) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-20 text-center">
+        <h1 className="text-2xl font-semibold text-zinc-950">Não foi possível editar</h1>
+        <p role="alert" className="mt-2 text-zinc-600">
+          {editError || 'Anúncio não encontrado.'}
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-6"
+          onClick={() => router.push('/meus-anuncios')}
+        >
+          Voltar para Meus anúncios
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-[#f7f4ef] text-zinc-950">
-      <WizardKycModal
-        publishGuard={publishGuard}
-        hasExistingKyc={hasExistingKyc}
-        publishing={publishing}
-        kyc={kyc}
-        onClose={() => setPublishGuard(closedPublishGuard)}
-        onConfirm={handlePublishGuardAction}
-        onPatchKyc={(payload: Partial<WizardKycState>) => updateKyc(payload)}
-        onSetDocumentos={setDocumentos}
-      />
+      {!isEdit ? (
+        <WizardKycModal
+          publishGuard={publishGuard}
+          hasExistingKyc={hasExistingKyc}
+          publishing={publishing}
+          kyc={kyc}
+          onClose={() => setPublishGuard(closedPublishGuard)}
+          onConfirm={handlePublishGuardAction}
+          onPatchKyc={(payload: Partial<WizardKycState>) => updateKyc(payload)}
+          onSetDocumentos={setDocumentos}
+        />
+      ) : null}
 
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8 lg:py-8">
         <section
@@ -516,11 +709,15 @@ export default function AnuncioWizard() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h1 className="text-2xl font-semibold tracking-normal text-zinc-950 sm:text-3xl">
-                  Publicar anúncio
+                  {isEdit ? 'Editar anúncio' : 'Publicar anúncio'}
                 </h1>
               </div>
               <div className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600">
-                {lastSavedAt ? `Salvo local ${lastSavedAt}` : 'Salvo neste dispositivo'}
+                {isEdit
+                  ? 'Dados carregados do anúncio'
+                  : lastSavedAt
+                    ? `Salvo local ${lastSavedAt}`
+                    : 'Salvo neste dispositivo'}
               </div>
             </div>
 
@@ -598,7 +795,13 @@ export default function AnuncioWizard() {
 
               {currentStep.id === 'premium' ? (
                 <Button type="button" onClick={requestPublish} disabled={publishing}>
-                  {publishing ? 'Publicando…' : 'Continuar'}
+                  {publishing
+                    ? isEdit
+                      ? 'Salvando…'
+                      : 'Publicando…'
+                    : isEdit
+                      ? 'Salvar alterações'
+                      : 'Continuar'}
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (

@@ -11,10 +11,12 @@ export function WizardStepServicos({
   state,
   onToggle,
   onPatch,
+  mode = 'create',
 }: {
   state: WizardFormState
   onToggle: (field: 'locaisAtendimento' | 'servicos', value: string) => void
   onPatch: (payload: Partial<WizardFormState>) => void
+  mode?: 'create' | 'edit'
 }) {
   return (
     <StepPanel>
@@ -31,7 +33,7 @@ export function WizardStepServicos({
           />
         </Field>
 
-        <Field label="Horário">
+        {mode === 'create' ? <Field label="Horário">
           <select
             className={selectClassName()}
             value={state.horario}
@@ -44,7 +46,7 @@ export function WizardStepServicos({
               </option>
             ))}
           </select>
-        </Field>
+        </Field> : null}
       </div>
 
       <ChoiceGroup
@@ -72,13 +74,23 @@ export function WizardStepServicos({
         />
       </Field>
 
-      <Field label="Link de conteúdo">
+      {mode === 'edit' ? <Field label="WhatsApp">
+        <Input
+          type="tel"
+          value={state.whatsapp}
+          onChange={(event) => onPatch({ whatsapp: event.target.value })}
+          placeholder="+55 62 99999-9999"
+          autoComplete="tel"
+        />
+      </Field> : null}
+
+      {mode === 'create' ? <Field label="Link de conteúdo">
         <Input
           value={state.linkConteudo}
           onChange={(event) => onPatch({ linkConteudo: event.target.value })}
           placeholder="https://"
         />
-      </Field>
+      </Field> : null}
     </StepPanel>
   )
 }

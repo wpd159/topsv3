@@ -52,6 +52,7 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
       servicos: asStringArray(form?.servicos),
       descricao: asString(form?.descricao),
       linkConteudo: asString(form?.linkConteudo),
+      whatsapp: asString(form?.whatsapp),
       estadoId: asString(form?.estadoId),
       cidadeId: asString(form?.cidadeId),
       bairroId: asString(form?.bairroId),

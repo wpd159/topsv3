@@ -24,6 +24,7 @@ export function WizardStepLocalizacao({
   onCidade,
   onBairro,
   onReferencia,
+  showReference = true,
 }: {
   estadoId: string
   cidadeId: string
@@ -42,6 +43,7 @@ export function WizardStepLocalizacao({
   onCidade: (value: string) => void
   onBairro: (value: string) => void
   onReferencia: (value: string) => void
+  showReference?: boolean
 }) {
   return (
     <StepPanel>
@@ -113,7 +115,7 @@ export function WizardStepLocalizacao({
             </Field>
           </div>
 
-          <Field label="Referência conhecida">
+          {showReference ? <Field label="Referência conhecida">
             <Input
               value={pontoReferenciaTexto}
               onChange={(event) => onReferencia(event.target.value)}
@@ -121,7 +123,7 @@ export function WizardStepLocalizacao({
               maxLength={120}
               className="h-12 rounded-xl border-zinc-200 text-base"
             />
-          </Field>
+          </Field> : null}
         </div>
 
         <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">

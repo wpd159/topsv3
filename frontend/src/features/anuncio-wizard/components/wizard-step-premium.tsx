@@ -8,11 +8,33 @@ export function WizardStepPremium({
   premiumChoice,
   hasExistingKyc,
   onSelect,
+  readOnly = false,
 }: {
   premiumChoice: 'gratis' | 'destaque'
   hasExistingKyc: boolean
   onSelect: (choice: 'gratis' | 'destaque') => void
+  readOnly?: boolean
 }) {
+  if (readOnly) {
+    return (
+      <StepPanel>
+        <div className="rounded-[24px] border border-zinc-200 bg-zinc-50 px-5 py-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-zinc-700 shadow-sm">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-zinc-950">Benefícios preservados</p>
+              <p className="mt-1 text-sm leading-6 text-zinc-600">
+                A edição não altera plano, créditos, destaque ou benefícios do anúncio.
+              </p>
+            </div>
+          </div>
+        </div>
+      </StepPanel>
+    )
+  }
+
   return (
     <StepPanel>
       <div

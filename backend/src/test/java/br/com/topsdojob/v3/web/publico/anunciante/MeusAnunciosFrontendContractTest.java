@@ -32,8 +32,10 @@ class MeusAnunciosFrontendContractTest {
                 Path.of("components", "anuncios", "meu-anuncio-detalhe-view.tsx")));
         String edicao = Files.readString(FRONTEND.resolve(
                 Path.of("app", "(private-routes)", "meus-anuncios", "[slug]", "editar", "page.tsx")));
-        String editor = Files.readString(FRONTEND.resolve(
-                Path.of("components", "anuncios", "meu-anuncio-editor.tsx")));
+        String wizard = Files.readString(FRONTEND.resolve(
+                Path.of("features", "anuncio-wizard", "anuncio-wizard.tsx")));
+        String criacao = Files.readString(FRONTEND.resolve(
+                Path.of("app", "(private-routes)", "anunciar", "wizard", "page.tsx")));
         String card = Files.readString(FRONTEND.resolve(
                 Path.of("components", "anuncios", "meu-anuncio-card.tsx")));
 
@@ -49,13 +51,21 @@ class MeusAnunciosFrontendContractTest {
                 .contains("error.status === 404")
                 .doesNotContain("fetch(");
         assertThat(edicao)
-                .contains("MeuAnuncioEditor")
-                .doesNotContain("EditarAnuncioWizard");
-        assertThat(editor)
+                .contains("AnuncioWizard")
+                .contains("mode=\"edit\"")
+                .contains("slug={slug}")
+                .doesNotContain("MeuAnuncioEditor");
+        assertThat(criacao)
+                .contains("<AnuncioWizard />")
+                .doesNotContain("mode=\"edit\"");
+        assertThat(wizard)
                 .contains("buscarMeuAnuncio")
                 .contains("atualizarMeuAnuncio")
-                .contains("disabled={salvando}")
-                .contains("midia.urlPublica || '/icone-sem-foto.png'")
+                .contains("mode?: 'create' | 'edit'")
+                .contains("persistCache: !isEdit")
+                .contains("readOnlyMedia={isEdit")
+                .contains("readOnly={isEdit}")
+                .contains("disabled={publishing}")
                 .doesNotContain("fetch(")
                 .doesNotContain("document.body.style.overflow");
         assertThat(detalhe)
@@ -71,6 +81,8 @@ class MeusAnunciosFrontendContractTest {
 
     @Test
     void editorHerdadoAtivoFoiRemovidoSemAfetarContratoDeTiposFuturo() {
+        assertThat(FRONTEND.resolve(Path.of("components", "anuncios", "meu-anuncio-editor.tsx")))
+                .doesNotExist();
         assertThat(FRONTEND.resolve(Path.of("features", "anuncio-wizard", "editar-anuncio-wizard.tsx")))
                 .doesNotExist();
         assertThat(FRONTEND.resolve(Path.of("hooks", "useAnuncioEdit.ts")))
