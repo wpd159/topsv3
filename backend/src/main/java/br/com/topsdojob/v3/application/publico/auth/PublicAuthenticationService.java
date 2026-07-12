@@ -81,6 +81,7 @@ public class PublicAuthenticationService {
                 data.username(),
                 data.email(),
                 data.telefone(),
+                data.dataNascimento(),
                 now);
         CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
                 UUID.randomUUID(),
@@ -232,22 +233,26 @@ public class PublicAuthenticationService {
         if (!PHONE_PATTERN.matcher(telefone).matches()) {
             throw badRequest("Telefone invalido.");
         }
-        validateBirthDate(request.dataNascimento());
+        LocalDate dataNascimento = validateBirthDate(request.dataNascimento());
         validateCredential(request.senha(), request.confirmarSenha());
         if (!Boolean.TRUE.equals(request.acceptedTermsOfUse())
                 || !Boolean.TRUE.equals(request.acceptedPrivacyPolicy())) {
             throw badRequest("Aceite dos termos de uso e da politica de privacidade e obrigatorio.");
         }
-        return new RegistrationData(username, email, telefone, request.senha());
+        return new RegistrationData(username, email, telefone, dataNascimento, request.senha());
     }
 
-    private void validateBirthDate(String value) {
+    private LocalDate validateBirthDate(String value) {
+        if (isBlank(value)) {
+            throw badRequest("Data de nascimento invalida.");
+        }
         try {
             LocalDate birthDate = LocalDate.parse(value);
             LocalDate today = LocalDate.now(ZoneOffset.UTC);
             if (birthDate.isAfter(today) || Period.between(birthDate, today).getYears() < 18) {
                 throw badRequest("Cadastro permitido apenas para maiores de 18 anos.");
             }
+            return birthDate;
         } catch (DateTimeParseException exception) {
             throw badRequest("Data de nascimento invalida.");
         }
@@ -322,6 +327,11 @@ public class PublicAuthenticationService {
         return value == null || value.trim().isEmpty();
     }
 
-    private record RegistrationData(String username, String email, String telefone, String senha) {
+    private record RegistrationData(
+            String username,
+            String email,
+            String telefone,
+            LocalDate dataNascimento,
+            String senha) {
     }
 }

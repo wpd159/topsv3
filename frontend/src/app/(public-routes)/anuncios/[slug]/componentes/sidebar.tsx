@@ -98,7 +98,10 @@ export default function Sidebar({ anuncio }: SidebarProps) {
       <div className="public-contact-cta min-w-0 space-y-6 lg:sticky lg:top-24">
         <div className="rounded-xl border border-pink-100 bg-white p-5 shadow-[0_0_20px_rgba(252,30,173,0.10)]">
           <div className="mb-4 space-y-1">
-            <h2 className="text-lg font-semibold text-gray-900">{usernameLabel}</h2>
+            <h2 className="flex flex-wrap items-baseline gap-x-1 text-lg font-semibold text-gray-900">
+              <span>{usernameLabel}</span>
+              {anuncio.idade != null ? <span>&middot; {anuncio.idade} anos</span> : null}
+            </h2>
             {anunciaDesde ? (
               <p className="flex items-center gap-1.5 text-xs text-gray-500">
                 <CalendarDaysIcon className="h-4 w-4 text-pink-400" />
@@ -107,7 +110,6 @@ export default function Sidebar({ anuncio }: SidebarProps) {
             ) : null}
           </div>
           <div className="space-y-1 text-sm text-gray-600">
-            {anuncio.idade != null ? <p className="font-medium text-gray-700">{anuncio.idade} anos</p> : null}
             <p>{categoria || 'Não informado'}</p>
             <p>{localizacaoLabel}</p>
             <p className="mt-2 font-semibold text-pink-600">{anuncio.valor}</p>

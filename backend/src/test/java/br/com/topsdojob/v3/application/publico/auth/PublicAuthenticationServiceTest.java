@@ -78,7 +78,9 @@ class PublicAuthenticationServiceTest {
         verify(credencialRepository).save(credentialCaptor.capture());
         assertThat(credentialCaptor.getValue().getSenhaHash()).isEqualTo(SYNTHETIC_HASH);
         assertThat(credentialCaptor.getValue().getSenhaHash()).doesNotContain(SYNTHETIC_CREDENTIAL);
-        verify(usuarioRepository).saveAndFlush(any(UsuarioEntity.class));
+        ArgumentCaptor<UsuarioEntity> usuarioCaptor = ArgumentCaptor.forClass(UsuarioEntity.class);
+        verify(usuarioRepository).saveAndFlush(usuarioCaptor.capture());
+        assertThat(usuarioCaptor.getValue().getDataNascimento()).isEqualTo(java.time.LocalDate.of(1990, 1, 1));
         verify(papelRepository).save(any());
     }
 
@@ -210,6 +212,7 @@ class PublicAuthenticationServiceTest {
                 "Outro Perfil",
                 "outro@example.invalid",
                 "+5562999990000",
+                null,
                 OffsetDateTime.now(ZoneOffset.UTC));
         when(usuarioRepository.findById(USER_ID)).thenReturn(Optional.of(usuario));
         when(usuarioRepository.findByNomeIgnoreCase("Outro Perfil")).thenReturn(Optional.of(outro));
@@ -266,6 +269,7 @@ class PublicAuthenticationServiceTest {
                 "Perfil Sintetico",
                 "perfil@example.invalid",
                 "+5562999999999",
+                null,
                 OffsetDateTime.now(ZoneOffset.UTC));
     }
 

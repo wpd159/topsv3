@@ -8,9 +8,10 @@ public record PremiumPublicoFlagsDto(
         boolean premiumAtivo,
         boolean possuiStories,
         boolean possuiMidiaExtra,
+        boolean idadeOculta,
         List<String> beneficiosPublicos) {
 
     public static PremiumPublicoFlagsDto vazio() {
-        return new PremiumPublicoFlagsDto(false, false, false, false, false, List.of());
+        return new PremiumPublicoFlagsDto(false, false, false, false, false, false, List.of());
     }
 }

@@ -204,6 +204,7 @@ class MeusAnunciosConsultaServiceTest {
                 "Perfil Teste",
                 "perfil.teste@example.invalid",
                 "+5562999999999",
+                null,
                 AGORA);
         when(usuarioRepository.findById(USUARIO_ID)).thenReturn(Optional.of(usuario));
     }

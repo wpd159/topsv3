@@ -290,6 +290,9 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - A V020 preserva os locais `A_COMBINAR`, `HOTEL_MOTEL` e `MEU_LOCAL` e os servicos canonicos do anuncio em colecoes estruturadas.
 - `Com local` e `Faz anal` nao podem ser inferidos: o backend os calcula somente por `MEU_LOCAL` e `ANAL`, respectivamente.
 - Neon visual deve permanecer discreto, sem animacao continua, sem alterar a paleta publica e sem reintroduzir elemento flutuante de retorno ao topo.
+- A V021 e necessaria porque nao havia tabela/entidade V3 para categorias da Home nem persistencia da data de nascimento ja exigida no cadastro. O catalogo publico de categorias passa a ter uma unica fonte backend.
+- `OCULTAR_IDADE` reutiliza a ativacao Premium existente e sua politica temporal. Somente ativacao vigente com compra de valor positivo ou consumo positivo de creditos oculta a idade; cortesia, admin, ativacao gratuita ou expirada nao ocultam.
+- O backend nunca retorna `dataNascimento` no catalogo publico e o frontend nao calcula idade nem decide ocultacao.
 
 ## Banco e migrations
 

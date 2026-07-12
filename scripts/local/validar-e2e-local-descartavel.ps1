@@ -253,14 +253,14 @@ function Apply-Migrations {
   $mkdir = Invoke-Native -FilePath $dockerExe -Arguments @("exec", $pgName, "mkdir", "-p", $targetDir)
   if ($mkdir.ExitCode -ne 0) { throw "Falha ao preparar pasta de migrations no container." }
   $files = @(Get-ChildItem -LiteralPath $migrationDir -File -Filter "V*.sql" | Sort-Object Name)
-  if ($files.Count -ne 20) { throw "Quantidade esperada de migrations V001-V020 nao encontrada: $($files.Count)" }
+  if ($files.Count -ne 21) { throw "Quantidade esperada de migrations V001-V021 nao encontrada: $($files.Count)" }
   foreach ($file in $files) {
     Copy-FileToContainer -Source $file.FullName -TargetDir $targetDir
     Invoke-PsqlFile -ContainerPath "$targetDir/$($file.Name)"
     $appliedMigrations.Add($file.Name)
   }
   $script:migrationsApplied = $true
-  Add-Step "Migrations V001-V020 aplicadas via psql ordenado no PostgreSQL descartavel."
+  Add-Step "Migrations V001-V021 aplicadas via psql ordenado no PostgreSQL descartavel."
 }
 
 function Apply-SyntheticData {
@@ -357,7 +357,7 @@ function Write-FixtureSyntheticSql {
 
   $lines.Add("-- Overlay sintetico gerado localmente a partir de v3-dados-sinteticos.json.")
   $lines.Add("-- Nao contem dado real e nao deve ser usado fora de E2E descartavel.")
-  $lines.Add("INSERT INTO usuario (id, nome, email_normalizado, telefone_normalizado, status, tipo_conta, criado_em, atualizado_em, versao) VALUES ('$usuarioId', 'Usuario Fixture Sintetica Bloco 31', NULL, NULL, 'ATIVO', 'ANUNCIANTE', now(), now(), 0) ON CONFLICT (id) DO NOTHING;")
+  $lines.Add("INSERT INTO usuario (id, nome, email_normalizado, telefone_normalizado, data_nascimento, status, tipo_conta, criado_em, atualizado_em, versao) VALUES ('$usuarioId', 'Perfil de demonstracao', NULL, NULL, DATE '1990-06-15', 'ATIVO', 'ANUNCIANTE', now(), now(), 0) ON CONFLICT (id) DO NOTHING;")
 
   $cidades = @($data.cidades | Where-Object { $_.controle -ne $true -and $_.uf -ne "ZZ" })
   $ufs = @($cidades | ForEach-Object { $_.uf } | Sort-Object -Unique)

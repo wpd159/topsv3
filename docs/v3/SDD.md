@@ -797,3 +797,11 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - O selo `Com local` deriva exclusivamente da presenca de `MEU_LOCAL`; `Faz anal` deriva exclusivamente de `ANAL`. E proibido inferir esses selos de endereco, descricao, categoria ou qualquer texto livre.
 - O rodape duplicado orfao e a rotacao automatica de perfis relacionados foram removidos. O link de retorno ao topo agora fica no fluxo normal do rodape.
 - A V020 foi necessaria porque o modelo vigente ja possui essas colecoes, mas o schema V3 limpo ainda nao as reconstruia. Os contratos publicos existentes foram ampliados sem endpoint paralelo.
+
+## 37. Desbloqueios do catalogo publico no HML
+
+- A V021 cria a fonte canonica `categoria_home`, pois a auditoria confirmou que nenhuma entidade ou tabela V3 equivalente existia. `GET /api/public/categorias-home` retorna somente categorias ativas, ordenadas, com caminho de imagem publico relativo e sem metadado interno de storage.
+- Home e filtros usam exclusivamente `frontend/src/lib/public-catalog-api.ts`; textos, imagens, ordem, status e destinos deixam de ter uma segunda fonte estatica no frontend.
+- A V021 tambem persiste `usuario.data_nascimento`, anteriormente apenas validada e descartada no cadastro. A data permanece privada e o DTO de anuncio recebe somente `idade` e `idadeOculta`.
+- A idade e calculada no backend pela data confiavel e pela data UTC atual. Ela aparece por padrao e so e omitida quando `OCULTAR_IDADE` esta vigente e possui pagamento comprovado por compra ou credito; expiracao faz a idade reaparecer automaticamente.
+- O fixture unico `HmlStoriesFixtureService` reconcilia a data de nascimento e os conjuntos estruturados existentes: anuncio A possui `MEU_LOCAL` e `ANAL`; anuncio B nao possui nenhum dos dois. Reexecucao preserva usuario, anuncios, midias, Story, locais e servicos sem duplicacao.

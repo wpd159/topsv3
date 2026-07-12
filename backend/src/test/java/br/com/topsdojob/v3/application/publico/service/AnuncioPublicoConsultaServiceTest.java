@@ -87,6 +87,12 @@ class AnuncioPublicoConsultaServiceTest {
         when(primeiraPublicacao.getPrimeiraPublicacaoEm()).thenReturn(anunciaDesde);
         when(anuncioRepository.findPrimeiraPublicacaoByUsuarioIdIn(List.of(usuarioId)))
                 .thenReturn(List.of(primeiraPublicacao));
+        PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
+        when(premiumMapper.flags(anuncio)).thenReturn(
+                br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto.vazio());
+        IdadeAnunciantePublicaService idadeAnuncianteService = mock(IdadeAnunciantePublicaService.class);
+        when(idadeAnuncianteService.resolver(usuarioId, false))
+                .thenReturn(new IdadeAnunciantePublicaService.Resultado("perfil-publico", 36, false));
 
         AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
                 anuncioRepository,
@@ -97,12 +103,13 @@ class AnuncioPublicoConsultaServiceTest {
                 new MidiaPublicaMapper(new MidiaPublicaUrlService()),
                 new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
                 mock(IdadePublicaService.class),
-                mock(PremiumPublicoMapper.class),
+                premiumMapper,
                 estadoRepository,
                 cidadeRepository,
                 mock(BairroRepository.class),
                 mock(PoliticaContatoPublicoService.class),
-                mock(AnuncioSeoIndexabilidadePolicy.class));
+                mock(AnuncioSeoIndexabilidadePolicy.class),
+                idadeAnuncianteService);
 
         var detalhe = service.buscarPorSlug("slug-publico");
 
@@ -114,6 +121,9 @@ class AnuncioPublicoConsultaServiceTest {
         assertThat(detalhe.fazAnal()).isTrue();
         assertThat(detalhe.locaisAtendimento()).containsExactlyInAnyOrder("A_COMBINAR", "MEU_LOCAL");
         assertThat(detalhe.servicos()).containsExactlyInAnyOrder("ANAL", "ORAL");
+        assertThat(detalhe.username()).isEqualTo("perfil-publico");
+        assertThat(detalhe.idade()).isEqualTo(36);
+        assertThat(detalhe.idadeOculta()).isFalse();
     }
 
     @Test
@@ -139,7 +149,8 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(CidadeRepository.class),
                 mock(BairroRepository.class),
                 mock(PoliticaContatoPublicoService.class),
-                mock(AnuncioSeoIndexabilidadePolicy.class));
+                mock(AnuncioSeoIndexabilidadePolicy.class),
+                mock(IdadeAnunciantePublicaService.class));
 
         assertThatThrownBy(() -> service.buscarPorSlug("slug-local"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->

@@ -629,6 +629,23 @@ paths:
                 $ref: "#/components/schemas/DescobertaLocalidadesPublica"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/categorias-home:
+    get:
+      summary: Categorias publicas ativas da Home
+      operationId: getPublicCategoriasHome
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: catalogo canonico ordenado de categorias ativas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoriaHomePublica"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/localidades/{uf}/{cidade}:
     get:
       summary: Agregado real de cidade para navegacao e SEO
@@ -4980,6 +4997,7 @@ components:
         - id
         - slug
         - titulo
+        - idadeOculta
         - midias
         - destaque
         - topo
@@ -5013,6 +5031,20 @@ components:
           type:
             - string
             - "null"
+        username:
+          type:
+            - string
+            - "null"
+          description: Identificador publico da anunciante; nao contem e-mail ou contato privado.
+        idade:
+          type:
+            - integer
+            - "null"
+          minimum: 18
+          description: Idade calculada pelo backend; nula quando ausente ou ocultada por beneficio pago ativo.
+        idadeOculta:
+          type: boolean
+          description: Decisao do backend baseada exclusivamente no beneficio pago OCULTAR_IDADE vigente.
         localizacao:
           $ref: "#/components/schemas/LocalizacaoPublica"
         midias:
@@ -5074,6 +5106,42 @@ components:
           format: date-time
         seo:
           $ref: "#/components/schemas/SeoRotaPublica"
+    CategoriaHomePublica:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - identificador
+        - titulo
+        - descricao
+        - destino
+        - imagemPublicaUrl
+        - ordem
+        - ativo
+      properties:
+        id:
+          type: string
+          format: uuid
+        identificador:
+          type: string
+          pattern: "^[A-Z0-9_]+$"
+        titulo:
+          type: string
+        descricao:
+          type: string
+        destino:
+          type: string
+          pattern: "^/"
+        imagemPublicaUrl:
+          type: string
+          pattern: "^/"
+          description: Caminho publico relativo; nunca storage key, bucket ou URL privada.
+        ordem:
+          type: integer
+          minimum: 0
+        ativo:
+          type: boolean
+          const: true
     AnuncioCardPublico:
       type: object
       additionalProperties: false

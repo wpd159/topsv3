@@ -180,6 +180,9 @@ try {
   if (
     $atendimentoProbe.comLocal -ne $true -or
     $atendimentoProbe.fazAnal -ne $true -or
+    $atendimentoProbe.idade -lt 18 -or
+    $atendimentoProbe.idadeOculta -ne $false -or
+    $atendimentoProbe.PSObject.Properties.Name -contains "dataNascimento" -or
     $locaisProbe -notcontains "MEU_LOCAL" -or
     $servicosProbe -notcontains "ANAL"
   ) {
@@ -195,6 +198,19 @@ try {
   if ($cardProbe.Count -ne 1 -or $cardProbe[0].comLocal -ne $true -or $cardProbe[0].fazAnal -ne $true) {
     Write-Host "VALIDATION_RESULT=FALHA_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
     Write-Host "Motivo: listagem publica nao retornou os selos estruturados MEU_LOCAL/ANAL."
+    exit 1
+  }
+  $categoriasProbe = @(Invoke-RestMethod `
+    -Uri "$safeBackendUrl/api/public/categorias-home" `
+    -Method Get `
+    -TimeoutSec 10)
+  if (
+    $categoriasProbe.Count -lt 1 -or
+    @($categoriasProbe | Where-Object { $_.ativo -ne $true }).Count -gt 0 -or
+    @($categoriasProbe | Where-Object { $_.identificador -eq "ENCONTROS_CASUAIS" }).Count -gt 0
+  ) {
+    Write-Host "VALIDATION_RESULT=FALHA_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
+    Write-Host "Motivo: contrato canonico de categorias nao retornou somente itens ativos."
     exit 1
   }
 } catch {
@@ -512,6 +528,8 @@ function pageMetricsScript() {
       hasFazAnalBadge: /\\bFaz anal\\b/i.test(bodyText),
       hasMeuLocalChip: /\\bMeu local\\b/i.test(bodyText),
       hasAnalServiceChip: /\\bAnal\\b/i.test(bodyText),
+      ageHeaderText: document.querySelector(".public-contact-cta h2")?.textContent?.trim() || "",
+      categoryLinksCount: document.querySelectorAll('a[href*="/anuncios?categoria="]').length,
       technicalText: technicalViolations.length > 0,
       technicalViolations,
       forbiddenRoutes: links.filter((href) => /^\\/anuncio\\//i.test(href) || /^\\/perfil\\//i.test(href) || /^\\/acompanhante\\//i.test(href) || /^\\/ads\\//i.test(href)),
@@ -559,6 +577,10 @@ function validate(route, viewport, metrics, status, textBody) {
     if (route.key === "anuncio-livre") {
       addCheck(checks, metrics.hasMeuLocalChip, "chip Meu local no detalhe", "MEU_LOCAL");
       addCheck(checks, metrics.hasAnalServiceChip, "chip Anal no detalhe", "ANAL");
+      addCheck(checks, /\b\d{2,3} anos\b/.test(metrics.ageHeaderText), "idade publica visivel junto ao usuario", metrics.ageHeaderText || "ausente");
+    }
+    if (route.key === "home") {
+      addCheck(checks, metrics.categoryLinksCount > 0, "categorias ativas renderizadas pela fonte V3", `links=${metrics.categoryLinksCount}`);
     }
     if (route.key.startsWith("anuncio-")) {
       const galleryMinWidth = viewport.width >= 768 ? 500 : Math.max(240, viewport.width - 64);

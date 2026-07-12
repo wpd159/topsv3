@@ -10,7 +10,9 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalcu
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import java.lang.reflect.Constructor;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -53,11 +55,43 @@ class PremiumPublicoMapperTest {
 
         assertThat(flags.premiumAtivo()).isFalse();
         assertThat(flags.beneficiosPublicos()).isEmpty();
+        assertThat(flags.idadeOculta()).isFalse();
+    }
+
+    @Test
+    void somenteOcultarIdadePagoAtivoOcultaIdade() {
+        AnuncioEntity anuncio = anuncio();
+        when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
+                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.COMPRA),
+                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
+                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.CORTESIA)));
+
+        PremiumPublicoFlagsDto flags = mapper.flags(anuncio);
+
+        assertThat(flags.idadeOculta()).isTrue();
+        assertThat(flags.beneficiosPublicos()).isEmpty();
+    }
+
+    @Test
+    void ocultarIdadeExpiradoOuNaoPagoNaoOcultaIdade() {
+        AnuncioEntity anuncio = anuncio();
+        when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
+                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
+                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.ADMIN)));
+
+        assertThat(mapper.flags(anuncio).idadeOculta()).isFalse();
     }
 
     private PremiumBeneficioCalculado calculado(String codigo, PremiumBeneficioStatusCalculado status) {
+        return calculado(codigo, status, OrigemBeneficio.COMPRA);
+    }
+
+    private PremiumBeneficioCalculado calculado(
+            String codigo,
+            PremiumBeneficioStatusCalculado status,
+            OrigemBeneficio origem) {
         return new PremiumBeneficioCalculado(
-                ativacao(),
+                ativacao(origem),
                 beneficio(codigo),
                 null,
                 status,
@@ -72,9 +106,12 @@ class PremiumPublicoMapperTest {
         return entity;
     }
 
-    private AtivacaoBeneficioEntity ativacao() {
+    private AtivacaoBeneficioEntity ativacao(OrigemBeneficio origem) {
         AtivacaoBeneficioEntity entity = instantiate(AtivacaoBeneficioEntity.class);
         ReflectionTestUtils.setField(entity, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(entity, "origem", origem);
+        ReflectionTestUtils.setField(entity, "precoSnapshot", origem == OrigemBeneficio.COMPRA ? BigDecimal.TEN : null);
+        ReflectionTestUtils.setField(entity, "custoCreditosSnapshot", origem == OrigemBeneficio.CREDITO ? 10 : 0);
         return entity;
     }
 

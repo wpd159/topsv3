@@ -3,22 +3,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { listarCategoriasHomePublicas } from '@/lib/public-catalog-api'
 
-const CATEGORIAS = [
-  { id: 'TODOS', nome: 'Todos' },
-  { id: 'ACOMPANHANTE_FEMININA', nome: 'Acompanhante feminina' },
-  { id: 'ACOMPANHANTE_MASCULINO', nome: 'Acompanhante masculino' },
-  { id: 'MASSAGENS', nome: 'Massagens' },
-  { id: 'TRANSEX_TRAVESTIS', nome: 'Transex & Travestis' },
-  { id: 'VENDA_DE_CONTEUDO', nome: 'Sexo Virtual' },
-]
-
-type CategoriaHome = {
-  categoriaEnum?: string
-  ativo?: boolean
-}
-
-const DEFAULT_DISABLED_CATEGORIES = new Set(['ENCONTROS_CASUAIS'])
+const TODAS = { id: 'TODOS', nome: 'Todos' }
 
 export default function FiltrosAnuncios({
   categoriaAtual,
@@ -27,29 +14,21 @@ export default function FiltrosAnuncios({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [categoriasAtivas, setCategoriasAtivas] = useState<Set<string> | null>(null)
+  const [categoriasAtivas, setCategoriasAtivas] = useState<Array<{ id: string; nome: string }>>([])
 
   useEffect(() => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '')
-    if (!apiBase) return
-
     let cancelled = false
 
-    fetch(`${apiBase}/categorias-home`, { cache: 'no-store' })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !Array.isArray(data)) return
-
-        setCategoriasAtivas(
-          new Set(
-            data
-              .filter((c: CategoriaHome) => c?.ativo !== false && c?.categoriaEnum)
-              .map((c: CategoriaHome) => c.categoriaEnum as string)
-          )
-        )
+    listarCategoriasHomePublicas()
+      .then((categorias) => {
+        if (cancelled) return
+        setCategoriasAtivas(categorias.map((categoria) => ({
+          id: categoria.identificador,
+          nome: categoria.titulo,
+        })))
       })
       .catch(() => {
-        setCategoriasAtivas(null)
+        setCategoriasAtivas([])
       })
 
     return () => {
@@ -58,12 +37,7 @@ export default function FiltrosAnuncios({
   }, [])
 
   const categoriasVisiveis = useMemo(
-    () =>
-      CATEGORIAS.filter((c) => {
-        if (c.id === 'TODOS') return true
-        if (categoriasAtivas) return categoriasAtivas.has(c.id)
-        return !DEFAULT_DISABLED_CATEGORIES.has(c.id)
-      }),
+    () => [TODAS, ...categoriasAtivas],
     [categoriasAtivas]
   )
 

@@ -9,6 +9,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -30,6 +31,9 @@ public class UsuarioEntity {
 
   @Column(name = "telefone_normalizado")
   private String telefoneNormalizado;
+
+  @Column(name = "data_nascimento")
+  private LocalDate dataNascimento;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status")
@@ -72,6 +76,10 @@ public class UsuarioEntity {
 
   public String getTelefoneNormalizado() {
     return telefoneNormalizado;
+  }
+
+  public LocalDate getDataNascimento() {
+    return dataNascimento;
   }
 
   public StatusUsuario getStatus() {
@@ -142,12 +150,14 @@ public class UsuarioEntity {
       String nome,
       String emailNormalizado,
       String telefoneNormalizado,
+      LocalDate dataNascimento,
       OffsetDateTime criadoEm) {
     UsuarioEntity entity = new UsuarioEntity();
     entity.id = id;
     entity.nome = nome;
     entity.emailNormalizado = emailNormalizado;
     entity.telefoneNormalizado = telefoneNormalizado;
+    entity.dataNascimento = dataNascimento;
     entity.status = StatusUsuario.ATIVO;
     entity.tipoConta = TipoContaUsuario.ANUNCIANTE;
     entity.emailVerificadoEm = null;
@@ -157,6 +167,13 @@ public class UsuarioEntity {
     entity.desativadoEm = null;
     entity.versao = 0;
     return entity;
+  }
+
+  public void sincronizarDataNascimentoHomologacao(
+      LocalDate dataNascimento,
+      OffsetDateTime atualizadoEm) {
+    this.dataNascimento = dataNascimento;
+    this.atualizadoEm = atualizadoEm;
   }
 
   public static UsuarioEntity criarStaffHomologacao(

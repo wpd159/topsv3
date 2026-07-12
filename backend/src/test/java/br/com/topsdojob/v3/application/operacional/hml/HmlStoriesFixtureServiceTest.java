@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
+import br.com.topsdojob.v3.persistence.entity.conteudo.CategoriaHomeEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
@@ -22,12 +23,15 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
+import br.com.topsdojob.v3.persistence.repository.CategoriaHomeRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
@@ -52,6 +56,7 @@ class HmlStoriesFixtureServiceTest {
     private AnuncioRepository anuncioRepository;
     private EstadoRepository estadoRepository;
     private CidadeRepository cidadeRepository;
+    private CategoriaHomeRepository categoriaHomeRepository;
     private BairroRepository bairroRepository;
     private AnuncioLocalizacaoRepository localizacaoRepository;
     private ArquivoMidiaRepository arquivoRepository;
@@ -67,6 +72,7 @@ class HmlStoriesFixtureServiceTest {
         anuncioRepository = mock(AnuncioRepository.class);
         estadoRepository = mock(EstadoRepository.class);
         cidadeRepository = mock(CidadeRepository.class);
+        categoriaHomeRepository = mock(CategoriaHomeRepository.class);
         bairroRepository = mock(BairroRepository.class);
         localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
         arquivoRepository = mock(ArquivoMidiaRepository.class);
@@ -85,6 +91,7 @@ class HmlStoriesFixtureServiceTest {
 
         var result = service.provisionar("Runtime-Seguro-123!");
 
+        assertThat(result.categoriasCriadas()).isEqualTo(6);
         assertThat(result.localidadesCriadas()).isEqualTo(3);
         assertThat(result.localizacoesCriadas()).isEqualTo(3);
         assertThat(result.anunciosCriados()).isEqualTo(3);
@@ -94,6 +101,7 @@ class HmlStoriesFixtureServiceTest {
         verify(anuncioRepository, times(3)).save(any(AnuncioEntity.class));
         verify(estadoRepository).save(any());
         verify(cidadeRepository).save(any());
+        verify(categoriaHomeRepository, times(6)).save(any(CategoriaHomeEntity.class));
         verify(bairroRepository).save(any());
         verify(localizacaoRepository, times(3)).save(any(AnuncioLocalizacaoEntity.class));
         verify(arquivoRepository, times(12)).save(any(ArquivoMidiaEntity.class));
@@ -108,6 +116,24 @@ class HmlStoriesFixtureServiceTest {
         assertThat(anuncioCaptor.getAllValues())
                 .filteredOn(item -> item.getStatus() == StatusAnuncio.PAUSADO)
                 .hasSize(1);
+        assertThat(anuncioCaptor.getAllValues())
+                .filteredOn(item -> "fixture-stories-hml-a".equals(item.getSlug()))
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.getLocaisAtendimento()).contains(LocalAtendimentoAnuncio.MEU_LOCAL);
+                    assertThat(item.getServicos()).contains(ServicoAnuncio.ANAL);
+                });
+        assertThat(anuncioCaptor.getAllValues())
+                .filteredOn(item -> "fixture-stories-hml-b".equals(item.getSlug()))
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.getLocaisAtendimento()).doesNotContain(LocalAtendimentoAnuncio.MEU_LOCAL);
+                    assertThat(item.getServicos()).doesNotContain(ServicoAnuncio.ANAL);
+                });
+        ArgumentCaptor<UsuarioEntity> usuarioCaptor = ArgumentCaptor.forClass(UsuarioEntity.class);
+        verify(usuarioRepository).saveAndFlush(usuarioCaptor.capture());
+        assertThat(usuarioCaptor.getValue().getDataNascimento())
+                .isEqualTo(HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO);
 
         ArgumentCaptor<ArquivoMidiaEntity> arquivoCaptor = ArgumentCaptor.forClass(ArquivoMidiaEntity.class);
         verify(arquivoRepository, times(12)).save(arquivoCaptor.capture());
@@ -153,6 +179,7 @@ class HmlStoriesFixtureServiceTest {
                 "Usuario HML",
                 HmlStoriesFixtureService.USUARIO_EMAIL,
                 null,
+                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
                 agora);
         CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
                 UUID.randomUUID(), usuario.getId(), "hash-anterior", agora);
@@ -163,6 +190,8 @@ class HmlStoriesFixtureServiceTest {
         when(anuncioRepository.findById(any())).thenReturn(Optional.of(anuncioExistente));
         when(estadoRepository.existsById(any())).thenReturn(true);
         when(cidadeRepository.existsById(any())).thenReturn(true);
+        CategoriaHomeEntity categoriaExistente = mock(CategoriaHomeEntity.class);
+        when(categoriaHomeRepository.findById(any())).thenReturn(Optional.of(categoriaExistente));
         when(bairroRepository.existsById(any())).thenReturn(true);
         AnuncioLocalizacaoEntity localizacaoExistente = mock(AnuncioLocalizacaoEntity.class);
         when(localizacaoRepository.findByAnuncioId(any())).thenReturn(Optional.of(localizacaoExistente));
@@ -180,6 +209,7 @@ class HmlStoriesFixtureServiceTest {
 
         var result = service("homologacao").provisionar("Runtime-Novo-456!");
 
+        assertThat(result.categoriasCriadas()).isZero();
         assertThat(result.localidadesCriadas()).isZero();
         assertThat(result.localizacoesCriadas()).isZero();
         assertThat(result.anunciosCriados()).isZero();
@@ -189,6 +219,7 @@ class HmlStoriesFixtureServiceTest {
         verify(anuncioRepository, times(3)).save(anuncioExistente);
         verify(localizacaoRepository, times(3)).save(localizacaoExistente);
         verify(arquivoRepository, never()).save(any());
+        verify(categoriaHomeRepository, never()).save(any());
         verify(anuncioMidiaRepository, times(12)).save(midiaExistente);
         verify(anuncioMidiaRepository, never()).save(storyMidiaExistente);
         verify(storyRepository, never()).save(any());
@@ -248,6 +279,7 @@ class HmlStoriesFixtureServiceTest {
                 anuncioRepository,
                 estadoRepository,
                 cidadeRepository,
+                categoriaHomeRepository,
                 bairroRepository,
                 localizacaoRepository,
                 arquivoRepository,

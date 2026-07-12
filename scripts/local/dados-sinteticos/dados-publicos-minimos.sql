@@ -7,6 +7,7 @@ INSERT INTO usuario (
   nome,
   email_normalizado,
   telefone_normalizado,
+  data_nascimento,
   status,
   tipo_conta,
   criado_em,
@@ -17,6 +18,7 @@ INSERT INTO usuario (
   'Usuário de demonstração',
   NULL,
   NULL,
+  DATE '1990-06-15',
   'ATIVO',
   'ANUNCIANTE',
   now(),
@@ -24,11 +26,30 @@ INSERT INTO usuario (
   0
 ) ON CONFLICT (id) DO NOTHING;
 
+INSERT INTO categoria_home (
+  id,
+  categoria_enum,
+  nome,
+  descricao,
+  destino,
+  imagem_publica_url,
+  ordem,
+  ativo
+) VALUES
+  ('f2000000-0000-4000-8000-000000000001', 'ACOMPANHANTE_FEMININA', 'Acompanhante feminina', 'Encontre as melhores acompanhantes femininas.', '/anuncios?categoria=ACOMPANHANTE_FEMININA', '/cards/acompanhante-feminina.jpg', 1, true),
+  ('f2000000-0000-4000-8000-000000000002', 'VENDA_DE_CONTEUDO', 'Sexo Virtual', 'Videochamadas, conteúdo exclusivo e atendimento online.', '/anuncios?categoria=VENDA_DE_CONTEUDO', '/cards/casual.jpg', 2, true),
+  ('f2000000-0000-4000-8000-000000000003', 'ACOMPANHANTE_MASCULINO', 'Acompanhante masculino', 'Homens elegantes e discretos.', '/anuncios?categoria=ACOMPANHANTE_MASCULINO', '/cards/acompanhante-masculino.jpg', 3, true),
+  ('f2000000-0000-4000-8000-000000000004', 'TRANSEX_TRAVESTIS', 'Transex e Travestis', 'As mais desejadas transex e travestis.', '/anuncios?categoria=TRANSEX_TRAVESTIS', '/cards/acompanhante-trans.jpg', 4, true),
+  ('f2000000-0000-4000-8000-000000000005', 'MASSAGENS', 'Massagens', 'Massagistas sensuais e terapêuticas.', '/anuncios?categoria=MASSAGENS', '/cards/massagem.jpg', 5, true),
+  ('f2000000-0000-4000-8000-000000000006', 'ENCONTROS_CASUAIS', 'Casual e encontros', 'Encontros leves e espontâneos.', '/anuncios?categoria=ENCONTROS_CASUAIS', '/cards/casual.jpg', 6, false)
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO usuario (
   id,
   nome,
   email_normalizado,
   telefone_normalizado,
+  data_nascimento,
   status,
   tipo_conta,
   criado_em,
@@ -39,6 +60,7 @@ INSERT INTO usuario (
   'Usuário financeiro de demonstração',
   NULL,
   NULL,
+  DATE '1992-02-20',
   'ATIVO',
   'ANUNCIANTE',
   now(),

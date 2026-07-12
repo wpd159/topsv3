@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaSer
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -13,14 +14,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PremiumPublicoMapper {
 
-    private static final Set<String> CODIGOS_PUBLICOS = Set.of(
+    private static final String OCULTAR_IDADE = "OCULTAR_IDADE";
+    private static final Set<String> CODIGOS_PUBLICOS_VISIVEIS = Set.of(
             "DESTAQUE",
             "ANUNCIO_TOPO",
             "FOTOS_EXTRA",
             "VIDEO",
             "STORIES",
             "CARROSSEL");
+    private static final Set<String> CODIGOS_PUBLICOS = new LinkedHashSet<>();
     private static final Set<String> CODIGOS_MIDIA_EXTRA = Set.of("FOTOS_EXTRA", "VIDEO", "CARROSSEL");
+
+    static {
+        CODIGOS_PUBLICOS.addAll(CODIGOS_PUBLICOS_VISIVEIS);
+        CODIGOS_PUBLICOS.add(OCULTAR_IDADE);
+    }
 
     private final BeneficioAnuncioConsultaService beneficioService;
 
@@ -47,7 +55,12 @@ public class PremiumPublicoMapper {
                 true,
                 codigos.contains("STORIES"),
                 codigos.stream().anyMatch(CODIGOS_MIDIA_EXTRA::contains),
-                codigos.stream().map(this::rotuloPublico).distinct().toList());
+                calculados.stream().anyMatch(this::ocultaIdadeComBeneficioPago),
+                codigos.stream()
+                        .filter(CODIGOS_PUBLICOS_VISIVEIS::contains)
+                        .map(this::rotuloPublico)
+                        .distinct()
+                        .toList());
     }
 
     private boolean publicavel(PremiumBeneficioCalculado item) {
@@ -55,6 +68,22 @@ public class PremiumPublicoMapper {
                 && CODIGOS_PUBLICOS.contains(item.beneficio().getCodigo())
                 && (item.status() == PremiumBeneficioStatusCalculado.ATIVO
                 || item.status() == PremiumBeneficioStatusCalculado.VENCENDO);
+    }
+
+    private boolean ocultaIdadeComBeneficioPago(PremiumBeneficioCalculado item) {
+        if (item.beneficio() == null
+                || !OCULTAR_IDADE.equals(item.beneficio().getCodigo())
+                || item.ativacao() == null) {
+            return false;
+        }
+        OrigemBeneficio origem = item.ativacao().getOrigem();
+        if (origem == OrigemBeneficio.COMPRA) {
+            return item.ativacao().getPrecoSnapshot() != null
+                    && item.ativacao().getPrecoSnapshot().signum() > 0;
+        }
+        return origem == OrigemBeneficio.CREDITO
+                && item.ativacao().getCustoCreditosSnapshot() != null
+                && item.ativacao().getCustoCreditosSnapshot() > 0;
     }
 
     private String rotuloPublico(String codigo) {

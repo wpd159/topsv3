@@ -166,8 +166,10 @@ $idadeBody = (@{ dataNascimento = "1990-01-01"; declaracaoMaioridade = $true } |
 
 $checksHttp = @(
   @{ Nome = "descoberta de localidades"; Path = "/api/public/localidades"; Status = 200; Session = $null; DeveConter = "goiania"; NaoConter = "wa.me/" },
+  @{ Nome = "categorias ativas da home"; Path = "/api/public/categorias-home"; Status = 200; Session = $null; DeveConter = "ACOMPANHANTE_FEMININA"; NaoConter = "ENCONTROS_CASUAIS" },
   @{ Nome = "listagem estado GO"; Path = "/api/public/acompanhantes/go"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
   @{ Nome = "anuncio livre demo"; Path = "/api/public/anuncios/demo-goiania-livre-premium"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
+  @{ Nome = "idade publica sem nascimento"; Path = "/api/public/anuncios/demo-goiania-livre-premium"; Status = 200; Session = $null; DeveConter = '"idade"'; NaoConter = "dataNascimento" },
   @{ Nome = "cidade Goiania"; Path = "/api/public/acompanhantes/go/goiania"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },
   @{ Nome = "agregado cidade Goiania"; Path = "/api/public/localidades/go/goiania"; Status = 200; Session = $null; DeveConter = "setor-bueno"; NaoConter = "wa.me/" },
   @{ Nome = "bairro Setor Bueno"; Path = "/api/public/acompanhantes/go/goiania/setor-bueno"; Status = 200; Session = $null; DeveConter = "demo-goiania-livre-premium"; NaoConter = "wa.me/" },

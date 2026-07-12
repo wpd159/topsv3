@@ -47,6 +47,7 @@ public class AnuncioPublicoConsultaService {
     private final BairroRepository bairroRepository;
     private final PoliticaContatoPublicoService contatoService;
     private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
+    private final IdadeAnunciantePublicaService idadeAnuncianteService;
 
     public AnuncioPublicoConsultaService(
             AnuncioRepository anuncioRepository,
@@ -62,7 +63,8 @@ public class AnuncioPublicoConsultaService {
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
             PoliticaContatoPublicoService contatoService,
-            AnuncioSeoIndexabilidadePolicy indexabilidadePolicy) {
+            AnuncioSeoIndexabilidadePolicy indexabilidadePolicy,
+            IdadeAnunciantePublicaService idadeAnuncianteService) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -77,6 +79,7 @@ public class AnuncioPublicoConsultaService {
         this.bairroRepository = bairroRepository;
         this.contatoService = contatoService;
         this.indexabilidadePolicy = indexabilidadePolicy;
+        this.idadeAnuncianteService = idadeAnuncianteService;
     }
 
     @Transactional(readOnly = true)
@@ -108,15 +111,20 @@ public class AnuncioPublicoConsultaService {
                 .findFirst()
                 .map(AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getPrimeiraPublicacaoEm)
                 .orElse(null);
+        var premium = premiumMapper.flags(anuncio);
+        var idadeAnunciante = idadeAnuncianteService.resolver(anuncio.getUsuarioId(), premium.idadeOculta());
 
         return anuncioMapper.toDetalhe(
                 anuncio,
                 localizacao,
                 midias,
                 seoService.paraAnuncio(slugSeguro, indexavel),
-                premiumMapper.flags(anuncio),
+                premium,
                 contatoService.podeExporContato(anuncio),
-                primeiraPublicacao);
+                primeiraPublicacao,
+                idadeAnunciante.username(),
+                idadeAnunciante.idade(),
+                idadeAnunciante.idadeOculta());
     }
 
     LocalizacaoPublicaDto localizacao(UUID anuncioId) {

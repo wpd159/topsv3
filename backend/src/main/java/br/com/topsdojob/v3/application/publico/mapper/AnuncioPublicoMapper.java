@@ -62,7 +62,10 @@ public class AnuncioPublicoMapper {
             SeoRotaPublicaDto seo,
             PremiumPublicoFlagsDto premium,
             boolean contatoDisponivel,
-            OffsetDateTime anunciaDesde) {
+            OffsetDateTime anunciaDesde,
+            String username,
+            Integer idade,
+            boolean idadeOculta) {
         PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioDetalhePublicoDto(
                 anuncio.getId(),
@@ -71,6 +74,9 @@ public class AnuncioPublicoMapper {
                 anuncio.getDescricao(),
                 anuncio.getPreco(),
                 anuncio.getCategoria(),
+                username,
+                idade,
+                idadeOculta,
                 localizacao,
                 List.copyOf(midias),
                 flags.destaqueAtivo(),

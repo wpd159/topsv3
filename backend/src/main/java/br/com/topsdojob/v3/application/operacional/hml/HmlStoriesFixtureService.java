@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.operacional.hml;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
+import br.com.topsdojob.v3.persistence.entity.conteudo.CategoriaHomeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
@@ -18,6 +19,7 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
+import br.com.topsdojob.v3.persistence.repository.CategoriaHomeRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
@@ -32,6 +34,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -52,6 +55,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class HmlStoriesFixtureService {
 
     static final String USUARIO_EMAIL = "usuario.stories.hml@example.invalid";
+    static final LocalDate USUARIO_DATA_NASCIMENTO = LocalDate.of(1990, 6, 15);
 
     private static final UUID USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000001");
     private static final UUID ANUNCIO_A_ID = uuid("f1000000-0000-4000-8000-000000000101");
@@ -86,6 +90,13 @@ public class HmlStoriesFixtureService {
     private static final UUID MIDIA_FOTO_B_3_ID = uuid("f1000000-0000-4000-8000-000000000312");
     private static final UUID MIDIA_FOTO_B_4_ID = uuid("f1000000-0000-4000-8000-000000000313");
     private static final UUID STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000401");
+    private static final List<CategoriaFixture> CATEGORIAS = List.of(
+            categoria("f2000000-0000-4000-8000-000000000001", "ACOMPANHANTE_FEMININA", "Acompanhante feminina", "Encontre as melhores acompanhantes femininas.", "/anuncios?categoria=ACOMPANHANTE_FEMININA", "/cards/acompanhante-feminina.jpg", 1, true),
+            categoria("f2000000-0000-4000-8000-000000000002", "VENDA_DE_CONTEUDO", "Sexo Virtual", "Videochamadas, conte\u00fado exclusivo e atendimento online.", "/anuncios?categoria=VENDA_DE_CONTEUDO", "/cards/casual.jpg", 2, true),
+            categoria("f2000000-0000-4000-8000-000000000003", "ACOMPANHANTE_MASCULINO", "Acompanhante masculino", "Homens elegantes e discretos.", "/anuncios?categoria=ACOMPANHANTE_MASCULINO", "/cards/acompanhante-masculino.jpg", 3, true),
+            categoria("f2000000-0000-4000-8000-000000000004", "TRANSEX_TRAVESTIS", "Transex e Travestis", "As mais desejadas transex e travestis.", "/anuncios?categoria=TRANSEX_TRAVESTIS", "/cards/acompanhante-trans.jpg", 4, true),
+            categoria("f2000000-0000-4000-8000-000000000005", "MASSAGENS", "Massagens", "Massagistas sensuais e terap\u00eauticas.", "/anuncios?categoria=MASSAGENS", "/cards/massagem.jpg", 5, true),
+            categoria("f2000000-0000-4000-8000-000000000006", "ENCONTROS_CASUAIS", "Casual e encontros", "Encontros leves e espont\u00e2neos.", "/anuncios?categoria=ENCONTROS_CASUAIS", "/cards/casual.jpg", 6, false));
 
     private static final String DESCRICAO_A = "Perfil ficticio de homologacao em Goiania com descricao completa para validar listagens publicas, pagina de detalhe, metadados e indexacao do sitemap sem utilizar dados reais.";
     private static final String DESCRICAO_B = "Segundo perfil ficticio de homologacao no Setor Bueno, preparado exclusivamente para validar paginacao, descoberta de localidades e renderizacao publica com conteudo seguro.";
@@ -98,6 +109,7 @@ public class HmlStoriesFixtureService {
     private final AnuncioRepository anuncioRepository;
     private final EstadoRepository estadoRepository;
     private final CidadeRepository cidadeRepository;
+    private final CategoriaHomeRepository categoriaHomeRepository;
     private final BairroRepository bairroRepository;
     private final AnuncioLocalizacaoRepository localizacaoRepository;
     private final ArquivoMidiaRepository arquivoRepository;
@@ -113,6 +125,7 @@ public class HmlStoriesFixtureService {
             AnuncioRepository anuncioRepository,
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
+            CategoriaHomeRepository categoriaHomeRepository,
             BairroRepository bairroRepository,
             AnuncioLocalizacaoRepository localizacaoRepository,
             ArquivoMidiaRepository arquivoRepository,
@@ -126,6 +139,7 @@ public class HmlStoriesFixtureService {
         this.anuncioRepository = anuncioRepository;
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
+        this.categoriaHomeRepository = categoriaHomeRepository;
         this.bairroRepository = bairroRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.arquivoRepository = arquivoRepository;
@@ -140,6 +154,7 @@ public class HmlStoriesFixtureService {
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         UsuarioEntity usuario = provisionarUsuario(runtimeValue, agora);
 
+        int categoriasCriadas = provisionarCategorias();
         int localidadesCriadas = provisionarLocalidades(agora);
 
         int anunciosCriados = 0;
@@ -205,12 +220,42 @@ public class HmlStoriesFixtureService {
             storyCriado = true;
         }
         return new FixtureResult(
+                categoriasCriadas,
                 localidadesCriadas,
                 localizacoesCriadas,
                 anunciosCriados,
                 arquivosCriados,
                 vinculosCriados,
                 storyCriado);
+    }
+
+    private int provisionarCategorias() {
+        int criadas = 0;
+        for (CategoriaFixture categoria : CATEGORIAS) {
+            CategoriaHomeEntity existente = categoriaHomeRepository.findById(categoria.id()).orElse(null);
+            if (existente == null) {
+                categoriaHomeRepository.save(CategoriaHomeEntity.criarFixtureHomologacao(
+                        categoria.id(),
+                        categoria.identificador(),
+                        categoria.titulo(),
+                        categoria.descricao(),
+                        categoria.destino(),
+                        categoria.imagemPublicaUrl(),
+                        categoria.ordem(),
+                        categoria.ativo()));
+                criadas++;
+            } else if (existente.sincronizarFixtureHomologacao(
+                    categoria.identificador(),
+                    categoria.titulo(),
+                    categoria.descricao(),
+                    categoria.destino(),
+                    categoria.imagemPublicaUrl(),
+                    categoria.ordem(),
+                    categoria.ativo())) {
+                categoriaHomeRepository.save(existente);
+            }
+        }
+        return criadas;
     }
 
     private int provisionarLocalidades(OffsetDateTime agora) {
@@ -253,8 +298,12 @@ public class HmlStoriesFixtureService {
                     "Anunciante ficticio de homologacao",
                     USUARIO_EMAIL,
                     null,
+                    USUARIO_DATA_NASCIMENTO,
                     agora);
             usuarioRepository.saveAndFlush(usuario);
+        } else if (!USUARIO_DATA_NASCIMENTO.equals(usuario.getDataNascimento())) {
+            usuario.sincronizarDataNascimentoHomologacao(USUARIO_DATA_NASCIMENTO, agora);
+            usuarioRepository.save(usuario);
         }
         String hash = passwordEncoder.encode(runtimeValue);
         CredencialUsuarioEntity credencial = credencialRepository.findByUsuarioId(usuario.getId()).orElse(null);
@@ -463,13 +512,38 @@ public class HmlStoriesFixtureService {
         return UUID.fromString(value);
     }
 
+    private static CategoriaFixture categoria(
+            String id,
+            String identificador,
+            String titulo,
+            String descricao,
+            String destino,
+            String imagemPublicaUrl,
+            int ordem,
+            boolean ativo) {
+        return new CategoriaFixture(
+                uuid(id), identificador, titulo, descricao, destino, imagemPublicaUrl, ordem, ativo);
+    }
+
     private record ChaveOrdem(
             UUID anuncioId,
             FinalidadeAnuncioMidia finalidade,
             Integer ordem) {
     }
 
+    private record CategoriaFixture(
+            UUID id,
+            String identificador,
+            String titulo,
+            String descricao,
+            String destino,
+            String imagemPublicaUrl,
+            int ordem,
+            boolean ativo) {
+    }
+
     public record FixtureResult(
+            int categoriasCriadas,
             int localidadesCriadas,
             int localizacoesCriadas,
             int anunciosCriados,

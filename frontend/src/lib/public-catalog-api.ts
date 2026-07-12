@@ -134,9 +134,23 @@ export type PublicCatalogCityAggregate = {
 
 export type PublicCatalogDetail = PublicCatalogCard & {
   descricao: string | null
+  username?: string | null
+  idade?: number | null
+  idadeOculta: boolean
   contatoPublico?: string | null
   pendenciaContatoPublico?: string | null
   indexavelSeo: boolean
+}
+
+export type PublicHomeCategory = {
+  id: string
+  identificador: string
+  titulo: string
+  descricao: string
+  destino: string
+  imagemPublicaUrl: string
+  ordem: number
+  ativo: true
 }
 
 type RawLocation = {
@@ -173,6 +187,9 @@ type RawCard = {
   publicadoEm?: string | null
   contatoPublico?: string | null
   pendenciaContatoPublico?: string | null
+  username?: string | null
+  idade?: number | null
+  idadeOculta?: boolean
   seo?: {
     indexavelFuturo?: boolean
   }
@@ -353,10 +370,17 @@ export async function obterAnuncioPublicoPorSlug(slug: string) {
   return {
     ...mapCard(raw),
     descricao: raw.descricao ?? null,
+    username: raw.username ?? null,
+    idade: raw.idade ?? null,
+    idadeOculta: Boolean(raw.idadeOculta),
     contatoPublico: raw.contatoPublico ?? null,
     pendenciaContatoPublico: raw.pendenciaContatoPublico ?? null,
     indexavelSeo: raw.seo?.indexavelFuturo === true,
   } satisfies PublicCatalogDetail
+}
+
+export async function listarCategoriasHomePublicas() {
+  return requestJson<PublicHomeCategory[]>('/categorias-home', cached)
 }
 
 export async function descobrirLocalidadesPublicas() {

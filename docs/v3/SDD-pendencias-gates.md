@@ -645,7 +645,7 @@ Antes de admin em ambiente nao local:
 - Fechado localmente: cookie de sessao HttpOnly, Secure em HML, SameSite Lax, rotacao de ID no login e invalidacao no logout.
 - Fechado localmente: adapter frontend unico com `credentials: include` e token CSRF.
 - Pendente antes de homologacao funcional: teste E2E HTTP em ambiente descartavel com PostgreSQL e navegador real.
-- Pendente juridico/schema: persistencia versionada dos aceites de termos/privacidade/promocional e da data de nascimento, sem criar coluna improvisada nesta fase.
+- Pendente juridico/schema: persistencia versionada dos aceites de termos/privacidade/promocional. A data de nascimento passa a ser persistida pela V021 para calculo backend da idade publica, sem exposicao no DTO publico.
 - Fora do escopo e ainda pendente: recuperacao/redefinicao de senha, confirmacao/reenvio de conta e 2FA publico.
 
 ## Area autenticada essencial do anunciante
@@ -674,6 +674,13 @@ Antes de admin em ambiente nao local:
 - Gate atendido localmente pela V020: `Com local` deriva somente de `MEU_LOCAL` e `Faz anal` somente de `ANAL`; permanece proibida qualquer inferencia por descricao, endereco, categoria ou outro texto livre.
 - Pendente antes de dados reais: mapear as colecoes estruturadas da fonte autorizada para as tabelas V3 durante o dry-run/importador aprovado, sem criar valores ausentes.
 - Pendente antes de publicacao: revisao visual real em 320px, 360px, 390px, tablet e desktop no ambiente que receber o delta; esta fase nao autoriza deploy.
+
+## Desbloqueios de catalogo e idade publica
+
+- Fechado localmente pela V021: fonte canonica de categorias da Home e endpoint `GET /api/public/categorias-home`, sem fallback estatico publico.
+- Fechado localmente: idade calculada no backend e visivel por padrao; `OCULTAR_IDADE` pago e vigente e a unica regra de ocultacao.
+- Pendente de dados autorizados: usuarios historicos sem data de nascimento confiavel permanecem com `idade=null`; o importador aprovado deve mapear somente valores reais/sanitizados autorizados, sem inventar datas.
+- Pendente antes de HML: publicar V021 e reexecutar o provisionador unico para reconciliar os dados ficticios existentes. Esta fase nao autoriza commit, push ou deploy.
 
 ## Proibicoes ate novo bloco autorizado
 
