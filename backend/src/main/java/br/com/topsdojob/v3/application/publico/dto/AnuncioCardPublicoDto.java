@@ -19,6 +19,9 @@ public record AnuncioCardPublicoDto(
         boolean midiaExtra,
         boolean story,
         boolean contatoDisponivel,
+        boolean comLocal,
+        boolean fazAnal,
         List<String> beneficiosPublicos,
+        OffsetDateTime anunciaDesde,
         OffsetDateTime publicadoEm) {
 }

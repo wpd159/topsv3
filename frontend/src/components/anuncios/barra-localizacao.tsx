@@ -405,7 +405,7 @@ export function BarraLocalizacao() {
     Boolean(selectedEstado) || Boolean(selectedCidade) || Boolean(selectedBairro)
 
   return (
-    <div className="w-full rounded-[30px] border border-gray-200 bg-white p-3 shadow-[0_10px_35px_rgba(15,23,42,0.06)] sm:p-5 lg:p-6">
+    <div className="w-full rounded-[26px] border border-pink-100 bg-white p-3 shadow-[0_0_20px_rgba(252,30,173,0.09)] sm:p-4 lg:p-5">
       <div className="flex flex-col gap-3 md:gap-6">
         <div className="hidden space-y-2 md:block">
           <div className="inline-flex items-center gap-2 rounded-full bg-pink-50 px-3 py-1 text-xs font-medium text-pink-700">
@@ -438,13 +438,13 @@ export function BarraLocalizacao() {
                   }
                 }}
                 placeholder={placeholderBusca}
-                className="h-12 rounded-2xl border-pink-200 bg-white pl-12 pr-4 text-base shadow-none placeholder:text-gray-400 focus-visible:border-[#FC1EAD] focus-visible:ring-4 focus-visible:ring-[#FC1EAD]/15 md:h-14"
+                className="h-11 rounded-2xl border-pink-200 bg-white pl-12 pr-4 text-base shadow-none placeholder:text-gray-400 focus-visible:border-[#FC1EAD] focus-visible:ring-4 focus-visible:ring-[#FC1EAD]/15 md:h-12"
               />
             </div>
           </div>
 
           <Button
-            className="h-12 rounded-2xl bg-[#FC1EAD] px-7 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(252,30,173,0.26)] hover:bg-[#e01a9a] md:h-14"
+            className="h-11 rounded-2xl bg-[#FC1EAD] px-7 text-sm font-semibold text-white shadow-[0_0_18px_rgba(252,30,173,0.22)] transition hover:-translate-y-0.5 hover:bg-[#e01a9a] md:h-12"
             onClick={() => applyBusca()}
           >
             Buscar
@@ -562,7 +562,7 @@ export function BarraLocalizacao() {
 
             <Button
               variant="outline"
-              className="h-12 rounded-2xl border-gray-200 bg-white px-5 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              className="h-11 rounded-2xl border-gray-200 bg-white px-5 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800"
               onClick={limparTudo}
             >
               Limpar
@@ -604,7 +604,7 @@ function Combo<T extends { id: string | number; nome: string }>({
           variant="outline"
           role="combobox"
           disabled={disabled}
-          className="h-12 w-full justify-between rounded-2xl border-gray-200 bg-white px-4 text-sm text-gray-600 shadow-none hover:bg-white"
+          className="h-11 w-full justify-between rounded-2xl border-pink-100 bg-white px-4 text-sm font-semibold text-gray-800 shadow-[0_0_10px_rgba(252,30,173,0.06)] hover:border-pink-200 hover:bg-white"
         >
           <span className="truncate">{label}</span>
           <ChevronUpDownIcon className="h-4 w-4 opacity-60" />

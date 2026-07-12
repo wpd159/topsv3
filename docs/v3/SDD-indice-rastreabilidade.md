@@ -382,6 +382,9 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Compositor publico unico de Stories: `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/StoryFeedPublicoService.java`, `backend/src/main/java/br/com/topsdojob/v3/web/publico/StoryFeedPublicoController.java`
 - Painel de Stories administrativos: `frontend/src/app/(painel-admin)/admin/stories/page.tsx`, `frontend/src/lib/admin-stories-api.ts`
 - Testes da selecao e composicao: `backend/src/test/java/br/com/topsdojob/v3/application/admin/stories/AdminStorySelecaoServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/service/StoryFeedPublicoServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/migration/StorySelecaoAdministrativaMigrationTest.java`
+- Historico publico `Anuncia desde`: `backend/src/main/java/br/com/topsdojob/v3/persistence/repository/AnuncioRepository.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/ListagemPublicaConsultaService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/AnuncioPublicoConsultaService.java`
+- Atendimento e servicos estruturados: `backend/src/main/resources/db/migration/V020__atendimento_servicos_anuncio.sql`, `backend/src/main/java/br/com/topsdojob/v3/persistence/entity/anuncio/AnuncioEntity.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/mapper/AnuncioPublicoMapper.java`
+- Refinamentos visuais publicos: `frontend/src/components/anuncios/anuncio-card.tsx`, `frontend/src/components/anuncios/barra-localizacao.tsx`, `frontend/src/components/stories/stories-bar.tsx`, `frontend/src/app/(public-routes)/anuncios/[slug]/componentes/`, `frontend/src/components/layout/footer.tsx`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

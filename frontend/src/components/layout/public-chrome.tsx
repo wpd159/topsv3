@@ -6,6 +6,7 @@ import { SitePopupManager } from '@/components/site/site-popup-manager'
 export function PublicChrome({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <div id="topo" aria-hidden="true" />
       <HeaderWrapper />
       <SitePopupManager />
 

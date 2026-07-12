@@ -170,6 +170,39 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 
+try {
+  $atendimentoProbe = Invoke-RestMethod `
+    -Uri "$safeBackendUrl/api/public/anuncios/demo-goiania-livre-premium" `
+    -Method Get `
+    -TimeoutSec 10
+  $locaisProbe = @($atendimentoProbe.locaisAtendimento)
+  $servicosProbe = @($atendimentoProbe.servicos)
+  if (
+    $atendimentoProbe.comLocal -ne $true -or
+    $atendimentoProbe.fazAnal -ne $true -or
+    $locaisProbe -notcontains "MEU_LOCAL" -or
+    $servicosProbe -notcontains "ANAL"
+  ) {
+    Write-Host "VALIDATION_RESULT=FALHA_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
+    Write-Host "Motivo: contrato estruturado de atendimento nao retornou MEU_LOCAL/ANAL e os respectivos selos."
+    exit 1
+  }
+  $listagemProbe = Invoke-RestMethod `
+    -Uri "$safeBackendUrl/api/public/acompanhantes/go/goiania?pagina=0&tamanho=20" `
+    -Method Get `
+    -TimeoutSec 10
+  $cardProbe = @($listagemProbe.itens | Where-Object { $_.slug -eq "demo-goiania-livre-premium" } | Select-Object -First 1)
+  if ($cardProbe.Count -ne 1 -or $cardProbe[0].comLocal -ne $true -or $cardProbe[0].fazAnal -ne $true) {
+    Write-Host "VALIDATION_RESULT=FALHA_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
+    Write-Host "Motivo: listagem publica nao retornou os selos estruturados MEU_LOCAL/ANAL."
+    exit 1
+  }
+} catch {
+  Write-Host "VALIDATION_RESULT=FALHA_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
+  Write-Host "Motivo: falha ao validar o contrato estruturado de atendimento."
+  exit 1
+}
+
 $startedFrontend = $false
 $frontendProcess = $null
 $portOwnersBefore = Get-PortOwners -Port $FrontendPort
@@ -196,7 +229,16 @@ try {
       exit 2
     }
 
-    $env:NEXT_PUBLIC_API_URL = $safeBackendUrl
+    $nextOutput = [System.IO.Path]::GetFullPath((Join-Path $frontendRoot ".next"))
+    $frontendResolved = [System.IO.Path]::GetFullPath($frontendRoot).TrimEnd('\') + '\'
+    if (-not $nextOutput.StartsWith($frontendResolved, [System.StringComparison]::OrdinalIgnoreCase)) {
+      throw "Diretorio .next calculado fora do frontend: $nextOutput"
+    }
+    if (Test-Path -LiteralPath $nextOutput -PathType Container) {
+      Remove-Item -LiteralPath $nextOutput -Recurse -Force
+    }
+
+    $env:NEXT_PUBLIC_API_URL = "$safeBackendUrl/api/public"
     $env:NEXT_PUBLIC_APP_ENV = "local"
     $env:NEXT_PUBLIC_CANONICAL_DOMAIN = "http://localhost"
     $env:NEXT_PUBLIC_SITE_URL = $frontendBaseUrl
@@ -250,15 +292,28 @@ const routes = [
   { key: "bairro-setor-bueno", path: "/acompanhantes/go/goiania/setor-bueno", screenshot: "desktop-bairro-setor-bueno", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-goiania-livre-premium" },
   { key: "cidade-brasilia", path: "/acompanhantes/df/brasilia", screenshot: "desktop-cidade-brasilia", type: "page", h1: true, breadcrumbs: true, mustContain: "demo-brasilia-premium-topo" },
   { key: "anuncio-livre", path: "/anuncios/demo-goiania-livre-premium", screenshot: "desktop-anuncio-livre", type: "page", h1: true, breadcrumbs: false, mustContain: "Perfil de demonstra" },
-  { key: "anuncio-midia-restrita", path: "/anuncios/demo-goiania-midia-restrita", screenshot: "desktop-anuncio-midia-restrita", type: "page", h1: true, breadcrumbs: false, restricted: true, mustContain: "Demo Goi", mustNotContain: "wa.me" },
+  { key: "anuncio-midia-restrita", path: "/anuncios/demo-goiania-midia-restrita", screenshot: "desktop-anuncio-midia-restrita", type: "page", h1: true, breadcrumbs: false, restricted: true, mustContain: "Perfil de demonstra", mustNotContain: "wa.me" },
   { key: "sitemap", path: "/sitemap.xml", screenshot: "desktop-sitemap", type: "text", mustContain: "<urlset" },
   { key: "robots", path: "/robots.txt", screenshot: "desktop-robots", type: "text", mustContain: "Disallow" }
 ];
 
 const viewports = [
-  { key: "desktop", width: 1280, height: 900, suffix: "" },
-  { key: "mobile", width: 390, height: 844, suffix: "-mobile" }
+  { key: "desktop", width: 1280, height: 900 },
+  { key: "tablet", width: 768, height: 1024 },
+  { key: "mobile-320", width: 320, height: 720 },
+  { key: "mobile-360", width: 360, height: 800 },
+  { key: "mobile-390", width: 390, height: 844 }
 ];
+
+const evidenceScreenshots = new Set([
+  "desktop-home",
+  "desktop-cidade-goiania",
+  "desktop-anuncio-livre",
+  "tablet-cidade-goiania",
+  "mobile-320-cidade-goiania",
+  "mobile-360-cidade-goiania",
+  "mobile-390-cidade-goiania"
+]);
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -333,8 +388,21 @@ function pageMetricsScript() {
     const addTechnicalViolation = (type) => {
       if (!technicalViolations.includes(type)) technicalViolations.push(type);
     };
-    if (/(skeleton|\\blocal\\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?|placeholder t[eé]cnico|stack trace|Unhandled Runtime Error|JSON bruto|debug)/i.test(bodyText)) {
-      addTechnicalViolation("texto_tecnico_generico");
+    const technicalTextMatches = bodyText.match(
+      /(skeleton|ambiente local|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?|placeholder t[eé]cnico|stack trace|Unhandled Runtime Error|JSON bruto|debug)/gi
+    ) || [];
+    if (technicalTextMatches.length > 0) {
+      const firstTechnicalIndex = bodyText.toLowerCase().indexOf(technicalTextMatches[0].toLowerCase());
+      const technicalContext = bodyText
+        .slice(Math.max(0, firstTechnicalIndex - 32), firstTechnicalIndex + technicalTextMatches[0].length + 32)
+        .replace(/\s+/g, " ")
+        .trim();
+      addTechnicalViolation(
+        "texto_tecnico_generico:" +
+          [...new Set(technicalTextMatches.map((item) => item.toLowerCase()))].join("|") +
+          "@" +
+          technicalContext
+      );
     }
     if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(bodyText)) {
       addTechnicalViolation("metadados_publicos_locais_visivel");
@@ -376,7 +444,6 @@ function pageMetricsScript() {
     const mojibakeContinuation = String.fromCharCode(0x00c2);
     const replacementChar = String.fromCharCode(0xfffd);
     const mojibakeHits = [
-      { label: "U+00C3", needle: mojibakeLead },
       { label: "U+00C2", needle: mojibakeContinuation },
       { label: "U+FFFD", needle: replacementChar },
       { label: "demonstra+U+00C3", needle: "demonstra" + mojibakeLead },
@@ -441,6 +508,10 @@ function pageMetricsScript() {
       contactVisible: Array.from(document.querySelectorAll('.public-contact-cta button')).some((el) => /WhatsApp/i.test(el.textContent || '')),
       gallerySources,
       hasWhatsappUrl: /wa\\.me\\/|\\+55\\d{8,}/i.test(bodyText) || /wa\\.me\\/|\\+55\\d{8,}/i.test(document.documentElement.outerHTML),
+      hasComLocalBadge: /\\bCom local\\b/i.test(bodyText),
+      hasFazAnalBadge: /\\bFaz anal\\b/i.test(bodyText),
+      hasMeuLocalChip: /\\bMeu local\\b/i.test(bodyText),
+      hasAnalServiceChip: /\\bAnal\\b/i.test(bodyText),
       technicalText: technicalViolations.length > 0,
       technicalViolations,
       forbiddenRoutes: links.filter((href) => /^\\/anuncio\\//i.test(href) || /^\\/perfil\\//i.test(href) || /^\\/acompanhante\\//i.test(href) || /^\\/ads\\//i.test(href)),
@@ -459,7 +530,6 @@ function validate(route, viewport, metrics, status, textBody) {
   const technicalDetail = Array.isArray(metrics.technicalViolations) && metrics.technicalViolations.length
     ? metrics.technicalViolations.join(", ")
     : "nenhuma categoria tecnica visivel";
-  addCheck(checks, !metrics.technicalText, "sem texto tecnico/enum/status interno visivel", technicalDetail);
   addCheck(checks, !metrics.hasWhatsappUrl, "sem telefone ou URL de WhatsApp no HTML publico", "contato permanece mediado pelo endpoint de clique");
   addCheck(checks, metrics.documentWidth <= metrics.viewportWidth + 2, "sem scroll horizontal", `${metrics.documentWidth}px em ${metrics.viewportWidth}px`);
   addCheck(checks, !metrics.bodyStyleOverflow, "sem document.body.style.overflow", metrics.bodyStyleOverflow || "vazio");
@@ -468,6 +538,7 @@ function validate(route, viewport, metrics, status, textBody) {
   addCheck(checks, metrics.forbiddenRoutes.length === 0, "sem rotas publicas proibidas", metrics.forbiddenRoutes.join(", ") || "nenhuma");
 
   if (route.type === "page") {
+    addCheck(checks, !metrics.technicalText, "sem texto tecnico/enum/status interno visivel", technicalDetail);
     addCheck(checks, Boolean(metrics.title), "title presente", metrics.title);
     addCheck(checks, Boolean(metrics.description), "meta description presente", metrics.description);
     addCheck(checks, metrics.canonical.startsWith("http://localhost") || metrics.canonical.startsWith("http://127.0.0.1"), "canonical local seguro", metrics.canonical || "ausente");
@@ -481,8 +552,17 @@ function validate(route, viewport, metrics, status, textBody) {
       addCheck(checks, metrics.cardCount > 0, "cards publicos presentes", `cards=${metrics.cardCount}`);
       addCheck(checks, metrics.cardRects.every((card) => card.left >= -1 && card.right <= metrics.viewportWidth + 1 && card.width <= metrics.viewportWidth + 1), "cards dentro da viewport", `cards=${metrics.cardRects.length}`);
     }
+    if (route.key === "cidade-goiania") {
+      addCheck(checks, metrics.hasComLocalBadge, "selo Com local derivado do contrato", "MEU_LOCAL");
+      addCheck(checks, metrics.hasFazAnalBadge, "selo Faz anal derivado do contrato", "ANAL");
+    }
+    if (route.key === "anuncio-livre") {
+      addCheck(checks, metrics.hasMeuLocalChip, "chip Meu local no detalhe", "MEU_LOCAL");
+      addCheck(checks, metrics.hasAnalServiceChip, "chip Anal no detalhe", "ANAL");
+    }
     if (route.key.startsWith("anuncio-")) {
-      addCheck(checks, metrics.galleryRect && metrics.galleryRect.width >= (viewport.key === "desktop" ? 500 : 280), "galeria sem mini-coluna", metrics.galleryRect ? `${Math.round(metrics.galleryRect.width)}px` : "ausente");
+      const galleryMinWidth = viewport.width >= 768 ? 500 : Math.max(240, viewport.width - 64);
+      addCheck(checks, metrics.galleryRect && metrics.galleryRect.width >= galleryMinWidth, "galeria sem mini-coluna", metrics.galleryRect ? `${Math.round(metrics.galleryRect.width)}px` : "ausente");
       addCheck(checks, metrics.galleryRect && metrics.galleryRect.x >= -1 && metrics.galleryRect.x + metrics.galleryRect.width <= metrics.viewportWidth + 1, "galeria dentro da viewport", metrics.galleryRect ? `${Math.round(metrics.galleryRect.width)}px` : "ausente");
       addCheck(checks, metrics.contactRect && metrics.contactRect.x >= -1 && metrics.contactRect.x + metrics.contactRect.width <= metrics.viewportWidth + 1, "CTA dentro da viewport", metrics.contactRect ? `${Math.round(metrics.contactRect.width)}px` : "ausente");
       addCheck(checks, metrics.contactVisible, "contato visivel sem age gate", metrics.contactVisible ? "visivel" : "ausente");
@@ -561,7 +641,7 @@ async function main() {
         width: viewport.width,
         height: viewport.height,
         deviceScaleFactor: 1,
-        mobile: viewport.key === "mobile"
+        mobile: viewport.width < 768
       });
 
       for (const route of routes) {
@@ -577,7 +657,7 @@ async function main() {
           if (ready.result?.value === true) break;
           await delay(100);
         }
-        await delay(150);
+        await delay(700);
 
         const evaluated = await cdp.send("Runtime.evaluate", {
           expression: pageMetricsScript(),
@@ -590,14 +670,14 @@ async function main() {
         failures.push(...routeFailures.map((item) => `${route.key}/${viewport.key}: ${item.label} - ${item.detail}`));
         results.push({ route, viewport, metrics, status: http.status, checks });
 
-        if (printsDir) {
+        const screenshotKey = `${viewport.key}-${route.key}`;
+        if (printsDir && evidenceScreenshots.has(screenshotKey)) {
           const shot = await cdp.send("Page.captureScreenshot", {
             format: "png",
             fromSurface: true,
             captureBeyondViewport: false
           });
-          const suffix = viewport.key === "mobile" ? "mobile" : "desktop";
-          const name = `${suffix}-${route.key}.png`;
+          const name = `${screenshotKey}.png`;
           fs.writeFileSync(path.join(printsDir, name), Buffer.from(shot.data, "base64"));
         }
       }

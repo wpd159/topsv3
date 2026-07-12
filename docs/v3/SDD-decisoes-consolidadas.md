@@ -284,6 +284,13 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Bloco 29, restore completo, staging/homologacao, Flyway real, gitleaks real, CSRF/auth/RBAC de producao, CDN/storage, upload real, importador real, financeiro, Pix/Efi/webhooks, SEO real, backup/rollback, monitoramento, auditoria JSON e LGPD permanecem gates explicitos.
 - Proximos blocos devem seguir a ordem segura documentada em `docs/v3/HOMOLOGACAO-ordem-proximos-blocos.md`, sem pular para producao, staging final ou dados reais sem autorizacao expressa.
 
+## Refinamentos visuais publicos
+
+- `Anuncia desde` usa a menor publicacao confiavel entre os anuncios da anunciante e nao a criacao da conta, renovacao ou somente o anuncio atual.
+- A V020 preserva os locais `A_COMBINAR`, `HOTEL_MOTEL` e `MEU_LOCAL` e os servicos canonicos do anuncio em colecoes estruturadas.
+- `Com local` e `Faz anal` nao podem ser inferidos: o backend os calcula somente por `MEU_LOCAL` e `ANAL`, respectivamente.
+- Neon visual deve permanecer discreto, sem animacao continua, sem alterar a paleta publica e sem reintroduzir elemento flutuante de retorno ao topo.
+
 ## Banco e migrations
 
 - V001 a V017 sao a base de schema auditada ate aqui.

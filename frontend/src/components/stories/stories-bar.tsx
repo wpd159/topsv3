@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { toast } from "sonner"
 import { PlayCircleIcon } from "@heroicons/react/24/solid"
 
 import type { StoryBundle, StoryItem } from "./stories-types"
@@ -59,12 +58,14 @@ export function StoriesBar() {
 
   const [loading, setLoading] = useState(false)
   const [bundles, setBundles] = useState<StoryBundle[]>([])
+  const [indisponivel, setIndisponivel] = useState(false)
   const [openViewer, setOpenViewer] = useState(false)
   const [viewerStartIndex, setViewerStartIndex] = useState(0)
 
   async function fetchStories() {
     try {
       setLoading(true)
+      setIndisponivel(false)
       const res = await fetch(`${API}/stories/ativos`, { credentials: "include", cache: "no-store" })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
@@ -90,8 +91,8 @@ export function StoriesBar() {
         .filter((bundle) => (bundle?.itens || []).length > 0)
 
       setBundles(sanitized)
-    } catch (e: any) {
-      toast.error(e?.message || "Erro ao carregar stories.")
+    } catch {
+      setIndisponivel(true)
       setBundles([])
     } finally {
       setLoading(false)
@@ -112,13 +113,19 @@ export function StoriesBar() {
 
   return (
     <>
-      <div className="w-full">
+      <div className="w-full py-2">
         <div className="flex items-center justify-between">
-          <div className="text-sm font-semibold text-gray-900">Stories</div>
+          <div className="text-lg font-semibold leading-tight text-gray-900">Stories</div>
           {loading && <div className="text-xs text-gray-500">Atualizando...</div>}
         </div>
 
-        <div className="mt-3 flex gap-3 overflow-x-auto pb-2">
+        {indisponivel && (
+          <p className="mt-3 text-sm text-gray-500" role="status">
+            Stories indisponíveis no momento.
+          </p>
+        )}
+
+        {!indisponivel && <div className="mt-4 flex gap-3 overflow-x-auto pb-3">
           {bundles.map((bundle, index) => {
             const login = loginPublicoDoBundle(bundle)
             const rotuloPerfil = rotuloPublicoDoBundle(bundle)
@@ -167,7 +174,7 @@ export function StoriesBar() {
               </div>
             )
           })}
-        </div>
+        </div>}
       </div>
 
       <StoryViewerDialog

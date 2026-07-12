@@ -116,27 +116,29 @@ export default function CategoriasSection() {
   }, [])
 
   return (
-    <section className="max-w-6xl mx-auto py-16 px-6">
+    <section className="mx-auto max-w-7xl px-6 py-16">
       <h2 className="text-3xl font-bold mb-10 text-center">
         Categorias em destaque
       </h2>
 
       {(loading || categorias.length > 0) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-6 lg:grid-cols-5">
           {loading &&
-            Array.from({ length: 4 }).map((_, index) => (
+            Array.from({ length: 5 }).map((_, index) => (
               <div
                 key={index}
-                className="min-h-[280px] rounded-2xl bg-gray-100 animate-pulse"
+                className="min-h-[280px] animate-pulse rounded-2xl bg-gray-100 md:col-span-2 lg:col-span-1"
               />
             ))}
 
           {!loading &&
-            categorias.map((c) => (
+            categorias.map((c, index) => (
               <Link
                 key={c.categoriaEnum}
                 href={`/anuncios?categoria=${c.categoriaEnum}`}
-                className="block"
+                className={`block md:col-span-2 lg:col-span-1 lg:col-start-auto ${
+                  categorias.length === 5 && index === 3 ? 'md:col-start-2' : ''
+                }`}
               >
                 <CategoriaCard {...c} />
               </Link>

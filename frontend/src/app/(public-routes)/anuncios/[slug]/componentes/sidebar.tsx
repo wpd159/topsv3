@@ -4,7 +4,7 @@ import { useMemo, useState, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { ChatBubbleLeftIcon, FlagIcon } from '@heroicons/react/24/solid'
+import { CalendarDaysIcon, ChatBubbleLeftIcon, FlagIcon } from '@heroicons/react/24/solid'
 import DenunciaModal from './denuncia-modal'
 import { useWhatsAppSafety } from '@/components/site/whatsapp-safety-provider'
 
@@ -30,6 +30,7 @@ type SidebarProps = {
     localizacao?: string | null
     tipo?: string | null
     valor: string
+    anunciaDesde?: string | null
   }
 }
 
@@ -82,12 +83,29 @@ export default function Sidebar({ anuncio }: SidebarProps) {
     ? `@${clean(anuncio.username).replace(/^@+/, '')}`
     : '@usuario'
   const categoria = clean(anuncio.tipo).toLowerCase().replace(/_/g, ' ').replace(/^\w/, (char) => char.toUpperCase())
+  const anunciaDesde = useMemo(() => {
+    if (!anuncio.anunciaDesde) return null
+    const date = new Date(anuncio.anunciaDesde)
+    if (Number.isNaN(date.getTime())) return null
+    return new Intl.DateTimeFormat('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+      .format(date)
+      .replace(' de ', '/')
+      .replace('.', '')
+  }, [anuncio.anunciaDesde])
 
   return (
     <>
-      <div className="public-contact-cta min-w-0 space-y-6">
-        <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <div className="mb-4"><h2 className="text-lg font-semibold text-gray-900">{usernameLabel}</h2></div>
+      <div className="public-contact-cta min-w-0 space-y-6 lg:sticky lg:top-24">
+        <div className="rounded-xl border border-pink-100 bg-white p-5 shadow-[0_0_20px_rgba(252,30,173,0.10)]">
+          <div className="mb-4 space-y-1">
+            <h2 className="text-lg font-semibold text-gray-900">{usernameLabel}</h2>
+            {anunciaDesde ? (
+              <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                <CalendarDaysIcon className="h-4 w-4 text-pink-400" />
+                Anuncia desde {anunciaDesde}
+              </p>
+            ) : null}
+          </div>
           <div className="space-y-1 text-sm text-gray-600">
             {anuncio.idade != null ? <p className="font-medium text-gray-700">{anuncio.idade} anos</p> : null}
             <p>{categoria || 'Não informado'}</p>
@@ -96,14 +114,14 @@ export default function Sidebar({ anuncio }: SidebarProps) {
           </div>
 
           <div className="mt-5 flex flex-col gap-3">
-            <Button variant="outline" className="flex w-full items-center justify-center py-3 font-semibold" onClick={handleWhatsAppClick}>
+            <Button variant="outline" className="flex h-12 w-full items-center justify-center border-emerald-200 font-semibold shadow-[0_0_14px_rgba(37,211,102,0.12)]" onClick={handleWhatsAppClick}>
               <span className="inline-flex items-center"><WhatsAppIcon className="mr-2 h-5 w-5" /> Conversar no WhatsApp</span>
             </Button>
             <Button
               type="button"
               disabled={!anuncio.username}
               onClick={() => anuncio.username && router.push(`/chat?usuario=${encodeURIComponent(anuncio.username)}`)}
-              className="flex w-full items-center justify-center bg-[#FC1EAD] py-3 font-semibold text-white hover:bg-[#e01a9a]"
+              className="flex h-12 w-full items-center justify-center bg-[#FC1EAD] font-semibold text-white shadow-[0_0_18px_rgba(252,30,173,0.22)] hover:bg-[#e01a9a]"
             >
               <ChatBubbleLeftIcon className="mr-2 h-5 w-5" /> Conversar na plataforma
             </Button>

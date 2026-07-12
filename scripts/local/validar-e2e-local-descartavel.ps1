@@ -253,14 +253,14 @@ function Apply-Migrations {
   $mkdir = Invoke-Native -FilePath $dockerExe -Arguments @("exec", $pgName, "mkdir", "-p", $targetDir)
   if ($mkdir.ExitCode -ne 0) { throw "Falha ao preparar pasta de migrations no container." }
   $files = @(Get-ChildItem -LiteralPath $migrationDir -File -Filter "V*.sql" | Sort-Object Name)
-  if ($files.Count -ne 19) { throw "Quantidade esperada de migrations V001-V019 nao encontrada: $($files.Count)" }
+  if ($files.Count -ne 20) { throw "Quantidade esperada de migrations V001-V020 nao encontrada: $($files.Count)" }
   foreach ($file in $files) {
     Copy-FileToContainer -Source $file.FullName -TargetDir $targetDir
     Invoke-PsqlFile -ContainerPath "$targetDir/$($file.Name)"
     $appliedMigrations.Add($file.Name)
   }
   $script:migrationsApplied = $true
-  Add-Step "Migrations V001-V019 aplicadas via psql ordenado no PostgreSQL descartavel."
+  Add-Step "Migrations V001-V020 aplicadas via psql ordenado no PostgreSQL descartavel."
 }
 
 function Apply-SyntheticData {
@@ -416,9 +416,25 @@ function Write-FixtureSyntheticSql {
     $textoBusca = Convert-ToSqlLiteral (([string]$anuncio.titulo) + " " + ([string]$anuncio.descricaoPerfil))
     $ranking = if ([string]$anuncio.plano -eq "PREMIUM_ATIVO") { "10.0000" } else { "1.0000" }
 
-    $lines.Add("INSERT INTO anuncio (id, usuario_id, slug, titulo, descricao, status, status_moderacao, categoria, preco, whatsapp_normalizado, publicado_em, ultima_publicacao_em, criado_em, atualizado_em, removido_em, origem_importacao_id, versao) VALUES ('$anuncioId', '$usuarioId', $slug, $titulo, $descricao, '$($statusInfo.Status)', '$($statusInfo.Moderacao)', 'SINTETICO', NULL, $whatsapp, $publicado, $publicado, now(), now(), NULL, NULL, 0) ON CONFLICT (slug) DO NOTHING;")
+    $lines.Add("INSERT INTO anuncio (id, usuario_id, slug, titulo, descricao, status, status_moderacao, categoria, preco, whatsapp_normalizado, publicado_em, ultima_publicacao_em, criado_em, atualizado_em, removido_em, origem_importacao_id, versao) VALUES ('$anuncioId', '$usuarioId', $slug, $titulo, $descricao, '$($statusInfo.Status)', '$($statusInfo.Moderacao)', 'ACOMPANHANTE_FEMININA', NULL, $whatsapp, $publicado, $publicado, now(), now(), NULL, NULL, 0) ON CONFLICT (slug) DO NOTHING;")
     $lines.Add("INSERT INTO anuncio_localizacao (anuncio_id, estado_id, cidade_id, bairro_id, endereco_resumido, latitude, longitude, criado_em, atualizado_em) VALUES ('$anuncioId', '$estadoId', '$cidadeId', $bairroSql, 'Endereço de demonstração', NULL, NULL, now(), now()) ON CONFLICT (anuncio_id) DO NOTHING;")
-    $lines.Add("INSERT INTO documento_busca_anuncio (anuncio_id, texto_busca, estado_id, cidade_id, bairro_id, categoria, preco, status_publicacao, tem_midia_valida, beneficios_ranking_json, ranking_base, atualizado_em) VALUES ('$anuncioId', $textoBusca, '$estadoId', '$cidadeId', $bairroSql, 'SINTETICO', NULL, '$statusPublicacao', $(Convert-ToSqlBoolean $temMidia), '{}'::jsonb, $ranking, now()) ON CONFLICT (anuncio_id) DO NOTHING;")
+    $lines.Add("INSERT INTO documento_busca_anuncio (anuncio_id, texto_busca, estado_id, cidade_id, bairro_id, categoria, preco, status_publicacao, tem_midia_valida, beneficios_ranking_json, ranking_base, atualizado_em) VALUES ('$anuncioId', $textoBusca, '$estadoId', '$cidadeId', $bairroSql, 'ACOMPANHANTE_FEMININA', NULL, '$statusPublicacao', $(Convert-ToSqlBoolean $temMidia), '{}'::jsonb, $ranking, now()) ON CONFLICT (anuncio_id) DO NOTHING;")
+
+    $locaisAtendimento = if ($anuncio.PSObject.Properties.Name -contains "locaisAtendimento") { @($anuncio.locaisAtendimento) } else { @() }
+    foreach ($localAtendimento in $locaisAtendimento) {
+      if ([string]$localAtendimento -notin @("A_COMBINAR", "HOTEL_MOTEL", "MEU_LOCAL")) {
+        throw "Local de atendimento sintetico invalido: $localAtendimento"
+      }
+      $lines.Add("INSERT INTO anuncio_local_atendimento (anuncio_id, local_atendimento) VALUES ('$anuncioId', '$localAtendimento') ON CONFLICT (anuncio_id, local_atendimento) DO NOTHING;")
+    }
+
+    $servicos = if ($anuncio.PSObject.Properties.Name -contains "servicos") { @($anuncio.servicos) } else { @() }
+    foreach ($servico in $servicos) {
+      if ([string]$servico -notin @("ANAL", "ATRIZ_PORNO", "FETICHES", "MASSAGEM_TANTRICA", "ATIVO", "BDSM", "JOGOS_DE_INTERPRETACAO", "ORAL", "ATOR_PORNO", "EJACULACAO_CORPORAL", "MASSAGEM_EROTICA", "PASSIVO", "NAMORADAS", "TRIO", "VIDEOCHAMADA")) {
+        throw "Servico sintetico invalido: $servico"
+      }
+      $lines.Add("INSERT INTO anuncio_servicos (anuncio_id, servico) VALUES ('$anuncioId', '$servico') ON CONFLICT (anuncio_id, servico) DO NOTHING;")
+    }
   }
 
   $midias = @($data.midias)

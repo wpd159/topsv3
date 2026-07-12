@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon, MapPinIcon } from '@heroicons/react/24/solid'
 import { SensitiveImage } from '@/components/compliance/sensitive-image'
 import { buildLocalizacaoLabel } from '@/lib/location'
@@ -21,6 +21,8 @@ interface AnuncioRelacionado {
   slug?: string
   impulsionado?: boolean
   destaqueAtivo?: boolean
+  comLocal?: boolean
+  fazAnal?: boolean
   categoria?: string | null
 }
 
@@ -74,7 +76,6 @@ export function AnunciosRelacionados({
   categoria,
 }: AnunciosRelacionadosProps) {
   const router = useRouter()
-  const [autoRotacaoAtiva, setAutoRotacaoAtiva] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const anuncios = useMemo<AnuncioRelacionado[]>(
     () => ordenarAnuncios(
@@ -92,6 +93,8 @@ export function AnunciosRelacionados({
           slug: item.slug,
           impulsionado: item.topoAtivo,
           destaqueAtivo: item.destaqueAtivo,
+          comLocal: item.comLocal,
+          fazAnal: item.fazAnal,
           categoria: item.categoria,
         })),
       bairroNome,
@@ -100,35 +103,11 @@ export function AnunciosRelacionados({
     [anuncioIdAtual, anunciosPublicos, bairroNome, categoria]
   )
 
-  useEffect(() => {
-    if (anuncios.length <= 1 || !autoRotacaoAtiva) return
-
-    const interval = window.setInterval(() => {
-      const container = scrollRef.current
-      if (!container || window.innerWidth >= 768) return
-
-      const card = container.querySelector<HTMLElement>('[data-card-relacionado]')
-      const scrollStep = card?.offsetWidth ? card.offsetWidth + 16 : 201
-      const maxScrollLeft = container.scrollWidth - container.clientWidth
-      const nextLeft = container.scrollLeft + scrollStep
-
-      container.scrollTo({
-        left: nextLeft >= maxScrollLeft - 8 ? 0 : nextLeft,
-        behavior: 'smooth',
-      })
-    }, 5000)
-
-    return () => window.clearInterval(interval)
-  }, [anuncios.length, autoRotacaoAtiva])
-
   if (anuncios.length === 0) return null
 
   const tituloSecao = cidadeNome ? `Mais perfis em ${cidadeNome}` : 'Você também pode gostar'
 
-  const pararAutoRotacao = () => setAutoRotacaoAtiva(false)
-
   const navegar = (direcao: 'anterior' | 'proximo') => {
-    pararAutoRotacao()
     const container = scrollRef.current
     if (!container) return
 
@@ -173,9 +152,6 @@ export function AnunciosRelacionados({
         <div
           ref={scrollRef}
           className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0"
-          onTouchStart={pararAutoRotacao}
-          onWheel={pararAutoRotacao}
-          onMouseEnter={pararAutoRotacao}
         >
         <div className="flex gap-4 pb-2 md:grid md:grid-cols-4">
           {anuncios.map((anuncio) => {
@@ -190,10 +166,9 @@ export function AnunciosRelacionados({
                 href={hrefAnuncio}
                 key={anuncio.id}
                 data-card-relacionado
-                onClick={pararAutoRotacao}
-                className="w-[185px] shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:-translate-y-1 hover:border-pink-200 md:w-full"
+                className="group flex h-full w-[220px] shrink-0 flex-col overflow-hidden rounded-xl border border-pink-100 bg-white shadow-[0_0_16px_rgba(252,30,173,0.08)] transition duration-300 hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-[0_0_22px_rgba(252,30,173,0.16)] md:w-full"
               >
-                <div className="relative h-[150px] w-full bg-gray-100">
+                <div className="relative aspect-[3/4] w-full bg-gray-100">
                   {capa ? (
                     <SensitiveImage
                       midia={capa}
@@ -201,8 +176,8 @@ export function AnunciosRelacionados({
                       anuncioSlug={slugRota}
                       alt={anuncio.titulo}
                       fill
-                      sizes="(max-width: 768px) 185px, 25vw"
-                      className="object-cover"
+                      sizes="(max-width: 768px) 220px, 25vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
                       onAbrirPaginaDoAnuncio={() => router.push(hrefAnuncio)}
                     />
                   ) : (
@@ -210,22 +185,34 @@ export function AnunciosRelacionados({
                       Mídia indisponível
                     </div>
                   )}
-                  {anuncio.destaqueAtivo && (
-                    <span className="absolute left-3 top-3 z-[25] rounded-full bg-pink-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                      Em destaque
-                    </span>
-                  )}
+                  <div className="absolute left-3 top-3 z-[25] flex min-h-6 max-w-[calc(100%-1.5rem)] flex-wrap gap-1.5">
+                    {anuncio.destaqueAtivo ? (
+                      <span className="rounded-md border border-pink-300/70 bg-pink-600 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white shadow-[0_0_14px_rgba(252,30,173,0.36)]">
+                        Em destaque
+                      </span>
+                    ) : null}
+                    {anuncio.comLocal ? (
+                      <span className="rounded-md border border-pink-200 bg-white/95 px-2 py-1 text-[10px] font-semibold text-pink-700 shadow-[0_0_10px_rgba(252,30,173,0.22)]">
+                        Com local
+                      </span>
+                    ) : null}
+                    {anuncio.fazAnal ? (
+                      <span className="rounded-md border border-pink-200 bg-white/95 px-2 py-1 text-[10px] font-semibold text-pink-700 shadow-[0_0_10px_rgba(252,30,173,0.22)]">
+                        Faz anal
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
 
-                <div className="space-y-2 p-3">
-                  <p className="line-clamp-1 text-sm font-semibold text-gray-900">{anuncio.titulo}</p>
+                <div className="flex min-h-[132px] flex-1 flex-col space-y-2 p-3">
+                  <p className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-gray-900">{anuncio.titulo}</p>
 
                   <p className="flex items-start gap-1 text-xs leading-tight text-gray-600">
                     <MapPinIcon className="mt-[2px] h-4 w-4 shrink-0 text-pink-500" />
                     <span className="line-clamp-2">{localizacaoLabel}</span>
                   </p>
 
-                  <p className="text-xs font-semibold text-pink-600">
+                  <p className="mt-auto text-xs font-semibold text-pink-600">
                     R$ {Number(anuncio.preco ?? 0).toFixed(2)}
                   </p>
                 </div>

@@ -24,7 +24,9 @@ import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
@@ -280,7 +282,7 @@ public class HmlStoriesFixtureService {
             OffsetDateTime agora) {
         AnuncioEntity anuncio = anuncioRepository.findById(id).orElse(null);
         if (anuncio == null) {
-            anuncioRepository.save(AnuncioEntity.criarFixtureHomologacao(
+            anuncio = AnuncioEntity.criarFixtureHomologacao(
                     id,
                     usuarioId,
                     slug,
@@ -288,13 +290,30 @@ public class HmlStoriesFixtureService {
                     descricao,
                     status,
                     StatusModeracaoAnuncio.APROVADO,
-                    agora));
+                    agora);
+            sincronizarAtendimento(anuncio, id);
+            anuncioRepository.save(anuncio);
             return 1;
         }
         anuncio.sincronizarFixtureHomologacao(
                 titulo, descricao, status, StatusModeracaoAnuncio.APROVADO, agora);
+        sincronizarAtendimento(anuncio, id);
         anuncioRepository.save(anuncio);
         return 0;
+    }
+
+    private void sincronizarAtendimento(AnuncioEntity anuncio, UUID id) {
+        if (ANUNCIO_A_ID.equals(id)) {
+            anuncio.sincronizarAtendimentoEstruturado(
+                    Set.of(LocalAtendimentoAnuncio.MEU_LOCAL, LocalAtendimentoAnuncio.HOTEL_MOTEL),
+                    Set.of(ServicoAnuncio.ANAL, ServicoAnuncio.ORAL));
+        } else if (ANUNCIO_B_ID.equals(id)) {
+            anuncio.sincronizarAtendimentoEstruturado(
+                    Set.of(LocalAtendimentoAnuncio.A_COMBINAR, LocalAtendimentoAnuncio.HOTEL_MOTEL),
+                    Set.of(ServicoAnuncio.MASSAGEM_EROTICA));
+        } else {
+            anuncio.sincronizarAtendimentoEstruturado(Set.of(), Set.of());
+        }
     }
 
     private ArquivoMidiaEntity arquivo(

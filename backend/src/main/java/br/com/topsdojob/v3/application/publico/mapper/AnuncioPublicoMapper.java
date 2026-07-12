@@ -7,6 +7,10 @@ import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
+import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.stereotype.Component;
 
@@ -27,7 +31,8 @@ public class AnuncioPublicoMapper {
             LocalizacaoPublicaDto localizacao,
             List<MidiaPublicaDto> midias,
             PremiumPublicoFlagsDto premium,
-            boolean contatoDisponivel) {
+            boolean contatoDisponivel,
+            OffsetDateTime anunciaDesde) {
         PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioCardPublicoDto(
                 anuncio.getId(),
@@ -43,7 +48,10 @@ public class AnuncioPublicoMapper {
                 flags.possuiMidiaExtra() || !midias.isEmpty(),
                 flags.possuiStories() && !midias.isEmpty(),
                 contatoDisponivel,
+                anuncio.getLocaisAtendimento().contains(LocalAtendimentoAnuncio.MEU_LOCAL),
+                anuncio.getServicos().contains(ServicoAnuncio.ANAL),
                 flags.beneficiosPublicos(),
+                anunciaDesde,
                 anuncio.getPublicadoEm());
     }
 
@@ -53,7 +61,8 @@ public class AnuncioPublicoMapper {
             List<MidiaPublicaDto> midias,
             SeoRotaPublicaDto seo,
             PremiumPublicoFlagsDto premium,
-            boolean contatoDisponivel) {
+            boolean contatoDisponivel,
+            OffsetDateTime anunciaDesde) {
         PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioDetalhePublicoDto(
                 anuncio.getId(),
@@ -69,9 +78,20 @@ public class AnuncioPublicoMapper {
                 flags.possuiMidiaExtra() || !midias.isEmpty(),
                 flags.possuiStories() && !midias.isEmpty(),
                 contatoDisponivel,
+                anuncio.getLocaisAtendimento().contains(LocalAtendimentoAnuncio.MEU_LOCAL),
+                anuncio.getServicos().contains(ServicoAnuncio.ANAL),
+                anuncio.getLocaisAtendimento().stream()
+                        .map(Enum::name)
+                        .sorted()
+                        .toList(),
+                anuncio.getServicos().stream()
+                        .map(Enum::name)
+                        .sorted(Comparator.naturalOrder())
+                        .toList(),
                 flags.beneficiosPublicos(),
                 null,
                 PENDENTE_POLITICA_WHATSAPP,
+                anunciaDesde,
                 anuncio.getPublicadoEm(),
                 seo);
     }

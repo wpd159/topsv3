@@ -19,6 +19,7 @@ import {
   EyeIcon,
   PhotoIcon,
   PlayCircleIcon,
+  CalendarDaysIcon,
 } from "@heroicons/react/24/solid"
 
 type AnuncioCardProps = {
@@ -44,6 +45,9 @@ type AnuncioCardProps = {
   carrosselDisponivel?: boolean
   videoHabilitado?: boolean
   whatsappCardEnabled?: boolean
+  comLocal?: boolean
+  fazAnal?: boolean
+  anunciaDesde?: string | null
   onAccessUpdated?: () => void
   previewMode?: boolean
 }
@@ -103,6 +107,9 @@ export function AnuncioCard({
   carrosselDisponivel = false,
   videoHabilitado = false,
   whatsappCardEnabled = false,
+  comLocal = false,
+  fazAnal = false,
+  anunciaDesde,
   onAccessUpdated,
   previewMode = false,
 }: AnuncioCardProps) {
@@ -316,13 +323,22 @@ export function AnuncioCard({
   const descricaoExibida = corrigirTextoCorrompido(
     descricao ?? "Anúncio sem descrição ainda. Abra para ver mais detalhes."
   )
+  const anunciaDesdeLabel = useMemo(() => {
+    if (!anunciaDesde) return null
+    const date = new Date(anunciaDesde)
+    if (Number.isNaN(date.getTime())) return null
+    return new Intl.DateTimeFormat("pt-BR", { month: "short", year: "numeric", timeZone: "UTC" })
+      .format(date)
+      .replace(" de ", "/")
+      .replace(".", "")
+  }, [anunciaDesde])
 
   return (
     <div
-      className={`public-anuncio-card group relative mx-auto block w-full max-w-[360px] rounded-xl bg-white transition-all duration-300 hover:shadow-lg ${
+      className={`public-anuncio-card group relative mx-auto flex h-full w-full max-w-[360px] flex-col rounded-xl bg-white shadow-[0_0_18px_rgba(252,30,173,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_26px_rgba(252,30,173,0.20)] ${
         destaque
-          ? "border-2 border-pink-500 shadow-pink-200 hover:shadow-pink-300"
-          : "border border-gray-200 hover:border-gray-300"
+          ? "border-2 border-pink-500"
+          : "border border-pink-100 hover:border-pink-200"
       }`}
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-gray-50">
@@ -367,11 +383,23 @@ export function AnuncioCard({
           </button>
         )}
 
-        {destaque && (
-          <div className="absolute left-3 top-3 z-20 flex items-center gap-1 rounded-md bg-gradient-to-r from-pink-600 to-pink-500 px-3 py-[3px] text-[11px] font-semibold text-white shadow-md">
-            Destaque
-          </div>
-        )}
+        <div className="absolute left-3 top-3 z-20 flex min-h-7 max-w-[calc(100%-4.5rem)] flex-wrap items-start gap-1.5">
+            {destaque ? (
+              <span className="rounded-md border border-pink-300/70 bg-gradient-to-r from-pink-600 to-pink-500 px-3 py-1 text-[11px] font-semibold text-white shadow-[0_0_14px_rgba(252,30,173,0.40)]">
+                Destaque
+              </span>
+            ) : null}
+            {comLocal ? (
+              <span className="rounded-md border border-pink-200 bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-pink-700 shadow-[0_0_11px_rgba(252,30,173,0.24)]">
+                Com local
+              </span>
+            ) : null}
+            {fazAnal ? (
+              <span className="rounded-md border border-pink-200 bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-pink-700 shadow-[0_0_11px_rgba(252,30,173,0.24)]">
+                Faz anal
+              </span>
+            ) : null}
+        </div>
 
         {!previewMode && carrosselDisponivel && midiasSeguras.length > 1 && (
           <>
@@ -403,7 +431,7 @@ export function AnuncioCard({
         )}
       </div>
 
-      <div className="flex flex-1 flex-col justify-between space-y-3 p-3">
+      <div className="flex min-h-[224px] flex-1 flex-col justify-between space-y-3 p-3">
         <div className="flex flex-col gap-1">
           <h3 className="line-clamp-1 text-base font-semibold leading-tight text-gray-900">
             {previewMode ? (
@@ -424,6 +452,13 @@ export function AnuncioCard({
             <span>{localizacaoLabel}</span>
           </div>
 
+          {anunciaDesdeLabel ? (
+            <p className="flex items-center gap-1.5 text-xs text-gray-500">
+              <CalendarDaysIcon className="h-4 w-4 text-pink-400" />
+              Anuncia desde {anunciaDesdeLabel}
+            </p>
+          ) : null}
+
           {!previewMode && (
             <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
               <EyeIcon className="h-4 w-4 text-gray-400" />
@@ -431,7 +466,7 @@ export function AnuncioCard({
             </div>
           )}
 
-          <p className="mt-1 line-clamp-2 text-xs text-gray-600">{descricaoExibida}</p>
+          <p className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-gray-600">{descricaoExibida}</p>
         </div>
 
         <div className="flex flex-col gap-2 border-t border-gray-100 pt-3">

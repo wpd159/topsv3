@@ -24,6 +24,28 @@ public final class PersistenceEnums {
     NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO
   }
 
+  public enum LocalAtendimentoAnuncio {
+    A_COMBINAR, HOTEL_MOTEL, MEU_LOCAL
+  }
+
+  public enum ServicoAnuncio {
+    ANAL,
+    ATRIZ_PORNO,
+    FETICHES,
+    MASSAGEM_TANTRICA,
+    ATIVO,
+    BDSM,
+    JOGOS_DE_INTERPRETACAO,
+    ORAL,
+    ATOR_PORNO,
+    EJACULACAO_CORPORAL,
+    MASSAGEM_EROTICA,
+    PASSIVO,
+    NAMORADAS,
+    TRIO,
+    VIDEOCHAMADA
+  }
+
   public enum StatusPublicacaoBusca {
     NAO_PUBLICAVEL, PUBLICAVEL, NOINDEX, REMOVIDO
   }

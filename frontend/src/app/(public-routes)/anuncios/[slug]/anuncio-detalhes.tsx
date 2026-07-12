@@ -41,6 +41,7 @@ type AnuncioUI = {
   locaisAtendimento?: string[]
   linkConteudo?: string | null
   horario?: string | null
+  anunciaDesde?: string | null
 }
 
 function mapAnuncioPayload(slug: string, data: PublicCatalogDetail): AnuncioUI {
@@ -70,10 +71,11 @@ function mapAnuncioPayload(slug: string, data: PublicCatalogDetail): AnuncioUI {
     descricaoAnuncio: data.descricao ?? null,
     midias: Array.isArray(data.midias) ? data.midias : [],
     categoria: data.categoria ?? null,
-    servicos: [],
-    locaisAtendimento: [],
+    servicos: data.servicos,
+    locaisAtendimento: data.locaisAtendimento,
     linkConteudo: null,
     horario: null,
+    anunciaDesde: data.anunciaDesde ?? null,
   }
 }
 

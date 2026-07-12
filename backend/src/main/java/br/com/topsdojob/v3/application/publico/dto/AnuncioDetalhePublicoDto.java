@@ -19,9 +19,14 @@ public record AnuncioDetalhePublicoDto(
         boolean midiaExtra,
         boolean story,
         boolean contatoDisponivel,
+        boolean comLocal,
+        boolean fazAnal,
+        List<String> locaisAtendimento,
+        List<String> servicos,
         List<String> beneficiosPublicos,
         String contatoPublico,
         String pendenciaContatoPublico,
+        OffsetDateTime anunciaDesde,
         OffsetDateTime publicadoEm,
         SeoRotaPublicaDto seo) {
 }

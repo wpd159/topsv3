@@ -4986,6 +4986,10 @@ components:
         - midiaExtra
         - story
         - contatoDisponivel
+        - comLocal
+        - fazAnal
+        - locaisAtendimento
+        - servicos
         - beneficiosPublicos
         - pendenciaContatoPublico
         - seo
@@ -5025,6 +5029,24 @@ components:
           type: boolean
         contatoDisponivel:
           type: boolean
+        comLocal:
+          type: boolean
+          description: Verdadeiro somente quando locaisAtendimento contem MEU_LOCAL.
+        fazAnal:
+          type: boolean
+          description: Verdadeiro somente quando servicos contem ANAL.
+        locaisAtendimento:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [A_COMBINAR, HOTEL_MOTEL, MEU_LOCAL]
+        servicos:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
         beneficiosPublicos:
           type: array
           description: Rotulos publicos sanitizados de beneficios ativos. Nao expoe valor pago, credito, grupo, campanha ou historico.
@@ -5039,6 +5061,12 @@ components:
           description: Marcador local enquanto a politica futura de contato publico nao for aprovada.
           type: string
           const: PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO
+        anunciaDesde:
+          description: Menor data confiavel de publicacao entre os anuncios da anunciante. Nao deriva da criacao da conta nem da renovacao do anuncio atual.
+          type:
+            - string
+            - "null"
+          format: date-time
         publicadoEm:
           type:
             - string
@@ -5059,6 +5087,8 @@ components:
         - midiaExtra
         - story
         - contatoDisponivel
+        - comLocal
+        - fazAnal
         - beneficiosPublicos
       properties:
         id:
@@ -5096,11 +5126,23 @@ components:
           type: boolean
         contatoDisponivel:
           type: boolean
+        comLocal:
+          type: boolean
+          description: Verdadeiro somente quando o dado estruturado contem MEU_LOCAL.
+        fazAnal:
+          type: boolean
+          description: Verdadeiro somente quando o dado estruturado contem ANAL.
         beneficiosPublicos:
           type: array
           description: Rotulos publicos sanitizados de beneficios ativos. Nao expoe valor pago, credito, grupo, campanha ou historico.
           items:
             type: string
+        anunciaDesde:
+          description: Menor data confiavel de publicacao entre os anuncios da anunciante. Nao deriva da criacao da conta nem da renovacao do anuncio atual.
+          type:
+            - string
+            - "null"
+          format: date-time
         publicadoEm:
           type:
             - string

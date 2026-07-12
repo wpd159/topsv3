@@ -3,7 +3,6 @@
 import { type MouseEvent, useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { ArrowUpIcon } from "@heroicons/react/24/outline"
 import { LoginModal } from "@/components/modals/login-modal"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "@/context/AuthContext"
@@ -28,15 +27,8 @@ export default function Footer() {
   const pathname = usePathname()
   const router = useRouter()
   const { usuario } = useAuth()
-  const [showScrollTop, setShowScrollTop] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [sobreTexto, setSobreTexto] = useState(DEFAULT_ABOUT)
-
-  useEffect(() => {
-    const handleScroll = () => setShowScrollTop(window.scrollY > 400)
-    window.addEventListener("scroll", handleScroll)
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
 
   useEffect(() => {
     let active = true
@@ -82,9 +74,9 @@ export default function Footer() {
   }
 
   return (
-    <footer className="relative mt-16 border-t bg-white pb-3">
-      <div className="mx-auto max-w-6xl px-6 py-14">
-        <div className="grid grid-cols-1 gap-10 border-b pb-12 lg:grid-cols-[1.2fr_0.9fr_0.9fr_1.2fr]">
+    <footer className="relative mt-14 border-t bg-white pb-2">
+      <div className="mx-auto max-w-6xl px-6 py-10">
+        <div className="grid grid-cols-1 gap-8 border-b pb-8 lg:grid-cols-[1.2fr_0.9fr_0.9fr_1.2fr]">
           <div className="space-y-4">
             <img
               src={getPublicLogoUrl()}
@@ -230,7 +222,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 py-10 lg:grid-cols-[1.2fr_auto] lg:items-center">
+        <div className="grid grid-cols-1 gap-5 py-8 lg:grid-cols-[1.2fr_auto] lg:items-center">
           <div className="space-y-2 text-center lg:text-left">
             <h3 className="text-2xl font-semibold text-gray-900">
               Aumente sua visibilidade e apareça para mais clientes
@@ -244,7 +236,7 @@ export default function Footer() {
           <div className="flex justify-center lg:justify-end">
             <Button
               onClick={onPublicar}
-              className="min-w-[220px] bg-[#FC1EAD] px-6 py-6 font-semibold text-white hover:bg-[#e01a9a]"
+              className="min-w-[220px] bg-[#FC1EAD] px-6 py-6 font-semibold text-white shadow-[0_0_18px_rgba(252,30,173,0.18)] transition hover:-translate-y-0.5 hover:bg-[#e01a9a] hover:shadow-[0_0_24px_rgba(252,30,173,0.26)]"
             >
               PUBLICAR SEU ANÚNCIO
             </Button>
@@ -252,21 +244,14 @@ export default function Footer() {
         </div>
       </div>
 
-      <div className="border-t py-4 text-center text-xs text-gray-700">
-        <p>Copyright © {new Date().getFullYear()} Tops do Job. Todos os direitos reservados.</p>
+      <div className="border-t px-6 py-4 text-xs text-gray-700">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 sm:flex-row">
+          <p>Copyright © {new Date().getFullYear()} Tops do Job. Todos os direitos reservados.</p>
+          <a href="#topo" className="font-medium text-gray-500 transition hover:text-pink-600">
+            Voltar ao início
+          </a>
+        </div>
       </div>
-
-      {showScrollTop && (
-        <Button
-          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-          variant="outline"
-          className="fixed bottom-6 right-24 flex items-center justify-center rounded-full p-3 shadow-lg transition-all duration-300 md:right-24"
-          aria-label="Voltar ao topo"
-        >
-          <ArrowUpIcon className="mr-2 h-4 w-4" />
-          <span>Voltar ao Início</span>
-        </Button>
-      )}
 
       <LoginModal
         open={loginOpen}

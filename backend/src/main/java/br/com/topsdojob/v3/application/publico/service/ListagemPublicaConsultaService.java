@@ -156,6 +156,15 @@ public class ListagemPublicaConsultaService {
                         .distinct()
                         .toList()).stream()
                 .collect(Collectors.toMap(BairroEntity::getId, Function.identity()));
+        Map<UUID, java.time.OffsetDateTime> primeiraPublicacaoPorUsuario = anuncioRepository
+                .findPrimeiraPublicacaoByUsuarioIdIn(anuncios.stream()
+                        .map(AnuncioEntity::getUsuarioId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getUsuarioId,
+                        AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getPrimeiraPublicacaoEm));
 
         List<AnuncioCardPublicoDto> itens = anuncios.stream()
                 .map(anuncio -> {
@@ -167,7 +176,8 @@ public class ListagemPublicaConsultaService {
                             toLocalizacao(estado, cidadeAnuncio, bairroAnuncio, localizacao),
                             anuncioConsultaService.midias(anuncio.getId()),
                             premiumMapper.flags(anuncio),
-                            contatoService.podeExporContato(anuncio));
+                            contatoService.podeExporContato(anuncio),
+                            primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()));
                 })
                 .toList();
 

@@ -45,7 +45,12 @@ export type PublicCatalogCard = {
   carrosselDisponivel: boolean
   videoHabilitado: boolean
   whatsappCardEnabled: boolean
+  comLocal: boolean
+  fazAnal: boolean
+  locaisAtendimento: string[]
+  servicos: string[]
   beneficiosPublicos: string[]
+  anunciaDesde?: string | null
   publicadoEm?: string | null
 }
 
@@ -159,7 +164,12 @@ type RawCard = {
   midiaExtra?: boolean
   story?: boolean
   contatoDisponivel?: boolean
+  comLocal?: boolean
+  fazAnal?: boolean
+  locaisAtendimento?: string[]
+  servicos?: string[]
   beneficiosPublicos?: string[]
+  anunciaDesde?: string | null
   publicadoEm?: string | null
   contatoPublico?: string | null
   pendenciaContatoPublico?: string | null
@@ -250,7 +260,12 @@ function mapCard(raw: RawCard): PublicCatalogCard {
     carrosselDisponivel: Boolean(raw.midiaExtra),
     videoHabilitado: midias.some((midia) => midia.tipo === 'VIDEO'),
     whatsappCardEnabled: Boolean(raw.contatoDisponivel),
+    comLocal: Boolean(raw.comLocal),
+    fazAnal: Boolean(raw.fazAnal),
+    locaisAtendimento: Array.isArray(raw.locaisAtendimento) ? raw.locaisAtendimento : [],
+    servicos: Array.isArray(raw.servicos) ? raw.servicos : [],
     beneficiosPublicos: Array.isArray(raw.beneficiosPublicos) ? raw.beneficiosPublicos : [],
+    anunciaDesde: raw.anunciaDesde ?? null,
     publicadoEm: raw.publicadoEm ?? null,
   }
 }

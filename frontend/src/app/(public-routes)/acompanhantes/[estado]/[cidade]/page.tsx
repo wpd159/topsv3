@@ -156,7 +156,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
       </nav>
 
       <div className="space-y-4">
-        <h1 className="text-4xl font-bold text-gray-900">{h1}</h1>
+        <h1 className="break-normal text-3xl font-bold text-gray-900 sm:text-4xl">{h1}</h1>
         <div className="max-w-4xl rounded-2xl border border-pink-100 bg-pink-50/60 px-5 py-4">
           <p className="text-base leading-7 text-gray-700">{descricaoTopoSeo}</p>
         </div>
@@ -178,9 +178,12 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
             midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
             destaque={anuncio.destaqueAtivo ?? false}
+            anunciaDesde={anuncio.anunciaDesde ?? null}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
             whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
+            comLocal={anuncio.comLocal}
+            fazAnal={anuncio.fazAnal}
           />
         ))}
       </div>

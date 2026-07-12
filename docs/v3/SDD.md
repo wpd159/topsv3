@@ -156,7 +156,7 @@ O backend é a fonte da decisão. Mídia `RESTRITA_18` não entrega URL original
 
 Registros anteriores sobre anúncio global `LIVRE`/`BLOQUEADO` são históricos e estão expressamente superados por esta seção e pela migration `V018__visibilidade_individual_midia.sql`.
 
-As migrations V001 a V019 foram aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel, com `migrate`, `validate` e `info` aprovados; V019 consta como `Success` e o resultado vigente e `OK_FLYWAY_REAL_LOCAL`.
+As migrations V001 a V020 foram aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel, com `migrate`, `validate` e `info` aprovados; V020 consta como `Success` e o resultado vigente e `OK_FLYWAY_REAL_LOCAL`.
 
 ### Stories de usuario e composicao administrativa
 
@@ -787,3 +787,13 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - O frontend usa somente `frontend/src/lib/meus-anuncios-api.ts` na listagem, detalhe e entrada de edicao. Falha HTTP permanece visivel e nao e convertida em lista vazia.
 - O editor herdado e seus fetches foram removidos. A rota `/meus-anuncios/[slug]/editar` valida propriedade e abre a entrada de edicao, mas a edicao completa permanece pendente de contrato V3 proprio.
 - Nenhuma migration, upload, exclusao, Premium, credito, pagamento, metrica ou OpenAI foi implementado nesta fase.
+
+## 36. Refinamentos visuais publicos
+
+- Home, listagens publicas, cards, detalhe e rodape receberam refinamentos de alinhamento, densidade, responsividade e neon rosa discreto, sem alterar URLs, canonical, sitemap ou regras de contato.
+- `anunciaDesde` foi acrescentado aos contratos publicos existentes de card e detalhe. A origem e a menor data `publicado_em` confiavel entre todos os anuncios da anunciante, calculada no backend em consulta agregada; criacao da conta, renovacao e apenas o anuncio atual nao sao usados como fonte.
+- O frontend apenas formata `anunciaDesde` como mes/ano e omite o texto quando o backend retorna `null`.
+- A V020 reconstrui no schema V3 os dados estruturados vigentes de atendimento e servicos: `anuncio_local_atendimento` aceita `A_COMBINAR`, `HOTEL_MOTEL` e `MEU_LOCAL`; `anuncio_servicos` preserva os servicos canonicos, incluindo `ANAL`.
+- O selo `Com local` deriva exclusivamente da presenca de `MEU_LOCAL`; `Faz anal` deriva exclusivamente de `ANAL`. E proibido inferir esses selos de endereco, descricao, categoria ou qualquer texto livre.
+- O rodape duplicado orfao e a rotacao automatica de perfis relacionados foram removidos. O link de retorno ao topo agora fica no fluxo normal do rodape.
+- A V020 foi necessaria porque o modelo vigente ja possui essas colecoes, mas o schema V3 limpo ainda nao as reconstruia. Os contratos publicos existentes foram ampliados sem endpoint paralelo.

@@ -35,6 +35,9 @@ interface Anuncio {
   idade?: number | null
   carrosselDisponivel?: boolean
   whatsappCardEnabled?: boolean
+  comLocal?: boolean
+  fazAnal?: boolean
+  anunciaDesde?: string | null
 }
 
 interface AnunciosGridProps {
@@ -184,7 +187,7 @@ export default function AnunciosGrid({
   if (loading && anuncios.length === 0) {
     return (
       <section className="py-3">
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 8 }).map((_, index) => (
             <div key={index} className="h-[420px] animate-pulse rounded-xl bg-gray-100" />
           ))}
@@ -208,7 +211,7 @@ export default function AnunciosGrid({
   return (
     <section className="space-y-6 py-3" aria-busy={loading}>
       <div
-        className={`grid grid-cols-1 gap-8 transition-opacity sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${
+        className={`grid grid-cols-1 gap-6 transition-opacity sm:grid-cols-2 lg:grid-cols-4 ${
           loading ? "opacity-70" : "opacity-100"
         }`}
       >
@@ -231,10 +234,13 @@ export default function AnunciosGrid({
             descricao={anuncio.descricao}
             favoritoInicial={anuncio.favorito ?? false}
             destaque={anuncio.destaqueAtivo ?? false}
+            anunciaDesde={anuncio.anunciaDesde ?? null}
             visualizacoes={anuncio.visualizacoes ?? 0}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
             whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
+            comLocal={anuncio.comLocal ?? false}
+            fazAnal={anuncio.fazAnal ?? false}
             onAccessUpdated={() => setReloadMarker((prev) => prev + 1)}
           />
         ))}

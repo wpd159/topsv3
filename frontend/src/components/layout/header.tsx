@@ -154,7 +154,7 @@ export default function Header() {
         </div>
 
         {/* Links principais */}
-        <nav className="hidden md:flex items-start gap-8 font-normal text-md cursor-pointer">
+        <nav className="hidden lg:flex items-start gap-8 font-normal text-md cursor-pointer">
           {[
             { label: "Acompanhantes", href: "/acompanhantes" },
             { label: "Anúncios", href: "/anuncios" },
@@ -174,7 +174,7 @@ export default function Header() {
         </nav>
 
         {/* Ações desktop */}
-        <div className="hidden md:flex items-center gap-4 relative">
+        <div className="hidden lg:flex items-center gap-4 relative">
           <Button
             variant="ghost"
             className="flex items-center gap-2 text-gray-600 py-5 hover:text-gray-900"
@@ -202,7 +202,7 @@ export default function Header() {
         </div>
 
         {/* Mobile */}
-        <div className="md:hidden flex items-center">
+        <div className="flex items-center lg:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon">

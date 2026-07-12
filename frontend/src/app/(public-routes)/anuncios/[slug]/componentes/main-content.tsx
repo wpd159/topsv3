@@ -4,6 +4,7 @@ import {
   MapPinIcon,
   LinkIcon,
   ClockIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/solid'
 import { useMemo } from 'react'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
@@ -90,13 +91,11 @@ export default function MainContent({ anuncio }: MainContentProps) {
   ])
 
   const hasLocal = localizacaoLabel !== 'Cidade não informada'
-  const mapaUrl = hasLocal
-    ? `https://www.google.com/maps?q=${encodeURIComponent(
-        [clean(anuncio.pontoReferenciaTexto), clean(anuncio.bairroNome), clean(anuncio.cidadeNome), clean(anuncio.estadoUf)]
-          .filter(Boolean)
-          .join(', ') || localizacaoLabel
-      )}&output=embed`
-    : ''
+  const mapaConsulta = [clean(anuncio.pontoReferenciaTexto), clean(anuncio.bairroNome), clean(anuncio.cidadeNome), clean(anuncio.estadoUf)]
+    .filter(Boolean)
+    .join(', ') || localizacaoLabel
+  const mapaUrl = hasLocal ? `https://www.google.com/maps?q=${encodeURIComponent(mapaConsulta)}&output=embed` : ''
+  const mapaLink = hasLocal ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaConsulta)}` : ''
 
   const servicos = useMemo(() => dedupeStrings(anuncio.servicos), [anuncio.servicos])
   const locaisAtendimento = useMemo(
@@ -140,11 +139,11 @@ export default function MainContent({ anuncio }: MainContentProps) {
         <div className="pt-3">
           <h3 className="mb-2 text-sm font-semibold text-gray-900">Serviços</h3>
           {servicos.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {servicos.map((s: string) => (
                 <span
                   key={s}
-                  className="inline-flex items-center gap-1 rounded-full border border-pink-100 bg-pink-50 px-3 py-1 text-xs text-pink-700"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-pink-200 bg-pink-50 px-4 py-2 text-sm text-pink-700 shadow-[0_0_12px_rgba(252,30,173,0.12)]"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-pink-500" />
                   {LABEL_SERVICO[s] ?? corrigirTextoCorrompido(s.replace(/_/g, ' '))}
@@ -159,11 +158,11 @@ export default function MainContent({ anuncio }: MainContentProps) {
         <div className="pt-3">
           <h3 className="mb-2 text-sm font-semibold text-gray-900">Local de atendimento</h3>
           {locaisAtendimento.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {locaisAtendimento.map((l: string) => (
                 <span
                   key={l}
-                  className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-pink-100 bg-gray-50 px-4 py-2 text-sm text-gray-700 shadow-[0_0_12px_rgba(252,30,173,0.08)]"
                 >
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                   {LABEL_LOCAL[l] ?? corrigirTextoCorrompido(l.replace(/_/g, ' '))}
@@ -192,7 +191,7 @@ export default function MainContent({ anuncio }: MainContentProps) {
         )}
       </div>
 
-      <div className="scroll-mt-24 space-y-4 rounded-xl border border-gray-200 bg-white p-5">
+      <div className="scroll-mt-24 space-y-5 rounded-xl border border-pink-100 bg-white p-6 shadow-[0_0_18px_rgba(252,30,173,0.08)]">
         <h2 className="text-lg font-semibold text-gray-900">Localização</h2>
 
         <div className="flex items-center text-sm text-gray-700">
@@ -201,9 +200,20 @@ export default function MainContent({ anuncio }: MainContentProps) {
         </div>
 
         {hasLocal ? (
-          <div className="relative h-[300px] w-full overflow-hidden rounded-lg border border-gray-200">
-            <iframe src={mapaUrl} width="100%" height="100%" loading="lazy" className="rounded-lg" />
-          </div>
+          <>
+            <div className="relative h-[300px] w-full overflow-hidden rounded-lg border border-gray-200">
+              <iframe src={mapaUrl} width="100%" height="100%" loading="lazy" className="rounded-lg" />
+            </div>
+            <a
+              href={mapaLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-pink-200 px-4 py-2 text-sm font-semibold text-pink-700 transition hover:-translate-y-0.5 hover:bg-pink-50 hover:shadow-[0_0_14px_rgba(252,30,173,0.16)]"
+            >
+              Abrir no Maps
+              <ArrowTopRightOnSquareIcon className="h-4 w-4" />
+            </a>
+          </>
         ) : (
           <div className="flex h-[300px] w-full items-center justify-center rounded-lg border border-gray-200 bg-gray-50">
             <p className="text-sm text-gray-500">Localização não informada.</p>

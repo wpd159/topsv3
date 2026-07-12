@@ -89,7 +89,7 @@ export default function FiltrosAnuncios({
             key={c.id}
             variant={c.id === categoriaAtual ? 'default' : 'outline'}
             onClick={() => handleCategoriaClick(c.id)}
-            className="shrink-0 text-xs sm:text-sm"
+            className="shrink-0 border-pink-100 text-xs shadow-[0_0_10px_rgba(252,30,173,0.06)] transition hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-[0_0_14px_rgba(252,30,173,0.12)] sm:text-sm"
           >
             {c.nome}
           </Button>

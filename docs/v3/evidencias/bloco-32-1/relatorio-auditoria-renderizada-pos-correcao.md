@@ -10,280 +10,700 @@
 ## Rotas
 - / (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 1274px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Tops do Job | Acompanhantes por cidade e bairro
-  - OK: meta description presente - Navegue por acompanhantes em cidades, bairros e anúncios com contato mediado e cadastro gratuito para análise.
-  - OK: canonical local seguro - http://localhost/
-  - OK: H1 presente - Tops do Job
-  - OK: H1 legivel - 554x58
-  - OK: shell dentro da viewport - 1220px
-- /anunciar (desktop): OK
-  - OK: HTTP 2xx/3xx - status=200
   - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 1265px em 1280px
-  - OK: sem document.body.style.overflow - vazio
-  - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
-  - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - PUBLICAR SEU ANÚNCIO | Tops do Job
-  - OK: meta description presente - Envie seu anúncio para análise no Tops do Job, sem pagamento, upload ou publicação automática nesta etapa.
-  - OK: canonical local seguro - http://localhost/anunciar
-  - OK: H1 presente - PUBLICAR SEU ANÚNCIO
-  - OK: H1 legivel - 1172x43
-  - OK: shell dentro da viewport - 1220px
+  - OK: title presente - Acompanhantes perto de você | Tops do Job
+  - OK: meta description presente - Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.
+  - OK: canonical local seguro - http://127.0.0.1:18332
+  - OK: H1 presente - Encontre acompanhantes perto de você
+  - OK: H1 legivel - 992x60
+  - OK: shell dentro da viewport - 1274px
 - /acompanhantes/go/goiania (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 1274px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Acompanhantes em Goiânia - GO | Tops do Job
-  - OK: meta description presente - Encontre acompanhantes em Goiânia - GO com navegação por bairros, perfis disponíveis e contato mediado com segurança.
-  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania
-  - OK: H1 presente - Acompanhantes em Goiânia - GO
-  - OK: H1 legivel - 852x51
-  - OK: shell dentro da viewport - 1220px
-  - OK: breadcrumbs legiveis - 1130px
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Goiania, GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania
+  - OK: H1 presente - Acompanhantes em Goiania
+  - OK: H1 legivel - 1178x40
+  - OK: shell dentro da viewport - 1274px
+  - OK: breadcrumbs legiveis - 1178px
+  - OK: cards publicos presentes - cards=4
+  - OK: cards dentro da viewport - cards=4
+  - OK: selo Com local derivado do contrato - MEU_LOCAL
+  - OK: selo Faz anal derivado do contrato - ANAL
   - OK: conteudo sintetico esperado - demo-goiania-livre-premium
 - /acompanhantes/go/goiania/setor-bueno (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 1274px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Acompanhantes em Setor Bueno, Goiânia - GO | Tops do Job
-  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação organizada.
-  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania/setor-bueno
-  - OK: H1 presente - Acompanhantes em Setor Bueno, Goiânia - GO
-  - OK: H1 legivel - 852x101
-  - OK: shell dentro da viewport - 1220px
-  - OK: breadcrumbs legiveis - 1130px
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes no Setor Bueno, Goiania - GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes no Setor Bueno, Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania/setor-bueno
+  - OK: H1 presente - Acompanhantes no Setor Bueno, Goiania - GO
+  - OK: H1 legivel - 1178x40
+  - OK: shell dentro da viewport - 1274px
+  - OK: breadcrumbs legiveis - 1178px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
   - OK: conteudo sintetico esperado - demo-goiania-livre-premium
 - /acompanhantes/df/brasilia (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 1274px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Acompanhantes em Brasília - DF | Tops do Job
-  - OK: meta description presente - Encontre acompanhantes em Brasília - DF com navegação por bairros, perfis disponíveis e contato mediado com segurança.
-  - OK: canonical local seguro - http://localhost/acompanhantes/df/brasilia
-  - OK: H1 presente - Acompanhantes em Brasília - DF
-  - OK: H1 legivel - 852x51
-  - OK: shell dentro da viewport - 1220px
-  - OK: breadcrumbs legiveis - 1130px
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Brasilia, DF | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Brasilia com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/df/brasilia
+  - OK: H1 presente - Acompanhantes em Brasilia
+  - OK: H1 legivel - 1178x40
+  - OK: shell dentro da viewport - 1274px
+  - OK: breadcrumbs legiveis - 1178px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
   - OK: conteudo sintetico esperado - demo-brasilia-premium-topo
 - /anuncios/demo-goiania-livre-premium (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 1274px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
-  - OK: meta description presente - Informações públicas do anúncio no Tops do Job.
-  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia premium em Setor Bueno, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-livre-premium
   - OK: H1 presente - Perfil de demonstração Goiânia premium
-  - OK: H1 legivel - 1134x51
-  - OK: shell dentro da viewport - 1220px
-  - OK: breadcrumbs legiveis - 1134px
+  - OK: H1 legivel - 1178x60
+  - OK: shell dentro da viewport - 1274px
+  - OK: chip Meu local no detalhe - MEU_LOCAL
+  - OK: chip Anal no detalhe - ANAL
+  - OK: galeria sem mini-coluna - 1178px
+  - OK: galeria dentro da viewport - 1178px
+  - OK: CTA dentro da viewport - 377px
+  - OK: contato visivel sem age gate - visivel
   - OK: conteudo sintetico esperado - Perfil de demonstra
-- /anuncios/demo-goiania-bloqueado (desktop): OK
+- /anuncios/demo-goiania-midia-restrita (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - sem wa.me/+55
-  - OK: sem scroll horizontal - 1265px em 1280px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 1274px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Demo Goiânia Bloqueado | Tops do Job
-  - OK: meta description presente - Perfil com informações públicas, mídia controlada e contato mediado pelo Tops do Job.
-  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-bloqueado
-  - OK: H1 presente - Demo Goiânia Bloqueado
-  - OK: H1 legivel - 1134x51
-  - OK: shell dentro da viewport - 1220px
-  - OK: breadcrumbs legiveis - 1134px
-  - OK: conteudo sintetico esperado - Demo Goi
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia com mídia restrita em Jardim Goias, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração com conteúdo protegido por confirmação de idade.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-midia-restrita
+  - OK: H1 presente - Perfil de demonstração Goiânia com mídia restrita
+  - OK: H1 legivel - 1178x60
+  - OK: shell dentro da viewport - 1274px
+  - OK: galeria sem mini-coluna - 1178px
+  - OK: galeria dentro da viewport - 1178px
+  - OK: CTA dentro da viewport - 377px
+  - OK: contato visivel sem age gate - visivel
+  - OK: original restrito ausente do DOM - ausente
+  - OK: conteudo sintetico esperado - Perfil de demonstra
   - OK: conteudo proibido ausente - wa.me
 - /sitemap.xml (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 1280px em 1280px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 1265px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: sem JSON bruto - resposta textual esperada
   - OK: conteudo esperado - <urlset
   - OK: sem dominio de producao - local seguro
 - /robots.txt (desktop): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
   - OK: sem scroll horizontal - 1280px em 1280px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: sem JSON bruto - resposta textual esperada
   - OK: conteudo esperado - Disallow
   - OK: sem dominio de producao - local seguro
-- / (mobile): OK
+- / (tablet): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 762px em 768px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Tops do Job | Acompanhantes por cidade e bairro
-  - OK: meta description presente - Navegue por acompanhantes em cidades, bairros e anúncios com contato mediado e cadastro gratuito para análise.
-  - OK: canonical local seguro - http://localhost/
-  - OK: H1 presente - Tops do Job
-  - OK: H1 legivel - 306x38
-  - OK: shell dentro da viewport - 390px
-- /anunciar (mobile): OK
-  - OK: HTTP 2xx/3xx - status=200
   - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 390px em 390px
+  - OK: title presente - Acompanhantes perto de você | Tops do Job
+  - OK: meta description presente - Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.
+  - OK: canonical local seguro - http://127.0.0.1:18332
+  - OK: H1 presente - Encontre acompanhantes perto de você
+  - OK: H1 legivel - 682x120
+  - OK: shell dentro da viewport - 762px
+- /acompanhantes/go/goiania (tablet): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 762px em 768px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - PUBLICAR SEU ANÚNCIO | Tops do Job
-  - OK: meta description presente - Envie seu anúncio para análise no Tops do Job, sem pagamento, upload ou publicação automática nesta etapa.
-  - OK: canonical local seguro - http://localhost/anunciar
-  - OK: H1 presente - PUBLICAR SEU ANÚNCIO
-  - OK: H1 legivel - 342x32
-  - OK: shell dentro da viewport - 390px
-- /acompanhantes/go/goiania (mobile): OK
-  - OK: HTTP 2xx/3xx - status=200
   - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 390px em 390px
-  - OK: sem document.body.style.overflow - vazio
-  - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
-  - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Acompanhantes em Goiânia - GO | Tops do Job
-  - OK: meta description presente - Encontre acompanhantes em Goiânia - GO com navegação por bairros, perfis disponíveis e contato mediado com segurança.
-  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania
-  - OK: H1 presente - Acompanhantes em Goiânia - GO
-  - OK: H1 legivel - 300x69
-  - OK: shell dentro da viewport - 390px
-  - OK: breadcrumbs legiveis - 300px
+  - OK: title presente - Acompanhantes em Goiania, GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania
+  - OK: H1 presente - Acompanhantes em Goiania
+  - OK: H1 legivel - 682x40
+  - OK: shell dentro da viewport - 762px
+  - OK: breadcrumbs legiveis - 682px
+  - OK: cards publicos presentes - cards=4
+  - OK: cards dentro da viewport - cards=4
+  - OK: selo Com local derivado do contrato - MEU_LOCAL
+  - OK: selo Faz anal derivado do contrato - ANAL
   - OK: conteudo sintetico esperado - demo-goiania-livre-premium
-- /acompanhantes/go/goiania/setor-bueno (mobile): OK
+- /acompanhantes/go/goiania/setor-bueno (tablet): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 762px em 768px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Acompanhantes em Setor Bueno, Goiânia - GO | Tops do Job
-  - OK: meta description presente - Veja acompanhantes em Setor Bueno, Goiânia - GO, com links para a cidade, perfis relacionados e navegação organizada.
-  - OK: canonical local seguro - http://localhost/acompanhantes/go/goiania/setor-bueno
-  - OK: H1 presente - Acompanhantes em Setor Bueno, Goiânia - GO
-  - OK: H1 legivel - 300x104
-  - OK: shell dentro da viewport - 390px
-  - OK: breadcrumbs legiveis - 300px
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes no Setor Bueno, Goiania - GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes no Setor Bueno, Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania/setor-bueno
+  - OK: H1 presente - Acompanhantes no Setor Bueno, Goiania - GO
+  - OK: H1 legivel - 682x80
+  - OK: shell dentro da viewport - 762px
+  - OK: breadcrumbs legiveis - 682px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
   - OK: conteudo sintetico esperado - demo-goiania-livre-premium
-- /acompanhantes/df/brasilia (mobile): OK
+- /acompanhantes/df/brasilia (tablet): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 762px em 768px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Acompanhantes em Brasília - DF | Tops do Job
-  - OK: meta description presente - Encontre acompanhantes em Brasília - DF com navegação por bairros, perfis disponíveis e contato mediado com segurança.
-  - OK: canonical local seguro - http://localhost/acompanhantes/df/brasilia
-  - OK: H1 presente - Acompanhantes em Brasília - DF
-  - OK: H1 legivel - 300x69
-  - OK: shell dentro da viewport - 390px
-  - OK: breadcrumbs legiveis - 300px
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Brasilia, DF | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Brasilia com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/df/brasilia
+  - OK: H1 presente - Acompanhantes em Brasilia
+  - OK: H1 legivel - 682x40
+  - OK: shell dentro da viewport - 762px
+  - OK: breadcrumbs legiveis - 682px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
   - OK: conteudo sintetico esperado - demo-brasilia-premium-topo
-- /anuncios/demo-goiania-livre-premium (mobile): OK
+- /anuncios/demo-goiania-livre-premium (tablet): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 762px em 768px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Perfil de demonstração Goiânia premium | Tops do Job
-  - OK: meta description presente - Informações públicas do anúncio no Tops do Job.
-  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-livre-premium
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia premium em Setor Bueno, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-livre-premium
   - OK: H1 presente - Perfil de demonstração Goiânia premium
-  - OK: H1 legivel - 304x104
-  - OK: shell dentro da viewport - 390px
-  - OK: breadcrumbs legiveis - 304px
+  - OK: H1 legivel - 682x120
+  - OK: shell dentro da viewport - 762px
+  - OK: chip Meu local no detalhe - MEU_LOCAL
+  - OK: chip Anal no detalhe - ANAL
+  - OK: galeria sem mini-coluna - 682px
+  - OK: galeria dentro da viewport - 682px
+  - OK: CTA dentro da viewport - 682px
+  - OK: contato visivel sem age gate - visivel
   - OK: conteudo sintetico esperado - Perfil de demonstra
-- /anuncios/demo-goiania-bloqueado (mobile): OK
+- /anuncios/demo-goiania-midia-restrita (tablet): OK
   - OK: HTTP 2xx/3xx - status=200
-  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - sem wa.me/+55
-  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 762px em 768px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
-  - OK: title presente - Demo Goiânia Bloqueado | Tops do Job
-  - OK: meta description presente - Perfil com informações públicas, mídia controlada e contato mediado pelo Tops do Job.
-  - OK: canonical local seguro - http://localhost/anuncios/demo-goiania-bloqueado
-  - OK: H1 presente - Demo Goiânia Bloqueado
-  - OK: H1 legivel - 304x69
-  - OK: shell dentro da viewport - 390px
-  - OK: breadcrumbs legiveis - 304px
-  - OK: conteudo sintetico esperado - Demo Goi
-  - OK: conteudo proibido ausente - wa.me
-- /sitemap.xml (mobile): OK
-  - OK: HTTP 2xx/3xx - status=200
   - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
-  - OK: sem scroll horizontal - 980px em 980px
+  - OK: title presente - Perfil de demonstração Goiânia com mídia restrita em Jardim Goias, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração com conteúdo protegido por confirmação de idade.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-midia-restrita
+  - OK: H1 presente - Perfil de demonstração Goiânia com mídia restrita
+  - OK: H1 legivel - 682x120
+  - OK: shell dentro da viewport - 762px
+  - OK: galeria sem mini-coluna - 682px
+  - OK: galeria dentro da viewport - 682px
+  - OK: CTA dentro da viewport - 682px
+  - OK: contato visivel sem age gate - visivel
+  - OK: original restrito ausente do DOM - ausente
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+  - OK: conteudo proibido ausente - wa.me
+- /sitemap.xml (tablet): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 753px em 768px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: sem JSON bruto - resposta textual esperada
   - OK: conteudo esperado - <urlset
   - OK: sem dominio de producao - local seguro
-- /robots.txt (mobile): OK
+- /robots.txt (tablet): OK
   - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 768px em 768px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - Disallow
+  - OK: sem dominio de producao - local seguro
+- / (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 320px em 320px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
   - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
-  - OK: BLOQUEADO sem WhatsApp publico - nao aplicavel
+  - OK: title presente - Acompanhantes perto de você | Tops do Job
+  - OK: meta description presente - Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.
+  - OK: canonical local seguro - http://127.0.0.1:18332
+  - OK: H1 presente - Encontre acompanhantes perto de você
+  - OK: H1 legivel - 256x55
+  - OK: shell dentro da viewport - 320px
+- /acompanhantes/go/goiania (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 320px em 320px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Goiania, GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania
+  - OK: H1 presente - Acompanhantes em Goiania
+  - OK: H1 legivel - 256x72
+  - OK: shell dentro da viewport - 320px
+  - OK: breadcrumbs legiveis - 256px
+  - OK: cards publicos presentes - cards=4
+  - OK: cards dentro da viewport - cards=4
+  - OK: selo Com local derivado do contrato - MEU_LOCAL
+  - OK: selo Faz anal derivado do contrato - ANAL
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/go/goiania/setor-bueno (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 320px em 320px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes no Setor Bueno, Goiania - GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes no Setor Bueno, Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania/setor-bueno
+  - OK: H1 presente - Acompanhantes no Setor Bueno, Goiania - GO
+  - OK: H1 legivel - 256x108
+  - OK: shell dentro da viewport - 320px
+  - OK: breadcrumbs legiveis - 256px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/df/brasilia (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 320px em 320px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Brasilia, DF | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Brasilia com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/df/brasilia
+  - OK: H1 presente - Acompanhantes em Brasilia
+  - OK: H1 legivel - 256x72
+  - OK: shell dentro da viewport - 320px
+  - OK: breadcrumbs legiveis - 256px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
+  - OK: conteudo sintetico esperado - demo-brasilia-premium-topo
+- /anuncios/demo-goiania-livre-premium (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 320px em 320px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia premium em Setor Bueno, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-livre-premium
+  - OK: H1 presente - Perfil de demonstração Goiânia premium
+  - OK: H1 legivel - 256x180
+  - OK: shell dentro da viewport - 320px
+  - OK: chip Meu local no detalhe - MEU_LOCAL
+  - OK: chip Anal no detalhe - ANAL
+  - OK: galeria sem mini-coluna - 256px
+  - OK: galeria dentro da viewport - 256px
+  - OK: CTA dentro da viewport - 256px
+  - OK: contato visivel sem age gate - visivel
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+- /anuncios/demo-goiania-midia-restrita (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 320px em 320px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia com mídia restrita em Jardim Goias, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração com conteúdo protegido por confirmação de idade.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-midia-restrita
+  - OK: H1 presente - Perfil de demonstração Goiânia com mídia restrita
+  - OK: H1 legivel - 256x180
+  - OK: shell dentro da viewport - 320px
+  - OK: galeria sem mini-coluna - 256px
+  - OK: galeria dentro da viewport - 256px
+  - OK: CTA dentro da viewport - 256px
+  - OK: contato visivel sem age gate - visivel
+  - OK: original restrito ausente do DOM - ausente
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+  - OK: conteudo proibido ausente - wa.me
+- /sitemap.xml (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
   - OK: sem scroll horizontal - 980px em 980px
   - OK: sem document.body.style.overflow - vazio
   - OK: sem scroll lock global - html=visible; body=visible
-  - OK: sem elemento fixed/absolute/sticky publico - nenhum
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - <urlset
+  - OK: sem dominio de producao - local seguro
+- /robots.txt (mobile-320): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 980px em 980px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - Disallow
+  - OK: sem dominio de producao - local seguro
+- / (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 360px em 360px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes perto de você | Tops do Job
+  - OK: meta description presente - Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.
+  - OK: canonical local seguro - http://127.0.0.1:18332
+  - OK: H1 presente - Encontre acompanhantes perto de você
+  - OK: H1 legivel - 296x55
+  - OK: shell dentro da viewport - 360px
+- /acompanhantes/go/goiania (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 360px em 360px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Goiania, GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania
+  - OK: H1 presente - Acompanhantes em Goiania
+  - OK: H1 legivel - 296x72
+  - OK: shell dentro da viewport - 360px
+  - OK: breadcrumbs legiveis - 296px
+  - OK: cards publicos presentes - cards=4
+  - OK: cards dentro da viewport - cards=4
+  - OK: selo Com local derivado do contrato - MEU_LOCAL
+  - OK: selo Faz anal derivado do contrato - ANAL
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/go/goiania/setor-bueno (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 360px em 360px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes no Setor Bueno, Goiania - GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes no Setor Bueno, Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania/setor-bueno
+  - OK: H1 presente - Acompanhantes no Setor Bueno, Goiania - GO
+  - OK: H1 legivel - 296x108
+  - OK: shell dentro da viewport - 360px
+  - OK: breadcrumbs legiveis - 296px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/df/brasilia (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 360px em 360px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Brasilia, DF | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Brasilia com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/df/brasilia
+  - OK: H1 presente - Acompanhantes em Brasilia
+  - OK: H1 legivel - 296x72
+  - OK: shell dentro da viewport - 360px
+  - OK: breadcrumbs legiveis - 296px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
+  - OK: conteudo sintetico esperado - demo-brasilia-premium-topo
+- /anuncios/demo-goiania-livre-premium (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 360px em 360px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia premium em Setor Bueno, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-livre-premium
+  - OK: H1 presente - Perfil de demonstração Goiânia premium
+  - OK: H1 legivel - 296x135
+  - OK: shell dentro da viewport - 360px
+  - OK: chip Meu local no detalhe - MEU_LOCAL
+  - OK: chip Anal no detalhe - ANAL
+  - OK: galeria sem mini-coluna - 296px
+  - OK: galeria dentro da viewport - 296px
+  - OK: CTA dentro da viewport - 296px
+  - OK: contato visivel sem age gate - visivel
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+- /anuncios/demo-goiania-midia-restrita (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 360px em 360px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia com mídia restrita em Jardim Goias, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração com conteúdo protegido por confirmação de idade.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-midia-restrita
+  - OK: H1 presente - Perfil de demonstração Goiânia com mídia restrita
+  - OK: H1 legivel - 296x180
+  - OK: shell dentro da viewport - 360px
+  - OK: galeria sem mini-coluna - 296px
+  - OK: galeria dentro da viewport - 296px
+  - OK: CTA dentro da viewport - 296px
+  - OK: contato visivel sem age gate - visivel
+  - OK: original restrito ausente do DOM - ausente
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+  - OK: conteudo proibido ausente - wa.me
+- /sitemap.xml (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 980px em 980px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - <urlset
+  - OK: sem dominio de producao - local seguro
+- /robots.txt (mobile-360): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 980px em 980px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - Disallow
+  - OK: sem dominio de producao - local seguro
+- / (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes perto de você | Tops do Job
+  - OK: meta description presente - Veja anúncios de acompanhantes na sua cidade e região, com contato direto pelo WhatsApp.
+  - OK: canonical local seguro - http://127.0.0.1:18332
+  - OK: H1 presente - Encontre acompanhantes perto de você
+  - OK: H1 legivel - 326x55
+  - OK: shell dentro da viewport - 390px
+- /acompanhantes/go/goiania (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Goiania, GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania
+  - OK: H1 presente - Acompanhantes em Goiania
+  - OK: H1 legivel - 326x72
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 326px
+  - OK: cards publicos presentes - cards=4
+  - OK: cards dentro da viewport - cards=4
+  - OK: selo Com local derivado do contrato - MEU_LOCAL
+  - OK: selo Faz anal derivado do contrato - ANAL
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/go/goiania/setor-bueno (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes no Setor Bueno, Goiania - GO | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes no Setor Bueno, Goiania com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/go/goiania/setor-bueno
+  - OK: H1 presente - Acompanhantes no Setor Bueno, Goiania - GO
+  - OK: H1 legivel - 326x108
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 326px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
+  - OK: conteudo sintetico esperado - demo-goiania-livre-premium
+- /acompanhantes/df/brasilia (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Acompanhantes em Brasilia, DF | Tops do Job
+  - OK: meta description presente - Encontre acompanhantes em Brasilia com fotos nos perfis, contato direto e navegação por bairro.
+  - OK: canonical local seguro - http://127.0.0.1:18332/acompanhantes/df/brasilia
+  - OK: H1 presente - Acompanhantes em Brasilia
+  - OK: H1 legivel - 326x72
+  - OK: shell dentro da viewport - 390px
+  - OK: breadcrumbs legiveis - 326px
+  - OK: cards publicos presentes - cards=2
+  - OK: cards dentro da viewport - cards=2
+  - OK: conteudo sintetico esperado - demo-brasilia-premium-topo
+- /anuncios/demo-goiania-livre-premium (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia premium em Setor Bueno, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração para validação de navegação pública.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-livre-premium
+  - OK: H1 presente - Perfil de demonstração Goiânia premium
+  - OK: H1 legivel - 326x135
+  - OK: shell dentro da viewport - 390px
+  - OK: chip Meu local no detalhe - MEU_LOCAL
+  - OK: chip Anal no detalhe - ANAL
+  - OK: galeria sem mini-coluna - 326px
+  - OK: galeria dentro da viewport - 326px
+  - OK: CTA dentro da viewport - 326px
+  - OK: contato visivel sem age gate - visivel
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+- /anuncios/demo-goiania-midia-restrita (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 390px em 390px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem texto tecnico/enum/status interno visivel - nenhuma categoria tecnica visivel
+  - OK: title presente - Perfil de demonstração Goiânia com mídia restrita em Jardim Goias, Goiania | Tops do Job
+  - OK: meta description presente - Perfil de demonstração com conteúdo protegido por confirmação de idade.
+  - OK: canonical local seguro - http://127.0.0.1:18332/anuncios/demo-goiania-midia-restrita
+  - OK: H1 presente - Perfil de demonstração Goiânia com mídia restrita
+  - OK: H1 legivel - 326x180
+  - OK: shell dentro da viewport - 390px
+  - OK: galeria sem mini-coluna - 326px
+  - OK: galeria dentro da viewport - 326px
+  - OK: CTA dentro da viewport - 326px
+  - OK: contato visivel sem age gate - visivel
+  - OK: original restrito ausente do DOM - ausente
+  - OK: conteudo sintetico esperado - Perfil de demonstra
+  - OK: conteudo proibido ausente - wa.me
+- /sitemap.xml (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 980px em 980px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
+  - OK: sem rotas publicas proibidas - nenhuma
+  - OK: sem JSON bruto - resposta textual esperada
+  - OK: conteudo esperado - <urlset
+  - OK: sem dominio de producao - local seguro
+- /robots.txt (mobile-390): OK
+  - OK: HTTP 2xx/3xx - status=200
+  - OK: sem telefone ou URL de WhatsApp no HTML publico - contato permanece mediado pelo endpoint de clique
+  - OK: sem scroll horizontal - 980px em 980px
+  - OK: sem document.body.style.overflow - vazio
+  - OK: sem scroll lock global - html=visible; body=visible
+  - OK: sem controle flutuante publico indevido - nenhum
   - OK: sem rotas publicas proibidas - nenhuma
   - OK: sem JSON bruto - resposta textual esperada
   - OK: conteudo esperado - Disallow

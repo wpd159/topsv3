@@ -102,6 +102,12 @@ public class AnuncioPublicoConsultaService {
         List<MidiaPublicaDto> midias = midias(anuncio.getId(), idadeConfirmada);
         List<MidiaPublicaDto> midiasSeo = idadeConfirmada ? midias(anuncio.getId(), false) : midias;
         boolean indexavel = indexabilidadePolicy.indexavel(anuncio, localizacao, midiasSeo);
+        var primeiraPublicacao = anuncioRepository
+                .findPrimeiraPublicacaoByUsuarioIdIn(List.of(anuncio.getUsuarioId()))
+                .stream()
+                .findFirst()
+                .map(AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getPrimeiraPublicacaoEm)
+                .orElse(null);
 
         return anuncioMapper.toDetalhe(
                 anuncio,
@@ -109,7 +115,8 @@ public class AnuncioPublicoConsultaService {
                 midias,
                 seoService.paraAnuncio(slugSeguro, indexavel),
                 premiumMapper.flags(anuncio),
-                contatoService.podeExporContato(anuncio));
+                contatoService.podeExporContato(anuncio),
+                primeiraPublicacao);
     }
 
     LocalizacaoPublicaDto localizacao(UUID anuncioId) {

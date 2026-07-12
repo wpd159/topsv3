@@ -148,7 +148,7 @@ Add-Check "comentarios SQL presentes" ($textNoComments -match '(?i)\bCOMMENT\s+O
 
 $expectedTables = @(
   "usuario", "credencial_usuario", "papel_usuario", "permissao", "papel_permissao", "sessao_usuario", "token_seguranca",
-  "estado", "cidade", "bairro", "anuncio_localizacao", "anuncio", "anuncio_status_historico", "documento_busca_anuncio",
+  "estado", "cidade", "bairro", "anuncio_localizacao", "anuncio", "anuncio_local_atendimento", "anuncio_servicos", "anuncio_status_historico", "documento_busca_anuncio",
   "arquivo_midia", "anuncio_midia", "documento_usuario", "documento_usuario_acesso", "story_anuncio", "revisao_anuncio", "anuncio_midia_revisao", "decisao_moderacao",
   "beneficio_premium", "beneficio_premium_opcao", "grupo_ativacao_beneficio", "ativacao_beneficio", "movimento_credito", "saldo_credito_usuario",
   "plano_credito", "pagamento", "pagamento_evento", "pagamento_webhook", "pagamento_conciliacao",

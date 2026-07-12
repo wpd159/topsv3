@@ -666,6 +666,15 @@ Antes de admin em ambiente nao local:
 - Pendente de fase propria: contrato de mutacao e edicao completa, incluindo validacoes de campos e auditoria; a entrada de edicao atual e somente leitura e valida propriedade.
 - Pendente antes de publicacao: smoke autenticado desktop/mobile com conta ficticia contendo zero e multiplos anuncios; esta fase nao autoriza deploy.
 
+## Refinamentos visuais publicos
+
+- Fechado localmente: `anunciaDesde` deriva da menor publicacao confiavel da anunciante e e omitido sem historico; nao usa criacao da conta, renovacao ou apenas o anuncio atual.
+- Fechado localmente: cards, categorias, cidades populares, filtros, Stories, galeria, mapa, relacionados e rodape receberam apenas ajustes visuais responsivos, sem alterar SEO, URLs ou contato.
+- Fechado localmente: rodape publico duplicado orfao, botao flutuante de retorno ao topo e rotacao automatica de perfis relacionados foram removidos.
+- Gate atendido localmente pela V020: `Com local` deriva somente de `MEU_LOCAL` e `Faz anal` somente de `ANAL`; permanece proibida qualquer inferencia por descricao, endereco, categoria ou outro texto livre.
+- Pendente antes de dados reais: mapear as colecoes estruturadas da fonte autorizada para as tabelas V3 durante o dry-run/importador aprovado, sem criar valores ausentes.
+- Pendente antes de publicacao: revisao visual real em 320px, 360px, 390px, tablet e desktop no ambiente que receber o delta; esta fase nao autoriza deploy.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;

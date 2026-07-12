@@ -121,7 +121,7 @@ export default function HeaderTabs({
   return (
     <div className="public-anuncio-gallery min-w-0 space-y-6">
       <section
-        className="relative overflow-hidden rounded-xl border border-gray-200 bg-zinc-950"
+        className="relative overflow-hidden rounded-xl border border-pink-200 bg-zinc-950 shadow-[0_0_24px_rgba(252,30,173,0.14)]"
         onTouchStart={handleTouchStart}
         onTouchEnd={(event) => handleTouchEnd(event, midias.length, mediaAtiva, selecionarMedia)}
       >
@@ -161,7 +161,7 @@ export default function HeaderTabs({
       </section>
 
       {midias.length ? (
-        <section className="rounded-xl border border-gray-200 bg-white p-3" aria-label="Mini galeria">
+        <section className="rounded-xl border border-pink-100 bg-white p-3 shadow-[0_0_18px_rgba(252,30,173,0.10)]" aria-label="Mini galeria">
           <div className="overflow-x-auto pb-1 no-scrollbar">
             <div className="flex min-w-full justify-center gap-2 sm:gap-3">
               {midias.map((item, index) => (
@@ -169,7 +169,9 @@ export default function HeaderTabs({
                   key={String(item.id)}
                   className={cn(
                     'relative h-24 w-20 flex-shrink-0 overflow-hidden rounded-lg border bg-black/5 transition sm:h-28 sm:w-24',
-                    index === mediaAtiva ? 'border-pink-500 ring-2 ring-pink-200' : 'border-gray-200 hover:border-pink-300'
+                    index === mediaAtiva
+                      ? 'border-pink-500 ring-2 ring-pink-300 shadow-[0_0_14px_rgba(252,30,173,0.28)]'
+                      : 'border-gray-200 hover:border-pink-300 hover:shadow-[0_0_10px_rgba(252,30,173,0.14)]'
                   )}
                 >
                   {renderMidia(item, 'object-cover object-center')}
@@ -184,7 +186,7 @@ export default function HeaderTabs({
         </section>
       ) : null}
 
-      <h1 className="text-3xl font-bold leading-tight text-gray-950 sm:text-4xl">{nome}</h1>
+      <h1 className="text-4xl font-bold leading-tight text-gray-950 sm:text-5xl">{nome}</h1>
 
       {lightboxOpen && fotoLightbox && typeof document !== 'undefined'
         ? createPortal(

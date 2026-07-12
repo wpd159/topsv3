@@ -52,7 +52,7 @@ function HomeCidadesPopulares({ cidades }: { cidades: CidadePopularHome[] }) {
 
   return (
     <section className="mx-auto mt-10 w-full max-w-7xl px-4">
-      <div className="rounded-3xl border border-pink-100 bg-white p-6 shadow-sm">
+      <div className="rounded-3xl border border-pink-100 bg-white p-6 shadow-[0_0_22px_rgba(252,30,173,0.10)]">
         <div className="max-w-3xl space-y-2">
           <h2 className="text-2xl font-bold text-gray-900">Acompanhantes em cidades populares</h2>
           <p className="text-sm leading-6 text-gray-600">
@@ -66,7 +66,7 @@ function HomeCidadesPopulares({ cidades }: { cidades: CidadePopularHome[] }) {
             <Link
               key={`${cidade.estadoUf}-${cidade.cidadeSlug}`}
               href={`/acompanhantes/${cidade.estadoUf.toLowerCase()}/${cidade.cidadeSlug}`}
-              className="rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm font-semibold text-pink-700 transition hover:bg-pink-100"
+              className="rounded-2xl border border-pink-200 bg-pink-50 px-4 py-3 text-sm font-semibold text-pink-700 shadow-[0_0_12px_rgba(252,30,173,0.08)] transition hover:-translate-y-0.5 hover:bg-pink-100 hover:shadow-[0_0_18px_rgba(252,30,173,0.16)]"
             >
               {labelAcompanhantesCidade(cidade.cidadeNome)} - {cidade.estadoUf}
             </Link>

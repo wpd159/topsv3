@@ -2,16 +2,25 @@ package br.com.topsdojob.v3.persistence.entity.anuncio;
 
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "anuncio")
@@ -45,6 +54,20 @@ public class AnuncioEntity {
 
   @Column(name = "categoria")
   private String categoria;
+
+  @ElementCollection(fetch = FetchType.LAZY)
+  @CollectionTable(name = "anuncio_local_atendimento", joinColumns = @JoinColumn(name = "anuncio_id"))
+  @Enumerated(EnumType.STRING)
+  @Column(name = "local_atendimento", nullable = false)
+  @BatchSize(size = 100)
+  private Set<LocalAtendimentoAnuncio> locaisAtendimento = new LinkedHashSet<>();
+
+  @ElementCollection(fetch = FetchType.LAZY)
+  @CollectionTable(name = "anuncio_servicos", joinColumns = @JoinColumn(name = "anuncio_id"))
+  @Enumerated(EnumType.STRING)
+  @Column(name = "servico", nullable = false)
+  @BatchSize(size = 100)
+  private Set<ServicoAnuncio> servicos = new LinkedHashSet<>();
 
   @Column(name = "preco", precision = 12, scale = 2)
   private BigDecimal preco;
@@ -106,6 +129,14 @@ public class AnuncioEntity {
     return categoria;
   }
 
+  public Set<LocalAtendimentoAnuncio> getLocaisAtendimento() {
+    return Set.copyOf(locaisAtendimento);
+  }
+
+  public Set<ServicoAnuncio> getServicos() {
+    return Set.copyOf(servicos);
+  }
+
   public BigDecimal getPreco() {
     return preco;
   }
@@ -155,6 +186,15 @@ public class AnuncioEntity {
     this.status = StatusAnuncio.PENDENTE_REVISAO;
     this.statusModeracao = StatusModeracaoAnuncio.PENDENTE;
     this.atualizadoEm = atualizadoEm;
+  }
+
+  public void sincronizarAtendimentoEstruturado(
+      Set<LocalAtendimentoAnuncio> locaisAtendimento,
+      Set<ServicoAnuncio> servicos) {
+    this.locaisAtendimento.clear();
+    this.locaisAtendimento.addAll(locaisAtendimento == null ? Set.of() : locaisAtendimento);
+    this.servicos.clear();
+    this.servicos.addAll(servicos == null ? Set.of() : servicos);
   }
 
   public static AnuncioEntity criarSolicitacaoLocal(

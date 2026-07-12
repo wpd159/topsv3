@@ -24,7 +24,7 @@ export function CategoriaCard({
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-gray-100 bg-white transition-all duration-500 hover:-translate-y-1"
+        "group relative h-full overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-[0_0_16px_rgba(252,30,173,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:border-pink-200 hover:shadow-[0_0_24px_rgba(252,30,173,0.16)]"
       )}
     >
       {/* Imagem + overlay */}

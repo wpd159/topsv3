@@ -26,9 +26,13 @@ import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -149,6 +153,7 @@ class ListagemPublicaConsultaServiceTest {
         UUID cidadeId = UUID.randomUUID();
         UUID anuncioPublicadoId = UUID.randomUUID();
         UUID anuncioRascunhoId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
 
         EstadoEntity estado = entity(EstadoEntity.class);
         set(estado, "id", estadoId);
@@ -170,10 +175,13 @@ class ListagemPublicaConsultaServiceTest {
 
         AnuncioEntity anuncioPublicado = entity(AnuncioEntity.class);
         set(anuncioPublicado, "id", anuncioPublicadoId);
+        set(anuncioPublicado, "usuarioId", usuarioId);
         set(anuncioPublicado, "slug", "anuncio-publicado");
         set(anuncioPublicado, "titulo", "Anuncio publicado");
         set(anuncioPublicado, "status", StatusAnuncio.PUBLICADO);
         set(anuncioPublicado, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
+        set(anuncioPublicado, "locaisAtendimento", Set.of(LocalAtendimentoAnuncio.MEU_LOCAL));
+        set(anuncioPublicado, "servicos", Set.of(ServicoAnuncio.ANAL));
 
         EstadoRepository estadoRepository = mock(EstadoRepository.class);
         CidadeRepository cidadeRepository = mock(CidadeRepository.class);
@@ -194,6 +202,13 @@ class ListagemPublicaConsultaServiceTest {
                 any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(anuncioPublicado), PageRequest.of(0, 20), 1));
         when(anuncioConsultaService.midias(anuncioPublicadoId)).thenReturn(List.of());
+        AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection primeiraPublicacao =
+                mock(AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection.class);
+        OffsetDateTime anunciaDesde = OffsetDateTime.parse("2023-11-10T10:00:00Z");
+        when(primeiraPublicacao.getUsuarioId()).thenReturn(usuarioId);
+        when(primeiraPublicacao.getPrimeiraPublicacaoEm()).thenReturn(anunciaDesde);
+        when(anuncioRepository.findPrimeiraPublicacaoByUsuarioIdIn(List.of(usuarioId)))
+                .thenReturn(List.of(primeiraPublicacao));
         when(seoService.paraCidade("SP", "sao-paulo"))
                 .thenReturn(new SeoRotaPublicaDto(
                         "Sao Paulo",
@@ -219,6 +234,9 @@ class ListagemPublicaConsultaServiceTest {
 
         assertThat(dto.itens()).hasSize(1);
         assertThat(dto.itens().get(0).slug()).isEqualTo("anuncio-publicado");
+        assertThat(dto.itens().get(0).anunciaDesde()).isEqualTo(anunciaDesde);
+        assertThat(dto.itens().get(0).comLocal()).isTrue();
+        assertThat(dto.itens().get(0).fazAnal()).isTrue();
         assertThat(dto.paginacao().totalItens()).isEqualTo(1);
         verify(localizacaoRepository).findByCidadeId(cidadeId);
         verify(anuncioRepository).findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(

@@ -220,7 +220,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
       </nav>
 
       <div className="space-y-4">
-        <h1 className="text-4xl font-bold text-gray-900">{h1}</h1>
+        <h1 className="break-normal text-3xl font-bold text-gray-900 sm:text-4xl">{h1}</h1>
         <p className="text-lg text-gray-600">{descricaoTopo}</p>
       </div>
 
@@ -240,9 +240,12 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
             midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
             destaque={anuncio.destaqueAtivo ?? false}
+            anunciaDesde={anuncio.anunciaDesde ?? null}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}
             whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
+            comLocal={anuncio.comLocal}
+            fazAnal={anuncio.fazAnal}
           />
         ))}
       </div>

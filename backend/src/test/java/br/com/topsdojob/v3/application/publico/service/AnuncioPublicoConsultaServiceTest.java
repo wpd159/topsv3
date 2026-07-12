@@ -26,7 +26,12 @@ import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.SeoUrlRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -37,14 +42,20 @@ class AnuncioPublicoConsultaServiceTest {
     @Test
     void retornaDetalheComLocalizacaoReal() {
         UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
         UUID estadoId = UUID.randomUUID();
         UUID cidadeId = UUID.randomUUID();
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         set(anuncio, "id", anuncioId);
+        set(anuncio, "usuarioId", usuarioId);
         set(anuncio, "slug", "slug-publico");
         set(anuncio, "titulo", "Perfil publico");
         set(anuncio, "status", StatusAnuncio.PUBLICADO);
         set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
+        set(anuncio, "locaisAtendimento", Set.of(
+                LocalAtendimentoAnuncio.A_COMBINAR,
+                LocalAtendimentoAnuncio.MEU_LOCAL));
+        set(anuncio, "servicos", Set.of(ServicoAnuncio.ANAL, ServicoAnuncio.ORAL));
         AnuncioLocalizacaoEntity localizacao = entity(AnuncioLocalizacaoEntity.class);
         set(localizacao, "anuncioId", anuncioId);
         set(localizacao, "estadoId", estadoId);
@@ -69,6 +80,13 @@ class AnuncioPublicoConsultaServiceTest {
         when(localizacaoRepository.findByAnuncioId(anuncioId)).thenReturn(Optional.of(localizacao));
         when(estadoRepository.findById(estadoId)).thenReturn(Optional.of(estado));
         when(cidadeRepository.findById(cidadeId)).thenReturn(Optional.of(cidade));
+        AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection primeiraPublicacao =
+                mock(AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection.class);
+        OffsetDateTime anunciaDesde = OffsetDateTime.parse("2024-07-03T12:00:00Z");
+        when(primeiraPublicacao.getUsuarioId()).thenReturn(usuarioId);
+        when(primeiraPublicacao.getPrimeiraPublicacaoEm()).thenReturn(anunciaDesde);
+        when(anuncioRepository.findPrimeiraPublicacaoByUsuarioIdIn(List.of(usuarioId)))
+                .thenReturn(List.of(primeiraPublicacao));
 
         AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
                 anuncioRepository,
@@ -91,6 +109,11 @@ class AnuncioPublicoConsultaServiceTest {
         assertThat(detalhe.id()).isEqualTo(anuncioId);
         assertThat(detalhe.localizacao().uf()).isEqualTo("GO");
         assertThat(detalhe.localizacao().cidadeSlug()).isEqualTo("goiania");
+        assertThat(detalhe.anunciaDesde()).isEqualTo(anunciaDesde);
+        assertThat(detalhe.comLocal()).isTrue();
+        assertThat(detalhe.fazAnal()).isTrue();
+        assertThat(detalhe.locaisAtendimento()).containsExactlyInAnyOrder("A_COMBINAR", "MEU_LOCAL");
+        assertThat(detalhe.servicos()).containsExactlyInAnyOrder("ANAL", "ORAL");
     }
 
     @Test
