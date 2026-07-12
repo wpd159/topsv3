@@ -171,6 +171,60 @@ paths:
                 $ref: "#/components/schemas/PublicAuthStatus"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/public/minha-conta/anuncios:
+    get:
+      summary: Lista os anuncios do usuario publico autenticado
+      operationId: listCurrentUserAds
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: O usuario e obtido exclusivamente da sessao. Retorna status reais, localizacao e capa publica segura sem entidade JPA, storage, documento, contato ou midia restrita original.
+      responses:
+        "200":
+          description: anuncios pertencentes ao usuario autenticado; a lista vazia representa ausencia real de anuncios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MeuAnuncio"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/minha-conta/anuncios/{slug}:
+    get:
+      summary: Detalha um anuncio pertencente ao usuario publico autenticado
+      operationId: getCurrentUserAd
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+      description: O backend resolve o usuario pela sessao e recusa acesso a anuncio pertencente a outro usuario.
+      responses:
+        "200":
+          description: detalhe sanitizado do anuncio do usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeuAnuncio"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/usuarios/verificar-duplicidade:
     get:
       summary: Verifica duplicidade no cadastro publico
@@ -2582,6 +2636,69 @@ components:
         status:
           type: string
           const: LOGOUT_OK
+    MeuAnuncio:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - slug
+        - titulo
+        - status
+        - statusModeracao
+        - localizacao
+        - capa
+        - atualizadoEm
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        titulo:
+          type: string
+        status:
+          type: string
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, REMOVIDO]
+        statusModeracao:
+          type: string
+          enum: [NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO]
+        localizacao:
+          oneOf:
+            - $ref: "#/components/schemas/MeuAnuncioLocalizacao"
+            - type: "null"
+        capa:
+          oneOf:
+            - $ref: "#/components/schemas/MeuAnuncioCapa"
+            - type: "null"
+        atualizadoEm:
+          type: [string, "null"]
+          format: date-time
+    MeuAnuncioLocalizacao:
+      type: object
+      additionalProperties: false
+      required: [uf, cidade, cidadeSlug, bairro, bairroSlug]
+      properties:
+        uf:
+          type: [string, "null"]
+        cidade:
+          type: [string, "null"]
+        cidadeSlug:
+          type: [string, "null"]
+        bairro:
+          type: [string, "null"]
+        bairroSlug:
+          type: [string, "null"]
+    MeuAnuncioCapa:
+      type: object
+      additionalProperties: false
+      required: [urlPublica, restrita]
+      properties:
+        urlPublica:
+          type: [string, "null"]
+          description: URL publica resolvida pela politica de midia segura; nunca contem bucket, chave de storage ou URL privada.
+        restrita:
+          type: boolean
+          description: Quando true, urlPublica permanece nula e a UI deve exibir placeholder seguro.
     PublicDuplicateCheck:
       type: object
       additionalProperties: false

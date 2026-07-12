@@ -26,6 +26,10 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
 
     List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNull(UUID usuarioId);
 
+    List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(UUID usuarioId);
+
+    Optional<AnuncioEntity> findBySlugAndRemovidoEmIsNull(String slug);
+
     Optional<AnuncioEntity> findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
             String slug,
             StatusAnuncio status,

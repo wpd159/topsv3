@@ -657,6 +657,15 @@ Antes de admin em ambiente nao local:
 - Pendente de fases futuras: dados de anuncios, performance, Premium, creditos e pagamentos no painel.
 - Pendente antes de publicacao: smoke autenticado desktop/mobile no ambiente que receber o delta; esta fase nao autoriza deploy.
 
+## Meus anuncios autenticado
+
+- Fechado localmente: listagem e detalhe por slug derivados da sessao publica, sem `usuarioId` recebido do frontend.
+- Fechado localmente: `401` sem sessao, `403` para anuncio de terceiro, `404` para slug inexistente e lista vazia apenas quando a conta realmente nao possui anuncios.
+- Fechado localmente: status reais com rotulos humanos, localizacao sanitizada e capa publica segura sem storage, documento ou URL original restrita.
+- Fechado localmente: adapter frontend unico, sem fallback vazio, fetch legado ativo, Stories, Premium, creditos, exclusao ou metricas na tela integrada.
+- Pendente de fase propria: contrato de mutacao e edicao completa, incluindo validacoes de campos e auditoria; a entrada de edicao atual e somente leitura e valida propriedade.
+- Pendente antes de publicacao: smoke autenticado desktop/mobile com conta ficticia contendo zero e multiplos anuncios; esta fase nao autoriza deploy.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;
