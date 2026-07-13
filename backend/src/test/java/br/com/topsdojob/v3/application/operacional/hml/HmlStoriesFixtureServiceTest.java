@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -313,6 +314,93 @@ class HmlStoriesFixtureServiceTest {
                 .extracting(AnuncioMidiaEntity::getOrdem)
                 .doesNotHaveDuplicates();
         verify(anuncioMidiaRepository, never()).save(ocupanteExistente);
+    }
+
+    @Test
+    void credencialProprietariaPreservaHashQuandoValorRuntimeJaConfere() {
+        String runtimeValue = "Aa1!" + UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
+                HmlStoriesFixtureService.USUARIO_ID,
+                "Usuario HML",
+                HmlStoriesFixtureService.USUARIO_EMAIL,
+                null,
+                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
+                agora);
+        CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
+                UUID.randomUUID(), usuario.getId(), "hash-bcrypt-existente", agora);
+        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+                .thenReturn(Optional.of(usuario));
+        when(credencialRepository.findByUsuarioId(usuario.getId())).thenReturn(Optional.of(credencial));
+        when(passwordEncoder.matches(runtimeValue, credencial.getSenhaHash())).thenReturn(true);
+
+        var result = service("homologacao")
+                .provisionarCredencialProprietario(runtimeValue);
+
+        assertThat(result.status())
+                .isEqualTo(HmlStoriesFixtureService.FixtureOwnerCredentialStatus.PRESERVADA);
+        verify(credencialRepository, never()).save(any());
+        verify(passwordEncoder, never()).encode(any());
+        verify(usuarioRepository, never()).save(any());
+        verify(usuarioRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void credencialProprietariaAtualizaMesmoUsuarioSemDuplicarFixtureOuAdmin() {
+        String runtimeValue = "Aa1!" + UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
+                HmlStoriesFixtureService.USUARIO_ID,
+                "Usuario HML",
+                HmlStoriesFixtureService.USUARIO_EMAIL,
+                null,
+                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
+                agora);
+        CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
+                UUID.randomUUID(), usuario.getId(), "hash-bcrypt-anterior", agora);
+        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+                .thenReturn(Optional.of(usuario));
+        when(credencialRepository.findByUsuarioId(usuario.getId())).thenReturn(Optional.of(credencial));
+        when(passwordEncoder.matches(eq(runtimeValue), any())).thenReturn(false, true);
+        when(passwordEncoder.encode(runtimeValue)).thenReturn("hash-bcrypt-novo");
+
+        HmlStoriesFixtureService service = service("homologacao");
+        var result = service
+                .provisionarCredencialProprietario(runtimeValue);
+        var repeated = service.provisionarCredencialProprietario(runtimeValue);
+
+        assertThat(result.status())
+                .isEqualTo(HmlStoriesFixtureService.FixtureOwnerCredentialStatus.ATUALIZADA);
+        assertThat(repeated.status())
+                .isEqualTo(HmlStoriesFixtureService.FixtureOwnerCredentialStatus.PRESERVADA);
+        assertThat(credencial.getSenhaHash()).isEqualTo("hash-bcrypt-novo");
+        verify(credencialRepository).save(credencial);
+        verify(passwordEncoder).encode(runtimeValue);
+        verify(usuarioRepository, never()).save(any());
+        verify(usuarioRepository, never()).saveAndFlush(any());
+        verify(anuncioRepository, never()).save(any());
+    }
+
+    @Test
+    void credencialProprietariaRecusaIdentidadeNaoCanonica() {
+        String runtimeValue = "Aa1!" + UUID.randomUUID();
+        UsuarioEntity outroUsuario = UsuarioEntity.criarCadastroPublico(
+                UUID.randomUUID(),
+                "Outro usuario",
+                HmlStoriesFixtureService.USUARIO_EMAIL,
+                null,
+                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
+                OffsetDateTime.now(ZoneOffset.UTC));
+        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+                .thenReturn(Optional.of(outroUsuario));
+
+        assertThatThrownBy(() -> service("homologacao")
+                .provisionarCredencialProprietario(runtimeValue))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("ID canonico");
+
+        verify(credencialRepository, never()).save(any());
+        verify(passwordEncoder, never()).encode(any());
     }
 
     @Test

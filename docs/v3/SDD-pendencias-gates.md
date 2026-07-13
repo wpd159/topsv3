@@ -664,11 +664,13 @@ Antes de admin em ambiente nao local:
 - Fechado localmente: status reais com rotulos humanos, localizacao sanitizada e capa publica segura sem storage, documento ou URL original restrita.
 - Fechado localmente: adapter frontend unico, sem fallback vazio, fetch legado ativo, Stories, Premium, creditos, exclusao ou metricas na tela integrada.
 - Fechado localmente: `PATCH /api/public/minha-conta/anuncios/{slug}` edita somente campos persistidos autorizados, valida propriedade pela sessao e preserva slug, publicacao, beneficios e midias.
-- Fechado localmente: a edicao reutiliza o wizard canonico de criacao em `mode="edit"`; o editor paralelo foi removido, o cache de rascunho da criacao fica isolado e nao ha validacao, formulario ou fluxo concorrente.
+- Fechado localmente: a edicao reutiliza o wizard canonico de criacao em `mode="edit"`; o editor paralelo foi removido e nao ha validacao, formulario ou fluxo concorrente.
+- Fechado localmente: localidades de criacao/edicao usam somente o adapter publico V3. O cache e isolado por usuario, modo e slug; a edicao hidrata primeiro o backend e cache divergente nao substitui dados mais recentes.
 - Fechado localmente: alteracoes de conteudo seguem a moderacao vigente, com revisao aberta rastreavel e `409` durante analise; a projecao publica fica nao publicavel ate nova decisao.
 - Pendente de contrato/schema proprio: horarios e disponibilidade, ausentes do modelo persistido V3 atual.
 - Pendente de contrato seguro: upload, exclusao e reordenacao de midia; a tela atual lista as midias sem permitir mutacao e sem expor URL restrita.
 - Pendente antes de publicacao: smoke autenticado desktop/mobile com conta ficticia contendo zero e multiplos anuncios; esta fase nao autoriza deploy.
+- Pendente apos publicacao do delta: executar a acao explicita do runner unico para a credencial do proprietario ficticio e validar no HML persistencia, slug, `Anuncia desde`, retorno para revisao, `409` durante revisao e `403` para anuncio alheio. Nenhuma credencial pode ser versionada ou registrada.
 
 ## Refinamentos visuais publicos
 

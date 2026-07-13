@@ -93,14 +93,29 @@ function editPayload(state: WizardFormState): MeuAnuncioAtualizacao {
   }
 }
 
+function editDraftSourceVersion(anuncio: MeuAnuncio) {
+  return [
+    anuncio.id,
+    anuncio.slug,
+    anuncio.atualizadoEm ?? 'sem-atualizacao',
+    anuncio.status,
+    anuncio.statusModeracao,
+  ].join(':')
+}
+
 export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardProps) {
   const router = useRouter()
   const { usuario, carregando, refresh } = useAuth()
   const isEdit = mode === 'edit'
-  const API = process.env.NEXT_PUBLIC_API_URL || ''
-  const localidades = useLocalidades(API, mode)
+  const localidades = useLocalidades()
   const { loadBairros, loadCidades } = localidades
-  const store = useAnuncioWizardStore({ persistCache: !isEdit })
+  const cacheUserId = usuario ? String(usuario.id) : null
+  const cacheScope = useMemo(() => cacheUserId ? {
+    userId: cacheUserId,
+    mode,
+    ...(isEdit && slug ? { slug } : {}),
+  } : null, [cacheUserId, isEdit, mode, slug])
+  const store = useAnuncioWizardStore({ cacheScope, backendFirst: isEdit })
   const {
     state: wizardState,
     hydrated,
@@ -114,7 +129,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     nextStep,
     previousStep,
     reset,
-    hydrate,
+    clearCurrentCache,
+    hydrateFromBackend,
   } = store
 
   const state = wizardState.form
@@ -188,21 +204,22 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   }, [state.fotos])
 
   useEffect(() => {
-    if (!isEdit || !hydrated || carregando || !usuario) return
+    if (!isEdit || carregando || !usuario) return
     if (!slug) {
       setEditError('Anúncio não encontrado.')
       setEditLoading(false)
       return
     }
-    if (loadedEditSlugRef.current === slug) return
-    loadedEditSlugRef.current = slug
+    const editLoadKey = `${usuario.id}:${slug}`
+    if (loadedEditSlugRef.current === editLoadKey) return
+    loadedEditSlugRef.current = editLoadKey
     setEditLoading(true)
     setEditError(null)
 
     void buscarMeuAnuncio(slug)
       .then((anuncio) => {
         setEditAnuncio(anuncio)
-        hydrate({
+        hydrateFromBackend({
           currentStep: 'perfil',
           form: {
             ...initialWizardFormState,
@@ -222,11 +239,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
             bairroNome: anuncio.localizacao?.bairro || '',
           },
           kyc: { ...initialWizardKycState, documentos: [], documentoNomes: [] },
-        })
+        }, editDraftSourceVersion(anuncio))
       })
       .catch((error) => setEditError(editErrorMessage(error)))
       .finally(() => setEditLoading(false))
-  }, [carregando, hydrate, hydrated, isEdit, slug, usuario])
+  }, [carregando, hydrateFromBackend, isEdit, slug, usuario])
 
   useEffect(() => {
     if (!hydrated) return
@@ -440,6 +457,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     const atualizado = await atualizarMeuAnuncio(slug, editPayload(state))
     setEditAnuncio(atualizado)
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', atualizado.id)
+    clearCurrentCache()
     toast.success('Alterações salvas e enviadas para revisão.')
     router.push(`/meus-anuncios/${encodeURIComponent(atualizado.slug)}`)
   }
@@ -592,7 +610,8 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           bairroOptions={bairroOptions}
           loadingEstados={localidades.loadingEstados}
           loadingCidades={localidades.loadingCidades}
-          loadingBairros={localidades.loadingBairros}
+           loadingBairros={localidades.loadingBairros}
+          errorMessage={localidades.errorMessage}
           onEstado={handleEstado}
           onCidade={handleCidade}
           onBairro={handleBairro}
@@ -641,7 +660,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     )
   }
 
-  if (carregando || !hydrated) {
+  if (carregando || (!hydrated && !(isEdit && !editLoading))) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-20 text-sm text-zinc-500">
         Preparando seu anúncio...

@@ -38,6 +38,12 @@ class MeusAnunciosFrontendContractTest {
                 Path.of("app", "(private-routes)", "anunciar", "wizard", "page.tsx")));
         String card = Files.readString(FRONTEND.resolve(
                 Path.of("components", "anuncios", "meu-anuncio-card.tsx")));
+        String localidades = Files.readString(FRONTEND.resolve(
+                Path.of("hooks", "useLocalidades.ts")));
+        String storage = Files.readString(FRONTEND.resolve(
+                Path.of("features", "anuncio-wizard", "wizard-storage.ts")));
+        String wizardStore = Files.readString(FRONTEND.resolve(
+                Path.of("features", "anuncio-wizard", "use-anuncio-wizard-store.ts")));
 
         assertThat(listagem)
                 .contains("listarMeusAnuncios")
@@ -62,12 +68,30 @@ class MeusAnunciosFrontendContractTest {
                 .contains("buscarMeuAnuncio")
                 .contains("atualizarMeuAnuncio")
                 .contains("mode?: 'create' | 'edit'")
-                .contains("persistCache: !isEdit")
+                .contains("backendFirst: isEdit")
+                .contains("hydrateFromBackend")
+                .contains("clearCurrentCache")
                 .contains("readOnlyMedia={isEdit")
                 .contains("readOnly={isEdit}")
                 .contains("disabled={publishing}")
                 .doesNotContain("fetch(")
                 .doesNotContain("document.body.style.overflow");
+        assertThat(localidades)
+                .contains("descobrirLocalidadesPublicas")
+                .doesNotContain("fetch(")
+                .doesNotContain("/localidades/estados")
+                .doesNotContain("mode === 'create'");
+        assertThat(storage)
+                .contains("userId: string")
+                .contains("mode: 'create' | 'edit'")
+                .contains("scope.slug")
+                .contains("sourceVersion")
+                .contains("removeItem(UNSAFE_LEGACY_STORAGE_KEY)")
+                .doesNotContain("getItem(UNSAFE_LEGACY_STORAGE_KEY)");
+        assertThat(wizardStore)
+                .contains("cached?.sourceVersion === sourceVersion")
+                .contains("clearWizardCache(cacheScope)")
+                .contains("backendFirst");
         assertThat(detalhe)
                 .doesNotContain("Os campos de edição serão integrados em uma fase própria")
                 .doesNotContain("modoEdicao");

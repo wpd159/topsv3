@@ -1,11 +1,20 @@
 #!/bin/sh
 set -eu
 
-email="${1:-admin.stories.hml@example.invalid}"
-case "$email" in
-  *@example.invalid) ;;
-  *) echo "ERRO: use somente e-mail ficticio @example.invalid" >&2; exit 2 ;;
-esac
+mode="admin"
+email="admin.stories.hml@example.invalid"
+if [ "${1:-}" = "--fixture-owner" ]; then
+  mode="fixture-owner"
+elif [ -n "${1:-}" ]; then
+  email="$1"
+fi
+
+if [ "$mode" = "admin" ]; then
+  case "$email" in
+    *@example.invalid) ;;
+    *) echo "ERRO: use somente e-mail ficticio @example.invalid" >&2; exit 2 ;;
+  esac
+fi
 
 repo_dir="${TOPSV3_HML_REPO_DIR:-/opt/topsv3/app/current}"
 env_file="${TOPSV3_HML_ENV_FILE:-/opt/topsv3/secrets/hml.env}"
@@ -33,13 +42,23 @@ if [ "${#runtime_input}" -lt 16 ]; then
 fi
 
 cd "$repo_dir"
-printf '%s\n' "$runtime_input" | docker compose \
-  --env-file "$env_file" \
-  -f "$compose_file" \
-  run --rm -T \
-  -e HML_ADMIN_PROVISION_EMAIL="$email" \
-  backend \
-  --server.port=0 \
-  --app.hml-admin-provision.enabled=true
+if [ "$mode" = "fixture-owner" ]; then
+  printf '%s\n' "$runtime_input" | docker compose \
+    --env-file "$env_file" \
+    -f "$compose_file" \
+    run --rm -T \
+    backend \
+    --server.port=0 \
+    --app.hml-fixture-owner-credential.enabled=true
+else
+  printf '%s\n' "$runtime_input" | docker compose \
+    --env-file "$env_file" \
+    -f "$compose_file" \
+    run --rm -T \
+    -e HML_ADMIN_PROVISION_EMAIL="$email" \
+    backend \
+    --server.port=0 \
+    --app.hml-admin-provision.enabled=true
+fi
 
 runtime_input=""

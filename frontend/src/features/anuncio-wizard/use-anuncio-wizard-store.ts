@@ -1,7 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useReducer, useState } from 'react'
-import { clearWizardCache, loadWizardCache, saveWizardCache } from './wizard-storage'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import {
+  clearWizardCache,
+  discardUnsafeLegacyWizardCache,
+  loadWizardCache,
+  saveWizardCache,
+  wizardCacheKey,
+  type WizardCacheScope,
+} from './wizard-storage'
 import { initialWizardState, wizardStepIds, type WizardFormState, type WizardKycState, type WizardState, type WizardStepId } from './types'
 
 type Action =
@@ -67,7 +74,7 @@ export function validateWizardStep(
   perfilCompleto = false,
   mode: 'create' | 'edit' = 'create'
 ): string | null {
-  const { form, kyc } = state
+  const { form } = state
   if (step === 'perfil') {
     const tituloMinimo = mode === 'edit' ? 10 : 3
     if (form.titulo.trim().length < tituloMinimo || !form.categoria) {
@@ -110,25 +117,54 @@ export function validateWizardKycState(state: WizardState): string | null {
   return null
 }
 
-export function useAnuncioWizardStore({ persistCache = true }: { persistCache?: boolean } = {}) {
+type WizardStoreOptions = {
+  cacheScope: WizardCacheScope | null
+  backendFirst?: boolean
+}
+
+export function useAnuncioWizardStore({ cacheScope, backendFirst = false }: WizardStoreOptions) {
   const [state, dispatch] = useReducer(reducer, initialWizardState)
   const [hydrated, setHydrated] = useState(false)
+  const [cacheActive, setCacheActive] = useState(false)
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
+  const sourceVersionRef = useRef<string | null>(null)
+  const cacheKey = cacheScope ? wizardCacheKey(cacheScope) : null
 
   useEffect(() => {
-    const cached = persistCache ? loadWizardCache() : null
-    if (cached) dispatch({ type: 'hydrate', payload: cached })
+    sourceVersionRef.current = null
+    setLastSavedAt(null)
+    setCacheActive(Boolean(cacheScope))
+    discardUnsafeLegacyWizardCache()
+
+    if (!cacheScope) {
+      dispatch({ type: 'reset' })
+      setHydrated(true)
+      return
+    }
+    if (backendFirst) {
+      dispatch({ type: 'reset' })
+      setHydrated(false)
+      return
+    }
+
+    const cached = loadWizardCache(cacheScope)
+    if (cached) dispatch({ type: 'hydrate', payload: cached.state })
+    else dispatch({ type: 'reset' })
+    if (cached) {
+      sourceVersionRef.current = cached.sourceVersion
+      setLastSavedAt(new Date(cached.savedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
+    }
     setHydrated(true)
-  }, [persistCache])
+  }, [backendFirst, cacheKey, cacheScope])
 
   useEffect(() => {
-    if (!hydrated || !persistCache) return
+    if (!hydrated || !cacheActive || !cacheScope) return
     const timer = window.setTimeout(() => {
-      saveWizardCache(state)
+      saveWizardCache(cacheScope, state, sourceVersionRef.current)
       setLastSavedAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
     }, 500)
     return () => window.clearTimeout(timer)
-  }, [hydrated, persistCache, state])
+  }, [cacheActive, cacheKey, cacheScope, hydrated, state])
 
   const currentIndex = stepIndexFromId(state.currentStep)
 
@@ -146,15 +182,29 @@ export function useAnuncioWizardStore({ persistCache = true }: { persistCache?: 
     dispatch({ type: 'set-step', payload: previous })
   }, [currentIndex])
 
-  const reset = useCallback(() => {
-    if (persistCache) clearWizardCache()
-    dispatch({ type: 'reset' })
+  const clearCurrentCache = useCallback(() => {
+    setCacheActive(false)
+    if (cacheScope) clearWizardCache(cacheScope)
     setLastSavedAt(null)
-  }, [persistCache])
+  }, [cacheScope])
 
-  const hydrate = useCallback((payload: WizardState) => {
-    dispatch({ type: 'hydrate', payload })
-  }, [])
+  const reset = useCallback(() => {
+    clearCurrentCache()
+    dispatch({ type: 'reset' })
+  }, [clearCurrentCache])
+
+  const hydrateFromBackend = useCallback((payload: WizardState, sourceVersion: string) => {
+    const cached = cacheScope ? loadWizardCache(cacheScope) : null
+    const canRestoreDraft = cached?.sourceVersion === sourceVersion
+    if (cacheScope && cached && !canRestoreDraft) clearWizardCache(cacheScope)
+    sourceVersionRef.current = sourceVersion
+    dispatch({ type: 'hydrate', payload: canRestoreDraft ? cached.state : payload })
+    setCacheActive(Boolean(cacheScope))
+    setLastSavedAt(canRestoreDraft
+      ? new Date(cached.savedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : null)
+    setHydrated(true)
+  }, [cacheScope])
 
   return {
     state,
@@ -170,6 +220,7 @@ export function useAnuncioWizardStore({ persistCache = true }: { persistCache?: 
     nextStep,
     previousStep,
     reset,
-    hydrate,
+    clearCurrentCache,
+    hydrateFromBackend,
   }
 }

@@ -20,6 +20,7 @@ export function WizardStepLocalizacao({
   loadingEstados,
   loadingCidades,
   loadingBairros,
+  errorMessage,
   onEstado,
   onCidade,
   onBairro,
@@ -39,6 +40,7 @@ export function WizardStepLocalizacao({
   loadingEstados: boolean
   loadingCidades: boolean
   loadingBairros: boolean
+  errorMessage?: string | null
   onEstado: (value: string) => void
   onCidade: (value: string) => void
   onBairro: (value: string) => void
@@ -62,6 +64,11 @@ export function WizardStepLocalizacao({
         </div>
 
         <div className="grid gap-4">
+          {errorMessage ? (
+            <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+              {errorMessage}
+            </p>
+          ) : null}
           <Field label="Estado">
             <SearchableSelect
               value={estadoId}

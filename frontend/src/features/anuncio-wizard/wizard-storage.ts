@@ -1,11 +1,25 @@
 import { initialWizardState, wizardStepIds, type WizardFormState, type WizardKycState, type WizardState } from './types'
 
-const STORAGE_KEY = 'topsdojob:anuncio-wizard:v2'
-const STORAGE_VERSION = 2
+const STORAGE_PREFIX = 'topsdojob:anuncio-wizard:v3'
+const UNSAFE_LEGACY_STORAGE_KEY = 'topsdojob:anuncio-wizard:v2'
+const STORAGE_VERSION = 3
+
+export type WizardCacheScope = {
+  userId: string
+  mode: 'create' | 'edit'
+  slug?: string
+}
+
+export type WizardCacheEntry = {
+  state: WizardState
+  savedAt: number
+  sourceVersion: string | null
+}
 
 type PersistedWizardState = {
   version: typeof STORAGE_VERSION
   savedAt: number
+  sourceVersion: string | null
   state: {
     currentStep: WizardState['currentStep']
     form: Omit<WizardState['form'], 'fotos'> & { fotos?: never }
@@ -76,13 +90,14 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
   }
 }
 
-function toPersistedState(state: WizardState): PersistedWizardState {
+function toPersistedState(state: WizardState, sourceVersion: string | null): PersistedWizardState {
   const { fotos: _fotos, ...form } = state.form
   const { documentos: _documentos, ...kyc } = state.kyc
 
   return {
     version: STORAGE_VERSION,
     savedAt: Date.now(),
+    sourceVersion,
     state: {
       currentStep: state.currentStep,
       form,
@@ -91,29 +106,63 @@ function toPersistedState(state: WizardState): PersistedWizardState {
   }
 }
 
-export function loadWizardCache(): WizardState | null {
+export function wizardCacheKey(scope: WizardCacheScope) {
+  const userId = scope.userId.trim()
+  if (!userId) throw new Error('Escopo do rascunho exige usuário autenticado.')
+  if (scope.mode === 'edit' && !scope.slug?.trim()) {
+    throw new Error('Escopo de edição exige slug.')
+  }
+  const base = `${STORAGE_PREFIX}:${encodeURIComponent(userId)}:${scope.mode}`
+  return scope.mode === 'edit' ? `${base}:${encodeURIComponent(scope.slug!.trim())}` : base
+}
+
+export function discardUnsafeLegacyWizardCache() {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.removeItem(UNSAFE_LEGACY_STORAGE_KEY)
+  } catch {
+    // Falha de storage não pode interromper o wizard.
+  }
+}
+
+export function loadWizardCache(scope: WizardCacheScope): WizardCacheEntry | null {
   if (typeof window === 'undefined') return null
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.localStorage.getItem(wizardCacheKey(scope))
     if (!raw) return null
     const parsed = JSON.parse(raw) as PersistedWizardState
-    if (parsed?.version !== STORAGE_VERSION) return null
-    return sanitizeState(parsed.state)
+    if (parsed?.version !== STORAGE_VERSION || typeof parsed.savedAt !== 'number') return null
+    return {
+      state: sanitizeState(parsed.state),
+      savedAt: parsed.savedAt,
+      sourceVersion: typeof parsed.sourceVersion === 'string' ? parsed.sourceVersion : null,
+    }
   } catch {
     return null
   }
 }
 
-export function saveWizardCache(state: WizardState) {
+export function saveWizardCache(
+  scope: WizardCacheScope,
+  state: WizardState,
+  sourceVersion: string | null
+) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(toPersistedState(state)))
-  } catch {}
+    window.localStorage.setItem(
+      wizardCacheKey(scope),
+      JSON.stringify(toPersistedState(state, sourceVersion))
+    )
+  } catch {
+    // Falha de storage não pode interromper o wizard.
+  }
 }
 
-export function clearWizardCache() {
+export function clearWizardCache(scope: WizardCacheScope) {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.removeItem(STORAGE_KEY)
-  } catch {}
+    window.localStorage.removeItem(wizardCacheKey(scope))
+  } catch {
+    // Falha de storage não pode interromper o wizard.
+  }
 }

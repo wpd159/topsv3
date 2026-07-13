@@ -2,125 +2,105 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import {
+  descobrirLocalidadesPublicas,
+  type PublicCatalogDiscovery,
+} from '@/lib/public-catalog-api'
 
-type BairroCatalogo = { nome: string; slug: string }
-type CidadeCatalogo = { nome: string; slug: string; bairros: BairroCatalogo[] }
-type EstadoCatalogo = { uf: string; nome: string; cidades: CidadeCatalogo[] }
-type LocalidadesCatalogo = { estados: EstadoCatalogo[] }
+export type EstadoItem = { id: string; nome: string; uf: string }
+export type CidadeItem = { id: string; nome: string }
+export type BairroItem = { id: string; nome: string }
 
-export type EstadoItem = { id: string | number; nome: string; uf?: string }
-export type CidadeItem = { id: string | number; nome: string }
-export type BairroItem = { id: string | number; nome: string }
+function publicErrorMessage(level: 'estados' | 'cidades' | 'bairros') {
+  return `Não foi possível carregar ${level}. Tente novamente.`
+}
 
-export function useLocalidades(API: string, mode: 'create' | 'edit' = 'create') {
+export function useLocalidades() {
   const [estados, setEstados] = useState<EstadoItem[]>([])
   const [cidades, setCidades] = useState<CidadeItem[]>([])
   const [bairros, setBairros] = useState<BairroItem[]>([])
-
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [loadingEstados, setLoadingEstados] = useState(false)
   const [loadingCidades, setLoadingCidades] = useState(false)
   const [loadingBairros, setLoadingBairros] = useState(false)
-  const catalogoRef = useRef<LocalidadesCatalogo | null>(null)
-  const estadoSelecionadoRef = useRef<string>('')
-  const apiBase = (API || '/api/public').replace(/\/$/, '')
+  const catalogoRef = useRef<PublicCatalogDiscovery | null>(null)
+  const estadoSelecionadoRef = useRef('')
 
   const carregarCatalogo = useCallback(async () => {
     if (catalogoRef.current) return catalogoRef.current
-    const res = await fetch(`${apiBase}/localidades`, {
-      credentials: 'include',
-      cache: 'no-store',
-    })
-    if (!res.ok) throw new Error(await res.text())
-    const data = (await res.json()) as LocalidadesCatalogo
-    const catalogo = { estados: Array.isArray(data?.estados) ? data.estados : [] }
+    const catalogo = await descobrirLocalidadesPublicas()
     catalogoRef.current = catalogo
     return catalogo
-  }, [apiBase])
+  }, [])
+
+  const fail = useCallback((level: 'estados' | 'cidades' | 'bairros') => {
+    const message = publicErrorMessage(level)
+    setErrorMessage(message)
+    toast.error(message)
+  }, [])
 
   const loadEstados = useCallback(async () => {
     setLoadingEstados(true)
+    setErrorMessage(null)
     try {
-      if (mode === 'create') {
-        const res = await fetch(`${API}/localidades/estados`, {
-          credentials: 'include',
-          cache: 'no-store',
-        })
-        if (!res.ok) throw new Error(await res.text())
-        const data = (await res.json()) as EstadoItem[]
-        setEstados(Array.isArray(data) ? data : [])
-        return
-      }
       const catalogo = await carregarCatalogo()
       setEstados(catalogo.estados.map((item) => ({ id: item.uf, nome: item.nome, uf: item.uf })))
     } catch {
-      toast.error('Falha ao carregar estados.')
-      setEstados([])
+      fail('estados')
     } finally {
       setLoadingEstados(false)
     }
-  }, [API, carregarCatalogo, mode])
+  }, [carregarCatalogo, fail])
 
-  const loadCidades = useCallback(async (estadoIdStr: string) => {
-    if (!estadoIdStr) return
-    estadoSelecionadoRef.current = estadoIdStr
+  const loadCidades = useCallback(async (estadoUf: string) => {
+    if (!estadoUf) return
+    estadoSelecionadoRef.current = estadoUf
     setLoadingCidades(true)
+    setErrorMessage(null)
     try {
-      if (mode === 'create') {
-        const res = await fetch(
-          `${API}/localidades/estados/${encodeURIComponent(estadoIdStr)}/cidades?ativas=true`,
-          { credentials: 'include', cache: 'no-store' }
-        )
-        if (!res.ok) throw new Error(await res.text())
-        const data = (await res.json()) as CidadeItem[]
-        setCidades(Array.isArray(data) ? data : [])
-        return
-      }
       const catalogo = await carregarCatalogo()
-      const estado = catalogo.estados.find((item) => item.uf === estadoIdStr)
-      setCidades((estado?.cidades ?? []).map((item) => ({ id: item.slug, nome: item.nome })))
+      const estado = catalogo.estados.find((item) => item.uf === estadoUf)
+      if (!estado) throw new Error('Estado ausente no catálogo público.')
+      setCidades(estado.cidades.map((item) => ({ id: item.slug, nome: item.nome })))
     } catch {
-      toast.error('Falha ao carregar cidades.')
-      setCidades([])
+      fail('cidades')
     } finally {
       setLoadingCidades(false)
     }
-  }, [API, carregarCatalogo, mode])
+  }, [carregarCatalogo, fail])
 
-  const loadBairros = useCallback(async (cidadeIdStr: string) => {
-    if (!cidadeIdStr) return
+  const loadBairros = useCallback(async (cidadeSlug: string) => {
+    if (!cidadeSlug) return
     setLoadingBairros(true)
+    setErrorMessage(null)
     try {
-      if (mode === 'create') {
-        const res = await fetch(
-          `${API}/localidades/cidades/${encodeURIComponent(cidadeIdStr)}/bairros?ativas=true`,
-          { credentials: 'include', cache: 'no-store' }
-        )
-        if (!res.ok) throw new Error(await res.text())
-        const data = (await res.json()) as BairroItem[]
-        setBairros(Array.isArray(data) ? data : [])
-        return
-      }
       const catalogo = await carregarCatalogo()
       const estado = catalogo.estados.find((item) => item.uf === estadoSelecionadoRef.current)
-      const cidade = estado?.cidades.find((item) => item.slug === cidadeIdStr)
-      setBairros((cidade?.bairros ?? []).map((item) => ({ id: item.slug, nome: item.nome })))
+      const cidade = estado?.cidades.find((item) => item.slug === cidadeSlug)
+      if (!cidade) throw new Error('Cidade ausente no catálogo público.')
+      setBairros(cidade.bairros.map((item) => ({ id: item.slug, nome: item.nome })))
     } catch {
-      toast.error('Falha ao carregar bairros.')
-      setBairros([])
+      fail('bairros')
     } finally {
       setLoadingBairros(false)
     }
-  }, [API, carregarCatalogo, mode])
+  }, [carregarCatalogo, fail])
 
   useEffect(() => {
-    if (mode === 'create' && !API) return
     void loadEstados()
-  }, [API, loadEstados, mode])
+  }, [loadEstados])
 
   return {
-    estados, cidades, bairros,
-    setCidades, setBairros,
-    loadingEstados, loadingCidades, loadingBairros,
-    loadCidades, loadBairros,
+    estados,
+    cidades,
+    bairros,
+    errorMessage,
+    setCidades,
+    setBairros,
+    loadingEstados,
+    loadingCidades,
+    loadingBairros,
+    loadCidades,
+    loadBairros,
   }
 }

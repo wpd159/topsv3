@@ -69,7 +69,7 @@ public class HmlStoriesFixtureService {
     static final String USUARIO_EMAIL = "usuario.stories.hml@example.invalid";
     static final LocalDate USUARIO_DATA_NASCIMENTO = LocalDate.of(1990, 6, 15);
 
-    private static final UUID USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000001");
+    static final UUID USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000001");
     private static final UUID ANUNCIO_A_ID = uuid("f1000000-0000-4000-8000-000000000101");
     private static final UUID ANUNCIO_B_ID = uuid("f1000000-0000-4000-8000-000000000102");
     private static final UUID ANUNCIO_INELEGIVEL_ID = uuid("f1000000-0000-4000-8000-000000000103");
@@ -255,6 +255,36 @@ public class HmlStoriesFixtureService {
                 vinculosCriados,
                 beneficiosCriados,
                 storyCriado);
+    }
+
+    @Transactional
+    public FixtureOwnerCredentialResult provisionarCredencialProprietario(String runtimeValue) {
+        validarAmbiente();
+        validarCredencialRuntime(runtimeValue);
+
+        UsuarioEntity usuario = usuarioRepository.findByEmailNormalizado(USUARIO_EMAIL)
+                .orElseThrow(() -> new IllegalStateException(
+                        "usuario proprietario da fixture ausente; execute a reconciliacao da fixture antes"));
+        if (!USUARIO_ID.equals(usuario.getId())) {
+            throw new IllegalStateException("identidade proprietaria da fixture diverge do ID canonico");
+        }
+
+        CredencialUsuarioEntity credencial = credencialRepository.findByUsuarioId(USUARIO_ID).orElse(null);
+        if (credencial != null && passwordEncoder.matches(runtimeValue, credencial.getSenhaHash())) {
+            return new FixtureOwnerCredentialResult(FixtureOwnerCredentialStatus.PRESERVADA);
+        }
+
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        String hash = passwordEncoder.encode(runtimeValue);
+        if (credencial == null) {
+            credencial = CredencialUsuarioEntity.criar(UUID.randomUUID(), USUARIO_ID, hash, agora);
+            credencialRepository.save(credencial);
+            return new FixtureOwnerCredentialResult(FixtureOwnerCredentialStatus.CRIADA);
+        }
+
+        credencial.atualizarHashHomologacao(hash, agora);
+        credencialRepository.save(credencial);
+        return new FixtureOwnerCredentialResult(FixtureOwnerCredentialStatus.ATUALIZADA);
     }
 
     private int provisionarCategorias() {
@@ -629,6 +659,17 @@ public class HmlStoriesFixtureService {
         }
     }
 
+    private void validarCredencialRuntime(String runtimeValue) {
+        if (runtimeValue == null
+                || runtimeValue.length() < 16
+                || !runtimeValue.matches(".*[A-Z].*")
+                || !runtimeValue.matches(".*[a-z].*")
+                || !runtimeValue.matches(".*[0-9].*")
+                || !runtimeValue.matches(".*[^A-Za-z0-9].*")) {
+            throw new IllegalArgumentException("credencial de runtime nao atende a politica minima");
+        }
+    }
+
     private static UUID uuid(String value) {
         return UUID.fromString(value);
     }
@@ -714,5 +755,14 @@ public class HmlStoriesFixtureService {
             int vinculosCriados,
             int beneficiosCriados,
             boolean storyCriado) {
+    }
+
+    public enum FixtureOwnerCredentialStatus {
+        CRIADA,
+        ATUALIZADA,
+        PRESERVADA
+    }
+
+    public record FixtureOwnerCredentialResult(FixtureOwnerCredentialStatus status) {
     }
 }

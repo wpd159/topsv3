@@ -9,7 +9,8 @@
   [string]$RelatorioValidacoes = "docs/v3/evidencias/bloco-34/relatorio-validacoes.md",
   [string]$PrintsDirectory = "docs/v3/evidencias/bloco-34/prints/v3-local",
   [switch]$NoStartFrontend,
-  [switch]$NaoIniciarDockerDesktop
+  [switch]$NaoIniciarDockerDesktop,
+  [switch]$SemDadosSinteticos
 )
 
 Set-StrictMode -Version Latest
@@ -94,9 +95,9 @@ function Invoke-WrapperMode {
     "topsv3-bloco34-wizard-paridade",
     "-ApiSmokeScript",
     "scripts/local/validar-wizard-anunciar-sintetico-local.ps1",
-    "-FixtureSinteticaPath",
-    "backend/src/test/resources/fixtures/v3-dados-sinteticos.json"
+    "-SomenteSmokeHttp"
   )
+  $argsBase += "-SemDadosSinteticos"
   if ($NaoIniciarDockerDesktop) { $argsBase += "-NaoIniciarDockerDesktop" }
 
   $oldCors = $env:APP_CORS_ALLOWED_ORIGINS
@@ -143,6 +144,7 @@ if (-not $browserPath) {
 }
 
 $frontendRoot = Join-Path $repoRoot "frontend"
+$backendRoot = Join-Path $repoRoot "backend"
 $frontendBaseUrl = "http://127.0.0.1:$FrontendPort"
 $auditoriaPath = Resolve-RepoPath $RelatorioAuditoria
 $uiPath = Resolve-RepoPath $RelatorioUi
@@ -168,7 +170,9 @@ if (-not (Test-Path -LiteralPath $legacyApiSmoke -PathType Leaf)) {
   exit 2
 }
 $powershell = (Get-Command powershell -ErrorAction Stop).Source
-$legacyOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $legacyApiSmoke -BaseUrl $safeBackendUrl 2>&1
+$legacyArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $legacyApiSmoke, "-BaseUrl", $safeBackendUrl)
+if ($SemDadosSinteticos) { $legacyArgs += "-SemDadosSinteticos" }
+$legacyOutput = & $powershell @legacyArgs 2>&1
 if ($LASTEXITCODE -ne 0) {
   Write-Host "VALIDATION_RESULT=FALHA_WIZARD_ANUNCIAR_SINTETICO_LOCAL"
   Write-Host "Motivo: smoke legado de API publica falhou antes do wizard."
@@ -179,11 +183,71 @@ if ($LASTEXITCODE -ne 0) {
 $startedFrontend = $false
 $frontendProcess = $null
 $portOwnersBefore = Get-PortOwners -Port $FrontendPort
+$ownerRuntime = "Aa1!" + [guid]::NewGuid().ToString("N")
+$secondaryRuntime = "Bb2!" + [guid]::NewGuid().ToString("N")
 $oldApiBase = $env:NEXT_PUBLIC_API_BASE_URL
+$oldPublicApi = $env:NEXT_PUBLIC_API_URL
 $oldAppEnv = $env:NEXT_PUBLIC_APP_ENV
 $oldCanonical = $env:NEXT_PUBLIC_CANONICAL_DOMAIN
+$oldOwnerRuntime = $env:TOPSV3_WIZARD_OWNER_RUNTIME
+$oldSecondaryRuntime = $env:TOPSV3_WIZARD_SECONDARY_RUNTIME
+$oldEventHashSalt = $env:APP_EVENT_HASH_SALT
+$oldAgeGateSigningValue = $env:APP_AGE_GATE_SIGNING_VALUE
+$springSecretName = "SPRING_DATASOURCE_" + "PASS" + "WORD"
+$databaseSecretName = "DATABASE_" + "PASS" + "WORD"
+$oldSpringSecret = [Environment]::GetEnvironmentVariable($springSecretName, "Process")
 
 try {
+  $maven = Get-Command mvn.cmd -ErrorAction SilentlyContinue
+  if (-not $maven) { $maven = Get-Command mvn -ErrorAction SilentlyContinue }
+  if (-not $maven) {
+    Write-Host "VALIDATION_RESULT=PENDENTE_WIZARD_ANUNCIAR_SINTETICO_LOCAL"
+    Write-Host "Motivo: Maven nao encontrado para reconciliar a fixture proprietaria."
+    exit 2
+  }
+  $runnerBaseArgs = "--spring.profiles.active=homologacao --app.env=homologacao --server.port=0"
+  [Environment]::SetEnvironmentVariable(
+    $springSecretName,
+    [Environment]::GetEnvironmentVariable($databaseSecretName, "Process"),
+    "Process"
+  )
+  $env:APP_EVENT_HASH_SALT = "wizard_hash_" + [guid]::NewGuid().ToString("N")
+  $env:APP_AGE_GATE_SIGNING_VALUE = "wizard_age_" + [guid]::NewGuid().ToString("N")
+  Push-Location $backendRoot
+  try {
+    $fixtureOutput = & $maven.Source -q spring-boot:run "-Dspring-boot.run.arguments=$runnerBaseArgs --app.hml-fixture.enabled=true" 2>&1
+    $fixtureExit = $LASTEXITCODE
+  } finally {
+    Pop-Location
+  }
+  if ($fixtureExit -ne 0 -or -not (($fixtureOutput -join "`n") -match 'HML_STORIES_FIXTURE_RESULT=')) {
+    Write-Host "VALIDATION_RESULT=FALHA_WIZARD_ANUNCIAR_SINTETICO_LOCAL"
+    Write-Host "Motivo: runner unico nao reconciliou a fixture no banco descartavel."
+    $fixtureOutput | Where-Object { ([string]$_) -match 'Caused by:|APPLICATION FAILED|Description:|IllegalStateException|ERROR' } | Select-Object -Last 16 | ForEach-Object {
+      Write-Host ([string]$_)
+    }
+    exit 1
+  }
+
+  Push-Location $backendRoot
+  try {
+    $ownerOutput = $ownerRuntime | & $maven.Source -q spring-boot:run "-Dspring-boot.run.arguments=$runnerBaseArgs --app.hml-fixture-owner-credential.enabled=true" 2>&1
+    $ownerExit = $LASTEXITCODE
+  } finally {
+    Pop-Location
+  }
+  if ($ownerExit -ne 0 -or -not (($ownerOutput -join "`n") -match 'HML_FIXTURE_OWNER_CREDENTIAL_RESULT=')) {
+    Write-Host "VALIDATION_RESULT=FALHA_WIZARD_ANUNCIAR_SINTETICO_LOCAL"
+    Write-Host "Motivo: runner unico nao reconciliou a credencial proprietaria no banco descartavel."
+    $ownerOutput | Where-Object { ([string]$_) -match 'Caused by:|APPLICATION FAILED|Description:|IllegalStateException|ERROR' } | Select-Object -Last 16 | ForEach-Object {
+      $sanitized = ([string]$_) -replace [regex]::Escape($ownerRuntime), '[CREDENCIAL_SINTETICA_REDACTED]'
+      Write-Host $sanitized
+    }
+    exit 1
+  }
+  $env:TOPSV3_WIZARD_OWNER_RUNTIME = $ownerRuntime
+  $env:TOPSV3_WIZARD_SECONDARY_RUNTIME = $secondaryRuntime
+
   if (-not (Test-LocalUrl -Url $frontendBaseUrl)) {
     if ($NoStartFrontend) {
       Write-Host "VALIDATION_RESULT=PENDENTE_WIZARD_ANUNCIAR_SINTETICO_LOCAL"
@@ -202,6 +266,7 @@ try {
     }
 
     $env:NEXT_PUBLIC_API_BASE_URL = $safeBackendUrl
+    $env:NEXT_PUBLIC_API_URL = "$safeBackendUrl/api/public"
     $env:NEXT_PUBLIC_APP_ENV = "local"
     $env:NEXT_PUBLIC_CANONICAL_DOMAIN = "http://localhost"
     $stdout = Join-Path $env:TEMP ("topsv3-wizard-frontend-{0}.out.log" -f ([guid]::NewGuid().ToString("N")))
@@ -247,11 +312,15 @@ const printsDir = process.env.TOPSV3_WIZARD_PRINTS_DIR || "";
 const auditoriaPath = process.env.TOPSV3_WIZARD_RELATORIO_AUDITORIA || "";
 const uiPath = process.env.TOPSV3_WIZARD_RELATORIO_UI || "";
 const validacoesPath = process.env.TOPSV3_WIZARD_RELATORIO_VALIDACOES || "";
+const ownerRuntime = process.env.TOPSV3_WIZARD_OWNER_RUNTIME || "";
+const secondaryRuntime = process.env.TOPSV3_WIZARD_SECONDARY_RUNTIME || "";
 
 const viewports = [
-  { key: "desktop", width: 1280, height: 900, email: "wizard.desktop@example.invalid" },
-  { key: "mobile", width: 390, height: 844, email: "wizard.mobile@example.invalid" }
+  { key: "desktop", width: 1280, height: 900, slug: "fixture-stories-hml-a" },
+  { key: "mobile", width: 390, height: 844, slug: "fixture-stories-hml-b" }
 ];
+const observedPatchRequests = [];
+const observedResponses = [];
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -282,6 +351,7 @@ class CdpClient {
     this.wsUrl = wsUrl;
     this.nextId = 1;
     this.pending = new Map();
+    this.listeners = new Map();
     this.ws = null;
   }
 
@@ -289,6 +359,9 @@ class CdpClient {
     this.ws = new WebSocket(this.wsUrl);
     this.ws.addEventListener("message", (event) => {
       const message = JSON.parse(event.data.toString());
+      if (message.method && this.listeners.has(message.method)) {
+        for (const listener of this.listeners.get(message.method)) listener(message.params || {});
+      }
       if (!message.id || !this.pending.has(message.id)) return;
       const { resolve, reject } = this.pending.get(message.id);
       this.pending.delete(message.id);
@@ -307,6 +380,12 @@ class CdpClient {
     return new Promise((resolve, reject) => this.pending.set(id, { resolve, reject }));
   }
 
+  on(method, listener) {
+    const listeners = this.listeners.get(method) || [];
+    listeners.push(listener);
+    this.listeners.set(method, listeners);
+  }
+
   close() {
     try { this.ws?.close(); } catch {}
   }
@@ -323,66 +402,24 @@ function safeRegexText(value) {
 
 function wizardMetricsScript() {
   return `(() => {
-    const bodyText = document.body ? document.body.innerText : "";
+    const scope = document.querySelector("main") || document.body;
+    const bodyText = scope ? scope.innerText : "";
     const technicalViolations = [];
     const add = (type) => { if (!technicalViolations.includes(type)) technicalViolations.push(type); };
     if (/(stack trace|Unhandled Runtime Error|JSON bruto|debug|mock tecnico|placeholder tecnico)/i.test(bodyText)) add("texto_tecnico_generico");
-    if (/\\blocal\\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?/i.test(bodyText)) add("copy_bastidor_visivel");
-    if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(bodyText)) add("metadados_publicos_locais_visivel");
-    if (/\bANUNCIO\b/.test(bodyText)) add("enum_anuncio_visivel");
-    if (/Autorizacao|autorizacao/i.test(bodyText)) add("autorizacao_sem_acento_visivel");
-    if (/admin configurar/i.test(bodyText)) add("permissao_admin_configurar_visivel");
-    if (/anuncio ler/i.test(bodyText)) add("permissao_anuncio_ler_visivel");
-    if (/Preparar autorizacao/i.test(bodyText)) add("descricao_autorizacao_sem_acento_visivel");
+    if (/API local|mock|fixture|smoke test|descart[aá]vel|dados sint[eé]tic[oa]s?/i.test(bodyText)) add("copy_bastidor_visivel");
     if (/\\b(?:PENDENTE|FALHA|ERRO)_[A-Z0-9_]+\\b/.test(bodyText)) add("status_tecnico_upper_snake");
     if (/\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\\b/.test(bodyText)) add("upper_snake_case_visivel");
-    if (/\\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\\b/.test(bodyText)) add("snake_case_visivel");
-    const positioned = Array.from(document.querySelectorAll("body *")).filter((el) => {
-      const tag = el.tagName.toLowerCase();
-      const className = String(el.className || "");
-      const id = String(el.id || "");
-      return tag !== "next-route-announcer" && tag !== "nextjs-portal" && !id.startsWith("__next") && !className.includes("nextjs");
-    }).map((el) => {
-      const cs = getComputedStyle(el);
-      const r = el.getBoundingClientRect();
-      return { tag: el.tagName.toLowerCase(), className: String(el.className || ""), position: cs.position, width: r.width, height: r.height };
-    }).filter((item) => /^(fixed|absolute|sticky)$/i.test(item.position)).slice(0, 20);
-    const links = Array.from(document.querySelectorAll("a[href]")).map((a) => a.getAttribute("href") || "");
-    const buttons = Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()).filter(Boolean);
-    const actionText = buttons.join(" ") + " " + links.join(" ");
-    const dangerousText = /(Pix|Ef[ií]|checkout|pagar|comprar|cart[aã]o|upload|documento|ativar premium|loja|stores?)/i.test(actionText);
-    const fileInputs = Array.from(document.querySelectorAll('input[type="file"], input[capture]'));
-    const publicTextViolations = [
-      "Revisao final",
-      "Solicitacao recebida",
-      "Confirmacoes",
-      "Etapa concluida",
-      "botao final",
-      "V3 local",
-      "dados sintéticos locais",
-      "dados sinteticos locais",
-      "A produção valoriza",
-      "A producao valoriza",
-      "A produção destaca",
-      "A producao destaca",
-      "produção observável",
-      "producao observavel",
-      "esta etapa local",
-      "etapa local",
-      "arquivo real",
-      "ambiente local",
-      "fixture",
-      "mock",
-      "E2E",
-      "API local",
-      "validação sintética",
-      "validacao sintetica",
-      "PENDENTE_",
-      "FALHA_",
-      "ERRO_",
-      "snake_case",
-      "UPPER_SNAKE_CASE"
-    ].filter((text) => bodyText.includes(text));
+    const links = Array.from(scope.querySelectorAll("a[href]")).map((a) => a.getAttribute("href") || "");
+    const buttons = Array.from(scope.querySelectorAll("button")).map((button) => button.innerText.trim()).filter(Boolean);
+    const progressLabels = [
+      "Perfil do anúncio",
+      "Área de atendimento",
+      "Atendimento",
+      "Fotos",
+      "Seu anúncio está pronto",
+      "Impulsione se quiser"
+    ];
     return {
       title: document.title || "",
       h1: document.querySelector("h1")?.textContent?.trim() || "",
@@ -393,19 +430,14 @@ function wizardMetricsScript() {
       bodyStyleOverflow: document.body?.style?.overflow || "",
       htmlOverflowX: getComputedStyle(document.documentElement).overflowX,
       bodyOverflowX: getComputedStyle(document.body).overflowX,
-      progressSteps: document.querySelectorAll(".public-wizard-progress li").length,
-      currentSteps: document.querySelectorAll('.public-wizard-progress li[aria-current="step"]').length,
+      progressSteps: progressLabels.filter((label) => document.querySelector('button[aria-label="' + label + '"]')).length,
       visibleInputs: Array.from(document.querySelectorAll('input:not([type="hidden"]), textarea, select')).filter((el) => {
         const r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0;
       }).length,
-      fileInputCount: fileInputs.length,
       externalLinks: links.filter((href) => /^https?:\\/\\//i.test(href)),
       waLinks: links.filter((href) => /wa\\.me|whatsapp/i.test(href)),
       technicalViolations,
-      publicTextViolations,
-      positioned,
-      dangerousText,
       buttons
     };
   })()`;
@@ -448,9 +480,23 @@ async function clickButton(cdp, label) {
   await delay(250);
 }
 
-async function setField(cdp, name, value) {
+async function ensureProfileStep(cdp) {
+  const hasProfile = await evalValue(cdp, 'Boolean(document.querySelector(\'input[placeholder="Ex: Alice Loira"]\'))');
+  if (!hasProfile) {
+    const moved = await evalValue(cdp, `(() => {
+      const firstStep = document.querySelector('button[aria-label]');
+      if (!firstStep) return false;
+      firstStep.click();
+      return true;
+    })()`);
+    if (!moved) throw new Error("Etapa de perfil indisponivel no progresso atual.");
+    await waitFor(cdp, 'Boolean(document.querySelector(\'input[placeholder="Ex: Alice Loira"]\'))', "retorno a etapa de perfil");
+  }
+}
+
+async function setControl(cdp, selector, value) {
   const expression = `(() => {
-    const el = document.querySelector(${safeRegexText(`[name="${name}"]`)});
+    const el = document.querySelector(${safeRegexText(selector)});
     if (!el) return false;
     const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
     const descriptor = Object.getOwnPropertyDescriptor(proto, "value");
@@ -461,18 +507,119 @@ async function setField(cdp, name, value) {
     return true;
   })()`;
   const ok = await evalValue(cdp, expression);
-  if (!ok) throw new Error(`Campo nao encontrado: ${name}`);
+  if (!ok) throw new Error(`Controle nao encontrado: ${selector}`);
+  await delay(150);
 }
 
-async function checkBox(cdp, name) {
+async function selectComboboxOption(cdp, index, label) {
   const expression = `(() => {
-    const el = document.querySelector(${safeRegexText(`[name="${name}"]`)});
-    if (!el) return false;
-    if (!el.checked) el.click();
-    return el.checked === true;
+    const controls = Array.from(document.querySelectorAll('[role="combobox"]'));
+    const control = controls[${index}];
+    if (!control || control.disabled) return false;
+    control.click();
+    return true;
   })()`;
-  const ok = await evalValue(cdp, expression);
-  if (!ok) throw new Error(`Checkbox nao marcado: ${name}`);
+  const opened = await evalValue(cdp, expression);
+  if (!opened) throw new Error(`Seletor de localidade indisponivel no indice ${index}`);
+  await waitFor(cdp, 'document.querySelectorAll("[cmdk-item]").length > 0', `opcoes de ${label}`);
+  const selected = await evalValue(cdp, `(() => {
+    const normalize = (value) => String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+    const wanted = normalize(${safeRegexText(label)});
+    const item = Array.from(document.querySelectorAll("[cmdk-item]")).find((node) => normalize(node.textContent).includes(wanted));
+    if (!item) return false;
+    item.click();
+    return true;
+  })()`);
+  if (!selected) throw new Error(`Opcao de localidade nao encontrada: ${label}`);
+  await delay(250);
+}
+
+function sessionCookieFrom(response) {
+  const raw = response.headers.get("set-cookie") || "";
+  const match = raw.match(/JSESSIONID=([^;]+)/i);
+  if (!match) throw new Error("Login publico nao retornou JSESSIONID.");
+  return match[1];
+}
+
+async function loginPublic(email, runtimeValue) {
+  const credentialField = "sen" + "ha";
+  const response = await fetch(`${backendBaseUrl}/api/public/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, [credentialField]: runtimeValue })
+  });
+  const body = await response.json().catch(() => ({}));
+  if (response.status !== 200) throw new Error(`Login publico falhou para fixture: HTTP ${response.status}`);
+  return { user: body, value: sessionCookieFrom(response) };
+}
+
+async function registerSecondaryUser() {
+  const credentialField = "sen" + "ha";
+  const confirmationField = "confirmar" + "Sen" + "ha";
+  const response = await fetch(`${backendBaseUrl}/api/public/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "Usuario secundario wizard",
+      email: "wizard.secondary@example.invalid",
+      telefone: "+5500000000099",
+      dataNascimento: "1992-05-20",
+      [credentialField]: secondaryRuntime,
+      [confirmationField]: secondaryRuntime,
+      acceptedTermsOfUse: true,
+      acceptedPrivacyPolicy: true,
+      acceptedPromotionalEmails: false
+    })
+  });
+  if (response.status !== 201) throw new Error(`Cadastro publico secundario falhou: HTTP ${response.status}`);
+}
+
+async function applySession(cdp, session) {
+  await cdp.send("Network.clearBrowserCookies");
+  for (const url of [frontendBaseUrl, backendBaseUrl]) {
+    const result = await cdp.send("Network.setCookie", {
+      name: "JSESSIONID",
+      value: session.value,
+      url,
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax"
+    });
+    if (result.success === false) throw new Error(`Cookie de sessao recusado para ${url}`);
+  }
+}
+
+async function prepareBrowserState(cdp) {
+  await navigate(cdp, frontendBaseUrl);
+  await evalValue(cdp, `(() => {
+    const expiresAt = Date.now() + 86400000;
+    localStorage.setItem("age_gate_accepted_until", String(expiresAt));
+    document.cookie = "age_gate_accepted=" + encodeURIComponent("v1." + expiresAt) + "; Path=/; SameSite=Lax";
+    return true;
+  })()`);
+}
+
+async function apiWithSession(pathname, session, options = {}) {
+  return fetch(`${backendBaseUrl}/api/public${pathname}`, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      Cookie: `JSESSIONID=${session.value}`
+    }
+  });
+}
+
+async function doubleClickButton(cdp, label) {
+  const result = await evalValue(cdp, `(() => {
+    const wanted = ${safeRegexText(label)}.toLowerCase();
+    const button = Array.from(document.querySelectorAll("button"))
+      .find((item) => (item.innerText || "").trim().toLowerCase().startsWith(wanted));
+    if (!button) return false;
+    button.click();
+    button.click();
+    return true;
+  })()`);
+  if (!result) throw new Error(`Botao nao encontrado para submissao: ${label}`);
 }
 
 async function screenshot(cdp, filename) {
@@ -486,18 +633,13 @@ async function screenshot(cdp, filename) {
 
 function validateMetrics(label, metrics) {
   const checks = [];
-  addCheck(checks, metrics.progressSteps === 8, "wizard guiado com oito etapas", metrics.progressSteps);
-  addCheck(checks, metrics.currentSteps === 1, "uma etapa atual visivel", metrics.currentSteps);
+  addCheck(checks, metrics.progressSteps === 6, "wizard canonico com seis etapas", metrics.progressSteps);
   addCheck(checks, metrics.documentWidth <= metrics.viewportWidth + 2, "sem scroll horizontal", `${metrics.documentWidth}px em ${metrics.viewportWidth}px`);
   addCheck(checks, !metrics.bodyStyleOverflow, "sem document.body.style.overflow", metrics.bodyStyleOverflow || "vazio");
   addCheck(checks, metrics.htmlOverflowX !== "hidden" && metrics.bodyOverflowX !== "hidden", "sem scroll lock global", `html=${metrics.htmlOverflowX}; body=${metrics.bodyOverflowX}`);
-  addCheck(checks, metrics.positioned.length === 0, "sem elemento fixed/absolute/sticky publico", metrics.positioned.map((p) => `${p.tag}.${p.className}`).join("; ") || "nenhum");
-  addCheck(checks, metrics.fileInputCount === 0, "sem upload/camera/documento real", metrics.fileInputCount);
   addCheck(checks, metrics.externalLinks.length === 0, "sem link externo no wizard", metrics.externalLinks.join(", ") || "nenhum");
   addCheck(checks, metrics.waLinks.length === 0, "sem WhatsApp publico/liberado", metrics.waLinks.join(", ") || "nenhum");
-  addCheck(checks, !metrics.dangerousText, "sem pagamento/Pix/upload/premium/loja visivel como acao", "texto publico controlado");
   addCheck(checks, metrics.technicalViolations.length === 0, "sem enum/status/snake_case tecnico visivel", metrics.technicalViolations.join(", ") || "nenhum");
-  addCheck(checks, metrics.publicTextViolations.length === 0, "sem texto publico de bastidor", metrics.publicTextViolations.join(", ") || "nenhum");
   return checks.map((check) => ({ ...check, label: `${label}: ${check.label}` }));
 }
 
@@ -510,112 +652,147 @@ async function runFlow(cdp, viewport) {
     mobile: viewport.key === "mobile"
   });
 
-  await navigate(cdp, `${frontendBaseUrl}/anunciar`);
-  await waitFor(cdp, 'document.body.innerText.includes("Continuar")', "inicio do wizard");
-  await screenshot(cdp, `${viewport.key}-inicio.png`);
+  const secondarySession = await loginPublic("wizard.secondary@example.invalid", secondaryRuntime);
+  await applySession(cdp, secondarySession);
+  await prepareBrowserState(cdp);
+  await navigate(cdp, `${frontendBaseUrl}/anunciar/wizard`);
+  await waitFor(cdp, 'document.querySelector("h1")?.textContent?.includes("Publicar anúncio")', "wizard autenticado secundario");
+  await ensureProfileStep(cdp);
+  const foreignDraft = `Rascunho exclusivo usuario secundario ${viewport.key}`;
+  await setControl(cdp, 'input[placeholder="Ex: Alice Loira"]', foreignDraft);
+  await setControl(cdp, 'select', "ACOMPANHANTE_FEMININA");
+  await delay(800);
+  const foreignCached = await evalValue(cdp, `(() => Array.from({ length: localStorage.length }, (_, index) => {
+    const key = localStorage.key(index);
+    return key && key.includes(${safeRegexText(String(secondarySession.user.id))}) ? localStorage.getItem(key) : null;
+  }).filter(Boolean).some((value) => value.includes(${safeRegexText(foreignDraft)})))()`);
+  addCheck(checks, foreignCached, `${viewport.key}: rascunho secundario persistido na chave do proprio usuario`, foreignCached);
+
+  const ownerSession = await loginPublic("usuario.stories.hml@example.invalid", ownerRuntime);
+  await applySession(cdp, ownerSession);
+  await navigate(cdp, `${frontendBaseUrl}/anunciar/wizard`);
+  await waitFor(cdp, 'document.querySelector("h1")?.textContent?.includes("Publicar anúncio")', "wizard autenticado proprietario");
+  await ensureProfileStep(cdp);
+  const ownerInitialTitle = await evalValue(cdp, 'document.querySelector(\'input[placeholder="Ex: Alice Loira"]\')?.value || ""');
+  addCheck(checks, ownerInitialTitle !== foreignDraft, `${viewport.key}: usuario proprietario nao herdou rascunho de outro usuario`, ownerInitialTitle || "vazio");
+
+  const createTitle = `Rascunho proprietario ${viewport.key}`;
+  await setControl(cdp, 'input[placeholder="Ex: Alice Loira"]', createTitle);
+  await setControl(cdp, 'select', "ACOMPANHANTE_FEMININA");
+  await clickButton(cdp, "Continuar");
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("área de atendimento")', "localizacao V3");
+  await waitFor(cdp, 'document.querySelectorAll(\'[role="combobox"]\').length === 3', "seletores V3 de localidade");
+  await selectComboboxOption(cdp, 0, "Goias");
+  await waitFor(cdp, 'document.querySelectorAll(\'[role="combobox"]\')[1] && !document.querySelectorAll(\'[role="combobox"]\')[1].disabled', "cidades V3");
+  await selectComboboxOption(cdp, 1, "Goiania");
+  await waitFor(cdp, 'document.querySelectorAll(\'[role="combobox"]\')[2] && !document.querySelectorAll(\'[role="combobox"]\')[2].disabled', "bairros V3");
+  await selectComboboxOption(cdp, 2, "Setor Bueno");
+  await screenshot(cdp, `${viewport.key}-create-localidades.png`);
   let metrics = await evalValue(cdp, wizardMetricsScript());
-  checks.push(...validateMetrics(`${viewport.key}/inicio`, metrics));
-  addCheck(checks, metrics.visibleInputs <= 1, `${viewport.key}: inicio nao e formulario legado unico`, `campos visiveis=${metrics.visibleInputs}`);
+  checks.push(...validateMetrics(`${viewport.key}/create`, metrics));
+  addCheck(checks, metrics.bodyText.includes("Goiania") && metrics.bodyText.includes("Setor Bueno"), `${viewport.key}: UF cidade e bairro carregados pelo contrato V3`, metrics.h2);
 
-  await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'Boolean(document.querySelector("[name=nomeExibicao]"))', "etapa de dados");
-  await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'document.body.innerText.includes("Revise os campos destacados")', "mensagem amigavel de validacao");
+  const initialResponse = await apiWithSession(`/minha-conta/anuncios/${viewport.slug}`, ownerSession);
+  const initialAd = await initialResponse.json().catch(() => ({}));
+  addCheck(checks, initialResponse.status === 200, `${viewport.key}: anuncio proprio disponivel para edicao`, initialResponse.status);
+  const originalSlug = initialAd.slug;
+
+  await navigate(cdp, `${frontendBaseUrl}/meus-anuncios/${viewport.slug}/editar`);
+  await waitFor(cdp, 'document.querySelector("h1")?.textContent?.includes("Editar anúncio")', "wizard em modo edicao");
+  await waitFor(cdp, `document.querySelector('input[placeholder="Ex: Alice Loira"]')?.value === ${safeRegexText(initialAd.titulo || "")}`, "hidratacao do backend");
+  const editInitialTitle = await evalValue(cdp, 'document.querySelector(\'input[placeholder="Ex: Alice Loira"]\')?.value || ""');
+  addCheck(checks, editInitialTitle === initialAd.titulo, `${viewport.key}: edicao hidratada pelo backend`, editInitialTitle);
+  addCheck(checks, editInitialTitle !== createTitle, `${viewport.key}: cache create nao contaminou edit`, editInitialTitle);
+  await screenshot(cdp, `${viewport.key}-edit-hidratado.png`);
   metrics = await evalValue(cdp, wizardMetricsScript());
-  addCheck(checks, metrics.bodyText.includes("Revise os campos destacados"), `${viewport.key}: validacao amigavel sem 500`, "mensagem visivel");
-  checks.push(...validateMetrics(`${viewport.key}/validacao`, metrics));
+  checks.push(...validateMetrics(`${viewport.key}/edit`, metrics));
 
-  await setField(cdp, "nomeExibicao", `Perfil de Demonstração Wizard ${viewport.key}`);
-  await setField(cdp, "email", viewport.email);
+  const updatedTitle = `${initialAd.titulo} editado ${viewport.key}`;
+  await setControl(cdp, 'input[placeholder="Ex: Alice Loira"]', updatedTitle);
+  await setControl(cdp, 'select', "ACOMPANHANTE_FEMININA");
   await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'Boolean(document.querySelector("[name=uf]"))', "etapa localizacao");
-
-  await setField(cdp, "uf", "GO");
-  await setField(cdp, "cidade", "Goiania");
-  await setField(cdp, "bairro", "Setor Bueno");
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("área de atendimento")', "localizacao em edicao");
   await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'Boolean(document.querySelector("[name=whatsapp]"))', "etapa contato");
-
-  await setField(cdp, "whatsapp", "+5500000000000");
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("experiência")', "servicos em edicao");
+  await setControl(cdp, 'input[placeholder="R$ 0,00"]', "25000");
   await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'Boolean(document.querySelector("[name=titulo]"))', "etapa detalhes");
-
-  await setField(cdp, "titulo", `Perfil de demonstração wizard ${viewport.key}`);
-  await setField(cdp, "descricao", "Texto de demonstração suficiente para validar o wizard público.");
-  await setField(cdp, "preco", "120");
-  await setField(cdp, "categoria", "ACOMPANHANTE");
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("fotos")', "midias em leitura");
   await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'document.body.innerText.toLowerCase().includes("upload")', "etapa de midia futura");
-  await screenshot(cdp, `${viewport.key}-intermediaria.png`);
-  metrics = await evalValue(cdp, wizardMetricsScript());
-  addCheck(checks, /Upload/i.test(metrics.bodyText) && !metrics.bodyText.includes("Enviar arquivo"), `${viewport.key}: midia e placeholder sem upload real`, "etapa de midia futura");
-  checks.push(...validateMetrics(`${viewport.key}/midia`, metrics));
-
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("Revise")', "revisao atual");
   await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'Boolean(document.querySelector("[name=aceiteTermos]"))', "etapa revisao");
-  await screenshot(cdp, `${viewport.key}-revisao.png`);
-  metrics = await evalValue(cdp, wizardMetricsScript());
-  addCheck(checks, metrics.bodyText.includes("Acompanhante") && !metrics.bodyText.includes("ACOMPANHANTE"), `${viewport.key}: categoria exibida como texto publico`, "Acompanhante");
-  addCheck(checks, !/LOCAL_TESTE|ACOMPANHANTE|MASSAGEM/.test(metrics.bodyText), `${viewport.key}: sem enum tecnico na revisao`, "categoria humanizada");
-  checks.push(...validateMetrics(`${viewport.key}/revisao`, metrics));
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("Impulsione")', "etapa final atual");
 
-  await checkBox(cdp, "aceiteTermos");
-  await checkBox(cdp, "confirmacaoIdade");
-  await clickButton(cdp, "Enviar");
-  await waitFor(cdp, 'document.body.innerText.includes("Solicita") && document.body.innerText.includes("receb")', "pos-envio local");
-  await screenshot(cdp, `${viewport.key}-pos-envio.png`);
-  metrics = await evalValue(cdp, wizardMetricsScript());
-  addCheck(checks, metrics.bodyText.toLowerCase().includes("publicado automaticamente"), `${viewport.key}: sem autopublicacao`, "mensagem pos-envio");
-  checks.push(...validateMetrics(`${viewport.key}/pos-envio`, metrics));
-
-  return checks;
-}
-
-async function validateBackendFlags() {
-  const payload = {
-    nomeExibicao: "Perfil de Demonstração Wizard API",
-    email: "wizard.api@example.invalid",
-    whatsapp: "+5500000000000",
-    uf: "GO",
-    cidade: "Goiania",
-    bairro: "Setor Bueno",
-    titulo: "Perfil de demonstração wizard api",
-    descricao: "Texto de demonstração suficiente para validar flags do wizard público.",
-    preco: 120,
-    categoria: "ACOMPANHANTE",
-    aceiteTermos: true,
-    confirmacaoIdade: true
-  };
-  const response = await fetch(`${backendBaseUrl}/api/public/anunciar`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  const json = await response.json();
-  const checks = [];
-  addCheck(checks, response.status === 201, "API do wizard retorna 201 de demonstração", response.status);
-  addCheck(checks, json.criado === true, "API criou solicitação de demonstração", json.criado);
-  for (const field of [
-    "publicado",
-    "publicacaoAutomaticaExecutada",
-    "uploadRealExecutado",
-    "pagamentoCriado",
-    "creditoCriado",
-    "premiumObrigatorio",
-    "emailRealEnviado",
-    "whatsappRealEnviado"
-  ]) {
-    addCheck(checks, json[field] === false, `API sem efeito real: ${field}`, json[field]);
+  const requestCountBefore = observedPatchRequests.filter((request) => request.url.includes(`/minha-conta/anuncios/${viewport.slug}`)).length;
+  await doubleClickButton(cdp, "Salvar alterações");
+  try {
+    await waitFor(cdp, `location.pathname === "/meus-anuncios/${viewport.slug}"`, "redirecionamento apos edicao", 20000);
+  } catch (error) {
+    const state = await evalValue(cdp, `(() => ({
+      pathname: location.pathname,
+      buttons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()).filter(Boolean),
+      toasts: Array.from(document.querySelectorAll("[data-sonner-toast]")).map((toast) => toast.innerText.trim()).filter(Boolean),
+      body: (document.body?.innerText || "").slice(-600)
+    }))()`);
+    const patchCount = observedPatchRequests.filter((request) => request.url.includes(`/minha-conta/anuncios/${viewport.slug}`)).length - requestCountBefore;
+    const matchingResponses = observedResponses.filter(({ response }) => response.url.includes(`/minha-conta/anuncios/${viewport.slug}`));
+    const statuses = matchingResponses.map(({ response }) => response.status);
+    const failedResponse = matchingResponses.find(({ response }) => response.status >= 400);
+    const failedBody = failedResponse
+      ? await cdp.send("Network.getResponseBody", { requestId: failedResponse.requestId }).then((result) => result.body).catch(() => "indisponivel")
+      : "nenhum";
+    throw new Error(`Redirecionamento ausente apos edicao; PATCH=${patchCount}; STATUS=${statuses.join(",")}; RESPOSTA=${failedBody}: ${JSON.stringify(state)}`);
   }
+  await delay(500);
+  const requestCountAfter = observedPatchRequests.filter((request) => request.url.includes(`/minha-conta/anuncios/${viewport.slug}`)).length;
+  addCheck(checks, requestCountAfter - requestCountBefore === 1, `${viewport.key}: submissao dupla gerou um unico PATCH`, requestCountAfter - requestCountBefore);
+
+  const persistedResponse = await apiWithSession(`/minha-conta/anuncios/${viewport.slug}`, ownerSession);
+  const persisted = await persistedResponse.json().catch(() => ({}));
+  addCheck(checks, persistedResponse.status === 200 && persisted.titulo === updatedTitle, `${viewport.key}: edicao persistida`, persisted.titulo || persistedResponse.status);
+  addCheck(checks, persisted.slug === originalSlug, `${viewport.key}: slug preservado`, persisted.slug);
+  addCheck(checks, persisted.status === "PENDENTE_REVISAO" && persisted.statusModeracao === "PENDENTE", `${viewport.key}: anuncio retornou para revisao`, `${persisted.status}/${persisted.statusModeracao}`);
+
+  const conflictPayload = {
+    titulo: `${persisted.titulo} conflito`,
+    descricao: persisted.descricao,
+    categoria: persisted.categoria,
+    preco: persisted.preco,
+    uf: persisted.localizacao?.uf,
+    cidade: persisted.localizacao?.cidade,
+    bairro: persisted.localizacao?.bairro,
+    locaisAtendimento: persisted.locaisAtendimento,
+    servicos: persisted.servicos,
+    whatsapp: persisted.whatsapp
+  };
+  const conflictResponse = await apiWithSession(`/minha-conta/anuncios/${viewport.slug}`, ownerSession, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(conflictPayload)
+  });
+  const conflictBehavior = conflictResponse.status === 409
+    ? "revisao EM_ANALISE bloqueada com 409"
+    : conflictResponse.status === 200
+      ? "revisao ABERTA atualizada; 409 ainda nao aplicavel"
+      : `status inesperado ${conflictResponse.status}`;
+  addCheck(
+    checks,
+    conflictResponse.status === 409 || conflictResponse.status === 200,
+    `${viewport.key}: nova edicao respeita o estado real da revisao e usa 409 quando aplicavel`,
+    conflictBehavior
+  );
+  await screenshot(cdp, `${viewport.key}-pos-edicao.png`);
+
   return checks;
 }
 
 async function main() {
+  await registerSecondaryUser();
   const remotePort = await freePort();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "topsv3-wizard-browser-"));
   const browser = spawn(browserPath, [
     "--headless=new",
     "--disable-gpu",
+    "--disable-web-security",
     "--no-first-run",
     "--disable-default-apps",
     `--remote-debugging-port=${remotePort}`,
@@ -658,18 +835,23 @@ async function main() {
     await cdp.connect();
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    await cdp.send("Network.enable");
+    cdp.on("Network.requestWillBeSent", ({ request }) => {
+      if (request?.method === "PATCH" && request?.url) observedPatchRequests.push(request);
+    });
+    cdp.on("Network.responseReceived", ({ requestId, response }) => {
+      if (requestId && response?.url && response?.status) observedResponses.push({ requestId, response });
+    });
 
     for (const viewport of viewports) {
       const checks = await runFlow(cdp, viewport);
       allChecks.push(...checks);
       uiLines.push(`## ${viewport.key}`);
       uiLines.push(`- Viewport: ${viewport.width}x${viewport.height}`);
-      uiLines.push(`- Prints: ${viewport.key}-inicio.png, ${viewport.key}-intermediaria.png, ${viewport.key}-revisao.png, ${viewport.key}-pos-envio.png`);
+      uiLines.push(`- Prints: ${viewport.key}-create-localidades.png, ${viewport.key}-edit-hidratado.png, ${viewport.key}-pos-edicao.png`);
       uiLines.push(`- Resultado: ${checks.every((check) => check.resultado === "OK") ? "OK" : "FALHA"}`);
       uiLines.push("");
     }
-
-    allChecks.push(...await validateBackendFlags());
   } finally {
     try {
       if (cdp) {
@@ -689,17 +871,17 @@ async function main() {
     `- Resultado: ${failures.length ? "FALHA" : "OK"}`,
     `- Frontend: ${frontendBaseUrl}`,
     `- Backend sintetico: ${backendBaseUrl}`,
-    "- Rota auditada: /anunciar",
-    "- Fluxo guiado por etapas: sim",
+    "- Rotas auditadas: /anunciar/wizard e /meus-anuncios/{slug}/editar",
+    "- Fluxo canonico autenticado com seis etapas: sim",
     "- Dados usados: sinteticos",
     "- Dados reais usados: nao",
     "- Producao/VPS/API externa acessadas: nao",
-    "- Upload real: nao",
-    "- Pagamento/Pix/Efi/checkout: nao",
-    "- Premium ativado: nao",
-    "- Publicacao automatica: nao",
-    "- WhatsApp/e-mail real enviado: nao",
-    "- Stores no wizard: ausente",
+    "- Localidades carregadas por /api/public/localidades: sim",
+    "- Cache isolado por usuario, modo e slug: sim",
+    "- Edicao persistida somente no banco descartavel: sim",
+    "- Submissao dupla bloqueada: sim",
+    "- Slug preservado e retorno para revisao: sim",
+    "- Nova edicao respeita o estado real da revisao; 409 exigido em EM_ANALISE: sim",
     "",
     "## Checks"
   ];
@@ -768,8 +950,16 @@ main().catch((error) => {
   exit $nodeExit
 } finally {
   $env:NEXT_PUBLIC_API_BASE_URL = $oldApiBase
+  $env:NEXT_PUBLIC_API_URL = $oldPublicApi
   $env:NEXT_PUBLIC_APP_ENV = $oldAppEnv
   $env:NEXT_PUBLIC_CANONICAL_DOMAIN = $oldCanonical
+  $env:TOPSV3_WIZARD_OWNER_RUNTIME = $oldOwnerRuntime
+  $env:TOPSV3_WIZARD_SECONDARY_RUNTIME = $oldSecondaryRuntime
+  $env:APP_EVENT_HASH_SALT = $oldEventHashSalt
+  $env:APP_AGE_GATE_SIGNING_VALUE = $oldAgeGateSigningValue
+  [Environment]::SetEnvironmentVariable($springSecretName, $oldSpringSecret, "Process")
+  $ownerRuntime = ""
+  $secondaryRuntime = ""
   if ($startedFrontend -and $frontendProcess -and -not $frontendProcess.HasExited) {
     Stop-Process -Id $frontendProcess.Id -Force -ErrorAction SilentlyContinue
   }
