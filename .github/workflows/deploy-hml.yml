@@ -56,7 +56,20 @@ jobs:
           install -m 700 -d "${HOME}/.ssh"
           printf '%s\n' "${HML_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/topsv3_hml"
           chmod 600 "${HOME}/.ssh/topsv3_hml"
-          ssh-keyscan -p "${HML_SSH_PORT}" "${HML_HOST}" >> "${HOME}/.ssh/known_hosts"
+          known_hosts_scan="$(mktemp)"
+          trap 'rm -f "${known_hosts_scan}"' EXIT
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${HML_SSH_PORT}" "${HML_HOST}" > "${known_hosts_scan}" 2>/dev/null \
+              && test -s "${known_hosts_scan}"; then
+              cat "${known_hosts_scan}" >> "${HOME}/.ssh/known_hosts"
+              break
+            fi
+            if [ "${attempt}" -eq 3 ]; then
+              echo "ERRO: ssh-keyscan nao obteve a chave do host HML apos 3 tentativas." >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
 
       - name: Validate remote HML prerequisites
         shell: bash
