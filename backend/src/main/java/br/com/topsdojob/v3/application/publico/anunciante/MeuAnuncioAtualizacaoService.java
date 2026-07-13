@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
+import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
@@ -50,6 +51,7 @@ public class MeuAnuncioAtualizacaoService {
             "(?i)(\\+?\\d[\\d .()_-]{7,}\\d|whats|telefone|instagram|insta\\b|telegram|t\\.me|onlyfans|facebook|http|www\\.|@)");
 
     private final MeusAnunciosConsultaService consultaService;
+    private final KycPublicoService kycService;
     private final AnuncioRepository anuncioRepository;
     private final AnuncioLocalizacaoRepository localizacaoRepository;
     private final DocumentoBuscaAnuncioRepository documentoBuscaRepository;
@@ -61,6 +63,7 @@ public class MeuAnuncioAtualizacaoService {
 
     public MeuAnuncioAtualizacaoService(
             MeusAnunciosConsultaService consultaService,
+            KycPublicoService kycService,
             AnuncioRepository anuncioRepository,
             AnuncioLocalizacaoRepository localizacaoRepository,
             DocumentoBuscaAnuncioRepository documentoBuscaRepository,
@@ -70,6 +73,7 @@ public class MeuAnuncioAtualizacaoService {
             BairroRepository bairroRepository,
             ObjectMapper objectMapper) {
         this.consultaService = consultaService;
+        this.kycService = kycService;
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.documentoBuscaRepository = documentoBuscaRepository;
@@ -86,6 +90,7 @@ public class MeuAnuncioAtualizacaoService {
             MeuAnuncioAtualizacaoRequestDto request,
             Authentication authentication) {
         AnuncioEntity anuncio = consultaService.anuncioDoUsuario(slug, authentication);
+        kycService.garantirProntoParaAnuncio(anuncio.getUsuarioId());
         ValidatedRequest validado = validar(request);
         if (revisaoRepository.existsByAnuncioIdAndStatusIn(
                 anuncio.getId(),

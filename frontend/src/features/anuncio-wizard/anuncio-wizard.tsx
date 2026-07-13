@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/context/AuthContext'
 import { useLocalidades } from '@/hooks/useLocalidades'
+import { isoToBirthDate } from '@/lib/date/birth-date'
 import { cn } from '@/lib/utils'
 import {
   atualizarMeuAnuncio,
@@ -19,8 +20,10 @@ import {
 } from '@/lib/meus-anuncios-api'
 import { formatCurrencyBRL } from '@/utils/formatter'
 import {
-  completeWizardKyc,
+  fetchWizardKycStatus,
+  submitWizardKyc,
   submitWizardAnuncio,
+  type WizardKycStatus,
   updateWizardProfileDescription,
 } from './api'
 import {
@@ -28,13 +31,7 @@ import {
   stepCopy,
   type SearchableSelectOption,
 } from './wizard-constants'
-import {
-  buildPublishGuard,
-  calculateAge,
-  closedPublishGuard,
-  hasPersistedKyc,
-  type PublishGuardState,
-} from './wizard-utils'
+import { calculateAge } from './wizard-utils'
 import {
   useAnuncioWizardStore,
   validateWizardKycState,
@@ -45,13 +42,12 @@ import {
   initialWizardFormState,
   initialWizardKycState,
   type WizardFormState,
-  type WizardKycState,
   type WizardStepId,
 } from './types'
 import { WizardFinalReview } from './components/wizard-final-review'
-import { WizardKycModal } from './components/wizard-kyc-modal'
 import { WizardPreview } from './components/wizard-preview'
 import { WizardStepFotos } from './components/wizard-step-fotos'
+import { WizardStepKyc } from './components/wizard-step-kyc'
 import { WizardStepLocalizacao } from './components/wizard-step-localizacao'
 import { WizardStepPerfil } from './components/wizard-step-perfil'
 import { WizardStepPremium } from './components/wizard-step-premium'
@@ -148,7 +144,9 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [editError, setEditError] = useState<string | null>(null)
   const [editAnuncio, setEditAnuncio] = useState<MeuAnuncio | null>(null)
   const [fotoPreviewUrls, setFotoPreviewUrls] = useState<string[]>([])
-  const [publishGuard, setPublishGuard] = useState<PublishGuardState>(closedPublishGuard)
+  const [kycStatus, setKycStatus] = useState<WizardKycStatus | null>(null)
+  const [kycLoading, setKycLoading] = useState(true)
+  const [kycError, setKycError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewHintDismissed, setPreviewHintDismissed] = useState(false)
   const [createMediaProgress, setCreateMediaProgress] = useState<Record<string, number>>({})
@@ -162,9 +160,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const createdSlugRef = useRef<string | null>(null)
   const createdAnuncioIdRef = useRef<string | null>(null)
   const createdDetailsSyncedRef = useRef(false)
+  const kycLoadedUserRef = useRef<string | null>(null)
 
-  const idade = calculateAge(kyc.dataNascimento || (usuario as any)?.dataNascimento)
-  const hasExistingKyc = hasPersistedKyc(usuario)
+  const idade = calculateAge(kycStatus?.dataNascimento || (usuario as any)?.dataNascimento)
+  const hasExistingKyc = Boolean(kycStatus?.prontoParaEnviarAnuncio)
   const previewTitle = state.titulo.trim() || 'Seu nome em destaque'
   const profileDescription = state.descricaoPerfil.trim()
   const previewLocation = [state.cidadeNome || 'Cidade', state.bairroNome || 'Bairro']
@@ -174,7 +173,10 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const hasVirtual = state.servicos.includes('VIDEOCHAMADA') || state.categoria === 'VENDA_DE_CONTEUDO'
   const quietPreview = currentStep.id === 'perfil' || currentStep.id === 'localizacao'
   const highlightedPreview =
-    currentStep.id === 'fotos' || currentStep.id === 'revisao' || currentStep.id === 'premium'
+    currentStep.id === 'fotos' ||
+    currentStep.id === 'revisao' ||
+    currentStep.id === 'premium' ||
+    currentStep.id === 'kyc'
   const selectedStateLabel = state.estadoNome
     ? `${state.estadoNome}${state.estadoUf ? ` · ${state.estadoUf}` : ''}`
     : 'Selecione o estado'
@@ -284,6 +286,36 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     })
   }, [currentIndex, hydrated])
 
+  const loadKycStatus = useCallback(async () => {
+    if (!usuario) return
+    setKycLoading(true)
+    setKycError(null)
+    try {
+      const status = await fetchWizardKycStatus()
+      setKycStatus(status)
+      updateKyc({
+        nomeCompleto: status.nomeCivil || '',
+        dataNascimento: isoToBirthDate(status.dataNascimento),
+        cpf: '',
+        documentos: [],
+        documentoNomes: [],
+      })
+    } catch (error) {
+      setKycStatus(null)
+      setKycError(error instanceof Error ? error.message : 'Não foi possível carregar sua verificação.')
+    } finally {
+      setKycLoading(false)
+    }
+  }, [updateKyc, usuario])
+
+  useEffect(() => {
+    if (carregando || !usuario) return
+    const userId = String(usuario.id)
+    if (kycLoadedUserRef.current === userId) return
+    kycLoadedUserRef.current = userId
+    void loadKycStatus()
+  }, [carregando, loadKycStatus, usuario])
+
   useEffect(() => {
     if (!hydrated) return
     if (!usuario) return
@@ -291,12 +323,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     if (lastSyncedStepRef.current === stepId) return
     syncProgress(stepId)
   }, [currentStep.id, hydrated, syncProgress, usuario])
-
-  useEffect(() => {
-    if (!publishGuard.open || hasExistingKyc) return
-    if (lastSyncedStepRef.current === 'kyc') return
-    syncProgress('kyc')
-  }, [publishGuard.open, hasExistingKyc, syncProgress])
 
   const categoriaOptions = useMemo(
     () =>
@@ -411,7 +437,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   }
 
   const validateCurrentStep = () => {
-    const message = validateWizardStep(wizardState, currentStep.id, hasExistingKyc, mode)
+    const message = validateWizardStep(wizardState, currentStep.id, mode)
     if (message) {
       toast.warning(message)
       return false
@@ -422,7 +448,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const canMoveToStep = (targetIndex: number) => {
     if (targetIndex <= currentIndex) return true
     for (let i = 0; i < targetIndex; i += 1) {
-      const message = validateWizardStep(wizardState, wizardSteps[i].id, hasExistingKyc, mode)
+      const message = validateWizardStep(wizardState, wizardSteps[i].id, mode)
       if (message) {
         toast.warning(message)
         return false
@@ -439,12 +465,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const goNext = () => {
     if (!validateCurrentStep()) return
     nextStep()
-  }
-
-  const openPublishGuard = (
-    config: Omit<Extract<PublishGuardState, { open: true }>, 'open'>
-  ) => {
-    setPublishGuard(buildPublishGuard(config))
   }
 
   const syncProfileDescriptionIfNeeded = async () => {
@@ -482,7 +502,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
 
     await syncProfileDescriptionIfNeeded()
     if (!createdSlugRef.current) {
-      const created = await submitWizardAnuncio(state, usuario)
+      const created = await submitWizardAnuncio(state)
       createdSlugRef.current = created.slugLocal
       createdAnuncioIdRef.current = created.anuncioId
     }
@@ -524,7 +544,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     await enviarArquivos(state.videos, setVideos)
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', createdAnuncioIdRef.current)
     await refresh().catch(() => null)
-    setPublishGuard(closedPublishGuard)
     reset()
     createdSlugRef.current = null
     createdAnuncioIdRef.current = null
@@ -535,56 +554,46 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     router.push('/meus-anuncios')
   }
 
-  const completeKycAndPublish = async () => {
-    if (!usuario?.email) {
-      toast.error('Sessão inválida.')
-      return
+  const ensureKycReady = async () => {
+    if (!kycStatus) {
+      throw new Error(kycError || 'Aguarde a verificação dos seus dados antes de continuar.')
     }
+    if (kycStatus.prontoParaEnviarAnuncio) return
 
-    const message = validateWizardKycState(wizardState)
-    if (message) {
-      toast.warning(message)
-      openPublishGuard({
-        title: 'Sua conta ainda não foi verificada',
-        description: message,
-        actionLabel: 'Concluir cadastro e publicar',
-      })
-      return
-    }
-
-    await completeWizardKyc({
-      email: usuario.email,
-      nomeCompleto: kyc.nomeCompleto,
-      dataNascimento: kyc.dataNascimento,
-      cpf: kyc.cpf,
-      estadoId: state.estadoId || String((usuario as any)?.estadoId || ''),
-      cidadeId: state.cidadeId || String((usuario as any)?.cidadeId || ''),
-      bairroId: state.bairroId || String((usuario as any)?.bairroId || ''),
-      documentos: kyc.documentos.slice(0, 2),
+    const message = validateWizardKycState(wizardState, {
+      nomeCivil: Boolean(kycStatus.nomeCivil),
+      cpf: kycStatus.cpfPreenchido,
+      dataNascimento: Boolean(kycStatus.dataNascimento),
     })
-    await submitAnuncio()
+    if (message) throw new Error(message)
+
+    const atualizado = await submitWizardKyc(kyc)
+    setKycStatus(atualizado)
+    updateKyc({ documentos: [], documentoNomes: [] })
+    if (!atualizado.prontoParaEnviarAnuncio) {
+      throw new Error('O envio documental não foi confirmado. Revise os dados e tente novamente.')
+    }
   }
 
   const getFirstInvalidStep = () => {
     const requiredSteps: WizardStepId[] = ['perfil', 'localizacao', 'servicos', 'fotos']
     for (const step of requiredSteps) {
-      const message = validateWizardStep(wizardState, step, hasExistingKyc, mode)
+      const message = validateWizardStep(wizardState, step, mode)
       if (message) return { step, message }
     }
     return null
   }
 
-  const runFinalFlow = async (requiresKyc: boolean) => {
+  const runFinalFlow = async () => {
     if (publishLockRef.current) return
 
     publishLockRef.current = true
     try {
       setPublishing(true)
+      await ensureKycReady()
       if (isEdit) await submitEdit()
-      else if (requiresKyc) await completeKycAndPublish()
       else await submitAnuncio()
     } catch (err: any) {
-      setPublishGuard(closedPublishGuard)
       toast.error(
         isEdit
           ? editErrorMessage(err)
@@ -610,27 +619,13 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       return
     }
 
-    if (isEdit) {
-      void runFinalFlow(false)
+    if (kycLoading || !kycStatus) {
+      setStep('kyc')
+      toast.warning(kycError || 'Aguarde a verificação dos seus dados.')
       return
     }
 
-    if (!hasExistingKyc) {
-      openPublishGuard({
-        title: 'Sua conta ainda não foi verificada',
-        description:
-          'Vamos concluir seu cadastro com nome completo real, CPF, data de nascimento e documentos antes de enviar o anúncio para moderação.',
-        actionLabel: 'Concluir cadastro e publicar',
-      })
-      return
-    }
-
-    toast.message('Conta verificada. Seu anúncio será enviado para moderação.')
-    void runFinalFlow(false)
-  }
-
-  const handlePublishGuardAction = () => {
-    void runFinalFlow(true)
+    void runFinalFlow()
   }
 
   const renderCurrentStep = () => {
@@ -711,6 +706,20 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       )
     }
 
+    if (currentStep.id === 'kyc') {
+      return (
+        <WizardStepKyc
+          state={kyc}
+          status={kycStatus}
+          loading={kycLoading}
+          error={kycError}
+          onReload={loadKycStatus}
+          onPatch={updateKyc}
+          onSetDocumentos={setDocumentos}
+        />
+      )
+    }
+
     return (
       <WizardStepPremium
         premiumChoice={state.premiumChoice}
@@ -767,19 +776,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
 
   return (
     <main className="min-h-screen bg-[#f7f4ef] text-zinc-950">
-      {!isEdit ? (
-        <WizardKycModal
-          publishGuard={publishGuard}
-          hasExistingKyc={hasExistingKyc}
-          publishing={publishing}
-          kyc={kyc}
-          onClose={() => setPublishGuard(closedPublishGuard)}
-          onConfirm={handlePublishGuardAction}
-          onPatchKyc={(payload: Partial<WizardKycState>) => updateKyc(payload)}
-          onSetDocumentos={setDocumentos}
-        />
-      ) : null}
-
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8 lg:py-8">
         <section
           ref={wizardTopRef}
@@ -873,7 +869,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
                 Voltar
               </Button>
 
-              {currentStep.id === 'premium' ? (
+              {currentStep.id === 'kyc' ? (
                 <Button type="button" onClick={requestPublish} disabled={publishing}>
                   {publishing
                     ? isEdit
@@ -881,7 +877,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
                       : 'Publicando…'
                     : isEdit
                       ? 'Salvar alterações'
-                      : 'Continuar'}
+                      : 'Enviar para moderação'}
                   <ChevronRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (

@@ -45,6 +45,8 @@ app:
   media-upload:
     max-image-bytes: ${UPLOAD_MAX_IMAGE_BYTES:20971520}
     max-video-bytes: ${UPLOAD_MAX_VIDEO_BYTES:104857600}
+  document-upload:
+    max-bytes: ${UPLOAD_MAX_DOCUMENT_BYTES:12582912}
 
 efi:
   pix:

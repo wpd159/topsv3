@@ -29,7 +29,6 @@ type Usuario = {
   descricao: string | null
   twoFactorAtivo: boolean
   totalAnuncios: number
-  totalDocumentos: number
   creditos: number
   totalIndicados: number
   creditosIndicacaoGanhos: number
@@ -38,9 +37,7 @@ type Usuario = {
   status: string
   cargo: string
 
-  cpf?: string | null
   dataNascimento?: string | null
-  documentosUrls?: string[] | null
   advertiserVerificationStatus?: string | null
   advertiserVerificationNotes?: string | null
 }
@@ -48,7 +45,6 @@ type Usuario = {
 type AuthContextType = {
   usuario: Usuario | null
   carregando: boolean
-  perfilCompleto: boolean
 
   // 🔔 chat badge
   novasMensagens: number
@@ -76,7 +72,6 @@ function publicUserToContext(data: PublicAuthUser): Usuario {
     descricao: null,
     twoFactorAtivo: false,
     totalAnuncios: 0,
-    totalDocumentos: 0,
     creditos: 0,
     totalIndicados: 0,
     creditosIndicacaoGanhos: 0,
@@ -164,7 +159,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           descricao: null,
           twoFactorAtivo: false,
           totalAnuncios: 0,
-          totalDocumentos: 0,
           creditos: 0,
           totalIndicados: 0,
           creditosIndicacaoGanhos: 0,
@@ -213,24 +207,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchUsuario()
   }, [])
-
-  // ========= PERFIL COMPLETO =========
-  const perfilCompleto = useMemo(() => {
-    if (!usuario) return false
-
-    const temNome =
-      !!usuario.nomeCompleto && usuario.nomeCompleto.trim().length >= 3
-    const temCpf = !!usuario.cpf && usuario.cpf.trim().length > 0
-    const temNascimento = !!usuario.dataNascimento
-    const temDocs =
-      (usuario.documentosUrls?.length ?? 0) >= 1 ||
-      (usuario.totalDocumentos ?? 0) >= 1
-
-    const temLocalizacaoIds =
-      !!usuario.estadoId && !!usuario.cidadeId && !!usuario.bairroId
-
-    return temNome && temCpf && temNascimento && temDocs && temLocalizacaoIds
-  }, [usuario])
 
   // ========= WEBSOCKET (centralizado: créditos + chat) =========
   const wsUrl = useMemo(() => {
@@ -303,7 +279,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         usuario,
         carregando,
-        perfilCompleto,
         novasMensagens,
         zerarNovasMensagens,
         login,

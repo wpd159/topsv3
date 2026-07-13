@@ -30,7 +30,6 @@ import {
   UserIcon,
 } from '@heroicons/react/24/solid'
 import AnunciosDoUsuarioTable from '../../components/anuncios-do-usuario-table'
-import DocumentosUsuarioSection from '../../components/documentos-usuarios-section'
 import AdicionarCreditosDialog from '../../components/adicionar-creditos-dialog'
 import TicketDetailsModal from '../../components/ticket-details-modal'
 import {
@@ -672,11 +671,6 @@ export default function DetalhesUsuarioPage() {
           </div>
         </div>
       </div>
-
-      <DocumentosUsuarioSection
-        documentos={usuario.documentosUrls || []}
-        manageHref={`/admin/usuarios/${usuario.id}/editar#documentos`}
-      />
 
       <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between gap-3">

@@ -26,7 +26,6 @@ export type AdminUsuarioDetalhes = AdminUsuario & {
   dataNascimento?: string | null
   totalDocumentos?: number | null
   beneficiosAtivosCodigos?: string[] | null
-  documentosUrls?: string[] | null
   anuncios?: Array<{
     id?: number | null
     titulo?: string | null

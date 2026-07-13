@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.publico.service.SolicitarAnuncioValidatio
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,9 +23,11 @@ public class PublicAnunciarController {
     }
 
     @PostMapping
-    public ResponseEntity<?> solicitar(@RequestBody(required = false) JsonNode payload) {
+    public ResponseEntity<?> solicitar(
+            @RequestBody(required = false) JsonNode payload,
+            Authentication authentication) {
         try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(service.solicitar(payload));
+            return ResponseEntity.status(HttpStatus.CREATED).body(service.solicitar(payload, authentication));
         } catch (SolicitarAnuncioValidationException exception) {
             return ResponseEntity.badRequest().body(SolicitarAnuncioValidationErrorResponseDto.from(exception.errors()));
         }

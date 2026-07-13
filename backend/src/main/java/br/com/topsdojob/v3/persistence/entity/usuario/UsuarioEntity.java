@@ -35,6 +35,12 @@ public class UsuarioEntity {
   @Column(name = "data_nascimento")
   private LocalDate dataNascimento;
 
+  @Column(name = "nome_civil")
+  private String nomeCivil;
+
+  @Column(name = "cpf_normalizado")
+  private String cpfNormalizado;
+
   @Enumerated(EnumType.STRING)
   @Column(name = "status")
   private StatusUsuario status;
@@ -80,6 +86,14 @@ public class UsuarioEntity {
 
   public LocalDate getDataNascimento() {
     return dataNascimento;
+  }
+
+  public String getNomeCivil() {
+    return nomeCivil;
+  }
+
+  public String getCpfNormalizado() {
+    return cpfNormalizado;
   }
 
   public StatusUsuario getStatus() {
@@ -172,6 +186,17 @@ public class UsuarioEntity {
   public void sincronizarDataNascimentoHomologacao(
       LocalDate dataNascimento,
       OffsetDateTime atualizadoEm) {
+    this.dataNascimento = dataNascimento;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public void aplicarDadosKyc(
+      String nomeCivil,
+      String cpfNormalizado,
+      LocalDate dataNascimento,
+      OffsetDateTime atualizadoEm) {
+    this.nomeCivil = nomeCivil;
+    this.cpfNormalizado = cpfNormalizado;
     this.dataNascimento = dataNascimento;
     this.atualizadoEm = atualizadoEm;
   }

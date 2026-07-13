@@ -394,6 +394,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Promocao R2 apos moderacao: `backend/src/main/java/br/com/topsdojob/v3/application/admin/moderacao/MidiaStorageAprovacaoService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/admin/moderacao/AdminModeracaoAcaoService.java`
 - Wizard e adapter unico de midias: `frontend/src/features/anuncio-wizard/anuncio-wizard.tsx`, `frontend/src/features/anuncio-wizard/components/wizard-step-fotos.tsx`, `frontend/src/lib/meus-anuncios-api.ts`
 - Testes da gestao de midias: `backend/src/test/java/br/com/topsdojob/v3/application/publico/anunciante/MinhasMidiasServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/anunciante/midia/`, `backend/src/test/java/br/com/topsdojob/v3/application/admin/moderacao/MidiaStorageAprovacaoServiceTest.java`
+- Migration KYC/documentos privados: `backend/src/main/resources/db/migration/V023__kyc_documentos_privados.sql`
+- Contratos e servico KYC publico: `backend/src/main/java/br/com/topsdojob/v3/web/publico/kyc/KycPublicoController.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/kyc/KycPublicoService.java`
+- Moderacao documental e RBAC: `backend/src/main/java/br/com/topsdojob/v3/web/admin/documento/AdminKycController.java`, `backend/src/main/java/br/com/topsdojob/v3/application/admin/documento/AdminKycService.java`
+- Etapa KYC do wizard unico: `frontend/src/features/anuncio-wizard/components/wizard-step-kyc.tsx`, `frontend/src/features/anuncio-wizard/anuncio-wizard.tsx`
+- Painel administrativo KYC: `frontend/src/features/moderation-v2/components/moderacao-v2-kyc-panel.tsx`
+- Testes KYC e documentos: `backend/src/test/java/br/com/topsdojob/v3/application/publico/kyc/`, `backend/src/test/java/br/com/topsdojob/v3/application/admin/documento/`, `backend/src/test/java/br/com/topsdojob/v3/web/admin/documento/`, `backend/src/test/java/br/com/topsdojob/v3/migration/KycDocumentosPrivadosMigrationTest.java`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

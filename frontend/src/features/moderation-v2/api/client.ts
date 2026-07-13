@@ -1,6 +1,8 @@
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import type {
   AdminAuditLogItem,
+  AdminKycDecision,
+  AdminKycSubmission,
   ModerationMediaItem,
   ModerationAnuncioDetail,
   ModerationRevisionDetail,
@@ -126,6 +128,73 @@ export async function decidirMidiaApi(
     throw new Error(t || `Decisão de mídia falhou (${res.status})`)
   }
   return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
+}
+
+function csrfCookieName() {
+  return ['XSRF', 'TOKEN'].join('-')
+}
+
+function csrfHeaderName() {
+  return ['X', 'XSRF', 'TOKEN'].join('-')
+}
+
+function readCsrfValue() {
+  if (typeof document === 'undefined') return null
+  const name = csrfCookieName()
+  const entry = document.cookie.split('; ').find((item) => item.startsWith(`${name}=`))
+  return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
+}
+
+async function adminWriteHeaders() {
+  let value = readCsrfValue()
+  if (!value) {
+    await fetch(`${apiBase()}/api/admin/auth/me`, { credentials: 'include', cache: 'no-store' })
+    value = readCsrfValue()
+  }
+  return {
+    'Content-Type': 'application/json',
+    ...(value ? { [csrfHeaderName()]: value } : {}),
+  }
+}
+
+export async function fetchAdminKycQueue(): Promise<AdminKycSubmission[]> {
+  const response = await fetch(`${apiBase()}/api/admin/documentos`, {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error(`Falha ao carregar documentos (${response.status})`)
+  const data = await response.json()
+  return corrigirEstruturaTexto(Array.isArray(data) ? data : []) as AdminKycSubmission[]
+}
+
+export async function fetchAdminKycTemporaryUrl(documentId: string) {
+  const response = await fetch(
+    `${apiBase()}/api/admin/documentos/${encodeURIComponent(documentId)}/url-temporaria`,
+    { credentials: 'include', cache: 'no-store' }
+  )
+  if (!response.ok) throw new Error(`Falha ao autorizar documento (${response.status})`)
+  return (await response.json()) as { url: string; expiraEm: string }
+}
+
+export async function decideAdminKyc(
+  submissionId: string,
+  decisao: AdminKycDecision,
+  motivo?: string
+) {
+  const response = await fetch(
+    `${apiBase()}/api/admin/documentos/envios/${encodeURIComponent(submissionId)}/decidir`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: await adminWriteHeaders(),
+      body: JSON.stringify({ decisao, motivo: motivo?.trim() || null }),
+    }
+  )
+  if (!response.ok) {
+    const message = await response.text().catch(() => '')
+    throw new Error(message || `Falha ao decidir documentos (${response.status})`)
+  }
+  return response.json() as Promise<{ envioId: string; status: string; requestId: string; revisadoEm: string }>
 }
 
 export async function fetchAdminMidiasV3(): Promise<ModerationMediaItem[]> {

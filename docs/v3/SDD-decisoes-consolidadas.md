@@ -231,6 +231,15 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Nesse fluxo futuro, a IA podera corrigir ortografia, clareza e organizacao e usar somente cidade, bairro e atributos efetivamente informados. Nao podera presumir servicos, disponibilidade, endereco, acesso, seguranca, limpeza, discricao, conforto, caracteristicas fisicas, precos ou atendimento. O texto sera gerado na criacao/edicao, nunca por visualizacao, e salvo apenas apos confirmacao. O contrato devera limitar tamanho, taxa, custo e timeout, versionar prompt, usar resposta estruturada/moderacao e registrar falhas sem conteudo sensivel.
 - SDD e docs `docs/v3` sao fonte obrigatoria de continuidade para outros chats/ferramentas.
 
+## KYC e documentos privados
+
+- KYC integra a etapa final do mesmo `AnuncioWizard` de criacao e edicao; e proibido criar rota, modal, formulario ou wizard separado de "completar cadastro".
+- Usuario e propriedade derivam exclusivamente da sessao publica. O frontend nao envia `usuarioId`, e-mail ou outro identificador para selecionar a conta do KYC.
+- Nome civil, CPF e nascimento sao privados. O CPF e unico e normalizado no banco; maioridade e validade sao decididas no backend. Nenhum DTO publico de anuncio pode conter esses campos.
+- Documento aceita PDF unico ou JPG/PNG frente e verso. Binario fica somente no R2 privado pela abstracao `ObjectStorage`; base64, disco, MinIO, fallback e URL publica sao proibidos.
+- A administracao consulta documento somente com `DOCUMENTO_REVISAR` e URL assinada curta, registrando acesso e decisao. Rejeicao e ajuste exigem motivo; documento aprovado continua privado.
+- Os estados documentais ficam consolidados em `documento_usuario`; nao manter status paralelo no frontend ou reconstruir conclusao por arrays de URLs.
+
 ## Copia sanitizada de producao
 
 - Producao serve para observar; copia local serve para testar.

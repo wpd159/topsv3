@@ -1,8 +1,8 @@
-import { initialWizardState, wizardStepIds, type WizardFormState, type WizardKycState, type WizardState } from './types'
+import { initialWizardState, wizardStepIds, type WizardFormState, type WizardState } from './types'
 
 const STORAGE_PREFIX = 'topsdojob:anuncio-wizard:v3'
 const UNSAFE_LEGACY_STORAGE_KEY = 'topsdojob:anuncio-wizard:v2'
-const STORAGE_VERSION = 3
+const STORAGE_VERSION = 4
 
 export type WizardCacheScope = {
   userId: string
@@ -23,14 +23,12 @@ type PersistedWizardState = {
   state: {
     currentStep: WizardState['currentStep']
     form: Omit<WizardState['form'], 'fotos' | 'videos'> & { fotos?: never; videos?: never }
-    kyc: Omit<WizardState['kyc'], 'documentos'> & { documentos?: never }
   }
 }
 
 type StoredWizardState = {
   currentStep?: unknown
   form?: Partial<Record<keyof WizardFormState, unknown>>
-  kyc?: Partial<Record<keyof WizardKycState, unknown>>
 }
 
 const stepSet = new Set<string>(wizardStepIds)
@@ -45,11 +43,8 @@ function asStringArray(value: unknown) {
 
 function sanitizeState(input: StoredWizardState | null | undefined): WizardState {
   const form = input?.form
-  const kyc = input?.kyc
   const rawStep = input?.currentStep
-  const currentStep = rawStep === 'kyc'
-    ? 'premium'
-    : typeof rawStep === 'string' && stepSet.has(rawStep)
+  const currentStep = typeof rawStep === 'string' && stepSet.has(rawStep)
       ? (rawStep as WizardState['currentStep'])
       : 'perfil'
 
@@ -81,20 +76,12 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
       fotos: [],
       videos: [],
     },
-    kyc: {
-      ...initialWizardState.kyc,
-      nomeCompleto: asString(kyc?.nomeCompleto),
-      dataNascimento: asString(kyc?.dataNascimento),
-      cpf: asString(kyc?.cpf),
-      documentoNomes: asStringArray(kyc?.documentoNomes),
-      documentos: [],
-    },
+    kyc: initialWizardState.kyc,
   }
 }
 
 function toPersistedState(state: WizardState, sourceVersion: string | null): PersistedWizardState {
   const { fotos: _fotos, videos: _videos, ...form } = state.form
-  const { documentos: _documentos, ...kyc } = state.kyc
 
   return {
     version: STORAGE_VERSION,
@@ -103,7 +90,6 @@ function toPersistedState(state: WizardState, sourceVersion: string | null): Per
     state: {
       currentStep: state.currentStep,
       form,
-      kyc,
     },
   }
 }

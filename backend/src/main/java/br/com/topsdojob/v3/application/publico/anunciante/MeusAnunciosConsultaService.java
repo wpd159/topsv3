@@ -102,7 +102,7 @@ public class MeusAnunciosConsultaService {
         return anuncio;
     }
 
-    UsuarioEntity usuarioAutenticado(Authentication authentication) {
+    public UsuarioEntity usuarioAutenticado(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof PublicUserPrincipal principal)) {

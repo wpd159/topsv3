@@ -1,4 +1,4 @@
-export const wizardStepIds = ['perfil', 'localizacao', 'servicos', 'fotos', 'revisao', 'premium'] as const
+export const wizardStepIds = ['perfil', 'localizacao', 'servicos', 'fotos', 'revisao', 'premium', 'kyc'] as const
 
 export type WizardStepId = (typeof wizardStepIds)[number]
 
@@ -32,6 +32,7 @@ export type WizardKycState = {
   nomeCompleto: string
   dataNascimento: string
   cpf: string
+  documentoModo: 'FRENTE_VERSO' | 'PDF'
   documentos: File[]
   documentoNomes: string[]
 }
@@ -72,6 +73,7 @@ export const initialWizardKycState: WizardKycState = {
   nomeCompleto: '',
   dataNascimento: '',
   cpf: '',
+  documentoModo: 'FRENTE_VERSO',
   documentos: [],
   documentoNomes: [],
 }

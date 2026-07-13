@@ -1,4 +1,5 @@
 import { ModeracaoV2MediaQueue } from '@/features/moderation-v2/components/moderacao-v2-media-gallery'
+import { ModeracaoV2KycPanel } from '@/features/moderation-v2/components/moderacao-v2-kyc-panel'
 
 export default function ModeracaoV2Page() {
   return (
@@ -9,6 +10,7 @@ export default function ModeracaoV2Page() {
           Fila operacional e detalhe focado em decisão.
         </p>
       </div>
+      <ModeracaoV2KycPanel />
       <ModeracaoV2MediaQueue />
     </section>
   )

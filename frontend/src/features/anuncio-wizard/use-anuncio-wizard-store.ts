@@ -28,6 +28,7 @@ export const wizardSteps: Array<{ id: WizardStepId; title: string; eyebrow: stri
   { id: 'fotos', title: 'Fotos', eyebrow: 'O anúncio ganha forma' },
   { id: 'revisao', title: 'Seu anúncio está pronto', eyebrow: 'Revise antes de avançar' },
   { id: 'premium', title: 'Impulsione se quiser', eyebrow: 'Upgrade opcional' },
+  { id: 'kyc', title: 'Confirmação de identidade', eyebrow: 'Última etapa' },
 ]
 
 function reducer(state: WizardState, action: Action): WizardState {
@@ -81,7 +82,6 @@ export function stepIndexFromId(step: WizardStepId) {
 export function validateWizardStep(
   state: WizardState,
   step: WizardStepId,
-  perfilCompleto = false,
   mode: 'create' | 'edit' = 'create'
 ): string | null {
   const { form } = state
@@ -119,9 +119,17 @@ export function validateWizardStep(
   return null
 }
 
-export function validateWizardKycState(state: WizardState): string | null {
+export function validateWizardKycState(
+  state: WizardState,
+  persisted?: { nomeCivil: boolean; cpf: boolean; dataNascimento: boolean }
+): string | null {
   const { kyc } = state
-  if (!kyc.nomeCompleto.trim() || !kyc.dataNascimento || kyc.cpf.replace(/\D/g, '').length !== 11 || kyc.documentos.length < 1) {
+  if (
+    (!persisted?.nomeCivil && !kyc.nomeCompleto.trim()) ||
+    (!persisted?.dataNascimento && !kyc.dataNascimento) ||
+    (!persisted?.cpf && kyc.cpf.replace(/\D/g, '').length !== 11) ||
+    kyc.documentos.length < 1
+  ) {
     return 'Complete nome real, nascimento, CPF e ao menos um documento.'
   }
   return null
@@ -216,17 +224,27 @@ export function useAnuncioWizardStore({ cacheScope, backendFirst = false }: Wiza
     setHydrated(true)
   }, [cacheScope])
 
+  const updateForm = useCallback((payload: Partial<WizardFormState>) => {
+    dispatch({ type: 'patch-form', payload })
+  }, [])
+  const updateKyc = useCallback((payload: Partial<WizardKycState>) => {
+    dispatch({ type: 'patch-kyc', payload })
+  }, [])
+  const setFotos = useCallback((payload: File[]) => dispatch({ type: 'set-fotos', payload }), [])
+  const setVideos = useCallback((payload: File[]) => dispatch({ type: 'set-videos', payload }), [])
+  const setDocumentos = useCallback((payload: File[]) => dispatch({ type: 'set-documentos', payload }), [])
+
   return {
     state,
     hydrated,
     lastSavedAt,
     currentIndex,
     currentStep: state.currentStep,
-    updateForm: (payload: Partial<WizardFormState>) => dispatch({ type: 'patch-form', payload }),
-    updateKyc: (payload: Partial<WizardKycState>) => dispatch({ type: 'patch-kyc', payload }),
-    setFotos: (payload: File[]) => dispatch({ type: 'set-fotos', payload }),
-    setVideos: (payload: File[]) => dispatch({ type: 'set-videos', payload }),
-    setDocumentos: (payload: File[]) => dispatch({ type: 'set-documentos', payload }),
+    updateForm,
+    updateKyc,
+    setFotos,
+    setVideos,
+    setDocumentos,
     setStep,
     nextStep,
     previousStep,

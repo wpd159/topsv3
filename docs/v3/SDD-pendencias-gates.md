@@ -713,3 +713,12 @@ Antes de admin em ambiente nao local:
 - nao configurar remote;
 - nao executar push;
 - nao executar commit sem autorizacao expressa.
+
+## KYC e documentos privados
+
+- Fechado localmente: contratos autenticados de consulta/envio do KYC, CPF unico, maioridade no backend, PDF ou frente/verso e persistencia privada via `ObjectStorage`.
+- Fechado localmente: fila administrativa unica com RBAC `DOCUMENTO_REVISAR`, URL assinada de cinco minutos, auditoria de acesso/decisao e motivo obrigatorio para rejeicao/ajuste.
+- Fechado localmente pela V023: nome civil/CPF privados, agrupamento por envio/parte e estado `AJUSTE_SOLICITADO`, sem alterar migrations historicas.
+- Fechado localmente: etapa documental no wizard canonico de criacao/edicao e remocao do fluxo legado `/usuarios/completar-cadastro`, modal separado e visualizacao por URL permanente.
+- Pendente antes de homologacao operacional: executar smoke autenticado com arquivos exclusivamente sinteticos no bucket de documentos HML e validar aprovacao, rejeicao, ajuste e reenvio sem expor a URL assinada em evidencias.
+- Pendente antes de producao: politica aprovada de retencao/expurgo documental e scanner antimalware; esta fase nao implementa OCR, reconhecimento facial ou API externa.

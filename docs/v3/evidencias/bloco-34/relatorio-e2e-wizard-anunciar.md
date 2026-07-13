@@ -8,9 +8,9 @@
 - Somente smoke HTTP: True
 - API smoke script: C:\topsv3\scripts\local\validar-wizard-anunciar-sintetico-local.ps1
 - Fixture sintetica JSON: NAO_INFORMADA
-- Porta PostgreSQL efemera: 54335
+- Porta PostgreSQL efemera: 49266
 - Migrations aplicadas: True
-- Quantidade de migrations aplicadas: 21
+- Quantidade de migrations aplicadas: 23
 - Dados sinteticos aplicados: False
 - Dados admin sinteticos aplicados: False
 - Fixture sintetica aplicada: False
@@ -29,12 +29,11 @@
 
 ## Passos
 - Validacao e2e local descartavel iniciada.
-- Docker daemon indisponivel; tentando iniciar Docker Desktop local instalado.
 - Docker daemon disponivel.
 - Rede Docker descartavel criada.
 - PostgreSQL descartavel iniciado sem volume persistente.
 - PostgreSQL descartavel respondeu ao pg_isready.
-- Migrations V001-V021 aplicadas via psql ordenado no PostgreSQL descartavel.
+- Migrations V001-V023 aplicadas via psql ordenado no PostgreSQL descartavel.
 - Dados sinteticos nao aplicados por parametro SemDadosSinteticos.
 - Fixture sintetica JSON nao informada; overlay Bloco 31 nao aplicado.
 - Backend local iniciado em perfil local na porta 18133.

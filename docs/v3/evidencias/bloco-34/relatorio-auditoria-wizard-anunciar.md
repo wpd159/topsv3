@@ -4,22 +4,21 @@
 - Frontend: http://127.0.0.1:18333
 - Backend sintetico: http://127.0.0.1:18133
 - Rotas auditadas: /anunciar/wizard e /meus-anuncios/{slug}/editar
-- Fluxo canonico autenticado com seis etapas: sim
+- Fluxo canonico autenticado com sete etapas: sim
 - Dados usados: sinteticos
 - Dados reais usados: nao
 - Producao/VPS/API externa acessadas: nao
 - Localidades carregadas por /api/public/localidades: sim
 - Cache isolado por usuario, modo e slug: sim
-- Edicao persistida somente no banco descartavel: sim
+- Persistencia e retorno para revisao validados pelos testes backend; o renderizado nao simula KYC nem R2: sim
 - Gestao de fotos/video usa o mesmo wizard; upload externo nao executado neste validador: sim
-- Submissao dupla bloqueada: sim
-- Slug preservado e retorno para revisao: sim
-- Nova edicao respeita o estado real da revisao; 409 exigido em EM_ANALISE: sim
+- Etapa KYC real validada em desktop/mobile, sem input date nativo: sim
+- KYC incompleto bloqueia PATCH sem simular documento ou aprovacao: sim
 
 ## Checks
 - OK: desktop: rascunho secundario persistido na chave do proprio usuario - true
 - OK: desktop: usuario proprietario nao herdou rascunho de outro usuario - vazio
-- OK: desktop/create: wizard canonico com seis etapas - 6
+- OK: desktop/create: wizard canonico com sete etapas - 7
 - OK: desktop/create: sem scroll horizontal - 1274px em 1280px
 - OK: desktop/create: sem document.body.style.overflow - vazio
 - OK: desktop/create: sem scroll lock global - html=visible; body=visible
@@ -30,7 +29,7 @@
 - OK: desktop: anuncio proprio disponivel para edicao - 200
 - OK: desktop: edicao hidratada pelo backend - Perfil ficticio Stories A
 - OK: desktop: cache create nao contaminou edit - Perfil ficticio Stories A
-- OK: desktop/edit: wizard canonico com seis etapas - 6
+- OK: desktop/edit: wizard canonico com sete etapas - 7
 - OK: desktop/edit: sem scroll horizontal - 1274px em 1280px
 - OK: desktop/edit: sem document.body.style.overflow - vazio
 - OK: desktop/edit: sem scroll lock global - html=visible; body=visible
@@ -41,14 +40,23 @@
 - OK: desktop: estado pendente e moderacao informados - true
 - OK: desktop: formatos seguros expostos pelo wizard - image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.jpg,.jpeg,.png,.webp,.mp4,.mov
 - OK: desktop: etapa de midia sem overflow horizontal - 1274px em 1280px
-- OK: desktop: submissao dupla gerou um unico PATCH - 1
-- OK: desktop: edicao persistida - Perfil ficticio Stories A editado desktop
-- OK: desktop: slug preservado - fixture-stories-hml-a
-- OK: desktop: anuncio retornou para revisao - PENDENTE_REVISAO/PENDENTE
-- OK: desktop: nova edicao respeita o estado real da revisao e usa 409 quando aplicavel - revisao ABERTA atualizada; 409 ainda nao aplicavel
+- OK: desktop: KYC integrado ao wizard de edicao - {"hasCivilName":true,"hasCpf":true,"hasBirthDateText":true,"hasNativeDate":false,"hasPdfMode":true,"acceptsImages":true,"width":1274,"viewport":1280}
+- OK: desktop: nascimento sem input date nativo - false
+- OK: desktop: modo frente e verso disponivel - {"hasCivilName":true,"hasCpf":true,"hasBirthDateText":true,"hasNativeDate":false,"hasPdfMode":true,"acceptsImages":true,"width":1274,"viewport":1280}
+- OK: desktop: modo PDF unico disponivel - true
+- OK: desktop: etapa KYC sem overflow horizontal - 1274px em 1280px
+- OK: desktop/kyc: wizard canonico com sete etapas - 7
+- OK: desktop/kyc: sem scroll horizontal - 1274px em 1280px
+- OK: desktop/kyc: sem document.body.style.overflow - vazio
+- OK: desktop/kyc: sem scroll lock global - html=visible; body=visible
+- OK: desktop/kyc: sem link externo no wizard - nenhum
+- OK: desktop/kyc: sem WhatsApp publico/liberado - nenhum
+- OK: desktop/kyc: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: desktop: KYC incompleto bloqueia PATCH do anuncio - 0
+- OK: desktop: erro documental preserva dados e etapa atual - true
 - OK: mobile: rascunho secundario persistido na chave do proprio usuario - true
 - OK: mobile: usuario proprietario nao herdou rascunho de outro usuario - Rascunho proprietario desktop
-- OK: mobile/create: wizard canonico com seis etapas - 6
+- OK: mobile/create: wizard canonico com sete etapas - 7
 - OK: mobile/create: sem scroll horizontal - 390px em 390px
 - OK: mobile/create: sem document.body.style.overflow - vazio
 - OK: mobile/create: sem scroll lock global - html=visible; body=visible
@@ -59,7 +67,7 @@
 - OK: mobile: anuncio proprio disponivel para edicao - 200
 - OK: mobile: edicao hidratada pelo backend - Perfil ficticio Stories B
 - OK: mobile: cache create nao contaminou edit - Perfil ficticio Stories B
-- OK: mobile/edit: wizard canonico com seis etapas - 6
+- OK: mobile/edit: wizard canonico com sete etapas - 7
 - OK: mobile/edit: sem scroll horizontal - 390px em 390px
 - OK: mobile/edit: sem document.body.style.overflow - vazio
 - OK: mobile/edit: sem scroll lock global - html=visible; body=visible
@@ -70,11 +78,20 @@
 - OK: mobile: estado pendente e moderacao informados - true
 - OK: mobile: formatos seguros expostos pelo wizard - image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.jpg,.jpeg,.png,.webp,.mp4,.mov
 - OK: mobile: etapa de midia sem overflow horizontal - 390px em 390px
-- OK: mobile: submissao dupla gerou um unico PATCH - 1
-- OK: mobile: edicao persistida - Perfil ficticio Stories B editado mobile
-- OK: mobile: slug preservado - fixture-stories-hml-b
-- OK: mobile: anuncio retornou para revisao - PENDENTE_REVISAO/PENDENTE
-- OK: mobile: nova edicao respeita o estado real da revisao e usa 409 quando aplicavel - revisao ABERTA atualizada; 409 ainda nao aplicavel
+- OK: mobile: KYC integrado ao wizard de edicao - {"hasCivilName":true,"hasCpf":true,"hasBirthDateText":true,"hasNativeDate":false,"hasPdfMode":true,"acceptsImages":true,"width":390,"viewport":390}
+- OK: mobile: nascimento sem input date nativo - false
+- OK: mobile: modo frente e verso disponivel - {"hasCivilName":true,"hasCpf":true,"hasBirthDateText":true,"hasNativeDate":false,"hasPdfMode":true,"acceptsImages":true,"width":390,"viewport":390}
+- OK: mobile: modo PDF unico disponivel - true
+- OK: mobile: etapa KYC sem overflow horizontal - 390px em 390px
+- OK: mobile/kyc: wizard canonico com sete etapas - 7
+- OK: mobile/kyc: sem scroll horizontal - 390px em 390px
+- OK: mobile/kyc: sem document.body.style.overflow - vazio
+- OK: mobile/kyc: sem scroll lock global - html=visible; body=visible
+- OK: mobile/kyc: sem link externo no wizard - nenhum
+- OK: mobile/kyc: sem WhatsApp publico/liberado - nenhum
+- OK: mobile/kyc: sem enum/status/snake_case tecnico visivel - nenhum
+- OK: mobile: KYC incompleto bloqueia PATCH do anuncio - 0
+- OK: mobile: erro documental preserva dados e etapa atual - true
 
 ## Falhas
 - Nenhuma

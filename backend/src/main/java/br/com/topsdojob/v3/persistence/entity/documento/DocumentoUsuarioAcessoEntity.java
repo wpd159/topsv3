@@ -90,4 +90,24 @@ public class DocumentoUsuarioAcessoEntity {
     return criadoEm;
   }
 
+  public static DocumentoUsuarioAcessoEntity registrarPermitido(
+      UUID id,
+      UUID documentoUsuarioId,
+      UUID atorUsuarioId,
+      String requestId,
+      OffsetDateTime agora) {
+    DocumentoUsuarioAcessoEntity entity = new DocumentoUsuarioAcessoEntity();
+    entity.id = id;
+    entity.documentoUsuarioId = documentoUsuarioId;
+    entity.atorUsuarioId = atorUsuarioId;
+    entity.finalidade = FinalidadeAcessoDocumento.VALIDACAO;
+    entity.resultado = ResultadoAcessoDocumento.PERMITIDO;
+    entity.requestId = requestId;
+    entity.ipHash = null;
+    entity.userAgentHash = null;
+    entity.acessadoEm = agora;
+    entity.criadoEm = agora;
+    return entity;
+  }
+
 }

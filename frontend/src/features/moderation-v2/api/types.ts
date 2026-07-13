@@ -48,7 +48,6 @@ export type ModerationAnuncioDetail = {
   servicos?: string[] | null
   fotosUrl?: string[] | null
   videosUrl?: string[] | null
-  documentosUsuario?: string[] | null
   pendingRevision?: boolean | null
   pendingRevisionId?: number | null
   pendingRevisionStatus?: string | null
@@ -148,3 +147,26 @@ export type ModerationRevisionDetail = {
   pendingVideos?: string[] | null
   pendingMediaItems?: ModerationRevisionMediaItem[] | null
 }
+
+export type AdminKycDocument = {
+  id: string
+  parte: 'UNICO' | 'FRENTE' | 'VERSO'
+  status: string
+  mimeType: string | null
+  tamanhoBytes: number
+}
+
+export type AdminKycSubmission = {
+  envioId: string
+  usuarioId: string
+  nomeCivil: string
+  cpfMascarado: string
+  dataNascimento: string
+  status: 'PENDENTE' | 'EM_ANALISE' | 'APROVADO' | 'REJEITADO' | 'AJUSTE_SOLICITADO'
+  motivo: string | null
+  enviadoEm: string
+  revisadoEm: string | null
+  documentos: AdminKycDocument[]
+}
+
+export type AdminKycDecision = 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE'

@@ -1,7 +1,7 @@
 # Relatorio - validacoes Bloco 34
 
 - Resultado: OK
-- Total de checks: 58
+- Total de checks: 76
 - Falhas: 0
 - CDP local usado: sim
 - Prints versionados: sim
@@ -11,7 +11,7 @@
 
 - OK: desktop: rascunho secundario persistido na chave do proprio usuario
 - OK: desktop: usuario proprietario nao herdou rascunho de outro usuario
-- OK: desktop/create: wizard canonico com seis etapas
+- OK: desktop/create: wizard canonico com sete etapas
 - OK: desktop/create: sem scroll horizontal
 - OK: desktop/create: sem document.body.style.overflow
 - OK: desktop/create: sem scroll lock global
@@ -22,7 +22,7 @@
 - OK: desktop: anuncio proprio disponivel para edicao
 - OK: desktop: edicao hidratada pelo backend
 - OK: desktop: cache create nao contaminou edit
-- OK: desktop/edit: wizard canonico com seis etapas
+- OK: desktop/edit: wizard canonico com sete etapas
 - OK: desktop/edit: sem scroll horizontal
 - OK: desktop/edit: sem document.body.style.overflow
 - OK: desktop/edit: sem scroll lock global
@@ -33,14 +33,23 @@
 - OK: desktop: estado pendente e moderacao informados
 - OK: desktop: formatos seguros expostos pelo wizard
 - OK: desktop: etapa de midia sem overflow horizontal
-- OK: desktop: submissao dupla gerou um unico PATCH
-- OK: desktop: edicao persistida
-- OK: desktop: slug preservado
-- OK: desktop: anuncio retornou para revisao
-- OK: desktop: nova edicao respeita o estado real da revisao e usa 409 quando aplicavel
+- OK: desktop: KYC integrado ao wizard de edicao
+- OK: desktop: nascimento sem input date nativo
+- OK: desktop: modo frente e verso disponivel
+- OK: desktop: modo PDF unico disponivel
+- OK: desktop: etapa KYC sem overflow horizontal
+- OK: desktop/kyc: wizard canonico com sete etapas
+- OK: desktop/kyc: sem scroll horizontal
+- OK: desktop/kyc: sem document.body.style.overflow
+- OK: desktop/kyc: sem scroll lock global
+- OK: desktop/kyc: sem link externo no wizard
+- OK: desktop/kyc: sem WhatsApp publico/liberado
+- OK: desktop/kyc: sem enum/status/snake_case tecnico visivel
+- OK: desktop: KYC incompleto bloqueia PATCH do anuncio
+- OK: desktop: erro documental preserva dados e etapa atual
 - OK: mobile: rascunho secundario persistido na chave do proprio usuario
 - OK: mobile: usuario proprietario nao herdou rascunho de outro usuario
-- OK: mobile/create: wizard canonico com seis etapas
+- OK: mobile/create: wizard canonico com sete etapas
 - OK: mobile/create: sem scroll horizontal
 - OK: mobile/create: sem document.body.style.overflow
 - OK: mobile/create: sem scroll lock global
@@ -51,7 +60,7 @@
 - OK: mobile: anuncio proprio disponivel para edicao
 - OK: mobile: edicao hidratada pelo backend
 - OK: mobile: cache create nao contaminou edit
-- OK: mobile/edit: wizard canonico com seis etapas
+- OK: mobile/edit: wizard canonico com sete etapas
 - OK: mobile/edit: sem scroll horizontal
 - OK: mobile/edit: sem document.body.style.overflow
 - OK: mobile/edit: sem scroll lock global
@@ -62,8 +71,17 @@
 - OK: mobile: estado pendente e moderacao informados
 - OK: mobile: formatos seguros expostos pelo wizard
 - OK: mobile: etapa de midia sem overflow horizontal
-- OK: mobile: submissao dupla gerou um unico PATCH
-- OK: mobile: edicao persistida
-- OK: mobile: slug preservado
-- OK: mobile: anuncio retornou para revisao
-- OK: mobile: nova edicao respeita o estado real da revisao e usa 409 quando aplicavel
+- OK: mobile: KYC integrado ao wizard de edicao
+- OK: mobile: nascimento sem input date nativo
+- OK: mobile: modo frente e verso disponivel
+- OK: mobile: modo PDF unico disponivel
+- OK: mobile: etapa KYC sem overflow horizontal
+- OK: mobile/kyc: wizard canonico com sete etapas
+- OK: mobile/kyc: sem scroll horizontal
+- OK: mobile/kyc: sem document.body.style.overflow
+- OK: mobile/kyc: sem scroll lock global
+- OK: mobile/kyc: sem link externo no wizard
+- OK: mobile/kyc: sem WhatsApp publico/liberado
+- OK: mobile/kyc: sem enum/status/snake_case tecnico visivel
+- OK: mobile: KYC incompleto bloqueia PATCH do anuncio
+- OK: mobile: erro documental preserva dados e etapa atual

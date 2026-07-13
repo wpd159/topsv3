@@ -33,7 +33,6 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import DocumentosUsuarioSection from '@/app/(painel-admin)/admin/components/documentos-usuarios-section'
 import AdminAnuncioStoriesSection from '@/app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section'
 import { useAuth } from '@/context/AuthContext'
 import { enviarIndexNowNoCliente, montarUrlsIndexNowAnuncio } from '@/lib/seo/indexnow-client'
@@ -1148,15 +1147,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
             )}
           </section>
         )}
-
-        <section id="sec-documentos" className="scroll-mt-24">
-          <h2 className="mb-2 text-base font-semibold text-gray-900">Documentos do anunciante</h2>
-          <DocumentosUsuarioSection
-            documentos={anuncio.documentosUsuario ?? []}
-            showTable={false}
-            manageHref={isStaffModeration && anuncio.usuarioId ? `/admin/usuarios/${anuncio.usuarioId}/editar#documentos` : undefined}
-          />
-        </section>
 
         {isAdmin && (
           <section id="sec-premium" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm scroll-mt-24">

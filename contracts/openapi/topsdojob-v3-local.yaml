@@ -380,6 +380,49 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /api/public/minha-conta/kyc:
+    get:
+      summary: Consulta o estado documental do usuario autenticado
+      operationId: getCurrentUserKyc
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: Retorna somente dados privados estritamente necessarios ao proprio usuario. Nunca retorna CPF integral, bucket, object key, URL privada ou documento.
+      responses:
+        "200":
+          description: Estado KYC do usuario autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycStatus"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      summary: Envia os dados e documentos privados do KYC
+      operationId: submitCurrentUserKyc
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: Exige CSRF. Aceita um PDF unico ou frente obrigatoria e verso opcional em JPG/PNG; grava somente no storage privado de documentos.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/KycSubmission"
+      responses:
+        "200":
+          description: Envio documental registrado como pendente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KycStatus"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
   /api/public/usuarios/verificar-duplicidade:
     get:
       summary: Verifica duplicidade no cadastro publico
@@ -413,8 +456,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
   /api/public/anunciar:
     post:
-      summary: Cria solicitacao local Anuncie gratis
-      description: Cria apenas anuncio local nao publico e revisao aberta para moderacao. O frontend wizard envia este payload somente na revisao final. Nao publica automaticamente, nao cria upload, nao cria pagamento, nao cria credito, nao acessa Pix/Efi e nao exige Premium.
+      summary: Cria anuncio do usuario autenticado para revisao
+      description: Resolve o proprietario exclusivamente pela sessao publica e exige KYC enviado ou aprovado. Cria anuncio nao publico e revisao aberta; nao publica automaticamente nem cria pagamento, credito ou Premium.
       operationId: postPublicAnunciar
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -427,6 +470,10 @@ paths:
       responses:
         "201":
           description: solicitacao local criada para revisao
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
@@ -1826,6 +1873,98 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/documentos:
+    get:
+      summary: Lista envios documentais aguardando revisao
+      operationId: getAdminKycQueue
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: Exige DOCUMENTO_REVISAR. Retorna CPF mascarado e metadados sem qualquer local interno do storage.
+      responses:
+        "200":
+          description: Fila documental privada
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminKycEnvio"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/documentos/envios/{envioId}:
+    get:
+      summary: Detalha um envio documental privado
+      operationId: getAdminKycSubmission
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/KycSubmissionId"
+      responses:
+        "200":
+          description: Envio documental sanitizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKycEnvio"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/admin/documentos/{documentoId}/url-temporaria:
+    get:
+      summary: Autoriza visualizacao temporaria de documento privado
+      operationId: getAdminKycTemporaryUrl
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: documentoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: Gera URL assinada curta e registra acesso auditavel. Nunca gera URL publica permanente.
+      responses:
+        "200":
+          description: Credencial temporaria de leitura privada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKycUrlTemporaria"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/admin/documentos/envios/{envioId}/decidir:
+    post:
+      summary: Aprova, rejeita ou solicita ajuste no envio documental
+      operationId: decideAdminKycSubmission
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/KycSubmissionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminKycDecisaoRequest"
+      responses:
+        "200":
+          description: Decisao documental auditada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKycDecisaoResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/admin/midias:
     get:
       summary: Lista administrativa local de midias
@@ -2354,6 +2493,13 @@ components:
       schema:
         type: string
         pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+    KycSubmissionId:
+      name: envioId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     RequestId:
       name: X-Request-Id
       in: header
@@ -2480,11 +2626,192 @@ components:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
   schemas:
+    KycDocumento:
+      type: object
+      additionalProperties: false
+      required: [id, parte, status, mimeType, tamanhoBytes]
+      properties:
+        id:
+          type: string
+          format: uuid
+        parte:
+          type: string
+          enum: [UNICO, FRENTE, VERSO]
+        status:
+          type: string
+        mimeType:
+          type: [string, "null"]
+        tamanhoBytes:
+          type: integer
+          format: int64
+          minimum: 0
+    KycStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - nomeCivil
+        - cpfPreenchido
+        - cpfMascarado
+        - dataNascimento
+        - motivo
+        - prontoParaEnviarAnuncio
+        - podeReenviar
+        - tamanhoMaximoBytes
+        - formatosAceitos
+        - documentos
+      properties:
+        status:
+          type: string
+          enum: [NAO_INICIADO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+        nomeCivil:
+          type: [string, "null"]
+        cpfPreenchido:
+          type: boolean
+        cpfMascarado:
+          type: [string, "null"]
+          pattern: "^\\*{3}\\.\\*{3}\\.\\*{3}-[0-9]{2}$"
+        dataNascimento:
+          type: [string, "null"]
+          format: date
+        motivo:
+          type: [string, "null"]
+        prontoParaEnviarAnuncio:
+          type: boolean
+        podeReenviar:
+          type: boolean
+        tamanhoMaximoBytes:
+          type: integer
+          format: int64
+          minimum: 1
+        formatosAceitos:
+          type: array
+          items:
+            type: string
+            enum: [JPG, PNG, PDF]
+        documentos:
+          type: array
+          items:
+            $ref: "#/components/schemas/KycDocumento"
+    KycSubmission:
+      type: object
+      additionalProperties: false
+      required: [modoDocumento]
+      properties:
+        nomeCivil:
+          type: string
+          minLength: 3
+          maxLength: 180
+        cpf:
+          type: string
+          pattern: "^[0-9.\\-]{11,14}$"
+        dataNascimento:
+          type: string
+          format: date
+        modoDocumento:
+          type: string
+          enum: [PDF, FRENTE_VERSO]
+        documentoUnico:
+          type: string
+          format: binary
+        documentoFrente:
+          type: string
+          format: binary
+        documentoVerso:
+          type: string
+          format: binary
+    AdminKycDocumento:
+      allOf:
+        - $ref: "#/components/schemas/KycDocumento"
+    AdminKycEnvio:
+      type: object
+      additionalProperties: false
+      required:
+        - envioId
+        - usuarioId
+        - nomeCivil
+        - cpfMascarado
+        - dataNascimento
+        - status
+        - motivo
+        - enviadoEm
+        - revisadoEm
+        - documentos
+      properties:
+        envioId:
+          type: string
+          format: uuid
+        usuarioId:
+          type: string
+          format: uuid
+        nomeCivil:
+          type: string
+        cpfMascarado:
+          type: string
+          pattern: "^\\*{3}\\.\\*{3}\\.\\*{3}-[0-9]{2}$"
+        dataNascimento:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+        motivo:
+          type: [string, "null"]
+        enviadoEm:
+          type: string
+          format: date-time
+        revisadoEm:
+          type: [string, "null"]
+          format: date-time
+        documentos:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AdminKycDocumento"
+    AdminKycUrlTemporaria:
+      type: object
+      additionalProperties: false
+      required: [url, expiraEm]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Credencial temporaria privada; nao deve ser persistida, registrada em log ou compartilhada.
+        expiraEm:
+          type: string
+          format: date-time
+    AdminKycDecisaoRequest:
+      type: object
+      additionalProperties: false
+      required: [decisao]
+      properties:
+        decisao:
+          type: string
+          enum: [APROVAR, REPROVAR, SOLICITAR_AJUSTE]
+        motivo:
+          type: [string, "null"]
+          minLength: 3
+          maxLength: 240
+    AdminKycDecisaoResponse:
+      type: object
+      additionalProperties: false
+      required: [envioId, status, requestId, revisadoEm]
+      properties:
+        envioId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+        requestId:
+          type: string
+        revisadoEm:
+          type: string
+          format: date-time
     SolicitarAnuncioPublicoRequest:
       type: object
       additionalProperties: false
       required:
-        - nomeExibicao
         - whatsapp
         - uf
         - cidade
@@ -2494,15 +2821,6 @@ components:
         - aceiteTermos
         - confirmacaoIdade
       properties:
-        nomeExibicao:
-          type: string
-          minLength: 3
-          maxLength: 80
-          example: Anunciante Sintetica Local
-        email:
-          type: string
-          description: Opcional; em teste local deve usar dominio reservado `example.invalid`.
-          example: anunciante.local@example.invalid
         whatsapp:
           type: string
           description: Apenas WhatsApp sintetico local permitido no E2E.

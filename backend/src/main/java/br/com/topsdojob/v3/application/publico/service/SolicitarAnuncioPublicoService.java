@@ -3,6 +3,8 @@ package br.com.topsdojob.v3.application.publico.service;
 import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioPublicoRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioPublicoResponseDto;
 import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioValidationErrorDto;
+import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
+import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
@@ -18,7 +20,6 @@ import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
-import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
@@ -40,19 +41,16 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.Authentication;
 
 @Service
 public class SolicitarAnuncioPublicoService {
 
     static final String WHATSAPP_SINTETICO_PERMITIDO = "+5500000000000";
-    static final String EMAIL_SINTETICO_PADRAO = "anunciante.local@example.invalid";
-
     private static final int TITULO_MAX = 80;
     private static final int DESCRICAO_MAX = 600;
     private static final String CATEGORIA_PADRAO = "ACOMPANHANTE";
     private static final Set<String> ALLOWED_FIELDS = Set.of(
-            "nomeExibicao",
-            "email",
             "whatsapp",
             "uf",
             "cidade",
@@ -91,7 +89,8 @@ public class SolicitarAnuncioPublicoService {
             "(?i)(\\+?\\d[\\d .()_-]{7,}\\d|whats|telefone|instagram|insta\\b|telegram|t\\.me|onlyfans|facebook|http|www\\.|@)");
     private static final Pattern SPAM_IN_TITLE = Pattern.compile("(?i)(clique aqui|imperdivel|urgente|100%|gratis gratis)");
 
-    private final UsuarioRepository usuarioRepository;
+    private final MeusAnunciosConsultaService usuarioService;
+    private final KycPublicoService kycService;
     private final AnuncioRepository anuncioRepository;
     private final AnuncioLocalizacaoRepository localizacaoRepository;
     private final DocumentoBuscaAnuncioRepository documentoBuscaRepository;
@@ -102,7 +101,8 @@ public class SolicitarAnuncioPublicoService {
     private final ObjectMapper objectMapper;
 
     public SolicitarAnuncioPublicoService(
-            UsuarioRepository usuarioRepository,
+            MeusAnunciosConsultaService usuarioService,
+            KycPublicoService kycService,
             AnuncioRepository anuncioRepository,
             AnuncioLocalizacaoRepository localizacaoRepository,
             DocumentoBuscaAnuncioRepository documentoBuscaRepository,
@@ -111,7 +111,8 @@ public class SolicitarAnuncioPublicoService {
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
             ObjectMapper objectMapper) {
-        this.usuarioRepository = usuarioRepository;
+        this.usuarioService = usuarioService;
+        this.kycService = kycService;
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.documentoBuscaRepository = documentoBuscaRepository;
@@ -123,17 +124,11 @@ public class SolicitarAnuncioPublicoService {
     }
 
     @Transactional
-    public SolicitarAnuncioPublicoResponseDto solicitar(JsonNode payload) {
+    public SolicitarAnuncioPublicoResponseDto solicitar(JsonNode payload, Authentication authentication) {
+        UsuarioEntity usuario = usuarioService.usuarioAutenticado(authentication);
+        kycService.garantirProntoParaAnuncio(usuario.getId());
         ValidatedRequest validated = validar(payload);
         OffsetDateTime now = OffsetDateTime.now();
-        UsuarioEntity usuario = usuarioRepository.findByEmailNormalizado(validated.email())
-                .or(() -> usuarioRepository.findByTelefoneNormalizado(validated.whatsapp()))
-                .orElseGet(() -> usuarioRepository.save(UsuarioEntity.criarSolicitacaoLocal(
-                        UUID.randomUUID(),
-                        validated.nomeExibicao(),
-                        validated.email(),
-                        validated.whatsapp(),
-                        now)));
 
         UUID anuncioId = UUID.randomUUID();
         String slug = nextSlug(validated.titulo());
@@ -219,8 +214,6 @@ public class SolicitarAnuncioPublicoService {
             throw new SolicitarAnuncioValidationException(errors);
         }
 
-        String nome = requiredText(request.nomeExibicao(), "nomeExibicao", 3, 80, errors);
-        String email = syntheticEmail(request.email(), errors);
         String whatsapp = syntheticWhatsapp(request.whatsapp(), errors);
         String uf = requiredText(request.uf(), "uf", 2, 2, errors).toUpperCase(Locale.ROOT);
         String cidade = requiredText(request.cidade(), "cidade", 3, 80, errors);
@@ -273,8 +266,6 @@ public class SolicitarAnuncioPublicoService {
         }
 
         return new ValidatedRequest(
-                nome,
-                email,
                 whatsapp,
                 uf,
                 cidade,
@@ -361,18 +352,6 @@ public class SolicitarAnuncioPublicoService {
         return sanitized;
     }
 
-    private String syntheticEmail(String value, List<SolicitarAnuncioValidationErrorDto> errors) {
-        String sanitized = sanitize(value);
-        if (sanitized == null) {
-            return EMAIL_SINTETICO_PADRAO;
-        }
-        String normalized = sanitized.toLowerCase(Locale.ROOT);
-        if (!normalized.matches("[a-z0-9._%+-]+@example\\.invalid")) {
-            errors.add(error("email", "EMAIL_NAO_SINTETICO", "email deve usar dominio reservado example.invalid"));
-        }
-        return normalized;
-    }
-
     private String syntheticWhatsapp(String value, List<SolicitarAnuncioValidationErrorDto> errors) {
         String sanitized = sanitize(value);
         if (sanitized == null) {
@@ -439,8 +418,6 @@ public class SolicitarAnuncioPublicoService {
     }
 
     record ValidatedRequest(
-            String nomeExibicao,
-            String email,
             String whatsapp,
             String uf,
             String cidade,

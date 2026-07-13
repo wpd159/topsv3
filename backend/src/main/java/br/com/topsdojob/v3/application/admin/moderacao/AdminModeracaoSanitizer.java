@@ -2,7 +2,7 @@ package br.com.topsdojob.v3.application.admin.moderacao;
 
 import java.util.regex.Pattern;
 
-final class AdminModeracaoSanitizer {
+public final class AdminModeracaoSanitizer {
 
     private static final Pattern EMAIL = Pattern.compile("(?i)[A-Z0-9._%+-]+" + "@" + "[A-Z0-9.-]+\\.[A-Z]{2,}");
     private static final Pattern CONTATO = Pattern.compile("\\+?[0-9][0-9 .()\\-]{7,}[0-9]");
@@ -11,7 +11,7 @@ final class AdminModeracaoSanitizer {
     private AdminModeracaoSanitizer() {
     }
 
-    static String texto(String value, int maxLength) {
+    public static String texto(String value, int maxLength) {
         if (value == null || value.isBlank()) {
             return null;
         }

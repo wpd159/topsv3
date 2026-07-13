@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.entity.documento;
 
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PoliticaRetencaoDocumento;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ParteDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoDocumentoUsuario;
 import jakarta.persistence.Column;
@@ -27,6 +28,13 @@ public class DocumentoUsuarioEntity {
 
   @Column(name = "arquivo_midia_id")
   private UUID arquivoMidiaId;
+
+  @Column(name = "envio_id")
+  private UUID envioId;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "parte")
+  private ParteDocumentoUsuario parte;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "tipo")
@@ -55,6 +63,15 @@ public class DocumentoUsuarioEntity {
   @Column(name = "validado_em")
   private OffsetDateTime validadoEm;
 
+  @Column(name = "motivo_moderacao")
+  private String motivoModeracao;
+
+  @Column(name = "revisado_por")
+  private UUID revisadoPor;
+
+  @Column(name = "revisado_em")
+  private OffsetDateTime revisadoEm;
+
   @Column(name = "removido_em")
   private OffsetDateTime removidoEm;
 
@@ -71,6 +88,14 @@ public class DocumentoUsuarioEntity {
 
   public UUID getArquivoMidiaId() {
     return arquivoMidiaId;
+  }
+
+  public UUID getEnvioId() {
+    return envioId;
+  }
+
+  public ParteDocumentoUsuario getParte() {
+    return parte;
   }
 
   public TipoDocumentoUsuario getTipo() {
@@ -105,12 +130,76 @@ public class DocumentoUsuarioEntity {
     return validadoEm;
   }
 
+  public String getMotivoModeracao() {
+    return motivoModeracao;
+  }
+
+  public UUID getRevisadoPor() {
+    return revisadoPor;
+  }
+
+  public OffsetDateTime getRevisadoEm() {
+    return revisadoEm;
+  }
+
   public OffsetDateTime getRemovidoEm() {
     return removidoEm;
   }
 
   public OffsetDateTime getExpurgadoEm() {
     return expurgadoEm;
+  }
+
+  public static DocumentoUsuarioEntity criarPendente(
+      UUID id,
+      UUID usuarioId,
+      UUID arquivoMidiaId,
+      UUID envioId,
+      ParteDocumentoUsuario parte,
+      OffsetDateTime criadoEm) {
+    DocumentoUsuarioEntity entity = new DocumentoUsuarioEntity();
+    entity.id = id;
+    entity.usuarioId = usuarioId;
+    entity.arquivoMidiaId = arquivoMidiaId;
+    entity.envioId = envioId;
+    entity.parte = parte;
+    entity.tipo = TipoDocumentoUsuario.IDENTIDADE;
+    entity.status = StatusDocumentoUsuario.PENDENTE;
+    entity.politicaRetencao = PoliticaRetencaoDocumento.ENQUANTO_HOUVER_ANUNCIO;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
+  public void marcarEmAnalise(OffsetDateTime agora) {
+    if (status == StatusDocumentoUsuario.PENDENTE) {
+      status = StatusDocumentoUsuario.EM_ANALISE;
+      atualizadoEm = agora;
+    }
+  }
+
+  public void aplicarDecisao(
+      StatusDocumentoUsuario novoStatus,
+      UUID atorUsuarioId,
+      String motivo,
+      OffsetDateTime agora) {
+    if (novoStatus != StatusDocumentoUsuario.VALIDADO
+        && novoStatus != StatusDocumentoUsuario.REJEITADO
+        && novoStatus != StatusDocumentoUsuario.AJUSTE_SOLICITADO) {
+      throw new IllegalArgumentException("status de decisao documental invalido");
+    }
+    status = novoStatus;
+    motivoModeracao = motivo;
+    revisadoPor = atorUsuarioId;
+    revisadoEm = agora;
+    atualizadoEm = agora;
+    if (novoStatus == StatusDocumentoUsuario.VALIDADO) {
+      validadoPor = atorUsuarioId;
+      validadoEm = agora;
+    } else {
+      validadoPor = null;
+      validadoEm = null;
+    }
   }
 
 }

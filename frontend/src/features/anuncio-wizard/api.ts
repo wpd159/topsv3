@@ -1,5 +1,6 @@
-import type { WizardFormState } from './types'
+import type { WizardFormState, WizardKycState } from './types'
 import { UNSUPPORTED_IMAGE_MESSAGE } from '@/utils/image-upload'
+import { birthDateToIso } from '@/lib/date/birth-date'
 
 function apiBase() {
   return process.env.NEXT_PUBLIC_API_URL || ''
@@ -11,15 +12,7 @@ function precoParaNumero(value: string) {
   return (Number(digits) / 100).toFixed(2)
 }
 
-function describeFiles(files: File[]) {
-  return files.map((file) => ({
-    name: file.name,
-    type: file.type || 'sem-content-type',
-    size: file.size,
-  }))
-}
-
-async function readResponse<T>(res: Response, etapa: string): Promise<T> {
+async function readResponse<T>(res: Response, _etapa: string): Promise<T> {
   const raw = await res.text().catch(() => '')
   if (!res.ok) {
     let message = raw || `Erro ${res.status}`
@@ -29,13 +22,6 @@ async function readResponse<T>(res: Response, etapa: string): Promise<T> {
       message = parsed.mensagem || parsed.message || parsed.error || message
       code = parsed.codigo || parsed.code || ''
     } catch {}
-    console.error('[KYC_PUBLICAR_ERRO]', {
-      etapa,
-      status: res.status,
-      response: raw,
-      code,
-      message,
-    })
     throw new Error(mapWizardApiError(res.status, message, code))
   }
   return raw ? (JSON.parse(raw) as T) : (null as T)
@@ -133,10 +119,7 @@ function readCsrfValue() {
   return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
 }
 
-export async function submitWizardAnuncio(
-  state: WizardFormState,
-  usuario: { username: string; nomeCompleto: string | null; email: string }
-) {
+export async function submitWizardAnuncio(state: WizardFormState) {
   const csrf = readCsrfValue()
   const descricao = state.descricao.trim() || state.descricaoPerfil.trim()
   const res = await fetch(`${apiBase()}/anunciar`, {
@@ -147,8 +130,6 @@ export async function submitWizardAnuncio(
       ...(csrf ? { [csrfHeaderName()]: csrf } : {}),
     },
     body: JSON.stringify({
-      nomeExibicao: usuario.nomeCompleto?.trim() || usuario.username,
-      email: usuario.email,
       whatsapp: state.whatsapp.trim(),
       uf: state.estadoUf,
       cidade: state.cidadeNome,
@@ -180,46 +161,53 @@ export async function updateWizardProfileDescription(input: {
   return readResponse(res, 'atualizar_descricao_perfil')
 }
 
-export async function completeWizardKyc(input: {
-  email: string
-  nomeCompleto: string
-  dataNascimento: string
-  cpf: string
-  estadoId: string
-  cidadeId: string
-  bairroId: string
-  documentos: File[]
-}) {
-  const fd = new FormData()
-  fd.append('email', input.email)
-  fd.append('nomeCompleto', input.nomeCompleto.trim())
-  fd.append('dataNascimento', input.dataNascimento)
-  fd.append('cpf', input.cpf.replace(/\D/g, ''))
-  fd.append('estadoId', input.estadoId)
-  fd.append('cidadeId', input.cidadeId)
-  fd.append('bairroId', input.bairroId)
-  input.documentos.forEach((file) => fd.append('documentos', file))
+export type WizardKycStatus = {
+  status: 'NAO_INICIADO' | 'PENDENTE' | 'EM_ANALISE' | 'APROVADO' | 'REJEITADO' | 'AJUSTE_SOLICITADO'
+  nomeCivil: string | null
+  cpfPreenchido: boolean
+  cpfMascarado: string | null
+  dataNascimento: string | null
+  motivo: string | null
+  prontoParaEnviarAnuncio: boolean
+  podeReenviar: boolean
+  tamanhoMaximoBytes: number
+  formatosAceitos: string[]
+  documentos: Array<{
+    id: string
+    parte: 'UNICO' | 'FRENTE' | 'VERSO'
+    status: string
+    mimeType: string | null
+    tamanhoBytes: number
+  }>
+}
 
-  console.info('[KYC_PUBLICAR_FORMDATA]', {
-    etapa: 'completar_cadastro',
-    campos: {
-      email: Boolean(input.email),
-      nomeCompleto: Boolean(input.nomeCompleto.trim()),
-      dataNascimento: Boolean(input.dataNascimento),
-      cpf: input.cpf.replace(/\D/g, '').length === 11,
-      estadoId: Boolean(input.estadoId),
-      cidadeId: Boolean(input.cidadeId),
-      bairroId: Boolean(input.bairroId),
-    },
-    documentosFieldName: 'documentos',
-    documentosCount: input.documentos.length,
-    documentos: describeFiles(input.documentos),
+export async function fetchWizardKycStatus() {
+  const res = await fetch(`${apiBase()}/minha-conta/kyc`, {
+    credentials: 'include',
+    cache: 'no-store',
   })
+  return readResponse<WizardKycStatus>(res, 'consultar_kyc')
+}
 
-  const res = await fetch(`${apiBase()}/usuarios/completar-cadastro`, {
+export async function submitWizardKyc(input: WizardKycState) {
+  const fd = new FormData()
+  if (input.nomeCompleto.trim()) fd.append('nomeCivil', input.nomeCompleto.trim())
+  const nascimentoIso = birthDateToIso(input.dataNascimento)
+  if (nascimentoIso) fd.append('dataNascimento', nascimentoIso)
+  if (input.cpf.trim()) fd.append('cpf', input.cpf.replace(/\D/g, ''))
+  fd.append('modoDocumento', input.documentoModo)
+  if (input.documentoModo === 'PDF') {
+    if (input.documentos[0]) fd.append('documentoUnico', input.documentos[0])
+  } else {
+    if (input.documentos[0]) fd.append('documentoFrente', input.documentos[0])
+    if (input.documentos[1]) fd.append('documentoVerso', input.documentos[1])
+  }
+  const csrf = readCsrfValue()
+  const res = await fetch(`${apiBase()}/minha-conta/kyc`, {
     method: 'POST',
     credentials: 'include',
+    headers: csrf ? { [csrfHeaderName()]: csrf } : undefined,
     body: fd,
   })
-  return readResponse(res, 'completar_cadastro')
+  return readResponse<WizardKycStatus>(res, 'enviar_kyc')
 }

@@ -67,6 +67,11 @@ export const stepCopy: Record<WizardStepId, { title: string; description: string
     description:
       'Publicar grátis continua disponível. O destaque aparece só no fim, como um upgrade opcional e sem pressão.',
   },
+  kyc: {
+    title: 'Confirme seus dados para finalizar',
+    description:
+      'Seus dados e documentos são privados e usados somente para validar sua identidade e maioridade.',
+  },
 }
 
 export type SearchableSelectOption = {

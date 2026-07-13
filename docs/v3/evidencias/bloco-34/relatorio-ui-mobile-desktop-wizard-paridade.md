@@ -8,10 +8,10 @@
 
 ## desktop
 - Viewport: 1280x900
-- Prints: desktop-create-localidades.png, desktop-edit-hidratado.png, desktop-pos-edicao.png
+- Prints: desktop-create-localidades.png, desktop-edit-hidratado.png, desktop-edit-midias.png, desktop-edit-kyc.png
 - Resultado: OK
 
 ## mobile
 - Viewport: 390x844
-- Prints: mobile-create-localidades.png, mobile-edit-hidratado.png, mobile-pos-edicao.png
+- Prints: mobile-create-localidades.png, mobile-edit-hidratado.png, mobile-edit-midias.png, mobile-edit-kyc.png
 - Resultado: OK

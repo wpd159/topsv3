@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/dialog'
 import FotosAnuncioSection from '../../components/fotos-anuncio-section'
 import AdminAnuncioStoriesSection from '../../components/anuncios/admin-anuncio-stories-section'
-import DocumentosUsuarioSection from '../../components/documentos-usuarios-section'
 import ReprovarAnuncioDialog from '../../components/anuncios/reprovar-anuncio-dialog'
 import { toast } from 'sonner'
 import { corrigirEstruturaTexto, corrigirTextoCorrompido } from '@/lib/text/encoding'
@@ -58,7 +57,6 @@ type AnuncioStaffDetalhe = {
 
   fotosUrl?: string[] | null
   videosUrl?: string[] | null
-  documentosUsuario?: string[] | null
   pendingRevision?: boolean | null
   pendingRevisionId?: number | null
   pendingRevisionStatus?: string | null
@@ -1434,8 +1432,6 @@ export default function DetalhesAnuncioPage() {
 
         <p className="whitespace-pre-line text-sm text-gray-700">{texto(anuncio.descricao)}</p>
       </div>
-
-      <DocumentosUsuarioSection documentos={anuncio.documentosUsuario || []} />
 
       <AdminAnuncioStoriesSection anuncioId={anuncioId} />
 

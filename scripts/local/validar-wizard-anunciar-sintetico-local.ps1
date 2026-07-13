@@ -320,7 +320,6 @@ const viewports = [
   { key: "mobile", width: 390, height: 844, slug: "fixture-stories-hml-b" }
 ];
 const observedPatchRequests = [];
-const observedResponses = [];
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -418,7 +417,8 @@ function wizardMetricsScript() {
       "Atendimento",
       "Fotos",
       "Seu anúncio está pronto",
-      "Impulsione se quiser"
+      "Impulsione se quiser",
+      "Confirmação de identidade"
     ];
     return {
       title: document.title || "",
@@ -633,7 +633,7 @@ async function screenshot(cdp, filename) {
 
 function validateMetrics(label, metrics) {
   const checks = [];
-  addCheck(checks, metrics.progressSteps === 6, "wizard canonico com seis etapas", metrics.progressSteps);
+  addCheck(checks, metrics.progressSteps === 7, "wizard canonico com sete etapas", metrics.progressSteps);
   addCheck(checks, metrics.documentWidth <= metrics.viewportWidth + 2, "sem scroll horizontal", `${metrics.documentWidth}px em ${metrics.viewportWidth}px`);
   addCheck(checks, !metrics.bodyStyleOverflow, "sem document.body.style.overflow", metrics.bodyStyleOverflow || "vazio");
   addCheck(checks, metrics.htmlOverflowX !== "hidden" && metrics.bodyOverflowX !== "hidden", "sem scroll lock global", `html=${metrics.htmlOverflowX}; body=${metrics.bodyOverflowX}`);
@@ -695,8 +695,6 @@ async function runFlow(cdp, viewport) {
   const initialResponse = await apiWithSession(`/minha-conta/anuncios/${viewport.slug}`, ownerSession);
   const initialAd = await initialResponse.json().catch(() => ({}));
   addCheck(checks, initialResponse.status === 200, `${viewport.key}: anuncio proprio disponivel para edicao`, initialResponse.status);
-  const originalSlug = initialAd.slug;
-
   await navigate(cdp, `${frontendBaseUrl}/meus-anuncios/${viewport.slug}/editar`);
   await waitFor(cdp, 'document.querySelector("h1")?.textContent?.includes("Editar anúncio")', "wizard em modo edicao");
   await waitFor(cdp, `document.querySelector('input[placeholder="Ex: Alice Loira"]')?.value === ${safeRegexText(initialAd.titulo || "")}`, "hidratacao do backend");
@@ -738,66 +736,40 @@ async function runFlow(cdp, viewport) {
   await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("Revise")', "revisao atual");
   await clickButton(cdp, "Continuar");
   await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("Impulsione")', "etapa final atual");
+  await clickButton(cdp, "Continuar");
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("Confirme seus dados")', "etapa KYC do wizard unico");
+  const kycUi = await evalValue(cdp, `(() => {
+    const fileInputs = Array.from(document.querySelectorAll('input[type="file"]'));
+    return {
+      hasCivilName: Boolean(document.querySelector('input[placeholder="Seu nome completo"]')),
+      hasCpf: Boolean(document.querySelector('input[placeholder="000.000.000-00"]')),
+      hasBirthDateText: Boolean(document.querySelector('input[placeholder="DD/MM/AAAA"]')),
+      hasNativeDate: Boolean(document.querySelector('input[type="date"]')),
+      hasPdfMode: Array.from(document.querySelectorAll("button")).some((button) => (button.innerText || "").trim().startsWith("PDF único")),
+      acceptsImages: fileInputs.some((input) => (input.getAttribute("accept") || "").includes("image/jpeg")),
+      width: document.documentElement.scrollWidth,
+      viewport: window.innerWidth
+    };
+  })()`);
+  addCheck(checks, kycUi.hasCivilName && kycUi.hasCpf && kycUi.hasBirthDateText, `${viewport.key}: KYC integrado ao wizard de edicao`, JSON.stringify(kycUi));
+  addCheck(checks, !kycUi.hasNativeDate, `${viewport.key}: nascimento sem input date nativo`, kycUi.hasNativeDate);
+  addCheck(checks, kycUi.hasPdfMode && kycUi.acceptsImages, `${viewport.key}: modo frente e verso disponivel`, JSON.stringify(kycUi));
+  await clickButton(cdp, "PDF único");
+  await waitFor(cdp, 'Boolean(document.querySelector(\'input[type="file"][accept*="application/pdf"]\'))', "modo PDF do KYC");
+  const acceptsPdf = await evalValue(cdp, 'Boolean(document.querySelector(\'input[type="file"][accept*="application/pdf"]\'))');
+  addCheck(checks, acceptsPdf, `${viewport.key}: modo PDF unico disponivel`, acceptsPdf);
+  addCheck(checks, kycUi.width <= kycUi.viewport + 2, `${viewport.key}: etapa KYC sem overflow horizontal`, `${kycUi.width}px em ${kycUi.viewport}px`);
+  await screenshot(cdp, `${viewport.key}-edit-kyc.png`);
+  metrics = await evalValue(cdp, wizardMetricsScript());
+  checks.push(...validateMetrics(`${viewport.key}/kyc`, metrics));
 
   const requestCountBefore = observedPatchRequests.filter((request) => request.url.includes(`/minha-conta/anuncios/${viewport.slug}`)).length;
   await doubleClickButton(cdp, "Salvar alterações");
-  try {
-    await waitFor(cdp, `location.pathname === "/meus-anuncios/${viewport.slug}"`, "redirecionamento apos edicao", 20000);
-  } catch (error) {
-    const state = await evalValue(cdp, `(() => ({
-      pathname: location.pathname,
-      buttons: Array.from(document.querySelectorAll("button")).map((button) => button.innerText.trim()).filter(Boolean),
-      toasts: Array.from(document.querySelectorAll("[data-sonner-toast]")).map((toast) => toast.innerText.trim()).filter(Boolean),
-      body: (document.body?.innerText || "").slice(-600)
-    }))()`);
-    const patchCount = observedPatchRequests.filter((request) => request.url.includes(`/minha-conta/anuncios/${viewport.slug}`)).length - requestCountBefore;
-    const matchingResponses = observedResponses.filter(({ response }) => response.url.includes(`/minha-conta/anuncios/${viewport.slug}`));
-    const statuses = matchingResponses.map(({ response }) => response.status);
-    const failedResponse = matchingResponses.find(({ response }) => response.status >= 400);
-    const failedBody = failedResponse
-      ? await cdp.send("Network.getResponseBody", { requestId: failedResponse.requestId }).then((result) => result.body).catch(() => "indisponivel")
-      : "nenhum";
-    throw new Error(`Redirecionamento ausente apos edicao; PATCH=${patchCount}; STATUS=${statuses.join(",")}; RESPOSTA=${failedBody}: ${JSON.stringify(state)}`);
-  }
   await delay(500);
   const requestCountAfter = observedPatchRequests.filter((request) => request.url.includes(`/minha-conta/anuncios/${viewport.slug}`)).length;
-  addCheck(checks, requestCountAfter - requestCountBefore === 1, `${viewport.key}: submissao dupla gerou um unico PATCH`, requestCountAfter - requestCountBefore);
-
-  const persistedResponse = await apiWithSession(`/minha-conta/anuncios/${viewport.slug}`, ownerSession);
-  const persisted = await persistedResponse.json().catch(() => ({}));
-  addCheck(checks, persistedResponse.status === 200 && persisted.titulo === updatedTitle, `${viewport.key}: edicao persistida`, persisted.titulo || persistedResponse.status);
-  addCheck(checks, persisted.slug === originalSlug, `${viewport.key}: slug preservado`, persisted.slug);
-  addCheck(checks, persisted.status === "PENDENTE_REVISAO" && persisted.statusModeracao === "PENDENTE", `${viewport.key}: anuncio retornou para revisao`, `${persisted.status}/${persisted.statusModeracao}`);
-
-  const conflictPayload = {
-    titulo: `${persisted.titulo} conflito`,
-    descricao: persisted.descricao,
-    categoria: persisted.categoria,
-    preco: persisted.preco,
-    uf: persisted.localizacao?.uf,
-    cidade: persisted.localizacao?.cidade,
-    bairro: persisted.localizacao?.bairro,
-    locaisAtendimento: persisted.locaisAtendimento,
-    servicos: persisted.servicos,
-    whatsapp: persisted.whatsapp
-  };
-  const conflictResponse = await apiWithSession(`/minha-conta/anuncios/${viewport.slug}`, ownerSession, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(conflictPayload)
-  });
-  const conflictBehavior = conflictResponse.status === 409
-    ? "revisao EM_ANALISE bloqueada com 409"
-    : conflictResponse.status === 200
-      ? "revisao ABERTA atualizada; 409 ainda nao aplicavel"
-      : `status inesperado ${conflictResponse.status}`;
-  addCheck(
-    checks,
-    conflictResponse.status === 409 || conflictResponse.status === 200,
-    `${viewport.key}: nova edicao respeita o estado real da revisao e usa 409 quando aplicavel`,
-    conflictBehavior
-  );
-  await screenshot(cdp, `${viewport.key}-pos-edicao.png`);
+  addCheck(checks, requestCountAfter === requestCountBefore, `${viewport.key}: KYC incompleto bloqueia PATCH do anuncio`, requestCountAfter - requestCountBefore);
+  const stillOnKyc = await evalValue(cdp, 'location.pathname.includes("/editar") && document.querySelector("h2")?.textContent?.includes("Confirme seus dados")');
+  addCheck(checks, stillOnKyc, `${viewport.key}: erro documental preserva dados e etapa atual`, stillOnKyc);
 
   return checks;
 }
@@ -856,16 +828,13 @@ async function main() {
     cdp.on("Network.requestWillBeSent", ({ request }) => {
       if (request?.method === "PATCH" && request?.url) observedPatchRequests.push(request);
     });
-    cdp.on("Network.responseReceived", ({ requestId, response }) => {
-      if (requestId && response?.url && response?.status) observedResponses.push({ requestId, response });
-    });
 
     for (const viewport of viewports) {
       const checks = await runFlow(cdp, viewport);
       allChecks.push(...checks);
       uiLines.push(`## ${viewport.key}`);
       uiLines.push(`- Viewport: ${viewport.width}x${viewport.height}`);
-      uiLines.push(`- Prints: ${viewport.key}-create-localidades.png, ${viewport.key}-edit-hidratado.png, ${viewport.key}-pos-edicao.png`);
+      uiLines.push(`- Prints: ${viewport.key}-create-localidades.png, ${viewport.key}-edit-hidratado.png, ${viewport.key}-edit-midias.png, ${viewport.key}-edit-kyc.png`);
       uiLines.push(`- Resultado: ${checks.every((check) => check.resultado === "OK") ? "OK" : "FALHA"}`);
       uiLines.push("");
     }
@@ -889,17 +858,16 @@ async function main() {
     `- Frontend: ${frontendBaseUrl}`,
     `- Backend sintetico: ${backendBaseUrl}`,
     "- Rotas auditadas: /anunciar/wizard e /meus-anuncios/{slug}/editar",
-    "- Fluxo canonico autenticado com seis etapas: sim",
+    "- Fluxo canonico autenticado com sete etapas: sim",
     "- Dados usados: sinteticos",
     "- Dados reais usados: nao",
     "- Producao/VPS/API externa acessadas: nao",
     "- Localidades carregadas por /api/public/localidades: sim",
     "- Cache isolado por usuario, modo e slug: sim",
-    "- Edicao persistida somente no banco descartavel: sim",
+    "- Persistencia e retorno para revisao validados pelos testes backend; o renderizado nao simula KYC nem R2: sim",
     "- Gestao de fotos/video usa o mesmo wizard; upload externo nao executado neste validador: sim",
-    "- Submissao dupla bloqueada: sim",
-    "- Slug preservado e retorno para revisao: sim",
-    "- Nova edicao respeita o estado real da revisao; 409 exigido em EM_ANALISE: sim",
+    "- Etapa KYC real validada em desktop/mobile, sem input date nativo: sim",
+    "- KYC incompleto bloqueia PATCH sem simular documento ou aprovacao: sim",
     "",
     "## Checks"
   ];

@@ -834,3 +834,14 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - Reordenacao usa IDs persistidos e ordem unica; remocao e somente logica, sem apagar o objeto. O anunciante nao altera classificacao, status de moderacao ou storage.
 - Criacao e edicao continuam no mesmo `AnuncioWizard`. Arquivos ficam apenas em memoria para preview/upload, object URLs sao revogadas e o cache local guarda somente dados serializaveis sem binario.
 - Nenhuma migration foi necessaria: `arquivo_midia` e `anuncio_midia` ja suportavam storage, status, visibilidade, ordem e remocao logica.
+
+## 40. KYC e documentos privados no wizard unico
+
+- A auditoria do frontend/backend vigente confirmou o KYC imediatamente antes da publicacao final: nome civil, CPF, data de nascimento e documento em PDF unico ou imagens frente/verso. A V3 mantem essa posicao como etapa final do mesmo `AnuncioWizard` usado na criacao e na edicao.
+- Os contratos canonicos sao `GET` e `POST /api/public/minha-conta/kyc`, sempre vinculados ao usuario da sessao publica. CPF duplicado retorna `409`; formato, maioridade e campos invalidos retornam erro sem persistir binario ou dado pessoal em log.
+- A data informada no KYC passa a ser o dado cadastral confiavel. CPF e nome civil ficam privados; nenhum DTO publico de anuncio recebe CPF, nascimento ou documento.
+- A V023 adiciona os campos privados do KYC ao usuario, agrupa documentos por envio e parte, inclui `AJUSTE_SOLICITADO` no status documental e registra a permissao `DOCUMENTO_REVISAR` para ADMIN e MODERADOR.
+- Documentos usam exclusivamente `ObjectStorage` na area `PRIVATE_DOCUMENT`, bucket de documentos do ambiente e prefixo `hml/documentos/` em homologacao. Nao existe URL publica; a administracao recebe apenas URL assinada de cinco minutos, com acesso auditado.
+- A moderacao documental usa uma unica fila em `/api/admin/documentos`, exige `DOCUMENTO_REVISAR`, motivo de 3 a 240 caracteres para rejeicao/ajuste e registra ator, horario, requestId e evento sanitizado.
+- Estados canonicos de apresentacao: `NAO_INICIADO`, `PENDENTE`, `EM_ANALISE`, `APROVADO`, `REJEITADO` e `AJUSTE_SOLICITADO`. Dados aprovados nao sao solicitados novamente; rejeicao ou ajuste libera novo envio.
+- O antigo `/usuarios/completar-cadastro`, o modal documental separado, a inferencia `perfilCompleto` e os visualizadores/uploads administrativos baseados em arrays de URLs permanentes foram removidos. Nao ha fluxo, adapter, storage ou status concorrente.

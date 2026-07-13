@@ -158,4 +158,28 @@ public class AuditoriaEventoEntity {
     return entity;
   }
 
+  public static AuditoriaEventoEntity registrarSistema(
+      UUID id,
+      UUID atorUsuarioId,
+      String acao,
+      String recursoTipo,
+      UUID recursoId,
+      String antesJson,
+      String depoisJson,
+      String requestId,
+      OffsetDateTime criadoEm) {
+    AuditoriaEventoEntity entity = registrar(
+        id,
+        atorUsuarioId,
+        acao,
+        recursoTipo,
+        recursoId,
+        antesJson,
+        depoisJson,
+        requestId,
+        criadoEm);
+    entity.origem = OrigemAuditoria.SISTEMA;
+    return entity;
+  }
+
 }

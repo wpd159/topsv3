@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
+import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
@@ -55,6 +56,7 @@ class MeuAnuncioAtualizacaoServiceTest {
             OffsetDateTime.of(2025, 5, 10, 12, 0, 0, 0, ZoneOffset.UTC);
 
     private MeusAnunciosConsultaService consultaService;
+    private KycPublicoService kycService;
     private AnuncioRepository anuncioRepository;
     private AnuncioLocalizacaoRepository localizacaoRepository;
     private DocumentoBuscaAnuncioRepository documentoBuscaRepository;
@@ -68,6 +70,7 @@ class MeuAnuncioAtualizacaoServiceTest {
     @BeforeEach
     void setUp() {
         consultaService = mock(MeusAnunciosConsultaService.class);
+        kycService = mock(KycPublicoService.class);
         anuncioRepository = mock(AnuncioRepository.class);
         localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
         documentoBuscaRepository = mock(DocumentoBuscaAnuncioRepository.class);
@@ -78,6 +81,7 @@ class MeuAnuncioAtualizacaoServiceTest {
         authentication = mock(Authentication.class);
         service = new MeuAnuncioAtualizacaoService(
                 consultaService,
+                kycService,
                 anuncioRepository,
                 localizacaoRepository,
                 documentoBuscaRepository,
@@ -215,6 +219,19 @@ class MeuAnuncioAtualizacaoServiceTest {
         assertStatus(409, () -> service.atualizar("slug-preservado", requestValido(), authentication));
 
         verify(anuncioRepository, never()).save(any());
+    }
+
+    @Test
+    void kycAusenteBloqueiaEdicaoAntesDePersistir() {
+        AnuncioEntity anuncio = anuncio();
+        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio);
+        org.mockito.Mockito.doThrow(new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT))
+                .when(kycService).garantirProntoParaAnuncio(USUARIO_ID);
+
+        assertStatus(409, () -> service.atualizar("slug-preservado", requestValido(), authentication));
+
+        verify(anuncioRepository, never()).save(any());
+        verify(revisaoRepository, never()).save(any());
     }
 
     private void prepararLocalidadeSemBairro(AnuncioEntity anuncio) {

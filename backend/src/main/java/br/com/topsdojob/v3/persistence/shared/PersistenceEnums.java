@@ -74,8 +74,12 @@ public final class PersistenceEnums {
     IDENTIDADE, VERIFICACAO_IDADE, COMPROVANTE, OUTRO
   }
 
+  public enum ParteDocumentoUsuario {
+    UNICO, FRENTE, VERSO
+  }
+
   public enum StatusDocumentoUsuario {
-    PENDENTE, EM_ANALISE, VALIDADO, REJEITADO, REMOVIDO, EXPURGADO
+    PENDENTE, EM_ANALISE, VALIDADO, REJEITADO, AJUSTE_SOLICITADO, REMOVIDO, EXPURGADO
   }
 
   public enum PoliticaRetencaoDocumento {
