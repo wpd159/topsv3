@@ -71,6 +71,19 @@ services:
       APP_EVENT_HASH_SALT: ${APP_EVENT_HASH_SALT:?defina APP_EVENT_HASH_SALT em /opt/topsv3/secrets/hml.env}
       APP_AGE_GATE_SIGNING_VALUE: ${APP_AGE_GATE_SIGNING_VALUE:?defina APP_AGE_GATE_SIGNING_VALUE em /opt/topsv3/secrets/hml.env}
       EFI_PIX_MOCK_MODE: "true"
+      R2_ENABLED: ${R2_ENABLED:?defina R2_ENABLED em /opt/topsv3/secrets/hml.env}
+      R2_ENDPOINT: ${R2_ENDPOINT:?defina R2_ENDPOINT em /opt/topsv3/secrets/hml.env}
+      R2_REGION: ${R2_REGION:-auto}
+      R2_ACCESS_KEY: ${R2_ACCESS_KEY:?defina R2_ACCESS_KEY em /opt/topsv3/secrets/hml.env}
+      R2_SIGNING_VALUE: ${R2_SIGNING_VALUE:?defina R2_SIGNING_VALUE em /opt/topsv3/secrets/hml.env}
+      R2_PUBLIC_MEDIA_BUCKET: ${R2_PUBLIC_MEDIA_BUCKET:?defina R2_PUBLIC_MEDIA_BUCKET em /opt/topsv3/secrets/hml.env}
+      R2_PRIVATE_MEDIA_BUCKET: ${R2_PRIVATE_MEDIA_BUCKET:?defina R2_PRIVATE_MEDIA_BUCKET em /opt/topsv3/secrets/hml.env}
+      R2_DOCUMENT_BUCKET: ${R2_DOCUMENT_BUCKET:?defina R2_DOCUMENT_BUCKET em /opt/topsv3/secrets/hml.env}
+      R2_PUBLIC_MEDIA_PREFIX: ${R2_PUBLIC_MEDIA_PREFIX:-hml/midias-aprovadas/}
+      R2_PRIVATE_MEDIA_PREFIX: ${R2_PRIVATE_MEDIA_PREFIX:-hml/midias-pendentes/}
+      R2_DOCUMENT_PREFIX: ${R2_DOCUMENT_PREFIX:-hml/documentos/}
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:-}
+      R2_SIGNED_URL_TTL_SECONDS: ${R2_SIGNED_URL_TTL_SECONDS:-300}
     ports:
       - "127.0.0.1:${HML_BACKEND_PORT:-18080}:8080"
     networks:

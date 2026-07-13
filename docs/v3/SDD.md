@@ -811,3 +811,13 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - A idade e calculada no backend pela data confiavel e pela data UTC atual. Ela aparece por padrao e so e omitida quando `OCULTAR_IDADE` esta vigente e possui pagamento comprovado por compra ou credito; expiracao faz a idade reaparecer automaticamente.
 - O fixture unico `HmlStoriesFixtureService` reconcilia a data de nascimento e os conjuntos estruturados existentes: anuncio A possui `MEU_LOCAL` e `ANAL`; anuncio B nao possui nenhum dos dois. O anuncio A recebe `OCULTAR_IDADE` pago e vigente; o anuncio B concentra os casos expirado, cortesia, administrativo e gratuito que nao ocultam idade. Reexecucao preserva usuario, credencial, anuncios, midias, Story, locais, servicos e beneficios sem duplicacao.
 - O runner HML unico aceita a acao explicita `app.hml-fixture-owner-credential.enabled=true` para atualizar por `stdin` somente a credencial BCrypt do proprietario canonico da fixture. A acao e restrita ao profile `homologacao`, nao altera ADMIN, nao cria usuario/anuncio e preserva o hash quando o valor informado ja confere.
+
+## 38. Storage R2 exclusivo de homologacao
+
+- Cloudflare R2 e o provider unico aprovado para a V3; MinIO, disco local e fallback nao integram a arquitetura de runtime.
+- HML usa tres buckets exclusivos: `topsdojob-hml-midias-publicas`, `topsdojob-hml-midias-privadas` e `topsdojob-hml-documentos`.
+- O token de aplicacao possui somente `Object Read & Write` nesses tres buckets e nao reutiliza credencial ou bucket de producao.
+- O backend oferece uma unica abstracao para `PUT`, `HEAD`, `GET`, `DELETE`, URL assinada temporaria e URL publica opcional.
+- Mesmo em buckets exclusivos, as chaves permanecem limitadas a `hml/midias-aprovadas/`, `hml/midias-pendentes/` e `hml/documentos/`; operacao fora do prefixo falha antes da rede.
+- Nenhum bucket privado possui acesso publico. O bucket de midias aprovadas tambem permanece privado ate decisao especifica de dominio publico HML.
+- Esta fase nao cria endpoint de upload do wizard, nao copia dado privado e nao altera storage de producao.

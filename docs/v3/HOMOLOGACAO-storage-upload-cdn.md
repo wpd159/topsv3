@@ -2,7 +2,7 @@
 
 ## Principio
 
-Storage, upload e CDN em homologacao devem preservar a separacao entre midia publica, midia privada operacional e documento privado. Este documento e contrato tecnico; ele nao executa upload, nao cria bucket real, nao acessa storage real e nao autoriza CDN real.
+Storage, upload e CDN em homologacao preservam a separacao entre midia publica, midia privada operacional e documento privado. O provider unico aprovado para a V3 e Cloudflare R2, com buckets e credencial exclusivos de HML. Endpoints de upload do wizard continuam fora desta fase.
 
 ## Classes de arquivo
 
@@ -16,13 +16,14 @@ Storage, upload e CDN em homologacao devem preservar a separacao entre midia pub
 
 ## Separacao obrigatoria
 
-- Bucket/container de midia publica aprovado.
-- Bucket/container de midia privada operacional.
-- Bucket/container de documento privado.
-- Prefixos por ambiente: homologacao separado de producao.
-- Credenciais de escrita separadas de credenciais de leitura.
-- Usuario da aplicacao sem permissao em bucket de outro ambiente.
+- Bucket `topsdojob-hml-midias-publicas` para midia aprovada.
+- Bucket `topsdojob-hml-midias-privadas` para midia pendente ou restrita.
+- Bucket `topsdojob-hml-documentos` para documento privado.
+- Prefixos HML obrigatorios: `hml/midias-aprovadas/`, `hml/midias-pendentes/` e `hml/documentos/`.
+- Token HML com `Object Read & Write` limitado somente aos tres buckets HML.
+- Usuario da aplicacao sem permissao em bucket de producao ou outro ambiente.
 - Documento privado nao pode compartilhar prefixo publico.
+- Toda operacao `PUT`, `HEAD`, `GET` ou `DELETE` deve rejeitar chave fora do prefixo da area antes de acessar o provider.
 
 ## Regras de URL e DTO
 
@@ -93,22 +94,26 @@ Antes de upload real:
 
 | Variavel | Obrigatoria | Escopo | Observacao |
 | --- | --- | --- | --- |
-| `STORAGE_ENDPOINT` | Sim antes de storage real | homologacao | Endpoint externo fora do Git. |
-| `STORAGE_REGION` | Sim antes de storage real | homologacao | Sem valor real versionado. |
-| `STORAGE_PUBLIC_BUCKET` | Sim antes de URL publica | midia publica | Separado de documentos privados. |
-| `STORAGE_PRIVATE_BUCKET` | Sim antes de upload privado | midia privada | Nao expor em DTO publico. |
-| `STORAGE_DOCUMENT_BUCKET` | Sim antes de documento real | documento privado | Nunca publicavel. |
-| `STORAGE_ACCESS_KEY` | Sim antes de storage real | secret externo | Fora do Git e dos relatórios. |
-| `STORAGE_SECRET_KEY` | Sim antes de storage real | secret externo | Fora do Git e dos relatórios. |
-| `CDN_PUBLIC_BASE_URL` | Sim antes de CDN real | midia publica | Dominio de homologacao, nao producao. |
+| `R2_ENABLED` | Sim | homologacao | Ativa a abstracao unica R2. |
+| `R2_ENDPOINT` | Sim | homologacao | Endpoint externo fora do Git. |
+| `R2_REGION` | Sim | homologacao | Regiao SigV4; Cloudflare usa `auto`. |
+| `R2_PUBLIC_MEDIA_BUCKET` | Sim | midia publica | Bucket exclusivo de HML. |
+| `R2_PRIVATE_MEDIA_BUCKET` | Sim | midia privada | Sem acesso publico. |
+| `R2_DOCUMENT_BUCKET` | Sim | documento privado | Nunca publicavel. |
+| `R2_PUBLIC_MEDIA_PREFIX` | Sim | midia publica | Restrito a `hml/midias-aprovadas/`. |
+| `R2_PRIVATE_MEDIA_PREFIX` | Sim | midia privada | Restrito a `hml/midias-pendentes/`. |
+| `R2_DOCUMENT_PREFIX` | Sim | documento privado | Restrito a `hml/documentos/`. |
+| `R2_ACCESS_KEY` | Sim | secret externo | Fora do Git e dos relatorios. |
+| `R2_SIGNING_VALUE` | Sim | material de assinatura externo | Fora do Git e dos relatorios. |
+| `R2_PUBLIC_BASE_URL` | Nao nesta fase | midia publica | Vazio ate dominio publico HML ser aprovado. |
+| `R2_SIGNED_URL_TTL_SECONDS` | Sim | objetos privados | TTL curto, limitado a no maximo sete dias. |
 | `UPLOAD_MAX_IMAGE_BYTES` | Sim antes de upload | upload | Valor definido por politica. |
 | `UPLOAD_MAX_STORY_BYTES` | Sim antes de upload | stories | Valor definido por politica. |
 
 ## Pendencias antes de homologacao real
 
-- Escolher provedor e ambiente isolado.
-- Criar buckets/containers reais fora deste bloco.
-- Definir credenciais e politica de permissao fora do Git.
+- Conectar os contratos autenticados de upload ao provider unico, em fase propria.
+- Definir dominio publico HML somente para o bucket de midias aprovadas.
 - Validar antivirus/moderacao real.
 - Validar upload com arquivos sinteticos autorizados.
 - Validar CDN/cache/invalidation em homologacao.
@@ -119,5 +124,6 @@ Antes de upload real:
 - Nao usar producao.
 - Nao usar dado real.
 - Nao executar upload real neste bloco.
-- Nao acessar storage real, CDN real, R2/S3 real ou API externa.
+- Nao acessar buckets ou credenciais de producao.
+- Nao habilitar acesso publico para midia privada ou documento.
 - Nao versionar URL privada, storage key, bucket real, credencial, log bruto, midia real ou documento real.

@@ -305,6 +305,14 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Flyway real foi validado localmente via Docker no Bloco 47 com migrations V001 a V017 em PostgreSQL descartavel.
 - Schema segue dependendo de revisao Pro antes de homologacao/producao.
 
+## Storage R2 HML
+
+- Cloudflare R2 e o unico provider de objetos da V3; nao ha MinIO, disco local, fallback ou provider concorrente.
+- HML usa buckets e token exclusivos, sem acesso a buckets ou credenciais de producao.
+- Midia aprovada, midia privada e documento privado permanecem em buckets distintos e tambem sob prefixos `hml/` validados no backend.
+- URLs assinadas sao temporarias; URL publica so pode ser resolvida para `PUBLIC_MEDIA` e somente quando uma base publica HML estiver configurada.
+- A infraestrutura R2 pode ser validada com objeto sintetico antes dos endpoints do wizard, que permanecem em fase posterior.
+
 ## Pacote e checkpoint
 
 - ZIP de revisao e checkpoint entre fases.

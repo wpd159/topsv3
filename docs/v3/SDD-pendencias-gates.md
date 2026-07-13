@@ -688,6 +688,15 @@ Antes de admin em ambiente nao local:
 - Pendente de dados autorizados: usuarios historicos sem data de nascimento confiavel permanecem com `idade=null`; o importador aprovado deve mapear somente valores reais/sanitizados autorizados, sem inventar datas.
 - Operacao HML autorizada desta fase: apos o workflow verde, executar o runner unico com `app.hml-fixture.enabled=true`, sem habilitar `app.hml-admin-provision.enabled` e sem fornecer credencial. Repetir a execucao deve retornar todos os contadores em zero e preservar ADMIN, usuario ficticio, anuncios, midias, Story, locais, servicos e beneficios.
 
+## Storage R2 HML
+
+- Fechado localmente: abstracao unica R2/S3 com SigV4 para gravar, verificar, ler, remover e gerar URL temporaria.
+- Fechado operacionalmente: tres buckets e token exclusivos de HML; secrets ficam somente em `/opt/topsv3/secrets/hml.env` com permissao `600`.
+- Fechado por teste sintetico: `PUT`, `HEAD`, `GET`, URL temporaria e `DELETE`, com remocao do objeto ao final e rejeicao de chave fora de `hml/`.
+- Pendente: decidir e configurar dominio publico HML apenas para o bucket de midias aprovadas.
+- Pendente: endpoints autenticados do wizard, validacao binaria, limites, moderacao, reordenacao e remocao logica em fase propria.
+- Fechado operacionalmente: os dois tokens intermediarios sem uso foram revogados e os tres buckets intermediarios vazios foram removidos; os tres buckets canonicos e o token HML ativo foram preservados.
+
 ## Proibicoes ate novo bloco autorizado
 
 - nao iniciar fase posterior implicitamente;
