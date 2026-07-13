@@ -108,6 +108,34 @@ public class AnuncioMidiaEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public void removerLogicamente(OffsetDateTime atualizadoEm) {
+    this.status = StatusAnuncioMidia.REMOVIDA;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public static AnuncioMidiaEntity criarUploadPendente(
+      UUID id,
+      UUID anuncioId,
+      UUID arquivoMidiaId,
+      TipoAnuncioMidia tipo,
+      Integer ordem,
+      OffsetDateTime criadoEm) {
+    AnuncioMidiaEntity entity = new AnuncioMidiaEntity();
+    entity.id = id;
+    entity.anuncioId = anuncioId;
+    entity.arquivoMidiaId = arquivoMidiaId;
+    entity.tipo = tipo;
+    entity.finalidade = FinalidadeAnuncioMidia.GALERIA;
+    entity.ordem = ordem;
+    entity.status = StatusAnuncioMidia.PENDENTE;
+    entity.visibilidadeMidia = tipo == TipoAnuncioMidia.VIDEO
+        ? VisibilidadeMidia.RESTRITA_18
+        : null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
   public static AnuncioMidiaEntity criarFixtureHomologacao(
       UUID id,
       UUID anuncioId,

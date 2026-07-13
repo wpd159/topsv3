@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils'
 import {
   atualizarMeuAnuncio,
   buscarMeuAnuncio,
+  consultarLimitesMinhasMidias,
+  enviarMinhaMidia,
   MeusAnunciosApiError,
   type MeuAnuncio,
   type MeuAnuncioAtualizacao,
@@ -81,7 +83,7 @@ function editPayload(state: WizardFormState): MeuAnuncioAtualizacao {
   const preco = Number(state.preco.replace(/\D/g, '')) / 100
   return {
     titulo: state.titulo,
-    descricao: state.descricao,
+    descricao: state.descricao.trim() || state.descricaoPerfil.trim(),
     categoria: state.categoria,
     preco: Number.isFinite(preco) && preco > 0 ? preco : null,
     uf: state.estadoUf,
@@ -101,6 +103,10 @@ function editDraftSourceVersion(anuncio: MeuAnuncio) {
     anuncio.status,
     anuncio.statusModeracao,
   ].join(':')
+}
+
+function uploadFileKey(file: File) {
+  return `${file.name}:${file.size}:${file.lastModified}`
 }
 
 export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardProps) {
@@ -124,6 +130,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     updateForm,
     updateKyc,
     setFotos,
+    setVideos,
     setDocumentos,
     setStep,
     nextStep,
@@ -144,12 +151,17 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [publishGuard, setPublishGuard] = useState<PublishGuardState>(closedPublishGuard)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewHintDismissed, setPreviewHintDismissed] = useState(false)
+  const [createMediaProgress, setCreateMediaProgress] = useState<Record<string, number>>({})
+  const [createMediaErrors, setCreateMediaErrors] = useState<Record<string, string>>({})
   const wizardTopRef = useRef<HTMLDivElement | null>(null)
   const publishLockRef = useRef(false)
   const stepDidMountRef = useRef(false)
   const wizardSessionIdRef = useRef(createWizardProgressSessionId())
   const lastSyncedStepRef = useRef<WizardProgressStep | null>(null)
   const loadedEditSlugRef = useRef<string | null>(null)
+  const createdSlugRef = useRef<string | null>(null)
+  const createdAnuncioIdRef = useRef<string | null>(null)
+  const createdDetailsSyncedRef = useRef(false)
 
   const idade = calculateAge(kyc.dataNascimento || (usuario as any)?.dataNascimento)
   const hasExistingKyc = hasPersistedKyc(usuario)
@@ -469,11 +481,56 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     }
 
     await syncProfileDescriptionIfNeeded()
-    const created = await submitWizardAnuncio(state, usuario.id)
-    await syncProgress('concluido', 'AGUARDANDO_MODERACAO', created?.id)
+    if (!createdSlugRef.current) {
+      const created = await submitWizardAnuncio(state, usuario)
+      createdSlugRef.current = created.slugLocal
+      createdAnuncioIdRef.current = created.anuncioId
+    }
+    const targetSlug = createdSlugRef.current
+    if (!targetSlug) throw new Error('Não foi possível identificar o anúncio criado.')
+    if (!createdDetailsSyncedRef.current) {
+      await atualizarMeuAnuncio(targetSlug, editPayload(state))
+      createdDetailsSyncedRef.current = true
+    }
+    const limites = await consultarLimitesMinhasMidias(targetSlug)
+    if (state.fotos.length > limites.fotosDisponiveis) {
+      throw new Error(`Seu limite atual permite mais ${limites.fotosDisponiveis} foto(s). Remova o excedente para continuar.`)
+    }
+    if (state.videos.length > limites.videosDisponiveis) {
+      throw new Error('Este anúncio já atingiu o limite de vídeos.')
+    }
+    setCreateMediaErrors({})
+    const enviarArquivos = async (files: File[], onRemaining: (remaining: File[]) => void) => {
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index]
+        const key = uploadFileKey(file)
+        setCreateMediaProgress((current) => ({ ...current, [key]: 0 }))
+        try {
+          await enviarMinhaMidia(targetSlug, file, (value) => {
+            setCreateMediaProgress((current) => ({ ...current, [key]: value }))
+          })
+        } catch (error) {
+          setCreateMediaErrors((current) => ({
+            ...current,
+            [key]: error instanceof Error ? error.message : 'Falha ao enviar o arquivo.',
+          }))
+          setStep('fotos')
+          throw error
+        }
+        onRemaining(files.slice(index + 1))
+      }
+    }
+    await enviarArquivos(state.fotos, setFotos)
+    await enviarArquivos(state.videos, setVideos)
+    await syncProgress('concluido', 'AGUARDANDO_MODERACAO', createdAnuncioIdRef.current)
     await refresh().catch(() => null)
     setPublishGuard(closedPublishGuard)
     reset()
+    createdSlugRef.current = null
+    createdAnuncioIdRef.current = null
+    createdDetailsSyncedRef.current = false
+    setCreateMediaProgress({})
+    setCreateMediaErrors({})
     toast.success('Anúncio enviado para moderação.')
     router.push('/meus-anuncios')
   }
@@ -628,10 +685,14 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     if (currentStep.id === 'fotos') {
       return (
         <WizardStepFotos
+          slug={isEdit ? slug : undefined}
           initialFiles={state.fotos}
           fotoNomes={state.fotoNomes}
           onChange={setFotos}
-          readOnlyMedia={isEdit ? editAnuncio?.midias ?? [] : undefined}
+          videosNovos={state.videos}
+          onChangeVideosNovos={setVideos}
+          createProgress={createMediaProgress}
+          createErrors={createMediaErrors}
         />
       )
     }

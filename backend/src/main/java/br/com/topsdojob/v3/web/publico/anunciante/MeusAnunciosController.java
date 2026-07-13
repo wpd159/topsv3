@@ -2,16 +2,26 @@ package br.com.topsdojob.v3.web.publico.anunciante;
 
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
+import br.com.topsdojob.v3.application.publico.anunciante.MinhasMidiasService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaLimitesDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiasResponseDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.security.core.Authentication;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/public/minha-conta/anuncios")
@@ -19,12 +29,15 @@ public class MeusAnunciosController {
 
     private final MeusAnunciosConsultaService consultaService;
     private final MeuAnuncioAtualizacaoService atualizacaoService;
+    private final MinhasMidiasService midiasService;
 
     public MeusAnunciosController(
             MeusAnunciosConsultaService consultaService,
-            MeuAnuncioAtualizacaoService atualizacaoService) {
+            MeuAnuncioAtualizacaoService atualizacaoService,
+            MinhasMidiasService midiasService) {
         this.consultaService = consultaService;
         this.atualizacaoService = atualizacaoService;
+        this.midiasService = midiasService;
     }
 
     @GetMapping
@@ -43,5 +56,43 @@ public class MeusAnunciosController {
             @RequestBody MeuAnuncioAtualizacaoRequestDto request,
             Authentication authentication) {
         return atualizacaoService.atualizar(slug, request, authentication);
+    }
+
+    @GetMapping("/{slug}/midias")
+    public MeuAnuncioMidiasResponseDto listarMidias(
+            @PathVariable String slug,
+            Authentication authentication) {
+        return midiasService.listar(slug, authentication);
+    }
+
+    @GetMapping("/{slug}/midias/limites")
+    public MeuAnuncioMidiaLimitesDto consultarLimitesMidias(
+            @PathVariable String slug,
+            Authentication authentication) {
+        return midiasService.limites(slug, authentication);
+    }
+
+    @PostMapping(path = "/{slug}/midias", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MeuAnuncioMidiasResponseDto enviarMidia(
+            @PathVariable String slug,
+            @RequestPart("arquivo") MultipartFile arquivo,
+            Authentication authentication) {
+        return midiasService.enviar(slug, arquivo, authentication);
+    }
+
+    @PatchMapping("/{slug}/midias/ordem")
+    public MeuAnuncioMidiasResponseDto reordenarMidias(
+            @PathVariable String slug,
+            @RequestBody ReordenarMinhasMidiasRequestDto request,
+            Authentication authentication) {
+        return midiasService.reordenar(slug, request, authentication);
+    }
+
+    @DeleteMapping("/{slug}/midias/{midiaId}")
+    public MeuAnuncioMidiasResponseDto removerMidia(
+            @PathVariable String slug,
+            @PathVariable UUID midiaId,
+            Authentication authentication) {
+        return midiasService.remover(slug, midiaId, authentication);
     }
 }

@@ -22,6 +22,34 @@ export type MeuAnuncioMidia = {
   restrita: boolean
 }
 
+export type MinhaMidiaGestao = {
+  id: string
+  tipo: 'FOTO' | 'VIDEO'
+  ordem: number | null
+  status: string
+  visibilidadeMidia: string | null
+  previewUrl: string | null
+  restrita: boolean
+  ocultaPorLimite: boolean
+}
+
+export type MinhasMidiasLimites = {
+  maxFotos: number
+  fotosAtivas: number
+  fotosDisponiveis: number
+  maxVideos: number
+  videosAtivos: number
+  videosDisponiveis: number
+  fotosExtrasAtivo: boolean
+  maxFotoBytes: number
+  maxVideoBytes: number
+}
+
+export type MinhasMidiasResponse = {
+  midias: MinhaMidiaGestao[]
+  limites: MinhasMidiasLimites
+}
+
 export type MeuAnuncio = {
   id: string
   slug: string
@@ -137,4 +165,73 @@ export function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtualizacao
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+}
+
+export function listarMinhasMidias(slug: string) {
+  return request<MinhasMidiasResponse>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias`
+  )
+}
+
+export function consultarLimitesMinhasMidias(slug: string) {
+  return request<MinhasMidiasLimites>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/limites`
+  )
+}
+
+export async function enviarMinhaMidia(
+  slug: string,
+  arquivo: File,
+  onProgress?: (percentual: number) => void
+) {
+  const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+  return new Promise<MinhasMidiasResponse>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `${API}/minha-conta/anuncios/${encodeURIComponent(slug)}/midias`)
+    xhr.withCredentials = true
+    xhr.setRequestHeader('Accept', 'application/json')
+    if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
+    }
+    xhr.onerror = () => reject(new MeusAnunciosApiError('Não foi possível enviar a mídia.', 0))
+    xhr.onload = () => {
+      let body: unknown = null
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : null
+      } catch {
+        body = null
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message = body && typeof body === 'object' && 'message' in body
+          ? String((body as { message?: unknown }).message || '')
+          : `Não foi possível enviar a mídia (HTTP ${xhr.status}).`
+        reject(new MeusAnunciosApiError(message, xhr.status))
+        return
+      }
+      onProgress?.(100)
+      resolve(body as MinhasMidiasResponse)
+    }
+    const form = new FormData()
+    form.append('arquivo', arquivo)
+    xhr.send(form)
+  })
+}
+
+export function reordenarMinhasMidias(slug: string, midiaIds: string[]) {
+  return request<MinhasMidiasResponse>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/ordem`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ midiaIds }),
+    }
+  )
+}
+
+export function removerMinhaMidia(slug: string, midiaId: string) {
+  return request<MinhasMidiasResponse>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/${encodeURIComponent(midiaId)}`,
+    { method: 'DELETE' }
+  )
 }

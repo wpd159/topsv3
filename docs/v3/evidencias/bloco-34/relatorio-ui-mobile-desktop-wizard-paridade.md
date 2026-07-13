@@ -4,14 +4,14 @@
 - Backend sintetico: http://127.0.0.1:18133
 - Dados reais usados: nao
 - Producao/VPS/API externa acessadas: nao
-- Upload real/pagamento/Pix/Efi/WhatsApp real: nao
+- Upload real/pagamento/Pix/Efi/WhatsApp real: nao; controles de upload auditados sem envio externo
 
 ## desktop
 - Viewport: 1280x900
-- Prints: desktop-inicio.png, desktop-intermediaria.png, desktop-revisao.png, desktop-pos-envio.png
+- Prints: desktop-create-localidades.png, desktop-edit-hidratado.png, desktop-pos-edicao.png
 - Resultado: OK
 
 ## mobile
 - Viewport: 390x844
-- Prints: mobile-inicio.png, mobile-intermediaria.png, mobile-revisao.png, mobile-pos-envio.png
+- Prints: mobile-create-localidades.png, mobile-edit-hidratado.png, mobile-pos-edicao.png
 - Resultado: OK

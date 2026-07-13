@@ -21,6 +21,8 @@ type Props = {
   pro?: boolean
   accept?: string
   variant?: 'default' | 'wizard'
+  showLimit?: boolean
+  enforceLimit?: boolean
 }
 
 export function GaleriaFotos({
@@ -33,6 +35,8 @@ export function GaleriaFotos({
   pro = false,
   accept = ALLOWED_IMAGE_ACCEPT,
   variant = 'default',
+  showLimit = true,
+  enforceLimit = true,
 }: Props) {
   const [existentes, setExistentes] = useState<string[]>([])
   const [novas, setNovas] = useState<File[]>(() => initialFiles ?? [])
@@ -70,15 +74,14 @@ export function GaleriaFotos({
   }, [novas])
 
   const total = existentes.length + novas.length
-  const limiteAtingido = total >= maxCount
+  const limiteAtingido = enforceLimit && total >= maxCount
 
   const pick = (files: FileList | null) => {
     if (!files?.length) return
 
-    const disponivel = Math.max(0, maxCount - total)
-    if (disponivel <= 0) return
-
     const selecionadas = Array.from(files)
+    const disponivel = enforceLimit ? Math.max(0, maxCount - total) : selecionadas.length
+    if (disponivel <= 0) return
     if (selecionadas.some(isHeic)) {
       setErroArquivo(INCOMPATIBLE_IMAGE_FORMAT_MESSAGE)
       return
@@ -154,9 +157,11 @@ export function GaleriaFotos({
             </span>
 
             <p className="mt-3 text-xs text-zinc-500">ou arraste arquivos aqui</p>
-            <p className="mt-2 text-xs font-medium text-zinc-400">
-              {total}/{maxCount} {total === 1 ? 'foto' : 'fotos'}
-            </p>
+            {showLimit ? (
+              <p className="mt-2 text-xs font-medium text-zinc-400">
+                {total}/{maxCount} {total === 1 ? 'foto' : 'fotos'}
+              </p>
+            ) : null}
           </>
         ) : (
           <>
@@ -172,9 +177,11 @@ export function GaleriaFotos({
             </svg>
 
             <p className="text-sm text-gray-500">Arraste e solte ou clique para selecionar</p>
-            <p className="text-xs text-gray-400">
-              {total}/{maxCount} {total === 1 ? 'foto' : 'fotos'}
-            </p>
+            {showLimit ? (
+              <p className="text-xs text-gray-400">
+                {total}/{maxCount} {total === 1 ? 'foto' : 'fotos'}
+              </p>
+            ) : null}
           </>
         )}
 

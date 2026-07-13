@@ -8,6 +8,10 @@ spring:
   web:
     resources:
       add-mappings: false
+  servlet:
+    multipart:
+      max-file-size: ${UPLOAD_MAX_REQUEST_BYTES:105MB}
+      max-request-size: ${UPLOAD_MAX_REQUEST_BYTES:105MB}
 
 server:
   port: 8080
@@ -38,6 +42,9 @@ app:
       document-prefix: ${R2_DOCUMENT_PREFIX:hml/documentos/}
       public-base-url: ${R2_PUBLIC_BASE_URL:}
       signed-url-ttl-seconds: ${R2_SIGNED_URL_TTL_SECONDS:300}
+  media-upload:
+    max-image-bytes: ${UPLOAD_MAX_IMAGE_BYTES:20971520}
+    max-video-bytes: ${UPLOAD_MAX_VIDEO_BYTES:104857600}
 
 efi:
   pix:

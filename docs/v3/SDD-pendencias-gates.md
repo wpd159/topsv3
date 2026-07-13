@@ -668,7 +668,7 @@ Antes de admin em ambiente nao local:
 - Fechado localmente: localidades de criacao/edicao usam somente o adapter publico V3. O cache e isolado por usuario, modo e slug; a edicao hidrata primeiro o backend e cache divergente nao substitui dados mais recentes.
 - Fechado localmente: alteracoes de conteudo seguem a moderacao vigente, com revisao aberta rastreavel e `409` durante analise; a projecao publica fica nao publicavel ate nova decisao.
 - Pendente de contrato/schema proprio: horarios e disponibilidade, ausentes do modelo persistido V3 atual.
-- Pendente de contrato seguro: upload, exclusao e reordenacao de midia; a tela atual lista as midias sem permitir mutacao e sem expor URL restrita.
+- Fechado localmente: upload, listagem, limites, reordenacao e remocao logica das midias do proprio anuncio usam contratos autenticados V3 e o provider R2 unico, sem expor URL publica de pendente ou original restrito.
 - Pendente antes de publicacao: smoke autenticado desktop/mobile com conta ficticia contendo zero e multiplos anuncios; esta fase nao autoriza deploy.
 - Pendente apos publicacao do delta: executar a acao explicita do runner unico para a credencial do proprietario ficticio e validar no HML persistencia, slug, `Anuncia desde`, retorno para revisao, `409` durante revisao e `403` para anuncio alheio. Nenhuma credencial pode ser versionada ou registrada.
 
@@ -694,7 +694,8 @@ Antes de admin em ambiente nao local:
 - Fechado operacionalmente: tres buckets e token exclusivos de HML; secrets ficam somente em `/opt/topsv3/secrets/hml.env` com permissao `600`.
 - Fechado por teste sintetico: `PUT`, `HEAD`, `GET`, URL temporaria e `DELETE`, com remocao do objeto ao final e rejeicao de chave fora de `hml/`.
 - Pendente: decidir e configurar dominio publico HML apenas para o bucket de midias aprovadas.
-- Pendente: endpoints autenticados do wizard, validacao binaria, limites, moderacao, reordenacao e remocao logica em fase propria.
+- Fechado localmente: endpoints autenticados do wizard, validacao binaria, limites, promocao por moderacao, reordenacao e remocao logica.
+- Pendente antes de uso operacional: antivirus ou scanner de conteudo equivalente, politica de expurgo fisico, invalidacao de CDN e smoke autenticado com arquivos sinteticos no HML.
 - Fechado operacionalmente: os dois tokens intermediarios sem uso foram revogados e os tres buckets intermediarios vazios foram removidos; os tres buckets canonicos e o token HML ativo foram preservados.
 
 ## Proibicoes ate novo bloco autorizado

@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -48,6 +49,7 @@ public class AnuncioPublicoConsultaService {
     private final PoliticaContatoPublicoService contatoService;
     private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
     private final IdadeAnunciantePublicaService idadeAnuncianteService;
+    private final LimiteMidiasAnuncioService limiteMidiasService;
 
     public AnuncioPublicoConsultaService(
             AnuncioRepository anuncioRepository,
@@ -64,7 +66,8 @@ public class AnuncioPublicoConsultaService {
             BairroRepository bairroRepository,
             PoliticaContatoPublicoService contatoService,
             AnuncioSeoIndexabilidadePolicy indexabilidadePolicy,
-            IdadeAnunciantePublicaService idadeAnuncianteService) {
+            IdadeAnunciantePublicaService idadeAnuncianteService,
+            LimiteMidiasAnuncioService limiteMidiasService) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -80,6 +83,7 @@ public class AnuncioPublicoConsultaService {
         this.contatoService = contatoService;
         this.indexabilidadePolicy = indexabilidadePolicy;
         this.idadeAnuncianteService = idadeAnuncianteService;
+        this.limiteMidiasService = limiteMidiasService;
     }
 
     @Transactional(readOnly = true)
@@ -102,8 +106,9 @@ public class AnuncioPublicoConsultaService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
         LocalizacaoPublicaDto localizacao = localizacao(anuncio.getId());
-        List<MidiaPublicaDto> midias = midias(anuncio.getId(), idadeConfirmada);
-        List<MidiaPublicaDto> midiasSeo = idadeConfirmada ? midias(anuncio.getId(), false) : midias;
+        int maxFotos = limiteMidiasService.resolver(anuncio.getId()).maxFotos();
+        List<MidiaPublicaDto> midias = midias(anuncio.getId(), idadeConfirmada, maxFotos);
+        List<MidiaPublicaDto> midiasSeo = idadeConfirmada ? midias(anuncio.getId(), false, maxFotos) : midias;
         boolean indexavel = indexabilidadePolicy.indexavel(anuncio, localizacao, midiasSeo);
         var primeiraPublicacao = anuncioRepository
                 .findPrimeiraPublicacaoByUsuarioIdIn(List.of(anuncio.getUsuarioId()))
@@ -138,6 +143,10 @@ public class AnuncioPublicoConsultaService {
     }
 
     List<MidiaPublicaDto> midias(UUID anuncioId, boolean idadeConfirmada) {
+        return midias(anuncioId, idadeConfirmada, limiteMidiasService.resolver(anuncioId).maxFotos());
+    }
+
+    List<MidiaPublicaDto> midias(UUID anuncioId, boolean idadeConfirmada, int maxFotos) {
         List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioId(anuncioId);
         List<UUID> arquivoIds = vinculos.stream()
                 .map(AnuncioMidiaEntity::getArquivoMidiaId)
@@ -146,7 +155,7 @@ public class AnuncioPublicoConsultaService {
                 .toList();
         Map<UUID, ArquivoMidiaEntity> arquivos = arquivoMidiaRepository.findByIdIn(arquivoIds).stream()
                 .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
-        return midiaMapper.publicas(vinculos, arquivos, idadeConfirmada);
+        return midiaMapper.publicas(vinculos, arquivos, idadeConfirmada, maxFotos);
     }
 
     private LocalizacaoPublicaDto toLocalizacao(AnuncioLocalizacaoEntity localizacao) {

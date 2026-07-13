@@ -57,6 +57,7 @@ public class AdminModeracaoAcaoService {
     private final AuditoriaEventoRepository auditoriaRepository;
     private final OutboxEventoRepository outboxRepository;
     private final ObjectMapper objectMapper;
+    private final MidiaStorageAprovacaoService midiaStorageAprovacaoService;
 
     public AdminModeracaoAcaoService(
             RevisaoAnuncioRepository revisaoRepository,
@@ -67,7 +68,8 @@ public class AdminModeracaoAcaoService {
             DecisaoModeracaoRepository decisaoRepository,
             AuditoriaEventoRepository auditoriaRepository,
             OutboxEventoRepository outboxRepository,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MidiaStorageAprovacaoService midiaStorageAprovacaoService) {
         this.revisaoRepository = revisaoRepository;
         this.anuncioRepository = anuncioRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -77,6 +79,7 @@ public class AdminModeracaoAcaoService {
         this.auditoriaRepository = auditoriaRepository;
         this.outboxRepository = outboxRepository;
         this.objectMapper = objectMapper;
+        this.midiaStorageAprovacaoService = midiaStorageAprovacaoService;
     }
 
     @Transactional
@@ -214,6 +217,9 @@ public class AdminModeracaoAcaoService {
             case REPROVAR -> StatusArquivoMidia.REJEITADO;
             case SOLICITAR_AJUSTE -> StatusArquivoMidia.PENDENTE;
         };
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+            midiaStorageAprovacaoService.prepararAprovacao(arquivo, visibilidade);
+        }
         midia.aplicarDecisao(novoStatusMidia, visibilidade, agora);
         arquivo.aplicarDecisao(novoStatusArquivo);
 

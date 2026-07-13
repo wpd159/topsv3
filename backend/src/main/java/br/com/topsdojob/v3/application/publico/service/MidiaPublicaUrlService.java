@@ -6,6 +6,11 @@ import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
+import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import java.time.Duration;
+import org.springframework.beans.factory.ObjectProvider;
 
 @Service
 public class MidiaPublicaUrlService {
@@ -19,17 +24,27 @@ public class MidiaPublicaUrlService {
 
     private final String appEnv;
     private final String canonicalDomain;
+    private final ObjectProvider<ObjectStorage> storageProvider;
+    private final R2StorageProperties storageProperties;
 
     public MidiaPublicaUrlService() {
-        this("nao_configurado", "");
+        this("nao_configurado", "", null, null);
+    }
+
+    MidiaPublicaUrlService(String appEnv, String canonicalDomain) {
+        this(appEnv, canonicalDomain, null, null);
     }
 
     @Autowired
     public MidiaPublicaUrlService(
             @Value("${app.env:nao_configurado}") String appEnv,
-            @Value("${app.canonical-domain:}") String canonicalDomain) {
+            @Value("${app.canonical-domain:}") String canonicalDomain,
+            ObjectProvider<ObjectStorage> storageProvider,
+            R2StorageProperties storageProperties) {
         this.appEnv = appEnv;
         this.canonicalDomain = canonicalDomain;
+        this.storageProvider = storageProvider;
+        this.storageProperties = storageProperties;
     }
 
     public ResultadoUrlPublica resolver(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo) {
@@ -41,7 +56,36 @@ public class MidiaPublicaUrlService {
                     canonicalDomain.replaceAll("/+$", "") + HML_FIXTURE_PUBLIC_ASSET,
                     null);
         }
+        ResultadoUrlPublica r2 = resolverR2(vinculo, arquivo);
+        if (r2 != null) return r2;
         return new ResultadoUrlPublica(null, PENDENTE_URL_PUBLICA_MIDIA_CDN);
+    }
+
+    private ResultadoUrlPublica resolverR2(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo) {
+        if (!"R2".equals(arquivo.getStorageProvider()) || storageProvider == null || storageProperties == null) {
+            return null;
+        }
+        ObjectStorage storage = storageProvider.getIfAvailable();
+        if (storage == null) return null;
+        try {
+            if (vinculo.getVisibilidadeMidia() == VisibilidadeMidia.LIVRE
+                    && storageProperties.getPublicMediaBucket().equals(arquivo.getBucket())
+                    && arquivo.getChaveObjeto().startsWith(storageProperties.getPublicMediaPrefix())) {
+                return storage.publicUrl(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto())
+                        .map(uri -> new ResultadoUrlPublica(uri.toString(), null))
+                        .orElseGet(() -> new ResultadoUrlPublica(null, PENDENTE_URL_PUBLICA_MIDIA_CDN));
+            }
+            if (vinculo.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18
+                    && storageProperties.getPrivateMediaBucket().equals(arquivo.getBucket())
+                    && arquivo.getChaveObjeto().startsWith(storageProperties.getPrivateMediaPrefix())) {
+                return new ResultadoUrlPublica(
+                        storage.temporaryGetUrl(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto(), Duration.ofMinutes(5)).toString(),
+                        null);
+            }
+        } catch (RuntimeException ignored) {
+            return new ResultadoUrlPublica(null, PENDENTE_URL_PUBLICA_MIDIA_CDN);
+        }
+        return null;
     }
 
     private boolean fixtureHomologacaoSeguro(

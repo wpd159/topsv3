@@ -311,7 +311,9 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - HML usa buckets e token exclusivos, sem acesso a buckets ou credenciais de producao.
 - Midia aprovada, midia privada e documento privado permanecem em buckets distintos e tambem sob prefixos `hml/` validados no backend.
 - URLs assinadas sao temporarias; URL publica so pode ser resolvida para `PUBLIC_MEDIA` e somente quando uma base publica HML estiver configurada.
-- A infraestrutura R2 pode ser validada com objeto sintetico antes dos endpoints do wizard, que permanecem em fase posterior.
+- A infraestrutura R2 foi conectada aos contratos autenticados de midia do wizard unico. Upload entra no bucket privado, aprovacao `LIVRE` promove foto ao bucket publico e conteudo restrito permanece privado com URL temporaria curta.
+- O backend e a unica fonte dos limites: 4 fotos no plano base, 10 com `FOTOS_EXTRA_5` ativo e 1 video. O frontend nao replica essa regra.
+- Remocao de midia pelo anunciante e logica e reordenacao usa o ID persistido. Nao ha exclusao fisica, provider alternativo, uploader ou adapter concorrente.
 
 ## Pacote e checkpoint
 

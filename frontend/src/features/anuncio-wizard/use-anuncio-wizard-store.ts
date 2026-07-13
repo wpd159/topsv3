@@ -17,6 +17,7 @@ type Action =
   | { type: 'patch-kyc'; payload: Partial<WizardKycState> }
   | { type: 'set-step'; payload: WizardStepId }
   | { type: 'set-fotos'; payload: File[] }
+  | { type: 'set-videos'; payload: File[] }
   | { type: 'set-documentos'; payload: File[] }
   | { type: 'reset' }
 
@@ -46,6 +47,15 @@ function reducer(state: WizardState, action: Action): WizardState {
           ...state.form,
           fotos: action.payload,
           fotoNomes: action.payload.map((file) => file.name),
+        },
+      }
+    case 'set-videos':
+      return {
+        ...state,
+        form: {
+          ...state.form,
+          videos: action.payload,
+          videoNomes: action.payload.map((file) => file.name),
         },
       }
     case 'set-documentos':
@@ -215,6 +225,7 @@ export function useAnuncioWizardStore({ cacheScope, backendFirst = false }: Wiza
     updateForm: (payload: Partial<WizardFormState>) => dispatch({ type: 'patch-form', payload }),
     updateKyc: (payload: Partial<WizardKycState>) => dispatch({ type: 'patch-kyc', payload }),
     setFotos: (payload: File[]) => dispatch({ type: 'set-fotos', payload }),
+    setVideos: (payload: File[]) => dispatch({ type: 'set-videos', payload }),
     setDocumentos: (payload: File[]) => dispatch({ type: 'set-documentos', payload }),
     setStep,
     nextStep,

@@ -22,7 +22,7 @@ type PersistedWizardState = {
   sourceVersion: string | null
   state: {
     currentStep: WizardState['currentStep']
-    form: Omit<WizardState['form'], 'fotos'> & { fotos?: never }
+    form: Omit<WizardState['form'], 'fotos' | 'videos'> & { fotos?: never; videos?: never }
     kyc: Omit<WizardState['kyc'], 'documentos'> & { documentos?: never }
   }
 }
@@ -76,8 +76,10 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
       bairroNome: asString(form?.bairroNome),
       pontoReferenciaTexto: asString(form?.pontoReferenciaTexto),
       fotoNomes: asStringArray(form?.fotoNomes),
+      videoNomes: asStringArray(form?.videoNomes),
       premiumChoice: form?.premiumChoice === 'destaque' ? 'destaque' : 'gratis',
       fotos: [],
+      videos: [],
     },
     kyc: {
       ...initialWizardState.kyc,
@@ -91,7 +93,7 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
 }
 
 function toPersistedState(state: WizardState, sourceVersion: string | null): PersistedWizardState {
-  const { fotos: _fotos, ...form } = state.form
+  const { fotos: _fotos, videos: _videos, ...form } = state.form
   const { documentos: _documentos, ...kyc } = state.kyc
 
   return {

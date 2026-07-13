@@ -23,6 +23,8 @@ export type WizardFormState = {
   pontoReferenciaTexto: string
   fotos: File[]
   fotoNomes: string[]
+  videos: File[]
+  videoNomes: string[]
   premiumChoice: 'gratis' | 'destaque'
 }
 
@@ -61,6 +63,8 @@ export const initialWizardFormState: WizardFormState = {
   pontoReferenciaTexto: '',
   fotos: [],
   fotoNomes: [],
+  videos: [],
+  videoNomes: [],
   premiumChoice: 'gratis',
 }
 

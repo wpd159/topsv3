@@ -2,7 +2,7 @@
 
 ## Principio
 
-Storage, upload e CDN em homologacao preservam a separacao entre midia publica, midia privada operacional e documento privado. O provider unico aprovado para a V3 e Cloudflare R2, com buckets e credencial exclusivos de HML. Endpoints de upload do wizard continuam fora desta fase.
+Storage, upload e CDN em homologacao preservam a separacao entre midia publica, midia privada operacional e documento privado. O provider unico aprovado para a V3 e Cloudflare R2, com buckets e credencial exclusivos de HML. Os endpoints autenticados do wizard gravam novas midias somente na area privada e dependem da moderacao para qualquer publicacao.
 
 ## Classes de arquivo
 
@@ -35,14 +35,14 @@ Storage, upload e CDN em homologacao preservam a separacao entre midia publica, 
 - Midia sem URL deve usar placeholder seguro e estavel.
 - Placeholder nao deve simular foto real, documento real ou conteudo sensivel.
 
-## Upload futuro
+## Upload autenticado
 
-Antes de upload real:
+O contrato implementado exige:
 
 - Definir tamanho maximo por tipo.
 - Validar extensao e MIME real.
 - Remover metadados sensiveis quando aplicavel.
-- Executar antivirus ou scanner equivalente.
+- Executar antivirus ou scanner equivalente antes do uso operacional; este gate continua pendente.
 - Gerar storage key server-side, nunca enviada pelo cliente.
 - Registrar auditoria sanitizada de upload.
 - Manter arquivo pendente ate moderacao.
@@ -51,8 +51,10 @@ Antes de upload real:
 
 ## Fotos, Premium e beneficios
 
-- Plano gratuito deve manter ate 2 fotos publicas sinteticas/contratuais como baseline util.
-- Premium pode adicionar fotos extras sem remover utilidade do gratuito.
+- Plano base permite ate 4 fotos.
+- `FOTOS_EXTRA_5` ativo eleva o total permitido para ate 10 fotos.
+- Cada anuncio permite ate 1 video.
+- O backend retorna e aplica os limites; o frontend apenas os apresenta.
 - Beneficios que liberam fotos extras devem respeitar expiracao conjunta.
 - Beneficio expirado nao deve criar URL publica nova.
 - Expiracao de beneficio nao deve apagar fisicamente arquivo sem politica propria.
@@ -108,14 +110,13 @@ Antes de upload real:
 | `R2_PUBLIC_BASE_URL` | Nao nesta fase | midia publica | Vazio ate dominio publico HML ser aprovado. |
 | `R2_SIGNED_URL_TTL_SECONDS` | Sim | objetos privados | TTL curto, limitado a no maximo sete dias. |
 | `UPLOAD_MAX_IMAGE_BYTES` | Sim antes de upload | upload | Valor definido por politica. |
-| `UPLOAD_MAX_STORY_BYTES` | Sim antes de upload | stories | Valor definido por politica. |
+| `UPLOAD_MAX_VIDEO_BYTES` | Sim | upload de video | Valor definido por politica. |
 
 ## Pendencias antes de homologacao real
 
-- Conectar os contratos autenticados de upload ao provider unico, em fase propria.
 - Definir dominio publico HML somente para o bucket de midias aprovadas.
 - Validar antivirus/moderacao real.
-- Validar upload com arquivos sinteticos autorizados.
+- Validar upload autenticado com arquivos sinteticos autorizados no HML.
 - Validar CDN/cache/invalidation em homologacao.
 - Revisar Pro antes de documento real, midia real, dados reais/sanitizados ou cutover.
 
@@ -123,7 +124,7 @@ Antes de upload real:
 
 - Nao usar producao.
 - Nao usar dado real.
-- Nao executar upload real neste bloco.
+- Nao executar upload com dado ou midia real sem autorizacao propria.
 - Nao acessar buckets ou credenciais de producao.
 - Nao habilitar acesso publico para midia privada ou documento.
 - Nao versionar URL privada, storage key, bucket real, credencial, log bruto, midia real ou documento real.

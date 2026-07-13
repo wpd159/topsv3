@@ -19,6 +19,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -48,6 +49,13 @@ public class GlobalExceptionHandler {
             ResponseStatusException exception,
             HttpServletRequest request) {
         return build(fromStatus(exception.getStatusCode().value()), request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleUploadTooLarge(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request) {
+        return build(ApiErrorCode.PAYLOAD_TOO_LARGE, request);
     }
 
     @ExceptionHandler({

@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.publico.mapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -79,6 +80,26 @@ class MidiaPublicaMapperTest {
         when(rejeitada.getStatus()).thenReturn(StatusAnuncioMidia.REJEITADA);
 
         assertThat(mapper.publicas(List.of(pendente, rejeitada), Map.of(arquivoId, arquivo(arquivoId)), true)).isEmpty();
+    }
+
+    @Test
+    void limitaFotosDepoisDeOrdenarEPreservaAsPrimeiras() {
+        UUID arquivoZero = UUID.randomUUID();
+        UUID arquivoUm = UUID.randomUUID();
+        UUID arquivoDois = UUID.randomUUID();
+        AnuncioMidiaEntity zero = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, arquivoZero, 0);
+        AnuncioMidiaEntity um = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, arquivoUm, 1);
+        AnuncioMidiaEntity dois = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, arquivoDois, 2);
+        when(urlService.resolver(any(), any())).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/segura", null));
+
+        var resultado = mapper.publicas(
+                List.of(dois, zero, um),
+                Map.of(arquivoZero, arquivo(arquivoZero), arquivoUm, arquivo(arquivoUm), arquivoDois, arquivo(arquivoDois)),
+                false,
+                2);
+
+        assertThat(resultado).extracting(item -> item.ordem()).containsExactly(0, 1);
     }
 
     private AnuncioMidiaEntity midia(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade, UUID arquivoId, int ordem) {

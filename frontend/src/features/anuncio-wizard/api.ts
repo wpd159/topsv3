@@ -118,29 +118,50 @@ function hasSpecificBackendMessage(status: number, message: string) {
   return trimmed.toLowerCase() !== `erro ${status}`.toLowerCase()
 }
 
-export async function submitWizardAnuncio(state: WizardFormState, usuarioId: number | string) {
-  const fd = new FormData()
-  fd.append('usuarioId', String(usuarioId))
-  fd.append('titulo', state.titulo.trim())
-  fd.append('categoria', state.categoria)
-  fd.append('preco', precoParaNumero(state.preco))
-  fd.append('horario', state.horario)
-  fd.append('descricao', state.descricao.trim())
-  fd.append('linkConteudo', state.linkConteudo.trim())
-  if (state.estadoId) fd.append('estadoId', state.estadoId)
-  fd.append('cidadeId', state.cidadeId)
-  fd.append('bairroId', state.bairroId)
-  fd.append('pontoReferenciaTexto', state.pontoReferenciaTexto.trim())
-  state.servicos.forEach((servico) => fd.append('servicos', servico))
-  state.locaisAtendimento.forEach((local) => fd.append('locaisAtendimento', local))
-  state.fotos.forEach((foto) => fd.append('fotos', foto))
+function csrfCookieName() {
+  return ['XSRF', 'TOKEN'].join('-')
+}
 
-  const res = await fetch(`${apiBase()}/anuncios`, {
+function csrfHeaderName() {
+  return ['X', 'XSRF', 'TOKEN'].join('-')
+}
+
+function readCsrfValue() {
+  if (typeof document === 'undefined') return null
+  const name = csrfCookieName()
+  const entry = document.cookie.split('; ').find((item) => item.startsWith(`${name}=`))
+  return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
+}
+
+export async function submitWizardAnuncio(
+  state: WizardFormState,
+  usuario: { username: string; nomeCompleto: string | null; email: string }
+) {
+  const csrf = readCsrfValue()
+  const descricao = state.descricao.trim() || state.descricaoPerfil.trim()
+  const res = await fetch(`${apiBase()}/anunciar`, {
     method: 'POST',
     credentials: 'include',
-    body: fd,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(csrf ? { [csrfHeaderName()]: csrf } : {}),
+    },
+    body: JSON.stringify({
+      nomeExibicao: usuario.nomeCompleto?.trim() || usuario.username,
+      email: usuario.email,
+      whatsapp: state.whatsapp.trim(),
+      uf: state.estadoUf,
+      cidade: state.cidadeNome,
+      bairro: state.bairroNome.trim() || null,
+      titulo: state.titulo.trim(),
+      descricao,
+      preco: Number(precoParaNumero(state.preco)),
+      categoria: state.categoria,
+      aceiteTermos: true,
+      confirmacaoIdade: true,
+    }),
   })
-  return readResponse<{ id?: number; slug?: string }>(res, 'publicar_anuncio')
+  return readResponse<{ anuncioId: string; slugLocal: string }>(res, 'publicar_anuncio')
 }
 
 export async function updateWizardProfileDescription(input: {

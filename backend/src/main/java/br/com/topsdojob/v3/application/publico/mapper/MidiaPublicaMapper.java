@@ -35,8 +35,22 @@ public class MidiaPublicaMapper {
             List<AnuncioMidiaEntity> vinculos,
             Map<UUID, ArquivoMidiaEntity> arquivosPorId,
             boolean idadeConfirmada) {
+        return publicas(vinculos, arquivosPorId, idadeConfirmada, Integer.MAX_VALUE);
+    }
+
+    public List<MidiaPublicaDto> publicas(
+            List<AnuncioMidiaEntity> vinculos,
+            Map<UUID, ArquivoMidiaEntity> arquivosPorId,
+            boolean idadeConfirmada,
+            int maxFotos) {
+        java.util.concurrent.atomic.AtomicInteger fotos = new java.util.concurrent.atomic.AtomicInteger();
         return vinculos.stream()
                 .filter(this::isVinculoPublico)
+                .sorted(Comparator.comparing(
+                        AnuncioMidiaEntity::getOrdem,
+                        Comparator.nullsLast(Integer::compareTo)))
+                .filter(vinculo -> vinculo.getTipo() != TipoAnuncioMidia.FOTO
+                        || fotos.getAndIncrement() < Math.max(0, maxFotos))
                 .map(vinculo -> toDto(vinculo, arquivosPorId.get(vinculo.getArquivoMidiaId()), idadeConfirmada))
                 .filter(java.util.Objects::nonNull)
                 .sorted(Comparator.comparing(

@@ -10,6 +10,8 @@ public enum ApiErrorCode {
     CONFLICT(HttpStatus.CONFLICT, "Conflito de estado."),
     UNPROCESSABLE_ENTITY(HttpStatus.UNPROCESSABLE_ENTITY, "Dados inválidos."),
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde."),
+    PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Arquivo acima do limite permitido."),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Formato de arquivo não permitido."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno inesperado.");
 
     private final HttpStatus status;

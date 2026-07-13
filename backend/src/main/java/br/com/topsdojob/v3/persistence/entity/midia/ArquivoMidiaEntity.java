@@ -120,6 +120,43 @@ public class ArquivoMidiaEntity {
     this.statusArquivo = statusArquivo;
   }
 
+  public void moverNoStorage(String bucket, String chaveObjeto) {
+    this.storageProvider = "R2";
+    this.bucket = bucket;
+    this.chaveObjeto = chaveObjeto;
+  }
+
+  public static ArquivoMidiaEntity criarUploadPendente(
+      UUID id,
+      String storageProvider,
+      String bucket,
+      String chaveObjeto,
+      String nomeOriginal,
+      String mimeType,
+      long tamanhoBytes,
+      Integer largura,
+      Integer altura,
+      Integer duracaoMs,
+      String sha256,
+      OffsetDateTime criadoEm) {
+    ArquivoMidiaEntity entity = new ArquivoMidiaEntity();
+    entity.id = id;
+    entity.storageProvider = storageProvider;
+    entity.bucket = bucket;
+    entity.chaveObjeto = chaveObjeto;
+    entity.nomeOriginal = nomeOriginal;
+    entity.mimeType = mimeType;
+    entity.tamanhoBytes = tamanhoBytes;
+    entity.largura = largura;
+    entity.altura = altura;
+    entity.duracaoMs = duracaoMs;
+    entity.sha256 = sha256;
+    entity.etag = null;
+    entity.statusArquivo = StatusArquivoMidia.PENDENTE;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
   public static ArquivoMidiaEntity criarFixtureHomologacao(
       UUID id,
       String chaveObjeto,

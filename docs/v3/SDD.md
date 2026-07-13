@@ -790,7 +790,7 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - O rascunho do wizard usa chave local composta apenas pelo ID estavel da sessao, modo e slug (`wizard:{usuarioId}:create` ou `wizard:{usuarioId}:edit:{slug}`). A edicao consulta primeiro o backend e so restaura rascunho cuja versao de origem coincide com o anuncio carregado; o salvamento limpa somente a chave corrente.
 - A edicao permite titulo, descricao, categoria, preco, UF, cidade, bairro, locais de atendimento, servicos e WhatsApp ja persistidos. Proprietario, slug, status, moderacao, publicacao, Premium, creditos, metricas, beneficios, datas publicadas e visibilidade de midia nao integram o request.
 - A regra vigente de moderacao e preservada: a edicao remete o anuncio para `PENDENTE_REVISAO`/`PENDENTE`, cria ou atualiza a revisao aberta e bloqueia com `409` enquanto houver revisao em analise. Slug, `publicado_em` e `ultima_publicacao_em` permanecem inalterados.
-- As midias existentes sao listadas em ordem e somente para leitura; midia restrita ou nao publicavel nunca recebe URL. Upload, exclusao fisica, reordenacao e alteracao de visibilidade permanecem fora desta fase.
+- As midias existentes sao listadas em ordem e sem URL publica indevida; upload, reordenacao e remocao logica passam a ser tratados pela fase de gestao de midias do wizard. Exclusao fisica e alteracao de visibilidade pelo anunciante permanecem proibidas.
 - Horarios/disponibilidade permanecem pendentes porque o modelo V3 atual nao possui persistencia canonica para esses campos. Nenhuma migration, exclusao, Premium, credito, pagamento, metrica ou OpenAI foi implementado nesta fase.
 
 ## 36. Refinamentos visuais publicos
@@ -821,3 +821,14 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - Mesmo em buckets exclusivos, as chaves permanecem limitadas a `hml/midias-aprovadas/`, `hml/midias-pendentes/` e `hml/documentos/`; operacao fora do prefixo falha antes da rede.
 - Nenhum bucket privado possui acesso publico. O bucket de midias aprovadas tambem permanece privado ate decisao especifica de dominio publico HML.
 - Esta fase nao cria endpoint de upload do wizard, nao copia dado privado e nao altera storage de producao.
+
+## 39. Upload e gestao de midias no wizard unico
+
+- Os contratos autenticados ficam exclusivamente sob `/api/public/minha-conta/anuncios/{slug}/midias` para listar, consultar limites, enviar, reordenar e remover logicamente midias do proprio anuncio.
+- O proprietario e resolvido pela sessao publica. Ausencia de sessao, anuncio alheio, recurso inexistente, estado incompativel, tamanho excedido e formato invalido preservam respostas `401`, `403`, `404`, `409`, `413` e `415`.
+- Fotos e videos novos sao gravados no R2 privado como `PENDENTE`. Foto nao recebe visibilidade escolhida pelo anunciante; video nasce `RESTRITA_18`. Nenhum pendente recebe URL publica.
+- A moderacao promove ao bucket publico apenas foto aprovada como `LIVRE`. Foto restrita e video permanecem privados; o acesso autorizado usa URL assinada curta.
+- O backend aplica ate 4 fotos no plano base, ate 10 com `FOTOS_EXTRA_5` ativo e no maximo 1 video. Expiracao do beneficio nao apaga arquivos; a projecao publica preserva as primeiras fotos dentro do limite vigente.
+- Reordenacao usa IDs persistidos e ordem unica; remocao e somente logica, sem apagar o objeto. O anunciante nao altera classificacao, status de moderacao ou storage.
+- Criacao e edicao continuam no mesmo `AnuncioWizard`. Arquivos ficam apenas em memoria para preview/upload, object URLs sao revogadas e o cache local guarda somente dados serializaveis sem binario.
+- Nenhuma migration foi necessaria: `arquivo_midia` e `anuncio_midia` ja suportavam storage, status, visibilidade, ordem e remocao logica.

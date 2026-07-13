@@ -232,12 +232,7 @@ paths:
         - PublicSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/RequestId"
-        - name: slug
-          in: path
-          required: true
-          schema:
-            type: string
-            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
       description: O proprietario e resolvido exclusivamente pela sessao. Slug, datas de publicacao, proprietario, beneficios e midias nao sao alterados. A edicao remete o anuncio para a revisao vigente e preserva a URL publica.
       requestBody:
         required: true
@@ -252,18 +247,139 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MeuAnuncio"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "500":
-          $ref: "#/components/responses/InternalError"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/minha-conta/anuncios/{slug}/midias:
+    get:
+      summary: Lista as midias e os limites do anuncio do usuario autenticado
+      operationId: listCurrentUserAdMedia
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      responses:
+        "200":
+          description: Midias do proprio anuncio, sem bucket, object key, hash ou URL publica indevida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhasMidiasResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Envia uma foto ou video para a area privada do proprio anuncio
+      operationId: uploadCurrentUserAdMedia
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [arquivo]
+              properties:
+                arquivo:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Midia privada criada como pendente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhasMidiasResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+  /api/public/minha-conta/anuncios/{slug}/midias/limites:
+    get:
+      summary: Consulta os limites canonicos de midia do proprio anuncio
+      operationId: getCurrentUserAdMediaLimits
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      responses:
+        "200":
+          description: Limites calculados pelo backend
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhasMidiasLimites"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/public/minha-conta/anuncios/{slug}/midias/ordem:
+    patch:
+      summary: Reordena as midias ativas do proprio anuncio
+      operationId: reorderCurrentUserAdMedia
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReordenarMinhasMidiasRequest"
+      responses:
+        "200":
+          description: Ordem atualizada sem alterar classificacao ou moderacao
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhasMidiasResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/public/minha-conta/anuncios/{slug}/midias/{midiaId}:
+    delete:
+      summary: Remove logicamente uma midia do proprio anuncio
+      operationId: removeCurrentUserAdMedia
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+        - name: midiaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Vinculo removido logicamente; objeto fisico preservado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhasMidiasResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/public/usuarios/verificar-duplicidade:
     get:
       summary: Verifica duplicidade no cadastro publico
@@ -519,8 +635,7 @@ paths:
   /api/public/idade/confirmar:
     post:
       summary: Confirma idade local por declaracao
-      description: Em ambiente local aceita CORS apenas de origens localhost configuradas, com credentials para receber cookie HttpOnly.
-      description: Recebe somente data de nascimento e declaracao local. Se maior de 18, emite cookie HttpOnly SameSite=Lax; Secure deve ser usado fora de local. Nao usa CPF ou documento.
+      description: Em ambiente local aceita CORS apenas de origens localhost configuradas, com credentials para receber cookie HttpOnly. Recebe somente data de nascimento e declaracao local. Se maior de 18, emite cookie HttpOnly SameSite=Lax; Secure deve ser usado fora de local. Nao usa CPF ou documento.
       operationId: postPublicIdadeConfirmar
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -2232,6 +2347,13 @@ components:
         type: string
         example: 11111111-1111-4111-8111-111111111111
   parameters:
+    CurrentUserAdSlug:
+      name: slug
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
     RequestId:
       name: X-Request-Id
       in: header
@@ -2332,6 +2454,18 @@ components:
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    PayloadTooLarge:
+      description: Arquivo acima do limite permitido.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    UnsupportedMediaType:
+      description: Formato binario ou extensao nao permitidos.
       content:
         application/json:
           schema:
@@ -2859,6 +2993,56 @@ components:
           description: Nula para midia restrita, pendente, rejeitada, removida ou sem URL publica segura.
         restrita:
           type: boolean
+    MinhasMidiasResponse:
+      type: object
+      additionalProperties: false
+      required: [midias, limites]
+      properties:
+        midias:
+          type: array
+          items:
+            $ref: "#/components/schemas/MinhaMidiaGestao"
+        limites:
+          $ref: "#/components/schemas/MinhasMidiasLimites"
+    MinhaMidiaGestao:
+      type: object
+      additionalProperties: false
+      required: [id, tipo, ordem, status, visibilidadeMidia, previewUrl, restrita, ocultaPorLimite]
+      properties:
+        id: { type: string, format: uuid }
+        tipo: { type: string, enum: [FOTO, VIDEO] }
+        ordem: { type: [integer, "null"] }
+        status: { type: string, enum: [PENDENTE, AJUSTE_SOLICITADO, PUBLICAVEL, REJEITADA] }
+        visibilidadeMidia: { type: [string, "null"], enum: [LIVRE, RESTRITA_18, null] }
+        previewUrl:
+          type: [string, "null"]
+          description: URL temporaria curta para area autenticada ou URL publica aprovada; nunca object key.
+        restrita: { type: boolean }
+        ocultaPorLimite: { type: boolean }
+    MinhasMidiasLimites:
+      type: object
+      additionalProperties: false
+      required: [maxFotos, fotosAtivas, fotosDisponiveis, maxVideos, videosAtivos, videosDisponiveis, fotosExtrasAtivo, maxFotoBytes, maxVideoBytes]
+      properties:
+        maxFotos: { type: integer, enum: [4, 10] }
+        fotosAtivas: { type: integer, minimum: 0 }
+        fotosDisponiveis: { type: integer, minimum: 0 }
+        maxVideos: { type: integer, const: 1 }
+        videosAtivos: { type: integer, minimum: 0 }
+        videosDisponiveis: { type: integer, minimum: 0 }
+        fotosExtrasAtivo: { type: boolean }
+        maxFotoBytes: { type: integer, format: int64, minimum: 1 }
+        maxVideoBytes: { type: integer, format: int64, minimum: 1 }
+    ReordenarMinhasMidiasRequest:
+      type: object
+      additionalProperties: false
+      required: [midiaIds]
+      properties:
+        midiaIds:
+          type: array
+          uniqueItems: true
+          minItems: 1
+          items: { type: string, format: uuid }
     PublicDuplicateCheck:
       type: object
       additionalProperties: false
@@ -4899,9 +5083,6 @@ components:
           format: date-time
         motivoPublico:
           type: string
-          enum:
-            - STORIES_AUTORIZADOS
-            - IDADE_NAO_CONFIRMADA
           enum:
             - IDADE_CONFIRMADA
             - IDADE_NAO_CONFIRMADA

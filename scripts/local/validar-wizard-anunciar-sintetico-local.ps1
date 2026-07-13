@@ -716,7 +716,24 @@ async function runFlow(cdp, viewport) {
   await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("experiência")', "servicos em edicao");
   await setControl(cdp, 'input[placeholder="R$ 0,00"]', "25000");
   await clickButton(cdp, "Continuar");
-  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("fotos")', "midias em leitura");
+  await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("fotos")', "gestao de midias no wizard unico");
+  const mediaUi = await evalValue(cdp, `(() => {
+    const input = document.querySelector('input[type="file"][accept*="video/mp4"]');
+    const text = document.body?.innerText || "";
+    return {
+      hasUpload: Boolean(input),
+      disabled: Boolean(input?.disabled),
+      accept: input?.getAttribute("accept") || "",
+      hasManagementCopy: text.includes("Novas mídias ficam privadas e pendentes"),
+      width: document.documentElement.scrollWidth,
+      viewport: window.innerWidth
+    };
+  })()`);
+  addCheck(checks, mediaUi.hasUpload && !mediaUi.disabled, `${viewport.key}: uploader unico disponivel na edicao`, JSON.stringify(mediaUi));
+  addCheck(checks, mediaUi.hasManagementCopy, `${viewport.key}: estado pendente e moderacao informados`, mediaUi.hasManagementCopy);
+  addCheck(checks, mediaUi.accept.includes("video/mp4") && !mediaUi.accept.includes("webm"), `${viewport.key}: formatos seguros expostos pelo wizard`, mediaUi.accept);
+  addCheck(checks, mediaUi.width <= mediaUi.viewport + 2, `${viewport.key}: etapa de midia sem overflow horizontal`, `${mediaUi.width}px em ${mediaUi.viewport}px`);
+  await screenshot(cdp, `${viewport.key}-edit-midias.png`);
   await clickButton(cdp, "Continuar");
   await waitFor(cdp, 'document.querySelector("h2")?.textContent?.includes("Revise")', "revisao atual");
   await clickButton(cdp, "Continuar");
@@ -809,7 +826,7 @@ async function main() {
     `- Backend sintetico: ${backendBaseUrl}`,
     "- Dados reais usados: nao",
     "- Producao/VPS/API externa acessadas: nao",
-    "- Upload real/pagamento/Pix/Efi/WhatsApp real: nao",
+    "- Upload real/pagamento/Pix/Efi/WhatsApp real: nao; controles de upload auditados sem envio externo",
     ""
   ];
 
@@ -879,6 +896,7 @@ async function main() {
     "- Localidades carregadas por /api/public/localidades: sim",
     "- Cache isolado por usuario, modo e slug: sim",
     "- Edicao persistida somente no banco descartavel: sim",
+    "- Gestao de fotos/video usa o mesmo wizard; upload externo nao executado neste validador: sim",
     "- Submissao dupla bloqueada: sim",
     "- Slug preservado e retorno para revisao: sim",
     "- Nova edicao respeita o estado real da revisao; 409 exigido em EM_ANALISE: sim",

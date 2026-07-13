@@ -45,6 +45,7 @@ class AdminModeracaoAcaoServiceTest {
     private final DecisaoModeracaoRepository decisaoRepository = mock(DecisaoModeracaoRepository.class);
     private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
     private final OutboxEventoRepository outboxRepository = mock(OutboxEventoRepository.class);
+    private final MidiaStorageAprovacaoService storageAprovacaoService = mock(MidiaStorageAprovacaoService.class);
     private AdminModeracaoAcaoService service;
 
     @BeforeEach
@@ -58,7 +59,8 @@ class AdminModeracaoAcaoServiceTest {
                 decisaoRepository,
                 auditoriaRepository,
                 outboxRepository,
-                new ObjectMapper());
+                new ObjectMapper(),
+                storageAprovacaoService);
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 

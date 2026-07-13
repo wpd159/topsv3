@@ -31,7 +31,7 @@ export function VideoUploader({
   const upload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files?.length) return
-    const updated = [...newVideos, ...Array.from(files)]
+    const updated = [...newVideos, ...Array.from(files)].slice(0, 1)
     onMediaTouched?.()
     onChangeNew?.(updated)
     e.currentTarget.value = ''
@@ -91,8 +91,8 @@ export function VideoUploader({
 
       {canUpload ? (
         <div className="flex flex-col gap-1">
-          <Input type="file" accept="video/*" multiple onChange={upload} />
-          <p className="text-xs text-gray-500">Formatos: mp4, mov, webm.</p>
+          <Input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" onChange={upload} />
+          <p className="text-xs text-gray-500">Formatos: MP4 ou MOV.</p>
         </div>
       ) : (
         <p className="text-xs text-gray-500">
