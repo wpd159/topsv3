@@ -313,6 +313,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - URLs assinadas sao temporarias; URL publica so pode ser resolvida para `PUBLIC_MEDIA` e somente quando uma base publica HML estiver configurada.
 - A infraestrutura R2 foi conectada aos contratos autenticados de midia do wizard unico. Upload entra no bucket privado, aprovacao `LIVRE` promove foto ao bucket publico e conteudo restrito permanece privado com URL temporaria curta.
 - O backend e a unica fonte dos limites: 4 fotos no plano base, 10 com `FOTOS_EXTRA_5` ativo e 1 video. O frontend nao replica essa regra.
+- O cenario HML usa a fixture operacional unica para manter um `FOTOS_EXTRA_5` pago e vigente no anuncio A, preservando o anuncio B no limite base e sem movimentar creditos.
+- Permissoes administrativas continuam derivadas exclusivamente de `permissao` e `papel_permissao`; a V022 liga `ADMIN` a `MIDIA_REVISAR`, e `AuthorizationDeniedException` resulta em `403`.
 - Remocao de midia pelo anunciante e logica e reordenacao usa o ID persistido. Nao ha exclusao fisica, provider alternativo, uploader ou adapter concorrente.
 
 ## Pacote e checkpoint

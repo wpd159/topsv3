@@ -72,6 +72,18 @@ class R2ObjectStorageTest {
   }
 
   @Test
+  void midiaPromovidaPermaneceSemUrlQuandoBasePublicaNaoEstaConfigurada() {
+    R2StorageProperties properties = configuredProperties();
+    properties.setPublicBaseUrl(null);
+    R2ObjectStorage storageSemDominio = new R2ObjectStorage(properties, operations);
+
+    assertThat(storageSemDominio.publicUrl(
+        StorageArea.PUBLIC_MEDIA,
+        "hml/midias-aprovadas/foto.jpg"))
+        .isEmpty();
+  }
+
+  @Test
   void limitaValidadeDaUrlTemporaria() {
     assertThatThrownBy(() -> storage.temporaryGetUrl(
         StorageArea.PRIVATE_MEDIA,

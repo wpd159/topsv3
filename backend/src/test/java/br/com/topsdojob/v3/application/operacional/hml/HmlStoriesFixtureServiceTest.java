@@ -114,7 +114,7 @@ class HmlStoriesFixtureServiceTest {
         assertThat(result.anunciosCriados()).isEqualTo(3);
         assertThat(result.arquivosCriados()).isEqualTo(12);
         assertThat(result.vinculosCriados()).isEqualTo(13);
-        assertThat(result.beneficiosCriados()).isEqualTo(11);
+        assertThat(result.beneficiosCriados()).isEqualTo(14);
         assertThat(result.storyCriado()).isTrue();
         verify(anuncioRepository, times(3)).save(any(AnuncioEntity.class));
         verify(estadoRepository).save(any());
@@ -125,9 +125,9 @@ class HmlStoriesFixtureServiceTest {
         verify(arquivoRepository, times(12)).save(any(ArquivoMidiaEntity.class));
         verify(anuncioMidiaRepository, times(13)).save(any(AnuncioMidiaEntity.class));
         verify(storyRepository).save(any(StoryAnuncioEntity.class));
-        verify(beneficioRepository).save(any(BeneficioPremiumEntity.class));
-        verify(grupoBeneficioRepository, times(5)).save(any(GrupoAtivacaoBeneficioEntity.class));
-        verify(ativacaoBeneficioRepository, times(5)).save(any(AtivacaoBeneficioEntity.class));
+        verify(beneficioRepository, times(2)).save(any(BeneficioPremiumEntity.class));
+        verify(grupoBeneficioRepository, times(6)).save(any(GrupoAtivacaoBeneficioEntity.class));
+        verify(ativacaoBeneficioRepository, times(6)).save(any(AtivacaoBeneficioEntity.class));
 
         ArgumentCaptor<String> segredoDescartavel = ArgumentCaptor.forClass(String.class);
         verify(passwordEncoder).encode(segredoDescartavel.capture());
@@ -135,14 +135,25 @@ class HmlStoriesFixtureServiceTest {
 
         UUID anuncioAId = UUID.fromString("f1000000-0000-4000-8000-000000000101");
         UUID anuncioBId = UUID.fromString("f1000000-0000-4000-8000-000000000102");
+        UUID ocultarIdadeId = UUID.fromString("f3000000-0000-4000-8000-000000000001");
+        UUID fotosExtraId = UUID.fromString("f3000000-0000-4000-8000-000000000002");
         ArgumentCaptor<AtivacaoBeneficioEntity> ativacaoCaptor =
                 ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
-        verify(ativacaoBeneficioRepository, times(5)).save(ativacaoCaptor.capture());
+        verify(ativacaoBeneficioRepository, times(6)).save(ativacaoCaptor.capture());
         assertThat(ativacaoCaptor.getAllValues())
                 .filteredOn(item -> anuncioAId.equals(item.getAnuncioId())
+                        && ocultarIdadeId.equals(item.getBeneficioId())
                         && item.getOrigem() == OrigemBeneficio.COMPRA
                         && item.getStatus() == StatusAtivacaoBeneficio.ATIVA
                         && item.getPrecoSnapshot().compareTo(BigDecimal.ZERO) > 0)
+                .hasSize(1);
+        assertThat(ativacaoCaptor.getAllValues())
+                .filteredOn(item -> anuncioAId.equals(item.getAnuncioId())
+                        && fotosExtraId.equals(item.getBeneficioId())
+                        && item.getOrigem() == OrigemBeneficio.COMPRA
+                        && item.getStatus() == StatusAtivacaoBeneficio.ATIVA
+                        && item.getPrecoSnapshot().compareTo(BigDecimal.ZERO) > 0
+                        && item.getFimEm().isAfter(OffsetDateTime.now(ZoneOffset.UTC)))
                 .hasSize(1);
         assertThat(ativacaoCaptor.getAllValues())
                 .filteredOn(item -> anuncioBId.equals(item.getAnuncioId()))
@@ -154,6 +165,13 @@ class HmlStoriesFixtureServiceTest {
                     assertThat(item.getOrigem()).isEqualTo(OrigemBeneficio.COMPRA);
                     assertThat(item.getPrecoSnapshot()).isEqualByComparingTo(BigDecimal.ZERO);
                 });
+
+        ArgumentCaptor<BeneficioPremiumEntity> beneficioCaptor =
+                ArgumentCaptor.forClass(BeneficioPremiumEntity.class);
+        verify(beneficioRepository, times(2)).save(beneficioCaptor.capture());
+        assertThat(beneficioCaptor.getAllValues())
+                .extracting(BeneficioPremiumEntity::getCodigo)
+                .containsExactlyInAnyOrder("OCULTAR_IDADE", "FOTOS_EXTRA_5");
 
         ArgumentCaptor<AnuncioEntity> anuncioCaptor = ArgumentCaptor.forClass(AnuncioEntity.class);
         verify(anuncioRepository, times(3)).save(anuncioCaptor.capture());

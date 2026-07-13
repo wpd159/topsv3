@@ -829,6 +829,8 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - Fotos e videos novos sao gravados no R2 privado como `PENDENTE`. Foto nao recebe visibilidade escolhida pelo anunciante; video nasce `RESTRITA_18`. Nenhum pendente recebe URL publica.
 - A moderacao promove ao bucket publico apenas foto aprovada como `LIVRE`. Foto restrita e video permanecem privados; o acesso autorizado usa URL assinada curta.
 - O backend aplica ate 4 fotos no plano base, ate 10 com `FOTOS_EXTRA_5` ativo e no maximo 1 video. Expiracao do beneficio nao apaga arquivos; a projecao publica preserva as primeiras fotos dentro do limite vigente.
+- A fixture unica de homologacao reconcilia `FOTOS_EXTRA_5` pago e vigente somente no anuncio ficticio A. O anuncio B permanece no plano base; IDs e chaves fixos tornam a reexecucao idempotente sem alterar creditos.
+- A V022 cataloga `MIDIA_REVISAR` em `permissao` e vincula somente o papel `ADMIN` em `papel_permissao`. Negacoes de autorizacao sao respondidas como `403`, sem bypass de HML ou permissao hardcoded no frontend.
 - Reordenacao usa IDs persistidos e ordem unica; remocao e somente logica, sem apagar o objeto. O anunciante nao altera classificacao, status de moderacao ou storage.
 - Criacao e edicao continuam no mesmo `AnuncioWizard`. Arquivos ficam apenas em memoria para preview/upload, object URLs sao revogadas e o cache local guarda somente dados serializaveis sem binario.
 - Nenhuma migration foi necessaria: `arquivo_midia` e `anuncio_midia` ja suportavam storage, status, visibilidade, ordem e remocao logica.

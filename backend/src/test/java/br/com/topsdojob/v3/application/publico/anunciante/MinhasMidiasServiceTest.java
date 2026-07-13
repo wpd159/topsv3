@@ -137,6 +137,54 @@ class MinhasMidiasServiceTest {
     }
 
     @Test
+    void planoBaseBloqueiaQuintaFoto() {
+        adicionarFotos(4);
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+
+        verify(storage, never()).put(any(), any(), any(), any());
+    }
+
+    @Test
+    void fotosExtraPermiteDezEBloqueiaDecimaPrimeira() {
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(10, 1, true));
+        adicionarFotos(9);
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+
+        var response = service.enviar(SLUG, multipart, authentication);
+
+        assertThat(response.limites().fotosAtivas()).isEqualTo(10);
+        assertThat(response.limites().maxFotos()).isEqualTo(10);
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void expiracaoRetornaLimiteAQuatroSemExcluirArquivos() {
+        adicionarFotos(6);
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(10, 1, true));
+        assertThat(service.listar(SLUG, authentication).midias())
+                .noneMatch(item -> item.ocultaPorLimite());
+
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 1, false));
+        var aposExpiracao = service.listar(SLUG, authentication);
+
+        assertThat(aposExpiracao.limites().maxFotos()).isEqualTo(4);
+        assertThat(aposExpiracao.midias()).filteredOn(item -> item.ocultaPorLimite()).hasSize(2);
+        assertThat(vinculos).hasSize(6);
+        verify(storage, never()).delete(any(), any());
+    }
+
+    @Test
     void reordenaPorIdRealSemDuplicidade() {
         AnuncioMidiaEntity primeira = vinculo(TipoAnuncioMidia.FOTO, 0);
         AnuncioMidiaEntity segunda = vinculo(TipoAnuncioMidia.FOTO, 1);
@@ -182,6 +230,12 @@ class MinhasMidiasServiceTest {
     private AnuncioMidiaEntity vinculo(TipoAnuncioMidia tipo, int ordem) {
         return AnuncioMidiaEntity.criarUploadPendente(
                 UUID.randomUUID(), ANUNCIO_ID, UUID.randomUUID(), tipo, ordem, OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    private void adicionarFotos(int quantidade) {
+        for (int ordem = 0; ordem < quantidade; ordem++) {
+            vinculos.add(vinculo(TipoAnuncioMidia.FOTO, ordem));
+        }
     }
 
     private MidiaValidada validada(boolean video) {

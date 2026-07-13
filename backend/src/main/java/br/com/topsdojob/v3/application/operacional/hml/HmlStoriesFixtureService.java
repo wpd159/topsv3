@@ -103,6 +103,7 @@ public class HmlStoriesFixtureService {
     private static final UUID MIDIA_FOTO_B_4_ID = uuid("f1000000-0000-4000-8000-000000000313");
     private static final UUID STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000401");
     private static final UUID BENEFICIO_OCULTAR_IDADE_ID = uuid("f3000000-0000-4000-8000-000000000001");
+    private static final UUID BENEFICIO_FOTOS_EXTRA_5_ID = uuid("f3000000-0000-4000-8000-000000000002");
     private static final OffsetDateTime BENEFICIO_ATIVO_INICIO = OffsetDateTime.parse("2025-01-01T00:00:00Z");
     private static final OffsetDateTime BENEFICIO_ATIVO_FIM = OffsetDateTime.parse("2099-01-01T00:00:00Z");
     private static final OffsetDateTime BENEFICIO_EXPIRADO_INICIO = OffsetDateTime.parse("2024-01-01T00:00:00Z");
@@ -400,7 +401,11 @@ public class HmlStoriesFixtureService {
                 grupo("f3000000-0000-4000-8000-000000000105", ANUNCIO_B_ID,
                         TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.COMPRA,
                         BENEFICIO_ATIVO_INICIO, BENEFICIO_ATIVO_FIM, StatusGrupoAtivacaoBeneficio.ATIVO,
-                        "hml-fixture-ocultar-idade-gratuito"));
+                        "hml-fixture-ocultar-idade-gratuito"),
+                grupo("f3000000-0000-4000-8000-000000000106", ANUNCIO_A_ID,
+                        TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.COMPRA,
+                        BENEFICIO_ATIVO_INICIO, BENEFICIO_ATIVO_FIM, StatusGrupoAtivacaoBeneficio.ATIVO,
+                        "hml-fixture-fotos-extra-5-pago"));
         for (GrupoFixture grupo : grupos) {
             GrupoAtivacaoBeneficioEntity existente = grupoBeneficioRepository.findById(grupo.id()).orElse(null);
             if (existente == null) {
@@ -416,27 +421,29 @@ public class HmlStoriesFixtureService {
         }
 
         List<AtivacaoFixture> ativacoes = List.of(
-                ativacao("f3000000-0000-4000-8000-000000000201", grupos.get(0),
+                ativacao("f3000000-0000-4000-8000-000000000201", BENEFICIO_OCULTAR_IDADE_ID, grupos.get(0),
                         StatusAtivacaoBeneficio.ATIVA, 0, new BigDecimal("49.90")),
-                ativacao("f3000000-0000-4000-8000-000000000202", grupos.get(1),
+                ativacao("f3000000-0000-4000-8000-000000000202", BENEFICIO_OCULTAR_IDADE_ID, grupos.get(1),
                         StatusAtivacaoBeneficio.EXPIRADA, 0, new BigDecimal("49.90")),
-                ativacao("f3000000-0000-4000-8000-000000000203", grupos.get(2),
+                ativacao("f3000000-0000-4000-8000-000000000203", BENEFICIO_OCULTAR_IDADE_ID, grupos.get(2),
                         StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO),
-                ativacao("f3000000-0000-4000-8000-000000000204", grupos.get(3),
+                ativacao("f3000000-0000-4000-8000-000000000204", BENEFICIO_OCULTAR_IDADE_ID, grupos.get(3),
                         StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO),
-                ativacao("f3000000-0000-4000-8000-000000000205", grupos.get(4),
-                        StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO));
+                ativacao("f3000000-0000-4000-8000-000000000205", BENEFICIO_OCULTAR_IDADE_ID, grupos.get(4),
+                        StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO),
+                ativacao("f3000000-0000-4000-8000-000000000206", BENEFICIO_FOTOS_EXTRA_5_ID, grupos.get(5),
+                        StatusAtivacaoBeneficio.ATIVA, 0, new BigDecimal("59.90")));
         for (AtivacaoFixture ativacao : ativacoes) {
             AtivacaoBeneficioEntity existente = ativacaoBeneficioRepository.findById(ativacao.id()).orElse(null);
             if (existente == null) {
                 ativacaoBeneficioRepository.save(AtivacaoBeneficioEntity.criarFixtureHomologacao(
-                        ativacao.id(), BENEFICIO_OCULTAR_IDADE_ID, usuarioId, ativacao.grupo().anuncioId(),
+                        ativacao.id(), ativacao.beneficioId(), usuarioId, ativacao.grupo().anuncioId(),
                         ativacao.grupo().id(), ativacao.grupo().origem(), ativacao.grupo().inicioEm(),
                         ativacao.grupo().fimEm(), ativacao.status(), ativacao.custoCreditos(),
                         ativacao.preco(), ativacao.chave(), agora));
                 criados++;
             } else if (existente.sincronizarFixtureHomologacao(
-                    BENEFICIO_OCULTAR_IDADE_ID, usuarioId, ativacao.grupo().anuncioId(),
+                    ativacao.beneficioId(), usuarioId, ativacao.grupo().anuncioId(),
                     ativacao.grupo().id(), ativacao.grupo().origem(), ativacao.grupo().inicioEm(),
                     ativacao.grupo().fimEm(), ativacao.status(), ativacao.custoCreditos(),
                     ativacao.preco(), ativacao.chave())) {
@@ -447,13 +454,35 @@ public class HmlStoriesFixtureService {
     }
 
     private int sincronizarCatalogoBeneficio(OffsetDateTime agora) {
-        BeneficioPremiumEntity existente = beneficioRepository.findById(BENEFICIO_OCULTAR_IDADE_ID).orElse(null);
+        int criados = 0;
+        criados += sincronizarCatalogoBeneficio(
+                BENEFICIO_OCULTAR_IDADE_ID,
+                "OCULTAR_IDADE",
+                "Ocultar idade",
+                "Oculta a idade no anuncio enquanto o beneficio pago estiver vigente.",
+                agora);
+        criados += sincronizarCatalogoBeneficio(
+                BENEFICIO_FOTOS_EXTRA_5_ID,
+                "FOTOS_EXTRA_5",
+                "Fotos extras",
+                "Amplia o limite total do anuncio para ate dez fotos enquanto estiver vigente.",
+                agora);
+        return criados;
+    }
+
+    private int sincronizarCatalogoBeneficio(
+            UUID beneficioId,
+            String codigo,
+            String nome,
+            String descricao,
+            OffsetDateTime agora) {
+        BeneficioPremiumEntity existente = beneficioRepository.findById(beneficioId).orElse(null);
         if (existente == null) {
             beneficioRepository.save(BeneficioPremiumEntity.criarFixtureHomologacao(
-                    BENEFICIO_OCULTAR_IDADE_ID,
-                    "OCULTAR_IDADE",
-                    "Ocultar idade",
-                    "Oculta a idade no anuncio enquanto o beneficio pago estiver vigente.",
+                    beneficioId,
+                    codigo,
+                    nome,
+                    descricao,
                     EscopoBeneficioPremium.ANUNCIO,
                     false,
                     true,
@@ -461,9 +490,9 @@ public class HmlStoriesFixtureService {
             return 1;
         }
         if (existente.sincronizarFixtureHomologacao(
-                "OCULTAR_IDADE",
-                "Ocultar idade",
-                "Oculta a idade no anuncio enquanto o beneficio pago estiver vigente.",
+                codigo,
+                nome,
+                descricao,
                 EscopoBeneficioPremium.ANUNCIO,
                 false,
                 true)) {
@@ -701,12 +730,13 @@ public class HmlStoriesFixtureService {
 
     private static AtivacaoFixture ativacao(
             String id,
+            UUID beneficioId,
             GrupoFixture grupo,
             StatusAtivacaoBeneficio status,
             int custoCreditos,
             BigDecimal preco) {
         return new AtivacaoFixture(
-                uuid(id), grupo, status, custoCreditos, preco, grupo.chave() + "-ativacao");
+                uuid(id), beneficioId, grupo, status, custoCreditos, preco, grupo.chave() + "-ativacao");
     }
 
     private record ChaveOrdem(
@@ -739,6 +769,7 @@ public class HmlStoriesFixtureService {
 
     private record AtivacaoFixture(
             UUID id,
+            UUID beneficioId,
             GrupoFixture grupo,
             StatusAtivacaoBeneficio status,
             int custoCreditos,

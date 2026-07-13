@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -49,6 +50,13 @@ public class GlobalExceptionHandler {
             ResponseStatusException exception,
             HttpServletRequest request) {
         return build(fromStatus(exception.getStatusCode().value()), request);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ApiErrorResponse> handleAccessDenied(
+            RuntimeException exception,
+            HttpServletRequest request) {
+        return build(ApiErrorCode.FORBIDDEN, request);
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

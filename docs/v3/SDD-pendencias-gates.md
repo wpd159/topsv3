@@ -695,6 +695,8 @@ Antes de admin em ambiente nao local:
 - Fechado por teste sintetico: `PUT`, `HEAD`, `GET`, URL temporaria e `DELETE`, com remocao do objeto ao final e rejeicao de chave fora de `hml/`.
 - Pendente: decidir e configurar dominio publico HML apenas para o bucket de midias aprovadas.
 - Fechado localmente: endpoints autenticados do wizard, validacao binaria, limites, promocao por moderacao, reordenacao e remocao logica.
+- Gate fechado localmente: fixture unica reconcilia `FOTOS_EXTRA_5` pago/vigente de forma idempotente; limite base permanece 4, limite beneficiado 10 e expiracao apenas oculta excedentes, sem exclusao fisica.
+- Gate fechado localmente pela V022: `ADMIN` recebe `MIDIA_REVISAR` pela fonte canonica do banco; perfis sem o vinculo permanecem negados e a resposta publica da negacao e `403`, nunca `500`.
 - Pendente antes de uso operacional: antivirus ou scanner de conteudo equivalente, politica de expurgo fisico, invalidacao de CDN e smoke autenticado com arquivos sinteticos no HML.
 - Fechado operacionalmente: os dois tokens intermediarios sem uso foram revogados e os tres buckets intermediarios vazios foram removidos; os tres buckets canonicos e o token HML ativo foram preservados.
 
