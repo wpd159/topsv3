@@ -616,16 +616,20 @@ public class HmlStoriesFixtureService {
                 registrarOrdem(vinculo, ordensOcupadas);
                 criados++;
             } else if (existente.getTipo() != TipoAnuncioMidia.STORY) {
-                int ordemLivre = proximaOrdemLivre(
-                        vinculo, ordensOcupadas, ordensCanonicas, existente.getId());
+                boolean ocupavaOrdem = ocupaOrdem(existente);
+                int ordemLivre = ocupavaOrdem
+                        ? existente.getOrdem()
+                        : proximaOrdemLivre(vinculo, ordensOcupadas, ordensCanonicas, existente.getId());
                 boolean decisaoAlterada = existente.getStatus() != vinculo.getStatus()
                         || existente.getVisibilidadeMidia() != vinculo.getVisibilidadeMidia();
                 boolean ordemAlterada = !Integer.valueOf(ordemLivre).equals(existente.getOrdem());
+                if (ocupavaOrdem && (ordemAlterada || !ocupaOrdem(vinculo))) {
+                    removerOrdemDoProprioVinculo(existente, ordensOcupadas);
+                }
                 if (decisaoAlterada) {
                     existente.aplicarDecisao(vinculo.getStatus(), vinculo.getVisibilidadeMidia(), agora);
                 }
                 if (ordemAlterada) {
-                    removerOrdemDoProprioVinculo(existente, ordensOcupadas);
                     existente.reordenar(ordemLivre, agora);
                 }
                 if (decisaoAlterada || ordemAlterada) {

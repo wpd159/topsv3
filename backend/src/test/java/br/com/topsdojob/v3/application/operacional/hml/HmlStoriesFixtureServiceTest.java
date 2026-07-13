@@ -335,6 +335,47 @@ class HmlStoriesFixtureServiceTest {
     }
 
     @Test
+    void preservaVinculosExistentesQuandoGaleriaTresDoAnuncioBJaEstaOcupada() {
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        UUID anuncioBId = UUID.fromString("f1000000-0000-4000-8000-000000000102");
+        UUID midiaCanonicaQueOcupaOrdemTresId = UUID.fromString("f1000000-0000-4000-8000-000000000311");
+        UUID midiaCanonicaDesejadaNaOrdemTresId = UUID.fromString("f1000000-0000-4000-8000-000000000313");
+        AnuncioMidiaEntity ocupanteExistente = AnuncioMidiaEntity.criarFixtureHomologacao(
+                midiaCanonicaQueOcupaOrdemTresId,
+                anuncioBId,
+                UUID.randomUUID(),
+                TipoAnuncioMidia.FOTO,
+                FinalidadeAnuncioMidia.GALERIA,
+                3,
+                StatusAnuncioMidia.PUBLICAVEL,
+                br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.LIVRE,
+                agora);
+        AnuncioMidiaEntity vinculoCanonicoExistente = AnuncioMidiaEntity.criarFixtureHomologacao(
+                midiaCanonicaDesejadaNaOrdemTresId,
+                anuncioBId,
+                UUID.randomUUID(),
+                TipoAnuncioMidia.FOTO,
+                FinalidadeAnuncioMidia.GALERIA,
+                4,
+                StatusAnuncioMidia.PUBLICAVEL,
+                br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.LIVRE,
+                agora);
+        when(anuncioMidiaRepository.findByAnuncioIdIn(any()))
+                .thenReturn(List.of(ocupanteExistente, vinculoCanonicoExistente));
+        when(anuncioMidiaRepository.findById(midiaCanonicaQueOcupaOrdemTresId))
+                .thenReturn(Optional.of(ocupanteExistente));
+        when(anuncioMidiaRepository.findById(midiaCanonicaDesejadaNaOrdemTresId))
+                .thenReturn(Optional.of(vinculoCanonicoExistente));
+
+        service("homologacao").provisionar();
+
+        assertThat(ocupanteExistente.getOrdem()).isEqualTo(3);
+        assertThat(vinculoCanonicoExistente.getOrdem()).isEqualTo(4);
+        verify(anuncioMidiaRepository, never()).save(ocupanteExistente);
+        verify(anuncioMidiaRepository, never()).save(vinculoCanonicoExistente);
+    }
+
+    @Test
     void credencialProprietariaPreservaHashQuandoValorRuntimeJaConfere() {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
