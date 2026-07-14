@@ -120,7 +120,12 @@ public class CreditoConsistenciaService {
         if (!saldoCoerente(movimento)) {
             adicionar(itens, movimento, null, CreditoConsistenciaCodigo.SALDO_INCONSISTENTE, agora);
         }
-        if (movimento.getTipo() == TipoMovimentoCredito.AJUSTE) {
+        if (movimento.getTipo() == TipoMovimentoCredito.AJUSTE
+                && (movimento.getAtorUsuarioId() == null
+                        || movimento.getObservacao() == null
+                        || movimento.getObservacao().isBlank()
+                        || movimento.getRequestId() == null
+                        || movimento.getRequestId().isBlank())) {
             adicionar(itens, movimento, null, CreditoConsistenciaCodigo.REGRA_AJUSTE_CREDITO_PENDENTE, agora);
         }
         if (movimento.getOrigem() == OrigemMovimentoCredito.PAGAMENTO) {
@@ -276,7 +281,7 @@ public class CreditoConsistenciaService {
             case PAGAMENTO_APROVADO_SEM_CREDITO ->
                     "Pagamento aprovado localmente sem credito vinculado ao ledger.";
             case REGRA_AJUSTE_CREDITO_PENDENTE ->
-                    "Ajuste manual de credito exige regra Pro antes de homologacao/producao.";
+                    "Ajuste administrativo sem ator, motivo ou requestId auditavel.";
             case QUANTIDADE_INVALIDA ->
                     "Quantidade do movimento de credito e nula ou menor que um.";
             case SALDO_NEGATIVO ->

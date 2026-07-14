@@ -40,8 +40,14 @@ public class BeneficioPremiumEntity {
   @Column(name = "ativo")
   private Boolean ativo;
 
+  @Column(name = "ordem_exibicao")
+  private Integer ordemExibicao;
+
   @Column(name = "criado_em")
   private OffsetDateTime criadoEm;
+
+  @Column(name = "atualizado_em")
+  private OffsetDateTime atualizadoEm;
 
   public UUID getId() {
     return id;
@@ -71,8 +77,29 @@ public class BeneficioPremiumEntity {
     return ativo;
   }
 
+  public Integer getOrdemExibicao() {
+    return ordemExibicao;
+  }
+
   public OffsetDateTime getCriadoEm() {
     return criadoEm;
+  }
+
+  public OffsetDateTime getAtualizadoEm() {
+    return atualizadoEm;
+  }
+
+  public void atualizarCatalogo(
+      String nome,
+      String descricao,
+      boolean ativo,
+      int ordemExibicao,
+      OffsetDateTime atualizadoEm) {
+    this.nome = nome;
+    this.descricao = descricao;
+    this.ativo = ativo;
+    this.ordemExibicao = ordemExibicao;
+    this.atualizadoEm = atualizadoEm;
   }
 
   public static BeneficioPremiumEntity criarFixtureHomologacao(
@@ -92,7 +119,9 @@ public class BeneficioPremiumEntity {
     entity.escopo = escopo;
     entity.afetaRanking = afetaRanking;
     entity.ativo = ativo;
+    entity.ordemExibicao = 0;
     entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
     return entity;
   }
 
@@ -115,6 +144,10 @@ public class BeneficioPremiumEntity {
     this.escopo = escopo;
     this.afetaRanking = afetaRanking;
     this.ativo = ativo;
+    if (this.ordemExibicao == null) {
+      this.ordemExibicao = 0;
+    }
+    this.atualizadoEm = OffsetDateTime.now(java.time.ZoneOffset.UTC);
     return alterado;
   }
 

@@ -1899,14 +1899,15 @@ INSERT INTO beneficio_premium (
   escopo,
   afeta_ranking,
   ativo,
-  criado_em
+  ordem_exibicao,
+  criado_em,
+  atualizado_em
 ) VALUES
-  ('00000000-0000-4000-8000-000000000611', 'DESTAQUE', 'Destaque de demonstração', 'Benefício de demonstração para exposição adicional.', 'ANUNCIO', true, true, now()),
-  ('00000000-0000-4000-8000-000000000612', 'ANUNCIO_TOPO', 'Anúncio no topo de demonstração', 'Benefício de demonstração para topo preservado.', 'ANUNCIO', true, true, now()),
-  ('00000000-0000-4000-8000-000000000613', 'FOTOS_EXTRA', 'Fotos extras de demonstração', 'Benefício de demonstração para mídia adicional.', 'MIDIA', false, true, now()),
-  ('00000000-0000-4000-8000-000000000614', 'STORIES', 'Stories de demonstração', 'Benefício de demonstração para stories.', 'MIDIA', false, true, now()),
-  ('00000000-0000-4000-8000-000000000615', 'VIDEO', 'Vídeo de demonstração', 'Benefício de demonstração para vídeo.', 'MIDIA', false, true, now()),
-  ('00000000-0000-4000-8000-000000000616', 'RELATORIO', 'Relatório de demonstração', 'Benefício de demonstração para relatório operacional.', 'RELATORIO', false, true, now())
+  ('00000000-0000-4000-8000-000000000611', 'DESTAQUE', 'Destaque de demonstração', 'Benefício de demonstração para exposição adicional.', 'ANUNCIO', true, true, 0, now(), now()),
+  ('00000000-0000-4000-8000-000000000613', 'FOTOS_EXTRA', 'Fotos extras de demonstração', 'Benefício de demonstração para mídia adicional.', 'MIDIA', false, true, 0, now(), now()),
+  ('00000000-0000-4000-8000-000000000614', 'STORIES', 'Stories de demonstração', 'Benefício de demonstração para stories.', 'MIDIA', false, true, 0, now(), now()),
+  ('00000000-0000-4000-8000-000000000615', 'VIDEO', 'Vídeo de demonstração', 'Benefício de demonstração para vídeo.', 'MIDIA', false, true, 0, now(), now()),
+  ('00000000-0000-4000-8000-000000000616', 'RELATORIO', 'Relatório de demonstração', 'Benefício de demonstração para relatório operacional.', 'RELATORIO', false, true, 0, now(), now())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO grupo_ativacao_beneficio (
@@ -2073,7 +2074,7 @@ INSERT INTO ativacao_beneficio (
   ),
   (
     '00000000-0000-4000-8000-000000000664',
-    '00000000-0000-4000-8000-000000000612',
+    'f3000000-0000-4000-8000-000000000003',
     NULL,
     '00000000-0000-4000-8000-000000000101',
     '00000000-0000-4000-8000-000000000503',

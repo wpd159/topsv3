@@ -61,6 +61,9 @@ public class MovimentoCreditoEntity {
   @Column(name = "observacao")
   private String observacao;
 
+  @Column(name = "request_id")
+  private String requestId;
+
   @Column(name = "criado_em")
   private OffsetDateTime criadoEm;
 
@@ -116,8 +119,47 @@ public class MovimentoCreditoEntity {
     return observacao;
   }
 
+  public String getRequestId() {
+    return requestId;
+  }
+
   public OffsetDateTime getCriadoEm() {
     return criadoEm;
+  }
+
+  public static MovimentoCreditoEntity registrar(
+      UUID id,
+      UUID usuarioId,
+      TipoMovimentoCredito tipo,
+      DirecaoMovimentoCredito direcao,
+      int quantidade,
+      int saldoAntes,
+      int saldoDepois,
+      OrigemMovimentoCredito origem,
+      String referenciaTipo,
+      UUID referenciaId,
+      String idempotencyKey,
+      UUID atorUsuarioId,
+      String observacao,
+      String requestId,
+      OffsetDateTime criadoEm) {
+    MovimentoCreditoEntity entity = new MovimentoCreditoEntity();
+    entity.id = id;
+    entity.usuarioId = usuarioId;
+    entity.tipo = tipo;
+    entity.direcao = direcao;
+    entity.quantidade = quantidade;
+    entity.saldoAntes = saldoAntes;
+    entity.saldoDepois = saldoDepois;
+    entity.origem = origem;
+    entity.referenciaTipo = referenciaTipo;
+    entity.referenciaId = referenciaId;
+    entity.idempotencyKey = idempotencyKey;
+    entity.atorUsuarioId = atorUsuarioId;
+    entity.observacao = observacao;
+    entity.requestId = requestId;
+    entity.criadoEm = criadoEm;
+    return entity;
   }
 
 }

@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class AdminCreditosControllerContractTest {
 
     @Test
-    void creditosAdminPossuiSomenteGetsReadOnly() throws Exception {
+    void creditosAdminExigeRbacEIdempotenciaNasOperacoes() throws Exception {
         String controller = Files.readString(Path.of(
                 "src",
                 "main",
@@ -27,14 +27,16 @@ class AdminCreditosControllerContractTest {
                 .contains("@GetMapping")
                 .contains("hasRole('ADMIN')")
                 .contains("FINANCEIRO_LER")
-                .doesNotContain("@PostMapping")
-                .doesNotContain("@PutMapping")
+                .contains("@PostMapping(\"/usuarios/{id}/ajustes\")")
+                .contains("@PostMapping(\"/movimentos/{id}/estornos\")")
+                .contains("@PutMapping(\"/pacotes/{id}\")")
+                .contains("FINANCEIRO_GERENCIAR")
+                .contains("@RequestHeader(\"Idempotency-Key\")")
+                .contains("RequestIdContext.current(request)")
                 .doesNotContain("@PatchMapping")
                 .doesNotContain("@DeleteMapping")
                 .doesNotContain("comprar")
                 .doesNotContain("pagar")
-                .doesNotContain("estornar")
-                .doesNotContain("ajustar")
                 .doesNotContain("conciliar");
     }
 }

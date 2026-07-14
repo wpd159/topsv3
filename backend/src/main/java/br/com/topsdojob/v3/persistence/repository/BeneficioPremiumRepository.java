@@ -8,4 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface BeneficioPremiumRepository extends JpaRepository<BeneficioPremiumEntity, UUID> {
     List<BeneficioPremiumEntity> findByIdIn(Collection<UUID> ids);
+
+    java.util.Optional<BeneficioPremiumEntity> findByCodigo(String codigo);
+
+    List<BeneficioPremiumEntity> findAllByOrderByOrdemExibicaoAscCodigoAsc();
 }

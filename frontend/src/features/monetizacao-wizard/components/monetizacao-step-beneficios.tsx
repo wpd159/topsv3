@@ -9,7 +9,7 @@ import {
   Layers3,
   MessageCircleMore,
   ShieldOff,
-  Stars,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type {
@@ -22,22 +22,20 @@ import type {
 
 const ICONS: Partial<Record<MonetizacaoOpcaoCodigo, ComponentType<{ className?: string }>>> = {
   ANUNCIO_TOPO: Crown,
-  FOTOS_EXTRA: ImageIcon,
-  VIDEO: Film,
-  WHATSAPP_DESTACADO: MessageCircleMore,
-  CARROSSEL: Layers3,
+  FOTOS_EXTRA_5: ImageIcon,
+  VIDEO_1: Film,
+  WHATSAPP_CARD: MessageCircleMore,
+  CARROSSEL_FOTOS: Layers3,
   OCULTAR_IDADE: ShieldOff,
-  PACOTE_RECOMENDADO: Stars,
 }
 
 const IMPACT_LABELS: Partial<Record<MonetizacaoOpcaoCodigo, string>> = {
   ANUNCIO_TOPO: 'Apareça acima dos demais anúncios e receba mais visualizações.',
-  FOTOS_EXTRA: 'Mostre mais fotos e deixe seu perfil mais completo.',
-  VIDEO: 'Inclua vídeo para gerar mais confiança no primeiro contato.',
-  WHATSAPP_DESTACADO: 'Deixe o botão de contato mais visível no card.',
-  CARROSSEL: 'Valorize as fotos com navegação em carrossel.',
+  FOTOS_EXTRA_5: 'Mostre mais fotos e deixe seu perfil mais completo.',
+  VIDEO_1: 'Inclua vídeo para gerar mais confiança no primeiro contato.',
+  WHATSAPP_CARD: 'Deixe o botão de contato mais visível no card.',
+  CARROSSEL_FOTOS: 'Valorize as fotos com navegação em carrossel.',
   OCULTAR_IDADE: 'Controle a exibição pública da sua idade.',
-  PACOTE_RECOMENDADO: 'Combine os principais recursos de visibilidade.',
 }
 
 function durationLabel(dias: number) {
@@ -88,14 +86,7 @@ function activeUntilForOption(
 ) {
   if (opcao.codigo === 'ANUNCIO_TOPO') return formatDate(dataFimImpulsionamento)
 
-  const map: Partial<Record<MonetizacaoOpcaoCodigo, string>> = {
-    FOTOS_EXTRA: 'FOTOS_EXTRA_5',
-    VIDEO: 'VIDEO_1',
-    WHATSAPP_DESTACADO: 'WHATSAPP_CARD',
-    CARROSSEL: 'CARROSSEL_FOTOS',
-    OCULTAR_IDADE: 'OCULTAR_IDADE',
-  }
-  const active = featuresAtivas.find((feature) => feature.codigo === map[opcao.codigo])
+  const active = featuresAtivas.find((feature) => feature.codigo === opcao.codigo)
   return formatDate(active?.expiraEm)
 }
 
@@ -106,7 +97,6 @@ export function MonetizacaoStepBeneficios({
   dataFimImpulsionamento,
   selectionMode,
   openCodigo,
-  onModeChange,
   onOpenChange,
   onToggle,
   onSelectDuration,
@@ -117,54 +107,14 @@ export function MonetizacaoStepBeneficios({
   dataFimImpulsionamento?: string | null
   selectionMode: MonetizacaoSelectionMode
   openCodigo: MonetizacaoOpcaoCodigo | null
-  onModeChange: (mode: MonetizacaoSelectionMode) => void
   onOpenChange: (codigo: MonetizacaoOpcaoCodigo | null) => void
   onToggle: (codigo: MonetizacaoOpcaoCodigo) => void
   onSelectDuration: (codigo: MonetizacaoOpcaoCodigo, dias: number) => void
 }) {
-  const packageOptions = opcoes.filter((opcao) => opcao.codigo === 'PACOTE_RECOMENDADO')
-  const individualOptions = opcoes.filter(
-    (opcao) => opcao.codigo !== 'PACOTE_RECOMENDADO' && opcao.codigo !== 'STORIES'
-  )
-  const visibleOptions = selectionMode === 'pacotes' ? packageOptions : individualOptions
+  const visibleOptions = selectionMode === 'individuais' ? opcoes : []
 
   return (
     <div className="space-y-5">
-      <section className="rounded-[28px] border border-zinc-200 bg-white p-4 shadow-sm sm:p-5">
-        <p className="text-sm font-semibold text-zinc-950">Como deseja monetizar?</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {[
-            { id: 'pacotes' as const, title: 'Pacotes recomendados', text: 'Combinações prontas para ganhar visibilidade.' },
-            { id: 'individuais' as const, title: 'Benefícios individuais', text: 'Escolha apenas os recursos que deseja ativar.' },
-          ].map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              onClick={() => onModeChange(mode.id)}
-              className={cn(
-                'rounded-[22px] border px-4 py-4 text-left transition',
-                selectionMode === mode.id
-                  ? 'border-[#FC1EAD] bg-[#fff0f8] shadow-[0_12px_28px_rgba(252,30,173,0.08)]'
-                  : 'border-zinc-200 bg-white hover:border-zinc-300'
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    'flex h-5 w-5 items-center justify-center rounded-full border',
-                    selectionMode === mode.id ? 'border-[#FC1EAD]' : 'border-zinc-300'
-                  )}
-                >
-                  {selectionMode === mode.id ? <span className="h-2.5 w-2.5 rounded-full bg-[#FC1EAD]" /> : null}
-                </span>
-                <span className="text-sm font-semibold text-zinc-950">{mode.title}</span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-zinc-600">{mode.text}</p>
-            </button>
-          ))}
-        </div>
-      </section>
-
       <section className="space-y-3">
         {visibleOptions.length === 0 ? (
           <div className="rounded-[28px] border border-dashed border-zinc-300 bg-white px-5 py-8 text-center text-sm text-zinc-500">
@@ -173,7 +123,7 @@ export function MonetizacaoStepBeneficios({
         ) : null}
 
         {visibleOptions.map((opcao) => {
-          const Icon = ICONS[opcao.codigo] || Stars
+          const Icon = ICONS[opcao.codigo] || Sparkles
           const selectedDias = selectedDurations[opcao.codigo]
           const selected = selectedDias != null
           const selectedDuration =

@@ -6,13 +6,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BanknotesIcon } from '@heroicons/react/24/solid'
 import { toast } from 'sonner'
+import { AdminCreditosApi } from '@/lib/admin-creditos-operacionais-api'
 
 type ModoAjuste = 'ADICIONAR' | 'REMOVER'
 
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  usuarioId: number | null
+  usuarioId: string | number | null
   nomeUsuario?: string | null
   saldoAtual?: number | null
   onSuccess?: (novoSaldo: number) => void
@@ -27,6 +28,7 @@ export default function AdicionarCreditosDialog({
   onSuccess,
 }: Props) {
   const [quantidade, setQuantidade] = useState('')
+  const [motivo, setMotivo] = useState('')
   const [modo, setModo] = useState<ModoAjuste>('ADICIONAR')
   const [saldoExibido, setSaldoExibido] = useState(Number(saldoAtual || 0))
   const [enviando, setEnviando] = useState(false)
@@ -36,6 +38,7 @@ export default function AdicionarCreditosDialog({
       setSaldoExibido(Number(saldoAtual || 0))
     } else {
       setQuantidade('')
+      setMotivo('')
       setModo('ADICIONAR')
       setEnviando(false)
     }
@@ -52,28 +55,22 @@ export default function AdicionarCreditosDialog({
       return
     }
 
-    const qtd = modo === 'REMOVER' ? -qtdBase : qtdBase
     const acaoLabel = modo === 'REMOVER' ? 'removidos' : 'adicionados'
+    if (motivo.trim().length < 5) {
+      toast.warning('Informe um motivo com ao menos cinco caracteres.')
+      return
+    }
+    if (modo === 'REMOVER' && !window.confirm(`Remover ${qtdBase} creditos deste usuario?`)) return
 
     try {
       setEnviando(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/adicionar-creditos`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          usuarioId,
-          quantidade: qtd,
-        }),
-      })
-
-      if (!res.ok) {
-        const message = await res.text().catch(() => '')
-        throw new Error(message || 'Erro ao ajustar créditos.')
-      }
-
-      const data = (await res.json().catch(() => null)) as { saldo?: number } | null
-      const novoSaldo = Number(data?.saldo ?? saldoExibido + qtd)
+      const data = await AdminCreditosApi.ajustar(
+        String(usuarioId),
+        modo === 'REMOVER' ? 'DEBITO' : 'CREDITO',
+        qtdBase,
+        motivo.trim()
+      )
+      const novoSaldo = data.saldoPosterior
       setSaldoExibido(novoSaldo)
       toast.success(`${qtdBase} créditos ${acaoLabel} para ${nomeUsuario || 'o usuário'}.`)
       onSuccess?.(novoSaldo)
@@ -140,6 +137,14 @@ export default function AdicionarCreditosDialog({
           placeholder={modo === 'REMOVER' ? 'Quantidade a remover' : 'Quantidade a adicionar'}
           value={quantidade}
           onChange={(event) => setQuantidade(event.target.value.replace(/[^\d]/g, ''))}
+          className="border-gray-300 focus-visible:border-[#C41E73] focus-visible:ring-[#C41E73]"
+        />
+
+        <Input
+          type="text"
+          placeholder="Motivo obrigatorio"
+          value={motivo}
+          onChange={(event) => setMotivo(event.target.value)}
           className="border-gray-300 focus-visible:border-[#C41E73] focus-visible:ring-[#C41E73]"
         />
 

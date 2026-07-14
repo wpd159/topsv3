@@ -9,20 +9,24 @@
 
 ## Checks
 
+- OK: desktop: sessao sintetica aplicada ao navegador (ok)
+- OK: desktop: age gate sintetico preparado (ok)
 - OK: desktop: admin premium renderizado (ok)
-- OK: desktop: ativacao indisponivel visivel (ok)
-- OK: desktop: limite gratuito inexistente visivel (ok)
+- OK: desktop: ledger operacional renderizado (ok)
+- OK: desktop: catalogo operacional renderizado (ok)
+- OK: desktop: duracoes e ordem administraveis (ok)
 - OK: desktop: publico premium com destaque (ok)
-- OK: desktop: publico premium com midia extra (ok)
 - OK: desktop: publico gratuito visivel (ok)
 - OK: desktop: admin premium sem texto tecnico/sensivel (ok)
 - OK: desktop: publico premium sem texto tecnico/sensivel (ok)
 - OK: desktop: publico gratuito sem texto tecnico/sensivel (ok)
+- OK: mobile: sessao sintetica aplicada ao navegador (ok)
+- OK: mobile: age gate sintetico preparado (ok)
 - OK: mobile: admin premium renderizado (ok)
-- OK: mobile: ativacao indisponivel visivel (ok)
-- OK: mobile: limite gratuito inexistente visivel (ok)
+- OK: mobile: ledger operacional renderizado (ok)
+- OK: mobile: catalogo operacional renderizado (ok)
+- OK: mobile: duracoes e ordem administraveis (ok)
 - OK: mobile: publico premium com destaque (ok)
-- OK: mobile: publico premium com midia extra (ok)
 - OK: mobile: publico gratuito visivel (ok)
 - OK: mobile: admin premium sem texto tecnico/sensivel (ok)
 - OK: mobile: publico premium sem texto tecnico/sensivel (ok)
@@ -42,197 +46,258 @@
 ### desktop admin premium
 
 ```text
-PAINEL ADMIN
-Premium
+OPERAÇÃO
 
-Área administrativa para acompanhar sessões, papéis, permissões e ações autorizadas.
+Stories administrativos
 
-Perfis previstos: Admin, Moderador e Comercial. A moderação mínima está disponível.
-Sessão
-Estado
-autenticado
-Papéis
-Admin
-Permissões
-10
-Credenciais reais
-ausentes
+VISÃO GERAL
 
-sessão administrativa ativa
+Dashboard
+Progresso do wizard
 
-usuário autenticado
+OPERAÇÃO
 
-Logout
-configurar administração
-Configurar administração futura.
-ler anúncios
-Ler informações administrativas futuras de anúncios.
-moderar anúncios
-Autorizar moderação mínima de anúncios.
-ler auditoria
-Ler auditoria administrativa futura.
-gerenciar comercial
-Preparar autorização comercial futura.
-revisar documentos
-Preparar revisão futura de documentos.
-ler financeiro
-Ler financeiro administrativo futuro sem ação crítica.
-revisar mídia
-Autorizar revisão mínima de mídia.
-gerenciar segurança
-Gerenciar segurança administrativa futura.
-atender suporte
-Preparar suporte futuro
+Anúncios
+Usuários
+Tickets
+Denúncias
+
+MONETIZAÇÃO
+
+Relatórios de receita
+Planos e créditos
+Benefícios premium
+Indicações
+
+MODERAÇÃO E SEGURANÇA
+
+Compliance
+Auditoria administrativa
+Aceites jurídicos
+Logs visitantes
+Documentos visitantes
+
+CONTEÚDO E COMUNICAÇÃO
+
+Avisos
+Textos do site
+Categorias da home
+Blog
+FAQs
+Sugestões
+
+CONFIGURAÇÕES
+
+Configurações de compliance
+Gerenciar staff
+AD
+admin.local
+admin.local@example.invalid
+Creditos e Premium
+
+Ledger, ajustes administrativos, catalogo e ativacoes em um unico fluxo.
+
+Usuario
+Buscar
+Saldo e ajustes
+
+Selecione um usuario.
+
+Historico imutavel
+NATUREZA	QUANTIDADE	SALDO	MOTIVO	ACAO
+Ativacoes Premium
+Catalogo de beneficios
+
+Custos e duracoes 1, 7, 14, 30 dias sao definidos pelo backend.
+
+Ordem
+Ativo
+Salvar beneficio
+Ordem
+Ativo
+Salvar beneficio
+Ordem
+Ativo
+Sal
 ```
 
 ### desktop publico gratuito
 
 ```text
-Início
+Brasil
+Acompanhantes
+Anúncios
+Entrar
+Registrar-se
+PUBLICAR SEU ANÚNCIO
 Anúncio de demonstração gratuito
-Anúncio de demonstração gratuito
+@Usuário de demonstração
+· 36 anos
 
-Informações públicas do anúncio no Tops do Job.
+Anuncia desde jul/2026
 
-Informações do anúncio
+Sintetico
 
-Este perfil mantém a página do anúncio organizada, liga a cidade e bairro quando disponíveis e deixa contato, mídia e conteúdo sensível sob controle de exibição.
+ZZ - Cidade de demonstração - Bairro de demonstração | Endereço de demonstração
 
-Mídia pública
-Mídia indisponível
-Fotos e vídeos só aparecem quando estão aprovados para exibição.
-Perfil público
-Anúncio de demonstração gratuito
+Valor não informado
+
+Conversar no WhatsApp
+Conversar na plataforma
+Denunciar anúncio
+Sobre o anunciante
 
 Perfil de demonstração para validar plano gratuito sem limite comercial de contato.
 
-Status
-Conteúdo disponível
-Valor
-Consultar
+Descrição do anúncio
+
+Perfil de demonstração para validar plano gratuito sem limite comercial de contato.
+
+Serviços
+
+Nenhum serviço informado.
+
+Local de atendimento
+
+Nenhum local informado.
+
 Localização
-Localidade a confirmar
-Contato
-não exposto
+ZZ - Cidade de demonstração - Bairro de demonstração | Endereço de demonstração
+Abrir no Maps
+Mais perfis em Cidade de demonstração
 
-Contato mediado pelo Tops do Job.
-
-Status
-Conteúdo disponível
-Acesso
-permitido
-
-Conteúdo indisponível no momento
-
-Visualização
-registrada
-Stories
-protegidos
-Ver WhatsApp
-Stories
-
-Stories protegidos ficam disponíveis após confirmação de idade.
-
-Idade
-pendente
-
+Continue navegando por anúncios da mesma cidade e descubra outros perfis com localização semelhante e mais opções de c
 ```
 
 ### mobile admin premium
 
 ```text
-PAINEL ADMIN
-Premium
+Creditos e Premium
 
-Área administrativa para acompanhar sessões, papéis, permissões e ações autorizadas.
+Ledger, ajustes administrativos, catalogo e ativacoes em um unico fluxo.
 
-Perfis previstos: Admin, Moderador e Comercial. A moderação mínima está disponível.
-Sessão
-Estado
-autenticado
-Papéis
-Admin
-Permissões
-10
-Credenciais reais
-ausentes
+Usuario
+Buscar
+Saldo e ajustes
 
-sessão administrativa ativa
+Selecione um usuario.
 
-usuário autenticado
+Historico imutavel
+NATUREZA	QUANTIDADE	SALDO	MOTIVO	ACAO
+Ativacoes Premium
+Catalogo de beneficios
 
-Logout
-configurar administração
-Configurar administração futura.
-ler anúncios
-Ler informações administrativas futuras de anúncios.
-moderar anúncios
-Autorizar moderação mínima de anúncios.
-ler auditoria
-Ler auditoria administrativa futura.
-gerenciar comercial
-Preparar autorização comercial futura.
-revisar documentos
-Preparar revisão futura de documentos.
-ler financeiro
-Ler financeiro administrativo futuro sem ação crítica.
-revisar mídia
-Autorizar revisão mínima de mídia.
-gerenciar segurança
-Gerenciar segurança administrativa futura.
-atender suporte
-Preparar suporte futuro
+Custos e duracoes 1, 7, 14, 30 dias sao definidos pelo backend.
+
+Ordem
+Ativo
+Salvar beneficio
+Ordem
+Ativo
+Salvar beneficio
+Ordem
+Ativo
+Salvar beneficio
+Ordem
+Ativo
+Salvar beneficio
+Ordem
+Ativo
+Salvar beneficio
+Ordem
+Ativo
+1 dias
+Disponivel
+7 dias
+Disponivel
+14 dias
+Disponivel
+30 dias
+Disponivel
+Salvar beneficio
+Ordem
+Ativo
+1 dias
+Disponivel
+7 dias
+Disponivel
+14 dias
+Disponivel
+30 dias
+Disponivel
+Salvar beneficio
+Ordem
+Ativo
+1 dias
+Disponivel
+7 dias
+Disponivel
+14 dias
+Disponivel
+30 dias
+Disponivel
+Salvar beneficio
+Ordem
+Ativo
+1 dias
+Disponivel
+7 dias
+Disponivel
+14 dias
+Disponivel
+30 dias
+Disponivel
+Salvar beneficio
+Ordem
+Ativo
+1 dias
+Disponivel
+
 ```
 
 ### mobile publico gratuito
 
 ```text
-Início
 Anúncio de demonstração gratuito
-Anúncio de demonstração gratuito
+@Usuário de demonstração
+· 36 anos
 
-Informações públicas do anúncio no Tops do Job.
+Anuncia desde jul/2026
 
-Informações do anúncio
+Sintetico
 
-Este perfil mantém a página do anúncio organizada, liga a cidade e bairro quando disponíveis e deixa contato, mídia e conteúdo sensível sob controle de exibição.
+ZZ - Cidade de demonstração - Bairro de demonstração | Endereço de demonstração
 
-Mídia pública
-Mídia indisponível
-Fotos e vídeos só aparecem quando estão aprovados para exibição.
-Perfil público
-Anúncio de demonstração gratuito
+Valor não informado
+
+Conversar no WhatsApp
+Conversar na plataforma
+Denunciar anúncio
+Sobre o anunciante
 
 Perfil de demonstração para validar plano gratuito sem limite comercial de contato.
 
-Status
-Conteúdo disponível
-Valor
-Consultar
+Descrição do anúncio
+
+Perfil de demonstração para validar plano gratuito sem limite comercial de contato.
+
+Serviços
+
+Nenhum serviço informado.
+
+Local de atendimento
+
+Nenhum local informado.
+
 Localização
-Localidade a confirmar
-Contato
-não exposto
+ZZ - Cidade de demonstração - Bairro de demonstração | Endereço de demonstração
+Abrir no Maps
+Mais perfis em Cidade de demonstração
 
-Contato mediado pelo Tops do Job.
+Continue navegando por anúncios da mesma cidade e descubra outros perfis com localização semelhante e mais opções de contato direto.
 
-Status
-Conteúdo disponível
-Acesso
-permitido
+Mídia indisponível
+EM DESTAQUE
 
-Conteúdo indisponível no momento
-
-Visualização
-registrada
-Stories
-protegidos
-Ver WhatsApp
-Stories
-
-Stories protegidos ficam disponíveis após confirmação de idade.
-
-Idade
-pendente
-
+Anúncio de demonstração
 ```

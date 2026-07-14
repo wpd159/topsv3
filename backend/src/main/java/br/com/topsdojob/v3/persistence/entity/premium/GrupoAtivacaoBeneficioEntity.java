@@ -121,6 +121,32 @@ public class GrupoAtivacaoBeneficioEntity {
     return atualizadoEm;
   }
 
+  public static GrupoAtivacaoBeneficioEntity criarCompraComCreditos(
+      UUID id,
+      UUID usuarioId,
+      UUID anuncioId,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      String idempotencyKey,
+      OffsetDateTime agora) {
+    GrupoAtivacaoBeneficioEntity entity = new GrupoAtivacaoBeneficioEntity();
+    entity.id = id;
+    entity.tipo = TipoGrupoAtivacaoBeneficio.PACOTE;
+    entity.origem = OrigemBeneficio.CREDITO;
+    entity.usuarioId = usuarioId;
+    entity.anuncioId = anuncioId;
+    entity.atorUsuarioId = usuarioId;
+    entity.campanhaCodigo = null;
+    entity.validadeInicioEm = inicioEm;
+    entity.validadeFimEm = fimEm;
+    entity.status = StatusGrupoAtivacaoBeneficio.ATIVO;
+    entity.idempotencyKey = idempotencyKey;
+    entity.observacao = "Ativacao por creditos";
+    entity.criadoEm = agora;
+    entity.atualizadoEm = agora;
+    return entity;
+  }
+
   public static GrupoAtivacaoBeneficioEntity criarFixtureHomologacao(
       UUID id,
       TipoGrupoAtivacaoBeneficio tipo,

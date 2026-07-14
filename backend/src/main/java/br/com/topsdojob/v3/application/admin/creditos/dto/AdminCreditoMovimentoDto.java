@@ -14,6 +14,10 @@ public record AdminCreditoMovimentoDto(
         String origem,
         String referenciaTipo,
         UUID referenciaId,
+        String natureza,
+        String motivo,
+        UUID administradorId,
+        String requestId,
         boolean chaveOperacionalPresente,
         OffsetDateTime criadoEm,
         boolean somenteLeitura) {

@@ -92,7 +92,7 @@ public class MeusAnunciosConsultaService {
         return mapear(List.of(anuncioDoUsuario(slug, authentication))).get(0);
     }
 
-    AnuncioEntity anuncioDoUsuario(String slug, Authentication authentication) {
+    public AnuncioEntity anuncioDoUsuario(String slug, Authentication authentication) {
         UUID usuarioId = usuarioAutenticado(authentication).getId();
         AnuncioEntity anuncio = anuncioRepository.findBySlugAndRemovidoEmIsNull(slugSeguro(slug))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));

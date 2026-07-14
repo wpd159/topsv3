@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { BanknoteArrowUp, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -64,7 +63,7 @@ export function MonetizacaoStepSaldo({
             <p className="mt-1 text-sm leading-6 text-zinc-700">
               {saldoSuficiente
                 ? 'Seu saldo cobre a compra. Confirme para ativar os benefícios selecionados.'
-                : 'Seu saldo ainda não cobre esta compra. Compre créditos e depois volte para concluir.'}
+                : 'Seu saldo ainda não cobre esta compra. Solicite um ajuste ou aguarde a futura integração de pagamentos.'}
             </p>
           </div>
         </div>
@@ -79,11 +78,7 @@ export function MonetizacaoStepSaldo({
             >
               {loading ? 'Ativando...' : 'Confirmar ativação'}
             </Button>
-          ) : (
-            <Button asChild className="h-12 w-full rounded-2xl bg-[#FC1EAD] text-white hover:bg-[#e01a9a]">
-              <Link href="/planos-e-creditos">Comprar créditos</Link>
-            </Button>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

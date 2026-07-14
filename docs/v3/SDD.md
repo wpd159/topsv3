@@ -845,3 +845,14 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - A moderacao documental usa uma unica fila em `/api/admin/documentos`, exige `DOCUMENTO_REVISAR`, motivo de 3 a 240 caracteres para rejeicao/ajuste e registra ator, horario, requestId e evento sanitizado.
 - Estados canonicos de apresentacao: `NAO_INICIADO`, `PENDENTE`, `EM_ANALISE`, `APROVADO`, `REJEITADO` e `AJUSTE_SOLICITADO`. Dados aprovados nao sao solicitados novamente; rejeicao ou ajuste libera novo envio.
 - O antigo `/usuarios/completar-cadastro`, o modal documental separado, a inferencia `perfilCompleto` e os visualizadores/uploads administrativos baseados em arrays de URLs permanentes foram removidos. Nao ha fluxo, adapter, storage ou status concorrente.
+
+## 41. Premium e creditos operacionais
+
+- A V024 consolida o catalogo administravel de beneficios, opcoes de duracao/custo, pacotes de creditos, ordenacao e permissoes administrativas. As duracoes canonicas sao 1, 7, 14 e 30 dias e sempre chegam do backend.
+- `movimento_credito` e a fonte de verdade imutavel do saldo. Creditos, debitos, ajustes administrativos positivos/negativos e estornos sao novos lancamentos; nenhum fluxo operacional atualiza saldo diretamente.
+- Toda operacao administrativa registra usuario, valor, saldo anterior/posterior calculado, motivo obrigatorio, administrador, horario, requestId e auditoria sanitizada.
+- O catalogo canonico integra `OCULTAR_IDADE`, `FOTOS_EXTRA_5`, `ANUNCIO_TOPO`, `WHATSAPP_CARD`, `CARROSSEL_FOTOS` e `VIDEO_1`, com custo, duracoes, ordem, descricao e estado ativo definidos no backend.
+- A compra autenticada usa o usuario da sessao, o anuncio proprio e uma unica transacao para validar saldo, debitar, ativar beneficios e auditar. A chave de idempotencia impede debito ou ativacao duplicados.
+- O painel do usuario consulta saldo, historico, catalogo e ativacoes reais. O painel administrativo permite consulta, ajuste, estorno auditavel, configuracao do catalogo/pacotes e cancelamento autorizado, sempre sob RBAC.
+- Stories pagos preservam o fluxo proprio ja existente; Stories administrativos nao consomem nem movimentam creditos.
+- Pix, Efi, webhook, conciliacao financeira, cartao e cobranca externa permanecem fora desta fase. Pacotes nao realizam pagamento e ficam inativos ate o contrato financeiro proprio.

@@ -3,7 +3,7 @@ export type CidadeItem = { id: number; nome: string }
 export type BairroItem = { id: number; nome: string }
 
 export type AnuncioEditAPI = {
-  id: number
+  id: number | string
   slug: string
   titulo?: string | null
   nome?: string | null

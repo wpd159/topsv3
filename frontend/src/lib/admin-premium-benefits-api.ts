@@ -143,17 +143,3 @@ export function fetchPremiumBenefitsUserAds(usuarioId: number) {
 export function fetchPremiumBenefitsAnuncio(anuncioId: number) {
   return adminFetch<PremiumBenefitAnuncioDetail>(`/admin/premium-benefits/anuncios/${anuncioId}`)
 }
-
-export function grantPremiumBenefit(anuncioId: number, body: Record<string, unknown>) {
-  return adminFetch<PremiumBenefitAnuncioDetail>(`/admin/premium-benefits/anuncios/${anuncioId}/ativar`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-}
-
-export function revokePremiumBenefit(ativacaoId: number, body: Record<string, unknown>) {
-  return adminFetch<PremiumBenefitAnuncioDetail>(`/admin/premium-benefits/ativacoes/${ativacaoId}/desativar`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })
-}

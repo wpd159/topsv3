@@ -400,6 +400,13 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Etapa KYC do wizard unico: `frontend/src/features/anuncio-wizard/components/wizard-step-kyc.tsx`, `frontend/src/features/anuncio-wizard/anuncio-wizard.tsx`
 - Painel administrativo KYC: `frontend/src/features/moderation-v2/components/moderacao-v2-kyc-panel.tsx`
 - Testes KYC e documentos: `backend/src/test/java/br/com/topsdojob/v3/application/publico/kyc/`, `backend/src/test/java/br/com/topsdojob/v3/application/admin/documento/`, `backend/src/test/java/br/com/topsdojob/v3/web/admin/documento/`, `backend/src/test/java/br/com/topsdojob/v3/migration/KycDocumentosPrivadosMigrationTest.java`
+- Migration Premium/creditos operacionais: `backend/src/main/resources/db/migration/V024__premium_creditos_operacionais.sql`
+- Ledger de creditos: `backend/src/main/java/br/com/topsdojob/v3/application/credito/`, `backend/src/main/java/br/com/topsdojob/v3/application/admin/creditos/`
+- Catalogo e operacoes Premium: `backend/src/main/java/br/com/topsdojob/v3/application/premium/`, `backend/src/main/java/br/com/topsdojob/v3/application/admin/premium/`
+- Monetizacao autenticada: `backend/src/main/java/br/com/topsdojob/v3/application/publico/premium/`, `backend/src/main/java/br/com/topsdojob/v3/web/publico/anunciante/MinhaContaPremiumController.java`
+- Painel administrativo de creditos/Premium: `frontend/src/app/(painel-admin)/admin/creditos/page.tsx`, `frontend/src/lib/admin-creditos-operacionais-api.ts`
+- Painel e wizard do usuario: `frontend/src/app/(private-routes)/painel/page.tsx`, `frontend/src/features/monetizacao-wizard/`
+- Testes Premium/creditos: `backend/src/test/java/br/com/topsdojob/v3/application/credito/`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/premium/`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

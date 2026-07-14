@@ -51,12 +51,30 @@ public class CreditoLedgerConsultaService {
                 nome(movimento.getOrigem()),
                 sanitizer.referenciaTipo(movimento.getReferenciaTipo()),
                 movimento.getReferenciaId(),
+                natureza(movimento),
+                movimento.getObservacao(),
+                movimento.getAtorUsuarioId(),
+                movimento.getRequestId(),
                 sanitizer.chaveOperacionalPresente(movimento.getIdempotencyKey()),
                 movimento.getCriadoEm(),
-                true);
+                false);
     }
 
     private String nome(Enum<?> valor) {
         return valor == null ? null : valor.name();
+    }
+
+    private String natureza(MovimentoCreditoEntity movimento) {
+        if (movimento.getTipo() == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito.ESTORNO) {
+            return "ESTORNO";
+        }
+        if (movimento.getTipo() == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito.AJUSTE) {
+            return movimento.getDirecao() == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito.CREDITO
+                    ? "AJUSTE_ADMIN_POSITIVO"
+                    : "AJUSTE_ADMIN_NEGATIVO";
+        }
+        return movimento.getDirecao() == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito.CREDITO
+                ? "CREDITO"
+                : "DEBITO";
     }
 }

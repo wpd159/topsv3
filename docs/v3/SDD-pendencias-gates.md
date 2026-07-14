@@ -722,3 +722,13 @@ Antes de admin em ambiente nao local:
 - Fechado localmente: etapa documental no wizard canonico de criacao/edicao e remocao do fluxo legado `/usuarios/completar-cadastro`, modal separado e visualizacao por URL permanente.
 - Pendente antes de homologacao operacional: executar smoke autenticado com arquivos exclusivamente sinteticos no bucket de documentos HML e validar aprovacao, rejeicao, ajuste e reenvio sem expor a URL assinada em evidencias.
 - Pendente antes de producao: politica aprovada de retencao/expurgo documental e scanner antimalware; esta fase nao implementa OCR, reconhecimento facial ou API externa.
+
+## Premium e creditos operacionais
+
+- Fechado localmente pela V024: ledger imutavel, catalogo administravel, opcoes de 1/7/14/30 dias, pacotes, permissoes e requestId nas movimentacoes.
+- Fechado localmente: consulta e ajustes administrativos com motivo, saldo anterior/posterior calculado, historico, auditoria, estorno e protecao contra saldo negativo.
+- Fechado localmente: compra autenticada por creditos com debito, ativacao e auditoria atomicos, chave de idempotencia e erro explicito de saldo insuficiente.
+- Fechado localmente: painel do usuario e painel administrativo consomem um unico catalogo backend, sem precos/duracoes hardcoded ou fluxo concorrente.
+- Fechado por validacao sintetica: ledger, ajustes, idempotencia, RBAC, catalogo, duracoes e UI desktop/mobile foram exercitados com dados descartaveis.
+- Pendente antes de homologacao operacional: smoke autenticado do fluxo administrativo e da compra em HML com conta/dados exclusivamente ficticios.
+- Pendente para fase financeira propria: Pix, Efi, webhook, conciliacao, cartao, cobranca externa e ativacao comercial dos pacotes. Nenhum desses itens foi simulado nesta fase.

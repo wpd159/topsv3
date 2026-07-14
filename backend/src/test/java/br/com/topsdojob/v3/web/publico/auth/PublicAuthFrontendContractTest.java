@@ -66,8 +66,10 @@ class PublicAuthFrontendContractTest {
         assertThat(painel)
                 .contains("usuario?.username")
                 .contains("await logout()")
+                .contains("fetchMinhaMonetizacao")
                 .doesNotContain("fetchPainelOverview")
-                .doesNotContain("saldoCreditos");
+                .doesNotContain("/creditos/planos")
+                .doesNotContain("/checkout/creditos");
         assertThat(perfil)
                 .contains("updatePublicProfile")
                 .contains("await refresh()")

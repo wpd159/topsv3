@@ -2,23 +2,13 @@
 
 import type { AnuncioEditAPI } from '@/components/anuncios/editar/types'
 
-export type MonetizacaoModoAtivacao =
-  | 'IMPULSIONAMENTO'
-  | 'FEATURE'
-  | 'FEATURE_CATALOGO'
-  | 'PACOTE'
-  | 'STORY'
-  | 'STORY_UPLOAD'
-
 export type MonetizacaoOpcaoCodigo =
   | 'ANUNCIO_TOPO'
-  | 'FOTOS_EXTRA'
-  | 'VIDEO'
-  | 'STORIES'
-  | 'WHATSAPP_DESTACADO'
-  | 'CARROSSEL'
+  | 'FOTOS_EXTRA_5'
+  | 'VIDEO_1'
+  | 'WHATSAPP_CARD'
+  | 'CARROSSEL_FOTOS'
   | 'OCULTAR_IDADE'
-  | 'PACOTE_RECOMENDADO'
 
 export type MonetizacaoCotacaoDuracao = {
   dias: number
@@ -37,23 +27,27 @@ export type MonetizacaoCotacaoOpcao = {
   descricao: string
   disponivel: boolean
   motivoIndisponibilidade?: string | null
-  modoAtivacao: MonetizacaoModoAtivacao
+  modoAtivacao: 'COMPRA_CREDITOS'
   componentes: string[]
   duracoes: MonetizacaoCotacaoDuracao[]
 }
 
 export type MonetizacaoCotacaoResponse = {
-  anuncioId: number
+  anuncioId: string
   saldoCreditos: number
   opcoes: MonetizacaoCotacaoOpcao[]
 }
 
 export type PlanoCredito = {
-  id: number
+  id: string
+  codigo: string
   nome: string
-  creditos: number
-  valor: number
   descricao: string
+  quantidadeCreditos: number
+  valor: number
+  moeda: string
+  ativo: boolean
+  ordemExibicao: number
 }
 
 export type FeatureAtivaResumo = {
@@ -63,7 +57,7 @@ export type FeatureAtivaResumo = {
 }
 
 export type AnuncioMeuResumo = {
-  id: number
+  id: string
   slug: string
   titulo: string
   fotoCapa?: string | null
@@ -75,28 +69,33 @@ export type AnuncioMeuResumo = {
   featuresAtivas?: FeatureAtivaResumo[]
 }
 
+export type CreditoMovimentoResumo = {
+  id: string
+  natureza: string
+  quantidade: number
+  saldoAnterior: number
+  saldoPosterior: number
+  motivo: string | null
+  criadoEm: string
+}
+
+export type BeneficioAtivoResumo = {
+  id: string
+  beneficioCodigo: string
+  beneficioNome: string
+  status: string
+  custoCreditos: number
+  inicioEm: string
+  fimEm: string
+}
+
 export type MonetizacaoWizardData = {
   anuncio: AnuncioMeuResumo
   anuncioEdit: AnuncioEditAPI
   cotacao: MonetizacaoCotacaoResponse
   planos: PlanoCredito[]
-}
-
-export type CheckoutData = {
-  pagamentoId: number
-  planoId: number
-  planoNome: string
-  creditos: number
-  valor: number
-  provider: string
-  metodoPagamento: string
-  txid: string
-  status: string
-  statusEfetivo: string
-  pixCopiaECola: string
-  pixQrCode?: string | null
-  expiracao?: string | null
-  criadoEm?: string | null
+  historico: CreditoMovimentoResumo[]
+  beneficiosAtivos: BeneficioAtivoResumo[]
 }
 
 export type MonetizacaoWizardStepId =
@@ -106,7 +105,7 @@ export type MonetizacaoWizardStepId =
   | 'pagamento'
   | 'sucesso'
 
-export type MonetizacaoSelectionMode = 'pacotes' | 'individuais'
+export type MonetizacaoSelectionMode = 'individuais'
 
 export type MonetizacaoActivationResult = {
   itens: Array<{
@@ -116,4 +115,13 @@ export type MonetizacaoActivationResult = {
     creditos: number
   }>
   totalCreditos: number
+}
+
+export type CompraPremiumResultado = {
+  operacaoId: string
+  saldoAnterior: number
+  saldoPosterior: number
+  totalDebitado: number
+  ativacoes: BeneficioAtivoResumo[]
+  idempotente: boolean
 }

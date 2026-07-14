@@ -1,162 +1,203 @@
 'use client'
 
-import { corrigirEstruturaTexto } from '@/lib/text/encoding'
+import { buscarMeuAnuncio, type MeuAnuncio } from '@/lib/meus-anuncios-api'
 import { messageFromApiBody } from '@/utils/read-api-error-response'
 import type {
-  AnuncioMeuResumo,
-  CheckoutData,
+  CompraPremiumResultado,
+  MonetizacaoCotacaoOpcao,
+  MonetizacaoOpcaoCodigo,
   MonetizacaoWizardData,
-  PlanoCredito,
-  MonetizacaoCotacaoResponse,
 } from './types'
-import type { AnuncioEditAPI } from '@/components/anuncios/editar/types'
 
-const API = process.env.NEXT_PUBLIC_API_URL || ''
+const API = (process.env.NEXT_PUBLIC_API_URL || '/api/public').replace(/\/$/, '')
 
-async function readJson<T>(res: Response, fallbackMessage: string): Promise<T> {
-  const raw = await res.text()
-  let parsed: unknown = null
+type CatalogoBackend = {
+  codigo: string
+  nome: string
+  descricao: string
+  ativo: boolean
+  opcoes: Array<{
+    duracaoDias: number
+    custoCreditos: number
+    ativo: boolean
+  }>
+}
 
-  if (raw.trim()) {
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      if (!res.ok) {
-        throw new Error(messageFromApiBody(raw, res.status, fallbackMessage))
-      }
-      throw new Error('Resposta invalida do servidor.')
-    }
+export type MinhaMonetizacaoBackend = {
+  saldoCreditos: number
+  historico: MonetizacaoWizardData['historico']
+  catalogo: CatalogoBackend[]
+  pacotesCredito: MonetizacaoWizardData['planos']
+  beneficiosAtivos: MonetizacaoWizardData['beneficiosAtivos']
+}
+
+function csrfCookieName() {
+  return ['XSRF', 'TOKEN'].join('-')
+}
+
+function csrfHeaderName() {
+  return ['X', 'XSRF', 'TOKEN'].join('-')
+}
+
+function readCsrfValue() {
+  if (typeof document === 'undefined') return null
+  const cookieName = csrfCookieName()
+  const entry = document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith(`${cookieName}${String.fromCharCode(61)}`))
+  return entry ? decodeURIComponent(entry.slice(cookieName.length + 1)) : null
+}
+
+async function bootstrapCsrfValue() {
+  await fetch(`${API}/auth/me`, {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  return readCsrfValue()
+}
+
+async function readJson<T>(response: Response, fallback: string): Promise<T> {
+  const raw = await response.text()
+  if (!response.ok) throw new Error(messageFromApiBody(raw, response.status, fallback))
+  if (!raw.trim()) throw new Error('Resposta vazia do servidor.')
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    throw new Error('Resposta invalida do servidor.')
   }
+}
 
-  if (!res.ok) {
-    throw new Error(messageFromApiBody(raw, res.status, fallbackMessage))
+function isCatalogCode(code: string): code is MonetizacaoOpcaoCodigo {
+  return [
+    'ANUNCIO_TOPO',
+    'FOTOS_EXTRA_5',
+    'VIDEO_1',
+    'WHATSAPP_CARD',
+    'CARROSSEL_FOTOS',
+    'OCULTAR_IDADE',
+  ].includes(code)
+}
+
+function mapAnuncio(anuncio: MeuAnuncio): MonetizacaoWizardData['anuncio'] {
+  return {
+    id: anuncio.id,
+    slug: anuncio.slug,
+    titulo: anuncio.titulo,
+    fotoCapa: anuncio.capa?.urlPublica || null,
+    localizacao: [anuncio.localizacao?.bairro, anuncio.localizacao?.cidade, anuncio.localizacao?.uf]
+      .filter(Boolean)
+      .join(', '),
+    valor: anuncio.preco == null ? 'Consulte valores' : Number(anuncio.preco).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }),
+    status: anuncio.status,
   }
+}
 
-  return parsed as T
+function mapAnuncioEdit(anuncio: MeuAnuncio): MonetizacaoWizardData['anuncioEdit'] {
+  return {
+    id: anuncio.id,
+    slug: anuncio.slug,
+    titulo: anuncio.titulo,
+    categoria: anuncio.categoria,
+    preco: anuncio.preco,
+    descricao: anuncio.descricao,
+    locaisAtendimento: anuncio.locaisAtendimento,
+    servicos: anuncio.servicos,
+    estadoUf: anuncio.localizacao?.uf || null,
+    cidadeNome: anuncio.localizacao?.cidade || null,
+    bairroNome: anuncio.localizacao?.bairro || null,
+    fotos: anuncio.midias
+      .filter((midia) => midia.tipo === 'FOTO' && Boolean(midia.urlPublica))
+      .map((midia) => midia.urlPublica as string),
+    videosAnuncio: anuncio.midias
+      .filter((midia) => midia.tipo === 'VIDEO' && Boolean(midia.urlPublica))
+      .map((midia) => midia.urlPublica as string),
+  }
+}
+
+function mapCatalogo(data: MinhaMonetizacaoBackend, anuncioId: string) {
+  const activeCodes = new Set(data.beneficiosAtivos.map((item) => item.beneficioCodigo))
+  const opcoes = data.catalogo
+    .filter((item) => item.ativo && isCatalogCode(item.codigo))
+    .map<MonetizacaoCotacaoOpcao>((item) => ({
+      codigo: item.codigo as MonetizacaoOpcaoCodigo,
+      titulo: item.nome,
+      descricao: item.descricao,
+      disponivel: !activeCodes.has(item.codigo),
+      motivoIndisponibilidade: activeCodes.has(item.codigo) ? 'BENEFICIO_JA_ATIVO' : null,
+      modoAtivacao: 'COMPRA_CREDITOS',
+      componentes: [item.codigo],
+      duracoes: item.opcoes
+        .filter((opcao) => opcao.ativo)
+        .map((opcao) => ({
+          dias: opcao.duracaoDias,
+          duracaoHoras: opcao.duracaoDias * 24,
+          creditos: opcao.custoCreditos,
+          saldoSuficiente: data.saldoCreditos >= opcao.custoCreditos,
+          creditosFaltantes: Math.max(0, opcao.custoCreditos - data.saldoCreditos),
+          podeAtivar: !activeCodes.has(item.codigo),
+          precisaComprarCreditos: data.saldoCreditos < opcao.custoCreditos,
+          motivoBloqueio: activeCodes.has(item.codigo) ? 'BENEFICIO_JA_ATIVO' : null,
+        })),
+    }))
+
+  return { anuncioId, saldoCreditos: data.saldoCreditos, opcoes }
 }
 
 export async function fetchMonetizacaoWizardData(slug: string): Promise<MonetizacaoWizardData> {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL não definido.')
-
-  const anunciosRes = await fetch(`${API}/anuncios/meus`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  const anuncios = corrigirEstruturaTexto(
-    await readJson<AnuncioMeuResumo[]>(anunciosRes, 'Não foi possível carregar seus anúncios.')
-  )
-
-  const anuncio = (Array.isArray(anuncios) ? anuncios : []).find((item) => item.slug === slug)
-  if (!anuncio?.id) {
-    throw new Error('Anúncio não encontrado para monetização.')
-  }
-
-  const [editRes, cotacaoRes, planosRes] = await Promise.all([
-    fetch(`${API}/anuncios/meus/${encodeURIComponent(slug)}/editar`, {
-      credentials: 'include',
-      cache: 'no-store',
-    }),
-    fetch(`${API}/monetizacao/cotacao/anuncio/${anuncio.id}`, {
-      credentials: 'include',
-      cache: 'no-store',
-    }),
-    fetch(`${API}/creditos/planos`, {
-      credentials: 'include',
-      cache: 'no-store',
-    }),
-  ])
-
-  const anuncioEdit = corrigirEstruturaTexto(
-    await readJson<AnuncioEditAPI>(editRes, 'Não foi possível carregar os dados do anúncio.')
-  )
-  const cotacao = await readJson<MonetizacaoCotacaoResponse>(
-    cotacaoRes,
-    'Não foi possível carregar a cotação da monetização.'
-  )
-  const planos = await readJson<PlanoCredito[]>(planosRes, 'Não foi possível carregar os planos de créditos.')
+  const anuncio = await buscarMeuAnuncio(slug)
+  const monetizacao = await fetchMinhaMonetizacao(slug)
 
   return {
-    anuncio,
-    anuncioEdit,
-    cotacao,
-    planos: Array.isArray(planos) ? planos : [],
+    anuncio: mapAnuncio(anuncio),
+    anuncioEdit: mapAnuncioEdit(anuncio),
+    cotacao: mapCatalogo(monetizacao, anuncio.id),
+    planos: monetizacao.pacotesCredito,
+    historico: monetizacao.historico,
+    beneficiosAtivos: monetizacao.beneficiosAtivos,
   }
 }
 
-export async function createCheckoutCreditos(planoId: number, nomeCompleto: string, cpf: string) {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL não definido.')
-
-  const res = await fetch(`${API}/checkout/creditos/${planoId}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ nomeCompleto, cpf }),
-  })
-
-  return readJson<CheckoutData>(res, 'Não foi possível iniciar o checkout Pix.')
-}
-
-export async function fetchCheckoutCreditos(pagamentoId: number) {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL não definido.')
-
-  const res = await fetch(`${API}/checkout/creditos/pagamentos/${pagamentoId}`, {
+export async function fetchMinhaMonetizacao(slug?: string): Promise<MinhaMonetizacaoBackend> {
+  const query = slug ? `?anuncioSlug=${encodeURIComponent(slug)}` : ''
+  const response = await fetch(`${API}/minha-conta/monetizacao${query}`, {
     credentials: 'include',
     cache: 'no-store',
   })
-
-  return readJson<CheckoutData>(res, 'Não foi possível carregar o pagamento Pix.')
+  return readJson<MinhaMonetizacaoBackend>(
+    response,
+    'Nao foi possivel carregar saldo e beneficios.'
+  )
 }
 
-export async function verifyCheckoutCreditos(pagamentoId: number) {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL não definido.')
-
-  const res = await fetch(`${API}/checkout/creditos/pagamentos/${pagamentoId}/verificar`, {
-    method: 'POST',
-    credentials: 'include',
-  })
-
-  return readJson<CheckoutData>(res, 'Não foi possível verificar o pagamento Pix.')
+function idempotencyKey() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `premium-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export async function ativarFeaturePorCatalogo(anuncioId: number, codigo: string, dias?: number) {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL não definido.')
+export async function comprarBeneficios(
+  anuncioSlug: string,
+  itens: Array<{ beneficioCodigo: MonetizacaoOpcaoCodigo; duracaoDias: number }>
+) {
+  const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+  const headers = new Headers({
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    'Idempotency-Key': idempotencyKey(),
+  })
+  if (csrfValue) headers.set(csrfHeaderName(), csrfValue)
 
-  const res = await fetch(`${API}/features/ativar`, {
+  const response = await fetch(`${API}/minha-conta/monetizacao/compras`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ anuncioId, codigo, ...(dias ? { dias } : {}) }),
+    cache: 'no-store',
+    headers,
+    body: JSON.stringify({ anuncioSlug, itens }),
   })
-
-  return readJson<Record<string, unknown>>(res, 'Não foi possível ativar o benefício.')
-}
-
-export async function ativarImpulsionamento(anuncioId: number, dias: number) {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL não definido.')
-
-  const res = await fetch(`${API}/anuncios/${anuncioId}/impulsionar`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ dias }),
-  })
-
-  return readJson<Record<string, unknown>>(res, 'Não foi possível ativar o topo da lista.')
-}
-
-export async function publicarStory(anuncioId: number, midia: File) {
-  if (!API) throw new Error('NEXT_PUBLIC_API_URL não definido.')
-
-  const formData = new FormData()
-  formData.append('codigo', 'STORIES')
-  formData.append('anuncioId', String(anuncioId))
-  formData.append('midia', midia)
-
-  const res = await fetch(`${API}/stories`, {
-    method: 'POST',
-    credentials: 'include',
-    body: formData,
-  })
-
-  return readJson<Record<string, unknown>>(res, 'Não foi possível publicar o story.')
+  return readJson<CompraPremiumResultado>(response, 'Nao foi possivel ativar os beneficios.')
 }

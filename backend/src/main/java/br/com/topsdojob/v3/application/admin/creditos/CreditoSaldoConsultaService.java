@@ -34,11 +34,13 @@ public class CreditoSaldoConsultaService {
                 ? 0
                 : movimentos.get(movimentos.size() - 1).getSaldoDepois();
         Integer saldoCalculadoMovimentos = calcularSaldoMovimentos(movimentos);
-        Integer saldoProjetado = saldo.map(SaldoCreditoUsuarioEntity::getSaldoAtual).orElse(saldoUltimoMovimento);
+        Integer saldoMaterializado = saldo.map(SaldoCreditoUsuarioEntity::getSaldoAtual).orElse(null);
+        Integer saldoFonteLedger = saldoCalculadoMovimentos;
         int entradas = contarPorDirecao(movimentos, DirecaoMovimentoCredito.CREDITO);
         int saidas = contarPorDirecao(movimentos, DirecaoMovimentoCredito.DEBITO);
         List<String> codigos = new ArrayList<>();
-        if (saldoProjetado == null || saldoUltimoMovimento == null || !saldoProjetado.equals(saldoUltimoMovimento)) {
+        if (saldoMaterializado != null
+                && (saldoUltimoMovimento == null || !saldoMaterializado.equals(saldoUltimoMovimento))) {
             codigos.add(CreditoConsistenciaCodigo.SALDO_INCONSISTENTE.name());
         }
         if (saldoCalculadoMovimentos == null || saldoUltimoMovimento == null
@@ -50,7 +52,7 @@ public class CreditoSaldoConsultaService {
         }
         return new AdminCreditoSaldoDto(
                 usuarioId,
-                saldoProjetado,
+                saldoFonteLedger,
                 saldoCalculadoMovimentos,
                 saldoUltimoMovimento,
                 movimentos.size(),
@@ -59,7 +61,7 @@ public class CreditoSaldoConsultaService {
                 codigos.size() == 1 && CreditoConsistenciaCodigo.CREDITO_OK.name().equals(codigos.get(0)),
                 codigos.stream().distinct().toList(),
                 saldo.map(SaldoCreditoUsuarioEntity::getAtualizadoEm).orElse(null),
-                true);
+                false);
     }
 
     private int contarPorDirecao(List<MovimentoCreditoEntity> movimentos, DirecaoMovimentoCredito direcao) {

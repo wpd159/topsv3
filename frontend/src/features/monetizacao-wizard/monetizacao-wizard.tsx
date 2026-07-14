@@ -8,8 +8,7 @@ import { useAuth } from '@/context/AuthContext'
 import { cn } from '@/lib/utils'
 import { calculateAge } from '@/features/anuncio-wizard/wizard-utils'
 import {
-  ativarFeaturePorCatalogo,
-  ativarImpulsionamento,
+  comprarBeneficios,
   fetchMonetizacaoWizardData,
 } from './api'
 import { MonetizacaoWizardPreview } from './components/monetizacao-wizard-preview'
@@ -66,15 +65,6 @@ const steps: Array<{
   },
 ]
 
-const activationCodeMap: Record<string, string> = {
-  FOTOS_EXTRA: 'FOTOS_EXTRA_5',
-  VIDEO: 'VIDEO_1',
-  WHATSAPP_DESTACADO: 'WHATSAPP_CARD',
-  CARROSSEL: 'CARROSSEL_FOTOS',
-  OCULTAR_IDADE: 'OCULTAR_IDADE',
-  ANUNCIO_TOPO: 'ANUNCIO_TOPO',
-}
-
 function formatPrice(value: unknown) {
   if (typeof value === 'number') {
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -95,14 +85,7 @@ function buildStatusSet(data: MonetizacaoWizardData | null) {
 
 function normalizeOptionComponents(option: MonetizacaoCotacaoOpcao | null) {
   if (!option) return [] as string[]
-  if (option.codigo === 'PACOTE_RECOMENDADO') {
-    return option.componentes
-      .map((component) => activationCodeMap[component] || component)
-      .filter((component) => component !== 'STORIES')
-  }
-  if (option.codigo === 'ANUNCIO_TOPO') return ['ANUNCIO_TOPO']
-  if (option.codigo === 'STORIES') return []
-  return [activationCodeMap[option.codigo] || option.codigo]
+  return [option.codigo]
 }
 
 function hardBlockMessage(duracao: MonetizacaoCotacaoDuracao | null) {
@@ -130,8 +113,7 @@ function firstSelectableDuration(option: MonetizacaoCotacaoOpcao) {
 }
 
 function optionBelongsToMode(option: MonetizacaoCotacaoOpcao, mode: MonetizacaoSelectionMode) {
-  if (mode === 'pacotes') return option.codigo === 'PACOTE_RECOMENDADO'
-  return option.codigo !== 'PACOTE_RECOMENDADO' && option.codigo !== 'STORIES'
+  return mode === 'individuais' && option.disponivel
 }
 
 export default function MonetizacaoWizard({ slug }: { slug: string }) {
@@ -139,7 +121,7 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
   const [data, setData] = useState<MonetizacaoWizardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [currentStep, setCurrentStep] = useState<MonetizacaoWizardStepId>('anuncio')
-  const [selectionMode, setSelectionMode] = useState<MonetizacaoSelectionMode>('pacotes')
+  const [selectionMode] = useState<MonetizacaoSelectionMode>('individuais')
   const [openBenefit, setOpenBenefit] = useState<MonetizacaoOpcaoCodigo | null>(null)
   const [selectedDurations, setSelectedDurations] = useState<Partial<Record<MonetizacaoOpcaoCodigo, number>>>({})
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -173,13 +155,6 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
   )
 
   const opcoesVisiveis = useMemo(() => data?.cotacao.opcoes ?? [], [data?.cotacao.opcoes])
-
-  useEffect(() => {
-    const hasPackage = opcoesVisiveis.some((opcao) => opcao.codigo === 'PACOTE_RECOMENDADO')
-    if (!hasPackage && selectionMode === 'pacotes') {
-      setSelectionMode('individuais')
-    }
-  }, [opcoesVisiveis, selectionMode])
 
   const opcoesDoModo = useMemo(
     () => opcoesVisiveis.filter((opcao) => optionBelongsToMode(opcao, selectionMode)),
@@ -309,12 +284,6 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
     ]
   )
 
-  const handleModeChange = (mode: MonetizacaoSelectionMode) => {
-    setSelectionMode(mode)
-    setOpenBenefit(null)
-    setSelectedDurations({})
-  }
-
   const toggleBenefit = (codigo: MonetizacaoOpcaoCodigo) => {
     const option = opcoesDoModo.find((item) => item.codigo === codigo)
     if (!option) return
@@ -378,35 +347,25 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
     }
 
     setActivationLoading(true)
-    const activatedCodes = new Set(currentActiveCodes)
-    const activatedItems: MonetizacaoActivationResult['itens'] = []
 
     try {
-      for (const item of selectedItems) {
-        const components = normalizeOptionComponents(item.opcao)
-
-        for (const code of components) {
-          if (activatedCodes.has(code)) continue
-
-          if (code === 'ANUNCIO_TOPO') {
-            await ativarImpulsionamento(data.anuncio.id, item.duracao.dias)
-          } else {
-            await ativarFeaturePorCatalogo(data.anuncio.id, code, item.duracao.dias)
-          }
-          activatedCodes.add(code)
-        }
-
-        activatedItems.push({
-          codigo: item.opcao.codigo,
-          titulo: item.opcao.titulo,
-          dias: item.duracao.dias,
-          creditos: item.duracao.creditos,
-        })
-      }
+      const resultado = await comprarBeneficios(
+        data.anuncio.slug,
+        selectedItems.map((item) => ({
+          beneficioCodigo: item.opcao.codigo,
+          duracaoDias: item.duracao.dias,
+        }))
+      )
+      const activatedItems: MonetizacaoActivationResult['itens'] = selectedItems.map((item) => ({
+        codigo: item.opcao.codigo,
+        titulo: item.opcao.titulo,
+        dias: item.duracao.dias,
+        creditos: item.duracao.creditos,
+      }))
 
       setActivationResult({
         itens: activatedItems,
-        totalCreditos,
+        totalCreditos: resultado.totalDebitado,
       })
       setSelectedDurations({})
 
@@ -415,13 +374,6 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
       setCurrentStep('sucesso')
       toast.success('Benefícios ativados com sucesso.')
     } catch (error: any) {
-      const houveAtivacaoParcial = activatedCodes.size > currentActiveCodes.size
-      if (houveAtivacaoParcial) {
-        toast.error(
-          'Alguns benefícios foram ativados, mas não foi possível concluir todos. Revise o anúncio antes de tentar novamente.'
-        )
-        return
-      }
       toast.error(error?.message || 'Não foi possível concluir a ativação agora.')
     } finally {
       setActivationLoading(false)
@@ -446,7 +398,6 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
             dataFimImpulsionamento={data.anuncio.dataFimImpulsionamento}
             selectionMode={selectionMode}
             openCodigo={openBenefit}
-            onModeChange={handleModeChange}
             onOpenChange={setOpenBenefit}
             onToggle={toggleBenefit}
             onSelectDuration={selectDuration}

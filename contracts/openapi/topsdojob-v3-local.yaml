@@ -1421,8 +1421,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/creditos/usuarios/{id}/saldo:
     get:
-      summary: Saldo de creditos read-only
-      description: Retorna saldo projetado e calculado de usuario sintetico/local para ADMIN com FINANCEIRO_LER. Nao compra, nao ajusta, nao estorna, nao concilia, nao chama Pix/Efi e nao retorna txid, payload de pagamento, documento, telefone ou dado financeiro sensivel.
+      summary: Saldo calculado pelo ledger de creditos
+      description: Retorna o saldo calculado pela sequencia imutavel de lancamentos para ADMIN com FINANCEIRO_LER. Nao altera saldo diretamente e nao chama Pix/Efi.
       operationId: getAdminCreditoSaldo
       security:
         - AdminSessionCookie: []
@@ -1452,8 +1452,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/creditos/usuarios/{id}/movimentos:
     get:
-      summary: Ledger de creditos read-only
-      description: Lista movimentos de credito sanitizados em ordem decrescente. Nao retorna chave operacional bruta, txid, valor pago, payload Pix/Efi, contato ou documento privado.
+      summary: Ledger imutavel de creditos
+      description: Lista movimentos sanitizados em ordem decrescente, incluindo natureza, motivo, administrador e requestId. Nao retorna chave operacional bruta ou payload financeiro.
       operationId: getAdminCreditoMovimentos
       security:
         - AdminSessionCookie: []
@@ -1546,6 +1546,390 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/minha-conta/monetizacao:
+    get:
+      summary: Consulta saldo, ledger, catalogo e beneficios da conta autenticada
+      operationId: getMinhaMonetizacao
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: anuncioSlug
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: monetizacao da conta carregada do ledger e catalogo vigentes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhaMonetizacao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/public/minha-conta/monetizacao/compras:
+    post:
+      summary: Debita creditos e ativa beneficios atomicamente
+      operationId: postMinhaCompraPremium
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MinhaCompraPremiumRequest"
+      responses:
+        "200":
+          description: compra concluida ou repeticao idempotente da mesma compra
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhaCompraPremiumResultado"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/creditos/usuarios:
+    get:
+      summary: Busca usuarios para operacao de creditos
+      operationId: getAdminCreditoUsuarios
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 2
+      responses:
+        "200":
+          description: usuarios encontrados com saldo calculado pelo ledger
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminCreditoUsuario"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/creditos/usuarios/{id}/ajustes:
+    post:
+      summary: Registra ajuste administrativo no ledger
+      operationId: postAdminCreditoAjuste
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreditoAjusteRequest"
+      responses:
+        "200":
+          description: ajuste registrado ou repeticao idempotente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreditoOperacao"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/creditos/movimentos/{id}/estornos:
+    post:
+      summary: Estorna movimento permitido por novo lancamento imutavel
+      operationId: postAdminCreditoEstorno
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motivo]
+              properties:
+                motivo:
+                  type: string
+                  minLength: 5
+                  maxLength: 500
+      responses:
+        "200":
+          description: estorno registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCreditoOperacao"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/creditos/auditoria:
+    get:
+      summary: Lista auditoria de ajustes, estornos e catalogo
+      operationId: getAdminCreditoAuditoria
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: eventos administrativos sanitizados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    id: { type: string, format: uuid }
+                    administradorId: { type: [string, "null"], format: uuid }
+                    acao: { type: string }
+                    recursoTipo: { type: string }
+                    recursoId: { type: [string, "null"], format: uuid }
+                    requestId: { type: [string, "null"] }
+                    criadoEm: { type: string, format: date-time }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/creditos/pacotes:
+    get:
+      summary: Lista pacotes administrativos de creditos
+      operationId: getAdminPacotesCredito
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: pacotes configurados, sem iniciar cobranca
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanoCredito"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/creditos/pacotes/{id}:
+    put:
+      summary: Atualiza pacote de creditos sem executar pagamento
+      operationId: putAdminPacoteCredito
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlanoCreditoUpdateRequest"
+      responses:
+        "200":
+          description: pacote atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanoCredito"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/premium/catalogo:
+    get:
+      summary: Lista catalogo Premium administrativo
+      operationId: getAdminPremiumCatalogo
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: beneficios e opcoes vigentes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PremiumCatalogo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/premium/catalogo/{id}:
+    put:
+      summary: Atualiza descricao, ordem, status, custos e duracoes Premium
+      operationId: putAdminPremiumCatalogo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPremiumCatalogoUpdateRequest"
+      responses:
+        "200":
+          description: catalogo atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PremiumCatalogo"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/premium/ativacoes:
+    get:
+      summary: Lista ativacoes Premium de um usuario
+      operationId: getAdminPremiumAtivacoes
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: usuarioId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: ativacoes do usuario
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminPremiumAtivacao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/premium/ativacoes/{id}/cancelar:
+    post:
+      summary: Cancela ativacao e estorna credito quando permitido
+      operationId: postAdminPremiumCancelar
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motivo]
+              properties:
+                motivo:
+                  type: string
+                  minLength: 5
+                  maxLength: 500
+      responses:
+        "200":
+          description: ativacao cancelada ou repeticao idempotente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPremiumAtivacaoOperacao"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/admin/pagamentos:
     get:
       summary: Pagamentos read-only
@@ -2486,6 +2870,16 @@ components:
         type: string
         example: 11111111-1111-4111-8111-111111111111
   parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Chave opaca para impedir repeticao da mesma operacao mutavel.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 160
+        pattern: "^[A-Za-z0-9._:-]+$"
     CurrentUserAdSlug:
       name: slug
       in: path
@@ -3881,7 +4275,7 @@ components:
           type: boolean
         somenteLeitura:
           type: boolean
-          const: true
+          const: false
     AdminPremiumAnuncioStatus:
       type: object
       additionalProperties: false
@@ -4192,6 +4586,22 @@ components:
             - string
             - "null"
           format: uuid
+        natureza:
+          type: string
+          enum: [CREDITO, DEBITO, AJUSTE_ADMIN_POSITIVO, AJUSTE_ADMIN_NEGATIVO, ESTORNO]
+        motivo:
+          type:
+            - string
+            - "null"
+        administradorId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        requestId:
+          type:
+            - string
+            - "null"
         chaveOperacionalPresente:
           type: boolean
           description: Indica existencia de chave operacional sem retornar seu conteudo.
@@ -4202,7 +4612,7 @@ components:
           format: date-time
         somenteLeitura:
           type: boolean
-          const: true
+          const: false
     AdminCreditoPaginaMovimentos:
       type: object
       additionalProperties: false
@@ -4219,7 +4629,7 @@ components:
           type: integer
         somenteLeitura:
           type: boolean
-          const: true
+          const: false
     AdminCreditoConsistenciaItem:
       type: object
       additionalProperties: false
@@ -6135,6 +6545,215 @@ components:
         indexavel:
           type: boolean
           const: true
+    PremiumOpcao:
+      type: object
+      additionalProperties: false
+      required: [id, duracaoDias, custoCreditos, ativo, ordemExibicao]
+      properties:
+        id: { type: string, format: uuid }
+        duracaoDias: { type: integer, enum: [1, 7, 14, 30] }
+        custoCreditos: { type: integer, minimum: 0 }
+        ativo: { type: boolean }
+        ordemExibicao: { type: integer, minimum: 0 }
+    PremiumCatalogo:
+      type: object
+      additionalProperties: false
+      required: [id, codigo, nome, descricao, escopo, afetaRanking, ativo, ordemExibicao, opcoes]
+      properties:
+        id: { type: string, format: uuid }
+        codigo: { type: string }
+        nome: { type: string }
+        descricao: { type: string }
+        escopo: { type: string }
+        afetaRanking: { type: boolean }
+        ativo: { type: boolean }
+        ordemExibicao: { type: integer, minimum: 0 }
+        opcoes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PremiumOpcao"
+    PlanoCredito:
+      type: object
+      additionalProperties: false
+      required: [id, codigo, nome, descricao, quantidadeCreditos, valor, moeda, ativo, ordemExibicao]
+      properties:
+        id: { type: string, format: uuid }
+        codigo: { type: string }
+        nome: { type: string }
+        descricao: { type: string }
+        quantidadeCreditos: { type: integer, minimum: 1 }
+        valor: { type: number, minimum: 0 }
+        moeda: { type: string }
+        ativo: { type: boolean }
+        ordemExibicao: { type: integer, minimum: 0 }
+    MinhaCreditoMovimento:
+      type: object
+      additionalProperties: false
+      required: [id, natureza, quantidade, saldoAnterior, saldoPosterior, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        natureza:
+          type: string
+          enum: [CREDITO, DEBITO, AJUSTE_ADMIN_POSITIVO, AJUSTE_ADMIN_NEGATIVO, ESTORNO]
+        quantidade: { type: integer, minimum: 1 }
+        saldoAnterior: { type: integer, minimum: 0 }
+        saldoPosterior: { type: integer, minimum: 0 }
+        motivo:
+          type: [string, "null"]
+        criadoEm: { type: string, format: date-time }
+    MinhaAtivacaoPremium:
+      type: object
+      additionalProperties: false
+      required: [id, beneficioCodigo, beneficioNome, status, custoCreditos, inicioEm, fimEm]
+      properties:
+        id: { type: string, format: uuid }
+        beneficioCodigo: { type: string }
+        beneficioNome: { type: string }
+        status: { type: string }
+        custoCreditos: { type: integer, minimum: 0 }
+        inicioEm: { type: string, format: date-time }
+        fimEm: { type: string, format: date-time }
+    MinhaMonetizacao:
+      type: object
+      additionalProperties: false
+      required: [saldoCreditos, historico, catalogo, pacotesCredito, beneficiosAtivos]
+      properties:
+        saldoCreditos: { type: integer, minimum: 0 }
+        historico:
+          type: array
+          items: { $ref: "#/components/schemas/MinhaCreditoMovimento" }
+        catalogo:
+          type: array
+          items: { $ref: "#/components/schemas/PremiumCatalogo" }
+        pacotesCredito:
+          type: array
+          items: { $ref: "#/components/schemas/PlanoCredito" }
+        beneficiosAtivos:
+          type: array
+          items: { $ref: "#/components/schemas/MinhaAtivacaoPremium" }
+    MinhaCompraPremiumRequest:
+      type: object
+      additionalProperties: false
+      required: [anuncioSlug, itens]
+      properties:
+        anuncioSlug: { type: string }
+        itens:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            additionalProperties: false
+            required: [beneficioCodigo, duracaoDias]
+            properties:
+              beneficioCodigo: { type: string }
+              duracaoDias: { type: integer, enum: [1, 7, 14, 30] }
+    MinhaCompraPremiumResultado:
+      type: object
+      additionalProperties: false
+      required: [operacaoId, saldoAnterior, saldoPosterior, totalDebitado, ativacoes, idempotente]
+      properties:
+        operacaoId: { type: string, format: uuid }
+        saldoAnterior: { type: integer, minimum: 0 }
+        saldoPosterior: { type: integer, minimum: 0 }
+        totalDebitado: { type: integer, minimum: 0 }
+        ativacoes:
+          type: array
+          items: { $ref: "#/components/schemas/MinhaAtivacaoPremium" }
+        idempotente: { type: boolean }
+    AdminCreditoUsuario:
+      type: object
+      additionalProperties: false
+      required: [id, nome, email, saldo]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        saldo: { type: integer, minimum: 0 }
+    AdminCreditoAjusteRequest:
+      type: object
+      additionalProperties: false
+      required: [direcao, quantidade, motivo]
+      properties:
+        direcao: { type: string, enum: [CREDITO, DEBITO] }
+        quantidade: { type: integer, minimum: 1 }
+        motivo: { type: string, minLength: 5, maxLength: 500 }
+    AdminCreditoOperacao:
+      type: object
+      additionalProperties: false
+      required: [movimentoId, usuarioId, natureza, quantidade, saldoAnterior, saldoPosterior, motivo, criadoEm, idempotente]
+      properties:
+        movimentoId: { type: string, format: uuid }
+        usuarioId: { type: string, format: uuid }
+        natureza: { type: string }
+        quantidade: { type: integer, minimum: 1 }
+        saldoAnterior: { type: integer, minimum: 0 }
+        saldoPosterior: { type: integer, minimum: 0 }
+        motivo: { type: string }
+        requestId:
+          type: [string, "null"]
+        criadoEm: { type: string, format: date-time }
+        idempotente: { type: boolean }
+    AdminPremiumAtivacao:
+      type: object
+      additionalProperties: false
+      required: [id, usuarioId, anuncioId, status, custoCreditos, inicioEm, fimEm]
+      properties:
+        id: { type: string, format: uuid }
+        usuarioId: { type: string, format: uuid }
+        anuncioId: { type: string, format: uuid }
+        beneficioCodigo: { type: [string, "null"] }
+        beneficioNome: { type: [string, "null"] }
+        origem: { type: [string, "null"] }
+        status: { type: string }
+        custoCreditos: { type: integer, minimum: 0 }
+        inicioEm: { type: string, format: date-time }
+        fimEm: { type: string, format: date-time }
+    AdminPremiumAtivacaoOperacao:
+      type: object
+      additionalProperties: false
+      required: [id, usuarioId, anuncioId, beneficioId, status, creditosEstornados, idempotente]
+      properties:
+        id: { type: string, format: uuid }
+        usuarioId: { type: string, format: uuid }
+        anuncioId: { type: string, format: uuid }
+        beneficioId: { type: string, format: uuid }
+        status: { type: string }
+        creditosEstornados: { type: integer, minimum: 0 }
+        fimEm: { type: [string, "null"], format: date-time }
+        idempotente: { type: boolean }
+    AdminPremiumCatalogoUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [nome, descricao, ativo, ordemExibicao, opcoes]
+      properties:
+        nome: { type: string, minLength: 2, maxLength: 120 }
+        descricao: { type: string, minLength: 5, maxLength: 500 }
+        ativo: { type: boolean }
+        ordemExibicao: { type: integer, minimum: 0 }
+        opcoes:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [duracaoDias, custoCreditos, ativo, ordemExibicao]
+            properties:
+              duracaoDias: { type: integer, enum: [1, 7, 14, 30] }
+              custoCreditos: { type: integer, minimum: 0 }
+              ativo: { type: boolean }
+              ordemExibicao: { type: integer, minimum: 0 }
+    AdminPlanoCreditoUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [nome, descricao, quantidadeCreditos, valor, ativo, ordemExibicao]
+      properties:
+        nome: { type: string, minLength: 2, maxLength: 120 }
+        descricao: { type: string, maxLength: 500 }
+        quantidadeCreditos: { type: integer, minimum: 1 }
+        valor: { type: number, minimum: 0 }
+        ativo: { type: boolean }
+        ordemExibicao: { type: integer, minimum: 0 }
     PaginacaoPublica:
       type: object
       additionalProperties: false

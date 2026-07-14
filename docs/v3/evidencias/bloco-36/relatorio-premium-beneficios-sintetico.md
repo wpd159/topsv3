@@ -3,19 +3,32 @@
 - Resultado: OK_PREMIUM_BENEFICIOS_SINTETICO_LOCAL
 - Backend local: http://127.0.0.1:18136
 - Frontend local: http://127.0.0.1:18336
-- Smoke base executado: sim
+- Readiness base executado: sim
 - Dados reais: nao
 - Producao/VPS/API externa: nao
 - Pix/Efi real, checkout, pagamento, credito real ou webhook: nao
-- Compra/ativacao real: nao
+- Compra/ativacao externa: nao
 - Promessa de contratacao: nao
 - Plano gratuito: validado como util e sem limite comercial artificial
 - Premium: validado como aditivo
 
 ## Checks
 
-- OK: smoke base de API/admin/moderacao - exit=0
+- OK: backend Premium pronto - health/readiness local respondeu
 - OK: login admin local sintetico - status=200
+- OK: login admin criou sessao sintetica - cookie presente sem expor valor
+- OK: ledger como fonte do saldo - status=200; saldo=100
+- OK: admin adiciona creditos com motivo - status=200; saldo=110
+- OK: ajuste administrativo idempotente - status=200; movimento preservado
+- OK: admin remove creditos com motivo - status=200; saldo=105
+- OK: ajuste administrativo exige motivo - status=400
+- OK: ledger bloqueia saldo negativo - status=409
+- OK: saldo final sem debito duplicado - saldo=105
+- OK: historico administrativo completo - status=200
+- OK: catalogo Premium vem do backend - itens=1
+- OK: duracoes canonicas backend-driven - duracoes=1,7,14,30
+- OK: pacotes administraveis no backend - status=200
+- OK: usuario comum sem financeiro admin - login=200; acesso=403
 - OK: publico premium ativo visivel - status=200
 - OK: publico premium aditivo - beneficios=Mídia extra, Destaque, Stories
 - OK: publico premium sem promessa ou acao real - sem checkout/Pix/Efi/pagamento/credito/webhook real ou promessa
@@ -24,7 +37,6 @@
 - OK: publico gratuito sem promessa ou acao real - sem checkout/Pix/Efi/pagamento/credito/webhook real ou promessa
 - OK: gratuito sem limite comercial de clique/WhatsApp - status=200
 - OK: admin premium ativo - status=200
-- OK: admin premium sem compra real - read-only
 - OK: admin gratuito sem limite contato - gratuitoLimitadoPorContato=False
 - OK: admin beneficios destaque e fotos extra - codigos=FOTOS_EXTRA, DESTAQUE, STORIES
 - OK: admin beneficio vencendo - status=VENCENDO, VENCENDO, VENCENDO
@@ -47,17 +59,14 @@
 - Premium expirado por grupo expirado.
 - Beneficio vencendo.
 - Expiracao conjunta e inconsistencias sinteticas.
-- Endpoint admin read-only sem POST/PUT/PATCH/DELETE operacional.
+- Ledger administrativo operacional com motivo, RBAC e idempotencia.
+- Catalogo e duracoes carregados do backend.
 - UI publica/admin sem enum tecnico visivel.
 
-## Saida do smoke base
+## Limites
 
-- Validacao smoke HTTP da API publica local
-- BaseUrl=http://127.0.0.1:18136
-- Total de verificacoes: 1089
-- Verificacoes OK: 1089
-- Verificacoes com falha: 0
-- VALIDATION_RESULT=OK_API_PUBLICA_LOCAL
+- Sem Pix, Efi, webhook, checkout ou pagamento externo.
+- Fluxos publicos de compra atomica cobertos pelos testes backend da fase.
 
 ## Resultado do wrapper descartavel
 

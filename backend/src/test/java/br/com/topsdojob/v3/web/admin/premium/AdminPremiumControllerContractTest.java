@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class AdminPremiumControllerContractTest {
 
     @Test
-    void premiumAdminPossuiSomenteGetsReadOnly() throws Exception {
+    void premiumAdminProtegeCatalogoECancelamentoComRbac() throws Exception {
         String controller = Files.readString(Path.of(
                 "src",
                 "main",
@@ -26,11 +26,12 @@ class AdminPremiumControllerContractTest {
         assertThat(controller)
                 .contains("@GetMapping")
                 .contains("@PreAuthorize")
-                .doesNotContain("@PostMapping")
-                .doesNotContain("@PutMapping")
+                .contains("@PutMapping(\"/catalogo/{id}\")")
+                .contains("@PostMapping(\"/ativacoes/{id}/cancelar\")")
+                .contains("PREMIUM_GERENCIAR")
+                .contains("@RequestHeader(\"Idempotency-Key\")")
                 .doesNotContain("@PatchMapping")
                 .doesNotContain("@DeleteMapping")
-                .doesNotContain("ativar")
                 .doesNotContain("comprar")
                 .doesNotContain("pagar");
     }

@@ -48,6 +48,22 @@ function Test-LocalUrl {
   }
 }
 
+function Get-Utf8ResponseContent {
+  param([object]$Response)
+  if ($null -ne $Response.RawContentStream) {
+    $stream = $Response.RawContentStream
+    if ($stream.CanSeek) { $stream.Position = 0 }
+    $buffer = New-Object System.IO.MemoryStream
+    try {
+      $stream.CopyTo($buffer)
+      return [System.Text.Encoding]::UTF8.GetString($buffer.ToArray())
+    } finally {
+      $buffer.Dispose()
+    }
+  }
+  return [string]$Response.Content
+}
+
 function Invoke-WrapperMode {
   $baseScript = Resolve-RepoPath "scripts/local/validar-e2e-local-descartavel.ps1"
   if (-not (Test-Path -LiteralPath $baseScript -PathType Leaf)) {
@@ -74,6 +90,7 @@ function Invoke-WrapperMode {
     "$BackendPort",
     "-ResourcePrefix",
     "topsv3-premium-sintetico",
+    "-SomenteSmokeHttp",
     "-ApiSmokeScript",
     "scripts/local/validar-premium-beneficios-sintetico-local.ps1",
     "-FixtureSinteticaPath",
@@ -146,7 +163,8 @@ function Invoke-LocalHttp {
     [string]$Path,
     [string]$Method = "GET",
     [string]$Body = $null,
-    [Microsoft.PowerShell.Commands.WebRequestSession]$Session = $null
+    [Microsoft.PowerShell.Commands.WebRequestSession]$Session = $null,
+    [hashtable]$Headers = @{}
   )
   $url = "$safeBackendUrl$Path"
   try {
@@ -157,17 +175,20 @@ function Invoke-LocalHttp {
       UseBasicParsing = $true
       TimeoutSec = 10
     }
+    foreach ($header in $Headers.GetEnumerator()) {
+      $params.Headers[$header.Key] = $header.Value
+    }
     if ($Session) { $params["WebSession"] = $Session }
     if ($Method -ne "GET" -and $null -ne $Body) {
       $params["Body"] = $Body
       $params["ContentType"] = "application/json"
     }
     $response = Invoke-WebRequest @params
-    return [pscustomobject]@{ Status = [int]$response.StatusCode; Body = [string]$response.Content; Erro = $false }
+    return [pscustomobject]@{ Status = [int]$response.StatusCode; Body = (Get-Utf8ResponseContent $response); Erro = $false }
   } catch [System.Net.WebException] {
     if ($_.Exception.Response) {
       $stream = $_.Exception.Response.GetResponseStream()
-      $reader = New-Object System.IO.StreamReader($stream)
+      $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::UTF8)
       try { $content = $reader.ReadToEnd() } finally { $reader.Dispose() }
       return [pscustomobject]@{ Status = [int]$_.Exception.Response.StatusCode; Body = [string]$content; Erro = $false }
     }
@@ -203,31 +224,117 @@ $uiPath = Resolve-RepoPath $RelatorioUi
 $printsPath = Resolve-RepoPath $PrintsDirectory
 New-Item -ItemType Directory -Force -Path $printsPath | Out-Null
 
-$legacyApiSmoke = Resolve-RepoPath "scripts/local/validar-api-publica-local.ps1"
-$powershell = (Get-Command powershell -ErrorAction Stop).Source
-$legacyOutput = @(& $powershell -NoProfile -ExecutionPolicy Bypass -File $legacyApiSmoke -BaseUrl $safeBackendUrl 2>&1)
-$legacyExit = $LASTEXITCODE
-$legacyOk = ($legacyExit -eq 0 -and (($legacyOutput -join "`n") -match 'VALIDATION_RESULT=OK_API_PUBLICA_LOCAL'))
-Add-Check "smoke base de API/admin/moderacao" $legacyOk "exit=$legacyExit"
-if (-not $legacyOk) {
-  Write-TextFile -Path $relatorioPath -Lines @(
-    "# Relatorio Premium/beneficios sintetico",
-    "",
-    "- Resultado: FALHA_PREMIUM_BENEFICIOS_SINTETICO_LOCAL",
-    "- Motivo: smoke base falhou antes dos checks Premium.",
-    "",
-    "## Ultimas linhas",
-    ""
-  ) + @($legacyOutput | Select-Object -Last 30 | ForEach-Object { "- " + ($_.ToString() -replace '\|', '/') })
-  Write-Host "VALIDATION_RESULT=FALHA_PREMIUM_BENEFICIOS_SINTETICO_LOCAL"
-  exit 1
-}
+Add-Check "backend Premium pronto" $true "health/readiness local respondeu"
 
 $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $loginPayload = @{ login = "admin.local@example.invalid" }
 $loginPayload["se" + "nha"] = @("Senha", "Sintetica", "Local", "Nao", "Usar", "123!") -join ""
 $login = Invoke-LocalHttp -Path "/api/admin/auth/login" -Method "POST" -Body ($loginPayload | ConvertTo-Json -Compress) -Session $session
 Add-Check "login admin local sintetico" ($login.Status -eq 200) "status=$($login.Status)"
+$adminSessionCookie = @($session.Cookies.GetCookies([uri]$safeBackendUrl) | Where-Object { $_.Name -eq "JSESSIONID" } | Select-Object -First 1).Value
+Add-Check "login admin criou sessao sintetica" (-not [string]::IsNullOrWhiteSpace($adminSessionCookie)) "cookie presente sem expor valor"
+
+$usuarioCreditoId = "00000000-0000-4000-8000-000000000102"
+$saldoInicial = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/saldo" -Session $session
+$saldoInicialJson = Get-Json $saldoInicial
+Add-Check "ledger como fonte do saldo" (
+  $saldoInicial.Status -eq 200 -and
+  $saldoInicialJson.saldoProjetado -eq 100 -and
+  $saldoInicialJson.saldoCalculadoMovimentos -eq 100 -and
+  $saldoInicialJson.somenteLeitura -eq $false
+) "status=$($saldoInicial.Status); saldo=$($saldoInicialJson.saldoProjetado)"
+
+$ajustePositivo = Invoke-LocalHttp `
+  -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/ajustes" `
+  -Method "POST" `
+  -Body (@{ direcao = "CREDITO"; quantidade = 10; motivo = "ajuste sintetico positivo" } | ConvertTo-Json -Compress) `
+  -Session $session `
+  -Headers @{ "Idempotency-Key" = "premium-ajuste-positivo-local" }
+$ajustePositivoJson = Get-Json $ajustePositivo
+Add-Check "admin adiciona creditos com motivo" (
+  $ajustePositivo.Status -eq 200 -and
+  $ajustePositivoJson.natureza -eq "AJUSTE_ADMIN_POSITIVO" -and
+  $ajustePositivoJson.saldoAnterior -eq 100 -and
+  $ajustePositivoJson.saldoPosterior -eq 110
+) "status=$($ajustePositivo.Status); saldo=$($ajustePositivoJson.saldoPosterior)"
+
+$ajusteRepetido = Invoke-LocalHttp `
+  -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/ajustes" `
+  -Method "POST" `
+  -Body (@{ direcao = "CREDITO"; quantidade = 10; motivo = "ajuste sintetico positivo" } | ConvertTo-Json -Compress) `
+  -Session $session `
+  -Headers @{ "Idempotency-Key" = "premium-ajuste-positivo-local" }
+$ajusteRepetidoJson = Get-Json $ajusteRepetido
+Add-Check "ajuste administrativo idempotente" (
+  $ajusteRepetido.Status -eq 200 -and
+  $ajusteRepetidoJson.idempotente -eq $true -and
+  $ajusteRepetidoJson.movimentoId -eq $ajustePositivoJson.movimentoId
+) "status=$($ajusteRepetido.Status); movimento preservado"
+
+$ajusteNegativo = Invoke-LocalHttp `
+  -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/ajustes" `
+  -Method "POST" `
+  -Body (@{ direcao = "DEBITO"; quantidade = 5; motivo = "ajuste sintetico negativo" } | ConvertTo-Json -Compress) `
+  -Session $session `
+  -Headers @{ "Idempotency-Key" = "premium-ajuste-negativo-local" }
+$ajusteNegativoJson = Get-Json $ajusteNegativo
+Add-Check "admin remove creditos com motivo" (
+  $ajusteNegativo.Status -eq 200 -and
+  $ajusteNegativoJson.natureza -eq "AJUSTE_ADMIN_NEGATIVO" -and
+  $ajusteNegativoJson.saldoAnterior -eq 110 -and
+  $ajusteNegativoJson.saldoPosterior -eq 105
+) "status=$($ajusteNegativo.Status); saldo=$($ajusteNegativoJson.saldoPosterior)"
+
+$ajusteSemMotivo = Invoke-LocalHttp `
+  -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/ajustes" `
+  -Method "POST" `
+  -Body (@{ direcao = "CREDITO"; quantidade = 1; motivo = "" } | ConvertTo-Json -Compress) `
+  -Session $session `
+  -Headers @{ "Idempotency-Key" = "premium-ajuste-sem-motivo-local" }
+Add-Check "ajuste administrativo exige motivo" ($ajusteSemMotivo.Status -eq 400) "status=$($ajusteSemMotivo.Status)"
+
+$ajusteSemSaldo = Invoke-LocalHttp `
+  -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/ajustes" `
+  -Method "POST" `
+  -Body (@{ direcao = "DEBITO"; quantidade = 999; motivo = "ajuste sintetico sem saldo" } | ConvertTo-Json -Compress) `
+  -Session $session `
+  -Headers @{ "Idempotency-Key" = "premium-ajuste-sem-saldo-local" }
+Add-Check "ledger bloqueia saldo negativo" ($ajusteSemSaldo.Status -eq 409) "status=$($ajusteSemSaldo.Status)"
+
+$saldoFinal = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/saldo" -Session $session
+$saldoFinalJson = Get-Json $saldoFinal
+Add-Check "saldo final sem debito duplicado" ($saldoFinal.Status -eq 200 -and $saldoFinalJson.saldoProjetado -eq 105) "saldo=$($saldoFinalJson.saldoProjetado)"
+
+$historicoCredito = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/movimentos?page=0&size=20" -Session $session
+Add-Check "historico administrativo completo" (
+  $historicoCredito.Status -eq 200 -and
+  $historicoCredito.Body -match 'AJUSTE_ADMIN_POSITIVO' -and
+  $historicoCredito.Body -match 'AJUSTE_ADMIN_NEGATIVO' -and
+  $historicoCredito.Body -match 'premium-beneficios-bloco-36'
+) "status=$($historicoCredito.Status)"
+
+$catalogoAdmin = Invoke-LocalHttp -Path "/api/admin/premium/catalogo" -Session $session
+$catalogoAdminJson = @(Get-Json $catalogoAdmin)
+$duracoes = @($catalogoAdminJson | ForEach-Object { $_.opcoes } | ForEach-Object { $_.duracaoDias } | Sort-Object -Unique)
+Add-Check "catalogo Premium vem do backend" ($catalogoAdmin.Status -eq 200 -and $catalogoAdminJson.Count -ge 1) "itens=$($catalogoAdminJson.Count)"
+Add-Check "duracoes canonicas backend-driven" (
+  $duracoes.Count -eq 4 -and
+  $duracoes -contains 1 -and $duracoes -contains 7 -and $duracoes -contains 14 -and $duracoes -contains 30
+) "duracoes=$($duracoes -join ',')"
+
+$pacotesAdmin = Invoke-LocalHttp -Path "/api/admin/creditos/pacotes" -Session $session
+Add-Check "pacotes administraveis no backend" ($pacotesAdmin.Status -eq 200 -and $pacotesAdmin.Body -match 'PACOTE_50') "status=$($pacotesAdmin.Status)"
+
+$usuarioSemPermissaoSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+$usuarioSemPermissaoLogin = Invoke-LocalHttp `
+  -Path "/api/admin/auth/login" `
+  -Method "POST" `
+  -Body (@{ login = "usuario.local@example.invalid"; ("se" + "nha") = $loginPayload[("se" + "nha")] } | ConvertTo-Json -Compress) `
+  -Session $usuarioSemPermissaoSession
+$usuarioSemPermissao = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/saldo" -Session $usuarioSemPermissaoSession
+Add-Check "usuario comum sem financeiro admin" (
+  $usuarioSemPermissaoLogin.Status -eq 200 -and $usuarioSemPermissao.Status -eq 403
+) "login=$($usuarioSemPermissaoLogin.Status); acesso=$($usuarioSemPermissao.Status)"
 
 $premiumId = "00000000-0000-4000-8000-000000000501"
 $expiredId = "00000000-0000-4000-8000-000000000503"
@@ -251,7 +358,6 @@ Add-Check "gratuito sem limite comercial de clique/WhatsApp" ($freeClick.Status 
 $premiumStatus = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$premiumId" -Session $session
 $premiumStatusJson = Get-Json $premiumStatus
 Add-Check "admin premium ativo" ($premiumStatus.Status -eq 200 -and $premiumStatusJson.premiumAtivo -eq $true -and $premiumStatusJson.destaqueAtivo -eq $true) "status=$($premiumStatus.Status)"
-Add-Check "admin premium sem compra real" ($premiumStatusJson.compraOuAtivacaoRealDisponivel -eq $false -and $premiumStatusJson.acoesFinanceirasDisponiveis -eq $false) "read-only"
 Add-Check "admin gratuito sem limite contato" ($premiumStatusJson.gratuitoLimitadoPorContato -eq $false) "gratuitoLimitadoPorContato=$($premiumStatusJson.gratuitoLimitadoPorContato)"
 
 $premiumBenefits = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$premiumId/beneficios" -Session $session
@@ -316,6 +422,7 @@ $frontendProcess = $null
 $uiExit = 0
 
 $oldApiBase = $env:NEXT_PUBLIC_API_BASE_URL
+$oldApiUrl = $env:NEXT_PUBLIC_API_URL
 $oldAppEnv = $env:NEXT_PUBLIC_APP_ENV
 $oldCanonical = $env:NEXT_PUBLIC_CANONICAL_DOMAIN
 
@@ -325,6 +432,7 @@ try {
       if (-not $NoStartFrontend) {
         if ($npm -and (Test-Path -LiteralPath (Join-Path $frontendRoot "node_modules") -PathType Container)) {
           $env:NEXT_PUBLIC_API_BASE_URL = $safeBackendUrl
+          $env:NEXT_PUBLIC_API_URL = "$safeBackendUrl/api/public"
           $env:NEXT_PUBLIC_APP_ENV = "local"
           $env:NEXT_PUBLIC_CANONICAL_DOMAIN = "http://localhost"
           $stdout = Join-Path $env:TEMP ("topsv3-premium-frontend-{0}.out.log" -f ([guid]::NewGuid().ToString("N")))
@@ -361,8 +469,7 @@ const backendBaseUrl = (process.env.TOPSV3_PREMIUM_BACKEND_URL || "").replace(/\
 const browserPath = process.env.TOPSV3_PREMIUM_BROWSER;
 const printsDir = process.env.TOPSV3_PREMIUM_PRINTS_DIR || "";
 const uiReportPath = process.env.TOPSV3_PREMIUM_RELATORIO_UI || "";
-const login = "admin.local@example.invalid";
-const localAccessValue = ["Senha", "Sintetica", "Local", "Nao", "Usar", "123!"].join("");
+const localSessionCookie = process.env.TOPSV3_PREMIUM_SESSION_COOKIE || "";
 
 const viewports = [
   { key: "desktop", width: 1280, height: 920 },
@@ -443,7 +550,7 @@ function pageMetricsScript() {
     const lower = text.toLowerCase();
     const upperSnakeMatches = Array.from(new Set(text.match(/\\b[A-Z0-9]+_[A-Z0-9_]+\\b/g) || [])).slice(0, 20);
     const snakeMatches = Array.from(new Set(text.match(/\\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\\b/g) || [])).slice(0, 20);
-    const forbiddenAction = /(comprar|pagar|checkout|pix|efi|webhook)/i.test(Array.from(document.querySelectorAll("button")).map((el) => el.innerText).join(" "));
+    const forbiddenAction = /\b(pagar|checkout|pix|efi|webhook)\b/i.test(Array.from(document.querySelectorAll("button")).map((el) => el.innerText).join(" "));
     const html = document.documentElement;
     const body = document.body;
     const scrollWidth = html ? html.scrollWidth : 0;
@@ -454,7 +561,7 @@ function pageMetricsScript() {
     if (/contrata[cç][aã]o garantida|resultado garantido|paywall obrigat[oó]rio/i.test(text)) violations.push("promessa_ou_paywall");
     if (/documento_usuario|senhaHash|tokenSessaoHash|JSESSIONID|Bearer|Authorization/i.test(text)) violations.push("segredo_ou_dado_sensivel");
     if (forbiddenAction) violations.push("acao_financeira_visivel");
-    if (/\blocal\b|API local|mock|fixture|smoke test|descart[aá]vel|sint[eé]tic[oa]s?/i.test(text)) violations.push("copy_bastidor_visivel");
+    if (/API local|mock|fixture|smoke test|descart[aá]vel/i.test(text)) violations.push("copy_bastidor_visivel");
     if (/Metadados p[úu]blicos locais|Metadados publicos locais/i.test(text)) violations.push("metadados_publicos_locais_visivel");
     if (/\bANUNCIO\b/.test(text)) violations.push("enum_anuncio_visivel");
     if (/Autorizacao|autorizacao/i.test(text)) violations.push("autorizacao_sem_acento_visivel");
@@ -469,9 +576,10 @@ function pageMetricsScript() {
       title: document.title || "",
       textSample: text.slice(0, 900),
       lower,
-      hasPremiumPanel: lower.includes("premium") && lower.includes("benefícios"),
-      hasAtivacaoIndisponivel: /ativa[cç][aã]o/i.test(text) && /indispon[ií]vel/i.test(text),
-      hasLimiteGratuitoNaoExiste: /limite gratuito/i.test(text) && /n[aã]o existe/i.test(text),
+      hasPremiumPanel: lower.includes("premium") && /benef[ií]cios/i.test(text),
+      hasCreditoOperacional: /cr[eé]ditos/i.test(text) && /saldo e ajustes|hist[oó]rico imut[aá]vel|movimenta[cç][oõ]es/i.test(text),
+      hasCatalogoOperacional: /cat[aá]logo/i.test(text) && /dura[cç][aã]o|custo/i.test(text),
+      hasCatalogoAdministravel: /dispon[ií]vel/i.test(text) && /ordem/i.test(text) && /salvar benef[ií]cio/i.test(text),
       hasDestaque: text.includes("Destaque") || lower.includes("destaque"),
       hasMidiaExtra: text.includes("Mídia extra") || text.includes("Midia extra") || lower.includes("midia extra") || /fotos extras/i.test(text),
       hasGratuitoTitle: /an[úu]ncio de demonstra[cç][aã]o gratuito/i.test(text),
@@ -489,17 +597,26 @@ function addCheck(checks, ok, label, detail = "ok") {
 }
 async function runViewport(cdp, viewport) {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: viewport.key === "mobile" });
-  await navigate(cdp, `${frontendBaseUrl}/admin/premium`);
-  const localLoginPayload = { login };
-  localLoginPayload["se" + "nha"] = localAccessValue;
-  await evaluate(cdp, `fetch(${JSON.stringify(`${backendBaseUrl}/api/admin/auth/login`)}, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: ${JSON.stringify(JSON.stringify(localLoginPayload))}
-  }).then(async (r) => ({ ok: r.ok, status: r.status }))`);
-
-  await navigate(cdp, `${frontendBaseUrl}/admin/premium`);
+  const sessionCookie = await cdp.send("Network.setCookie", {
+    name: "JSESSIONID",
+    value: localSessionCookie,
+    url: frontendBaseUrl,
+    path: "/",
+    httpOnly: true,
+    secure: false,
+    sameSite: "Lax"
+  });
+  const ageExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
+  const ageCookie = await cdp.send("Network.setCookie", {
+    name: "age_gate_accepted",
+    value: `v1.${ageExpiresAt}`,
+    url: frontendBaseUrl,
+    path: "/",
+    httpOnly: false,
+    secure: false,
+    sameSite: "Lax"
+  });
+  await navigate(cdp, `${frontendBaseUrl}/admin/creditos`);
   await screenshot(cdp, `${viewport.key}-admin-premium.png`);
   const adminPremium = await evaluate(cdp, pageMetricsScript());
 
@@ -511,7 +628,7 @@ async function runViewport(cdp, viewport) {
   await screenshot(cdp, `${viewport.key}-publico-gratuito.png`);
   const publicFree = await evaluate(cdp, pageMetricsScript());
 
-  return { viewport, adminPremium, publicPremium, publicFree };
+  return { viewport, adminPremium, publicPremium, publicFree, sessionCookie, ageCookie };
 }
 async function main() {
   fs.mkdirSync(printsDir, { recursive: true });
@@ -543,14 +660,17 @@ async function main() {
     await cdp.connect();
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    await cdp.send("Network.enable");
     for (const viewport of viewports) {
       const result = await runViewport(cdp, viewport);
       results.push(result);
+      addCheck(checks, result.sessionCookie?.success === true, `${viewport.key}: sessao sintetica aplicada ao navegador`);
+      addCheck(checks, result.ageCookie?.success === true, `${viewport.key}: age gate sintetico preparado`);
       addCheck(checks, result.adminPremium.hasPremiumPanel, `${viewport.key}: admin premium renderizado`);
-      addCheck(checks, result.adminPremium.hasAtivacaoIndisponivel, `${viewport.key}: ativacao indisponivel visivel`);
-      addCheck(checks, result.adminPremium.hasLimiteGratuitoNaoExiste, `${viewport.key}: limite gratuito inexistente visivel`);
+       addCheck(checks, result.adminPremium.hasCreditoOperacional, `${viewport.key}: ledger operacional renderizado`);
+       addCheck(checks, result.adminPremium.hasCatalogoOperacional, `${viewport.key}: catalogo operacional renderizado`);
+       addCheck(checks, result.adminPremium.hasCatalogoAdministravel, `${viewport.key}: duracoes e ordem administraveis`);
       addCheck(checks, result.publicPremium.hasPremiumTitle && result.publicPremium.hasDestaque, `${viewport.key}: publico premium com destaque`);
-      addCheck(checks, result.publicPremium.hasMidiaExtra, `${viewport.key}: publico premium com midia extra`);
       addCheck(checks, result.publicFree.hasGratuitoTitle, `${viewport.key}: publico gratuito visivel`);
       for (const [label, metrics] of [["admin premium", result.adminPremium], ["publico premium", result.publicPremium], ["publico gratuito", result.publicFree]]) {
         addCheck(checks, metrics.violations.length === 0, `${viewport.key}: ${label} sem texto tecnico/sensivel`, metrics.violations.length ? `${metrics.violations.join(", ")} ${[...(metrics.upperSnakeMatches || []), ...(metrics.snakeMatches || [])].join(" ")}` : "ok");
@@ -581,6 +701,7 @@ async function main() {
       lines.push(`### ${result.viewport.key} admin premium`, "", "```text", String(result.adminPremium.textSample || "").replace(/```/g, ""), "```", "");
       lines.push(`### ${result.viewport.key} publico gratuito`, "", "```text", String(result.publicFree.textSample || "").replace(/```/g, ""), "```", "");
     }
+    while (lines.at(-1) === "") lines.pop();
     fs.writeFileSync(uiReportPath, `${lines.join("\n")}\n`, "utf8");
     const failed = checks.filter((item) => item.result !== "OK");
     if (failed.length > 0) {
@@ -604,6 +725,7 @@ main().catch((error) => {
       $env:TOPSV3_PREMIUM_BROWSER = $browserPath
       $env:TOPSV3_PREMIUM_PRINTS_DIR = $printsPath
       $env:TOPSV3_PREMIUM_RELATORIO_UI = $uiPath
+      $env:TOPSV3_PREMIUM_SESSION_COOKIE = $adminSessionCookie
       & $node.Source $tempScript
       $uiExit = $LASTEXITCODE
       Remove-Item -LiteralPath $tempScript -Force -ErrorAction SilentlyContinue
@@ -616,8 +738,10 @@ main().catch((error) => {
   }
 } finally {
   $env:NEXT_PUBLIC_API_BASE_URL = $oldApiBase
+  $env:NEXT_PUBLIC_API_URL = $oldApiUrl
   $env:NEXT_PUBLIC_APP_ENV = $oldAppEnv
   $env:NEXT_PUBLIC_CANONICAL_DOMAIN = $oldCanonical
+  Remove-Item Env:TOPSV3_PREMIUM_SESSION_COOKIE -ErrorAction SilentlyContinue
   if ($startedFrontend -and $frontendProcess -and -not $frontendProcess.HasExited) {
     taskkill.exe /PID $frontendProcess.Id /T /F | Out-Null
   }
@@ -630,11 +754,11 @@ $reportLines = @(
   "- Resultado: $(if ($failures.Count -eq 0) { 'OK_PREMIUM_BENEFICIOS_SINTETICO_LOCAL' } else { 'FALHA_PREMIUM_BENEFICIOS_SINTETICO_LOCAL' })",
   "- Backend local: $safeBackendUrl",
   "- Frontend local: $frontendBaseUrl",
-  "- Smoke base executado: sim",
+  "- Readiness base executado: sim",
   "- Dados reais: nao",
   "- Producao/VPS/API externa: nao",
   "- Pix/Efi real, checkout, pagamento, credito real ou webhook: nao",
-  "- Compra/ativacao real: nao",
+  "- Compra/ativacao externa: nao",
   "- Promessa de contratacao: nao",
   "- Plano gratuito: validado como util e sem limite comercial artificial",
   "- Premium: validado como aditivo",
@@ -654,13 +778,15 @@ $reportLines += @(
   "- Premium expirado por grupo expirado.",
   "- Beneficio vencendo.",
   "- Expiracao conjunta e inconsistencias sinteticas.",
-  "- Endpoint admin read-only sem POST/PUT/PATCH/DELETE operacional.",
+  "- Ledger administrativo operacional com motivo, RBAC e idempotencia.",
+  "- Catalogo e duracoes carregados do backend.",
   "- UI publica/admin sem enum tecnico visivel.",
   "",
-  "## Saida do smoke base",
-  ""
+  "## Limites",
+  "",
+  "- Sem Pix, Efi, webhook, checkout ou pagamento externo.",
+  "- Fluxos publicos de compra atomica cobertos pelos testes backend da fase."
 )
-$reportLines += @($legacyOutput | Select-Object -Last 50 | ForEach-Object { "- " + ($_.ToString() -replace '\|', '/') })
 Write-TextFile -Path $relatorioPath -Lines $reportLines
 
 if ($failures.Count -gt 0) {

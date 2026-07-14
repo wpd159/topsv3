@@ -332,3 +332,11 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Arquivos seguros permanecem staged quando a fase pedir.
 - Commit so ocorre com autorizacao expressa.
 - Push e remote continuam proibidos nas fases locais.
+
+## Premium e creditos operacionais
+
+- Em 2026-07-13, `movimento_credito` foi definido como ledger imutavel e fonte de verdade do saldo; ajustes e estornos criam lancamentos, nunca sobrescrevem saldo.
+- Custos, duracoes 1/7/14/30, ordem e disponibilidade de beneficios e pacotes pertencem ao catalogo do backend. O frontend nao mantem tabela paralela de precos ou duracoes.
+- Debito, ativacao e auditoria formam uma unica operacao transacional e idempotente. Saldo insuficiente ou falha intermediaria nao deixa ativacao nem debito parcial.
+- Pacotes de creditos ficam administraveis, mas inativos enquanto Pix/Efi/webhook e conciliacao nao forem implementados em fase propria.
+- O fluxo vigente de Stories dos anunciantes permanece separado; Stories administrativos continuam sem consumo de creditos.

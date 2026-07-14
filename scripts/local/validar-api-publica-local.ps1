@@ -675,8 +675,8 @@ if (-not $SemDadosSinteticos) {
 
   $usuarioCreditoId = "00000000-0000-4000-8000-000000000101"
   $creditoSaldo = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/saldo" -ExpectedStatus 200 -Method "GET" -Session $adminSession
-  Add-Check "admin creditos saldo" ($creditoSaldo.Status -eq 200 -and $creditoSaldo.Body -match '"saldoProjetado"\s*:\s*140' -and $creditoSaldo.Body -match '"saldoUltimoMovimento"\s*:\s*142') "ADMIN deve ler saldo sintetico sanitizado"
-  Add-Check "admin creditos saldo somente leitura" ($creditoSaldo.Body -match '"somenteLeitura"\s*:\s*true' -and $creditoSaldo.Body -match '"consistente"\s*:\s*false') "saldo sintetico deve sinalizar inconsistencia local"
+  Add-Check "admin creditos saldo" ($creditoSaldo.Status -eq 200 -and $creditoSaldo.Body -match '"saldoProjetado"\s*:\s*142' -and $creditoSaldo.Body -match '"saldoCalculadoMovimentos"\s*:\s*142' -and $creditoSaldo.Body -match '"saldoUltimoMovimento"\s*:\s*142') "ADMIN deve ler o saldo calculado pelo ledger sintetico"
+  Add-Check "admin creditos saldo operacional" ($creditoSaldo.Body -match '"somenteLeitura"\s*:\s*false' -and $creditoSaldo.Body -match '"consistente"\s*:\s*false') "saldo operacional deve usar o ledger e sinalizar a projecao materializada divergente"
   Assert-NoSensitiveAdminReadonlyData -Nome "admin creditos saldo" -Body $creditoSaldo.Body
 
   $creditoMovimentos = Invoke-LocalHttp -Path "/api/admin/creditos/usuarios/$usuarioCreditoId/movimentos?page=0&size=10" -ExpectedStatus 200 -Method "GET" -Session $adminSession
