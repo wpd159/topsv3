@@ -740,3 +740,10 @@ Antes de admin em ambiente nao local:
 - Congelado por decisao do usuario: HML mantem `EFI_ENABLED=false`; credenciais, certificado, chave Pix e webhook nao serao configurados nesta fase. Pix permanece indisponivel e nenhuma chamada externa ou credito por pagamento deve ocorrer.
 - Gate obrigatorio na fase de importacao/preparacao do cutover: instalar o material exclusivo no ambiente correto, registrar webhook, executar homologacao real de OAuth/cobranca/consulta/repeticao/conciliacao e comprovar credito unico no ledger.
 - Bloqueante para producao: homologacao real aprovada, credenciais/certificado/chave Pix proprios, rotacao, monitoramento, conciliacao agendada, estorno/devolucao, runbook, revisao humana/Pro e Go/No-Go financeiro.
+
+## Favoritos publicos autenticados
+
+- Fechado localmente pela V025: tabela minima com FKs, indices e unicidade usuario/anuncio, sem editar migration historica.
+- Fechado localmente: `GET`, `PUT` e `DELETE /api/public/minha-conta/favoritos[/{slug}]`, sessao obrigatoria, `404` para anuncio inexistente/nao publicavel na inclusao e mutacoes idempotentes.
+- Fechado localmente: cards e detalhe usam um unico provider alimentado por uma listagem em lote; `/favoritos` exibe erro real, estado vazio e capas publicas seguras sem N+1 por card.
+- Gate fechado localmente: Flyway V001-V025 aplicado em PostgreSQL descartavel e E2E autenticado renderizado aprovado em desktop/390 px, cobrindo inclusao/remocao repetidas, sessao ausente, anuncio inexistente/inativo, coracoes, detalhe, pagina vazia, duplo clique e ausencia de overflow/scroll lock.

@@ -350,3 +350,10 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - A integracao estrutural e os testes locais estao aprovados. Por decisao do usuario, configuracao externa, certificado, chave Pix, webhook e homologacao real ficam adiados para a fase de importacao/preparacao do cutover.
 - O HML deve permanecer com `EFI_ENABLED=false`, Pix indisponivel e comportamento fail-closed, sem mock, fallback ou pagamento simulado.
 - Instalar o material no ambiente correto e concluir a homologacao real e gate humano obrigatorio antes do cutover. Producao permanece bloqueada e intocada.
+
+## Favoritos publicos autenticados
+
+- Em 2026-07-14, favoritos passam a usar exclusivamente `GET`, `PUT` e `DELETE /api/public/minha-conta/favoritos[/{slug}]`, sem toggle, ID de usuario, simulacao ou endpoint legado.
+- `favorito_anuncio` e a fonte unica persistida. A V025 garante unicidade usuario/anuncio e integridade referencial; a sessao publica define o usuario em todas as operacoes.
+- Um unico provider frontend carrega a colecao uma vez por sessao e compartilha o conjunto de slugs entre cards, detalhe e `/favoritos`. Nao ha requisicao individual por card, adapter concorrente, cookie ou Web Storage como fonte de verdade.
+- A pagina de favoritos recebe somente anuncios ainda publicos e capas processadas pela politica de midia publica segura. Falha permanece visivel, e inclusao/remocao otimistas revertem se a API falhar.

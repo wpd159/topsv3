@@ -868,3 +868,12 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - A integracao estrutural e os testes locais estao aprovados, mas a configuracao externa e a homologacao real foram adiadas por decisao do usuario para a fase de importacao/preparacao do cutover.
 - O HML mantem `EFI_ENABLED=false`, sem credenciais, certificado, chave Pix ou webhook configurados. Pix permanece indisponivel, sem mock, fallback, cobranca simulada ou chamada externa.
 - A instalacao do material no ambiente correto, a homologacao real e o Go/No-Go financeiro formam gate obrigatorio antes do cutover. Producao permanece intocada.
+
+## 43. Favoritos publicos autenticados
+
+- Os contratos canonicos sao `GET /api/public/minha-conta/favoritos`, `PUT /api/public/minha-conta/favoritos/{slug}` e `DELETE /api/public/minha-conta/favoritos/{slug}`. Inclusao e remocao sao idempotentes e o usuario vem exclusivamente da sessao publica.
+- A V025 cria somente `favorito_anuncio`, com FKs para usuario/anuncio, data de inclusao, unicidade por usuario e anuncio e indices de consulta. Migrations historicas permanecem intocadas.
+- A listagem exclui anuncios nao publicados, nao aprovados ou removidos e monta cards em cargas de lote. A capa reutiliza a politica publica segura e nunca expoe URL restrita.
+- O frontend possui um unico adapter e um unico provider por sessao. O `GET` alimenta de uma vez o conjunto de slugs usado pelos coracoes da Home, listagens, cidade, bairro, detalhe e `/favoritos`; nao existe consulta individual por card, cookie ou Web Storage como fonte de favoritos.
+- Mutacoes usam CSRF, bloqueiam repeticao enquanto pendentes, atualizam o estado de forma otimista e revertem em falha. Visitante abre o login existente; erro da listagem permanece explicito e nao e convertido em colecao vazia.
+- O estado local legado, o endpoint `/anuncios/favoritos`, o `POST /anuncios/{id}/favoritar`, o parametro `usuarioId` e o campo `favoritoInicial` foram removidos da superficie ativa.

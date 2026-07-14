@@ -1,95 +1,74 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { HeartIcon as HeartOutline } from '@heroicons/react/24/outline'
 import { AnuncioCard } from '@/components/anuncios/anuncio-card'
-import { useAuth } from '@/context/AuthContext'
-import type { MidiaPublica } from '@/lib/media/public-media'
+import { Button } from '@/components/ui/button'
+import { useFavoritos } from '@/context/FavoritosContext'
 
-type Anuncio = {
-  id: number
-  slug: string
-  titulo: string
-  descricao: string
-  localizacao: string
-  preco: number
-  midias?: MidiaPublica[]
-  destaqueAtivo?: boolean
-  carrosselDisponivel?: boolean
-  videoHabilitado?: boolean
-  nomeAnunciante?: string
-  usernameAnunciante?: string
-  favorito?: boolean
-  whatsappCardEnabled?: boolean
+function valor(preco?: number | null) {
+  if (preco == null) return 'Valor não informado'
+  return `A partir de ${new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(preco)} / hora`
 }
 
 export default function FavoritosPage() {
-  const { usuario } = useAuth()
-  const [favoritos, setFavoritos] = useState<Anuncio[]>([])
-  const [loading, setLoading] = useState(true)
-  const API = process.env.NEXT_PUBLIC_API_URL
+  const { itens, carregando, erro, recarregar } = useFavoritos()
 
-  const carregarFavoritos = async () => {
-    try {
-      const res = await fetch(`${API}/anuncios/favoritos`, {
-        credentials: 'include',
-      })
-      if (!res.ok) throw new Error('Erro ao carregar favoritos')
-      const data: Anuncio[] = await res.json()
-      setFavoritos(data)
-    } catch (err) {
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    carregarFavoritos()
-  }, [])
-
-  const handleRemoverFavorito = (id: number) => {
-    setFavoritos((prev) => prev.filter((f) => f.id !== id))
-  }
-
-  if (loading)
+  if (carregando && itens.length === 0) {
     return (
-      <section className="max-w-6xl mx-auto px-4 py-8 text-center text-gray-500">
+      <section className="mx-auto max-w-6xl px-4 py-8 text-center text-gray-500">
         Carregando anúncios favoritados...
       </section>
     )
+  }
 
-  if (favoritos.length === 0)
+  if (erro && itens.length === 0) {
     return (
-      <section className="max-w-6xl mx-auto px-4 py-8 text-center text-gray-500">
-        <div className="py-20 border rounded-xl bg-gray-50">
-          <HeartOutline className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+      <section className="mx-auto max-w-6xl px-4 py-8 text-center">
+        <div className="rounded-xl border border-red-100 bg-red-50 px-5 py-12 text-red-700">
+          <p>{erro}</p>
+          <Button type="button" variant="outline" className="mt-4" onClick={() => void recarregar()}>
+            Tentar novamente
+          </Button>
+        </div>
+      </section>
+    )
+  }
+
+  if (itens.length === 0) {
+    return (
+      <section className="mx-auto max-w-6xl px-4 py-8 text-center text-gray-500">
+        <div className="rounded-xl border bg-gray-50 py-20">
+          <HeartOutline className="mx-auto mb-3 h-10 w-10 text-gray-400" />
           Nenhum anúncio favoritado ainda.
         </div>
       </section>
     )
+  }
 
   return (
-    <section className="max-w-[1300px] mx-auto py-8 space-y-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
-        {favoritos.map((a) => (
+    <section className="mx-auto max-w-[1300px] space-y-6 py-8">
+      {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
+      <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+        {itens.map((anuncio) => (
           <AnuncioCard
-            key={a.id}
-            id={a.id}
-            slug={a.slug}
-            usuarioId={usuario?.id}
-            nome={a.titulo}
-            nomeAnunciante={a.nomeAnunciante}
-            usernameAnunciante={a.usernameAnunciante}
-            cidadeNome={a.localizacao ?? 'Não informado'}
-            valor={`A partir de R$ ${a.preco?.toFixed(2).replace('.', ',')} / hora`}
-            midias={a.midias ?? []}
-            descricao={a.descricao}
-            favoritoInicial={true}
-            destaque={a.destaqueAtivo ?? false}
-            carrosselDisponivel={a.carrosselDisponivel ?? false}
-            videoHabilitado={a.videoHabilitado ?? false}
-            whatsappCardEnabled={a.whatsappCardEnabled ?? false}
-            onDesfavoritar={() => handleRemoverFavorito(a.id)}
+            key={anuncio.id}
+            id={anuncio.id}
+            slug={anuncio.slug}
+            nome={anuncio.titulo}
+            estadoUf={anuncio.localizacao?.uf ?? null}
+            cidadeNome={anuncio.localizacao?.cidade ?? null}
+            bairroNome={anuncio.localizacao?.bairro ?? null}
+            pontoReferenciaTexto={anuncio.localizacao?.enderecoResumido ?? null}
+            valor={valor(anuncio.preco)}
+            midias={anuncio.midias ?? []}
+            descricao={anuncio.descricaoResumo}
+            whatsappCardEnabled={anuncio.contatoDisponivel}
+            comLocal={anuncio.comLocal}
+            fazAnal={anuncio.fazAnal}
+            anunciaDesde={anuncio.anunciaDesde ?? null}
           />
         ))}
       </div>

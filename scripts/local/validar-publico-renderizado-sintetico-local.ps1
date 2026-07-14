@@ -15,6 +15,11 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+if ($env:TOPSV3_RENDER_RELATORIO_AUDITORIA) { $RelatorioAuditoria = $env:TOPSV3_RENDER_RELATORIO_AUDITORIA }
+if ($env:TOPSV3_RENDER_RELATORIO_SEO) { $RelatorioSeo = $env:TOPSV3_RENDER_RELATORIO_SEO }
+if ($env:TOPSV3_RENDER_RELATORIO_UI) { $RelatorioUi = $env:TOPSV3_RENDER_RELATORIO_UI }
+if ($env:TOPSV3_RENDER_PRINTS_DIR) { $PrintsDirectory = $env:TOPSV3_RENDER_PRINTS_DIR }
+
 $repoRoot = (& git rev-parse --show-toplevel 2>$null).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
   Write-Host "ERRO: repositorio Git nao encontrado."
@@ -74,7 +79,11 @@ function Invoke-WrapperMode {
     exit 2
   }
 
-  $e2eReport = Resolve-RepoPath "docs/v3/evidencias/bloco-32-1/relatorio-e2e-renderizado-sintetico.md"
+  $e2eReport = if ($env:TOPSV3_RENDER_RELATORIO_E2E) {
+    $env:TOPSV3_RENDER_RELATORIO_E2E
+  } else {
+    Resolve-RepoPath "docs/v3/evidencias/bloco-32-1/relatorio-e2e-renderizado-sintetico.md"
+  }
   $powershell = (Get-Command powershell -ErrorAction Stop).Source
   $argsBase = @(
     "-NoProfile",
@@ -760,6 +769,105 @@ async function renderedConfirm(cdp, code) {
   return result.result.value === true;
 }
 
+async function renderedFavorites(cdp, viewport, sessionCookie) {
+  const checks = [];
+  const cookieSeparator = sessionCookie.indexOf("=");
+  const cookieName = sessionCookie.slice(0, cookieSeparator);
+  const cookieValue = sessionCookie.slice(cookieSeparator + 1);
+  await cdp.send("Network.setCookie", {
+    name: cookieName,
+    value: cookieValue,
+    url: frontendBaseUrl,
+    path: "/",
+    httpOnly: true,
+    sameSite: "Lax"
+  });
+
+  await navigate(cdp, `${frontendBaseUrl}/acompanhantes/go/goiania`);
+  const cardResult = await cdp.send("Runtime.evaluate", {
+    expression: `(async () => {
+      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const slug = "demo-goiania-livre-premium";
+      const getButton = () => {
+        const card = [...document.querySelectorAll(".public-anuncio-card")].find((item) =>
+          item.querySelector('a[href="/anuncios/' + slug + '"]')
+        );
+        return card?.querySelector('button[aria-pressed]');
+      };
+      let button;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        button = getButton();
+        if (button?.getAttribute("aria-pressed") === "true") break;
+        await delay(100);
+      }
+      if (!button) return { found: false };
+      const initial = button.getAttribute("aria-pressed");
+      button.click();
+      button.click();
+      for (let attempt = 0; attempt < 40; attempt++) {
+        button = getButton();
+        if (button.getAttribute("aria-pressed") === "false" && !button.disabled) break;
+        await delay(100);
+      }
+      const afterDoubleClick = button.getAttribute("aria-pressed");
+      button.click();
+      for (let attempt = 0; attempt < 40; attempt++) {
+        button = getButton();
+        if (button.getAttribute("aria-pressed") === "true" && !button.disabled) break;
+        await delay(100);
+      }
+      return {
+        found: true,
+        initial,
+        afterDoubleClick,
+        afterAdd: button.getAttribute("aria-pressed"),
+        width: document.documentElement.scrollWidth,
+        viewport: innerWidth,
+        bodyOverflow: document.body.style.overflow || ""
+      };
+    })()`,
+    awaitPromise: true,
+    returnByValue: true
+  });
+  const card = cardResult.result.value;
+  addCheck(checks, card.found && card.initial === "true", `${viewport.key}: coracao do card reflete favorito real`, JSON.stringify(card));
+  addCheck(checks, card.afterDoubleClick === "false", `${viewport.key}: duplo clique nao duplica mutacao`, JSON.stringify(card));
+  addCheck(checks, card.afterAdd === "true", `${viewport.key}: coracao do card volta ao estado favoritado`, JSON.stringify(card));
+  addCheck(checks, card.width <= card.viewport + 2 && !card.bodyOverflow, `${viewport.key}: listagem de favoritos sem overflow ou scroll lock`, JSON.stringify(card));
+
+  await navigate(cdp, `${frontendBaseUrl}/anuncios/demo-goiania-livre-premium`);
+  const detailResult = await cdp.send("Runtime.evaluate", {
+    expression: `(() => ({
+      favoritePressed: [...document.querySelectorAll('button[aria-pressed="true"]')].some((button) => /favoritos/i.test(button.getAttribute("aria-label") || "")),
+      width: document.documentElement.scrollWidth,
+      viewport: innerWidth,
+      bodyOverflow: document.body.style.overflow || ""
+    }))()`,
+    returnByValue: true
+  });
+  const detail = detailResult.result.value;
+  addCheck(checks, detail.favoritePressed, `${viewport.key}: detalhe reflete favorito real`, JSON.stringify(detail));
+  addCheck(checks, detail.width <= detail.viewport + 2 && !detail.bodyOverflow, `${viewport.key}: detalhe com favorito sem overflow ou scroll lock`, JSON.stringify(detail));
+
+  await navigate(cdp, `${frontendBaseUrl}/favoritos`);
+  const pageResult = await cdp.send("Runtime.evaluate", {
+    expression: `(() => ({
+      hasCard: Boolean(document.querySelector('a[href="/anuncios/demo-goiania-livre-premium"]')),
+      hasFavorite: Boolean(document.querySelector('button[aria-pressed="true"]')),
+      errorText: /nao foi possivel carregar os favoritos/i.test(document.body.innerText.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")),
+      width: document.documentElement.scrollWidth,
+      viewport: innerWidth,
+      bodyOverflow: document.body.style.overflow || ""
+    }))()`,
+    returnByValue: true
+  });
+  const page = pageResult.result.value;
+  addCheck(checks, page.hasCard && page.hasFavorite && !page.errorText, `${viewport.key}: pagina /favoritos exibe card real`, JSON.stringify(page));
+  addCheck(checks, page.width <= page.viewport + 2 && !page.bodyOverflow, `${viewport.key}: /favoritos sem overflow ou scroll lock`, JSON.stringify(page));
+  await cdp.send("Network.deleteCookies", { name: cookieName, url: frontendBaseUrl });
+  return checks;
+}
+
 async function runAuthFlow(cdp, viewport, adminCookie, sequence) {
   const checks = [];
   const suffix = `${viewport.key.replace(/[^a-z0-9]/gi, "").toLowerCase()}${sequence}`;
@@ -812,6 +920,26 @@ async function runAuthFlow(cdp, viewport, adminCookie, sequence) {
   addCheck(checks, oldRejected.status === 401, `${viewport.key}: senha antiga recusada`, `status=${oldRejected.status}`);
   addCheck(checks, newAccepted.status === 200, `${viewport.key}: senha nova aceita`, `status=${newAccepted.status}`);
 
+  const semSessao = await api("/api/public/minha-conta/favoritos");
+  addCheck(checks, semSessao.status === 401, `${viewport.key}: favoritos exige sessao`, `status=${semSessao.status}`);
+  const favoritoPrimeiro = await api("/api/public/minha-conta/favoritos/demo-goiania-livre-premium", { method: "PUT", cookie: newAccepted.cookie });
+  const favoritoRepetido = await api("/api/public/minha-conta/favoritos/demo-goiania-livre-premium", { method: "PUT", cookie: newAccepted.cookie });
+  const favoritos = await api("/api/public/minha-conta/favoritos", { cookie: newAccepted.cookie });
+  const favoritosMesmoSlug = (favoritos.json || []).filter((item) => item.slug === "demo-goiania-livre-premium");
+  addCheck(checks, favoritoPrimeiro.status === 200 && favoritoRepetido.status === 200 && favoritosMesmoSlug.length === 1,
+    `${viewport.key}: inclusao de favorito e idempotente`, `put=${favoritoPrimeiro.status}/${favoritoRepetido.status}; itens=${favoritosMesmoSlug.length}`);
+  const inexistente = await api("/api/public/minha-conta/favoritos/anuncio-inexistente", { method: "PUT", cookie: newAccepted.cookie });
+  const inativo = await api("/api/public/minha-conta/favoritos/demo-goiania-pausado", { method: "PUT", cookie: newAccepted.cookie });
+  addCheck(checks, inexistente.status === 404 && inativo.status === 404, `${viewport.key}: anuncio inexistente ou inativo nao e exposto`, `inexistente=${inexistente.status}; inativo=${inativo.status}`);
+
+  checks.push(...await renderedFavorites(cdp, viewport, newAccepted.cookie));
+
+  const removerPrimeiro = await api("/api/public/minha-conta/favoritos/demo-goiania-livre-premium", { method: "DELETE", cookie: newAccepted.cookie });
+  const removerRepetido = await api("/api/public/minha-conta/favoritos/demo-goiania-livre-premium", { method: "DELETE", cookie: newAccepted.cookie });
+  const vazia = await api("/api/public/minha-conta/favoritos", { cookie: newAccepted.cookie });
+  addCheck(checks, removerPrimeiro.status === 200 && removerRepetido.status === 200 && Array.isArray(vazia.json) && vazia.json.length === 0,
+    `${viewport.key}: remocao de favorito e idempotente e pagina pode ficar vazia`, `delete=${removerPrimeiro.status}/${removerRepetido.status}; itens=${vazia.json?.length}`);
+
   if (printsDir) {
     const shot = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false });
     fs.writeFileSync(path.join(printsDir, `${viewport.key}-auth-final.png`), Buffer.from(shot.data, "base64"));
@@ -859,6 +987,7 @@ async function main() {
     await cdp.connect();
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
+    await cdp.send("Network.enable");
     await cdp.send("Page.navigate", { url: frontendBaseUrl });
     await delay(300);
     await cdp.send("Runtime.evaluate", {

@@ -8,6 +8,7 @@ import { SensitiveImage } from '@/components/compliance/sensitive-image'
 import { fontePublicaSegura, type MidiaPublica } from '@/lib/media/public-media'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
 import { cn } from '@/lib/utils'
+import { FavoritoButton } from '@/components/anuncios/favorito-button'
 
 type HeaderTabsProps = {
   anuncio: {
@@ -186,7 +187,12 @@ export default function HeaderTabs({
         </section>
       ) : null}
 
-      <h1 className="text-4xl font-bold leading-tight text-gray-950 sm:text-5xl">{nome}</h1>
+      <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
+        <h1 className="min-w-0 text-4xl font-bold leading-tight text-gray-950 sm:text-5xl">{nome}</h1>
+        {anuncio.slug ? (
+          <FavoritoButton slug={anuncio.slug} className="shrink-0 self-end sm:mt-1 sm:self-auto" iconClassName="h-6 w-6" />
+        ) : null}
+      </div>
 
       {lightboxOpen && fotoLightbox && typeof document !== 'undefined'
         ? createPortal(

@@ -5,6 +5,7 @@ import Script from "next/script"
 import "./globals.css"
 
 import { AuthProvider } from "@/context/AuthContext"
+import { FavoritosProvider } from "@/context/FavoritosContext"
 import { Toaster } from "sonner"
 import { AgeGateModal } from "@/components/modals/age-gate-modal"
 import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
@@ -76,8 +77,9 @@ export default function RootLayout({
 
       <body className="min-w-0 w-full antialiased bg-white text-[#111]">
         <AuthProvider>
-          <SensitiveImageUnlockProvider>
-            <WhatsAppSafetyProvider>
+          <FavoritosProvider>
+            <SensitiveImageUnlockProvider>
+              <WhatsAppSafetyProvider>
               <AgeGateModal
                 termsHref="/termos-de-uso"
                 denyRedirect="https://www.google.com"
@@ -86,8 +88,9 @@ export default function RootLayout({
               {children}
 
               <Toaster position="top-right" richColors closeButton expand />
-            </WhatsAppSafetyProvider>
-          </SensitiveImageUnlockProvider>
+              </WhatsAppSafetyProvider>
+            </SensitiveImageUnlockProvider>
+          </FavoritosProvider>
         </AuthProvider>
       </body>
     </html>

@@ -371,6 +371,9 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Principal e sessao publica: `backend/src/main/java/br/com/topsdojob/v3/security/publico/PublicUserPrincipal.java`, `backend/src/main/java/br/com/topsdojob/v3/security/config/SecurityConfig.java`
 - Adapter frontend unico de Auth publico: `frontend/src/lib/public-auth-api.ts`
 - Testes Auth publico: `backend/src/test/java/br/com/topsdojob/v3/application/publico/auth/PublicAuthenticationServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/auth/PublicAuthFrontendContractTest.java`
+- Favoritos e migration V025: `backend/src/main/resources/db/migration/V025__favoritos_anuncios.sql`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/favorito/`, `backend/src/main/java/br/com/topsdojob/v3/web/publico/favorito/FavoritosPublicosController.java`
+- Adapter, estado compartilhado e UI de favoritos: `frontend/src/lib/favoritos-api.ts`, `frontend/src/context/FavoritosContext.tsx`, `frontend/src/components/anuncios/favorito-button.tsx`, `frontend/src/app/(private-routes)/favoritos/page.tsx`
+- Testes de favoritos: `backend/src/test/java/br/com/topsdojob/v3/application/publico/favorito/`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/favorito/`, `backend/src/test/java/br/com/topsdojob/v3/migration/FavoritosAnunciosMigrationTest.java`
 - Perfil publico autenticado: `PATCH /api/public/auth/me`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/auth/dto/PublicProfileUpdateRequestDto.java`
 - Guarda privada do anunciante: `frontend/src/middleware.ts`, `frontend/src/components/auth/private-session-guard.tsx`, `frontend/src/app/(private-routes)/layout.tsx`
 - Painel e perfil essenciais: `frontend/src/app/(private-routes)/painel/page.tsx`, `frontend/src/app/(private-routes)/minha-conta/page.tsx`

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { AnuncioCard } from "@/components/anuncios/anuncio-card"
-import { useAuth } from "@/context/AuthContext"
 import { corrigirEstruturaTexto } from "@/lib/text/encoding"
 import type { MidiaPublica } from "@/lib/media/public-media"
 
@@ -30,7 +29,6 @@ type Anuncio = {
 }
 
 export default function AnunciosUsuarioClient({ username }: { username: string }) {
-  const { usuario } = useAuth()
   const [anuncios, setAnuncios] = useState<Anuncio[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -117,7 +115,6 @@ export default function AnunciosUsuarioClient({ username }: { username: string }
               key={anuncio.id}
               id={anuncio.id}
               slug={anuncio.slug ?? anuncio.titulo.toLowerCase().replace(/\s+/g, "-")}
-              usuarioId={usuario?.id}
               nome={anuncio.titulo}
               nomeAnunciante={anuncio.nomeAnunciante}
               usernameAnunciante={anuncio.usernameAnunciante}
@@ -128,7 +125,6 @@ export default function AnunciosUsuarioClient({ username }: { username: string }
               valor={`A partir de R$ ${anuncio.preco?.toFixed(2) ?? "0,00"} / hora`}
               midias={anuncio.midias ?? []}
               descricao={anuncio.descricao}
-              favoritoInicial={anuncio.favorito ?? false}
               destaque={anuncio.destaqueAtivo ?? false}
               visualizacoes={anuncio.visualizacoes ?? 0}
               carrosselDisponivel={anuncio.carrosselDisponivel ?? false}

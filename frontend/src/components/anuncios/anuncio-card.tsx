@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { SensitiveImage } from "@/components/compliance/sensitive-image"
+import { FavoritoButton } from "@/components/anuncios/favorito-button"
 import { selecionarGaleriaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
 import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
@@ -15,7 +16,6 @@ import {
   ChatBubbleLeftIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  HeartIcon as HeartSolid,
   EyeIcon,
   PhotoIcon,
   PlayCircleIcon,
@@ -37,10 +37,7 @@ type AnuncioCardProps = {
   descricao?: string | null
   nomeAnunciante?: string
   usernameAnunciante?: string
-  favoritoInicial?: boolean
-  onDesfavoritar?: (nome: string) => void
   destaque?: boolean
-  usuarioId?: string | number
   visualizacoes?: number
   carrosselDisponivel?: boolean
   videoHabilitado?: boolean
@@ -99,10 +96,7 @@ export function AnuncioCard({
   previewImagens = [],
   descricao,
   usernameAnunciante,
-  favoritoInicial = false,
-  onDesfavoritar,
   destaque = false,
-  usuarioId,
   visualizacoes = 0,
   carrosselDisponivel = false,
   videoHabilitado = false,
@@ -176,8 +170,6 @@ export function AnuncioCard({
   }, [badSrcs, midias, previewImagens, previewMode])
 
   const [index, setIndex] = useState(0)
-  const [favorito, setFavorito] = useState(favoritoInicial)
-  const [loadingFavorito, setLoadingFavorito] = useState(false)
   const [views, setViews] = useState(visualizacoes)
 
   useEffect(() => {
@@ -211,51 +203,6 @@ export function AnuncioCard({
   const prev = () => {
     if (!midiasSeguras.length) return
     setIndex((i) => (i - 1 + midiasSeguras.length) % midiasSeguras.length)
-  }
-
-  const toggleFavorito = async (e: MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation()
-    if (previewMode) return
-    if (loadingFavorito) return
-
-    if (!usuarioId) {
-      toast.info("Faça login para favoritar anúncios.")
-      return
-    }
-
-    const wasFavorito = favorito
-    const method = wasFavorito ? "DELETE" : "POST"
-
-    setLoadingFavorito(true)
-
-    try {
-      const url = `${API}/anuncios/${id}/favoritar?usuarioId=${usuarioId}`
-      const res = await fetch(url, { method, credentials: "include" })
-      const text = await res.text()
-
-      if (!res.ok) {
-        const low = (text || "").toLowerCase()
-        if (low.includes("próprio anúncio") || low.includes("proprio anuncio")) {
-          toast.warning("Você não pode favoritar o seu próprio anúncio.")
-        } else {
-          toast.error(text || "Erro ao atualizar favorito.")
-        }
-        return
-      }
-
-      setFavorito(!wasFavorito)
-
-      if (method === "DELETE") {
-        toast.success(text || "Anúncio removido dos favoritos.")
-        onDesfavoritar?.(nome)
-      } else {
-        toast.success(text || "Anúncio adicionado aos favoritos.")
-      }
-    } catch {
-      toast.error("Erro de conexão com o servidor.")
-    } finally {
-      setLoadingFavorito(false)
-    }
   }
 
   const handleWhatsAppClick = async (e: MouseEvent<HTMLButtonElement>) => {
@@ -373,14 +320,7 @@ export function AnuncioCard({
         )}
 
         {!previewMode && (
-          <button
-            onClick={toggleFavorito}
-            disabled={loadingFavorito}
-            className="absolute right-3 top-3 z-20 rounded-full border border-gray-200 bg-white/90 p-2 shadow-sm hover:bg-white"
-            aria-label={favorito ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-          >
-            <HeartSolid className={`h-5 w-5 ${favorito ? "text-[#FC1EAD]" : "text-gray-600"}`} />
-          </button>
+          <FavoritoButton slug={slugRota} className="absolute right-3 top-3 z-20" />
         )}
 
         <div className="absolute left-3 top-3 z-20 flex min-h-7 max-w-[calc(100%-4.5rem)] flex-wrap items-start gap-1.5">

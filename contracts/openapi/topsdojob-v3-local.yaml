@@ -236,6 +236,75 @@ paths:
                 $ref: "#/components/schemas/PublicAuthStatus"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/public/minha-conta/favoritos:
+    get:
+      summary: Lista os anuncios favoritos do usuario autenticado
+      operationId: listCurrentUserFavorites
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: O usuario e obtido exclusivamente da sessao. A resposta omite anuncios nao publicos ou removidos e expoe somente capa publica segura.
+      responses:
+        "200":
+          description: favoritos publicos do usuario, em ordem decrescente de inclusao
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FavoritoPublico"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/minha-conta/favoritos/{slug}:
+    parameters:
+      - $ref: "#/components/parameters/RequestId"
+      - name: slug
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
+    put:
+      summary: Inclui um anuncio nos favoritos de forma idempotente
+      operationId: addCurrentUserFavorite
+      security:
+        - PublicSessionCookie: []
+      description: O usuario e obtido exclusivamente da sessao; exige CSRF quando habilitado e nao aceita identificador de usuario no payload.
+      responses:
+        "200":
+          description: estado final favoritado, inclusive quando a relacao ja existia
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavoritoEstado"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      summary: Remove um anuncio dos favoritos de forma idempotente
+      operationId: removeCurrentUserFavorite
+      security:
+        - PublicSessionCookie: []
+      description: Remove somente a relacao pertencente ao usuario da sessao; exige CSRF quando habilitado.
+      responses:
+        "200":
+          description: estado final nao favoritado, inclusive quando a relacao ja estava ausente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavoritoEstado"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/public/minha-conta/anuncios:
     get:
       summary: Lista os anuncios do usuario publico autenticado
@@ -6410,6 +6479,60 @@ components:
         ativo:
           type: boolean
           const: true
+    FavoritoEstado:
+      type: object
+      additionalProperties: false
+      required: [slug, favorito]
+      properties:
+        slug:
+          type: string
+        favorito:
+          type: boolean
+    FavoritoPublico:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - slug
+        - titulo
+        - localizacao
+        - midias
+        - contatoDisponivel
+        - comLocal
+        - fazAnal
+        - adicionadoEm
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        titulo:
+          type: string
+        descricaoResumo:
+          type: [string, "null"]
+        preco:
+          type: [number, "null"]
+        localizacao:
+          $ref: "#/components/schemas/LocalizacaoPublica"
+        midias:
+          type: array
+          maxItems: 1
+          description: Capa selecionada pela politica publica segura; nunca URL de midia restrita.
+          items:
+            $ref: "#/components/schemas/MidiaPublica"
+        contatoDisponivel:
+          type: boolean
+        comLocal:
+          type: boolean
+        fazAnal:
+          type: boolean
+        anunciaDesde:
+          type: [string, "null"]
+          format: date-time
+        adicionadoEm:
+          type: string
+          format: date-time
     AnuncioCardPublico:
       type: object
       additionalProperties: false

@@ -32,7 +32,7 @@ public class LocalCorsConfiguration implements WebMvcConfigurer {
         }
         registry.addMapping("/api/**")
                 .allowedOrigins(allowedOrigins)
-                .allowedMethods("GET", "POST", "OPTIONS")
+                .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("Accept", "Content-Type", "X-XSRF-TOKEN", RequestIdContext.HEADER_NAME)
                 .exposedHeaders(RequestIdContext.HEADER_NAME)
                 .allowCredentials(true)
