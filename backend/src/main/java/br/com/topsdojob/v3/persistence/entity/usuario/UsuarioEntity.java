@@ -172,7 +172,7 @@ public class UsuarioEntity {
     entity.emailNormalizado = emailNormalizado;
     entity.telefoneNormalizado = telefoneNormalizado;
     entity.dataNascimento = dataNascimento;
-    entity.status = StatusUsuario.ATIVO;
+    entity.status = StatusUsuario.PENDENTE;
     entity.tipoConta = TipoContaUsuario.ANUNCIANTE;
     entity.emailVerificadoEm = null;
     entity.telefoneVerificadoEm = null;
@@ -188,6 +188,12 @@ public class UsuarioEntity {
       OffsetDateTime atualizadoEm) {
     this.dataNascimento = dataNascimento;
     this.atualizadoEm = atualizadoEm;
+  }
+
+  public void confirmarEmail(OffsetDateTime agora) {
+    this.emailVerificadoEm = agora;
+    this.status = StatusUsuario.ATIVO;
+    this.atualizadoEm = agora;
   }
 
   public void aplicarDadosKyc(

@@ -52,18 +52,24 @@ public class PublicAuthenticationService {
     private final PapelUsuarioRepository papelRepository;
     private final PasswordEncoder passwordEncoder;
     private final SecurityContextRepository securityContextRepository;
+    private final PublicAccountLifecycleService accountLifecycleService;
+    private final PublicSessionRegistry sessionRegistry;
 
     public PublicAuthenticationService(
             UsuarioRepository usuarioRepository,
             CredencialUsuarioRepository credencialRepository,
             PapelUsuarioRepository papelRepository,
             PasswordEncoder passwordEncoder,
-            SecurityContextRepository securityContextRepository) {
+            SecurityContextRepository securityContextRepository,
+            PublicAccountLifecycleService accountLifecycleService,
+            PublicSessionRegistry sessionRegistry) {
         this.usuarioRepository = usuarioRepository;
         this.credencialRepository = credencialRepository;
         this.papelRepository = papelRepository;
         this.passwordEncoder = passwordEncoder;
         this.securityContextRepository = securityContextRepository;
+        this.accountLifecycleService = accountLifecycleService;
+        this.sessionRegistry = sessionRegistry;
     }
 
     @Transactional
@@ -93,6 +99,7 @@ public class PublicAuthenticationService {
             usuarioRepository.saveAndFlush(usuario);
             credencialRepository.save(credencial);
             papelRepository.save(PapelUsuarioEntity.criarUsuarioPublico(usuarioId, now));
+            accountLifecycleService.issueInitialConfirmation(usuario);
         } catch (DataIntegrityViolationException exception) {
             throw conflict("E-mail, telefone ou nome de usuario ja cadastrado.");
         }
@@ -109,6 +116,9 @@ public class PublicAuthenticationService {
         }
         String email = normalizeEmail(request.email());
         UsuarioEntity usuario = usuarioRepository.findByEmailNormalizado(email).orElseThrow(this::unauthorized);
+        if (usuario.getEmailVerificadoEm() == null) {
+            throw new PublicAuthException(HttpStatus.UNAUTHORIZED, "Conta ainda nao confirmada.");
+        }
         if (usuario.getStatus() != StatusUsuario.ATIVO
                 || usuario.getTipoConta() != TipoContaUsuario.ANUNCIANTE
                 || usuario.getDesativadoEm() != null) {
@@ -134,6 +144,7 @@ public class PublicAuthenticationService {
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
+        sessionRegistry.register(usuario.getId(), httpRequest.getSession(false));
         return toDto(usuario);
     }
 

@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import { RegisterForm } from '@/components/auth/register-form'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { ConfirmarContaModal } from './confirmar-conta-modal'
 
 interface RegisterModalProps {
   open: boolean
@@ -11,7 +13,9 @@ interface RegisterModalProps {
 }
 
 export function RegisterModal({ open, onOpenChange, onBackToLogin, refId }: RegisterModalProps) {
+  const [confirmationEmail, setConfirmationEmail] = useState('')
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       {open && (
         <button
@@ -27,9 +31,9 @@ export function RegisterModal({ open, onOpenChange, onBackToLogin, refId }: Regi
         <DialogDescription className="sr-only">Crie sua conta para comecar</DialogDescription>
         <RegisterForm
           refId={refId}
-          onSuccess={() => {
+          onSuccess={(email) => {
             onOpenChange(false)
-            onBackToLogin?.()
+            setConfirmationEmail(email)
           }}
           onBackToLogin={() => {
             onOpenChange(false)
@@ -38,5 +42,12 @@ export function RegisterModal({ open, onOpenChange, onBackToLogin, refId }: Regi
         />
       </DialogContent>
     </Dialog>
+    <ConfirmarContaModal
+      open={Boolean(confirmationEmail)}
+      onOpenChange={(next) => { if (!next) setConfirmationEmail('') }}
+      email={confirmationEmail}
+      onVerified={() => { setConfirmationEmail(''); onBackToLogin?.() }}
+    />
+    </>
   )
 }

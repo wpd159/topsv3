@@ -86,4 +86,8 @@ public class CredencialUsuarioEntity {
     this.precisaRedefinir = false;
   }
 
+  public void redefinir(String novoHash, OffsetDateTime alteradaEm) {
+    atualizarHashHomologacao(novoHash, alteradaEm);
+  }
+
 }

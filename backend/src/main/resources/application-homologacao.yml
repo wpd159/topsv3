@@ -25,6 +25,8 @@ spring:
 
 app:
   env: ${APP_ENV:homologacao}
+  auth:
+    hml-code-vault-enabled: ${APP_AUTH_HML_CODE_VAULT_ENABLED:false}
   canonical-domain: ${APP_CANONICAL_DOMAIN:https://v3.esle.cloud}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}

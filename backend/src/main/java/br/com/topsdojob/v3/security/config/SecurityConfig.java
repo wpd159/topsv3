@@ -125,6 +125,8 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MODERADOR")
                         .requestMatchers(HttpMethod.POST, "/api/admin/outbox/*/simular-processamento-local")
                         .hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/admin/outbox/*/auth-test-code")
+                        .hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/admin/moderacao/revisoes/*/decidir")
                         .hasAnyRole("ADMIN", "MODERADOR")
                         .requestMatchers(HttpMethod.POST, "/api/admin/midias/*/decidir")

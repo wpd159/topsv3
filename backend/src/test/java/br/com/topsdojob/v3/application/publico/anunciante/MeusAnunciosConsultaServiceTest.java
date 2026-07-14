@@ -246,6 +246,7 @@ class MeusAnunciosConsultaServiceTest {
                 "+5562999999999",
                 null,
                 AGORA);
+        usuario.confirmarEmail(AGORA);
         when(usuarioRepository.findById(USUARIO_ID)).thenReturn(Optional.of(usuario));
     }
 

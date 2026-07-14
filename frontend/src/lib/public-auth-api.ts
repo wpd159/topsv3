@@ -44,6 +44,7 @@ export type RegisterPayload = {
 }
 
 export type RegisterResult = { ok: true } | { ok: false; message: string }
+export type PublicAccountAction = { message: string }
 
 export class PublicAuthApiError extends Error {
   constructor(
@@ -148,6 +149,23 @@ export async function logoutPublic() {
   await publicRequest<{ autenticado: boolean; status: string }>('/auth/logout', {
     method: 'POST',
   })
+}
+
+function accountAction(path: string, body: Record<string, string>) {
+  return publicRequest<PublicAccountAction>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export const confirmPublicAccount = (email: string, codigo: string) => accountAction('/auth/confirm', { email, codigo })
+export const resendPublicConfirmation = (email: string) => accountAction('/auth/resend-confirmation', { email })
+export const requestPublicPasswordReset = (email: string) => accountAction('/auth/forgot-password', { email })
+export const validatePublicResetCode = (email: string, codigo: string) => accountAction('/auth/validate-reset-code', { email, codigo })
+export const resetPublicCredential = (...values: [string, string, string, string]) => {
+  const [email, codigo, novaSenha, confirmarSenha] = values
+  return accountAction('/auth/reset-password', { email, codigo, novaSenha, confirmarSenha })
 }
 
 export async function checkDuplicidade(

@@ -109,6 +109,71 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+  /api/public/auth/confirm:
+    post:
+      summary: Confirma a conta publica com codigo de uso unico
+      operationId: confirmPublicAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicCodeRequest" }
+      responses:
+        "200": { description: conta confirmada }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: limite de tentativas excedido }
+  /api/public/auth/resend-confirmation:
+    post:
+      summary: Solicita novo codigo de confirmacao sem enumerar e-mail
+      operationId: resendPublicConfirmation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicEmailRequest" }
+      responses:
+        "200": { description: resposta generica independente da existencia da conta }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: limite de solicitacoes excedido }
+  /api/public/auth/forgot-password:
+    post:
+      summary: Solicita recuperacao sem enumerar e-mail
+      operationId: requestPublicPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicEmailRequest" }
+      responses:
+        "200": { description: resposta generica independente da existencia da conta }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: limite de solicitacoes excedido }
+  /api/public/auth/validate-reset-code:
+    post:
+      summary: Valida codigo de recuperacao sem consumi-lo
+      operationId: validatePublicResetCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicCodeRequest" }
+      responses:
+        "200": { description: codigo valido }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: limite de tentativas excedido }
+  /api/public/auth/reset-password:
+    post:
+      summary: Redefine senha, consome codigo e invalida sessoes anteriores
+      operationId: resetPublicPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PublicResetPasswordRequest" }
+      responses:
+        "200": { description: senha redefinida }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { description: limite de tentativas excedido }
   /api/public/auth/me:
     get:
       summary: Recupera a sessao publica e inicializa o token CSRF
@@ -3592,6 +3657,36 @@ components:
         senha:
           type: string
           format: password
+          writeOnly: true
+    PublicEmailRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+    PublicCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [email, codigo]
+      properties:
+        email: { type: string, format: email }
+        codigo: { type: string, pattern: "^[0-9]{6}$", writeOnly: true }
+    PublicResetPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [email, codigo, novaSenha, confirmarSenha]
+      properties:
+        email: { type: string, format: email }
+        codigo: { type: string, pattern: "^[0-9]{6}$", writeOnly: true }
+        novaSenha:
+          type: string
+          format: password
+          minLength: 8
+          writeOnly: true
+        confirmarSenha:
+          type: string
+          format: password
+          minLength: 8
           writeOnly: true
     PublicProfileUpdateRequest:
       type: object

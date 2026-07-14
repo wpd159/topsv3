@@ -19,6 +19,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { RecuperarSenhaModal } from './recuperar-senha-modal'
+import { ConfirmarContaModal } from './confirmar-conta-modal'
 import { useAuth } from '@/context/AuthContext'
 import { toast } from 'sonner'
 import { getPublicLogoUrl } from '@/lib/public-site-assets'
@@ -41,6 +42,7 @@ export function LoginModal({
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [forgotPasswordModalOpen, setForgotPasswordModalOpen] = useState(false)
+  const [confirmAccountOpen, setConfirmAccountOpen] = useState(false)
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [loading, setLoading] = useState(false)
@@ -105,6 +107,10 @@ export function LoginModal({
       }
       onOpenChange(false)
     } catch (error) {
+      if (error instanceof PublicAuthApiError && error.status === 401 && error.message.includes('confirmada')) {
+        setConfirmAccountOpen(true)
+        return
+      }
       toast.error(error instanceof PublicAuthApiError ? error.message : 'Falha na conexão com o servidor')
     } finally {
       setLoading(false)
@@ -205,6 +211,13 @@ export function LoginModal({
       <RecuperarSenhaModal
         open={forgotPasswordModalOpen}
         onOpenChange={setForgotPasswordModalOpen}
+      />
+
+      <ConfirmarContaModal
+        open={confirmAccountOpen}
+        onOpenChange={setConfirmAccountOpen}
+        email={email}
+        onVerified={handleLogin}
       />
 
     </>

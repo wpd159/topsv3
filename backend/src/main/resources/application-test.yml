@@ -4,6 +4,8 @@ spring:
       on-profile: test
 
 app:
+  auth:
+    hml-code-vault-enabled: true
   env: test
   canonical-domain: http://localhost
 

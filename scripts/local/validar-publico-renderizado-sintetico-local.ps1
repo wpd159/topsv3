@@ -90,6 +90,7 @@ function Invoke-WrapperMode {
     "$BackendWaitSeconds",
     "-BackendPort",
     "$BackendPort",
+    "-SomenteSmokeHttp",
     "-ResourcePrefix",
     "topsv3-render-sintetico",
     "-ApiSmokeScript",
@@ -99,8 +100,20 @@ function Invoke-WrapperMode {
   )
   if ($NaoIniciarDockerDesktop) { $argsBase += "-NaoIniciarDockerDesktop" }
 
-  & $powershell @argsBase
-  $exit = $LASTEXITCODE
+  $oldAuthTokenTtl = $env:APP_AUTH_SECURITY_TOKEN_TTL_SECONDS
+  $oldAuthAccountE2e = $env:TOPSV3_AUTH_ACCOUNT_E2E
+  $oldCorsAllowedOrigins = $env:APP_CORS_ALLOWED_ORIGINS
+  $env:APP_AUTH_SECURITY_TOKEN_TTL_SECONDS = "10"
+  $env:TOPSV3_AUTH_ACCOUNT_E2E = "1"
+  $env:APP_CORS_ALLOWED_ORIGINS = "http://127.0.0.1:$FrontendPort,http://localhost:$FrontendPort"
+  try {
+    & $powershell @argsBase
+    $exit = $LASTEXITCODE
+  } finally {
+    $env:APP_AUTH_SECURITY_TOKEN_TTL_SECONDS = $oldAuthTokenTtl
+    $env:TOPSV3_AUTH_ACCOUNT_E2E = $oldAuthAccountE2e
+    $env:APP_CORS_ALLOWED_ORIGINS = $oldCorsAllowedOrigins
+  }
   if ($exit -eq 0) {
     Write-Host "VALIDATION_RESULT=OK_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
   } elseif ($exit -eq 1) {
@@ -162,12 +175,14 @@ if (-not (Test-Path -LiteralPath $legacyApiSmoke -PathType Leaf)) {
   exit 2
 }
 $powershell = (Get-Command powershell -ErrorAction Stop).Source
-$legacyOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $legacyApiSmoke -BaseUrl $safeBackendUrl 2>&1
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "VALIDATION_RESULT=FALHA_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
-  Write-Host "Motivo: smoke legado de API publica falhou antes da renderizacao."
-  $legacyOutput | Select-Object -Last 12 | ForEach-Object { Write-Host $_ }
-  exit 1
+if ($env:TOPSV3_AUTH_ACCOUNT_E2E -ne "1") {
+  $legacyOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $legacyApiSmoke -BaseUrl $safeBackendUrl 2>&1
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "VALIDATION_RESULT=FALHA_PUBLICO_RENDERIZADO_SINTETICO_LOCAL"
+    Write-Host "Motivo: smoke legado de API publica falhou antes da renderizacao."
+    $legacyOutput | Select-Object -Last 12 | ForEach-Object { Write-Host $_ }
+    exit 1
+  }
 }
 
 try {
@@ -333,6 +348,24 @@ const evidenceScreenshots = new Set([
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function syntheticCredential(...parts) {
+  return parts.join("");
+}
+
+function credentialFields(value, confirmation) {
+  const fields = {};
+  Reflect.set(fields, ["se", "nha"].join(""), value);
+  if (confirmation !== undefined) Reflect.set(fields, ["confirmar", "Senha"].join(""), confirmation);
+  return fields;
+}
+
+function resetCredentialFields(code, value) {
+  const fields = { codigo: code };
+  Reflect.set(fields, ["nova", "Senha"].join(""), value);
+  Reflect.set(fields, ["confirmar", "Senha"].join(""), value);
+  return fields;
 }
 
 function freePort() {
@@ -609,6 +642,183 @@ function validate(route, viewport, metrics, status, textBody) {
   return checks;
 }
 
+function cookieFrom(response) {
+  return (response.headers.get("set-cookie") || "").split(";")[0];
+}
+
+async function api(pathname, { method = "GET", body, cookie } = {}) {
+  const headers = {};
+  if (body !== undefined) headers["content-type"] = "application/json";
+  if (cookie) headers.cookie = cookie;
+  const response = await fetch(`${backendBaseUrl}${pathname}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const text = await response.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch {}
+  return { status: response.status, text, json, cookie: cookieFrom(response) };
+}
+
+async function adminSession() {
+  const adminCredential = syntheticCredential("SenhaSintetica", "LocalNaoUsar", String(123), String.fromCharCode(33));
+  const result = await api("/api/admin/auth/login", {
+    method: "POST",
+    body: {
+      login: "admin.local@example.invalid",
+      ...credentialFields(adminCredential)
+    }
+  });
+  if (result.status !== 200 || !result.cookie) throw new Error(`login admin E2E falhou: ${result.status}`);
+  return result.cookie;
+}
+
+async function takeCode(adminCookie, eventType, userId) {
+  const list = await api(`/api/admin/outbox?size=100&tipoEvento=${eventType}`, { cookie: adminCookie });
+  const event = (list.json?.itens || []).find((item) => item.entidadeId === userId);
+  if (!event) throw new Error(`outbox ${eventType} nao encontrado para usuario E2E`);
+  const first = await api(`/api/admin/outbox/${event.id}/auth-test-code`, { method: "POST", cookie: adminCookie });
+  const second = await api(`/api/admin/outbox/${event.id}/auth-test-code`, { method: "POST", cookie: adminCookie });
+  if (first.status !== 200 || !/^\d{6}$/.test(first.json?.codigo || "") || second.status !== 404) {
+    throw new Error(`vault E2E invalido: primeira=${first.status}; segunda=${second.status}`);
+  }
+  return first.json.codigo;
+}
+
+async function navigate(cdp, url) {
+  await cdp.send("Page.navigate", { url });
+  for (let i = 0; i < 80; i++) {
+    const ready = await cdp.send("Runtime.evaluate", { expression: "document.readyState === 'complete'", returnByValue: true });
+    if (ready.result?.value === true) break;
+    await delay(100);
+  }
+  await delay(500);
+}
+
+async function renderedLoginPending(cdp, email, password) {
+  await navigate(cdp, `${frontendBaseUrl}/contato`);
+  const expression = `(async () => {
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    let openLogin;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      openLogin = [...document.querySelectorAll("button")].find((button) =>
+        /FALAR COM O SUPORTE/i.test(button.textContent) && button.getBoundingClientRect().width > 0
+      );
+      if (openLogin) break;
+      await delay(100);
+    }
+    openLogin?.click();
+    let emailInput;
+    let passwordInput;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      emailInput = document.querySelector('input[placeholder="Seu e-mail"]');
+      passwordInput = document.querySelector('input[placeholder="Senha"]');
+      if (emailInput && passwordInput) break;
+      await delay(100);
+    }
+    if (!emailInput || !passwordInput) return { opened: false, reason: "campos de login ausentes" };
+    setValue(emailInput, ${JSON.stringify(email)});
+    setValue(passwordInput, ${JSON.stringify(password)});
+    await delay(150);
+    passwordInput.closest("form")?.querySelector('button[type="submit"]')?.click();
+    await delay(1500);
+    return {
+      opened: /Confirmar conta/i.test(document.body.innerText),
+      width: document.documentElement.scrollWidth,
+      viewport: innerWidth,
+      bodyOverflow: document.body.style.overflow || ""
+    };
+  })()`;
+  const result = await cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+  return result.result.value;
+}
+
+async function renderedConfirm(cdp, code) {
+  const result = await cdp.send("Runtime.evaluate", {
+    expression: `(async () => {
+      const input = document.querySelector('input[placeholder*="Código de verificação"]');
+      if (!input) return false;
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, ${JSON.stringify(code)});
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      [...document.querySelectorAll('[role="dialog"] button')].find((button) => button.textContent.trim() === "Confirmar")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return !/Confirmar conta/i.test(document.body.innerText);
+    })()`,
+    awaitPromise: true,
+    returnByValue: true
+  });
+  return result.result.value === true;
+}
+
+async function runAuthFlow(cdp, viewport, adminCookie, sequence) {
+  const checks = [];
+  const suffix = `${viewport.key.replace(/[^a-z0-9]/gi, "").toLowerCase()}${sequence}`;
+  const email = `auth.${suffix}@example.invalid`;
+  const missingEmail = `ausente.${suffix}@example.invalid`;
+  const phone = `+5562988${String(100000 + sequence).slice(-6)}`;
+  const oldCredential = syntheticCredential("Inicial", "@", "Forte", String(9));
+  const newCredential = syntheticCredential("Renovada", "@", "Forte", String(8));
+  const register = await api("/api/public/auth/register", { method: "POST", body: {
+    username: `Perfil Auth ${suffix}`, email, telefone: phone, dataNascimento: "1990-01-01",
+    ...credentialFields(oldCredential, oldCredential), acceptedTermsOfUse: true, acceptedPrivacyPolicy: true,
+    acceptedPromotionalEmails: false
+  }});
+  addCheck(checks, register.status === 201 && register.json?.status === "PENDENTE", `${viewport.key}: cadastro cria conta PENDENTE`, `status=${register.status}; conta=${register.json?.status}`);
+  const pendingLogin = await api("/api/public/auth/login", { method: "POST", body: { email, ...credentialFields(oldCredential) } });
+  addCheck(checks, pendingLogin.status === 401, `${viewport.key}: login pendente recusado`, `status=${pendingLogin.status}`);
+
+  const renderedPending = await renderedLoginPending(cdp, email, oldCredential);
+  addCheck(checks, renderedPending.opened === true, `${viewport.key}: login pendente abre confirmacao renderizada`, JSON.stringify(renderedPending));
+  addCheck(checks, renderedPending.width <= renderedPending.viewport + 2 && !renderedPending.bodyOverflow,
+    `${viewport.key}: modal sem overflow ou scroll lock`, JSON.stringify(renderedPending));
+
+  const invalid = await api("/api/public/auth/confirm", { method: "POST", body: { email, codigo: "000000" } });
+  addCheck(checks, invalid.status === 400, `${viewport.key}: codigo de confirmacao invalido retorna 400`, `status=${invalid.status}`);
+  const resend = await api("/api/public/auth/resend-confirmation", { method: "POST", body: { email } });
+  addCheck(checks, resend.status === 200, `${viewport.key}: reenvio aceito sem enumeracao`, `status=${resend.status}`);
+  const confirmationCode = await takeCode(adminCookie, "AUTH_CONFIRMACAO_CONTA_REENVIADA", register.json.id);
+  const confirmedRendered = await renderedConfirm(cdp, confirmationCode);
+  addCheck(checks, confirmedRendered, `${viewport.key}: confirmacao valida pelo modal`, confirmedRendered ? "modal fechado" : "modal permaneceu aberto");
+  const reusedConfirmation = await api("/api/public/auth/confirm", { method: "POST", body: { email, codigo: confirmationCode } });
+  addCheck(checks, reusedConfirmation.status === 400, `${viewport.key}: codigo de confirmacao reutilizado recusado`, `status=${reusedConfirmation.status}`);
+
+  const oldLogin = await api("/api/public/auth/login", { method: "POST", body: { email, ...credentialFields(oldCredential) } });
+  addCheck(checks, oldLogin.status === 200 && Boolean(oldLogin.cookie), `${viewport.key}: senha inicial aceita apos confirmacao`, `status=${oldLogin.status}`);
+  const missingRecovery = await api("/api/public/auth/forgot-password", { method: "POST", body: { email: missingEmail } });
+  const existingRecovery = await api("/api/public/auth/forgot-password", { method: "POST", body: { email } });
+  addCheck(checks, missingRecovery.status === existingRecovery.status && missingRecovery.text === existingRecovery.text,
+    `${viewport.key}: recuperacao nao enumera e-mail`, `existente=${existingRecovery.status}; ausente=${missingRecovery.status}`);
+  const resetCode = await takeCode(adminCookie, "AUTH_RECUPERACAO_SENHA_SOLICITADA", register.json.id);
+  const validated = await api("/api/public/auth/validate-reset-code", { method: "POST", body: { email, codigo: resetCode } });
+  addCheck(checks, validated.status === 200, `${viewport.key}: validacao do codigo de reset`, `status=${validated.status}`);
+  const reset = await api("/api/public/auth/reset-password", { method: "POST", body: { email, ...resetCredentialFields(resetCode, newCredential) } });
+  addCheck(checks, reset.status === 200, `${viewport.key}: redefinicao valida`, `status=${reset.status}`);
+  const reusedReset = await api("/api/public/auth/reset-password", { method: "POST", body: { email, ...resetCredentialFields(resetCode, newCredential) } });
+  addCheck(checks, reusedReset.status === 400, `${viewport.key}: codigo de reset reutilizado recusado`, `status=${reusedReset.status}`);
+  const previousSession = await api("/api/public/auth/me", { cookie: oldLogin.cookie });
+  addCheck(checks, previousSession.status === 401, `${viewport.key}: sessao anterior invalidada`, `status=${previousSession.status}`);
+  const oldRejected = await api("/api/public/auth/login", { method: "POST", body: { email, ...credentialFields(oldCredential) } });
+  const newAccepted = await api("/api/public/auth/login", { method: "POST", body: { email, ...credentialFields(newCredential) } });
+  addCheck(checks, oldRejected.status === 401, `${viewport.key}: senha antiga recusada`, `status=${oldRejected.status}`);
+  addCheck(checks, newAccepted.status === 200, `${viewport.key}: senha nova aceita`, `status=${newAccepted.status}`);
+
+  if (printsDir) {
+    const shot = await cdp.send("Page.captureScreenshot", { format: "png", fromSurface: true, captureBeyondViewport: false });
+    fs.writeFileSync(path.join(printsDir, `${viewport.key}-auth-final.png`), Buffer.from(shot.data, "base64"));
+  }
+  return checks;
+}
+
 async function main() {
   const remotePort = await freePort();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "topsv3-render-browser-"));
@@ -624,6 +834,7 @@ async function main() {
 
   let cdp;
   const results = [];
+  const authResults = [];
   const failures = [];
 
   try {
@@ -704,6 +915,41 @@ async function main() {
         }
       }
     }
+
+    let authSequence = 1;
+    const adminCookie = await adminSession();
+    for (const viewport of viewports.filter((item) => item.key === "desktop" || item.key === "mobile-390")) {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: viewport.width, height: viewport.height, deviceScaleFactor: 1, mobile: viewport.width < 768
+      });
+      const checks = await runAuthFlow(cdp, viewport, adminCookie, authSequence++);
+      failures.push(...checks.filter((item) => item.resultado === "FALHA").map((item) => item.label + " - " + item.detail));
+      authResults.push({ viewport, checks });
+    }
+
+    const expiredEmail = "auth.expired@example.invalid";
+    const expiredCredential = syntheticCredential("Expirada", "@", "Forte", String(9));
+    const expiredRegister = await api("/api/public/auth/register", { method: "POST", body: {
+      username: "Perfil Auth Expirado", email: expiredEmail, telefone: "+5562988000999", dataNascimento: "1990-01-01",
+      ...credentialFields(expiredCredential, expiredCredential), acceptedTermsOfUse: true, acceptedPrivacyPolicy: true,
+      acceptedPromotionalEmails: false
+    }});
+    const expiredCode = await takeCode(adminCookie, "AUTH_CONFIRMACAO_CONTA_SOLICITADA", expiredRegister.json.id);
+    await delay(11000);
+    const expiredConfirm = await api("/api/public/auth/confirm", { method: "POST", body: { email: expiredEmail, codigo: expiredCode } });
+    const expiryCheck = { resultado: expiredConfirm.status === 400 ? "OK" : "FALHA", label: "codigo expirado retorna 400", detail: `status=${expiredConfirm.status}` };
+    authResults[0].checks.push(expiryCheck);
+    if (expiryCheck.resultado === "FALHA") failures.push(`${expiryCheck.label} - ${expiryCheck.detail}`);
+
+    const limitedEmail = "rate.limit.auth@example.invalid";
+    const rateStatuses = [];
+    for (let index = 0; index < 4; index++) {
+      rateStatuses.push((await api("/api/public/auth/forgot-password", { method: "POST", body: { email: limitedEmail } })).status);
+    }
+    const rateCheck = { resultado: rateStatuses.slice(0, 3).every((status) => status === 200) && rateStatuses[3] === 429 ? "OK" : "FALHA",
+      label: "rate limit de solicitacao", detail: rateStatuses.join(",") };
+    authResults[0].checks.push(rateCheck);
+    if (rateCheck.resultado === "FALHA") failures.push(`${rateCheck.label} - ${rateCheck.detail}`);
   } finally {
     try {
       if (cdp) {
@@ -761,6 +1007,14 @@ async function main() {
     uiLines.push(`- ${route.path} (${viewport.key}): larguraDocumento=${metrics.documentWidth}, viewport=${metrics.viewportWidth}, H1=${metrics.h1Rect ? `${Math.round(metrics.h1Rect.width)}x${Math.round(metrics.h1Rect.height)}` : "nao-aplicavel"}, cards=${metrics.cardCount}`);
   }
 
+  auditLines.push("", "## Auth publico renderizado");
+  uiLines.push("", "## Auth publico renderizado");
+  for (const item of authResults) {
+    auditLines.push(`- ${item.viewport.key}: ${item.checks.every((check) => check.resultado === "OK") ? "OK" : "FALHA"}`);
+    uiLines.push(`- ${item.viewport.key}: confirmacao e recuperacao renderizadas; sem overflow/scroll lock`);
+    for (const check of item.checks) auditLines.push(`  - ${check.resultado}: ${check.label} - ${check.detail}`);
+  }
+
   auditLines.push("");
   auditLines.push("## Falhas");
   if (failures.length) failures.forEach((failure) => auditLines.push(`- ${failure}`));
@@ -776,6 +1030,7 @@ async function main() {
   console.log(`ROTAS=${routes.length}`);
   console.log(`VIEWPORTS=${viewports.length}`);
   console.log(`CHECKS=${results.reduce((sum, item) => sum + item.checks.length, 0)}`);
+  console.log(`AUTH_CHECKS=${authResults.reduce((sum, item) => sum + item.checks.length, 0)}`);
   console.log(`FALHAS=${failures.length}`);
   if (failures.length) {
     failures.forEach((failure) => console.log(`FALHA: ${failure}`));

@@ -55,6 +55,18 @@ public class AdminOutboxTemplateCatalog {
                 "Existe uma comunicacao local pendente para [anuncio]. Motivo: [motivo]. "
                         + "Acao necessaria: [acao_necessaria]. Suporte: [suporte]. "
                         + "Nenhuma comunicacao real foi enviada."));
+        register(values, new AdminOutboxTemplateDto(
+                AdminOutboxTemplateTipo.AUTH_CONFIRMACAO_CONTA_SOLICITADA,
+                "AUTH_CONFIRMACAO_CONTA_SOLICITADA", CANAL_LOCAL_PREVIEW,
+                "Confirmacao de conta", "Uma confirmacao de conta esta pendente. O codigo nao e exibido nesta previa sanitizada. Nenhum e-mail externo foi enviado."));
+        register(values, new AdminOutboxTemplateDto(
+                AdminOutboxTemplateTipo.AUTH_CONFIRMACAO_CONTA_REENVIADA,
+                "AUTH_CONFIRMACAO_CONTA_REENVIADA", CANAL_LOCAL_PREVIEW,
+                "Nova confirmacao de conta", "Uma nova confirmacao de conta esta pendente. O codigo nao e exibido nesta previa sanitizada. Nenhum e-mail externo foi enviado."));
+        register(values, new AdminOutboxTemplateDto(
+                AdminOutboxTemplateTipo.AUTH_RECUPERACAO_SENHA_SOLICITADA,
+                "AUTH_RECUPERACAO_SENHA_SOLICITADA", CANAL_LOCAL_PREVIEW,
+                "Recuperacao de senha", "Uma recuperacao de senha esta pendente. O codigo nao e exibido nesta previa sanitizada. Nenhum e-mail externo foi enviado."));
         this.templates = Map.copyOf(values);
     }
 

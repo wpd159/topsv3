@@ -28,7 +28,7 @@ import {
 
 interface RegisterFormProps {
   refId?: number | null
-  onSuccess?: () => void
+  onSuccess?: (email: string) => void
   onBackToLogin?: () => void
   className?: string
 }
@@ -317,7 +317,7 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
       }
 
       toast.success('Conta criada com sucesso!')
-      onSuccess?.()
+      onSuccess?.(values.email.trim().toLowerCase())
     } catch {
       toast.error('Não foi possível concluir o cadastro.')
     } finally {

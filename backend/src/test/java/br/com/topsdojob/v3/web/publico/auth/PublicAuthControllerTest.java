@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.auth.PublicAuthenticationService;
+import br.com.topsdojob.v3.application.publico.auth.PublicAccountLifecycleService;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicAuthStatusDto;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -20,7 +21,7 @@ class PublicAuthControllerTest {
         PublicAuthStatusDto status = new PublicAuthStatusDto(false, "LOGOUT_OK");
         when(service.logout(request)).thenReturn(status);
 
-        var response = new PublicAuthController(service, true).logout(request);
+        var response = new PublicAuthController(service, mock(PublicAccountLifecycleService.class), true).logout(request);
 
         assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isEqualTo(status);

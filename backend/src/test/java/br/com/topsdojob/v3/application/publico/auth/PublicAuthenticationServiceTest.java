@@ -46,6 +46,8 @@ class PublicAuthenticationServiceTest {
     private PapelUsuarioRepository papelRepository;
     private PasswordEncoder passwordEncoder;
     private PublicAuthenticationService service;
+    private PublicAccountLifecycleService accountLifecycleService;
+    private PublicSessionRegistry sessionRegistry;
 
     @BeforeEach
     void setup() {
@@ -53,12 +55,16 @@ class PublicAuthenticationServiceTest {
         credencialRepository = mock(CredencialUsuarioRepository.class);
         papelRepository = mock(PapelUsuarioRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
+        accountLifecycleService = mock(PublicAccountLifecycleService.class);
+        sessionRegistry = mock(PublicSessionRegistry.class);
         service = new PublicAuthenticationService(
                 usuarioRepository,
                 credencialRepository,
                 papelRepository,
                 passwordEncoder,
-                new HttpSessionSecurityContextRepository());
+                new HttpSessionSecurityContextRepository(),
+                accountLifecycleService,
+                sessionRegistry);
     }
 
     @AfterEach
@@ -264,13 +270,15 @@ class PublicAuthenticationServiceTest {
     }
 
     private UsuarioEntity activeUser() {
-        return UsuarioEntity.criarCadastroPublico(
+        UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
                 USER_ID,
                 "Perfil Sintetico",
                 "perfil@example.invalid",
                 "+5562999999999",
                 null,
                 OffsetDateTime.now(ZoneOffset.UTC));
+        usuario.confirmarEmail(OffsetDateTime.now(ZoneOffset.UTC));
+        return usuario;
     }
 
     private Authentication publicAuthentication(UsuarioEntity usuario) {
