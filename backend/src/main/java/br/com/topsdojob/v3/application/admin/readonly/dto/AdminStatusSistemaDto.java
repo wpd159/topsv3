@@ -4,7 +4,7 @@ public record AdminStatusSistemaDto(
         String app,
         String ambiente,
         boolean local,
-        boolean efiPixMockMode,
+        boolean efiPixEnabled,
         String politicaApi,
         String pendenciaCsrf) {
 }

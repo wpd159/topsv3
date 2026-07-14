@@ -28,10 +28,12 @@ class SecurityConfigHardeningTest {
         assertThat(base).contains("env: ${APP_ENV:nao_configurado}");
         assertThat(base).doesNotContain("env: ${APP_ENV:local}");
         assertThat(base).contains("secure: ${APP_ADMIN_SESSION_COOKIE_SECURE:true}");
-        assertThat(base).contains("mock-mode: ${EFI_PIX_MOCK_MODE:false}");
+        assertThat(base).contains("enabled: ${EFI_ENABLED:false}");
+        assertThat(base).doesNotContain("mock-mode");
         assertThat(local).contains("env: ${APP_ENV:local}");
         assertThat(local).contains("secure: ${APP_ADMIN_SESSION_COOKIE_SECURE:false}");
-        assertThat(local).contains("mock-mode: ${EFI_PIX_MOCK_MODE:true}");
+        assertThat(local).contains("enabled: false");
+        assertThat(local).doesNotContain("mock-mode");
     }
 
     @Test

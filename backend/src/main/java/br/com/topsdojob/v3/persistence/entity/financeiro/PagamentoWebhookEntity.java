@@ -103,4 +103,36 @@ public class PagamentoWebhookEntity {
   public Integer getTentativas() {
     return tentativas;
   }
+
+  public static PagamentoWebhookEntity receber(
+      UUID id,
+      String eventoId,
+      String txid,
+      String payloadHash,
+      String origemIpHash,
+      ValidacaoWebhook validacaoResultado,
+      OffsetDateTime recebidoEm) {
+    PagamentoWebhookEntity entity = new PagamentoWebhookEntity();
+    entity.id = id;
+    entity.provedor = ProvedorPagamento.EFI;
+    entity.eventoId = eventoId;
+    entity.txid = txid;
+    entity.payloadHash = payloadHash;
+    entity.origemIpHash = origemIpHash;
+    entity.validacaoResultado = validacaoResultado;
+    entity.recebidoEm = recebidoEm;
+    entity.tentativas = 1;
+    entity.resultado = "RECEBIDO";
+    return entity;
+  }
+
+  public void registrarNovaTentativa() {
+    this.tentativas = (this.tentativas == null ? 0 : this.tentativas) + 1;
+  }
+
+  public void concluir(String resultado, String erroResumido, OffsetDateTime processadoEm) {
+    this.resultado = resultado;
+    this.erroResumido = erroResumido;
+    this.processadoEm = processadoEm;
+  }
 }

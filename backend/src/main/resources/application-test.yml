@@ -9,7 +9,9 @@ app:
 
 efi:
   pix:
-    mock-mode: true
+    enabled: false
+    environment: homologacao
+    base-url: https://pix-h.api.efipay.com.br
 
 server:
   port: 0

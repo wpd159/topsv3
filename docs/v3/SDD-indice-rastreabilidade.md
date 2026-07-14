@@ -407,6 +407,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Painel administrativo de creditos/Premium: `frontend/src/app/(painel-admin)/admin/creditos/page.tsx`, `frontend/src/lib/admin-creditos-operacionais-api.ts`
 - Painel e wizard do usuario: `frontend/src/app/(private-routes)/painel/page.tsx`, `frontend/src/features/monetizacao-wizard/`
 - Testes Premium/creditos: `backend/src/test/java/br/com/topsdojob/v3/application/credito/`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/premium/`
+- Gateway Efi OAuth2/mTLS: `backend/src/main/java/br/com/topsdojob/v3/infrastructure/payment/efi/`
+- Checkout, webhook e conciliacao Efi: `backend/src/main/java/br/com/topsdojob/v3/application/publico/pagamento/`, `backend/src/main/java/br/com/topsdojob/v3/web/publico/pagamento/`
+- Contrato financeiro HML: `docs/v3/HOMOLOGACAO-financeiro-pix-efi-webhooks.md`
+- Testes Efi e idempotencia: `backend/src/test/java/br/com/topsdojob/v3/application/publico/pagamento/`, `backend/src/test/java/br/com/topsdojob/v3/infrastructure/payment/efi/`
+- Freeze Efi no HML e gate de cutover: `deploy/hml/docker-compose.yml`, `deploy/hml/hml.env.example`, `scripts/deploy/validar-deploy-hml-local.ps1`, `docs/v3/SDD-pendencias-gates.md`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

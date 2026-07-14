@@ -855,4 +855,16 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - A compra autenticada usa o usuario da sessao, o anuncio proprio e uma unica transacao para validar saldo, debitar, ativar beneficios e auditar. A chave de idempotencia impede debito ou ativacao duplicados.
 - O painel do usuario consulta saldo, historico, catalogo e ativacoes reais. O painel administrativo permite consulta, ajuste, estorno auditavel, configuracao do catalogo/pacotes e cancelamento autorizado, sempre sob RBAC.
 - Stories pagos preservam o fluxo proprio ja existente; Stories administrativos nao consomem nem movimentam creditos.
-- Pix, Efi, webhook, conciliacao financeira, cartao e cobranca externa permanecem fora desta fase. Pacotes nao realizam pagamento e ficam inativos ate o contrato financeiro proprio.
+- Pix, Efi, webhook e conciliacao permanecem fora do escopo da V024, mas passam a ter implementacao propria de homologacao na secao seguinte. Cartao e cobranca externa diferente de Pix continuam fora de escopo.
+
+## 42. Pix/Efi seguro para homologacao
+
+- A auditoria somente leitura da producao confirmou OAuth2 `client_credentials` por mTLS, cobranca por txid, QR Code, consulta e webhook Efi. Nenhum secret, certificado, token, payload financeiro ou dado de pagador foi copiado.
+- `PagamentoMP`, `PagamentoMPRepository` e `pagamentos_mp` sao legado nominal misto: o fluxo vigente usa Efi, enquanto ids MP antigos permanecem historicos. A V3 nao remove nem renomeia migrations ou dados historicos e nao mantem Mercado Pago ativo em paralelo.
+- A V3 usa somente `pagamento`, `pagamento_evento`, `pagamento_webhook` e `pagamento_conciliacao` ja reconstruidos na V008. Nenhuma migration adicional foi necessaria.
+- O gateway unico `EfiPixGateway` usa mTLS, endpoint estrito por ambiente, token OAuth em memoria, cobranca, QR e consulta. Nao existe mock, fallback ou segundo provedor.
+- Checkout, consulta e conciliacao autenticados ficam sob `/api/public/minha-conta/pagamentos`; o webhook exclusivo fica sob `/api/public/webhooks/efi`.
+- A confirmacao consulta a Efi e valida txid e valor antes de criar um unico movimento `PAGAMENTO` no ledger V024. Idempotencia do checkout, evento, webhook e movimento impede credito duplo.
+- A integracao estrutural e os testes locais estao aprovados, mas a configuracao externa e a homologacao real foram adiadas por decisao do usuario para a fase de importacao/preparacao do cutover.
+- O HML mantem `EFI_ENABLED=false`, sem credenciais, certificado, chave Pix ou webhook configurados. Pix permanece indisponivel, sem mock, fallback, cobranca simulada ou chamada externa.
+- A instalacao do material no ambiente correto, a homologacao real e o Go/No-Go financeiro formam gate obrigatorio antes do cutover. Producao permanece intocada.

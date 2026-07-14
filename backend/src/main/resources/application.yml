@@ -50,7 +50,17 @@ app:
 
 efi:
   pix:
-    mock-mode: ${EFI_PIX_MOCK_MODE:false}
+    enabled: ${EFI_ENABLED:false}
+    environment: ${EFI_ENVIRONMENT:homologacao}
+    base-url: ${EFI_BASE_URL:https://pix-h.api.efipay.com.br}
+    client-id: ${EFI_CLIENT_ID:}
+    client-secret: ${EFI_CLIENT_SECRET:}
+    certificate-path: ${EFI_CERTIFICATE_PATH:}
+    certificate-protection: ${EFI_CERTIFICATE_PROTECTION_VALUE:}
+    pix-key: ${EFI_PIX_KEY:}
+    webhook-base-url: ${EFI_WEBHOOK_BASE_URL:}
+    webhook-verifier: ${EFI_WEBHOOK_VERIFIER_VALUE:}
+    charge-expiration-seconds: ${EFI_CHARGE_EXPIRATION_SECONDS:3600}
 
 management:
   endpoints:

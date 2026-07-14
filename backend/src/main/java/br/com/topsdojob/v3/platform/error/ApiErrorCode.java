@@ -12,6 +12,8 @@ public enum ApiErrorCode {
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde."),
     PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Arquivo acima do limite permitido."),
     UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Formato de arquivo não permitido."),
+    BAD_GATEWAY(HttpStatus.BAD_GATEWAY, "Provedor externo indisponivel."),
+    SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "Servico temporariamente indisponivel."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno inesperado.");
 
     private final HttpStatus status;

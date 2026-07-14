@@ -46,6 +46,9 @@ public class SecurityConfig {
                         csrf.disable();
                     } else {
                         csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                                .ignoringRequestMatchers(
+                                        "/api/public/webhooks/efi",
+                                        "/api/public/webhooks/efi/pix")
                                 .csrfTokenRequestHandler(csrfTokenRequestHandler);
                     }
                 })

@@ -159,4 +159,63 @@ public class PagamentoEntity {
     return atualizadoEm;
   }
 
+  public static PagamentoEntity criarPixEfi(
+      UUID id,
+      UUID usuarioId,
+      UUID planoCreditoId,
+      String txid,
+      BigDecimal valor,
+      int quantidadeCreditos,
+      String idempotencyKey,
+      OffsetDateTime agora) {
+    PagamentoEntity entity = new PagamentoEntity();
+    entity.id = id;
+    entity.usuarioId = usuarioId;
+    entity.planoCreditoId = planoCreditoId;
+    entity.provedor = ProvedorPagamento.EFI;
+    entity.metodo = MetodoPagamento.PIX;
+    entity.txid = txid;
+    entity.valor = valor;
+    entity.moeda = "BRL";
+    entity.quantidadeCreditos = quantidadeCreditos;
+    entity.statusInterno = StatusInternoPagamento.CRIADO;
+    entity.statusProvedor = "CRIADO_LOCALMENTE";
+    entity.idempotencyKey = idempotencyKey;
+    entity.criadoEm = agora;
+    entity.atualizadoEm = agora;
+    return entity;
+  }
+
+  public void aguardarPagamento(
+      String identificadorProvedor,
+      String statusProvedor,
+      OffsetDateTime expiracaoEm,
+      OffsetDateTime agora) {
+    this.identificadorProvedor = identificadorProvedor;
+    this.statusInterno = StatusInternoPagamento.AGUARDANDO_PAGAMENTO;
+    this.statusProvedor = statusProvedor;
+    this.expiracaoEm = expiracaoEm;
+    this.atualizadoEm = agora;
+  }
+
+  public void atualizarStatusProvedor(
+      StatusInternoPagamento statusInterno,
+      String statusProvedor,
+      OffsetDateTime agora) {
+    this.statusInterno = statusInterno;
+    this.statusProvedor = statusProvedor;
+    this.atualizadoEm = agora;
+    if (statusInterno == StatusInternoPagamento.EXPIRADO) {
+      this.canceladoEm = agora;
+    }
+  }
+
+  public void marcarAprovadoECreditado(OffsetDateTime aprovadoEm, OffsetDateTime creditadoEm) {
+    this.statusInterno = StatusInternoPagamento.APROVADO;
+    this.statusProvedor = "CONCLUIDA";
+    this.aprovadoEm = aprovadoEm;
+    this.creditadoEm = creditadoEm;
+    this.atualizadoEm = creditadoEm;
+  }
+
 }

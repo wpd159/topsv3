@@ -59,13 +59,15 @@ APP_ENV=homologacao
 APP_CANONICAL_DOMAIN=https://v3.esle.cloud
 APP_CORS_ALLOWED_ORIGINS=https://v3.esle.cloud
 APP_ADMIN_SESSION_COOKIE_SECURE=true
-EFI_PIX_MOCK_MODE=true
+EFI_ENABLED=false
 TOPSV3_POSTGRES_DB=topsv3_hml
 TOPSV3_POSTGRES_USER=topsv3_hml
 DATABASE_PASSWORD=<preencher fora do Git>
 APP_EVENT_HASH_SALT=<preencher fora do Git>
 APP_AGE_GATE_SIGNING_VALUE=<preencher fora do Git>
 ```
+
+O HML nao recebe credenciais, certificado, chave Pix nem webhook Efi durante o freeze. O Compose fixa `EFI_ENABLED=false`; a configuracao externa e a homologacao real formam gate da fase de importacao/preparacao do cutover.
 
 ## Nginx
 

@@ -708,7 +708,7 @@ Antes de admin em ambiente nao local:
 - nao usar producao;
 - nao usar banco de producao;
 - nao usar API externa;
-- nao usar Efi real;
+- nao usar Efi de producao; a unica API Efi autorizada nesta fase e o sandbox de homologacao, depois de provisionar secrets e certificado exclusivos;
 - nao fazer deploy;
 - nao configurar remote;
 - nao executar push;
@@ -731,4 +731,12 @@ Antes de admin em ambiente nao local:
 - Fechado localmente: painel do usuario e painel administrativo consomem um unico catalogo backend, sem precos/duracoes hardcoded ou fluxo concorrente.
 - Fechado por validacao sintetica: ledger, ajustes, idempotencia, RBAC, catalogo, duracoes e UI desktop/mobile foram exercitados com dados descartaveis.
 - Pendente antes de homologacao operacional: smoke autenticado do fluxo administrativo e da compra em HML com conta/dados exclusivamente ficticios.
-- Pendente para fase financeira propria: Pix, Efi, webhook, conciliacao, cartao, cobranca externa e ativacao comercial dos pacotes. Nenhum desses itens foi simulado nesta fase.
+- Integracao local implementada em fase financeira propria: Pix/Efi, webhook e conciliacao usam o ledger V024 sem simulacao. Cartao e outros provedores continuam fora de escopo.
+
+## Pix/Efi de homologacao
+
+- Fechado localmente: gateway OAuth2/mTLS, cobranca Pix por txid, QR Code, consulta, webhook, conciliacao, auditoria sanitizada e credito unico no ledger V024.
+- Fechado localmente: `EFI_ENABLED=false` por default, sem mock, fallback, segundo ledger ou Mercado Pago ativo em paralelo.
+- Congelado por decisao do usuario: HML mantem `EFI_ENABLED=false`; credenciais, certificado, chave Pix e webhook nao serao configurados nesta fase. Pix permanece indisponivel e nenhuma chamada externa ou credito por pagamento deve ocorrer.
+- Gate obrigatorio na fase de importacao/preparacao do cutover: instalar o material exclusivo no ambiente correto, registrar webhook, executar homologacao real de OAuth/cobranca/consulta/repeticao/conciliacao e comprovar credito unico no ledger.
+- Bloqueante para producao: homologacao real aprovada, credenciais/certificado/chave Pix proprios, rotacao, monitoramento, conciliacao agendada, estorno/devolucao, runbook, revisao humana/Pro e Go/No-Go financeiro.

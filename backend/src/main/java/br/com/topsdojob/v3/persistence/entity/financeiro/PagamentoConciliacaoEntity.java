@@ -91,4 +91,44 @@ public class PagamentoConciliacaoEntity {
     return criadoEm;
   }
 
+  public static PagamentoConciliacaoEntity registrar(
+      UUID id,
+      UUID pagamentoId,
+      UUID movimentoCreditoId,
+      OrigemConciliacaoPagamento origem,
+      StatusConciliacaoPagamento status,
+      BigDecimal valorConfirmado,
+      int creditosConfirmados,
+      OffsetDateTime aprovadoEm,
+      OffsetDateTime creditadoEm,
+      OffsetDateTime criadoEm) {
+    PagamentoConciliacaoEntity entity = new PagamentoConciliacaoEntity();
+    entity.id = id;
+    entity.pagamentoId = pagamentoId;
+    entity.movimentoCreditoId = movimentoCreditoId;
+    entity.origem = origem;
+    entity.status = status;
+    entity.valorConfirmado = valorConfirmado;
+    entity.creditosConfirmados = creditosConfirmados;
+    entity.aprovadoEm = aprovadoEm;
+    entity.creditadoEm = creditadoEm;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
+  public void atualizar(
+      UUID movimentoCreditoId,
+      StatusConciliacaoPagamento status,
+      BigDecimal valorConfirmado,
+      int creditosConfirmados,
+      OffsetDateTime aprovadoEm,
+      OffsetDateTime creditadoEm) {
+    this.movimentoCreditoId = movimentoCreditoId;
+    this.status = status;
+    this.valorConfirmado = valorConfirmado;
+    this.creditosConfirmados = creditosConfirmados;
+    this.aprovadoEm = aprovadoEm;
+    this.creditadoEm = creditadoEm;
+  }
+
 }

@@ -113,7 +113,7 @@ Add-Check "compose usa COMPOSE_PROJECT_NAME" ($compose.Contains('name: ${COMPOSE
 Add-Check "healthcheck PostgreSQL usa variáveis do container" ($compose.Contains('pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\"')) "healthcheck acompanha POSTGRES_USER e POSTGRES_DB"
 
 $envLocal = Get-Content -LiteralPath (Join-Path $repoRoot "infra/local/.env.local.example") -Raw
-foreach ($expected in @("EFI_PIX_MOCK_MODE=true", "APP_ENV=local", "APP_CANONICAL_DOMAIN=http://localhost")) {
+foreach ($expected in @("EFI_ENABLED=false", "APP_ENV=local", "APP_CANONICAL_DOMAIN=http://localhost")) {
   Add-Check "env contém $expected" ($envLocal.Contains($expected)) "variável local obrigatória"
 }
 Add-Check "env contém COMPOSE_PROJECT_NAME=topsv3-local" ($envLocal.Contains("COMPOSE_PROJECT_NAME=topsv3-local")) "nome local padronizado para Docker Compose"

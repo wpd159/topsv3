@@ -1604,6 +1604,113 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/public/minha-conta/pagamentos/pix:
+    post:
+      summary: Cria cobranca Pix Efí para um pacote ativo de creditos
+      operationId: postMinhaCobrancaPixEfi
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EfiPixCheckoutRequest"
+      responses:
+        "200":
+          description: cobranca criada ou reutilizada pela mesma chave idempotente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EfiPixCheckout"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/public/minha-conta/pagamentos/{pagamentoId}:
+    get:
+      summary: Consulta a cobranca Pix Efí pertencente ao usuario autenticado
+      operationId: getMinhaCobrancaPixEfi
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: pagamentoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: cobranca consultada diretamente na Efí sem payload bruto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EfiPixCheckout"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/public/minha-conta/pagamentos/{pagamentoId}/conciliar:
+    post:
+      summary: Reconsulta a Efí e concilia atomicamente um pagamento com o ledger
+      operationId: postMinhaConciliacaoPixEfi
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: pagamentoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: estado conciliado; repeticao nao cria credito adicional
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EfiPixCheckout"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/public/webhooks/efi:
+    post:
+      summary: Recebe notificacao Pix Efí validada pelo HMAC exclusivo do ambiente
+      operationId: postWebhookPixEfi
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: hmac
+          in: query
+          required: true
+          description: Segredo opaco configurado fora do Git e omitido dos access logs.
+          schema: { type: string, minLength: 32 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Payload Efí processado em memoria; somente hashes e identificadores sao persistidos.
+      responses:
+        "200":
+          description: notificacoes processadas, repetidas ou ignoradas de forma idempotente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EfiWebhookResultado"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/admin/creditos/usuarios:
     get:
       summary: Busca usuarios para operacao de creditos
@@ -3010,6 +3117,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
+    BadGateway:
+      description: A Efí rejeitou ou nao respondeu a operacao; nenhum credito foi gerado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    ServiceUnavailable:
+      description: Integracao Efí desabilitada ou configuracao segura incompleta.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
     InternalError:
       description: Falha inesperada sem detalhes internos.
       headers:
@@ -4041,7 +4160,7 @@ components:
         - app
         - ambiente
         - local
-        - efiPixMockMode
+        - efiPixEnabled
         - politicaApi
         - pendenciaCsrf
       properties:
@@ -4052,9 +4171,9 @@ components:
           type: string
         local:
           type: boolean
-        efiPixMockMode:
+        efiPixEnabled:
           type: boolean
-          description: No arquivo base defaulta false; somente o profile local pode defaultar true.
+          description: Indica apenas se a integracao Efi esta habilitada no ambiente atual; nao expoe configuracao ou secrets.
         politicaApi:
           type: string
           const: API_FAIL_CLOSED
@@ -5670,6 +5789,8 @@ components:
         - NOT_FOUND
         - CONFLICT
         - UNPROCESSABLE_ENTITY
+        - BAD_GATEWAY
+        - SERVICE_UNAVAILABLE
         - INTERNAL_ERROR
     VisibilidadeMidia:
       type: string
@@ -6661,6 +6782,36 @@ components:
           type: array
           items: { $ref: "#/components/schemas/MinhaAtivacaoPremium" }
         idempotente: { type: boolean }
+    EfiPixCheckoutRequest:
+      type: object
+      additionalProperties: false
+      required: [planoCreditoId]
+      properties:
+        planoCreditoId: { type: string, format: uuid }
+    EfiPixCheckout:
+      type: object
+      additionalProperties: false
+      required: [pagamentoId, txid, status, valor, quantidadeCreditos, creditado, idempotente]
+      properties:
+        pagamentoId: { type: string, format: uuid }
+        txid: { type: string, pattern: "^[A-Za-z0-9]{26,35}$" }
+        status: { type: string }
+        valor: { type: number, minimum: 0.01 }
+        quantidadeCreditos: { type: integer, minimum: 1 }
+        expiracaoEm: { type: [string, "null"], format: date-time }
+        pixCopiaECola: { type: [string, "null"] }
+        imagemQrCode: { type: [string, "null"] }
+        creditado: { type: boolean }
+        idempotente: { type: boolean }
+    EfiWebhookResultado:
+      type: object
+      additionalProperties: false
+      required: [recebidos, processados, repetidos, ignorados]
+      properties:
+        recebidos: { type: integer, minimum: 0 }
+        processados: { type: integer, minimum: 0 }
+        repetidos: { type: integer, minimum: 0 }
+        ignorados: { type: integer, minimum: 0 }
     AdminCreditoUsuario:
       type: object
       additionalProperties: false

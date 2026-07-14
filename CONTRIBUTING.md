@@ -299,7 +299,7 @@ WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-what
 
 ## Bloco 14 - admin read-only local
 
-- `application.yml` nao pode defaultar `EFI_PIX_MOCK_MODE` para `true`; somente `application-local.yml` pode usar mock true por padrao local.
+- `application.yml` deve manter `EFI_ENABLED=false` por default; local/teste nao simulam sucesso financeiro e HML so pode habilitar Efi com secrets e certificado externos de homologacao.
 - Endpoints admin read-only permitidos neste bloco usam somente `GET` sob `/api/admin/**`.
 - `ADMIN` pode ler todos os resumos; `MODERADOR` pode ler anuncios/moderacao/midia; `COMERCIAL` pode ler visao geral, anuncios e metricas; `USUARIO` nao acessa admin.
 - DTOs admin read-only nao podem expor documento privado, telefone/WhatsApp real, storage key/hash/bucket, payload sensivel, senha/hash/token/cookie ou dado financeiro sensivel.
@@ -309,7 +309,7 @@ WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-what
 ## Bloco 15 - admin read-only detalhado
 
 - Health publico deve expor apenas `status`, `app` e `requestId`.
-- Dados de ambiente e Efi mock devem ficar somente em `/api/admin/sistema/status`, restrito a `ADMIN`.
+- Dados de ambiente e o indicador `efiPixEnabled` devem ficar somente em `/api/admin/sistema/status`, restrito a `ADMIN`, sem expor configuracao ou secrets.
 - Endpoints detalhados admin seguem somente `GET`, com sessao/RBAC.
 - `COMERCIAL` pode consultar anuncios em versao limitada e nao acessa midia ou revisao detalhada.
 - DTOs detalhados nao podem expor documento privado, CPF, telefone bruto, WhatsApp normalizado, storage provider, bucket, chaveObjeto, hash, etag, payload completo, financeiro sensivel, senha/hash/token ou auditoria sensivel.

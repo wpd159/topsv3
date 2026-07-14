@@ -88,4 +88,28 @@ public class PagamentoEventoEntity {
     return resultado;
   }
 
+  public static PagamentoEventoEntity registrarEfi(
+      UUID id,
+      UUID pagamentoId,
+      String provedorEventoId,
+      String tipoEvento,
+      String payloadHash,
+      String statusProvedor,
+      OffsetDateTime recebidoEm,
+      OffsetDateTime processadoEm,
+      String resultado) {
+    PagamentoEventoEntity entity = new PagamentoEventoEntity();
+    entity.id = id;
+    entity.pagamentoId = pagamentoId;
+    entity.provedor = ProvedorPagamento.EFI;
+    entity.provedorEventoId = provedorEventoId;
+    entity.tipoEvento = tipoEvento;
+    entity.payloadHash = payloadHash;
+    entity.statusProvedor = statusProvedor;
+    entity.recebidoEm = recebidoEm;
+    entity.processadoEm = processadoEm;
+    entity.resultado = resultado;
+    return entity;
+  }
+
 }

@@ -340,3 +340,13 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Debito, ativacao e auditoria formam uma unica operacao transacional e idempotente. Saldo insuficiente ou falha intermediaria nao deixa ativacao nem debito parcial.
 - Pacotes de creditos ficam administraveis, mas inativos enquanto Pix/Efi/webhook e conciliacao nao forem implementados em fase propria.
 - O fluxo vigente de Stories dos anunciantes permanece separado; Stories administrativos continuam sem consumo de creditos.
+
+## Pix/Efi de homologacao
+
+- Em 2026-07-13, a Efi foi definida como fonte futura exclusiva para Pix; Mercado Pago nao permanece ativo em paralelo.
+- Nomes `PagamentoMP`, `pagamentos_mp`, `mpPaymentId` e equivalentes na producao nao provam o provedor efetivo. Migrations e dados historicos permanecem preservados; a V3 consolida o comportamento ativo em entidades neutras sem aliases.
+- A V3 usa gateway unico OAuth2/mTLS, endpoint estrito por ambiente e nenhuma simulacao financeira. Local/teste mantem `EFI_ENABLED=false`.
+- Credito por pagamento usa exclusivamente o ledger imutavel V024, depois de consulta e validacao de txid/valor. Repeticao de checkout, webhook ou conciliacao nao pode duplicar credito.
+- A integracao estrutural e os testes locais estao aprovados. Por decisao do usuario, configuracao externa, certificado, chave Pix, webhook e homologacao real ficam adiados para a fase de importacao/preparacao do cutover.
+- O HML deve permanecer com `EFI_ENABLED=false`, Pix indisponivel e comportamento fail-closed, sem mock, fallback ou pagamento simulado.
+- Instalar o material no ambiente correto e concluir a homologacao real e gate humano obrigatorio antes do cutover. Producao permanece bloqueada e intocada.

@@ -182,4 +182,28 @@ public class AuditoriaEventoEntity {
     return entity;
   }
 
+  public static AuditoriaEventoEntity registrarWebhook(
+      UUID id,
+      UUID atorUsuarioId,
+      String acao,
+      String recursoTipo,
+      UUID recursoId,
+      String antesJson,
+      String depoisJson,
+      String requestId,
+      OffsetDateTime criadoEm) {
+    AuditoriaEventoEntity entity = registrarSistema(
+        id,
+        atorUsuarioId,
+        acao,
+        recursoTipo,
+        recursoId,
+        antesJson,
+        depoisJson,
+        requestId,
+        criadoEm);
+    entity.origem = OrigemAuditoria.WEBHOOK;
+    return entity;
+  }
+
 }

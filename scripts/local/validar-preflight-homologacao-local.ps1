@@ -119,8 +119,8 @@ $csrfLocalOk = (Test-TextContains $securityConfig 'csrf\.disable\(\)') -and (Tes
 $csrfNonLocalOk = Test-TextContains $securityConfig 'CookieCsrfTokenRepository\.withHttpOnlyFalse\(\)'
 Add-PreflightItem "CSRF" "PENDENTE_HOMOLOGACAO" $(if ($csrfLocalOk -and $csrfNonLocalOk) { "PENDENTE" } else { "FALHA_LOCAL" }) ($csrfLocalOk -and $csrfNonLocalOk) "Local smoke permanece controlado; homologacao/producao exigem revisao Pro de CSRF real, HTTPS, cookie seguro e sessao." "SecurityConfig.java"
 
-$efiMockOk = (Test-TextContains $applicationYaml 'EFI_PIX_MOCK_MODE:false') -and (Test-TextContains $applicationLocalYaml 'EFI_PIX_MOCK_MODE:true') -and (Test-TextContains $localEnvExample 'EFI_PIX_MOCK_MODE=true')
-Add-PreflightItem "Pix/Efi" "BLOQUEANTE_PRODUCAO" $(if ($efiMockOk) { "BLOQUEANTE" } else { "FALHA_LOCAL" }) $efiMockOk "Local usa mock; Pix/Efi real, checkout e webhook dependem de homologacao propria e credenciais seguras." "EFI_PIX_MOCK_MODE"
+$efiConfigOk = (Test-TextContains $applicationYaml 'EFI_ENABLED:false') -and (Test-TextContains $applicationLocalYaml 'enabled:\s*false') -and (Test-TextContains $localEnvExample 'EFI_ENABLED=false') -and (-not (Test-TextContains $applicationYaml 'EFI_PIX_MOCK_MODE|mock-mode'))
+Add-PreflightItem "Pix/Efi" "PENDENTE_HOMOLOGACAO" $(if ($efiConfigOk) { "PENDENTE" } else { "FALHA_LOCAL" }) $efiConfigOk "Integracao local permanece desabilitada e sem simulacao; OAuth mTLS, cobranca, webhook e conciliacao exigem credenciais e certificado exclusivos de homologacao antes do smoke externo." "EFI_ENABLED e secrets Efi externos"
 
 $storageLocalOk = (Test-TextContains $localEnvExample 'TOPSV3_MINIO_IMAGE') -and (Test-Path -LiteralPath (Join-Path $repoRoot "docs/v3/125-bloco-11-midia-publica-cdn-local.md")) -and (Test-Path -LiteralPath (Join-Path $repoRoot "docs/v3/126-politica-url-publica-midia.md"))
 Add-PreflightItem "Storage/CDN/upload" "BLOQUEANTE_PRODUCAO" $(if ($storageLocalOk) { "BLOQUEANTE" } else { "FALHA_LOCAL" }) $storageLocalOk "Ha apenas storage local/S3-compatible e politica; upload/CDN real ainda nao foi autorizado." "infra/local e docs de midia"

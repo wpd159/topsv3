@@ -526,7 +526,7 @@ Os endpoints exigem sessao/RBAC. `ADMIN` ve todos os resumos; `MODERADOR` ve anu
 
 O frontend admin consome os contratos com `credentials: "include"` e continua sem localStorage/sessionStorage, sem credencial pre-preenchida e sem botao funcional de aprovacao, rejeicao, exclusao, pagamento, credito, upload, Pix ou moderacao real.
 
-Tambem foi corrigido o default de `EFI_PIX_MOCK_MODE`: `application.yml` fica fail-closed com `false`; apenas `application-local.yml` usa mock `true` por padrao local.
+O antigo `EFI_PIX_MOCK_MODE` foi removido do runtime. A integracao Efi fica fail-closed com `EFI_ENABLED=false`; HML exige credenciais e certificado exclusivos de homologacao fora do Git.
 
 Nao houve migration, SQL de schema, seed real, dado real, acao critica, moderacao real, financeiro/Pix, importador real, producao, VPS, banco de producao, API externa, remote, push ou commit.
 

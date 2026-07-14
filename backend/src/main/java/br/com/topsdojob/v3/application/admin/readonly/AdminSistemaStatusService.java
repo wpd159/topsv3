@@ -8,13 +8,13 @@ import org.springframework.stereotype.Service;
 public class AdminSistemaStatusService {
 
     private final String appEnv;
-    private final boolean efiPixMockMode;
+    private final boolean efiPixEnabled;
 
     public AdminSistemaStatusService(
             @Value("${app.env:nao_configurado}") String appEnv,
-            @Value("${efi.pix.mock-mode:false}") boolean efiPixMockMode) {
+            @Value("${efi.pix.enabled:false}") boolean efiPixEnabled) {
         this.appEnv = appEnv == null ? "nao_configurado" : appEnv.trim();
-        this.efiPixMockMode = efiPixMockMode;
+        this.efiPixEnabled = efiPixEnabled;
     }
 
     public AdminStatusSistemaDto consultar() {
@@ -23,7 +23,7 @@ public class AdminSistemaStatusService {
                 "topsdojob-v3-backend",
                 appEnv,
                 local,
-                efiPixMockMode,
+                efiPixEnabled,
                 "API_FAIL_CLOSED",
                 "PENDENTE_CSRF_ADMIN_PRODUCAO");
     }

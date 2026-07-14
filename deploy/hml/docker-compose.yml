@@ -70,7 +70,7 @@ services:
       APP_ADMIN_SESSION_COOKIE_SECURE: "true"
       APP_EVENT_HASH_SALT: ${APP_EVENT_HASH_SALT:?defina APP_EVENT_HASH_SALT em /opt/topsv3/secrets/hml.env}
       APP_AGE_GATE_SIGNING_VALUE: ${APP_AGE_GATE_SIGNING_VALUE:?defina APP_AGE_GATE_SIGNING_VALUE em /opt/topsv3/secrets/hml.env}
-      EFI_PIX_MOCK_MODE: "true"
+      EFI_ENABLED: "false"
       R2_ENABLED: ${R2_ENABLED:?defina R2_ENABLED em /opt/topsv3/secrets/hml.env}
       R2_ENDPOINT: ${R2_ENDPOINT:?defina R2_ENDPOINT em /opt/topsv3/secrets/hml.env}
       R2_REGION: ${R2_REGION:-auto}

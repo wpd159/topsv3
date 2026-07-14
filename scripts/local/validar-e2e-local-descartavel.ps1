@@ -80,7 +80,7 @@ $oldAppEnv = $env:APP_ENV
 $oldCanonical = $env:APP_CANONICAL_DOMAIN
 $oldEventHashSalt = $env:APP_EVENT_HASH_SALT
 $oldAgeGateSigningValue = $env:APP_AGE_GATE_SIGNING_VALUE
-$oldEfiMock = $env:EFI_PIX_MOCK_MODE
+$oldEfiEnabled = $env:EFI_ENABLED
 $oldBackendPort = $env:TOPSV3_BACKEND_PORT
 
 function Add-Step {
@@ -693,7 +693,7 @@ try {
   $env:APP_CANONICAL_DOMAIN = "http://localhost"
   $env:APP_EVENT_HASH_SALT = "valor_local_ficticio"
   $env:APP_AGE_GATE_SIGNING_VALUE = "valor_local_ficticio_idade"
-  $env:EFI_PIX_MOCK_MODE = "true"
+  $env:EFI_ENABLED = "false"
   $env:TOPSV3_BACKEND_PORT = "$BackendPort"
 
   $backendProcess = Start-Process -FilePath $mavenPath -ArgumentList @("-q", "spring-boot:run") -WorkingDirectory $backendDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $backendOut -RedirectStandardError $backendErr
@@ -799,7 +799,7 @@ try {
   $env:APP_CANONICAL_DOMAIN = $oldCanonical
   $env:APP_EVENT_HASH_SALT = $oldEventHashSalt
   $env:APP_AGE_GATE_SIGNING_VALUE = $oldAgeGateSigningValue
-  $env:EFI_PIX_MOCK_MODE = $oldEfiMock
+  $env:EFI_ENABLED = $oldEfiEnabled
   $env:TOPSV3_BACKEND_PORT = $oldBackendPort
 
   if ($dockerExe -and $pgName) {

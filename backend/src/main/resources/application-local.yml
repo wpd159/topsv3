@@ -35,7 +35,9 @@ app:
 
 efi:
   pix:
-    mock-mode: ${EFI_PIX_MOCK_MODE:true}
+    enabled: false
+    environment: homologacao
+    base-url: https://pix-h.api.efipay.com.br
 
 server:
   port: ${TOPSV3_BACKEND_PORT:8080}

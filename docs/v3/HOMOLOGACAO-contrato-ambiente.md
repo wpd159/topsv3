@@ -31,7 +31,14 @@ Este documento e contrato, nao deploy.
 | `APP_CANONICAL_DOMAIN` | Sim | ambiente | Dominio de homologacao ou canonical aprovado. |
 | `APP_CORS_ALLOWED_ORIGINS` | Sim | ambiente | Lista explicita de origens autorizadas. |
 | `APP_ADMIN_SESSION_COOKIE_SECURE` | Sim | ambiente | Deve ser `true` em homologacao. |
-| `EFI_PIX_MOCK_MODE` | Sim | ambiente | Deve permanecer `true` ate bloco proprio de Pix/Efi real. |
+| `EFI_ENABLED` | Sim | ambiente | Fixo em `false` no HML ate o gate de importacao/preparacao do cutover. |
+| `EFI_ENVIRONMENT` | Nao nesta fase | ambiente | Configuracao adiada; quando autorizada, nunca pode apontar para producao em HML. |
+| `EFI_BASE_URL` | Nao nesta fase | ambiente | Configuracao adiada para o gate financeiro. |
+| `EFI_CLIENT_ID` | Nao nesta fase | secret externo | Nao instalar no HML durante o freeze. |
+| `EFI_CLIENT_SECRET` | Nao nesta fase | secret externo | Nao instalar no HML durante o freeze. |
+| `EFI_CERTIFICATE_PROTECTION_VALUE` | Nao nesta fase | secret externo | Nao instalar no HML durante o freeze. |
+| `EFI_PIX_KEY` | Nao nesta fase | secret externo | Nao instalar no HML durante o freeze. |
+| `EFI_WEBHOOK_VERIFIER_VALUE` | Nao nesta fase | secret externo | Nao instalar nem registrar webhook durante o freeze. |
 | `SPRING_DATASOURCE_URL` | Sim | secret externo | Banco isolado de homologacao. |
 | `SPRING_DATASOURCE_USERNAME` | Sim | secret externo | Usuario sem permissao em producao. |
 | `SPRING_DATASOURCE_PASSWORD` | Sim | secret externo | Nao versionar. |
