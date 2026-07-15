@@ -2,6 +2,9 @@
 \pset tuples_only on
 \pset format unaligned
 
+CREATE TEMP TABLE validar_context AS
+SELECT :'r2_document_bucket'::text AS r2_document_bucket;
+
 SELECT 'USUARIOS|' || count(*) FROM usuario;
 SELECT 'ANUNCIOS|' || count(*) FROM anuncio;
 SELECT 'ANUNCIOS_PUBLICADOS|' || count(*) FROM anuncio WHERE status = 'PUBLICADO';
@@ -76,10 +79,28 @@ WHERE s.tipo = 'ANUNCIO'
   );
 SELECT 'STORIES_QUARENTENA|' || count(*) FROM stg_story;
 SELECT 'KYC_CANONICO|' || count(*) FROM documento_usuario;
+SELECT 'KYC_PENDENTE|' || count(*) FROM documento_usuario WHERE status = 'PENDENTE';
 SELECT 'KYC_HTTP_QUARENTENA|' || count(*)
 FROM importacao_pendencia WHERE codigo = 'KYC_REFERENCIA_HTTP_QUARENTENA';
 SELECT 'KYC_PRIVADO_NAO_VERIFICADO|' || count(*)
 FROM importacao_pendencia WHERE codigo = 'KYC_REFERENCIA_PRIVADA_NAO_VERIFICADA';
+SELECT 'KYC_PARTE_NAO_COMPROVADA|' || count(*)
+FROM importacao_pendencia WHERE codigo = 'KYC_PARTE_DOCUMENTAL_NAO_COMPROVADA';
+SELECT 'KYC_TIPO_INVALIDO|' || count(*)
+FROM importacao_pendencia WHERE codigo = 'KYC_TIPO_OU_CONTEUDO_INVALIDO';
+SELECT 'KYC_REFERENCIA_DUPLICADA|' || count(*)
+FROM importacao_pendencia WHERE codigo = 'KYC_REFERENCIA_DUPLICADA';
+SELECT 'KYC_DOCUMENTO_ORFAO|' || count(*)
+FROM documento_usuario d
+LEFT JOIN usuario u ON u.id = d.usuario_id
+LEFT JOIN arquivo_midia a ON a.id = d.arquivo_midia_id
+WHERE u.id IS NULL OR a.id IS NULL;
+SELECT 'KYC_STORAGE_PRIVADO|' || count(*)
+FROM documento_usuario d
+JOIN arquivo_midia a ON a.id = d.arquivo_midia_id
+WHERE a.storage_provider = 'R2'
+  AND a.bucket = :'r2_document_bucket'
+  AND a.chave_objeto LIKE 'hml/documentos/importacao/sha256/%';
 SELECT 'MOVIMENTOS_SALDO_INICIAL|' || count(*)
 FROM movimento_credito WHERE tipo = 'MIGRACAO_SALDO_INICIAL';
 SELECT 'USUARIOS_SALDO_INICIAL|' || count(DISTINCT usuario_id)
@@ -136,6 +157,59 @@ SELECT 'SNAPSHOT_ID|' || (resumo_json ->> 'snapshotId')
 FROM importacao_execucao;
 SELECT 'SNAPSHOT_FINGERPRINT|' || (resumo_json ->> 'snapshotFingerprint')
 FROM importacao_execucao;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM documento_usuario d
+    JOIN arquivo_midia a ON a.id = d.arquivo_midia_id
+    WHERE d.status <> 'PENDENTE'
+       OR d.validado_por IS NOT NULL
+       OR d.validado_em IS NOT NULL
+       OR d.revisado_por IS NOT NULL
+       OR d.revisado_em IS NOT NULL
+       OR d.parte <> 'UNICO'
+       OR a.status_arquivo <> 'PENDENTE'
+       OR a.storage_provider <> 'R2'
+       OR a.bucket <> (SELECT r2_document_bucket FROM validar_context)
+       OR a.chave_objeto NOT LIKE 'hml/documentos/importacao/sha256/%'
+       OR a.mime_type <> 'application/pdf'
+       OR a.tamanho_bytes NOT BETWEEN 1 AND 12582912
+       OR a.sha256 !~ '^[0-9a-f]{64}$'
+  ) THEN
+    RAISE EXCEPTION 'documento KYC promovido fora do contrato privado e pendente';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM documento_usuario d
+    LEFT JOIN usuario u ON u.id = d.usuario_id
+    LEFT JOIN arquivo_midia a ON a.id = d.arquivo_midia_id
+    WHERE u.id IS NULL OR a.id IS NULL
+  ) THEN
+    RAISE EXCEPTION 'documento KYC orfao no fluxo operacional';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM importacao_mapeamento
+    WHERE tabela_origem = 'usuario_documentos'
+    GROUP BY execucao_id, id_origem
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'referencia KYC reaplicada na mesma execucao';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM stg_midia
+    WHERE tabela_origem = 'usuario_documentos'
+      AND payload_normalizado_json ->> 'urlPublicaGerada' <> 'false'
+  ) THEN
+    RAISE EXCEPTION 'documento KYC recebeu indicacao de URL publica';
+  END IF;
+END $$;
 
 DO $$
 DECLARE
@@ -217,6 +291,13 @@ WITH hashes AS (
     '|' ORDER BY am.id), ''))
   FROM anuncio_midia am JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
   UNION ALL
+  SELECT 'kyc', md5(coalesce(string_agg(
+    concat_ws(':', d.id, d.usuario_id, d.arquivo_midia_id, d.envio_id,
+              d.parte, d.status, ar.bucket, ar.chave_objeto,
+              ar.sha256, ar.tamanho_bytes, ar.mime_type),
+    '|' ORDER BY d.id), ''))
+  FROM documento_usuario d JOIN arquivo_midia ar ON ar.id = d.arquivo_midia_id
+  UNION ALL
   SELECT 'ledger', md5(coalesce(string_agg(
     concat_ws(':', id, usuario_id, tipo, direcao, quantidade,
               saldo_antes, saldo_depois, criado_em),
@@ -268,6 +349,13 @@ WITH hashes AS (
               ar.sha256, ar.tamanho_bytes, ar.mime_type),
     '|' ORDER BY am.id), ''))
   FROM anuncio_midia am JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+  UNION ALL
+  SELECT md5(coalesce(string_agg(
+    concat_ws(':', d.id, d.usuario_id, d.arquivo_midia_id, d.envio_id,
+              d.parte, d.status, ar.bucket, ar.chave_objeto,
+              ar.sha256, ar.tamanho_bytes, ar.mime_type),
+    '|' ORDER BY d.id), ''))
+  FROM documento_usuario d JOIN arquivo_midia ar ON ar.id = d.arquivo_midia_id
   UNION ALL
   SELECT md5(coalesce(string_agg(
     concat_ws(':', id, usuario_id, tipo, direcao, quantidade,

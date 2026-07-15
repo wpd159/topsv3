@@ -898,3 +898,13 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - Os 307 historicos sem data confiavel ficam em staging/quarentena. Divergencias historicas sao registradas somente em metadata e relatorio agregado; nenhum `AJUSTE` artificial e criado.
 - O snapshot `00000058-0000C0D1-1`, de `2026-07-15T13:23:12.555154Z`, produziu 173 movimentos, total 102.544, em dois bancos PostgreSQL 17 descartaveis. A segunda reconciliacao criou zero movimentos e ambos os destinos produziram os mesmos hashes.
 - A referencia orfa legada conhecida, incluindo saldo, historicos e pagamentos associados, permanece fora do ledger operacional. Pagamentos, KYC, Efi, midias e Premium legado incompativel continuam fora desta fase.
+
+## 46. Documentos KYC no dry-run
+
+- O snapshot `kyc-20260715T151006Z` auditou 1.916 linhas documentais em transacao `REPEATABLE READ READ ONLY`: 1.160 referencias unicas, 756 repeticoes, 133 linhas HTTP/HTTPS e 1.051 referencias R2 privadas.
+- Nenhuma URL HTTP/HTTPS foi baixada ou convertida. As 133 linhas permanecem em quarentena por privacidade duvidosa; referencias ausentes, inexistentes, invalidas ou com vinculo inconsistente tambem bloqueiam promocao automatica.
+- A origem R2 foi validada primeiro por metadados e prova de ausencia de acesso anonimo. Somente PDFs com parte `UNICO` comprovada foram lidos integralmente; imagens sem evidencia confiavel de frente/verso nao foram baixadas em massa.
+- O destino usa exclusivamente `ObjectStorage`, area `PRIVATE_DOCUMENT`, bucket documental HML e prefixo `hml/documentos/importacao/`. Chaves sao deterministicas por SHA-256 e nao contem nome civil, CPF, ID legado ou outro dado pessoal.
+- Duas execucoes produziram o mesmo fingerprint: 29 referencias PDF elegiveis formaram 20 objetos deduplicados; a segunda execucao preservou os 29 vinculos e nao gravou objeto novo. Houve zero checksum divergente.
+- O staging PostgreSQL 17/V001-V026 resultou em 29 documentos `PENDENTE`, zero aprovacao automatica, zero FK invalida, zero documento orfao e nenhuma URL publica. Acesso administrativo temporario continua sujeito ao RBAC canonico.
+- Permanecem em quarentena 1.020 imagens sem parte documental comprovada e duas referencias de tipo/conteudo invalido. Estado historico so sera preservado quando houver evidencia confiavel; em duvida, o KYC permanece pendente ou fora do fluxo operacional.

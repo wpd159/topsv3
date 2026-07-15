@@ -3,9 +3,10 @@
 -- Transformacao conservadora do snapshot legado para um banco V3 descartavel.
 -- Pre-condicoes:
 --   1. source_snapshot existe no mesmo PostgreSQL local;
---   2. /tmp/dryrun-r2-public-media.tsv contem o resultado sanitizado da migracao;
---   3. snapshot_at, snapshot_id, snapshot_fingerprint e r2_public_bucket sao
---      informados pelo chamador.
+--   2. os TSVs /tmp/dryrun-r2-public-media.tsv e
+--      /tmp/dryrun-r2-kyc-documents.tsv contem resultados sanitizados;
+--   3. snapshot_at, snapshot_id, snapshot_fingerprint, r2_public_bucket e
+--      r2_document_bucket sao informados pelo chamador.
 -- Este arquivo nao contem dados, credenciais ou acesso a producao.
 
 CREATE EXTENSION IF NOT EXISTS postgres_fdw;
@@ -57,6 +58,23 @@ CREATE TEMP TABLE dryrun_r2_public_media (
 
 \copy dryrun_r2_public_media (anuncio_origem_id, reference_hash, object_key, sha256, tamanho_bytes, mime_type, largura, altura, status, motivo) FROM '/tmp/dryrun-r2-public-media.tsv' WITH (FORMAT text, DELIMITER E'\t', NULL '')
 
+CREATE TEMP TABLE dryrun_r2_kyc_documents (
+  usuario_v3_id uuid NOT NULL,
+  reference_hash text NOT NULL,
+  object_key text,
+  sha256 text,
+  tamanho_bytes bigint NOT NULL,
+  mime_type text,
+  extensao text,
+  parte text NOT NULL,
+  status text NOT NULL,
+  motivo text,
+  kyc_status text NOT NULL,
+  PRIMARY KEY (usuario_v3_id, reference_hash)
+);
+
+\copy dryrun_r2_kyc_documents (usuario_v3_id, reference_hash, object_key, sha256, tamanho_bytes, mime_type, extensao, parte, status, motivo, kyc_status) FROM '/tmp/dryrun-r2-kyc-documents.tsv' WITH (FORMAT text, DELIMITER E'\t', NULL '')
+
 BEGIN;
 
 CREATE TEMP TABLE dryrun_context AS
@@ -65,7 +83,8 @@ SELECT
   :'snapshot_at'::timestamptz AS snapshot_at,
   :'snapshot_id'::text AS snapshot_id,
   :'snapshot_fingerprint'::text AS snapshot_fingerprint,
-  :'r2_public_bucket'::text AS r2_public_bucket;
+  :'r2_public_bucket'::text AS r2_public_bucket,
+  :'r2_document_bucket'::text AS r2_document_bucket;
 
 INSERT INTO importacao_execucao (
   id, sistema_origem, status, iniciado_em, finalizado_em, resumo_json, criado_em
@@ -772,32 +791,216 @@ CROSS JOIN dryrun_context c
 LEFT JOIN legacy.usuarios u ON u.id = s.usuario_id
 LEFT JOIN legacy.anuncios a ON a.id = s.anuncio_id;
 
--- KYC: nenhum binario e copiado. Referencias HTTP e referencias privadas sem
--- verificacao de existencia permanecem em quarentena.
+-- KYC: somente PDF privado com parte UNICO comprovada, checksum validado e
+-- objeto no prefixo documental HML e promovido como PENDENTE. URL HTTP,
+-- imagem sem frente/verso comprovados e qualquer divergencia permanecem em
+-- staging/quarentena; nenhuma decisao historica duvidosa aprova o cadastro.
+CREATE TEMP TABLE dryrun_kyc_referencia AS
+WITH origem AS (
+  SELECT
+    d.usuario_id,
+    d.documento_url,
+    md5(coalesce(d.documento_url, '')) AS reference_hash,
+    count(*) AS ocorrencias
+  FROM legacy.usuario_documentos d
+  GROUP BY d.usuario_id, d.documento_url
+)
+SELECT
+  o.usuario_id AS usuario_origem_id,
+  u.id AS usuario_v3_id,
+  o.reference_hash,
+  o.ocorrencias,
+  CASE
+    WHEN nullif(trim(o.documento_url), '') IS NULL THEN 'AUSENTE'
+    WHEN o.documento_url ~* '^https?://' THEN 'HTTP_PRIVACIDADE_DUVIDOSA'
+    WHEN o.documento_url ~* '^r2://' THEN 'R2_PRIVADA'
+    ELSE 'PRIVADA_NAO_VERIFICAVEL'
+  END AS classe_referencia,
+  r.object_key,
+  r.sha256,
+  r.tamanho_bytes,
+  r.mime_type,
+  r.extensao,
+  r.parte,
+  r.status AS migracao_status,
+  r.motivo AS migracao_motivo,
+  r.kyc_status
+FROM origem o
+LEFT JOIN dryrun_usuario u ON u.origem_id = o.usuario_id
+LEFT JOIN dryrun_r2_kyc_documents r
+  ON r.usuario_v3_id = u.id
+ AND r.reference_hash = o.reference_hash;
+
+CREATE TEMP TABLE dryrun_kyc_promovivel AS
+SELECT r.*
+FROM dryrun_kyc_referencia r
+CROSS JOIN dryrun_context c
+WHERE r.usuario_v3_id IS NOT NULL
+  AND r.classe_referencia = 'R2_PRIVADA'
+  AND r.migracao_status IN ('MIGRADA', 'PRESERVADA')
+  AND r.object_key LIKE 'hml/documentos/importacao/sha256/%'
+  AND r.sha256 ~ '^[0-9a-f]{64}$'
+  AND r.tamanho_bytes BETWEEN 1 AND 12582912
+  AND r.mime_type = 'application/pdf'
+  AND r.extensao = 'pdf'
+  AND r.parte = 'UNICO'
+  AND r.kyc_status = 'PENDENTE'
+  AND length(trim(c.r2_document_bucket)) > 0;
+
+INSERT INTO arquivo_midia (
+  id, storage_provider, bucket, chave_objeto, nome_original, mime_type,
+  tamanho_bytes, largura, altura, duracao_ms, sha256, etag,
+  status_arquivo, criado_em
+)
+SELECT DISTINCT ON (k.sha256)
+  md5('r2:kyc-arquivo:' || k.sha256)::uuid,
+  'R2',
+  c.r2_document_bucket,
+  k.object_key,
+  NULL,
+  k.mime_type,
+  k.tamanho_bytes,
+  NULL, NULL, NULL, k.sha256, NULL,
+  'PENDENTE',
+  c.snapshot_at
+FROM dryrun_kyc_promovivel k
+CROSS JOIN dryrun_context c
+ORDER BY k.sha256, k.reference_hash;
+
+INSERT INTO documento_usuario (
+  id, usuario_id, arquivo_midia_id, tipo, status, politica_retencao,
+  criado_em, atualizado_em, envio_id, parte
+)
+SELECT
+  md5('legacy:documento-kyc:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid,
+  k.usuario_v3_id,
+  md5('r2:kyc-arquivo:' || k.sha256)::uuid,
+  'IDENTIDADE',
+  'PENDENTE',
+  'ENQUANTO_HOUVER_ANUNCIO',
+  c.snapshot_at,
+  c.snapshot_at,
+  md5('legacy:documento-kyc-envio:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid,
+  'UNICO'
+FROM dryrun_kyc_promovivel k
+CROSS JOIN dryrun_context c;
+
+INSERT INTO stg_midia (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem, hash_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:documento-kyc:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'usuario_documentos',
+  k.usuario_origem_id || ':' || k.reference_hash,
+  k.reference_hash,
+  jsonb_build_object(
+    'classeReferencia', k.classe_referencia,
+    'ocorrencias', k.ocorrencias,
+    'resultadoR2', coalesce(k.migracao_status, 'NAO_AUDITADA'),
+    'tipoValidado', k.mime_type,
+    'parteComprovada', k.parte,
+    'estadoImportado', 'PENDENTE',
+    'urlPublicaGerada', false
+  ),
+  CASE
+    WHEN k.usuario_v3_id IS NULL THEN 'REJEITADO'
+    WHEN p.reference_hash IS NOT NULL THEN 'PROCESSADO'
+    ELSE 'PENDENTE_REVISAO'
+  END,
+  CASE
+    WHEN p.reference_hash IS NOT NULL THEN NULL
+    WHEN k.usuario_v3_id IS NULL THEN 'KYC_VINCULO_USUARIO_INCONSISTENTE'
+    WHEN k.classe_referencia = 'AUSENTE' THEN 'KYC_REFERENCIA_AUSENTE'
+    WHEN k.classe_referencia = 'HTTP_PRIVACIDADE_DUVIDOSA' THEN 'KYC_REFERENCIA_HTTP_QUARENTENA'
+    WHEN k.classe_referencia = 'PRIVADA_NAO_VERIFICAVEL' THEN 'KYC_REFERENCIA_PRIVADA_NAO_VERIFICADA'
+    WHEN k.migracao_status = 'BLOQUEADA' THEN 'KYC_CHECKSUM_DIVERGENTE'
+    WHEN k.migracao_motivo = 'PARTE_DOCUMENTAL_NAO_COMPROVADA'
+      THEN 'KYC_PARTE_DOCUMENTAL_NAO_COMPROVADA'
+    WHEN k.migracao_motivo = 'TIPO_OU_CONTEUDO_INVALIDO'
+      THEN 'KYC_TIPO_OU_CONTEUDO_INVALIDO'
+    WHEN k.migracao_motivo = 'ARQUIVO_INEXISTENTE'
+      THEN 'KYC_ARQUIVO_INEXISTENTE'
+    WHEN k.migracao_motivo = 'ORIGEM_PUBLICAMENTE_ACESSIVEL'
+      THEN 'KYC_ORIGEM_PUBLICAMENTE_ACESSIVEL'
+    WHEN k.migracao_status = 'QUARENTENA' THEN 'KYC_FALHA_INDIVIDUAL_QUARENTENA'
+    ELSE 'KYC_REFERENCIA_PRIVADA_NAO_VERIFICADA'
+  END,
+  CASE WHEN p.reference_hash IS NOT NULL
+    THEN md5('legacy:documento-kyc:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid
+  END,
+  c.snapshot_at,
+  CASE WHEN p.reference_hash IS NOT NULL THEN c.snapshot_at END
+FROM dryrun_kyc_referencia k
+CROSS JOIN dryrun_context c
+LEFT JOIN dryrun_kyc_promovivel p
+  ON p.usuario_origem_id = k.usuario_origem_id
+ AND p.reference_hash = k.reference_hash;
+
+INSERT INTO importacao_mapeamento (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem, hash_origem,
+  entidade_tipo, entidade_v3_id, status, criado_em, atualizado_em
+)
+SELECT
+  md5('map:documento-kyc:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'usuario_documentos',
+  k.usuario_origem_id || ':' || k.reference_hash,
+  k.reference_hash,
+  'DOCUMENTO_KYC',
+  CASE WHEN p.reference_hash IS NOT NULL
+    THEN md5('legacy:documento-kyc:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid
+  END,
+  CASE WHEN p.reference_hash IS NOT NULL THEN 'MAPEADO' ELSE 'PENDENTE' END,
+  c.snapshot_at,
+  c.snapshot_at
+FROM dryrun_kyc_referencia k
+CROSS JOIN dryrun_context c
+LEFT JOIN dryrun_kyc_promovivel p
+  ON p.usuario_origem_id = k.usuario_origem_id
+ AND p.reference_hash = k.reference_hash;
+
 INSERT INTO importacao_pendencia (
   id, execucao_id, codigo, severidade, status, entidade_tipo,
   id_origem, detalhe_resumido, criado_em
 )
 SELECT
-  md5('pendencia:kyc:' || d.usuario_id || ':' || md5(d.documento_url) || ':' || d.ocorrencia)::uuid,
+  md5('pendencia:kyc:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid,
   c.execucao_id,
-  CASE WHEN d.documento_url ~* '^https?://' THEN 'KYC_REFERENCIA_HTTP_QUARENTENA'
-       ELSE 'KYC_REFERENCIA_PRIVADA_NAO_VERIFICADA' END,
+  s.pendencia_codigo,
   'ALTA',
   'ABERTA',
   'DOCUMENTO_KYC',
-  d.usuario_id || ':' || md5(d.documento_url) || ':' || d.ocorrencia,
-  'Documento nao promovido; nenhum binario ou URL foi copiado.',
+  k.usuario_origem_id || ':' || k.reference_hash,
+  'Referencia documental mantida em quarentena; nenhuma URL publica foi criada.',
   c.snapshot_at
-FROM (
-  SELECT
-    x.*,
-    row_number() OVER (
-      PARTITION BY x.usuario_id, x.documento_url
-      ORDER BY x.usuario_id, x.documento_url
-    ) AS ocorrencia
-  FROM legacy.usuario_documentos x
-) d CROSS JOIN dryrun_context c;
+FROM dryrun_kyc_referencia k
+CROSS JOIN dryrun_context c
+JOIN stg_midia s
+  ON s.id = md5('stg:documento-kyc:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid
+WHERE s.status <> 'PROCESSADO';
+
+INSERT INTO importacao_pendencia (
+  id, execucao_id, codigo, severidade, status, entidade_tipo,
+  id_origem, detalhe_resumido, criado_em
+)
+SELECT
+  md5('pendencia:kyc-duplicada:' || k.usuario_origem_id || ':' || k.reference_hash)::uuid,
+  c.execucao_id,
+  'KYC_REFERENCIA_DUPLICADA',
+  'MEDIA',
+  'ABERTA',
+  'DOCUMENTO_KYC',
+  k.usuario_origem_id || ':' || k.reference_hash,
+  'Referencia repetida na origem: ' || k.ocorrencias || ' ocorrencias; um unico vinculo foi considerado.',
+  c.snapshot_at
+FROM dryrun_kyc_referencia k
+CROSS JOIN dryrun_context c
+WHERE k.ocorrencias > 1;
 
 -- Creditos: o saldo operacional do snapshot e a unica fonte do saldo inicial.
 -- Historicos sem cronologia confiavel permanecem integralmente no staging.
@@ -1157,7 +1360,21 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
         WHERE codigo = 'CREDITO_SALDO_DIVERGENTE'
       ),
       'premiumPromovido', (SELECT count(*) FROM ativacao_beneficio WHERE origem = 'IMPORTACAO'),
-      'kycPromovido', 0,
+      'kycReferenciasOrigem', (SELECT coalesce(sum(ocorrencias), 0) FROM dryrun_kyc_referencia),
+      'kycReferenciasUnicas', (SELECT count(*) FROM dryrun_kyc_referencia),
+      'kycReferenciasHttpQuarentena', (
+        SELECT coalesce(sum(ocorrencias), 0) FROM dryrun_kyc_referencia
+        WHERE classe_referencia = 'HTTP_PRIVACIDADE_DUVIDOSA'
+      ),
+      'kycReferenciasDuplicadas', (
+        SELECT coalesce(sum(ocorrencias - 1), 0) FROM dryrun_kyc_referencia
+      ),
+      'kycR2Migradas', (SELECT count(*) FROM dryrun_r2_kyc_documents WHERE status = 'MIGRADA'),
+      'kycR2Preservadas', (SELECT count(*) FROM dryrun_r2_kyc_documents WHERE status = 'PRESERVADA'),
+      'kycR2Bloqueadas', (SELECT count(*) FROM dryrun_r2_kyc_documents WHERE status = 'BLOQUEADA'),
+      'kycR2Quarentena', (SELECT count(*) FROM dryrun_r2_kyc_documents WHERE status = 'QUARENTENA'),
+      'kycPromovidoPendente', (SELECT count(*) FROM documento_usuario WHERE status = 'PENDENTE'),
+      'kycAprovadoAutomaticamente', 0,
       'pagamentosPromovidos', 0
     )
 FROM dryrun_context c

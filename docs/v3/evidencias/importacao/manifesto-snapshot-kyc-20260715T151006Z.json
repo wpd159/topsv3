@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "kyc-dry-run-v1",
+  "snapshotUtc": "2026-07-15T15:10:06Z",
+  "snapshotId": "kyc-20260715T151006Z",
+  "snapshotFingerprint": "2f9bf95e269aff67d5b6712a64e2bf153a0a012dd3abad265b884ecd3f3ac162",
+  "source": {
+    "mode": "REPEATABLE_READ_READ_ONLY",
+    "documentRows": 1916,
+    "uniqueReferences": 1160,
+    "aggregateFingerprint": "cf60ed4f135ec6e5787c8567c025a5b0",
+    "productionWrite": false
+  },
+  "classification": {
+    "privateVerifiableNonR2": 0,
+    "httpOrPrivacyDubiousRows": 133,
+    "httpOrPrivacyDubiousUnique": 109,
+    "privateR2Verifiable": 1051,
+    "absent": 0,
+    "nonexistent": 0,
+    "invalidTypeOrContent": 2,
+    "duplicateOccurrences": 756,
+    "inconsistentUserLink": 0
+  },
+  "r2PrivateDryRun": {
+    "destinationArea": "PRIVATE_DOCUMENT",
+    "destinationBucket": "topsdojob-hml-documentos",
+    "destinationPrefix": "hml/documentos/importacao/",
+    "candidateReferences": 1051,
+    "eligiblePdfReferences": 29,
+    "uniqueObjects": 20,
+    "firstRunMigrated": 20,
+    "firstRunPreserved": 9,
+    "secondRunMigrated": 0,
+    "secondRunPreserved": 29,
+    "quarantined": 1022,
+    "quarantineByReason": {
+      "PART_DOCUMENT_NOT_PROVEN": 1020,
+      "INVALID_TYPE_OR_CONTENT": 2
+    },
+    "blockedByChecksum": 0,
+    "resultFingerprint": "18a6c559590e05123b9de059c49326f1f542e8c9c8d3f7cf590cb9d29c27945d",
+    "publicUrlGenerated": false,
+    "temporaryAuthorizedUrlValidated": true
+  },
+  "v3Staging": {
+    "pendingKycDocuments": 29,
+    "automaticallyApproved": 0,
+    "orphanOperationalDocuments": 0,
+    "invalidForeignKeys": 0,
+    "databaseFingerprint": "62bc3b147f758ffd9f6c5230a35641ca"
+  },
+  "openDivergences": [
+    "133 HTTP/HTTPS rows remain quarantined without download",
+    "1020 image references lack reliable front/back part evidence",
+    "2 source references use unsupported type or content",
+    "756 duplicate source occurrences are represented by one sanitized mapping each",
+    "historical approval is not inferred without reliable evidence"
+  ],
+  "privacy": {
+    "containsPersonalData": false,
+    "containsRawReferences": false,
+    "containsObjectKeys": false,
+    "containsSecrets": false,
+    "sourceObjectsChanged": false,
+    "hmlOperationalDatabaseChanged": false
+  }
+}

@@ -422,6 +422,9 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Manifesto sanitizado corrigido (elegibilidade e SEO): `docs/v3/evidencias/importacao/manifesto-snapshot-20260715T014038Z.json`
 - Manifesto sanitizado do ledger: `docs/v3/evidencias/importacao/manifesto-snapshot-ledger-20260715T132312Z.json`
 - Reconciliacao idempotente do saldo inicial: `scripts/local/importacao/reconciliar-ledger-saldo-inicial.sql`
+- Dry-run R2 privado dos documentos KYC: `backend/src/test/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2PrivateKycDryRunIntegrationTest.java`
+- Contrato do importador KYC: `backend/src/test/java/br/com/topsdojob/v3/importacao/KycDocumentosDryRunImportadorTest.java`
+- Manifesto sanitizado do KYC: `docs/v3/evidencias/importacao/manifesto-snapshot-kyc-20260715T151006Z.json`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

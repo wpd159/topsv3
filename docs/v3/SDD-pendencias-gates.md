@@ -759,6 +759,15 @@ Antes de admin em ambiente nao local:
 - Pendente para fases proprias: pagamentos e conciliacao, KYC, Efi, midias, Premium legado incompativel, certificados, importacao definitiva e cutover.
 - Este dry-run nao autoriza escrita em producao, HML ou R2, nem commit, push, deploy ou importacao definitiva.
 
+## Dry-run dos documentos KYC
+
+- Fechado no snapshot `kyc-20260715T151006Z`: 1.916 linhas classificadas, 1.160 referencias unicas, 756 repeticoes, 133 linhas HTTP/HTTPS em quarentena e zero vinculo de usuario inconsistente.
+- Fechado no R2 privado HML: 29 referencias PDF elegiveis, 20 objetos por checksum, segunda execucao com 29 preservados, zero objeto novo e zero divergencia de checksum.
+- Fechado no staging isolado PostgreSQL 17/V001-V026: 29 documentos `PENDENTE`, zero aprovacao automatica, zero FK invalida, zero orfao e zero URL publica.
+- Permanecem bloqueadas 1.020 imagens sem evidencia de parte frente/verso e duas referencias de tipo/conteudo invalido. As 133 referencias HTTP/HTTPS nao foram baixadas e exigem saneamento humano/autorizado futuro.
+- Gate antes da importacao definitiva: decidir o tratamento das imagens sem parte, revisar referencias HTTP/HTTPS e comprovar qualquer estado historico que se pretenda preservar. Nenhuma duvida pode ser promovida como KYC aprovado.
+- Este dry-run nao autoriza cutover, deploy, escrita na producao, uso do banco HML operacional ou copia de dado privado fora do R2 documental isolado.
+
 ## Favoritos publicos autenticados
 
 - Fechado localmente pela V025: tabela minima com FKs, indices e unicidade usuario/anuncio, sem editar migration historica.
