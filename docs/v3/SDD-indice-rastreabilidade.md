@@ -415,6 +415,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Contrato financeiro HML: `docs/v3/HOMOLOGACAO-financeiro-pix-efi-webhooks.md`
 - Testes Efi e idempotencia: `backend/src/test/java/br/com/topsdojob/v3/application/publico/pagamento/`, `backend/src/test/java/br/com/topsdojob/v3/infrastructure/payment/efi/`
 - Freeze Efi no HML e gate de cutover: `deploy/hml/docker-compose.yml`, `deploy/hml/hml.env.example`, `scripts/deploy/validar-deploy-hml-local.ps1`, `docs/v3/SDD-pendencias-gates.md`
+- Dry-run canonico saneado: `scripts/local/importacao/dryrun-producao-v3-saneado.sql`
+- Validador canonico do dry-run: `scripts/local/importacao/validar-dryrun-producao-v3-saneado.sql`
+- Migracao R2 por checksum: `backend/src/test/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2PublicMediaDryRunIntegrationTest.java`
+- Manifesto sanitizado do snapshot: `docs/v3/evidencias/importacao/manifesto-snapshot-20260715T002906Z.json`
+- Manifesto sanitizado corrigido (elegibilidade e SEO): `docs/v3/evidencias/importacao/manifesto-snapshot-20260715T014038Z.json`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

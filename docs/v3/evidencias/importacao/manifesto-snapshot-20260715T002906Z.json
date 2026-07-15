@@ -1,0 +1,77 @@
+{
+    "schemaVersion":  1,
+    "manifestoGeradoEmUtc":  "2026-07-15T01:13:26Z",
+    "snapshot":  {
+                     "capturadoEmUtc":  "2026-07-15T00:29:06Z",
+                     "identificador":  "00000046-0000CBD6-1",
+                     "transacao":  "1277701:1277701:",
+                     "fingerprintSha256":  "734044b23bf0d61de2b8dd88ca5530c37a1b645ad3219a4c13aa5d5c1d00b8e1"
+                 },
+    "origem":  {
+                   "usuarios":  1446,
+                   "anuncios":  630,
+                   "midias":  4189,
+                   "favoritos":  33,
+                   "premium":  3980,
+                   "pagamentos":  63
+               },
+    "v3":  {
+               "usuarios":  1446,
+               "anuncios":  630,
+               "anunciosPublicados":  623,
+               "anunciosForaCatalogo":  7,
+               "midiasR2Objetos":  1,
+               "midiasR2Vinculos":  103,
+               "favoritos":  33,
+               "premiumPromovido":  3928,
+               "pagamentosPromovidos":  0
+           },
+    "midiasPublicas":  {
+                           "criterio":  "SAFE_PUBLIC exclusiva, acesso anonimo e binario valido",
+                           "referenciasElegiveis":  1,
+                           "objetosUnicos":  1,
+                           "migradasNoCiclo":  1,
+                           "primeiraExecucao":  {
+                                                    "migradas":  0,
+                                                    "preservadas":  1,
+                                                    "bloqueadas":  0,
+                                                    "quarentena":  0
+                                                },
+                           "segundaExecucao":  {
+                                                   "migradas":  0,
+                                                   "preservadas":  1,
+                                                   "bloqueadas":  0,
+                                                   "quarentena":  0
+                                               },
+                           "objetosNaoElegiveisRemovidos":  1431
+                       },
+    "divergencias":  {
+                         "fkInvalidas":  0,
+                         "slugsDuplicados":  0,
+                         "referenciasOrfas":  24,
+                         "midiasSemAsset":  276,
+                         "midiasPrivadasNaoVerificadas":  269,
+                         "midiasNaoLivresEmQuarentena":  2064,
+                         "kycHttpEmQuarentena":  133,
+                         "kycPrivadoNaoVerificado":  1781,
+                         "movimentosSemDataConfiavel":  304,
+                         "saldosDivergentes":  164,
+                         "premiumEmQuarentena":  52,
+                         "pagamentosEmStaging":  63
+                     },
+    "seo":  {
+                "anunciosIndexaveis":  0,
+                "motivo":  "Nenhum anuncio possui quatro fotos LIVRE comprovadas",
+                "basePublicaHmlConfigurada":  false,
+                "sitemapUrlsTotais":  626,
+                "paginasSsrValidadas":  5
+            },
+    "dryRunFingerprint":  "82323cd91e4c5ee251464d8ba2e6c92e",
+    "sanitizacao":  {
+                        "dadosPessoaisIncluidos":  false,
+                        "slugsIncluidos":  false,
+                        "urlsIncluidas":  false,
+                        "objectKeysIncluidas":  false,
+                        "secretsIncluidos":  false
+                    }
+}

@@ -877,3 +877,14 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - O frontend possui um unico adapter e um unico provider por sessao. O `GET` alimenta de uma vez o conjunto de slugs usado pelos coracoes da Home, listagens, cidade, bairro, detalhe e `/favoritos`; nao existe consulta individual por card, cookie ou Web Storage como fonte de favoritos.
 - Mutacoes usam CSRF, bloqueiam repeticao enquanto pendentes, atualizam o estado de forma otimista e revertem em falha. Visitante abre o login existente; erro da listagem permanece explicito e nao e convertido em colecao vazia.
 - O estado local legado, o endpoint `/anuncios/favoritos`, o `POST /anuncios/{id}/favoritar`, o parametro `usuarioId` e o campo `favoritoInicial` foram removidos da superficie ativa.
+
+## 44. Snapshot e midias publicas do dry-run
+
+- Cada dry-run passa a usar um snapshot PostgreSQL exportado em transacao somente leitura e identificado por timestamp UTC, snapshot transacional e fingerprint SHA-256 proprios.
+- O manifesto sanitizado versionavel registra somente contagens agregadas e divergencias; nao inclui PII, slug completo, URL, object key, payload privado ou secret.
+- `SAFE_PUBLIC` e evidencia positiva, mas nao e a unica evidencia de midia `LIVRE`. A promocao exige anuncio ativo e publico, classificacao sem conflito, foto real vinculada ao anuncio, exibicao anonima sem age gate, HTTP 200, tipo binario valido e ausencia de marcador de placeholder, rejeicao, remocao ou restricao. Duvida ou conflito permanece em quarentena.
+- O destino usa somente o bucket publico HML e o prefixo deterministico `hml/midias-aprovadas/importacao/sha256/`; o arquivo canonico e deduplicado por SHA-256 e a origem nunca e alterada.
+- A referencia antes vinculada a 103 anuncios foi reclassificada como logomarca institucional: WebP 296x80, 4.218 bytes, uma URL/checksum compartilhada e nome sanitizado com padrao de logo. Seus vinculos nao sao promovidos e o asset permanece registrado em quarentena, sem apagar a origem.
+- O numero quatro era o limite maximo do plano base e foi indevidamente reutilizado como minimo de SEO no commit inicial da politica. A regra canonica corrigida exige pelo menos uma foto `LIVRE` real, alem de anuncio publicado/aprovado, slug e localizacao validos, titulo util e descricao suficiente.
+- Duas execucoes sobre o snapshot `00000063-0000AB12-1` produziram o fingerprint V3 `983c1c68a4366889a3f3f47877764946`, zero FK invalida, 617 objetos R2 deduplicados, 648 vinculos e 115 anuncios indexaveis. O dominio/base publica R2 do HML continua como gate operacional separado, sem URL inventada.
+- Ledger sem data confiavel, KYC privado, pagamentos, Premium incompativel, midias restritas e Efi permanecem fora desta consolidacao e nao foram promovidos.

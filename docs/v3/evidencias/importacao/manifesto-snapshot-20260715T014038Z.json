@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 2,
+  "manifestoGeradoEmUtc": "2026-07-15T02:08:00Z",
+  "snapshot": {
+    "capturadoEmUtc": "2026-07-15T01:40:38Z",
+    "identificador": "00000063-0000AB12-1",
+    "transacao": "1277819:1277819:",
+    "fingerprintSha256": "e44cefe487c505301ed320dd81e292dd5851f6200368f4ffbf7eb2fc6adcc3d6"
+  },
+  "origem": {
+    "usuarios": 1446,
+    "anuncios": 630,
+    "midiasProtegidas": 4189,
+    "fotos": 4318,
+    "favoritos": 33,
+    "premium": 4040,
+    "pagamentos": 64
+  },
+  "evidenciaPublica": {
+    "anunciosRetornadosAnonimamente": 623,
+    "anunciosCandidatos": 235,
+    "fotosCandidatas": 652,
+    "criterio": "anuncio ativo, foto real vinculada, classificacao coerente, API anonima sem age gate, HTTP 200, binario valido e ausencia de placeholder",
+    "classificacoesAceitasComoEvidenciaParcial": [
+      "SAFE_PUBLIC",
+      "ADULT_NON_EXPLICIT"
+    ],
+    "anunciosRetidosPorConflitoAtivo": 24
+  },
+  "assetCompartilhadoAuditado": {
+    "natureza": "LOGOMARCA_INSTITUCIONAL",
+    "nomePadraoSanitizado": "logo-*.webp",
+    "mimeType": "image/webp",
+    "largura": 296,
+    "altura": 80,
+    "tamanhoBytes": 4218,
+    "sha256": "63d543ed6361ed21c632e70fac50b7c2e09683b7fb5626735ef0c3c2f070e6f5",
+    "linhasProtegidasNaOrigem": 671,
+    "anunciosNaOrigem": 185,
+    "vinculosDoDryRunAnteriorNaoRecriados": 103,
+    "destino": "QUARENTENA_SEM_CONTAR_COMO_MIDIA"
+  },
+  "migracaoR2": {
+    "vinculosValidos": 648,
+    "objetosUnicos": 617,
+    "anunciosComMidiaValida": 234,
+    "primeiraExecucao": {
+      "migradas": 617,
+      "preservadas": 31,
+      "bloqueadas": 0,
+      "quarentena": 4
+    },
+    "segundaExecucao": {
+      "migradas": 0,
+      "preservadas": 648,
+      "bloqueadas": 0,
+      "quarentena": 4
+    },
+    "motivoQuarentena": "BINARIO_INVALIDO"
+  },
+  "v3": {
+    "usuarios": 1446,
+    "anuncios": 630,
+    "anunciosPublicados": 623,
+    "anunciosForaCatalogo": 7,
+    "objetosR2Publicos": 617,
+    "vinculosMidiaLivre": 648,
+    "favoritos": 33,
+    "premiumPromovido": 3988,
+    "pagamentosPromovidos": 0
+  },
+  "seo": {
+    "regraMinimaFotosLivresReais": 1,
+    "anunciosIndexaveis": 115,
+    "anunciosIndexaveisSemMidiaReal": 0,
+    "slugsDuplicados": 0,
+    "basePublicaHmlConfigurada": false
+  },
+  "divergenciasMantidasForaDoEscopo": {
+    "fkInvalidas": 0,
+    "referenciasOrfas": 24,
+    "midiasSemEvidenciaPublicaAnonima": 3366,
+    "midiasPrivadasNaoVerificadas": 269,
+    "midiasNaoLivresEmQuarentena": 1737,
+    "linhasPlaceholderEmQuarentena": 635,
+    "kycHttpEmQuarentena": 133,
+    "kycPrivadoNaoVerificado": 1781,
+    "movimentosSemDataConfiavel": 304,
+    "saldosDivergentes": 164,
+    "premiumEmQuarentena": 52,
+    "pagamentosEmStaging": 64
+  },
+  "dryRunFingerprint": "983c1c68a4366889a3f3f47877764946",
+  "segundaExecucaoFingerprint": "983c1c68a4366889a3f3f47877764946",
+  "sanitizacao": {
+    "dadosPessoaisIncluidos": false,
+    "slugsIncluidos": false,
+    "urlsIncluidas": false,
+    "objectKeysIncluidas": false,
+    "secretsIncluidos": false
+  }
+}

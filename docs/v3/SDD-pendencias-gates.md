@@ -741,6 +741,15 @@ Antes de admin em ambiente nao local:
 - Gate obrigatorio na fase de importacao/preparacao do cutover: instalar o material exclusivo no ambiente correto, registrar webhook, executar homologacao real de OAuth/cobranca/consulta/repeticao/conciliacao e comprovar credito unico no ledger.
 - Bloqueante para producao: homologacao real aprovada, credenciais/certificado/chave Pix proprios, rotacao, monitoramento, conciliacao agendada, estorno/devolucao, runbook, revisao humana/Pro e Go/No-Go financeiro.
 
+## Dry-run do snapshot e midias publicas
+
+- Fechado no snapshot `00000063-0000AB12-1`: manifesto sanitizado, transformacao V3 repetida, fingerprint `983c1c68a4366889a3f3f47877764946` identico e zero FK invalida.
+- Fechado no R2 HML: 652 fotos candidatas avaliadas; 648 vinculos validos formaram 617 objetos deduplicados, quatro binarios invalidos ficaram em quarentena e a segunda execucao nao gravou objeto novo.
+- Fechado no SEO do dry-run: 115 anuncios cumprem publicacao/aprovacao, slug/localizacao, conteudo suficiente e ao menos uma foto `LIVRE` real. Nenhum anuncio sem midia real entrou no conjunto indexavel.
+- A logomarca institucional compartilhada nao conta como midia, nao gera vinculo V3 e permanece em staging/quarentena. Midias restritas, conflitantes, privadas ou sem evidencia anonima permanecem igualmente em quarentena.
+- Pendente operacional separado: configurar uma base publica HML aprovada para o bucket de midias publicas; nenhuma URL deve ser inventada enquanto o gate estiver aberto.
+- O dry-run nao autoriza deploy, importacao no HML operacional, cutover ou escrita na producao.
+
 ## Favoritos publicos autenticados
 
 - Fechado localmente pela V025: tabela minima com FKs, indices e unicidade usuario/anuncio, sem editar migration historica.

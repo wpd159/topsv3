@@ -1,0 +1,1162 @@
+\set ON_ERROR_STOP on
+
+-- Transformacao conservadora do snapshot legado para um banco V3 descartavel.
+-- Pre-condicoes:
+--   1. source_snapshot existe no mesmo PostgreSQL local;
+--   2. /tmp/dryrun-r2-public-media.tsv contem o resultado sanitizado da migracao;
+--   3. snapshot_at, snapshot_id, snapshot_fingerprint e r2_public_bucket sao
+--      informados pelo chamador.
+-- Este arquivo nao contem dados, credenciais ou acesso a producao.
+
+CREATE EXTENSION IF NOT EXISTS postgres_fdw;
+CREATE SCHEMA legacy;
+CREATE SERVER legacy_source
+  FOREIGN DATA WRAPPER postgres_fdw
+  OPTIONS (host '/var/run/postgresql', dbname 'source_snapshot');
+CREATE USER MAPPING FOR CURRENT_USER
+  SERVER legacy_source
+  OPTIONS (user 'topsv3dry');
+
+IMPORT FOREIGN SCHEMA public LIMIT TO (
+  usuarios,
+  anuncios,
+  estado,
+  cidade,
+  bairro,
+  anuncio_servicos,
+  anuncio_local_atendimento,
+  anuncio_fotos,
+  anuncio_videos,
+  protected_media_assets,
+  content_classifications,
+  anuncio_revisions,
+  stories,
+  usuario_documentos,
+  advertiser_verification_requests,
+  usuario_favoritos,
+  feature_ativacao,
+  creditos_usuario,
+  historico_creditos,
+  pagamentos_mp,
+  suporte_mensagens
+) FROM SERVER legacy_source INTO legacy;
+
+CREATE TEMP TABLE dryrun_r2_public_media (
+  anuncio_origem_id bigint NOT NULL,
+  reference_hash text NOT NULL,
+  object_key text,
+  sha256 text,
+  tamanho_bytes bigint NOT NULL,
+  mime_type text,
+  largura integer NOT NULL,
+  altura integer NOT NULL,
+  status text NOT NULL,
+  motivo text,
+  PRIMARY KEY (anuncio_origem_id, reference_hash)
+);
+
+\copy dryrun_r2_public_media (anuncio_origem_id, reference_hash, object_key, sha256, tamanho_bytes, mime_type, largura, altura, status, motivo) FROM '/tmp/dryrun-r2-public-media.tsv' WITH (FORMAT text, DELIMITER E'\t', NULL '')
+
+BEGIN;
+
+CREATE TEMP TABLE dryrun_context AS
+SELECT
+  md5('dryrun:snapshot:' || :'snapshot_id')::uuid AS execucao_id,
+  :'snapshot_at'::timestamptz AS snapshot_at,
+  :'snapshot_id'::text AS snapshot_id,
+  :'snapshot_fingerprint'::text AS snapshot_fingerprint,
+  :'r2_public_bucket'::text AS r2_public_bucket;
+
+INSERT INTO importacao_execucao (
+  id, sistema_origem, status, iniciado_em, finalizado_em, resumo_json, criado_em
+)
+SELECT
+  execucao_id,
+  'TOPSDOJOB_PRODUCAO_SNAPSHOT_READONLY',
+  'EM_EXECUCAO',
+  snapshot_at,
+  NULL,
+  jsonb_build_object(
+    'modo', 'DRY_RUN_SANEADO',
+    'snapshotUtc', snapshot_at,
+    'snapshotId', snapshot_id,
+    'snapshotFingerprint', snapshot_fingerprint
+  ),
+  snapshot_at
+FROM dryrun_context;
+
+-- Usuarios: todos os registros da origem sao preservados, mas credenciais,
+-- sessoes e identificadores pessoais nao sao promovidos.
+CREATE TEMP TABLE dryrun_usuario AS
+WITH ranked AS (
+  SELECT
+    u.*,
+    count(*) OVER (PARTITION BY lower(trim(u.username))) AS username_total,
+    row_number() OVER (PARTITION BY lower(trim(u.username)) ORDER BY u.id) AS username_ordem
+  FROM legacy.usuarios u
+)
+SELECT
+  r.id AS origem_id,
+  md5('legacy:usuario:' || r.id)::uuid AS id,
+  CASE
+    WHEN nullif(trim(r.username), '') IS NULL THEN 'usuario-' || r.id
+    WHEN r.username_total > 1 THEN 'usuario-' || r.id
+    ELSE left(trim(r.username), 180)
+  END AS nome,
+  'legacy-' || r.id || '@example.invalid' AS email_normalizado,
+  CASE WHEN r.status = 'ATIVO' THEN 'ATIVO' ELSE 'DESATIVADO' END AS status,
+  CASE WHEN r.role IN ('ADMIN', 'MODERADOR') THEN 'STAFF' ELSE 'ANUNCIANTE' END AS tipo_conta,
+  r.data_nascimento,
+  r.role,
+  r.criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_em,
+  r.username_total > 1 AS username_conflitante,
+  md5(coalesce(lower(trim(r.username)), '')) AS username_hash
+FROM ranked r;
+
+INSERT INTO usuario (
+  id, nome, email_normalizado, telefone_normalizado, status, tipo_conta,
+  criado_em, atualizado_em, desativado_em, versao, data_nascimento,
+  nome_civil, cpf_normalizado
+)
+SELECT
+  id, nome, email_normalizado, NULL, status, tipo_conta,
+  criado_em, criado_em, NULL, 0, data_nascimento, NULL, NULL
+FROM dryrun_usuario;
+
+INSERT INTO papel_usuario (usuario_id, papel, criado_por, criado_em)
+SELECT
+  id,
+  CASE WHEN role = 'ADMIN' THEN 'ADMIN'
+       WHEN role = 'MODERADOR' THEN 'MODERADOR'
+       ELSE 'USUARIO' END,
+  NULL,
+  criado_em
+FROM dryrun_usuario;
+
+INSERT INTO stg_usuario (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem, hash_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:usuario:' || u.origem_id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'usuarios',
+  u.origem_id::text,
+  u.username_hash,
+  jsonb_build_object(
+    'usernameConflitante', u.username_conflitante,
+    'nascimentoPresente', u.data_nascimento IS NOT NULL,
+    'credencialImportada', false
+  ),
+  'PROCESSADO',
+  CASE WHEN u.username_conflitante THEN 'USUARIO_USERNAME_RECONCILIADO' END,
+  u.id,
+  c.snapshot_at,
+  c.snapshot_at
+FROM dryrun_usuario u CROSS JOIN dryrun_context c;
+
+INSERT INTO importacao_mapeamento (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem, hash_origem,
+  entidade_tipo, entidade_v3_id, status, criado_em, atualizado_em
+)
+SELECT
+  md5('map:usuario:' || u.origem_id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'usuarios',
+  u.origem_id::text,
+  u.username_hash,
+  'USUARIO',
+  u.id,
+  'MAPEADO',
+  c.snapshot_at,
+  c.snapshot_at
+FROM dryrun_usuario u CROSS JOIN dryrun_context c;
+
+-- Localidades: slugs de bairro sao deterministas e recebem sufixo do ID
+-- apenas quando o mesmo slug-base colide dentro da cidade.
+CREATE TEMP TABLE dryrun_estado AS
+SELECT
+  e.id AS origem_id,
+  md5('legacy:estado:' || e.id)::uuid AS id,
+  upper(e.uf) AS uf,
+  trim(e.nome) AS nome,
+  lower(unaccent(trim(e.nome))) AS nome_normalizado
+FROM legacy.estado e;
+
+CREATE TEMP TABLE dryrun_cidade AS
+WITH base AS (
+  SELECT
+    c.*,
+    CASE
+      WHEN c.slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' THEN c.slug
+      ELSE trim(both '-' FROM regexp_replace(lower(unaccent(trim(c.nome))), '[^a-z0-9]+', '-', 'g'))
+    END AS slug_base
+  FROM legacy.cidade c
+), ranked AS (
+  SELECT
+    b.*,
+    row_number() OVER (PARTITION BY b.estado_id, b.slug_base ORDER BY b.id) AS slug_ordem
+  FROM base b
+)
+SELECT
+  r.id AS origem_id,
+  md5('legacy:cidade:' || r.id)::uuid AS id,
+  md5('legacy:estado:' || r.estado_id)::uuid AS estado_id,
+  trim(r.nome) AS nome,
+  lower(unaccent(trim(r.nome))) AS nome_normalizado,
+  CASE WHEN r.slug_ordem = 1 THEN r.slug_base ELSE r.slug_base || '-' || r.id END AS slug
+FROM ranked r;
+
+CREATE TEMP TABLE dryrun_bairro AS
+WITH base AS (
+  SELECT
+    b.*,
+    trim(both '-' FROM regexp_replace(lower(unaccent(trim(b.nome))), '[^a-z0-9]+', '-', 'g')) AS slug_base
+  FROM legacy.bairro b
+), ranked AS (
+  SELECT
+    b.*,
+    row_number() OVER (PARTITION BY b.cidade_id, b.slug_base ORDER BY b.id) AS slug_ordem
+  FROM base b
+)
+SELECT
+  r.id AS origem_id,
+  md5('legacy:bairro:' || r.id)::uuid AS id,
+  md5('legacy:cidade:' || r.cidade_id)::uuid AS cidade_id,
+  trim(r.nome) AS nome,
+  lower(unaccent(trim(r.nome))) AS nome_normalizado,
+  CASE WHEN r.slug_ordem = 1 THEN r.slug_base ELSE r.slug_base || '-' || r.id END AS slug,
+  r.slug_ordem > 1 AS slug_colisao
+FROM ranked r;
+
+INSERT INTO estado (id, uf, nome, nome_normalizado, criado_em)
+SELECT e.id, e.uf, e.nome, e.nome_normalizado, c.snapshot_at
+FROM dryrun_estado e CROSS JOIN dryrun_context c;
+
+INSERT INTO cidade (id, estado_id, nome, nome_normalizado, slug, criado_em)
+SELECT x.id, x.estado_id, x.nome, x.nome_normalizado, x.slug, c.snapshot_at
+FROM dryrun_cidade x CROSS JOIN dryrun_context c;
+
+INSERT INTO bairro (id, cidade_id, nome, nome_normalizado, slug, criado_em)
+SELECT b.id, b.cidade_id, b.nome, b.nome_normalizado, b.slug, c.snapshot_at
+FROM dryrun_bairro b CROSS JOIN dryrun_context c;
+
+INSERT INTO stg_localidade (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:estado:' || e.origem_id)::uuid, c.execucao_id,
+  'TOPSDOJOB_PRODUCAO', 'estado', e.origem_id::text,
+  jsonb_build_object('tipo', 'ESTADO', 'uf', e.uf),
+  'PROCESSADO', NULL, e.id, c.snapshot_at, c.snapshot_at
+FROM dryrun_estado e CROSS JOIN dryrun_context c
+UNION ALL
+SELECT
+  md5('stg:cidade:' || x.origem_id)::uuid, c.execucao_id,
+  'TOPSDOJOB_PRODUCAO', 'cidade', x.origem_id::text,
+  jsonb_build_object('tipo', 'CIDADE', 'slug', x.slug),
+  'PROCESSADO', NULL, x.id, c.snapshot_at, c.snapshot_at
+FROM dryrun_cidade x CROSS JOIN dryrun_context c
+UNION ALL
+SELECT
+  md5('stg:bairro:' || b.origem_id)::uuid, c.execucao_id,
+  'TOPSDOJOB_PRODUCAO', 'bairro', b.origem_id::text,
+  jsonb_build_object('tipo', 'BAIRRO', 'slug', b.slug, 'colisaoResolvida', b.slug_colisao),
+  'PROCESSADO', CASE WHEN b.slug_colisao THEN 'BAIRRO_SLUG_COLISAO_RESOLVIDA' END,
+  b.id, c.snapshot_at, c.snapshot_at
+FROM dryrun_bairro b CROSS JOIN dryrun_context c;
+
+-- Primeira publicacao: revisao aprovada vinculada ao anuncio e a evidencia
+-- preferida. Na ausencia, criado_em e usado e explicitamente marcado.
+CREATE TEMP TABLE dryrun_publicacao AS
+SELECT
+  a.id AS anuncio_origem_id,
+  min(r.reviewed_at) FILTER (
+    WHERE r.status = 'APROVADA' AND r.reviewed_at IS NOT NULL
+  ) AS recuperada_em,
+  coalesce(
+    min(r.reviewed_at) FILTER (
+      WHERE r.status = 'APROVADA' AND r.reviewed_at IS NOT NULL
+    ),
+    a.criado_em
+  ) AS primeira_publicacao_em,
+  CASE
+    WHEN min(r.reviewed_at) FILTER (
+      WHERE r.status = 'APROVADA' AND r.reviewed_at IS NOT NULL
+    ) IS NOT NULL THEN 'REVISAO_APROVADA'
+    ELSE 'CRIADO_EM_INFERIDO'
+  END AS origem
+FROM legacy.anuncios a
+LEFT JOIN legacy.anuncio_revisions r ON r.anuncio_id = a.id
+GROUP BY a.id, a.criado_em;
+
+CREATE TEMP TABLE dryrun_anuncio AS
+SELECT
+  a.id AS origem_id,
+  md5('legacy:anuncio:' || a.id)::uuid AS id,
+  md5('legacy:usuario:' || a.usuario_id)::uuid AS usuario_id,
+  a.slug,
+  a.titulo,
+  a.descricao,
+  CASE a.status
+    WHEN 'ATIVO' THEN 'PUBLICADO'
+    WHEN 'PAUSADO' THEN 'PAUSADO'
+    WHEN 'REJEITADO' THEN 'REJEITADO'
+    ELSE 'RASCUNHO'
+  END AS status,
+  CASE a.status
+    WHEN 'ATIVO' THEN 'APROVADO'
+    WHEN 'PAUSADO' THEN 'APROVADO'
+    WHEN 'REJEITADO' THEN 'REJEITADO'
+    ELSE 'NAO_ENVIADO'
+  END AS status_moderacao,
+  a.categoria,
+  a.preco,
+  p.primeira_publicacao_em AT TIME ZONE 'America/Sao_Paulo' AS publicado_em,
+  p.origem AS publicacao_origem,
+  a.criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_em,
+  a.removido_logicamente_em AT TIME ZONE 'America/Sao_Paulo' AS removido_em,
+  a.cidade_id AS cidade_origem_id,
+  a.bairro_id AS bairro_origem_id
+FROM legacy.anuncios a
+JOIN dryrun_publicacao p ON p.anuncio_origem_id = a.id;
+
+INSERT INTO anuncio (
+  id, usuario_id, slug, titulo, descricao, status, status_moderacao,
+  categoria, preco, whatsapp_normalizado, publicado_em,
+  ultima_publicacao_em, criado_em, atualizado_em, removido_em,
+  origem_importacao_id, versao
+)
+SELECT
+  a.id, a.usuario_id, a.slug, a.titulo, a.descricao, a.status,
+  a.status_moderacao, a.categoria, a.preco, NULL, a.publicado_em,
+  a.publicado_em, a.criado_em, greatest(a.criado_em, a.publicado_em),
+  a.removido_em, c.execucao_id, 0
+FROM dryrun_anuncio a CROSS JOIN dryrun_context c;
+
+INSERT INTO anuncio_status_historico (
+  id, anuncio_id, status_anterior, status_novo, motivo,
+  ator_usuario_id, criado_em
+)
+SELECT
+  md5('legacy:anuncio-status:' || a.origem_id)::uuid,
+  a.id,
+  NULL,
+  a.status,
+  'IMPORTACAO_' || a.publicacao_origem,
+  NULL,
+  a.publicado_em
+FROM dryrun_anuncio a;
+
+INSERT INTO anuncio_localizacao (
+  anuncio_id, estado_id, cidade_id, bairro_id, endereco_resumido,
+  latitude, longitude, criado_em, atualizado_em
+)
+SELECT
+  a.id,
+  c.estado_id,
+  c.id,
+  b.id,
+  NULL, NULL, NULL,
+  a.criado_em,
+  a.criado_em
+FROM dryrun_anuncio a
+JOIN dryrun_cidade c ON c.origem_id = a.cidade_origem_id
+LEFT JOIN dryrun_bairro b ON b.origem_id = a.bairro_origem_id;
+
+INSERT INTO anuncio_servicos (anuncio_id, servico, criado_em)
+SELECT DISTINCT
+  md5('legacy:anuncio:' || s.anuncio_id)::uuid,
+  s.servico,
+  c.snapshot_at
+FROM legacy.anuncio_servicos s
+CROSS JOIN dryrun_context c
+WHERE s.servico IN (
+  'ANAL', 'ATRIZ_PORNO', 'FETICHES', 'MASSAGEM_TANTRICA', 'ATIVO',
+  'BDSM', 'JOGOS_DE_INTERPRETACAO', 'ORAL', 'ATOR_PORNO',
+  'EJACULACAO_CORPORAL', 'MASSAGEM_EROTICA', 'PASSIVO', 'NAMORADAS',
+  'TRIO', 'VIDEOCHAMADA'
+);
+
+INSERT INTO anuncio_local_atendimento (anuncio_id, local_atendimento, criado_em)
+SELECT DISTINCT
+  md5('legacy:anuncio:' || l.anuncio_id)::uuid,
+  l.local_atendimento,
+  c.snapshot_at
+FROM legacy.anuncio_local_atendimento l
+CROSS JOIN dryrun_context c
+WHERE l.local_atendimento IN ('A_COMBINAR', 'HOTEL_MOTEL', 'MEU_LOCAL');
+
+INSERT INTO stg_anuncio (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:anuncio:' || a.origem_id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'anuncios',
+  a.origem_id::text,
+  jsonb_build_object(
+    'slug', a.slug,
+    'status', a.status,
+    'primeiraPublicacaoOrigem', a.publicacao_origem
+  ),
+  CASE WHEN a.publicacao_origem = 'CRIADO_EM_INFERIDO' THEN 'PENDENTE_REVISAO' ELSE 'PROCESSADO' END,
+  CASE WHEN a.publicacao_origem = 'CRIADO_EM_INFERIDO' THEN 'PRIMEIRA_PUBLICACAO_INFERIDA' END,
+  a.id,
+  c.snapshot_at,
+  c.snapshot_at
+FROM dryrun_anuncio a CROSS JOIN dryrun_context c;
+
+INSERT INTO importacao_mapeamento (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  entidade_tipo, entidade_v3_id, status, criado_em, atualizado_em
+)
+SELECT
+  md5('map:anuncio:' || a.origem_id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'anuncios',
+  a.origem_id::text,
+  'ANUNCIO',
+  a.id,
+  'MAPEADO',
+  c.snapshot_at,
+  c.snapshot_at
+FROM dryrun_anuncio a CROSS JOIN dryrun_context c;
+
+-- Midia: a classificacao do anuncio e apenas uma das evidencias. A promocao
+-- exige foto real do anuncio retornada pela API publica anonima sem age gate,
+-- binario valido e confirmacao no R2 V3. Assets institucionais e previews
+-- protegidos permanecem em staging; nenhuma referencia restrita e copiada.
+CREATE TEMP TABLE dryrun_classificacao_publica AS
+WITH historico_ativo AS (
+  SELECT
+    anuncio_id,
+    count(DISTINCT classification) AS classificacoes_distintas,
+    min(classification) AS classificacao
+  FROM legacy.content_classifications
+  WHERE active
+  GROUP BY anuncio_id
+)
+SELECT a.id AS anuncio_id
+FROM legacy.anuncios a
+LEFT JOIN historico_ativo h ON h.anuncio_id = a.id
+WHERE a.status = 'ATIVO'
+  AND a.removido_logicamente_em IS NULL
+  AND a.content_classification IN ('SAFE_PUBLIC', 'ADULT_NON_EXPLICIT')
+  AND coalesce(h.classificacoes_distintas, 1) = 1
+  AND (h.classificacao IS NULL OR h.classificacao = a.content_classification);
+
+CREATE TEMP TABLE dryrun_midia_publica AS
+WITH dedup AS (
+  SELECT DISTINCT ON (f.anuncio_id, f.url_foto)
+    f.anuncio_id,
+    md5(f.url_foto) AS reference_hash,
+    a.criado_em AS created_at,
+    r.object_key,
+    r.sha256,
+    r.tamanho_bytes,
+    r.mime_type,
+    r.largura,
+    r.altura,
+    r.status AS migracao_status
+  FROM legacy.anuncio_fotos f
+  JOIN legacy.anuncios a ON a.id = f.anuncio_id
+  JOIN dryrun_classificacao_publica cp ON cp.anuncio_id = f.anuncio_id
+  JOIN dryrun_r2_public_media r
+    ON r.anuncio_origem_id = f.anuncio_id
+   AND r.reference_hash = md5(f.url_foto)
+  WHERE f.url_foto !~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
+    AND r.status IN ('MIGRADA', 'PRESERVADA')
+    AND r.tamanho_bytes > 0
+    AND r.mime_type IN ('image/jpeg', 'image/png', 'image/webp')
+    AND r.largura > 0
+    AND r.altura > 0
+    AND r.object_key LIKE 'hml/midias-aprovadas/importacao/sha256/%'
+    AND r.sha256 ~ '^[0-9a-f]{64}$'
+  ORDER BY f.anuncio_id, f.url_foto
+), typed AS (
+  SELECT
+    d.*,
+    'FOTO'::text AS tipo,
+    row_number() OVER (
+      PARTITION BY d.anuncio_id
+      ORDER BY d.reference_hash
+    ) AS tipo_ordem
+  FROM dedup d
+), finalized AS (
+  SELECT
+    t.*,
+    CASE WHEN t.tipo = 'FOTO' AND t.tipo_ordem = 1 THEN 'CAPA' ELSE 'GALERIA' END AS finalidade
+  FROM typed t
+)
+  SELECT
+    f.*,
+    row_number() OVER (
+      PARTITION BY f.anuncio_id, f.finalidade
+      ORDER BY f.reference_hash
+    ) - 1 AS ordem_final
+FROM finalized f;
+
+INSERT INTO arquivo_midia (
+  id, storage_provider, bucket, chave_objeto, nome_original, mime_type,
+  tamanho_bytes, largura, altura, duracao_ms, sha256, etag,
+  status_arquivo, criado_em
+)
+SELECT DISTINCT ON (m.sha256)
+  md5('r2:arquivo:' || m.sha256)::uuid,
+  'R2',
+  c.r2_public_bucket,
+  m.object_key,
+  NULL,
+  m.mime_type,
+  m.tamanho_bytes,
+  m.largura, m.altura, NULL, m.sha256, NULL,
+  'VALIDADO',
+  m.created_at AT TIME ZONE 'America/Sao_Paulo'
+FROM dryrun_midia_publica m CROSS JOIN dryrun_context c
+ORDER BY m.sha256, m.reference_hash;
+
+INSERT INTO anuncio_midia (
+  id, anuncio_id, arquivo_midia_id, tipo, finalidade, ordem, status,
+  criado_em, atualizado_em, visibilidade_midia
+)
+SELECT
+  md5('legacy:anuncio-midia:foto:' || m.anuncio_id || ':' || m.reference_hash)::uuid,
+  md5('legacy:anuncio:' || m.anuncio_id)::uuid,
+  md5('r2:arquivo:' || m.sha256)::uuid,
+  m.tipo,
+  m.finalidade,
+  m.ordem_final::integer,
+  'PUBLICAVEL',
+  m.created_at AT TIME ZONE 'America/Sao_Paulo',
+  m.created_at AT TIME ZONE 'America/Sao_Paulo',
+  'LIVRE'
+FROM dryrun_midia_publica m;
+
+INSERT INTO stg_midia (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:asset:' || p.id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'protected_media_assets',
+  p.id::text,
+  jsonb_build_object(
+    'storageMode', p.storage_mode,
+    'ativo', p.active,
+    'referenciaHash', md5(coalesce(p.original_storage_ref, p.preview_public_url, '')),
+    'classificacaoPublicaComprovada', cp.anuncio_id IS NOT NULL
+  ),
+  'PENDENTE_REVISAO',
+  CASE
+    WHEN p.storage_mode = 'PRIVATE_R2' THEN 'MIDIA_PRIVADA_SEM_VERIFICACAO_R2'
+    WHEN NOT p.active THEN 'MIDIA_INATIVA_PRESERVADA'
+    WHEN p.media_type = 'VIDEO' THEN 'VIDEO_EXIGE_MIGRACAO_PRIVADA_R2'
+    WHEN coalesce(p.preview_public_url, '') ~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
+      THEN 'MIDIA_PLACEHOLDER_INSTITUCIONAL_QUARENTENA'
+    WHEN cp.anuncio_id IS NULL THEN 'MIDIA_NAO_LIVRE_QUARENTENA'
+    ELSE 'MIDIA_PROTEGIDA_SEM_EVIDENCIA_PUBLICA_ANONIMA'
+  END,
+  NULL,
+  c.snapshot_at,
+  NULL
+FROM legacy.protected_media_assets p
+CROSS JOIN dryrun_context c
+LEFT JOIN dryrun_classificacao_publica cp ON cp.anuncio_id = p.anuncio_id
+;
+
+INSERT INTO stg_midia (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:foto:' || f.anuncio_id || ':' || md5(f.url_foto) || ':' || f.ocorrencia)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'anuncio_fotos',
+  f.anuncio_id || ':' || md5(f.url_foto) || ':' || f.ocorrencia,
+  jsonb_build_object(
+    'anuncioId', f.anuncio_id,
+    'referenciaHash', md5(f.url_foto),
+    'ocorrencia', f.ocorrencia
+  ),
+  CASE WHEN r.status IN ('MIGRADA', 'PRESERVADA')
+    THEN 'PROCESSADO' ELSE 'PENDENTE_REVISAO' END,
+  CASE
+    WHEN f.url_foto ~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
+      THEN 'MIDIA_PLACEHOLDER_INSTITUCIONAL_QUARENTENA'
+    WHEN r.status = 'BLOQUEADA' THEN 'MIDIA_PUBLICA_R2_CHECKSUM_DIVERGENTE'
+    WHEN r.status = 'QUARENTENA' THEN 'MIDIA_PUBLICA_R2_QUARENTENA'
+    WHEN r.reference_hash IS NULL THEN 'MIDIA_SEM_EVIDENCIA_PUBLICA_ANONIMA'
+  END,
+  c.snapshot_at,
+  CASE WHEN r.status IN ('MIGRADA', 'PRESERVADA') THEN c.snapshot_at END
+FROM (
+  SELECT
+    x.*,
+    row_number() OVER (
+      PARTITION BY x.anuncio_id, x.url_foto
+      ORDER BY x.anuncio_id, x.url_foto
+    ) AS ocorrencia
+  FROM legacy.anuncio_fotos x
+) f
+CROSS JOIN dryrun_context c
+LEFT JOIN dryrun_r2_public_media r
+  ON r.anuncio_origem_id = f.anuncio_id
+ AND r.reference_hash = md5(f.url_foto);
+
+INSERT INTO stg_midia (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:video:' || v.anuncio_id || ':' || md5(v.url_video))::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'anuncio_videos',
+  v.anuncio_id || ':' || md5(v.url_video),
+  jsonb_build_object('anuncioId', v.anuncio_id, 'referenciaHash', md5(v.url_video)),
+  'PENDENTE_REVISAO',
+  'VIDEO_EXIGE_MIGRACAO_PRIVADA_R2',
+  c.snapshot_at,
+  NULL
+FROM (
+  SELECT DISTINCT anuncio_id, url_video FROM legacy.anuncio_videos
+) v CROSS JOIN dryrun_context c;
+
+-- Busca e SEO recebem somente a evidencia fisicamente migrada para o R2 V3.
+-- A indexacao runtime continua dependente da base publica HML configurada.
+UPDATE documento_busca_anuncio d
+SET tem_midia_valida = EXISTS (
+      SELECT 1 FROM anuncio_midia am
+      WHERE am.anuncio_id = d.anuncio_id
+        AND am.status = 'PUBLICAVEL'
+        AND am.tipo = 'FOTO'
+        AND am.visibilidade_midia = 'LIVRE'
+    ),
+    atualizado_em = c.snapshot_at
+FROM dryrun_context c;
+
+INSERT INTO documento_busca_anuncio (
+  anuncio_id, texto_busca, estado_id, cidade_id, bairro_id, categoria,
+  preco, status_publicacao, tem_midia_valida, beneficios_ranking_json,
+  ranking_base, atualizado_em
+)
+SELECT
+  a.id,
+  concat_ws(' ', a.titulo, a.descricao, ci.nome, ba.nome),
+  e.id,
+  ci.id,
+  ba.id,
+  a.categoria,
+  a.preco,
+  CASE WHEN a.status = 'PUBLICADO' THEN 'PUBLICAVEL' ELSE 'NAO_PUBLICAVEL' END,
+  EXISTS (
+    SELECT 1 FROM anuncio_midia am
+    WHERE am.anuncio_id = a.id
+      AND am.status = 'PUBLICAVEL'
+      AND am.tipo = 'FOTO'
+      AND am.visibilidade_midia = 'LIVRE'
+  ),
+  '{}'::jsonb,
+  0,
+  c.snapshot_at
+FROM dryrun_anuncio a
+JOIN anuncio_localizacao al ON al.anuncio_id = a.id
+JOIN estado e ON e.id = al.estado_id
+JOIN cidade ci ON ci.id = al.cidade_id
+LEFT JOIN bairro ba ON ba.id = al.bairro_id
+CROSS JOIN dryrun_context c;
+
+CREATE TEMP TABLE dryrun_seo_anuncio AS
+SELECT
+  a.id,
+  a.origem_id,
+  a.slug,
+  a.status = 'PUBLICADO'
+    AND length(trim(a.titulo)) >= 8
+    AND length(regexp_replace(coalesce(a.descricao, ''), '\s+', ' ', 'g')) >= 120
+    AND (
+      SELECT count(*) FROM anuncio_midia am
+      WHERE am.anuncio_id = a.id
+        AND am.tipo = 'FOTO'
+        AND am.status = 'PUBLICAVEL'
+        AND am.visibilidade_midia = 'LIVRE'
+    ) >= 1 AS indexavel_por_evidencia
+FROM dryrun_anuncio a;
+
+INSERT INTO seo_url (
+  id, caminho_publico, canonical_path, tipo, entidade_tipo, entidade_id,
+  status_esperado, indexavel, incluir_sitemap, qualidade_status,
+  ultima_validacao_em, motivo_noindex, criado_em, atualizado_em, versao
+)
+SELECT
+  md5('legacy:seo:anuncio:' || s.origem_id)::uuid,
+  '/anuncios/' || s.slug,
+  '/anuncios/' || s.slug,
+  'ANUNCIO',
+  'ANUNCIO',
+  s.id,
+  CASE WHEN s.indexavel_por_evidencia THEN 'OK_200' ELSE 'NOINDEX' END,
+  s.indexavel_por_evidencia,
+  s.indexavel_por_evidencia,
+  CASE WHEN s.indexavel_por_evidencia THEN 'APROVADO' ELSE 'INSUFICIENTE' END,
+  c.snapshot_at,
+  CASE WHEN s.indexavel_por_evidencia THEN NULL ELSE 'EVIDENCIA_SEO_INSUFICIENTE' END,
+  c.snapshot_at,
+  c.snapshot_at,
+  0
+FROM dryrun_seo_anuncio s CROSS JOIN dryrun_context c;
+
+INSERT INTO stg_url (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:url:anuncio:' || s.origem_id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'anuncios',
+  s.origem_id::text,
+  jsonb_build_object(
+    'path', '/anuncios/' || s.slug,
+    'indexavelPorEvidencia', s.indexavel_por_evidencia
+  ),
+  CASE WHEN s.indexavel_por_evidencia THEN 'PROCESSADO' ELSE 'PENDENTE_REVISAO' END,
+  CASE WHEN NOT s.indexavel_por_evidencia THEN 'SEO_EVIDENCIA_INSUFICIENTE' END,
+  md5('legacy:seo:anuncio:' || s.origem_id)::uuid,
+  c.snapshot_at,
+  c.snapshot_at
+FROM dryrun_seo_anuncio s CROSS JOIN dryrun_context c;
+
+-- Stories pagos sao preservados em staging. Nao ha correspondencia segura entre
+-- suas URLs e os assets canonicos, portanto nenhuma linha paga falsa e criada.
+INSERT INTO stg_story (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:story:' || s.id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'stories',
+  s.id::text,
+  jsonb_build_object(
+    'anuncioId', s.anuncio_id,
+    'usuarioExiste', u.id IS NOT NULL,
+    'anuncioExiste', a.id IS NOT NULL,
+    'referenciaHash', md5(coalesce(s.midia_url, ''))
+  ),
+  'PENDENTE_REVISAO',
+  'STORY_SEM_VINCULO_MIDIA_CANONICO',
+  c.snapshot_at,
+  NULL
+FROM legacy.stories s
+CROSS JOIN dryrun_context c
+LEFT JOIN legacy.usuarios u ON u.id = s.usuario_id
+LEFT JOIN legacy.anuncios a ON a.id = s.anuncio_id;
+
+-- KYC: nenhum binario e copiado. Referencias HTTP e referencias privadas sem
+-- verificacao de existencia permanecem em quarentena.
+INSERT INTO importacao_pendencia (
+  id, execucao_id, codigo, severidade, status, entidade_tipo,
+  id_origem, detalhe_resumido, criado_em
+)
+SELECT
+  md5('pendencia:kyc:' || d.usuario_id || ':' || md5(d.documento_url) || ':' || d.ocorrencia)::uuid,
+  c.execucao_id,
+  CASE WHEN d.documento_url ~* '^https?://' THEN 'KYC_REFERENCIA_HTTP_QUARENTENA'
+       ELSE 'KYC_REFERENCIA_PRIVADA_NAO_VERIFICADA' END,
+  'ALTA',
+  'ABERTA',
+  'DOCUMENTO_KYC',
+  d.usuario_id || ':' || md5(d.documento_url) || ':' || d.ocorrencia,
+  'Documento nao promovido; nenhum binario ou URL foi copiado.',
+  c.snapshot_at
+FROM (
+  SELECT
+    x.*,
+    row_number() OVER (
+      PARTITION BY x.usuario_id, x.documento_url
+      ORDER BY x.usuario_id, x.documento_url
+    ) AS ocorrencia
+  FROM legacy.usuario_documentos x
+) d CROSS JOIN dryrun_context c;
+
+-- Creditos: somente sequencias cujo saldo acumulado nunca fica negativo sao
+-- promovidas. O saldo mutavel legado nunca e autoridade nem gera ajuste.
+CREATE TEMP TABLE dryrun_credito_movimento AS
+WITH ordered AS (
+  SELECT
+    h.*,
+    sum(h.quantidade) OVER (
+      PARTITION BY h.usuario_id ORDER BY h.criado_em NULLS LAST, h.id
+    ) AS saldo_depois,
+    bool_and(h.criado_em IS NOT NULL) OVER (
+      PARTITION BY h.usuario_id
+    ) AS datas_confiaveis
+  FROM legacy.historico_creditos h
+  JOIN legacy.usuarios u ON u.id = h.usuario_id
+), classified AS (
+  SELECT
+    o.*,
+    o.datas_confiaveis
+      AND min(o.saldo_depois) OVER (PARTITION BY o.usuario_id) >= 0 AS sequencia_valida
+  FROM ordered o
+)
+SELECT
+  c.*,
+  c.saldo_depois - c.quantidade AS saldo_antes
+FROM classified c;
+
+INSERT INTO movimento_credito (
+  id, usuario_id, tipo, direcao, quantidade, saldo_antes, saldo_depois,
+  origem, referencia_tipo, referencia_id, idempotency_key,
+  ator_usuario_id, observacao, criado_em, request_id
+)
+SELECT
+  md5('legacy:movimento-credito:' || m.id)::uuid,
+  md5('legacy:usuario:' || m.usuario_id)::uuid,
+  CASE WHEN m.quantidade > 0 THEN 'ENTRADA' ELSE 'SAIDA' END,
+  CASE WHEN m.quantidade > 0 THEN 'CREDITO' ELSE 'DEBITO' END,
+  abs(m.quantidade),
+  m.saldo_antes,
+  m.saldo_depois,
+  'IMPORTACAO',
+  'HISTORICO_CREDITOS_LEGADO',
+  md5('legacy:credito-ref:' || m.id)::uuid,
+  'import:historico-creditos:' || m.id,
+  NULL,
+  'Movimento legado validado por sequencia nao negativa.',
+  m.criado_em AT TIME ZONE 'America/Sao_Paulo',
+  NULL
+FROM dryrun_credito_movimento m
+WHERE m.sequencia_valida;
+
+INSERT INTO saldo_credito_usuario (usuario_id, saldo_atual, atualizado_em, versao)
+SELECT
+  md5('legacy:usuario:' || m.usuario_id)::uuid,
+  max(m.saldo_depois) FILTER (
+    WHERE (m.criado_em, m.id) = (
+      SELECT m2.criado_em, m2.id
+      FROM dryrun_credito_movimento m2
+      WHERE m2.usuario_id = m.usuario_id
+      ORDER BY m2.criado_em DESC, m2.id DESC
+      LIMIT 1
+    )
+  )::integer,
+  max(m.criado_em) AT TIME ZONE 'America/Sao_Paulo',
+  0
+FROM dryrun_credito_movimento m
+WHERE m.sequencia_valida
+GROUP BY m.usuario_id;
+
+INSERT INTO stg_credito (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:credito-historico:' || h.id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'historico_creditos',
+  h.id::text,
+  jsonb_build_object('quantidade', h.quantidade, 'tipo', h.tipo),
+  CASE
+    WHEN u.id IS NULL THEN 'REJEITADO'
+    WHEN m.sequencia_valida THEN 'PROCESSADO'
+    ELSE 'PENDENTE_REVISAO'
+  END,
+  CASE
+    WHEN u.id IS NULL THEN 'USUARIO_ORFAO_QUARENTENA'
+    WHEN h.criado_em IS NULL THEN 'MOVIMENTO_SEM_DATA_CONFIAVEL'
+    WHEN NOT m.sequencia_valida THEN 'LEDGER_SEQUENCIA_NEGATIVA'
+  END,
+  CASE WHEN m.sequencia_valida THEN md5('legacy:movimento-credito:' || h.id)::uuid END,
+  c.snapshot_at,
+  CASE WHEN m.sequencia_valida THEN c.snapshot_at END
+FROM legacy.historico_creditos h
+CROSS JOIN dryrun_context c
+LEFT JOIN legacy.usuarios u ON u.id = h.usuario_id
+LEFT JOIN dryrun_credito_movimento m ON m.id = h.id;
+
+INSERT INTO stg_credito (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:saldo-credito:' || s.id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'creditos_usuario',
+  s.id::text,
+  jsonb_build_object('saldoLegado', s.saldo, 'usuarioExiste', u.id IS NOT NULL),
+  'PENDENTE_REVISAO',
+  CASE WHEN u.id IS NULL THEN 'USUARIO_ORFAO_QUARENTENA'
+       ELSE 'SALDO_MUTAVEL_NAO_AUTORITATIVO' END,
+  c.snapshot_at,
+  NULL
+FROM legacy.creditos_usuario s
+CROSS JOIN dryrun_context c
+LEFT JOIN legacy.usuarios u ON u.id = s.usuario_id;
+
+INSERT INTO importacao_pendencia (
+  id, execucao_id, codigo, severidade, status, entidade_tipo,
+  id_origem, detalhe_resumido, criado_em
+)
+WITH historico AS (
+  SELECT usuario_id, sum(quantidade) AS saldo_historico
+  FROM legacy.historico_creditos
+  GROUP BY usuario_id
+)
+SELECT
+  md5('pendencia:saldo-divergente:' || s.usuario_id)::uuid,
+  c.execucao_id,
+  'CREDITO_SALDO_DIVERGENTE',
+  'CRITICA',
+  'ABERTA',
+  'USUARIO',
+  md5('legacy:usuario:' || s.usuario_id),
+  'Saldo mutavel diverge do total de movimentos; nenhum ajuste foi criado.',
+  c.snapshot_at
+FROM legacy.creditos_usuario s
+JOIN legacy.usuarios u ON u.id = s.usuario_id
+LEFT JOIN historico h ON h.usuario_id = s.usuario_id
+CROSS JOIN dryrun_context c
+WHERE s.saldo <> coalesce(h.saldo_historico, 0);
+
+-- Pagamentos ficam integralmente em staging historico e nao geram credito.
+INSERT INTO stg_pagamento (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:pagamento:' || p.id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'pagamentos_mp',
+  p.id::text,
+  jsonb_build_object(
+    'provedorDeclarado', p.provider,
+    'status', p.status,
+    'valor', p.valor,
+    'creditos', p.creditos,
+    'usuarioExiste', u.id IS NOT NULL
+  ),
+  'PENDENTE_REVISAO',
+  CASE WHEN u.id IS NULL THEN 'USUARIO_ORFAO_QUARENTENA'
+       ELSE 'PAGAMENTO_HISTORICO_NAO_CONCILIADO' END,
+  c.snapshot_at,
+  NULL
+FROM legacy.pagamentos_mp p
+CROSS JOIN dryrun_context c
+LEFT JOIN legacy.usuarios u ON u.id = p.usuario_id;
+
+-- Premium: cada beneficio mapeavel recebe grupo de importacao proprio. Stories
+-- continuam no fluxo de Stories e nao sao convertidos em Premium.
+CREATE TEMP TABLE dryrun_premium AS
+SELECT
+  f.*,
+  b.id AS beneficio_id,
+  md5('legacy:grupo-premium:' || f.id)::uuid AS grupo_id,
+  md5('legacy:ativacao-premium:' || f.id)::uuid AS ativacao_id,
+  CASE
+    WHEN f.status = 'CANCELADO' THEN 'CANCELADO'
+    WHEN f.expira_em <= c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'EXPIRADO'
+    WHEN f.ativado_em > c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'PLANEJADO'
+    ELSE 'ATIVO'
+  END AS grupo_status,
+  CASE
+    WHEN f.status = 'CANCELADO' THEN 'CANCELADA'
+    WHEN f.expira_em <= c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'EXPIRADA'
+    WHEN f.ativado_em > c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'AGENDADA'
+    ELSE 'ATIVA'
+  END AS ativacao_status
+FROM legacy.feature_ativacao f
+CROSS JOIN dryrun_context c
+LEFT JOIN beneficio_premium b ON b.codigo = f.codigo
+WHERE f.codigo <> 'STORIES'
+  AND f.anuncio_id IS NOT NULL
+  AND f.ativado_em IS NOT NULL
+  AND f.expira_em > f.ativado_em
+  AND b.id IS NOT NULL;
+
+INSERT INTO grupo_ativacao_beneficio (
+  id, tipo, origem, usuario_id, anuncio_id, ator_usuario_id,
+  campanha_codigo, validade_inicio_em, validade_fim_em, status,
+  idempotency_key, observacao, criado_em, atualizado_em
+)
+SELECT
+  p.grupo_id,
+  'IMPORTACAO',
+  'IMPORTACAO',
+  md5('legacy:usuario:' || p.usuario_id)::uuid,
+  md5('legacy:anuncio:' || p.anuncio_id)::uuid,
+  NULL, NULL,
+  p.ativado_em AT TIME ZONE 'America/Sao_Paulo',
+  p.expira_em AT TIME ZONE 'America/Sao_Paulo',
+  p.grupo_status,
+  'import:grupo-premium:' || p.id,
+  'Ativacao legada individual preservada por importacao.',
+  p.ativado_em AT TIME ZONE 'America/Sao_Paulo',
+  c.snapshot_at
+FROM dryrun_premium p CROSS JOIN dryrun_context c;
+
+INSERT INTO ativacao_beneficio (
+  id, beneficio_id, opcao_id, usuario_id, anuncio_id,
+  grupo_ativacao_id, origem, ator_usuario_id, campanha_codigo,
+  inicio_em, fim_em, status, custo_creditos_snapshot, preco_snapshot,
+  idempotency_key, revogada_em, motivo_revogacao, criado_em
+)
+SELECT
+  p.ativacao_id,
+  p.beneficio_id,
+  NULL,
+  md5('legacy:usuario:' || p.usuario_id)::uuid,
+  md5('legacy:anuncio:' || p.anuncio_id)::uuid,
+  p.grupo_id,
+  'IMPORTACAO',
+  NULL, NULL,
+  p.ativado_em AT TIME ZONE 'America/Sao_Paulo',
+  p.expira_em AT TIME ZONE 'America/Sao_Paulo',
+  p.ativacao_status,
+  p.creditos_cobrados,
+  NULL,
+  'import:ativacao-premium:' || p.id,
+  CASE WHEN p.status = 'CANCELADO' THEN p.expira_em AT TIME ZONE 'America/Sao_Paulo' END,
+  CASE WHEN p.status = 'CANCELADO' THEN 'Cancelamento preservado da origem.' END,
+  p.ativado_em AT TIME ZONE 'America/Sao_Paulo'
+FROM dryrun_premium p;
+
+INSERT INTO stg_premium (
+  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
+  criado_em, processado_em
+)
+SELECT
+  md5('stg:premium:' || f.id)::uuid,
+  c.execucao_id,
+  'TOPSDOJOB_PRODUCAO',
+  'feature_ativacao',
+  f.id::text,
+  jsonb_build_object(
+    'codigo', f.codigo,
+    'status', f.status,
+    'inicio', f.ativado_em,
+    'fim', f.expira_em,
+    'anuncioPresente', f.anuncio_id IS NOT NULL
+  ),
+  CASE WHEN p.id IS NOT NULL THEN 'PROCESSADO' ELSE 'PENDENTE_REVISAO' END,
+  CASE WHEN f.codigo = 'STORIES' THEN 'STORIES_FLUXO_PROPRIO'
+       WHEN p.id IS NULL THEN 'PREMIUM_SEM_MAPEAMENTO_SEGURO' END,
+  p.ativacao_id,
+  c.snapshot_at,
+  CASE WHEN p.id IS NOT NULL THEN c.snapshot_at END
+FROM legacy.feature_ativacao f
+CROSS JOIN dryrun_context c
+LEFT JOIN dryrun_premium p ON p.id = f.id;
+
+-- Favoritos preservados sem duplicidade.
+INSERT INTO favorito_anuncio (id, usuario_id, anuncio_id, criado_em)
+SELECT
+  md5('legacy:favorito:' || f.usuario_id || ':' || f.anuncio_id)::uuid,
+  md5('legacy:usuario:' || f.usuario_id)::uuid,
+  md5('legacy:anuncio:' || f.anuncio_id)::uuid,
+  c.snapshot_at
+FROM (
+  SELECT DISTINCT usuario_id, anuncio_id FROM legacy.usuario_favoritos
+) f CROSS JOIN dryrun_context c;
+
+-- Quarentena agregavel das referencias orfas conhecidas.
+INSERT INTO importacao_pendencia (
+  id, execucao_id, codigo, severidade, status, entidade_tipo,
+  id_origem, detalhe_resumido, criado_em
+)
+SELECT
+  md5('pendencia:orfao:' || origem || ':' || id_origem)::uuid,
+  c.execucao_id,
+  'USUARIO_ORFAO_QUARENTENA',
+  'CRITICA',
+  'ABERTA',
+  origem,
+  id_origem,
+  'Referencia financeira ou de suporte excluida do operacional e preservada em staging/agregado.',
+  c.snapshot_at
+FROM (
+  SELECT 'CREDITO_SALDO' origem, x.id::text id_origem
+  FROM legacy.creditos_usuario x LEFT JOIN legacy.usuarios u ON u.id = x.usuario_id
+  WHERE u.id IS NULL
+  UNION ALL
+  SELECT 'CREDITO_HISTORICO', x.id::text
+  FROM legacy.historico_creditos x LEFT JOIN legacy.usuarios u ON u.id = x.usuario_id
+  WHERE u.id IS NULL
+  UNION ALL
+  SELECT 'PAGAMENTO', x.id::text
+  FROM legacy.pagamentos_mp x LEFT JOIN legacy.usuarios u ON u.id = x.usuario_id
+  WHERE u.id IS NULL
+  UNION ALL
+  SELECT 'SUPORTE', x.id::text
+  FROM legacy.suporte_mensagens x LEFT JOIN legacy.usuarios u ON u.id = x.enviado_por_id
+  WHERE x.enviado_por_id IS NOT NULL AND u.id IS NULL
+) q CROSS JOIN dryrun_context c;
+
+UPDATE importacao_execucao e
+SET status = 'CONCLUIDA_COM_PENDENCIAS',
+    finalizado_em = c.snapshot_at,
+    resumo_json = jsonb_build_object(
+      'usuariosOrigem', (SELECT count(*) FROM legacy.usuarios),
+      'anunciosOrigem', (SELECT count(*) FROM legacy.anuncios),
+      'midiasOrigem', (SELECT count(*) FROM legacy.protected_media_assets),
+      'favoritosOrigem', (SELECT count(*) FROM legacy.usuario_favoritos),
+      'premiumOrigem', (SELECT count(*) FROM legacy.feature_ativacao),
+      'pagamentosOrigem', (SELECT count(*) FROM legacy.pagamentos_mp),
+      'snapshotId', c.snapshot_id,
+      'snapshotFingerprint', c.snapshot_fingerprint,
+      'anunciosPublicados', (SELECT count(*) FROM anuncio WHERE status = 'PUBLICADO'),
+      'primeiraPublicacaoRecuperada', (SELECT count(*) FROM dryrun_anuncio WHERE publicacao_origem = 'REVISAO_APROVADA'),
+      'primeiraPublicacaoInferida', (SELECT count(*) FROM dryrun_anuncio WHERE publicacao_origem = 'CRIADO_EM_INFERIDO'),
+      'midiasLivres', (SELECT count(*) FROM anuncio_midia WHERE visibilidade_midia = 'LIVRE'),
+      'midiasRestritas', (SELECT count(*) FROM anuncio_midia WHERE visibilidade_midia = 'RESTRITA_18'),
+      'midiasR2Candidatas', (SELECT count(*) FROM dryrun_r2_public_media),
+      'midiasR2ObjetosValidos', (
+        SELECT count(DISTINCT sha256)
+        FROM dryrun_r2_public_media
+        WHERE status IN ('MIGRADA', 'PRESERVADA')
+      ),
+      'midiasR2Migradas', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'MIGRADA'),
+      'midiasR2Preservadas', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'PRESERVADA'),
+      'midiasR2Bloqueadas', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'BLOQUEADA'),
+      'midiasR2Quarentena', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'QUARENTENA'),
+      'seoIndexavelPorEvidencia', (SELECT count(*) FROM dryrun_seo_anuncio WHERE indexavel_por_evidencia),
+      'movimentosLedgerPromovidos', (SELECT count(*) FROM movimento_credito),
+      'premiumPromovido', (SELECT count(*) FROM ativacao_beneficio WHERE origem = 'IMPORTACAO'),
+      'kycPromovido', 0,
+      'pagamentosPromovidos', 0
+    )
+FROM dryrun_context c
+WHERE e.id = c.execucao_id;
+
+COMMIT;
+
+DROP SCHEMA legacy CASCADE;
+DROP SERVER legacy_source CASCADE;
+DROP EXTENSION postgres_fdw;

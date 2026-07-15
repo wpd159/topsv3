@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 public class AnuncioSeoIndexabilidadePolicy {
 
     private static final int MIN_DESCRICAO = 120;
-    private static final int MIN_FOTOS_PUBLICAS = 4;
+    private static final int MIN_FOTOS_PUBLICAS_REAIS = 1;
     private static final Set<String> TITULOS_GENERICOS = Set.of(
             "acompanhante",
             "acompanhante 1",
@@ -42,7 +42,7 @@ public class AnuncioSeoIndexabilidadePolicy {
                 && localizacaoValida(localizacao)
                 && tituloUtil(anuncio)
                 && descricaoUtil(anuncio)
-                && fotosPublicas(midiasPublicas) >= MIN_FOTOS_PUBLICAS;
+                && fotosPublicas(midiasPublicas) >= MIN_FOTOS_PUBLICAS_REAIS;
     }
 
     private boolean anuncioPublico(AnuncioEntity anuncio) {

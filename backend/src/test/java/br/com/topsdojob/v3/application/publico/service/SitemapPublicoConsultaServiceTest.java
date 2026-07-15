@@ -72,7 +72,7 @@ class SitemapPublicoConsultaServiceTest {
 
         List<AnuncioMidiaEntity> vinculos = new ArrayList<>();
         List<ArquivoMidiaEntity> arquivos = new ArrayList<>();
-        for (int ordem = 0; ordem < 4; ordem++) {
+        for (int ordem = 0; ordem < 1; ordem++) {
             UUID arquivoId = UUID.randomUUID();
             AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
             set(vinculo, "id", UUID.randomUUID());
@@ -153,7 +153,7 @@ class SitemapPublicoConsultaServiceTest {
         when(anuncio.getStatusModeracao()).thenReturn(StatusModeracaoAnuncio.APROVADO);
         var localizacao = new br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto(
                 "GO", "Goias", "Goiania", "goiania", null, null, null);
-        var restritas = java.util.stream.IntStream.range(0, 4)
+        var restritas = java.util.stream.IntStream.range(0, 1)
                 .mapToObj(ordem -> new br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto(
                         UUID.randomUUID(), "FOTO", "GALERIA", ordem, "RESTRITA_18", false, null,
                         "MIDIA_RESTRITA_IDADE", 1080, 1920, "image/jpeg"))
