@@ -213,7 +213,7 @@ class HmlStoriesFixtureServiceTest {
                 .satisfies(item -> {
                     assertThat(item.getLocaisAtendimento()).contains(LocalAtendimentoAnuncio.MEU_LOCAL);
                     assertThat(item.getServicos()).contains(ServicoAnuncio.ANAL);
-                    assertThat(item.getWhatsappNormalizado()).isEqualTo("5562000000000");
+                    assertThat(item.getWhatsappNormalizado()).isEqualTo("+5500000000000");
                 });
         assertThat(anuncioCaptor.getAllValues())
                 .filteredOn(item -> "fixture-stories-hml-b".equals(item.getSlug()))

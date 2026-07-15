@@ -108,7 +108,7 @@ public class HmlStoriesFixtureService {
     private static final UUID BENEFICIO_WHATSAPP_CARD_ID = uuid("f3000000-0000-4000-8000-000000000004");
     private static final UUID BENEFICIO_CARROSSEL_FOTOS_ID = uuid("f3000000-0000-4000-8000-000000000005");
     private static final UUID BENEFICIO_VIDEO_1_ID = uuid("f3000000-0000-4000-8000-000000000006");
-    private static final String WHATSAPP_FICTICIO = "5562000000000";
+    private static final String WHATSAPP_FICTICIO = "+5500000000000";
     private static final OffsetDateTime BENEFICIO_ATIVO_INICIO = OffsetDateTime.parse("2025-01-01T00:00:00Z");
     private static final OffsetDateTime BENEFICIO_ATIVO_FIM = OffsetDateTime.parse("2099-01-01T00:00:00Z");
     private static final OffsetDateTime BENEFICIO_EXPIRADO_INICIO = OffsetDateTime.parse("2024-01-01T00:00:00Z");
