@@ -30,7 +30,7 @@ class LimiteMidiasAnuncioServiceTest {
     }
 
     @Test
-    void somenteFotosExtraCincoAtivoOuVencendoAmpliaParaDez() {
+    void somenteCodigoCanonicoAtivoOuVencendoAmpliaParaDez() {
         UUID anuncioId = UUID.randomUUID();
         when(beneficioService.consultarCalculados(anuncioId)).thenReturn(List.of(
                 calculado("FOTOS_EXTRA", PremiumBeneficioStatusCalculado.ATIVO),
@@ -39,6 +39,16 @@ class LimiteMidiasAnuncioServiceTest {
 
         assertThat(service.resolver(anuncioId))
                 .isEqualTo(new LimiteMidiasAnuncioService.Resultado(10, 1, true));
+    }
+
+    @Test
+    void codigoLegadoNaoAmpliaOLimite() {
+        UUID anuncioId = UUID.randomUUID();
+        when(beneficioService.consultarCalculados(anuncioId)).thenReturn(List.of(
+                calculado("FOTOS_EXTRA", PremiumBeneficioStatusCalculado.ATIVO)));
+
+        assertThat(service.resolver(anuncioId))
+                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 1, false));
     }
 
     @Test

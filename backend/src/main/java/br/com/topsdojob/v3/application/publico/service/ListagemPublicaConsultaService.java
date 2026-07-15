@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.PaginacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
@@ -18,15 +19,16 @@ import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -130,17 +132,38 @@ public class ListagemPublicaConsultaService {
                 .map(AnuncioLocalizacaoEntity::getAnuncioId)
                 .toList();
 
-        Page<AnuncioEntity> anuncios = anuncioIds.isEmpty()
-                ? Page.empty(pageable)
+        List<AnuncioEntity> anunciosPublicos = anuncioIds.isEmpty()
+                ? List.of()
                 : anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                         anuncioIds,
                         StatusAnuncio.PUBLICADO,
-                        StatusModeracaoAnuncio.APROVADO,
-                        pageable);
+                        StatusModeracaoAnuncio.APROVADO);
 
-        if (anuncios.isEmpty()) {
+        if (anunciosPublicos.isEmpty()) {
             throw notFound("nenhum anuncio publico encontrado na localidade");
         }
+
+        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(anunciosPublicos);
+        List<AnuncioEntity> ordenados = anunciosPublicos.stream()
+                .sorted(Comparator
+                        .comparing((AnuncioEntity anuncio) -> premiumPorAnuncio
+                                .getOrDefault(anuncio.getId(), PremiumPublicoFlagsDto.vazio())
+                                .topoAtivo())
+                        .reversed()
+                        .thenComparing(
+                                AnuncioEntity::getPublicadoEm,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(AnuncioEntity::getId))
+                .toList();
+        int inicio = Math.toIntExact(pageable.getOffset());
+        if (inicio >= ordenados.size()) {
+            throw notFound("nenhum anuncio publico encontrado na pagina");
+        }
+        int fim = Math.min(inicio + pageable.getPageSize(), ordenados.size());
+        Page<AnuncioEntity> anuncios = new PageImpl<>(
+                ordenados.subList(inicio, fim),
+                pageable,
+                ordenados.size());
 
         Map<UUID, AnuncioLocalizacaoEntity> localizacaoPorAnuncio = localizacoes.stream()
                 .collect(Collectors.toMap(AnuncioLocalizacaoEntity::getAnuncioId, Function.identity()));
@@ -171,11 +194,13 @@ public class ListagemPublicaConsultaService {
                     AnuncioLocalizacaoEntity localizacao = localizacaoPorAnuncio.get(anuncio.getId());
                     CidadeEntity cidadeAnuncio = localizacao == null ? cidade : cidades.get(localizacao.getCidadeId());
                     BairroEntity bairroAnuncio = localizacao == null ? bairro : bairros.get(localizacao.getBairroId());
+                    PremiumPublicoFlagsDto premium = premiumPorAnuncio
+                            .getOrDefault(anuncio.getId(), PremiumPublicoFlagsDto.vazio());
                     return anuncioMapper.toCard(
                             anuncio,
                             toLocalizacao(estado, cidadeAnuncio, bairroAnuncio, localizacao),
-                            anuncioConsultaService.midias(anuncio.getId()),
-                            premiumMapper.flags(anuncio),
+                            anuncioConsultaService.midias(anuncio.getId(), premium),
+                            premium,
                             contatoService.podeExporContato(anuncio),
                             primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()));
                 })
@@ -212,8 +237,7 @@ public class ListagemPublicaConsultaService {
 
     private Pageable pageable(int pagina, int tamanho) {
         RotaPublicaGuard.page(pagina, tamanho);
-        return PageRequest.of(pagina, tamanho, Sort.by(Sort.Direction.DESC, "publicadoEm")
-                .and(Sort.by("id")));
+        return PageRequest.of(pagina, tamanho);
     }
 
     private ResponseStatusException notFound(String message) {

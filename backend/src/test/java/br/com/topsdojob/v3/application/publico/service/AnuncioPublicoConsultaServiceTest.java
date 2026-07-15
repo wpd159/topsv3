@@ -93,11 +93,6 @@ class AnuncioPublicoConsultaServiceTest {
         IdadeAnunciantePublicaService idadeAnuncianteService = mock(IdadeAnunciantePublicaService.class);
         when(idadeAnuncianteService.resolver(usuarioId, false))
                 .thenReturn(new IdadeAnunciantePublicaService.Resultado("perfil-publico", 36, false));
-        var limiteMidiasService = mock(
-                br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.class);
-        when(limiteMidiasService.resolver(anuncioId)).thenReturn(
-                new br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.Resultado(
-                        4, 1, false));
 
         AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
                 anuncioRepository,
@@ -114,8 +109,7 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(BairroRepository.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(AnuncioSeoIndexabilidadePolicy.class),
-                idadeAnuncianteService,
-                limiteMidiasService);
+                idadeAnuncianteService);
 
         var detalhe = service.buscarPorSlug("slug-publico");
 
@@ -156,8 +150,7 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(BairroRepository.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(AnuncioSeoIndexabilidadePolicy.class),
-                mock(IdadeAnunciantePublicaService.class),
-                mock(br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.class));
+                mock(IdadeAnunciantePublicaService.class));
 
         assertThatThrownBy(() -> service.buscarPorSlug("slug-local"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->

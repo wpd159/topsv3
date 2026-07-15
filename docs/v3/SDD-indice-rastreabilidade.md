@@ -425,6 +425,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Dry-run R2 privado dos documentos KYC: `backend/src/test/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2PrivateKycDryRunIntegrationTest.java`
 - Contrato do importador KYC: `backend/src/test/java/br/com/topsdojob/v3/importacao/KycDocumentosDryRunImportadorTest.java`
 - Manifesto sanitizado do KYC: `docs/v3/evidencias/importacao/manifesto-snapshot-kyc-20260715T151006Z.json`
+- Reconciliacao idempotente do Premium historico: `scripts/local/importacao/reconciliar-premium-historico.sql`
+- Contrato do importador Premium historico: `backend/src/test/java/br/com/topsdojob/v3/importacao/PremiumHistoricoDryRunImportadorTest.java`
+- Politica canonica de expiracao Premium: `backend/src/main/java/br/com/topsdojob/v3/application/admin/premium/PremiumExpiracaoPolicyService.java`
+- Manifesto sanitizado do Premium historico: `docs/v3/evidencias/importacao/manifesto-snapshot-premium-20260715T162925Z.json`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

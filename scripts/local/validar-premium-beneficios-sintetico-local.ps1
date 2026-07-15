@@ -338,12 +338,13 @@ Add-Check "usuario comum sem financeiro admin" (
 
 $premiumId = "00000000-0000-4000-8000-000000000501"
 $expiredId = "00000000-0000-4000-8000-000000000503"
+$shortBenefitId = "00000000-0000-4000-8000-000000000504"
 $freeId = "00000000-0000-4000-8000-000000000510"
 
 $publicPremium = Invoke-LocalHttp -Path "/api/public/anuncios/anuncio-sintetico-local"
 $publicPremiumJson = Get-Json $publicPremium
-Add-Check "publico premium ativo visivel" ($publicPremium.Status -eq 200 -and $publicPremiumJson.destaque -eq $true -and @($publicPremiumJson.beneficiosPublicos).Count -ge 1) "status=$($publicPremium.Status)"
-Add-Check "publico premium aditivo" (@($publicPremiumJson.beneficiosPublicos).Count -ge 1 -and (($publicPremiumJson.beneficiosPublicos -join "|") -match "Destaque")) "beneficios=$($publicPremiumJson.beneficiosPublicos -join ', ')"
+Add-Check "publico premium ativo visivel" ($publicPremium.Status -eq 200 -and $publicPremiumJson.topo -eq $true -and @($publicPremiumJson.beneficiosPublicos).Count -ge 1) "status=$($publicPremium.Status)"
+Add-Check "publico premium aditivo" (@($publicPremiumJson.beneficiosPublicos).Count -ge 1 -and (($publicPremiumJson.beneficiosPublicos -join "|") -match "Topo")) "beneficios=$($publicPremiumJson.beneficiosPublicos -join ', ')"
 Assert-NoForbiddenOperationalText -Nome "publico premium" -Body $publicPremium.Body
 
 $publicFree = Invoke-LocalHttp -Path "/api/public/anuncios/anuncio-sintetico-gratuito-local"
@@ -364,7 +365,13 @@ $premiumBenefits = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$premiumI
 $premiumBenefitsJson = @(Get-Json $premiumBenefits)
 $benefitCodes = @($premiumBenefitsJson | ForEach-Object { $_.beneficioCodigo })
 $benefitStatuses = @($premiumBenefitsJson | ForEach-Object { $_.statusCalculado })
-Add-Check "admin beneficios destaque e fotos extra" ($premiumBenefits.Status -eq 200 -and $benefitCodes -contains "DESTAQUE" -and $benefitCodes -contains "FOTOS_EXTRA") "codigos=$($benefitCodes -join ', ')"
+Add-Check "admin beneficios canonicos ativos" (
+  $premiumBenefits.Status -eq 200 -and
+  $benefitCodes -contains "ANUNCIO_TOPO" -and
+  $benefitCodes -contains "FOTOS_EXTRA_5" -and
+  $benefitCodes -contains "CARROSSEL_FOTOS" -and
+  $benefitCodes -contains "WHATSAPP_CARD"
+) "codigos=$($benefitCodes -join ', ')"
 Add-Check "admin beneficio vencendo" ($benefitStatuses -contains "VENCENDO") "status=$($benefitStatuses -join ', ')"
 
 $expiredBenefits = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$expiredId/beneficios" -Session $session
@@ -372,6 +379,16 @@ Add-Check "admin beneficio expirado por grupo conjunto" (
   $expiredBenefits.Status -eq 200 -and
   $expiredBenefits.Body -match '(?s)"beneficioCodigo"\s*:\s*"ANUNCIO_TOPO".*"statusCalculado"\s*:\s*"EXPIRADO".*"grupoStatus"\s*:\s*"EXPIRADO"'
 ) "beneficio ANUNCIO_TOPO deve expirar junto com grupo expirado"
+
+$shortBenefits = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$shortBenefitId/beneficios" -Session $session
+$shortBenefitsJson = @(Get-Json $shortBenefits)
+$shortVideo = @($shortBenefitsJson | Where-Object { $_.beneficioCodigo -eq "VIDEO_1" } | Select-Object -First 1)
+Add-Check "admin beneficio expira antes do grupo sem efeito parcial" (
+  $shortBenefits.Status -eq 200 -and
+  $shortVideo.Count -eq 1 -and
+  $shortVideo[0].statusCalculado -eq "EXPIRADO" -and
+  @($shortVideo[0].codigosConsistencia) -contains "BENEFICIO_EXPIRADO_ANTES_DO_GRUPO"
+) "VIDEO_1 deve expirar sem encerrar outros beneficios do grupo"
 
 $freeStatus = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$freeId" -Session $session
 $freeStatusJson = Get-Json $freeStatus
@@ -381,13 +398,13 @@ $consistency = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -Session
 $consistencyJson = Get-Json $consistency
 $consistencyCodes = @($consistencyJson.itens | ForEach-Object { $_.codigo })
 Add-Check "admin consistencia expiracao conjunta" ($consistency.Status -eq 200 -and $consistencyCodes -contains "GRUPO_EXPIRADO_COM_BENEFICIO_ATIVO") "codigos=$($consistencyCodes -join ', ')"
-Add-Check "admin consistencia beneficio antes do grupo" ($consistencyCodes -contains "BENEFICIO_EXPIRADO_ANTES_DO_GRUPO") "codigos=$($consistencyCodes -join ', ')"
+Add-Check "admin consistencia nao acusa expiracao individual legitima" (-not ($consistencyCodes -contains "BENEFICIO_EXPIRADO_ANTES_DO_GRUPO")) "codigos=$($consistencyCodes -join ', ')"
 Add-Check "admin consistencia grupo sem beneficios" ($consistencyCodes -contains "GRUPO_SEM_BENEFICIOS") "codigos=$($consistencyCodes -join ', ')"
 
 $vencendo = Invoke-LocalHttp -Path "/api/admin/premium/vencendo" -Session $session
 $vencendoJson = Get-Json $vencendo
 $vencendoCodes = @($vencendoJson.itens | ForEach-Object { $_.beneficioCodigo })
-Add-Check "admin vencendo janela sete dias" ($vencendo.Status -eq 200 -and $vencendoJson.janelaDias -eq 7 -and $vencendoCodes -contains "FOTOS_EXTRA") "janela=$($vencendoJson.janelaDias); codigos=$($vencendoCodes -join ', ')"
+Add-Check "admin vencendo janela sete dias" ($vencendo.Status -eq 200 -and $vencendoJson.janelaDias -eq 7 -and $vencendoCodes -contains "FOTOS_EXTRA_5") "janela=$($vencendoJson.janelaDias); codigos=$($vencendoCodes -join ', ')"
 
 foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {
   $writeAttempt = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -Method $method -Body "{}" -Session $session

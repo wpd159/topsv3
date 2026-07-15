@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusGrupoAtivac
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -32,20 +33,34 @@ public class PremiumExpiracaoPolicyService {
                     true);
         }
 
-        boolean dataInvalida = ativacao.getInicioEm() == null
+        if (agora == null) {
+            codigos.add(PremiumConsistenciaCodigo.REFERENCIA_TEMPORAL_INVALIDA);
+        }
+        if (ativacao.getInicioEm() == null
                 || ativacao.getFimEm() == null
-                || !ativacao.getFimEm().isAfter(ativacao.getInicioEm());
-        if (dataInvalida) {
+                || !ativacao.getFimEm().isAfter(ativacao.getInicioEm())) {
             codigos.add(PremiumConsistenciaCodigo.DATA_INVALIDA);
         }
         if (ativacao.getOrigem() == null) {
             codigos.add(PremiumConsistenciaCodigo.ORIGEM_DESCONHECIDA);
         }
+        if (ativacao.getStatus() == null) {
+            codigos.add(PremiumConsistenciaCodigo.STATUS_INVALIDO);
+        }
+        if (beneficio == null || !Objects.equals(beneficio.getId(), ativacao.getBeneficioId())) {
+            codigos.add(PremiumConsistenciaCodigo.BENEFICIO_NAO_ENCONTRADO);
+        }
         if (grupo == null) {
             codigos.add(PremiumConsistenciaCodigo.BENEFICIO_SEM_GRUPO);
+        } else {
+            validarGrupo(ativacao, grupo, codigos);
         }
 
-        PremiumBeneficioStatusCalculado status = calcularStatus(ativacao, grupo, agora, codigos, dataInvalida);
+        boolean inconsistenteAntesDoStatus = codigos.stream()
+                .anyMatch(PremiumConsistenciaCodigo::inconsistencia);
+        PremiumBeneficioStatusCalculado status = inconsistenteAntesDoStatus
+                ? PremiumBeneficioStatusCalculado.INCONSISTENTE
+                : calcularStatus(ativacao, beneficio, grupo, agora, codigos);
         boolean venceEmBreve = status == PremiumBeneficioStatusCalculado.VENCENDO;
         boolean inconsistente = codigos.stream().anyMatch(PremiumConsistenciaCodigo::inconsistencia);
         if (codigos.isEmpty()) {
@@ -63,12 +78,26 @@ public class PremiumExpiracaoPolicyService {
 
     private PremiumBeneficioStatusCalculado calcularStatus(
             AtivacaoBeneficioEntity ativacao,
+            BeneficioPremiumEntity beneficio,
             GrupoAtivacaoBeneficioEntity grupo,
             OffsetDateTime agora,
-            List<PremiumConsistenciaCodigo> codigos,
-            boolean dataInvalida) {
-        if (dataInvalida) {
-            return PremiumBeneficioStatusCalculado.INCONSISTENTE;
+            List<PremiumConsistenciaCodigo> codigos) {
+        if (!Boolean.TRUE.equals(beneficio.getAtivo())) {
+            codigos.add(PremiumConsistenciaCodigo.BENEFICIO_CATALOGO_INATIVO);
+            return PremiumBeneficioStatusCalculado.INATIVO;
+        }
+        if (canceladaOuRevogada(ativacao)) {
+            codigos.add(PremiumConsistenciaCodigo.BENEFICIO_CANCELADO_OU_REVOGADO);
+            return PremiumBeneficioStatusCalculado.INATIVO;
+        }
+        if (grupoCanceladoOuRevogado(grupo)) {
+            codigos.add(PremiumConsistenciaCodigo.GRUPO_INATIVO);
+            return PremiumBeneficioStatusCalculado.INATIVO;
+        }
+        if (grupo.getStatus() == StatusGrupoAtivacaoBeneficio.PLANEJADO
+                || grupo.getValidadeInicioEm().isAfter(agora)) {
+            codigos.add(PremiumConsistenciaCodigo.GRUPO_PENDENTE);
+            return PremiumBeneficioStatusCalculado.PENDENTE;
         }
         if (grupoExpirado(grupo, agora)) {
             if (ativacao.getStatus() == StatusAtivacaoBeneficio.ATIVA) {
@@ -80,11 +109,13 @@ public class PremiumExpiracaoPolicyService {
         if (beneficioExpirouAntesDoGrupo(ativacao, grupo, agora)) {
             codigos.add(PremiumConsistenciaCodigo.BENEFICIO_EXPIRADO_ANTES_DO_GRUPO);
         }
-        if (ativacao.getStatus() == StatusAtivacaoBeneficio.AGENDADA || ativacao.getInicioEm().isAfter(agora)) {
+        if (ativacao.getStatus() == StatusAtivacaoBeneficio.AGENDADA
+                || ativacao.getInicioEm().isAfter(agora)) {
             codigos.add(PremiumConsistenciaCodigo.BENEFICIO_PENDENTE);
             return PremiumBeneficioStatusCalculado.PENDENTE;
         }
-        if (ativacao.getStatus() == StatusAtivacaoBeneficio.EXPIRADA || !ativacao.getFimEm().isAfter(agora)) {
+        if (ativacao.getStatus() == StatusAtivacaoBeneficio.EXPIRADA
+                || !ativacao.getFimEm().isAfter(agora)) {
             codigos.add(PremiumConsistenciaCodigo.BENEFICIO_EXPIRADO);
             return PremiumBeneficioStatusCalculado.EXPIRADO;
         }
@@ -96,23 +127,60 @@ public class PremiumExpiracaoPolicyService {
             codigos.add(PremiumConsistenciaCodigo.BENEFICIO_ATIVO);
             return PremiumBeneficioStatusCalculado.ATIVO;
         }
+        codigos.add(PremiumConsistenciaCodigo.BENEFICIO_INATIVO);
         return PremiumBeneficioStatusCalculado.INATIVO;
     }
 
+    private void validarGrupo(
+            AtivacaoBeneficioEntity ativacao,
+            GrupoAtivacaoBeneficioEntity grupo,
+            List<PremiumConsistenciaCodigo> codigos) {
+        if (grupo.getValidadeInicioEm() == null
+                || grupo.getValidadeFimEm() == null
+                || !grupo.getValidadeFimEm().isAfter(grupo.getValidadeInicioEm())) {
+            codigos.add(PremiumConsistenciaCodigo.DATA_INVALIDA);
+            return;
+        }
+        if (grupo.getStatus() == null) {
+            codigos.add(PremiumConsistenciaCodigo.STATUS_INVALIDO);
+        }
+        if (grupo.getOrigem() == null || ativacao.getOrigem() != grupo.getOrigem()) {
+            codigos.add(PremiumConsistenciaCodigo.ORIGEM_GRUPO_DIVERGENTE);
+        }
+        if (!Objects.equals(grupo.getId(), ativacao.getGrupoAtivacaoId())
+                || !Objects.equals(grupo.getUsuarioId(), ativacao.getUsuarioId())
+                || !Objects.equals(grupo.getAnuncioId(), ativacao.getAnuncioId())) {
+            codigos.add(PremiumConsistenciaCodigo.VINCULO_GRUPO_DIVERGENTE);
+        }
+        if (ativacao.getInicioEm() != null
+                && ativacao.getFimEm() != null
+                && (ativacao.getInicioEm().isBefore(grupo.getValidadeInicioEm())
+                || ativacao.getFimEm().isAfter(grupo.getValidadeFimEm()))) {
+            codigos.add(PremiumConsistenciaCodigo.BENEFICIO_FORA_JANELA_GRUPO);
+        }
+    }
+
+    private boolean canceladaOuRevogada(AtivacaoBeneficioEntity ativacao) {
+        return ativacao.getStatus() == StatusAtivacaoBeneficio.CANCELADA
+                || ativacao.getStatus() == StatusAtivacaoBeneficio.REVOGADA
+                || ativacao.getRevogadaEm() != null;
+    }
+
+    private boolean grupoCanceladoOuRevogado(GrupoAtivacaoBeneficioEntity grupo) {
+        return grupo.getStatus() == StatusGrupoAtivacaoBeneficio.CANCELADO
+                || grupo.getStatus() == StatusGrupoAtivacaoBeneficio.REVOGADO;
+    }
+
     private boolean grupoExpirado(GrupoAtivacaoBeneficioEntity grupo, OffsetDateTime agora) {
-        return grupo != null
-                && (grupo.getStatus() == StatusGrupoAtivacaoBeneficio.EXPIRADO
-                || (grupo.getValidadeFimEm() != null && !grupo.getValidadeFimEm().isAfter(agora)));
+        return grupo.getStatus() == StatusGrupoAtivacaoBeneficio.EXPIRADO
+                || !grupo.getValidadeFimEm().isAfter(agora);
     }
 
     private boolean beneficioExpirouAntesDoGrupo(
             AtivacaoBeneficioEntity ativacao,
             GrupoAtivacaoBeneficioEntity grupo,
             OffsetDateTime agora) {
-        return grupo != null
-                && grupo.getValidadeFimEm() != null
-                && ativacao.getFimEm() != null
-                && ativacao.getFimEm().isBefore(grupo.getValidadeFimEm())
+        return ativacao.getFimEm().isBefore(grupo.getValidadeFimEm())
                 && !ativacao.getFimEm().isAfter(agora);
     }
 }

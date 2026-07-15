@@ -102,6 +102,32 @@ class MidiaPublicaMapperTest {
         assertThat(resultado).extracting(item -> item.ordem()).containsExactly(0, 1);
     }
 
+    @Test
+    void videoExpiradoPermaneceArmazenadoMasSaiDaRespostaPublica() {
+        UUID arquivoId = UUID.randomUUID();
+        AnuncioMidiaEntity video = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.RESTRITA_18, arquivoId, 0);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId);
+        when(arquivo.getMimeType()).thenReturn("video/mp4");
+        when(urlService.resolver(video, arquivo)).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/video-restrito", null));
+
+        var semBeneficio = mapper.publicas(
+                List.of(video),
+                Map.of(arquivoId, arquivo),
+                true,
+                4,
+                false);
+        var comBeneficio = mapper.publicas(
+                List.of(video),
+                Map.of(arquivoId, arquivo),
+                true,
+                4,
+                true);
+
+        assertThat(semBeneficio).isEmpty();
+        assertThat(comBeneficio).hasSize(1);
+    }
+
     private AnuncioMidiaEntity midia(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade, UUID arquivoId, int ordem) {
         AnuncioMidiaEntity entity = mock(AnuncioMidiaEntity.class);
         when(entity.getId()).thenReturn(UUID.randomUUID());

@@ -656,16 +656,21 @@ if (-not $SemDadosSinteticos) {
   Assert-NoSensitiveAdminReadonlyData -Nome "admin premium status" -Body $premiumStatus.Body
 
   $premiumBeneficios = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$anuncioPremiumId/beneficios" -ExpectedStatus 200 -Method "GET" -Session $adminSession
-  Add-Check "admin premium beneficios" ($premiumBeneficios.Status -eq 200 -and $premiumBeneficios.Body -match 'DESTAQUE' -and $premiumBeneficios.Body -match 'FOTOS_EXTRA') "beneficios sinteticos devem ser lidos"
+  Add-Check "admin premium beneficios" ($premiumBeneficios.Status -eq 200 -and $premiumBeneficios.Body -match 'ANUNCIO_TOPO' -and $premiumBeneficios.Body -match 'FOTOS_EXTRA_5') "beneficios sinteticos canonicos devem ser lidos"
   Add-Check "admin premium beneficio vencendo" ($premiumBeneficios.Body -match '"statusCalculado"\s*:\s*"VENCENDO"') "beneficio vencendo deve aparecer"
   Assert-NoSensitiveAdminReadonlyData -Nome "admin premium beneficios" -Body $premiumBeneficios.Body
 
   $premiumConsistencia = Invoke-LocalHttp -Path "/api/admin/premium/consistencia" -ExpectedStatus 200 -Method "GET" -Session $adminSession
-  Add-Check "admin premium consistencia" ($premiumConsistencia.Status -eq 200 -and $premiumConsistencia.Body -match 'GRUPO_EXPIRADO_COM_BENEFICIO_ATIVO' -and $premiumConsistencia.Body -match 'BENEFICIO_EXPIRADO_ANTES_DO_GRUPO') "inconsistencias sinteticas devem ser detectadas"
+  Add-Check "admin premium consistencia" ($premiumConsistencia.Status -eq 200 -and $premiumConsistencia.Body -match 'GRUPO_EXPIRADO_COM_BENEFICIO_ATIVO' -and -not ($premiumConsistencia.Body -match 'BENEFICIO_EXPIRADO_ANTES_DO_GRUPO')) "somente inconsistencias operacionais devem ser listadas"
   Assert-NoSensitiveAdminReadonlyData -Nome "admin premium consistencia" -Body $premiumConsistencia.Body
 
+  $premiumCurtoId = "00000000-0000-4000-8000-000000000504"
+  $premiumCurto = Invoke-LocalHttp -Path "/api/admin/premium/anuncios/$premiumCurtoId/beneficios" -ExpectedStatus 200 -Method "GET" -Session $adminSession
+  Add-Check "admin premium expiracao individual" ($premiumCurto.Status -eq 200 -and $premiumCurto.Body -match 'VIDEO_1' -and $premiumCurto.Body -match 'BENEFICIO_EXPIRADO_ANTES_DO_GRUPO' -and $premiumCurto.Body -match '"statusCalculado"\s*:\s*"EXPIRADO"') "beneficio encerrado antes do grupo deve perder efeito sem alerta global"
+  Assert-NoSensitiveAdminReadonlyData -Nome "admin premium expiracao individual" -Body $premiumCurto.Body
+
   $premiumVencendo = Invoke-LocalHttp -Path "/api/admin/premium/vencendo" -ExpectedStatus 200 -Method "GET" -Session $adminSession
-  Add-Check "admin premium vencendo" ($premiumVencendo.Status -eq 200 -and $premiumVencendo.Body -match '"janelaDias"\s*:\s*7' -and $premiumVencendo.Body -match 'FOTOS_EXTRA') "beneficios vencendo devem aparecer"
+  Add-Check "admin premium vencendo" ($premiumVencendo.Status -eq 200 -and $premiumVencendo.Body -match '"janelaDias"\s*:\s*7' -and $premiumVencendo.Body -match 'FOTOS_EXTRA_5') "beneficios vencendo devem aparecer"
   Assert-NoSensitiveAdminReadonlyData -Nome "admin premium vencendo" -Body $premiumVencendo.Body
 
   foreach ($method in @("POST", "PUT", "PATCH", "DELETE")) {

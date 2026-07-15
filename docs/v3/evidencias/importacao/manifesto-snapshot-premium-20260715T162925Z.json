@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "premium-dry-run-v1",
+  "manifestGeneratedAtUtc": "2026-07-15T17:09:49Z",
+  "snapshot": {
+    "capturedAtUtc": "2026-07-15T16:29:25Z",
+    "identifier": "00000035-0000EB41-1",
+    "sourceFingerprint": "a3be5975af1543ad779948bc4247afd8",
+    "dumpSha256": "3d5d5bff288608da934f24ca62219732b8592a9d945e4f512faca9233ee0bb30",
+    "postgresql": "17",
+    "mode": "REPEATABLE_READ_READ_ONLY",
+    "productionWrite": false
+  },
+  "source": {
+    "activations": 4045,
+    "codesFound": 6,
+    "byCode": {
+      "CARROSSEL_FOTOS": 1071,
+      "FOTOS_EXTRA_5": 735,
+      "OCULTAR_IDADE": 503,
+      "STORIES": 52,
+      "VIDEO_1": 588,
+      "WHATSAPP_CARD": 1096
+    },
+    "ANUNCIO_TOPO": {
+      "catalogEntryFound": true,
+      "activationRows": 0
+    }
+  },
+  "safeMapping": {
+    "importable": 126,
+    "current": 4,
+    "expired": 122,
+    "byCanonicalBenefit": {
+      "CARROSSEL_FOTOS": { "total": 31, "current": 1, "expired": 30 },
+      "FOTOS_EXTRA_5": { "total": 30, "current": 0, "expired": 30 },
+      "OCULTAR_IDADE": { "total": 1, "current": 0, "expired": 1 },
+      "ANUNCIO_TOPO": { "total": 0, "current": 0, "expired": 0 },
+      "VIDEO_1": { "total": 32, "current": 1, "expired": 31 },
+      "WHATSAPP_CARD": { "total": 32, "current": 2, "expired": 30 }
+    },
+    "provenOrigin": "CREDITO",
+    "newLedgerMovement": false
+  },
+  "quarantine": {
+    "total": 3919,
+    "originUnprovenOrZeroCredit": 3684,
+    "cancelled": 183,
+    "storiesOwnFlow": 52,
+    "unrecognizedBenefit": 0,
+    "orphanUserOrAd": 0,
+    "ownershipDivergence": 0,
+    "invalidDates": 0,
+    "exactDuplicates": 0,
+    "overlappingPeriods": 0
+  },
+  "isolatedPostgresql17DryRun": {
+    "flywayRange": "V001-V026",
+    "firstRun": {
+      "groupsCreated": 126,
+      "activationsCreated": 126,
+      "current": 4,
+      "expired": 122
+    },
+    "secondRun": {
+      "groupsCreated": 0,
+      "activationsCreated": 0,
+      "current": 4,
+      "expired": 122
+    },
+    "invalidForeignKeys": 0,
+    "duplicateActivations": 0,
+    "overlappingActivations": 0,
+    "premiumDomainFingerprint": "534eb16f213d90e55d6d3aa832a713cc",
+    "resultFingerprint": "24e8831069586dd0c1a9b2329e24a283"
+  },
+  "ledgerControl": {
+    "movementsBefore": 173,
+    "movementsAfter": 173,
+    "amountBefore": 102544,
+    "amountAfter": 102544,
+    "hashBeforeAndAfter": "9d2c2a5eb403a76b15d759b3244adec4",
+    "creditDebited": 0
+  },
+  "expirationPolicy": {
+    "backendIsAuthority": true,
+    "exactEndInstantIsExpired": true,
+    "catalogMustBeActive": true,
+    "groupAndActivationMustBeCoherent": true,
+    "cancelledOrRevokedHasNoEffect": true,
+    "publicListingAndDetailCache": "NO_STORE",
+    "storiesChanged": false
+  },
+  "sanitization": {
+    "containsPersonalData": false,
+    "containsSlugs": false,
+    "containsUrls": false,
+    "containsObjectKeys": false,
+    "containsSecrets": false,
+    "containsRawFinancialPayload": false,
+    "hmlChanged": false,
+    "r2Changed": false
+  }
+}

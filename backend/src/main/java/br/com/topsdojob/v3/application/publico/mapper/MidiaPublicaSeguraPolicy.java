@@ -9,16 +9,23 @@ import org.springframework.stereotype.Component;
 public class MidiaPublicaSeguraPolicy {
 
     public List<MidiaPublicaDto> paraCard(List<MidiaPublicaDto> midias) {
+        return paraCard(midias, false);
+    }
+
+    public List<MidiaPublicaDto> paraCard(List<MidiaPublicaDto> midias, boolean carrosselAtivo) {
         if (midias == null || midias.isEmpty()) {
             return List.of();
         }
-        return midias.stream()
+        List<MidiaPublicaDto> fotos = midias.stream()
                 .filter(midia -> "FOTO".equals(midia.tipo()))
-                .min(Comparator
+                .sorted(Comparator
                         .comparingInt(this::prioridade)
                         .thenComparing(MidiaPublicaDto::ordem, Comparator.nullsLast(Integer::compareTo)))
-                .map(List::of)
-                .orElseGet(List::of);
+                .toList();
+        if (carrosselAtivo) {
+            return fotos;
+        }
+        return fotos.isEmpty() ? List.of() : List.of(fotos.get(0));
     }
 
     private int prioridade(MidiaPublicaDto midia) {

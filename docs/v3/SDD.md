@@ -908,3 +908,14 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - Duas execucoes produziram o mesmo fingerprint: 29 referencias PDF elegiveis formaram 20 objetos deduplicados; a segunda execucao preservou os 29 vinculos e nao gravou objeto novo. Houve zero checksum divergente.
 - O staging PostgreSQL 17/V001-V026 resultou em 29 documentos `PENDENTE`, zero aprovacao automatica, zero FK invalida, zero documento orfao e nenhuma URL publica. Acesso administrativo temporario continua sujeito ao RBAC canonico.
 - Permanecem em quarentena 1.020 imagens sem parte documental comprovada e duas referencias de tipo/conteudo invalido. Estado historico so sera preservado quando houver evidencia confiavel; em duvida, o KYC permanece pendente ou fora do fluxo operacional.
+
+## 47. Premium historico no dry-run
+
+- O snapshot PostgreSQL 17 `00000035-0000EB41-1`, capturado em `REPEATABLE READ READ ONLY`, contem 4.045 ativacoes legadas. O manifesto versionado registra apenas contagens e fingerprints sanitizados.
+- O comportamento efetivo da origem provou 126 ativacoes pagas por creditos: 31 `CARROSSEL_FOTOS`, 30 `FOTOS_EXTRA_5`, uma `OCULTAR_IDADE`, 32 `VIDEO_1` e 32 `WHATSAPP_CARD`. `ANUNCIO_TOPO` existe no catalogo, mas nao possui ativacao no snapshot.
+- As 126 ativacoes preservam inicio, fim e origem `CREDITO`, sem novo debito: quatro estavam vigentes e 122 expiradas no instante do snapshot. Stories continuam no fluxo proprio e nao sao convertidos em beneficio Premium comum.
+- Permanecem em quarentena 3.919 linhas: 3.684 sem origem comprovavel, 183 canceladas e 52 Stories. Nao houve orfao, divergencia de propriedade, data invalida, duplicidade exata ou sobreposicao entre as ativacoes importaveis.
+- O reconciliador usa IDs e chaves de idempotencia deterministicas. A primeira execucao isolada criou 126 grupos/ativacoes; a segunda criou zero, com o mesmo fingerprint, zero FK invalida e ledger inalterado em 173 movimentos e 102.544 creditos.
+- A vigencia e calculada no backend com uma unica referencia UTC. No instante exato de `fim_em`, o beneficio ja esta expirado; catalogo inativo, cancelamento/revogacao, ausencia de grupo ou divergencia de vinculo/origem falham fechados sem depender de job.
+- Cada efeito usa o resultado calculado: idade, limite de fotos, prioridade de topo, WhatsApp no card, carrossel e video cessam integralmente ao expirar. Arquivos excedentes ou video nao sao apagados, e o contato comum permanece sujeito a sua regra geral.
+- Listagens e detalhe publicos que exibem efeitos Premium usam leitura sem cache persistente do frontend. Stories, pagamentos, Efi, KYC, midias e ledger nao foram alterados nesta fase.

@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -46,7 +47,19 @@ public class BeneficioAnuncioConsultaService {
 
     @Transactional(readOnly = true)
     public List<PremiumBeneficioCalculado> consultarCalculados(UUID anuncioId) {
-        return calcular(ativacaoRepository.findByAnuncioId(anuncioId), OffsetDateTime.now());
+        return calcular(ativacaoRepository.findByAnuncioId(anuncioId), OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    @Transactional(readOnly = true)
+    public Map<UUID, List<PremiumBeneficioCalculado>> consultarCalculadosPorAnuncio(Collection<UUID> anuncioIds) {
+        if (anuncioIds == null || anuncioIds.isEmpty()) {
+            return Map.of();
+        }
+        return calcular(
+                ativacaoRepository.findByAnuncioIdIn(anuncioIds),
+                OffsetDateTime.now(ZoneOffset.UTC)).stream()
+                .filter(item -> item.ativacao() != null && item.ativacao().getAnuncioId() != null)
+                .collect(Collectors.groupingBy(item -> item.ativacao().getAnuncioId()));
     }
 
     @Transactional(readOnly = true)

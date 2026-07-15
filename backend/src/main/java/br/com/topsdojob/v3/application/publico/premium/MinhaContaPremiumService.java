@@ -26,7 +26,6 @@ import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -278,16 +277,19 @@ public class MinhaContaPremiumService {
     }
 
     private List<MinhaAtivacaoPremiumDto> ativacoesAtivasDoUsuario(UUID usuarioId) {
-        return ativacoesDto(ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(usuarioId).stream()
-                .filter(item -> item.getStatus() == StatusAtivacaoBeneficio.ATIVA)
-                .filter(item -> item.getFimEm() != null && item.getFimEm().isAfter(OffsetDateTime.now(ZoneOffset.UTC)))
-                .toList());
+        return ativacoesAtivas(ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(usuarioId));
     }
 
     private List<MinhaAtivacaoPremiumDto> ativacoesAtivas(UUID anuncioId) {
-        List<AtivacaoBeneficioEntity> ativas = ativacaoRepository.findByAnuncioId(anuncioId).stream()
-                .filter(item -> item.getStatus() == StatusAtivacaoBeneficio.ATIVA)
-                .filter(item -> item.getFimEm() != null && item.getFimEm().isAfter(OffsetDateTime.now(ZoneOffset.UTC)))
+        return ativacoesAtivas(ativacaoRepository.findByAnuncioId(anuncioId));
+    }
+
+    private List<MinhaAtivacaoPremiumDto> ativacoesAtivas(List<AtivacaoBeneficioEntity> ativacoes) {
+        List<AtivacaoBeneficioEntity> ativas = beneficioConsultaService
+                .calcular(ativacoes, OffsetDateTime.now(ZoneOffset.UTC)).stream()
+                .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                .map(item -> item.ativacao())
                 .toList();
         return ativacoesDto(ativas);
     }

@@ -19,6 +19,7 @@ public record AnuncioCardPublicoDto(
         boolean midiaExtra,
         boolean story,
         boolean contatoDisponivel,
+        boolean whatsappCard,
         boolean comLocal,
         boolean fazAnal,
         List<String> beneficiosPublicos,

@@ -1,5 +1,11 @@
 package br.com.topsdojob.v3.application.publico.premium;
 
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.ANUNCIO_TOPO;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.CARROSSEL_FOTOS;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.FOTOS_EXTRA_5;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.OCULTAR_IDADE;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.VIDEO_1;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.WHATSAPP_CARD;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -24,19 +30,33 @@ class PremiumPublicoMapperTest {
     private final PremiumPublicoMapper mapper = new PremiumPublicoMapper(beneficioService);
 
     @Test
-    void dtoPublicoExpoeApenasFlagsSanitizadas() {
+    void dtoPublicoExpoeSomenteFlagsCanonicasSanitizadas() {
         AnuncioEntity anuncio = anuncio();
         when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
-                calculado("DESTAQUE", PremiumBeneficioStatusCalculado.ATIVO),
+                calculado(ANUNCIO_TOPO, PremiumBeneficioStatusCalculado.ATIVO),
                 calculado("RELATORIO", PremiumBeneficioStatusCalculado.ATIVO),
-                calculado("FOTOS_EXTRA", PremiumBeneficioStatusCalculado.VENCENDO)));
+                calculado(FOTOS_EXTRA_5, PremiumBeneficioStatusCalculado.VENCENDO),
+                calculado(CARROSSEL_FOTOS, PremiumBeneficioStatusCalculado.ATIVO),
+                calculado(VIDEO_1, PremiumBeneficioStatusCalculado.ATIVO),
+                calculado(WHATSAPP_CARD, PremiumBeneficioStatusCalculado.ATIVO)));
 
         PremiumPublicoFlagsDto flags = mapper.flags(anuncio);
 
         assertThat(flags.premiumAtivo()).isTrue();
         assertThat(flags.destaqueAtivo()).isTrue();
+        assertThat(flags.topoAtivo()).isTrue();
         assertThat(flags.possuiMidiaExtra()).isTrue();
-        assertThat(flags.beneficiosPublicos()).containsExactly("Destaque", "Mídia extra");
+        assertThat(flags.fotosExtrasAtivo()).isTrue();
+        assertThat(flags.carrosselFotosAtivo()).isTrue();
+        assertThat(flags.videoAtivo()).isTrue();
+        assertThat(flags.whatsappCardAtivo()).isTrue();
+        assertThat(flags.possuiStories()).isFalse();
+        assertThat(flags.beneficiosPublicos()).containsExactly(
+                "Topo",
+                "Fotos extras",
+                "Carrossel de fotos",
+                "Video",
+                "WhatsApp no card");
         assertThat(flags.toString())
                 .doesNotContain("RELATORIO")
                 .doesNotContain("valor")
@@ -46,25 +66,28 @@ class PremiumPublicoMapperTest {
     }
 
     @Test
-    void beneficioExpiradoNaoAparecePublicamente() {
+    void beneficiosExpiradosNaoDeixamEfeitoPublicoParcial() {
         AnuncioEntity anuncio = anuncio();
         when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
-                calculado("DESTAQUE", PremiumBeneficioStatusCalculado.EXPIRADO)));
+                calculado(ANUNCIO_TOPO, PremiumBeneficioStatusCalculado.EXPIRADO),
+                calculado(FOTOS_EXTRA_5, PremiumBeneficioStatusCalculado.EXPIRADO),
+                calculado(CARROSSEL_FOTOS, PremiumBeneficioStatusCalculado.EXPIRADO),
+                calculado(VIDEO_1, PremiumBeneficioStatusCalculado.EXPIRADO),
+                calculado(WHATSAPP_CARD, PremiumBeneficioStatusCalculado.EXPIRADO),
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO)));
 
         PremiumPublicoFlagsDto flags = mapper.flags(anuncio);
 
-        assertThat(flags.premiumAtivo()).isFalse();
-        assertThat(flags.beneficiosPublicos()).isEmpty();
-        assertThat(flags.idadeOculta()).isFalse();
+        assertThat(flags).isEqualTo(PremiumPublicoFlagsDto.vazio());
     }
 
     @Test
     void somenteOcultarIdadePagoAtivoOcultaIdade() {
         AnuncioEntity anuncio = anuncio();
         when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
-                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.COMPRA),
-                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
-                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.CORTESIA)));
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.COMPRA),
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.CORTESIA)));
 
         PremiumPublicoFlagsDto flags = mapper.flags(anuncio);
 
@@ -76,8 +99,8 @@ class PremiumPublicoMapperTest {
     void ocultarIdadeExpiradoOuNaoPagoNaoOcultaIdade() {
         AnuncioEntity anuncio = anuncio();
         when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
-                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
-                calculado("OCULTAR_IDADE", PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.ADMIN)));
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.ADMIN)));
 
         assertThat(mapper.flags(anuncio).idadeOculta()).isFalse();
     }

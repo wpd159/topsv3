@@ -144,10 +144,24 @@ SELECT 'REFERENCIAS_CREDITO_ORFAS|' || count(*)
 FROM stg_credito WHERE pendencia_codigo = 'USUARIO_ORFAO_QUARENTENA';
 SELECT 'PAGAMENTOS_STAGING|' || count(*) FROM stg_pagamento;
 SELECT 'PAGAMENTOS_CANONICOS|' || count(*) FROM pagamento;
-SELECT 'PREMIUM_IMPORTADO|' || count(*) FROM ativacao_beneficio WHERE origem = 'IMPORTACAO';
+SELECT 'PREMIUM_IMPORTADO|' || count(*)
+FROM ativacao_beneficio
+WHERE idempotency_key LIKE 'import:ativacao-premium:%';
 SELECT 'PREMIUM_SEM_GRUPO|' || count(*)
 FROM ativacao_beneficio
-WHERE origem = 'IMPORTACAO' AND grupo_ativacao_id IS NULL;
+WHERE idempotency_key LIKE 'import:ativacao-premium:%'
+  AND grupo_ativacao_id IS NULL;
+SELECT 'PREMIUM_VIGENTE|' || count(*)
+FROM ativacao_beneficio a
+CROSS JOIN importacao_execucao e
+WHERE a.idempotency_key LIKE 'import:ativacao-premium:%'
+  AND a.inicio_em <= e.iniciado_em
+  AND a.fim_em > e.iniciado_em;
+SELECT 'PREMIUM_EXPIRADO|' || count(*)
+FROM ativacao_beneficio a
+CROSS JOIN importacao_execucao e
+WHERE a.idempotency_key LIKE 'import:ativacao-premium:%'
+  AND a.fim_em <= e.iniciado_em;
 SELECT 'PREMIUM_QUARENTENA|' || count(*)
 FROM stg_premium WHERE status <> 'PROCESSADO';
 SELECT 'FAVORITOS|' || count(*) FROM favorito_anuncio;
@@ -208,6 +222,120 @@ BEGIN
       AND payload_normalizado_json ->> 'urlPublicaGerada' <> 'false'
   ) THEN
     RAISE EXCEPTION 'documento KYC recebeu indicacao de URL publica';
+  END IF;
+END $$;
+
+DO $$
+DECLARE
+  esperadas bigint;
+  promovidas bigint;
+BEGIN
+  SELECT count(*) INTO esperadas
+  FROM stg_premium
+  WHERE status = 'PROCESSADO';
+
+  SELECT count(*) INTO promovidas
+  FROM ativacao_beneficio
+  WHERE idempotency_key LIKE 'import:ativacao-premium:%';
+
+  IF promovidas <> esperadas THEN
+    RAISE EXCEPTION 'ativacoes Premium promovidas % divergem do staging seguro %', promovidas, esperadas;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM stg_premium
+    WHERE status = 'PROCESSADO'
+      AND (
+        pendencia_codigo IS NOT NULL
+        OR payload_normalizado_json ->> 'versaoImportador' <> 'premium-historico-v1'
+        OR payload_normalizado_json ->> 'origemV3' <> 'CREDITO'
+        OR coalesce((payload_normalizado_json ->> 'creditosCobrados')::integer, 0) <= 0
+      )
+  ) THEN
+    RAISE EXCEPTION 'staging Premium processado sem origem paga comprovada';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM stg_premium
+    WHERE payload_normalizado_json ->> 'codigoLegado' = 'STORIES'
+      AND status = 'PROCESSADO'
+  ) THEN
+    RAISE EXCEPTION 'Story legado foi convertido em Premium comum';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM ativacao_beneficio a
+    LEFT JOIN grupo_ativacao_beneficio g ON g.id = a.grupo_ativacao_id
+    LEFT JOIN beneficio_premium b ON b.id = a.beneficio_id
+    LEFT JOIN usuario u ON u.id = a.usuario_id
+    LEFT JOIN anuncio n ON n.id = a.anuncio_id
+    WHERE a.idempotency_key LIKE 'import:ativacao-premium:%'
+      AND (
+        g.id IS NULL
+        OR b.id IS NULL
+        OR u.id IS NULL
+        OR n.id IS NULL
+        OR n.usuario_id <> a.usuario_id
+        OR g.usuario_id <> a.usuario_id
+        OR g.anuncio_id <> a.anuncio_id
+        OR a.origem <> 'CREDITO'
+        OR g.origem <> 'CREDITO'
+        OR a.origem <> g.origem
+        OR a.custo_creditos_snapshot <= 0
+        OR NOT b.ativo
+        OR a.inicio_em IS NULL
+        OR a.fim_em IS NULL
+        OR a.fim_em <= a.inicio_em
+        OR g.validade_inicio_em <> a.inicio_em
+        OR g.validade_fim_em <> a.fim_em
+      )
+  ) THEN
+    RAISE EXCEPTION 'ativacao Premium promovida fora do contrato conservador';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM ativacao_beneficio a
+    JOIN grupo_ativacao_beneficio g ON g.id = a.grupo_ativacao_id
+    CROSS JOIN importacao_execucao e
+    WHERE a.idempotency_key LIKE 'import:ativacao-premium:%'
+      AND (
+        (a.inicio_em > e.iniciado_em AND (a.status <> 'AGENDADA' OR g.status <> 'PLANEJADO'))
+        OR (a.inicio_em <= e.iniciado_em AND a.fim_em > e.iniciado_em
+            AND (a.status <> 'ATIVA' OR g.status <> 'ATIVO'))
+        OR (a.fim_em <= e.iniciado_em AND (a.status <> 'EXPIRADA' OR g.status <> 'EXPIRADO'))
+      )
+  ) THEN
+    RAISE EXCEPTION 'estado Premium importado diverge da janela temporal do snapshot';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM ativacao_beneficio a
+    JOIN ativacao_beneficio b
+      ON a.id < b.id
+     AND a.anuncio_id = b.anuncio_id
+     AND a.beneficio_id = b.beneficio_id
+     AND a.inicio_em < b.fim_em
+     AND b.inicio_em < a.fim_em
+    WHERE a.idempotency_key LIKE 'import:ativacao-premium:%'
+      AND b.idempotency_key LIKE 'import:ativacao-premium:%'
+  ) THEN
+    RAISE EXCEPTION 'ativacoes Premium importadas duplicadas ou sobrepostas';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM movimento_credito m
+    JOIN ativacao_beneficio a
+      ON m.referencia_tipo = 'ATIVACAO_BENEFICIO'
+     AND m.referencia_id = a.id
+    WHERE a.idempotency_key LIKE 'import:ativacao-premium:%'
+  ) THEN
+    RAISE EXCEPTION 'importacao Premium historica criou movimento de credito';
   END IF;
 END $$;
 
@@ -309,7 +437,7 @@ WITH hashes AS (
               grupo_ativacao_id, inicio_em, fim_em, status,
               custo_creditos_snapshot),
     '|' ORDER BY id), ''))
-  FROM ativacao_beneficio WHERE origem = 'IMPORTACAO'
+  FROM ativacao_beneficio WHERE idempotency_key LIKE 'import:ativacao-premium:%'
   UNION ALL
   SELECT 'staging', md5(coalesce(string_agg(
     concat_ws(':', tabela, total, processados, pendentes),
@@ -368,6 +496,6 @@ WITH hashes AS (
               grupo_ativacao_id, inicio_em, fim_em, status,
               custo_creditos_snapshot),
     '|' ORDER BY id), ''))
-  FROM ativacao_beneficio WHERE origem = 'IMPORTACAO'
+  FROM ativacao_beneficio WHERE idempotency_key LIKE 'import:ativacao-premium:%'
 )
 SELECT 'FINGERPRINT|' || md5(string_agg(valor, '|' ORDER BY valor)) FROM hashes;

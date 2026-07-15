@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.application.publico.anunciante.midia;
 
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.FOTOS_EXTRA_5;
+
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import java.util.UUID;
@@ -12,8 +14,6 @@ public class LimiteMidiasAnuncioService {
     public static final int FOTOS_BASE = 4;
     public static final int FOTOS_COM_EXTRA = 10;
     public static final int VIDEOS = 1;
-    private static final String FOTOS_EXTRA_5 = "FOTOS_EXTRA_5";
-
     private final BeneficioAnuncioConsultaService beneficioService;
 
     public LimiteMidiasAnuncioService(BeneficioAnuncioConsultaService beneficioService) {

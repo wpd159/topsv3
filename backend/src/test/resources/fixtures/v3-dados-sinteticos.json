@@ -182,12 +182,12 @@
     { "id": "midia-goiania-video-1", "anuncioSlug": "demo-goiania-fotos-extra", "tipo": "VIDEO", "statusModeracao": "APROVADO", "visibilidade": "RESTRITA_18" }
   ],
   "premiumBeneficios": [
-    { "codigo": "DESTAQUE_ATIVO", "status": "ATIVO", "anuncioSlug": "demo-goiania-livre-premium" },
-    { "codigo": "ANUNCIO_TOPO_ATIVO", "status": "ATIVO", "anuncioSlug": "demo-brasilia-premium-topo" },
-    { "codigo": "FOTOS_EXTRA_ATIVO", "status": "ATIVO", "anuncioSlug": "demo-goiania-fotos-extra" },
-    { "codigo": "STORIES_ATIVO", "status": "ATIVO", "anuncioSlug": "demo-brasilia-story-restrita" },
-    { "codigo": "PACOTE_EXPIRADO", "status": "EXPIRADO", "anuncioSlug": "demo-goiania-premium-expirado" },
-    { "codigo": "GRATUITO_UTIL", "status": "GRATUITO", "anuncioSlug": "demo-aparecida-ativo-sem-bairro" }
+    { "codigo": "ANUNCIO_TOPO", "status": "ATIVO", "anuncioSlug": "demo-goiania-livre-premium" },
+    { "codigo": "CARROSSEL_FOTOS", "status": "ATIVO", "anuncioSlug": "demo-goiania-livre-premium" },
+    { "codigo": "WHATSAPP_CARD", "status": "ATIVO", "anuncioSlug": "demo-goiania-livre-premium" },
+    { "codigo": "FOTOS_EXTRA_5", "status": "ATIVO", "anuncioSlug": "demo-goiania-fotos-extra" },
+    { "codigo": "VIDEO_1", "status": "EXPIRADO", "anuncioSlug": "demo-goiania-premium-expirado" },
+    { "codigo": "OCULTAR_IDADE", "status": "EXPIRADO", "anuncioSlug": "demo-goiania-premium-expirado" }
   ],
   "metricasAgregadas": [
     { "anuncioSlug": "demo-goiania-livre-premium", "origem": "ORGANICO_LOCAL", "views": 120, "cliquesWhatsApp": 18 },

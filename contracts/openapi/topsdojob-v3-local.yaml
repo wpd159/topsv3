@@ -6547,6 +6547,7 @@ components:
         - midiaExtra
         - story
         - contatoDisponivel
+        - whatsappCard
         - comLocal
         - fazAnal
         - beneficiosPublicos
@@ -6586,6 +6587,9 @@ components:
           type: boolean
         contatoDisponivel:
           type: boolean
+        whatsappCard:
+          type: boolean
+          description: Verdadeiro somente durante a vigencia do beneficio WHATSAPP_CARD e com contato publico disponivel.
         comLocal:
           type: boolean
           description: Verdadeiro somente quando o dado estruturado contem MEU_LOCAL.

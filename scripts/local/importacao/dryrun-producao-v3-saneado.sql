@@ -36,6 +36,8 @@ IMPORT FOREIGN SCHEMA public LIMIT TO (
   advertiser_verification_requests,
   usuario_favoritos,
   feature_ativacao,
+  feature_catalogo,
+  feature_catalogo_duracoes,
   creditos_usuario,
   historico_creditos,
   pagamentos_mp,
@@ -1163,81 +1165,109 @@ FROM legacy.pagamentos_mp p
 CROSS JOIN dryrun_context c
 LEFT JOIN legacy.usuarios u ON u.id = p.usuario_id;
 
--- Premium: cada beneficio mapeavel recebe grupo de importacao proprio. Stories
--- continuam no fluxo de Stories e nao sao convertidos em Premium.
+-- Premium: a origem e determinada pelo comportamento comprovado. Na producao,
+-- a ativacao pelo usuario debita creditos e grava creditos_cobrados; linhas de
+-- custo zero nao distinguem administracao, cortesia ou migracao e permanecem
+-- em quarentena. Stories continuam no fluxo proprio.
+CREATE TEMP TABLE dryrun_premium_classificado AS
+WITH base AS (
+  SELECT
+    f.id,
+    f.usuario_id,
+    f.anuncio_id,
+    f.codigo AS codigo_legado,
+    CASE f.codigo
+      WHEN 'OCULTAR_IDADE' THEN 'OCULTAR_IDADE'
+      WHEN 'FOTOS_EXTRA_5' THEN 'FOTOS_EXTRA_5'
+      WHEN 'ANUNCIO_TOPO' THEN 'ANUNCIO_TOPO'
+      WHEN 'WHATSAPP_CARD' THEN 'WHATSAPP_CARD'
+      WHEN 'CARROSSEL_FOTOS' THEN 'CARROSSEL_FOTOS'
+      WHEN 'VIDEO_1' THEN 'VIDEO_1'
+      ELSE NULL
+    END AS codigo_v3,
+    f.creditos_cobrados,
+    f.status AS status_legado,
+    f.ativado_em AT TIME ZONE 'America/Sao_Paulo' AS inicio_em,
+    f.expira_em AT TIME ZONE 'America/Sao_Paulo' AS fim_em,
+    u.id IS NOT NULL AS usuario_origem_existe,
+    a.id IS NOT NULL AS anuncio_origem_existe,
+    a.usuario_id IS NOT DISTINCT FROM f.usuario_id AS propriedade_coerente,
+    fc.id IS NOT NULL AS catalogo_origem_existe,
+    coalesce(fc.ativo, false) AS catalogo_origem_ativo,
+    b.id AS beneficio_id,
+    coalesce(b.ativo, false) AS beneficio_v3_ativo,
+    vu.id AS usuario_v3_id,
+    va.id AS anuncio_v3_id,
+    count(*) OVER (
+      PARTITION BY f.anuncio_id, f.codigo, f.ativado_em, f.expira_em
+    ) AS equivalentes_no_periodo,
+    c.snapshot_at
+  FROM legacy.feature_ativacao f
+  CROSS JOIN dryrun_context c
+  LEFT JOIN legacy.usuarios u ON u.id = f.usuario_id
+  LEFT JOIN legacy.anuncios a ON a.id = f.anuncio_id
+  LEFT JOIN legacy.feature_catalogo fc ON fc.codigo = f.codigo
+  LEFT JOIN beneficio_premium b ON b.codigo = CASE f.codigo
+    WHEN 'OCULTAR_IDADE' THEN 'OCULTAR_IDADE'
+    WHEN 'FOTOS_EXTRA_5' THEN 'FOTOS_EXTRA_5'
+    WHEN 'ANUNCIO_TOPO' THEN 'ANUNCIO_TOPO'
+    WHEN 'WHATSAPP_CARD' THEN 'WHATSAPP_CARD'
+    WHEN 'CARROSSEL_FOTOS' THEN 'CARROSSEL_FOTOS'
+    WHEN 'VIDEO_1' THEN 'VIDEO_1'
+    ELSE NULL
+  END
+  LEFT JOIN usuario vu ON vu.id = md5('legacy:usuario:' || f.usuario_id)::uuid
+  LEFT JOIN anuncio va ON va.id = md5('legacy:anuncio:' || f.anuncio_id)::uuid
+), classificado AS (
+  SELECT
+    base.*,
+    CASE
+      WHEN codigo_legado = 'STORIES' THEN 'STORIES_FLUXO_PROPRIO'
+      WHEN codigo_v3 IS NULL THEN 'BENEFICIO_SEM_MAPEAMENTO_SEGURO'
+      WHEN NOT usuario_origem_existe OR usuario_v3_id IS NULL THEN 'USUARIO_ORFAO_QUARENTENA'
+      WHEN NOT anuncio_origem_existe OR anuncio_v3_id IS NULL THEN 'ANUNCIO_ORFAO_QUARENTENA'
+      WHEN NOT propriedade_coerente THEN 'PROPRIETARIO_DIVERGENTE_QUARENTENA'
+      WHEN NOT catalogo_origem_existe OR NOT catalogo_origem_ativo THEN 'CATALOGO_ORIGEM_INATIVO_QUARENTENA'
+      WHEN beneficio_id IS NULL OR NOT beneficio_v3_ativo THEN 'BENEFICIO_V3_INATIVO_QUARENTENA'
+      WHEN inicio_em IS NULL OR fim_em IS NULL OR fim_em <= inicio_em THEN 'DATAS_INVALIDAS_QUARENTENA'
+      WHEN status_legado = 'CANCELADO' THEN 'ATIVACAO_CANCELADA_QUARENTENA'
+      WHEN status_legado <> 'ATIVO' THEN 'STATUS_LEGADO_DESCONHECIDO_QUARENTENA'
+      WHEN coalesce(creditos_cobrados, 0) <= 0 THEN 'ORIGEM_NAO_COMPROVADA_QUARENTENA'
+      WHEN equivalentes_no_periodo > 1 THEN 'ATIVACAO_DUPLICADA_QUARENTENA'
+      WHEN EXISTS (
+        SELECT 1
+        FROM legacy.feature_ativacao outra
+        WHERE outra.id <> base.id
+          AND outra.anuncio_id = base.anuncio_id
+          AND outra.codigo = base.codigo_legado
+          AND outra.status <> 'CANCELADO'
+          AND outra.ativado_em < (base.fim_em AT TIME ZONE 'America/Sao_Paulo')
+          AND outra.expira_em > (base.inicio_em AT TIME ZONE 'America/Sao_Paulo')
+      ) THEN 'ATIVACAO_SOBREPOSTA_QUARENTENA'
+      ELSE NULL
+    END AS pendencia_codigo
+  FROM base
+)
+SELECT * FROM classificado;
+
 CREATE TEMP TABLE dryrun_premium AS
 SELECT
-  f.*,
-  b.id AS beneficio_id,
-  md5('legacy:grupo-premium:' || f.id)::uuid AS grupo_id,
-  md5('legacy:ativacao-premium:' || f.id)::uuid AS ativacao_id,
+  p.*,
+  md5('legacy:grupo-premium:' || p.id)::uuid AS grupo_id,
+  md5('legacy:ativacao-premium:' || p.id)::uuid AS ativacao_id,
+  'CREDITO'::text AS origem_v3,
   CASE
-    WHEN f.status = 'CANCELADO' THEN 'CANCELADO'
-    WHEN f.expira_em <= c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'EXPIRADO'
-    WHEN f.ativado_em > c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'PLANEJADO'
+    WHEN p.fim_em <= p.snapshot_at THEN 'EXPIRADO'
+    WHEN p.inicio_em > p.snapshot_at THEN 'PLANEJADO'
     ELSE 'ATIVO'
   END AS grupo_status,
   CASE
-    WHEN f.status = 'CANCELADO' THEN 'CANCELADA'
-    WHEN f.expira_em <= c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'EXPIRADA'
-    WHEN f.ativado_em > c.snapshot_at AT TIME ZONE 'America/Sao_Paulo' THEN 'AGENDADA'
+    WHEN p.fim_em <= p.snapshot_at THEN 'EXPIRADA'
+    WHEN p.inicio_em > p.snapshot_at THEN 'AGENDADA'
     ELSE 'ATIVA'
   END AS ativacao_status
-FROM legacy.feature_ativacao f
-CROSS JOIN dryrun_context c
-LEFT JOIN beneficio_premium b ON b.codigo = f.codigo
-WHERE f.codigo <> 'STORIES'
-  AND f.anuncio_id IS NOT NULL
-  AND f.ativado_em IS NOT NULL
-  AND f.expira_em > f.ativado_em
-  AND b.id IS NOT NULL;
-
-INSERT INTO grupo_ativacao_beneficio (
-  id, tipo, origem, usuario_id, anuncio_id, ator_usuario_id,
-  campanha_codigo, validade_inicio_em, validade_fim_em, status,
-  idempotency_key, observacao, criado_em, atualizado_em
-)
-SELECT
-  p.grupo_id,
-  'IMPORTACAO',
-  'IMPORTACAO',
-  md5('legacy:usuario:' || p.usuario_id)::uuid,
-  md5('legacy:anuncio:' || p.anuncio_id)::uuid,
-  NULL, NULL,
-  p.ativado_em AT TIME ZONE 'America/Sao_Paulo',
-  p.expira_em AT TIME ZONE 'America/Sao_Paulo',
-  p.grupo_status,
-  'import:grupo-premium:' || p.id,
-  'Ativacao legada individual preservada por importacao.',
-  p.ativado_em AT TIME ZONE 'America/Sao_Paulo',
-  c.snapshot_at
-FROM dryrun_premium p CROSS JOIN dryrun_context c;
-
-INSERT INTO ativacao_beneficio (
-  id, beneficio_id, opcao_id, usuario_id, anuncio_id,
-  grupo_ativacao_id, origem, ator_usuario_id, campanha_codigo,
-  inicio_em, fim_em, status, custo_creditos_snapshot, preco_snapshot,
-  idempotency_key, revogada_em, motivo_revogacao, criado_em
-)
-SELECT
-  p.ativacao_id,
-  p.beneficio_id,
-  NULL,
-  md5('legacy:usuario:' || p.usuario_id)::uuid,
-  md5('legacy:anuncio:' || p.anuncio_id)::uuid,
-  p.grupo_id,
-  'IMPORTACAO',
-  NULL, NULL,
-  p.ativado_em AT TIME ZONE 'America/Sao_Paulo',
-  p.expira_em AT TIME ZONE 'America/Sao_Paulo',
-  p.ativacao_status,
-  p.creditos_cobrados,
-  NULL,
-  'import:ativacao-premium:' || p.id,
-  CASE WHEN p.status = 'CANCELADO' THEN p.expira_em AT TIME ZONE 'America/Sao_Paulo' END,
-  CASE WHEN p.status = 'CANCELADO' THEN 'Cancelamento preservado da origem.' END,
-  p.ativado_em AT TIME ZONE 'America/Sao_Paulo'
-FROM dryrun_premium p;
+FROM dryrun_premium_classificado p
+WHERE p.pendencia_codigo IS NULL;
 
 INSERT INTO stg_premium (
   id, execucao_id, sistema_origem, tabela_origem, id_origem,
@@ -1245,27 +1275,46 @@ INSERT INTO stg_premium (
   criado_em, processado_em
 )
 SELECT
-  md5('stg:premium:' || f.id)::uuid,
+  md5('stg:premium:' || p.id)::uuid,
   c.execucao_id,
   'TOPSDOJOB_PRODUCAO',
   'feature_ativacao',
-  f.id::text,
+  p.id::text,
   jsonb_build_object(
-    'codigo', f.codigo,
-    'status', f.status,
-    'inicio', f.ativado_em,
-    'fim', f.expira_em,
-    'anuncioPresente', f.anuncio_id IS NOT NULL
+    'codigoLegado', p.codigo_legado,
+    'codigoV3', p.codigo_v3,
+    'statusLegado', p.status_legado,
+    'inicio', p.inicio_em,
+    'fim', p.fim_em,
+    'origemV3', CASE WHEN p.pendencia_codigo IS NULL THEN 'CREDITO' END,
+    'creditosCobrados', p.creditos_cobrados,
+    'usuarioV3Id', p.usuario_v3_id,
+    'anuncioV3Id', p.anuncio_v3_id,
+    'beneficioId', p.beneficio_id,
+    'grupoId', CASE WHEN p.pendencia_codigo IS NULL THEN md5('legacy:grupo-premium:' || p.id)::uuid END,
+    'ativacaoId', CASE WHEN p.pendencia_codigo IS NULL THEN md5('legacy:ativacao-premium:' || p.id)::uuid END,
+    'grupoStatus', CASE
+      WHEN p.pendencia_codigo IS NOT NULL THEN NULL
+      WHEN p.fim_em <= p.snapshot_at THEN 'EXPIRADO'
+      WHEN p.inicio_em > p.snapshot_at THEN 'PLANEJADO'
+      ELSE 'ATIVO'
+    END,
+    'ativacaoStatus', CASE
+      WHEN p.pendencia_codigo IS NOT NULL THEN NULL
+      WHEN p.fim_em <= p.snapshot_at THEN 'EXPIRADA'
+      WHEN p.inicio_em > p.snapshot_at THEN 'AGENDADA'
+      ELSE 'ATIVA'
+    END,
+    'snapshotFingerprint', c.snapshot_fingerprint,
+    'versaoImportador', 'premium-historico-v1'
   ),
-  CASE WHEN p.id IS NOT NULL THEN 'PROCESSADO' ELSE 'PENDENTE_REVISAO' END,
-  CASE WHEN f.codigo = 'STORIES' THEN 'STORIES_FLUXO_PROPRIO'
-       WHEN p.id IS NULL THEN 'PREMIUM_SEM_MAPEAMENTO_SEGURO' END,
-  p.ativacao_id,
+  CASE WHEN p.pendencia_codigo IS NULL THEN 'PROCESSADO' ELSE 'PENDENTE_REVISAO' END,
+  p.pendencia_codigo,
+  CASE WHEN p.pendencia_codigo IS NULL THEN md5('legacy:ativacao-premium:' || p.id)::uuid END,
   c.snapshot_at,
-  CASE WHEN p.id IS NOT NULL THEN c.snapshot_at END
-FROM legacy.feature_ativacao f
-CROSS JOIN dryrun_context c
-LEFT JOIN dryrun_premium p ON p.id = f.id;
+  CASE WHEN p.pendencia_codigo IS NULL THEN c.snapshot_at END
+FROM dryrun_premium_classificado p
+CROSS JOIN dryrun_context c;
 
 -- Favoritos preservados sem duplicidade.
 INSERT INTO favorito_anuncio (id, usuario_id, anuncio_id, criado_em)
@@ -1359,7 +1408,14 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
         SELECT count(*) FROM importacao_pendencia
         WHERE codigo = 'CREDITO_SALDO_DIVERGENTE'
       ),
-      'premiumPromovido', (SELECT count(*) FROM ativacao_beneficio WHERE origem = 'IMPORTACAO'),
+      'premiumMapeavel', (SELECT count(*) FROM stg_premium WHERE status = 'PROCESSADO'),
+      'premiumVigente', (SELECT count(*) FROM dryrun_premium WHERE ativacao_status = 'ATIVA'),
+      'premiumExpirado', (SELECT count(*) FROM dryrun_premium WHERE ativacao_status = 'EXPIRADA'),
+      'premiumQuarentena', (SELECT count(*) FROM stg_premium WHERE status <> 'PROCESSADO'),
+      'premiumPromovido', (
+        SELECT count(*) FROM ativacao_beneficio
+        WHERE idempotency_key LIKE 'import:ativacao-premium:%'
+      ),
       'kycReferenciasOrigem', (SELECT coalesce(sum(ocorrencias), 0) FROM dryrun_kyc_referencia),
       'kycReferenciasUnicas', (SELECT count(*) FROM dryrun_kyc_referencia),
       'kycReferenciasHttpQuarentena', (

@@ -4,7 +4,6 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -15,6 +14,7 @@ import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
@@ -29,14 +29,12 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -190,6 +188,8 @@ class ListagemPublicaConsultaServiceTest {
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
         AnuncioPublicoConsultaService anuncioConsultaService = mock(AnuncioPublicoConsultaService.class);
         SeoPublicoConsultaService seoService = mock(SeoPublicoConsultaService.class);
+        PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
+        PremiumPublicoFlagsDto premiumVazio = PremiumPublicoFlagsDto.vazio();
 
         when(estadoRepository.findByUfIgnoreCase("SP")).thenReturn(Optional.of(estado));
         when(cidadeRepository.findByEstadoIdAndSlug(estadoId, "sao-paulo")).thenReturn(Optional.of(cidade));
@@ -198,10 +198,11 @@ class ListagemPublicaConsultaServiceTest {
         when(anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 eq(List.of(anuncioPublicadoId, anuncioRascunhoId)),
                 eq(StatusAnuncio.PUBLICADO),
-                eq(StatusModeracaoAnuncio.APROVADO),
-                any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(anuncioPublicado), PageRequest.of(0, 20), 1));
-        when(anuncioConsultaService.midias(anuncioPublicadoId)).thenReturn(List.of());
+                eq(StatusModeracaoAnuncio.APROVADO)))
+                .thenReturn(List.of(anuncioPublicado));
+        when(premiumMapper.flagsPorAnuncios(List.of(anuncioPublicado)))
+                .thenReturn(Map.of(anuncioPublicadoId, premiumVazio));
+        when(anuncioConsultaService.midias(anuncioPublicadoId, premiumVazio)).thenReturn(List.of());
         AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection primeiraPublicacao =
                 mock(AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection.class);
         OffsetDateTime anunciaDesde = OffsetDateTime.parse("2023-11-10T10:00:00Z");
@@ -227,7 +228,7 @@ class ListagemPublicaConsultaServiceTest {
                 new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 anuncioConsultaService,
                 seoService,
-                mock(PremiumPublicoMapper.class),
+                premiumMapper,
                 mock(PoliticaContatoPublicoService.class));
 
         ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20);
@@ -242,7 +243,6 @@ class ListagemPublicaConsultaServiceTest {
         verify(anuncioRepository).findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 eq(List.of(anuncioPublicadoId, anuncioRascunhoId)),
                 eq(StatusAnuncio.PUBLICADO),
-                eq(StatusModeracaoAnuncio.APROVADO),
-                any(Pageable.class));
+                eq(StatusModeracaoAnuncio.APROVADO));
     }
 }

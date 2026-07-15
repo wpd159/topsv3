@@ -768,6 +768,15 @@ Antes de admin em ambiente nao local:
 - Gate antes da importacao definitiva: decidir o tratamento das imagens sem parte, revisar referencias HTTP/HTTPS e comprovar qualquer estado historico que se pretenda preservar. Nenhuma duvida pode ser promovida como KYC aprovado.
 - Este dry-run nao autoriza cutover, deploy, escrita na producao, uso do banco HML operacional ou copia de dado privado fora do R2 documental isolado.
 
+## Dry-run do Premium historico
+
+- Fechado no snapshot `00000035-0000EB41-1`: 4.045 ativacoes auditadas, 126 importaveis com origem `CREDITO` comprovada, quatro vigentes e 122 expiradas.
+- Fechado por duas execucoes PostgreSQL 17/V001-V026 isoladas: primeira com 126 grupos/ativacoes, segunda com zero novos registros, zero FK invalida, zero duplicidade/sobreposicao e fingerprints identicos.
+- Fechado no ledger: nenhum debito, estorno ou ajuste foi criado; 173 movimentos e o saldo agregado de 102.544 permaneceram byte a byte consistentes pela hash do dry-run.
+- Fechado na expiracao: o backend falha fechado no instante exato de fim, e idade, fotos extras, topo, WhatsApp no card, carrossel e video deixam de produzir efeito integralmente. Stories nao foram alterados.
+- Permanecem em quarentena 3.684 ativacoes sem origem comprovada, 183 canceladas e 52 Stories do fluxo proprio. ADMIN, CORTESIA ou MIGRACAO historicos exigem evidencia individual antes de qualquer promocao.
+- Gate antes da importacao definitiva: revisao humana da quarentena, novo snapshot autorizado, repeticao idempotente, backup/rollback e Go/No-Go. Este dry-run nao autoriza HML operacional, cutover, deploy ou escrita na producao.
+
 ## Favoritos publicos autenticados
 
 - Fechado localmente pela V025: tabela minima com FKs, indices e unicidade usuario/anuncio, sem editar migration historica.

@@ -178,6 +178,7 @@ type RawCard = {
   midiaExtra?: boolean
   story?: boolean
   contatoDisponivel?: boolean
+  whatsappCard?: boolean
   comLocal?: boolean
   fazAnal?: boolean
   locaisAtendimento?: string[]
@@ -276,7 +277,7 @@ function mapCard(raw: RawCard): PublicCatalogCard {
     topoAtivo: Boolean(raw.topo),
     carrosselDisponivel: Boolean(raw.midiaExtra),
     videoHabilitado: midias.some((midia) => midia.tipo === 'VIDEO'),
-    whatsappCardEnabled: Boolean(raw.contatoDisponivel),
+    whatsappCardEnabled: Boolean(raw.whatsappCard) && Boolean(raw.contatoDisponivel),
     comLocal: Boolean(raw.comLocal),
     fazAnal: Boolean(raw.fazAnal),
     locaisAtendimento: Array.isArray(raw.locaisAtendimento) ? raw.locaisAtendimento : [],
@@ -301,11 +302,12 @@ function listQuery(pagina: number, tamanho: number) {
 }
 
 const cached = { next: { revalidate: 3600 } }
+const dynamic = { cache: 'no-store' as const }
 
 export async function listarPublicosPorEstado(uf: string, pagina = 0, tamanho = 20) {
   const raw = await requestJson<RawList>(
     `/acompanhantes/${encodeURIComponent(uf)}${listQuery(pagina, tamanho)}`,
-    cached
+    dynamic
   )
   return mapList(raw)
 }
@@ -313,7 +315,7 @@ export async function listarPublicosPorEstado(uf: string, pagina = 0, tamanho = 
 export async function listarPublicosPorCidade(uf: string, cidade: string, pagina = 0, tamanho = 20) {
   const raw = await requestJson<RawList>(
     `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}${listQuery(pagina, tamanho)}`,
-    cached
+    dynamic
   )
   return mapList(raw)
 }
@@ -360,7 +362,7 @@ export async function listarPublicosPorBairro(
 ) {
   const raw = await requestJson<RawList>(
     `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}/${encodeURIComponent(bairro)}${listQuery(pagina, tamanho)}`,
-    cached
+    dynamic
   )
   return mapList(raw)
 }
