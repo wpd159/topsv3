@@ -147,6 +147,9 @@ class HmlStoriesFixtureServiceTest {
                 ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
         verify(ativacaoBeneficioRepository, times(10)).save(ativacaoCaptor.capture());
         assertThat(ativacaoCaptor.getAllValues())
+                .extracting(AtivacaoBeneficioEntity::getIdempotencyKey)
+                .doesNotHaveDuplicates();
+        assertThat(ativacaoCaptor.getAllValues())
                 .filteredOn(item -> anuncioAId.equals(item.getAnuncioId())
                         && ocultarIdadeId.equals(item.getBeneficioId())
                         && item.getOrigem() == OrigemBeneficio.COMPRA

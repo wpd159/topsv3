@@ -806,7 +806,8 @@ public class HmlStoriesFixtureService {
             int custoCreditos,
             BigDecimal preco) {
         return new AtivacaoFixture(
-                uuid(id), beneficioId, grupo, status, custoCreditos, preco, grupo.chave() + "-ativacao");
+                uuid(id), beneficioId, grupo, status, custoCreditos, preco,
+                grupo.chave() + "-" + beneficioId + "-ativacao");
     }
 
     private record ChaveOrdem(
