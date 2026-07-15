@@ -104,6 +104,11 @@ public class HmlStoriesFixtureService {
     private static final UUID STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000401");
     private static final UUID BENEFICIO_OCULTAR_IDADE_ID = uuid("f3000000-0000-4000-8000-000000000001");
     private static final UUID BENEFICIO_FOTOS_EXTRA_5_ID = uuid("f3000000-0000-4000-8000-000000000002");
+    private static final UUID BENEFICIO_ANUNCIO_TOPO_ID = uuid("f3000000-0000-4000-8000-000000000003");
+    private static final UUID BENEFICIO_WHATSAPP_CARD_ID = uuid("f3000000-0000-4000-8000-000000000004");
+    private static final UUID BENEFICIO_CARROSSEL_FOTOS_ID = uuid("f3000000-0000-4000-8000-000000000005");
+    private static final UUID BENEFICIO_VIDEO_1_ID = uuid("f3000000-0000-4000-8000-000000000006");
+    private static final String WHATSAPP_FICTICIO = "5562000000000";
     private static final OffsetDateTime BENEFICIO_ATIVO_INICIO = OffsetDateTime.parse("2025-01-01T00:00:00Z");
     private static final OffsetDateTime BENEFICIO_ATIVO_FIM = OffsetDateTime.parse("2099-01-01T00:00:00Z");
     private static final OffsetDateTime BENEFICIO_EXPIRADO_INICIO = OffsetDateTime.parse("2024-01-01T00:00:00Z");
@@ -405,7 +410,12 @@ public class HmlStoriesFixtureService {
                 grupo("f3000000-0000-4000-8000-000000000106", ANUNCIO_A_ID,
                         TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.COMPRA,
                         BENEFICIO_ATIVO_INICIO, BENEFICIO_ATIVO_FIM, StatusGrupoAtivacaoBeneficio.ATIVO,
-                        "hml-fixture-fotos-extra-5-pago"));
+                        "hml-fixture-fotos-extra-5-pago"),
+                grupo("f3000000-0000-4000-8000-000000000107", ANUNCIO_A_ID,
+                        TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.COMPRA,
+                        BENEFICIO_EXPIRADO_INICIO, BENEFICIO_EXPIRADO_FIM,
+                        StatusGrupoAtivacaoBeneficio.EXPIRADO,
+                        "hml-fixture-premium-expirados"));
         for (GrupoFixture grupo : grupos) {
             GrupoAtivacaoBeneficioEntity existente = grupoBeneficioRepository.findById(grupo.id()).orElse(null);
             if (existente == null) {
@@ -432,7 +442,15 @@ public class HmlStoriesFixtureService {
                 ativacao("f3000000-0000-4000-8000-000000000205", BENEFICIO_OCULTAR_IDADE_ID, grupos.get(4),
                         StatusAtivacaoBeneficio.ATIVA, 0, BigDecimal.ZERO),
                 ativacao("f3000000-0000-4000-8000-000000000206", BENEFICIO_FOTOS_EXTRA_5_ID, grupos.get(5),
-                        StatusAtivacaoBeneficio.ATIVA, 0, new BigDecimal("59.90")));
+                        StatusAtivacaoBeneficio.ATIVA, 0, new BigDecimal("59.90")),
+                ativacao("f3000000-0000-4000-8000-000000000207", BENEFICIO_ANUNCIO_TOPO_ID, grupos.get(6),
+                        StatusAtivacaoBeneficio.EXPIRADA, 0, new BigDecimal("39.90")),
+                ativacao("f3000000-0000-4000-8000-000000000208", BENEFICIO_WHATSAPP_CARD_ID, grupos.get(6),
+                        StatusAtivacaoBeneficio.EXPIRADA, 0, new BigDecimal("29.90")),
+                ativacao("f3000000-0000-4000-8000-000000000209", BENEFICIO_CARROSSEL_FOTOS_ID, grupos.get(6),
+                        StatusAtivacaoBeneficio.EXPIRADA, 0, new BigDecimal("34.90")),
+                ativacao("f3000000-0000-4000-8000-000000000210", BENEFICIO_VIDEO_1_ID, grupos.get(6),
+                        StatusAtivacaoBeneficio.EXPIRADA, 0, new BigDecimal("44.90")));
         for (AtivacaoFixture ativacao : ativacoes) {
             AtivacaoBeneficioEntity existente = ativacaoBeneficioRepository.findById(ativacao.id()).orElse(null);
             if (existente == null) {
@@ -466,6 +484,30 @@ public class HmlStoriesFixtureService {
                 "FOTOS_EXTRA_5",
                 "Fotos extras",
                 "Amplia o limite total do anuncio para ate dez fotos enquanto estiver vigente.",
+                agora);
+        criados += sincronizarCatalogoBeneficio(
+                BENEFICIO_ANUNCIO_TOPO_ID,
+                "ANUNCIO_TOPO",
+                "Anuncio no topo",
+                "Prioriza o anuncio nas listagens durante a vigencia.",
+                agora);
+        criados += sincronizarCatalogoBeneficio(
+                BENEFICIO_WHATSAPP_CARD_ID,
+                "WHATSAPP_CARD",
+                "WhatsApp no card",
+                "Destaca o contato no card publico do anuncio.",
+                agora);
+        criados += sincronizarCatalogoBeneficio(
+                BENEFICIO_CARROSSEL_FOTOS_ID,
+                "CARROSSEL_FOTOS",
+                "Carrossel de fotos",
+                "Habilita a navegacao em carrossel nas fotos publicas.",
+                agora);
+        criados += sincronizarCatalogoBeneficio(
+                BENEFICIO_VIDEO_1_ID,
+                "VIDEO_1",
+                "Video no anuncio",
+                "Habilita um video aprovado no anuncio.",
                 agora);
         return criados;
     }
@@ -521,14 +563,38 @@ public class HmlStoriesFixtureService {
                     StatusModeracaoAnuncio.APROVADO,
                     agora);
             sincronizarAtendimento(anuncio, id);
+            sincronizarContatoFicticio(anuncio, id, titulo, descricao, status, agora);
             anuncioRepository.save(anuncio);
             return 1;
         }
         anuncio.sincronizarFixtureHomologacao(
                 titulo, descricao, status, StatusModeracaoAnuncio.APROVADO, agora);
         sincronizarAtendimento(anuncio, id);
+        sincronizarContatoFicticio(anuncio, id, titulo, descricao, status, agora);
         anuncioRepository.save(anuncio);
         return 0;
+    }
+
+    private void sincronizarContatoFicticio(
+            AnuncioEntity anuncio,
+            UUID id,
+            String titulo,
+            String descricao,
+            StatusAnuncio status,
+            OffsetDateTime agora) {
+        if (!ANUNCIO_A_ID.equals(id)) {
+            return;
+        }
+        anuncio.atualizarPeloProprietario(
+                titulo,
+                descricao,
+                "ACOMPANHANTE",
+                null,
+                WHATSAPP_FICTICIO,
+                anuncio.getLocaisAtendimento(),
+                anuncio.getServicos(),
+                agora);
+        anuncio.aplicarModeracao(status, StatusModeracaoAnuncio.APROVADO, agora);
     }
 
     private void sincronizarAtendimento(AnuncioEntity anuncio, UUID id) {

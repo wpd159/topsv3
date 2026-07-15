@@ -53,6 +53,7 @@ import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -114,7 +115,7 @@ class HmlStoriesFixtureServiceTest {
         assertThat(result.anunciosCriados()).isEqualTo(3);
         assertThat(result.arquivosCriados()).isEqualTo(12);
         assertThat(result.vinculosCriados()).isEqualTo(13);
-        assertThat(result.beneficiosCriados()).isEqualTo(14);
+        assertThat(result.beneficiosCriados()).isEqualTo(23);
         assertThat(result.storyCriado()).isTrue();
         verify(anuncioRepository, times(3)).save(any(AnuncioEntity.class));
         verify(estadoRepository).save(any());
@@ -125,9 +126,9 @@ class HmlStoriesFixtureServiceTest {
         verify(arquivoRepository, times(12)).save(any(ArquivoMidiaEntity.class));
         verify(anuncioMidiaRepository, times(13)).save(any(AnuncioMidiaEntity.class));
         verify(storyRepository).save(any(StoryAnuncioEntity.class));
-        verify(beneficioRepository, times(2)).save(any(BeneficioPremiumEntity.class));
-        verify(grupoBeneficioRepository, times(6)).save(any(GrupoAtivacaoBeneficioEntity.class));
-        verify(ativacaoBeneficioRepository, times(6)).save(any(AtivacaoBeneficioEntity.class));
+        verify(beneficioRepository, times(6)).save(any(BeneficioPremiumEntity.class));
+        verify(grupoBeneficioRepository, times(7)).save(any(GrupoAtivacaoBeneficioEntity.class));
+        verify(ativacaoBeneficioRepository, times(10)).save(any(AtivacaoBeneficioEntity.class));
 
         ArgumentCaptor<String> segredoDescartavel = ArgumentCaptor.forClass(String.class);
         verify(passwordEncoder).encode(segredoDescartavel.capture());
@@ -137,9 +138,14 @@ class HmlStoriesFixtureServiceTest {
         UUID anuncioBId = UUID.fromString("f1000000-0000-4000-8000-000000000102");
         UUID ocultarIdadeId = UUID.fromString("f3000000-0000-4000-8000-000000000001");
         UUID fotosExtraId = UUID.fromString("f3000000-0000-4000-8000-000000000002");
+        Set<UUID> beneficiosExpirados = Set.of(
+                UUID.fromString("f3000000-0000-4000-8000-000000000003"),
+                UUID.fromString("f3000000-0000-4000-8000-000000000004"),
+                UUID.fromString("f3000000-0000-4000-8000-000000000005"),
+                UUID.fromString("f3000000-0000-4000-8000-000000000006"));
         ArgumentCaptor<AtivacaoBeneficioEntity> ativacaoCaptor =
                 ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
-        verify(ativacaoBeneficioRepository, times(6)).save(ativacaoCaptor.capture());
+        verify(ativacaoBeneficioRepository, times(10)).save(ativacaoCaptor.capture());
         assertThat(ativacaoCaptor.getAllValues())
                 .filteredOn(item -> anuncioAId.equals(item.getAnuncioId())
                         && ocultarIdadeId.equals(item.getBeneficioId())
@@ -165,13 +171,33 @@ class HmlStoriesFixtureServiceTest {
                     assertThat(item.getOrigem()).isEqualTo(OrigemBeneficio.COMPRA);
                     assertThat(item.getPrecoSnapshot()).isEqualByComparingTo(BigDecimal.ZERO);
                 });
+        assertThat(ativacaoCaptor.getAllValues())
+                .filteredOn(item -> anuncioAId.equals(item.getAnuncioId())
+                        && beneficiosExpirados.contains(item.getBeneficioId()))
+                .hasSize(4)
+                .allSatisfy(item -> {
+                    assertThat(item.getStatus()).isEqualTo(StatusAtivacaoBeneficio.EXPIRADA);
+                    assertThat(item.getOrigem()).isEqualTo(OrigemBeneficio.COMPRA);
+                    assertThat(item.getFimEm()).isBefore(OffsetDateTime.now(ZoneOffset.UTC));
+                    assertThat(item.getPrecoSnapshot()).isGreaterThan(BigDecimal.ZERO);
+                });
+        assertThat(ativacaoCaptor.getAllValues())
+                .filteredOn(item -> anuncioAId.equals(item.getAnuncioId()))
+                .anySatisfy(item -> assertThat(item.getStatus()).isEqualTo(StatusAtivacaoBeneficio.ATIVA))
+                .anySatisfy(item -> assertThat(item.getStatus()).isEqualTo(StatusAtivacaoBeneficio.EXPIRADA));
 
         ArgumentCaptor<BeneficioPremiumEntity> beneficioCaptor =
                 ArgumentCaptor.forClass(BeneficioPremiumEntity.class);
-        verify(beneficioRepository, times(2)).save(beneficioCaptor.capture());
+        verify(beneficioRepository, times(6)).save(beneficioCaptor.capture());
         assertThat(beneficioCaptor.getAllValues())
                 .extracting(BeneficioPremiumEntity::getCodigo)
-                .containsExactlyInAnyOrder("OCULTAR_IDADE", "FOTOS_EXTRA_5");
+                .containsExactlyInAnyOrder(
+                        "OCULTAR_IDADE",
+                        "FOTOS_EXTRA_5",
+                        "ANUNCIO_TOPO",
+                        "WHATSAPP_CARD",
+                        "CARROSSEL_FOTOS",
+                        "VIDEO_1");
 
         ArgumentCaptor<AnuncioEntity> anuncioCaptor = ArgumentCaptor.forClass(AnuncioEntity.class);
         verify(anuncioRepository, times(3)).save(anuncioCaptor.capture());
@@ -187,6 +213,7 @@ class HmlStoriesFixtureServiceTest {
                 .satisfies(item -> {
                     assertThat(item.getLocaisAtendimento()).contains(LocalAtendimentoAnuncio.MEU_LOCAL);
                     assertThat(item.getServicos()).contains(ServicoAnuncio.ANAL);
+                    assertThat(item.getWhatsappNormalizado()).isEqualTo("5562000000000");
                 });
         assertThat(anuncioCaptor.getAllValues())
                 .filteredOn(item -> "fixture-stories-hml-b".equals(item.getSlug()))
