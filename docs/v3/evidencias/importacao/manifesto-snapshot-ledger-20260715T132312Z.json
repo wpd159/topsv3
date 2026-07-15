@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "manifestoGeradoEmUtc": "2026-07-15T13:45:00Z",
+  "snapshot": {
+    "capturadoEmUtc": "2026-07-15T13:23:12.555154Z",
+    "identificador": "00000058-0000C0D1-1",
+    "transacao": "1279175:1279175:",
+    "fingerprintSha256": "319c38b6a24d048a35c656c918c465e732274222c8e42965113588961094170b",
+    "postgresql": "17",
+    "modo": "REPEATABLE_READ_READ_ONLY"
+  },
+  "consistenciaDaCopia": {
+    "tabelasOperacionaisRequeridasRestauradas": true,
+    "tabelasStagingNaoCanonicasExcluidas": 1,
+    "constraintsDaOrigemNaoRecriadasPorOrfandadeConhecida": 4,
+    "aptaParaDryRunDoLedger": true
+  },
+  "origem": {
+    "usuarios": 1449,
+    "anuncios": 630,
+    "midiasProtegidas": 4193,
+    "fotos": 4318,
+    "videos": 4,
+    "stories": 22,
+    "documentos": 1914,
+    "favoritos": 33,
+    "premium": 4040,
+    "pagamentos": 64
+  },
+  "saldoOperacional": {
+    "linhas": 273,
+    "usuariosValidos": 272,
+    "usuariosPositivosElegiveis": 173,
+    "usuariosComSaldoZero": 99,
+    "usuariosComSaldoIncompativel": 0,
+    "linhasOrfas": 1,
+    "valorAceito": 102544,
+    "valorOrfaoExcluido": 2100
+  },
+  "historicoLegado": {
+    "linhas": 307,
+    "linhasSemDataConfiavel": 307,
+    "valorAgregado": -10784,
+    "linhasOrfas": 3,
+    "valorAgregadoOrfao": 2100,
+    "destino": "STAGING_QUARENTENA"
+  },
+  "divergenciasHistoricas": {
+    "usuarios": 164,
+    "somaSaldosAtuais": 101033,
+    "somaHistoricos": -14395,
+    "diferencaTotal": 115428,
+    "distribuicaoAbsoluta": {
+      "de1A100": 1,
+      "acimaDe100": 163
+    }
+  },
+  "referenciasOrfasConhecidas": {
+    "saldoOperacionalLinhas": 1,
+    "saldoOperacionalValor": 2100,
+    "historicoLinhas": 3,
+    "historicoValor": 2100,
+    "pagamentosLinhas": 16,
+    "pagamentosCreditosDeclarados": 8700,
+    "destino": "STAGING_QUARENTENA"
+  },
+  "dryRunLedger": {
+    "destinosPostgresql17": 2,
+    "movimentosCriadosPrimeiraExecucao": 173,
+    "movimentosCriadosSegundaExecucao": 0,
+    "usuariosComSaldoInicial": 173,
+    "saldoInicialTotal": 102544,
+    "historicosPromovidos": 0,
+    "fkInvalidas": 0,
+    "movimentosDuplicados": 0,
+    "hashLedger": "5f4681f63e38bb45cc1875abee024e26",
+    "fingerprintDryRun": "46ea96fd85db43f5dc83e56faffbb1d7",
+    "fingerprintDivergenteReutilizandoSnapshotId": "BLOQUEADO"
+  },
+  "sanitizacao": {
+    "dadosPessoaisIncluidos": false,
+    "slugsIncluidos": false,
+    "urlsIncluidas": false,
+    "objectKeysIncluidas": false,
+    "secretsIncluidos": false
+  }
+}

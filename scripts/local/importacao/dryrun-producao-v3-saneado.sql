@@ -799,73 +799,36 @@ FROM (
   FROM legacy.usuario_documentos x
 ) d CROSS JOIN dryrun_context c;
 
--- Creditos: somente sequencias cujo saldo acumulado nunca fica negativo sao
--- promovidas. O saldo mutavel legado nunca e autoridade nem gera ajuste.
-CREATE TEMP TABLE dryrun_credito_movimento AS
-WITH ordered AS (
+-- Creditos: o saldo operacional do snapshot e a unica fonte do saldo inicial.
+-- Historicos sem cronologia confiavel permanecem integralmente no staging.
+CREATE TEMP TABLE dryrun_credito_saldo AS
+WITH historico AS (
   SELECT
-    h.*,
-    sum(h.quantidade) OVER (
-      PARTITION BY h.usuario_id ORDER BY h.criado_em NULLS LAST, h.id
-    ) AS saldo_depois,
-    bool_and(h.criado_em IS NOT NULL) OVER (
-      PARTITION BY h.usuario_id
-    ) AS datas_confiaveis
-  FROM legacy.historico_creditos h
-  JOIN legacy.usuarios u ON u.id = h.usuario_id
-), classified AS (
+    usuario_id,
+    count(*) AS historico_quantidade,
+    coalesce(sum(quantidade), 0) AS historico_total,
+    count(*) FILTER (WHERE criado_em IS NULL) AS historico_sem_data
+  FROM legacy.historico_creditos
+  GROUP BY usuario_id
+), saldos AS (
   SELECT
-    o.*,
-    o.datas_confiaveis
-      AND min(o.saldo_depois) OVER (PARTITION BY o.usuario_id) >= 0 AS sequencia_valida
-  FROM ordered o
+    s.*,
+    count(*) OVER (PARTITION BY s.usuario_id) AS saldos_usuario
+  FROM legacy.creditos_usuario s
 )
 SELECT
-  c.*,
-  c.saldo_depois - c.quantidade AS saldo_antes
-FROM classified c;
-
-INSERT INTO movimento_credito (
-  id, usuario_id, tipo, direcao, quantidade, saldo_antes, saldo_depois,
-  origem, referencia_tipo, referencia_id, idempotency_key,
-  ator_usuario_id, observacao, criado_em, request_id
-)
-SELECT
-  md5('legacy:movimento-credito:' || m.id)::uuid,
-  md5('legacy:usuario:' || m.usuario_id)::uuid,
-  CASE WHEN m.quantidade > 0 THEN 'ENTRADA' ELSE 'SAIDA' END,
-  CASE WHEN m.quantidade > 0 THEN 'CREDITO' ELSE 'DEBITO' END,
-  abs(m.quantidade),
-  m.saldo_antes,
-  m.saldo_depois,
-  'IMPORTACAO',
-  'HISTORICO_CREDITOS_LEGADO',
-  md5('legacy:credito-ref:' || m.id)::uuid,
-  'import:historico-creditos:' || m.id,
-  NULL,
-  'Movimento legado validado por sequencia nao negativa.',
-  m.criado_em AT TIME ZONE 'America/Sao_Paulo',
-  NULL
-FROM dryrun_credito_movimento m
-WHERE m.sequencia_valida;
-
-INSERT INTO saldo_credito_usuario (usuario_id, saldo_atual, atualizado_em, versao)
-SELECT
-  md5('legacy:usuario:' || m.usuario_id)::uuid,
-  max(m.saldo_depois) FILTER (
-    WHERE (m.criado_em, m.id) = (
-      SELECT m2.criado_em, m2.id
-      FROM dryrun_credito_movimento m2
-      WHERE m2.usuario_id = m.usuario_id
-      ORDER BY m2.criado_em DESC, m2.id DESC
-      LIMIT 1
-    )
-  )::integer,
-  max(m.criado_em) AT TIME ZONE 'America/Sao_Paulo',
-  0
-FROM dryrun_credito_movimento m
-WHERE m.sequencia_valida
-GROUP BY m.usuario_id;
+  s.id AS saldo_origem_id,
+  s.usuario_id,
+  s.saldo,
+  s.saldos_usuario,
+  u.id IS NOT NULL AS usuario_existe,
+  coalesce(h.historico_quantidade, 0) AS historico_quantidade,
+  coalesce(h.historico_total, 0) AS historico_total,
+  coalesce(h.historico_sem_data, 0) AS historico_sem_data,
+  s.saldo <> coalesce(h.historico_total, 0) AS divergencia_historica
+FROM saldos s
+LEFT JOIN legacy.usuarios u ON u.id = s.usuario_id
+LEFT JOIN historico h ON h.usuario_id = s.usuario_id;
 
 INSERT INTO stg_credito (
   id, execucao_id, sistema_origem, tabela_origem, id_origem,
@@ -878,45 +841,69 @@ SELECT
   'TOPSDOJOB_PRODUCAO',
   'historico_creditos',
   h.id::text,
-  jsonb_build_object('quantidade', h.quantidade, 'tipo', h.tipo),
-  CASE
-    WHEN u.id IS NULL THEN 'REJEITADO'
-    WHEN m.sequencia_valida THEN 'PROCESSADO'
-    ELSE 'PENDENTE_REVISAO'
-  END,
+  jsonb_build_object(
+    'quantidade', h.quantidade,
+    'tipo', h.tipo,
+    'dataConfiavel', h.criado_em IS NOT NULL,
+    'versaoImportador', 'ledger-saldo-inicial-v1'
+  ),
+  CASE WHEN u.id IS NULL THEN 'REJEITADO' ELSE 'PENDENTE_REVISAO' END,
   CASE
     WHEN u.id IS NULL THEN 'USUARIO_ORFAO_QUARENTENA'
     WHEN h.criado_em IS NULL THEN 'MOVIMENTO_SEM_DATA_CONFIAVEL'
-    WHEN NOT m.sequencia_valida THEN 'LEDGER_SEQUENCIA_NEGATIVA'
+    ELSE 'HISTORICO_LEGADO_FORA_LEDGER'
   END,
-  CASE WHEN m.sequencia_valida THEN md5('legacy:movimento-credito:' || h.id)::uuid END,
+  NULL,
   c.snapshot_at,
-  CASE WHEN m.sequencia_valida THEN c.snapshot_at END
+  NULL
 FROM legacy.historico_creditos h
 CROSS JOIN dryrun_context c
-LEFT JOIN legacy.usuarios u ON u.id = h.usuario_id
-LEFT JOIN dryrun_credito_movimento m ON m.id = h.id;
+LEFT JOIN legacy.usuarios u ON u.id = h.usuario_id;
 
 INSERT INTO stg_credito (
   id, execucao_id, sistema_origem, tabela_origem, id_origem,
   payload_normalizado_json, status, pendencia_codigo,
-  criado_em, processado_em
+  entidade_v3_id, criado_em, processado_em
 )
 SELECT
-  md5('stg:saldo-credito:' || s.id)::uuid,
+  md5('stg:saldo-credito:' || s.saldo_origem_id)::uuid,
   c.execucao_id,
   'TOPSDOJOB_PRODUCAO',
   'creditos_usuario',
-  s.id::text,
-  jsonb_build_object('saldoLegado', s.saldo, 'usuarioExiste', u.id IS NOT NULL),
-  'PENDENTE_REVISAO',
-  CASE WHEN u.id IS NULL THEN 'USUARIO_ORFAO_QUARENTENA'
-       ELSE 'SALDO_MUTAVEL_NAO_AUTORITATIVO' END,
+  s.saldo_origem_id::text,
+  jsonb_build_object(
+    'saldoOperacional', s.saldo,
+    'usuarioExiste', s.usuario_existe,
+    'usuarioLegadoHash', md5('legacy:usuario:' || s.usuario_id),
+    'historicoQuantidade', s.historico_quantidade,
+    'historicoTotal', s.historico_total,
+    'historicoSemData', s.historico_sem_data,
+    'divergenciaHistorica', s.divergencia_historica,
+    'versaoImportador', 'ledger-saldo-inicial-v1'
+  ),
+  CASE
+    WHEN NOT s.usuario_existe THEN 'REJEITADO'
+    WHEN s.saldos_usuario <> 1 THEN 'PENDENTE_REVISAO'
+    WHEN s.saldo < 0 OR s.saldo > 1000000 THEN 'PENDENTE_REVISAO'
+    ELSE 'PROCESSADO'
+  END,
+  CASE
+    WHEN NOT s.usuario_existe THEN 'USUARIO_ORFAO_QUARENTENA'
+    WHEN s.saldos_usuario <> 1 THEN 'SALDO_OPERACIONAL_DUPLICADO'
+    WHEN s.saldo < 0 OR s.saldo > 1000000 THEN 'SALDO_OPERACIONAL_INCOMPATIVEL'
+    WHEN s.saldo = 0 THEN 'SALDO_ZERO_SEM_MOVIMENTO'
+  END,
+  CASE
+    WHEN s.usuario_existe AND s.saldos_usuario = 1 AND s.saldo BETWEEN 0 AND 1000000
+    THEN md5('legacy:usuario:' || s.usuario_id)::uuid
+  END,
   c.snapshot_at,
-  NULL
-FROM legacy.creditos_usuario s
-CROSS JOIN dryrun_context c
-LEFT JOIN legacy.usuarios u ON u.id = s.usuario_id;
+  CASE
+    WHEN s.usuario_existe AND s.saldos_usuario = 1 AND s.saldo BETWEEN 0 AND 1000000
+    THEN c.snapshot_at
+  END
+FROM dryrun_credito_saldo s
+CROSS JOIN dryrun_context c;
 
 INSERT INTO importacao_pendencia (
   id, execucao_id, codigo, severidade, status, entidade_tipo,
@@ -942,6 +929,8 @@ JOIN legacy.usuarios u ON u.id = s.usuario_id
 LEFT JOIN historico h ON h.usuario_id = s.usuario_id
 CROSS JOIN dryrun_context c
 WHERE s.saldo <> coalesce(h.saldo_historico, 0);
+
+\ir reconciliar-ledger-saldo-inicial.sql
 
 -- Pagamentos ficam integralmente em staging historico e nao geram credito.
 INSERT INTO stg_pagamento (
@@ -1147,7 +1136,26 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
       'midiasR2Bloqueadas', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'BLOQUEADA'),
       'midiasR2Quarentena', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'QUARENTENA'),
       'seoIndexavelPorEvidencia', (SELECT count(*) FROM dryrun_seo_anuncio WHERE indexavel_por_evidencia),
-      'movimentosLedgerPromovidos', (SELECT count(*) FROM movimento_credito),
+      'saldosOperacionaisValidos', (
+        SELECT count(*) FROM stg_credito
+        WHERE tabela_origem = 'creditos_usuario' AND status = 'PROCESSADO'
+      ),
+      'saldosIniciaisPromovidos', (
+        SELECT count(*) FROM movimento_credito
+        WHERE tipo = 'MIGRACAO_SALDO_INICIAL'
+      ),
+      'saldoInicialTotal', (
+        SELECT coalesce(sum(quantidade), 0) FROM movimento_credito
+        WHERE tipo = 'MIGRACAO_SALDO_INICIAL'
+      ),
+      'historicosCreditoQuarentena', (
+        SELECT count(*) FROM stg_credito
+        WHERE tabela_origem = 'historico_creditos' AND status <> 'PROCESSADO'
+      ),
+      'usuariosSaldoDivergente', (
+        SELECT count(*) FROM importacao_pendencia
+        WHERE codigo = 'CREDITO_SALDO_DIVERGENTE'
+      ),
       'premiumPromovido', (SELECT count(*) FROM ativacao_beneficio WHERE origem = 'IMPORTACAO'),
       'kycPromovido', 0,
       'pagamentosPromovidos', 0

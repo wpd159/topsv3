@@ -80,17 +80,47 @@ SELECT 'KYC_HTTP_QUARENTENA|' || count(*)
 FROM importacao_pendencia WHERE codigo = 'KYC_REFERENCIA_HTTP_QUARENTENA';
 SELECT 'KYC_PRIVADO_NAO_VERIFICADO|' || count(*)
 FROM importacao_pendencia WHERE codigo = 'KYC_REFERENCIA_PRIVADA_NAO_VERIFICADA';
-SELECT 'MOVIMENTOS_LEDGER|' || count(*) FROM movimento_credito WHERE origem = 'IMPORTACAO';
-SELECT 'USUARIOS_LEDGER|' || count(*) FROM saldo_credito_usuario;
-SELECT 'SALDO_LEDGER|' || coalesce(sum(saldo_atual), 0) FROM saldo_credito_usuario;
-SELECT 'MOVIMENTOS_LEDGER_QUARENTENA|' || count(*)
-FROM stg_credito WHERE pendencia_codigo = 'LEDGER_SEQUENCIA_NEGATIVA';
+SELECT 'MOVIMENTOS_SALDO_INICIAL|' || count(*)
+FROM movimento_credito WHERE tipo = 'MIGRACAO_SALDO_INICIAL';
+SELECT 'USUARIOS_SALDO_INICIAL|' || count(DISTINCT usuario_id)
+FROM movimento_credito WHERE tipo = 'MIGRACAO_SALDO_INICIAL';
+SELECT 'SALDO_INICIAL_LEDGER|' || coalesce(sum(quantidade), 0)
+FROM movimento_credito WHERE tipo = 'MIGRACAO_SALDO_INICIAL';
+SELECT 'SALDOS_OPERACIONAIS_VALIDOS|' || count(*)
+FROM stg_credito
+WHERE tabela_origem = 'creditos_usuario' AND status = 'PROCESSADO';
+SELECT 'SALDOS_POSITIVOS_ELEGIVEIS|' || count(*)
+FROM stg_credito
+WHERE tabela_origem = 'creditos_usuario'
+  AND status = 'PROCESSADO'
+  AND (payload_normalizado_json ->> 'saldoOperacional')::integer > 0;
+SELECT 'SALDOS_ZERO_SEM_MOVIMENTO|' || count(*)
+FROM stg_credito WHERE pendencia_codigo = 'SALDO_ZERO_SEM_MOVIMENTO';
 SELECT 'MOVIMENTOS_SEM_DATA_CONFIAVEL|' || count(*)
 FROM stg_credito WHERE pendencia_codigo = 'MOVIMENTO_SEM_DATA_CONFIAVEL';
-SELECT 'SALDOS_MUTAVEIS_QUARENTENA|' || count(*)
-FROM stg_credito WHERE pendencia_codigo = 'SALDO_MUTAVEL_NAO_AUTORITATIVO';
+SELECT 'HISTORICOS_SEM_DATA_TOTAL|' || count(*)
+FROM stg_credito
+WHERE tabela_origem = 'historico_creditos'
+  AND NOT (payload_normalizado_json ->> 'dataConfiavel')::boolean;
+SELECT 'HISTORICOS_FORA_LEDGER|' || count(*)
+FROM stg_credito
+WHERE tabela_origem = 'historico_creditos' AND status <> 'PROCESSADO';
 SELECT 'SALDOS_DIVERGENTES|' || count(*)
 FROM importacao_pendencia WHERE codigo = 'CREDITO_SALDO_DIVERGENTE';
+SELECT 'SALDO_ATUAL_DIVERGENTE|' || coalesce(sum(
+  (payload_normalizado_json ->> 'saldoOperacional')::bigint
+), 0)
+FROM stg_credito
+WHERE tabela_origem = 'creditos_usuario'
+  AND (payload_normalizado_json ->> 'divergenciaHistorica')::boolean;
+SELECT 'HISTORICO_DIVERGENTE|' || coalesce(sum(
+  (payload_normalizado_json ->> 'historicoTotal')::bigint
+), 0)
+FROM stg_credito
+WHERE tabela_origem = 'creditos_usuario'
+  AND (payload_normalizado_json ->> 'divergenciaHistorica')::boolean;
+SELECT 'REFERENCIAS_CREDITO_ORFAS|' || count(*)
+FROM stg_credito WHERE pendencia_codigo = 'USUARIO_ORFAO_QUARENTENA';
 SELECT 'PAGAMENTOS_STAGING|' || count(*) FROM stg_pagamento;
 SELECT 'PAGAMENTOS_CANONICOS|' || count(*) FROM pagamento;
 SELECT 'PREMIUM_IMPORTADO|' || count(*) FROM ativacao_beneficio WHERE origem = 'IMPORTACAO';
@@ -106,6 +136,55 @@ SELECT 'SNAPSHOT_ID|' || (resumo_json ->> 'snapshotId')
 FROM importacao_execucao;
 SELECT 'SNAPSHOT_FINGERPRINT|' || (resumo_json ->> 'snapshotFingerprint')
 FROM importacao_execucao;
+
+DO $$
+DECLARE
+  movimentos bigint;
+  usuarios bigint;
+  saldo_movimentos bigint;
+  saldo_staging bigint;
+BEGIN
+  SELECT count(*), count(DISTINCT usuario_id), coalesce(sum(quantidade), 0)
+  INTO movimentos, usuarios, saldo_movimentos
+  FROM movimento_credito
+  WHERE tipo = 'MIGRACAO_SALDO_INICIAL';
+
+  SELECT coalesce(sum((payload_normalizado_json ->> 'saldoOperacional')::bigint), 0)
+  INTO saldo_staging
+  FROM stg_credito
+  WHERE tabela_origem = 'creditos_usuario'
+    AND status = 'PROCESSADO'
+    AND (payload_normalizado_json ->> 'saldoOperacional')::integer > 0;
+
+  IF movimentos <> usuarios THEN
+    RAISE EXCEPTION 'mais de um saldo inicial por usuario';
+  END IF;
+
+  IF saldo_movimentos <> saldo_staging THEN
+    RAISE EXCEPTION 'saldo inicial nao fecha com staging operacional aceito';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM movimento_credito
+    WHERE tipo = 'MIGRACAO_SALDO_INICIAL'
+      AND (
+        origem <> 'IMPORTACAO'
+        OR direcao <> 'CREDITO'
+        OR saldo_antes <> 0
+        OR metadata_json ->> 'versaoImportador' <> 'ledger-saldo-inicial-v1'
+      )
+  ) THEN
+    RAISE EXCEPTION 'movimento inicial fora do contrato canonico';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM stg_credito s
+    JOIN movimento_credito m ON m.referencia_tipo = 'HISTORICO_CREDITOS_LEGADO'
+    WHERE s.tabela_origem = 'historico_creditos'
+  ) THEN
+    RAISE EXCEPTION 'historico legado foi promovido indevidamente';
+  END IF;
+END $$;
 
 WITH hashes AS (
   SELECT 'usuario' dominio,

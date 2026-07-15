@@ -20,6 +20,7 @@ const ROTULOS: Record<string, string> = {
   CREDITO: 'Credito',
   DEBITO: 'Debito',
   ESTORNO: 'Estorno',
+  MIGRACAO_SALDO_INICIAL: 'Saldo inicial migrado',
   ATIVA: 'Ativa',
   CANCELADA: 'Cancelada',
   EXPIRADA: 'Expirada',

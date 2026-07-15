@@ -65,6 +65,9 @@ public class CreditoLedgerConsultaService {
     }
 
     private String natureza(MovimentoCreditoEntity movimento) {
+        if (movimento.getTipo() == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito.MIGRACAO_SALDO_INICIAL) {
+            return "MIGRACAO_SALDO_INICIAL";
+        }
         if (movimento.getTipo() == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito.ESTORNO) {
             return "ESTORNO";
         }

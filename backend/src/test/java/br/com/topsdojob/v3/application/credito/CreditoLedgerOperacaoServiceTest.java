@@ -41,6 +41,27 @@ class CreditoLedgerOperacaoServiceTest {
     }
 
     @Test
+    void saldoMigradoAceitaDebitoEEstornoPosteriores() {
+        UUID usuarioId = UUID.randomUUID();
+        MovimentoCreditoEntity inicial = movimento(
+                usuarioId,
+                TipoMovimentoCredito.MIGRACAO_SALDO_INICIAL,
+                DirecaoMovimentoCredito.CREDITO,
+                30,
+                0,
+                30,
+                "saldo-inicial");
+        MovimentoCreditoEntity compra = movimento(
+                usuarioId, TipoMovimentoCredito.SAIDA, DirecaoMovimentoCredito.DEBITO,
+                8, 30, 22, "compra-premium");
+        MovimentoCreditoEntity estorno = movimento(
+                usuarioId, TipoMovimentoCredito.ESTORNO, DirecaoMovimentoCredito.CREDITO,
+                8, 22, 30, "estorno-premium");
+
+        assertThat(service.calcularSaldo(List.of(inicial, compra, estorno))).isEqualTo(30);
+    }
+
+    @Test
     void impedeSaldoNegativoSemPersistirLancamento() {
         UUID usuarioId = UUID.randomUUID();
         when(movimentoRepository.findByIdempotencyKey("operacao-1")).thenReturn(Optional.empty());
@@ -96,10 +117,30 @@ class CreditoLedgerOperacaoServiceTest {
             int saldoAntes,
             int saldoDepois,
             String chave) {
+        return movimento(
+                usuarioId,
+                direcao == DirecaoMovimentoCredito.CREDITO
+                        ? TipoMovimentoCredito.ENTRADA
+                        : TipoMovimentoCredito.SAIDA,
+                direcao,
+                quantidade,
+                saldoAntes,
+                saldoDepois,
+                chave);
+    }
+
+    private MovimentoCreditoEntity movimento(
+            UUID usuarioId,
+            TipoMovimentoCredito tipo,
+            DirecaoMovimentoCredito direcao,
+            int quantidade,
+            int saldoAntes,
+            int saldoDepois,
+            String chave) {
         return MovimentoCreditoEntity.registrar(
                 UUID.randomUUID(),
                 usuarioId,
-                direcao == DirecaoMovimentoCredito.CREDITO ? TipoMovimentoCredito.ENTRADA : TipoMovimentoCredito.SAIDA,
+                tipo,
                 direcao,
                 quantidade,
                 saldoAntes,

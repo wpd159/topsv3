@@ -750,6 +750,15 @@ Antes de admin em ambiente nao local:
 - Pendente operacional separado: configurar uma base publica HML aprovada para o bucket de midias publicas; nenhuma URL deve ser inventada enquanto o gate estiver aberto.
 - O dry-run nao autoriza deploy, importacao no HML operacional, cutover ou escrita na producao.
 
+## Dry-run do saldo inicial e ledger
+
+- Fechado no snapshot `00000058-0000C0D1-1`: 272 saldos de usuarios validos, sendo 173 positivos (102.544 creditos) e 99 zeros. Uma linha orfa, no valor de 2.100, permaneceu excluida.
+- Fechado pela V026: tipo canonico de saldo inicial, metadata sanitizada, restricao de um movimento por usuario e bloqueio de fingerprint divergente para o mesmo snapshot ID.
+- Fechado por duas importacoes PostgreSQL 17 isoladas: 173 movimentos em cada destino, zero FK invalida, zero duplicidade, mesma soma, mesmo hash do ledger e segunda reconciliacao com zero movimentos novos.
+- Os 307 historicos sem data permanecem fora do ledger. As 164 divergencias atuais ficam rastreadas de forma agregada; nenhuma cronologia ou ajuste compensatorio foi inventado.
+- Pendente para fases proprias: pagamentos e conciliacao, KYC, Efi, midias, Premium legado incompativel, certificados, importacao definitiva e cutover.
+- Este dry-run nao autoriza escrita em producao, HML ou R2, nem commit, push, deploy ou importacao definitiva.
+
 ## Favoritos publicos autenticados
 
 - Fechado localmente pela V025: tabela minima com FKs, indices e unicidade usuario/anuncio, sem editar migration historica.

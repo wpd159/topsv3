@@ -135,7 +135,7 @@ public final class PersistenceEnums {
   }
 
   public enum TipoMovimentoCredito {
-    ENTRADA, SAIDA, AJUSTE, ESTORNO
+    ENTRADA, SAIDA, AJUSTE, ESTORNO, MIGRACAO_SALDO_INICIAL
   }
 
   public enum DirecaoMovimentoCredito {

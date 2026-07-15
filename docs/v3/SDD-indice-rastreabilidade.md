@@ -420,6 +420,8 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Migracao R2 por checksum: `backend/src/test/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2PublicMediaDryRunIntegrationTest.java`
 - Manifesto sanitizado do snapshot: `docs/v3/evidencias/importacao/manifesto-snapshot-20260715T002906Z.json`
 - Manifesto sanitizado corrigido (elegibilidade e SEO): `docs/v3/evidencias/importacao/manifesto-snapshot-20260715T014038Z.json`
+- Manifesto sanitizado do ledger: `docs/v3/evidencias/importacao/manifesto-snapshot-ledger-20260715T132312Z.json`
+- Reconciliacao idempotente do saldo inicial: `scripts/local/importacao/reconciliar-ledger-saldo-inicial.sql`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

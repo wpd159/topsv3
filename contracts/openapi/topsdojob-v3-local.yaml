@@ -4827,6 +4827,7 @@ components:
             - SAIDA
             - AJUSTE
             - ESTORNO
+            - MIGRACAO_SALDO_INICIAL
             - null
         direcao:
           type:
@@ -4871,7 +4872,7 @@ components:
           format: uuid
         natureza:
           type: string
-          enum: [CREDITO, DEBITO, AJUSTE_ADMIN_POSITIVO, AJUSTE_ADMIN_NEGATIVO, ESTORNO]
+          enum: [CREDITO, DEBITO, AJUSTE_ADMIN_POSITIVO, AJUSTE_ADMIN_NEGATIVO, ESTORNO, MIGRACAO_SALDO_INICIAL]
         motivo:
           type:
             - string
@@ -6933,7 +6934,7 @@ components:
         id: { type: string, format: uuid }
         natureza:
           type: string
-          enum: [CREDITO, DEBITO, AJUSTE_ADMIN_POSITIVO, AJUSTE_ADMIN_NEGATIVO, ESTORNO]
+          enum: [CREDITO, DEBITO, AJUSTE_ADMIN_POSITIVO, AJUSTE_ADMIN_NEGATIVO, ESTORNO, MIGRACAO_SALDO_INICIAL]
         quantidade: { type: integer, minimum: 1 }
         saldoAnterior: { type: integer, minimum: 0 }
         saldoPosterior: { type: integer, minimum: 0 }

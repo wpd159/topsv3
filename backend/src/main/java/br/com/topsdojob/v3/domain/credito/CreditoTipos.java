@@ -8,7 +8,8 @@ public final class CreditoTipos {
     ENTRADA,
     SAIDA,
     AJUSTE,
-    ESTORNO
+    ESTORNO,
+    MIGRACAO_SALDO_INICIAL
   }
 
   public enum Direcao {

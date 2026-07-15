@@ -317,6 +317,7 @@ public class MinhaContaPremiumService {
     private String natureza(
             br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito tipo,
             DirecaoMovimentoCredito direcao) {
+        if (tipo == TipoMovimentoCredito.MIGRACAO_SALDO_INICIAL) return "MIGRACAO_SALDO_INICIAL";
         if (tipo == TipoMovimentoCredito.ESTORNO) return "ESTORNO";
         if (tipo == TipoMovimentoCredito.AJUSTE) {
             return direcao == DirecaoMovimentoCredito.CREDITO

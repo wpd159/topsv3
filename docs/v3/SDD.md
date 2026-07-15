@@ -888,3 +888,13 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - O numero quatro era o limite maximo do plano base e foi indevidamente reutilizado como minimo de SEO no commit inicial da politica. A regra canonica corrigida exige pelo menos uma foto `LIVRE` real, alem de anuncio publicado/aprovado, slug e localizacao validos, titulo util e descricao suficiente.
 - Duas execucoes sobre o snapshot `00000063-0000AB12-1` produziram o fingerprint V3 `983c1c68a4366889a3f3f47877764946`, zero FK invalida, 617 objetos R2 deduplicados, 648 vinculos e 115 anuncios indexaveis. O dominio/base publica R2 do HML continua como gate operacional separado, sem URL inventada.
 - Ledger sem data confiavel, KYC privado, pagamentos, Premium incompativel, midias restritas e Efi permanecem fora desta consolidacao e nao foram promovidos.
+
+## 45. Saldo inicial e ledger do dry-run
+
+- A V026 introduz o tipo unico `MIGRACAO_SALDO_INICIAL`, metadata JSON sanitizada e unicidade de abertura por usuario. Migrations historicas permanecem inalteradas.
+- A fonte do saldo inicial e exclusivamente `creditos_usuario.saldo` no snapshot operacional PostgreSQL 17 capturado em transacao `REPEATABLE READ READ ONLY`. O historico legado sem data nao e ordenado nem promovido.
+- Saldo positivo valido cria um unico credito de abertura com data do snapshot, origem `IMPORTACAO`, saldo anterior zero e chave idempotente por snapshot e usuario. Saldo zero nao cria movimento; o saldo natural do ledger permanece zero.
+- O dry-run nao grava `saldo_credito_usuario`. Consultas do usuario e do administrador continuam derivando o saldo de `movimento_credito`; a tabela materializada permanece apenas como superficie de consistencia legada.
+- Os 307 historicos sem data confiavel ficam em staging/quarentena. Divergencias historicas sao registradas somente em metadata e relatorio agregado; nenhum `AJUSTE` artificial e criado.
+- O snapshot `00000058-0000C0D1-1`, de `2026-07-15T13:23:12.555154Z`, produziu 173 movimentos, total 102.544, em dois bancos PostgreSQL 17 descartaveis. A segunda reconciliacao criou zero movimentos e ambos os destinos produziram os mesmos hashes.
+- A referencia orfa legada conhecida, incluindo saldo, historicos e pagamentos associados, permanece fora do ledger operacional. Pagamentos, KYC, Efi, midias e Premium legado incompativel continuam fora desta fase.

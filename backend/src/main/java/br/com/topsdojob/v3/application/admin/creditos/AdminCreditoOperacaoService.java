@@ -221,6 +221,9 @@ public class AdminCreditoOperacaoService {
     }
 
     private String natureza(MovimentoCreditoEntity movimento) {
+        if (movimento.getTipo() == TipoMovimentoCredito.MIGRACAO_SALDO_INICIAL) {
+            return "MIGRACAO_SALDO_INICIAL";
+        }
         if (movimento.getTipo() == TipoMovimentoCredito.ESTORNO) {
             return "ESTORNO";
         }
