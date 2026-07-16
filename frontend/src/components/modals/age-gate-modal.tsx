@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { toast } from 'sonner'
 import {
   ExclamationTriangleIcon,
   CheckCircleIcon,
@@ -11,7 +12,6 @@ import {
 } from '@heroicons/react/24/outline'
 import {
   acceptAgeGate,
-  fetchAgeGateStatus,
   readAgeGateClientStatus,
 } from '@/lib/compliance/age-gate-storage'
 
@@ -40,24 +40,7 @@ export function AgeGateModal({
       return
     }
 
-    let cancelled = false
-
-    async function resolveGate() {
-      const local = readAgeGateClientStatus()
-      if (local.accepted) {
-        if (!cancelled) setOpen(false)
-        return
-      }
-
-      const remote = await fetchAgeGateStatus()
-      if (cancelled) return
-      setOpen(!remote.accepted)
-    }
-
-    void resolveGate()
-    return () => {
-      cancelled = true
-    }
+    setOpen(!readAgeGateClientStatus().accepted)
   }, [pathname])
 
   useEffect(() => {
@@ -83,10 +66,15 @@ export function AgeGateModal({
   const handleAccept = async () => {
     setAccepting(true)
     try {
-      await acceptAgeGate(pathname || '/')
+      await acceptAgeGate()
       setOpen(false)
-    } catch {
+    } catch (error) {
       setOpen(true)
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível salvar o aceite. Tente novamente.',
+      )
     } finally {
       setAccepting(false)
     }

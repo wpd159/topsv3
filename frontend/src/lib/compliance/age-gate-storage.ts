@@ -15,13 +15,13 @@ function cookieDomainAttribute(): string {
   if (typeof window === "undefined") return ""
   const host = window.location.hostname
   if (host === "localhost" || host === "127.0.0.1") return ""
-  if (host.endsWith("topsdojob.com")) return "; Domain=.topsdojob.com"
+  if (host.endsWith("topsdojob.com")) return "Domain=.topsdojob.com"
   return ""
 }
 
 function secureAttribute(): string {
   if (typeof window === "undefined") return ""
-  return window.location.protocol === "https:" ? "; Secure" : ""
+  return window.location.protocol === "https:" ? "Secure" : ""
 }
 
 function readCookie(name: string): string | null {
@@ -131,56 +131,12 @@ export function readAgeGateClientStatus(): AgeGateStatus {
   return { accepted: true, expiresAt }
 }
 
-export async function fetchAgeGateStatus(): Promise<AgeGateStatus> {
-  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-  if (!apiBase) return { accepted: false, expiresAt: null }
-
-  try {
-    const res = await fetch(`${apiBase}/compliance/age-gate/status`, {
-      credentials: "include",
-      cache: "no-store",
-    })
-    if (!res.ok) return { accepted: false, expiresAt: null }
-    const data = (await res.json()) as { accepted?: boolean; expiresAt?: number | null }
-    if (!data?.accepted || !data.expiresAt) {
-      return { accepted: false, expiresAt: null }
-    }
-    if (Date.now() >= data.expiresAt) {
-      clearAgeGateClient()
-      return { accepted: false, expiresAt: null }
-    }
-    persistAgeGateClient(data.expiresAt)
-    return { accepted: true, expiresAt: data.expiresAt }
-  } catch {
-    return { accepted: false, expiresAt: null }
-  }
-}
-
-export async function acceptAgeGate(originPath?: string): Promise<AgeGateStatus> {
-  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-  if (!apiBase) {
-    const expiresAt = Date.now() + AGE_GATE_TTL_MS
-    persistAgeGateClient(expiresAt)
-    return { accepted: true, expiresAt }
-  }
-
-  const query = originPath ? `?originPath=${encodeURIComponent(originPath)}` : ""
-  const res = await fetch(`${apiBase}/compliance/age-gate/accept${query}`, {
-    method: "POST",
-    credentials: "include",
-    cache: "no-store",
-  })
-
-  if (!res.ok) {
-    throw new Error("Falha ao registrar aceite do aviso de idade.")
-  }
-
-  const data = (await res.json()) as { accepted?: boolean; expiresAt?: number | null }
-  const expiresAt =
-    data?.expiresAt && Number.isFinite(data.expiresAt)
-      ? Number(data.expiresAt)
-      : Date.now() + AGE_GATE_TTL_MS
-
+export async function acceptAgeGate(): Promise<AgeGateStatus> {
+  const expiresAt = Date.now() + AGE_GATE_TTL_MS
   persistAgeGateClient(expiresAt)
-  return { accepted: true, expiresAt }
+  const persisted = readAgeGateClientStatus()
+  if (!persisted.accepted) {
+    throw new Error("Não foi possível salvar o aceite. Verifique as permissões do navegador e tente novamente.")
+  }
+  return persisted
 }
