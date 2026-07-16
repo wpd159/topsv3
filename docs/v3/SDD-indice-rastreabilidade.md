@@ -429,6 +429,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Contrato do importador Premium historico: `backend/src/test/java/br/com/topsdojob/v3/importacao/PremiumHistoricoDryRunImportadorTest.java`
 - Politica canonica de expiracao Premium: `backend/src/main/java/br/com/topsdojob/v3/application/admin/premium/PremiumExpiracaoPolicyService.java`
 - Manifesto sanitizado do Premium historico: `docs/v3/evidencias/importacao/manifesto-snapshot-premium-20260715T162925Z.json`
+- Reconciliacao idempotente de credenciais: `scripts/local/importacao/reconciliar-credenciais-usuarios.sql`
+- Validador de credenciais importadas: `scripts/local/importacao/validar-credenciais-usuarios.sql`
+- Contrato e compatibilidade BCrypt: `backend/src/test/java/br/com/topsdojob/v3/importacao/CredenciaisUsuariosDryRunImportadorTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/auth/CredencialLegadaCompatibilidadeTest.java`
+- Manifesto sanitizado das credenciais: `docs/v3/evidencias/importacao/manifesto-snapshot-credenciais-20260716T011029Z.json`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

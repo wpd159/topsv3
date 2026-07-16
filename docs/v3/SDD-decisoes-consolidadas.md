@@ -351,6 +351,14 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - O HML deve permanecer com `EFI_ENABLED=false`, Pix indisponivel e comportamento fail-closed, sem mock, fallback ou pagamento simulado.
 - Instalar o material no ambiente correto e concluir a homologacao real e gate humano obrigatorio antes do cutover. Producao permanece bloqueada e intocada.
 
+## Credenciais de usuarios na importacao
+
+- A fonte comprovada e `usuarios.email` + `usuarios.senha`, vinculada por `usuarios.id`; o mapa canonico de importacao resolve o UUID V3 e nunca presume igualdade de IDs.
+- Producao e V3 usam BCrypt. Como os 1.450 hashes encontrados sao exclusivamente `$2a$`, custo 10 e comprimento 60, a decisao e preservar o hash exato, sem duplo hash, prefixo artificial, encoder permissivo ou login delegado ao legado.
+- Todo usuario inequivocamente mapeado com hash BCrypt valido recebe credencial, independentemente de poder autenticar imediatamente. A regra de acesso permanece no estado da conta: ativo e confirmado permite login; e-mail pendente ou conta desativada recusam login mesmo contendo credencial.
+- Por decisao expressa de 2026-07-15, as 35 contas com 2FA legado, comprovadamente apenas `USUARIO`, preservam a senha e ficam sem segundo fator somente na V3. Nenhum segredo TOTP, codigo, dispositivo, token ou sessao e importado; a producao nao e alterada e nao existe fallback para o login legado.
+- O e-mail real e restaurado somente no destino descartavel e nunca aparece em staging, manifesto ou log. Confirmacao, status e papel sao preservados. A validacao manual com senha real exige autorizacao expressa e segredo fornecido apenas em tempo de execucao.
+
 ## Favoritos publicos autenticados
 
 - Em 2026-07-14, favoritos passam a usar exclusivamente `GET`, `PUT` e `DELETE /api/public/minha-conta/favoritos[/{slug}]`, sem toggle, ID de usuario, simulacao ou endpoint legado.

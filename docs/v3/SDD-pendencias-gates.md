@@ -777,6 +777,15 @@ Antes de admin em ambiente nao local:
 - Permanecem em quarentena 3.684 ativacoes sem origem comprovada, 183 canceladas e 52 Stories do fluxo proprio. ADMIN, CORTESIA ou MIGRACAO historicos exigem evidencia individual antes de qualquer promocao.
 - Gate antes da importacao definitiva: revisao humana da quarentena, novo snapshot autorizado, repeticao idempotente, backup/rollback e Go/No-Go. Este dry-run nao autoriza HML operacional, cutover, deploy ou escrita na producao.
 
+## Dry-run das credenciais de usuarios
+
+- Fechado estruturalmente: producao e V3 usam BCrypt; os 1.450 hashes `$2a$` custo 10 foram auditados sem valor bruto em relatorio e todos foram importados por mapa canonico.
+- Fechado por duas execucoes PostgreSQL 17 independentes: 1.450 credenciais importadas em cada ambiente, segunda reconciliacao com zero novos registros, zero duplicidade, zero vinculo incorreto e fingerprint sanitizado `defa7dbbb70706f6de3f62c587b92f00` identico.
+- Fechado em seguranca: zero sessao, cookie, JWT, token de confirmacao/recuperacao, codigo temporario ou segredo de segundo fator importado; nenhum hash foi gravado em staging, manifesto ou log.
+- Fechado por decisao expressa: as 35 contas com 2FA legado, todas `USUARIO`, preservam a senha e ficam sem segundo fator somente na V3; nenhum artefato 2FA e copiado e a producao permanece inalterada.
+- Pendente manual: validar uma conta real importada somente quando o titular autorizar e fornecer a senha por variavel secreta efemera. Nao redefinir senha para fabricar o teste.
+- As 88 contas com e-mail pendente e quatro contas desativadas recebem a credencial preservada, mas a autenticacao continua recusada ate confirmacao ou reativacao conforme a regra V3. Este dry-run nao autoriza HML operacional, producao, commit, push, deploy ou cutover.
+
 ## Favoritos publicos autenticados
 
 - Fechado localmente pela V025: tabela minima com FKs, indices e unicidade usuario/anuncio, sem editar migration historica.

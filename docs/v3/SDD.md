@@ -919,3 +919,14 @@ O Bloco 29 permanece adiado para pre-staging/cutover. A quarentena sem `POST_DAT
 - A vigencia e calculada no backend com uma unica referencia UTC. No instante exato de `fim_em`, o beneficio ja esta expirado; catalogo inativo, cancelamento/revogacao, ausencia de grupo ou divergencia de vinculo/origem falham fechados sem depender de job.
 - Cada efeito usa o resultado calculado: idade, limite de fotos, prioridade de topo, WhatsApp no card, carrossel e video cessam integralmente ao expirar. Arquivos excedentes ou video nao sao apagados, e o contato comum permanece sujeito a sua regra geral.
 - Listagens e detalhe publicos que exibem efeitos Premium usam leitura sem cache persistente do frontend. Stories, pagamentos, Efi, KYC, midias e ledger nao foram alterados nesta fase.
+
+## 48. Credenciais de usuarios no dry-run
+
+- A producao persiste o identificador de login e o hash na mesma linha de `usuarios`, pelas colunas `email` e `senha`, vinculadas diretamente por `usuarios.id`. O login vigente normaliza o e-mail e usa `BCryptPasswordEncoder`.
+- A auditoria somente leitura encontrou 1.450 hashes BCrypt `$2a$`, custo 10 e comprimento 60; nao houve hash ausente, invalido, duplicado ou orfao. A V3 usa o mesmo algoritmo e custo preferido, portanto o conteudo do hash e preservado sem reprocessamento, prefixo adicional ou adapter de compatibilidade.
+- O reconciliador usa exclusivamente `importacao_mapeamento` para associar `usuarios` ao UUID V3. O e-mail normalizado e restaurado apenas no banco descartavel; a confirmacao comprovada recebe o instante do snapshot como momento de observacao, sem inventar data historica.
+- Os 1.450 hashes validos sao elegiveis e recebem credencial. O acesso permanece separado da preservacao da senha. Podem autenticar 1.358 contas `ATIVO` com e-mail confirmado; 88 contas com e-mail pendente e quatro `DESATIVADO` recebem credencial, mas continuam recusadas pelas regras V3.
+- Por decisao expressa, as 35 contas com segundo fator legado, todas `USUARIO`, preservam o hash e passam a autenticar somente por senha na V3. Nenhum segredo, codigo, token ou dispositivo 2FA e importado, nenhuma reinscricao e exigida e a producao permanece inalterada.
+- Duas importacoes PostgreSQL 17 independentes produziram 1.450 credenciais e o mesmo fingerprint sanitizado `defa7dbbb70706f6de3f62c587b92f00`; a segunda reconciliacao em cada ambiente criou zero registro.
+- Nenhuma sessao, cookie, JWT, token de confirmacao/recuperacao, codigo temporario ou segredo de segundo fator foi importado. Staging, manifesto e logs registram somente algoritmo, comprimento, classificacao e contagens agregadas.
+- Login BCrypt controlado no cenario de segundo fator legado desativado, senha incorreta, conta pendente/desativada, logout, confirmacao e recuperacao V3 foram validados por testes. Login com uma conta real importada permanece validacao manual pendente ate existir conta e senha expressamente autorizadas em variavel secreta de execucao.

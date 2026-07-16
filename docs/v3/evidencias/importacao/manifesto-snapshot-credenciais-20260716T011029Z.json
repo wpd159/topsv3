@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "dry-run-credenciais-v2",
+  "generatedAtUtc": "2026-07-16T02:22:28.5726886Z",
+  "gitHead": "7a8c63c87ab5310da490f51ac405d103e77e8d05",
+  "snapshot": {
+    "id": "final-20260715T225154Z",
+    "capturedAtUtc": "2026-07-15T22:52:09.9594294Z",
+    "sourceDumpSha256": "d48543f325f17b4da033772cde3799430a058b62ee99eccf4b2d33edd9c18f6d",
+    "sourcePostgresql": "14.23",
+    "destinationPostgresql": "17.10",
+    "productionWrite": false,
+    "hmlWrite": false
+  },
+  "sourceContract": {
+    "table": "usuarios",
+    "userIdColumn": "id",
+    "loginColumn": "email",
+    "credentialColumn": "senha",
+    "passwordEncoder": "BCryptPasswordEncoder",
+    "hashPrefix": "$2a$",
+    "cost": 10,
+    "hashLength": 60
+  },
+  "audit": {
+    "users": 1450,
+    "bcrypt2aCost10": 1450,
+    "missingHashes": 0,
+    "invalidHashes": 0,
+    "duplicateCredentialMappings": 0,
+    "orphanCredentials": 0,
+    "activeUsers": 1446,
+    "inactiveUsers": 4,
+    "emailConfirmed": 1362,
+    "emailPending": 88,
+    "secondFactorActive": 35,
+    "roles": {
+      "ADMIN": 4,
+      "MODERADOR": 1,
+      "USER": 1445
+    }
+  },
+  "migration": {
+    "importerVersion": "credenciais-usuarios-v2",
+    "importerSha256": "a1d641cb2e3b59767d37658e83a0989630ae66ed627060c6836b15f857fb4afd",
+    "validatorSha256": "87f77d1f7ddf46940fcf01324fa7dc513faf39352c31feb8660f153d90a388ec",
+    "audited": 1450,
+    "eligible": 1450,
+    "imported": 1450,
+    "importedByRole": {
+      "ADMIN": 4,
+      "MODERADOR": 1,
+      "USUARIO": 1445
+    },
+    "passwordAuthenticationAllowed": 1358,
+    "emailPendingDenied": 88,
+    "inactiveAccountDenied": 4,
+    "legacySecondFactorDisabledV3": 35,
+    "legacySecondFactorRoles": "USER_ONLY",
+    "quarantined": 0,
+    "quarantineReasons": {
+      "HASH_INVALID_OR_UNSUPPORTED": 0,
+      "IDENTITY_OR_MAPPING_CONFLICT": 0
+    },
+    "sessionsImported": 0,
+    "tokensImported": 0
+  },
+  "repeatability": {
+    "environmentAFirstRunCreated": 1450,
+    "environmentASecondRunCreated": 0,
+    "environmentBFirstRunCreated": 1450,
+    "environmentBSecondRunCreated": 0,
+    "environmentAFingerprint": "defa7dbbb70706f6de3f62c587b92f00",
+    "environmentBFingerprint": "defa7dbbb70706f6de3f62c587b92f00",
+    "aggregateDiffLines": 0
+  },
+  "validation": {
+    "controlledLegacyHashLogin": "PASS",
+    "legacySecondFactorDisabledPasswordOnly": "PASS_CONTROLLED_FIXTURE_AND_DRYRUN_35",
+    "invalidLoginAttempt": "HTTP_401",
+    "pendingAccount": "BLOCKED",
+    "inactiveAccount": "BLOCKED",
+    "logout": "PASS",
+    "v3PasswordRecovery": "PASS",
+    "v3EmailConfirmation": "PASS",
+    "hashUpgradeRequired": false,
+    "realImportedAccountLogin": "PENDING_EXPLICIT_AUTHORIZATION"
+  },
+  "sanitization": {
+    "containsEmail": false,
+    "containsCredentialHash": false,
+    "containsRawLoginMaterial": false,
+    "containsSession": false,
+    "containsTemporaryAuthArtifact": false,
+    "containsSecondFactorPrivateMaterial": false
+  }
+}
