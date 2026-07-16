@@ -31,7 +31,6 @@ export function AgeGateModal({
 }: AgeGateModalProps) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const [legalNotice, setLegalNotice] = useState(DEFAULT_LEGAL_NOTICE)
   const [accepting, setAccepting] = useState(false)
 
   useEffect(() => {
@@ -42,26 +41,6 @@ export function AgeGateModal({
 
     setOpen(!readAgeGateClientStatus().accepted)
   }, [pathname])
-
-  useEffect(() => {
-    const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-    if (!apiBase) return
-
-    fetch(`${apiBase}/compliance/policies`, {
-      cache: 'no-store',
-      credentials: 'include',
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Falha ao carregar políticas públicas')
-        return res.json()
-      })
-      .then((data) => {
-        if (typeof data?.legalAccessNotice === 'string' && data.legalAccessNotice.trim()) {
-          setLegalNotice(data.legalAccessNotice.trim())
-        }
-      })
-      .catch(() => null)
-  }, [])
 
   const handleAccept = async () => {
     setAccepting(true)
@@ -97,7 +76,7 @@ export function AgeGateModal({
           </DialogTitle>
 
           <DialogDescription className="text-gray-600 text-justify">
-            {legalNotice}
+            {DEFAULT_LEGAL_NOTICE}
           </DialogDescription>
         </DialogHeader>
 

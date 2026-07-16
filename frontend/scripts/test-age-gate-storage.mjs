@@ -9,9 +9,12 @@ const require = createRequire(import.meta.url)
 const ts = require('typescript')
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const source = fs.readFileSync(path.join(root, 'src/lib/compliance/age-gate-storage.ts'), 'utf8')
+const modalSource = fs.readFileSync(path.join(root, 'src/components/modals/age-gate-modal.tsx'), 'utf8')
 const output = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText
+
+assert.doesNotMatch(modalSource, /compliance\/policies/)
 
 const storageValues = new Map()
 const cookieValues = new Map()
