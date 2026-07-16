@@ -24,6 +24,18 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set up Java 17 for backend gate
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run full backend Maven gate
+        working-directory: backend
+        shell: bash
+        run: mvn --batch-mode --no-transfer-progress verify
+
       - name: Validate required secrets
         shell: bash
         env:
@@ -33,6 +45,8 @@ jobs:
           HML_SSH_PRIVATE_KEY: ${{ secrets.HML_SSH_PRIVATE_KEY }}
           HML_DOMAIN: ${{ secrets.HML_DOMAIN }}
           HML_DEPLOY_PATH: ${{ secrets.HML_DEPLOY_PATH }}
+          HML_AUTH_SMOKE_ENABLED: ${{ secrets.HML_AUTH_SMOKE_ENABLED }}
+          HML_AUTH_SMOKE_RUNTIME_VALUE: ${{ secrets.HML_AUTH_SMOKE_RUNTIME_VALUE }}
         run: |
           set -euo pipefail
           test -n "${HML_HOST}"
@@ -41,6 +55,8 @@ jobs:
           test -n "${HML_SSH_PRIVATE_KEY}"
           test -n "${HML_DOMAIN}"
           test -n "${HML_DEPLOY_PATH}"
+          test "${HML_AUTH_SMOKE_ENABLED}" = "true"
+          test "${#HML_AUTH_SMOKE_RUNTIME_VALUE}" -ge 16
           test "${HML_USER}" = "topsv3"
           test "${HML_DOMAIN}" = "v3.esle.cloud"
           test "${HML_DEPLOY_PATH}" = "/opt/topsv3/app/current"
@@ -157,6 +173,38 @@ jobs:
             docker compose --env-file /opt/topsv3/secrets/hml.env -f deploy/hml/docker-compose.yml -p topsv3-hml up -d
           "
 
+      - name: Reconcile synthetic public Auth fixture twice
+        shell: bash
+        env:
+          HML_HOST: ${{ secrets.HML_HOST }}
+          HML_USER: ${{ secrets.HML_USER }}
+          HML_SSH_PORT: ${{ secrets.HML_SSH_PORT }}
+          HML_DEPLOY_PATH: ${{ secrets.HML_DEPLOY_PATH }}
+          HML_AUTH_SMOKE_ENABLED: ${{ secrets.HML_AUTH_SMOKE_ENABLED }}
+          HML_AUTH_SMOKE_RUNTIME_VALUE: ${{ secrets.HML_AUTH_SMOKE_RUNTIME_VALUE }}
+        run: |
+          set -euo pipefail
+          test "${HML_AUTH_SMOKE_ENABLED}" = "true"
+          SSH_TARGET="${HML_USER}@${HML_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_hml" -p "${HML_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          reconcile_fixture() {
+            printf '%s\n' "${HML_AUTH_SMOKE_RUNTIME_VALUE}" | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "set -euo pipefail
+              IFS= read -r HML_AUTH_SMOKE_RUNTIME_VALUE
+              export HML_AUTH_SMOKE_RUNTIME_VALUE
+              cd '${HML_DEPLOY_PATH}'
+              docker compose --env-file /opt/topsv3/secrets/hml.env -f deploy/hml/docker-compose.yml -p topsv3-hml \
+                run --rm -T \
+                -e HML_AUTH_SMOKE_RUNTIME_VALUE \
+                backend \
+                --server.port=0 \
+                --spring.main.web-application-type=none \
+                --app.hml-auth-smoke.enabled=true
+              unset HML_AUTH_SMOKE_RUNTIME_VALUE
+            "
+          }
+          reconcile_fixture
+          reconcile_fixture
+
       - name: Health check
         shell: bash
         env:
@@ -200,4 +248,39 @@ jobs:
             sudo ln -sfn /etc/nginx/sites-available/v3-esle-cloud.conf /etc/nginx/sites-enabled/v3-esle-cloud.conf
             sudo nginx -t
             sudo systemctl reload nginx
+          "
+
+      - name: Smoke synthetic public authentication
+        shell: bash
+        env:
+          HML_AUTH_SMOKE_ENABLED: ${{ secrets.HML_AUTH_SMOKE_ENABLED }}
+          HML_AUTH_SMOKE_RUNTIME_VALUE: ${{ secrets.HML_AUTH_SMOKE_RUNTIME_VALUE }}
+          HML_AUTH_SMOKE_BASE_URL: https://${{ secrets.HML_DOMAIN }}
+        run: bash scripts/deploy/validar-auth-publico-hml.sh
+
+      - name: Verify Auth secret and importers are absent from HML logs
+        shell: bash
+        env:
+          HML_HOST: ${{ secrets.HML_HOST }}
+          HML_USER: ${{ secrets.HML_USER }}
+          HML_SSH_PORT: ${{ secrets.HML_SSH_PORT }}
+          HML_DEPLOY_PATH: ${{ secrets.HML_DEPLOY_PATH }}
+          HML_AUTH_SMOKE_RUNTIME_VALUE: ${{ secrets.HML_AUTH_SMOKE_RUNTIME_VALUE }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${HML_USER}@${HML_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_hml" -p "${HML_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          printf '%s\n' "${HML_AUTH_SMOKE_RUNTIME_VALUE}" | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "set -euo pipefail
+            IFS= read -r HML_AUTH_SMOKE_RUNTIME_VALUE
+            cd '${HML_DEPLOY_PATH}'
+            logs=\"\$(docker compose --env-file /opt/topsv3/secrets/hml.env -f deploy/hml/docker-compose.yml -p topsv3-hml logs --no-color backend)\"
+            if printf '%s' \"\${logs}\" | grep -Fq -- \"\${HML_AUTH_SMOKE_RUNTIME_VALUE}\"; then
+              echo 'ERRO: valor Auth apareceu nos logs HML' >&2
+              exit 1
+            fi
+            if printf '%s' \"\${logs}\" | grep -Eq 'IMPORTACAO_CREDENCIAL_(INICIO|EXECUTADA)|importar-credenciais-legadas'; then
+              echo 'ERRO: marcador de importador de credenciais encontrado nos logs HML' >&2
+              exit 1
+            fi
+            unset HML_AUTH_SMOKE_RUNTIME_VALUE logs
           "

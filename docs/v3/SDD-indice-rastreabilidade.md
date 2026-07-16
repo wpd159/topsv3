@@ -433,6 +433,10 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Validador de credenciais importadas: `scripts/local/importacao/validar-credenciais-usuarios.sql`
 - Contrato e compatibilidade BCrypt: `backend/src/test/java/br/com/topsdojob/v3/importacao/CredenciaisUsuariosDryRunImportadorTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/auth/CredencialLegadaCompatibilidadeTest.java`
 - Manifesto sanitizado das credenciais: `docs/v3/evidencias/importacao/manifesto-snapshot-credenciais-20260716T011029Z.json`
+- Gate Maven do deploy HML: `.github/workflows/deploy-hml.yml`
+- Fixture Auth sintetica HML: `backend/src/main/java/br/com/topsdojob/v3/application/operacional/hml/HmlAuthSmokeFixtureService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/operacional/hml/HmlAdminProvisioningRunner.java`
+- Smoke Auth publico HML: `scripts/deploy/validar-auth-publico-hml.sh`
+- Testes da fixture Auth HML: `backend/src/test/java/br/com/topsdojob/v3/application/operacional/hml/HmlAuthSmokeFixtureServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/operacional/hml/HmlAdminProvisioningRunnerTest.java`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

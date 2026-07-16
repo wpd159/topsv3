@@ -305,7 +305,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - A V021 e necessaria porque nao havia tabela/entidade V3 para categorias da Home nem persistencia da data de nascimento ja exigida no cadastro. O catalogo publico de categorias passa a ter uma unica fonte backend.
 - `OCULTAR_IDADE` reutiliza a ativacao Premium existente e sua politica temporal. Somente ativacao vigente com compra de valor positivo ou consumo positivo de creditos oculta a idade; cortesia, admin, ativacao gratuita ou expirada nao ocultam.
 - O backend nunca retorna `dataNascimento` no catalogo publico e o frontend nao calcula idade nem decide ocultacao.
-- O runner HML permanece unico e separa tres acoes explicitas: `app.hml-fixture.enabled=true` reconcilia dados sem entrada; `app.hml-admin-provision.enabled=true` provisiona ADMIN por `stdin`; `app.hml-fixture-owner-credential.enabled=true` atualiza por `stdin` somente a credencial do proprietario canonico. As duas acoes de credencial nao podem coexistir na mesma execucao. A fixture nao atualiza credencial existente e cria segredo aleatorio descartado somente se o usuario ficticio ainda nao possuir credencial.
+- O runner HML permanece unico e separa quatro acoes explicitas: `app.hml-fixture.enabled=true` reconcilia dados sem entrada; `app.hml-admin-provision.enabled=true` provisiona ADMIN por `stdin`; `app.hml-fixture-owner-credential.enabled=true` atualiza por `stdin` somente a credencial do proprietario canonico; `app.hml-auth-smoke.enabled=true` reconcilia isoladamente tres estados de autenticacao sinteticos. A acao Auth nao pode coexistir com Stories nem outra acao de credencial, exige secret de runtime e nao cria dados laterais. A fixture geral nao atualiza credencial existente e cria segredo aleatorio descartado somente se o usuario ficticio ainda nao possuir credencial.
 
 ## Banco e migrations
 
@@ -358,6 +358,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Todo usuario inequivocamente mapeado com hash BCrypt valido recebe credencial, independentemente de poder autenticar imediatamente. A regra de acesso permanece no estado da conta: ativo e confirmado permite login; e-mail pendente ou conta desativada recusam login mesmo contendo credencial.
 - Por decisao expressa de 2026-07-15, as 35 contas com 2FA legado, comprovadamente apenas `USUARIO`, preservam a senha e ficam sem segundo fator somente na V3. Nenhum segredo TOTP, codigo, dispositivo, token ou sessao e importado; a producao nao e alterada e nao existe fallback para o login legado.
 - O e-mail real e restaurado somente no destino descartavel e nunca aparece em staging, manifesto ou log. Confirmacao, status e papel sao preservados. A validacao manual com senha real exige autorizacao expressa e segredo fornecido apenas em tempo de execucao.
+- Em 2026-07-15, o CI de HML passa a bloquear o deploy com a suite Maven integral (`verify`) antes de SSH. O smoke online usa somente tres contas deterministicas `@example.invalid`, papel `USUARIO` e BCrypt canonico; o segredo existe apenas no environment GitHub `hml`, e a reconciliacao one-shot permanece desligada no startup normal.
 
 ## Favoritos publicos autenticados
 

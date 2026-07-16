@@ -196,6 +196,38 @@ public class UsuarioEntity {
     this.atualizadoEm = agora;
   }
 
+  public boolean reconciliarAutenticacaoHomologacao(
+      StatusUsuario statusEsperado,
+      boolean emailConfirmado,
+      OffsetDateTime agora) {
+    if (statusEsperado != StatusUsuario.ATIVO
+        && statusEsperado != StatusUsuario.PENDENTE
+        && statusEsperado != StatusUsuario.DESATIVADO) {
+      throw new IllegalArgumentException("status de autenticacao HML invalido");
+    }
+
+    OffsetDateTime emailVerificadoEsperado = emailConfirmado
+        ? (emailVerificadoEm == null ? agora : emailVerificadoEm)
+        : null;
+    OffsetDateTime desativadoEsperado = statusEsperado == StatusUsuario.DESATIVADO
+        ? (desativadoEm == null ? agora : desativadoEm)
+        : null;
+    boolean alterado = status != statusEsperado
+        || tipoConta != TipoContaUsuario.ANUNCIANTE
+        || !java.util.Objects.equals(emailVerificadoEm, emailVerificadoEsperado)
+        || !java.util.Objects.equals(desativadoEm, desativadoEsperado);
+    if (!alterado) {
+      return false;
+    }
+
+    status = statusEsperado;
+    tipoConta = TipoContaUsuario.ANUNCIANTE;
+    emailVerificadoEm = emailVerificadoEsperado;
+    desativadoEm = desativadoEsperado;
+    atualizadoEm = agora;
+    return true;
+  }
+
   public void aplicarDadosKyc(
       String nomeCivil,
       String cpfNormalizado,

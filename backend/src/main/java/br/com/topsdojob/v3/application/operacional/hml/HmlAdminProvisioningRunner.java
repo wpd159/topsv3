@@ -14,15 +14,21 @@ import org.springframework.stereotype.Component;
 
 @Component
 @Profile("homologacao")
-@ConditionalOnExpression("${app.hml-admin-provision.enabled:false} || ${app.hml-fixture.enabled:false} || ${app.hml-fixture-owner-credential.enabled:false}")
+@ConditionalOnExpression("${app.hml-admin-provision.enabled:false}"
+        + " || ${app.hml-fixture.enabled:false}"
+        + " || ${app.hml-fixture-owner-credential.enabled:false}"
+        + " || ${app.hml-auth-smoke.enabled:false}")
 public class HmlAdminProvisioningRunner implements ApplicationRunner {
 
     private final String email;
     private final boolean adminEnabled;
     private final boolean fixtureEnabled;
     private final boolean fixtureOwnerCredentialEnabled;
+    private final boolean authSmokeEnabled;
+    private final String authSmokeRuntimeValue;
     private final HmlAdminProvisioningService service;
     private final HmlStoriesFixtureService fixtureService;
+    private final HmlAuthSmokeFixtureService authSmokeFixtureService;
     private final ConfigurableApplicationContext applicationContext;
     private final CredentialReader credentialReader;
 
@@ -32,16 +38,22 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
             @Value("${app.hml-admin-provision.enabled:false}") boolean adminEnabled,
             @Value("${app.hml-fixture.enabled:false}") boolean fixtureEnabled,
             @Value("${app.hml-fixture-owner-credential.enabled:false}") boolean fixtureOwnerCredentialEnabled,
+            @Value("${app.hml-auth-smoke.enabled:false}") boolean authSmokeEnabled,
+            @Value("${HML_AUTH_SMOKE_RUNTIME_VALUE:}") String authSmokeRuntimeValue,
             HmlAdminProvisioningService service,
             HmlStoriesFixtureService fixtureService,
+            HmlAuthSmokeFixtureService authSmokeFixtureService,
             ConfigurableApplicationContext applicationContext) {
         this(
                 email,
                 adminEnabled,
                 fixtureEnabled,
                 fixtureOwnerCredentialEnabled,
+                authSmokeEnabled,
+                authSmokeRuntimeValue,
                 service,
                 fixtureService,
+                authSmokeFixtureService,
                 applicationContext,
                 HmlAdminProvisioningRunner::lerCredencialStdin);
     }
@@ -51,16 +63,22 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
             boolean adminEnabled,
             boolean fixtureEnabled,
             boolean fixtureOwnerCredentialEnabled,
+            boolean authSmokeEnabled,
+            String authSmokeRuntimeValue,
             HmlAdminProvisioningService service,
             HmlStoriesFixtureService fixtureService,
+            HmlAuthSmokeFixtureService authSmokeFixtureService,
             ConfigurableApplicationContext applicationContext,
             CredentialReader credentialReader) {
         this.email = email;
         this.adminEnabled = adminEnabled;
         this.fixtureEnabled = fixtureEnabled;
         this.fixtureOwnerCredentialEnabled = fixtureOwnerCredentialEnabled;
+        this.authSmokeEnabled = authSmokeEnabled;
+        this.authSmokeRuntimeValue = authSmokeRuntimeValue;
         this.service = service;
         this.fixtureService = fixtureService;
+        this.authSmokeFixtureService = authSmokeFixtureService;
         this.applicationContext = applicationContext;
         this.credentialReader = credentialReader;
     }
@@ -69,8 +87,14 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
     public void run(ApplicationArguments args) throws IOException {
         String runtimeValue = null;
         try {
-            if (adminEnabled && fixtureOwnerCredentialEnabled) {
+            int credentialActions = (adminEnabled ? 1 : 0)
+                    + (fixtureOwnerCredentialEnabled ? 1 : 0)
+                    + (authSmokeEnabled ? 1 : 0);
+            if (credentialActions > 1) {
                 throw new IllegalArgumentException("habilite somente uma acao de credencial por execucao");
+            }
+            if (authSmokeEnabled && fixtureEnabled) {
+                throw new IllegalArgumentException("fixture Auth deve executar isoladamente");
             }
             if (adminEnabled) {
                 runtimeValue = credentialReader.read();
@@ -95,6 +119,15 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
                 HmlStoriesFixtureService.FixtureOwnerCredentialResult result =
                         fixtureService.provisionarCredencialProprietario(runtimeValue);
                 System.out.println("HML_FIXTURE_OWNER_CREDENTIAL_RESULT=" + result.status());
+            }
+            if (authSmokeEnabled) {
+                runtimeValue = authSmokeRuntimeValue;
+                HmlAuthSmokeFixtureService.FixtureResult result =
+                        authSmokeFixtureService.reconciliar(runtimeValue);
+                System.out.println("HML_AUTH_SMOKE_FIXTURE_RESULT="
+                        + result.contasCriadas() + ":"
+                        + result.contasAtualizadas() + ":"
+                        + result.contasPreservadas());
             }
         } finally {
             runtimeValue = null;

@@ -785,6 +785,8 @@ Antes de admin em ambiente nao local:
 - Fechado por decisao expressa: as 35 contas com 2FA legado, todas `USUARIO`, preservam a senha e ficam sem segundo fator somente na V3; nenhum artefato 2FA e copiado e a producao permanece inalterada.
 - Pendente manual: validar uma conta real importada somente quando o titular autorizar e fornecer a senha por variavel secreta efemera. Nao redefinir senha para fabricar o teste.
 - As 88 contas com e-mail pendente e quatro contas desativadas recebem a credencial preservada, mas a autenticacao continua recusada ate confirmacao ou reativacao conforme a regra V3. Este dry-run nao autoriza HML operacional, producao, commit, push, deploy ou cutover.
+- Gate CI fechado no codigo: `mvn --batch-mode --no-transfer-progress verify` precede toda etapa remota e impede deploy quando houver falha, sem `continue-on-error`, exclusao ou profile silencioso.
+- Gate de smoke preparado: o runner HML unico reconcilia, somente por flag explicita e secret do environment `hml`, tres contas ficticias sem anuncios ou dados financeiros. O workflow valida login positivo, senha incorreta, pendente, desativada, logout, sessao invalidada, recuperacao neutra, confirmacao invalida, health e noindex; nenhum importador historico e chamado.
 
 ## Favoritos publicos autenticados
 
