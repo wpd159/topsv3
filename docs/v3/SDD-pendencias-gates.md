@@ -761,11 +761,14 @@ Antes de admin em ambiente nao local:
 
 ## Dry-run dos documentos KYC
 
-- Fechado no snapshot `kyc-20260715T151006Z`: 1.916 linhas classificadas, 1.160 referencias unicas, 756 repeticoes, 133 linhas HTTP/HTTPS em quarentena e zero vinculo de usuario inconsistente.
-- Fechado no R2 privado HML: 29 referencias PDF elegiveis, 20 objetos por checksum, segunda execucao com 29 preservados, zero objeto novo e zero divergencia de checksum.
-- Fechado no staging isolado PostgreSQL 17/V001-V026: 29 documentos `PENDENTE`, zero aprovacao automatica, zero FK invalida, zero orfao e zero URL publica.
-- Permanecem bloqueadas 1.020 imagens sem evidencia de parte frente/verso e duas referencias de tipo/conteudo invalido. As 133 referencias HTTP/HTTPS nao foram baixadas e exigem saneamento humano/autorizado futuro.
-- Gate antes da importacao definitiva: decidir o tratamento das imagens sem parte, revisar referencias HTTP/HTTPS e comprovar qualquer estado historico que se pretenda preservar. Nenhuma duvida pode ser promovida como KYC aprovado.
+- Fechado no snapshot `kyc-private-89855f26df6a5dd4`: pasta e usuario foram conciliados sem divergencia em 1.168 referencias unicas; 1.924 linhas continham 756 repeticoes, e caminhos legados aninhados foram reconhecidos.
+- Fechado no R2 privado isolado: 1.008 documentos unicos elegiveis e 100 referencias do mesmo usuario consolidadas. Em cada um dos dois ambientes a primeira execucao criou 1.008 objetos e a segunda criou zero, com fingerprint normalizado identico e nenhuma URL publica.
+- Fechado em dois PostgreSQL 17/V001-V026 independentes: 1.008 documentos na primeira execucao, zero na segunda, fingerprints identicos, zero FK invalida, duplicacao, checksum entre usuarios, vinculo incorreto ou storage fora da area privada.
+- O mapeamento de status foi corrigido sobre o snapshot canonico de 1.450 usuarios distintos: 589 `APROVADO`, tres `PENDENTE`, zero `REPROVADO` e 858 `NAO_INICIADO`. Decisao administrativa explicita prevalece; na ausencia dela, a existencia de documento persistido reproduz o rotulo `Conta verificada` da producao. `is_verificado` permanece restrito a conta/e-mail.
+- O desvio anterior de 1.452 veio de uma consulta posterior ao snapshot: dois usuarios foram criados depois do corte, sem duplicidade por documento. Duas execucoes PostgreSQL 17 reproduziram o fingerprint de status `4bdd0958142ee48a80f50217895835908fe03dbbd55ecc8aa0443c36bc6578c3`; o caso tecnico 1054 permaneceu aprovado.
+- A transferencia R2 nao foi repetida. As 1.008 copias privadas e o fingerprint normalizado `c77bd893058953b8e5c962d05f1ccfe6465c7ff80f528ed7e434c9379146199a` permaneceram inalterados.
+- Permanecem fora da importacao automatica 146 objetos sem referencia de banco. A revisao manual sanitizada cobre 58 arquivos invalidos, dois conjuntos conflitantes e quatro pastas sem usuario; nao houve objeto referenciado ausente, HTTP sem objeto ou usuario com referencia sem pasta.
+- Gate antes da importacao definitiva: revisar as 64 excecoes identificadas e decidir sobre os 146 objetos sem autoridade no banco. Nenhuma ausencia/ambiguidade pode rebaixar aprovado ou exigir reenvio automatico; nenhuma duvida pode ser promovida.
 - Este dry-run nao autoriza cutover, deploy, escrita na producao, uso do banco HML operacional ou copia de dado privado fora do R2 documental isolado.
 
 ## Dry-run do Premium historico

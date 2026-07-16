@@ -6,9 +6,7 @@ import br.com.topsdojob.v3.application.publico.kyc.DocumentoUploadProperties;
 import br.com.topsdojob.v3.application.publico.kyc.DocumentoUploadValidator;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
-import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import java.net.URI;
-import java.net.URLDecoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -19,11 +17,9 @@ import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -31,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.mock.web.MockMultipartFile;
@@ -41,25 +38,29 @@ class R2PrivateKycDryRunIntegrationTest {
 
   private static final int CONCURRENCY = 4;
   private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(3);
-  private static final Set<String> HISTORICAL_STATES = Set.of("PENDENTE", "SEM_EVIDENCIA");
+  private static final Set<String> HISTORICAL_STATES = Set.of(
+      "NAO_INICIADO", "PENDENTE", "APROVADO", "REPROVADO");
+  private static final Set<String> PARTS = Set.of(
+      "UNICO", "FRENTE", "VERSO", "NAO_DETERMINADA");
 
   @Test
-  void validaOrigemPrivadaEMigraSomenteDocumentoComParteComprovada() throws Exception {
-    SourceConfig sourceConfig = sourceConfig();
+  void migraCachePrivadoSanitizadoSemCredencialDaOrigem() throws Exception {
     R2StorageProperties destinationProperties = destinationProperties();
     destinationProperties.validateConfigured();
     assertThat(destinationProperties.getDocumentPrefix()).isEqualTo("hml/documentos/");
+
+    String scope = required("R2_KYC_DESTINATION_SCOPE");
+    if (!scope.matches("[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*")) {
+      throw new IllegalArgumentException("Escopo de destino KYC invalido");
+    }
+    String destinationRoot = destinationProperties.getDocumentPrefix()
+        + "importacao/" + scope + "/sha256/";
+    Path cacheDirectory = Path.of(required("R2_KYC_DRY_RUN_CACHE_DIR")).toAbsolutePath().normalize();
 
     HttpClient http = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(20))
         .followRedirects(HttpClient.Redirect.NEVER)
         .build();
-    R2Operations source = new R2SigV4Client(
-        http,
-        sourceConfig.endpoint(),
-        sourceConfig.region(),
-        sourceConfig.accessKey(),
-        sourceConfig.signingValue());
     ObjectStorage destination = new R2ObjectStorage(
         destinationProperties,
         new R2SigV4Client(
@@ -80,12 +81,10 @@ class R2PrivateKycDryRunIntegrationTest {
       List<Future<Result>> futures = candidates.stream()
           .map(candidate -> executor.submit(() -> migrate(
               candidate,
-              sourceConfig,
-              source,
-              destinationProperties,
+              cacheDirectory,
+              destinationRoot,
               destination,
               validator,
-              http,
               checksumLocks)))
           .toList();
       for (Future<Result> future : futures) {
@@ -100,65 +99,67 @@ class R2PrivateKycDryRunIntegrationTest {
 
     long migrated = count(results, "MIGRADA");
     long preserved = count(results, "PRESERVADA");
+    long consolidated = count(results, "CONSOLIDADA");
     long quarantined = count(results, "QUARENTENA");
     long blocked = count(results, "BLOQUEADA");
     assertThat(blocked).as("checksum divergente bloqueia o dry-run").isZero();
-    assertThat(migrated + preserved).as("ao menos um PDF privado deve ser validado").isPositive();
+    assertThat(migrated + preserved).as("ao menos um documento privado deve ser validado").isPositive();
     assertThat(results.stream()
-        .filter(result -> Set.of("MIGRADA", "PRESERVADA").contains(result.status()))
-        .allMatch(result -> "UNICO".equals(result.part())
-            && "PENDENTE".equals(result.kycStatus())
-            && "application/pdf".equals(result.mimeType())))
+        .filter(Result::successful)
+        .allMatch(result -> Set.of("UNICO", "FRENTE", "VERSO").contains(result.part())
+            && Set.of("PENDENTE", "VALIDADO", "REJEITADO").contains(result.kycStatus())
+            && Set.of("application/pdf", "image/jpeg", "image/png").contains(result.mimeType())))
         .isTrue();
+    assertNoCrossUserChecksum(results);
+    assertConsolidatedReferencesResolve(results);
     assertTemporaryPrivateAccess(results, destination, http);
 
     System.out.printf(
-        "R2_KYC_DRY_RUN total=%d migradas=%d preservadas=%d quarentena=%d bloqueadas=%d fingerprint=%s%n",
-        results.size(), migrated, preserved, quarantined, blocked, fingerprint(results));
+        "R2_KYC_DRY_RUN total=%d migradas=%d preservadas=%d consolidadas=%d "
+            + "quarentena=%d bloqueadas=%d fingerprint=%s%n",
+        results.size(), migrated, preserved, consolidated, quarantined, blocked, fingerprint(results));
   }
 
   private Result migrate(
       Candidate candidate,
-      SourceConfig sourceConfig,
-      R2Operations source,
-      R2StorageProperties destinationProperties,
+      Path cacheDirectory,
+      String destinationRoot,
       ObjectStorage destination,
       DocumentoUploadValidator validator,
-      HttpClient http,
       Map<String, Object> checksumLocks) {
     try {
-      if (!md5(candidate.sourceReference()).equals(candidate.referenceHash())) {
-        return Result.quarantine(candidate, "REFERENCIA_HASH_INVALIDO");
+      if ("DUPLICATA_MESMO_USUARIO".equals(candidate.classification())) {
+        return Result.consolidated(candidate);
       }
-      ParsedReference parsed = parse(candidate, sourceConfig.bucket());
-      if (isPubliclyReadable(http, sourceConfig.endpoint(), parsed)) {
-        return Result.quarantine(candidate, "ORIGEM_PUBLICAMENTE_ACESSIVEL");
+      if (!"ELIGIVEL".equals(candidate.classification())) {
+        return Result.quarantine(candidate, candidate.classification());
       }
-      if (!source.exists(parsed.bucket(), parsed.key())) {
+
+      Path source = cacheDirectory.resolve(candidate.cacheId() + ".bin").normalize();
+      if (!source.startsWith(cacheDirectory) || !Files.isRegularFile(source)) {
         return Result.quarantine(candidate, "ARQUIVO_INEXISTENTE");
       }
-      String extension = extension(parsed.key());
-      if (!Set.of("jpg", "jpeg", "png", "pdf").contains(extension)) {
-        return Result.quarantine(candidate, "TIPO_OU_CONTEUDO_INVALIDO");
+      byte[] bytes = Files.readAllBytes(source);
+      if (!sha256(bytes).equals(candidate.cacheId())) {
+        return Result.blocked(candidate, "", null, "CHECKSUM_CACHE_DIVERGENTE");
       }
-      if (!"pdf".equals(extension)) {
-        return Result.quarantine(candidate, "PARTE_DOCUMENTAL_NAO_COMPROVADA");
-      }
-      StoredObject sourceObject = source.get(parsed.bucket(), parsed.key());
+
       DocumentoUploadValidator.DocumentoValidado validated;
       try {
         validated = validator.validar(new MockMultipartFile(
             "arquivo",
-            "origem." + extension,
-            sourceObject.contentType(),
-            sourceObject.content()));
+            "origem." + candidate.extension(),
+            "application/octet-stream",
+            bytes));
       } catch (ResponseStatusException exception) {
         return Result.quarantine(candidate, "TIPO_OU_CONTEUDO_INVALIDO");
       }
+      if (!validated.sha256().equals(candidate.cacheId())) {
+        return Result.blocked(candidate, "", validated, "CHECKSUM_VALIDACAO_DIVERGENTE");
+      }
 
       String checksum = validated.sha256();
-      String key = destinationProperties.getDocumentPrefix()
-          + "importacao/sha256/" + checksum.substring(0, 2) + "/"
+      String key = destinationRoot + checksum.substring(0, 2) + "/"
           + checksum + "." + validated.extensao();
       synchronized (checksumLocks.computeIfAbsent(checksum, ignored -> new Object())) {
         if (destination.exists(StorageArea.PRIVATE_DOCUMENT, key)) {
@@ -187,50 +188,26 @@ class R2PrivateKycDryRunIntegrationTest {
     }
   }
 
-  private static ParsedReference parse(Candidate candidate, String expectedBucket) {
-    URI reference = URI.create(candidate.sourceReference());
-    String bucket = reference.getHost();
-    String key = URLDecoder.decode(reference.getRawPath().replaceFirst("^/", ""), StandardCharsets.UTF_8);
-    if (!"r2".equalsIgnoreCase(reference.getScheme())
-        || bucket == null
-        || !bucket.equals(expectedBucket)
-        || key.isBlank()
-        || key.contains("..")
-        || !key.startsWith("usuarios/" + candidate.sourceUserId() + "/documentos/")) {
-      throw new IllegalArgumentException("Referencia privada fora do contrato");
-    }
-    return new ParsedReference(bucket, key);
-  }
-
-  private static boolean isPubliclyReadable(
-      HttpClient http,
-      URI endpoint,
-      ParsedReference reference) throws Exception {
-    URI unsigned = URI.create(endpoint.getScheme() + "://" + endpoint.getHost()
-        + "/" + R2UrlCodec.encodeQueryValue(reference.bucket())
-        + "/" + R2UrlCodec.encodePath(reference.key()));
-    HttpResponse<Void> response = http.send(
-        HttpRequest.newBuilder(unsigned)
-            .timeout(Duration.ofSeconds(30))
-            .GET()
-            .build(),
-        HttpResponse.BodyHandlers.discarding());
-    return response.statusCode() >= 200 && response.statusCode() < 300;
-  }
-
   private static List<Candidate> readCandidates(Path input) throws Exception {
     List<Candidate> candidates = new ArrayList<>();
     for (String line : Files.readAllLines(input, StandardCharsets.US_ASCII)) {
       if (line.isBlank()) continue;
       String[] fields = line.split("\\t", -1);
-      if (fields.length != 4
+      if (fields.length != 9
           || !fields[0].matches("[1-9][0-9]*")
           || !fields[1].matches("[0-9a-f]{32}")
-          || !HISTORICAL_STATES.contains(fields[3])) {
+          || !fields[2].matches("[0-9a-f]{32}")
+          || (!fields[3].isEmpty() && !fields[3].matches("[0-9a-f]{64}"))
+          || (!fields[4].isEmpty() && !Set.of("jpg", "png", "pdf").contains(fields[4]))
+          || !HISTORICAL_STATES.contains(fields[5])
+          || !PARTS.contains(fields[6])
+          || (!fields[7].isEmpty() && !fields[7].matches("[0-9a-f]{64}"))
+          || !fields[8].matches("[A-Z][A-Z0-9_]{2,80}")) {
         throw new IllegalArgumentException("Linha invalida no manifesto operacional KYC");
       }
-      String decoded = new String(Base64.getDecoder().decode(fields[2]), StandardCharsets.UTF_8);
-      candidates.add(new Candidate(Long.parseLong(fields[0]), fields[1], decoded, fields[3]));
+      candidates.add(new Candidate(
+          Long.parseLong(fields[0]), fields[1], fields[2], fields[3], fields[4],
+          fields[5], fields[6], fields[7], fields[8]));
     }
     return candidates;
   }
@@ -247,14 +224,35 @@ class R2PrivateKycDryRunIntegrationTest {
     }
   }
 
+  private static void assertNoCrossUserChecksum(List<Result> results) {
+    Map<String, Set<UUID>> owners = results.stream()
+        .filter(Result::successful)
+        .collect(Collectors.groupingBy(
+            Result::checksum,
+            Collectors.mapping(Result::v3UserId, Collectors.toSet())));
+    assertThat(owners.values()).allMatch(ownerIds -> ownerIds.size() == 1);
+  }
+
+  private static void assertConsolidatedReferencesResolve(List<Result> results) {
+    Map<String, Result> byOwnerAndReference = results.stream()
+        .collect(Collectors.toMap(
+            result -> result.v3UserId() + ":" + result.referenceHash(),
+            result -> result));
+    assertThat(results.stream()
+        .filter(result -> "CONSOLIDADA".equals(result.status()))
+        .allMatch(result -> {
+          Result canonical = byOwnerAndReference.get(
+              result.v3UserId() + ":" + result.canonicalReferenceHash());
+          return canonical != null && canonical.successful();
+        }))
+        .isTrue();
+  }
+
   private static void assertTemporaryPrivateAccess(
       List<Result> results,
       ObjectStorage storage,
       HttpClient http) throws Exception {
-    Result sample = results.stream()
-        .filter(result -> Set.of("MIGRADA", "PRESERVADA").contains(result.status()))
-        .findFirst()
-        .orElseThrow();
+    Result sample = results.stream().filter(Result::successful).findFirst().orElseThrow();
     assertThat(storage.publicUrl(StorageArea.PRIVATE_DOCUMENT, sample.objectKey())).isEmpty();
     URI temporary = storage.temporaryGetUrl(
         StorageArea.PRIVATE_DOCUMENT,
@@ -280,24 +278,14 @@ class R2PrivateKycDryRunIntegrationTest {
     return results.stream().filter(result -> status.equals(result.status())).count();
   }
 
-  private static String extension(String key) {
-    String lower = key.toLowerCase(Locale.ROOT);
-    int dot = lower.lastIndexOf('.');
-    return dot < 0 || dot == lower.length() - 1 ? "" : lower.substring(dot + 1);
-  }
-
-  private static String md5(String value) throws Exception {
-    return HexFormat.of().formatHex(MessageDigest.getInstance("MD5")
-        .digest(value.getBytes(StandardCharsets.UTF_8)));
-  }
-
   private static String sha256(byte[] value) throws Exception {
     return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
   }
 
   private static UUID v3UserId(long sourceUserId) {
     try {
-      String hex = md5("legacy:usuario:" + sourceUserId);
+      String hex = HexFormat.of().formatHex(MessageDigest.getInstance("MD5")
+          .digest(("legacy:usuario:" + sourceUserId).getBytes(StandardCharsets.UTF_8)));
       return UUID.fromString(hex.substring(0, 8) + "-" + hex.substring(8, 12) + "-"
           + hex.substring(12, 16) + "-" + hex.substring(16, 20) + "-" + hex.substring(20));
     } catch (Exception exception) {
@@ -305,13 +293,13 @@ class R2PrivateKycDryRunIntegrationTest {
     }
   }
 
-  private static SourceConfig sourceConfig() {
-    return new SourceConfig(
-        URI.create(required("R2_KYC_SOURCE_ENDPOINT")),
-        environment("R2_KYC_SOURCE_REGION", "auto"),
-        required("R2_KYC_SOURCE_ACCESS_KEY"),
-        required("R2_KYC_SOURCE_SIGNING_VALUE"),
-        required("R2_KYC_SOURCE_BUCKET"));
+  private static String kycStatus(String historicalStatus) {
+    return switch (historicalStatus) {
+      case "APROVADO" -> "VALIDADO";
+      case "REPROVADO" -> "REJEITADO";
+      case "NAO_INICIADO", "PENDENTE" -> "PENDENTE";
+      default -> throw new IllegalArgumentException("Estado historico KYC invalido");
+    };
   }
 
   private static R2StorageProperties destinationProperties() {
@@ -345,22 +333,16 @@ class R2PrivateKycDryRunIntegrationTest {
     return value == null || value.isBlank() ? fallback : value;
   }
 
-  private record SourceConfig(
-      URI endpoint,
-      String region,
-      String accessKey,
-      String signingValue,
-      String bucket) {
-  }
-
-  private record ParsedReference(String bucket, String key) {
-  }
-
   private record Candidate(
       long sourceUserId,
       String referenceHash,
-      String sourceReference,
-      String historicalStatus) {
+      String canonicalReferenceHash,
+      String cacheId,
+      String extension,
+      String historicalStatus,
+      String part,
+      String submissionHash,
+      String classification) {
 
     private String uniqueKey() {
       return sourceUserId + ":" + referenceHash;
@@ -370,12 +352,14 @@ class R2PrivateKycDryRunIntegrationTest {
   private record Result(
       UUID v3UserId,
       String referenceHash,
+      String canonicalReferenceHash,
       String objectKey,
       String checksum,
       long size,
       String mimeType,
       String extension,
       String part,
+      String submissionHash,
       String status,
       String reason,
       String kycStatus) {
@@ -402,48 +386,25 @@ class R2PrivateKycDryRunIntegrationTest {
       return new Result(
           R2PrivateKycDryRunIntegrationTest.v3UserId(candidate.sourceUserId()),
           candidate.referenceHash(),
+          candidate.canonicalReferenceHash(),
           key,
           validated.sha256(),
           validated.bytes().length,
           validated.mimeType(),
           validated.extensao(),
-          "UNICO",
+          candidate.part(),
+          candidate.submissionHash(),
           status,
           "",
-          "PENDENTE");
+          R2PrivateKycDryRunIntegrationTest.kycStatus(candidate.historicalStatus()));
+    }
+
+    private static Result consolidated(Candidate candidate) {
+      return empty(candidate, "CONSOLIDADA", "DUPLICATA_MESMO_USUARIO");
     }
 
     private static Result quarantine(Candidate candidate, String reason) {
-      return new Result(
-          R2PrivateKycDryRunIntegrationTest.v3UserId(candidate.sourceUserId()),
-          candidate.referenceHash(),
-          "",
-          "",
-          0,
-          "",
-          "",
-          "NAO_DETERMINADA",
-          "QUARENTENA",
-          reason,
-          "PENDENTE");
-    }
-
-    private static Result quarantine(
-        Candidate candidate,
-        DocumentoUploadValidator.DocumentoValidado validated,
-        String reason) {
-      return new Result(
-          R2PrivateKycDryRunIntegrationTest.v3UserId(candidate.sourceUserId()),
-          candidate.referenceHash(),
-          "",
-          validated.sha256(),
-          validated.bytes().length,
-          validated.mimeType(),
-          validated.extensao(),
-          "NAO_DETERMINADA",
-          "QUARENTENA",
-          reason,
-          "PENDENTE");
+      return empty(candidate, "QUARENTENA", reason);
     }
 
     private static Result blocked(
@@ -454,37 +415,59 @@ class R2PrivateKycDryRunIntegrationTest {
       return new Result(
           R2PrivateKycDryRunIntegrationTest.v3UserId(candidate.sourceUserId()),
           candidate.referenceHash(),
+          candidate.canonicalReferenceHash(),
           key,
-          validated.sha256(),
-          validated.bytes().length,
-          validated.mimeType(),
-          validated.extensao(),
-          "UNICO",
+          validated == null ? "" : validated.sha256(),
+          validated == null ? 0 : validated.bytes().length,
+          validated == null ? "" : validated.mimeType(),
+          validated == null ? "" : validated.extensao(),
+          candidate.part(),
+          candidate.submissionHash(),
           "BLOQUEADA",
           reason,
-          "PENDENTE");
+          R2PrivateKycDryRunIntegrationTest.kycStatus(candidate.historicalStatus()));
+    }
+
+    private static Result empty(Candidate candidate, String status, String reason) {
+      return new Result(
+          R2PrivateKycDryRunIntegrationTest.v3UserId(candidate.sourceUserId()),
+          candidate.referenceHash(),
+          candidate.canonicalReferenceHash(),
+          "", "", 0, "", "",
+          candidate.part(),
+          candidate.submissionHash(),
+          status,
+          reason,
+          R2PrivateKycDryRunIntegrationTest.kycStatus(candidate.historicalStatus()));
+    }
+
+    private boolean successful() {
+      return Set.of("MIGRADA", "PRESERVADA").contains(status);
     }
 
     private String toTsv() {
       return String.join("\t",
           v3UserId.toString(),
           referenceHash,
+          canonicalReferenceHash,
           objectKey,
           checksum,
           Long.toString(size),
           mimeType,
           extension,
           part,
+          submissionHash,
           status,
           reason,
           kycStatus);
     }
 
     private String fingerprintValue() {
-      String normalizedStatus = Set.of("MIGRADA", "PRESERVADA").contains(status) ? "VALIDA" : status;
+      String normalizedStatus = successful() ? "VALIDA" : status;
       return String.join(":",
-          v3UserId.toString(), referenceHash, objectKey, checksum, Long.toString(size), mimeType,
-          extension, part, normalizedStatus, reason, kycStatus);
+          v3UserId.toString(), referenceHash, canonicalReferenceHash, checksum,
+          Long.toString(size), mimeType, extension, part, submissionHash,
+          normalizedStatus, reason, kycStatus);
     }
   }
 }

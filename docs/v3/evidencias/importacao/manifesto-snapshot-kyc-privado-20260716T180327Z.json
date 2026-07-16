@@ -1,0 +1,140 @@
+{
+  "schemaVersion": 2,
+  "snapshot": {
+    "id": "kyc-private-89855f26df6a5dd4",
+    "utc": "2026-07-16T18:03:27.812565Z",
+    "sourceFingerprintSha256": "89855f26df6a5dd4b6c62dafcc910748889e592e1d7a8c49a4052c1b99147d66",
+    "inputFingerprintSha256": "048356d6672d61d8e2be1737977c8a195cdd43609492a96bd315a8791b249dc6"
+  },
+  "canonicalUserSnapshot": {
+    "id": "final-20260715T225154Z",
+    "utc": "2026-07-15T22:52:09.9594294Z",
+    "sourceFingerprintSha256": "d48543f325f17b4da033772cde3799430a058b62ee99eccf4b2d33edd9c18f6d",
+    "usersDistinct": 1450,
+    "usersCreatedAfterSnapshotAtDocumentAudit": 2
+  },
+  "importers": {
+    "sqlSha256": "919f12a26af727c63d549b49aaf01dc90284cc32c40aed7826ba9aada8b3dc71",
+    "validatorSha256": "a42ee08e49ebd6eadbe831e7de53f3538e44f2d0266136acedafbad24a3c515f",
+    "statusMappingTestSha256": "e733d5106ad453e31f70a820ccf8b76ea042ae7b6a37480374a969012732580b",
+    "r2TestSha256": "b6dbc21dbcf9a4e3c7795938ab4287ad96ad2414a4038635f27d38cd9ef3a035"
+  },
+  "source": {
+    "usersAtDocumentAudit": 1452,
+    "kycStatusAtCanonicalUserSnapshot": {
+      "NAO_INICIADO": 858,
+      "PENDENTE": 3,
+      "APROVADO": 589,
+      "REPROVADO": 0
+    },
+    "documentReferenceRows": 1924,
+    "uniqueReferences": 1168,
+    "duplicateReferenceRows": 756,
+    "bucketObjects": 1314,
+    "referencedObjects": 1168,
+    "unreferencedObjects": 146,
+    "foldersWithoutUser": 4,
+    "usersWithReferenceWithoutFolder": 0
+  },
+  "reconciliation": {
+    "eligibleUniqueDocuments": 1008,
+    "sameUserDuplicateReferencesConsolidated": 100,
+    "manualReview": {
+      "invalidTypeOrContent": 58,
+      "conflictingDocuments": 2,
+      "foldersWithoutUser": 4,
+      "total": 64
+    },
+    "crossUserChecksum": 0,
+    "missingReferencedObject": 0,
+    "httpReferenceWithoutObject": 0,
+    "invalidUserBinding": 0
+  },
+  "privateR2DryRun": {
+    "area": "PRIVATE_DOCUMENT",
+    "prefixPattern": "hml/documentos/importacao/{ambiente}/sha256/",
+    "environmentA": {
+      "firstCreatedObjects": 1008,
+      "secondCreatedObjects": 0
+    },
+    "environmentB": {
+      "firstCreatedObjects": 1008,
+      "secondCreatedObjects": 0
+    },
+    "normalizedFingerprintSha256": "c77bd893058953b8e5c962d05f1ccfe6465c7ff80f528ed7e434c9379146199a",
+    "publicUrlsCreated": 0,
+    "temporaryAdministrativeReadValidated": true
+  },
+  "databaseDryRun": {
+    "postgresql": 17,
+    "flyway": "V001-V026",
+    "environmentA": {
+      "firstCreatedDocuments": 1008,
+      "secondCreatedDocuments": 0
+    },
+    "environmentB": {
+      "firstCreatedDocuments": 1008,
+      "secondCreatedDocuments": 0
+    },
+    "previousStatusMapping": {
+      "status": "SUPERSEDED",
+      "reason": "A execucao anterior considerava somente advertiser_verification_status e nao reproduzia a regra exibida pela producao."
+    },
+    "previousDocumentFingerprintSha256": "0bc16e953f00a49f5171dcb92ed9aab2d1308bcfd3f07192dbb7eec2ed1471a2",
+    "invalidForeignKeys": 0,
+    "duplicates": 0,
+    "documentsOutsidePrivateStorage": 0,
+    "statusDivergences": 0
+  },
+  "statusMappingDryRun": {
+    "postgresql": 17,
+    "environments": [
+      {
+        "id": "A",
+        "usersDistinct": 1450,
+        "status": {
+          "APROVADO": 589,
+          "PENDENTE": 3,
+          "REPROVADO": 0,
+          "NAO_INICIADO": 858
+        }
+      },
+      {
+        "id": "B",
+        "usersDistinct": 1450,
+        "status": {
+          "APROVADO": 589,
+          "PENDENTE": 3,
+          "REPROVADO": 0,
+          "NAO_INICIADO": 858
+        }
+      }
+    ],
+    "fingerprintSha256": "4bdd0958142ee48a80f50217895835908fe03dbbd55ecc8aa0443c36bc6578c3",
+    "proofUser": {
+      "technicalId": 1054,
+      "persistedDocuments": 4,
+      "explicitAdministrativeStatus": null,
+      "reviewRequests": 0,
+      "mappedStatus": "APROVADO"
+    },
+    "migrationActor": {
+      "type": "SISTEMA",
+      "credentials": 0
+    },
+    "r2TransferExecuted": false,
+    "r2FingerprintPreservedSha256": "c77bd893058953b8e5c962d05f1ccfe6465c7ff80f528ed7e434c9379146199a"
+  },
+  "privacy": {
+    "productionWrites": 0,
+    "sourceR2Writes": 0,
+    "publicDocumentUrls": 0,
+    "personalDataInManifest": false,
+    "fullObjectKeysInManifest": false,
+    "signedUrlsInManifest": false
+  },
+  "openDivergences": [
+    "146 objetos sem referencia de banco permanecem fora da importacao automatica.",
+    "As 64 excecoes documentais sanitizadas permanecem para analise manual; nenhuma foi promovida pelo ajuste de status."
+  ]
+}

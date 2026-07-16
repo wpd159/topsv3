@@ -80,6 +80,20 @@ WHERE s.tipo = 'ANUNCIO'
 SELECT 'STORIES_QUARENTENA|' || count(*) FROM stg_story;
 SELECT 'KYC_CANONICO|' || count(*) FROM documento_usuario;
 SELECT 'KYC_PENDENTE|' || count(*) FROM documento_usuario WHERE status = 'PENDENTE';
+SELECT 'KYC_APROVADO|' || count(*) FROM documento_usuario WHERE status = 'VALIDADO';
+SELECT 'KYC_REJEITADO|' || count(*) FROM documento_usuario WHERE status = 'REJEITADO';
+SELECT 'KYC_USUARIOS_APROVADO|' || count(DISTINCT entidade_v3_id)
+FROM stg_usuario WHERE payload_normalizado_json ->> 'kycStatusOrigem' = 'APROVADO';
+SELECT 'KYC_USUARIOS_PENDENTE|' || count(DISTINCT entidade_v3_id)
+FROM stg_usuario WHERE payload_normalizado_json ->> 'kycStatusOrigem' = 'PENDENTE';
+SELECT 'KYC_USUARIOS_REPROVADO|' || count(DISTINCT entidade_v3_id)
+FROM stg_usuario WHERE payload_normalizado_json ->> 'kycStatusOrigem' = 'REPROVADO';
+SELECT 'KYC_USUARIOS_NAO_INICIADO|' || count(DISTINCT entidade_v3_id)
+FROM stg_usuario WHERE payload_normalizado_json ->> 'kycStatusOrigem' = 'NAO_INICIADO';
+SELECT 'KYC_DUPLICATA_CONSOLIDADA|' || count(*)
+FROM stg_midia
+WHERE tabela_origem = 'usuario_documentos'
+  AND payload_normalizado_json ->> 'conteudoDuplicadoConsolidado' = 'true';
 SELECT 'KYC_HTTP_QUARENTENA|' || count(*)
 FROM importacao_pendencia WHERE codigo = 'KYC_REFERENCIA_HTTP_QUARENTENA';
 SELECT 'KYC_PRIVADO_NAO_VERIFICADO|' || count(*)
@@ -100,7 +114,7 @@ FROM documento_usuario d
 JOIN arquivo_midia a ON a.id = d.arquivo_midia_id
 WHERE a.storage_provider = 'R2'
   AND a.bucket = :'r2_document_bucket'
-  AND a.chave_objeto LIKE 'hml/documentos/importacao/sha256/%';
+  AND a.chave_objeto LIKE 'hml/documentos/importacao/%/sha256/%';
 SELECT 'MOVIMENTOS_SALDO_INICIAL|' || count(*)
 FROM movimento_credito WHERE tipo = 'MIGRACAO_SALDO_INICIAL';
 SELECT 'USUARIOS_SALDO_INICIAL|' || count(DISTINCT usuario_id)
@@ -176,23 +190,50 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
+    FROM stg_usuario
+    WHERE tabela_origem = 'usuarios'
+      AND payload_normalizado_json ->> 'kycStatusOrigem'
+          NOT IN ('APROVADO', 'PENDENTE', 'REPROVADO', 'NAO_INICIADO')
+  ) OR (
+    SELECT count(*) FROM stg_usuario WHERE tabela_origem = 'usuarios'
+  ) <> (
+    SELECT count(DISTINCT entidade_v3_id) FROM stg_usuario WHERE tabela_origem = 'usuarios'
+  ) THEN
+    RAISE EXCEPTION 'mapeamento KYC de usuarios possui status invalido ou contagem duplicada';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM credencial_usuario
+    WHERE usuario_id = md5('dryrun:kyc-migration-actor')::uuid
+  ) THEN
+    RAISE EXCEPTION 'ator tecnico da migracao KYC recebeu credencial';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
     FROM documento_usuario d
     JOIN arquivo_midia a ON a.id = d.arquivo_midia_id
-    WHERE d.status <> 'PENDENTE'
-       OR d.validado_por IS NOT NULL
-       OR d.validado_em IS NOT NULL
-       OR d.revisado_por IS NOT NULL
-       OR d.revisado_em IS NOT NULL
-       OR d.parte <> 'UNICO'
-       OR a.status_arquivo <> 'PENDENTE'
+    WHERE d.status NOT IN ('PENDENTE', 'VALIDADO', 'REJEITADO')
+       OR (d.status = 'VALIDADO' AND (d.validado_por IS NULL OR d.validado_em IS NULL))
+       OR (d.status <> 'VALIDADO' AND (d.validado_por IS NOT NULL OR d.validado_em IS NOT NULL))
+       OR d.parte NOT IN ('UNICO', 'FRENTE', 'VERSO')
+       OR a.status_arquivo <> CASE d.status
+            WHEN 'VALIDADO' THEN 'VALIDADO'
+            WHEN 'REJEITADO' THEN 'REJEITADO'
+            ELSE 'PENDENTE'
+          END
        OR a.storage_provider <> 'R2'
        OR a.bucket <> (SELECT r2_document_bucket FROM validar_context)
-       OR a.chave_objeto NOT LIKE 'hml/documentos/importacao/sha256/%'
-       OR a.mime_type <> 'application/pdf'
+       OR a.chave_objeto NOT LIKE 'hml/documentos/importacao/%/sha256/%'
+       OR NOT (
+         (a.mime_type = 'application/pdf' AND d.parte = 'UNICO')
+         OR (a.mime_type IN ('image/jpeg', 'image/png') AND d.parte IN ('FRENTE', 'VERSO'))
+       )
        OR a.tamanho_bytes NOT BETWEEN 1 AND 12582912
        OR a.sha256 !~ '^[0-9a-f]{64}$'
   ) THEN
-    RAISE EXCEPTION 'documento KYC promovido fora do contrato privado e pendente';
+    RAISE EXCEPTION 'documento KYC promovido fora do contrato privado, historico e tipado';
   END IF;
 
   IF EXISTS (
@@ -222,6 +263,20 @@ BEGIN
       AND payload_normalizado_json ->> 'urlPublicaGerada' <> 'false'
   ) THEN
     RAISE EXCEPTION 'documento KYC recebeu indicacao de URL publica';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM stg_usuario s
+    WHERE s.payload_normalizado_json ->> 'kycStatusOrigem' = 'APROVADO'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM documento_usuario d
+        WHERE d.usuario_id = s.entidade_v3_id
+          AND d.status = 'VALIDADO'
+      )
+  ) THEN
+    RAISE EXCEPTION 'usuario KYC aprovado na origem ficaria sem aprovacao operacional';
   END IF;
 END $$;
 

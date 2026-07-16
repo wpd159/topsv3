@@ -56,6 +56,17 @@ Cobertura minima:
 - Divergencias devem usar contagens, chaves tecnicas sanitizadas e status.
 - Nenhum documento, WhatsApp, e-mail real, URL privada ou storage key pode aparecer em relatorio versionado.
 
+## KYC privado
+
+- O vinculo da pasta documental deve ser comprovado na origem e depois resolvido pelo mapa canonico de usuarios; o nome do diretorio nunca substitui o mapeamento origem -> V3.
+- A varredura aceita recursao abaixo de `usuarios/{id}/documentos/`, mas somente referencia de banco conciliada, binario privado valido e parte comprovada podem entrar no operacional.
+- PDF unico e imagens frente/verso sao suportados. Mesmo usuario e checksum consolidam; checksum associado a usuarios diferentes, conflito documental ou objeto sem autoridade de banco exige revisao manual.
+- Status historico confiavel e preservado. A ausencia ou ambiguidade do arquivo de um usuario aprovado nao autoriza rebaixamento nem exigencia automatica de novo envio.
+- Para a origem atual, decisao administrativa explicita prevalece; sem ela, a existencia de documento persistido reproduz o estado `Conta verificada` exibido pelo frontend legado. `is_verificado` confirma conta/e-mail e nao e fonte de KYC.
+- Contagens de status devem usar `count(distinct usuario.id)` e o mesmo corte transacional do snapshot. Crescimento posterior da producao deve ser registrado separadamente, nunca agregado ao manifesto anterior.
+- O destino usa somente `ObjectStorage` privado no prefixo isolado do dry-run. URL publica e proibida; acesso administrativo usa URL temporaria curta e nao registrada em evidencia.
+- A prova de idempotencia exige dois PostgreSQL 17 e dois escopos R2 descartaveis independentes: primeira execucao reconcilia, segunda cria zero registro/objeto e os fingerprints normalizados devem coincidir.
+
 ## Rollback
 
 - Importacao definitiva exige backup anterior.
