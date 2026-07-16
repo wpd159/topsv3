@@ -197,7 +197,6 @@ jobs:
                 -e HML_AUTH_SMOKE_RUNTIME_VALUE \
                 backend \
                 --server.port=0 \
-                --spring.main.web-application-type=none \
                 --app.hml-auth-smoke.enabled=true
               unset HML_AUTH_SMOKE_RUNTIME_VALUE
             "
