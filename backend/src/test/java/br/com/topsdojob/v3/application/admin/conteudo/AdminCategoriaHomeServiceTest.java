@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.conteudo.dto.CategoriaHomeAdminRequest;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
+import br.com.topsdojob.v3.application.publico.service.CategoriaHomePublicaService;
 import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -21,6 +22,7 @@ import br.com.topsdojob.v3.persistence.repository.CategoriaHomeRepository;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import javax.imageio.ImageIO;
@@ -106,6 +108,45 @@ class AdminCategoriaHomeServiceTest {
     assertThat(resposta.ordem()).isEqualTo(4);
     assertThat(resposta.ativo()).isFalse();
     verify(fixture.storage).delete(StorageArea.PUBLIC_MEDIA, chaveAnterior);
+  }
+
+  @Test
+  void edicaoReversivelApareceNaHomeERestauraValorOriginal() {
+    Fixture fixture = fixture();
+    UUID id = UUID.randomUUID();
+    CategoriaHomeEntity entity = CategoriaHomeEntity.criarAdministrativa(
+        id,
+        CategoriaAnuncio.MASSAGENS,
+        "Massagens",
+        "Descricao publica original.",
+        "hml/midias-aprovadas/categorias-home/massagens.webp",
+        3,
+        true);
+    when(fixture.repository.findById(id)).thenReturn(Optional.of(entity));
+    when(fixture.repository.saveAndFlush(entity)).thenReturn(entity);
+    when(fixture.repository.findByAtivoTrueOrderByOrdemAscIdAsc()).thenReturn(List.of(entity));
+    CategoriaHomePublicaService publica = new CategoriaHomePublicaService(
+        fixture.repository, fixture.storage);
+
+    fixture.service.atualizar(
+        id,
+        new CategoriaHomeAdminRequest(
+            "MASSAGENS", "Massagens em destaque", "Descricao publica temporaria.", 3, true),
+        null);
+
+    assertThat(publica.listarAtivas())
+        .singleElement()
+        .satisfies(item -> assertThat(item.titulo()).isEqualTo("Massagens em destaque"));
+
+    fixture.service.atualizar(
+        id,
+        new CategoriaHomeAdminRequest(
+            "MASSAGENS", "Massagens", "Descricao publica original.", 3, true),
+        null);
+
+    assertThat(publica.listarAtivas())
+        .singleElement()
+        .satisfies(item -> assertThat(item.titulo()).isEqualTo("Massagens"));
   }
 
   @Test

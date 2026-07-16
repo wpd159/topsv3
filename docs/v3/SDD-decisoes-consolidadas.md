@@ -304,6 +304,7 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Neon visual deve permanecer discreto, sem animacao continua, sem alterar a paleta publica e sem reintroduzir elemento flutuante de retorno ao topo.
 - A V021 e necessaria porque nao havia tabela/entidade V3 para categorias da Home nem persistencia da data de nascimento ja exigida no cadastro. O catalogo publico de categorias passa a ter uma unica fonte backend.
 - A V027 torna obrigatorio o vinculo entre cada card da Home e uma das cinco categorias canonicas do wizard. Nome, descricao, imagem, ordem e status continuam editoriais; destino e filtro sao derivados pelo backend, sem codigo livre ou fonte estatica no frontend.
+- A V028 corrige a fonte canonica do RBAC ao catalogar `ADMIN_CONFIGURAR` e vincula-la somente ao papel `ADMIN`. O provisionador HML continua atribuindo apenas o papel; autoridades permanecem derivadas de `permissao` e `papel_permissao`, sem bypass ou regra especifica por usuario.
 - O cadastro das categorias editoriais atuais sera manual no painel V3. Nao existe importador historico, adapter legado ou segundo fluxo de imagem; criacao e troca de imagem reutilizam o `ObjectStorage` R2 aprovado.
 - `OCULTAR_IDADE` reutiliza a ativacao Premium existente e sua politica temporal. Somente ativacao vigente com compra de valor positivo ou consumo positivo de creditos oculta a idade; cortesia, admin, ativacao gratuita ou expirada nao ocultam.
 - O backend nunca retorna `dataNascimento` no catalogo publico e o frontend nao calcula idade nem decide ocultacao.

@@ -684,6 +684,7 @@ Antes de admin em ambiente nao local:
 ## Desbloqueios de catalogo e idade publica
 
 - Fechado localmente pelas V021/V027: cards da Home possuem vinculo obrigatorio com a taxonomia canonica do wizard e dois cards ativos nao podem compartilhar categoria; destino e filtro sao derivados no backend, sem codigo livre ou fallback estatico.
+- Fechado localmente pela V028: o papel `ADMIN` recebe `ADMIN_CONFIGURAR` pela matriz canonica do banco; `MODERADOR` e `USUARIO` nao recebem a autoridade, e os endpoints de categorias continuam exigindo papel e permissao granular.
 - Fechado localmente: painel administrativo cria/edita vinculo, conteudo, ordem, status e imagem pelo R2 canonico; a Home recebe apenas ativos ordenados e `/api/public/anuncios` com o parametro `categoria={codigo}` aplica a correspondencia persistida no anuncio.
 - Pendente operacional, sem bloqueio estrutural: recriar manualmente no painel V3 as categorias editoriais desejadas e manter configurada a base publica do bucket R2 para novas imagens. Nenhum importador historico sera criado.
 - Fechado localmente: idade calculada no backend e visivel por padrao; `OCULTAR_IDADE` pago e vigente e a unica regra de ocultacao.
