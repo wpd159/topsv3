@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioPublicoRespon
 import br.com.topsdojob.v3.application.publico.dto.SolicitarAnuncioValidationErrorDto;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
+import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
@@ -49,7 +50,6 @@ public class SolicitarAnuncioPublicoService {
     static final String WHATSAPP_SINTETICO_PERMITIDO = "+5500000000000";
     private static final int TITULO_MAX = 80;
     private static final int DESCRICAO_MAX = 600;
-    private static final String CATEGORIA_PADRAO = "ACOMPANHANTE";
     private static final Set<String> ALLOWED_FIELDS = Set.of(
             "whatsapp",
             "uf",
@@ -382,13 +382,15 @@ public class SolicitarAnuncioPublicoService {
     private String categoria(String value, List<SolicitarAnuncioValidationErrorDto> errors) {
         String sanitized = sanitize(value);
         if (sanitized == null) {
-            return CATEGORIA_PADRAO;
+            errors.add(error("categoria", "CATEGORIA_OBRIGATORIA", "categoria deve ser informada"));
+            return null;
         }
-        String normalized = slugify(sanitized).replace('-', '_').toUpperCase(Locale.ROOT);
-        if (!normalized.matches("[A-Z0-9_]{3,40}")) {
-            errors.add(error("categoria", "CATEGORIA_INVALIDA", "categoria local invalida"));
+        CategoriaAnuncio categoria = CategoriaAnuncio.porCodigo(sanitized).orElse(null);
+        if (categoria == null) {
+            errors.add(error("categoria", "CATEGORIA_INVALIDA", "categoria invalida"));
+            return null;
         }
-        return normalized;
+        return categoria.name();
     }
 
     private String sanitize(String value) {

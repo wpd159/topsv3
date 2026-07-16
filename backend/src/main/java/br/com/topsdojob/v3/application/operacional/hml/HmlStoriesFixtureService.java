@@ -114,12 +114,11 @@ public class HmlStoriesFixtureService {
     private static final OffsetDateTime BENEFICIO_EXPIRADO_INICIO = OffsetDateTime.parse("2024-01-01T00:00:00Z");
     private static final OffsetDateTime BENEFICIO_EXPIRADO_FIM = OffsetDateTime.parse("2025-01-01T00:00:00Z");
     private static final List<CategoriaFixture> CATEGORIAS = List.of(
-            categoria("f2000000-0000-4000-8000-000000000001", "ACOMPANHANTE_FEMININA", "Acompanhante feminina", "Encontre as melhores acompanhantes femininas.", "/anuncios?categoria=ACOMPANHANTE_FEMININA", "/cards/acompanhante-feminina.jpg", 1, true),
-            categoria("f2000000-0000-4000-8000-000000000002", "VENDA_DE_CONTEUDO", "Sexo Virtual", "Videochamadas, conte\u00fado exclusivo e atendimento online.", "/anuncios?categoria=VENDA_DE_CONTEUDO", "/cards/casual.jpg", 2, true),
-            categoria("f2000000-0000-4000-8000-000000000003", "ACOMPANHANTE_MASCULINO", "Acompanhante masculino", "Homens elegantes e discretos.", "/anuncios?categoria=ACOMPANHANTE_MASCULINO", "/cards/acompanhante-masculino.jpg", 3, true),
-            categoria("f2000000-0000-4000-8000-000000000004", "TRANSEX_TRAVESTIS", "Transex e Travestis", "As mais desejadas transex e travestis.", "/anuncios?categoria=TRANSEX_TRAVESTIS", "/cards/acompanhante-trans.jpg", 4, true),
-            categoria("f2000000-0000-4000-8000-000000000005", "MASSAGENS", "Massagens", "Massagistas sensuais e terap\u00eauticas.", "/anuncios?categoria=MASSAGENS", "/cards/massagem.jpg", 5, true),
-            categoria("f2000000-0000-4000-8000-000000000006", "ENCONTROS_CASUAIS", "Casual e encontros", "Encontros leves e espont\u00e2neos.", "/anuncios?categoria=ENCONTROS_CASUAIS", "/cards/casual.jpg", 6, false));
+            categoria("f2000000-0000-4000-8000-000000000001", "ACOMPANHANTE_FEMININA", "Acompanhante feminina", "Encontre as melhores acompanhantes femininas.", "/cards/acompanhante-feminina.jpg", 1, true),
+            categoria("f2000000-0000-4000-8000-000000000002", "VENDA_DE_CONTEUDO", "Sexo Virtual", "Videochamadas, conte\u00fado exclusivo e atendimento online.", "/cards/casual.jpg", 2, true),
+            categoria("f2000000-0000-4000-8000-000000000003", "ACOMPANHANTE_MASCULINO", "Acompanhante masculino", "Homens elegantes e discretos.", "/cards/acompanhante-masculino.jpg", 3, true),
+            categoria("f2000000-0000-4000-8000-000000000004", "TRANSEX_TRAVESTIS", "Transex e Travestis", "As mais desejadas transex e travestis.", "/cards/acompanhante-trans.jpg", 4, true),
+            categoria("f2000000-0000-4000-8000-000000000005", "MASSAGENS", "Massagens", "Massagistas sensuais e terap\u00eauticas.", "/cards/massagem.jpg", 5, true));
 
     private static final String DESCRICAO_A = "Perfil ficticio de homologacao em Goiania com descricao completa para validar listagens publicas, pagina de detalhe, metadados e indexacao do sitemap sem utilizar dados reais.";
     private static final String DESCRICAO_B = "Segundo perfil ficticio de homologacao no Setor Bueno, preparado exclusivamente para validar paginacao, descoberta de localidades e renderizacao publica com conteudo seguro.";
@@ -190,9 +189,9 @@ public class HmlStoriesFixtureService {
         int localidadesCriadas = provisionarLocalidades(agora);
 
         int anunciosCriados = 0;
-        anunciosCriados += sincronizarAnuncio(ANUNCIO_A_ID, usuario.getId(), "fixture-stories-hml-a", "Perfil ficticio Stories A", DESCRICAO_A, StatusAnuncio.PUBLICADO, agora);
-        anunciosCriados += sincronizarAnuncio(ANUNCIO_B_ID, usuario.getId(), "fixture-stories-hml-b", "Perfil ficticio Stories B", DESCRICAO_B, StatusAnuncio.PUBLICADO, agora);
-        anunciosCriados += sincronizarAnuncio(ANUNCIO_INELEGIVEL_ID, usuario.getId(), "fixture-stories-hml-inelegivel", "Perfil ficticio inelegivel", DESCRICAO_INELEGIVEL, StatusAnuncio.PAUSADO, agora);
+        anunciosCriados += sincronizarAnuncio(ANUNCIO_A_ID, usuario.getId(), "fixture-stories-hml-a", "Perfil ficticio Stories A", DESCRICAO_A, "ACOMPANHANTE_FEMININA", StatusAnuncio.PUBLICADO, agora);
+        anunciosCriados += sincronizarAnuncio(ANUNCIO_B_ID, usuario.getId(), "fixture-stories-hml-b", "Perfil ficticio Stories B", DESCRICAO_B, "MASSAGENS", StatusAnuncio.PUBLICADO, agora);
+        anunciosCriados += sincronizarAnuncio(ANUNCIO_INELEGIVEL_ID, usuario.getId(), "fixture-stories-hml-inelegivel", "Perfil ficticio inelegivel", DESCRICAO_INELEGIVEL, "ACOMPANHANTE_MASCULINO", StatusAnuncio.PAUSADO, agora);
 
         int localizacoesCriadas = 0;
         localizacoesCriadas += sincronizarLocalizacao(ANUNCIO_A_ID, agora);
@@ -303,7 +302,6 @@ public class HmlStoriesFixtureService {
                         categoria.identificador(),
                         categoria.titulo(),
                         categoria.descricao(),
-                        categoria.destino(),
                         categoria.imagemPublicaUrl(),
                         categoria.ordem(),
                         categoria.ativo()));
@@ -312,7 +310,6 @@ public class HmlStoriesFixtureService {
                     categoria.identificador(),
                     categoria.titulo(),
                     categoria.descricao(),
-                    categoria.destino(),
                     categoria.imagemPublicaUrl(),
                     categoria.ordem(),
                     categoria.ativo())) {
@@ -549,6 +546,7 @@ public class HmlStoriesFixtureService {
             String slug,
             String titulo,
             String descricao,
+            String categoria,
             StatusAnuncio status,
             OffsetDateTime agora) {
         AnuncioEntity anuncio = anuncioRepository.findById(id).orElse(null);
@@ -559,6 +557,7 @@ public class HmlStoriesFixtureService {
                     slug,
                     titulo,
                     descricao,
+                    categoria,
                     status,
                     StatusModeracaoAnuncio.APROVADO,
                     agora);
@@ -568,7 +567,7 @@ public class HmlStoriesFixtureService {
             return 1;
         }
         anuncio.sincronizarFixtureHomologacao(
-                titulo, descricao, status, StatusModeracaoAnuncio.APROVADO, agora);
+                titulo, descricao, categoria, status, StatusModeracaoAnuncio.APROVADO, agora);
         sincronizarAtendimento(anuncio, id);
         sincronizarContatoFicticio(anuncio, id, titulo, descricao, status, agora);
         anuncioRepository.save(anuncio);
@@ -588,7 +587,7 @@ public class HmlStoriesFixtureService {
         anuncio.atualizarPeloProprietario(
                 titulo,
                 descricao,
-                "ACOMPANHANTE",
+                "ACOMPANHANTE_FEMININA",
                 null,
                 WHATSAPP_FICTICIO,
                 anuncio.getLocaisAtendimento(),
@@ -778,12 +777,11 @@ public class HmlStoriesFixtureService {
             String identificador,
             String titulo,
             String descricao,
-            String destino,
             String imagemPublicaUrl,
             int ordem,
             boolean ativo) {
         return new CategoriaFixture(
-                uuid(id), identificador, titulo, descricao, destino, imagemPublicaUrl, ordem, ativo);
+                uuid(id), identificador, titulo, descricao, imagemPublicaUrl, ordem, ativo);
     }
 
     private static GrupoFixture grupo(
@@ -821,7 +819,6 @@ public class HmlStoriesFixtureService {
             String identificador,
             String titulo,
             String descricao,
-            String destino,
             String imagemPublicaUrl,
             int ordem,
             boolean ativo) {

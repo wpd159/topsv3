@@ -255,6 +255,28 @@ public class AnuncioEntity {
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,
       OffsetDateTime criadoEm) {
+    return criarFixtureHomologacao(
+        id,
+        usuarioId,
+        slug,
+        titulo,
+        descricao,
+        "ACOMPANHANTE_FEMININA",
+        status,
+        statusModeracao,
+        criadoEm);
+  }
+
+  public static AnuncioEntity criarFixtureHomologacao(
+      UUID id,
+      UUID usuarioId,
+      String slug,
+      String titulo,
+      String descricao,
+      String categoria,
+      StatusAnuncio status,
+      StatusModeracaoAnuncio statusModeracao,
+      OffsetDateTime criadoEm) {
     AnuncioEntity entity = new AnuncioEntity();
     entity.id = id;
     entity.usuarioId = usuarioId;
@@ -263,7 +285,7 @@ public class AnuncioEntity {
     entity.descricao = descricao;
     entity.status = status;
     entity.statusModeracao = statusModeracao;
-    entity.categoria = "ACOMPANHANTE";
+    entity.categoria = categoria;
     entity.preco = null;
     entity.whatsappNormalizado = null;
     entity.publicadoEm = status == StatusAnuncio.PUBLICADO ? criadoEm : null;
@@ -279,11 +301,13 @@ public class AnuncioEntity {
   public void sincronizarFixtureHomologacao(
       String titulo,
       String descricao,
+      String categoria,
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,
       OffsetDateTime atualizadoEm) {
     this.titulo = titulo;
     this.descricao = descricao;
+    this.categoria = categoria;
     this.status = status;
     this.statusModeracao = statusModeracao;
     this.removidoEm = null;

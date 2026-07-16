@@ -109,7 +109,7 @@ class HmlStoriesFixtureServiceTest {
 
         var result = service.provisionar();
 
-        assertThat(result.categoriasCriadas()).isEqualTo(6);
+        assertThat(result.categoriasCriadas()).isEqualTo(5);
         assertThat(result.localidadesCriadas()).isEqualTo(3);
         assertThat(result.localizacoesCriadas()).isEqualTo(3);
         assertThat(result.anunciosCriados()).isEqualTo(3);
@@ -120,7 +120,7 @@ class HmlStoriesFixtureServiceTest {
         verify(anuncioRepository, times(3)).save(any(AnuncioEntity.class));
         verify(estadoRepository).save(any());
         verify(cidadeRepository).save(any());
-        verify(categoriaHomeRepository, times(6)).save(any(CategoriaHomeEntity.class));
+        verify(categoriaHomeRepository, times(5)).save(any(CategoriaHomeEntity.class));
         verify(bairroRepository).save(any());
         verify(localizacaoRepository, times(3)).save(any(AnuncioLocalizacaoEntity.class));
         verify(arquivoRepository, times(12)).save(any(ArquivoMidiaEntity.class));

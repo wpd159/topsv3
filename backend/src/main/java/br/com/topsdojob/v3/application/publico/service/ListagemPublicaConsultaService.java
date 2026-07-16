@@ -1,12 +1,14 @@
 package br.com.topsdojob.v3.application.publico.service;
 
 import br.com.topsdojob.v3.application.publico.dto.AnuncioCardPublicoDto;
+import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.PaginacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
@@ -21,10 +23,12 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.text.Normalizer;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -69,6 +73,52 @@ public class ListagemPublicaConsultaService {
         this.seoService = seoService;
         this.premiumMapper = premiumMapper;
         this.contatoService = contatoService;
+    }
+
+    @Transactional(readOnly = true)
+    public ListaAnunciosCategoriaPublicaDto listar(
+            String categoriaCodigo,
+            String busca,
+            int pagina,
+            int tamanho) {
+        Pageable pageable = pageable(pagina, tamanho);
+        CategoriaAnuncio categoria = categoria(categoriaCodigo);
+        String termoBusca = termoBusca(busca);
+
+        List<AnuncioEntity> candidatos = categoria == null
+                ? anuncioRepository.findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
+                        StatusAnuncio.PUBLICADO,
+                        StatusModeracaoAnuncio.APROVADO)
+                : anuncioRepository.findByCategoriaAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
+                        categoria.name(),
+                        StatusAnuncio.PUBLICADO,
+                        StatusModeracaoAnuncio.APROVADO);
+
+        List<AnuncioEntity> filtrados = candidatos.stream()
+                .filter(anuncio -> correspondeBusca(anuncio, termoBusca))
+                .toList();
+        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(filtrados);
+        List<AnuncioEntity> ordenados = ordenar(filtrados, premiumPorAnuncio);
+
+        int inicio = Math.min(Math.toIntExact(pageable.getOffset()), ordenados.size());
+        int fim = Math.min(inicio + pageable.getPageSize(), ordenados.size());
+        Page<AnuncioEntity> paginaAnuncios = new PageImpl<>(
+                ordenados.subList(inicio, fim),
+                pageable,
+                ordenados.size());
+
+        List<AnuncioLocalizacaoEntity> localizacoes = paginaAnuncios.isEmpty()
+                ? List.of()
+                : localizacaoRepository.findByAnuncioIdIn(paginaAnuncios.stream()
+                        .map(AnuncioEntity::getId)
+                        .toList());
+        List<AnuncioCardPublicoDto> itens = mapearCardsCategoria(
+                paginaAnuncios.getContent(), localizacoes, premiumPorAnuncio);
+
+        return new ListaAnunciosCategoriaPublicaDto(
+                itens,
+                PaginacaoPublicaDto.from(paginaAnuncios),
+                categoria == null ? null : categoria.name());
     }
 
     @Transactional(readOnly = true)
@@ -218,6 +268,122 @@ public class ListagemPublicaConsultaService {
                         : bairro == null
                                 ? seoService.paraCidade(uf, cidadeSlug)
                                 : seoService.paraBairro(uf, cidadeSlug, bairro.getSlug()));
+    }
+
+    private List<AnuncioEntity> ordenar(
+            List<AnuncioEntity> anuncios,
+            Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
+        return anuncios.stream()
+                .sorted(Comparator
+                        .comparing((AnuncioEntity anuncio) -> premiumPorAnuncio
+                                .getOrDefault(anuncio.getId(), PremiumPublicoFlagsDto.vazio())
+                                .topoAtivo())
+                        .reversed()
+                        .thenComparing(
+                                AnuncioEntity::getPublicadoEm,
+                                Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(AnuncioEntity::getId))
+                .toList();
+    }
+
+    private List<AnuncioCardPublicoDto> mapearCardsCategoria(
+            List<AnuncioEntity> anuncios,
+            List<AnuncioLocalizacaoEntity> localizacoes,
+            Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
+        if (anuncios.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, AnuncioLocalizacaoEntity> localizacaoPorAnuncio = localizacoes.stream()
+                .collect(Collectors.toMap(AnuncioLocalizacaoEntity::getAnuncioId, Function.identity()));
+        Map<UUID, EstadoEntity> estados = estadoRepository.findAllById(localizacoes.stream()
+                        .map(AnuncioLocalizacaoEntity::getEstadoId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(EstadoEntity::getId, Function.identity()));
+        Map<UUID, CidadeEntity> cidades = cidadeRepository.findAllById(localizacoes.stream()
+                        .map(AnuncioLocalizacaoEntity::getCidadeId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(CidadeEntity::getId, Function.identity()));
+        Map<UUID, BairroEntity> bairros = bairroRepository.findAllById(localizacoes.stream()
+                        .map(AnuncioLocalizacaoEntity::getBairroId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(BairroEntity::getId, Function.identity()));
+        Map<UUID, java.time.OffsetDateTime> primeiraPublicacaoPorUsuario = anuncioRepository
+                .findPrimeiraPublicacaoByUsuarioIdIn(anuncios.stream()
+                        .map(AnuncioEntity::getUsuarioId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getUsuarioId,
+                        AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection::getPrimeiraPublicacaoEm));
+
+        return anuncios.stream()
+                .map(anuncio -> {
+                    AnuncioLocalizacaoEntity localizacao = localizacaoPorAnuncio.get(anuncio.getId());
+                    if (localizacao == null) {
+                        throw new IllegalStateException("anuncio publico sem localizacao canonica");
+                    }
+                    EstadoEntity estado = estados.get(localizacao.getEstadoId());
+                    CidadeEntity cidade = cidades.get(localizacao.getCidadeId());
+                    BairroEntity bairro = localizacao.getBairroId() == null
+                            ? null
+                            : bairros.get(localizacao.getBairroId());
+                    if (estado == null || cidade == null) {
+                        throw new IllegalStateException("anuncio publico com localidade inconsistente");
+                    }
+                    PremiumPublicoFlagsDto premium = premiumPorAnuncio
+                            .getOrDefault(anuncio.getId(), PremiumPublicoFlagsDto.vazio());
+                    return anuncioMapper.toCard(
+                            anuncio,
+                            toLocalizacao(estado, cidade, bairro, localizacao),
+                            anuncioConsultaService.midias(anuncio.getId(), premium),
+                            premium,
+                            contatoService.podeExporContato(anuncio),
+                            primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()));
+                })
+                .toList();
+    }
+
+    private CategoriaAnuncio categoria(String codigo) {
+        if (codigo == null || codigo.isBlank() || "TODOS".equalsIgnoreCase(codigo.trim())) {
+            return null;
+        }
+        return CategoriaAnuncio.porCodigo(codigo)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "categoria invalida"));
+    }
+
+    private String termoBusca(String busca) {
+        if (busca == null || busca.isBlank()) {
+            return null;
+        }
+        String termo = busca.replaceAll("\\p{Cntrl}", " ").replaceAll("\\s+", " ").trim();
+        if (termo.length() > 80) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "busca deve ter no maximo 80 caracteres");
+        }
+        return normalizarBusca(termo);
+    }
+
+    private boolean correspondeBusca(AnuncioEntity anuncio, String termoBusca) {
+        if (termoBusca == null) {
+            return true;
+        }
+        return normalizarBusca(anuncio.getTitulo()).contains(termoBusca)
+                || normalizarBusca(anuncio.getDescricao()).contains(termoBusca);
+    }
+
+    private String normalizarBusca(String valor) {
+        if (valor == null) {
+            return "";
+        }
+        return Normalizer.normalize(valor, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT);
     }
 
     private LocalizacaoPublicaDto toLocalizacao(

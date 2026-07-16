@@ -24,7 +24,6 @@ const CATEGORY_ICON_BY_ID: Record<string, JSX.Element> = {
   TRANSEX_TRAVESTIS: <UsersIcon className="h-6 w-6 text-pink-500" />,
   MASSAGENS: <SparklesIcon className="h-6 w-6 text-pink-500" />,
   ACOMPANHANTE_MASCULINO: <FireIcon className="h-6 w-6 text-pink-500" />,
-  ENCONTROS_CASUAIS: <HeartIcon className="h-6 w-6 text-pink-500" />,
   VENDA_DE_CONTEUDO: <PhotoIcon className="h-6 w-6 text-pink-500" />,
 }
 

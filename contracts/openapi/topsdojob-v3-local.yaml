@@ -626,6 +626,36 @@ paths:
                 $ref: "#/components/schemas/SolicitarAnuncioValidationErrorResponse"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/anuncios:
+    get:
+      summary: Lista anuncios publicos pela categoria canonica do wizard
+      operationId: getPublicAnuncios
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: categoria
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/CategoriaAnuncioCodigo"
+        - name: busca
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 80
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Tamanho"
+      responses:
+        "200":
+          description: anuncios publicos correspondentes ao filtro canonico
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaAnunciosCategoriaPublica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/anuncios/{slug}:
     get:
       summary: Detalhe publico minimo de anuncio por slug
@@ -1306,6 +1336,123 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/categorias-home:
+    get:
+      summary: Lista todas as categorias configuradas para a Home
+      operationId: getAdminCategoriasHome
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: categorias administrativas ordenadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoriaHomeAdmin"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Cria categoria da Home vinculada a categoria canonica
+      operationId: postAdminCategoriaHome
+      security:
+        - AdminSessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CategoriaHomeAdminMultipart"
+      responses:
+        "200":
+          description: categoria criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoriaHomeAdmin"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/categorias-home/categorias-canonicas:
+    get:
+      summary: Taxonomia canonica disponivel no wizard de anuncios
+      operationId: getAdminCategoriasAnuncioCanonicas
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: taxonomia canonica
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoriaAnuncioAdmin"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/categorias-home/{id}:
+    put:
+      summary: Edita vinculo, conteudo, ordem, estado e imagem de uma categoria da Home
+      operationId: putAdminCategoriaHome
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/CategoriaHomeAdminMultipart"
+      responses:
+        "200":
+          description: categoria atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoriaHomeAdmin"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/admin/anuncios:
@@ -6444,6 +6591,14 @@ components:
           format: date-time
         seo:
           $ref: "#/components/schemas/SeoRotaPublica"
+    CategoriaAnuncioCodigo:
+      type: string
+      enum:
+        - ACOMPANHANTE_FEMININA
+        - ACOMPANHANTE_MASCULINO
+        - TRANSEX_TRAVESTIS
+        - MASSAGENS
+        - VENDA_DE_CONTEUDO
     CategoriaHomePublica:
       type: object
       additionalProperties: false
@@ -6461,8 +6616,7 @@ components:
           type: string
           format: uuid
         identificador:
-          type: string
-          pattern: "^[A-Z0-9_]+$"
+          $ref: "#/components/schemas/CategoriaAnuncioCodigo"
         titulo:
           type: string
         descricao:
@@ -6472,14 +6626,69 @@ components:
           pattern: "^/"
         imagemPublicaUrl:
           type: string
-          pattern: "^/"
-          description: Caminho publico relativo; nunca storage key, bucket ou URL privada.
+          description: URL publica resolvida ou caminho estatico relativo; nunca storage key, bucket ou URL privada.
         ordem:
           type: integer
           minimum: 0
         ativo:
           type: boolean
           const: true
+    CategoriaAnuncioAdmin:
+      type: object
+      additionalProperties: false
+      required: [codigo, nome]
+      properties:
+        codigo:
+          $ref: "#/components/schemas/CategoriaAnuncioCodigo"
+        nome:
+          type: string
+    CategoriaHomeAdmin:
+      type: object
+      additionalProperties: false
+      required: [id, categoriaCodigo, categoriaNome, nome, descricao, imagemUrl, ordem, ativo]
+      properties:
+        id:
+          type: string
+          format: uuid
+        categoriaCodigo:
+          $ref: "#/components/schemas/CategoriaAnuncioCodigo"
+        categoriaNome:
+          type: string
+        nome:
+          type: string
+          maxLength: 120
+        descricao:
+          type: string
+          maxLength: 280
+        imagemUrl:
+          type: string
+          description: URL publica resolvida; nunca object key ou bucket.
+        ordem:
+          type: integer
+          minimum: 0
+        ativo:
+          type: boolean
+    CategoriaHomeAdminMultipart:
+      type: object
+      additionalProperties: false
+      required: [categoriaCodigo, nome, descricao, ordem, ativo]
+      properties:
+        categoriaCodigo:
+          $ref: "#/components/schemas/CategoriaAnuncioCodigo"
+        nome:
+          type: string
+          maxLength: 120
+        descricao:
+          type: string
+          maxLength: 280
+        ordem:
+          type: integer
+          minimum: 0
+        ativo:
+          type: boolean
+        imagem:
+          type: string
+          format: binary
     FavoritoEstado:
       type: object
       additionalProperties: false
@@ -6631,6 +6840,21 @@ components:
           $ref: "#/components/schemas/LocalizacaoPublica"
         seo:
           $ref: "#/components/schemas/SeoRotaPublica"
+    ListaAnunciosCategoriaPublica:
+      type: object
+      additionalProperties: false
+      required: [itens, paginacao, categoria]
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnuncioCardPublico"
+        paginacao:
+          $ref: "#/components/schemas/PaginacaoPublica"
+        categoria:
+          oneOf:
+            - $ref: "#/components/schemas/CategoriaAnuncioCodigo"
+            - type: "null"
     LocalizacaoPublica:
       type: object
       additionalProperties: false

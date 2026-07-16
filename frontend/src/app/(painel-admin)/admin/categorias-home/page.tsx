@@ -2,34 +2,32 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
-import { PencilSquareIcon } from "@heroicons/react/24/solid"
+import { PencilSquareIcon, PlusIcon } from "@heroicons/react/24/solid"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  listarCategoriasCanonicasAdmin,
+  listarCategoriasHomeAdmin,
+  salvarCategoriaHomeAdmin,
+  type AdminCanonicalCategory,
+  type AdminHomeCategory,
+  type AdminHomeCategoryInput,
+} from "@/lib/admin-categorias-home-api"
 
-type CategoriaHome = {
-  id: number | null
-  nome: string
-  descricao: string
+type CategoryForm = AdminHomeCategoryInput & {
+  id: string | null
   imagemUrl: string | null
-  categoriaEnum: string
-  ativo: boolean
-}
-
-const CATEGORY_IMAGE_FALLBACK: Record<string, string> = {
-  ACOMPANHANTE_FEMININA: "/cards/acompanhante-feminina.jpg",
-  ACOMPANHANTE_MASCULINO: "/cards/acompanhante-masculino.jpg",
-  TRANSEX_TRAVESTIS: "/cards/acompanhante-trans.jpg",
-  MASSAGENS: "/cards/massagem.jpg",
-  ENCONTROS_CASUAIS: "/cards/casual.jpg",
-  VENDA_DE_CONTEUDO: "/cards/casual.jpg",
-}
-
-function apiUrl(path: string) {
-  const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-  return `${base}${path}`
 }
 
 function CategoriaSwitch({
@@ -44,6 +42,8 @@ function CategoriaSwitch({
   return (
     <button
       type="button"
+      role="switch"
+      aria-checked={checked}
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
@@ -60,119 +60,146 @@ function CategoriaSwitch({
 }
 
 export default function AdminCategoriasHomePage() {
-  const [categorias, setCategorias] = useState<CategoriaHome[]>([])
+  const [categorias, setCategorias] = useState<AdminHomeCategory[]>([])
+  const [categoriasCanonicas, setCategoriasCanonicas] = useState<AdminCanonicalCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [editing, setEditing] = useState<CategoriaHome | null>(null)
+  const [editing, setEditing] = useState<CategoryForm | null>(null)
   const [novaImagem, setNovaImagem] = useState<File | null>(null)
 
   const orderedCategorias = useMemo(
-    () => [...categorias].sort((a, b) => a.categoriaEnum.localeCompare(b.categoriaEnum)),
+    () => [...categorias].sort((a, b) => a.ordem - b.ordem || a.id.localeCompare(b.id)),
+    [categorias],
+  )
+
+  const codigosVinculados = useMemo(
+    () => new Set(categorias.map((categoria) => categoria.categoriaCodigo)),
     [categorias],
   )
 
   async function fetchCategorias() {
     try {
       setLoading(true)
-      const res = await fetch(apiUrl("/categorias-home"), { credentials: "include" })
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
-      setCategorias(Array.isArray(data) ? data : [])
-    } catch {
-      toast.error("Erro ao carregar categorias da home.")
-      setCategorias([])
+      const [cards, taxonomia] = await Promise.all([
+        listarCategoriasHomeAdmin(),
+        listarCategoriasCanonicasAdmin(),
+      ])
+      setCategorias(cards)
+      setCategoriasCanonicas(taxonomia)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao carregar categorias da home.")
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchCategorias()
+    void fetchCategorias()
   }, [])
 
-  async function salvarCategoria(categoria: CategoriaHome) {
-    const method = categoria.id ? "PUT" : "POST"
-    const path = categoria.id ? `/categorias-home/${categoria.id}` : "/categorias-home"
-
-    const res = await fetch(apiUrl(path), {
-      method,
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(categoria),
+  function abrirCriacao() {
+    const categoriaDisponivel = categoriasCanonicas.find(
+      (categoria) => !codigosVinculados.has(categoria.codigo),
+    )
+    if (!categoriaDisponivel) {
+      toast.error("Todas as categorias canônicas já possuem um card.")
+      return
+    }
+    const proximaOrdem = categorias.reduce((maior, categoria) => Math.max(maior, categoria.ordem), 0) + 1
+    setNovaImagem(null)
+    setEditing({
+      id: null,
+      categoriaCodigo: categoriaDisponivel.codigo,
+      nome: categoriaDisponivel.nome,
+      descricao: "",
+      ordem: proximaOrdem,
+      ativo: true,
+      imagemUrl: null,
     })
+  }
 
-    if (!res.ok) throw new Error(await res.text())
+  function abrirEdicao(categoria: AdminHomeCategory) {
+    setNovaImagem(null)
+    setEditing({
+      id: categoria.id,
+      categoriaCodigo: categoria.categoriaCodigo,
+      nome: categoria.nome,
+      descricao: categoria.descricao,
+      ordem: categoria.ordem,
+      ativo: categoria.ativo,
+      imagemUrl: categoria.imagemUrl,
+    })
   }
 
   async function salvarEdicao() {
     if (!editing) return
-
-    try {
-      setSaving(true)
-      await salvarCategoria(editing)
-      toast.success("Categoria atualizada.")
-      setEditing(null)
-      await fetchCategorias()
-    } catch {
-      toast.error("Erro ao salvar categoria.")
-    } finally {
-      setSaving(false)
+    if (!editing.id && !novaImagem) {
+      toast.error("Escolha a imagem da categoria.")
+      return
     }
-  }
-
-  async function atualizarImagem() {
-    if (!editing || !novaImagem) return
 
     try {
       setSaving(true)
-      const formData = new FormData()
-      formData.append("imagem", novaImagem)
-
-      const path = editing.id
-        ? `/categorias-home/${editing.id}/imagem`
-        : `/categorias-home/upload-default?categoriaEnum=${encodeURIComponent(editing.categoriaEnum)}`
-
-      const res = await fetch(apiUrl(path), {
-        method: editing.id ? "PUT" : "POST",
-        credentials: "include",
-        body: formData,
-      })
-
-      if (!res.ok) throw new Error(await res.text())
-
-      toast.success("Imagem atualizada.")
+      await salvarCategoriaHomeAdmin(
+        editing.id,
+        {
+          categoriaCodigo: editing.categoriaCodigo,
+          nome: editing.nome,
+          descricao: editing.descricao,
+          ordem: editing.ordem,
+          ativo: editing.ativo,
+        },
+        novaImagem,
+      )
+      toast.success(editing.id ? "Categoria atualizada." : "Categoria criada.")
+      setEditing(null)
       setNovaImagem(null)
-      setEditing(null)
       await fetchCategorias()
-    } catch {
-      toast.error("Erro ao atualizar imagem.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao salvar categoria.")
     } finally {
       setSaving(false)
     }
   }
 
-  async function toggleAtivo(categoria: CategoriaHome, ativo: boolean) {
+  async function toggleAtivo(categoria: AdminHomeCategory, ativo: boolean) {
     try {
-      await salvarCategoria({ ...categoria, ativo })
+      await salvarCategoriaHomeAdmin(
+        categoria.id,
+        {
+          categoriaCodigo: categoria.categoriaCodigo,
+          nome: categoria.nome,
+          descricao: categoria.descricao,
+          ordem: categoria.ordem,
+          ativo,
+        },
+        null,
+      )
       await fetchCategorias()
-    } catch {
-      toast.error("Erro ao atualizar status da categoria.")
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao atualizar a categoria.")
     }
   }
 
   return (
     <section className="mx-auto max-w-6xl space-y-8 px-6 py-10">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Categorias da home</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Controle os cards públicos exibidos na home. A lista vem do backend e respeita o status ativo.
+            Configure os cards públicos e vincule cada um à categoria escolhida pelos anunciantes.
           </p>
         </div>
 
-        <Button variant="outline" onClick={fetchCategorias} disabled={loading}>
-          Recarregar
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void fetchCategorias()} disabled={loading}>
+            Recarregar
+          </Button>
+          <Button onClick={abrirCriacao} disabled={loading || categoriasCanonicas.length === 0}>
+            <PlusIcon className="mr-2 h-4 w-4" />
+            Nova categoria
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -181,98 +208,142 @@ export default function AdminCategoriasHomePage() {
         </div>
       ) : orderedCategorias.length === 0 ? (
         <div className="rounded-2xl border bg-white p-8 text-center text-sm text-gray-500">
-          Nenhuma categoria retornada pelo backend.
+          Nenhuma categoria configurada.
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {orderedCategorias.map((categoria) => {
-            const imageSrc =
-              categoria.imagemUrl?.trim() ||
-              CATEGORY_IMAGE_FALLBACK[categoria.categoriaEnum] ||
-              "/cards/casual.jpg"
+          {orderedCategorias.map((categoria) => (
+            <article
+              key={categoria.id}
+              className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+            >
+              <div className="relative h-40 bg-gray-100">
+                <Image
+                  src={categoria.imagemUrl}
+                  alt={categoria.nome}
+                  fill
+                  className="object-cover"
+                  sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
+                />
+              </div>
 
-            return (
-              <article
-                key={categoria.categoriaEnum}
-                className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
-              >
-                <div className="relative h-40 bg-gray-100">
-                  <Image
-                    src={imageSrc}
-                    alt={categoria.nome}
-                    fill
-                    className="object-cover"
-                    sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
+              <div className="space-y-4 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">{categoria.nome}</h2>
+                    <p className="mt-1 text-xs font-medium uppercase text-gray-400">
+                      {categoria.categoriaNome} · ordem {categoria.ordem}
+                    </p>
+                  </div>
+
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    title="Editar categoria"
+                    onClick={() => abrirEdicao(categoria)}
+                  >
+                    <PencilSquareIcon className="h-5 w-5 text-gray-600" />
+                  </Button>
+                </div>
+
+                <p className="min-h-[42px] text-sm leading-5 text-gray-600">{categoria.descricao}</p>
+
+                <div className="flex items-center justify-between border-t pt-3">
+                  <span className="text-sm text-gray-500">Exibir na home</span>
+                  <CategoriaSwitch
+                    checked={categoria.ativo}
+                    onChange={(checked) => void toggleAtivo(categoria, checked)}
                   />
                 </div>
-
-                <div className="space-y-4 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-semibold text-gray-900">{categoria.nome}</h2>
-                      <p className="mt-1 text-xs font-medium uppercase tracking-wide text-gray-400">
-                        {categoria.categoriaEnum}
-                      </p>
-                    </div>
-
-                    <Button size="icon" variant="ghost" onClick={() => setEditing(categoria)}>
-                      <PencilSquareIcon className="h-5 w-5 text-gray-600" />
-                    </Button>
-                  </div>
-
-                  <p className="min-h-[42px] text-sm leading-5 text-gray-600">{categoria.descricao}</p>
-
-                  <div className="flex items-center justify-between border-t pt-3">
-                    <span className="text-sm text-gray-500">Exibir na home</span>
-                    <CategoriaSwitch
-                      checked={categoria.ativo !== false}
-                      onChange={(checked) => toggleAtivo(categoria, checked)}
-                    />
-                  </div>
-                </div>
-              </article>
-            )
-          })}
+              </div>
+            </article>
+          ))}
         </div>
       )}
 
-      <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+      <Dialog
+        open={Boolean(editing)}
+        onOpenChange={(open) => {
+          if (!open && !saving) {
+            setEditing(null)
+            setNovaImagem(null)
+          }
+        }}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Editar categoria da home</DialogTitle>
+            <DialogTitle>{editing?.id ? "Editar categoria da home" : "Nova categoria da home"}</DialogTitle>
           </DialogHeader>
 
           {editing && (
             <div className="space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Nome</label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Categoria do anúncio</label>
+                <Select
+                  value={editing.categoriaCodigo}
+                  onValueChange={(value) => setEditing({ ...editing, categoriaCodigo: value })}
+                >
+                  <SelectTrigger className="w-full rounded-lg bg-white">
+                    <SelectValue placeholder="Selecione a categoria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoriasCanonicas.map((categoria) => {
+                      const usadaPorOutro = codigosVinculados.has(categoria.codigo)
+                        && categoria.codigo !== editing.categoriaCodigo
+                      return (
+                        <SelectItem key={categoria.codigo} value={categoria.codigo} disabled={usadaPorOutro}>
+                          {categoria.nome}
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Nome público</label>
                 <Input
                   value={editing.nome}
+                  maxLength={120}
                   onChange={(event) => setEditing({ ...editing, nome: event.target.value })}
                 />
               </div>
 
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Descrição</label>
-                <Input
+                <Textarea
                   value={editing.descricao}
+                  maxLength={280}
                   onChange={(event) => setEditing({ ...editing, descricao: event.target.value })}
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Imagem</label>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Ordem</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={editing.ordem}
+                  onChange={(event) => setEditing({ ...editing, ordem: Number(event.target.value) })}
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  {editing.id ? "Substituir imagem" : "Imagem"}
+                </label>
                 <Input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   onChange={(event) => setNovaImagem(event.target.files?.[0] ?? null)}
                 />
+                {novaImagem && <p className="mt-1 text-xs text-gray-500">{novaImagem.name}</p>}
               </div>
 
               <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
                 <span className="text-sm text-gray-600">Categoria ativa</span>
                 <CategoriaSwitch
-                  checked={editing.ativo !== false}
+                  checked={editing.ativo}
                   onChange={(checked) => setEditing({ ...editing, ativo: checked })}
                 />
               </div>
@@ -281,13 +352,8 @@ export default function AdminCategoriasHomePage() {
                 <Button variant="outline" onClick={() => setEditing(null)} disabled={saving}>
                   Cancelar
                 </Button>
-                {novaImagem && (
-                  <Button variant="outline" onClick={atualizarImagem} disabled={saving}>
-                    Trocar imagem
-                  </Button>
-                )}
-                <Button onClick={salvarEdicao} disabled={saving}>
-                  Salvar
+                <Button onClick={() => void salvarEdicao()} disabled={saving}>
+                  {saving ? "Salvando..." : "Salvar"}
                 </Button>
               </div>
             </div>

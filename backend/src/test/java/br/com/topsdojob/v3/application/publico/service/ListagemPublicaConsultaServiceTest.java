@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
+import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
@@ -244,5 +245,100 @@ class ListagemPublicaConsultaServiceTest {
                 eq(List.of(anuncioPublicadoId, anuncioRascunhoId)),
                 eq(StatusAnuncio.PUBLICADO),
                 eq(StatusModeracaoAnuncio.APROVADO));
+    }
+
+    @Test
+    void listaSomenteAnunciosDaCategoriaVendaDeConteudo() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        UUID estadoId = UUID.randomUUID();
+        UUID cidadeId = UUID.randomUUID();
+
+        AnuncioEntity anuncio = entity(AnuncioEntity.class);
+        set(anuncio, "id", anuncioId);
+        set(anuncio, "usuarioId", usuarioId);
+        set(anuncio, "slug", "conteudo-publico");
+        set(anuncio, "titulo", "Conteudo online");
+        set(anuncio, "descricao", "Videochamadas e conteudo exclusivo");
+        set(anuncio, "categoria", "VENDA_DE_CONTEUDO");
+        set(anuncio, "status", StatusAnuncio.PUBLICADO);
+        set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
+        set(anuncio, "locaisAtendimento", Set.of());
+        set(anuncio, "servicos", Set.of());
+
+        AnuncioLocalizacaoEntity localizacao = entity(AnuncioLocalizacaoEntity.class);
+        set(localizacao, "anuncioId", anuncioId);
+        set(localizacao, "estadoId", estadoId);
+        set(localizacao, "cidadeId", cidadeId);
+
+        EstadoEntity estado = entity(EstadoEntity.class);
+        set(estado, "id", estadoId);
+        set(estado, "uf", "GO");
+        set(estado, "nome", "Goias");
+        CidadeEntity cidade = entity(CidadeEntity.class);
+        set(cidade, "id", cidadeId);
+        set(cidade, "nome", "Goiania");
+        set(cidade, "slug", "goiania");
+
+        EstadoRepository estadoRepository = mock(EstadoRepository.class);
+        CidadeRepository cidadeRepository = mock(CidadeRepository.class);
+        BairroRepository bairroRepository = mock(BairroRepository.class);
+        AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
+        AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+        AnuncioPublicoConsultaService anuncioConsultaService = mock(AnuncioPublicoConsultaService.class);
+        PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
+        PoliticaContatoPublicoService contatoService = mock(PoliticaContatoPublicoService.class);
+        PremiumPublicoFlagsDto premium = PremiumPublicoFlagsDto.vazio();
+
+        when(anuncioRepository.findByCategoriaAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
+                "VENDA_DE_CONTEUDO", StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO))
+                .thenReturn(List.of(anuncio));
+        when(premiumMapper.flagsPorAnuncios(List.of(anuncio))).thenReturn(Map.of(anuncioId, premium));
+        when(localizacaoRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(List.of(localizacao));
+        when(estadoRepository.findAllById(List.of(estadoId))).thenReturn(List.of(estado));
+        when(cidadeRepository.findAllById(List.of(cidadeId))).thenReturn(List.of(cidade));
+        when(bairroRepository.findAllById(List.of())).thenReturn(List.of());
+        when(anuncioRepository.findPrimeiraPublicacaoByUsuarioIdIn(List.of(usuarioId))).thenReturn(List.of());
+        when(anuncioConsultaService.midias(anuncioId, premium)).thenReturn(List.of());
+        when(contatoService.podeExporContato(anuncio)).thenReturn(false);
+
+        ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(
+                estadoRepository,
+                cidadeRepository,
+                bairroRepository,
+                localizacaoRepository,
+                anuncioRepository,
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                anuncioConsultaService,
+                mock(SeoPublicoConsultaService.class),
+                premiumMapper,
+                contatoService);
+
+        ListaAnunciosCategoriaPublicaDto resposta = service.listar("VENDA_DE_CONTEUDO", null, 0, 20);
+
+        assertThat(resposta.categoria()).isEqualTo("VENDA_DE_CONTEUDO");
+        assertThat(resposta.itens()).singleElement().satisfies(item -> {
+            assertThat(item.slug()).isEqualTo("conteudo-publico");
+            assertThat(item.categoria()).isEqualTo("VENDA_DE_CONTEUDO");
+        });
+    }
+
+    @Test
+    void rejeitaCategoriaForaDaTaxonomiaCanonica() {
+        ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(
+                mock(EstadoRepository.class),
+                mock(CidadeRepository.class),
+                mock(BairroRepository.class),
+                mock(AnuncioLocalizacaoRepository.class),
+                mock(AnuncioRepository.class),
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                mock(AnuncioPublicoConsultaService.class),
+                mock(SeoPublicoConsultaService.class),
+                mock(PremiumPublicoMapper.class),
+                mock(PoliticaContatoPublicoService.class));
+
+        assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, 0, 20))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 }

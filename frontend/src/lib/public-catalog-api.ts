@@ -153,6 +153,12 @@ export type PublicHomeCategory = {
   ativo: true
 }
 
+export type PublicCategoryList = {
+  itens: PublicCatalogCard[]
+  paginacao: PublicCatalogPagination
+  categoria: string | null
+}
+
 type RawLocation = {
   uf: string
   estado: string
@@ -201,6 +207,12 @@ type RawList = {
   paginacao: PublicCatalogPagination
   localidade: RawLocation
   seo: Record<string, unknown>
+}
+
+type RawCategoryList = {
+  itens: RawCard[]
+  paginacao: PublicCatalogPagination
+  categoria?: string | null
 }
 
 type RawCityAggregate = {
@@ -379,6 +391,23 @@ export async function obterAnuncioPublicoPorSlug(slug: string) {
     pendenciaContatoPublico: raw.pendenciaContatoPublico ?? null,
     indexavelSeo: raw.seo?.indexavelFuturo === true,
   } satisfies PublicCatalogDetail
+}
+
+export async function listarAnunciosPublicos(
+  categoria?: string,
+  busca?: string,
+  pagina = 0,
+  tamanho = 50,
+): Promise<PublicCategoryList> {
+  const query = new URLSearchParams({ pagina: String(pagina), tamanho: String(tamanho) })
+  if (categoria && categoria !== 'TODOS') query.set('categoria', categoria)
+  if (busca?.trim()) query.set('busca', busca.trim())
+  const raw = await requestJson<RawCategoryList>(`/anuncios?${query.toString()}`, dynamic)
+  return {
+    itens: raw.itens.map(mapCard),
+    paginacao: raw.paginacao,
+    categoria: raw.categoria ?? null,
+  }
 }
 
 export async function listarCategoriasHomePublicas() {

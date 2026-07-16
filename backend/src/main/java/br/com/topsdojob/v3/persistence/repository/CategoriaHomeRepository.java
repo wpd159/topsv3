@@ -7,4 +7,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CategoriaHomeRepository extends JpaRepository<CategoriaHomeEntity, UUID> {
   List<CategoriaHomeEntity> findByAtivoTrueOrderByOrdemAscIdAsc();
+
+  List<CategoriaHomeEntity> findAllByOrderByOrdemAscIdAsc();
+
+  boolean existsByCategoriaEnumAndAtivoTrue(String categoriaEnum);
+
+  boolean existsByCategoriaEnumAndAtivoTrueAndIdNot(String categoriaEnum, UUID id);
+
+  boolean existsByOrdem(Integer ordem);
+
+  boolean existsByOrdemAndIdNot(Integer ordem, UUID id);
 }

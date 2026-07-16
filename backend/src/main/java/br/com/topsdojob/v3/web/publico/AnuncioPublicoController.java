@@ -3,10 +3,12 @@ package br.com.topsdojob.v3.web.publico;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioDetalhePublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoResponseDto;
+import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaResponseDto;
 import br.com.topsdojob.v3.application.publico.service.AnuncioPublicoConsultaService;
+import br.com.topsdojob.v3.application.publico.service.ListagemPublicaConsultaService;
 import br.com.topsdojob.v3.application.publico.service.MetricaPublicaService;
 import br.com.topsdojob.v3.application.publico.service.StoryPublicoService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -22,16 +25,28 @@ import org.springframework.web.bind.annotation.RestController;
 public class AnuncioPublicoController {
 
     private final AnuncioPublicoConsultaService consultaService;
+    private final ListagemPublicaConsultaService listagemService;
     private final MetricaPublicaService metricaService;
     private final StoryPublicoService storyService;
 
     public AnuncioPublicoController(
             AnuncioPublicoConsultaService consultaService,
+            ListagemPublicaConsultaService listagemService,
             MetricaPublicaService metricaService,
             StoryPublicoService storyService) {
         this.consultaService = consultaService;
+        this.listagemService = listagemService;
         this.metricaService = metricaService;
         this.storyService = storyService;
+    }
+
+    @GetMapping
+    public ListaAnunciosCategoriaPublicaDto listar(
+            @RequestParam(required = false) String categoria,
+            @RequestParam(required = false) String busca,
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "20") int tamanho) {
+        return listagemService.listar(categoria, busca, pagina, tamanho);
     }
 
     @GetMapping("/{slug}")

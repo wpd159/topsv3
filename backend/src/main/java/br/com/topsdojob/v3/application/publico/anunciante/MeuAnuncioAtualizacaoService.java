@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
+import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
@@ -184,11 +185,9 @@ public class MeuAnuncioAtualizacaoService {
             throw badRequest("titulo nao pode conter contato, rede social ou URL");
         }
         String descricao = textoObrigatorio(request.descricao(), "descricao", 20, DESCRICAO_MAX);
-        String categoria = textoObrigatorio(request.categoria(), "categoria", 3, 40)
-                .toUpperCase(Locale.ROOT);
-        if (!categoria.matches("[A-Z0-9_]{3,40}")) {
-            throw badRequest("categoria invalida");
-        }
+        String categoria = CategoriaAnuncio.porCodigo(request.categoria())
+                .map(Enum::name)
+                .orElseThrow(() -> badRequest("categoria invalida"));
         BigDecimal preco = request.preco();
         if (preco != null) {
             if (preco.compareTo(BigDecimal.ZERO) <= 0 || preco.compareTo(new BigDecimal("999999.99")) > 0) {

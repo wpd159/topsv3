@@ -203,7 +203,7 @@ class SolicitarAnuncioPublicoServiceTest {
         payload.put("titulo", "Anuncio sintetico para revisao");
         payload.put("descricao", "Texto sintetico neutro para validar criacao local sem dado real.");
         payload.put("preco", new BigDecimal("120.00"));
-        payload.put("categoria", "ACOMPANHANTE");
+        payload.put("categoria", "ACOMPANHANTE_FEMININA");
         payload.put("aceiteTermos", true);
         payload.put("confirmacaoIdade", true);
         return payload;

@@ -18,9 +18,6 @@ function AnunciosPageContent() {
   const categoriaParam = searchParams.get("categoria") || "TODOS"
   const buscaParam = searchParams.get("busca") || ""
   const paginaAtual = parsePageParam(searchParams.get("page"))
-  const estadoId = searchParams.get("estadoId")
-  const cidadeId = searchParams.get("cidadeId")
-  const bairroId = searchParams.get("bairroId")
 
   return (
     <section className="space-y-4 px-4 py-4 md:space-y-6 md:py-8">
@@ -29,9 +26,6 @@ function AnunciosPageContent() {
       <AnunciosGrid
         categoria={categoriaParam}
         busca={buscaParam}
-        estadoId={estadoId ? Number(estadoId) : undefined}
-        cidadeId={cidadeId ? Number(cidadeId) : undefined}
-        bairroId={bairroId ? Number(bairroId) : undefined}
         currentPage={paginaAtual}
       />
     </section>

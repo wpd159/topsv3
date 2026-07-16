@@ -1,11 +1,12 @@
 package br.com.topsdojob.v3.persistence.entity.conteudo;
 
+import br.com.topsdojob.v3.domain.anuncio.CategoriaAnuncio;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.util.UUID;
 import java.util.Objects;
+import java.util.UUID;
 
 @Entity
 @Table(name = "categoria_home")
@@ -31,6 +32,9 @@ public class CategoriaHomeEntity {
 
   @Column(name = "imagem_publica_url")
   private String imagemPublicaUrl;
+
+  @Column(name = "imagem_object_key")
+  private String imagemObjectKey;
 
   @Column(name = "ordem")
   private Integer ordem;
@@ -62,6 +66,10 @@ public class CategoriaHomeEntity {
     return imagemPublicaUrl;
   }
 
+  public String getImagemObjectKey() {
+    return imagemObjectKey;
+  }
+
   public Integer getOrdem() {
     return ordem;
   }
@@ -70,24 +78,49 @@ public class CategoriaHomeEntity {
     return ativo;
   }
 
+  public static CategoriaHomeEntity criarAdministrativa(
+      UUID id,
+      CategoriaAnuncio categoria,
+      String nome,
+      String descricao,
+      String imagemObjectKey,
+      int ordem,
+      boolean ativo) {
+    CategoriaHomeEntity entity = new CategoriaHomeEntity();
+    entity.id = id;
+    entity.aplicarDados(categoria, nome, descricao, ordem, ativo);
+    entity.imagemPublicaUrl = null;
+    entity.imagemObjectKey = imagemObjectKey;
+    return entity;
+  }
+
+  public void atualizarAdministrativa(
+      CategoriaAnuncio categoria,
+      String nome,
+      String descricao,
+      int ordem,
+      boolean ativo) {
+    aplicarDados(categoria, nome, descricao, ordem, ativo);
+  }
+
+  public void substituirImagem(String imagemObjectKey) {
+    this.imagemPublicaUrl = null;
+    this.imagemObjectKey = imagemObjectKey;
+  }
+
   public static CategoriaHomeEntity criarFixtureHomologacao(
       UUID id,
       String categoriaEnum,
       String nome,
       String descricao,
-      String destino,
       String imagemPublicaUrl,
       int ordem,
       boolean ativo) {
     CategoriaHomeEntity entity = new CategoriaHomeEntity();
     entity.id = id;
-    entity.categoriaEnum = categoriaEnum;
-    entity.nome = nome;
-    entity.descricao = descricao;
-    entity.destino = destino;
+    entity.aplicarDados(categoria(categoriaEnum), nome, descricao, ordem, ativo);
     entity.imagemPublicaUrl = imagemPublicaUrl;
-    entity.ordem = ordem;
-    entity.ativo = ativo;
+    entity.imagemObjectKey = null;
     return entity;
   }
 
@@ -95,26 +128,42 @@ public class CategoriaHomeEntity {
       String categoriaEnum,
       String nome,
       String descricao,
-      String destino,
       String imagemPublicaUrl,
       int ordem,
       boolean ativo) {
-    boolean alterada = !Objects.equals(this.categoriaEnum, categoriaEnum)
+    CategoriaAnuncio categoria = categoria(categoriaEnum);
+    boolean alterada = !Objects.equals(this.categoriaEnum, categoria.name())
         || !Objects.equals(this.nome, nome)
         || !Objects.equals(this.descricao, descricao)
-        || !Objects.equals(this.destino, destino)
+        || !Objects.equals(this.destino, categoria.destinoPublico())
         || !Objects.equals(this.imagemPublicaUrl, imagemPublicaUrl)
+        || this.imagemObjectKey != null
         || !Objects.equals(this.ordem, ordem)
         || !Objects.equals(this.ativo, ativo);
     if (alterada) {
-      this.categoriaEnum = categoriaEnum;
-      this.nome = nome;
-      this.descricao = descricao;
-      this.destino = destino;
+      aplicarDados(categoria, nome, descricao, ordem, ativo);
       this.imagemPublicaUrl = imagemPublicaUrl;
-      this.ordem = ordem;
-      this.ativo = ativo;
+      this.imagemObjectKey = null;
     }
     return alterada;
+  }
+
+  private void aplicarDados(
+      CategoriaAnuncio categoria,
+      String nome,
+      String descricao,
+      int ordem,
+      boolean ativo) {
+    this.categoriaEnum = categoria.name();
+    this.nome = nome;
+    this.descricao = descricao;
+    this.destino = categoria.destinoPublico();
+    this.ordem = ordem;
+    this.ativo = ativo;
+  }
+
+  private static CategoriaAnuncio categoria(String codigo) {
+    return CategoriaAnuncio.porCodigo(codigo)
+        .orElseThrow(() -> new IllegalArgumentException("categoria canonica invalida"));
   }
 }
