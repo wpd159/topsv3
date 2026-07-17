@@ -84,6 +84,23 @@ class R2ObjectStorageTest {
   }
 
   @Test
+  void origemPublicaPreservadaExigeConfiguracaoCompletaESegura() {
+    R2StorageProperties incompleta = configuredProperties();
+    incompleta.setPreservedPublicMediaBucket("legacy-public");
+
+    assertThatThrownBy(incompleta::validateConfigured)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("preserved-public-media-prefix");
+
+    R2StorageProperties completa = configuredProperties();
+    completa.setPreservedPublicMediaBucket("legacy-public");
+    completa.setPreservedPublicMediaPrefix("anuncios/fotos/original/");
+    completa.setPreservedPublicBaseUrl("https://public-origin.invalid");
+
+    completa.validateConfigured();
+  }
+
+  @Test
   void limitaValidadeDaUrlTemporaria() {
     assertThatThrownBy(() -> storage.temporaryGetUrl(
         StorageArea.PRIVATE_MEDIA,

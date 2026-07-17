@@ -24,6 +24,7 @@ Storage, upload e CDN em homologacao preservam a separacao entre midia publica, 
 - Usuario da aplicacao sem permissao em bucket de producao ou outro ambiente.
 - Documento privado nao pode compartilhar prefixo publico.
 - Toda operacao `PUT`, `HEAD`, `GET` ou `DELETE` deve rejeitar chave fora do prefixo da area antes de acessar o provider.
+- A origem publica legada auditada e somente uma origem de leitura para o cutover. Ela nao muda os buckets HML, nao concede escrita no bucket legado e nao pode ser usada por upload novo.
 
 ## Regras de URL e DTO
 
@@ -108,6 +109,9 @@ O contrato implementado exige:
 | `R2_ACCESS_KEY` | Sim | secret externo | Fora do Git e dos relatorios. |
 | `R2_SIGNING_VALUE` | Sim | material de assinatura externo | Fora do Git e dos relatorios. |
 | `R2_PUBLIC_BASE_URL` | Nao nesta fase | midia publica | Vazio ate dominio publico HML ser aprovado. |
+| `R2_PRESERVED_PUBLIC_MEDIA_BUCKET` | Somente no cutover | midia legada `LIVRE` | Bucket publico de origem auditado; nunca usado como destino de escrita V3. |
+| `R2_PRESERVED_PUBLIC_MEDIA_PREFIX` | Somente no cutover | midia legada `LIVRE` | Prefixo exato auditado; nao aceita caminho pai, relativo ou fora do padrao. |
+| `R2_PRESERVED_PUBLIC_BASE_URL` | Somente no cutover | midia legada `LIVRE` | Origem HTTPS publica existente; deve coincidir com bucket/prefixo e nao substitui `R2_PUBLIC_BASE_URL`. |
 | `R2_SIGNED_URL_TTL_SECONDS` | Sim | objetos privados | TTL curto, limitado a no maximo sete dias. |
 | `UPLOAD_MAX_IMAGE_BYTES` | Sim antes de upload | upload | Valor definido por politica. |
 | `UPLOAD_MAX_VIDEO_BYTES` | Sim | upload de video | Valor definido por politica. |

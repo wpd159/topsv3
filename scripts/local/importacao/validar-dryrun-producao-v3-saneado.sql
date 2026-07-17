@@ -3,7 +3,10 @@
 \pset format unaligned
 
 CREATE TEMP TABLE validar_context AS
-SELECT :'r2_document_bucket'::text AS r2_document_bucket;
+SELECT
+  :'r2_document_bucket'::text AS r2_document_bucket,
+  :'r2_preserved_public_bucket'::text AS r2_preserved_public_bucket,
+  :'r2_preserved_public_prefix'::text AS r2_preserved_public_prefix;
 
 SELECT 'USUARIOS|' || count(*) FROM usuario;
 SELECT 'ANUNCIOS|' || count(*) FROM anuncio;
@@ -44,8 +47,20 @@ FROM stg_midia WHERE pendencia_codigo IN (
 SELECT 'MIDIA_R2_PUBLICA|' || count(*)
 FROM arquivo_midia
 WHERE storage_provider = 'R2'
-  AND bucket = :'r2_public_bucket'
-  AND chave_objeto LIKE 'hml/midias-aprovadas/importacao/sha256/%';
+  AND bucket = :'r2_preserved_public_bucket'
+  AND chave_objeto LIKE :'r2_preserved_public_prefix' || '%';
+SELECT 'MIDIA_PUBLICA_ORIGEM_INVALIDA|' || count(*)
+FROM anuncio_midia am
+JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+CROSS JOIN validar_context c
+WHERE am.visibilidade_midia = 'LIVRE'
+  AND (
+    ar.storage_provider <> 'R2'
+    OR ar.bucket <> c.r2_preserved_public_bucket
+    OR ar.chave_objeto NOT LIKE c.r2_preserved_public_prefix || '%'
+    OR substring(ar.chave_objeto FROM length(c.r2_preserved_public_prefix) + 1)
+        !~ '^[0-9a-f]{32}\.(jpg|jpeg|png|webp)$'
+  );
 SELECT 'MIDIA_R2_CHECKSUM_AUSENTE|' || count(*)
 FROM arquivo_midia
 WHERE storage_provider = 'R2'
@@ -72,10 +87,15 @@ WHERE s.tipo = 'ANUNCIO'
   AND NOT EXISTS (
     SELECT 1
     FROM anuncio_midia am
+    JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+    CROSS JOIN validar_context c
     WHERE am.anuncio_id = s.entidade_id
       AND am.tipo = 'FOTO'
       AND am.status = 'PUBLICAVEL'
       AND am.visibilidade_midia = 'LIVRE'
+      AND ar.storage_provider = 'R2'
+      AND ar.bucket = c.r2_preserved_public_bucket
+      AND ar.chave_objeto LIKE c.r2_preserved_public_prefix || '%'
   );
 SELECT 'STORIES_QUARENTENA|' || count(*) FROM stg_story;
 SELECT 'KYC_CANONICO|' || count(*) FROM documento_usuario;

@@ -5,8 +5,8 @@
 --   1. source_snapshot existe no mesmo PostgreSQL local;
 --   2. os TSVs /tmp/dryrun-r2-public-media.tsv e
 --      /tmp/dryrun-r2-kyc-documents.tsv contem resultados sanitizados;
---   3. snapshot_at, snapshot_id, snapshot_fingerprint, r2_public_bucket e
---      r2_document_bucket sao informados pelo chamador.
+--   3. snapshot_at, snapshot_id, snapshot_fingerprint, buckets R2 e a
+--      origem publica preservada sao informados pelo chamador.
 -- Este arquivo nao contem dados, credenciais ou acesso a producao.
 
 CREATE EXTENSION IF NOT EXISTS postgres_fdw;
@@ -88,8 +88,26 @@ SELECT
   :'snapshot_id'::text AS snapshot_id,
   :'snapshot_fingerprint'::text AS snapshot_fingerprint,
   :'r2_public_bucket'::text AS r2_public_bucket,
+  :'r2_preserved_public_bucket'::text AS r2_preserved_public_bucket,
+  regexp_replace(:'r2_preserved_public_base_url'::text, '/+$', '') AS r2_preserved_public_base_url,
+  :'r2_preserved_public_prefix'::text AS r2_preserved_public_prefix,
   :'r2_document_bucket'::text AS r2_document_bucket,
   md5('dryrun:kyc-migration-actor')::uuid AS kyc_migration_actor_id;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_context
+    WHERE r2_public_bucket = r2_preserved_public_bucket
+       OR r2_preserved_public_base_url !~ '^https://[^/?#]+$'
+       OR r2_preserved_public_prefix !~ '^[A-Za-z0-9._/-]+/$'
+       OR r2_preserved_public_prefix LIKE '/%'
+       OR r2_preserved_public_prefix LIKE '%..%'
+  ) THEN
+    RAISE EXCEPTION 'origem publica preservada invalida ou sem isolamento do bucket de dry-run';
+  END IF;
+END $$;
 
 INSERT INTO importacao_execucao (
   id, sistema_origem, status, iniciado_em, finalizado_em, resumo_json, criado_em
@@ -521,32 +539,57 @@ WHERE a.status = 'ATIVO'
   AND (h.classificacao IS NULL OR h.classificacao = a.content_classification);
 
 CREATE TEMP TABLE dryrun_midia_publica AS
-WITH dedup AS (
-  SELECT DISTINCT ON (f.anuncio_id, f.url_foto)
+WITH referencias AS (
+  SELECT
     f.anuncio_id,
+    f.url_foto,
     md5(f.url_foto) AS reference_hash,
     a.criado_em AS created_at,
-    r.object_key,
+    r.object_key AS copied_object_key,
     r.sha256,
     r.tamanho_bytes,
     r.mime_type,
     r.largura,
     r.altura,
-    r.status AS migracao_status
+    r.status AS migracao_status,
+    c.r2_preserved_public_prefix,
+    CASE
+      WHEN left(f.url_foto, length(c.r2_preserved_public_base_url) + 1)
+          = c.r2_preserved_public_base_url || '/'
+      THEN substring(f.url_foto FROM length(c.r2_preserved_public_base_url) + 2)
+    END AS source_object_key
   FROM legacy.anuncio_fotos f
   JOIN legacy.anuncios a ON a.id = f.anuncio_id
   JOIN dryrun_classificacao_publica cp ON cp.anuncio_id = f.anuncio_id
   JOIN dryrun_r2_public_media r
     ON r.anuncio_origem_id = f.anuncio_id
    AND r.reference_hash = md5(f.url_foto)
+  CROSS JOIN dryrun_context c
+), dedup AS (
+  SELECT DISTINCT ON (f.anuncio_id, f.url_foto)
+    f.anuncio_id,
+    f.reference_hash,
+    f.created_at,
+    f.copied_object_key,
+    f.source_object_key,
+    f.sha256,
+    f.tamanho_bytes,
+    f.mime_type,
+    f.largura,
+    f.altura,
+    f.migracao_status
+  FROM referencias f
   WHERE f.url_foto !~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
-    AND r.status IN ('MIGRADA', 'PRESERVADA')
-    AND r.tamanho_bytes > 0
-    AND r.mime_type IN ('image/jpeg', 'image/png', 'image/webp')
-    AND r.largura > 0
-    AND r.altura > 0
-    AND r.object_key LIKE 'hml/midias-aprovadas/importacao/sha256/%'
-    AND r.sha256 ~ '^[0-9a-f]{64}$'
+    AND f.migracao_status IN ('MIGRADA', 'PRESERVADA')
+    AND f.tamanho_bytes > 0
+    AND f.mime_type IN ('image/jpeg', 'image/png', 'image/webp')
+    AND f.largura > 0
+    AND f.altura > 0
+    AND f.copied_object_key LIKE 'hml/midias-aprovadas/importacao/sha256/%'
+    AND f.sha256 ~ '^[0-9a-f]{64}$'
+    AND f.source_object_key LIKE f.r2_preserved_public_prefix || '%'
+    AND substring(f.source_object_key FROM length(f.r2_preserved_public_prefix) + 1)
+        ~ '^[0-9a-f]{32}\.(jpg|jpeg|png|webp)$'
   ORDER BY f.anuncio_id, f.url_foto
 ), typed AS (
   SELECT
@@ -576,11 +619,11 @@ INSERT INTO arquivo_midia (
   tamanho_bytes, largura, altura, duracao_ms, sha256, etag,
   status_arquivo, criado_em
 )
-SELECT DISTINCT ON (m.sha256)
-  md5('r2:arquivo:' || m.sha256)::uuid,
+SELECT DISTINCT ON (m.source_object_key)
+  md5('r2:arquivo-publico-preservado:' || m.source_object_key)::uuid,
   'R2',
-  c.r2_public_bucket,
-  m.object_key,
+  c.r2_preserved_public_bucket,
+  m.source_object_key,
   NULL,
   m.mime_type,
   m.tamanho_bytes,
@@ -588,7 +631,7 @@ SELECT DISTINCT ON (m.sha256)
   'VALIDADO',
   m.created_at AT TIME ZONE 'America/Sao_Paulo'
 FROM dryrun_midia_publica m CROSS JOIN dryrun_context c
-ORDER BY m.sha256, m.reference_hash;
+ORDER BY m.source_object_key, m.reference_hash;
 
 INSERT INTO anuncio_midia (
   id, anuncio_id, arquivo_midia_id, tipo, finalidade, ordem, status,
@@ -597,7 +640,7 @@ INSERT INTO anuncio_midia (
 SELECT
   md5('legacy:anuncio-midia:foto:' || m.anuncio_id || ':' || m.reference_hash)::uuid,
   md5('legacy:anuncio:' || m.anuncio_id)::uuid,
-  md5('r2:arquivo:' || m.sha256)::uuid,
+  md5('r2:arquivo-publico-preservado:' || m.source_object_key)::uuid,
   m.tipo,
   m.finalidade,
   m.ordem_final::integer,
@@ -658,7 +701,7 @@ SELECT
     'referenciaHash', md5(f.url_foto),
     'ocorrencia', f.ocorrencia
   ),
-  CASE WHEN r.status IN ('MIGRADA', 'PRESERVADA')
+  CASE WHEN m.reference_hash IS NOT NULL
     THEN 'PROCESSADO' ELSE 'PENDENTE_REVISAO' END,
   CASE
     WHEN f.url_foto ~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
@@ -666,9 +709,10 @@ SELECT
     WHEN r.status = 'BLOQUEADA' THEN 'MIDIA_PUBLICA_R2_CHECKSUM_DIVERGENTE'
     WHEN r.status = 'QUARENTENA' THEN 'MIDIA_PUBLICA_R2_QUARENTENA'
     WHEN r.reference_hash IS NULL THEN 'MIDIA_SEM_EVIDENCIA_PUBLICA_ANONIMA'
+    WHEN m.reference_hash IS NULL THEN 'MIDIA_URL_PUBLICA_INCOMPATIVEL'
   END,
   c.snapshot_at,
-  CASE WHEN r.status IN ('MIGRADA', 'PRESERVADA') THEN c.snapshot_at END
+  CASE WHEN m.reference_hash IS NOT NULL THEN c.snapshot_at END
 FROM (
   SELECT
     x.*,
@@ -681,7 +725,10 @@ FROM (
 CROSS JOIN dryrun_context c
 LEFT JOIN dryrun_r2_public_media r
   ON r.anuncio_origem_id = f.anuncio_id
- AND r.reference_hash = md5(f.url_foto);
+ AND r.reference_hash = md5(f.url_foto)
+LEFT JOIN dryrun_midia_publica m
+  ON m.anuncio_id = f.anuncio_id
+ AND m.reference_hash = md5(f.url_foto);
 
 INSERT INTO stg_midia (
   id, execucao_id, sistema_origem, tabela_origem, id_origem,
@@ -754,6 +801,16 @@ SELECT
   a.slug,
   a.status = 'PUBLICADO'
     AND length(trim(a.titulo)) >= 8
+    AND n.titulo_normalizado NOT IN (
+      'acompanhante', 'acompanhante 1', 'acompanhante 2',
+      'anuncio', 'anuncio 1', 'perfil', 'teste',
+      'nova na cidade', 'novinha chegando na cidade'
+    )
+    AND replace(n.slug_normalizado, ' ', '-') NOT IN (
+      'acompanhante-1', 'acompanhante-2', 'sem-acompanhante',
+      'nova-na-cidade', 'novinha-chegando-na-cidade', 'teste'
+    )
+    AND n.titulo_normalizado !~ '^(acompanhante|anuncio|perfil|teste)\s*[0-9]*$'
     AND length(regexp_replace(coalesce(a.descricao, ''), '\s+', ' ', 'g')) >= 120
     AND (
       SELECT count(*) FROM anuncio_midia am
@@ -762,7 +819,24 @@ SELECT
         AND am.status = 'PUBLICAVEL'
         AND am.visibilidade_midia = 'LIVRE'
     ) >= 1 AS indexavel_por_evidencia
-FROM dryrun_anuncio a;
+FROM dryrun_anuncio a
+CROSS JOIN LATERAL (
+  SELECT
+    trim(regexp_replace(
+      regexp_replace(
+        translate(lower(coalesce(a.titulo, '')),
+          'áàâãäéèêëíìîïóòôõöúùûüç',
+          'aaaaaeeeeiiiiooooouuuuc'),
+        '[^a-z0-9]+', ' ', 'g'),
+      '\s+', ' ', 'g')) AS titulo_normalizado,
+    trim(regexp_replace(
+      regexp_replace(
+        translate(lower(coalesce(a.slug, '')),
+          'áàâãäéèêëíìîïóòôõöúùûüç',
+          'aaaaaeeeeiiiiooooouuuuc'),
+        '[^a-z0-9]+', ' ', 'g'),
+      '\s+', ' ', 'g')) AS slug_normalizado
+) n;
 
 INSERT INTO seo_url (
   id, caminho_publico, canonical_path, tipo, entidade_tipo, entidade_id,

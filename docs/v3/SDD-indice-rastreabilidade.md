@@ -393,6 +393,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Refinamentos visuais publicos: `frontend/src/components/anuncios/anuncio-card.tsx`, `frontend/src/components/anuncios/barra-localizacao.tsx`, `frontend/src/components/stories/stories-bar.tsx`, `frontend/src/app/(public-routes)/anuncios/[slug]/componentes/`, `frontend/src/components/layout/footer.tsx`
 - Storage R2 unico: `backend/src/main/java/br/com/topsdojob/v3/infrastructure/storage/ObjectStorage.java`, `backend/src/main/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2ObjectStorage.java`, `backend/src/main/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2SigV4Client.java`
 - Configuracao e testes R2 HML: `backend/src/main/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2StorageProperties.java`, `backend/src/test/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2ObjectStorageTest.java`, `backend/src/test/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2ObjectStorageRealIntegrationTest.java`, `deploy/hml/docker-compose.yml`
+- Origem publica R2 preservada no cutover: `backend/src/main/java/br/com/topsdojob/v3/application/publico/service/MidiaPublicaUrlService.java`, `backend/src/main/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2StorageProperties.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/service/MidiaPublicaUrlServiceTest.java`
 - Contratos autenticados e regras de midia: `backend/src/main/java/br/com/topsdojob/v3/web/publico/anunciante/MeusAnunciosController.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/anunciante/MinhasMidiasService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/anunciante/midia/`
 - Promocao R2 apos moderacao: `backend/src/main/java/br/com/topsdojob/v3/application/admin/moderacao/MidiaStorageAprovacaoService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/admin/moderacao/AdminModeracaoAcaoService.java`
 - Wizard e adapter unico de midias: `frontend/src/features/anuncio-wizard/anuncio-wizard.tsx`, `frontend/src/features/anuncio-wizard/components/wizard-step-fotos.tsx`, `frontend/src/lib/meus-anuncios-api.ts`
@@ -417,6 +418,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Freeze Efi no HML e gate de cutover: `deploy/hml/docker-compose.yml`, `deploy/hml/hml.env.example`, `scripts/deploy/validar-deploy-hml-local.ps1`, `docs/v3/SDD-pendencias-gates.md`
 - Dry-run canonico saneado: `scripts/local/importacao/dryrun-producao-v3-saneado.sql`
 - Validador canonico do dry-run: `scripts/local/importacao/validar-dryrun-producao-v3-saneado.sql`
+- Contrato do importador para origem publica e politica do sitemap: `backend/src/test/java/br/com/topsdojob/v3/importacao/MidiasPublicasSeoImportadorTest.java`
 - Migracao R2 por checksum: `backend/src/test/java/br/com/topsdojob/v3/infrastructure/storage/r2/R2PublicMediaDryRunIntegrationTest.java`
 - Manifesto sanitizado do snapshot: `docs/v3/evidencias/importacao/manifesto-snapshot-20260715T002906Z.json`
 - Manifesto sanitizado corrigido (elegibilidade e SEO): `docs/v3/evidencias/importacao/manifesto-snapshot-20260715T014038Z.json`

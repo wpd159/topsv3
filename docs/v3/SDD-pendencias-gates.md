@@ -697,6 +697,7 @@ Antes de admin em ambiente nao local:
 - Fechado operacionalmente: tres buckets e token exclusivos de HML; secrets ficam somente em `/opt/topsv3/secrets/hml.env` com permissao `600`.
 - Fechado por teste sintetico: `PUT`, `HEAD`, `GET`, URL temporaria e `DELETE`, com remocao do objeto ao final e rejeicao de chave fora de `hml/`.
 - Pendente: decidir e configurar dominio publico HML apenas para o bucket de midias aprovadas.
+- Fechado para o cutover das midias legadas `LIVRE`: origem, bucket e prefixo publicos atuais foram auditados somente leitura e podem ser preservados por configuracao estrita, sem conceder escrita no bucket de producao. A base publica HML continua sendo outro gate e nao e substituida pela origem preservada.
 - Fechado localmente: endpoints autenticados do wizard, validacao binaria, limites, promocao por moderacao, reordenacao e remocao logica.
 - Gate fechado localmente: fixture unica reconcilia `FOTOS_EXTRA_5` pago/vigente de forma idempotente; limite base permanece 4, limite beneficiado 10 e expiracao apenas oculta excedentes, sem exclusao fisica.
 - Gate fechado localmente pela V022: `ADMIN` recebe `MIDIA_REVISAR` pela fonte canonica do banco; perfis sem o vinculo permanecem negados e a resposta publica da negacao e `403`, nunca `500`.
@@ -748,9 +749,10 @@ Antes de admin em ambiente nao local:
 
 - Fechado no snapshot `00000063-0000AB12-1`: manifesto sanitizado, transformacao V3 repetida, fingerprint `983c1c68a4366889a3f3f47877764946` identico e zero FK invalida.
 - Fechado no R2 HML: 652 fotos candidatas avaliadas; 648 vinculos validos formaram 617 objetos deduplicados, quatro binarios invalidos ficaram em quarentena e a segunda execucao nao gravou objeto novo.
-- Fechado no SEO do dry-run: 115 anuncios cumprem publicacao/aprovacao, slug/localizacao, conteudo suficiente e ao menos uma foto `LIVRE` real. Nenhum anuncio sem midia real entrou no conjunto indexavel.
+- Fechado no SEO do dry-run historico: 115 anuncios tinham evidencia estrutural de publicacao/aprovacao, slug/localizacao, conteudo e ao menos uma foto `LIVRE` real. A prova runtime posterior excluiu os dois casos ja bloqueados pela politica canonica de titulo/slug generico e consolidou 113 URLs indexaveis, sem hardcode.
 - A logomarca institucional compartilhada nao conta como midia, nao gera vinculo V3 e permanece em staging/quarentena. Midias restritas, conflitantes, privadas ou sem evidencia anonima permanecem igualmente em quarentena.
-- Pendente operacional separado: configurar uma base publica HML aprovada para o bucket de midias publicas; nenhuma URL deve ser inventada enquanto o gate estiver aberto.
+- Fechado para midia legada no cutover: bucket `topsdojob-fotos`, origem R2 publica atual e prefixo `anuncios/fotos/original/` foram comprovados; a V3 deriva a URL somente quando toda a evidencia coincide. Pendente operacional separado: configurar uma base publica HML aprovada para novas midias do bucket HML; nenhuma URL deve ser inventada enquanto esse gate estiver aberto.
+- Fechado por duas execucoes PostgreSQL 17 e SSR local: marcador SQL, endpoint `/api/public/seo/sitemap` e `/sitemap.xml` retornaram os mesmos 113 anuncios, fingerprint `ba3630476d887aee0a229ce8959963ec`, imagem valida no HTML/`og:image`/JSON-LD e zero referencia privada ou restrita.
 - O dry-run nao autoriza deploy, importacao no HML operacional, cutover ou escrita na producao.
 
 ## Dry-run do saldo inicial e ledger
