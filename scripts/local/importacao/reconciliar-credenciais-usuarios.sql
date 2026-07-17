@@ -145,15 +145,6 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM dryrun_credencial_candidato c
-    WHERE c.segundo_fator_ativo
-      AND c.papel_origem <> 'USER'
-  ) THEN
-    RAISE EXCEPTION 'decisao de desativacao do segundo fator so autoriza contas USUARIO';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1
-    FROM dryrun_credencial_candidato c
     JOIN usuario outro
       ON outro.email_normalizado = c.email_normalizado
      AND outro.id <> c.usuario_v3_id

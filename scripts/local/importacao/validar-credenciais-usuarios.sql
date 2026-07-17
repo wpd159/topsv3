@@ -94,15 +94,6 @@ BEGIN
   END IF;
 
   IF EXISTS (
-    SELECT 1
-    FROM validar_credencial_candidato c
-    WHERE c.segundo_fator_ativo
-      AND c.papel_origem <> 'USER'
-  ) THEN
-    RAISE EXCEPTION 'conta com segundo fator fora do papel USUARIO';
-  END IF;
-
-  IF EXISTS (
     SELECT usuario_id FROM credencial_usuario GROUP BY usuario_id HAVING count(*) > 1
   ) THEN
     RAISE EXCEPTION 'usuario recebeu credenciais duplicadas';

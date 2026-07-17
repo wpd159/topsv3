@@ -2,7 +2,6 @@ package br.com.topsdojob.v3.infrastructure.storage.r2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import br.com.topsdojob.v3.application.publico.kyc.DocumentoUploadProperties;
 import br.com.topsdojob.v3.application.publico.kyc.DocumentoUploadValidator;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -30,7 +29,6 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @EnabledIfEnvironmentVariable(named = "R2_KYC_DRY_RUN_ENABLED", matches = "true")
@@ -69,7 +67,7 @@ class R2PrivateKycDryRunIntegrationTest {
             destinationProperties.getRegion(),
             destinationProperties.getAccessKey(),
             destinationProperties.getSigningValue()));
-    DocumentoUploadValidator validator = new DocumentoUploadValidator(new DocumentoUploadProperties());
+    LegacyKycDocumentValidator validator = new LegacyKycDocumentValidator();
 
     List<Candidate> candidates = readCandidates(Path.of(required("R2_KYC_DRY_RUN_INPUT")));
     assertThat(candidates).extracting(Candidate::uniqueKey).doesNotHaveDuplicates();
@@ -125,7 +123,7 @@ class R2PrivateKycDryRunIntegrationTest {
       Path cacheDirectory,
       String destinationRoot,
       ObjectStorage destination,
-      DocumentoUploadValidator validator,
+      LegacyKycDocumentValidator validator,
       Map<String, Object> checksumLocks) {
     try {
       if ("DUPLICATA_MESMO_USUARIO".equals(candidate.classification())) {
@@ -146,11 +144,7 @@ class R2PrivateKycDryRunIntegrationTest {
 
       DocumentoUploadValidator.DocumentoValidado validated;
       try {
-        validated = validator.validar(new MockMultipartFile(
-            "arquivo",
-            "origem." + candidate.extension(),
-            "application/octet-stream",
-            bytes));
+        validated = validator.validar(bytes, candidate.extension());
       } catch (ResponseStatusException exception) {
         return Result.quarantine(candidate, "TIPO_OU_CONTEUDO_INVALIDO");
       }

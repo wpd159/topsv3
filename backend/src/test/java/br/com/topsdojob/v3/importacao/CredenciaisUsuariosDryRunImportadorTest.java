@@ -42,8 +42,9 @@ class CredenciaisUsuariosDryRunImportadorTest {
                 .contains("RECUSADO_EMAIL_PENDENTE")
                 .contains("PERMITIDO_SENHA")
                 .contains("'segundoFatorLegadoDesativadoV3', c.segundo_fator_ativo")
-                .contains("decisao de desativacao do segundo fator so autoriza contas USUARIO")
                 .contains("WHERE c.classificacao <> 'ELEGIVEL'")
+                .doesNotContain("decisao de desativacao do segundo fator so autoriza contas USUARIO")
+                .doesNotContain("conta com segundo fator fora do papel USUARIO")
                 .doesNotContain("SEGUNDO_FATOR_NAO_SUPORTADO")
                 .doesNotContain("CREDENCIAL_SEGUNDO_FATOR_PENDENTE");
     }
