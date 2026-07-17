@@ -24,6 +24,7 @@ import {
   type AdminHomeCategory,
   type AdminHomeCategoryInput,
 } from "@/lib/admin-categorias-home-api"
+import { revalidarCacheCategoriasHome } from "./actions"
 
 type CategoryForm = AdminHomeCategoryInput & {
   id: string | null
@@ -151,6 +152,7 @@ export default function AdminCategoriasHomePage() {
         },
         novaImagem,
       )
+      await revalidarCacheCategoriasHome()
       toast.success(editing.id ? "Categoria atualizada." : "Categoria criada.")
       setEditing(null)
       setNovaImagem(null)
@@ -175,6 +177,7 @@ export default function AdminCategoriasHomePage() {
         },
         null,
       )
+      await revalidarCacheCategoriasHome()
       await fetchCategorias()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao atualizar a categoria.")

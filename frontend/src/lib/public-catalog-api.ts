@@ -314,6 +314,10 @@ function listQuery(pagina: number, tamanho: number) {
 }
 
 const cached = { next: { revalidate: 3600 } }
+export const PUBLIC_HOME_CATEGORIES_CACHE_TAG = 'public-home-categories'
+const homeCategoriesCached = {
+  next: { revalidate: 3600, tags: [PUBLIC_HOME_CATEGORIES_CACHE_TAG] },
+}
 const dynamic = { cache: 'no-store' as const }
 
 export async function listarPublicosPorEstado(uf: string, pagina = 0, tamanho = 20) {
@@ -411,7 +415,7 @@ export async function listarAnunciosPublicos(
 }
 
 export async function listarCategoriasHomePublicas() {
-  return requestJson<PublicHomeCategory[]>('/categorias-home', cached)
+  return requestJson<PublicHomeCategory[]>('/categorias-home', homeCategoriesCached)
 }
 
 export async function descobrirLocalidadesPublicas() {
