@@ -343,7 +343,7 @@ function Test-TopsDangerousExtensionPath {
 function Test-TopsAllowedExampleTextPath {
   param([string]$Path)
   $normalized = ($Path -replace '\\', '/').ToLowerInvariant()
-  if ($normalized -eq 'deploy/hml/hml.env.example') { return $true }
+  if ($normalized -in @('deploy/hml/hml.env.example', 'deploy/preprod/preprod.env.example')) { return $true }
   $name = [IO.Path]::GetFileName($Path).ToLowerInvariant()
   if ($name -match '^\.env(\.[a-z0-9_-]+)*\.example$') { return $true }
   if ($name -match '\.example\.(json|ya?ml|toml|properties|txt|md)$') { return $true }

@@ -33,9 +33,17 @@ const dynamicImageOrigins = [
   .filter((item): item is NonNullable<ReturnType<typeof toRemotePattern>> => Boolean(item))
 
 const dynamicOrigins = Array.from(new Set(dynamicImageOrigins.map(toOrigin)))
+const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "false"
+const forceHttps = process.env.NEXT_PUBLIC_FORCE_HTTPS !== "false"
 const securityOrigins =
   process.env.NODE_ENV === "production"
-    ? dynamicOrigins.filter((origin) => !origin.includes("localhost") && !origin.includes("127.0.0.1"))
+    ? Array.from(
+        new Set(
+          dynamicImageOrigins
+            .filter(({ hostname }) => hostname !== "localhost" && hostname !== "127.0.0.1")
+            .map(toOrigin)
+        )
+      )
     : dynamicOrigins
 const r2PublicAssetOrigin = "https://pub-567428d3703244d483815a05a1e0e0d9.r2.dev"
 // R2 private bucket presigned URLs (docs) commonly use the account endpoint:
@@ -61,9 +69,13 @@ const connectOrigins = Array.from(
       ...securityOrigins,
       toWsOrigin(process.env.NEXT_PUBLIC_API_URL),
       r2CloudflareStorageWildcard,
-      "https://www.googletagmanager.com",
-      "https://www.google-analytics.com",
-      "https://region1.google-analytics.com",
+      ...(analyticsEnabled
+        ? [
+            "https://www.googletagmanager.com",
+            "https://www.google-analytics.com",
+            "https://region1.google-analytics.com",
+          ]
+        : []),
       "https://vitals.vercel-insights.com",
       "https://va.vercel-scripts.com",
       "https://nominatim.openstreetmap.org",
@@ -95,9 +107,13 @@ const imageOrigins = Array.from(
     "https://images.pexels.com",
     "https://cdn.pixabay.com",
     "https://www.google.com",
-    "https://www.google-analytics.com",
-    "https://region1.google-analytics.com",
-    "https://www.googletagmanager.com",
+    ...(analyticsEnabled
+      ? [
+          "https://www.google-analytics.com",
+          "https://region1.google-analytics.com",
+          "https://www.googletagmanager.com",
+        ]
+      : []),
   ])
 )
 
@@ -122,7 +138,7 @@ const securityHeaders = [
       "base-uri 'self'",
       "object-src 'none'",
       "frame-ancestors 'self'",
-      "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://va.vercel-scripts.com",
+      `script-src 'self' 'unsafe-inline'${analyticsEnabled ? " https://www.googletagmanager.com" : ""} https://va.vercel-scripts.com`,
       "style-src 'self' 'unsafe-inline'",
       `img-src ${imageOrigins.join(" ")}`,
       `media-src ${mediaOrigins.join(" ")}`,
@@ -131,7 +147,7 @@ const securityHeaders = [
       "font-src 'self' data:",
       "worker-src 'self' blob:",
       "form-action 'self'",
-      process.env.NODE_ENV === "production" ? "upgrade-insecure-requests" : "",
+      process.env.NODE_ENV === "production" && forceHttps ? "upgrade-insecure-requests" : "",
     ]
       .filter(Boolean)
       .join("; "),
@@ -143,10 +159,14 @@ const securityHeaders = [
     key: "Permissions-Policy",
     value: "camera=(), microphone=(), payment=(), usb=(), accelerometer=(), gyroscope=()",
   },
-  {
-    key: "Strict-Transport-Security",
-    value: "max-age=31536000; includeSubDomains; preload",
-  },
+  ...(forceHttps
+    ? [
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=31536000; includeSubDomains; preload",
+        },
+      ]
+    : []),
 ]
 
 const nextConfig: NextConfig = {

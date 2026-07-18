@@ -13,6 +13,7 @@ import { SensitiveImageUnlockProvider } from "@/components/compliance/sensitive-
 import { buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 
 const publicSiteBaseUrl = getPublicSiteBaseUrl()
+const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "false"
 
 export const metadata: Metadata = {
   metadataBase: new URL(publicSiteBaseUrl),
@@ -56,19 +57,23 @@ export default function RootLayout({
     <html lang="pt-BR">
       <head>
         <meta charSet="utf-8" />
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-E0CNBH6WPM"
-          strategy="afterInteractive"
-        />
-        <Script id="ga4-init" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            window.gtag = gtag;
-            gtag('js', new Date());
-            gtag('config', 'G-E0CNBH6WPM');
-          `}
-        </Script>
+        {analyticsEnabled ? (
+          <>
+            <Script
+              src="https://www.googletagmanager.com/gtag/js?id=G-E0CNBH6WPM"
+              strategy="afterInteractive"
+            />
+            <Script id="ga4-init" strategy="afterInteractive">
+              {`
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                window.gtag = gtag;
+                gtag('js', new Date());
+                gtag('config', 'G-E0CNBH6WPM');
+              `}
+            </Script>
+          </>
+        ) : null}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
