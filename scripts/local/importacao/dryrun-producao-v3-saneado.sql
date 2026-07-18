@@ -109,6 +109,35 @@ BEGIN
   END IF;
 END $$;
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM importacao_execucao e
+    CROSS JOIN dryrun_context c
+    WHERE e.id = c.execucao_id
+      AND (
+        e.sistema_origem <> 'TOPSDOJOB_PRODUCAO_SNAPSHOT_READONLY'
+        OR e.status NOT IN ('CONCLUIDA', 'CONCLUIDA_COM_PENDENCIAS')
+        OR e.iniciado_em <> c.snapshot_at
+        OR (e.resumo_json ->> 'snapshotId') IS DISTINCT FROM c.snapshot_id
+        OR (e.resumo_json ->> 'snapshotFingerprint') IS DISTINCT FROM c.snapshot_fingerprint
+      )
+  ) THEN
+    RAISE EXCEPTION 'execucao existente nao corresponde integralmente ao snapshot solicitado';
+  END IF;
+END $$;
+
+SELECT NOT EXISTS (
+  SELECT 1
+  FROM importacao_execucao e
+  CROSS JOIN dryrun_context c
+  WHERE e.id = c.execucao_id
+) AS dryrun_snapshot_novo
+\gset
+
+\if :dryrun_snapshot_novo
+
 INSERT INTO importacao_execucao (
   id, sistema_origem, status, iniciado_em, finalizado_em, resumo_json, criado_em
 )
@@ -1614,6 +1643,8 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
     )
 FROM dryrun_context c
 WHERE e.id = c.execucao_id;
+
+\endif
 
 COMMIT;
 
