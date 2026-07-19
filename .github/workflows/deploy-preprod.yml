@@ -221,7 +221,7 @@ jobs:
           count_sql="select 'anuncio', count(*) from anuncio union all select 'arquivo_midia', count(*) from arquivo_midia union all select 'ativacao_beneficio', count(*) from ativacao_beneficio union all select 'credencial_usuario', count(*) from credencial_usuario union all select 'documento_usuario', count(*) from documento_usuario union all select 'favorito_anuncio', count(*) from favorito_anuncio union all select 'movimento_credito', count(*) from movimento_credito union all select 'usuario', count(*) from usuario order by 1"
           counts_before="$(docker exec topsv3-preprod-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
           "${compose[@]}" config --quiet
-          "${compose[@]}" run --rm --no-deps flyway validate
+          "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
           "${compose[@]}" build backend frontend
           current_link="${deploy_root}/.current-${release_sha}"
           rm -f "${current_link}"
@@ -245,8 +245,19 @@ jobs:
           set -euo pipefail
           SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s' <<'REMOTE'
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
           set -euo pipefail
+          release_sha="$1"
+          release_dir="/opt/topsv3/preprod/releases/${release_sha}"
+          test "$(readlink -f /opt/topsv3/preprod/current)" = "${release_dir}"
+          test "$(cat /opt/topsv3/preprod/current/.release-sha)" = "${release_sha}"
+          for service in backend frontend gateway; do
+            config_files="$(docker inspect "topsv3-preprod-${service}" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
+            case "${config_files}" in
+              *"/releases/${release_sha}/deploy/preprod/docker-compose.yml"*) ;;
+              *) echo "ERRO: ${service} nao usa o release ${release_sha}." >&2; exit 1 ;;
+            esac
+          done
           for attempt in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
               && curl -fsS http://127.0.0.1:23000/ >/dev/null \

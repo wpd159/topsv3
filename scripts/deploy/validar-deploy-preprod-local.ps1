@@ -47,7 +47,7 @@ foreach ($required in @(
     "deploy/preprod/docker-compose.yml",
     "127.0.0.1:23000",
     "127.0.0.1:28080",
-    "flyway validate",
+    "flyway validate </dev/null",
     "mv -Tf",
     "backend frontend gateway"
   )) {
