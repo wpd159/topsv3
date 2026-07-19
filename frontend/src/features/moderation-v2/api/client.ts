@@ -17,6 +17,11 @@ function apiBase() {
   return base
 }
 
+function adminApiUrl(path: string) {
+  const backendRoot = apiBase().replace(/\/api\/public$/, '')
+  return `${backendRoot}/api/admin${path}`
+}
+
 export async function fetchStaffAnunciosList(): Promise<ModerationStaffListItem[]> {
   const res = await fetch(`${apiBase()}/anuncios/staff`, {
     credentials: 'include',
@@ -117,7 +122,7 @@ export async function decidirMidiaApi(
   visibilidadeMidia?: 'LIVRE' | 'RESTRITA_18',
   motivo?: string
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/api/admin/midias/${encodeURIComponent(String(id))}/decidir`, {
+  const res = await fetch(adminApiUrl(`/midias/${encodeURIComponent(String(id))}/decidir`), {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -148,7 +153,7 @@ function readCsrfValue() {
 async function adminWriteHeaders() {
   let value = readCsrfValue()
   if (!value) {
-    await fetch(`${apiBase()}/api/admin/auth/me`, { credentials: 'include', cache: 'no-store' })
+    await fetch(adminApiUrl('/auth/me'), { credentials: 'include', cache: 'no-store' })
     value = readCsrfValue()
   }
   return {
@@ -158,7 +163,7 @@ async function adminWriteHeaders() {
 }
 
 export async function fetchAdminKycQueue(): Promise<AdminKycSubmission[]> {
-  const response = await fetch(`${apiBase()}/api/admin/documentos`, {
+  const response = await fetch(adminApiUrl('/documentos'), {
     credentials: 'include',
     cache: 'no-store',
   })
@@ -169,7 +174,7 @@ export async function fetchAdminKycQueue(): Promise<AdminKycSubmission[]> {
 
 export async function fetchAdminKycTemporaryUrl(documentId: string) {
   const response = await fetch(
-    `${apiBase()}/api/admin/documentos/${encodeURIComponent(documentId)}/url-temporaria`,
+    adminApiUrl(`/documentos/${encodeURIComponent(documentId)}/url-temporaria`),
     { credentials: 'include', cache: 'no-store' }
   )
   if (!response.ok) throw new Error(`Falha ao autorizar documento (${response.status})`)
@@ -182,7 +187,7 @@ export async function decideAdminKyc(
   motivo?: string
 ) {
   const response = await fetch(
-    `${apiBase()}/api/admin/documentos/envios/${encodeURIComponent(submissionId)}/decidir`,
+    adminApiUrl(`/documentos/envios/${encodeURIComponent(submissionId)}/decidir`),
     {
       method: 'POST',
       credentials: 'include',
@@ -198,7 +203,7 @@ export async function decideAdminKyc(
 }
 
 export async function fetchAdminMidiasV3(): Promise<ModerationMediaItem[]> {
-  const res = await fetch(`${apiBase()}/api/admin/midias?page=0&size=100`, {
+  const res = await fetch(adminApiUrl('/midias?page=0&size=100'), {
     credentials: 'include',
     cache: 'no-store',
   })
