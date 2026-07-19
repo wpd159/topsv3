@@ -125,7 +125,9 @@ jobs:
           test "$(docker inspect topsv3-preprod-postgres --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "topsv3-preprod"
           docker volume inspect topsv3-preprod-postgres-data >/dev/null
           sudo -n nginx -t >/dev/null
-          sudo -n nginx -T 2>/dev/null | grep -q 'proxy_pass http://127.0.0.1:23000;'
+          nginx_config="$(sudo -n nginx -T 2>/dev/null)"
+          grep -q 'proxy_pass http://127.0.0.1:23000;' <<< "${nginx_config}"
+          unset nginx_config
           REMOTE
 
       - name: Upload immutable release
