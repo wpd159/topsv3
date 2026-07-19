@@ -1,0 +1,268 @@
+name: Deploy Preproducao Tops do Job V3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: topsv3-preprod
+  cancel-in-progress: false
+
+jobs:
+  deploy-preprod:
+    name: Testes e deploy da preproducao
+    runs-on: ubuntu-latest
+    environment: preprod
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run full backend Maven gate
+        working-directory: backend
+        shell: bash
+        run: mvn --batch-mode --no-transfer-progress verify
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Run frontend lint and build gates
+        working-directory: frontend
+        shell: bash
+        env:
+          NEXT_PUBLIC_SITE_URL: https://v3.esle.cloud
+          NEXT_PUBLIC_API_URL: https://v3.esle.cloud/api/public
+          NEXT_PUBLIC_ANALYTICS_ENABLED: "false"
+          NEXT_PUBLIC_FORCE_HTTPS: "true"
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run lint
+          npm run build
+
+      - name: Validate preproduction deployment contract
+        shell: pwsh
+        run: ./scripts/deploy/validar-deploy-preprod-local.ps1
+
+      - name: Validate required secrets
+        shell: bash
+        env:
+          PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
+          PREPROD_USER: ${{ secrets.PREPROD_USER }}
+          PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
+          PREPROD_SSH_PRIVATE_KEY: ${{ secrets.PREPROD_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${PREPROD_HOST}"
+          test "${PREPROD_USER}" = "topsv3"
+          test "${PREPROD_SSH_PORT}" -ge 1
+          test "${PREPROD_SSH_PORT}" -le 65535
+          test -n "${PREPROD_SSH_PRIVATE_KEY}"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
+          PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
+          PREPROD_SSH_PRIVATE_KEY: ${{ secrets.PREPROD_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d "${HOME}/.ssh"
+          printf '%s\n' "${PREPROD_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/topsv3_preprod"
+          chmod 600 "${HOME}/.ssh/topsv3_preprod"
+          known_hosts_scan="$(mktemp)"
+          trap 'rm -f "${known_hosts_scan}"' EXIT
+          for attempt in 1 2 3; do
+            if ssh-keyscan -T 10 -p "${PREPROD_SSH_PORT}" "${PREPROD_HOST}" > "${known_hosts_scan}" 2>/dev/null \
+              && test -s "${known_hosts_scan}"; then
+              cat "${known_hosts_scan}" >> "${HOME}/.ssh/known_hosts"
+              break
+            fi
+            if [ "${attempt}" -eq 3 ]; then
+              echo "ERRO: ssh-keyscan nao obteve a chave da VPS apos 3 tentativas." >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+
+      - name: Validate remote preproduction prerequisites
+        shell: bash
+        env:
+          PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
+          PREPROD_USER: ${{ secrets.PREPROD_USER }}
+          PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test "$(id -un)" = "topsv3"
+          test -f /opt/topsv3/secrets/preprod.env
+          test -f /opt/topsv3/secrets/preprod-v3.override.yml
+          test -L /opt/topsv3/preprod/current
+          test -d /opt/topsv3/preprod/releases
+          command -v docker >/dev/null
+          docker compose version >/dev/null
+          docker inspect topsv3-preprod-postgres >/dev/null
+          test "$(docker inspect topsv3-preprod-postgres --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "topsv3-preprod"
+          docker volume inspect topsv3-preprod-postgres-data >/dev/null
+          sudo -n nginx -t >/dev/null
+          sudo -n nginx -T 2>/dev/null | grep -q 'proxy_pass http://127.0.0.1:23000;'
+          REMOTE
+
+      - name: Upload immutable release
+        shell: bash
+        env:
+          PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
+          PREPROD_USER: ${{ secrets.PREPROD_USER }}
+          PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          SCP_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -P "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          ARCHIVE="${RUNNER_TEMP}/topsv3-${GITHUB_SHA}.tar.gz"
+          tar \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./frontend/node_modules' \
+            --exclude='./frontend/.next' \
+            --exclude='./backend/target' \
+            --exclude='./target' \
+            --exclude='./storage-local' \
+            --exclude='./backups' \
+            --exclude='./logs' \
+            --exclude='./topsv3-auditoria-local' \
+            --exclude='./logs-brutos-nao-versionar' \
+            --exclude='./*.dump' \
+            --exclude='**/*.dump' \
+            --exclude='./*.backup' \
+            --exclude='**/*.backup' \
+            --exclude='./*.bak' \
+            --exclude='./*.zip' \
+            --exclude='./*.log' \
+            --exclude='**/*.log' \
+            --exclude='./.env' \
+            --exclude='./*/.env' \
+            --exclude='**/.env' \
+            --exclude='./*.pem' \
+            --exclude='**/*.pem' \
+            --exclude='./*.key' \
+            --exclude='**/*.key' \
+            --exclude='./*.crt' \
+            --exclude='**/*.crt' \
+            -czf "${ARCHIVE}" .
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'install -d -m 0750 /opt/topsv3/preprod/incoming /opt/topsv3/preprod/releases'
+          scp "${SCP_OPTS[@]}" "${ARCHIVE}" "${SSH_TARGET}:/opt/topsv3/preprod/incoming/${GITHUB_SHA}.tar.gz"
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
+          set -euo pipefail
+          release_sha="$1"
+          release_root=/opt/topsv3/preprod/releases
+          release_dir="${release_root}/${release_sha}"
+          incoming="/opt/topsv3/preprod/incoming/${release_sha}.tar.gz"
+          temporary="${release_root}/.${release_sha}.incoming"
+          if [ -e "${release_dir}" ]; then
+            test -f "${release_dir}/.release-sha"
+            test "$(cat "${release_dir}/.release-sha")" = "${release_sha}"
+            rm -f "${incoming}"
+            exit 0
+          fi
+          rm -rf -- "${temporary}"
+          install -d -m 0750 "${temporary}"
+          tar -xzf "${incoming}" -C "${temporary}"
+          printf '%s\n' "${release_sha}" > "${temporary}/.release-sha"
+          chmod -R a-w "${temporary}"
+          mv -- "${temporary}" "${release_dir}"
+          rm -f "${incoming}"
+          REMOTE
+
+      - name: Build and recreate only preproduction application services
+        shell: bash
+        env:
+          PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
+          PREPROD_USER: ${{ secrets.PREPROD_USER }}
+          PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
+          set -euo pipefail
+          release_sha="$1"
+          deploy_root=/opt/topsv3/preprod
+          release_dir="${deploy_root}/releases/${release_sha}"
+          env_file=/opt/topsv3/secrets/preprod.env
+          override_file=/opt/topsv3/secrets/preprod-v3.override.yml
+          compose=(docker compose --env-file "${env_file}" -f "${release_dir}/deploy/preprod/docker-compose.yml" -f "${override_file}" -p topsv3-preprod)
+          postgres_id_before="$(docker inspect topsv3-preprod-postgres --format '{{.Id}}')"
+          postgres_volume_before="$(docker inspect topsv3-preprod-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
+          db="$(docker inspect topsv3-preprod-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')"
+          user="$(docker inspect topsv3-preprod-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')"
+          count_sql="select 'anuncio', count(*) from anuncio union all select 'arquivo_midia', count(*) from arquivo_midia union all select 'ativacao_beneficio', count(*) from ativacao_beneficio union all select 'credencial_usuario', count(*) from credencial_usuario union all select 'documento_usuario', count(*) from documento_usuario union all select 'favorito_anuncio', count(*) from favorito_anuncio union all select 'movimento_credito', count(*) from movimento_credito union all select 'usuario', count(*) from usuario order by 1"
+          counts_before="$(docker exec topsv3-preprod-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
+          "${compose[@]}" config --quiet
+          "${compose[@]}" run --rm --no-deps flyway validate
+          "${compose[@]}" build backend frontend
+          current_link="${deploy_root}/.current-${release_sha}"
+          rm -f "${current_link}"
+          ln -s "releases/${release_sha}" "${current_link}"
+          mv -Tf "${current_link}" "${deploy_root}/current"
+          "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
+          test "$(docker inspect topsv3-preprod-postgres --format '{{.Id}}')" = "${postgres_id_before}"
+          test "$(docker inspect topsv3-preprod-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
+          counts_after="$(docker exec topsv3-preprod-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
+          test "${counts_after}" = "${counts_before}"
+          test "$(readlink -f "${deploy_root}/current")" = "${release_dir}"
+          REMOTE
+
+      - name: Smoke preproduction without data writes
+        shell: bash
+        env:
+          PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
+          PREPROD_USER: ${{ secrets.PREPROD_USER }}
+          PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:23000/ >/dev/null \
+              && curl -fsSI http://127.0.0.1:23000/ | grep -qi '^X-Robots-Tag:.*noindex' \
+              && curl -fsS http://127.0.0.1:23000/robots.txt | grep -q 'Disallow: /'; then
+              break
+            fi
+            if [ "${attempt}" -eq 60 ]; then
+              echo 'ERRO: preproducao nao ficou saudavel no prazo esperado.' >&2
+              exit 1
+            fi
+            sleep 5
+          done
+          curl -fsSI https://v3.esle.cloud/ | grep -qi '^X-Robots-Tag:.*noindex'
+          curl -fsS https://v3.esle.cloud/robots.txt | grep -q 'Disallow: /'
+          logs="$(docker logs topsv3-preprod-backend 2>&1)"
+          if printf '%s' "${logs}" | grep -Eqi 'IMPORTACAO_.*(INICIO|EXECUTADA)|fixture.*(INICIO|EXECUTADA|enabled=true)'; then
+            echo 'ERRO: marcador de importador ou fixture encontrado na preproducao.' >&2
+            exit 1
+          fi
+          REMOTE
