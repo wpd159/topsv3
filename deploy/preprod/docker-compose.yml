@@ -88,7 +88,7 @@ services:
       R2_PUBLIC_MEDIA_PREFIX: ${R2_PUBLIC_MEDIA_PREFIX:-hml/preprod/midias-aprovadas/}
       R2_PRIVATE_MEDIA_PREFIX: ${R2_PRIVATE_MEDIA_PREFIX:-hml/preprod/midias-pendentes/}
       R2_DOCUMENT_PREFIX: ${R2_DOCUMENT_PREFIX:-hml/preprod/documentos/}
-      R2_PUBLIC_BASE_URL: ""
+      R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:?defina R2_PUBLIC_BASE_URL em /opt/topsv3/secrets/preprod.env}
       R2_PRESERVED_PUBLIC_MEDIA_BUCKET: ""
       R2_PRESERVED_PUBLIC_MEDIA_PREFIX: ""
       R2_PRESERVED_PUBLIC_BASE_URL: ""
