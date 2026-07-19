@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-base_url="${HML_AUTH_SMOKE_BASE_URL:-https://v3.esle.cloud}"
+api_base_url="${HML_AUTH_SMOKE_API_BASE_URL:-}"
+web_base_url="${HML_AUTH_SMOKE_WEB_BASE_URL:-}"
 runtime_value="${HML_AUTH_SMOKE_RUNTIME_VALUE:-}"
 active_email="auth-smoke-active@hml.example.invalid"
 pending_email="auth-smoke-pending@hml.example.invalid"
@@ -15,10 +16,14 @@ if [ "${#runtime_value}" -lt 16 ]; then
   echo "ERRO: HML_AUTH_SMOKE_RUNTIME_VALUE ausente ou invalida" >&2
   exit 2
 fi
-case "$base_url" in
-  https://v3.esle.cloud) ;;
-  *) echo "ERRO: smoke Auth permitido somente no HML canonico" >&2; exit 2 ;;
-esac
+if [[ ! "$api_base_url" =~ ^http://127\.0\.0\.1:[0-9]+$ ]]; then
+  echo "ERRO: API do smoke Auth deve apontar para o backend HML interno" >&2
+  exit 2
+fi
+if [[ ! "$web_base_url" =~ ^http://127\.0\.0\.1:[0-9]+$ ]]; then
+  echo "ERRO: web do smoke Auth deve apontar para o frontend HML interno" >&2
+  exit 2
+fi
 
 work_dir="$(mktemp -d)"
 chmod 700 "$work_dir"
@@ -34,7 +39,7 @@ request_guard_session() {
   local jar="$1"
   local body="$2"
   local status
-  status="$(status_request "$body" --cookie-jar "$jar" "$base_url/api/public/auth/me")"
+  status="$(status_request "$body" --cookie-jar "$jar" "$api_base_url/api/public/auth/me")"
   test "$status" = "401"
   awk '$6 == "XSRF-TOKEN" { value = $7 } END { print value }' "$jar"
 }
@@ -76,7 +81,7 @@ login_status() {
     --header "Content-Type: application/json" \
     --header "$request_guard_header: $request_guard" \
     --data-binary "@$request" \
-    "$base_url/api/public/auth/login"
+    "$api_base_url/api/public/auth/login"
 }
 
 active_status="$(login_status "$active_email" "$runtime_value" active)"
@@ -91,7 +96,7 @@ active_request_guard="$(awk '$6 == "XSRF-TOKEN" { value = $7 } END { print value
 request_guard_header='X-XSRF-TO''KEN'
 me_status="$(status_request "$work_dir/active-me.body" \
   --cookie "$work_dir/active.cookies" \
-  "$base_url/api/public/auth/me")"
+  "$api_base_url/api/public/auth/me")"
 test "$me_status" = "200"
 grep -Fq "\"email\":\"$active_email\"" "$work_dir/active-me.body"
 
@@ -107,11 +112,11 @@ logout_status="$(status_request "$work_dir/logout.body" \
   --cookie-jar "$work_dir/active.cookies" \
   --request POST \
   --header "$request_guard_header: $active_request_guard" \
-  "$base_url/api/public/auth/logout")"
+  "$api_base_url/api/public/auth/logout")"
 test "$logout_status" = "200"
 after_logout_status="$(status_request "$work_dir/after-logout.body" \
   --cookie "$work_dir/active.cookies" \
-  "$base_url/api/public/auth/me")"
+  "$api_base_url/api/public/auth/me")"
 test "$after_logout_status" = "401"
 
 anonymous_jar="$work_dir/anonymous.cookies"
@@ -126,7 +131,7 @@ forgot_status="$(status_request "$work_dir/forgot.body" \
   --header "Content-Type: application/json" \
   --header "$request_guard_header: $anonymous_request_guard" \
   --data-binary "@$work_dir/forgot.request" \
-  "$base_url/api/public/auth/forgot-password")"
+  "$api_base_url/api/public/auth/forgot-password")"
 test "$forgot_status" = "200"
 
 printf '%s' '{"email":"auth-smoke-missing@hml.example.invalid","codigo":"000000"}' \
@@ -138,15 +143,14 @@ confirm_status="$(status_request "$work_dir/confirm.body" \
   --header "Content-Type: application/json" \
   --header "$request_guard_header: $anonymous_request_guard" \
   --data-binary "@$work_dir/confirm.request" \
-  "$base_url/api/public/auth/confirm")"
+  "$api_base_url/api/public/auth/confirm")"
 test "$confirm_status" = "400"
 
-health_status="$(status_request "$work_dir/health.body" "$base_url/api/health")"
+health_status="$(status_request "$work_dir/health.body" "$api_base_url/api/health")"
 test "$health_status" = "200"
 grep -Fq '"status":"UP"' "$work_dir/health.body"
-curl --silent --show-error --dump-header "$work_dir/home.headers" --output /dev/null "$base_url/"
-grep -Eiq '^x-robots-tag:.*noindex' "$work_dir/home.headers"
-curl --silent --show-error "$base_url/robots.txt" > "$work_dir/robots.txt"
+curl --silent --show-error --fail --output /dev/null "$web_base_url/"
+curl --silent --show-error "$web_base_url/robots.txt" > "$work_dir/robots.txt"
 grep -Fq 'Disallow: /' "$work_dir/robots.txt"
 
 runtime_value=""
@@ -155,4 +159,4 @@ echo "HML_AUTH_ACTIVE_LOGIN=200"
 echo "HML_AUTH_WRONG_PENDING_DISABLED=401:401:401"
 echo "HML_AUTH_LOGOUT_ME=200:401"
 echo "HML_AUTH_RECOVERY_CONFIRM=200:400"
-echo "HML_AUTH_HEALTH_NOINDEX=OK"
+echo "HML_AUTH_HEALTH_ROBOTS=OK"

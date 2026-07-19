@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   deploy-hml:
-    name: Deploy homologacao v3.esle.cloud
+    name: Deploy homologacao interna
     runs-on: ubuntu-latest
     environment: hml
     permissions:
@@ -43,7 +43,6 @@ jobs:
           HML_USER: ${{ secrets.HML_USER }}
           HML_SSH_PORT: ${{ secrets.HML_SSH_PORT }}
           HML_SSH_PRIVATE_KEY: ${{ secrets.HML_SSH_PRIVATE_KEY }}
-          HML_DOMAIN: ${{ secrets.HML_DOMAIN }}
           HML_DEPLOY_PATH: ${{ secrets.HML_DEPLOY_PATH }}
           HML_AUTH_SMOKE_ENABLED: ${{ secrets.HML_AUTH_SMOKE_ENABLED }}
           HML_AUTH_SMOKE_RUNTIME_VALUE: ${{ secrets.HML_AUTH_SMOKE_RUNTIME_VALUE }}
@@ -53,12 +52,10 @@ jobs:
           test -n "${HML_USER}"
           test -n "${HML_SSH_PORT}"
           test -n "${HML_SSH_PRIVATE_KEY}"
-          test -n "${HML_DOMAIN}"
           test -n "${HML_DEPLOY_PATH}"
           test "${HML_AUTH_SMOKE_ENABLED}" = "true"
           test "${#HML_AUTH_SMOKE_RUNTIME_VALUE}" -ge 16
           test "${HML_USER}" = "topsv3"
-          test "${HML_DOMAIN}" = "v3.esle.cloud"
           test "${HML_DEPLOY_PATH}" = "/opt/topsv3/app/current"
 
       - name: Configure SSH
@@ -230,32 +227,33 @@ jobs:
             exit 1
           "
 
-      - name: Install and reload Nginx config
+      - name: Smoke synthetic public authentication
         shell: bash
         env:
           HML_HOST: ${{ secrets.HML_HOST }}
           HML_USER: ${{ secrets.HML_USER }}
           HML_SSH_PORT: ${{ secrets.HML_SSH_PORT }}
           HML_DEPLOY_PATH: ${{ secrets.HML_DEPLOY_PATH }}
-        run: |
-          set -euo pipefail
-          SSH_TARGET="${HML_USER}@${HML_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_hml" -p "${HML_SSH_PORT}" -o StrictHostKeyChecking=yes)
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "set -euo pipefail
-            cd '${HML_DEPLOY_PATH}'
-            sudo install -m 0644 deploy/hml/nginx-v3-esle-cloud.conf /etc/nginx/sites-available/v3-esle-cloud.conf
-            sudo ln -sfn /etc/nginx/sites-available/v3-esle-cloud.conf /etc/nginx/sites-enabled/v3-esle-cloud.conf
-            sudo nginx -t
-            sudo systemctl reload nginx
-          "
-
-      - name: Smoke synthetic public authentication
-        shell: bash
-        env:
           HML_AUTH_SMOKE_ENABLED: ${{ secrets.HML_AUTH_SMOKE_ENABLED }}
           HML_AUTH_SMOKE_RUNTIME_VALUE: ${{ secrets.HML_AUTH_SMOKE_RUNTIME_VALUE }}
-          HML_AUTH_SMOKE_BASE_URL: https://${{ secrets.HML_DOMAIN }}
-        run: bash scripts/deploy/validar-auth-publico-hml.sh
+        run: |
+          set -euo pipefail
+          test "${HML_AUTH_SMOKE_ENABLED}" = "true"
+          SSH_TARGET="${HML_USER}@${HML_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_hml" -p "${HML_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          printf '%s\n' "${HML_AUTH_SMOKE_RUNTIME_VALUE}" | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "set -euo pipefail
+            IFS= read -r HML_AUTH_SMOKE_RUNTIME_VALUE
+            export HML_AUTH_SMOKE_RUNTIME_VALUE
+            set -a
+            . /opt/topsv3/secrets/hml.env
+            set +a
+            export HML_AUTH_SMOKE_ENABLED=true
+            export HML_AUTH_SMOKE_API_BASE_URL=\"http://127.0.0.1:\${HML_BACKEND_PORT:-18080}\"
+            export HML_AUTH_SMOKE_WEB_BASE_URL=\"http://127.0.0.1:\${HML_FRONTEND_PORT:-13000}\"
+            cd '${HML_DEPLOY_PATH}'
+            bash scripts/deploy/validar-auth-publico-hml.sh
+            unset HML_AUTH_SMOKE_RUNTIME_VALUE
+          "
 
       - name: Verify Auth secret and importers are absent from HML logs
         shell: bash

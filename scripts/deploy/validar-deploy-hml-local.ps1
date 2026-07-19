@@ -36,7 +36,6 @@ function Read-RequiredFile {
 
 $workflow = Read-RequiredFile ".github/workflows/deploy-hml.yml"
 $compose = Read-RequiredFile "deploy/hml/docker-compose.yml"
-$nginx = Read-RequiredFile "deploy/hml/nginx-v3-esle-cloud.conf"
 $envExample = Read-RequiredFile "deploy/hml/hml.env.example"
 $applicationHml = Read-RequiredFile "backend/src/main/resources/application-homologacao.yml"
 $healthController = Read-RequiredFile "backend/src/main/java/br/com/topsdojob/v3/platform/health/HealthController.java"
@@ -46,7 +45,6 @@ foreach ($secret in @(
     "HML_USER",
     "HML_SSH_PORT",
     "HML_SSH_PRIVATE_KEY",
-    "HML_DOMAIN",
     "HML_DEPLOY_PATH"
   )) {
   Add-Check "workflow referencia secret $secret" ($workflow -match [regex]::Escape("secrets.$secret")) "secret obrigatorio"
@@ -78,12 +76,14 @@ foreach ($exclude in @(
 }
 
 Add-Check "workflow exige usuario topsv3" ($workflow -match 'test "\$\{HML_USER\}" = "topsv3"') "usuario HML"
-Add-Check "workflow exige dominio v3.esle.cloud" ($workflow -match 'test "\$\{HML_DOMAIN\}" = "v3\.esle\.cloud"') "dominio HML"
 Add-Check "workflow exige deploy path controlado" ($workflow -match '/opt/topsv3/app/current') "deploy path"
 Add-Check "workflow falha sem hml.env externo" ($workflow -match 'test -f /opt/topsv3/secrets/hml\.env') "secrets externos"
 Add-Check "workflow executa compose build" ($workflow -match 'docker compose .* build') "build"
 Add-Check "workflow executa compose up" ($workflow -match 'docker compose .* up -d') "up"
-Add-Check "workflow recarrega nginx" ($workflow -match 'systemctl reload nginx') "nginx reload"
+Add-Check "workflow nao altera o Nginx publico" (-not ($workflow -match 'systemctl reload nginx|sites-enabled/v3-esle-cloud|install -m 0644 deploy/hml/nginx')) "HML permanece interno"
+Add-Check "workflow testa Auth no backend HML interno" ($workflow -match 'HML_AUTH_SMOKE_API_BASE_URL=\\"http://127\.0\.0\.1:') "smoke por loopback"
+Add-Check "workflow testa frontend HML interno" ($workflow -match 'HML_AUTH_SMOKE_WEB_BASE_URL=\\"http://127\.0\.0\.1:') "smoke por loopback"
+Add-Check "workflow nao testa fixture pelo dominio da preproducao" (-not ($workflow -match 'HML_AUTH_SMOKE_BASE_URL|HML_DOMAIN:\s+\$\{\{ secrets\.HML_DOMAIN \}\}')) "sem acoplamento ao dominio publico"
 Add-Check "workflow usa health real /api/health" ($workflow -match '127\.0\.0\.1:\$?\{?BACKEND_PORT\}?/api/health|/api/health') "health backend"
 Add-Check "workflow nao executa push" (-not ($workflow -match '(?i)git\s+push')) "sem push"
 Add-Check "workflow nao usa deploy producao" (-not ($workflow -match 'topsdojob\.com')) "sem dominio de producao"
@@ -133,15 +133,6 @@ Add-Check "application-homologacao fixa ambiente Efi homologacao" (($application
 
 Add-Check "HealthController mapeia /api/health" ($healthController -match '@RequestMapping\("/api/health"\)') "endpoint real"
 Add-Check "HealthController responde GET raiz" ($healthController -match '@GetMapping\s*\r?\n\s*public HealthResponse health') "GET /api/health"
-
-Add-Check "nginx dominio HML" ($nginx -match 'server_name\s+v3\.esle\.cloud;') "server_name"
-Add-Check "nginx HTTP redireciona para HTTPS" ($nginx -match 'return\s+301\s+https://\$host\$request_uri;') "porta 80"
-Add-Check "nginx escuta HTTPS 443" ($nginx -match 'listen\s+443\s+ssl') "porta 443"
-Add-Check "nginx usa certificado letsencrypt HML" (($nginx -match '/etc/letsencrypt/live/v3\.esle\.cloud/fullchain\.pem') -and ($nginx -match '/etc/letsencrypt/live/v3\.esle\.cloud/privkey\.pem')) "certificado HML"
-Add-Check "nginx X-Robots-Tag" ($nginx -match 'X-Robots-Tag\s+"noindex, nofollow, noarchive"') "noindex"
-Add-Check "nginx robots Disallow" ($nginx -match 'Disallow:\s+/') "robots.txt"
-Add-Check "nginx proxy frontend" ($nginx -match 'proxy_pass http://127\.0\.0\.1:13000') "frontend"
-Add-Check "nginx proxy backend api" ($nginx -match 'proxy_pass http://127\.0\.0\.1:18080') "backend"
 
 Add-Check "env example dominio HML" ($envExample -match 'HML_DOMAIN=v3\.esle\.cloud') "dominio"
 Add-Check "env example APP_ENV homologacao" ($envExample -match 'APP_ENV=homologacao') "app env"
