@@ -59,6 +59,15 @@ class ImportadorBasePostgres17IntegrationTest {
       copy(container, kycDocuments, "/tmp/dryrun-r2-kyc-documents.tsv", logs);
 
       List<String> variables = importVariables();
+      List<String> missingPublicPrefix = withoutSetting(
+          variables, "r2_public_media_prefix=");
+      Path missingParameterLog = logs.resolve("parametro-ausente.log");
+      int missingParameterExit = importSnapshot(
+          container, dbCredential, missingPublicPrefix, missingParameterLog, false);
+      assertThat(missingParameterExit).isNotZero();
+      assertThat(Files.readString(missingParameterLog))
+          .contains("parametro R2 obrigatorio ausente: r2_public_media_prefix");
+
       importSnapshot(container, dbCredential, variables, logs.resolve("run1.log"), true);
       String counts1 = counts(container, dbCredential);
       String fingerprint1 = fingerprint(container, dbCredential);
@@ -70,6 +79,19 @@ class ImportadorBasePostgres17IntegrationTest {
       assertThat(counts2).isEqualTo(counts1);
       assertThat(fingerprint2).isEqualTo(fingerprint1);
       assertThat(counts2).startsWith("1|CONCLUIDA_COM_PENDENCIAS|");
+      assertDestinationStorage(container, dbCredential, variables);
+
+      List<String> otherEnvironment = replacingSetting(
+          variables,
+          "r2_public_media_prefix=",
+          "r2_public_media_prefix=hml/outro-ambiente/midias-aprovadas/");
+      Path otherEnvironmentLog = logs.resolve("prefixo-outro-ambiente.log");
+      int otherEnvironmentExit = importSnapshot(
+          container, dbCredential, otherEnvironment, otherEnvironmentLog, false);
+      assertThat(otherEnvironmentExit).isNotZero();
+      assertThat(Files.readString(otherEnvironmentLog))
+          .contains("manifesto R2 publico nao corresponde ao prefixo e objetos do destino configurado");
+      cleanupImportScaffolding(container, dbCredential, logs);
 
       List<String> mismatched = new ArrayList<>(variables);
       int fingerprintIndex = indexOfPrefix(mismatched, "snapshot_fingerprint=");
@@ -92,14 +114,67 @@ class ImportadorBasePostgres17IntegrationTest {
         "--set", "snapshot_at=" + required("IMPORTADOR_BASE_SNAPSHOT_AT"),
         "--set", "snapshot_id=" + required("IMPORTADOR_BASE_SNAPSHOT_ID"),
         "--set", "snapshot_fingerprint=" + required("IMPORTADOR_BASE_SNAPSHOT_FINGERPRINT"),
-        "--set", "r2_public_bucket=" + required("IMPORTADOR_BASE_R2_PUBLIC_BUCKET"),
+        "--set", "r2_public_media_bucket="
+            + required("IMPORTADOR_BASE_R2_PUBLIC_MEDIA_BUCKET"),
+        "--set", "r2_public_media_prefix="
+            + required("IMPORTADOR_BASE_R2_PUBLIC_MEDIA_PREFIX"),
+        "--set", "r2_private_media_bucket="
+            + required("IMPORTADOR_BASE_R2_PRIVATE_MEDIA_BUCKET"),
+        "--set", "r2_private_media_prefix="
+            + required("IMPORTADOR_BASE_R2_PRIVATE_MEDIA_PREFIX"),
         "--set", "r2_preserved_public_bucket="
             + required("IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_BUCKET"),
         "--set", "r2_preserved_public_base_url="
             + required("IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_BASE_URL"),
         "--set", "r2_preserved_public_prefix="
             + required("IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_PREFIX"),
-        "--set", "r2_document_bucket=" + required("IMPORTADOR_BASE_R2_DOCUMENT_BUCKET")));
+        "--set", "r2_document_bucket=" + required("IMPORTADOR_BASE_R2_DOCUMENT_BUCKET"),
+        "--set", "r2_document_prefix="
+            + required("IMPORTADOR_BASE_R2_DOCUMENT_PREFIX")));
+  }
+
+  private static void assertDestinationStorage(
+      String container, String dbCredential, List<String> variables) throws Exception {
+    String publicBucket = setting(variables, "r2_public_media_bucket=");
+    String publicPrefix = setting(variables, "r2_public_media_prefix=");
+    String sourceBucket = setting(variables, "r2_preserved_public_bucket=");
+    String documentBucket = setting(variables, "r2_document_bucket=");
+    String documentPrefix = setting(variables, "r2_document_prefix=");
+    String result = query(container, dbCredential, """
+        SELECT concat_ws('|',
+          (SELECT count(*) FROM arquivo_midia
+           WHERE storage_provider = 'R2'
+             AND bucket = %s
+             AND chave_objeto LIKE %s),
+          (SELECT count(*) FROM anuncio_midia am
+           JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+           WHERE am.visibilidade_midia = 'LIVRE'
+             AND ar.bucket = %s
+             AND ar.chave_objeto LIKE %s),
+          (SELECT count(*) FROM arquivo_midia
+           WHERE storage_provider = 'R2' AND bucket = %s),
+          (SELECT count(*) FROM documento_usuario d
+           JOIN arquivo_midia ar ON ar.id = d.arquivo_midia_id
+           WHERE ar.bucket = %s AND ar.chave_objeto LIKE %s),
+          (SELECT count(*) FROM documento_usuario d
+           JOIN arquivo_midia ar ON ar.id = d.arquivo_midia_id
+           WHERE ar.bucket <> %s OR ar.chave_objeto NOT LIKE %s),
+          (SELECT count(*) FROM arquivo_midia
+           WHERE chave_objeto ~ '^https?://'));
+        """.formatted(
+            sqlLiteral(publicBucket), sqlLiteral(publicPrefix + "importacao/sha256/%"),
+            sqlLiteral(publicBucket), sqlLiteral(publicPrefix + "importacao/sha256/%"),
+            sqlLiteral(sourceBucket),
+            sqlLiteral(documentBucket), sqlLiteral(documentPrefix + "importacao/%/sha256/%"),
+            sqlLiteral(documentBucket), sqlLiteral(documentPrefix + "importacao/%/sha256/%")),
+        "^[0-9]+\\|[0-9]+\\|[0-9]+\\|[0-9]+\\|[0-9]+\\|[0-9]+$");
+    String[] values = result.split("\\|");
+    assertThat(Long.parseLong(values[0])).isPositive();
+    assertThat(Long.parseLong(values[1])).isPositive();
+    assertThat(Long.parseLong(values[2])).isZero();
+    assertThat(Long.parseLong(values[3])).isPositive();
+    assertThat(Long.parseLong(values[4])).isZero();
+    assertThat(Long.parseLong(values[5])).isZero();
   }
 
   private static void awaitPostgres(String container, String dbCredential, Path logs)
@@ -168,6 +243,17 @@ class ImportadorBasePostgres17IntegrationTest {
     return command(check, log, arguments.toArray(String[]::new));
   }
 
+  private static void cleanupImportScaffolding(
+      String container, String dbCredential, Path logs) throws Exception {
+    command(true, logs.resolve("cleanup-import-scaffolding.log"),
+        "docker", "exec", "-e", DATABASE_CREDENTIAL_ENV + "=" + dbCredential, container,
+        "psql", "--no-psqlrc", "--host", "127.0.0.1", "--username", "topsv3dry",
+        "--dbname", "v3_dryrun", "--set", "ON_ERROR_STOP=1", "--command",
+        "DROP SCHEMA IF EXISTS legacy CASCADE; "
+            + "DROP SERVER IF EXISTS legacy_source CASCADE; "
+            + "DROP EXTENSION IF EXISTS postgres_fdw;");
+  }
+
   private static String counts(String container, String dbCredential) throws Exception {
     return query(container, dbCredential, """
         SELECT concat_ws('|',
@@ -231,7 +317,11 @@ class ImportadorBasePostgres17IntegrationTest {
     builder.redirectOutput(output.toFile());
     int exit = builder.start().waitFor();
     if (check && exit != 0) {
-      throw new IllegalStateException("Comando do teste PostgreSQL 17 falhou");
+      String detail = Files.readString(output).lines()
+          .filter(line -> line.contains("ERROR:") || line.startsWith("psql:"))
+          .reduce((first, second) -> second)
+          .orElse("erro sem detalhe sanitizado");
+      throw new IllegalStateException("Comando do teste PostgreSQL 17 falhou: " + detail);
     }
     return exit;
   }
@@ -257,6 +347,29 @@ class ImportadorBasePostgres17IntegrationTest {
       if (values.get(index).startsWith(prefix)) return index;
     }
     throw new IllegalArgumentException("Variavel de snapshot ausente");
+  }
+
+  private static List<String> withoutSetting(List<String> values, String prefix) {
+    List<String> result = new ArrayList<>(values);
+    int valueIndex = indexOfPrefix(result, prefix);
+    result.remove(valueIndex);
+    result.remove(valueIndex - 1);
+    return result;
+  }
+
+  private static List<String> replacingSetting(
+      List<String> values, String prefix, String replacement) {
+    List<String> result = new ArrayList<>(values);
+    result.set(indexOfPrefix(result, prefix), replacement);
+    return result;
+  }
+
+  private static String setting(List<String> values, String prefix) {
+    return values.get(indexOfPrefix(values, prefix)).substring(prefix.length());
+  }
+
+  private static String sqlLiteral(String value) {
+    return "'" + value.replace("'", "''") + "'";
   }
 
   private static void deleteTree(Path root) throws IOException {

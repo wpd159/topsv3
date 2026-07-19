@@ -2,11 +2,58 @@
 \pset tuples_only on
 \pset format unaligned
 
+\if :{?r2_public_media_bucket}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_public_media_bucket'; END $$;
+\endif
+\if :{?r2_public_media_prefix}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_public_media_prefix'; END $$;
+\endif
+\if :{?r2_private_media_bucket}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_private_media_bucket'; END $$;
+\endif
+\if :{?r2_private_media_prefix}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_private_media_prefix'; END $$;
+\endif
+\if :{?r2_document_bucket}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_document_bucket'; END $$;
+\endif
+\if :{?r2_document_prefix}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_document_prefix'; END $$;
+\endif
+
 CREATE TEMP TABLE validar_context AS
 SELECT
+  :'r2_public_media_bucket'::text AS r2_public_media_bucket,
+  :'r2_public_media_prefix'::text AS r2_public_media_prefix,
+  :'r2_private_media_bucket'::text AS r2_private_media_bucket,
+  :'r2_private_media_prefix'::text AS r2_private_media_prefix,
   :'r2_document_bucket'::text AS r2_document_bucket,
-  :'r2_preserved_public_bucket'::text AS r2_preserved_public_bucket,
-  :'r2_preserved_public_prefix'::text AS r2_preserved_public_prefix;
+  :'r2_document_prefix'::text AS r2_document_prefix;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM validar_context
+    WHERE length(trim(r2_public_media_bucket)) = 0
+       OR length(trim(r2_private_media_bucket)) = 0
+       OR length(trim(r2_document_bucket)) = 0
+       OR r2_public_media_prefix !~ '^hml/[A-Za-z0-9._/-]+/$'
+       OR r2_private_media_prefix !~ '^hml/[A-Za-z0-9._/-]+/$'
+       OR r2_document_prefix !~ '^hml/[A-Za-z0-9._/-]+/$'
+       OR r2_public_media_prefix LIKE '%..%'
+       OR r2_private_media_prefix LIKE '%..%'
+       OR r2_document_prefix LIKE '%..%'
+  ) THEN
+    RAISE EXCEPTION 'configuracao R2 de destino invalida';
+  END IF;
+END $$;
 
 SELECT 'USUARIOS|' || count(*) FROM usuario;
 SELECT 'ANUNCIOS|' || count(*) FROM anuncio;
@@ -47,19 +94,22 @@ FROM stg_midia WHERE pendencia_codigo IN (
 SELECT 'MIDIA_R2_PUBLICA|' || count(*)
 FROM arquivo_midia
 WHERE storage_provider = 'R2'
-  AND bucket = :'r2_preserved_public_bucket'
-  AND chave_objeto LIKE :'r2_preserved_public_prefix' || '%';
-SELECT 'MIDIA_PUBLICA_ORIGEM_INVALIDA|' || count(*)
+  AND bucket = :'r2_public_media_bucket'
+  AND chave_objeto LIKE :'r2_public_media_prefix' || 'importacao/sha256/%';
+SELECT 'MIDIA_PUBLICA_DESTINO_INVALIDA|' || count(*)
 FROM anuncio_midia am
 JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
 CROSS JOIN validar_context c
 WHERE am.visibilidade_midia = 'LIVRE'
   AND (
     ar.storage_provider <> 'R2'
-    OR ar.bucket <> c.r2_preserved_public_bucket
-    OR ar.chave_objeto NOT LIKE c.r2_preserved_public_prefix || '%'
-    OR substring(ar.chave_objeto FROM length(c.r2_preserved_public_prefix) + 1)
-        !~ '^[0-9a-f]{32}\.(jpg|jpeg|png|webp)$'
+    OR ar.bucket <> c.r2_public_media_bucket
+    OR ar.chave_objeto NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/%'
+    OR substring(ar.chave_objeto FROM length(c.r2_public_media_prefix) + 1)
+        !~ '^importacao/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(jpg|jpeg|png|webp)$'
+    OR ar.sha256 !~ '^[0-9a-f]{64}$'
+    OR ar.chave_objeto NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/'
+        || left(ar.sha256, 2) || '/' || ar.sha256 || '.%'
   );
 SELECT 'MIDIA_R2_CHECKSUM_AUSENTE|' || count(*)
 FROM arquivo_midia
@@ -94,8 +144,8 @@ WHERE s.tipo = 'ANUNCIO'
       AND am.status = 'PUBLICAVEL'
       AND am.visibilidade_midia = 'LIVRE'
       AND ar.storage_provider = 'R2'
-      AND ar.bucket = c.r2_preserved_public_bucket
-      AND ar.chave_objeto LIKE c.r2_preserved_public_prefix || '%'
+      AND ar.bucket = c.r2_public_media_bucket
+      AND ar.chave_objeto LIKE c.r2_public_media_prefix || 'importacao/sha256/%'
   );
 SELECT 'STORIES_QUARENTENA|' || count(*) FROM stg_story;
 SELECT 'KYC_CANONICO|' || count(*) FROM documento_usuario;
@@ -134,7 +184,7 @@ FROM documento_usuario d
 JOIN arquivo_midia a ON a.id = d.arquivo_midia_id
 WHERE a.storage_provider = 'R2'
   AND a.bucket = :'r2_document_bucket'
-  AND a.chave_objeto LIKE 'hml/documentos/importacao/%/sha256/%';
+  AND a.chave_objeto LIKE :'r2_document_prefix' || 'importacao/%/sha256/%';
 SELECT 'MOVIMENTOS_SALDO_INICIAL|' || count(*)
 FROM movimento_credito WHERE tipo = 'MIGRACAO_SALDO_INICIAL';
 SELECT 'USUARIOS_SALDO_INICIAL|' || count(DISTINCT usuario_id)
@@ -245,7 +295,14 @@ BEGIN
           END
        OR a.storage_provider <> 'R2'
        OR a.bucket <> (SELECT r2_document_bucket FROM validar_context)
-       OR a.chave_objeto NOT LIKE 'hml/documentos/importacao/%/sha256/%'
+       OR a.chave_objeto NOT LIKE
+            (SELECT r2_document_prefix FROM validar_context) || 'importacao/%/sha256/%'
+       OR substring(a.chave_objeto FROM length(
+            (SELECT r2_document_prefix FROM validar_context)) + 1)
+            !~ '^importacao/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(pdf|jpg|png)$'
+       OR a.chave_objeto NOT LIKE
+            (SELECT r2_document_prefix FROM validar_context) || 'importacao/%/sha256/'
+            || left(a.sha256, 2) || '/' || a.sha256 || '.%'
        OR NOT (
          (a.mime_type = 'application/pdf' AND d.parte = 'UNICO')
          OR (a.mime_type IN ('image/jpeg', 'image/png') AND d.parte IN ('FRENTE', 'VERSO'))

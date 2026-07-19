@@ -1,12 +1,37 @@
 \set ON_ERROR_STOP on
 
+\if :{?r2_public_media_bucket}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_public_media_bucket'; END $$;
+\endif
+\if :{?r2_public_media_prefix}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_public_media_prefix'; END $$;
+\endif
+\if :{?r2_private_media_bucket}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_private_media_bucket'; END $$;
+\endif
+\if :{?r2_private_media_prefix}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_private_media_prefix'; END $$;
+\endif
+\if :{?r2_document_bucket}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_document_bucket'; END $$;
+\endif
+\if :{?r2_document_prefix}
+\else
+DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_document_prefix'; END $$;
+\endif
+
 -- Transformacao conservadora do snapshot legado para um banco V3 descartavel.
 -- Pre-condicoes:
 --   1. source_snapshot existe no mesmo PostgreSQL local;
 --   2. os TSVs /tmp/dryrun-r2-public-media.tsv e
 --      /tmp/dryrun-r2-kyc-documents.tsv contem resultados sanitizados;
---   3. snapshot_at, snapshot_id, snapshot_fingerprint, buckets R2 e a
---      origem publica preservada sao informados pelo chamador.
+--   3. snapshot_at, snapshot_id, snapshot_fingerprint, buckets/prefixos R2 e
+--      a origem publica preservada sao informados pelo chamador.
 -- Este arquivo nao contem dados, credenciais ou acesso a producao.
 
 CREATE EXTENSION IF NOT EXISTS postgres_fdw;
@@ -87,11 +112,20 @@ SELECT
   :'snapshot_at'::timestamptz AS snapshot_at,
   :'snapshot_id'::text AS snapshot_id,
   :'snapshot_fingerprint'::text AS snapshot_fingerprint,
-  :'r2_public_bucket'::text AS r2_public_bucket,
+  :'r2_public_media_bucket'::text AS r2_public_media_bucket,
+  :'r2_public_media_prefix'::text AS r2_public_media_prefix,
+  :'r2_private_media_bucket'::text AS r2_private_media_bucket,
+  :'r2_private_media_prefix'::text AS r2_private_media_prefix,
   :'r2_preserved_public_bucket'::text AS r2_preserved_public_bucket,
   regexp_replace(:'r2_preserved_public_base_url'::text, '/+$', '') AS r2_preserved_public_base_url,
   :'r2_preserved_public_prefix'::text AS r2_preserved_public_prefix,
   :'r2_document_bucket'::text AS r2_document_bucket,
+  :'r2_document_prefix'::text AS r2_document_prefix,
+  md5(concat_ws('|',
+    :'r2_public_media_bucket', :'r2_public_media_prefix',
+    :'r2_private_media_bucket', :'r2_private_media_prefix',
+    :'r2_document_bucket', :'r2_document_prefix'
+  )) AS storage_destination_fingerprint,
   md5('dryrun:kyc-migration-actor')::uuid AS kyc_migration_actor_id;
 
 DO $$
@@ -99,13 +133,85 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM dryrun_context
-    WHERE r2_public_bucket = r2_preserved_public_bucket
+    WHERE length(trim(r2_public_media_bucket)) = 0
+       OR length(trim(r2_private_media_bucket)) = 0
+       OR length(trim(r2_document_bucket)) = 0
+       OR r2_public_media_bucket !~ '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+       OR r2_private_media_bucket !~ '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+       OR r2_document_bucket !~ '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+       OR r2_public_media_prefix !~ '^hml/[A-Za-z0-9._/-]+/$'
+       OR r2_private_media_prefix !~ '^hml/[A-Za-z0-9._/-]+/$'
+       OR r2_document_prefix !~ '^hml/[A-Za-z0-9._/-]+/$'
+       OR r2_public_media_prefix LIKE '%..%'
+       OR r2_private_media_prefix LIKE '%..%'
+       OR r2_document_prefix LIKE '%..%'
+       OR r2_public_media_bucket = r2_preserved_public_bucket
        OR r2_preserved_public_base_url !~ '^https://[^/?#]+$'
        OR r2_preserved_public_prefix !~ '^[A-Za-z0-9._/-]+/$'
        OR r2_preserved_public_prefix LIKE '/%'
        OR r2_preserved_public_prefix LIKE '%..%'
+       OR (
+         r2_public_media_bucket = r2_private_media_bucket
+         AND (
+           r2_public_media_prefix LIKE r2_private_media_prefix || '%'
+           OR r2_private_media_prefix LIKE r2_public_media_prefix || '%'
+         )
+       )
+       OR (
+         r2_public_media_bucket = r2_document_bucket
+         AND (
+           r2_public_media_prefix LIKE r2_document_prefix || '%'
+           OR r2_document_prefix LIKE r2_public_media_prefix || '%'
+         )
+       )
+       OR (
+         r2_private_media_bucket = r2_document_bucket
+         AND (
+           r2_private_media_prefix LIKE r2_document_prefix || '%'
+           OR r2_document_prefix LIKE r2_private_media_prefix || '%'
+         )
+       )
   ) THEN
-    RAISE EXCEPTION 'origem publica preservada invalida ou sem isolamento do bucket de dry-run';
+    RAISE EXCEPTION 'configuracao R2 de destino invalida, sobreposta ou sem isolamento da origem';
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_r2_public_media r
+    CROSS JOIN dryrun_context c
+    WHERE r.status IN ('MIGRADA', 'PRESERVADA')
+      AND (
+        r.object_key IS NULL
+        OR r.sha256 !~ '^[0-9a-f]{64}$'
+        OR r.object_key NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/%'
+        OR substring(r.object_key FROM length(c.r2_public_media_prefix) + 1)
+            !~ '^importacao/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(jpg|jpeg|png|webp)$'
+        OR r.object_key NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/'
+            || left(r.sha256, 2) || '/' || r.sha256 || '.%'
+      )
+  ) THEN
+    RAISE EXCEPTION 'manifesto R2 publico nao corresponde ao prefixo e objetos do destino configurado';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_r2_kyc_documents r
+    CROSS JOIN dryrun_context c
+    WHERE r.status IN ('MIGRADA', 'PRESERVADA')
+      AND (
+        r.object_key IS NULL
+        OR r.sha256 !~ '^[0-9a-f]{64}$'
+        OR r.object_key NOT LIKE c.r2_document_prefix || 'importacao/%/sha256/%'
+        OR substring(r.object_key FROM length(c.r2_document_prefix) + 1)
+            !~ '^importacao/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(pdf|jpg|png)$'
+        OR r.object_key NOT LIKE c.r2_document_prefix || 'importacao/%/sha256/'
+            || left(r.sha256, 2) || '/' || r.sha256 || '.%'
+      )
+  ) THEN
+    RAISE EXCEPTION 'manifesto R2 documental nao corresponde ao prefixo e objetos do destino configurado';
   END IF;
 END $$;
 
@@ -122,6 +228,8 @@ BEGIN
         OR e.iniciado_em <> c.snapshot_at
         OR (e.resumo_json ->> 'snapshotId') IS DISTINCT FROM c.snapshot_id
         OR (e.resumo_json ->> 'snapshotFingerprint') IS DISTINCT FROM c.snapshot_fingerprint
+        OR (e.resumo_json ->> 'storageDestinationFingerprint')
+            IS DISTINCT FROM c.storage_destination_fingerprint
       )
   ) THEN
     RAISE EXCEPTION 'execucao existente nao corresponde integralmente ao snapshot solicitado';
@@ -151,7 +259,8 @@ SELECT
     'modo', 'DRY_RUN_SANEADO',
     'snapshotUtc', snapshot_at,
     'snapshotId', snapshot_id,
-    'snapshotFingerprint', snapshot_fingerprint
+    'snapshotFingerprint', snapshot_fingerprint,
+    'storageDestinationFingerprint', storage_destination_fingerprint
   ),
   snapshot_at
 FROM dryrun_context;
@@ -581,6 +690,7 @@ WITH referencias AS (
     r.largura,
     r.altura,
     r.status AS migracao_status,
+    c.r2_public_media_prefix,
     c.r2_preserved_public_prefix,
     CASE
       WHEN left(f.url_foto, length(c.r2_preserved_public_base_url) + 1)
@@ -601,6 +711,7 @@ WITH referencias AS (
     f.created_at,
     f.copied_object_key,
     f.source_object_key,
+    f.r2_public_media_prefix,
     f.sha256,
     f.tamanho_bytes,
     f.mime_type,
@@ -614,8 +725,12 @@ WITH referencias AS (
     AND f.mime_type IN ('image/jpeg', 'image/png', 'image/webp')
     AND f.largura > 0
     AND f.altura > 0
-    AND f.copied_object_key LIKE 'hml/midias-aprovadas/importacao/sha256/%'
+    AND f.copied_object_key LIKE f.r2_public_media_prefix || 'importacao/sha256/%'
+    AND substring(f.copied_object_key FROM length(f.r2_public_media_prefix) + 1)
+        ~ '^importacao/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(jpg|jpeg|png|webp)$'
     AND f.sha256 ~ '^[0-9a-f]{64}$'
+    AND f.copied_object_key LIKE f.r2_public_media_prefix || 'importacao/sha256/'
+        || left(f.sha256, 2) || '/' || f.sha256 || '.%'
     AND f.source_object_key LIKE f.r2_preserved_public_prefix || '%'
     AND substring(f.source_object_key FROM length(f.r2_preserved_public_prefix) + 1)
         ~ '^[0-9a-f]{32}\.(jpg|jpeg|png|webp)$'
@@ -648,11 +763,12 @@ INSERT INTO arquivo_midia (
   tamanho_bytes, largura, altura, duracao_ms, sha256, etag,
   status_arquivo, criado_em
 )
-SELECT DISTINCT ON (m.source_object_key)
-  md5('r2:arquivo-publico-preservado:' || m.source_object_key)::uuid,
+SELECT DISTINCT ON (m.copied_object_key)
+  md5('r2:arquivo-publico-destino:' || c.r2_public_media_bucket || ':'
+      || m.copied_object_key)::uuid,
   'R2',
-  c.r2_preserved_public_bucket,
-  m.source_object_key,
+  c.r2_public_media_bucket,
+  m.copied_object_key,
   NULL,
   m.mime_type,
   m.tamanho_bytes,
@@ -660,7 +776,7 @@ SELECT DISTINCT ON (m.source_object_key)
   'VALIDADO',
   m.created_at AT TIME ZONE 'America/Sao_Paulo'
 FROM dryrun_midia_publica m CROSS JOIN dryrun_context c
-ORDER BY m.source_object_key, m.reference_hash;
+ORDER BY m.copied_object_key, m.reference_hash;
 
 INSERT INTO anuncio_midia (
   id, anuncio_id, arquivo_midia_id, tipo, finalidade, ordem, status,
@@ -669,7 +785,8 @@ INSERT INTO anuncio_midia (
 SELECT
   md5('legacy:anuncio-midia:foto:' || m.anuncio_id || ':' || m.reference_hash)::uuid,
   md5('legacy:anuncio:' || m.anuncio_id)::uuid,
-  md5('r2:arquivo-publico-preservado:' || m.source_object_key)::uuid,
+  md5('r2:arquivo-publico-destino:' || c.r2_public_media_bucket || ':'
+      || m.copied_object_key)::uuid,
   m.tipo,
   m.finalidade,
   m.ordem_final::integer,
@@ -677,7 +794,7 @@ SELECT
   m.created_at AT TIME ZONE 'America/Sao_Paulo',
   m.created_at AT TIME ZONE 'America/Sao_Paulo',
   'LIVRE'
-FROM dryrun_midia_publica m;
+FROM dryrun_midia_publica m CROSS JOIN dryrun_context c;
 
 INSERT INTO stg_midia (
   id, execucao_id, sistema_origem, tabela_origem, id_origem,
@@ -1016,8 +1133,12 @@ WHERE r.usuario_v3_id IS NOT NULL
   AND r.reference_hash = r.canonical_reference_hash
   AND r.classe_referencia IN ('R2_PRIVADA', 'HTTP_PRIVACIDADE_DUVIDOSA')
   AND r.objeto_status IN ('MIGRADA', 'PRESERVADA')
-  AND r.object_key LIKE 'hml/documentos/importacao/%/sha256/%'
+  AND r.object_key LIKE c.r2_document_prefix || 'importacao/%/sha256/%'
+  AND substring(r.object_key FROM length(c.r2_document_prefix) + 1)
+      ~ '^importacao/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(pdf|jpg|png)$'
   AND r.sha256 ~ '^[0-9a-f]{64}$'
+  AND r.object_key LIKE c.r2_document_prefix || 'importacao/%/sha256/'
+      || left(r.sha256, 2) || '/' || r.sha256 || '.%'
   AND r.tamanho_bytes BETWEEN 1 AND 12582912
   AND (
     (r.mime_type = 'application/pdf' AND r.extensao = 'pdf' AND r.parte = 'UNICO')
@@ -1578,6 +1699,7 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
       'pagamentosOrigem', (SELECT count(*) FROM legacy.pagamentos_mp),
       'snapshotId', c.snapshot_id,
       'snapshotFingerprint', c.snapshot_fingerprint,
+      'storageDestinationFingerprint', c.storage_destination_fingerprint,
       'anunciosPublicados', (SELECT count(*) FROM anuncio WHERE status = 'PUBLICADO'),
       'primeiraPublicacaoRecuperada', (SELECT count(*) FROM dryrun_anuncio WHERE publicacao_origem = 'REVISAO_APROVADA'),
       'primeiraPublicacaoInferida', (SELECT count(*) FROM dryrun_anuncio WHERE publicacao_origem = 'CRIADO_EM_INFERIDO'),

@@ -42,9 +42,11 @@ class KycDocumentosDryRunImportadorTest {
     assertThat(sql)
         .contains("dryrun-r2-kyc-documents.tsv")
         .contains(":'r2_document_bucket'")
+        .contains(":'r2_document_prefix'")
+        .contains("manifesto R2 documental nao corresponde ao prefixo e objetos do destino configurado")
         .contains("kycAprovadoAutomaticamente', 0");
     assertThat(kyc)
-        .contains("hml/documentos/importacao/%/sha256/%")
+        .contains("c.r2_document_prefix || 'importacao/%/sha256/%'")
         .contains("r.mime_type = 'application/pdf'")
         .contains("r.mime_type = 'image/jpeg'")
         .contains("r.mime_type = 'image/png'")
@@ -74,6 +76,7 @@ class KycDocumentosDryRunImportadorTest {
         .contains("ator tecnico da migracao KYC recebeu credencial")
         .contains("usuario KYC aprovado na origem ficaria sem aprovacao operacional")
         .contains("a.bucket <> (SELECT r2_document_bucket FROM validar_context)")
-        .contains("a.chave_objeto NOT LIKE 'hml/documentos/importacao/%/sha256/%'");
+        .contains("(SELECT r2_document_prefix FROM validar_context) || 'importacao/%/sha256/%'")
+        .doesNotContain("hml/documentos/importacao/%/sha256/%");
   }
 }

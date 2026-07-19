@@ -20,6 +20,8 @@ class ImportadorBaseIdempotenciaTest {
         .contains("e.iniciado_em <> c.snapshot_at")
         .contains("(e.resumo_json ->> 'snapshotId') IS DISTINCT FROM c.snapshot_id")
         .contains("(e.resumo_json ->> 'snapshotFingerprint') IS DISTINCT FROM c.snapshot_fingerprint")
+        .contains("(e.resumo_json ->> 'storageDestinationFingerprint')")
+        .contains("IS DISTINCT FROM c.storage_destination_fingerprint")
         .contains("AS dryrun_snapshot_novo")
         .contains("\\gset");
     assertThat(sql)
