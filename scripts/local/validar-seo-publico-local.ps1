@@ -48,6 +48,33 @@ foreach ($file in $routeFiles) {
   }
 }
 
+$anuncioDetailPath = "frontend/src/app/(public-routes)/anuncios/[slug]/page.tsx"
+if (Test-RepoFile $anuncioDetailPath) {
+  $anuncioDetail = Get-RepoText $anuncioDetailPath
+  Add-Check "detalhe declara JSON-LD WebPage" (
+    $anuncioDetail.Contains('"@type": "WebPage"') -and
+    $anuncioDetail.Contains("primaryImageOfPage")
+  ) "schema especifico deve complementar o WebSite global"
+  Add-Check "detalhe reutiliza a imagem do Open Graph" (
+    $anuncioDetail.Contains("const imagemPublica = selecionarImagemPublicaSeo(") -and
+    $anuncioDetail.Contains("const imagem = resolvePublicSeoImage(imagemPublica)") -and
+    $anuncioDetail.Contains("images: [{ url: imagem") -and
+    $anuncioDetail.Contains("url: imagemPublica")
+  ) "og:image e primaryImageOfPage devem partir da mesma capa LIVRE"
+  Add-Check "detalhe omite imagem primaria sem midia publica" (
+    $anuncioDetail.Contains("...(imagemPublica")
+  ) "logotipo nao pode ser fallback do primaryImageOfPage"
+  Add-Check "detalhe nao cria schema comercial ou pessoal" (
+    -not ($anuncioDetail -match '"@type":\s*"(Product|Person|LocalBusiness|Service)"')
+  ) "somente WebPage e ImageObject sao admitidos nesta fase"
+}
+
+$rootLayoutPath = "frontend/src/app/layout.tsx"
+Add-Check "schema WebSite global preservado" (
+  (Test-RepoFile $rootLayoutPath) -and
+  (Get-RepoText $rootLayoutPath).Contains('"@type": "WebSite"')
+) "o novo WebPage deve complementar o schema global"
+
 $urlHelperPath = "frontend/src/lib/seo/public-url.ts"
 Add-Check "helper unico de origem publica" (Test-RepoFile $urlHelperPath) "public-url.ts obrigatorio"
 if (Test-RepoFile $urlHelperPath) {

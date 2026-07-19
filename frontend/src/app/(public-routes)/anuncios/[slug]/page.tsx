@@ -35,6 +35,13 @@ async function loadInitialAnuncio(slug: string) {
   return obterAnuncioPublicoPorSlug(slug)
 }
 
+function selecionarImagemPublicaSeo(midias?: MidiaPublica[]) {
+  const capa = selecionarCapaPublicaSegura(midias)
+  return capa?.urlPublica && !isComplianceAssetUrl(capa.urlPublica)
+    ? capa.urlPublica
+    : undefined
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -52,8 +59,8 @@ export async function generateMetadata({
       cidadeNome: data?.cidadeNome,
       bairroNome: data?.bairroNome,
     })
-    const capa = selecionarCapaPublicaSegura(data?.midias as MidiaPublica[] | undefined)
-    const imagem = resolvePublicSeoImage(capa?.urlPublica)
+    const imagemPublica = selecionarImagemPublicaSeo(data?.midias as MidiaPublica[] | undefined)
+    const imagem = resolvePublicSeoImage(imagemPublica)
     const indexavel = data.indexavelSeo
 
     const title = gerarTituloSeoAnuncio({
@@ -110,10 +117,48 @@ export default async function Page({
   try {
     const { slug } = await params
     const initialData = await loadInitialAnuncio(slug)
+    const titulo = corrigirTextoCorrompido(initialData.titulo) || "Anúncio"
+    const title = gerarTituloSeoAnuncio({
+      titulo,
+      cidadeNome: initialData?.cidadeNome,
+      bairroNome: initialData?.bairroNome,
+    })
+    const canonicalUrl = buildPublicUrl(buildPublicPath("anuncios", slug))
+    const imagemPublica = selecionarImagemPublicaSeo(
+      initialData?.midias as MidiaPublica[] | undefined,
+    )
     const relacionados = initialData.cidadeSlug
       ? await listarPublicosPorCidade(initialData.estadoUf, initialData.cidadeSlug, 0, 16)
       : null
-    return <AnuncioDetalhesPageClient initialData={initialData} initialRelatedData={relacionados?.itens ?? []} />
+    const webPageJsonLd = {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      url: canonicalUrl,
+      name: title,
+      ...(imagemPublica
+        ? {
+            primaryImageOfPage: {
+              "@type": "ImageObject",
+              url: imagemPublica,
+            },
+          }
+        : {}),
+    }
+
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(webPageJsonLd).replace(/</g, "\\u003c"),
+          }}
+        />
+        <AnuncioDetalhesPageClient
+          initialData={initialData}
+          initialRelatedData={relacionados?.itens ?? []}
+        />
+      </>
+    )
   } catch (error) {
     if (isPublicCatalogNotFound(error)) {
       notFound()
