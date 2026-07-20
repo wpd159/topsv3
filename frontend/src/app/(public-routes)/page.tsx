@@ -6,7 +6,6 @@ import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
 import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
 
-export const dynamic = "force-dynamic"
 export const revalidate = 3600
 export const metadata: Metadata = {
   title: "Acompanhantes perto de você | Tops do Job",

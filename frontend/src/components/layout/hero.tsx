@@ -73,7 +73,6 @@ export default function Hero() {
           src="/2151117281.jpg"
           alt="Imagem temática de fundo"
           fill
-          unoptimized
           priority
           fetchPriority='high'
           sizes="(max-width: 640px) calc(100vw - 2rem), (max-width: 1024px) calc(100vw - 3rem), 1452px"

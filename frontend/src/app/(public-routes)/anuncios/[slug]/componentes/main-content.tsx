@@ -6,7 +6,7 @@ import {
   ClockIcon,
   ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/solid'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
 
 interface MainContentProps {
@@ -70,6 +70,8 @@ function dedupeStrings(values: unknown): string[] {
 }
 
 export default function MainContent({ anuncio }: MainContentProps) {
+  const mapaContainerRef = useRef<HTMLDivElement | null>(null)
+  const [mapaCarregado, setMapaCarregado] = useState(false)
   const localizacaoLabel = useMemo(() => {
     const uf = clean(anuncio.estadoUf)
     const cidade = clean(anuncio.cidadeNome)
@@ -96,6 +98,29 @@ export default function MainContent({ anuncio }: MainContentProps) {
     .join(', ') || localizacaoLabel
   const mapaUrl = hasLocal ? `https://www.google.com/maps?q=${encodeURIComponent(mapaConsulta)}&output=embed` : ''
   const mapaLink = hasLocal ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapaConsulta)}` : ''
+
+  useEffect(() => {
+    if (!hasLocal || mapaCarregado) return
+    const container = mapaContainerRef.current
+    if (!container) return
+
+    if (typeof IntersectionObserver === 'undefined') {
+      setMapaCarregado(true)
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return
+        setMapaCarregado(true)
+        observer.disconnect()
+      },
+      { rootMargin: '240px 0px' }
+    )
+
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [hasLocal, mapaCarregado])
 
   const servicos = useMemo(() => dedupeStrings(anuncio.servicos), [anuncio.servicos])
   const locaisAtendimento = useMemo(
@@ -201,8 +226,25 @@ export default function MainContent({ anuncio }: MainContentProps) {
 
         {hasLocal ? (
           <>
-            <div className="relative h-[300px] w-full overflow-hidden rounded-lg border border-gray-200">
-              <iframe src={mapaUrl} width="100%" height="100%" loading="lazy" className="rounded-lg" />
+            <div
+              ref={mapaContainerRef}
+              data-public-map
+              className="relative h-[300px] w-full overflow-hidden rounded-lg border border-gray-200 bg-gray-50"
+            >
+              {mapaCarregado ? (
+                <iframe
+                  src={mapaUrl}
+                  title={`Mapa de ${localizacaoLabel}`}
+                  width="100%"
+                  height="100%"
+                  loading="lazy"
+                  className="rounded-lg"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center" aria-hidden="true">
+                  <MapPinIcon className="h-8 w-8 text-pink-300" />
+                </div>
+              )}
             </div>
             <a
               href={mapaLink}

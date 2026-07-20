@@ -3,13 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { ContractState } from "@/components/feedback/contract-state"
-import { listarAnunciosPublicos, type PublicCatalogCard } from "@/lib/public-catalog-api"
+import {
+  listarAnunciosPublicos,
+  type PublicCatalogCard,
+  type PublicCategoryList,
+} from "@/lib/public-catalog-api"
 import { AnuncioCard } from "./anuncio-card"
 
 interface AnunciosGridProps {
   categoria: string
   busca?: string
   currentPage?: number
+  initialData?: PublicCategoryList | null
+  initialRequest?: {
+    categoria: string
+    busca: string
+    currentPage: number
+  }
 }
 
 const ITENS_POR_PAGINA = 16
@@ -19,15 +29,30 @@ export default function AnunciosGrid({
   categoria,
   busca = "",
   currentPage = 1,
+  initialData = null,
+  initialRequest,
 }: AnunciosGridProps) {
-  const [anuncios, setAnuncios] = useState<PublicCatalogCard[]>([])
-  const [loading, setLoading] = useState(true)
+  const initialMatches =
+    initialData !== null &&
+    initialRequest?.categoria === categoria &&
+    initialRequest.busca === busca &&
+    initialRequest.currentPage === currentPage
+  const [anuncios, setAnuncios] = useState<PublicCatalogCard[]>(
+    initialMatches ? initialData.itens : []
+  )
+  const [loading, setLoading] = useState(!initialMatches)
   const [error, setError] = useState<unknown>(null)
   const [reloadMarker, setReloadMarker] = useState(0)
-  const [proximaPagina, setProximaPagina] = useState<number | null>(null)
-  const [paginasCarregadas, setPaginasCarregadas] = useState(0)
+  const [proximaPagina, setProximaPagina] = useState<number | null>(() => {
+    if (!initialMatches) return null
+    return initialData.paginacao.pagina + 1 < initialData.paginacao.totalPaginas
+      ? initialData.paginacao.pagina + 1
+      : null
+  })
+  const [paginasCarregadas, setPaginasCarregadas] = useState(initialMatches ? 1 : 0)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
   const consultaAtualRef = useRef(0)
+  const initialRequestConsumedRef = useRef<string | null>(null)
 
   useEffect(() => {
     let ativa = true
@@ -35,6 +60,23 @@ export default function AnunciosGrid({
     consultaAtualRef.current = consulta
 
     const fetchAnuncios = async () => {
+      const requestKey = `${categoria}\u0000${busca}\u0000${currentPage}`
+      if (
+        initialMatches &&
+        initialRequestConsumedRef.current !== requestKey
+      ) {
+        setAnuncios(initialData.itens)
+        setPaginasCarregadas(1)
+        setProximaPagina(
+          initialData.paginacao.pagina + 1 < initialData.paginacao.totalPaginas
+            ? initialData.paginacao.pagina + 1
+            : null,
+        )
+        initialRequestConsumedRef.current = requestKey
+        setLoading(false)
+        return
+      }
+
       setLoading(true)
       setError(null)
       setAnuncios([])
@@ -69,7 +111,14 @@ export default function AnunciosGrid({
     return () => {
       ativa = false
     }
-  }, [busca, categoria, currentPage, reloadMarker])
+  }, [
+    busca,
+    categoria,
+    currentPage,
+    initialData,
+    initialMatches,
+    reloadMarker,
+  ])
 
   const carregarMais = useCallback(async () => {
     if (loading || proximaPagina == null) return
@@ -159,7 +208,7 @@ export default function AnunciosGrid({
           loading ? "opacity-70" : "opacity-100"
         }`}
       >
-        {anuncios.map((anuncio) => (
+        {anuncios.map((anuncio, index) => (
           <AnuncioCard
             key={anuncio.id}
             id={anuncio.id}
@@ -179,6 +228,7 @@ export default function AnunciosGrid({
             whatsappCardEnabled={anuncio.whatsappCardEnabled}
             comLocal={anuncio.comLocal}
             fazAnal={anuncio.fazAnal}
+            mediaPriority={index === 0}
             onAccessUpdated={() => setReloadMarker((prev) => prev + 1)}
           />
         ))}

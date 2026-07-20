@@ -90,8 +90,7 @@ export default function HeaderLogado() {
           alt="Logo"
           width={140}
           height={50}
-          priority
-          fetchPriority="high"
+          loading="lazy"
           unoptimized
           className="cursor-pointer h-12 w-auto max-w-[200px] object-contain"
           onClick={() => router.push("/")}
@@ -249,8 +248,6 @@ export default function HeaderLogado() {
                     alt="Logo"
                     width={130}
                     height={40}
-                    priority
-                    fetchPriority="high"
                     unoptimized
                     className="cursor-pointer h-16 w-auto max-w-[200px] mx-auto object-contain"
                     onClick={() => go("/")}

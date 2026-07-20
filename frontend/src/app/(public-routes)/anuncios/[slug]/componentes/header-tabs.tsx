@@ -24,6 +24,12 @@ type HeaderTabsProps = {
   onAccessUpdated?: () => void
 }
 
+type RenderMidiaOptions = {
+  priority?: boolean
+  onClick?: () => void
+  sizes: string
+}
+
 export default function HeaderTabs({
   anuncio,
   imagemAtiva,
@@ -86,7 +92,11 @@ export default function HeaderTabs({
     select(delta > 0 ? current - 1 : current + 1)
   }
 
-  const renderMidia = (midia: MidiaPublica, className: string, priority = false, onClick?: () => void) => {
+  const renderMidia = (
+    midia: MidiaPublica,
+    className: string,
+    { priority = false, onClick, sizes }: RenderMidiaOptions
+  ) => {
     const source = fontePublicaSegura(midia)
     if (midia.tipo === 'VIDEO' && midia.autorizada && source) {
       return (
@@ -110,6 +120,7 @@ export default function HeaderTabs({
         alt={cidade ? `${nome} em ${cidade}` : nome}
         fill
         priority={priority}
+        sizes={sizes}
         className={className}
         onImageClick={onClick}
         onVerificationSuccess={onAccessUpdated}
@@ -131,16 +142,19 @@ export default function HeaderTabs({
             renderMidia(
               mediaHero,
               'cursor-pointer bg-zinc-950 object-contain object-center',
-              mediaHero.visibilidadeMidia === 'LIVRE',
-              mediaHero.tipo === 'FOTO'
-                ? () => {
-                    const index = fotos.findIndex((item) => item.id === mediaHero.id)
-                    if (index >= 0) {
-                      setImagemAtiva(index)
-                      setLightboxOpen(true)
+              {
+                priority: mediaHero.visibilidadeMidia === 'LIVRE',
+                sizes: '(max-width: 640px) calc(100vw - 2rem), (max-width: 1536px) calc(100vw - 3rem), 1452px',
+                onClick: mediaHero.tipo === 'FOTO'
+                  ? () => {
+                      const index = fotos.findIndex((item) => item.id === mediaHero.id)
+                      if (index >= 0) {
+                        setImagemAtiva(index)
+                        setLightboxOpen(true)
+                      }
                     }
-                  }
-                : undefined
+                  : undefined,
+              }
             )
           ) : (
             <div className="relative h-full min-h-[60svh] w-full bg-gray-100 sm:min-h-[64vh]">
@@ -175,7 +189,9 @@ export default function HeaderTabs({
                       : 'border-gray-200 hover:border-pink-300 hover:shadow-[0_0_10px_rgba(252,30,173,0.14)]'
                   )}
                 >
-                  {renderMidia(item, 'object-cover object-center')}
+                  {renderMidia(item, 'object-cover object-center', {
+                    sizes: '(max-width: 640px) 80px, 96px',
+                  })}
                   {item.tipo === 'VIDEO' ? (
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white"><PlayIcon className="h-4 w-4" /></span></div>
                   ) : null}
@@ -201,7 +217,9 @@ export default function HeaderTabs({
                 <button type="button" onClick={() => setLightboxOpen(false)} className="absolute right-2 top-2 z-20 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Fechar galeria"><XMarkIcon className="h-6 w-6" /></button>
                 {fotos.length > 1 ? <button type="button" onClick={() => selecionarFoto(imagemAtiva - 1)} className="absolute left-2 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white" aria-label="Foto anterior"><ChevronLeftIcon className="h-6 w-6" /></button> : null}
                 <div className="relative aspect-[3/4] max-h-[90vh] w-[90vw] md:w-[60vw] xl:w-[45vw]">
-                  {renderMidia(fotoLightbox, 'object-contain', false)}
+                  {renderMidia(fotoLightbox, 'object-contain', {
+                    sizes: '(max-width: 768px) 90vw, (max-width: 1280px) 60vw, 45vw',
+                  })}
                   <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/65 px-3 py-1 text-xs font-medium text-white">{imagemAtiva + 1} / {fotos.length}</div>
                 </div>
                 {fotos.length > 1 ? <button type="button" onClick={() => selecionarFoto(imagemAtiva + 1)} className="absolute right-2 top-1/2 z-20 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-black/65 text-white" aria-label="Próxima foto"><ChevronRightIcon className="h-6 w-6" /></button> : null}

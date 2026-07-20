@@ -5,6 +5,18 @@ import { useSearchParams } from "next/navigation"
 import { BarraLocalizacao } from "@/components/anuncios/barra-localizacao"
 import AnunciosGrid from "@/components/anuncios/anuncios-grid"
 import { StoriesBar } from "@/components/stories/stories-bar"
+import type { PublicCategoryList } from "@/lib/public-catalog-api"
+
+type InitialRequest = {
+  categoria: string
+  busca: string
+  currentPage: number
+}
+
+type AnunciosPageClientProps = {
+  initialData: PublicCategoryList | null
+  initialRequest: InitialRequest
+}
 
 function parsePageParam(value: string | null) {
   const parsed = Number(value)
@@ -12,7 +24,7 @@ function parsePageParam(value: string | null) {
   return Math.floor(parsed)
 }
 
-function AnunciosPageContent() {
+function AnunciosPageContent({ initialData, initialRequest }: AnunciosPageClientProps) {
   const searchParams = useSearchParams()
 
   const categoriaParam = searchParams.get("categoria") || "TODOS"
@@ -27,15 +39,17 @@ function AnunciosPageContent() {
         categoria={categoriaParam}
         busca={buscaParam}
         currentPage={paginaAtual}
+        initialData={initialData}
+        initialRequest={initialRequest}
       />
     </section>
   )
 }
 
-export default function AnunciosPageClient() {
+export default function AnunciosPageClient(props: AnunciosPageClientProps) {
   return (
     <Suspense fallback={<div className="py-16 text-center text-gray-500">Carregando anúncios...</div>}>
-      <AnunciosPageContent />
+      <AnunciosPageContent {...props} />
     </Suspense>
   )
 }

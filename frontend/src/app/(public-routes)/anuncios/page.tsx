@@ -1,6 +1,16 @@
 import type { Metadata } from "next"
 import AnunciosPageClient from "./anuncios-page-client"
 import { buildPublicUrl } from "@/lib/seo/public-url"
+import { listarAnunciosPublicos, type PublicCategoryList } from "@/lib/public-catalog-api"
+
+type AnunciosSearchParams = {
+  page?: string
+  busca?: string
+  categoria?: string
+  estadoId?: string
+  cidadeId?: string
+  bairroId?: string
+}
 
 function parsePositivePage(value?: string) {
   const parsed = Number(value)
@@ -11,14 +21,7 @@ function parsePositivePage(value?: string) {
 export async function generateMetadata({
   searchParams: searchParamsPromise,
 }: {
-  searchParams: Promise<{
-    page?: string
-    busca?: string
-    categoria?: string
-    estadoId?: string
-    cidadeId?: string
-    bairroId?: string
-  }>
+  searchParams: Promise<AnunciosSearchParams>
 }): Promise<Metadata> {
   const searchParams = await searchParamsPromise
   const page = parsePositivePage(searchParams.page)
@@ -81,6 +84,27 @@ export async function generateMetadata({
   }
 }
 
-export default function AnunciosPage() {
-  return <AnunciosPageClient />
+export default async function AnunciosPage({
+  searchParams: searchParamsPromise,
+}: {
+  searchParams: Promise<AnunciosSearchParams>
+}) {
+  const searchParams = await searchParamsPromise
+  const currentPage = parsePositivePage(searchParams.page)
+  const categoria = (searchParams.categoria || "TODOS").trim() || "TODOS"
+  const busca = (searchParams.busca || "").trim()
+  let initialData: PublicCategoryList | null = null
+
+  try {
+    initialData = await listarAnunciosPublicos(categoria, busca, currentPage - 1, 16)
+  } catch {
+    // O grid cliente repete a consulta e preserva o estado de erro com opcao de nova tentativa.
+  }
+
+  return (
+    <AnunciosPageClient
+      initialData={initialData}
+      initialRequest={{ categoria, busca, currentPage }}
+    />
+  )
 }

@@ -48,6 +48,7 @@ type AnuncioCardProps = {
   anunciaDesde?: string | null
   onAccessUpdated?: () => void
   previewMode?: boolean
+  mediaPriority?: boolean
 }
 
 function clean(v?: string | null) {
@@ -58,13 +59,15 @@ function clean(v?: string | null) {
   return s
 }
 
-function EmptyMediaState() {
+function EmptyMediaState({ priority = false }: { priority?: boolean }) {
   return (
     <div className="absolute inset-0 overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100">
       <Image
         src="/icone-sem-foto.png"
         alt="Perfil sem fotos"
         fill
+        priority={priority}
+        sizes="(max-width: 768px) 100vw, 360px"
         className="object-cover object-center opacity-90"
       />
       <div className="absolute inset-0 bg-white/15 backdrop-blur-[1px]" />
@@ -107,6 +110,7 @@ export function AnuncioCard({
   anunciaDesde,
   onAccessUpdated,
   previewMode = false,
+  mediaPriority = false,
 }: AnuncioCardProps) {
   const router = useRouter()
   const { openWhatsAppWarning } = useWhatsAppSafety()
@@ -293,6 +297,7 @@ export function AnuncioCard({
               alt={nomeExibido}
               fill
               sizes="(max-width: 768px) 100vw, 360px"
+              priority={mediaPriority}
               className="transition-transform duration-500 group-hover:scale-[1.02]"
               onVerificationSuccess={onAccessUpdated}
               onAbrirPaginaDoAnuncio={handleVerAnuncio}
@@ -300,7 +305,7 @@ export function AnuncioCard({
             />
           </div>
         ) : (
-          <EmptyMediaState />
+          <EmptyMediaState priority={mediaPriority} />
         )}
 
         {!previewMode && (

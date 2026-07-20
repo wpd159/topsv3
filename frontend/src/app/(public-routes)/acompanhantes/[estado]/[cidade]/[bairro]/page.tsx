@@ -234,6 +234,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
             whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
             comLocal={anuncio.comLocal}
             fazAnal={anuncio.fazAnal}
+            mediaPriority={index === 0}
           />
         ))}
       </div>

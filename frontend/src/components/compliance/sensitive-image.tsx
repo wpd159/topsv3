@@ -48,6 +48,10 @@ export function SensitiveImage({
   const [erro, setErro] = useState(false)
   const protegida = midiaExigeConfirmacaoIdade(midia)
   const fonte = fontePublicaSegura(midia)
+  const otimizarImagemPublica =
+    midia.visibilidadeMidia === "LIVRE" &&
+    midia.autorizada &&
+    Boolean(fonte && (fonte.startsWith("/") || /^https?:\/\//i.test(fonte)))
 
   const propsImagem = fill
     ? { fill: true as const, sizes: sizes ?? "(max-width: 768px) 100vw, 50vw" }
@@ -62,7 +66,7 @@ export function SensitiveImage({
             src={fonte}
             alt={alt}
             priority={priority}
-            unoptimized
+            unoptimized={!otimizarImagemPublica}
             className={cn("object-cover object-center transition duration-300", className)}
             onClick={protegida ? undefined : onImageClick}
             onError={() => {

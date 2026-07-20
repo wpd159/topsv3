@@ -89,6 +89,7 @@ export default function Footer() {
               className="h-10 w-auto max-w-[200px] object-contain"
               width={200}
               height={80}
+              loading="lazy"
             />
             <p className="max-w-md text-justify text-sm leading-relaxed text-gray-600">
               {sobreTexto}
