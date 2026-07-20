@@ -12,10 +12,13 @@ import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.SeoPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
@@ -28,8 +31,14 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -155,5 +164,62 @@ class AnuncioPublicoConsultaServiceTest {
         assertThatThrownBy(() -> service.buscarPorSlug("slug-local"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void carregaMidiasPublicasEmLotePorPagina() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID outroAnuncioId = UUID.randomUUID();
+        UUID arquivoId = UUID.randomUUID();
+        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
+        set(vinculo, "id", UUID.randomUUID());
+        set(vinculo, "anuncioId", anuncioId);
+        set(vinculo, "arquivoMidiaId", arquivoId);
+        set(vinculo, "tipo", TipoAnuncioMidia.FOTO);
+        set(vinculo, "finalidade", FinalidadeAnuncioMidia.GALERIA);
+        set(vinculo, "ordem", 0);
+        set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
+        set(vinculo, "visibilidadeMidia", VisibilidadeMidia.LIVRE);
+        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
+        set(arquivo, "id", arquivoId);
+        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
+        set(arquivo, "mimeType", "image/jpeg");
+        set(arquivo, "storageProvider", "LOCAL_MOCK");
+        set(arquivo, "bucket", "topsv3-hml-fixture");
+        set(arquivo, "chaveObjeto", "fixture/stories/foto-segura.jpg");
+
+        AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
+        ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+        when(midiaRepository.findByAnuncioIdIn(List.of(anuncioId, outroAnuncioId)))
+                .thenReturn(List.of(vinculo));
+        when(arquivoRepository.findByIdIn(List.of(arquivoId))).thenReturn(List.of(arquivo));
+
+        AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
+                mock(AnuncioRepository.class),
+                mock(AnuncioLocalizacaoRepository.class),
+                midiaRepository,
+                arquivoRepository,
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                new MidiaPublicaMapper(new MidiaPublicaUrlService("homologacao", "https://v3.esle.cloud")),
+                new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
+                mock(IdadePublicaService.class),
+                mock(PremiumPublicoMapper.class),
+                mock(EstadoRepository.class),
+                mock(CidadeRepository.class),
+                mock(BairroRepository.class),
+                mock(PoliticaContatoPublicoService.class),
+                mock(AnuncioSeoIndexabilidadePolicy.class),
+                mock(IdadeAnunciantePublicaService.class));
+
+        var midias = service.midiasPorAnuncios(
+                List.of(anuncioId, outroAnuncioId),
+                Map.of(anuncioId, PremiumPublicoFlagsDto.vazio()));
+
+        assertThat(midias.get(anuncioId)).singleElement().satisfies(item -> {
+            assertThat(item.tipo()).isEqualTo("FOTO");
+            assertThat(item.visibilidadeMidia()).isEqualTo("LIVRE");
+            assertThat(item.urlPublica()).isEqualTo("https://v3.esle.cloud/demo-safe-public.svg");
+        });
+        assertThat(midias.get(outroAnuncioId)).isEmpty();
     }
 }

@@ -1,7 +1,7 @@
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 
 function limparEspacos(value: string) {
-  return value.replace(/\s+/g, " ").trim()
+  return value.replace(/\s+/g, " ").replace(/\s+[–-]\s+[–-]\s+/g, " – ").trim()
 }
 
 function limitarDescricao(value: string, max = 160) {
@@ -48,20 +48,30 @@ export function gerarTituloSeoAnuncio(params: {
   titulo: string
   cidadeNome?: string | null
   bairroNome?: string | null
+  categoria?: string | null
 }) {
-  const titulo = corrigirTextoCorrompido(params.titulo) || "Anúncio"
-  const cidadeNome = corrigirTextoCorrompido(params.cidadeNome)
-  const bairroNome = corrigirTextoCorrompido(params.bairroNome)
+  const titulo = limparEspacos(corrigirTextoCorrompido(params.titulo) || "Anúncio")
+  const cidadeNome = limparEspacos(corrigirTextoCorrompido(params.cidadeNome) || "")
+  const bairroNome = limparEspacos(corrigirTextoCorrompido(params.bairroNome) || "")
+  const categoria = limparEspacos(params.categoria || "")
+  const local = bairroNome && cidadeNome ? `${bairroNome}, ${cidadeNome}` : cidadeNome
 
-  if (bairroNome && cidadeNome) {
-    return `${titulo} em ${bairroNome}, ${cidadeNome} | Tops do Job`
+  if (categoria === "VENDA_DE_CONTEUDO") {
+    return limparEspacos(`Sexo virtual com ${titulo} | Tops do Job`)
   }
 
-  if (cidadeNome) {
-    return `${titulo} em ${cidadeNome} | Tops do Job`
-  }
+  const prefixo =
+    categoria === "ACOMPANHANTE_MASCULINO"
+      ? "Acompanhante masculino"
+      : categoria === "TRANSEX_TRAVESTIS"
+        ? "Acompanhante trans"
+        : categoria === "MASSAGENS"
+          ? "Massagista"
+          : "Acompanhante"
 
-  return `${titulo} | Tops do Job`
+  return local
+    ? limparEspacos(`${prefixo} em ${local} – ${titulo} | Tops do Job`)
+    : limparEspacos(`${prefixo} – ${titulo} | Tops do Job`)
 }
 
 export function gerarDescricaoSeoAnuncio(params: {

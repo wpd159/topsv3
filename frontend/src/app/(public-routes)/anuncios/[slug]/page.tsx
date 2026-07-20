@@ -11,8 +11,6 @@ import {
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 import { selecionarCapaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
 
-const SAFE_COMPLIANCE_IMAGE_ABSOLUTE = buildPublicUrl("/2151117281.jpg")
-
 function isComplianceAssetUrl(url?: string | null) {
   if (!url) return false
 
@@ -25,10 +23,6 @@ function isComplianceAssetUrl(url?: string | null) {
   } catch {
     return url.includes("/compliance/assets/")
   }
-}
-
-function resolvePublicSeoImage(url?: string | null) {
-  return isComplianceAssetUrl(url) ? SAFE_COMPLIANCE_IMAGE_ABSOLUTE : url || SAFE_COMPLIANCE_IMAGE_ABSOLUTE
 }
 
 async function loadInitialAnuncio(slug: string) {
@@ -60,13 +54,13 @@ export async function generateMetadata({
       bairroNome: data?.bairroNome,
     })
     const imagemPublica = selecionarImagemPublicaSeo(data?.midias as MidiaPublica[] | undefined)
-    const imagem = resolvePublicSeoImage(imagemPublica)
     const indexavel = data.indexavelSeo
 
     const title = gerarTituloSeoAnuncio({
       titulo,
       cidadeNome: data?.cidadeNome,
       bairroNome: data?.bairroNome,
+      categoria: data?.categoria,
     })
 
     return {
@@ -87,14 +81,16 @@ export async function generateMetadata({
         description: descricao,
         url,
         siteName: "Tops do Job",
-        images: [{ url: imagem, width: 1200, height: 630, alt: titulo }],
+        ...(imagemPublica
+          ? { images: [{ url: imagemPublica, width: 1200, height: 630, alt: titulo }] }
+          : {}),
         type: "website",
       },
       twitter: {
         card: "summary_large_image",
         title,
         description: descricao,
-        images: [imagem],
+        ...(imagemPublica ? { images: [imagemPublica] } : {}),
       },
     }
   } catch {
@@ -122,6 +118,7 @@ export default async function Page({
       titulo,
       cidadeNome: initialData?.cidadeNome,
       bairroNome: initialData?.bairroNome,
+      categoria: initialData?.categoria,
     })
     const canonicalUrl = buildPublicUrl(buildPublicPath("anuncios", slug))
     const imagemPublica = selecionarImagemPublicaSeo(

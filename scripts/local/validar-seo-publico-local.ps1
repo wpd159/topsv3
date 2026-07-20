@@ -57,8 +57,7 @@ if (Test-RepoFile $anuncioDetailPath) {
   ) "schema especifico deve complementar o WebSite global"
   Add-Check "detalhe reutiliza a imagem do Open Graph" (
     $anuncioDetail.Contains("const imagemPublica = selecionarImagemPublicaSeo(") -and
-    $anuncioDetail.Contains("const imagem = resolvePublicSeoImage(imagemPublica)") -and
-    $anuncioDetail.Contains("images: [{ url: imagem") -and
+    $anuncioDetail.Contains("images: [{ url: imagemPublica") -and
     $anuncioDetail.Contains("url: imagemPublica")
   ) "og:image e primaryImageOfPage devem partir da mesma capa LIVRE"
   Add-Check "detalhe omite imagem primaria sem midia publica" (

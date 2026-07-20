@@ -36,6 +36,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.time.OffsetDateTime;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -194,16 +196,21 @@ class ListagemPublicaConsultaServiceTest {
 
         when(estadoRepository.findByUfIgnoreCase("SP")).thenReturn(Optional.of(estado));
         when(cidadeRepository.findByEstadoIdAndSlug(estadoId, "sao-paulo")).thenReturn(Optional.of(cidade));
-        when(localizacaoRepository.findByCidadeId(cidadeId))
-                .thenReturn(List.of(localizacaoPublicada, localizacaoNaoPublicada));
-        when(anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                eq(List.of(anuncioPublicadoId, anuncioRascunhoId)),
-                eq(StatusAnuncio.PUBLICADO),
-                eq(StatusModeracaoAnuncio.APROVADO)))
-                .thenReturn(List.of(anuncioPublicado));
+        when(anuncioRepository.findPublicosPorLocalidadeOrdenados(
+                eq(estadoId),
+                eq(cidadeId),
+                eq(null),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                eq(PageRequest.of(0, 20))))
+                .thenReturn(new PageImpl<>(List.of(anuncioPublicado), PageRequest.of(0, 20), 1));
+        when(localizacaoRepository.findByAnuncioIdIn(List.of(anuncioPublicadoId)))
+                .thenReturn(List.of(localizacaoPublicada));
         when(premiumMapper.flagsPorAnuncios(List.of(anuncioPublicado)))
                 .thenReturn(Map.of(anuncioPublicadoId, premiumVazio));
-        when(anuncioConsultaService.midias(anuncioPublicadoId, premiumVazio)).thenReturn(List.of());
+        when(anuncioConsultaService.midiasPorAnuncios(
+                List.of(anuncioPublicadoId),
+                Map.of(anuncioPublicadoId, premiumVazio))).thenReturn(Map.of(anuncioPublicadoId, List.of()));
         AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection primeiraPublicacao =
                 mock(AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection.class);
         OffsetDateTime anunciaDesde = OffsetDateTime.parse("2023-11-10T10:00:00Z");
@@ -240,11 +247,13 @@ class ListagemPublicaConsultaServiceTest {
         assertThat(dto.itens().get(0).comLocal()).isTrue();
         assertThat(dto.itens().get(0).fazAnal()).isTrue();
         assertThat(dto.paginacao().totalItens()).isEqualTo(1);
-        verify(localizacaoRepository).findByCidadeId(cidadeId);
-        verify(anuncioRepository).findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                eq(List.of(anuncioPublicadoId, anuncioRascunhoId)),
-                eq(StatusAnuncio.PUBLICADO),
-                eq(StatusModeracaoAnuncio.APROVADO));
+        verify(anuncioRepository).findPublicosPorLocalidadeOrdenados(
+                eq(estadoId),
+                eq(cidadeId),
+                eq(null),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                eq(PageRequest.of(0, 20)));
     }
 
     @Test
@@ -290,16 +299,22 @@ class ListagemPublicaConsultaServiceTest {
         PoliticaContatoPublicoService contatoService = mock(PoliticaContatoPublicoService.class);
         PremiumPublicoFlagsDto premium = PremiumPublicoFlagsDto.vazio();
 
-        when(anuncioRepository.findByCategoriaAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                "VENDA_DE_CONTEUDO", StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO))
-                .thenReturn(List.of(anuncio));
+        when(anuncioRepository.findPublicosOrdenados(
+                eq("VENDA_DE_CONTEUDO"),
+                eq(null),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                eq(PageRequest.of(0, 20))))
+                .thenReturn(new PageImpl<>(List.of(anuncio), PageRequest.of(0, 20), 1));
         when(premiumMapper.flagsPorAnuncios(List.of(anuncio))).thenReturn(Map.of(anuncioId, premium));
         when(localizacaoRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(List.of(localizacao));
         when(estadoRepository.findAllById(List.of(estadoId))).thenReturn(List.of(estado));
         when(cidadeRepository.findAllById(List.of(cidadeId))).thenReturn(List.of(cidade));
         when(bairroRepository.findAllById(List.of())).thenReturn(List.of());
         when(anuncioRepository.findPrimeiraPublicacaoByUsuarioIdIn(List.of(usuarioId))).thenReturn(List.of());
-        when(anuncioConsultaService.midias(anuncioId, premium)).thenReturn(List.of());
+        when(anuncioConsultaService.midiasPorAnuncios(
+                List.of(anuncioId),
+                Map.of(anuncioId, premium))).thenReturn(Map.of(anuncioId, List.of()));
         when(contatoService.podeExporContato(anuncio)).thenReturn(false);
 
         ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(

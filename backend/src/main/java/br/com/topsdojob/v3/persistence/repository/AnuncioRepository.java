@@ -68,6 +68,107 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             StatusAnuncio status,
             StatusModeracaoAnuncio statusModeracao);
 
+    @Query(
+            value = """
+                    select a.*
+                    from anuncio a
+                    where a.status = 'PUBLICADO'
+                      and a.status_moderacao = 'APROVADO'
+                      and a.removido_em is null
+                      and (:categoria is null or a.categoria = :categoria)
+                      and (:busca is null or lower(translate(coalesce(a.titulo, '') || ' ' || coalesce(a.descricao, ''),
+                            'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
+                            'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')) like ('%' || :busca || '%'))
+                    order by
+                      case when exists (
+                        select 1
+                        from ativacao_beneficio ab
+                        join beneficio_premium bp on bp.id = ab.beneficio_id
+                        join grupo_ativacao_beneficio gb on gb.id = ab.grupo_ativacao_id
+                        where ab.anuncio_id = a.id
+                          and bp.codigo = 'ANUNCIO_TOPO'
+                          and bp.ativo = true
+                          and ab.status = 'ATIVA'
+                          and ab.revogada_em is null
+                          and ab.inicio_em <= :agora
+                          and ab.fim_em > :agora
+                          and gb.status = 'ATIVO'
+                          and gb.validade_inicio_em <= :agora
+                          and gb.validade_fim_em > :agora
+                      ) then 0 else 1 end,
+                      hashtextextended(a.id::text, :seed),
+                      a.id
+                    """,
+            countQuery = """
+                    select count(*)
+                    from anuncio a
+                    where a.status = 'PUBLICADO'
+                      and a.status_moderacao = 'APROVADO'
+                      and a.removido_em is null
+                      and (:categoria is null or a.categoria = :categoria)
+                      and (:busca is null or lower(translate(coalesce(a.titulo, '') || ' ' || coalesce(a.descricao, ''),
+                            'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
+                            'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')) like ('%' || :busca || '%'))
+                    """,
+            nativeQuery = true)
+    Page<AnuncioEntity> findPublicosOrdenados(
+            @Param("categoria") String categoria,
+            @Param("busca") String busca,
+            @Param("agora") OffsetDateTime agora,
+            @Param("seed") long seed,
+            Pageable pageable);
+
+    @Query(
+            value = """
+                    select a.*
+                    from anuncio a
+                    join anuncio_localizacao l on l.anuncio_id = a.id
+                    where a.status = 'PUBLICADO'
+                      and a.status_moderacao = 'APROVADO'
+                      and a.removido_em is null
+                      and l.estado_id = :estadoId
+                      and (:cidadeId is null or l.cidade_id = :cidadeId)
+                      and (:bairroId is null or l.bairro_id = :bairroId)
+                    order by
+                      case when exists (
+                        select 1
+                        from ativacao_beneficio ab
+                        join beneficio_premium bp on bp.id = ab.beneficio_id
+                        join grupo_ativacao_beneficio gb on gb.id = ab.grupo_ativacao_id
+                        where ab.anuncio_id = a.id
+                          and bp.codigo = 'ANUNCIO_TOPO'
+                          and bp.ativo = true
+                          and ab.status = 'ATIVA'
+                          and ab.revogada_em is null
+                          and ab.inicio_em <= :agora
+                          and ab.fim_em > :agora
+                          and gb.status = 'ATIVO'
+                          and gb.validade_inicio_em <= :agora
+                          and gb.validade_fim_em > :agora
+                      ) then 0 else 1 end,
+                      hashtextextended(a.id::text, :seed),
+                      a.id
+                    """,
+            countQuery = """
+                    select count(*)
+                    from anuncio a
+                    join anuncio_localizacao l on l.anuncio_id = a.id
+                    where a.status = 'PUBLICADO'
+                      and a.status_moderacao = 'APROVADO'
+                      and a.removido_em is null
+                      and l.estado_id = :estadoId
+                      and (:cidadeId is null or l.cidade_id = :cidadeId)
+                      and (:bairroId is null or l.bairro_id = :bairroId)
+                    """,
+            nativeQuery = true)
+    Page<AnuncioEntity> findPublicosPorLocalidadeOrdenados(
+            @Param("estadoId") UUID estadoId,
+            @Param("cidadeId") UUID cidadeId,
+            @Param("bairroId") UUID bairroId,
+            @Param("agora") OffsetDateTime agora,
+            @Param("seed") long seed,
+            Pageable pageable);
+
     @Query("""
             select a.usuarioId as usuarioId, min(a.publicadoEm) as primeiraPublicacaoEm
             from AnuncioEntity a

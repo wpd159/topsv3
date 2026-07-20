@@ -143,6 +143,39 @@ public class AnuncioPublicoConsultaService {
         return midias(anuncioId, false, premium);
     }
 
+    Map<UUID, List<MidiaPublicaDto>> midiasPorAnuncios(
+            List<UUID> anuncioIds,
+            Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
+        if (anuncioIds == null || anuncioIds.isEmpty()) {
+            return Map.of();
+        }
+        List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds);
+        List<UUID> arquivoIds = vinculos.stream()
+                .map(AnuncioMidiaEntity::getArquivoMidiaId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<UUID, ArquivoMidiaEntity> arquivos = arquivoMidiaRepository.findByIdIn(arquivoIds).stream()
+                .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
+        Map<UUID, List<AnuncioMidiaEntity>> vinculosPorAnuncio = vinculos.stream()
+                .collect(Collectors.groupingBy(AnuncioMidiaEntity::getAnuncioId));
+        return anuncioIds.stream().collect(Collectors.toMap(
+                Function.identity(),
+                anuncioId -> {
+                    PremiumPublicoFlagsDto premium = premiumPorAnuncio == null
+                            ? PremiumPublicoFlagsDto.vazio()
+                            : premiumPorAnuncio.getOrDefault(anuncioId, PremiumPublicoFlagsDto.vazio());
+                    int maxFotos = premium.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE;
+                    return midiaMapper.publicas(
+                            vinculosPorAnuncio.getOrDefault(anuncioId, List.of()),
+                            arquivos,
+                            false,
+                            maxFotos,
+                            premium.videoAtivo());
+                },
+                (primeiro, ignorado) -> primeiro));
+    }
+
     private List<MidiaPublicaDto> midias(
             UUID anuncioId,
             boolean idadeConfirmada,
