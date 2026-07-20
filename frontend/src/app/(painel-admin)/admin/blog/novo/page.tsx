@@ -1,5 +1,5 @@
-import { BlogPostForm } from "../components/blog-post-form"
+import { BlogPostForm } from '../components/blog-post-form'
 
-export default function CriarPostPage() {
+export default function AdminBlogNewPage() {
   return <BlogPostForm mode="create" />
 }

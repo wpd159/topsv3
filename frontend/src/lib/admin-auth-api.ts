@@ -7,13 +7,8 @@ export type AdminSession = {
   permissoes: string[]
 }
 
-function backendRoot() {
-  const configured = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-  return configured.replace(/\/api\/public$/, '')
-}
-
 function adminAuthUrl(path: string) {
-  return `${backendRoot()}/api/admin/auth${path}`
+  return adminApiUrl(`/auth${path}`)
 }
 
 function antiForgeryCookieName() {
@@ -58,7 +53,10 @@ async function request<T>(path: string, init: RequestInit = {}) {
     cache: 'no-store',
   })
   if (!response.ok) {
-    throw new Error(response.status === 401 ? 'Credenciais inválidas.' : 'Não foi possível concluir a autenticação.')
+    if (response.status === 401) {
+      throw new ApiContractError('Credenciais inválidas.', 'SESSION_REQUIRED', 401)
+    }
+    throw await apiErrorFromResponse(response)
   }
   return (await response.json()) as T
 }
@@ -75,11 +73,13 @@ export async function loginAdmin(login: string, credential: string) {
 export async function getAdminSession() {
   try {
     return await request<AdminSession>('/me')
-  } catch {
-    return null
+  } catch (error) {
+    if (error instanceof ApiContractError && error.status === 401) return null
+    throw error
   }
 }
 
 export async function logoutAdmin() {
   await request<{ autenticado: boolean; status: string }>('/logout', { method: 'POST' })
 }
+import { adminApiUrl, ApiContractError, apiErrorFromResponse } from '@/lib/api-contract'

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { ContractState } from "@/components/feedback/contract-state"
 import { listarAnunciosPublicos, type PublicCatalogCard } from "@/lib/public-catalog-api"
 import { AnuncioCard } from "./anuncio-card"
 
@@ -21,7 +22,7 @@ export default function AnunciosGrid({
 }: AnunciosGridProps) {
   const [anuncios, setAnuncios] = useState<PublicCatalogCard[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [reloadMarker, setReloadMarker] = useState(0)
   const [proximaPagina, setProximaPagina] = useState<number | null>(null)
   const [paginasCarregadas, setPaginasCarregadas] = useState(0)
@@ -56,9 +57,9 @@ export default function AnunciosGrid({
             ? data.paginacao.pagina + 1
             : null,
         )
-      } catch {
+      } catch (fetchError) {
         if (!ativa || consulta !== consultaAtualRef.current) return
-        setError("Não foi possível carregar os anúncios.")
+        setError(fetchError)
       } finally {
         if (ativa && consulta === consultaAtualRef.current) setLoading(false)
       }
@@ -93,9 +94,9 @@ export default function AnunciosGrid({
           ? data.paginacao.pagina + 1
           : null,
       )
-    } catch {
+    } catch (fetchError) {
       if (consulta === consultaAtualRef.current) {
-        setError("Não foi possível carregar mais anúncios.")
+        setError(fetchError)
       }
     } finally {
       if (consulta === consultaAtualRef.current) setLoading(false)
@@ -136,7 +137,11 @@ export default function AnunciosGrid({
   }
 
   if (error && anuncios.length === 0) {
-    return <div className="py-10 text-center text-red-500">{error}</div>
+    return (
+      <div className="py-6">
+        <ContractState error={error} onRetry={() => setReloadMarker((value) => value + 1)} />
+      </div>
+    )
   }
 
   if (anuncios.length === 0) {
@@ -181,8 +186,8 @@ export default function AnunciosGrid({
 
       {podeCarregarAutomaticamente && <div ref={sentinelRef} className="h-8 w-full" />}
 
-      {error && anuncios.length > 0 && (
-        <p className="text-center text-sm text-red-500">{error}</p>
+      {error !== null && anuncios.length > 0 && (
+        <ContractState error={error} onRetry={() => void carregarMais()} compact />
       )}
 
       {existeMaisPagina && !podeCarregarAutomaticamente && (

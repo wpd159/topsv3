@@ -1,66 +1,18 @@
 'use client'
 
-import ChatSidebar from "@/components/chat/sidebar-chat"
-import ChatWindow from "@/components/chat/chat"
-import { useState, useEffect } from "react"
-import { useSearchParams } from "next/navigation"
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+
+import ChatWindow from '@/components/chat/chat'
+import ChatSidebar from '@/components/chat/sidebar-chat'
+import { ContractState, pendingContractError } from '@/components/feedback/contract-state'
+import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
 export default function ChatClient() {
-  const [conversaSelecionada, setConversaSelecionada] = useState<any>(null)
-  const [isMobile, setIsMobile] = useState(false)
+  const [conversation, setConversation] = useState<unknown>(null)
+  const [mobile, setMobile] = useState(false)
   const searchParams = useSearchParams()
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
-    handleResize()
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
-  useEffect(() => {
-    const username = searchParams.get("usuario")
-    if (!username) return
-
-    ;(async () => {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/usuarios/username/${encodeURIComponent(username)}`,
-          { credentials: "include" }
-        )
-        if (!res.ok) return
-        const usuario = await res.json()
-        setConversaSelecionada({ id: usuario.id, nome: usuario.username })
-      } catch (e) {
-      }
-    })()
-  }, [searchParams])
-
-  return (
-    <section className="h-[calc(100vh-100px)] mt-5 flex border border-gray-200 rounded-xl overflow-hidden bg-white">
-      {(!isMobile || !conversaSelecionada) && (
-        <ChatSidebar
-          conversaSelecionada={conversaSelecionada}
-          onSelectConversa={setConversaSelecionada}
-        />
-      )}
-
-      {(!isMobile || conversaSelecionada) && (
-        <div className="flex-1 flex flex-col">
-          {conversaSelecionada ? (
-            <ChatWindow
-              conversa={conversaSelecionada}
-              onVoltar={() => setConversaSelecionada(null)}
-              isMobile={isMobile}
-            />
-          ) : (
-            !isMobile && (
-              <div className="flex flex-1 items-center justify-center text-gray-500 text-sm">
-                Selecione uma conversa para começar o chat.
-              </div>
-            )
-          )}
-        </div>
-      )}
-    </section>
-  )
+  useEffect(() => { const resize = () => setMobile(window.innerWidth < 768); resize(); window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
+  const requestedUser = searchParams.get('usuario')
+  return <section className="mt-5 space-y-3"><ContractState error={pendingContractError(PENDING_BACKEND_CONTRACTS.support)} compact />{requestedUser ? <p className="text-sm text-gray-600">Conversa solicitada com @{requestedUser}; identificação depende do contrato V3.</p> : null}<div className="flex h-[calc(100vh-180px)] overflow-hidden rounded-xl border border-gray-200 bg-white">{!mobile || !conversation ? <ChatSidebar conversaSelecionada={conversation} onSelectConversa={setConversation} /> : null}{!mobile || conversation ? <div className="flex flex-1 flex-col"><ChatWindow conversa={conversation as { id?: string | number; nome?: string } | null} onVoltar={() => setConversation(null)} isMobile={mobile} /></div> : null}</div></section>
 }

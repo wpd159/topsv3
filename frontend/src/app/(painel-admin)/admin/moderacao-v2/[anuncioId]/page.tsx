@@ -6,9 +6,8 @@ export default async function ModeracaoV2DetalhePage({
 }: {
   params: Promise<{ anuncioId: string }>
 }) {
-  const { anuncioId: raw } = await params
-  const anuncioId = Number(raw)
-  if (!Number.isFinite(anuncioId) || anuncioId <= 0) {
+  const { anuncioId } = await params
+  if (!anuncioId.trim()) {
     return (
       <div className="py-16 text-center text-gray-500">
         ID inválido. <Link href="/admin/moderacao-v2" className="text-[#f0198f] underline">Voltar</Link>

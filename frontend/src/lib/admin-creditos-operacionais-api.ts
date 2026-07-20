@@ -1,5 +1,7 @@
 'use client'
 
+import { adminApiUrl } from '@/lib/api-contract'
+
 export type AdminCreditoUsuario = { id: string; nome: string; email: string; saldo: number }
 export type AdminCreditoSaldo = {
   usuarioId: string
@@ -80,10 +82,6 @@ export type AdminAuditoriaFinanceira = {
   criadoEm: string
 }
 
-function backendRoot() {
-  return (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '').replace(/\/api\/public$/, '')
-}
-
 function antiForgeryCookieName() {
   return ['XSRF', 'TOKEN'].join('-')
 }
@@ -108,12 +106,12 @@ async function request<T>(path: string, init: RequestInit = {}) {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     let value = readAntiForgeryValue()
     if (!value) {
-      await fetch(`${backendRoot()}/api/admin/auth/me`, { credentials: 'include', cache: 'no-store' })
+      await fetch(adminApiUrl('/auth/me'), { credentials: 'include', cache: 'no-store' })
       value = readAntiForgeryValue()
     }
     if (value) headers.set(antiForgeryHeaderName(), value)
   }
-  const response = await fetch(`${backendRoot()}${path}`, {
+  const response = await fetch(adminApiUrl(path), {
     ...init,
     method,
     headers,
@@ -140,26 +138,26 @@ function operationKey(prefix: string) {
 }
 
 export const AdminCreditosApi = {
-  buscarUsuarios: (query: string) => request<AdminCreditoUsuario[]>(`/api/admin/creditos/usuarios?query=${encodeURIComponent(query)}`),
-  saldo: (id: string) => request<AdminCreditoSaldo>(`/api/admin/creditos/usuarios/${id}/saldo`),
-  movimentos: (id: string) => request<AdminCreditoPagina>(`/api/admin/creditos/usuarios/${id}/movimentos?size=50`),
+  buscarUsuarios: (query: string) => request<AdminCreditoUsuario[]>(`/creditos/usuarios?query=${encodeURIComponent(query)}`),
+  saldo: (id: string) => request<AdminCreditoSaldo>(`/creditos/usuarios/${id}/saldo`),
+  movimentos: (id: string) => request<AdminCreditoPagina>(`/creditos/usuarios/${id}/movimentos?size=50`),
   ajustar: (id: string, direcao: 'CREDITO' | 'DEBITO', quantidade: number, motivo: string) =>
-    request<AdminCreditoOperacao>(`/api/admin/creditos/usuarios/${id}/ajustes`, {
+    request<AdminCreditoOperacao>(`/creditos/usuarios/${id}/ajustes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey('ajuste') },
       body: JSON.stringify({ direcao, quantidade, motivo }),
     }),
   estornar: (movimentoId: string, motivo: string) => request<AdminCreditoOperacao>(
-    `/api/admin/creditos/movimentos/${movimentoId}/estornos`,
+    `/creditos/movimentos/${movimentoId}/estornos`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey('estorno') },
       body: JSON.stringify({ motivo }),
     }
   ),
-  catalogo: () => request<AdminPremiumCatalogo[]>('/api/admin/premium/catalogo'),
+  catalogo: () => request<AdminPremiumCatalogo[]>('/premium/catalogo'),
   atualizarCatalogo: (item: AdminPremiumCatalogo) => request<AdminPremiumCatalogo>(
-    `/api/admin/premium/catalogo/${item.id}`,
+    `/premium/catalogo/${item.id}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -177,9 +175,9 @@ export const AdminCreditosApi = {
       }),
     }
   ),
-  pacotes: () => request<AdminPlanoCredito[]>('/api/admin/creditos/pacotes'),
+  pacotes: () => request<AdminPlanoCredito[]>('/creditos/pacotes'),
   atualizarPacote: (item: AdminPlanoCredito) => request<AdminPlanoCredito>(
-    `/api/admin/creditos/pacotes/${item.id}`,
+    `/creditos/pacotes/${item.id}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -193,11 +191,11 @@ export const AdminCreditosApi = {
       }),
     }
   ),
-  ativacoes: (usuarioId: string) => request<AdminPremiumAtivacao[]>(`/api/admin/premium/ativacoes?usuarioId=${usuarioId}`),
-  cancelarAtivacao: (id: string, motivo: string) => request(`/api/admin/premium/ativacoes/${id}/cancelar`, {
+  ativacoes: (usuarioId: string) => request<AdminPremiumAtivacao[]>(`/premium/ativacoes?usuarioId=${usuarioId}`),
+  cancelarAtivacao: (id: string, motivo: string) => request(`/premium/ativacoes/${id}/cancelar`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey('cancelamento') },
     body: JSON.stringify({ motivo }),
   }),
-  auditoria: () => request<AdminAuditoriaFinanceira[]>('/api/admin/creditos/auditoria?limit=50'),
+  auditoria: () => request<AdminAuditoriaFinanceira[]>('/creditos/auditoria?limit=50'),
 }

@@ -1,10 +1,11 @@
 import type { WizardFormState, WizardKycState } from './types'
 import { UNSUPPORTED_IMAGE_MESSAGE } from '@/utils/image-upload'
 import { birthDateToIso } from '@/lib/date/birth-date'
-
-function apiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || ''
-}
+import {
+  BackendContractPendingError,
+  PENDING_BACKEND_CONTRACTS,
+  publicApiUrl,
+} from '@/lib/api-contract'
 
 function precoParaNumero(value: string) {
   const digits = String(value || '').replace(/\D/g, '')
@@ -122,7 +123,7 @@ function readCsrfValue() {
 export async function submitWizardAnuncio(state: WizardFormState) {
   const csrf = readCsrfValue()
   const descricao = state.descricao.trim() || state.descricaoPerfil.trim()
-  const res = await fetch(`${apiBase()}/anunciar`, {
+  const res = await fetch(publicApiUrl('/anunciar'), {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -145,20 +146,11 @@ export async function submitWizardAnuncio(state: WizardFormState) {
   return readResponse<{ anuncioId: string; slugLocal: string }>(res, 'publicar_anuncio')
 }
 
-export async function updateWizardProfileDescription(input: {
+export async function updateWizardProfileDescription(_input: {
   email: string
   descricaoPerfil: string
 }) {
-  const res = await fetch(`${apiBase()}/usuarios/${encodeURIComponent(input.email)}/editar`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      descricaoPerfil: input.descricaoPerfil,
-    }),
-  })
-
-  return readResponse(res, 'atualizar_descricao_perfil')
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.wizardProfile)
 }
 
 export type WizardKycStatus = {
@@ -182,7 +174,7 @@ export type WizardKycStatus = {
 }
 
 export async function fetchWizardKycStatus() {
-  const res = await fetch(`${apiBase()}/minha-conta/kyc`, {
+  const res = await fetch(publicApiUrl('/minha-conta/kyc'), {
     credentials: 'include',
     cache: 'no-store',
   })
@@ -203,7 +195,7 @@ export async function submitWizardKyc(input: WizardKycState) {
     if (input.documentos[1]) fd.append('documentoVerso', input.documentos[1])
   }
   const csrf = readCsrfValue()
-  const res = await fetch(`${apiBase()}/minha-conta/kyc`, {
+  const res = await fetch(publicApiUrl('/minha-conta/kyc'), {
     method: 'POST',
     credentials: 'include',
     headers: csrf ? { [csrfHeaderName()]: csrf } : undefined,

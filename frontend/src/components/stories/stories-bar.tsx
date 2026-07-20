@@ -6,6 +6,7 @@ import { PlayCircleIcon } from "@heroicons/react/24/solid"
 import type { StoryBundle, StoryItem } from "./stories-types"
 import { getInitials, isExpired, loginPublicoDoBundle, rotuloPublicoDoBundle } from "./stories-types"
 import { StoryViewerDialog } from "./story-viewer-dialog"
+import { publicApiUrl } from '@/lib/api-contract'
 
 function previewExigeBloqueio(item?: StoryItem) {
   if (!item) return false
@@ -54,8 +55,6 @@ function StoryPreviewAvatar({ bundle, first }: { bundle: StoryBundle; first?: St
 }
 
 export function StoriesBar() {
-  const API = process.env.NEXT_PUBLIC_API_URL!
-
   const [loading, setLoading] = useState(false)
   const [bundles, setBundles] = useState<StoryBundle[]>([])
   const [indisponivel, setIndisponivel] = useState(false)
@@ -66,7 +65,7 @@ export function StoriesBar() {
     try {
       setLoading(true)
       setIndisponivel(false)
-      const res = await fetch(`${API}/stories/ativos`, { credentials: "include", cache: "no-store" })
+      const res = await fetch(publicApiUrl('/stories/ativos'), { credentials: "include", cache: "no-store" })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(data?.error || data?.message || "Falha ao carregar stories.")
@@ -103,7 +102,6 @@ export function StoriesBar() {
     void fetchStories()
     const t = setInterval(() => void fetchStories(), 60_000)
     return () => clearInterval(t)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function openBundleAt(i: number) {

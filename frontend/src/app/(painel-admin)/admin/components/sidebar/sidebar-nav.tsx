@@ -7,7 +7,7 @@ import { SidebarLink } from './sidebar-links'
 type SidebarNavProps = {
   items: SidebarLink[]
   onItemClick?: () => void
-  notificationCounts?: Partial<Record<NonNullable<SidebarLink["notificationKey"]>, number>>
+  notificationCounts?: Partial<Record<NonNullable<SidebarLink["notificationKey"]>, number | null>>
 }
 
 export function SidebarNav({ items, onItemClick, notificationCounts = {} }: SidebarNavProps) {
@@ -37,12 +37,13 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
               const isActive =
                 pathname === baseHref ||
                 (baseHref !== '/admin' && pathname.startsWith(`${baseHref}/`))
-              const notificationCount =
+              const notificationCount: number | null =
                 item.notificationKey
-                  ? notificationCounts[item.notificationKey] || 0
+                  ? notificationCounts[item.notificationKey] ?? null
                   : baseHref === '/admin/moderacao-v2'
-                    ? notificationCounts.revisoes || 0
-                    : 0
+                    ? notificationCounts.revisoes ?? null
+                    : null
+              const hasCounter = Boolean(item.notificationKey) || baseHref === '/admin/moderacao-v2'
 
               return (
                 <Link
@@ -58,9 +59,18 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
                     {item.label}
                   </span>
 
-                  {notificationCount > 0 && (
+                  {typeof notificationCount === 'number' && notificationCount > 0 && (
                     <span className="flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                       {notificationCount > 99 ? '99+' : notificationCount}
+                    </span>
+                  )}
+                  {hasCounter && notificationCount === null && (
+                    <span
+                      className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-300/40 text-[10px] font-semibold text-amber-200"
+                      title="Contador indisponivel: contrato backend pendente ou falha de integracao"
+                      aria-label="Contador indisponivel"
+                    >
+                      !
                     </span>
                   )}
                 </Link>

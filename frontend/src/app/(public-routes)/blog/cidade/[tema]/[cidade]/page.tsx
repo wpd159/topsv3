@@ -6,6 +6,8 @@ import {
 } from "@/lib/programmatic-blog-api"
 import ProgrammaticBlogPageClient from "./programmatic-blog-page-client"
 import { getPublicSiteBaseUrl } from "@/lib/seo/public-url"
+import { ContractState } from '@/components/feedback/contract-state'
+import { BackendContractPendingError } from '@/lib/api-contract'
 
 export const revalidate = 3600
 
@@ -72,6 +74,15 @@ export default async function ProgrammaticBlogCityPage({
             <code className="rounded bg-gray-100 px-1">uf</code> na URL (ex.:{" "}
             <code className="rounded bg-gray-100 px-1">?uf={sampleUf}</code>).
           </p>
+        </main>
+      )
+    }
+    if (err instanceof BackendContractPendingError) {
+      return (
+        <main className="min-h-screen bg-white px-6 py-16">
+          <div className="mx-auto max-w-3xl">
+            <ContractState error={err} />
+          </div>
         </main>
       )
     }

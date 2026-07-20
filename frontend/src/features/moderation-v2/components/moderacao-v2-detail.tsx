@@ -4,8 +4,7 @@
  * Fluxo de decisão (backend AnuncioService):
  * - PUT /anuncios/{id}/aprovar: fila — PENDENTE OU revisão aberta.
  * - PUT /anuncios/{id}/rejeitar: revisão aberta OU PENDENTE sem revisão.
- * - PUT /anuncios/staff/{id}/status: ATIVO | PAUSADO | REJEITADO.
- * - DELETE /anuncios/staff/{id}?motivo= : remoção apenas lógica (somente ADMIN).
+ * Ações legadas de status e remoção permanecem indisponíveis até contrato V3 próprio.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -19,9 +18,11 @@ import {
   CheckCircleIcon,
   GiftIcon,
   PencilSquareIcon,
+  TrashIcon,
 } from '@heroicons/react/24/solid'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ContractState, PendingActionFeedback, usePendingContractActions } from '@/components/feedback/contract-state'
 import {
   Dialog,
   DialogContent,
@@ -34,6 +35,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import AdminAnuncioStoriesSection from '@/app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section'
+import FotosAnuncioSection from '@/app/(painel-admin)/admin/components/fotos-anuncio-section'
 import { useAuth } from '@/context/AuthContext'
 import { enviarIndexNowNoCliente, montarUrlsIndexNowAnuncio } from '@/lib/seo/indexnow-client'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
@@ -86,13 +88,13 @@ function isPremiumFlowVisibleCode(codigo: string | null | undefined) {
   return normalizePremiumCode(codigo) !== STORIES_BENEFIT_CODE
 }
 
-function notifyPremiumQuickUpdated(anuncioId: number) {
+function notifyPremiumQuickUpdated(anuncioId: string | number) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('moderacao-v2-premium-quick-updated', { detail: { anuncioId, force: true } }))
 }
 
 type PremiumBeneficioAtivoRow = {
-  id?: number | null
+  id?: string | number | null
   codigo?: string | null
   nome?: string | null
   status?: string | null
@@ -104,7 +106,7 @@ type PremiumBeneficioAtivoRow = {
 }
 
 type ModerationV2ListContext = {
-  ids: number[]
+  ids: string[]
   href?: string | null
   savedAt?: number | null
 }
@@ -177,7 +179,7 @@ function readStoredModerationContext(): ModerationV2ListContext | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as ModerationV2ListContext
     const ids = Array.isArray(parsed.ids)
-      ? parsed.ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+      ? parsed.ids.map((id) => String(id).trim()).filter(Boolean)
       : []
     if (ids.length === 0) return null
     return {
@@ -192,7 +194,7 @@ function readStoredModerationContext(): ModerationV2ListContext | null {
 
 /**
  * Mescla campos do JSON público de anúncio (ex.: {@code AnuncioResponseDTO} em /aprovar, /rejeitar, /staff/.../status)
- * sobre o detalhe staff já carregado — evita refetch completo de GET /anuncios/staff/{id}.
+ * sobre o detalhe administrativo já carregado, evitando novo fetch completo.
  */
 function mergeStaffDetailFromPublicAnuncioPayload(
   prev: ModerationAnuncioDetail,
@@ -258,7 +260,7 @@ function clearPendingRevisionState<T extends ModerationAnuncioDetail>(anuncio: T
   }
 }
 
-export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
+export function ModeracaoV2Detail({ anuncioId }: { anuncioId: string | number }) {
   const router = useRouter()
   const { usuario } = useAuth()
   const isAdmin = usuario?.cargo === 'ADMIN'
@@ -274,10 +276,16 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
   const [rejectMotivo, setRejectMotivo] = useState('')
   const [removeOpen, setRemoveOpen] = useState(false)
   const [removeMotivo, setRemoveMotivo] = useState('')
+  const [deleteContractOpen, setDeleteContractOpen] = useState(false)
+  const deleteContract = usePendingContractActions('Exclusao definitiva de anuncio')
   const [auditLogs, setAuditLogs] = useState<AdminAuditLogItem[]>([])
   const [visitorAuditEvents, setVisitorAuditEvents] = useState<VisitorVerificationAuditItem[]>([])
   const [auditLoaded, setAuditLoaded] = useState(false)
+  const [auditError, setAuditError] = useState<unknown>(null)
+  const [auditReload, setAuditReload] = useState(0)
   const [premiumDetail, setPremiumDetail] = useState<Record<string, unknown> | null>(null)
+  const [premiumError, setPremiumError] = useState<unknown>(null)
+  const [premiumReload, setPremiumReload] = useState(0)
   /** Códigos selecionados para ativação (múltipla). */
   const [premiumSelected, setPremiumSelected] = useState<Set<string>>(() => new Set())
   const [premiumObs, setPremiumObs] = useState('')
@@ -286,7 +294,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
   const [listContext, setListContext] = useState<ModerationV2ListContext | null>(null)
 
   const load = useCallback(async () => {
-    if (!Number.isFinite(anuncioId)) return
+    if (!String(anuncioId).trim()) return
     setLoading(true)
     try {
       const [a, r] = await Promise.all([
@@ -318,7 +326,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
     void fetchStaffAnunciosList()
       .then((rows) => {
         if (cancelled) return
-        const ids = rows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id) && id > 0)
+        const ids = rows.map((row) => String(row.id).trim()).filter(Boolean)
         if (ids.length) setListContext({ ids, href: '/admin/moderacao-v2', savedAt: Date.now() })
       })
       .catch(() => {
@@ -335,29 +343,33 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
     setAuditLogs([])
     setVisitorAuditEvents([])
     setAuditLoaded(false)
+    setAuditError(null)
     setPremiumDetail(null)
+    setPremiumError(null)
   }, [anuncioId])
 
   useEffect(() => {
     if (!isAdmin || anuncio?.id == null) return
     let cancelled = false
+    setPremiumError(null)
     void fetchPremiumAnuncioDetailAdmin(anuncioId)
       .then((prem) => {
         if (!cancelled && prem) setPremiumDetail(prem)
       })
-      .catch(() => {
-        /* opcional */
+      .catch((error) => {
+        if (!cancelled) setPremiumError(error)
       })
     return () => {
       cancelled = true
     }
-  }, [isAdmin, anuncioId, anuncio?.id])
+  }, [isAdmin, anuncioId, anuncio?.id, premiumReload])
 
   useEffect(() => {
     if (!isAdmin || anuncio?.id == null) return
     let cancelled = false
     let auditDone = false
     let visitorsDone = false
+    setAuditError(null)
 
     const finish = () => {
       if (!cancelled && auditDone && visitorsDone) {
@@ -369,8 +381,8 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
       .then((audit) => {
         if (!cancelled) setAuditLogs(audit)
       })
-      .catch(() => {
-        /* opcional */
+      .catch((error) => {
+        if (!cancelled) setAuditError(error)
       })
       .finally(() => {
         auditDone = true
@@ -381,8 +393,8 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
       .then((visitors) => {
         if (!cancelled) setVisitorAuditEvents(visitors)
       })
-      .catch(() => {
-        /* opcional */
+      .catch((error) => {
+        if (!cancelled) setAuditError(error)
       })
       .finally(() => {
         visitorsDone = true
@@ -392,7 +404,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
     return () => {
       cancelled = true
     }
-  }, [isAdmin, anuncioId, anuncio?.id])
+  }, [isAdmin, anuncioId, anuncio?.id, auditReload])
 
   const removedLogical = Boolean(anuncio?.removidoLogicamente)
 
@@ -596,7 +608,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
     }
   }
 
-  const handleDesativarPremium = async (ativacaoId: number, beneficio?: PremiumBeneficioAtivoRow) => {
+  const handleDesativarPremium = async (ativacaoId: string | number, beneficio?: PremiumBeneficioAtivoRow) => {
     if (beneficio?.manual === false && typeof window !== 'undefined') {
       const label = texto(beneficio.nome, beneficio.codigo ?? 'benefício')
       const confirmar = window.confirm(
@@ -715,8 +727,8 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
   }, [anuncio])
 
   const contextIndex = useMemo(() => {
-    if (!listContext || !Number.isFinite(anuncioId)) return -1
-    return listContext.ids.findIndex((id) => id === anuncioId)
+    if (!listContext || !String(anuncioId).trim()) return -1
+    return listContext.ids.findIndex((id) => id === String(anuncioId))
   }, [anuncioId, listContext])
 
   const previousAnuncioId = contextIndex > 0 && listContext ? listContext.ids[contextIndex - 1] : null
@@ -728,7 +740,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
     listContext && contextIndex >= 0 ? `${contextIndex + 1} / ${listContext.ids.length}` : 'URL direta'
   const backToListHref = listContext?.href || '/admin/moderacao-v2'
 
-  const goToSibling = (id: number | null) => {
+  const goToSibling = (id: string | null) => {
     if (!id) return
     const qs = typeof window !== 'undefined' ? window.location.search : ''
     router.push(`/admin/moderacao-v2/${id}${qs}`)
@@ -929,6 +941,18 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
                 Remover
               </Button>
             )}
+            {isAdmin && !removedLogical && (
+              <Button
+                type="button"
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-50"
+                disabled={busy}
+                onClick={() => setDeleteContractOpen(true)}
+              >
+                <TrashIcon className="mr-1 h-4 w-4" />
+                Excluir
+              </Button>
+            )}
             <Link
               href={backToListHref}
               className="text-xs font-medium text-[#f0198f] underline-offset-2 hover:underline"
@@ -1090,6 +1114,10 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
           />
         </section>
 
+        {isAdmin && !removedLogical && !revision && !anuncio.pendingRevision ? (
+          <FotosAnuncioSection anuncioId={anuncioId} fotos={anuncio.fotosUrl ?? []} onUpdated={() => void load()} />
+        ) : null}
+
         {isStaffModeration && (
           <section id="sec-stories" className="scroll-mt-24">
             <AdminAnuncioStoriesSection anuncioId={anuncioId} apiScope="staff" />
@@ -1163,7 +1191,15 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
               Visualização e ativação manual via <code className="text-xs">/admin/premium-benefits</code>. Logs em
               auditoria admin.
             </p>
-            {!premiumDetail ? (
+            {premiumError ? (
+              <div className="mt-3">
+                <ContractState
+                  error={premiumError}
+                  onRetry={() => setPremiumReload((value) => value + 1)}
+                  compact
+                />
+              </div>
+            ) : !premiumDetail ? (
               <p className="mt-3 text-sm text-gray-500">Carregando benefícios…</p>
             ) : (
               <div className="mt-4 space-y-4 text-sm">
@@ -1225,7 +1261,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
                                 size="sm"
                                 className="shrink-0 border-rose-200 text-rose-800 hover:bg-rose-50"
                                 disabled={busy}
-                                onClick={() => void handleDesativarPremium(Number(idAtiv), b)}
+                                onClick={() => void handleDesativarPremium(idAtiv, b)}
                               >
                                 Remover / desativar
                               </Button>
@@ -1277,8 +1313,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
                         const ativoRow = beneficioAtivoPorCodigo.get(codigo)
                         const podeRevogar =
                           Boolean(ativoRow?.podeDesativar) &&
-                          ativoRow?.id != null &&
-                          Number.isFinite(Number(ativoRow.id))
+                          ativoRow?.id != null
                         const checkboxDesabilitado = busy || (bloqueado && !podeRevogar)
                         const marcado = bloqueado || premiumSelected.has(codigo)
                         const id = `premium-opt-${codigo}`
@@ -1309,7 +1344,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
                                 const on = v === true
                                 if (bloqueado) {
                                   if (!on && podeRevogar && ativoRow?.id != null) {
-                                    void handleDesativarPremium(Number(ativoRow.id), ativoRow)
+                                    void handleDesativarPremium(ativoRow.id, ativoRow)
                                   }
                                   return
                                 }
@@ -1377,7 +1412,15 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
           <code className="text-xs">admin_audit_logs</code> (filtrado por este anúncio), com eventos de verificação etária e métricas
           agregadas. Moderadores não acessam estas APIs.
             </p>
-            {!auditTimelineVisible ? (
+            {auditError ? (
+              <div className="mt-4">
+                <ContractState
+                  error={auditError}
+                  onRetry={() => setAuditReload((value) => value + 1)}
+                  compact
+                />
+              </div>
+            ) : !auditTimelineVisible ? (
               <div className="mt-4">
                 <Button type="button" variant="secondary" onClick={() => setAuditTimelineVisible(true)}>
                   Ver auditoria
@@ -1417,7 +1460,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
             <DialogDescription>
               {useRejeitarEndpoint
                 ? 'Usa `/anuncios/{id}/rejeitar` (pendente ou com revisão aberta — descarta alterações propostas).'
-                : 'Usa `/anuncios/staff/{id}/status` com REJEITADO (anúncio ativo sem fila de revisão).'}
+                : 'A rejeição direta aguarda contrato administrativo V3 próprio.'}
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -1458,6 +1501,31 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: number }) {
             </Button>
             <Button type="button" variant="destructive" disabled={busy} onClick={() => void handleRemoveLogical()}>
               Confirmar remoção lógica
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteContractOpen} onOpenChange={setDeleteContractOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar exclusao</DialogTitle>
+            <DialogDescription>
+              A exclusao definitiva permanece disponivel para paridade funcional, mas nao sera simulada sem um
+              contrato backend V3 correspondente.
+            </DialogDescription>
+          </DialogHeader>
+          <PendingActionFeedback attemptedAction={deleteContract.attemptedAction} />
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="outline" onClick={() => setDeleteContractOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => deleteContract.runPendingAction('Excluir anuncio')}
+            >
+              Confirmar exclusao
             </Button>
           </DialogFooter>
         </DialogContent>

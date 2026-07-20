@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import type { StoryBundle, StoryViewerItem } from "./stories-types"
 import { getInitials, loginPublicoDoBundle, rotuloPublicoDoBundle } from "./stories-types"
+import { publicApiUrl } from '@/lib/api-contract'
 
 type Props = {
   open: boolean
@@ -88,7 +89,6 @@ export function StoryViewerDialog({
   initialBundleIndex,
   onVerificationRefresh,
 }: Props) {
-  const API = process.env.NEXT_PUBLIC_API_URL!
   const router = useRouter()
   const [bundleIndex, setBundleIndex] = useState(0)
   const [itemIndex, setItemIndex] = useState(0)
@@ -128,7 +128,7 @@ export function StoryViewerDialog({
     setViewerItem(null)
     setMediaError(false)
 
-    void fetch(`${API}/stories/${currentFeedItem.storyId}`, {
+    void fetch(publicApiUrl(`/stories/${currentFeedItem.storyId}`), {
       credentials: "include",
       cache: "no-store",
     })
@@ -155,7 +155,7 @@ export function StoryViewerDialog({
     return () => {
       cancelled = true
     }
-  }, [API, currentFeedItem?.storyId, open, reloadTick])
+  }, [currentFeedItem?.storyId, open, reloadTick])
 
   useEffect(() => {
     setVideoProg(0)

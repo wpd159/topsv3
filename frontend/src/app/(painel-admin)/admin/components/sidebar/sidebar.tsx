@@ -20,15 +20,22 @@ import {
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { getPublicLogoUrl } from '@/lib/public-site-assets'
+import { adminApiUrl, apiErrorFromResponse } from '@/lib/api-contract'
+
+type ModerationSummary = {
+  revisoesAbertas: number
+  revisoesEmAnalise: number
+  anunciosPendentesModeracao: number
+}
 
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
   const { usuario } = useAuth()
   const [notificationCounts, setNotificationCounts] = useState({
-    tickets: 0,
-    denuncias: 0,
-    sugestoes: 0,
-    revisoes: 0,
+    tickets: null as number | null,
+    denuncias: null as number | null,
+    sugestoes: null as number | null,
+    revisoes: null as number | null,
   })
 
   const handleNavClick = () => {
@@ -44,60 +51,34 @@ export default function Sidebar() {
     if (!usuario) return
 
     let active = true
-    const api = process.env.NEXT_PUBLIC_API_URL
-    if (!api) return
+    let inFlight: Promise<void> | null = null
 
     const carregarContadores = async () => {
-      try {
-        const [ticketsRes, denunciasRes, sugestoesRes, revisoesRes, anunciosRes] = await Promise.all([
-          fetch(`${api}/suporte`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`${api}/denuncias`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`${api}/sugestoes/admin?pagina=0&tamanho=100`, {
+      if (inFlight) return inFlight
+      inFlight = (async () => {
+        try {
+          const response = await fetch(adminApiUrl('/moderacao/resumo'), {
             credentials: 'include',
             cache: 'no-store',
-          }),
-          fetch(`${api}/anuncios/staff/revisions`, { credentials: 'include', cache: 'no-store' }),
-          fetch(`${api}/anuncios/staff`, { credentials: 'include', cache: 'no-store' }),
-        ])
-
-        const tickets = ticketsRes.ok ? await ticketsRes.json() : []
-        const denuncias = denunciasRes.ok ? await denunciasRes.json() : []
-        const sugestoesPayload = sugestoesRes.ok ? await sugestoesRes.json() : { content: [] }
-        const sugestoes = Array.isArray(sugestoesPayload?.content) ? sugestoesPayload.content : []
-        const revisoes = revisoesRes.ok ? await revisoesRes.json() : []
-        const anuncios = anunciosRes.ok ? await anunciosRes.json() : []
-        const revisaoAnuncioIds = new Set(
-          Array.isArray(revisoes)
-            ? revisoes.map((revisao: any) => Number(revisao?.anuncioId)).filter(Number.isFinite)
-            : []
-        )
-        const filaModeracao = Array.isArray(anuncios)
-          ? anuncios.filter((anuncio: any) => {
-              if (anuncio?.removidoLogicamente) return false
-              const status = String(anuncio?.status || '').toUpperCase()
-              if (status === 'PENDENTE') return true
-              return revisaoAnuncioIds.has(Number(anuncio?.id))
-            }).length
-          : 0
-
-        if (!active) return
-
-        setNotificationCounts({
-          tickets: Array.isArray(tickets)
-            ? tickets.filter((ticket: any) => ticket?.status !== 'FECHADO').length
-            : 0,
-          denuncias: Array.isArray(denuncias)
-            ? denuncias.filter((denuncia: any) => denuncia?.status === 'PENDENTE').length
-            : 0,
-          sugestoes: Array.isArray(sugestoes)
-            ? sugestoes.filter((sugestao: any) => sugestao?.status === 'NOVO').length
-            : 0,
-          revisoes: filaModeracao,
-        })
-      } catch {
-        if (!active) return
-        setNotificationCounts({ tickets: 0, denuncias: 0, sugestoes: 0, revisoes: 0 })
-      }
+          })
+          if (!response.ok) throw await apiErrorFromResponse(response)
+          const summary = (await response.json()) as ModerationSummary
+          if (!active) return
+          setNotificationCounts((current) => ({
+            ...current,
+            revisoes:
+              Number(summary.revisoesAbertas) +
+              Number(summary.revisoesEmAnalise) +
+              Number(summary.anunciosPendentesModeracao),
+          }))
+        } catch {
+          if (!active) return
+          setNotificationCounts((current) => ({ ...current, revisoes: null }))
+        } finally {
+          inFlight = null
+        }
+      })()
+      return inFlight
     }
 
     carregarContadores()

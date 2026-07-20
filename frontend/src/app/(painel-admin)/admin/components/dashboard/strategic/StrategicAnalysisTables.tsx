@@ -2,10 +2,12 @@
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { CidadeAggRow } from './strategic-dashboard-utils'
+import { ContractState } from '@/components/feedback/contract-state'
 
 type Props = {
   cidadeRows: CidadeAggRow[]
   loading?: boolean
+  error?: unknown
 }
 
 function fmt(value: number) {
@@ -16,7 +18,7 @@ function fmtConv(value: number) {
   return `${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
 }
 
-export function StrategicAnalysisTables({ cidadeRows, loading }: Props) {
+export function StrategicAnalysisTables({ cidadeRows, loading, error }: Props) {
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm">
       <div className="border-b border-gray-100 px-5 py-4">
@@ -36,6 +38,8 @@ export function StrategicAnalysisTables({ cidadeRows, loading }: Props) {
         <TableBody>
           {loading ? (
             <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-gray-500">Carregando...</TableCell></TableRow>
+          ) : error ? (
+            <TableRow><TableCell colSpan={5}><ContractState error={error} compact /></TableCell></TableRow>
           ) : cidadeRows.length === 0 ? (
             <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-gray-500">Sem dados.</TableCell></TableRow>
           ) : cidadeRows.map((row) => (

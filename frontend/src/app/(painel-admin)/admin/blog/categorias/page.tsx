@@ -1,232 +1,51 @@
-"use client"
+'use client'
 
-import { useEffect, useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { toast } from "sonner"
-import { ArrowLeftIcon } from "@heroicons/react/24/solid"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { useState } from 'react'
+import Link from 'next/link'
 
-type BlogCategoriaAdmin = {
-  id: number
-  nome: string
-  slug: string
-  sortOrder: number
-  ativo: boolean
-  postCountPublicados: number
-}
+import {
+  ContractState,
+  PendingActionFeedback,
+  usePendingContractActions,
+} from '@/components/feedback/contract-state'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
-function apiUrl(path: string) {
-  const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-  return `${base}${path.startsWith("/") ? "" : "/"}${path}`
-}
-
-export default function BlogCategoriasAdminPage() {
-  const router = useRouter()
-  const [items, setItems] = useState<BlogCategoriaAdmin[]>([])
-  const [loading, setLoading] = useState(true)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState({
-    nome: "",
-    slug: "",
-    sortOrder: "100",
-    ativo: true,
-  })
-  const [saving, setSaving] = useState(false)
-
-  async function load() {
-    setLoading(true)
-    try {
-      const res = await fetch(apiUrl("/admin/blog-categorias"), {
-        credentials: "include",
-        cache: "no-store",
-      })
-      if (!res.ok) throw new Error("Não foi possível carregar categorias.")
-      const data = (await res.json()) as BlogCategoriaAdmin[]
-      setItems(Array.isArray(data) ? data : [])
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Erro ao carregar.")
-      if (e instanceof Error && e.message.includes("401")) {
-        router.push("/acesso-negado")
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- carga inicial
-  }, [])
-
-  function startEdit(row: BlogCategoriaAdmin) {
-    setEditingId(row.id)
-    setForm({
-      nome: row.nome,
-      slug: row.slug,
-      sortOrder: String(row.sortOrder),
-      ativo: row.ativo,
-    })
-  }
-
-  function resetForm() {
-    setEditingId(null)
-    setForm({ nome: "", slug: "", sortOrder: "100", ativo: true })
-  }
-
-  async function handleSave() {
-    if (!form.nome.trim()) {
-      toast.warning("Informe o nome.")
-      return
-    }
-    setSaving(true)
-    try {
-      const body = {
-        nome: form.nome.trim(),
-        slug: form.slug.trim() || undefined,
-        sortOrder: Number(form.sortOrder || "0"),
-        ativo: form.ativo,
-      }
-      const url =
-        editingId == null
-          ? apiUrl("/admin/blog-categorias")
-          : apiUrl(`/admin/blog-categorias/${editingId}`)
-      const res = await fetch(url, {
-        method: editingId == null ? "POST" : "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      })
-      if (!res.ok) {
-        const t = (await res.text()).trim()
-        throw new Error(t || "Falha ao salvar.")
-      }
-      toast.success(editingId == null ? "Categoria criada." : "Categoria atualizada.")
-      resetForm()
-      await load()
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar.")
-    } finally {
-      setSaving(false)
-    }
-  }
+export default function BlogCategoriesPage() {
+  const [editing, setEditing] = useState(false)
+  const { error, attemptedAction, runPendingAction } = usePendingContractActions(
+    PENDING_BACKEND_CONTRACTS.blog
+  )
 
   return (
-    <div className="mx-auto max-w-4xl p-6">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Button variant="ghost" className="mb-2 gap-2 pl-0 text-gray-600" asChild>
-            <Link href="/admin/blog">
-              <ArrowLeftIcon className="h-4 w-4" />
-              Voltar ao blog
-            </Link>
-          </Button>
-          <h1 className="text-3xl font-extrabold text-gray-900">Categorias do blog</h1>
-          <p className="text-sm text-gray-500">
-            Categorias persistidas; posts referenciam por ID. Slug define a URL pública{" "}
-            <code className="text-xs">/blog/categoria/[slug]</code>.
-          </p>
-        </div>
+    <section className="space-y-6">
+      <div>
+        <Button asChild variant="ghost" className="px-0"><Link href="/admin/blog">Voltar ao blog</Link></Button>
+        <h1 className="text-2xl font-bold text-gray-900">Categorias do blog</h1>
       </div>
+      <ContractState error={error} />
+      <PendingActionFeedback attemptedAction={attemptedAction} />
 
-      <Card className="mb-8 border border-gray-200 p-6 shadow-sm">
-        <h2 className="mb-4 text-lg font-semibold">
-          {editingId == null ? "Nova categoria" : `Editar #${editingId}`}
-        </h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="nome">Nome</Label>
-            <Input
-              id="nome"
-              value={form.nome}
-              onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))}
-              placeholder="Ex.: Guias e dicas"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="slug">Slug (opcional)</Label>
-            <Input
-              id="slug"
-              value={form.slug}
-              onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
-              placeholder="Derivado do nome se vazio"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="sort">Ordem</Label>
-            <Input
-              id="sort"
-              type="number"
-              value={form.sortOrder}
-              onChange={(e) => setForm((f) => ({ ...f, sortOrder: e.target.value }))}
-            />
-          </div>
-          <div className="flex items-center gap-2 pt-8">
-            <input
-              id="ativo"
-              type="checkbox"
-              checked={form.ativo}
-              onChange={(e) => setForm((f) => ({ ...f, ativo: e.target.checked }))}
-            />
-            <Label htmlFor="ativo" className="font-normal">
-              Ativa (aparece na listagem pública)
-            </Label>
-          </div>
+      <form className="grid gap-4 rounded-lg border border-gray-200 bg-white p-5 md:grid-cols-4" onSubmit={(event) => { event.preventDefault(); runPendingAction(editing ? 'Salvar categoria' : 'Criar categoria') }}>
+        <div className="space-y-2"><Label htmlFor="category-name">Nome</Label><Input id="category-name" placeholder="Ex.: Guias e dicas" /></div>
+        <div className="space-y-2"><Label htmlFor="category-slug">Slug (opcional)</Label><Input id="category-slug" placeholder="Derivado do nome se vazio" /></div>
+        <div className="space-y-2"><Label htmlFor="category-order">Ordem</Label><Input id="category-order" type="number" min={0} /></div>
+        <label className="flex items-center gap-2 self-end pb-3 text-sm"><input type="checkbox" defaultChecked /> Ativa (aparece na listagem pública)</label>
+        <div className="flex flex-wrap gap-2 md:col-span-4">
+          <Button type="submit">{editing ? 'Salvar alterações' : 'Nova categoria'}</Button>
+          {editing ? <Button type="button" variant="outline" onClick={() => setEditing(false)}>Cancelar edição</Button> : null}
         </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            className="bg-[#FC1EAD] text-white hover:bg-[#d91992]"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? "Salvando…" : editingId == null ? "Criar" : "Salvar alterações"}
-          </Button>
-          {editingId != null && (
-            <Button variant="outline" type="button" onClick={resetForm} disabled={saving}>
-              Cancelar edição
-            </Button>
-          )}
-        </div>
-      </Card>
+      </form>
 
-      {loading ? (
-        <p className="text-center text-gray-500">Carregando…</p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="min-w-full text-left text-sm">
-            <thead className="bg-gray-50 text-gray-700">
-              <tr>
-                <th className="px-4 py-3">Nome</th>
-                <th className="px-4 py-3">Slug</th>
-                <th className="px-4 py-3">Ordem</th>
-                <th className="px-4 py-3">Posts pub.</th>
-                <th className="px-4 py-3">Ativa</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr key={row.id} className="border-t border-gray-100">
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.nome}</td>
-                  <td className="px-4 py-3 text-gray-600">{row.slug}</td>
-                  <td className="px-4 py-3">{row.sortOrder}</td>
-                  <td className="px-4 py-3">{row.postCountPublicados}</td>
-                  <td className="px-4 py-3">{row.ativo ? "sim" : "não"}</td>
-                  <td className="px-4 py-3">
-                    <Button variant="outline" size="sm" type="button" onClick={() => startEdit(row)}>
-                      Editar
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {items.length === 0 && <p className="p-6 text-center text-gray-500">Nenhuma categoria.</p>}
-        </div>
-      )}
-    </div>
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <Table>
+          <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>Slug</TableHead><TableHead>Ordem</TableHead><TableHead>Posts publicados</TableHead><TableHead>Ativa</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+          <TableBody><TableRow><TableCell colSpan={6}><ContractState error={error} compact /><div className="mt-3 flex gap-2"><Button type="button" variant="outline" onClick={() => setEditing(true)}>Editar</Button><Button type="button" variant="destructive" onClick={() => runPendingAction('Excluir categoria')}>Excluir</Button></div></TableCell></TableRow></TableBody>
+        </Table>
+      </div>
+    </section>
   )
 }

@@ -6,6 +6,7 @@ import { ArrowLeftIcon } from "@heroicons/react/24/solid"
 import { fetchPublicBlogPost, type BlogPostDetail } from "@/lib/blog-api"
 import { SafeBlogPostBody } from "@/lib/blog/safe-blog-body"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
+import { ContractState } from '@/components/feedback/contract-state'
 
 const FALLBACK_IMAGE = getPublicLogoUrl()
 
@@ -18,19 +19,22 @@ export default function BlogPostPageClient({
 }) {
   const [post, setPost] = useState<BlogPostDetail | null>(initialPost)
   const [loading, setLoading] = useState(!initialPost)
+  const [error, setError] = useState<unknown>(null)
+  const [retryVersion, setRetryVersion] = useState(0)
 
   useEffect(() => {
     let active = true
 
     async function loadPost() {
+      setError(null)
       try {
         const data = await fetchPublicBlogPost(slug)
         if (active) {
           setPost(data)
         }
-      } catch {
+      } catch (loadError) {
         if (active) {
-          setPost(null)
+          setError(loadError)
         }
       } finally {
         if (active) {
@@ -44,7 +48,7 @@ export default function BlogPostPageClient({
     return () => {
       active = false
     }
-  }, [slug])
+  }, [slug, retryVersion])
 
   if (loading) {
     return (
@@ -52,6 +56,18 @@ export default function BlogPostPageClient({
         <section className="px-6 py-10 text-center text-gray-500">
           Carregando post...
         </section>
+      </main>
+    )
+  }
+
+  if (error) {
+    return (
+      <main className="min-h-screen bg-white px-6 py-10">
+        <Link href="/blog" className="mb-8 inline-flex items-center gap-2 text-sm font-medium text-[#FC1EAD]">
+          <ArrowLeftIcon className="h-4 w-4" />
+          Voltar para o blog
+        </Link>
+        <ContractState error={error} onRetry={() => setRetryVersion((value) => value + 1)} />
       </main>
     )
   }

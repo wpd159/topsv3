@@ -1,13 +1,13 @@
+import {
+  BackendContractPendingError,
+  PENDING_BACKEND_CONTRACTS,
+  adminApiUrl,
+  apiErrorFromResponse,
+} from '@/lib/api-contract'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 
-const apiBase = () => {
-  const base = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-  if (!base) throw new Error('NEXT_PUBLIC_API_URL não configurado.')
-  return base
-}
-
 export type AdminPerformanceItem = {
-  id: number
+  id: string | number
   titulo: string
   visualizacoes: number
   cliquesWhatsapp: number
@@ -21,6 +21,16 @@ export type AdminPerformanceResponse = {
   totalCliquesWhatsapp?: number
   rankingPorCliques?: AdminPerformanceItem[]
   topPorConversao?: AdminPerformanceItem[]
+}
+
+export type AdminPerformanceSummary = {
+  anunciosComMetricas: number
+  visualizacoesTotal: number
+  cliquesWhatsappTotal: number
+  taxaCliqueView: number
+  visualizacoesOrganicas: number
+  visualizacoesComPremium: number
+  calculadoEm: string
 }
 
 export type DesempenhoDiarioPonto = {
@@ -41,27 +51,25 @@ export type DesempenhoDiarioResponse = {
   varCliquesPct?: number | null
 }
 
-export async function fetchAdminPerformanceAnuncios(): Promise<AdminPerformanceResponse | null> {
-  const res = await fetch(`${apiBase()}/estatisticas/performance-anuncios`, {
+export async function fetchAdminPerformanceSummary(): Promise<AdminPerformanceSummary> {
+  const response = await fetch(adminApiUrl('/desempenho/resumo'), {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
   })
-  if (!res.ok) return null
-  return corrigirEstruturaTexto(await res.json()) as AdminPerformanceResponse
+  if (!response.ok) throw await apiErrorFromResponse(response)
+  return corrigirEstruturaTexto(await response.json()) as AdminPerformanceSummary
 }
 
-export async function fetchDesempenhoDiario(dias: 7 | 15 | 30): Promise<DesempenhoDiarioResponse | null> {
-  const res = await fetch(`${apiBase()}/estatisticas/desempenho-diario?dias=${dias}`, {
-    cache: 'no-store',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-  })
-  if (!res.ok) return null
-  return corrigirEstruturaTexto(await res.json()) as DesempenhoDiarioResponse
+export async function fetchAdminPerformanceAnuncios(): Promise<AdminPerformanceResponse> {
+  throw new BackendContractPendingError('Ranking administrativo de desempenho por anuncio')
+}
+
+export async function fetchDesempenhoDiario(_dias: 7 | 15 | 30): Promise<DesempenhoDiarioResponse> {
+  throw new BackendContractPendingError('Serie diaria agregada do dashboard')
 }
 
 export type TopWhatsappHojeItem = {
-  anuncioId: number
+  anuncioId: string | number
   titulo?: string | null
   cidadeNome?: string | null
   thumbnailUrl?: string | null
@@ -69,18 +77,6 @@ export type TopWhatsappHojeItem = {
   slug?: string | null
 }
 
-/** Admin only — rota protegida em `/admin/**` no backend. */
-export async function fetchTopWhatsappHoje(limit = 5): Promise<TopWhatsappHojeItem[] | null> {
-  const res = await fetch(
-    `${apiBase()}/admin/dashboard/anuncios-top-whatsapp-hoje?limit=${encodeURIComponent(String(limit))}`,
-    {
-      cache: 'no-store',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    }
-  )
-  if (!res.ok) return null
-  const raw = corrigirEstruturaTexto(await res.json()) as unknown
-  if (!Array.isArray(raw)) return null
-  return raw as TopWhatsappHojeItem[]
+export async function fetchTopWhatsappHoje(_limit = 5): Promise<TopWhatsappHojeItem[]> {
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.adminAnalytics)
 }

@@ -16,6 +16,7 @@ import {
   type ProgrammaticBlogHomeEntry,
 } from "@/lib/programmatic-blog-api"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
+import { ContractState } from '@/components/feedback/contract-state'
 
 const FALLBACK_IMAGE = getPublicLogoUrl()
 
@@ -42,19 +43,24 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
   const [loading, setLoading] = useState(initialPosts.length === 0)
   const [loadingGuias, setLoadingGuias] = useState(true)
   const [catalogCategorias, setCatalogCategorias] = useState<BlogCategoriaPublic[]>([])
+  const [postsError, setPostsError] = useState<unknown>(null)
+  const [guidesError, setGuidesError] = useState<unknown>(null)
+  const [categoriesError, setCategoriesError] = useState<unknown>(null)
+  const [retryVersion, setRetryVersion] = useState(0)
 
   useEffect(() => {
     let active = true
 
     async function loadPosts() {
+      setPostsError(null)
       try {
         const data = await fetchPublicBlogPosts()
         if (active) {
-          setPosts(Array.isArray(data) ? data : [])
+          setPosts(data)
         }
-      } catch {
+      } catch (error) {
         if (active) {
-          setPosts([])
+          setPostsError(error)
         }
       } finally {
         if (active) {
@@ -68,20 +74,21 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
     return () => {
       active = false
     }
-  }, [])
+  }, [retryVersion])
 
   useEffect(() => {
     let active = true
 
     async function loadGuias() {
+      setGuidesError(null)
       try {
         const data = await fetchProgrammaticHomeEntries(48)
         if (active) {
-          setGuias(Array.isArray(data) ? data : [])
+          setGuias(data)
         }
-      } catch {
+      } catch (error) {
         if (active) {
-          setGuias([])
+          setGuidesError(error)
         }
       } finally {
         if (active) {
@@ -95,20 +102,21 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
     return () => {
       active = false
     }
-  }, [])
+  }, [retryVersion])
 
   useEffect(() => {
     let active = true
 
     async function loadCats() {
+      setCategoriesError(null)
       try {
         const data = await fetchPublicBlogCategorias()
         if (active) {
-          setCatalogCategorias(Array.isArray(data) ? data : [])
+          setCatalogCategorias(data)
         }
-      } catch {
+      } catch (error) {
         if (active) {
-          setCatalogCategorias([])
+          setCategoriesError(error)
         }
       }
     }
@@ -118,7 +126,7 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
     return () => {
       active = false
     }
-  }, [])
+  }, [retryVersion])
 
   const safePosts = useMemo(() => (Array.isArray(posts) ? posts.filter(Boolean) : []), [posts])
   const legacyGuidePosts = useMemo(() => safePosts.filter((post) => isLegacyCityGuidePost(post)), [safePosts])
@@ -175,6 +183,10 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
             <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
               Carregando guias...
             </div>
+          ) : guidesError ? (
+            <div className="mt-6">
+              <ContractState error={guidesError} onRetry={() => setRetryVersion((value) => value + 1)} />
+            </div>
           ) : guideItems.length === 0 ? (
             <div className="mt-6 rounded-xl border border-dashed border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
               Nenhum guia publicado no momento.
@@ -207,6 +219,8 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
           <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
             Carregando posts do blog...
           </div>
+        ) : postsError ? (
+          <ContractState error={postsError} onRetry={() => setRetryVersion((value) => value + 1)} />
         ) : (
           editorialPosts.map((post) => {
             const catSlug =
@@ -272,7 +286,7 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
           })
         )}
 
-        {!loading && editorialPosts.length === 0 && (
+        {!loading && !postsError && editorialPosts.length === 0 && (
           <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
             Nenhum post publicado no momento.
           </div>
@@ -305,8 +319,11 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
 
         <div className="rounded-2xl border border-gray-200 bg-white p-6">
           <h3 className="mb-4 text-lg font-semibold text-gray-900">Categorias</h3>
+          {categoriesError ? (
+            <ContractState error={categoriesError} onRetry={() => setRetryVersion((value) => value + 1)} compact />
+          ) : null}
           <ul className="space-y-3 text-sm">
-            {catalogCategorias.length > 0
+            {!categoriesError && catalogCategorias.length > 0
               ? catalogCategorias.map((c) => (
                   <li key={c.id} className="flex justify-between border-b border-gray-100 pb-2 last:border-0">
                     <Link
@@ -318,7 +335,7 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
                     <span className="font-semibold text-[#FC1EAD]">{c.postCountPublicados}</span>
                   </li>
                 ))
-              : categoriasFallback.map(([nome, total]) => {
+              : !categoriesError ? categoriasFallback.map(([nome, total]) => {
                   const slug = slugifyCategoria(nome === "Sem categoria" ? "" : nome)
                   const href = nome !== "Sem categoria" && slug ? `/blog/categoria/${encodeURIComponent(slug)}` : null
                   return (
@@ -333,8 +350,8 @@ export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSumm
                       <span className="font-semibold text-[#FC1EAD]">{total}</span>
                     </li>
                   )
-                })}
-            {catalogCategorias.length === 0 && categoriasFallback.length === 0 && (
+                }) : null}
+            {!categoriesError && catalogCategorias.length === 0 && categoriasFallback.length === 0 && (
               <li className="text-gray-500">Sem categorias publicadas.</li>
             )}
           </ul>

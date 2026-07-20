@@ -1,4 +1,4 @@
-import { corrigirEstruturaTexto } from "@/lib/text/encoding"
+import { BackendContractPendingError, PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
 /** Temas da landing programática (deve coincidir com o backend). */
 export const PROGRAMMATIC_BLOG_TEMAS = [
@@ -35,29 +35,6 @@ export function rewriteLegacyProgrammaticBlogPath(pathOrUrl: string): string {
     /* ignore */
   }
   return pathOrUrl
-}
-
-function rewriteProgrammaticLinksInHtml(html: string): string {
-  return html.replace(
-    /href="(\/blog\/(?:acompanhantes|garotas-de-programa|anuncios-adultos)\/[^"?]+(?:\?[^"]*)?)"/g,
-    (_, p1: string) => `href="${rewriteLegacyProgrammaticBlogPath(p1)}"`
-  )
-}
-
-function normalizeProgrammaticPublicPayload(raw: ProgrammaticBlogPublic): ProgrammaticBlogPublic {
-  return {
-    ...raw,
-    canonicalPath: rewriteLegacyProgrammaticBlogPath(raw.canonicalPath),
-    cidadesRelacionadas: raw.cidadesRelacionadas.map((c) => ({
-      ...c,
-      hrefPath: rewriteLegacyProgrammaticBlogPath(c.hrefPath),
-    })),
-    temasMesmaCidade: raw.temasMesmaCidade.map((t) => ({
-      ...t,
-      hrefPath: rewriteLegacyProgrammaticBlogPath(t.hrefPath),
-    })),
-    contentHtml: rewriteProgrammaticLinksInHtml(raw.contentHtml),
-  }
 }
 
 /** URL pública Next.js (padrão novo). Backend não precisa mudar. */
@@ -105,9 +82,8 @@ export type ProgrammaticBlogPublic = {
   updatedAtIso: string | null
 }
 
-function apiUrl(path: string) {
-  const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-  return `${base}${path.startsWith("/") ? "" : "/"}${path}`
+async function pendingBlogContract<T>(): Promise<T> {
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.blog)
 }
 
 export async function fetchProgrammaticBlogPage(
@@ -115,25 +91,10 @@ export async function fetchProgrammaticBlogPage(
   cidadeSlug: string,
   uf?: string | null
 ): Promise<ProgrammaticBlogPublic | null> {
-  const q =
-    uf && uf.length > 0
-      ? `?uf=${encodeURIComponent(uf)}`
-      : ""
-  const res = await fetch(
-    apiUrl(`/blog-programmatic/public/page/${encodeURIComponent(tema)}/${encodeURIComponent(cidadeSlug)}${q}`),
-    {
-      next: { revalidate: 3600 },
-      credentials: "include",
-    }
-  )
-  if (res.status === 404) return null
-  if (res.status === 400) {
-    const err = await res.json().catch(() => null)
-    throw new ProgrammaticBlogAmbiguousError(err?.ufs as string[] | undefined)
-  }
-  if (!res.ok) return null
-  const raw = corrigirEstruturaTexto(await res.json()) as ProgrammaticBlogPublic
-  return normalizeProgrammaticPublicPayload(raw)
+  void tema
+  void cidadeSlug
+  void uf
+  return pendingBlogContract<ProgrammaticBlogPublic | null>()
 }
 
 export class ProgrammaticBlogAmbiguousError extends Error {
@@ -157,34 +118,13 @@ export async function fetchProgrammaticHomeEntries(
   limit = 48,
   tema?: string | null
 ): Promise<ProgrammaticBlogHomeEntry[]> {
-  const q = new URLSearchParams()
-  q.set("limit", String(Math.min(120, Math.max(1, limit))))
-  if (tema?.trim()) q.set("tema", tema.trim())
-  const res = await fetch(apiUrl(`/blog-programmatic/public/home-entries?${q.toString()}`), {
-    cache: "no-store",
-    credentials: "include",
-  })
-  if (!res.ok) return []
-  const data = await res.json().catch(() => [])
-  const list = Array.isArray(data) ? data : []
-  return corrigirEstruturaTexto(list) as ProgrammaticBlogHomeEntry[]
+  void limit
+  void tema
+  return pendingBlogContract<ProgrammaticBlogHomeEntry[]>()
 }
 
 export async function fetchProgrammaticSitemapEntries(): Promise<
   Array<{ path: string; lastmod?: string | null }>
 > {
-  const res = await fetch(apiUrl("/blog-programmatic/public/sitemap-entries"), {
-    next: { revalidate: 3600 },
-    signal: AbortSignal.timeout(8000),
-  })
-  if (!res.ok) return []
-  const data = await res.json().catch(() => [])
-  const list = Array.isArray(data) ? data : []
-  return list.map((row: { path?: string; lastmod?: string | null }) => {
-    const p = row.path
-    return {
-      ...row,
-      path: p ? rewriteLegacyProgrammaticBlogPath(p) : "",
-    }
-  })
+  return pendingBlogContract<Array<{ path: string; lastmod?: string | null }>>()
 }

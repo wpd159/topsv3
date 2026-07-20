@@ -25,23 +25,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-
-type PerformanceItem = {
-  id: number
-  titulo: string
-  visualizacoes: number
-  cliquesWhatsapp: number
-  taxaConversao: number
-  posicaoRanking: number
-  cidadeNome?: string | null
-}
-
-type PerformanceResponse = {
-  totalVisualizacoes?: number
-  totalCliquesWhatsapp?: number
-  rankingPorCliques?: PerformanceItem[]
-  topPorConversao?: PerformanceItem[]
-}
+import { ContractState } from "@/components/feedback/contract-state"
+import {
+  fetchAdminPerformanceAnuncios,
+  type AdminPerformanceResponse as PerformanceResponse,
+} from "@/lib/admin-estatisticas-api"
 
 function formatarNumero(value?: number) {
   return Number(value || 0).toLocaleString("pt-BR")
@@ -58,6 +46,7 @@ export default function PerformanceAnunciosSection() {
   const router = useRouter()
   const [data, setData] = useState<PerformanceResponse>({})
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<unknown>(null)
   const [modalAberto, setModalAberto] = useState<"cliques" | "conversao" | null>(null)
   const [buscaAnuncio, setBuscaAnuncio] = useState("")
 
@@ -67,17 +56,10 @@ export default function PerformanceAnunciosSection() {
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/estatisticas/performance-anuncios`, {
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      })
-
-      if (!res.ok) throw new Error("Falha ao buscar performance dos anúncios")
-      setData(await res.json())
-    } catch {
-      if (!silent) {
-        setData({})
-      }
+      setError(null)
+      setData(await fetchAdminPerformanceAnuncios())
+    } catch (loadError) {
+      setError(loadError)
     } finally {
       if (!silent) {
         setLoading(false)
@@ -86,32 +68,7 @@ export default function PerformanceAnunciosSection() {
   }, [])
 
   useEffect(() => {
-    fetchPerformance()
-
-    const onFocus = () => {
-      fetchPerformance(true)
-    }
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        fetchPerformance(true)
-      }
-    }
-
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
-        fetchPerformance(true)
-      }
-    }, 15000)
-
-    window.addEventListener("focus", onFocus)
-    document.addEventListener("visibilitychange", onVisibilityChange)
-
-    return () => {
-      window.clearInterval(intervalId)
-      window.removeEventListener("focus", onFocus)
-      document.removeEventListener("visibilitychange", onVisibilityChange)
-    }
+    void fetchPerformance()
   }, [fetchPerformance])
 
   useEffect(() => {
@@ -160,7 +117,7 @@ export default function PerformanceAnunciosSection() {
     (item.titulo || `Anúncio #${item.id}`).toLowerCase().includes(buscaAnuncio.trim().toLowerCase())
   )
 
-  const abrirAnuncio = (id: number) => {
+  const abrirAnuncio = (id: string | number) => {
     router.push(`/admin/moderacao-v2/${id}`)
     setModalAberto(null)
     setBuscaAnuncio("")
@@ -170,6 +127,15 @@ export default function PerformanceAnunciosSection() {
   const descricaoModal = modalAberto === "cliques"
     ? "Todos os anúncios ordenados por cliques no WhatsApp, com visualizações e conversão."
     : "Todos os anúncios ordenados por taxa de conversão, com cliques e visualizações."
+
+  if (error) {
+    return (
+      <div className="mt-10 space-y-3">
+        <h2 className="text-lg font-semibold text-gray-900">Performance dos anuncios</h2>
+        <ContractState error={error} onRetry={() => void fetchPerformance()} />
+      </div>
+    )
+  }
 
   return (
     <div className="mt-10 space-y-6">

@@ -13,6 +13,7 @@ import {
   type PublicCatalogCard,
   type PublicCatalogDetail,
 } from "@/lib/public-catalog-api"
+import { publicApiUrl } from "@/lib/api-contract"
 
 type AnuncioUI = {
   id: string
@@ -134,13 +135,10 @@ export default function AnuncioDetalhesPageClient({
     if (anuncio.slug !== slug) return
     if (visualizacaoRegistradaParaId.current === anuncio.id) return
 
-    const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-    if (!base) return
-
     if (visualizacaoFetchParaId.current === anuncio.id) return
     visualizacaoFetchParaId.current = anuncio.id
 
-    const url = `${base}/api/public/anuncios/${encodeURIComponent(slug)}/visualizacao`
+    const url = publicApiUrl(`/anuncios/${encodeURIComponent(slug)}/visualizacao`)
     if (process.env.NODE_ENV === "development") {
       console.debug("[AnuncioDetalhes] registrando visualização", { method: "POST", url })
     }

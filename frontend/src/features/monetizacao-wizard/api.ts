@@ -2,14 +2,13 @@
 
 import { buscarMeuAnuncio, type MeuAnuncio } from '@/lib/meus-anuncios-api'
 import { messageFromApiBody } from '@/utils/read-api-error-response'
+import { publicApiUrl } from '@/lib/api-contract'
 import type {
   CompraPremiumResultado,
   MonetizacaoCotacaoOpcao,
   MonetizacaoOpcaoCodigo,
   MonetizacaoWizardData,
 } from './types'
-
-const API = (process.env.NEXT_PUBLIC_API_URL || '/api/public').replace(/\/$/, '')
 
 type CatalogoBackend = {
   codigo: string
@@ -49,7 +48,7 @@ function readCsrfValue() {
 }
 
 async function bootstrapCsrfValue() {
-  await fetch(`${API}/auth/me`, {
+  await fetch(publicApiUrl('/auth/me'), {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
@@ -163,7 +162,7 @@ export async function fetchMonetizacaoWizardData(slug: string): Promise<Monetiza
 
 export async function fetchMinhaMonetizacao(slug?: string): Promise<MinhaMonetizacaoBackend> {
   const query = slug ? `?anuncioSlug=${encodeURIComponent(slug)}` : ''
-  const response = await fetch(`${API}/minha-conta/monetizacao${query}`, {
+  const response = await fetch(publicApiUrl(`/minha-conta/monetizacao${query}`), {
     credentials: 'include',
     cache: 'no-store',
   })
@@ -192,7 +191,7 @@ export async function comprarBeneficios(
   })
   if (csrfValue) headers.set(csrfHeaderName(), csrfValue)
 
-  const response = await fetch(`${API}/minha-conta/monetizacao/compras`, {
+  const response = await fetch(publicApiUrl('/minha-conta/monetizacao/compras'), {
     method: 'POST',
     credentials: 'include',
     cache: 'no-store',

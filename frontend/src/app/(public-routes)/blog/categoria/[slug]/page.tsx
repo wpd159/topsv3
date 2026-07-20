@@ -9,6 +9,7 @@ import {
 } from "@/lib/programmatic-blog-api"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
+import { ContractState } from '@/components/feedback/contract-state'
 
 const FALLBACK_IMAGE = getPublicLogoUrl()
 
@@ -54,14 +55,23 @@ export default async function BlogCategoriaPage({
   const decoded = decodeURIComponent(slug)
 
   let posts: BlogPostSummary[] = []
+  let postsError: unknown = null
   try {
     posts = await fetchPublicBlogPostsByCategoria(decoded)
-  } catch {
-    posts = []
+  } catch (error) {
+    postsError = error
   }
 
   const showProgrammatic = isProgrammaticTemaSlug(decoded)
-  const guias = showProgrammatic ? await fetchProgrammaticHomeEntries(36, decoded) : []
+  let guias: Awaited<ReturnType<typeof fetchProgrammaticHomeEntries>> = []
+  let guidesError: unknown = null
+  if (showProgrammatic) {
+    try {
+      guias = await fetchProgrammaticHomeEntries(36, decoded)
+    } catch (error) {
+      guidesError = error
+    }
+  }
 
   const heading = titleCaseFromSlug(decoded)
 
@@ -81,7 +91,11 @@ export default async function BlogCategoriaPage({
           Posts editoriais{showProgrammatic ? " e guias por cidade relacionados ao tema." : " nesta categoria."}
         </p>
 
-        {guias.length > 0 ? (
+        {guidesError ? (
+          <div className="mt-10">
+            <ContractState error={guidesError} />
+          </div>
+        ) : guias.length > 0 ? (
           <section className="mt-10 rounded-2xl border border-gray-200 bg-gray-50/80 p-6">
             <h2 className="text-xl font-semibold text-gray-900">Guias por cidade</h2>
             <p className="mt-1 text-sm text-gray-600">
@@ -107,7 +121,11 @@ export default async function BlogCategoriaPage({
 
         <section className="mt-10">
           <h2 className="text-xl font-semibold text-gray-900">Posts</h2>
-          {posts.length === 0 ? (
+          {postsError ? (
+            <div className="mt-4">
+              <ContractState error={postsError} />
+            </div>
+          ) : posts.length === 0 ? (
             <p className="mt-4 rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
               Nenhum post editorial nesta categoria.
               {showProgrammatic && guias.length === 0

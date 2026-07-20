@@ -1,4 +1,5 @@
 import type { MidiaPublica } from '@/lib/media/public-media'
+import { publicApiUrl } from '@/lib/api-contract'
 
 export type FavoritoPublico = {
   id: string
@@ -38,8 +39,6 @@ export class FavoritosApiError extends Error {
   }
 }
 
-const API = (process.env.NEXT_PUBLIC_API_URL || '/api/public').replace(/\/$/, '')
-
 function readCsrfValue() {
   if (typeof document === 'undefined') return null
   const cookieName = ['XSRF', 'TOKEN'].join('-')
@@ -52,7 +51,7 @@ function readCsrfValue() {
 async function csrfValue() {
   const current = readCsrfValue()
   if (current) return current
-  await fetch(`${API}/auth/me`, {
+  await fetch(publicApiUrl('/auth/me'), {
     credentials: 'include',
     cache: 'no-store',
   })
@@ -68,7 +67,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (valorCsrf) headers.set(['X', 'XSRF', 'TOKEN'].join('-'), valorCsrf)
   }
 
-  const response = await fetch(`${API}${path}`, {
+  const response = await fetch(publicApiUrl(path), {
     ...init,
     method,
     headers,

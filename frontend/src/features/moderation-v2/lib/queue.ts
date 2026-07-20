@@ -59,22 +59,22 @@ export function sortModerationRows(rows: ModerationStaffListItem[], sort: Modera
 }
 
 /**
- * `revisionAnuncioIds` = anúncios com revisão aberta (GET /anuncios/staff/revisions).
+ * `revisionAnuncioIds` = anúncios com revisão aberta no contrato administrativo canônico.
  * Fila operacional: pendentes de aprovação OU com revisão na fila do backend.
  */
 export function matchesFilter(
   row: ModerationStaffListItem,
   filter: ModerationListFilter,
-  revisionAnuncioIds: Set<number>
+  revisionAnuncioIds: Set<string>
 ): boolean {
   if (filter === 'todos') return true
   if (filter === 'fila') {
     if (row.removidoLogicamente) return false
     const st = (row.status || '').toUpperCase()
     if (st === 'PENDENTE') return true
-    return revisionAnuncioIds.has(row.id)
+    return revisionAnuncioIds.has(String(row.id))
   }
-  if (filter === 'revisao') return revisionAnuncioIds.has(row.id)
+  if (filter === 'revisao') return revisionAnuncioIds.has(String(row.id))
   return (row.status || '').toUpperCase() === filter.toUpperCase()
 }
 

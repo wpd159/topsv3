@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
 import { useAuth } from '@/context/AuthContext'
+import { backendApiRoot } from '@/lib/api-contract'
 import { decidirMidiaApi, fetchAdminMidiasV3, removerFotosStaffApi, removerMidiaRevisaoStaffApi } from '../api/client'
 import type { ModerationMediaItem, ModerationRevisionDetail, VisibilidadeMidia } from '../api/types'
 
@@ -156,15 +157,11 @@ const REVISION_PREVIEW_TIMEOUT_MS = 15000
 function resolveModerationMediaUrl(url: string) {
   const trimmed = (url ?? '').trim()
   if (!trimmed.startsWith('/')) return trimmed
-  const apiBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-  return apiBase ? `${apiBase}${trimmed}` : trimmed
+  return `${backendApiRoot()}${trimmed}`
 }
 
-function isStaffRevisionMediaUrl(url: string) {
-  return (
-    /\/anuncios\/staff\/\d+\/revision\/media\/\d+\/view(?:$|\?)/.test(url) ||
-    /\/anuncios\/staff\/\d+\/media\/\d+\/view(?:$|\?)/.test(url)
-  )
+function isProtectedModerationMediaUrl(url: string) {
+  return /\/api\/admin\//.test(url)
 }
 
 function ModerationImage({
@@ -180,7 +177,7 @@ function ModerationImage({
 }) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
-  const staffUrl = isStaffRevisionMediaUrl(url)
+  const staffUrl = isProtectedModerationMediaUrl(url)
 
   useEffect(() => {
     if (!staffUrl) {
@@ -318,7 +315,7 @@ function LazyModerationVideo({
 }
 
 export type ModeracaoV2MediaGalleryProps = {
-  anuncioId: number
+  anuncioId: string | number
   midiasPublicadas?: ModerationMediaItem[]
   fotosPublicadas: string[]
   videosPublicados: string[]

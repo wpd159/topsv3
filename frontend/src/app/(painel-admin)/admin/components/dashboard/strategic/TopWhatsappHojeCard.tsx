@@ -6,6 +6,7 @@ import { ChatBubbleOvalLeftEllipsisIcon } from '@heroicons/react/24/outline'
 import { cn } from '@/lib/utils'
 import { fetchTopWhatsappHoje, type TopWhatsappHojeItem } from '@/lib/admin-estatisticas-api'
 import { Button } from '@/components/ui/button'
+import { ContractState } from '@/components/feedback/contract-state'
 
 const INITIAL_LIMIT = 12
 const LIMIT_STEP = 12
@@ -20,14 +21,19 @@ export function TopWhatsappHojeCard() {
   const [items, setItems] = useState<TopWhatsappHojeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
+  const [error, setError] = useState<unknown>(null)
+  const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setFetching(true)
+      setError(null)
       try {
         const rows = await fetchTopWhatsappHoje(limit)
-        if (!cancelled) setItems(rows ?? [])
+        if (!cancelled) setItems(rows)
+      } catch (loadError) {
+        if (!cancelled) setError(loadError)
       } finally {
         if (!cancelled) {
           setFetching(false)
@@ -38,7 +44,7 @@ export function TopWhatsappHojeCard() {
     return () => {
       cancelled = true
     }
-  }, [limit])
+  }, [limit, retryKey])
 
   /** Há possivelmente mais linhas no servidor se a API encheu o `limit` pedido. */
   const hasMore = limit < MAX_LIMIT && items.length >= limit
@@ -60,6 +66,8 @@ export function TopWhatsappHojeCard() {
       <div className="px-5 pb-5 pt-4">
         {loading && items.length === 0 ? (
           <p className="py-12 text-center text-sm text-gray-500">Carregando…</p>
+        ) : error ? (
+          <ContractState error={error} onRetry={() => setRetryKey((value) => value + 1)} compact />
         ) : items.length === 0 ? (
           <p className="py-12 text-center text-sm text-gray-500">Nenhum clique registrado hoje.</p>
         ) : (

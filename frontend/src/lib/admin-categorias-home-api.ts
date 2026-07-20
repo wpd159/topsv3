@@ -22,13 +22,8 @@ export type AdminHomeCategoryInput = {
   ativo: boolean
 }
 
-function backendRoot() {
-  const configured = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-  return configured.replace(/\/api\/public$/, '')
-}
-
 function adminUrl(path: string) {
-  return `${backendRoot()}/api/admin/categorias-home${path}`
+  return adminApiUrl(`/categorias-home${path}`)
 }
 
 function antiForgeryCookieName() {
@@ -51,7 +46,7 @@ function readAntiForgeryValue() {
 async function ensureAntiForgeryValue() {
   let value = readAntiForgeryValue()
   if (value) return value
-  await fetch(`${backendRoot()}/api/admin/auth/me`, {
+  await fetch(adminApiUrl('/auth/me'), {
     credentials: 'include',
     cache: 'no-store',
   })
@@ -105,3 +100,4 @@ export function salvarCategoriaHomeAdmin(
     body: form,
   })
 }
+import { adminApiUrl } from '@/lib/api-contract'

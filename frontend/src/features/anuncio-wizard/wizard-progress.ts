@@ -1,5 +1,7 @@
 'use client'
 
+import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
+
 export type WizardProgressMode = 'create' | 'edit'
 export type WizardProgressStep =
   | 'perfil'
@@ -16,10 +18,6 @@ export type WizardProgressStatus =
   | 'PUBLICADO'
   | 'REJEITADO'
 
-function apiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || ''
-}
-
 export function createWizardProgressSessionId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -34,18 +32,9 @@ export async function syncWizardProgress(input: {
   status?: WizardProgressStatus
   anuncioId?: number | string | null
 }) {
-  try {
-    await fetch(`${apiBase()}/wizard-progress/sync`, {
-      method: 'POST',
-      credentials: 'include',
-      keepalive: true,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...input,
-        status: input.status || 'EM_PREENCHIMENTO',
-      }),
-    })
-  } catch {
-    // progresso do wizard nao pode quebrar UX
+  void input
+  return {
+    status: 'CONTRATO_BACKEND_AUSENTE' as const,
+    module: PENDING_BACKEND_CONTRACTS.wizardProgress,
   }
 }

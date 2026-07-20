@@ -28,13 +28,8 @@ export type AdminStoryCandidatePage = {
   last: boolean
 }
 
-function backendRoot() {
-  const configured = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-  return configured.replace(/\/api\/public$/, '')
-}
-
 function adminUrl(path: string) {
-  return `${backendRoot()}/api/admin/stories${path}`
+  return adminApiUrl(`/stories${path}`)
 }
 
 function antiForgeryCookieName() {
@@ -57,7 +52,7 @@ function readAntiForgeryValue() {
 async function ensureAntiForgeryValue() {
   let value = readAntiForgeryValue()
   if (value) return value
-  await fetch(`${backendRoot()}/api/admin/auth/me`, {
+  await fetch(adminApiUrl('/auth/me'), {
     credentials: 'include',
     cache: 'no-store',
   })
@@ -102,3 +97,4 @@ export function activateAdminStorySelection(anuncioId: string) {
 export function deactivateAdminStorySelection() {
   return request<AdminStorySelection>('/selecao', { method: 'DELETE' })
 }
+import { adminApiUrl } from '@/lib/api-contract'

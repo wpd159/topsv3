@@ -30,8 +30,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { useAuth } from "@/context/AuthContext"
-import SockJS from "sockjs-client"
-import { Client } from "@stomp/stompjs"
 import FeedbackDialog from "@/components/modals/feedback-dialog"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
 
@@ -41,14 +39,11 @@ export default function HeaderLogado() {
 
   const [open, setOpen] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
-  const [novasMensagens, setNovasMensagens] = useState(0)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const hoverTimeout = useRef<NodeJS.Timeout | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  const { usuario, logout } = useAuth()
+  const { usuario, logout, novasMensagens, zerarNovasMensagens } = useAuth()
 
   const nome = usuario?.username || "Usuário"
   const cargo = usuario?.cargo || "Usuário"
@@ -61,40 +56,8 @@ export default function HeaderLogado() {
   }
 
   useEffect(() => {
-    audioRef.current = new Audio("/notification_sound.mp3")
-  }, [])
-
-  useEffect(() => {
-    if (!usuario) return
-
-    const socket = new SockJS(`${process.env.NEXT_PUBLIC_API_URL}/ws-suporte`)
-    const client = new Client({
-      webSocketFactory: () => socket as any,
-      reconnectDelay: 5000,
-      onConnect: () => {
-        client.subscribe(`/topic/chat/global`, (msg) => {
-          const data = JSON.parse(msg.body)
-
-          if (data.destinatarioId === usuario.id) {
-            if (pathname !== "/chat") {
-              setNovasMensagens((prev) => prev + 1)
-              audioRef.current?.play().catch(() => null)
-            }
-          }
-        })
-      },
-    })
-
-    client.activate()
-
-    return () => {
-      client.deactivate()
-    }
-  }, [usuario, pathname])
-
-  useEffect(() => {
-    if (pathname === "/chat") setNovasMensagens(0)
-  }, [pathname])
+    if (pathname === "/chat") zerarNovasMensagens()
+  }, [pathname, zerarNovasMensagens])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -213,12 +176,12 @@ export default function HeaderLogado() {
                 <li
                   onClick={() => {
                     router.push("/chat")
-                    setNovasMensagens(0)
+                    zerarNovasMensagens()
                   }}
                   className="relative flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer"
                 >
                   <ChatBubbleLeftRightIcon className="w-5 h-5 text-gray-500" /> Chat
-                  {novasMensagens > 0 && (
+                  {typeof novasMensagens === "number" && novasMensagens > 0 && (
                     <span className="ml-auto bg-[#FC1EAD] text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
                       {novasMensagens}
                     </span>
@@ -361,11 +324,11 @@ export default function HeaderLogado() {
                   className="justify-start text-gray-700 relative"
                   onClick={() => {
                     go("/chat")
-                    setNovasMensagens(0)
+                    zerarNovasMensagens()
                   }}
                 >
                   <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" /> Chat
-                  {novasMensagens > 0 && (
+                  {typeof novasMensagens === "number" && novasMensagens > 0 && (
                     <span className="absolute right-6 top-2 bg-[#FC1EAD] text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
                       {novasMensagens}
                     </span>
@@ -423,9 +386,6 @@ export default function HeaderLogado() {
           </SheetContent>
         </Sheet>
       </div>
-
-      {/* Som */}
-      <audio ref={audioRef} src="/notification_sound.mp3" preload="auto" />
 
       {/* FEEDBACK DIALOG */}
       <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />

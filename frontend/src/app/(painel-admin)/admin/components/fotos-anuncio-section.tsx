@@ -2,19 +2,19 @@
 
 import { useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { toast } from 'sonner'
 import { TrashIcon, PlusIcon } from '@heroicons/react/24/solid'
+import { PendingActionFeedback, usePendingContractActions } from '@/components/feedback/contract-state'
 
 type Props = {
-  anuncioId: number
+  anuncioId: string | number
   fotos: string[]
   onUpdated?: (novasFotos: string[]) => void
 }
 
-export default function FotosAnuncioSection({ anuncioId, fotos, onUpdated }: Props) {
+export default function FotosAnuncioSection({ anuncioId, fotos }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const pendingAction = usePendingContractActions(`Gestao administrativa de fotos do anuncio ${anuncioId}`)
 
-  const [busy, setBusy] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({})
 
   const fotosUnicas = useMemo(() => {
@@ -29,69 +29,15 @@ export default function FotosAnuncioSection({ anuncioId, fotos, onUpdated }: Pro
     setSelected((prev) => ({ ...prev, [url]: !prev[url] }))
   }
 
-  const clearSelected = () => setSelected({})
-
-  async function removerSelecionadas() {
+  function removerSelecionadas() {
     if (!selectedUrls.length) return
-
-    try {
-      setBusy(true)
-
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/anuncios/staff/${anuncioId}/fotos/remover`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ fotosParaRemover: selectedUrls }),
-        }
-      )
-
-      if (!res.ok) throw new Error('Falha ao remover fotos')
-
-      const data = await res.json()
-      const novas = (data?.fotosUrl ?? []) as string[]
-
-      toast.success('Foto(s) removida(s).')
-      clearSelected()
-      onUpdated?.(novas)
-    } catch {
-      toast.error('Erro ao remover fotos.')
-    } finally {
-      setBusy(false)
-    }
+    pendingAction.runPendingAction('Remover fotos selecionadas')
   }
 
-  async function adicionarFotos(files: FileList | null) {
+  function adicionarFotos(files: FileList | null) {
     if (!files || !files.length) return
-
-    try {
-      setBusy(true)
-
-      const fd = new FormData()
-      fotosUnicas.forEach((url) => fd.append('fotosExistentes', url))
-      Array.from(files).forEach((file) => fd.append('novasFotos', file))
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/anuncios/staff/${anuncioId}/fotos`, {
-        method: 'PUT',
-        credentials: 'include',
-        body: fd,
-      })
-
-      if (!res.ok) throw new Error('Falha ao enviar novas fotos')
-
-      const data = await res.json()
-      const novas = (data?.fotosUrl ?? []) as string[]
-
-      toast.success('Foto(s) adicionada(s).')
-      onUpdated?.(novas)
-
-      if (inputRef.current) inputRef.current.value = ''
-    } catch {
-      toast.error('Erro ao adicionar fotos.')
-    } finally {
-      setBusy(false)
-    }
+    pendingAction.runPendingAction('Adicionar fotos')
+    if (inputRef.current) inputRef.current.value = ''
   }
 
   return (
@@ -112,7 +58,6 @@ export default function FotosAnuncioSection({ anuncioId, fotos, onUpdated }: Pro
           <Button
             variant="outline"
             onClick={() => inputRef.current?.click()}
-            disabled={busy}
             className="flex items-center gap-1 border-[#C41E73]/40 text-[#C41E73] hover:bg-[#FC1EAD]/10"
           >
             <PlusIcon className="h-4 w-4" />
@@ -122,7 +67,7 @@ export default function FotosAnuncioSection({ anuncioId, fotos, onUpdated }: Pro
           <Button
             variant="outline"
             onClick={removerSelecionadas}
-            disabled={busy || selectedUrls.length === 0}
+            disabled={selectedUrls.length === 0}
             className="flex items-center gap-1 border-red-300 text-red-600 hover:bg-red-50"
           >
             <TrashIcon className="h-4 w-4" />
@@ -130,6 +75,12 @@ export default function FotosAnuncioSection({ anuncioId, fotos, onUpdated }: Pro
           </Button>
         </div>
       </div>
+
+      {pendingAction.attemptedAction ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-3">
+          <PendingActionFeedback attemptedAction={pendingAction.attemptedAction} />
+        </div>
+      ) : null}
 
       <div className="p-6">
         {fotosUnicas.length ? (

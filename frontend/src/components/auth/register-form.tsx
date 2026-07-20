@@ -25,6 +25,7 @@ import {
   submitRegister,
   type DuplicidadeResposta,
 } from '@/lib/public-auth-api'
+import { normalizeApiError } from '@/lib/api-contract'
 
 interface RegisterFormProps {
   refId?: number | null
@@ -318,8 +319,8 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
 
       toast.success('Conta criada com sucesso!')
       onSuccess?.(values.email.trim().toLowerCase())
-    } catch {
-      toast.error('Não foi possível concluir o cadastro.')
+    } catch (error) {
+      toast.error(normalizeApiError(error).message)
     } finally {
       setLoading(false)
     }

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/command"
 import { cn } from "@/lib/utils"
 import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
+import { ContractState } from "@/components/feedback/contract-state"
 
 type BairroItem = { id: string; nome: string; slug: string }
 type CidadeItem = { id: string; nome: string; slug: string; bairros: BairroItem[] }
@@ -96,7 +97,8 @@ export function BarraLocalizacao() {
   const [cidades, setCidades] = useState<CidadeItem[]>([])
   const [bairros, setBairros] = useState<BairroItem[]>([])
   const [loadingEstados, setLoadingEstados] = useState(false)
-  const [erroLocalidades, setErroLocalidades] = useState(false)
+  const [erroLocalidades, setErroLocalidades] = useState<unknown>(null)
+  const [reloadLocalidades, setReloadLocalidades] = useState(0)
   const [loadingCidades, setLoadingCidades] = useState(false)
   const [loadingBairros, setLoadingBairros] = useState(false)
   const [openEstado, setOpenEstado] = useState(false)
@@ -188,7 +190,7 @@ export function BarraLocalizacao() {
     const load = async () => {
       try {
         setLoadingEstados(true)
-        setErroLocalidades(false)
+        setErroLocalidades(null)
         const descoberta = await descobrirLocalidadesPublicas()
         setEstados(descoberta.estados.map((estado) => ({
           id: estado.uf,
@@ -205,16 +207,15 @@ export function BarraLocalizacao() {
             })),
           })),
         })))
-      } catch {
-        setErroLocalidades(true)
-        setEstados([])
+      } catch (error) {
+        setErroLocalidades(error)
       } finally {
         setLoadingEstados(false)
       }
     }
 
     void load()
-  }, [])
+  }, [reloadLocalidades])
 
   const findEstadoByRaw = useCallback(
     (rawEstado: string) => {
@@ -568,6 +569,15 @@ export function BarraLocalizacao() {
               Limpar
             </Button>
           </div>
+          {erroLocalidades ? (
+            <div className="mt-3">
+              <ContractState
+                error={erroLocalidades}
+                onRetry={() => setReloadLocalidades((value) => value + 1)}
+                compact
+              />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

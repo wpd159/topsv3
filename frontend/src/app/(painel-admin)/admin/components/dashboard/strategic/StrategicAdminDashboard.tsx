@@ -2,13 +2,19 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import type { PremiumBenefitDashboard } from '@/lib/admin-premium-benefits-api'
+import {
+  fetchPremiumBenefitsDashboard,
+  type PremiumBenefitDashboard,
+} from '@/lib/admin-premium-benefits-api'
 import {
   fetchAdminPerformanceAnuncios,
+  fetchAdminPerformanceSummary,
   fetchDesempenhoDiario,
   type AdminPerformanceResponse,
+  type AdminPerformanceSummary,
   type DesempenhoDiarioResponse,
 } from '@/lib/admin-estatisticas-api'
+import { ContractState } from '@/components/feedback/contract-state'
 import { TopWhatsappHojeCard } from './TopWhatsappHojeCard'
 import { StrategicPerformanceChart } from './StrategicPerformanceChart'
 import { PriorityAlertsCard, type PriorityAlertItem } from './PriorityAlertsCard'
@@ -28,38 +34,32 @@ import {
   worstConversionWithTraffic,
 } from './strategic-dashboard-utils'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL
-
 type Period = 7 | 15 | 30
-
-async function readApiError(response: Response, fallback: string) {
-  const raw = await response.text().catch(() => '')
-  if (!raw.trim()) return `${fallback} (HTTP ${response.status})`
-  try {
-    const parsed = JSON.parse(raw) as { error?: string; message?: string }
-    return String(parsed?.error || parsed?.message || '').trim() || `${fallback} (HTTP ${response.status})`
-  } catch {
-    return raw.trim() || `${fallback} (HTTP ${response.status})`
-  }
-}
 
 export function StrategicAdminDashboard() {
   const [period, setPeriod] = useState<Period>(30)
   const [daily, setDaily] = useState<DesempenhoDiarioResponse | null>(null)
   const [dailyLoading, setDailyLoading] = useState(true)
+  const [dailyError, setDailyError] = useState<unknown>(null)
   const [perf, setPerf] = useState<AdminPerformanceResponse | null>(null)
   const [perfLoading, setPerfLoading] = useState(true)
+  const [perfError, setPerfError] = useState<unknown>(null)
   const [premium, setPremium] = useState<PremiumBenefitDashboard | null>(null)
   const [premiumLoading, setPremiumLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [premiumError, setPremiumError] = useState<unknown>(null)
+  const [summary, setSummary] = useState<AdminPerformanceSummary | null>(null)
+  const [summaryError, setSummaryError] = useState<unknown>(null)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       setDailyLoading(true)
+      setDailyError(null)
       try {
         const d = await fetchDesempenhoDiario(period)
         if (!cancelled) setDaily(d)
+      } catch (error) {
+        if (!cancelled) setDailyError(error)
       } finally {
         if (!cancelled) setDailyLoading(false)
       }
@@ -72,61 +72,33 @@ export function StrategicAdminDashboard() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      try {
-        setLoadError(null)
-        setPerfLoading(true)
-        setPremiumLoading(true)
-        const [perfRes, premiumRes] = await Promise.all([
-          fetchAdminPerformanceAnuncios(),
-          fetch(`${API_URL}/admin/premium-benefits/dashboard`, {
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        ])
-
-        if (!cancelled) {
-          setPerf(perfRes)
-          if (!perfRes) {
-            console.error('[StrategicAdminDashboard] performance nulo')
-          }
-        }
-
-        if (premiumRes.ok) {
-          const pj = await premiumRes.json()
-          if (!cancelled) setPremium(pj)
-        } else {
-          if (!cancelled) {
-            setPremium(null)
-            const message = await readApiError(premiumRes, 'Falha ao carregar benefícios premium')
-            console.error('[StrategicAdminDashboard] premium', message)
-          }
-        }
-
-        const errs: string[] = []
-        if (!perfRes) errs.push('performance de anúncios')
-        if (!premiumRes.ok) errs.push('benefícios premium')
-        if (errs.length > 0 && !cancelled) {
-          setLoadError(`Alguns dados não carregaram: ${errs.join(', ')}. Verifique sessão e API.`)
-        }
-      } catch {
-        if (!cancelled) {
-          setPerf(null)
-          setPremium(null)
-          setLoadError('Falha ao carregar dados do dashboard.')
-        }
-      } finally {
-        if (!cancelled) {
-          setPerfLoading(false)
-          setPremiumLoading(false)
-        }
+      setPerfLoading(true)
+      setPremiumLoading(true)
+      setPerfError(null)
+      setPremiumError(null)
+      setSummaryError(null)
+      const [perfResult, premiumResult, summaryResult] = await Promise.allSettled([
+        fetchAdminPerformanceAnuncios(),
+        fetchPremiumBenefitsDashboard(),
+        fetchAdminPerformanceSummary(),
+      ])
+      if (cancelled) return
+      if (perfResult.status === 'fulfilled') setPerf(perfResult.value)
+      else setPerfError(perfResult.reason)
+      if (premiumResult.status === 'fulfilled') setPremium(premiumResult.value)
+      else setPremiumError(premiumResult.reason)
+      if (summaryResult.status === 'fulfilled') setSummary(summaryResult.value)
+      else setSummaryError(summaryResult.reason)
+      setPerfLoading(false)
+      setPremiumLoading(false)
       }
-    })()
+    )()
     return () => {
       cancelled = true
     }
   }, [])
 
-  const base = perf?.rankingPorCliques ?? []
+  const base = useMemo(() => perf?.rankingPorCliques ?? [], [perf?.rankingPorCliques])
 
   const cityRows = useMemo(() => aggregateByCity(base), [base])
 
@@ -260,31 +232,48 @@ export function StrategicAdminDashboard() {
         </p>
       </div>
 
-      {loadError ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {loadError}
+      {summary ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Anuncios com metricas</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{summary.anunciosComMetricas.toLocaleString('pt-BR')}</p>
+          </div>
+          <div className="border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Visualizacoes</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{summary.visualizacoesTotal.toLocaleString('pt-BR')}</p>
+          </div>
+          <div className="border border-gray-200 bg-white p-4">
+            <p className="text-xs text-gray-500">Cliques no WhatsApp</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{summary.cliquesWhatsappTotal.toLocaleString('pt-BR')}</p>
+          </div>
         </div>
       ) : null}
+      {summaryError ? <ContractState error={summaryError} /> : null}
 
       <StrategicPerformanceChart
         data={daily}
         loading={dailyLoading}
         period={period}
         onPeriodChange={setPeriod}
+        error={dailyError}
       />
 
       <TopWhatsappHojeCard />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <PriorityAlertsCard items={alerts} loading={perfLoading && base.length === 0} />
-        <CommercialOpportunitiesCard items={opportunities} loading={premiumLoading} />
+        {perfError ? <ContractState error={perfError} /> : <PriorityAlertsCard items={alerts} loading={perfLoading && base.length === 0} />}
+        {premiumError ? <ContractState error={premiumError} /> : <CommercialOpportunitiesCard items={opportunities} loading={premiumLoading} />}
       </div>
 
-      <StrategicConversionRankings topConversao={topConv} piorConversao={piorConv} loading={loadingTables} />
+      <StrategicConversionRankings topConversao={topConv} piorConversao={piorConv} loading={loadingTables} error={perfError} />
 
-      <StrategicAnalysisTables cidadeRows={cityRows} loading={loadingTables} />
+      <StrategicAnalysisTables cidadeRows={cityRows} loading={loadingTables} error={perfError} />
 
-      <MonetizationOpportunitiesStrip cards={monetizationCards} loading={premiumLoading && perfLoading} />
+      {perfError || premiumError ? (
+        <ContractState error={perfError || premiumError} />
+      ) : (
+        <MonetizationOpportunitiesStrip cards={monetizationCards} loading={premiumLoading && perfLoading} />
+      )}
 
       <div className="border-t border-gray-200 pt-8">
         <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Monitoramento em tempo real</p>

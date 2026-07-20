@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { CalendarDaysIcon, ChatBubbleLeftIcon, FlagIcon } from '@heroicons/react/24/solid'
 import DenunciaModal from './denuncia-modal'
 import { useWhatsAppSafety } from '@/components/site/whatsapp-safety-provider'
+import { publicApiUrl } from '@/lib/api-contract'
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" {...props}>
@@ -43,7 +44,6 @@ function clean(value?: string | null) {
 export default function Sidebar({ anuncio }: SidebarProps) {
   const [modalAberto, setModalAberto] = useState(false)
   const router = useRouter()
-  const api = process.env.NEXT_PUBLIC_API_URL
   const { openWhatsAppWarning } = useWhatsAppSafety()
 
   const localizacaoLabel = useMemo(() => {
@@ -56,13 +56,8 @@ export default function Sidebar({ anuncio }: SidebarProps) {
   const handleWhatsAppClick = async (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
-    if (!api) {
-      toast.error('Contato indisponível no momento.')
-      return
-    }
-
     try {
-      const response = await fetch(`${api}/api/public/anuncios/${encodeURIComponent(anuncio.slug)}/clique-whatsapp`, {
+      const response = await fetch(publicApiUrl(`/anuncios/${encodeURIComponent(anuncio.slug)}/clique-whatsapp`), {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

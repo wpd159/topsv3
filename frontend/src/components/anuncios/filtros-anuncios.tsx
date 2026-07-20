@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { ContractState } from '@/components/feedback/contract-state'
 import { listarCategoriasHomePublicas } from '@/lib/public-catalog-api'
 
 const TODAS = { id: 'TODOS', nome: 'Todos' }
@@ -15,6 +16,8 @@ export default function FiltrosAnuncios({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [categoriasAtivas, setCategoriasAtivas] = useState<Array<{ id: string; nome: string }>>([])
+  const [erroCategorias, setErroCategorias] = useState<unknown>(null)
+  const [reloadMarker, setReloadMarker] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -22,19 +25,21 @@ export default function FiltrosAnuncios({
     listarCategoriasHomePublicas()
       .then((categorias) => {
         if (cancelled) return
+        setErroCategorias(null)
         setCategoriasAtivas(categorias.map((categoria) => ({
           id: categoria.identificador,
           nome: categoria.titulo,
         })))
       })
-      .catch(() => {
-        setCategoriasAtivas([])
+      .catch((error) => {
+        if (cancelled) return
+        setErroCategorias(error)
       })
 
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reloadMarker])
 
   const categoriasVisiveis = useMemo(
     () => [TODAS, ...categoriasAtivas],
@@ -69,6 +74,15 @@ export default function FiltrosAnuncios({
           </Button>
         ))}
       </div>
+      {erroCategorias ? (
+        <div className="mt-3">
+          <ContractState
+            error={erroCategorias}
+            onRetry={() => setReloadMarker((value) => value + 1)}
+            compact
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

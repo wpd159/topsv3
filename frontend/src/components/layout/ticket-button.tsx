@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { useAuth } from '@/context/AuthContext'
 import { useSuporteChat } from '@/hooks/useSuporteChat'
+import { ContractState } from '@/components/feedback/contract-state'
 
 type MotivoUI = 'erro' | 'pagamento' | 'conta' | 'outros'
 const motivoMap: Record<MotivoUI, string> = {
@@ -34,6 +35,7 @@ export default function AbrirTicketButton() {
     abrirChamado,
     enviarMensagem,
     encerrarTicket,
+    contractError,
   } = useSuporteChat(usuario)
 
   const emitChanged = () => window.dispatchEvent(new Event('suporte-ticket-changed'))
@@ -87,6 +89,8 @@ export default function AbrirTicketButton() {
                   Abrir Ticket de Suporte
                 </DialogTitle>
               </DialogHeader>
+
+              {contractError ? <ContractState error={contractError} compact /> : null}
 
               <Select value={problema} onValueChange={(v: MotivoUI) => setProblema(v)}>
                 <SelectTrigger className="mt-1 w-full py-5 bg-gray-200 border-gray-500/40">

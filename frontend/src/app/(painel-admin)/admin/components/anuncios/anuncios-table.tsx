@@ -27,17 +27,9 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination"
-
-interface Anuncio {
-  id: number
-  titulo: string
-  usernameAnunciante: string
-  status: string
-  dataCriacao: string
-  pendingRevision?: boolean
-  pendingRevisionId?: number | null
-  pendingRevisionStatus?: string | null
-}
+import { ContractState } from "@/components/feedback/contract-state"
+import { fetchStaffAnunciosList } from "@/features/moderation-v2/api/client"
+import type { ModerationStaffListItem as Anuncio } from '@/features/moderation-v2/api/types'
 
 interface Props {
   busca?: string
@@ -48,7 +40,7 @@ export default function GerenciarAnunciosTable({ busca = "", status = "TODOS" }:
   const router = useRouter()
   const [anuncios, setAnuncios] = useState<Anuncio[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
   const [paginaAtual, setPaginaAtual] = useState(1)
   const [reloadMarker, setReloadMarker] = useState(0)
   const itensPorPagina = 5
@@ -58,15 +50,9 @@ export default function GerenciarAnunciosTable({ busca = "", status = "TODOS" }:
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/anuncios/staff`, {
-          credentials: "include",
-          cache: "no-store",
-        })
-        if (!res.ok) throw new Error(`Erro ${res.status}`)
-        const data: Anuncio[] = await res.json()
-        setAnuncios(Array.isArray(data) ? data : [])
-      } catch {
-        setError("Falha ao carregar os anúncios.")
+        setAnuncios(await fetchStaffAnunciosList())
+      } catch (fetchError) {
+        setError(fetchError)
       } finally {
         setLoading(false)
       }
@@ -168,7 +154,7 @@ export default function GerenciarAnunciosTable({ busca = "", status = "TODOS" }:
   }
 
   if (error) {
-    return <div className="py-10 text-center text-red-500">{error}</div>
+    return <ContractState error={error} onRetry={() => setReloadMarker((value) => value + 1)} />
   }
 
   if (anunciosFiltrados.length === 0) {

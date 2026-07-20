@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import type { DesempenhoDiarioResponse } from '@/lib/admin-estatisticas-api'
 import { Button } from '@/components/ui/button'
+import { ContractState } from '@/components/feedback/contract-state'
 import { cn } from '@/lib/utils'
 
 type Period = 7 | 15 | 30
@@ -23,6 +24,7 @@ type Props = {
   loading: boolean
   period: Period
   onPeriodChange: (p: Period) => void
+  error?: unknown
 }
 
 function formatAxisDate(iso: string) {
@@ -53,7 +55,7 @@ function coerceDailyPoint(p: { data?: string; visualizacoes?: unknown; cliquesWh
   }
 }
 
-export function StrategicPerformanceChart({ data, loading, period, onPeriodChange }: Props) {
+export function StrategicPerformanceChart({ data, loading, period, onPeriodChange, error }: Props) {
   const chartData = useMemo(
     () => (data?.serieDiaria ?? []).map((p) => coerceDailyPoint(p)),
     [data?.serieDiaria]
@@ -122,6 +124,8 @@ export function StrategicPerformanceChart({ data, loading, period, onPeriodChang
           <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Resumo</p>
           {loading ? (
             <p className="mt-2 text-gray-500">Carregando…</p>
+          ) : error ? (
+            <p className="mt-2 text-amber-800">Resumo diario indisponivel.</p>
           ) : (
             <>
               <p className="mt-2 text-gray-800">
@@ -159,6 +163,8 @@ export function StrategicPerformanceChart({ data, loading, period, onPeriodChang
           <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 text-sm text-gray-500">
             Carregando série…
           </div>
+        ) : error ? (
+          <ContractState error={error} />
         ) : chartData.length === 0 ? (
           <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 text-sm text-gray-500">
             Nenhum dado no período.

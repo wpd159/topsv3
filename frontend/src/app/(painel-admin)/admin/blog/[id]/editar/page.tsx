@@ -1,10 +1,6 @@
-import { BlogPostForm } from "../../components/blog-post-form"
+import { BlogPostForm } from '../../components/blog-post-form'
 
-export default async function EditarPostPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function AdminBlogEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   return <BlogPostForm mode="edit" postId={id} />
 }

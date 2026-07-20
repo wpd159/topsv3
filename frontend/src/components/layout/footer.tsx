@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/context/AuthContext"
 import { fetchAllPublicSiteContent } from "@/lib/site-content"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
+import { ContractState } from '@/components/feedback/contract-state'
 
 const DEFAULT_ABOUT =
   "Desde 2025, o Tops do Job conecta acompanhantes e clientes de forma segura e discreta, promovendo confiança e visibilidade. Somos uma plataforma de classificados premium no Brasil."
@@ -29,9 +30,11 @@ export default function Footer() {
   const { usuario } = useAuth()
   const [loginOpen, setLoginOpen] = useState(false)
   const [sobreTexto, setSobreTexto] = useState(DEFAULT_ABOUT)
+  const [contentError, setContentError] = useState<unknown>(null)
 
   useEffect(() => {
     let active = true
+    setContentError(null)
     fetchAllPublicSiteContent()
       .then((entries) => {
         if (!active) return
@@ -45,7 +48,9 @@ export default function Footer() {
           about?.corpo?.split(/\n{2,}/)[0]?.trim()
         if (resumo) setSobreTexto(resumo)
       })
-      .catch(() => null)
+      .catch((error) => {
+        if (active) setContentError(error)
+      })
 
     return () => {
       active = false
@@ -88,6 +93,7 @@ export default function Footer() {
             <p className="max-w-md text-justify text-sm leading-relaxed text-gray-600">
               {sobreTexto}
             </p>
+            {contentError ? <ContractState error={contentError} compact /> : null}
 
             <div className="flex items-center gap-3 pt-1">
               <a

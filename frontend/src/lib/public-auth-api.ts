@@ -1,4 +1,5 @@
 import { fetchPublicSiteContent, type SiteContentEntry } from '@/lib/site-content'
+import { publicApiUrl } from '@/lib/api-contract'
 
 export type PublicAuthUser = {
   id: string
@@ -56,11 +57,6 @@ export class PublicAuthApiError extends Error {
   }
 }
 
-function apiUrl(path: string) {
-  const base = (process.env.NEXT_PUBLIC_API_URL || '/api/public').replace(/\/$/, '')
-  return `${base}${path}`
-}
-
 function csrfCookieName() {
   return ['XSRF', 'TOKEN'].join('-')
 }
@@ -79,7 +75,7 @@ function readCsrfValue() {
 }
 
 async function bootstrapCsrfValue() {
-  await fetch(apiUrl('/auth/me'), {
+  await fetch(publicApiUrl('/auth/me'), {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
@@ -107,7 +103,7 @@ async function publicRequest<T>(path: string, init: RequestInit = {}): Promise<T
     if (csrfValue) headers.set(csrfHeaderName(), csrfValue)
   }
 
-  const response = await fetch(apiUrl(path), {
+  const response = await fetch(publicApiUrl(path), {
     ...init,
     headers,
     credentials: 'include',

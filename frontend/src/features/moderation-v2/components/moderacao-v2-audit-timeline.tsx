@@ -221,7 +221,7 @@ function buildRows(
 
 export type ModeracaoV2AuditTimelineProps = {
   anuncio: ModerationAnuncioDetail
-  anuncioId: number
+  anuncioId: string | number
   auditLogs: AdminAuditLogItem[]
   visitorEvents: VisitorVerificationAuditItem[]
 }

@@ -3,7 +3,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -18,7 +17,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
-import { fetchPublicSiteContent } from "@/lib/site-content"
+import { ContractState, pendingContractError } from '@/components/feedback/contract-state'
+import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
 type OpenRequest = {
   url: string
@@ -38,14 +38,6 @@ export function WhatsAppSafetyProvider({ children }: { children: ReactNode }) {
   const [message, setMessage] = useState(
     "A Tops do Job não intermedeia encontros nem pagamentos antecipados. Confirme identidade e condições diretamente com o anunciante."
   )
-
-  useEffect(() => {
-    fetchPublicSiteContent("texto-whatsapp")
-      .then((entry) => {
-        if (entry?.corpo) setMessage(entry.corpo)
-      })
-      .catch(() => null)
-  }, [])
 
   const value = useMemo<ContextValue>(
     () => ({
@@ -90,6 +82,11 @@ export function WhatsAppSafetyProvider({ children }: { children: ReactNode }) {
           <div className="rounded-xl border border-gray-100 bg-pink-50/40 p-4 text-sm text-gray-700 whitespace-pre-line">
             {message}
           </div>
+
+          <ContractState
+            error={pendingContractError(PENDING_BACKEND_CONTRACTS.siteContent)}
+            compact
+          />
 
           <label className="flex items-center gap-3 text-sm text-gray-600">
             <Checkbox checked={hideNextTime} onCheckedChange={(checked) => setHideNextTime(Boolean(checked))} />

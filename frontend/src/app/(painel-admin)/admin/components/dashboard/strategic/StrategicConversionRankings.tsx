@@ -10,11 +10,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { AdminPerformanceItem } from '@/lib/admin-estatisticas-api'
+import { ContractState } from '@/components/feedback/contract-state'
 
 type Props = {
   topConversao: AdminPerformanceItem[]
   piorConversao: AdminPerformanceItem[]
   loading?: boolean
+  error?: unknown
 }
 
 function fmt(n?: number) {
@@ -25,7 +27,7 @@ function fmtConv(n?: number) {
   return `${Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
 }
 
-export function StrategicConversionRankings({ topConversao, piorConversao, loading }: Props) {
+export function StrategicConversionRankings({ topConversao, piorConversao, loading, error }: Props) {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm">
@@ -51,6 +53,8 @@ export function StrategicConversionRankings({ topConversao, piorConversao, loadi
                   Carregando…
                 </TableCell>
               </TableRow>
+            ) : error ? (
+              <TableRow><TableCell colSpan={6}><ContractState error={error} compact /></TableCell></TableRow>
             ) : topConversao.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-sm text-gray-500">
@@ -100,6 +104,8 @@ export function StrategicConversionRankings({ topConversao, piorConversao, loadi
                   Carregando…
                 </TableCell>
               </TableRow>
+            ) : error ? (
+              <TableRow><TableCell colSpan={6}><ContractState error={error} compact /></TableCell></TableRow>
             ) : piorConversao.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-sm text-gray-500">

@@ -1,195 +1,48 @@
 'use client'
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import Link from 'next/link'
+
 import {
-  CalendarDaysIcon,
-  EyeIcon,
-  PencilSquareIcon,
-  PlusIcon,
-  TrashIcon,
-} from "@heroicons/react/24/solid"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import type { BlogPostSummary } from "@/lib/blog-api"
-import { getPublicLogoUrl } from "@/lib/public-site-assets"
+  ContractState,
+  PendingActionFeedback,
+  usePendingContractActions,
+} from '@/components/feedback/contract-state'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
-function apiUrl(path: string) {
-  const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-  return `${base}${path.startsWith("/") ? "" : "/"}${path}`
-}
-
-const FALLBACK_IMAGE = getPublicLogoUrl()
-
-export default function BlogAdminPage() {
-  const router = useRouter()
-  const [posts, setPosts] = useState<BlogPostSummary[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch(apiUrl("/admin/blog-posts"), {
-          credentials: "include",
-          cache: "no-store",
-        })
-
-        if (!res.ok) {
-          throw new Error("Não foi possível carregar os posts.")
-        }
-
-        setPosts(await res.json())
-      } catch (error: any) {
-        toast.error(error?.message || "Falha ao carregar blog.")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    load()
-  }, [])
-
-  const handleExcluir = async (id: number) => {
-    if (!window.confirm("Tem certeza que deseja excluir este post?")) return
-
-    try {
-      const res = await fetch(apiUrl(`/admin/blog-posts/${id}`), {
-        method: "DELETE",
-        credentials: "include",
-      })
-
-      if (!res.ok) {
-        throw new Error("Não foi possível excluir o post.")
-      }
-
-      setPosts((prev) => prev.filter((post) => post.id !== id))
-      toast.success("Post removido com sucesso.")
-    } catch (error: any) {
-      toast.error(error?.message || "Erro ao excluir post.")
-    }
-  }
+export default function AdminBlogPage() {
+  const { error, attemptedAction, runPendingAction } = usePendingContractActions(
+    PENDING_BACKEND_CONTRACTS.blog
+  )
 
   return (
-    <div>
-      <div className="mb-10 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900">Blog / Postagens</h1>
-          <p className="text-sm text-gray-500">
-            Gerencie as publicações do blog, incluindo status, SEO e páginas públicas.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          <Button
-            variant="outline"
-            onClick={() => router.push("/admin/blog/categorias")}
-            className="border-gray-300 text-gray-700 hover:bg-gray-50"
-          >
-            Categorias do blog
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => router.push("/admin/blog/programatico")}
-            className="border-pink-300 text-[#FC1EAD] hover:bg-pink-50"
-          >
-            Páginas programáticas (SEO)
-          </Button>
-          <Button
-            onClick={() => router.push("/admin/blog/novo")}
-            className="flex items-center gap-2 bg-[#FC1EAD] px-6 text-white hover:bg-[#e01a9a]"
-          >
-            <PlusIcon className="h-5 w-5" />
-            Novo Post
-          </Button>
+    <section className="space-y-6">
+      <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+        <div><h1 className="text-2xl font-bold text-gray-900">Blog</h1><p className="text-sm text-gray-600">Posts, categorias e páginas programáticas.</p></div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline"><Link href="/admin/blog/categorias">Categorias do blog</Link></Button>
+          <Button asChild variant="outline"><Link href="/admin/blog/programatico">Páginas programáticas (SEO)</Link></Button>
+          <Button asChild><Link href="/admin/blog/novo">Novo post</Link></Button>
         </div>
       </div>
+      <ContractState error={error} />
+      <PendingActionFeedback attemptedAction={attemptedAction} />
 
-      {loading ? (
-        <div className="py-16 text-center text-gray-500">Carregando posts...</div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {posts.map((post) => (
-            <Card
-              key={post.id}
-              className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-all duration-200 hover:shadow-md"
-            >
-              <div className="flex items-center justify-between border-b bg-gradient-to-r from-[#FC1EAD]/10 to-transparent px-4 py-2">
-                <span className="text-xs font-medium text-gray-500">{post.categoria}</span>
-                <Badge
-                  className={
-                    post.status === "PUBLICADO"
-                      ? "border-green-300 bg-green-100 text-green-700"
-                      : "border-yellow-300 bg-yellow-100 text-yellow-700"
-                  }
-                >
-                  {post.status}
-                </Badge>
-              </div>
+      <div className="grid gap-3 rounded-lg border border-gray-200 bg-white p-4 md:grid-cols-[1fr_220px_auto]">
+        <Input placeholder="Buscar por título, autor ou slug" />
+        <Select defaultValue="TODOS"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todos os status</SelectItem><SelectItem value="RASCUNHO">Rascunho</SelectItem><SelectItem value="PUBLICADO">Publicado</SelectItem><SelectItem value="ARQUIVADO">Arquivado</SelectItem></SelectContent></Select>
+        <Button type="button" variant="outline" onClick={() => runPendingAction('Aplicar filtros do blog')}>Aplicar filtros</Button>
+      </div>
 
-              <div className="relative">
-                <img
-                  src={post.imagemUrl || FALLBACK_IMAGE}
-                  alt={post.titulo}
-                  className="h-48 w-full object-cover"
-                />
-              </div>
-
-              <div className="flex flex-col gap-3 p-5">
-                <h2 className="line-clamp-2 text-lg font-semibold text-gray-900">{post.titulo}</h2>
-
-                <div className="flex items-center gap-2 text-sm text-gray-500">
-                  <CalendarDaysIcon className="h-4 w-4" />
-                  {post.publishedAt
-                    ? new Date(post.publishedAt).toLocaleDateString("pt-BR")
-                    : "Ainda não publicado"}
-                </div>
-
-                <p className="text-sm text-gray-600">
-                  <strong>Autor:</strong> {post.autorNome}
-                </p>
-
-                <div className="mt-3 flex items-center justify-between border-t pt-3">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex items-center gap-1 border-blue-300 text-blue-600 hover:bg-blue-50"
-                    onClick={() => router.push(`/admin/blog/${post.id}/editar`)}
-                  >
-                    <PencilSquareIcon className="h-4 w-4" />
-                    Editar
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex items-center gap-1 border-gray-300 text-gray-600 hover:bg-gray-50"
-                    onClick={() => router.push(`/blog/${post.slug}`)}
-                  >
-                    <EyeIcon className="h-4 w-4" />
-                    Ver
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="flex items-center gap-1 border-red-300 text-red-600 hover:bg-red-50"
-                    onClick={() => handleExcluir(post.id)}
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                    Excluir
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {!loading && posts.length === 0 && (
-        <div className="py-16 text-center text-gray-500">Nenhum post encontrado.</div>
-      )}
-    </div>
+      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <Table>
+          <TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Categoria</TableHead><TableHead>Autor</TableHead><TableHead>Status</TableHead><TableHead>Atualização</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader>
+          <TableBody><TableRow><TableCell colSpan={6}><ContractState error={error} compact /><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => runPendingAction('Ver post')}>Ver</Button><Button type="button" variant="outline" onClick={() => runPendingAction('Editar post')}>Editar</Button><Button type="button" variant="outline" onClick={() => runPendingAction('Publicar post')}>Publicar</Button><Button type="button" variant="destructive" onClick={() => runPendingAction('Excluir post')}>Excluir</Button></div></TableCell></TableRow></TableBody>
+        </Table>
+      </div>
+    </section>
   )
 }

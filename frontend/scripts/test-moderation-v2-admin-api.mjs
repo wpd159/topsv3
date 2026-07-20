@@ -8,20 +8,20 @@ const clientPath = path.resolve(scriptDirectory, '../src/features/moderation-v2/
 const source = readFileSync(clientPath, 'utf8')
 
 assert.ok(
-  source.includes("const backendRoot = apiBase().replace(/\\/api\\/public$/, '')"),
-  'O cliente administrativo deve remover o sufixo /api/public da origem configurada.'
+  source.includes("adminApiUrl('/anuncios?page=0&size=100')"),
+  'A listagem deve usar o contrato administrativo canonico de anuncios.'
 )
 assert.ok(
-  source.includes('return `${backendRoot}/api/admin${path}`'),
-  'As rotas de moderacao devem usar uma unica raiz /api/admin.'
+  source.includes("adminApiUrl('/moderacao/revisoes?page=0&size=100')"),
+  'A fila deve usar o contrato administrativo canonico de revisoes.'
 )
 assert.ok(
-  !source.includes('`${apiBase()}/api/admin'),
-  'A base publica nao pode ser concatenada diretamente com /api/admin.'
+  !source.includes('apiBase()'),
+  'O adapter nao deve manter um resolvedor local de base URL.'
 )
 assert.ok(
-  source.includes('`${apiBase()}/anuncios/staff`'),
-  'Os contratos de anuncios staff existentes devem permanecer na base publica configurada.'
+  !source.includes('/anuncios/' + 'staff'),
+  'O adapter nao deve manter a familia administrativa legada.'
 )
 
-console.log('Moderacao v2: raiz administrativa validada sem /api/public/api/admin.')
+console.log('Moderacao v2: contratos administrativos canonicos validados.')

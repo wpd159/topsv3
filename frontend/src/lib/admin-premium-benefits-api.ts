@@ -1,8 +1,6 @@
 'use client'
 
-import { corrigirEstruturaTexto } from '@/lib/text/encoding'
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL
+import { BackendContractPendingError, PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
 export type PremiumBenefitUserSummary = {
   id: number
@@ -87,59 +85,30 @@ export type PremiumBenefitAnuncioDetail = {
   historico: PremiumBenefitHistoryItem[]
 }
 
-async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    credentials: 'include',
-    cache: 'no-store',
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  })
-
-  const raw = await response.text().catch(() => '')
-  let payload: unknown = null
-
-  if (raw.trim()) {
-    try {
-      payload = corrigirEstruturaTexto(JSON.parse(raw))
-    } catch {
-      payload = { error: raw }
-    }
-  }
-
-  if (!response.ok) {
-    const message =
-      payload && typeof payload === 'object' && 'message' in payload
-        ? String((payload as { message?: string }).message || '')
-        : payload && typeof payload === 'object' && 'error' in payload
-          ? String((payload as { error?: string }).error || '')
-          : ''
-    throw new Error(message || 'Falha ao consultar benefícios premium.')
-  }
-
-  return payload as T
+async function pendingContract<T>(): Promise<T> {
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.premiumLegacyDashboard)
 }
 
 export function fetchPremiumBenefitsDashboard() {
-  return adminFetch<PremiumBenefitDashboard>('/admin/premium-benefits/dashboard')
+  return pendingContract<PremiumBenefitDashboard>()
 }
 
 export function searchPremiumBenefits(q: string) {
-  return adminFetch<PremiumBenefitSearchResponse>(`/admin/premium-benefits/search?q=${encodeURIComponent(q)}`)
+  void q
+  return pendingContract<PremiumBenefitSearchResponse>()
 }
 
 export function fetchPremiumBenefitsDashboardAds(filtro: PremiumBenefitDashboardFilter) {
-  return adminFetch<PremiumBenefitAnuncioSummary[]>(
-    `/admin/premium-benefits/dashboard/anuncios?filtro=${encodeURIComponent(filtro)}`
-  )
+  void filtro
+  return pendingContract<PremiumBenefitAnuncioSummary[]>()
 }
 
 export function fetchPremiumBenefitsUserAds(usuarioId: number) {
-  return adminFetch<PremiumBenefitAnuncioSummary[]>(`/admin/premium-benefits/usuarios/${usuarioId}/anuncios`)
+  void usuarioId
+  return pendingContract<PremiumBenefitAnuncioSummary[]>()
 }
 
 export function fetchPremiumBenefitsAnuncio(anuncioId: number) {
-  return adminFetch<PremiumBenefitAnuncioDetail>(`/admin/premium-benefits/anuncios/${anuncioId}`)
+  void anuncioId
+  return pendingContract<PremiumBenefitAnuncioDetail>()
 }

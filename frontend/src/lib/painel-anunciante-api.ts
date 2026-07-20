@@ -1,8 +1,7 @@
 'use client'
 
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
-
-const API = process.env.NEXT_PUBLIC_API_URL
+import { publicApiUrl } from '@/lib/api-contract'
 
 export type PainelPerformanceItem = {
   anuncioId: number
@@ -42,11 +41,7 @@ export type PainelPerformance = {
 }
 
 async function fetchPainelJson<T>(path: string): Promise<T> {
-  if (!API) {
-    throw new Error('NEXT_PUBLIC_API_URL não definido')
-  }
-
-  const res = await fetch(`${API}${path}`, {
+  const res = await fetch(publicApiUrl(path), {
     credentials: 'include',
     cache: 'no-store',
   })

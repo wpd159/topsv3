@@ -1,4 +1,4 @@
-import { corrigirEstruturaTexto } from "@/lib/text/encoding"
+import { BackendContractPendingError, PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
 export type SiteContentKey =
   | "quem-somos"
@@ -95,51 +95,14 @@ const FALLBACKS: Record<SiteContentKey, SiteContentEntry> = {
   },
 }
 
-function apiUrl(path: string) {
-  const base = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
-  return `${base}${path.startsWith("/") ? "" : "/"}${path}`
-}
-
 export async function fetchPublicSiteContent(
-  key: SiteContentKey
+  _key: SiteContentKey
 ): Promise<SiteContentEntry> {
-  try {
-    const res = await fetch(apiUrl(`/site-content/public/${key}`), {
-      cache: "no-store",
-      credentials: "include",
-    })
-
-    if (!res.ok) {
-      return FALLBACKS[key]
-    }
-
-    const data = corrigirEstruturaTexto((await res.json()) as SiteContentEntry)
-    return {
-      ...FALLBACKS[key],
-      ...data,
-      contentKey: data?.contentKey || key,
-      contentVersion: data?.contentVersion ?? FALLBACKS[key].contentVersion,
-      contentHash: data?.contentHash ?? FALLBACKS[key].contentHash,
-    }
-  } catch {
-    return FALLBACKS[key]
-  }
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.siteContent)
 }
 
 export async function fetchAllPublicSiteContent(): Promise<SiteContentEntry[]> {
-  try {
-    const res = await fetch(apiUrl("/site-content/public"), {
-      cache: "no-store",
-      credentials: "include",
-    })
-    if (!res.ok) return Object.values(FALLBACKS)
-    const data = await res.json()
-    return corrigirEstruturaTexto(
-      Array.isArray(data) && data.length ? data : Object.values(FALLBACKS)
-    )
-  } catch {
-    return Object.values(FALLBACKS)
-  }
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.siteContent)
 }
 
 export function getFallbackSiteContent(key: SiteContentKey) {

@@ -173,7 +173,7 @@ function isPremiumQuickVisibleCode(codigo: string | null | undefined) {
 }
 
 type PremiumQuickActiveRow = {
-  id?: number | null
+  id?: string | number | null
   codigo?: string | null
   status?: string | null
   podeDesativar?: boolean | null
@@ -186,8 +186,8 @@ type PremiumQuickCatalogRow = {
   duracaoHoras?: number | null
 }
 
-const premiumQuickDetailCache = new Map<number, Record<string, unknown>>()
-const premiumQuickDetailPromises = new Map<number, Promise<Record<string, unknown>>>()
+const premiumQuickDetailCache = new Map<string, Record<string, unknown>>()
+const premiumQuickDetailPromises = new Map<string, Promise<Record<string, unknown>>>()
 
 function premiumActiveRows(detail: Record<string, unknown> | null): PremiumQuickActiveRow[] {
   const value = detail?.beneficiosAtivos
@@ -199,31 +199,32 @@ function premiumCatalogRows(detail: Record<string, unknown> | null): PremiumQuic
   return Array.isArray(value) ? (value as PremiumQuickCatalogRow[]).filter((row) => isPremiumQuickVisibleCode(row.codigo)) : []
 }
 
-async function loadPremiumQuickDetail(anuncioId: number, force = false): Promise<Record<string, unknown>> {
+async function loadPremiumQuickDetail(anuncioId: string | number, force = false): Promise<Record<string, unknown>> {
+  const cacheKey = String(anuncioId)
   if (!force) {
-    const cached = premiumQuickDetailCache.get(anuncioId)
+    const cached = premiumQuickDetailCache.get(cacheKey)
     if (cached) return cached
-    const pending = premiumQuickDetailPromises.get(anuncioId)
+    const pending = premiumQuickDetailPromises.get(cacheKey)
     if (pending) return pending
   }
   const pending = fetchPremiumAnuncioDetailAdmin(anuncioId)
     .then((detail) => {
-      premiumQuickDetailCache.set(anuncioId, detail)
+      premiumQuickDetailCache.set(cacheKey, detail)
       return detail
     })
     .finally(() => {
-      premiumQuickDetailPromises.delete(anuncioId)
+      premiumQuickDetailPromises.delete(cacheKey)
     })
-  premiumQuickDetailPromises.set(anuncioId, pending)
+  premiumQuickDetailPromises.set(cacheKey, pending)
   return pending
 }
 
-function notifyPremiumQuickUpdated(anuncioId: number) {
+function notifyPremiumQuickUpdated(anuncioId: string | number) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('moderacao-v2-premium-quick-updated', { detail: { anuncioId } }))
 }
 
-function PremiumQuickActions({ anuncioId, disabled }: { anuncioId: number; disabled?: boolean | null }) {
+function PremiumQuickActions({ anuncioId, disabled }: { anuncioId: string | number; disabled?: boolean | null }) {
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [actionCode, setActionCode] = useState<string | null>(null)
@@ -248,9 +249,9 @@ function PremiumQuickActions({ anuncioId, disabled }: { anuncioId: number; disab
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const payload = (event as CustomEvent<{ anuncioId?: number; force?: boolean }>).detail
-      if (payload?.anuncioId !== anuncioId) return
-      const cached = premiumQuickDetailCache.get(anuncioId)
+      const payload = (event as CustomEvent<{ anuncioId?: string | number; force?: boolean }>).detail
+      if (String(payload?.anuncioId) !== String(anuncioId)) return
+      const cached = premiumQuickDetailCache.get(String(anuncioId))
       if (cached) setDetail(cached)
       if (payload?.force) {
         void refresh(true)
@@ -295,11 +296,11 @@ function PremiumQuickActions({ anuncioId, disabled }: { anuncioId: number; disab
           )
           if (!confirmar) return
         }
-        const next = await desativarPremiumBeneficioAdmin(Number(active.id), {
+        const next = await desativarPremiumBeneficioAdmin(active.id, {
           motivo: 'Desativação manual — moderação v2',
           observacaoInterna: 'Atalho rápido da lista de moderação v2',
         })
-        premiumQuickDetailCache.set(anuncioId, next)
+        premiumQuickDetailCache.set(String(anuncioId), next)
         setDetail(next)
         notifyPremiumQuickUpdated(anuncioId)
         toast.success(`${codigo} desativado.`)
@@ -311,7 +312,7 @@ function PremiumQuickActions({ anuncioId, disabled }: { anuncioId: number; disab
         ...(codigo === 'ANUNCIO_TOPO' && catalogItem?.duracaoHoras ? { duracaoHoras: catalogItem.duracaoHoras } : {}),
         observacaoInterna: 'Atalho rápido da lista de moderação v2',
       })
-      premiumQuickDetailCache.set(anuncioId, next)
+      premiumQuickDetailCache.set(String(anuncioId), next)
       setDetail(next)
       notifyPremiumQuickUpdated(anuncioId)
       toast.success(`${codigo} ativado.`)
@@ -396,7 +397,7 @@ export function ModeracaoV2List() {
   const [sortBy, setSortBy] = useState<ModerationListSort>('recent')
   const [pageSize, setPageSize] = useState(30)
   const [page, setPage] = useState(1)
-  const [premiumDrilldownIds, setPremiumDrilldownIds] = useState<Set<number> | null>(null)
+  const [premiumDrilldownIds, setPremiumDrilldownIds] = useState<Set<string> | null>(null)
   const [premiumDrilldownLoading, setPremiumDrilldownLoading] = useState(false)
   const [premiumDrilldownError, setPremiumDrilldownError] = useState<string | null>(null)
 
@@ -412,14 +413,12 @@ export function ModeracaoV2List() {
     try {
       const [staff, revs] = await Promise.all([
         fetchStaffAnunciosList(),
-        fetchStaffRevisions().catch(() => [] as ModerationRevisionQueueItem[]),
+        fetchStaffRevisions(),
       ])
-      setRows(Array.isArray(staff) ? staff : [])
-      setRevisionQueue(Array.isArray(revs) ? revs : [])
+      setRows(staff)
+      setRevisionQueue(revs)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar.')
-      setRows([])
-      setRevisionQueue([])
     } finally {
       setLoading(false)
     }
@@ -443,7 +442,7 @@ export function ModeracaoV2List() {
       try {
         const ads = await fetchPremiumBenefitsDashboardAds(premiumApiFilter)
         if (cancelled) return
-        setPremiumDrilldownIds(new Set(ads.map((a) => Number(a.id)).filter(Number.isFinite)))
+        setPremiumDrilldownIds(new Set(ads.map((a) => String(a.id))))
       } catch {
         if (!cancelled) {
           setPremiumDrilldownIds(null)
@@ -471,7 +470,7 @@ export function ModeracaoV2List() {
   }, [filter, busca, pageSize, sortBy, strategicFiltro, cidadeQuery, premiumDrilldownIds, searchParamsKey])
 
   const revisionAnuncioIds = useMemo(
-    () => new Set(revisionQueue.map((q) => Number(q.anuncioId)).filter(Number.isFinite)),
+    () => new Set(revisionQueue.map((q) => String(q.anuncioId))),
     [revisionQueue]
   )
 
@@ -516,12 +515,8 @@ export function ModeracaoV2List() {
     const afterOperational = list.length
 
     if (premiumApiFilter) {
-      if (premiumDrilldownError) {
-        list = []
-      } else if (premiumDrilldownIds) {
-        list = list.filter((r) => premiumDrilldownIds.has(r.id))
-      } else {
-        list = []
+      if (!premiumDrilldownError && premiumDrilldownIds) {
+        list = list.filter((r) => premiumDrilldownIds.has(String(r.id)))
       }
     } else if (strategicFiltro === 'alto-trafego') {
       list = list.filter((r) => matchesStrategicAltoTrafego(r.visualizacoes))
@@ -571,7 +566,7 @@ export function ModeracaoV2List() {
     [filtered, page, pageSize]
   )
 
-  const openDetail = (id: number) => {
+  const openDetail = (id: string | number) => {
     const href = `/admin/moderacao-v2${searchParamsKey ? `?${searchParamsKey}` : ''}`
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem(
@@ -848,7 +843,7 @@ export function ModeracaoV2List() {
                           <p className="truncate text-xs leading-tight text-gray-500">
                             @{r.usernameAnunciante || '—'}
                           </p>
-                          {revisionAnuncioIds.has(r.id) ? (
+                          {revisionAnuncioIds.has(String(r.id)) ? (
                             <p className="mt-0.5 text-[10px] font-medium leading-tight text-amber-800">
                               Revisão pendente
                             </p>
@@ -934,7 +929,7 @@ export function ModeracaoV2List() {
                     </div>
                   </div>
                 </div>
-                {revisionAnuncioIds.has(r.id) ? (
+                {revisionAnuncioIds.has(String(r.id)) ? (
                   <p className="mt-2 text-[10px] font-medium text-amber-800">Revisão pendente</p>
                 ) : null}
                 <div className="mt-2">

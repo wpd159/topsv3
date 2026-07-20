@@ -2,18 +2,16 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
-  useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
-import SockJS from 'sockjs-client'
-import { Client, type IMessage } from '@stomp/stompjs'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import { getPublicSession, logoutPublic, type PublicAuthUser } from '@/lib/public-auth-api'
 import { logoutAdmin } from '@/lib/admin-auth-api'
+import { adminApiUrl } from '@/lib/api-contract'
 
 type Usuario = {
   id: string | number
@@ -47,7 +45,7 @@ type AuthContextType = {
   carregando: boolean
 
   // 🔔 chat badge
-  novasMensagens: number
+  novasMensagens: number | null
   zerarNovasMensagens: () => void
 
   login: () => Promise<Usuario | null>
@@ -86,18 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [carregando, setCarregando] = useState(true)
 
   // 🔔 badge de mensagens
-  const [novasMensagens, setNovasMensagens] = useState(0)
-  const zerarNovasMensagens = () => setNovasMensagens(0)
-
-  // refs
-  const stompRef = useRef<Client | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  // cria áudio 1x
-  useEffect(() => {
-    audioRef.current = new Audio('/notification_sound.mp3')
-    audioRef.current.preload = 'auto'
-  }, [])
+  const [novasMensagens, setNovasMensagens] = useState<number | null>(null)
+  const zerarNovasMensagens = useCallback(() => setNovasMensagens(null), [])
 
   // ========== GET /auth/me ==========
   const fetchUsuario = async (): Promise<Usuario | null> => {
@@ -114,9 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return nextUser
       }
 
-      const publicBase = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-      const backendBase = publicBase.replace(/\/api\/public$/, '')
-      const res = await fetch(`${backendBase}/api/admin/auth/me`, { credentials: 'include' })
+      const res = await fetch(adminApiUrl('/auth/me'), { credentials: 'include' })
 
       if (res.status === 401) {
         setUsuario(null)
@@ -195,9 +181,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await logoutPublic()
     }
     setUsuario(null)
-    setNovasMensagens(0)
-    if (stompRef.current?.active) stompRef.current.deactivate()
-    stompRef.current = null
+    setNovasMensagens(null)
   }
 
   const refresh = async () => {
@@ -207,72 +191,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchUsuario()
   }, [])
-
-  // ========= WEBSOCKET (centralizado: créditos + chat) =========
-  const wsUrl = useMemo(() => {
-    const base = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-    return `${base}/ws-suporte`
-  }, [])
-
-  useEffect(() => {
-    // se não tem usuário, garante que a conexão morra
-    if (!usuario?.id) {
-      if (stompRef.current?.active) stompRef.current.deactivate()
-      stompRef.current = null
-      setNovasMensagens(0)
-      return
-    }
-
-    // se já está ativo com esse usuário, não recria
-    if (stompRef.current?.active) return
-
-    const client = new Client({
-      webSocketFactory: () => new SockJS(wsUrl),
-      reconnectDelay: 5000,
-      onConnect: () => {
-        // 1) Créditos
-        client.subscribe(`/topic/creditos/${usuario.id}`, (message: IMessage) => {
-          try {
-            const payload = JSON.parse(message.body) as {
-              usuarioId?: number
-              novoSaldo?: number
-            }
-
-            if (typeof payload?.novoSaldo === 'number') {
-              const novoSaldo = payload.novoSaldo
-              setUsuario((prev) => (prev ? { ...prev, creditos: novoSaldo } : prev))
-            }
-          } catch (e) {
-          }
-        })
-
-        // 2) Chat global -> badge só pro destinatário logado
-        client.subscribe(`/topic/chat/global`, (message: IMessage) => {
-          try {
-            const data = JSON.parse(message.body) as {
-              destinatarioId?: number
-            }
-
-            if (data?.destinatarioId === usuario.id) {
-              setNovasMensagens((prev) => prev + 1)
-              audioRef.current?.play().catch(() => null)
-            }
-          } catch (e) {
-          }
-        })
-      },
-      onStompError: (frame) => {
-      },
-    })
-
-    client.activate()
-    stompRef.current = client
-
-    return () => {
-      if (stompRef.current?.active) stompRef.current.deactivate()
-      stompRef.current = null
-    }
-  }, [usuario?.id, wsUrl])
 
   return (
     <AuthContext.Provider

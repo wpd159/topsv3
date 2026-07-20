@@ -11,6 +11,7 @@ import { FavoritoButton } from "@/components/anuncios/favorito-button"
 import { selecionarGaleriaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
 import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
+import { publicApiUrl } from "@/lib/api-contract"
 import {
   MapPinIcon,
   ChatBubbleLeftIcon,
@@ -108,7 +109,6 @@ export function AnuncioCard({
   previewMode = false,
 }: AnuncioCardProps) {
   const router = useRouter()
-  const API = process.env.NEXT_PUBLIC_API_URL
   const { openWhatsAppWarning } = useWhatsAppSafety()
 
   const localizacaoLabel = useMemo(() => {
@@ -215,13 +215,8 @@ export function AnuncioCard({
       })
     }
 
-    if (!API) {
-      toast.error("Contato indisponível no momento.")
-      return
-    }
-
     try {
-      const res = await fetch(`${API}/api/public/anuncios/${encodeURIComponent(slugRota)}/clique-whatsapp`, {
+      const res = await fetch(publicApiUrl(`/anuncios/${encodeURIComponent(slugRota)}/clique-whatsapp`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

@@ -1,5 +1,7 @@
 "use client"
 
+import { apiErrorFromResponse, publicApiUrl } from '@/lib/api-contract'
+
 export type StatusVisitante = {
   verified: boolean
   level?: string | null
@@ -221,16 +223,25 @@ function persistStatusMirror(status: StatusVisitante) {
 }
 
 function refreshStatusFromApi(): Promise<StatusVisitante> {
-  const pending = fetch(`${process.env.NEXT_PUBLIC_API_URL}/compliance/visitor/status`, {
+  const pending = fetch(publicApiUrl('/idade/status'), {
     credentials: "include",
     cache: "no-store",
   })
     .then(async (res) => {
       if (!res.ok) {
-        throw new Error("Falha ao consultar o status de verificação do visitante.")
+        throw await apiErrorFromResponse(res)
       }
 
-      const data = (await res.json()) as StatusVisitante
+      const response = (await res.json()) as {
+        confirmada: boolean
+        expiraEm?: string | null
+      }
+      const data: StatusVisitante = {
+        verified: response.confirmada,
+        expiresAt: response.expiraEm ?? null,
+        explicitVerified: response.confirmada,
+        explicitExpiresAt: response.expiraEm ?? null,
+      }
       cacheStatus = data
       cacheExpiraEm = Date.now() + TTL_CACHE_MS
       persistStatusMirror(data)

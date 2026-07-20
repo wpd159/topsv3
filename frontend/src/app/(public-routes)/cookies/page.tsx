@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { fetchPublicSiteContent, getFallbackSiteContent } from "@/lib/site-content"
+import { ContractState } from '@/components/feedback/contract-state'
 
 type ConsentState = {
   necessary: boolean
@@ -77,6 +78,7 @@ export default function CookiesPage() {
   const [consent, setConsent] = useState<ConsentState>(defaultConsent)
   const [loaded, setLoaded] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [contentError, setContentError] = useState<unknown>(null)
   const lastUpdated = useMemo(() => "22/03/2026", [])
 
   useEffect(() => {
@@ -100,14 +102,16 @@ export default function CookiesPage() {
   }, [])
 
   useEffect(() => {
+    setContentError(null)
     fetchPublicSiteContent("politica-cookies")
       .then((entry) => {
         setContentTitle(entry.titulo || fallback.titulo)
         setContentBody(entry.corpo || fallback.corpo)
       })
-      .catch(() => {
+      .catch((error) => {
         setContentTitle(fallback.titulo)
         setContentBody(fallback.corpo)
+        setContentError(error)
       })
   }, [fallback.corpo, fallback.titulo])
 
@@ -133,6 +137,7 @@ export default function CookiesPage() {
             <p key={`cookies-copy-${index}`}>{paragraph}</p>
           ))}
         </div>
+        {contentError ? <div className="mt-4"><ContractState error={contentError} compact /></div> : null}
       </div>
 
       <Card className="mb-8">

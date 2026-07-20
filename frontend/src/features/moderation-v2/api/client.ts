@@ -1,3 +1,10 @@
+import {
+  BackendContractPendingError,
+  PENDING_BACKEND_CONTRACTS,
+  adminApiUrl,
+  apiErrorFromResponse,
+  requireArrayPayload,
+} from '@/lib/api-contract'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import type {
   AdminAuditLogItem,
@@ -11,128 +18,56 @@ import type {
   VisitorVerificationAuditItem,
 } from './types'
 
-function apiBase() {
-  const base = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-  if (!base) throw new Error('NEXT_PUBLIC_API_URL não configurado.')
-  return base
+type ResourceId = string | number
+
+type AdminPage<T> = {
+  itens: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  last: boolean
 }
 
-function adminApiUrl(path: string) {
-  const backendRoot = apiBase().replace(/\/api\/public$/, '')
-  return `${backendRoot}/api/admin${path}`
+type CanonicalLocation = { uf?: string | null; cidade?: string | null; bairro?: string | null }
+
+type CanonicalAdminAd = {
+  id: string
+  slug: string
+  titulo: string
+  descricaoResumo?: string | null
+  status: string
+  statusModeracao: string
+  categoria?: string | null
+  localizacao?: CanonicalLocation | null
+  criadoEm: string
+  atualizadoEm?: string | null
+  publicadoEm?: string | null
+  ultimaPublicacaoEm?: string | null
+  midiasTotal?: number | null
+  revisoesTotal?: number | null
+  contatoConfigurado?: boolean
+  documentoPendente?: boolean
+  precoInformado?: boolean
+  comercialLimitado?: boolean
 }
 
-export async function fetchStaffAnunciosList(): Promise<ModerationStaffListItem[]> {
-  const res = await fetch(`${apiBase()}/anuncios/staff`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`Falha ao carregar lista (${res.status})`)
-  const data = await res.json()
-  return corrigirEstruturaTexto(Array.isArray(data) ? data : [])
+type CanonicalRevision = {
+  id: string
+  anuncioId: string
+  slugAnuncio: string
+  tipo: string
+  status: string
+  conteudoSolicitadoPresente: boolean
+  criadoEm: string
+  finalizadoEm?: string | null
+  somenteLeitura?: boolean
 }
 
-/** Fila oficial de moderação (revisões PENDENTE / EM_REVISAO) — não reinventar no cliente. */
-export async function fetchStaffRevisions(): Promise<ModerationRevisionQueueItem[]> {
-  const res = await fetch(`${apiBase()}/anuncios/staff/revisions`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`Falha ao carregar fila de revisões (${res.status})`)
-  const data = await res.json()
-  return corrigirEstruturaTexto(Array.isArray(data) ? data : [])
-}
-
-export async function fetchStaffAnuncioDetail(id: number): Promise<ModerationAnuncioDetail> {
-  const res = await fetch(`${apiBase()}/anuncios/staff/${id}`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  if (!res.ok) throw new Error(`Falha ao carregar anúncio (${res.status})`)
-  return corrigirEstruturaTexto(await res.json()) as ModerationAnuncioDetail
-}
-
-export async function fetchStaffRevision(id: number): Promise<ModerationRevisionDetail | null> {
-  const res = await fetch(`${apiBase()}/anuncios/staff/${id}/revision`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  if (res.status === 204) return null
-  if (!res.ok) return null
-  return corrigirEstruturaTexto(await res.json()) as ModerationRevisionDetail
-}
-
-export function notifyModerationDataUpdated() {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent('admin-revisions-updated'))
-}
-
-export async function approveAnuncioApi(
-  id: number,
-  reason: string
-): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/anuncios/${id}/aprovar`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Aprovação falhou (${res.status})`)
-  }
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
-}
-
-export async function rejectAnuncioApi(id: number, justificativa: string): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/anuncios/${id}/rejeitar`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ justificativa }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Rejeição falhou (${res.status})`)
-  }
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
-}
-
-export async function alterarStatusStaffApi(
-  id: number,
-  status: 'ATIVO' | 'PAUSADO' | 'REJEITADO',
-  justificativa?: string
-): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/anuncios/staff/${id}/status`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status, justificativa: justificativa ?? '' }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Status falhou (${res.status})`)
-  }
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
-}
-
-export async function decidirMidiaApi(
-  id: string | number,
-  acao: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE',
-  visibilidadeMidia?: 'LIVRE' | 'RESTRITA_18',
-  motivo?: string
-): Promise<Record<string, unknown>> {
-  const res = await fetch(adminApiUrl(`/midias/${encodeURIComponent(String(id))}/decidir`), {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ acao, visibilidadeMidia, motivo: motivo?.trim() || undefined }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Decisão de mídia falhou (${res.status})`)
-  }
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
+function requestId() {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `admin-${Date.now()}`
 }
 
 function csrfCookieName() {
@@ -150,7 +85,7 @@ function readCsrfValue() {
   return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
 }
 
-async function adminWriteHeaders() {
+async function adminWriteHeaders(extra?: Record<string, string>) {
   let value = readCsrfValue()
   if (!value) {
     await fetch(adminApiUrl('/auth/me'), { credentials: 'include', cache: 'no-store' })
@@ -159,7 +94,183 @@ async function adminWriteHeaders() {
   return {
     'Content-Type': 'application/json',
     ...(value ? { [csrfHeaderName()]: value } : {}),
+    ...extra,
   }
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  if (!response.ok) throw await apiErrorFromResponse(response)
+  return corrigirEstruturaTexto(await response.json()) as T
+}
+
+function requirePage<T>(payload: unknown): AdminPage<T> {
+  if (!payload || typeof payload !== 'object') throw new Error('Resposta administrativa incompativel.')
+  const page = payload as Partial<AdminPage<T>>
+  return { ...page, itens: requireArrayPayload<T>(page.itens) } as AdminPage<T>
+}
+
+function isOpenRevision(status: string) {
+  return ['PENDENTE', 'EM_ANALISE', 'EM_REVISAO'].includes((status || '').toUpperCase())
+}
+
+function mapAdList(item: CanonicalAdminAd): ModerationStaffListItem {
+  return {
+    id: item.id,
+    titulo: item.titulo,
+    usernameAnunciante: '',
+    status: item.status,
+    dataCriacao: item.criadoEm,
+    pendingRevision: isOpenRevision(item.statusModeracao),
+    pendingRevisionStatus: item.statusModeracao,
+    removidoLogicamente: false,
+    cidadeNome: item.localizacao?.cidade ?? null,
+  }
+}
+
+function mapAdDetail(item: CanonicalAdminAd): ModerationAnuncioDetail {
+  return {
+    id: item.id,
+    titulo: item.titulo,
+    descricao: item.descricaoResumo ?? null,
+    categoria: item.categoria ?? null,
+    status: item.status,
+    slug: item.slug,
+    estadoUf: item.localizacao?.uf ?? null,
+    cidadeNome: item.localizacao?.cidade ?? null,
+    bairroNome: item.localizacao?.bairro ?? null,
+    localizacaoLabel: [item.localizacao?.bairro, item.localizacao?.cidade, item.localizacao?.uf]
+      .filter(Boolean)
+      .join(' - '),
+    pendingRevision: isOpenRevision(item.statusModeracao),
+    pendingRevisionStatus: item.statusModeracao,
+    dataCriacao: item.criadoEm,
+    dataCriacaoIso: item.criadoEm,
+  }
+}
+
+function mapRevisionList(item: CanonicalRevision): ModerationRevisionQueueItem {
+  return {
+    revisionId: item.id,
+    anuncioId: item.anuncioId,
+    anuncioTitulo: item.slugAnuncio,
+    status: item.status,
+    source: item.tipo,
+    submittedAt: item.criadoEm,
+  }
+}
+
+export async function fetchStaffAnunciosList(): Promise<ModerationStaffListItem[]> {
+  const response = await fetch(adminApiUrl('/anuncios?page=0&size=100'), {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  const page = requirePage<CanonicalAdminAd>(await readJson(response))
+  return page.itens.map(mapAdList)
+}
+
+export async function fetchStaffRevisions(): Promise<ModerationRevisionQueueItem[]> {
+  const response = await fetch(adminApiUrl('/moderacao/revisoes?page=0&size=100'), {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  const page = requirePage<CanonicalRevision>(await readJson(response))
+  return page.itens.filter((item) => isOpenRevision(item.status)).map(mapRevisionList)
+}
+
+export async function fetchStaffAnuncioDetail(id: ResourceId): Promise<ModerationAnuncioDetail> {
+  const response = await fetch(adminApiUrl(`/anuncios/${encodeURIComponent(String(id))}`), {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  return mapAdDetail(await readJson<CanonicalAdminAd>(response))
+}
+
+export async function fetchStaffRevision(id: ResourceId): Promise<ModerationRevisionDetail | null> {
+  const query = new URLSearchParams({ page: '0', size: '20', anuncioId: String(id) })
+  const listResponse = await fetch(adminApiUrl(`/moderacao/revisoes?${query.toString()}`), {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  const page = requirePage<CanonicalRevision>(await readJson(listResponse))
+  const selected = page.itens.find((item) => isOpenRevision(item.status))
+  if (!selected) return null
+  const detailResponse = await fetch(
+    adminApiUrl(`/moderacao/revisoes/${encodeURIComponent(selected.id)}`),
+    { credentials: 'include', cache: 'no-store' }
+  )
+  const detail = await readJson<CanonicalRevision>(detailResponse)
+  return {
+    revisionId: detail.id,
+    status: detail.status,
+    source: detail.tipo,
+    submittedAt: detail.criadoEm,
+  }
+}
+
+export function notifyModerationDataUpdated() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('admin-revisions-updated'))
+}
+
+async function decideRevision(id: ResourceId, decisao: 'APROVAR' | 'REPROVAR', motivo: string) {
+  const current = await fetchStaffRevision(id)
+  if (!current) {
+    const remeterResponse = await fetch(adminApiUrl(`/anuncios/${encodeURIComponent(String(id))}/remeter-revisao`), {
+      method: 'POST',
+      credentials: 'include',
+      headers: await adminWriteHeaders(),
+      body: JSON.stringify({ motivo, requestIdCliente: requestId() }),
+    })
+    await readJson(remeterResponse)
+  }
+  const revision = current ?? (await fetchStaffRevision(id))
+  if (!revision) throw new Error('Nao foi possivel localizar a revisao do anuncio.')
+  const response = await fetch(
+    adminApiUrl(`/moderacao/revisoes/${encodeURIComponent(String(revision.revisionId))}/decidir`),
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: await adminWriteHeaders(),
+      body: JSON.stringify({ decisao, motivo, requestIdCliente: requestId() }),
+    }
+  )
+  return readJson<Record<string, unknown>>(response)
+}
+
+export function approveAnuncioApi(id: ResourceId, reason: string) {
+  return decideRevision(id, 'APROVAR', reason)
+}
+
+export function rejectAnuncioApi(id: ResourceId, justificativa: string) {
+  return decideRevision(id, 'REPROVAR', justificativa)
+}
+
+export async function alterarStatusStaffApi(
+  _id: ResourceId,
+  _status: string,
+  _motivo?: string
+): Promise<Record<string, unknown>> {
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.moderationLegacyActions)
+}
+
+export async function decidirMidiaApi(
+  id: ResourceId,
+  decisao: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE',
+  visibilidadeMidia?: 'LIVRE' | 'RESTRITA_18',
+  motivo?: string
+): Promise<Record<string, unknown>> {
+  const response = await fetch(adminApiUrl(`/midias/${encodeURIComponent(String(id))}/decidir`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: await adminWriteHeaders(),
+    body: JSON.stringify({
+      decisao,
+      visibilidadeMidia,
+      motivo: motivo?.trim() || undefined,
+      requestIdCliente: requestId(),
+    }),
+  })
+  return readJson(response)
 }
 
 export async function fetchAdminKycQueue(): Promise<AdminKycSubmission[]> {
@@ -167,169 +278,93 @@ export async function fetchAdminKycQueue(): Promise<AdminKycSubmission[]> {
     credentials: 'include',
     cache: 'no-store',
   })
-  if (!response.ok) throw new Error(`Falha ao carregar documentos (${response.status})`)
-  const data = await response.json()
-  return corrigirEstruturaTexto(Array.isArray(data) ? data : []) as AdminKycSubmission[]
+  return requireArrayPayload<AdminKycSubmission>(await readJson(response))
 }
 
 export async function fetchAdminKycTemporaryUrl(documentId: string) {
-  const response = await fetch(
-    adminApiUrl(`/documentos/${encodeURIComponent(documentId)}/url-temporaria`),
-    { credentials: 'include', cache: 'no-store' }
-  )
-  if (!response.ok) throw new Error(`Falha ao autorizar documento (${response.status})`)
-  return (await response.json()) as { url: string; expiraEm: string }
+  const response = await fetch(adminApiUrl(`/documentos/${encodeURIComponent(documentId)}/url-temporaria`), {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  return readJson<{ url: string; expiraEm: string }>(response)
 }
 
-export async function decideAdminKyc(
-  submissionId: string,
-  decisao: AdminKycDecision,
-  motivo?: string
-) {
-  const response = await fetch(
-    adminApiUrl(`/documentos/envios/${encodeURIComponent(submissionId)}/decidir`),
-    {
-      method: 'POST',
-      credentials: 'include',
-      headers: await adminWriteHeaders(),
-      body: JSON.stringify({ decisao, motivo: motivo?.trim() || null }),
-    }
-  )
-  if (!response.ok) {
-    const message = await response.text().catch(() => '')
-    throw new Error(message || `Falha ao decidir documentos (${response.status})`)
-  }
-  return response.json() as Promise<{ envioId: string; status: string; requestId: string; revisadoEm: string }>
+export async function decideAdminKyc(submissionId: string, decisao: AdminKycDecision, motivo?: string) {
+  const response = await fetch(adminApiUrl(`/documentos/envios/${encodeURIComponent(submissionId)}/decidir`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: await adminWriteHeaders(),
+    body: JSON.stringify({ decisao, motivo: motivo?.trim() || null }),
+  })
+  return readJson<{ envioId: string; status: string; requestId: string; revisadoEm: string }>(response)
 }
 
 export async function fetchAdminMidiasV3(): Promise<ModerationMediaItem[]> {
-  const res = await fetch(adminApiUrl('/midias?page=0&size=100'), {
+  const response = await fetch(adminApiUrl('/midias?page=0&size=100'), {
     credentials: 'include',
     cache: 'no-store',
   })
-  if (!res.ok) throw new Error(`Falha ao carregar mídias (${res.status})`)
-  const data = corrigirEstruturaTexto(await res.json()) as { itens?: ModerationMediaItem[] }
-  return Array.isArray(data.itens) ? data.itens : []
+  const page = requirePage<ModerationMediaItem>(await readJson(response))
+  return page.itens
 }
 
-export async function fetchComplianceAuditForAnuncio(anuncioId: number): Promise<AdminAuditLogItem[]> {
-  const q = new URLSearchParams({
-    entityType: 'ANUNCIO',
-    entityId: String(anuncioId),
-  })
-  const res = await fetch(`${apiBase()}/admin/compliance/audit-logs?${q.toString()}`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  if (res.status === 403) throw new Error('Sem permissão para auditoria.')
-  if (!res.ok) throw new Error(`Auditoria (${res.status})`)
-  const data = await res.json()
-  return corrigirEstruturaTexto(Array.isArray(data) ? data : []) as AdminAuditLogItem[]
+export async function fetchComplianceAuditForAnuncio(_id: ResourceId): Promise<AdminAuditLogItem[]> {
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.complianceAdmin)
 }
 
 export async function fetchVisitorVerificationEventsForAnuncio(
-  anuncioId: number
+  _id: ResourceId
 ): Promise<VisitorVerificationAuditItem[]> {
-  const q = new URLSearchParams({ anuncioId: String(anuncioId) })
-  const res = await fetch(`${apiBase()}/admin/compliance/visitor-events?${q.toString()}`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  if (res.status === 403) throw new Error('Sem permissão para eventos de verificação.')
-  if (!res.ok) throw new Error(`Eventos de verificação (${res.status})`)
-  const data = await res.json()
-  return corrigirEstruturaTexto(Array.isArray(data) ? data : []) as VisitorVerificationAuditItem[]
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.complianceAdmin)
 }
 
-export async function removerAnuncioLogicamenteStaffApi(anuncioId: number, motivo: string): Promise<void> {
-  const q = new URLSearchParams()
-  if (motivo.trim()) q.set('motivo', motivo.trim())
-  const res = await fetch(`${apiBase()}/anuncios/staff/${anuncioId}?${q.toString()}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Remoção falhou (${res.status})`)
-  }
+export async function removerAnuncioLogicamenteStaffApi(
+  _id: ResourceId,
+  _motivo: string
+): Promise<void> {
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.moderationLegacyActions)
 }
 
-export async function fetchPremiumAnuncioDetailAdmin(anuncioId: number): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/admin/premium-benefits/anuncios/${anuncioId}`, {
-    credentials: 'include',
-    cache: 'no-store',
-  })
-  if (res.status === 403) throw new Error('Sem permissão (apenas administrador).')
-  if (!res.ok) throw new Error(`Benefícios (${res.status})`)
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
+export async function fetchPremiumAnuncioDetailAdmin(anuncioId: ResourceId): Promise<Record<string, unknown>> {
+  const encodedId = encodeURIComponent(String(anuncioId))
+  const [statusResponse, benefitsResponse] = await Promise.all([
+    fetch(adminApiUrl(`/premium/anuncios/${encodedId}`), { credentials: 'include', cache: 'no-store' }),
+    fetch(adminApiUrl(`/premium/anuncios/${encodedId}/beneficios`), { credentials: 'include', cache: 'no-store' }),
+  ])
+  const status = await readJson<Record<string, unknown>>(statusResponse)
+  const benefits = requireArrayPayload<Record<string, unknown>>(await readJson(benefitsResponse))
+  const active = benefits.filter((item) => ['ATIVO', 'AGENDADO'].includes(String(item.statusCalculado)))
+  const expired = benefits.filter((item) => String(item.statusCalculado) === 'EXPIRADO')
+  return { ...status, beneficiosAtivos: active, beneficiosExpirados: expired, historico: [] }
 }
 
-export async function removerFotosStaffApi(anuncioId: number, fotosParaRemover: string[]): Promise<void> {
-  const res = await fetch(`${apiBase()}/anuncios/staff/${anuncioId}/fotos/remover`, {
-    method: 'PUT',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fotosParaRemover }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Remoção de fotos falhou (${res.status})`)
-  }
+export async function removerFotosStaffApi(_id: ResourceId, _urls: string[]): Promise<void> {
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.moderationLegacyActions)
 }
 
 export async function removerMidiaRevisaoStaffApi(
-  anuncioId: number,
-  mediaItemId: number
+  _id: ResourceId,
+  _mediaId: ResourceId
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/anuncios/staff/${anuncioId}/revision/media/${mediaItemId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Remoção de mídia da revisão falhou (${res.status})`)
-  }
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.moderationLegacyActions)
 }
 
 export async function ativarPremiumBeneficioAdmin(
-  anuncioId: number,
-  body: { codigo: string; motivo?: string; observacaoInterna?: string }
+  _anuncioId: ResourceId,
+  _body: { codigo: string; observacaoInterna?: string }
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/admin/premium-benefits/anuncios/${anuncioId}/ativar`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      codigo: body.codigo,
-      motivo: body.motivo ?? 'Ativação manual — moderação v2',
-      observacaoInterna: body.observacaoInterna ?? '',
-    }),
-  })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Ativação falhou (${res.status})`)
-  }
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
+  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.premiumLegacyDashboard)
 }
 
-/** Id da ativação (ou id sintético negativo para destaque manual — mesmo contrato do backend). */
 export async function desativarPremiumBeneficioAdmin(
-  ativacaoId: number,
+  ativacaoId: ResourceId,
   body?: { motivo?: string; observacaoInterna?: string }
 ): Promise<Record<string, unknown>> {
-  const res = await fetch(`${apiBase()}/admin/premium-benefits/ativacoes/${ativacaoId}/desativar`, {
+  const response = await fetch(adminApiUrl(`/premium/ativacoes/${encodeURIComponent(String(ativacaoId))}/cancelar`), {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      motivo: body?.motivo ?? 'Desativação manual — moderação v2',
-      observacaoInterna: body?.observacaoInterna ?? '',
-    }),
+    headers: await adminWriteHeaders({ 'Idempotency-Key': requestId() }),
+    body: JSON.stringify({ motivo: body?.motivo || 'Cancelamento administrativo' }),
   })
-  if (!res.ok) {
-    const t = await res.text().catch(() => '')
-    throw new Error(t || `Desativação falhou (${res.status})`)
-  }
-  return corrigirEstruturaTexto(await res.json()) as Record<string, unknown>
+  return readJson(response)
 }

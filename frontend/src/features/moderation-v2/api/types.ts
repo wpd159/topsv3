@@ -1,7 +1,7 @@
-/** Fila de revisões — espelha `AnuncioRevisionQueueItemDTO` (GET /anuncios/staff/revisions) */
+/** Fila de revisões — espelha o DTO administrativo canônico de revisões. */
 export type ModerationRevisionQueueItem = {
-  revisionId: number
-  anuncioId: number
+  revisionId: string | number
+  anuncioId: string | number
   anuncioTitulo?: string | null
   usernameAnunciante?: string | null
   status: string
@@ -12,13 +12,13 @@ export type ModerationRevisionQueueItem = {
 
 /** Lista staff — espelha `AnuncioStaffResponseDTO` */
 export type ModerationStaffListItem = {
-  id: number
+  id: string | number
   titulo: string
   usernameAnunciante: string
   status: string
   dataCriacao: string
   pendingRevision?: boolean | null
-  pendingRevisionId?: number | null
+  pendingRevisionId?: string | number | null
   pendingRevisionStatus?: string | null
   removidoLogicamente?: boolean | null
   visualizacoes?: number | null
@@ -30,7 +30,7 @@ export type ModerationStaffListItem = {
 }
 
 export type ModerationAnuncioDetail = {
-  id: number
+  id: string | number
   usuarioId?: number | null
   titulo?: string | null
   username?: string | null
@@ -49,7 +49,7 @@ export type ModerationAnuncioDetail = {
   fotosUrl?: string[] | null
   videosUrl?: string[] | null
   pendingRevision?: boolean | null
-  pendingRevisionId?: number | null
+  pendingRevisionId?: string | number | null
   pendingRevisionStatus?: string | null
   estadoId?: number | null
   estadoNome?: string | null
@@ -135,7 +135,7 @@ export type ModerationRevisionChange = {
 }
 
 export type ModerationRevisionDetail = {
-  revisionId: number
+  revisionId: string | number
   status: string
   source: string
   submittedByEmail?: string | null

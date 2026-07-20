@@ -1,5 +1,11 @@
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import type { MidiaPublica } from '@/lib/media/public-media'
+import {
+  ApiContractError,
+  apiErrorFromResponse,
+  publicApiUrl,
+  requireArrayPayload,
+} from '@/lib/api-contract'
 
 export class PublicCatalogApiError extends Error {
   status: number
@@ -12,7 +18,10 @@ export class PublicCatalogApiError extends Error {
 }
 
 export function isPublicCatalogNotFound(error: unknown) {
-  return error instanceof PublicCatalogApiError && (error.status === 400 || error.status === 404)
+  return (
+    (error instanceof PublicCatalogApiError || error instanceof ApiContractError) &&
+    (error.status === 400 || error.status === 404)
+  )
 }
 
 export type PublicCatalogLocation = {
@@ -236,21 +245,13 @@ type RawCityAggregate = {
   cidadesRelacionadas: PublicCatalogCity[]
 }
 
-function apiBase() {
-  const base = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '')
-  if (!base) {
-    throw new PublicCatalogApiError('NEXT_PUBLIC_API_URL nao configurado para o catalogo publico.', 500)
-  }
-  return base
-}
-
 async function requestJson<T>(path: string, init: RequestInit = {}) {
-  const response = await fetch(`${apiBase()}${path}`, {
+  const response = await fetch(publicApiUrl(path), {
     ...init,
     credentials: 'include',
   })
   if (!response.ok) {
-    throw new PublicCatalogApiError(`Falha no contrato publico ${path}: HTTP ${response.status}.`, response.status)
+    throw await apiErrorFromResponse(response)
   }
   return corrigirEstruturaTexto(await response.json()) as T
 }
@@ -415,7 +416,8 @@ export async function listarAnunciosPublicos(
 }
 
 export async function listarCategoriasHomePublicas() {
-  return requestJson<PublicHomeCategory[]>('/categorias-home', homeCategoriesCached)
+  const payload = await requestJson<unknown>('/categorias-home', homeCategoriesCached)
+  return requireArrayPayload<PublicHomeCategory>(payload)
 }
 
 export async function descobrirLocalidadesPublicas() {

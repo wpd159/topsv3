@@ -91,8 +91,6 @@ export class MeusAnunciosApiError extends Error {
   }
 }
 
-const API = (process.env.NEXT_PUBLIC_API_URL || '/api/public').replace(/\/$/, '')
-
 function csrfCookieName() {
   return ['XSRF', 'TOKEN'].join('-')
 }
@@ -111,7 +109,7 @@ function readCsrfValue() {
 }
 
 async function bootstrapCsrfValue() {
-  await fetch(`${API}/auth/me`, {
+  await fetch(publicApiUrl('/auth/me'), {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
@@ -129,7 +127,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (csrfValue) headers.set(csrfHeaderName(), csrfValue)
   }
 
-  const response = await fetch(`${API}${path}`, {
+  const response = await fetch(publicApiUrl(path), {
     ...init,
     method,
     credentials: 'include',
@@ -187,7 +185,7 @@ export async function enviarMinhaMidia(
   const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
   return new Promise<MinhasMidiasResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `${API}/minha-conta/anuncios/${encodeURIComponent(slug)}/midias`)
+    xhr.open('POST', publicApiUrl(`/minha-conta/anuncios/${encodeURIComponent(slug)}/midias`))
     xhr.withCredentials = true
     xhr.setRequestHeader('Accept', 'application/json')
     if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
@@ -235,3 +233,4 @@ export function removerMinhaMidia(slug: string, midiaId: string) {
     { method: 'DELETE' }
   )
 }
+import { publicApiUrl } from '@/lib/api-contract'

@@ -1,837 +1,262 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import { toast } from 'sonner'
+import { useState } from 'react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+
+import {
+  ContractState,
+  PendingActionFeedback,
+  usePendingContractActions,
+} from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  ArrowLeftIcon,
-  BanknotesIcon,
-  CalendarIcon,
-  ChatBubbleLeftRightIcon,
-  ClipboardDocumentListIcon,
-  EnvelopeIcon,
-  ExclamationTriangleIcon,
-  FolderOpenIcon,
-  MapPinIcon,
-  PencilSquareIcon,
-  PhoneIcon,
-  PowerIcon,
-  TicketIcon,
-  TrashIcon,
-  UserIcon,
-} from '@heroicons/react/24/solid'
-import AnunciosDoUsuarioTable from '../../components/anuncios-do-usuario-table'
-import AdicionarCreditosDialog from '../../components/adicionar-creditos-dialog'
-import TicketDetailsModal from '../../components/ticket-details-modal'
-import {
-  type AdminUsuarioDetalhes,
-  buildWhatsAppUrl,
-  formatarCodigoBeneficio,
-  formatarDataBR,
-  formatarDataHoraBR,
-  formatarLocalUsuario,
-  formatarTelefoneExibicao,
-  getTipoUsuarioMeta,
-  getUsuarioHandle,
-  getUsuarioNomePrincipal,
-} from '../../components/admin-usuarios-utils'
-import { formatCPF } from '@/utils/formatter'
-import { useAuth } from '@/context/AuthContext'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
+import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
 
-type TicketResumo = {
-  id: number
-  assunto: string
-  status: string
-  criadoEm?: string | null
-  ultimaInteracao?: string | null
-  atendente?: string | null
-}
+type Confirmation = 'status' | 'two-factor' | 'delete' | null
 
-type QuickFilterState = {
-  status: string | null
-  beneficio: string | null
-}
+const DETAIL_FIELDS = [
+  'Nome completo',
+  'Nome de usuário',
+  'E-mail',
+  'Telefone',
+  'CPF',
+  'Data de nascimento',
+  'Localização',
+  'Cadastro',
+]
 
-async function readApiError(response: Response, fallback: string) {
-  const raw = await response.text().catch(() => '')
-  if (!raw.trim()) return fallback
-  try {
-    const parsed = JSON.parse(raw) as { error?: string; message?: string }
-    return String(parsed.error || parsed.message || '').trim() || fallback
-  } catch {
-    return raw.trim() || fallback
-  }
-}
-
-function getTicketBadgeClass(status?: string | null) {
-  switch ((status || '').toUpperCase()) {
-    case 'ABERTO':
-      return 'border-amber-300 bg-amber-100 text-amber-700'
-    case 'EM_ANDAMENTO':
-      return 'border-blue-300 bg-blue-100 text-blue-700'
-    case 'ENCERRADO':
-    case 'FECHADO':
-      return 'border-gray-300 bg-gray-100 text-gray-700'
-    default:
-      return 'border-gray-300 bg-gray-100 text-gray-700'
-  }
-}
-
-export default function DetalhesUsuarioPage() {
-  const params = useParams()
-  const router = useRouter()
-  const { usuario: usuarioLogado } = useAuth()
-
-  const userId = useMemo(() => {
-    const raw = (params?.id ?? '') as string | string[]
-    return Array.isArray(raw) ? raw[0] : raw
-  }, [params?.id])
-
-  const [usuario, setUsuario] = useState<AdminUsuarioDetalhes | null>(null)
-  const [tickets, setTickets] = useState<TicketResumo[]>([])
-  const [ticketsLoading, setTicketsLoading] = useState(true)
-  const [loading, setLoading] = useState(true)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [twoFactorResetOpen, setTwoFactorResetOpen] = useState(false)
-  const [resettingTwoFactor, setResettingTwoFactor] = useState(false)
-  const [creditoOpen, setCreditoOpen] = useState(false)
-  const [ticketOpen, setTicketOpen] = useState(false)
-  const [ticketSelecionado, setTicketSelecionado] = useState<TicketResumo | null>(null)
-  const [quickFilter, setQuickFilter] = useState<QuickFilterState>({ status: null, beneficio: null })
-
-  const rolarParaAnuncios = () => {
-    window.setTimeout(() => {
-      document.getElementById('anuncios')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 50)
-  }
-
-  const abrirAnuncios = (nextFilter: Partial<QuickFilterState> = {}) => {
-    setQuickFilter({
-      status: nextFilter.status ?? null,
-      beneficio: nextFilter.beneficio ?? null,
-    })
-    rolarParaAnuncios()
-  }
-
-  const atualizarSaldoUsuario = (novoSaldo: number) => {
-    setUsuario((prev) => (prev ? { ...prev, totalCreditos: novoSaldo } : prev))
-  }
-
-  const carregarUsuario = async () => {
-    if (!userId) return
-
-    try {
-      setLoading(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/${userId}`, {
-        credentials: 'include',
-      })
-
-      if (!res.ok) {
-        throw new Error(await readApiError(res, 'Erro ao carregar detalhes do usuário.'))
-      }
-
-      const data = await res.json()
-      setUsuario(data)
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : 'Erro ao carregar detalhes do usuário.'
-      toast.error(message)
-      setUsuario(null)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const carregarTickets = async () => {
-    if (!userId) return
-
-    try {
-      setTicketsLoading(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/suporte/usuario/${userId}/tickets-resumo`, {
-        credentials: 'include',
-      })
-
-      if (!res.ok) {
-        throw new Error(await readApiError(res, 'Erro ao carregar tickets do usuário.'))
-      }
-
-      const data = await res.json()
-      setTickets(Array.isArray(data) ? data : [])
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : 'Erro ao carregar tickets do usuário.'
-      toast.error(message)
-      setTickets([])
-    } finally {
-      setTicketsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void carregarUsuario()
-    void carregarTickets()
-  }, [userId])
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hash === '#anuncios') {
-      rolarParaAnuncios()
-    }
-  }, [usuario?.id])
-
-  const alternarStatus = async () => {
-    if (!usuario) return
-
-    try {
-      const endpoint = usuario.status === 'ATIVO' ? 'inativar' : 'ativar'
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/${usuario.id}/${endpoint}`, {
-        method: 'PUT',
-        credentials: 'include',
-      })
-
-      if (!res.ok) {
-        throw new Error(await readApiError(res, 'Erro ao alterar status do usuário.'))
-      }
-
-      setUsuario((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: prev.status === 'ATIVO' ? 'INATIVO' : 'ATIVO',
-            }
-          : prev
-      )
-
-      toast.success(`Usuário ${usuario.status === 'ATIVO' ? 'inativado' : 'ativado'} com sucesso.`)
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : 'Falha ao alterar status do usuário.'
-      toast.error(message)
-    }
-  }
-
-  const excluirUsuario = async () => {
-    if (!usuario) return
-
-    try {
-      setDeleting(true)
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/${usuario.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-
-      if (!res.ok) {
-        throw new Error(await readApiError(res, 'Erro ao excluir usuário.'))
-      }
-
-      toast.success('Usuário excluído com sucesso.')
-      setDeleteOpen(false)
-      router.push('/admin/usuarios')
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : 'Falha ao excluir usuário.'
-      toast.error(message)
-    } finally {
-      setDeleting(false)
-    }
-  }
-
-  const resetarTwoFactor = async () => {
-    if (!usuario) return
-
-    try {
-      setResettingTwoFactor(true)
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/usuarios/${usuario.id}/2fa/reset`, {
-        method: 'POST',
-        credentials: 'include',
-      })
-
-      if (!res.ok) {
-        throw new Error(await readApiError(res, 'Erro ao resetar 2FA.'))
-      }
-
-      setUsuario((prev) => (prev ? { ...prev, twoFactorAtivo: false } : prev))
-      setTwoFactorResetOpen(false)
-      toast.success('2FA removido com sucesso.')
-    } catch (error) {
-      const message =
-        error instanceof Error && error.message.trim()
-          ? error.message
-          : 'Falha ao resetar 2FA do usuário.'
-      toast.error(message)
-    } finally {
-      setResettingTwoFactor(false)
-    }
-  }
-
-  if (loading) {
-    return <div className="py-10 text-center text-gray-500">Carregando usuário...</div>
-  }
-
-  if (!usuario) {
-    return <div className="py-10 text-center text-gray-500">Usuário não encontrado.</div>
-  }
-
-  const nomePrincipal = getUsuarioNomePrincipal(usuario)
-  const handle = getUsuarioHandle(usuario)
-  const tipo = getTipoUsuarioMeta(usuario)
-  const ativo = usuario.status === 'ATIVO'
-  const isAdmin = (usuarioLogado?.cargo || '').toUpperCase() === 'ADMIN'
-  const local = formatarLocalUsuario(usuario)
-  const totalCreditos = Number(usuario.totalCreditos || 0)
-  const totalAnuncios = Number(usuario.totalAnuncios || 0)
-  const anunciosAtivos = Number(usuario.anunciosAtivos || 0)
-  const anunciosPendentes = Number(usuario.anunciosPendentes || 0)
-  const beneficiosAtivos = Number(usuario.beneficiosAtivos || 0)
-  const beneficiosCodigos = usuario.beneficiosAtivosCodigos || []
-  const whatsappUrl = buildWhatsAppUrl(usuario.telefone)
-  const anuncios = (usuario.anuncios || []).map((anuncio) => ({
-    id:
-      anuncio.id ??
-      Number(String(anuncio.linkAnuncio || '').split('/').filter(Boolean).pop() || 0),
-    titulo: anuncio.titulo || 'Sem título',
-    status: anuncio.status || '—',
-    data: formatarDataBR(anuncio.dataPublicacao),
-    beneficiosAtivosCodigos: anuncio.beneficiosAtivosCodigos || [],
-  }))
-  const beneficioDisponivelNosAnuncios = (codigo: string) =>
-    anuncios.some((anuncio) => (anuncio.beneficiosAtivosCodigos || []).includes(codigo))
-
-  const cardsResumo = [
-    {
-      label: 'Anúncios',
-      value: totalAnuncios,
-      className: 'text-gray-900',
-      action: () => abrirAnuncios(),
-    },
-    {
-      label: 'Ativos',
-      value: anunciosAtivos,
-      className: 'text-emerald-700',
-      action: () => abrirAnuncios({ status: 'ATIVO' }),
-    },
-    {
-      label: 'Pendentes',
-      value: anunciosPendentes,
-      className: 'text-amber-700',
-      action: () => abrirAnuncios({ status: 'PENDENTE' }),
-    },
-    {
-      label: 'Créditos',
-      value: totalCreditos,
-      className: 'text-[#C41E73]',
-      action: () => setCreditoOpen(true),
-    },
-  ]
+export default function AdminUserDetailPage() {
+  const params = useParams<{ id: string }>()
+  const userId = params?.id || ''
+  const [creditDialog, setCreditDialog] = useState(false)
+  const [confirmation, setConfirmation] = useState<Confirmation>(null)
+  const [ticketDialog, setTicketDialog] = useState(false)
+  const [adQuery, setAdQuery] = useState('')
+  const [adStatus, setAdStatus] = useState('todos')
+  const [adBenefit, setAdBenefit] = useState('todos')
+  const { error, attemptedAction, runPendingAction } = usePendingContractActions(
+    PENDING_BACKEND_CONTRACTS.adminUsers
+  )
 
   return (
-    <section className="space-y-6 pb-8">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="flex items-start gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.push('/admin/usuarios')}
-            className="mt-0.5 text-gray-600 hover:bg-gray-100"
-          >
-            <ArrowLeftIcon className="h-5 w-5" />
-          </Button>
-
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-gray-900">{nomePrincipal}</h1>
-              <Badge
-                variant="outline"
-                className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
-                  ativo
-                    ? 'border-green-300 bg-green-100 text-green-700'
-                    : 'border-red-300 bg-red-100 text-red-700'
-                }`}
-              >
-                {ativo ? 'Ativo' : 'Inativo'}
-              </Badge>
-              <Badge
-                variant="outline"
-                className={`rounded-md border px-2 py-1 text-[11px] font-medium ${tipo.className}`}
-              >
-                {tipo.label}
-              </Badge>
-            </div>
-
-            <p className="text-sm text-gray-500">
-              Gestão cadastral, comercial e operacional do usuário, com atalhos para anúncios, documentos, tickets e crédito.
-            </p>
-
-            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-600">
-              <span className="inline-flex items-center gap-2">
-                <MapPinIcon className="h-4 w-4 text-[#C41E73]" />
-                {local}
-              </span>
-              <span className="inline-flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-[#C41E73]" />
-                Cadastro em {formatarDataHoraBR(usuario.dataCadastro ?? usuario.criadoEm)}
-              </span>
-              {handle ? <span className="inline-flex items-center gap-2 text-gray-500">{handle}</span> : null}
-            </div>
+    <section className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
+        <div className="space-y-2">
+          <Button asChild variant="ghost" className="px-0"><Link href="/admin/usuarios">Voltar aos usuários</Link></Button>
+          <h1 className="text-2xl font-bold text-gray-900">Detalhe do usuário</h1>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+            <span>ID técnico: {userId || 'indisponível'}</span>
+            <Badge variant="outline">Status indisponível</Badge>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-          <Button
-            onClick={() => setCreditoOpen(true)}
-            className="bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
-          >
-            <BanknotesIcon className="mr-2 h-4 w-4" />
-            Adicionar crédito
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() => abrirAnuncios()}
-            className="border-gray-300 text-gray-700 hover:bg-gray-50"
-          >
-            <FolderOpenIcon className="mr-2 h-4 w-4" />
-            Ver anúncios
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() => router.push(`/admin/usuarios/${userId}/editar`)}
-            className="border-[#C41E73]/40 text-[#C41E73] hover:bg-[#FC1EAD]/10"
-          >
-            <PencilSquareIcon className="mr-2 h-4 w-4" />
-            Editar
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() =>
-              router.push(`/admin/registros?busca=${encodeURIComponent(usuario.email || usuario.username || '')}`)
-            }
-            className="border-[#C41E73]/40 text-[#C41E73] hover:bg-[#FC1EAD]/10"
-          >
-            <ClipboardDocumentListIcon className="mr-2 h-4 w-4" />
-            Ver logs
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={alternarStatus}
-            className={
-              ativo
-                ? 'border-red-300 text-red-600 hover:bg-red-50'
-                : 'border-green-300 text-green-600 hover:bg-green-50'
-            }
-          >
-            <PowerIcon className="mr-2 h-4 w-4" />
-            {ativo ? 'Desativar' : 'Ativar'}
-          </Button>
-
-          {isAdmin && usuario.twoFactorAtivo ? (
-            <Button
-              variant="outline"
-              onClick={() => setTwoFactorResetOpen(true)}
-              className="border-amber-300 text-amber-700 hover:bg-amber-50"
-            >
-              <ExclamationTriangleIcon className="mr-2 h-4 w-4" />
-              Remover 2FA
-            </Button>
-          ) : null}
-
-          <Button
-            variant="outline"
-            onClick={() => setDeleteOpen(true)}
-            className="border-red-300 text-red-600 hover:bg-red-50"
-          >
-            <TrashIcon className="mr-2 h-4 w-4" />
-            Excluir
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" onClick={() => setCreditDialog(true)}>Adicionar crédito</Button>
+          <Button type="button" variant="outline" onClick={() => document.getElementById('anuncios-do-usuario')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Ver anúncios</Button>
+          <Button asChild variant="outline"><Link href={`/admin/usuarios/${encodeURIComponent(userId)}/editar`}>Editar</Link></Button>
+          <Button asChild variant="outline"><Link href={`/admin/registros?usuarioId=${encodeURIComponent(userId)}`}>Ver logs e registros</Link></Button>
+          <Button type="button" variant="outline" onClick={() => setConfirmation('status')}>Ativar/Desativar</Button>
+          <Button type="button" variant="outline" onClick={() => setConfirmation('two-factor')}>Remover 2FA</Button>
+          <Button type="button" variant="destructive" onClick={() => setConfirmation('delete')}>Excluir usuário</Button>
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <UserIcon className="h-5 w-5 text-[#C41E73]" />
-              <h2 className="text-lg font-semibold text-gray-900">Informações do usuário</h2>
-            </div>
+      <ContractState error={error} />
+      <PendingActionFeedback attemptedAction={attemptedAction} />
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Nome</p>
-                <p className="mt-1 text-sm font-medium text-gray-900">{nomePrincipal}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Username</p>
-                <p className="mt-1 text-sm font-medium text-gray-900">{handle || '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Email</p>
-                <p className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-gray-900">
-                  <EnvelopeIcon className="h-4 w-4 text-[#C41E73]" />
-                  {usuario.email || '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Telefone</p>
-                {whatsappUrl ? (
-                  <a
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-[#C41E73] hover:underline"
-                  >
-                    <PhoneIcon className="h-4 w-4 text-[#25D366]" />
-                    {formatarTelefoneExibicao(usuario.telefone)}
-                  </a>
-                ) : (
-                  <p className="mt-1 inline-flex items-center gap-2 text-sm font-medium text-gray-900">
-                    <PhoneIcon className="h-4 w-4 text-[#C41E73]" />
-                    {formatarTelefoneExibicao(usuario.telefone)}
-                  </p>
-                )}
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">CPF</p>
-                <p className="mt-1 text-sm font-medium text-gray-900">
-                  {usuario.cpf ? formatCPF(usuario.cpf) : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Data de nascimento</p>
-                <p className="mt-1 text-sm font-medium text-gray-900">
-                  {formatarDataBR(usuario.dataNascimento)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Status</p>
-                <div className="mt-1">
-                  <Badge
-                    variant="outline"
-                    className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
-                      ativo
-                        ? 'border-green-300 bg-green-100 text-green-700'
-                        : 'border-red-300 bg-red-100 text-red-700'
-                    }`}
-                  >
-                    {ativo ? 'Ativo' : 'Inativo'}
-                  </Badge>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">2FA</p>
-                <div className="mt-1">
-                  <Badge
-                    variant="outline"
-                    className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
-                      usuario.twoFactorAtivo
-                        ? 'border-amber-300 bg-amber-100 text-amber-700'
-                        : 'border-gray-300 bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {usuario.twoFactorAtivo ? 'Ativo' : 'Desativado'}
-                  </Badge>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Local</p>
-                <p className="mt-1 text-sm font-medium text-gray-900">{local}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <FolderOpenIcon className="h-5 w-5 text-[#C41E73]" />
-              <h2 className="text-lg font-semibold text-gray-900">Resumo de conta</h2>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {cardsResumo.map((card) => (
-                <button
-                  key={card.label}
-                  type="button"
-                  onClick={card.action}
-                  className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-left transition hover:border-[#FC1EAD]/30 hover:bg-[#FC1EAD]/5"
-                >
-                  <p className="text-xs uppercase tracking-wide text-gray-500">{card.label}</p>
-                  <p className={`mt-2 text-2xl font-bold ${card.className}`}>{card.value}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <BanknotesIcon className="h-5 w-5 text-[#C41E73]" />
-              <h2 className="text-lg font-semibold text-gray-900">Monetização</h2>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setCreditoOpen(true)}
-                className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-left transition hover:border-[#FC1EAD]/30 hover:bg-[#FC1EAD]/5"
-              >
-                <p className="text-xs uppercase tracking-wide text-gray-500">Créditos atuais</p>
-                <p className="mt-2 text-2xl font-bold text-[#C41E73]">{totalCreditos}</p>
-              </button>
-
-              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-gray-500">Benefícios ativos</p>
-                <p className="mt-2 text-2xl font-bold text-gray-900">{beneficiosAtivos}</p>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4">
-              <p className="text-xs uppercase tracking-wide text-gray-500">Sinais comerciais</p>
-              {beneficiosCodigos.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {beneficiosCodigos.map((codigo) => {
-                    const clicavel = beneficioDisponivelNosAnuncios(codigo)
-                    return (
-                      <button
-                        key={codigo}
-                        type="button"
-                        disabled={!clicavel}
-                        onClick={() => abrirAnuncios({ beneficio: codigo })}
-                        className="disabled:cursor-default"
-                      >
-                        <Badge
-                          variant="outline"
-                          className={`rounded-md border px-2 py-1 text-[11px] font-medium ${
-                            clicavel
-                              ? 'border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
-                              : 'border-gray-300 bg-gray-100 text-gray-500'
-                          }`}
-                        >
-                          {formatarCodigoBeneficio(codigo)}
-                        </Badge>
-                      </button>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-gray-600">
-                  Nenhum benefício ativo vinculado a este usuário no momento.
-                </p>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <div className="mb-4 flex items-center gap-2">
-              <MapPinIcon className="h-5 w-5 text-[#C41E73]" />
-              <h2 className="text-lg font-semibold text-gray-900">Local e cadastro</h2>
-            </div>
-
-            <div className="space-y-3 text-sm text-gray-700">
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-gray-500">Cidade / UF</span>
-                <span className="font-medium text-gray-900">{local}</span>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-gray-500">Bairro</span>
-                <span className="font-medium text-gray-900">{usuario.bairroNome || '—'}</span>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-gray-500">Cadastro</span>
-                <span className="font-medium text-gray-900">{formatarDataHoraBR(usuario.dataCadastro ?? usuario.criadoEm)}</span>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-gray-500">Documentos</span>
-                <span className="font-medium text-gray-900">{usuario.totalDocumentos || 0}</span>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <span className="text-gray-500">Tickets</span>
-                <span className="font-medium text-gray-900">{tickets.length}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <TicketIcon className="h-5 w-5 text-[#C41E73]" />
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Tickets de suporte</h2>
-              <p className="text-sm text-gray-500">Chamados recentes abertos por este usuário.</p>
-            </div>
-          </div>
-
-          <Button
-            variant="outline"
-            className="border-gray-300 text-gray-700 hover:bg-gray-50"
-            onClick={() => router.push('/admin/tickets')}
-          >
-            <ChatBubbleLeftRightIcon className="mr-2 h-4 w-4" />
-            Abrir central
-          </Button>
-        </div>
-
-        {ticketsLoading ? (
-          <div className="py-6 text-sm text-gray-500">Carregando tickets...</div>
-        ) : tickets.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500">
-            Este usuário não possui tickets registrados no momento.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {tickets.map((ticket) => (
-              <div
-                key={ticket.id}
-                className="flex flex-col gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-4 lg:flex-row lg:items-center lg:justify-between"
-              >
-                <div className="min-w-0 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium text-gray-900">#{ticket.id}</span>
-                    <Badge
-                      variant="outline"
-                      className={`rounded-md border px-2 py-1 text-[11px] font-medium ${getTicketBadgeClass(ticket.status)}`}
-                    >
-                      {ticket.status || '—'}
-                    </Badge>
-                  </div>
-                  <p className="line-clamp-2 text-sm font-medium text-gray-800">{ticket.assunto || 'Sem assunto'}</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                    <span>Abertura: {formatarDataHoraBR(ticket.criadoEm)}</span>
-                    <span>Última interação: {formatarDataHoraBR(ticket.ultimaInteracao)}</span>
-                    {ticket.atendente ? <span>Atendente: {ticket.atendente}</span> : null}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="border-[#C41E73]/40 text-[#C41E73] hover:bg-[#FC1EAD]/10"
-                    onClick={() => {
-                      setTicketSelecionado(ticket)
-                      setTicketOpen(true)
-                    }}
-                  >
-                    Ver
-                  </Button>
-                </div>
+      <div className="grid gap-5 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardHeader><CardTitle>Dados cadastrais</CardTitle></CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            {DETAIL_FIELDS.map((field) => (
+              <div key={field} className="rounded-md border border-gray-100 bg-gray-50 p-3">
+                <p className="text-xs font-medium uppercase text-gray-500">{field}</p>
+                <p className="mt-1 text-sm text-gray-700">Dado indisponível pelo contrato administrativo.</p>
               </div>
             ))}
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => runPendingAction('Abrir WhatsApp')}>Abrir WhatsApp</Button>
+              <Button type="button" variant="outline" onClick={() => setTicketDialog(true)}>Abrir ticket</Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-5">
+          <Card>
+            <CardHeader><CardTitle>Resumo</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {['Anúncios ativos', 'Créditos atuais', 'Tickets', 'Indicações'].map((label) => (
+                <button key={label} type="button" className="w-full rounded-md border border-gray-100 p-3 text-left" onClick={() => runPendingAction(`Consultar ${label}`)}>
+                  <span className="block text-sm font-medium text-gray-800">{label}</span>
+                  <span className="text-xs text-gray-500">Contagem indisponível</span>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle>Benefícios</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {['OCULTAR_IDADE', 'FOTOS_EXTRA_5', 'ANUNCIO_TOPO', 'WHATSAPP_CARD'].map((benefit) => (
+                <button key={benefit} type="button" className="w-full rounded-md border border-gray-100 px-3 py-2 text-left text-sm" onClick={() => runPendingAction(`Filtrar anúncios por ${benefit}`)}>
+                  {benefit} <span className="text-gray-500">- estado indisponível</span>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Card id="anuncios-do-usuario">
+        <CardHeader>
+          <CardTitle>Anúncios do usuário</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Input
+              value={adQuery}
+              onChange={(event) => setAdQuery(event.target.value)}
+              placeholder="Buscar anúncio"
+              aria-label="Buscar anúncio do usuário"
+            />
+            <Select value={adStatus} onValueChange={setAdStatus}>
+              <SelectTrigger aria-label="Filtrar anúncios por status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os status</SelectItem>
+                <SelectItem value="ativo">Ativo</SelectItem>
+                <SelectItem value="pendente">Pendente</SelectItem>
+                <SelectItem value="pausado">Pausado</SelectItem>
+                <SelectItem value="rejeitado">Rejeitado</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={adBenefit} onValueChange={setAdBenefit}>
+              <SelectTrigger aria-label="Filtrar anúncios por benefício"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os benefícios</SelectItem>
+                <SelectItem value="ocultar-idade">OCULTAR_IDADE</SelectItem>
+                <SelectItem value="fotos-extra">FOTOS_EXTRA_5</SelectItem>
+                <SelectItem value="topo">ANUNCIO_TOPO</SelectItem>
+                <SelectItem value="whatsapp">WHATSAPP_CARD</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        )}
-      </section>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setAdQuery('')
+                setAdStatus('todos')
+                setAdBenefit('todos')
+              }}
+            >
+              Limpar filtro
+            </Button>
+          </div>
+          <div className="overflow-x-auto rounded-md border border-gray-200">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Título</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Benefícios</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell colSpan={5} className="py-5">
+                    <ContractState error={error} compact />
+                    <Button type="button" variant="outline" className="mt-3" onClick={() => runPendingAction('Ver anúncio do usuário')}>Ver</Button>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
 
-      <section id="anuncios">
-        <AnunciosDoUsuarioTable
-          anuncios={anuncios}
-          statusFilter={quickFilter.status}
-          beneficioFilter={quickFilter.beneficio}
-          onClearQuickFilter={() => setQuickFilter({ status: null, beneficio: null })}
-        />
-      </section>
+      <Card>
+        <CardHeader><CardTitle>Documentos do usuário</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-gray-600">A gestão documental permanece privada e depende do contrato administrativo correspondente.</p>
+          <ContractState error={error} compact />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => runPendingAction('Gerenciar documentos do usuário')}>Gerenciar documentos</Button>
+            <Button type="button" variant="outline" onClick={() => runPendingAction('Visualizar documento do usuário')}>Visualizar</Button>
+            <Button type="button" variant="outline" onClick={() => runPendingAction('Abrir documento em nova aba')}>Abrir em nova aba</Button>
+            <Button type="button" variant="outline" onClick={() => runPendingAction('Baixar documento do usuário')}>Baixar</Button>
+            <Button type="button" onClick={() => runPendingAction('Adicionar novo documento ao usuário')}>Novo documento</Button>
+          </div>
+        </CardContent>
+      </Card>
 
-      <AdicionarCreditosDialog
-        open={creditoOpen}
-        onOpenChange={setCreditoOpen}
-        usuarioId={usuario.id}
-        nomeUsuario={nomePrincipal}
-        saldoAtual={usuario.totalCreditos ?? 0}
-        onSuccess={atualizarSaldoUsuario}
-      />
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <CardTitle>Tickets relacionados</CardTitle>
+          <Button asChild variant="outline"><Link href={`/admin/tickets?usuarioId=${encodeURIComponent(userId)}`}>Abrir central de tickets</Link></Button>
+        </CardHeader>
+        <CardContent>
+          <ContractState error={error} compact />
+          <Button type="button" className="mt-3" variant="outline" onClick={() => setTicketDialog(true)}>Ver conversa completa</Button>
+        </CardContent>
+      </Card>
 
-      <TicketDetailsModal
-        open={ticketOpen}
-        onOpenChange={setTicketOpen}
-        ticket={
-          ticketSelecionado
-            ? {
-                ...ticketSelecionado,
-                abertoPorNome: usuario.nomeCompleto,
-                abertoPorUsername: usuario.username,
-              }
-            : null
-        }
-      />
-
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <Dialog open={creditDialog} onOpenChange={setCreditDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ExclamationTriangleIcon className="h-5 w-5 text-red-600" />
-              Excluir usuário
-            </DialogTitle>
+            <DialogTitle>Ajustar créditos</DialogTitle>
+            <DialogDescription>Escolha se deseja adicionar ou remover créditos e informe o motivo.</DialogDescription>
           </DialogHeader>
-
-          <div className="space-y-2 text-sm text-gray-700">
-            <p>Tem certeza que deseja excluir este usuário?</p>
-            <p className="text-gray-500">
-              Esta ação é <span className="font-semibold text-red-600">irreversível</span> e removerá dados
-              associados, como anúncios, documentos e vínculos operacionais desse cadastro.
-            </p>
+          <div className="space-y-4">
+            <div className="space-y-2"><Label>Operação</Label><Select defaultValue="adicionar"><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="adicionar">Adicionar</SelectItem><SelectItem value="remover">Remover</SelectItem></SelectContent></Select></div>
+            <div className="space-y-2"><Label htmlFor="credit-amount">Quantidade</Label><Input id="credit-amount" type="number" min={1} /></div>
+            <div className="space-y-2"><Label htmlFor="credit-reason">Motivo</Label><Textarea id="credit-reason" /></div>
+            <PendingActionFeedback attemptedAction={attemptedAction} />
           </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={deleting}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={excluirUsuario}
-              disabled={deleting}
-              className="bg-red-600 text-white hover:bg-red-700"
-            >
-              {deleting ? 'Excluindo...' : 'Excluir definitivamente'}
-            </Button>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCreditDialog(false)}>Cancelar</Button>
+            <Button type="button" onClick={() => runPendingAction('Confirmar ajuste de créditos')}>Confirmar ajuste</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={twoFactorResetOpen} onOpenChange={setTwoFactorResetOpen}>
+      <Dialog open={confirmation !== null} onOpenChange={(open) => { if (!open) setConfirmation(null) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ExclamationTriangleIcon className="h-5 w-5 text-amber-600" />
-              Remover 2FA
-            </DialogTitle>
+            <DialogTitle>{confirmation === 'delete' ? 'Excluir usuário' : confirmation === 'two-factor' ? 'Remover 2FA' : 'Alterar status'}</DialogTitle>
+            <DialogDescription>
+              {confirmation === 'delete'
+                ? 'Confirme a exclusão administrativa. Nenhuma alteração será simulada.'
+                : confirmation === 'two-factor'
+                  ? 'A senha e os demais dados seriam preservados.'
+                  : 'Confirme a ativação ou desativação da conta.'}
+            </DialogDescription>
           </DialogHeader>
+          <PendingActionFeedback attemptedAction={attemptedAction} />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmation(null)}>Cancelar</Button>
+            <Button type="button" variant={confirmation === 'delete' ? 'destructive' : 'default'} onClick={() => runPendingAction(confirmation === 'delete' ? 'Excluir usuário' : confirmation === 'two-factor' ? 'Remover 2FA' : 'Alterar status do usuário')}>Confirmar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          <div className="space-y-2 text-sm text-gray-700">
-            <p>Tem certeza que deseja remover o 2FA deste usuário?</p>
-            <p className="text-gray-500">
-              A senha e os demais dados da conta serão preservados. O usuário poderá ativar o 2FA novamente depois.
-            </p>
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setTwoFactorResetOpen(false)} disabled={resettingTwoFactor}>
-              Cancelar
-            </Button>
-            <Button
-              onClick={resetarTwoFactor}
-              disabled={resettingTwoFactor}
-              className="bg-amber-600 text-white hover:bg-amber-700"
-            >
-              {resettingTwoFactor ? 'Removendo...' : 'Remover 2FA'}
-            </Button>
+      <Dialog open={ticketDialog} onOpenChange={setTicketDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Conversa completa</DialogTitle><DialogDescription>Histórico e resposta do ticket relacionado.</DialogDescription></DialogHeader>
+          <ContractState error={error} compact />
+          <Textarea placeholder="Digite uma resposta" />
+          <PendingActionFeedback attemptedAction={attemptedAction} />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setTicketDialog(false)}>Fechar</Button>
+            <Button type="button" onClick={() => runPendingAction('Responder ticket')}>Responder</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

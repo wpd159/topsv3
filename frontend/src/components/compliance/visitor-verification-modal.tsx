@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { publicApiUrl } from "@/lib/api-contract"
 import type { StatusVisitante } from "@/lib/compliance/visitor-access"
 
 type VisitorVerificationModalProps = {
@@ -63,7 +64,6 @@ export function VisitorVerificationModal({ open, onOpenChange, onVerified }: Vis
   const [dataNascimento, setDataNascimento] = useState("")
   const [declaracao, setDeclaracao] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const api = process.env.NEXT_PUBLIC_API_URL
 
   const confirmar = async () => {
     const iso = dataIso(dataNascimento)
@@ -75,14 +75,9 @@ export function VisitorVerificationModal({ open, onOpenChange, onVerified }: Vis
       toast.error("Confirme a declaração de maioridade.")
       return
     }
-    if (!api) {
-      toast.error("Confirmação de idade indisponível no momento.")
-      return
-    }
-
     setSubmitting(true)
     try {
-      const response = await fetch(`${api}/api/public/idade/confirmar`, {
+      const response = await fetch(publicApiUrl('/idade/confirmar'), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

@@ -18,8 +18,13 @@ assert.match(
 )
 assert.match(
   catalogSource,
-  /requestJson<PublicHomeCategory\[]>\('\/categorias-home',\s*homeCategoriesCached\)/,
+  /requestJson<unknown>\('\/categorias-home',\s*homeCategoriesCached\)/,
   'o contrato publico de categorias deve usar somente o cache identificado',
+)
+assert.match(
+  catalogSource,
+  /requireArrayPayload<PublicHomeCategory>\(payload\)/,
+  'o contrato publico de categorias deve rejeitar payload incompativel',
 )
 assert.match(
   actionSource,
