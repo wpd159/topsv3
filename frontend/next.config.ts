@@ -19,6 +19,49 @@ function toOrigin(pattern: { protocol: "http" | "https"; hostname: string; port?
   return `${pattern.protocol}://${pattern.hostname}${pattern.port ? `:${pattern.port}` : ""}`
 }
 
+type RemotePattern = NonNullable<ReturnType<typeof toRemotePattern>>
+
+const publicR2HostnamePattern = /^pub-[0-9a-f]{32}\.r2\.dev$/i
+
+function toConfiguredPublicR2Pattern(origin?: string | null): RemotePattern | null {
+  if (!origin) return null
+
+  let url: URL
+  try {
+    url = new URL(origin)
+  } catch {
+    throw new Error("R2_PUBLIC_BASE_URL deve ser uma origem HTTPS valida.")
+  }
+
+  const hasOnlyOriginPath = url.pathname === "" || url.pathname === "/"
+  if (
+    url.protocol !== "https:" ||
+    !publicR2HostnamePattern.test(url.hostname) ||
+    url.username ||
+    url.password ||
+    url.port ||
+    !hasOnlyOriginPath ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      "R2_PUBLIC_BASE_URL deve apontar para uma origem publica r2.dev em HTTPS, sem caminho, credenciais, porta, query ou fragmento."
+    )
+  }
+
+  return { protocol: "https", hostname: url.hostname.toLowerCase() }
+}
+
+function uniqueRemotePatterns(patterns: RemotePattern[]) {
+  const seen = new Set<string>()
+  return patterns.filter((pattern) => {
+    const key = `${pattern.protocol}://${pattern.hostname}:${pattern.port ?? ""}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 const dynamicImageOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
@@ -45,7 +88,18 @@ const securityOrigins =
         )
       )
     : dynamicOrigins
-const r2PublicAssetOrigin = "https://pub-567428d3703244d483815a05a1e0e0d9.r2.dev"
+const configuredPublicR2Pattern = toConfiguredPublicR2Pattern(process.env.R2_PUBLIC_BASE_URL)
+// A origem publica da producao segue ativa e precisa permanecer compativel no cutover.
+const productionPublicR2Pattern: RemotePattern = {
+  protocol: "https",
+  hostname: "pub-567428d3703244d483815a05a1e0e0d9.r2.dev",
+}
+const publicR2Patterns = uniqueRemotePatterns(
+  [productionPublicR2Pattern, configuredPublicR2Pattern].filter(
+    (pattern): pattern is RemotePattern => Boolean(pattern)
+  )
+)
+const publicR2Origins = publicR2Patterns.map(toOrigin)
 // R2 private bucket presigned URLs (docs) commonly use the account endpoint:
 // https://<accountId>.r2.cloudflarestorage.com/...
 const r2CloudflareStorageWildcard = "https://*.r2.cloudflarestorage.com"
@@ -90,7 +144,7 @@ const mediaOrigins = Array.from(
     "blob:",
     "data:",
     ...securityOrigins,
-    r2PublicAssetOrigin,
+    ...publicR2Origins,
     r2CloudflareStorageWildcard,
   ])
 )
@@ -101,7 +155,7 @@ const imageOrigins = Array.from(
     "data:",
     "blob:",
     ...securityOrigins,
-    r2PublicAssetOrigin,
+    ...publicR2Origins,
     r2CloudflareStorageWildcard,
     "https://images.unsplash.com",
     "https://images.pexels.com",
@@ -182,15 +236,15 @@ const nextConfig: NextConfig = {
   },
 
   images: {
-    remotePatterns: [
+    remotePatterns: uniqueRemotePatterns([
       ...dynamicImageOrigins,
       { protocol: "https", hostname: "images.unsplash.com" },
       { protocol: "https", hostname: "images.pexels.com" },
       { protocol: "https", hostname: "cdn.pixabay.com" },
       { protocol: "https", hostname: "cebkahlbbdmvzhfaruad.supabase.co" },
-      { protocol: "https", hostname: "pub-567428d3703244d483815a05a1e0e0d9.r2.dev" },
+      ...publicR2Patterns,
       { protocol: "https", hostname: "2eb7af56d1fc180174ab864e81adeacf.r2.cloudflarestorage.com" },
-    ],
+    ]),
   },
 
   async headers() {
