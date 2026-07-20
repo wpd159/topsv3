@@ -68,6 +68,7 @@ export type PublicCatalogPagination = {
   tamanho: number
   totalItens: number
   totalPaginas: number
+  ordemSeed: string
 }
 
 export type PublicCatalogList = {
@@ -310,8 +311,10 @@ function mapList(raw: RawList): PublicCatalogList {
   }
 }
 
-function listQuery(pagina: number, tamanho: number) {
-  return `?pagina=${encodeURIComponent(pagina)}&tamanho=${encodeURIComponent(tamanho)}`
+function listQuery(pagina: number, tamanho: number, ordemSeed?: string) {
+  const query = new URLSearchParams({ pagina: String(pagina), tamanho: String(tamanho) })
+  if (ordemSeed !== undefined) query.set('ordemSeed', ordemSeed)
+  return `?${query.toString()}`
 }
 
 const cached = { next: { revalidate: 3600 } }
@@ -321,17 +324,28 @@ const homeCategoriesCached = {
 }
 const dynamic = { cache: 'no-store' as const }
 
-export async function listarPublicosPorEstado(uf: string, pagina = 0, tamanho = 20) {
+export async function listarPublicosPorEstado(
+  uf: string,
+  pagina = 0,
+  tamanho = 20,
+  ordemSeed?: string,
+) {
   const raw = await requestJson<RawList>(
-    `/acompanhantes/${encodeURIComponent(uf)}${listQuery(pagina, tamanho)}`,
+    `/acompanhantes/${encodeURIComponent(uf)}${listQuery(pagina, tamanho, ordemSeed)}`,
     dynamic
   )
   return mapList(raw)
 }
 
-export async function listarPublicosPorCidade(uf: string, cidade: string, pagina = 0, tamanho = 20) {
+export async function listarPublicosPorCidade(
+  uf: string,
+  cidade: string,
+  pagina = 0,
+  tamanho = 20,
+  ordemSeed?: string,
+) {
   const raw = await requestJson<RawList>(
-    `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}${listQuery(pagina, tamanho)}`,
+    `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}${listQuery(pagina, tamanho, ordemSeed)}`,
     dynamic
   )
   return mapList(raw)
@@ -375,10 +389,11 @@ export async function listarPublicosPorBairro(
   cidade: string,
   bairro: string,
   pagina = 0,
-  tamanho = 20
+  tamanho = 20,
+  ordemSeed?: string,
 ) {
   const raw = await requestJson<RawList>(
-    `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}/${encodeURIComponent(bairro)}${listQuery(pagina, tamanho)}`,
+    `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}/${encodeURIComponent(bairro)}${listQuery(pagina, tamanho, ordemSeed)}`,
     dynamic
   )
   return mapList(raw)
@@ -403,10 +418,12 @@ export async function listarAnunciosPublicos(
   busca?: string,
   pagina = 0,
   tamanho = 50,
+  ordemSeed?: string,
 ): Promise<PublicCategoryList> {
   const query = new URLSearchParams({ pagina: String(pagina), tamanho: String(tamanho) })
   if (categoria && categoria !== 'TODOS') query.set('categoria', categoria)
   if (busca?.trim()) query.set('busca', busca.trim())
+  if (ordemSeed !== undefined) query.set('ordemSeed', ordemSeed)
   const raw = await requestJson<RawCategoryList>(`/anuncios?${query.toString()}`, dynamic)
   return {
     itens: raw.itens.map(mapCard),

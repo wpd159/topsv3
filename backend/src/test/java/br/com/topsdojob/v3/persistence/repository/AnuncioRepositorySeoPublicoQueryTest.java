@@ -26,18 +26,38 @@ class AnuncioRepositorySeoPublicoQueryTest {
                 long.class,
                 org.springframework.data.domain.Pageable.class);
 
-        assertQueryCanonica(categoria.getAnnotation(Query.class).value());
-        assertQueryCanonica(localidade.getAnnotation(Query.class).value());
+        Query categoriaQuery = categoria.getAnnotation(Query.class);
+        Query localidadeQuery = localidade.getAnnotation(Query.class);
+        assertQueryCanonica(categoriaQuery.value());
+        assertQueryCanonica(localidadeQuery.value());
+        assertThat(categoriaQuery.countQuery())
+                .contains(":categoria is null or a.categoria = :categoria")
+                .contains(":busca is null")
+                .doesNotContain("hashtextextended")
+                .doesNotContain("order by");
+        assertThat(localidadeQuery.countQuery())
+                .contains("l.estado_id = :estadoId")
+                .contains(":cidadeId is null or l.cidade_id = :cidadeId")
+                .contains(":bairroId is null or l.bairro_id = :bairroId")
+                .doesNotContain("hashtextextended")
+                .doesNotContain("order by");
     }
 
     private void assertQueryCanonica(String query) {
         assertThat(query)
                 .contains("bp.codigo = 'ANUNCIO_TOPO'")
+                .contains("bp.afeta_ranking = true")
                 .contains("ab.status = 'ATIVA'")
+                .contains("ab.revogada_em is null")
+                .contains("ab.inicio_em <= :agora")
                 .contains("ab.fim_em > :agora")
                 .contains("gb.status = 'ATIVO'")
                 .contains("gb.validade_fim_em > :agora")
                 .contains("hashtextextended(a.id::text, :seed)")
+                .contains("a.id")
+                .doesNotContain("OCULTAR_IDADE")
+                .doesNotContain("FOTOS_EXTRA_5")
+                .doesNotContain("WHATSAPP_CARD")
                 .doesNotContain("a.publicado_em desc")
                 .doesNotContain("order by a.id");
     }

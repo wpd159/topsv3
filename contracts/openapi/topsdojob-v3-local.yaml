@@ -645,6 +645,7 @@ paths:
             maxLength: 80
         - $ref: "#/components/parameters/Pagina"
         - $ref: "#/components/parameters/Tamanho"
+        - $ref: "#/components/parameters/OrdemSeed"
       responses:
         "200":
           description: anuncios publicos correspondentes ao filtro canonico
@@ -888,6 +889,7 @@ paths:
             pattern: "^[A-Za-z]{2}$"
         - $ref: "#/components/parameters/Pagina"
         - $ref: "#/components/parameters/Tamanho"
+        - $ref: "#/components/parameters/OrdemSeed"
       responses:
         "200":
           description: listagem publica por estado
@@ -921,6 +923,7 @@ paths:
             pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
         - $ref: "#/components/parameters/Pagina"
         - $ref: "#/components/parameters/Tamanho"
+        - $ref: "#/components/parameters/OrdemSeed"
       responses:
         "200":
           description: listagem publica por cidade
@@ -963,6 +966,7 @@ paths:
             pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
         - $ref: "#/components/parameters/Pagina"
         - $ref: "#/components/parameters/Tamanho"
+        - $ref: "#/components/parameters/OrdemSeed"
       responses:
         "200":
           description: listagem publica por bairro
@@ -3340,6 +3344,15 @@ components:
         minimum: 1
         maximum: 50
         default: 20
+    OrdemSeed:
+      name: ordemSeed
+      in: query
+      required: false
+      description: Seed decimal de 64 bits retornada pela primeira pagina da navegacao.
+      schema:
+        type: string
+        pattern: "^-?[0-9]+$"
+        maxLength: 20
   responses:
     BadRequest:
       description: Parametro invalido ou rota publica proibida.
@@ -7360,6 +7373,7 @@ components:
         - tamanho
         - totalItens
         - totalPaginas
+        - ordemSeed
       properties:
         pagina:
           type: integer
@@ -7373,6 +7387,10 @@ components:
         totalPaginas:
           type: integer
           minimum: 0
+        ordemSeed:
+          type: string
+          pattern: "^-?[0-9]+$"
+          maxLength: 20
     PageMeta:
       type: object
       additionalProperties: false

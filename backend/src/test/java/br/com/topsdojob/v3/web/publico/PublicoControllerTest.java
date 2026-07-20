@@ -24,7 +24,7 @@ class PublicoControllerTest {
         ListagemPublicaConsultaService service = mock(ListagemPublicaConsultaService.class);
         ListaAnunciosPublicaDto resposta = new ListaAnunciosPublicaDto(
                 List.of(),
-                new PaginacaoPublicaDto(0, 20, 0, 0),
+                new PaginacaoPublicaDto(0, 20, 0, 0, "123"),
                 new LocalizacaoPublicaDto("SP", "Sao Paulo", "Sao Paulo", "sao-paulo", null, null, null),
                 new SeoRotaPublicaDto(
                         "Titulo",
@@ -33,10 +33,10 @@ class PublicoControllerTest {
                         "NOINDEX_FOLLOW",
                         "CIDADE",
                         false));
-        when(service.porCidade("sp", "sao-paulo", 0, 20)).thenReturn(resposta);
+        when(service.porCidade("sp", "sao-paulo", 0, 20, "123")).thenReturn(resposta);
 
         ListaAnunciosPublicaDto dto = new ListagemPublicaController(service)
-                .porCidade("sp", "sao-paulo", 0, 20);
+                .porCidade("sp", "sao-paulo", 0, 20, "123");
 
         assertThat(dto.toString())
                 .doesNotContain("cpf")
@@ -44,7 +44,7 @@ class PublicoControllerTest {
                 .doesNotContain("pagamento")
                 .doesNotContain("credito")
                 .doesNotContain("storage");
-        verify(service).porCidade("sp", "sao-paulo", 0, 20);
+        verify(service).porCidade("sp", "sao-paulo", 0, 20, "123");
     }
 
     @Test

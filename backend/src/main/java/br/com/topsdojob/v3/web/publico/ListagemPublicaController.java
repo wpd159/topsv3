@@ -22,8 +22,9 @@ public class ListagemPublicaController {
     public ListaAnunciosPublicaDto porEstado(
             @PathVariable String uf,
             @RequestParam(defaultValue = "0") int pagina,
-            @RequestParam(defaultValue = "20") int tamanho) {
-        return consultaService.porEstado(uf, pagina, tamanho);
+            @RequestParam(defaultValue = "20") int tamanho,
+            @RequestParam(required = false) String ordemSeed) {
+        return consultaService.porEstado(uf, pagina, tamanho, ordemSeed);
     }
 
     @GetMapping("/{uf}/{cidade}")
@@ -31,8 +32,9 @@ public class ListagemPublicaController {
             @PathVariable String uf,
             @PathVariable String cidade,
             @RequestParam(defaultValue = "0") int pagina,
-            @RequestParam(defaultValue = "20") int tamanho) {
-        return consultaService.porCidade(uf, cidade, pagina, tamanho);
+            @RequestParam(defaultValue = "20") int tamanho,
+            @RequestParam(required = false) String ordemSeed) {
+        return consultaService.porCidade(uf, cidade, pagina, tamanho, ordemSeed);
     }
 
     @GetMapping("/{uf}/{cidade}/{bairro}")
@@ -41,7 +43,8 @@ public class ListagemPublicaController {
             @PathVariable String cidade,
             @PathVariable String bairro,
             @RequestParam(defaultValue = "0") int pagina,
-            @RequestParam(defaultValue = "20") int tamanho) {
-        return consultaService.porBairro(uf, cidade, bairro, pagina, tamanho);
+            @RequestParam(defaultValue = "20") int tamanho,
+            @RequestParam(required = false) String ordemSeed) {
+        return consultaService.porBairro(uf, cidade, bairro, pagina, tamanho, ordemSeed);
     }
 }

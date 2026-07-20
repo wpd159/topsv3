@@ -45,8 +45,9 @@ public class AnuncioPublicoController {
             @RequestParam(required = false) String categoria,
             @RequestParam(required = false) String busca,
             @RequestParam(defaultValue = "0") int pagina,
-            @RequestParam(defaultValue = "20") int tamanho) {
-        return listagemService.listar(categoria, busca, pagina, tamanho);
+            @RequestParam(defaultValue = "20") int tamanho,
+            @RequestParam(required = false) String ordemSeed) {
+        return listagemService.listar(categoria, busca, pagina, tamanho, ordemSeed);
     }
 
     @GetMapping("/{slug}")

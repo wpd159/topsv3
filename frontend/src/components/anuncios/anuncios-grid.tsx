@@ -43,6 +43,9 @@ export default function AnunciosGrid({
   const [loading, setLoading] = useState(!initialMatches)
   const [error, setError] = useState<unknown>(null)
   const [reloadMarker, setReloadMarker] = useState(0)
+  const [ordemSeed, setOrdemSeed] = useState<string | null>(
+    initialMatches ? initialData.paginacao.ordemSeed : null,
+  )
   const [proximaPagina, setProximaPagina] = useState<number | null>(() => {
     if (!initialMatches) return null
     return initialData.paginacao.pagina + 1 < initialData.paginacao.totalPaginas
@@ -66,6 +69,7 @@ export default function AnunciosGrid({
         initialRequestConsumedRef.current !== requestKey
       ) {
         setAnuncios(initialData.itens)
+        setOrdemSeed(initialData.paginacao.ordemSeed)
         setPaginasCarregadas(1)
         setProximaPagina(
           initialData.paginacao.pagina + 1 < initialData.paginacao.totalPaginas
@@ -80,6 +84,7 @@ export default function AnunciosGrid({
       setLoading(true)
       setError(null)
       setAnuncios([])
+      setOrdemSeed(null)
       setProximaPagina(null)
       setPaginasCarregadas(0)
 
@@ -93,6 +98,7 @@ export default function AnunciosGrid({
         )
         if (!ativa || consulta !== consultaAtualRef.current) return
         setAnuncios(data.itens)
+        setOrdemSeed(data.paginacao.ordemSeed)
         setPaginasCarregadas(1)
         setProximaPagina(
           data.paginacao.pagina + 1 < data.paginacao.totalPaginas
@@ -121,7 +127,7 @@ export default function AnunciosGrid({
   ])
 
   const carregarMais = useCallback(async () => {
-    if (loading || proximaPagina == null) return
+    if (loading || proximaPagina == null || ordemSeed == null) return
     const consulta = consultaAtualRef.current
     setLoading(true)
     setError(null)
@@ -131,8 +137,12 @@ export default function AnunciosGrid({
         busca,
         proximaPagina,
         ITENS_POR_PAGINA,
+        ordemSeed,
       )
       if (consulta !== consultaAtualRef.current) return
+      if (data.paginacao.ordemSeed !== ordemSeed) {
+        throw new Error("A ordenacao da listagem mudou durante a paginacao.")
+      }
       setAnuncios((atuais) => {
         const ids = new Set(atuais.map((anuncio) => anuncio.id))
         return [...atuais, ...data.itens.filter((anuncio) => !ids.has(anuncio.id))]
@@ -150,7 +160,7 @@ export default function AnunciosGrid({
     } finally {
       if (consulta === consultaAtualRef.current) setLoading(false)
     }
-  }, [busca, categoria, loading, proximaPagina])
+  }, [busca, categoria, loading, ordemSeed, proximaPagina])
 
   const podeCarregarAutomaticamente =
     !error && !loading && proximaPagina != null && paginasCarregadas < LIMITE_PAGINAS_AUTOMATICAS

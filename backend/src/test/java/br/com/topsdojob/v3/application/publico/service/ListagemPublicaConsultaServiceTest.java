@@ -55,9 +55,10 @@ class ListagemPublicaConsultaServiceTest {
                 mock(AnuncioPublicoConsultaService.class),
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
-                mock(PoliticaContatoPublicoService.class));
+                mock(PoliticaContatoPublicoService.class),
+                mock(OrdemSeedPublicaService.class));
 
-        assertThatThrownBy(() -> service.porEstado("SP", -1, 20))
+        assertThatThrownBy(() -> service.porEstado("SP", -1, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
@@ -76,9 +77,10 @@ class ListagemPublicaConsultaServiceTest {
                 mock(AnuncioPublicoConsultaService.class),
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
-                mock(PoliticaContatoPublicoService.class));
+                mock(PoliticaContatoPublicoService.class),
+                mock(OrdemSeedPublicaService.class));
 
-        assertThatThrownBy(() -> service.porEstado("sp", 0, 20))
+        assertThatThrownBy(() -> service.porEstado("sp", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
     }
@@ -105,9 +107,10 @@ class ListagemPublicaConsultaServiceTest {
                 mock(AnuncioPublicoConsultaService.class),
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
-                mock(PoliticaContatoPublicoService.class));
+                mock(PoliticaContatoPublicoService.class),
+                mock(OrdemSeedPublicaService.class));
 
-        assertThatThrownBy(() -> service.porCidade("sp", "cidade-ausente", 0, 20))
+        assertThatThrownBy(() -> service.porCidade("sp", "cidade-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
     }
@@ -141,9 +144,10 @@ class ListagemPublicaConsultaServiceTest {
                 mock(AnuncioPublicoConsultaService.class),
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
-                mock(PoliticaContatoPublicoService.class));
+                mock(PoliticaContatoPublicoService.class),
+                mock(OrdemSeedPublicaService.class));
 
-        assertThatThrownBy(() -> service.porBairro("go", "goiania", "bairro-ausente", 0, 20))
+        assertThatThrownBy(() -> service.porBairro("go", "goiania", "bairro-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
     }
@@ -237,9 +241,10 @@ class ListagemPublicaConsultaServiceTest {
                 anuncioConsultaService,
                 seoService,
                 premiumMapper,
-                mock(PoliticaContatoPublicoService.class));
+                mock(PoliticaContatoPublicoService.class),
+                mock(OrdemSeedPublicaService.class));
 
-        ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20);
+        ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20, null);
 
         assertThat(dto.itens()).hasSize(1);
         assertThat(dto.itens().get(0).slug()).isEqualTo("anuncio-publicado");
@@ -327,15 +332,62 @@ class ListagemPublicaConsultaServiceTest {
                 anuncioConsultaService,
                 mock(SeoPublicoConsultaService.class),
                 premiumMapper,
-                contatoService);
+                contatoService,
+                mock(OrdemSeedPublicaService.class));
 
-        ListaAnunciosCategoriaPublicaDto resposta = service.listar("VENDA_DE_CONTEUDO", null, 0, 20);
+        ListaAnunciosCategoriaPublicaDto resposta = service.listar("VENDA_DE_CONTEUDO", null, 0, 20, null);
 
         assertThat(resposta.categoria()).isEqualTo("VENDA_DE_CONTEUDO");
         assertThat(resposta.itens()).singleElement().satisfies(item -> {
             assertThat(item.slug()).isEqualTo("conteudo-publico");
             assertThat(item.categoria()).isEqualTo("VENDA_DE_CONTEUDO");
         });
+    }
+
+    @Test
+    void reutilizaSeedInformadaNaQueryENaMetadataDaPaginacao() {
+        AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+        PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
+        OrdemSeedPublicaService ordemSeedService = mock(OrdemSeedPublicaService.class);
+        long seed = -765432109876543210L;
+        String seedSegura = Long.toString(seed);
+        PageRequest pageable = PageRequest.of(1, 20);
+
+        when(ordemSeedService.resolver(seedSegura)).thenReturn(seed);
+        when(anuncioRepository.findPublicosOrdenados(
+                eq(null),
+                eq(null),
+                org.mockito.ArgumentMatchers.any(),
+                eq(seed),
+                eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 21));
+        when(premiumMapper.flagsPorAnuncios(List.of())).thenReturn(Map.of());
+
+        ListagemPublicaConsultaService service = new ListagemPublicaConsultaService(
+                mock(EstadoRepository.class),
+                mock(CidadeRepository.class),
+                mock(BairroRepository.class),
+                mock(AnuncioLocalizacaoRepository.class),
+                anuncioRepository,
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                mock(AnuncioPublicoConsultaService.class),
+                mock(SeoPublicoConsultaService.class),
+                premiumMapper,
+                mock(PoliticaContatoPublicoService.class),
+                ordemSeedService);
+
+        ListaAnunciosCategoriaPublicaDto resposta = service.listar(null, null, 1, 20, seedSegura);
+
+        assertThat(resposta.paginacao().ordemSeed()).isEqualTo(seedSegura);
+        assertThat(resposta.paginacao().pagina()).isEqualTo(1);
+        assertThat(resposta.paginacao().totalItens()).isEqualTo(21);
+        verify(ordemSeedService).resolver(seedSegura);
+        verify(anuncioRepository).findPublicosOrdenados(
+                eq(null),
+                eq(null),
+                org.mockito.ArgumentMatchers.any(),
+                eq(seed),
+                eq(pageable));
     }
 
     @Test
@@ -350,9 +402,10 @@ class ListagemPublicaConsultaServiceTest {
                 mock(AnuncioPublicoConsultaService.class),
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
-                mock(PoliticaContatoPublicoService.class));
+                mock(PoliticaContatoPublicoService.class),
+                mock(OrdemSeedPublicaService.class));
 
-        assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, 0, 20))
+        assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }

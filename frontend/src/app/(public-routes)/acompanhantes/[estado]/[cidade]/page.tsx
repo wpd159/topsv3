@@ -1,7 +1,7 @@
 import { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import AnuncioCard from "@/components/anuncios/anuncio-card"
+import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import {
   isPublicCatalogNotFound,
@@ -40,10 +40,6 @@ interface PageProps {
   searchParams: Promise<{
     page?: string
   }>
-}
-
-function buildCityHref(cidadePath: string, page: number) {
-  return page <= 0 ? cidadePath : `${cidadePath}?page=${page}`
 }
 
 async function carregarCidade(estado: string, cidade: string, page: number) {
@@ -164,74 +160,12 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
 
       <StoriesBar />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {data.itens.map((anuncio, index) => (
-          <AnuncioCard
-            key={`${anuncio.id}-${anuncio.slug ?? index}`}
-            id={anuncio.id}
-            slug={anuncio.slug}
-            nome={anuncio.titulo}
-            estadoUf={anuncio.estadoUf ?? null}
-            cidadeNome={anuncio.cidadeNome ?? null}
-            bairroNome={anuncio.bairroNome ?? null}
-            valor={`A partir de R$ ${Number(anuncio.preco ?? 0).toFixed(2)} / hora`}
-            midias={anuncio.midias ?? []}
-            descricao={anuncio.descricao}
-            destaque={anuncio.destaqueAtivo ?? false}
-            anunciaDesde={anuncio.anunciaDesde ?? null}
-            carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
-            videoHabilitado={anuncio.videoHabilitado ?? false}
-            whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
-            comLocal={anuncio.comLocal}
-            fazAnal={anuncio.fazAnal}
-            mediaPriority={index === 0}
-          />
-        ))}
-      </div>
-
-      {data.paginacao.totalPaginas > 1 && (
-        <nav className="flex items-center justify-center gap-2 border-t py-8">
-          {page > 0 && (
-            <Link
-              href={buildCityHref(cidadePath, page - 1)}
-              scroll={false}
-              className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
-            >
-              Anterior
-            </Link>
-          )}
-
-          <div className="flex gap-1">
-            {Array.from({ length: Math.min(data.paginacao.totalPaginas, 5) }).map((_, index) => {
-              const pageNum = index
-              return (
-                <Link
-                  key={pageNum}
-                  href={buildCityHref(cidadePath, pageNum)}
-                  scroll={false}
-                  className={`rounded-lg px-3 py-2 ${
-                    page === pageNum
-                      ? "bg-pink-600 text-white"
-                      : "border border-gray-300 hover:bg-gray-100"
-                  }`}
-                >
-                  {pageNum + 1}
-                </Link>
-              )
-            })}
-          </div>
-
-          {page < data.paginacao.totalPaginas - 1 && (
-            <Link
-              href={buildCityHref(cidadePath, page + 1)}
-              scroll={false}
-              className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
-            >
-              Próxima
-            </Link>
-          )}
-        </nav>
-      )}
+      <ListagemPublicaPaginada
+        key={data.paginacao.ordemSeed}
+        caminhoBase={cidadePath}
+        escopo={{ tipo: "cidade", uf: estado, cidade }}
+        initialData={data}
+      />
 
       {page === 0 && (
         <>

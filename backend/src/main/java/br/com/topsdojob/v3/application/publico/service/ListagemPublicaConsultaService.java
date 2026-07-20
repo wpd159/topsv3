@@ -21,7 +21,6 @@ import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import java.text.Normalizer;
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -30,7 +29,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.zip.CRC32;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -52,6 +50,7 @@ public class ListagemPublicaConsultaService {
     private final SeoPublicoConsultaService seoService;
     private final PremiumPublicoMapper premiumMapper;
     private final PoliticaContatoPublicoService contatoService;
+    private final OrdemSeedPublicaService ordemSeedService;
 
     public ListagemPublicaConsultaService(
             EstadoRepository estadoRepository,
@@ -63,7 +62,8 @@ public class ListagemPublicaConsultaService {
             AnuncioPublicoConsultaService anuncioConsultaService,
             SeoPublicoConsultaService seoService,
             PremiumPublicoMapper premiumMapper,
-            PoliticaContatoPublicoService contatoService) {
+            PoliticaContatoPublicoService contatoService,
+            OrdemSeedPublicaService ordemSeedService) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
@@ -74,6 +74,7 @@ public class ListagemPublicaConsultaService {
         this.seoService = seoService;
         this.premiumMapper = premiumMapper;
         this.contatoService = contatoService;
+        this.ordemSeedService = ordemSeedService;
     }
 
     @Transactional(readOnly = true)
@@ -81,16 +82,18 @@ public class ListagemPublicaConsultaService {
             String categoriaCodigo,
             String busca,
             int pagina,
-            int tamanho) {
+            int tamanho,
+            String ordemSeed) {
         Pageable pageable = pageable(pagina, tamanho);
         CategoriaAnuncio categoria = categoria(categoriaCodigo);
         String termoBusca = termoBusca(busca);
+        long seed = ordemSeedService.resolver(ordemSeed);
 
         Page<AnuncioEntity> paginaAnuncios = anuncioRepository.findPublicosOrdenados(
                 categoria == null ? null : categoria.name(),
                 termoBusca,
                 agora(),
-                seed("categoria", categoria == null ? "todos" : categoria.name(), termoBusca),
+                seed,
                 pageable);
 
         List<AnuncioLocalizacaoEntity> localizacoes = paginaAnuncios.isEmpty()
@@ -104,28 +107,32 @@ public class ListagemPublicaConsultaService {
 
         return new ListaAnunciosCategoriaPublicaDto(
                 itens,
-                PaginacaoPublicaDto.from(paginaAnuncios),
+                PaginacaoPublicaDto.from(paginaAnuncios, seed),
                 categoria == null ? null : categoria.name());
     }
 
     @Transactional(readOnly = true)
-    public ListaAnunciosPublicaDto porEstado(String uf, int pagina, int tamanho) {
+    public ListaAnunciosPublicaDto porEstado(String uf, int pagina, int tamanho, String ordemSeed) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         Pageable pageable = pageable(pagina, tamanho);
+        long seed = ordemSeedService.resolver(ordemSeed);
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
                 .orElseThrow(() -> notFound("estado nao encontrado"));
         return listarLocalizacoes(
                 estado,
                 null,
                 null,
-                pageable);
+                pageable,
+                seed);
     }
 
     @Transactional(readOnly = true)
-    public ListaAnunciosPublicaDto porCidade(String uf, String cidadeSlug, int pagina, int tamanho) {
+    public ListaAnunciosPublicaDto porCidade(
+            String uf, String cidadeSlug, int pagina, int tamanho, String ordemSeed) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         String cidadeSegura = RotaPublicaGuard.slug(cidadeSlug, "cidade");
         Pageable pageable = pageable(pagina, tamanho);
+        long seed = ordemSeedService.resolver(ordemSeed);
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
                 .orElseThrow(() -> notFound("estado nao encontrado"));
         CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
@@ -134,15 +141,23 @@ public class ListagemPublicaConsultaService {
                 estado,
                 cidade,
                 null,
-                pageable);
+                pageable,
+                seed);
     }
 
     @Transactional(readOnly = true)
-    public ListaAnunciosPublicaDto porBairro(String uf, String cidadeSlug, String bairroSlug, int pagina, int tamanho) {
+    public ListaAnunciosPublicaDto porBairro(
+            String uf,
+            String cidadeSlug,
+            String bairroSlug,
+            int pagina,
+            int tamanho,
+            String ordemSeed) {
         String ufSeguro = RotaPublicaGuard.uf(uf);
         String cidadeSegura = RotaPublicaGuard.slug(cidadeSlug, "cidade");
         String bairroSeguro = RotaPublicaGuard.slug(bairroSlug, "bairro");
         Pageable pageable = pageable(pagina, tamanho);
+        long seed = ordemSeedService.resolver(ordemSeed);
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(ufSeguro)
                 .orElseThrow(() -> notFound("estado nao encontrado"));
         CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), cidadeSegura)
@@ -153,24 +168,22 @@ public class ListagemPublicaConsultaService {
                 estado,
                 cidade,
                 bairro,
-                pageable);
+                pageable,
+                seed);
     }
 
     private ListaAnunciosPublicaDto listarLocalizacoes(
             EstadoEntity estado,
             CidadeEntity cidade,
             BairroEntity bairro,
-            Pageable pageable) {
+            Pageable pageable,
+            long ordemSeed) {
         Page<AnuncioEntity> anuncios = anuncioRepository.findPublicosPorLocalidadeOrdenados(
                 estado.getId(),
                 cidade == null ? null : cidade.getId(),
                 bairro == null ? null : bairro.getId(),
                 agora(),
-                seed(
-                        "localidade",
-                        estado.getUf(),
-                        cidade == null ? null : cidade.getSlug(),
-                        bairro == null ? null : bairro.getSlug()),
+                ordemSeed,
                 pageable);
 
         if (anuncios.isEmpty()) {
@@ -229,7 +242,7 @@ public class ListagemPublicaConsultaService {
         LocalizacaoPublicaDto localidade = toLocalizacao(estado, cidade, bairro, null);
         return new ListaAnunciosPublicaDto(
                 itens,
-                PaginacaoPublicaDto.from(anuncios),
+                PaginacaoPublicaDto.from(anuncios, ordemSeed),
                 localidade,
                 cidade == null
                         ? seoService.buscarPorCaminho("/acompanhantes/" + uf.toLowerCase())
@@ -356,18 +369,6 @@ public class ListagemPublicaConsultaService {
 
     private OffsetDateTime agora() {
         return OffsetDateTime.now(ZoneOffset.UTC);
-    }
-
-    private long seed(String escopo, String... partes) {
-        CRC32 crc = new CRC32();
-        StringBuilder builder = new StringBuilder(LocalDate.now(ZoneOffset.UTC).toString()).append(':').append(escopo);
-        if (partes != null) {
-            for (String parte : partes) {
-                builder.append(':').append(parte == null ? "" : parte);
-            }
-        }
-        crc.update(builder.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        return crc.getValue();
     }
 
     private ResponseStatusException notFound(String message) {

@@ -5,7 +5,7 @@ import {
   gerarConteudoSeoBairro,
   gerarBreadcrumbSchemaBairro,
 } from "@/lib/seo/seoContentGeneratorBairro"
-import AnuncioCard from "@/components/anuncios/anuncio-card"
+import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import { selecionarCapaPublicaSegura } from "@/lib/media/public-media"
 import {
@@ -214,30 +214,12 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
 
       <StoriesBar />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {data.itens.map((anuncio, index) => (
-          <AnuncioCard
-            key={`${anuncio.id}-${anuncio.slug ?? index}`}
-            id={anuncio.id}
-            slug={anuncio.slug}
-            nome={anuncio.titulo}
-            estadoUf={anuncio.estadoUf ?? null}
-            cidadeNome={anuncio.cidadeNome ?? null}
-            bairroNome={anuncio.bairroNome ?? null}
-            valor={`A partir de R$ ${Number(anuncio.preco ?? 0).toFixed(2)} / hora`}
-            midias={anuncio.midias ?? []}
-            descricao={anuncio.descricao}
-            destaque={anuncio.destaqueAtivo ?? false}
-            anunciaDesde={anuncio.anunciaDesde ?? null}
-            carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
-            videoHabilitado={anuncio.videoHabilitado ?? false}
-            whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
-            comLocal={anuncio.comLocal}
-            fazAnal={anuncio.fazAnal}
-            mediaPriority={index === 0}
-          />
-        ))}
-      </div>
+      <ListagemPublicaPaginada
+        key={data.paginacao.ordemSeed}
+        caminhoBase={bairroPath}
+        escopo={{ tipo: "bairro", uf: estado, cidade, bairro }}
+        initialData={data}
+      >
 
       {page === 0 && (
         <section className="space-y-4 rounded-3xl border border-gray-200 bg-white p-6">
@@ -273,55 +255,7 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
           </div>
         </section>
       )}
-
-      {data.paginacao.totalPaginas > 1 && (
-        <nav className="flex items-center justify-center gap-2 border-t py-8">
-          {page > 0 && (
-            <Link
-              href={
-                page === 1
-                  ? bairroPath
-                  : `${bairroPath}?page=${page - 1}`
-              }
-              className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
-            >
-              ← Anterior
-            </Link>
-          )}
-
-          <div className="flex gap-1">
-            {Array.from({ length: Math.min(data.paginacao.totalPaginas, 5) }).map((_, i) => {
-              const pageNum = i
-              return (
-                <Link
-                  key={pageNum}
-                  href={
-                    pageNum === 0
-                      ? bairroPath
-                      : `${bairroPath}?page=${pageNum}`
-                  }
-                  className={`rounded-lg px-3 py-2 ${
-                    page === pageNum
-                      ? "bg-pink-600 text-white"
-                      : "border border-gray-300 hover:bg-gray-100"
-                  }`}
-                >
-                  {pageNum + 1}
-                </Link>
-              )
-            })}
-          </div>
-
-          {page < data.paginacao.totalPaginas - 1 && (
-            <Link
-              href={`${bairroPath}?page=${page + 1}`}
-              className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-100"
-            >
-              Próxima →
-            </Link>
-          )}
-        </nav>
-      )}
+      </ListagemPublicaPaginada>
 
       {page === 0 && outrosBairros.length > 0 && (
         <section className="space-y-4 border-t pt-8">

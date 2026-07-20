@@ -1,7 +1,7 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import AnuncioCard from "@/components/anuncios/anuncio-card"
+import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import { gerarDescricaoSeoEstado, gerarTituloSeoEstado } from "@/lib/seo/public-metadata"
 import { selecionarCapaPublicaSegura } from "@/lib/media/public-media"
@@ -226,77 +226,18 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
 
       <StoriesBar />
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {data.itens.map((anuncio, index) => (
-          <AnuncioCard
-            key={`${anuncio.id}-${anuncio.slug ?? index}`}
-            id={anuncio.id}
-            slug={anuncio.slug}
-            nome={anuncio.titulo}
-            estadoUf={anuncio.estadoUf ?? null}
-            cidadeNome={anuncio.cidadeNome ?? null}
-            bairroNome={anuncio.bairroNome ?? null}
-            valor={`A partir de R$ ${Number(anuncio.preco ?? 0).toFixed(2)} / hora`}
-            midias={anuncio.midias ?? []}
-            descricao={anuncio.descricao}
-            destaque={anuncio.destaqueAtivo ?? false}
-            anunciaDesde={anuncio.anunciaDesde ?? null}
-            carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
-            videoHabilitado={anuncio.videoHabilitado ?? false}
-            whatsappCardEnabled={anuncio.whatsappCardEnabled ?? false}
-            comLocal={anuncio.comLocal}
-            fazAnal={anuncio.fazAnal}
-            mediaPriority={index === 0}
-          />
-        ))}
-      </div>
-
-      {page === 0 && (
-        <section className="prose prose-sm max-w-none text-gray-700 space-y-4">
-          <div dangerouslySetInnerHTML={{ __html: seoContent }} />
-        </section>
-      )}
-
-      {data.paginacao.totalPaginas > 1 && (
-        <nav className="flex justify-center items-center gap-2 py-8 border-t">
-          {page > 0 && (
-            <Link
-              href={page === 1 ? estadoPath : `${estadoPath}?page=${page - 1}`}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
-            >
-              ← Anterior
-            </Link>
-          )}
-
-          <div className="flex gap-1">
-            {Array.from({ length: Math.min(data.paginacao.totalPaginas, 5) }).map((_, i) => {
-              const pageNum = i
-              return (
-                <Link
-                  key={pageNum}
-                  href={pageNum === 0 ? estadoPath : `${estadoPath}?page=${pageNum}`}
-                  className={`px-3 py-2 rounded-lg ${
-                    page === pageNum
-                      ? "bg-pink-600 text-white"
-                      : "border border-gray-300 hover:bg-gray-100"
-                  }`}
-                >
-                  {pageNum + 1}
-                </Link>
-              )
-            })}
-          </div>
-
-          {page < data.paginacao.totalPaginas - 1 && (
-            <Link
-              href={`${estadoPath}?page=${page + 1}`}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
-            >
-              Próxima →
-            </Link>
-          )}
-        </nav>
-      )}
+      <ListagemPublicaPaginada
+        key={data.paginacao.ordemSeed}
+        caminhoBase={estadoPath}
+        escopo={{ tipo: "estado", uf: estado }}
+        initialData={data}
+      >
+        {page === 0 && (
+          <section className="prose prose-sm max-w-none text-gray-700 space-y-4">
+            <div dangerouslySetInnerHTML={{ __html: seoContent }} />
+          </section>
+        )}
+      </ListagemPublicaPaginada>
 
       {cidadesOrdenadas.length > 0 && page === 0 && (
         <section className="border-t pt-8 space-y-4">

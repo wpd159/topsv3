@@ -6,7 +6,8 @@ public record PaginacaoPublicaDto(
         int pagina,
         int tamanho,
         long totalItens,
-        int totalPaginas) {
+        int totalPaginas,
+        String ordemSeed) {
 
     public PaginacaoPublicaDto {
         if (pagina < 0) {
@@ -21,13 +22,17 @@ public record PaginacaoPublicaDto(
         if (totalPaginas < 0) {
             throw new IllegalArgumentException("totalPaginas nao pode ser negativo");
         }
+        if (ordemSeed == null || ordemSeed.isBlank()) {
+            throw new IllegalArgumentException("ordemSeed deve ser informada");
+        }
     }
 
-    public static PaginacaoPublicaDto from(Page<?> page) {
+    public static PaginacaoPublicaDto from(Page<?> page, long ordemSeed) {
         return new PaginacaoPublicaDto(
                 page.getNumber(),
                 page.getSize(),
                 page.getTotalElements(),
-                page.getTotalPages());
+                page.getTotalPages(),
+                Long.toString(ordemSeed));
     }
 }

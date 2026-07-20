@@ -88,6 +88,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         where ab.anuncio_id = a.id
                           and bp.codigo = 'ANUNCIO_TOPO'
                           and bp.ativo = true
+                          and bp.afeta_ranking = true
                           and ab.status = 'ATIVA'
                           and ab.revogada_em is null
                           and ab.inicio_em <= :agora
@@ -138,6 +139,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         where ab.anuncio_id = a.id
                           and bp.codigo = 'ANUNCIO_TOPO'
                           and bp.ativo = true
+                          and bp.afeta_ranking = true
                           and ab.status = 'ATIVA'
                           and ab.revogada_em is null
                           and ab.inicio_em <= :agora
