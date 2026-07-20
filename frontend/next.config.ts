@@ -243,7 +243,6 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "cdn.pixabay.com" },
       { protocol: "https", hostname: "cebkahlbbdmvzhfaruad.supabase.co" },
       ...publicR2Patterns,
-      { protocol: "https", hostname: "2eb7af56d1fc180174ab864e81adeacf.r2.cloudflarestorage.com" },
     ]),
   },
 

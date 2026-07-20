@@ -104,6 +104,11 @@ assert.equal(
   false,
   "remotePatterns nao pode autorizar wildcard"
 )
+assert.equal(
+  preprodPatterns.some((pattern) => pattern.hostname.endsWith(".r2.cloudflarestorage.com")),
+  false,
+  "remotePatterns nao pode autorizar endpoint privado do R2"
+)
 
 const publicMediaSource = readFileSync(
   new URL("../src/lib/media/public-media.ts", import.meta.url),
