@@ -13,21 +13,50 @@ class AdminAuthFrontendContractTest {
     @Test
     void loginAdministrativoNavegavelUsaEndpointsReaisComCookieECsrf() throws Exception {
         String adapter = Files.readString(FRONTEND.resolve(Path.of("lib", "admin-auth-api.ts")));
+        String apiContract = Files.readString(FRONTEND.resolve(Path.of("lib", "api-contract.ts")));
         String loginPage = Files.readString(FRONTEND.resolve(Path.of(
                 "app", "(admin-auth)", "admin", "login", "page.tsx")));
+        String controller = Files.readString(Path.of(
+                "src", "main", "java", "br", "com", "topsdojob", "v3",
+                "web", "admin", "auth", "AdminAuthController.java"));
 
         assertThat(adapter)
-                .contains("/api/admin/auth")
-                .contains("'/login'")
-                .contains("'/me'")
-                .contains("'/logout'")
+                .contains("return adminApiUrl(`/auth${path}`)")
+                .contains("fetch(adminAuthUrl('/me')")
+                .contains("fetch(adminAuthUrl(path)")
+                .contains("request<AdminSession>('/login'")
+                .contains("request<AdminSession>('/me')")
+                .contains("request<{ autenticado: boolean; status: string }>('/logout'")
                 .contains("credentials: 'include'")
-                .contains("antiForgeryHeaderName()")
+                .contains("if (!['GET', 'HEAD', 'OPTIONS'].includes(method))")
+                .contains("const antiForgeryValue = await ensureAntiForgeryValue()")
+                .contains("headers.set(antiForgeryHeaderName(), antiForgeryValue)")
+                .doesNotContain("/api/admin")
+                .doesNotContain("/api/public/api/admin")
                 .doesNotContain("/api/public/auth/login");
+        assertThat(countOccurrences(adapter, "fetch("))
+                .isEqualTo(countOccurrences(adapter, "fetch(adminAuthUrl("))
+                .isEqualTo(2);
+        assertThat(apiContract)
+                .contains("export function adminApiUrl(path: string)")
+                .contains("normalized === '/api/admin' || normalized.startsWith('/api/admin/')")
+                .contains("return `${backendApiRoot()}/api/admin${normalized}`");
+        assertThat(controller)
+                .contains("@RequestMapping(\"/api/admin/auth\")")
+                .contains("@PostMapping(\"/login\")")
+                .contains("@GetMapping(\"/me\")")
+                .contains("@PostMapping(\"/logout\")");
         assertThat(loginPage)
-                .contains("loginAdmin")
-                .contains("/admin/stories")
+                .contains("const session = await loginAdmin(login.trim(), credential)")
+                .contains("await refresh()")
+                .contains("router.replace('/admin/stories')")
+                .contains("router.refresh()")
+                .contains("await logoutAdmin()")
                 .doesNotContain("fetch(");
+    }
+
+    private static int countOccurrences(String source, String value) {
+        return (source.length() - source.replace(value, "").length()) / value.length();
     }
 
     @Test
