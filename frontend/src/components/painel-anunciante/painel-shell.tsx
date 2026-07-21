@@ -2,8 +2,13 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  isPainelNavigationItemActive,
+  PAINEL_NAV_ITEMS,
+} from '@/components/painel-anunciante/painel-navigation'
 
 type PainelShellProps = {
   title: string
@@ -11,14 +16,28 @@ type PainelShellProps = {
   children: ReactNode
 }
 
-const NAV_ITEMS = [
-  { label: 'Visão geral', href: '/painel' },
-  { label: 'Meus anúncios', href: '/meus-anuncios' },
-  { label: 'Conta e configurações', href: '/minha-conta' },
-]
-
 export function PainelShell({ title, description, children }: PainelShellProps) {
   const pathname = usePathname()
+  const navigationRef = useRef<HTMLElement>(null)
+  const activeItemRef = useRef<HTMLAnchorElement>(null)
+
+  useEffect(() => {
+    const navigation = navigationRef.current
+    const activeItem = activeItemRef.current
+    if (!navigation || !activeItem) return
+
+    const itemStart = activeItem.offsetLeft
+    const itemEnd = itemStart + activeItem.offsetWidth
+    const visibleStart = navigation.scrollLeft
+    const visibleEnd = visibleStart + navigation.clientWidth
+
+    if (itemStart < visibleStart || itemEnd > visibleEnd) {
+      navigation.scrollTo({
+        left: Math.max(0, itemStart - 16),
+        behavior: 'smooth',
+      })
+    }
+  }, [pathname])
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-10">
@@ -40,16 +59,22 @@ export function PainelShell({ title, description, children }: PainelShellProps) 
         </div>
 
         <div className="relative">
-          <div className="-mx-1 mt-5 flex snap-x gap-2 overflow-x-auto px-1 pb-1 pr-12 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+          <nav
+            ref={navigationRef}
+            aria-label="Navegação principal do painel do anunciante"
+            className="-mx-1 mt-5 flex snap-x gap-2 overflow-x-auto px-1 pb-1 pr-12 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {PAINEL_NAV_ITEMS.map((item) => {
+              const isActive = isPainelNavigationItemActive(item, pathname)
 
               return (
                 <Link
-                  key={item.href}
+                  key={item.id}
+                  ref={isActive ? activeItemRef : undefined}
                   href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
                   className={cn(
-                    'snap-start whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition',
+                    'snap-start whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2',
                     isActive
                       ? 'border-[#FC1EAD]/30 bg-[#FC1EAD] text-white shadow-sm'
                       : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white'
@@ -59,10 +84,10 @@ export function PainelShell({ title, description, children }: PainelShellProps) 
                 </Link>
               )
             })}
-          </div>
+          </nav>
           <div className="pointer-events-none absolute inset-y-0 right-0 flex w-12 items-center justify-end bg-gradient-to-l from-white via-white/95 to-transparent md:hidden">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-500 shadow-sm">
-              →
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-slate-500 shadow-sm" aria-hidden="true">
+              <ChevronRight className="h-4 w-4" />
             </span>
           </div>
         </div>

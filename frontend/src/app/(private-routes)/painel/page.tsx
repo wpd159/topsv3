@@ -13,12 +13,20 @@ import {
 } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { ContractState } from '@/components/feedback/contract-state'
 import { PainelShell } from '@/components/painel-anunciante/painel-shell'
 import { useAuth } from '@/context/AuthContext'
 import {
   fetchMinhaMonetizacao,
   type MinhaMonetizacaoBackend,
 } from '@/features/monetizacao-wizard/api'
+import { ApiContractError } from '@/lib/api-contract'
+
+const recommendationsPendingError = new ApiContractError(
+  'As recomendações personalizadas ainda não estão disponíveis nesta área.',
+  'INTEGRATION_MISSING',
+  404
+)
 
 export default function PainelAnunciantePage() {
   const router = useRouter()
@@ -204,6 +212,22 @@ export default function PainelAnunciantePage() {
             </CardContent>
           </Card>
         </div>
+
+        <section
+          id="recomendacoes"
+          aria-labelledby="recomendacoes-title"
+          className="scroll-mt-28 space-y-4 border-t border-slate-200 pt-6"
+        >
+          <div>
+            <h2 id="recomendacoes-title" className="text-xl font-bold text-slate-900">
+              Recomendações
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Este espaço reunirá orientações relacionadas à sua conta e aos seus anúncios.
+            </p>
+          </div>
+          <ContractState error={recommendationsPendingError} compact />
+        </section>
       </div>
     </PainelShell>
   )
