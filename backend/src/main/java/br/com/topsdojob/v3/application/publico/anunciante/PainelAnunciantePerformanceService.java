@@ -22,6 +22,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,7 @@ public class PainelAnunciantePerformanceService {
     private final AtivacaoBeneficioRepository ativacaoRepository;
     private final Clock clock;
 
+    @Autowired
     public PainelAnunciantePerformanceService(
             MeusAnunciosConsultaService meusAnunciosService,
             CliqueWhatsappRepository cliqueRepository,
