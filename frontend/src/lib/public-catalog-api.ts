@@ -1,6 +1,10 @@
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import type { MidiaPublica } from '@/lib/media/public-media'
 import {
+  parseVisualizacoesCanonicas,
+  type VisualizacoesCanonicas,
+} from '@/lib/visualizacoes-canonicas'
+import {
   ApiContractError,
   apiErrorFromResponse,
   publicApiUrl,
@@ -61,6 +65,7 @@ export type PublicCatalogCard = {
   beneficiosPublicos: string[]
   anunciaDesde?: string | null
   publicadoEm?: string | null
+  visualizacoes: VisualizacoesCanonicas
 }
 
 export type PublicCatalogPagination = {
@@ -210,6 +215,7 @@ type RawCard = {
   seo?: {
     indexavelFuturo?: boolean
   }
+  visualizacoes?: unknown
 }
 
 type RawList = {
@@ -299,6 +305,7 @@ function mapCard(raw: RawCard): PublicCatalogCard {
     beneficiosPublicos: Array.isArray(raw.beneficiosPublicos) ? raw.beneficiosPublicos : [],
     anunciaDesde: raw.anunciaDesde ?? null,
     publicadoEm: raw.publicadoEm ?? null,
+    visualizacoes: parseVisualizacoesCanonicas(raw.visualizacoes),
   }
 }
 

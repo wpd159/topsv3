@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCapaDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioLocalizacaoDto;
@@ -55,6 +57,7 @@ public class MeusAnunciosConsultaService {
     private final BairroRepository bairroRepository;
     private final MidiaPublicaMapper midiaMapper;
     private final MidiaPublicaSeguraPolicy midiaSeguraPolicy;
+    private final VisualizacaoTotalCanonicaService visualizacaoService;
 
     public MeusAnunciosConsultaService(
             UsuarioRepository usuarioRepository,
@@ -66,7 +69,8 @@ public class MeusAnunciosConsultaService {
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
             MidiaPublicaMapper midiaMapper,
-            MidiaPublicaSeguraPolicy midiaSeguraPolicy) {
+            MidiaPublicaSeguraPolicy midiaSeguraPolicy,
+            VisualizacaoTotalCanonicaService visualizacaoService) {
         this.usuarioRepository = usuarioRepository;
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
@@ -77,6 +81,7 @@ public class MeusAnunciosConsultaService {
         this.bairroRepository = bairroRepository;
         this.midiaMapper = midiaMapper;
         this.midiaSeguraPolicy = midiaSeguraPolicy;
+        this.visualizacaoService = visualizacaoService;
     }
 
     @Transactional(readOnly = true)
@@ -156,6 +161,7 @@ public class MeusAnunciosConsultaService {
                         .distinct()
                         .toList()).stream()
                 .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
+        Map<UUID, VisualizacoesCanonicasDto> visualizacoes = visualizacaoService.calcularEmLote(anuncioIds);
 
         return anuncios.stream()
                 .map(anuncio -> new MeuAnuncioDto(
@@ -173,7 +179,10 @@ public class MeusAnunciosConsultaService {
                         localizacao(localizacoes.get(anuncio.getId()), estados, cidades, bairros),
                         capa(vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of()), arquivos),
                         midias(vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of()), arquivos),
-                        anuncio.getAtualizadoEm()))
+                        anuncio.getAtualizadoEm(),
+                        Objects.requireNonNull(
+                                visualizacoes.get(anuncio.getId()),
+                                "visualizacoes canonicas ausentes para anuncio")))
                 .toList();
     }
 

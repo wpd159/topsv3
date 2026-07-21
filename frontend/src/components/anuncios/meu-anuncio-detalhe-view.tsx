@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import {
   ArrowLeftIcon,
+  EyeIcon,
   MapPinIcon,
   PencilIcon,
   PhoneIcon,
@@ -32,6 +33,7 @@ import {
   type MeuAnuncioMidia,
 } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
+import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
 
 type DetalheErro = {
   tipo: 'SESSAO_NECESSARIA' | 'ACESSO_NEGADO' | 'NAO_ENCONTRADO' | 'TECNICO'
@@ -295,7 +297,7 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
                 {rotuloOpcao(anuncio.categoria, CATEGORIAS)}
               </p>
 
-              <dl className="mt-6 grid gap-4 border-t border-slate-200 pt-6 sm:grid-cols-3">
+              <dl className="mt-6 grid gap-4 border-t border-slate-200 pt-6 sm:grid-cols-4">
                 <div className="min-w-0">
                   <dt className="text-xs font-semibold uppercase text-slate-500">Bairro</dt>
                   <dd className="mt-1 break-words text-sm font-medium text-slate-900">
@@ -312,6 +314,15 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
                   <dt className="text-xs font-semibold uppercase text-slate-500">UF</dt>
                   <dd className="mt-1 break-words text-sm font-medium text-slate-900">
                     {anuncio.localizacao?.uf || 'Não informada'}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="flex items-center gap-1 text-xs font-semibold uppercase text-slate-500">
+                    <EyeIcon className="h-4 w-4" aria-hidden="true" />
+                    Visualizações
+                  </dt>
+                  <dd className="mt-1 text-sm font-medium text-slate-900">
+                    {formatarVisualizacoesCanonicas(anuncio.visualizacoes)}
                   </dd>
                 </div>
               </dl>

@@ -181,6 +181,17 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     List<PrimeiraPublicacaoAnuncianteProjection> findPrimeiraPublicacaoByUsuarioIdIn(
             @Param("usuarioIds") Collection<UUID> usuarioIds);
 
+    @Query(value = """
+            select distinct m.entidade_v3_id
+            from importacao_mapeamento m
+            where m.sistema_origem = 'TOPSDOJOB_PRODUCAO'
+              and m.tabela_origem = 'anuncios'
+              and m.entidade_tipo = 'ANUNCIO'
+              and m.status = 'MAPEADO'
+              and m.entidade_v3_id in (:anuncioIds)
+            """, nativeQuery = true)
+    List<UUID> findIdsComMapeamentoLegado(@Param("anuncioIds") Collection<UUID> anuncioIds);
+
     long count(Specification<AnuncioEntity> spec);
 
     interface PrimeiraPublicacaoAnuncianteProjection {

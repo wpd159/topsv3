@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -24,7 +25,8 @@ class AnuncioPublicoMapperPremiumTest {
                 List.of(foto(0), foto(1)),
                 PremiumPublicoFlagsDto.vazio(),
                 true,
-                null);
+                null,
+                VisualizacoesCanonicasDto.total(0));
 
         assertThat(dto.topo()).isFalse();
         assertThat(dto.midiaExtra()).isFalse();
@@ -54,7 +56,8 @@ class AnuncioPublicoMapperPremiumTest {
                 List.of(foto(0), foto(1)),
                 vigentes,
                 true,
-                null);
+                null,
+                VisualizacoesCanonicasDto.total(12));
 
         assertThat(dto.topo()).isTrue();
         assertThat(dto.midiaExtra()).isTrue();

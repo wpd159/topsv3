@@ -145,6 +145,7 @@ export function ListagemPublicaPaginada({
             midias={anuncio.midias ?? []}
             descricao={anuncio.descricao}
             destaque={anuncio.destaqueAtivo ?? false}
+            visualizacoes={anuncio.visualizacoes}
             anunciaDesde={anuncio.anunciaDesde ?? null}
             carrosselDisponivel={anuncio.carrosselDisponivel ?? false}
             videoHabilitado={anuncio.videoHabilitado ?? false}

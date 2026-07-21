@@ -232,6 +232,7 @@ export default function AnunciosGrid({
             midias={anuncio.midias}
             descricao={anuncio.descricao}
             destaque={anuncio.destaqueAtivo}
+            visualizacoes={anuncio.visualizacoes}
             anunciaDesde={anuncio.anunciaDesde}
             carrosselDisponivel={anuncio.carrosselDisponivel}
             videoHabilitado={anuncio.videoHabilitado}

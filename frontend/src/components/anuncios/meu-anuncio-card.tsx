@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { BanknotesIcon, EyeIcon, MapPinIcon, PencilIcon, SparklesIcon } from '@heroicons/react/24/solid'
 import type { MeuAnuncio } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
+import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
 
 const STATUS: Record<string, { label: string; className: string }> = {
   RASCUNHO: { label: 'Rascunho', className: 'border-slate-300 bg-slate-100 text-slate-700' },
@@ -118,6 +119,10 @@ export function MeuAnuncioCard({ anuncio }: { anuncio: MeuAnuncio }) {
         <p className="mt-2 flex items-start text-xs leading-5 text-gray-500">
           <MapPinIcon className="mr-1 mt-0.5 h-4 w-4 shrink-0" />
           {anuncioLocalizacao(anuncio)}
+        </p>
+        <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-500">
+          <EyeIcon className="h-4 w-4 text-slate-400" aria-hidden="true" />
+          {formatarVisualizacoesCanonicas(anuncio.visualizacoes)} visualizações
         </p>
         <p className="mt-2 text-xs text-slate-500">{anuncioModeracao(anuncio.statusModeracao)}</p>
 

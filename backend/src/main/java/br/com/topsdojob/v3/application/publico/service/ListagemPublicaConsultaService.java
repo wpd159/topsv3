@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.application.publico.service;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioCardPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
@@ -26,6 +28,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -51,6 +54,7 @@ public class ListagemPublicaConsultaService {
     private final PremiumPublicoMapper premiumMapper;
     private final PoliticaContatoPublicoService contatoService;
     private final OrdemSeedPublicaService ordemSeedService;
+    private final VisualizacaoTotalCanonicaService visualizacaoService;
 
     public ListagemPublicaConsultaService(
             EstadoRepository estadoRepository,
@@ -63,7 +67,8 @@ public class ListagemPublicaConsultaService {
             SeoPublicoConsultaService seoService,
             PremiumPublicoMapper premiumMapper,
             PoliticaContatoPublicoService contatoService,
-            OrdemSeedPublicaService ordemSeedService) {
+            OrdemSeedPublicaService ordemSeedService,
+            VisualizacaoTotalCanonicaService visualizacaoService) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
@@ -75,6 +80,7 @@ public class ListagemPublicaConsultaService {
         this.premiumMapper = premiumMapper;
         this.contatoService = contatoService;
         this.ordemSeedService = ordemSeedService;
+        this.visualizacaoService = visualizacaoService;
     }
 
     @Transactional(readOnly = true)
@@ -194,6 +200,8 @@ public class ListagemPublicaConsultaService {
         List<AnuncioLocalizacaoEntity> localizacoes = localizacaoRepository.findByAnuncioIdIn(anuncioIds);
 
         Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(anuncios.getContent());
+        Map<UUID, VisualizacoesCanonicasDto> visualizacoesPorAnuncio =
+                visualizacaoService.calcularEmLote(anuncioIds);
         Map<UUID, AnuncioLocalizacaoEntity> localizacaoPorAnuncio = localizacoes.stream()
                 .collect(Collectors.toMap(AnuncioLocalizacaoEntity::getAnuncioId, Function.identity()));
         Map<UUID, CidadeEntity> cidades = cidadeRepository.findAllById(localizacoes.stream()
@@ -233,7 +241,8 @@ public class ListagemPublicaConsultaService {
                             midiasPorAnuncio.getOrDefault(anuncio.getId(), List.of()),
                             premium,
                             contatoService.podeExporContato(anuncio),
-                            primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()));
+                            primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()),
+                            visualizacoes(visualizacoesPorAnuncio, anuncio.getId()));
                 })
                 .toList();
 
@@ -291,6 +300,8 @@ public class ListagemPublicaConsultaService {
                 anuncioConsultaService.midiasPorAnuncios(
                         anuncios.stream().map(AnuncioEntity::getId).toList(),
                         premiumPorAnuncio);
+        Map<UUID, VisualizacoesCanonicasDto> visualizacoesPorAnuncio = visualizacaoService.calcularEmLote(
+                anuncios.stream().map(AnuncioEntity::getId).toList());
 
         return anuncios.stream()
                 .map(anuncio -> {
@@ -314,9 +325,18 @@ public class ListagemPublicaConsultaService {
                             midiasPorAnuncio.getOrDefault(anuncio.getId(), List.of()),
                             premium,
                             contatoService.podeExporContato(anuncio),
-                            primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()));
+                            primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()),
+                            visualizacoes(visualizacoesPorAnuncio, anuncio.getId()));
                 })
                 .toList();
+    }
+
+    private VisualizacoesCanonicasDto visualizacoes(
+            Map<UUID, VisualizacoesCanonicasDto> visualizacoesPorAnuncio,
+            UUID anuncioId) {
+        return Objects.requireNonNull(
+                visualizacoesPorAnuncio.get(anuncioId),
+                "visualizacoes canonicas ausentes para anuncio");
     }
 
     private CategoriaAnuncio categoria(String codigo) {

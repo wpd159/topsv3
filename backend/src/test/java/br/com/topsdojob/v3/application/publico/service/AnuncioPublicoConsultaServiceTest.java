@@ -7,6 +7,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
@@ -102,6 +104,8 @@ class AnuncioPublicoConsultaServiceTest {
         IdadeAnunciantePublicaService idadeAnuncianteService = mock(IdadeAnunciantePublicaService.class);
         when(idadeAnuncianteService.resolver(usuarioId, false))
                 .thenReturn(new IdadeAnunciantePublicaService.Resultado("perfil-publico", 36, false));
+        VisualizacaoTotalCanonicaService visualizacaoService = mock(VisualizacaoTotalCanonicaService.class);
+        when(visualizacaoService.calcular(anuncioId)).thenReturn(VisualizacoesCanonicasDto.total(45));
 
         AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
                 anuncioRepository,
@@ -118,7 +122,8 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(BairroRepository.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(AnuncioSeoIndexabilidadePolicy.class),
-                idadeAnuncianteService);
+                idadeAnuncianteService,
+                visualizacaoService);
 
         var detalhe = service.buscarPorSlug("slug-publico");
 
@@ -133,6 +138,7 @@ class AnuncioPublicoConsultaServiceTest {
         assertThat(detalhe.username()).isEqualTo("perfil-publico");
         assertThat(detalhe.idade()).isEqualTo(36);
         assertThat(detalhe.idadeOculta()).isFalse();
+        assertThat(detalhe.visualizacoes().total()).isEqualTo(45);
     }
 
     @Test
@@ -159,7 +165,8 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(BairroRepository.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(AnuncioSeoIndexabilidadePolicy.class),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                mock(VisualizacaoTotalCanonicaService.class));
 
         assertThatThrownBy(() -> service.buscarPorSlug("slug-local"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -209,7 +216,8 @@ class AnuncioPublicoConsultaServiceTest {
                 mock(BairroRepository.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(AnuncioSeoIndexabilidadePolicy.class),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                mock(VisualizacaoTotalCanonicaService.class));
 
         var midias = service.midiasPorAnuncios(
                 List.of(anuncioId, outroAnuncioId),

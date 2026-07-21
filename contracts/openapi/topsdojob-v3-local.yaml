@@ -3981,6 +3981,24 @@ components:
         status:
           type: string
           const: LOGOUT_OK
+    VisualizacoesCanonicas:
+      type: object
+      additionalProperties: false
+      required:
+        - total
+        - situacao
+      properties:
+        total:
+          type:
+            - integer
+            - "null"
+          format: int64
+          minimum: 0
+          description: Total canonico completo. Nulo somente enquanto o historico inicial legado estiver pendente.
+        situacao:
+          type: string
+          enum: [DISPONIVEL, ZERO_LEGITIMO, HISTORICO_PENDENTE]
+          description: Distingue total disponivel, zero real e historico legado ainda nao importado.
     MeuAnuncio:
       type: object
       additionalProperties: false
@@ -4000,6 +4018,7 @@ components:
         - capa
         - midias
         - atualizadoEm
+        - visualizacoes
       properties:
         id:
           type: string
@@ -4052,6 +4071,8 @@ components:
         atualizadoEm:
           type: [string, "null"]
           format: date-time
+        visualizacoes:
+          $ref: "#/components/schemas/VisualizacoesCanonicas"
     MeuAnuncioAtualizacaoRequest:
       type: object
       additionalProperties: false
@@ -6509,6 +6530,7 @@ components:
         - beneficiosPublicos
         - pendenciaContatoPublico
         - seo
+        - visualizacoes
       properties:
         id:
           type: string
@@ -6604,6 +6626,8 @@ components:
           format: date-time
         seo:
           $ref: "#/components/schemas/SeoRotaPublica"
+        visualizacoes:
+          $ref: "#/components/schemas/VisualizacoesCanonicas"
     CategoriaAnuncioCodigo:
       type: string
       enum:
@@ -6773,6 +6797,7 @@ components:
         - comLocal
         - fazAnal
         - beneficiosPublicos
+        - visualizacoes
       properties:
         id:
           type: string
@@ -6834,6 +6859,8 @@ components:
             - string
             - "null"
           format: date-time
+        visualizacoes:
+          $ref: "#/components/schemas/VisualizacoesCanonicas"
     ListaAnunciosPublica:
       type: object
       additionalProperties: false

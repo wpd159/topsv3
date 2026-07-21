@@ -13,6 +13,10 @@ import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { publicApiUrl } from "@/lib/api-contract"
 import {
+  formatarVisualizacoesCanonicas,
+  type VisualizacoesCanonicas,
+} from "@/lib/visualizacoes-canonicas"
+import {
   MapPinIcon,
   ChatBubbleLeftIcon,
   ChevronLeftIcon,
@@ -39,7 +43,7 @@ type AnuncioCardProps = {
   nomeAnunciante?: string
   usernameAnunciante?: string
   destaque?: boolean
-  visualizacoes?: number
+  visualizacoes?: VisualizacoesCanonicas | null
   carrosselDisponivel?: boolean
   videoHabilitado?: boolean
   whatsappCardEnabled?: boolean
@@ -101,7 +105,7 @@ export function AnuncioCard({
   descricao,
   usernameAnunciante,
   destaque = false,
-  visualizacoes = 0,
+  visualizacoes,
   carrosselDisponivel = false,
   videoHabilitado = false,
   whatsappCardEnabled = false,
@@ -174,7 +178,7 @@ export function AnuncioCard({
   }, [badSrcs, midias, previewImagens, previewMode])
 
   const [index, setIndex] = useState(0)
-  const [views, setViews] = useState(visualizacoes)
+  const visualizacoesLabel = formatarVisualizacoesCanonicas(visualizacoes)
 
   useEffect(() => {
     if (!midiasSeguras.length) {
@@ -402,7 +406,7 @@ export function AnuncioCard({
           {!previewMode && (
             <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
               <EyeIcon className="h-4 w-4 text-gray-400" />
-              <span>{views} visualizações</span>
+              <span>{visualizacoesLabel} visualizações</span>
             </div>
           )}
 

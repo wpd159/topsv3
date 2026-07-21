@@ -14,6 +14,7 @@ import {
   type PublicCatalogDetail,
 } from "@/lib/public-catalog-api"
 import { publicApiUrl } from "@/lib/api-contract"
+import type { VisualizacoesCanonicas } from "@/lib/visualizacoes-canonicas"
 
 type AnuncioUI = {
   id: string
@@ -43,6 +44,7 @@ type AnuncioUI = {
   linkConteudo?: string | null
   horario?: string | null
   anunciaDesde?: string | null
+  visualizacoes: VisualizacoesCanonicas
 }
 
 function mapAnuncioPayload(slug: string, data: PublicCatalogDetail): AnuncioUI {
@@ -77,6 +79,7 @@ function mapAnuncioPayload(slug: string, data: PublicCatalogDetail): AnuncioUI {
     linkConteudo: null,
     horario: null,
     anunciaDesde: data.anunciaDesde ?? null,
+    visualizacoes: data.visualizacoes,
   }
 }
 

@@ -34,6 +34,7 @@ for (const field of [
   'localizacao',
   'capa',
   'midias',
+  'visualizacoes',
 ]) {
   assert.match(api, new RegExp(`\\b${field}:`), `Campo ausente do MeuAnuncio: ${field}`)
 }
@@ -64,6 +65,7 @@ for (const field of [
   'anuncio.whatsapp',
   'anuncio.capa',
   'anuncio.midias',
+  'anuncio.visualizacoes',
 ]) {
   assert.ok(detail.includes(field), `Campo do detalhe nao renderizado: ${field}`)
 }
@@ -96,7 +98,6 @@ assert.match(normalized(detail), /Nenhum servico informado/)
 assert.match(normalized(detail), /Nenhum local de atendimento informado/)
 
 for (const forbidden of [
-  'Visualizacoes',
   'Cliques',
   'CTR',
   'Pausar',

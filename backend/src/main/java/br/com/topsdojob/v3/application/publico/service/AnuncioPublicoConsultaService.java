@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.service;
 import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_BASE;
 import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_COM_EXTRA;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioDetalhePublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
@@ -52,6 +53,7 @@ public class AnuncioPublicoConsultaService {
     private final PoliticaContatoPublicoService contatoService;
     private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
     private final IdadeAnunciantePublicaService idadeAnuncianteService;
+    private final VisualizacaoTotalCanonicaService visualizacaoService;
 
     public AnuncioPublicoConsultaService(
             AnuncioRepository anuncioRepository,
@@ -68,7 +70,8 @@ public class AnuncioPublicoConsultaService {
             BairroRepository bairroRepository,
             PoliticaContatoPublicoService contatoService,
             AnuncioSeoIndexabilidadePolicy indexabilidadePolicy,
-            IdadeAnunciantePublicaService idadeAnuncianteService) {
+            IdadeAnunciantePublicaService idadeAnuncianteService,
+            VisualizacaoTotalCanonicaService visualizacaoService) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -84,6 +87,7 @@ public class AnuncioPublicoConsultaService {
         this.contatoService = contatoService;
         this.indexabilidadePolicy = indexabilidadePolicy;
         this.idadeAnuncianteService = idadeAnuncianteService;
+        this.visualizacaoService = visualizacaoService;
     }
 
     @Transactional(readOnly = true)
@@ -130,7 +134,8 @@ public class AnuncioPublicoConsultaService {
                 primeiraPublicacao,
                 idadeAnunciante.username(),
                 idadeAnunciante.idade(),
-                idadeAnunciante.idadeOculta());
+                idadeAnunciante.idadeOculta(),
+                visualizacaoService.calcular(anuncio.getId()));
     }
 
     LocalizacaoPublicaDto localizacao(UUID anuncioId) {

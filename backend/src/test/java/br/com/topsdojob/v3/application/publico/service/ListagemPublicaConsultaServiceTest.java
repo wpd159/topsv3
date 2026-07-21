@@ -4,11 +4,14 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
@@ -29,6 +32,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,7 +61,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
-                mock(OrdemSeedPublicaService.class));
+                mock(OrdemSeedPublicaService.class),
+                visualizacoesCanonicas());
 
         assertThatThrownBy(() -> service.porEstado("SP", -1, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -78,7 +84,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
-                mock(OrdemSeedPublicaService.class));
+                mock(OrdemSeedPublicaService.class),
+                visualizacoesCanonicas());
 
         assertThatThrownBy(() -> service.porEstado("sp", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -108,7 +115,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
-                mock(OrdemSeedPublicaService.class));
+                mock(OrdemSeedPublicaService.class),
+                visualizacoesCanonicas());
 
         assertThatThrownBy(() -> service.porCidade("sp", "cidade-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -145,7 +153,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
-                mock(OrdemSeedPublicaService.class));
+                mock(OrdemSeedPublicaService.class),
+                visualizacoesCanonicas());
 
         assertThatThrownBy(() -> service.porBairro("go", "goiania", "bairro-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -242,7 +251,8 @@ class ListagemPublicaConsultaServiceTest {
                 seoService,
                 premiumMapper,
                 mock(PoliticaContatoPublicoService.class),
-                mock(OrdemSeedPublicaService.class));
+                mock(OrdemSeedPublicaService.class),
+                visualizacoesCanonicas());
 
         ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20, null);
 
@@ -333,7 +343,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(SeoPublicoConsultaService.class),
                 premiumMapper,
                 contatoService,
-                mock(OrdemSeedPublicaService.class));
+                mock(OrdemSeedPublicaService.class),
+                visualizacoesCanonicas());
 
         ListaAnunciosCategoriaPublicaDto resposta = service.listar("VENDA_DE_CONTEUDO", null, 0, 20, null);
 
@@ -374,7 +385,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(SeoPublicoConsultaService.class),
                 premiumMapper,
                 mock(PoliticaContatoPublicoService.class),
-                ordemSeedService);
+                ordemSeedService,
+                visualizacoesCanonicas());
 
         ListaAnunciosCategoriaPublicaDto resposta = service.listar(null, null, 1, 20, seedSegura);
 
@@ -403,10 +415,22 @@ class ListagemPublicaConsultaServiceTest {
                 mock(SeoPublicoConsultaService.class),
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
-                mock(OrdemSeedPublicaService.class));
+                mock(OrdemSeedPublicaService.class),
+                visualizacoesCanonicas());
 
         assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    private static VisualizacaoTotalCanonicaService visualizacoesCanonicas() {
+        VisualizacaoTotalCanonicaService service = mock(VisualizacaoTotalCanonicaService.class);
+        when(service.calcularEmLote(any())).thenAnswer(invocation -> {
+            Collection<UUID> ids = invocation.getArgument(0);
+            Map<UUID, VisualizacoesCanonicasDto> totais = new LinkedHashMap<>();
+            ids.forEach(id -> totais.put(id, VisualizacoesCanonicasDto.total(0)));
+            return totais;
+        });
+        return service;
     }
 }

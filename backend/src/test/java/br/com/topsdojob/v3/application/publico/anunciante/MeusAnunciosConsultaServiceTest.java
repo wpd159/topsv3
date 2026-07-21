@@ -7,6 +7,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
@@ -36,7 +38,10 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,6 +69,7 @@ class MeusAnunciosConsultaServiceTest {
     private CidadeRepository cidadeRepository;
     private BairroRepository bairroRepository;
     private MidiaPublicaUrlService urlService;
+    private VisualizacaoTotalCanonicaService visualizacaoService;
     private MeusAnunciosConsultaService service;
 
     @BeforeEach
@@ -77,6 +83,13 @@ class MeusAnunciosConsultaServiceTest {
         cidadeRepository = mock(CidadeRepository.class);
         bairroRepository = mock(BairroRepository.class);
         urlService = mock(MidiaPublicaUrlService.class);
+        visualizacaoService = mock(VisualizacaoTotalCanonicaService.class);
+        when(visualizacaoService.calcularEmLote(any())).thenAnswer(invocation -> {
+            Collection<UUID> ids = invocation.getArgument(0);
+            Map<UUID, VisualizacoesCanonicasDto> totais = new LinkedHashMap<>();
+            ids.forEach(id -> totais.put(id, VisualizacoesCanonicasDto.total(0)));
+            return totais;
+        });
         service = new MeusAnunciosConsultaService(
                 usuarioRepository,
                 anuncioRepository,
@@ -87,7 +100,8 @@ class MeusAnunciosConsultaServiceTest {
                 cidadeRepository,
                 bairroRepository,
                 new MidiaPublicaMapper(urlService),
-                new MidiaPublicaSeguraPolicy());
+                new MidiaPublicaSeguraPolicy(),
+                visualizacaoService);
     }
 
     @Test
@@ -147,6 +161,7 @@ class MeusAnunciosConsultaServiceTest {
         assertThat(resultado.get(0).localizacao().bairro()).isEqualTo("Setor Bueno");
         assertThat(resultado.get(0).capa().urlPublica()).isEqualTo("/capa-segura.svg");
         assertThat(resultado.get(0).capa().restrita()).isFalse();
+        assertThat(resultado.get(0).visualizacoes().total()).isZero();
         assertThat(resultado.get(1).status()).isEqualTo("PAUSADO");
         assertThat(resultado.get(1).capa()).isNull();
     }

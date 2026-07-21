@@ -16,6 +16,7 @@ class MeusAnunciosFrontendContractTest {
 
         assertThat(adapter)
                 .contains("'/minha-conta/anuncios'")
+                .contains("parseVisualizacoesCanonicas")
                 .contains("/midias")
                 .contains("XMLHttpRequest")
                 .contains("method: 'PATCH'")
@@ -55,6 +56,7 @@ class MeusAnunciosFrontendContractTest {
                 .doesNotContain("features/catalogo");
         assertThat(detalhe)
                 .contains("buscarMeuAnuncio")
+                .contains("formatarVisualizacoesCanonicas(anuncio.visualizacoes)")
                 .contains("error.status === 403")
                 .contains("error.status === 404")
                 .doesNotContain("fetch(");
@@ -102,6 +104,7 @@ class MeusAnunciosFrontendContractTest {
         assertThat(card)
                 .contains("/editar")
                 .contains("Detalhes")
+                .contains("formatarVisualizacoesCanonicas(anuncio.visualizacoes)")
                 .doesNotContain("Excluir")
                 .doesNotContain("ImpulsionarModal")
                 .doesNotContain("Adicionar story");

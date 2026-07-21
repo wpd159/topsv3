@@ -1,3 +1,9 @@
+import { publicApiUrl } from '@/lib/api-contract'
+import {
+  parseVisualizacoesCanonicas,
+  type VisualizacoesCanonicas,
+} from '@/lib/visualizacoes-canonicas'
+
 export type MeuAnuncioLocalizacao = {
   uf: string | null
   cidade: string | null
@@ -66,6 +72,7 @@ export type MeuAnuncio = {
   capa: MeuAnuncioCapa | null
   midias: MeuAnuncioMidia[]
   atualizadoEm: string | null
+  visualizacoes: VisualizacoesCanonicas
 }
 
 export type MeuAnuncioAtualizacao = {
@@ -149,20 +156,41 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T
 }
 
-export function listarMeusAnuncios() {
-  return request<MeuAnuncio[]>('/minha-conta/anuncios')
+function mapMeuAnuncio(payload: unknown): MeuAnuncio {
+  if (!payload || typeof payload !== 'object') {
+    throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
+  }
+
+  const raw = payload as Omit<MeuAnuncio, 'visualizacoes'> & { visualizacoes?: unknown }
+  try {
+    return {
+      ...raw,
+      visualizacoes: parseVisualizacoesCanonicas(raw.visualizacoes),
+    }
+  } catch {
+    throw new MeusAnunciosApiError('O servico retornou visualizacoes em formato incompativel.', 502)
+  }
 }
 
-export function buscarMeuAnuncio(slug: string) {
-  return request<MeuAnuncio>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`)
+export async function listarMeusAnuncios() {
+  const payload = await request<unknown>('/minha-conta/anuncios')
+  if (!Array.isArray(payload)) {
+    throw new MeusAnunciosApiError('O servico retornou uma listagem em formato incompativel.', 502)
+  }
+  return payload.map(mapMeuAnuncio)
 }
 
-export function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtualizacao) {
-  return request<MeuAnuncio>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`, {
+export async function buscarMeuAnuncio(slug: string) {
+  return mapMeuAnuncio(await request<unknown>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`))
+}
+
+export async function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtualizacao) {
+  const resposta = await request<unknown>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
+  return mapMeuAnuncio(resposta)
 }
 
 export function listarMinhasMidias(slug: string) {
@@ -233,4 +261,3 @@ export function removerMinhaMidia(slug: string, midiaId: string) {
     { method: 'DELETE' }
   )
 }
-import { publicApiUrl } from '@/lib/api-contract'

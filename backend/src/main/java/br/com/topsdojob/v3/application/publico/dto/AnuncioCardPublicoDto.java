@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.publico.dto;
 
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -24,5 +25,6 @@ public record AnuncioCardPublicoDto(
         boolean fazAnal,
         List<String> beneficiosPublicos,
         OffsetDateTime anunciaDesde,
-        OffsetDateTime publicadoEm) {
+        OffsetDateTime publicadoEm,
+        VisualizacoesCanonicasDto visualizacoes) {
 }
