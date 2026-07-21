@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { EyeIcon, MapPinIcon, PencilIcon } from '@heroicons/react/24/solid'
+import { BanknotesIcon, EyeIcon, MapPinIcon, PencilIcon, SparklesIcon } from '@heroicons/react/24/solid'
 import type { MeuAnuncio } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
 
@@ -23,6 +23,19 @@ const MODERACAO: Record<string, string> = {
   REJEITADO: 'Moderação rejeitada',
 }
 
+const PARAMETROS_DE_URL_ASSINADA = new Set([
+  'expires',
+  'key-pair-id',
+  'signature',
+  'token',
+  'x-amz-algorithm',
+  'x-amz-credential',
+  'x-amz-date',
+  'x-amz-expires',
+  'x-amz-security-token',
+  'x-amz-signature',
+])
+
 export function anuncioStatus(status: string) {
   return STATUS[status] ?? {
     label: 'Status indisponível',
@@ -40,9 +53,40 @@ export function anuncioLocalizacao(anuncio: MeuAnuncio) {
   return [localizacao.bairro, localizacao.cidade, localizacao.uf].filter(Boolean).join(', ') || 'Localização não informada'
 }
 
+export function anuncioPreco(preco: number | null) {
+  if (preco == null) return 'Preço não informado'
+  const valor = Number(preco)
+  if (!Number.isFinite(valor)) return 'Preço indisponível'
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+export function anuncioPodeMonetizar(anuncio: Pick<MeuAnuncio, 'status'>) {
+  return anuncio.status === 'PUBLICADO'
+}
+
+export function meuAnuncioUrlPublicaSegura(url: string | null | undefined) {
+  const valor = url?.trim()
+  if (!valor) return null
+
+  try {
+    const resolvida = new URL(valor, 'https://publico.topsv3.invalid')
+    if (resolvida.protocol !== 'https:') return null
+    const possuiAssinatura = Array.from(resolvida.searchParams.keys()).some((chave) =>
+      PARAMETROS_DE_URL_ASSINADA.has(chave.toLowerCase())
+    )
+    return possuiAssinatura ? null : valor
+  } catch {
+    return null
+  }
+}
+
 export function MeuAnuncioCard({ anuncio }: { anuncio: MeuAnuncio }) {
   const status = anuncioStatus(anuncio.status)
-  const capa = anuncio.capa?.urlPublica || '/icone-sem-foto.png'
+  const capaPublica = !anuncio.capa?.restrita
+    ? meuAnuncioUrlPublicaSegura(anuncio.capa?.urlPublica)
+    : null
+  const capa = capaPublica ?? '/icone-sem-foto.png'
+  const podeMonetizar = anuncioPodeMonetizar(anuncio)
 
   return (
     <article className="group mx-auto flex w-full max-w-[330px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md">
@@ -66,7 +110,11 @@ export function MeuAnuncioCard({ anuncio }: { anuncio: MeuAnuncio }) {
       </div>
 
       <div className="flex flex-1 flex-col p-4">
-        <h2 className="line-clamp-2 text-base font-semibold leading-tight text-gray-900">{anuncio.titulo}</h2>
+        <h2 className="line-clamp-2 break-words text-base font-semibold leading-tight text-gray-900">{anuncio.titulo}</h2>
+        <p className="mt-3 flex items-center gap-1.5 text-lg font-bold text-slate-950">
+          <BanknotesIcon className="h-5 w-5 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
+          <span className="break-words">{anuncioPreco(anuncio.preco)}</span>
+        </p>
         <p className="mt-2 flex items-start text-xs leading-5 text-gray-500">
           <MapPinIcon className="mr-1 mt-0.5 h-4 w-4 shrink-0" />
           {anuncioLocalizacao(anuncio)}
@@ -88,6 +136,15 @@ export function MeuAnuncioCard({ anuncio }: { anuncio: MeuAnuncio }) {
             <PencilIcon className="mr-1 h-4 w-4" />
             Editar
           </Link>
+          {podeMonetizar ? (
+            <Link
+              href={`/meus-anuncios/${encodeURIComponent(anuncio.slug)}/monetizar`}
+              className="col-span-2 inline-flex items-center justify-center rounded-lg border border-[#FC1EAD]/30 bg-[#FC1EAD]/5 px-3 py-2 text-xs font-semibold text-[#b5127a] transition hover:-translate-y-0.5 hover:border-[#FC1EAD]/50 hover:bg-[#FC1EAD]/10 hover:shadow-sm"
+            >
+              <SparklesIcon className="mr-1 h-4 w-4" aria-hidden="true" />
+              Monetizar
+            </Link>
+          ) : null}
         </div>
       </div>
     </article>
