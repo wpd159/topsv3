@@ -327,6 +327,26 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/painel-anunciante/performance:
+    get:
+      summary: Consolida a performance dos anuncios do usuario autenticado
+      operationId: getCurrentAdvertiserPerformance
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: O usuario e obtido exclusivamente da sessao. Visualizacoes usam o total canonico; cliques e beneficios vigentes sao agregados no PostgreSQL somente para anuncios proprios.
+      responses:
+        "200":
+          description: Performance consolidada do anunciante autenticado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PainelAnunciantePerformance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/minha-conta/anuncios/{slug}:
     get:
       summary: Detalha um anuncio pertencente ao usuario publico autenticado
@@ -3999,6 +4019,117 @@ components:
           type: string
           enum: [DISPONIVEL, ZERO_LEGITIMO, HISTORICO_PENDENTE]
           description: Distingue total disponivel, zero real e historico legado ainda nao importado.
+    PainelAnunciantePerformance:
+      type: object
+      additionalProperties: false
+      required:
+        - visualizacoes
+        - totalCliquesWhatsapp
+        - ctrGeral
+        - anunciosComBeneficioPremiumVigente
+        - comparativo
+        - serieCliquesWhatsapp
+        - ranking
+      properties:
+        visualizacoes:
+          $ref: "#/components/schemas/VisualizacoesCanonicas"
+        totalCliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        ctrGeral:
+          type: [number, "null"]
+          format: double
+          minimum: 0
+          description: Nulo quando ao menos um anuncio proprio ainda possui historico inicial pendente.
+        anunciosComBeneficioPremiumVigente:
+          type: integer
+          format: int64
+          minimum: 0
+        comparativo:
+          $ref: "#/components/schemas/PainelPerformanceComparativo"
+        serieCliquesWhatsapp:
+          type: array
+          minItems: 14
+          maxItems: 14
+          items:
+            $ref: "#/components/schemas/PainelPerformanceSerieCliques"
+        ranking:
+          type: array
+          items:
+            $ref: "#/components/schemas/PainelPerformanceAnuncio"
+    PainelPerformanceComparativo:
+      type: object
+      additionalProperties: false
+      required: [cliquesPeriodoAtual, cliquesPeriodoAnterior, variacaoPercentual]
+      properties:
+        cliquesPeriodoAtual:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Cliques permitidos de hoje e dos seis dias anteriores, em UTC.
+        cliquesPeriodoAnterior:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Cliques permitidos dos sete dias imediatamente anteriores ao periodo atual, em UTC.
+        variacaoPercentual:
+          type: number
+          format: double
+          description: Variacao com duas casas; ambos zero resultam em 0 e anterior zero com atual positivo resulta em 100.
+    PainelPerformanceSerieCliques:
+      type: object
+      additionalProperties: false
+      required: [data, cliques]
+      properties:
+        data:
+          type: string
+          format: date
+        cliques:
+          type: integer
+          format: int64
+          minimum: 0
+    PainelPerformanceAnuncio:
+      type: object
+      additionalProperties: false
+      required:
+        - anuncioId
+        - anuncioSlug
+        - anuncioTitulo
+        - localizacao
+        - fotoCapa
+        - visualizacoes
+        - cliquesWhatsapp
+        - ctr
+        - beneficiosPremiumVigentes
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
+        anuncioSlug:
+          type: string
+        anuncioTitulo:
+          type: string
+        localizacao:
+          type: [string, "null"]
+        fotoCapa:
+          type: [string, "null"]
+          description: URL publica segura da capa; nunca contem midia privada, restrita ou assinada.
+        visualizacoes:
+          $ref: "#/components/schemas/VisualizacoesCanonicas"
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        ctr:
+          type: [number, "null"]
+          format: double
+          minimum: 0
+          description: Nulo somente quando o historico inicial do anuncio estiver pendente.
+        beneficiosPremiumVigentes:
+          type: integer
+          format: int64
+          minimum: 0
     MeuAnuncio:
       type: object
       additionalProperties: false

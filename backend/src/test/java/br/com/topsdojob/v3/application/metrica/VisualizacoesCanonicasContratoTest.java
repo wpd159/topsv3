@@ -36,7 +36,7 @@ class VisualizacoesCanonicasContratoTest {
         .contains("VisualizacoesCanonicas:")
         .contains("enum: [DISPONIVEL, ZERO_LEGITIMO, HISTORICO_PENDENTE]")
         .contains("Total canonico completo. Nulo somente enquanto o historico inicial legado estiver pendente.");
-    assertThat(ocorrencias(openApi, "$ref: \"#/components/schemas/VisualizacoesCanonicas\"")).isEqualTo(3);
+    assertThat(ocorrencias(openApi, "$ref: \"#/components/schemas/VisualizacoesCanonicas\"")).isEqualTo(5);
   }
 
   @Test

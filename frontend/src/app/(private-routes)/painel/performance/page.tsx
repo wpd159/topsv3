@@ -8,29 +8,41 @@ import { toast } from 'sonner'
 import { fetchPainelPerformance, type PainelPerformance } from '@/lib/painel-anunciante-api'
 import { PainelShell } from '@/components/painel-anunciante/painel-shell'
 import { PainelKpiCard } from '@/components/painel-anunciante/painel-kpi-card'
+import { ContractState } from '@/components/feedback/contract-state'
+import { normalizeApiError } from '@/lib/api-contract'
+import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
 
 function formatNumber(value: number) {
-  return Number(value || 0).toLocaleString('pt-BR')
+  return value.toLocaleString('pt-BR')
 }
 
-function formatPercent(value: number) {
-  return `${Number(value || 0).toLocaleString('pt-BR', {
+function formatPercent(value: number | null) {
+  if (value === null) return '\u2014'
+  return `${value.toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}%`
 }
 
-function formatExpiry(value?: string | null) {
-  if (!value) return null
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return null
-  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+function formatSeriesLabel(value: string) {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'UTC',
+  })
+}
+
+function formatTrend(value: number) {
+  if (value > 0) return 'de alta'
+  if (value < 0) return 'de queda'
+  return 'estavel'
 }
 
 export default function PainelAnunciantePerformancePage() {
   const [data, setData] = useState<PainelPerformance | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<unknown>(null)
+  const [requestVersion, setRequestVersion] = useState(0)
 
   useEffect(() => {
     let active = true
@@ -42,10 +54,11 @@ export default function PainelAnunciantePerformancePage() {
         const response = await fetchPainelPerformance()
         if (!active) return
         setData(response)
-      } catch {
+      } catch (cause) {
         if (!active) return
-        setError('Não foi possível carregar a performance agora.')
-        toast.error('Não foi possível carregar a performance do anunciante.')
+        const normalized = normalizeApiError(cause)
+        setError(normalized)
+        toast.error(normalized.message)
       } finally {
         if (active) setLoading(false)
       }
@@ -55,14 +68,14 @@ export default function PainelAnunciantePerformancePage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [requestVersion])
 
   const cards = useMemo(() => {
     if (!data) return []
     return [
       {
         label: 'Visualizações totais',
-        value: formatNumber(data.totalVisualizacoes),
+        value: formatarVisualizacoesCanonicas(data.visualizacoes),
         helper: 'Volume total acumulado de exposição dos seus anúncios.',
         accent: 'blue' as const,
       },
@@ -80,12 +93,17 @@ export default function PainelAnunciantePerformancePage() {
       },
       {
         label: 'Ads com premium',
-        value: data.anunciosComRecursosPremium,
-        helper: `${data.totalRecursosPremiumAtivos} recursos premium ativos somados.`,
+        value: formatNumber(data.anunciosComBeneficioPremiumVigente),
+        helper: 'Anúncios com ao menos um benefício premium vigente.',
         accent: 'amber' as const,
       },
     ]
   }, [data])
+
+  const chartData = useMemo(
+    () => data?.serieCliquesWhatsapp.map((item) => ({ ...item, label: formatSeriesLabel(item.data) })) ?? [],
+    [data]
+  )
 
   return (
     <PainelShell
@@ -103,9 +121,10 @@ export default function PainelAnunciantePerformancePage() {
             <div className="h-[360px] rounded-[32px] border border-slate-200 bg-white shadow-sm" />
           </>
         ) : error || !data ? (
-          <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-5 text-sm text-rose-700">
-            {error ?? 'Não foi possível carregar a performance.'}
-          </div>
+          <ContractState
+            error={error ?? new Error('Não foi possível carregar a performance.')}
+            onRetry={() => setRequestVersion((version) => version + 1)}
+          />
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -138,7 +157,7 @@ export default function PainelAnunciantePerformancePage() {
 
                 <div className="mt-6 h-[280px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data.serieCliquesWhatsapp}>
+                    <LineChart data={chartData}>
                       <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" vertical={false} />
                       <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
                       <YAxis allowDecimals={false} tickLine={false} axisLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
@@ -204,7 +223,7 @@ export default function PainelAnunciantePerformancePage() {
                           {formatPercent(data.comparativo.variacaoPercentual)}
                         </p>
                         <p className="mt-2 text-sm text-slate-600">
-                          Tendência {data.comparativo.tendencia}.
+                          Tendência {formatTrend(data.comparativo.variacaoPercentual)}.
                         </p>
                       </div>
                       <ArrowTrendingUpIcon className="h-8 w-8 text-[#FC1EAD]" />
@@ -243,7 +262,6 @@ export default function PainelAnunciantePerformancePage() {
                     <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                       <tr>
                         <th className="px-4 py-4">Anúncio</th>
-                        <th className="px-4 py-4">Visibilidade</th>
                         <th className="px-4 py-4 text-right">Views</th>
                         <th className="px-4 py-4 text-right">Cliques</th>
                         <th className="px-4 py-4 text-right">CTR</th>
@@ -253,7 +271,7 @@ export default function PainelAnunciantePerformancePage() {
                     <tbody className="divide-y divide-slate-200 bg-white">
                       {data.ranking.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
+                          <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
                             Nenhum anúncio disponível para análise ainda.
                           </td>
                         </tr>
@@ -272,29 +290,11 @@ export default function PainelAnunciantePerformancePage() {
                                   {item.localizacao ? (
                                     <p className="mt-1 text-xs text-slate-500">{item.localizacao}</p>
                                   ) : null}
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {item.impulsionado ? (
-                                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700">
-                                        Destaque
-                                      </span>
-                                    ) : null}
-                                    {formatExpiry(item.expiraImpulsionamentoEm) ? (
-                                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                        Até {formatExpiry(item.expiraImpulsionamentoEm)}
-                                      </span>
-                                    ) : null}
-                                  </div>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-4 py-4">
-                              <div className="min-w-[150px]">
-                                <p className="font-semibold text-slate-900">{item.scoreVisibilidade}/100</p>
-                                <p className="mt-1 text-xs text-slate-500">{item.faixaVisibilidade}</p>
-                              </div>
-                            </td>
                             <td className="px-4 py-4 text-right font-semibold text-slate-900">
-                              {formatNumber(item.visualizacoes)}
+                              {formatarVisualizacoesCanonicas(item.visualizacoes)}
                             </td>
                             <td className="px-4 py-4 text-right font-semibold text-slate-900">
                               {formatNumber(item.cliquesWhatsapp)}
@@ -303,20 +303,16 @@ export default function PainelAnunciantePerformancePage() {
                               {formatPercent(item.ctr)}
                             </td>
                             <td className="px-4 py-4">
-                              <div className="flex min-w-[220px] flex-wrap gap-2">
-                                {item.recursosAtivos.length === 0 ? (
+                              <div className="flex min-w-[180px] flex-wrap gap-2">
+                                {item.beneficiosPremiumVigentes === 0 ? (
                                   <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-                                    Sem recursos premium
+                                    Sem benefício vigente
                                   </span>
                                 ) : (
-                                  item.recursosAtivos.map((recurso) => (
-                                    <span
-                                      key={`${item.anuncioId}-${recurso}`}
-                                      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700"
-                                    >
-                                      {recurso}
-                                    </span>
-                                  ))
+                                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                                    {item.beneficiosPremiumVigentes}{' '}
+                                    {item.beneficiosPremiumVigentes === 1 ? 'benefício vigente' : 'benefícios vigentes'}
+                                  </span>
                                 )}
                               </div>
                             </td>

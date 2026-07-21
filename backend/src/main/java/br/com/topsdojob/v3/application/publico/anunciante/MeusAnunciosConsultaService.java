@@ -87,8 +87,13 @@ public class MeusAnunciosConsultaService {
     @Transactional(readOnly = true)
     public List<MeuAnuncioDto> listar(Authentication authentication) {
         UUID usuarioId = usuarioAutenticado(authentication).getId();
+        return listarDoUsuario(usuarioId);
+    }
+
+    List<MeuAnuncioDto> listarDoUsuario(UUID usuarioId) {
         List<AnuncioEntity> anuncios = anuncioRepository
-                .findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(usuarioId);
+                .findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(
+                        Objects.requireNonNull(usuarioId, "usuarioId obrigatorio"));
         return mapear(anuncios);
     }
 
