@@ -221,6 +221,7 @@ jobs:
           count_sql="select 'anuncio', count(*) from anuncio union all select 'arquivo_midia', count(*) from arquivo_midia union all select 'ativacao_beneficio', count(*) from ativacao_beneficio union all select 'credencial_usuario', count(*) from credencial_usuario union all select 'documento_usuario', count(*) from documento_usuario union all select 'favorito_anuncio', count(*) from favorito_anuncio union all select 'movimento_credito', count(*) from movimento_credito union all select 'usuario', count(*) from usuario order by 1"
           counts_before="$(docker exec topsv3-preprod-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
           "${compose[@]}" config --quiet
+          "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null
           "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
           "${compose[@]}" build backend frontend
           current_link="${deploy_root}/.current-${release_sha}"

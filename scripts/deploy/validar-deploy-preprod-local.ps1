@@ -48,6 +48,7 @@ foreach ($required in @(
     "deploy/preprod/docker-compose.yml",
     "127.0.0.1:23000",
     "127.0.0.1:28080",
+    "flyway migrate </dev/null",
     "flyway validate </dev/null",
     "mv -Tf",
     "backend frontend gateway"
@@ -87,6 +88,10 @@ foreach ($exclude in @(
 }
 
 Add-Check "workflow valida Compose antes do deploy" ($workflow -match 'compose\[@\].*config --quiet') "compose real com override"
+Add-Check "workflow aplica migrations antes de validar" (
+  $workflow.IndexOf('flyway migrate </dev/null') -ge 0 -and
+  $workflow.IndexOf('flyway validate </dev/null') -gt $workflow.IndexOf('flyway migrate </dev/null')
+) "Flyway migrate seguido de validate"
 Add-Check "workflow constroi somente backend e frontend" ($workflow -match 'compose\[@\].*build backend frontend') "gateway usa imagem pinada"
 Add-Check "workflow recria somente servicos da aplicacao" ($workflow -match 'up -d --no-deps --force-recreate backend frontend gateway') "PostgreSQL preservado"
 Add-Check "workflow compara o ID do PostgreSQL" ($workflow -match 'postgres_id_before') "container de banco nao recriado"
