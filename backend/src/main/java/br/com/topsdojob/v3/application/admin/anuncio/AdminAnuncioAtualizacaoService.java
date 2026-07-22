@@ -1,107 +1,99 @@
-package br.com.topsdojob.v3.application.publico.anunciante;
+package br.com.topsdojob.v3.application.admin.anuncio;
 
-import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
-import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
-import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
+import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator.DadosAtualizacao;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.DocumentoBuscaAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
-import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
-import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
+import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
-public class MeuAnuncioAtualizacaoService {
+public class AdminAnuncioAtualizacaoService {
 
-    private final MeusAnunciosConsultaService consultaService;
-    private final KycPublicoService kycService;
     private final AnuncioRepository anuncioRepository;
     private final AnuncioLocalizacaoRepository localizacaoRepository;
     private final DocumentoBuscaAnuncioRepository documentoBuscaRepository;
-    private final RevisaoAnuncioRepository revisaoRepository;
     private final EstadoRepository estadoRepository;
     private final CidadeRepository cidadeRepository;
     private final BairroRepository bairroRepository;
-    private final ObjectMapper objectMapper;
+    private final AuditoriaEventoRepository auditoriaRepository;
+    private final AdminAnuncioDetalhadoConsultaService consultaService;
     private final AnuncioAtualizacaoCanonicaValidator validator;
+    private final ObjectMapper objectMapper;
 
-    public MeuAnuncioAtualizacaoService(
-            MeusAnunciosConsultaService consultaService,
-            KycPublicoService kycService,
+    public AdminAnuncioAtualizacaoService(
             AnuncioRepository anuncioRepository,
             AnuncioLocalizacaoRepository localizacaoRepository,
             DocumentoBuscaAnuncioRepository documentoBuscaRepository,
-            RevisaoAnuncioRepository revisaoRepository,
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
-            ObjectMapper objectMapper,
-            AnuncioAtualizacaoCanonicaValidator validator) {
-        this.consultaService = consultaService;
-        this.kycService = kycService;
+            AuditoriaEventoRepository auditoriaRepository,
+            AdminAnuncioDetalhadoConsultaService consultaService,
+            AnuncioAtualizacaoCanonicaValidator validator,
+            ObjectMapper objectMapper) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
         this.documentoBuscaRepository = documentoBuscaRepository;
-        this.revisaoRepository = revisaoRepository;
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
-        this.objectMapper = objectMapper;
+        this.auditoriaRepository = auditoriaRepository;
+        this.consultaService = consultaService;
         this.validator = validator;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional
-    public MeuAnuncioDto atualizar(
-            String slug,
+    public AdminAnuncioDetalheDto atualizar(
+            UUID anuncioId,
             MeuAnuncioAtualizacaoRequestDto request,
-            Authentication authentication) {
-        AnuncioEntity anuncio = consultaService.anuncioDoUsuario(slug, authentication);
-        kycService.garantirProntoParaAnuncio(anuncio.getUsuarioId());
+            AdminUserPrincipal administrador,
+            String requestId) {
+        validarAtor(administrador);
         DadosAtualizacao validado = validator.validar(request);
-        if (revisaoRepository.existsByAnuncioIdAndStatusIn(
-                anuncio.getId(),
-                List.of(StatusRevisaoAnuncio.EM_ANALISE))) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "anuncio possui revisao em analise e nao pode ser alterado agora");
-        }
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+                .filter(item -> item.getRemovidoEm() == null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
         EstadoEntity estado = estadoRepository.findByUfIgnoreCase(validado.uf())
                 .orElseThrow(() -> badRequest("uf nao encontrada"));
-        CidadeEntity cidade = cidadeRepository.findByEstadoIdAndSlug(estado.getId(), validator.slugify(validado.cidade()))
+        CidadeEntity cidade = cidadeRepository
+                .findByEstadoIdAndSlug(estado.getId(), validator.slugify(validado.cidade()))
                 .orElseThrow(() -> badRequest("cidade nao encontrada para a uf informada"));
         BairroEntity bairro = validado.bairro() == null
                 ? null
                 : bairroRepository.findByCidadeIdAndSlug(cidade.getId(), validator.slugify(validado.bairro()))
                         .orElseThrow(() -> badRequest("bairro nao encontrado para a cidade informada"));
 
+        Map<String, Object> antes = snapshot(anuncio, localizacaoRepository.findByAnuncioId(anuncioId).orElse(null));
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        anuncio.atualizarPeloProprietario(
+        anuncio.atualizarAdministrativamente(
                 validado.titulo(),
                 validado.descricao(),
                 validado.categoria(),
@@ -112,20 +104,27 @@ public class MeuAnuncioAtualizacaoService {
                 agora);
         anuncioRepository.save(anuncio);
 
-        AnuncioLocalizacaoEntity localizacao = localizacaoRepository.findByAnuncioId(anuncio.getId()).orElse(null);
+        AnuncioLocalizacaoEntity localizacao = localizacaoRepository.findByAnuncioId(anuncioId).orElse(null);
         if (localizacao == null) {
             localizacao = AnuncioLocalizacaoEntity.criarEdicaoProprietario(
-                    anuncio.getId(), estado.getId(), cidade.getId(), bairro == null ? null : bairro.getId(), agora);
+                    anuncioId,
+                    estado.getId(),
+                    cidade.getId(),
+                    bairro == null ? null : bairro.getId(),
+                    agora);
         } else {
             localizacao.atualizarLocalidade(
-                    estado.getId(), cidade.getId(), bairro == null ? null : bairro.getId(), agora);
+                    estado.getId(),
+                    cidade.getId(),
+                    bairro == null ? null : bairro.getId(),
+                    agora);
         }
         localizacaoRepository.save(localizacao);
 
-        DocumentoBuscaAnuncioEntity documento = documentoBuscaRepository.findById(anuncio.getId()).orElse(null);
+        DocumentoBuscaAnuncioEntity documento = documentoBuscaRepository.findById(anuncioId).orElse(null);
         if (documento == null) {
             documento = DocumentoBuscaAnuncioEntity.criarSolicitacaoLocal(
-                    anuncio.getId(),
+                    anuncioId,
                     validator.textoBusca(validado),
                     estado.getId(),
                     cidade.getId(),
@@ -145,52 +144,49 @@ public class MeuAnuncioAtualizacaoService {
         }
         documentoBuscaRepository.save(documento);
 
-        String payload = payloadRevisao(validado, estado, cidade, bairro);
-        RevisaoAnuncioEntity revisaoAberta = revisaoRepository
-                .findFirstByAnuncioIdAndStatusOrderByCriadoEmDesc(
-                        anuncio.getId(), StatusRevisaoAnuncio.ABERTA)
-                .orElse(null);
-        if (revisaoAberta == null) {
-            revisaoRepository.save(RevisaoAnuncioEntity.abrir(
-                    UUID.randomUUID(),
-                    anuncio.getId(),
-                    TipoRevisaoAnuncio.EDICAO,
-                    payload,
-                    anuncio.getUsuarioId(),
-                    agora));
-        } else {
-            revisaoAberta.atualizarSolicitacaoAberta(payload);
-            revisaoRepository.save(revisaoAberta);
-        }
-
-        return consultaService.detalhar(anuncio.getSlug(), authentication);
+        auditoriaRepository.save(AuditoriaEventoEntity.registrar(
+                UUID.randomUUID(),
+                administrador.usuarioId(),
+                "ANUNCIO_EDICAO_ADMINISTRATIVA",
+                "ANUNCIO",
+                anuncioId,
+                json(antes),
+                json(snapshot(anuncio, localizacao)),
+                requestId,
+                agora));
+        return consultaService.detalhar(anuncioId, false);
     }
 
-    private String payloadRevisao(
-            DadosAtualizacao request,
-            EstadoEntity estado,
-            CidadeEntity cidade,
-            BairroEntity bairro) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("titulo", request.titulo());
-        payload.put("descricao", request.descricao());
-        payload.put("categoria", request.categoria());
-        payload.put("preco", request.preco());
-        payload.put("uf", estado.getUf());
-        payload.put("cidade", cidade.getSlug());
-        payload.put("bairro", bairro == null ? null : bairro.getSlug());
-        payload.put("locaisAtendimento", request.locaisAtendimento().stream().map(Enum::name).sorted().toList());
-        payload.put("servicos", request.servicos().stream().map(Enum::name).sorted().toList());
-        payload.put("contatoInformado", request.whatsapp() != null);
+    private Map<String, Object> snapshot(AnuncioEntity anuncio, AnuncioLocalizacaoEntity localizacao) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("titulo", anuncio.getTitulo());
+        result.put("descricao", anuncio.getDescricao());
+        result.put("categoria", anuncio.getCategoria());
+        result.put("preco", anuncio.getPreco());
+        result.put("contatoConfigurado", anuncio.getWhatsappNormalizado() != null);
+        result.put("servicos", anuncio.getServicos().stream().map(Enum::name).sorted().toList());
+        result.put("locaisAtendimento", anuncio.getLocaisAtendimento().stream().map(Enum::name).sorted().toList());
+        result.put("estadoId", localizacao == null ? null : localizacao.getEstadoId());
+        result.put("cidadeId", localizacao == null ? null : localizacao.getCidadeId());
+        result.put("bairroId", localizacao == null ? null : localizacao.getBairroId());
+        return result;
+    }
+
+    private String json(Object value) {
         try {
-            return objectMapper.writeValueAsString(payload);
+            return objectMapper.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "falha ao preparar revisao");
+            throw new IllegalStateException("falha ao serializar auditoria administrativa", exception);
+        }
+    }
+
+    private void validarAtor(AdminUserPrincipal administrador) {
+        if (administrador == null || administrador.usuarioId() == null || !administrador.isEnabled()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao administrativa obrigatoria");
         }
     }
 
     private ResponseStatusException badRequest(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
-
 }

@@ -182,6 +182,40 @@ public class AtivacaoBeneficioEntity {
     return entity;
   }
 
+  public static AtivacaoBeneficioEntity criarAdministrativa(
+      UUID id,
+      UUID beneficioId,
+      UUID opcaoId,
+      UUID usuarioId,
+      UUID anuncioId,
+      UUID grupoAtivacaoId,
+      UUID atorUsuarioId,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      String idempotencyKey,
+      OffsetDateTime criadoEm) {
+    AtivacaoBeneficioEntity entity = new AtivacaoBeneficioEntity();
+    entity.id = id;
+    entity.beneficioId = beneficioId;
+    entity.opcaoId = opcaoId;
+    entity.usuarioId = usuarioId;
+    entity.anuncioId = anuncioId;
+    entity.grupoAtivacaoId = grupoAtivacaoId;
+    entity.origem = OrigemBeneficio.ADMIN;
+    entity.atorUsuarioId = atorUsuarioId;
+    entity.campanhaCodigo = null;
+    entity.inicioEm = inicioEm;
+    entity.fimEm = fimEm;
+    entity.status = StatusAtivacaoBeneficio.ATIVA;
+    entity.custoCreditosSnapshot = 0;
+    entity.precoSnapshot = null;
+    entity.idempotencyKey = idempotencyKey;
+    entity.revogadaEm = null;
+    entity.motivoRevogacao = null;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
   public void revogar(String motivo, OffsetDateTime agora) {
     this.status = StatusAtivacaoBeneficio.REVOGADA;
     this.revogadaEm = agora;

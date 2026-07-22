@@ -29,6 +29,7 @@ public record AdminAnuncioDetalheDto(
         String whatsapp,
         List<String> locaisAtendimento,
         List<String> servicos,
-        AdminAnuncianteResumoDto anunciante,
+        AdminAnuncianteDetalheDto anunciante,
+        AdminAnuncioMetricasDto metricas,
         AdminRevisaoAbertaDto revisaoAberta) {
 }

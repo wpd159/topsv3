@@ -27,6 +27,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnunci
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
+import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -47,6 +49,7 @@ public class StoryFeedPublicoService {
 
     private static final String PREFIXO_ADMIN = "administrativo:";
     private static final String IDADE_NAO_CONFIRMADA = "IDADE_NAO_CONFIRMADA";
+    private static final Duration DURACAO_STORY_ADMIN = Duration.ofHours(24);
 
     private final StorySelecaoAdministrativaRepository selecaoRepository;
     private final StoryAnuncioRepository storyRepository;
@@ -88,9 +91,9 @@ public class StoryFeedPublicoService {
                 .map(AnuncioMidiaEntity::getArquivoMidiaId)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
-        List<StoryFeedBundleDto> resposta = new ArrayList<>();
-        bundleAdministrativo(idadeConfirmada, arquivosEmStoriesPagos).ifPresent(resposta::add);
-        resposta.addAll(bundlesUsuario(usuarios, idadeConfirmada));
+        List<StoryFeedBundleDto> resposta = new ArrayList<>(bundlesUsuario(usuarios, idadeConfirmada));
+        bundleAdministrativo(idadeConfirmada, arquivosEmStoriesPagos).ifPresent(admin ->
+                resposta.add(ThreadLocalRandom.current().nextInt(resposta.size() + 1), admin));
         return List.copyOf(resposta);
     }
 
@@ -106,7 +109,7 @@ public class StoryFeedPublicoService {
             boolean idadeConfirmada,
             Set<UUID> arquivosEmStoriesPagos) {
         StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        if (selecao == null || !selecao.isAtiva()) {
+        if (!storyAdminAtivo(selecao, OffsetDateTime.now(ZoneOffset.UTC))) {
             return java.util.Optional.empty();
         }
         AnuncioEntity anuncio = anuncioPublicavel(selecao.getAnuncioId());
@@ -115,7 +118,7 @@ public class StoryFeedPublicoService {
         }
         List<StoryFeedItemDto> itens = elegibilidadeService.listar(anuncio.getId()).stream()
                 .filter(item -> !arquivosEmStoriesPagos.contains(item.vinculo().getArquivoMidiaId()))
-                .map(item -> itemAdministrativo(anuncio, item, idadeConfirmada))
+                .map(item -> itemAdministrativo(anuncio, item, idadeConfirmada, expiraEm(selecao)))
                 .toList();
         if (itens.isEmpty()) {
             return java.util.Optional.empty();
@@ -199,7 +202,11 @@ public class StoryFeedPublicoService {
         }).toList();
     }
 
-    private StoryFeedItemDto itemAdministrativo(AnuncioEntity anuncio, MidiaElegivel item, boolean idadeConfirmada) {
+    private StoryFeedItemDto itemAdministrativo(
+            AnuncioEntity anuncio,
+            MidiaElegivel item,
+            boolean idadeConfirmada,
+            OffsetDateTime expiraEm) {
         String url = idadeConfirmada ? urlService.resolver(item.vinculo(), item.arquivo()).urlPublica() : null;
         return new StoryFeedItemDto(
                 PREFIXO_ADMIN + item.vinculo().getId(),
@@ -211,7 +218,7 @@ public class StoryFeedPublicoService {
                 previewState(idadeConfirmada, url),
                 url,
                 tipoPublico(item.vinculo(), item.arquivo()),
-                null);
+                expiraEm);
     }
 
     private StoryFeedItemDto itemUsuario(
@@ -237,7 +244,7 @@ public class StoryFeedPublicoService {
     private StoryViewerPublicoDto buscarAdministrativo(String storyId, HttpServletRequest request) {
         UUID vinculoId = uuidSeguro(storyId.substring(PREFIXO_ADMIN.length()));
         StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        if (selecao == null || !selecao.isAtiva()) {
+        if (!storyAdminAtivo(selecao, OffsetDateTime.now(ZoneOffset.UTC))) {
             throw naoEncontrado();
         }
         AnuncioEntity anuncio = anuncioPublicavel(selecao.getAnuncioId());
@@ -253,7 +260,7 @@ public class StoryFeedPublicoService {
                 anuncio,
                 item.vinculo(),
                 item.arquivo(),
-                null,
+                expiraEm(selecao),
                 request);
     }
 
@@ -319,6 +326,17 @@ public class StoryFeedPublicoService {
     private boolean janelaValida(StoryAnuncioEntity story, OffsetDateTime agora) {
         return (story.getInicioEm() == null || !story.getInicioEm().isAfter(agora))
                 && (story.getFimEm() == null || story.getFimEm().isAfter(agora));
+    }
+
+    private boolean storyAdminAtivo(StorySelecaoAdministrativaEntity selecao, OffsetDateTime agora) {
+        OffsetDateTime expiraEm = expiraEm(selecao);
+        return selecao != null && selecao.isAtiva() && expiraEm != null && expiraEm.isAfter(agora);
+    }
+
+    private OffsetDateTime expiraEm(StorySelecaoAdministrativaEntity selecao) {
+        return selecao == null || selecao.getAtivadoEm() == null
+                ? null
+                : selecao.getAtivadoEm().plus(DURACAO_STORY_ADMIN);
     }
 
     private AnuncioEntity anuncioPublicavel(UUID id) {

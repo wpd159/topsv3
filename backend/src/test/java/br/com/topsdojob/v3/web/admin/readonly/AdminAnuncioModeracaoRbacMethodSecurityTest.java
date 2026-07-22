@@ -1,10 +1,15 @@
 package br.com.topsdojob.v3.web.admin.readonly;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
+import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
+import br.com.topsdojob.v3.web.admin.anuncio.AdminAnuncioAtualizacaoController;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.Arrays;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -29,7 +34,13 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
     private AdminAnuncioDetalhadoController controller;
 
     @Autowired
+    private AdminAnuncioAtualizacaoController atualizacaoController;
+
+    @Autowired
     private AdminAnuncioDetalhadoConsultaService service;
+
+    @Autowired
+    private AdminAnuncioAtualizacaoService atualizacaoService;
 
     @AfterEach
     void limparContexto() {
@@ -41,9 +52,10 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
         autenticar("ROLE_ADMIN", "ANUNCIO_LER");
         UUID id = UUID.randomUUID();
 
-        controller.detalhar(id);
+        var response = controller.detalhar(id);
 
         verify(service).detalhar(id, false);
+        assertThat(response.getHeaders().getCacheControl()).contains("no-store");
     }
 
     @Test
@@ -88,6 +100,39 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
                 .isInstanceOf(AuthorizationDeniedException.class);
     }
 
+    @Test
+    void somenteAdminComAnuncioModerarEditaCamposComerciais() {
+        UUID id = UUID.randomUUID();
+        MeuAnuncioAtualizacaoRequestDto body = mock(MeuAnuncioAtualizacaoRequestDto.class);
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        autenticar("ROLE_ADMIN", "ANUNCIO_MODERAR");
+
+        atualizacaoController.atualizar(id, body, null, request);
+
+        verify(atualizacaoService).atualizar(
+                org.mockito.ArgumentMatchers.eq(id),
+                org.mockito.ArgumentMatchers.eq(body),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.anyString());
+
+        autenticar("ROLE_MODERADOR", "ANUNCIO_MODERAR");
+        assertThatThrownBy(() -> atualizacaoController.atualizar(id, body, null, request))
+                .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
+    @Test
+    void documentosExigemPapelAdministrativoEPermissaoDocumental() {
+        UUID id = UUID.randomUUID();
+        autenticar("ROLE_MODERADOR", "DOCUMENTO_REVISAR");
+
+        controller.documentos(id);
+
+        verify(service).documentosDoAnunciante(id);
+        autenticar("ROLE_USUARIO", "DOCUMENTO_REVISAR");
+        assertThatThrownBy(() -> controller.documentos(id))
+                .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
     private void autenticar(String... authorities) {
         var granted = Arrays.stream(authorities).map(SimpleGrantedAuthority::new).toList();
         SecurityContextHolder.getContext().setAuthentication(
@@ -104,8 +149,19 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
         }
 
         @Bean
+        AdminAnuncioAtualizacaoService atualizacaoService() {
+            return mock(AdminAnuncioAtualizacaoService.class);
+        }
+
+        @Bean
         AdminAnuncioDetalhadoController controller(AdminAnuncioDetalhadoConsultaService service) {
             return new AdminAnuncioDetalhadoController(service);
+        }
+
+        @Bean
+        AdminAnuncioAtualizacaoController atualizacaoController(
+                AdminAnuncioAtualizacaoService atualizacaoService) {
+            return new AdminAnuncioAtualizacaoController(atualizacaoService);
         }
     }
 }

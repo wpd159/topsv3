@@ -22,6 +22,14 @@ public interface RevisaoAnuncioRepository
 
     long countByAnuncioId(UUID anuncioId);
 
+    @Query("""
+            select r.anuncioId as anuncioId, count(r) as totalRevisoes
+            from RevisaoAnuncioEntity r
+            where r.anuncioId in :anuncioIds
+            group by r.anuncioId
+            """)
+    List<ContagemPorAnuncioProjection> countByAnuncioIdIn(@Param("anuncioIds") Collection<UUID> anuncioIds);
+
     boolean existsByAnuncioIdAndStatusIn(UUID anuncioId, Collection<StatusRevisaoAnuncio> statuses);
 
     List<RevisaoAnuncioEntity> findByAnuncioId(UUID anuncioId);
@@ -45,4 +53,10 @@ public interface RevisaoAnuncioRepository
     Page<RevisaoAnuncioEntity> findByAnuncioId(UUID anuncioId, Pageable pageable);
 
     long count(Specification<RevisaoAnuncioEntity> spec);
+
+    interface ContagemPorAnuncioProjection {
+        UUID getAnuncioId();
+
+        long getTotalRevisoes();
+    }
 }

@@ -46,8 +46,8 @@ class AdminReadonlyContractTest {
     }
 
     @Test
-    void dtosReadonlyNaoExpoemCamposSensiveis() throws Exception {
-        String dtos = Files.walk(Path.of(
+    void filaReadonlyNaoExpoeCamposSensiveisEDetalheOsIsola() throws Exception {
+        String dtoLista = Files.readString(Path.of(
                 "src",
                 "main",
                 "java",
@@ -58,20 +58,27 @@ class AdminReadonlyContractTest {
                 "application",
                 "admin",
                 "readonly",
-                "dto"))
-                .filter(Files::isRegularFile)
-                .map(path -> {
-                    try {
-                        return Files.readString(path);
-                    } catch (Exception exception) {
-                        throw new IllegalStateException(exception);
-                    }
-                })
-                .reduce("", (left, right) -> left + "\n" + right);
+                "dto",
+                "AdminAnuncioListaItemDto.java"));
+        String dtoDetalhe = Files.readString(Path.of(
+                "src",
+                "main",
+                "java",
+                "br",
+                "com",
+                "topsdojob",
+                "v3",
+                "application",
+                "admin",
+                "readonly",
+                "dto",
+                "AdminAnuncianteDetalheDto.java"));
 
-        assertThat(dtos)
+        assertThat(dtoLista)
                 .doesNotContain("DocumentoUsuario")
                 .doesNotContain("cpf")
+                .doesNotContain("dataNascimento")
+                .doesNotContain("whatsapp")
                 .doesNotContain("whatsappNormalizado")
                 .doesNotContain("telefone")
                 .doesNotContain("storageProvider")
@@ -81,5 +88,12 @@ class AdminReadonlyContractTest {
                 .doesNotContain("senha")
                 .doesNotContain("token")
                 .doesNotContain("payloadSolicitado");
+        assertThat(dtoDetalhe)
+                .contains("String cpf")
+                .contains("String whatsapp")
+                .doesNotContain("dataNascimento")
+                .doesNotContain("chaveObjeto")
+                .doesNotContain("bucket")
+                .doesNotContain("token");
     }
 }

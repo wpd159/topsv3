@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -72,6 +73,8 @@ class AdminStorySelecaoServiceTest {
         assertThat(response.ativa()).isTrue();
         assertThat(response.anuncioId()).isEqualTo(anuncioId);
         assertThat(response.fotosAprovadas()).isEqualTo(1);
+        assertThat(response.classificacao()).isEqualTo("RESTRITA_18");
+        assertThat(response.expiraEm()).isEqualTo(response.ativadoEm().plusHours(24));
         ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
         verify(auditoriaRepository).save(audit.capture());
         assertThat(audit.getValue().getAcao()).isEqualTo("STORY_ADMIN_ATIVAR");
@@ -109,6 +112,21 @@ class AdminStorySelecaoServiceTest {
         ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
         verify(auditoriaRepository).save(audit.capture());
         assertThat(audit.getValue().getAcao()).isEqualTo("STORY_ADMIN_SUBSTITUIR");
+    }
+
+    @Test
+    void retryDoMesmoAnuncioNaoEstendeAsVinteEQuatroHoras() {
+        UUID anuncioId = UUID.randomUUID();
+        java.time.OffsetDateTime ativadoEm = java.time.OffsetDateTime.now().minusHours(2);
+        selecao.ativar(anuncioId, UUID.randomUUID(), ativadoEm);
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio(anuncioId)));
+        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of(midia(TipoAnuncioMidia.FOTO)));
+
+        var response = service.ativar(anuncioId, ator(), "req-retry");
+
+        assertThat(response.ativadoEm()).isEqualTo(ativadoEm);
+        assertThat(response.expiraEm()).isEqualTo(ativadoEm.plusHours(24));
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test

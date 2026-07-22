@@ -90,6 +90,21 @@ public class AdminKycService {
     return mapear(documentosDoEnvio(envioId));
   }
 
+  @Transactional(readOnly = true)
+  public List<AdminKycEnvioDto> listarPorUsuario(UUID usuarioId) {
+    return documentoRepository
+        .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(usuarioId)
+        .stream()
+        .collect(Collectors.groupingBy(
+            DocumentoUsuarioEntity::getEnvioId,
+            LinkedHashMap::new,
+            Collectors.toList()))
+        .values().stream()
+        .map(this::mapear)
+        .sorted(Comparator.comparing(AdminKycEnvioDto::enviadoEm).reversed())
+        .toList();
+  }
+
   @Transactional
   public AdminKycUrlTemporariaDto urlTemporaria(
       UUID documentoId,

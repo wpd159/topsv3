@@ -256,6 +256,24 @@ public class AnuncioEntity {
     remeterParaRevisao(atualizadoEm);
   }
 
+  public void atualizarAdministrativamente(
+      String titulo,
+      String descricao,
+      String categoria,
+      BigDecimal preco,
+      String whatsappNormalizado,
+      Set<LocalAtendimentoAnuncio> locaisAtendimento,
+      Set<ServicoAnuncio> servicos,
+      OffsetDateTime atualizadoEm) {
+    this.titulo = titulo;
+    this.descricao = descricao;
+    this.categoria = categoria;
+    this.preco = preco;
+    this.whatsappNormalizado = whatsappNormalizado;
+    sincronizarAtendimentoEstruturado(locaisAtendimento, servicos);
+    this.atualizadoEm = atualizadoEm;
+  }
+
   public static AnuncioEntity criarSolicitacaoLocal(
       UUID id,
       UUID usuarioId,

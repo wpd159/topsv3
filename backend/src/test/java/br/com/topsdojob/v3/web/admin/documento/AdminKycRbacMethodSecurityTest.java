@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.web.admin.documento;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -39,9 +40,10 @@ class AdminKycRbacMethodSecurityTest {
   void adminComDocumentoRevisarPodeConsultarFila() {
     authenticate("ROLE_ADMIN", "DOCUMENTO_REVISAR");
 
-    controller.listarPendentes();
+    var response = controller.listarPendentes();
 
     verify(service).listarPendentes();
+    assertThat(response.getHeaders().getCacheControl()).contains("no-store");
   }
 
   @Test

@@ -1,13 +1,6 @@
-'use client'
+import { AdminAnuncioEditForm } from '@/features/admin-anuncios/admin-anuncio-edit-form'
 
-import { useParams } from 'next/navigation'
-import { AnuncioStaffEditForm } from '@/features/moderation-v2/components/anuncio-staff-edit-form'
-
-export default function EditarAnuncioPage() {
-  const { id } = useParams() as { id: string }
-  const num = Number(id)
-  if (!Number.isFinite(num) || num <= 0) {
-    return <div className="p-10 text-gray-500">ID inválido.</div>
-  }
-  return <AnuncioStaffEditForm anuncioId={num} embedded={false} />
+export default async function EditarAnuncioPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  return <AdminAnuncioEditForm anuncioId={id} />
 }

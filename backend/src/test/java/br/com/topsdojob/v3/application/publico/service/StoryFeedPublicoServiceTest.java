@@ -64,7 +64,7 @@ class StoryFeedPublicoServiceTest {
     }
 
     @Test
-    void administrativoVemPrimeiroEStoryPagoPrevaleceNaDeduplicacao() {
+    void administrativoEntraNoFeedEmPosicaoLivreEStoryPagoPrevaleceNaDeduplicacao() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         when(idadeService.idadeConfirmada(request)).thenReturn(false);
         UUID arquivoRepetido = UUID.randomUUID();
@@ -102,17 +102,37 @@ class StoryFeedPublicoServiceTest {
         var response = service.listar(request);
 
         assertThat(response).hasSize(2);
-        assertThat(response.get(0).usuarioId()).startsWith("administrativo:");
-        assertThat(response.get(0).itens()).hasSize(1);
-        assertThat(response.get(0).itens().get(0).storyId()).isEqualTo("administrativo:" + adminUnica.vinculo().getId());
-        assertThat(response.get(0).itens().get(0).tipo()).isEqualTo("VIDEO");
-        assertThat(response.get(1).itens().get(0).storyId()).isEqualTo(storyPago.getId().toString());
-        assertThat(response.get(1).itens().get(0).previewState()).isEqualTo("IDADE_NAO_CONFIRMADA");
+        var adminBundle = response.stream()
+                .filter(item -> item.usuarioId().startsWith("administrativo:"))
+                .findFirst()
+                .orElseThrow();
+        var paidBundle = response.stream()
+                .filter(item -> !item.usuarioId().startsWith("administrativo:"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(adminBundle.itens()).hasSize(1);
+        assertThat(adminBundle.itens().get(0).storyId()).isEqualTo("administrativo:" + adminUnica.vinculo().getId());
+        assertThat(adminBundle.itens().get(0).tipo()).isEqualTo("VIDEO");
+        assertThat(paidBundle.itens().get(0).storyId()).isEqualTo(storyPago.getId().toString());
+        assertThat(paidBundle.itens().get(0).previewState()).isEqualTo("IDADE_NAO_CONFIRMADA");
 
         var viewer = service.buscar("administrativo:" + adminUnica.vinculo().getId(), request);
         assertThat(viewer.viewerState()).isEqualTo("IDADE_NAO_CONFIRMADA");
         assertThat(viewer.midiaUrl()).isNull();
         assertThat(adminUnica.vinculo().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.LIVRE);
+    }
+
+    @Test
+    void selecaoAdministrativaExpiradaNaoEntraNoFeed() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        UUID anuncioId = UUID.randomUUID();
+        StorySelecaoAdministrativaEntity expirada = selecao(anuncioId);
+        set(expirada, "ativadoEm", OffsetDateTime.now().minusHours(24).minusSeconds(1));
+        when(selecaoRepository.atual()).thenReturn(Optional.of(expirada));
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of());
+
+        assertThat(service.listar(request)).isEmpty();
     }
 
     @Test

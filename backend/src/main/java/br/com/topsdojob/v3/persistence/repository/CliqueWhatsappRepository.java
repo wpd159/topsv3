@@ -16,6 +16,16 @@ public interface CliqueWhatsappRepository extends JpaRepository<CliqueWhatsappEn
 
     long countByAnuncioIdAndPermitidoTrue(UUID anuncioId);
 
+    @Query("""
+            select c.anuncioId as anuncioId, count(c) as totalCliques
+            from CliqueWhatsappEntity c
+            where c.anuncioId in :anuncioIds
+              and c.permitido = true
+            group by c.anuncioId
+            """)
+    List<ContagemPorAnuncioProjection> countPermitidosPorAnuncioIdIn(
+            @Param("anuncioIds") java.util.Collection<UUID> anuncioIds);
+
     List<CliqueWhatsappEntity> findByAnuncioId(UUID anuncioId);
 
     @Query(value = """

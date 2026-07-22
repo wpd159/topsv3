@@ -2,24 +2,42 @@ package br.com.topsdojob.v3.application.admin.readonly;
 
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioListaItemDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioMetricasDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteResumoDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalizacaoSanitizadaDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminModeracaoHistoricoItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminRevisaoAbertaDto;
+import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
+import br.com.topsdojob.v3.application.admin.documento.AdminKycService;
+import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycEnvioDto;
+import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
+import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
+import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
+import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
+import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
+import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
+import br.com.topsdojob.v3.persistence.repository.CliqueWhatsappRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
@@ -27,12 +45,17 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -52,32 +75,53 @@ public class AdminAnuncioDetalhadoConsultaService {
 
     private final AnuncioRepository anuncioRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
+    private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final RevisaoAnuncioRepository revisaoRepository;
     private final DocumentoUsuarioRepository documentoRepository;
     private final UsuarioRepository usuarioRepository;
     private final AuditoriaEventoRepository auditoriaRepository;
+    private final AtivacaoBeneficioRepository ativacaoBeneficioRepository;
     private final AdminLocalizacaoConsultaSupport localizacaoSupport;
     private final AdminMidiaDetalhadaConsultaService midiaService;
+    private final VisualizacaoTotalCanonicaService visualizacaoService;
+    private final CliqueWhatsappRepository cliqueRepository;
+    private final BeneficioAnuncioConsultaService beneficioService;
+    private final MidiaPublicaUrlService midiaPublicaUrlService;
+    private final AdminKycService kycService;
     private final ObjectMapper objectMapper;
 
     public AdminAnuncioDetalhadoConsultaService(
             AnuncioRepository anuncioRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
+            ArquivoMidiaRepository arquivoMidiaRepository,
             RevisaoAnuncioRepository revisaoRepository,
             DocumentoUsuarioRepository documentoRepository,
             UsuarioRepository usuarioRepository,
             AuditoriaEventoRepository auditoriaRepository,
+            AtivacaoBeneficioRepository ativacaoBeneficioRepository,
             AdminLocalizacaoConsultaSupport localizacaoSupport,
             AdminMidiaDetalhadaConsultaService midiaService,
+            VisualizacaoTotalCanonicaService visualizacaoService,
+            CliqueWhatsappRepository cliqueRepository,
+            BeneficioAnuncioConsultaService beneficioService,
+            MidiaPublicaUrlService midiaPublicaUrlService,
+            AdminKycService kycService,
             ObjectMapper objectMapper) {
         this.anuncioRepository = anuncioRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
+        this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.revisaoRepository = revisaoRepository;
         this.documentoRepository = documentoRepository;
         this.usuarioRepository = usuarioRepository;
         this.auditoriaRepository = auditoriaRepository;
+        this.ativacaoBeneficioRepository = ativacaoBeneficioRepository;
         this.localizacaoSupport = localizacaoSupport;
         this.midiaService = midiaService;
+        this.visualizacaoService = visualizacaoService;
+        this.cliqueRepository = cliqueRepository;
+        this.beneficioService = beneficioService;
+        this.midiaPublicaUrlService = midiaPublicaUrlService;
+        this.kycService = kycService;
         this.objectMapper = objectMapper;
     }
 
@@ -107,6 +151,14 @@ public class AdminAnuncioDetalhadoConsultaService {
                 result.getContent().stream().map(AnuncioEntity::getId).toList());
         Map<UUID, UsuarioEntity> anunciantes = carregarAnunciantes(result.getContent());
         Map<UUID, RevisaoAnuncioEntity> revisoesAbertas = carregarRevisoesAbertas(result.getContent());
+        List<UUID> anuncioIds = result.getContent().stream().map(AnuncioEntity::getId).toList();
+        Map<UUID, Long> midias = contarMidias(anuncioIds);
+        Map<UUID, Long> revisoes = contarRevisoes(anuncioIds);
+        Map<UUID, Boolean> documentosPendentes = documentosPendentes(result.getContent());
+        Map<UUID, Long> cliques = contarCliques(anuncioIds);
+        Map<UUID, VisualizacoesCanonicasDto> visualizacoes = visualizacaoService.calcularEmLote(anuncioIds);
+        Map<UUID, List<String>> beneficios = beneficiosVigentes(anuncioIds);
+        Map<UUID, String> miniaturas = miniaturasSeguras(anuncioIds);
         return new AdminPaginaDto<>(
                 result.getContent().stream()
                         .map(anuncio -> item(
@@ -114,6 +166,13 @@ public class AdminAnuncioDetalhadoConsultaService {
                                 localizacoes.get(anuncio.getId()),
                                 anunciantes.get(anuncio.getUsuarioId()),
                                 revisoesAbertas.get(anuncio.getId()),
+                                miniaturas.get(anuncio.getId()),
+                                midias.getOrDefault(anuncio.getId(), 0L),
+                                revisoes.getOrDefault(anuncio.getId(), 0L),
+                                documentosPendentes.getOrDefault(anuncio.getUsuarioId(), false),
+                                beneficios.getOrDefault(anuncio.getId(), List.of()),
+                                visualizacoes.get(anuncio.getId()),
+                                cliques.getOrDefault(anuncio.getId(), 0L),
                                 comercialLimitado))
                         .toList(),
                 result.getNumber(),
@@ -141,6 +200,11 @@ public class AdminAnuncioDetalhadoConsultaService {
         RevisaoAnuncioEntity revisaoAberta = revisaoRepository
                 .findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(anuncio.getId(), REVISOES_ABERTAS)
                 .orElse(null);
+        VisualizacoesCanonicasDto visualizacoes = visualizacaoService.calcular(anuncio.getId());
+        long cliques = cliqueRepository.countByAnuncioIdAndPermitidoTrue(anuncio.getId());
+        List<String> beneficios = beneficiosVigentes(List.of(anuncio.getId()))
+                .getOrDefault(anuncio.getId(), List.of());
+        List<AdminModeracaoHistoricoItemDto> historico = historico(anuncio.getId());
         return new AdminAnuncioDetalheDto(
                 anuncio.getId(),
                 anuncio.getSlug(),
@@ -155,7 +219,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                 anuncio.getAtualizadoEm(),
                 anuncio.getPublicadoEm(),
                 anuncio.getUltimaPublicacaoEm(),
-                anuncioMidiaRepository.countByAnuncioId(anuncio.getId()),
+                anuncioMidiaRepository.countByAnuncioIdAndTipoNot(anuncio.getId(), TipoAnuncioMidia.STORY),
                 revisoesTotal,
                 anuncio.getWhatsappNormalizado() != null,
                 documentoPendente(anuncio),
@@ -165,7 +229,13 @@ public class AdminAnuncioDetalhadoConsultaService {
                 comercialLimitado ? null : anuncio.getWhatsappNormalizado(),
                 comercialLimitado ? List.of() : enumNames(anuncio.getLocaisAtendimento()),
                 comercialLimitado ? List.of() : enumNames(anuncio.getServicos()),
-                anunciante(anunciante),
+                anuncianteDetalhe(anunciante),
+                new AdminAnuncioMetricasDto(
+                        visualizacoes,
+                        cliques,
+                        ctr(visualizacoes, cliques),
+                        beneficios,
+                        historico.stream().findFirst().orElse(null)),
                 revisaoAberta(revisaoAberta));
     }
 
@@ -175,6 +245,15 @@ public class AdminAnuncioDetalhadoConsultaService {
                 .filter(entity -> entity.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         return midiaService.listarPorAnuncio(anuncio, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AdminKycEnvioDto> documentosDoAnunciante(UUID anuncioId) {
+        AnuncioEntity anuncio = anuncioRepository.findById(anuncioId)
+                .filter(entity -> entity.getRemovidoEm() == null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        if (anuncio.getUsuarioId() == null) return List.of();
+        return kycService.listarPorUsuario(anuncio.getUsuarioId());
     }
 
     @Transactional(readOnly = true)
@@ -188,13 +267,17 @@ public class AdminAnuncioDetalhadoConsultaService {
                 .toList();
         Set<UUID> revisaoIds = revisoes.stream().map(RevisaoAnuncioEntity::getId).collect(java.util.stream.Collectors.toSet());
         Set<UUID> midiaIds = midias.stream().map(AnuncioMidiaEntity::getId).collect(java.util.stream.Collectors.toSet());
+        Set<UUID> ativacaoIds = ativacaoBeneficioRepository.findByAnuncioId(anuncio.getId()).stream()
+                .map(AtivacaoBeneficioEntity::getId)
+                .collect(java.util.stream.Collectors.toSet());
         List<UUID> recursos = new ArrayList<>();
         recursos.add(anuncio.getId());
         recursos.addAll(revisaoIds);
         recursos.addAll(midiaIds);
+        recursos.addAll(ativacaoIds);
         return auditoriaRepository.findByRecursoIdInOrderByCriadoEmDesc(recursos, PageRequest.of(0, 100)).stream()
-                .filter(evento -> alvoPermitido(evento, anuncio.getId(), revisaoIds, midiaIds))
-                .filter(this::eventoDeModeracao)
+                .filter(evento -> alvoPermitido(evento, anuncio.getId(), revisaoIds, midiaIds, ativacaoIds))
+                .filter(this::eventoAdministrativoRelevante)
                 .map(this::historicoItem)
                 .toList();
     }
@@ -204,22 +287,33 @@ public class AdminAnuncioDetalhadoConsultaService {
             AdminLocalizacaoSanitizadaDto localizacao,
             UsuarioEntity anunciante,
             RevisaoAnuncioEntity revisaoAberta,
+            String miniaturaUrl,
+            long midiasTotal,
+            long revisoesTotal,
+            boolean documentoPendente,
+            List<String> beneficios,
+            VisualizacoesCanonicasDto visualizacoes,
+            long cliques,
             boolean comercialLimitado) {
         return new AdminAnuncioListaItemDto(
                 anuncio.getId(),
                 anuncio.getSlug(),
                 AdminTextoSanitizer.resumo(anuncio.getTitulo(), 120),
+                miniaturaUrl,
                 enumName(anuncio.getStatus()),
                 enumName(anuncio.getStatusModeracao()),
                 localizacao,
                 anuncio.getCriadoEm(),
                 anuncio.getAtualizadoEm(),
                 anuncio.getPublicadoEm(),
-                anuncioMidiaRepository.countByAnuncioId(anuncio.getId()),
-                comercialLimitado ? null : revisaoRepository.countByAnuncioId(anuncio.getId()),
+                midiasTotal,
+                comercialLimitado ? null : revisoesTotal,
                 anuncio.getWhatsappNormalizado() != null,
-                documentoPendente(anuncio),
+                documentoPendente,
                 comercialLimitado,
+                beneficios,
+                visualizacoes,
+                cliques,
                 anunciante(anunciante),
                 revisaoAberta(revisaoAberta));
     }
@@ -253,6 +347,18 @@ public class AdminAnuncioDetalhadoConsultaService {
                 enumName(usuario.getStatus()));
     }
 
+    private AdminAnuncianteDetalheDto anuncianteDetalhe(UsuarioEntity usuario) {
+        if (usuario == null) return null;
+        return new AdminAnuncianteDetalheDto(
+                usuario.getId(),
+                usuario.getNome(),
+                usuario.getNomeCivil(),
+                usuario.getEmailNormalizado(),
+                formatarCpf(usuario.getCpfNormalizado()),
+                usuario.getTelefoneNormalizado(),
+                enumName(usuario.getStatus()));
+    }
+
     private AdminRevisaoAbertaDto revisaoAberta(RevisaoAnuncioEntity revisao) {
         if (revisao == null) return null;
         return new AdminRevisaoAbertaDto(
@@ -276,21 +382,28 @@ public class AdminAnuncioDetalhadoConsultaService {
         return values.stream().map(Enum::name).sorted().toList();
     }
 
-    private boolean eventoDeModeracao(AuditoriaEventoEntity evento) {
+    private boolean eventoAdministrativoRelevante(AuditoriaEventoEntity evento) {
         String acao = evento.getAcao();
-        return acao != null && (acao.startsWith("MODERACAO_") || acao.equals("ANUNCIO_REMETER_REVISAO"));
+        return acao != null && (acao.startsWith("MODERACAO_")
+                || acao.startsWith("PREMIUM_ATIVACAO_")
+                || acao.startsWith("STORY_ADMIN_")
+                || acao.equals("ANUNCIO_REMETER_REVISAO")
+                || acao.equals("ANUNCIO_EDICAO_ADMINISTRATIVA"));
     }
 
     private boolean alvoPermitido(
             AuditoriaEventoEntity evento,
             UUID anuncioId,
             Set<UUID> revisaoIds,
-            Set<UUID> midiaIds) {
+            Set<UUID> midiaIds,
+            Set<UUID> ativacaoIds) {
         if (evento.getRecursoTipo() == null) return false;
         return switch (evento.getRecursoTipo()) {
             case "ANUNCIO" -> anuncioId.equals(evento.getRecursoId());
             case "REVISAO_ANUNCIO" -> revisaoIds.contains(evento.getRecursoId());
             case "ANUNCIO_MIDIA" -> midiaIds.contains(evento.getRecursoId());
+            case "ATIVACAO_BENEFICIO" -> ativacaoIds.contains(evento.getRecursoId());
+            case "STORY_SELECAO_ADMINISTRATIVA" -> anuncioId.equals(evento.getRecursoId());
             default -> false;
         };
     }
@@ -331,6 +444,113 @@ public class AdminAnuncioDetalhadoConsultaService {
     private String text(JsonNode node, String field) {
         JsonNode value = node == null ? null : node.get(field);
         return value == null || value.isNull() ? null : AdminTextoSanitizer.resumo(value.asText(), 240);
+    }
+
+    private Map<UUID, Long> contarMidias(List<UUID> anuncioIds) {
+        if (anuncioIds.isEmpty()) return Map.of();
+        return anuncioMidiaRepository.countByAnuncioIdInAndTipoNot(anuncioIds, TipoAnuncioMidia.STORY).stream()
+                .collect(Collectors.toMap(
+                        AnuncioMidiaRepository.ContagemPorAnuncioProjection::getAnuncioId,
+                        AnuncioMidiaRepository.ContagemPorAnuncioProjection::getTotalMidias));
+    }
+
+    private Map<UUID, Long> contarRevisoes(List<UUID> anuncioIds) {
+        if (anuncioIds.isEmpty()) return Map.of();
+        return revisaoRepository.countByAnuncioIdIn(anuncioIds).stream()
+                .collect(Collectors.toMap(
+                        RevisaoAnuncioRepository.ContagemPorAnuncioProjection::getAnuncioId,
+                        RevisaoAnuncioRepository.ContagemPorAnuncioProjection::getTotalRevisoes));
+    }
+
+    private Map<UUID, Long> contarCliques(List<UUID> anuncioIds) {
+        if (anuncioIds.isEmpty()) return Map.of();
+        return cliqueRepository.countPermitidosPorAnuncioIdIn(anuncioIds).stream()
+                .collect(Collectors.toMap(
+                        CliqueWhatsappRepository.ContagemPorAnuncioProjection::getAnuncioId,
+                        CliqueWhatsappRepository.ContagemPorAnuncioProjection::getTotalCliques));
+    }
+
+    private Map<UUID, Boolean> documentosPendentes(Collection<AnuncioEntity> anuncios) {
+        List<UUID> usuarioIds = anuncios.stream()
+                .map(AnuncioEntity::getUsuarioId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList();
+        if (usuarioIds.isEmpty()) return Map.of();
+        return documentoRepository.countByUsuarioIdInAndStatusIn(
+                        usuarioIds,
+                        List.of(StatusDocumentoUsuario.PENDENTE, StatusDocumentoUsuario.EM_ANALISE)).stream()
+                .collect(Collectors.toMap(
+                        DocumentoUsuarioRepository.ContagemPorUsuarioProjection::getUsuarioId,
+                        item -> item.getTotalDocumentos() > 0));
+    }
+
+    private Map<UUID, List<String>> beneficiosVigentes(Collection<UUID> anuncioIds) {
+        if (anuncioIds == null || anuncioIds.isEmpty()) return Map.of();
+        Map<UUID, List<PremiumBeneficioCalculado>> calculados = beneficioService
+                .consultarCalculadosPorAnuncio(anuncioIds);
+        Map<UUID, List<String>> result = new LinkedHashMap<>();
+        calculados.forEach((anuncioId, itens) -> result.put(
+                anuncioId,
+                itens.stream()
+                        .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
+                                || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                        .map(PremiumBeneficioCalculado::beneficio)
+                        .filter(java.util.Objects::nonNull)
+                        .map(item -> item.getCodigo())
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .sorted()
+                        .toList()));
+        return Map.copyOf(result);
+    }
+
+    private Map<UUID, String> miniaturasSeguras(List<UUID> anuncioIds) {
+        if (anuncioIds.isEmpty()) return Map.of();
+        List<AnuncioMidiaEntity> candidatas = anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds).stream()
+                .filter(item -> item.getTipo() == TipoAnuncioMidia.FOTO)
+                .filter(item -> item.getStatus() == StatusAnuncioMidia.PUBLICAVEL)
+                .filter(item -> item.getVisibilidadeMidia() == VisibilidadeMidia.LIVRE)
+                .sorted(Comparator
+                        .comparing(AnuncioMidiaEntity::getOrdem, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(AnuncioMidiaEntity::getCriadoEm, Comparator.nullsLast(Comparator.naturalOrder()))
+                        .thenComparing(AnuncioMidiaEntity::getId))
+                .toList();
+        Map<UUID, ArquivoMidiaEntity> arquivos = arquivoMidiaRepository.findByIdIn(candidatas.stream()
+                        .map(AnuncioMidiaEntity::getArquivoMidiaId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
+        Map<UUID, String> result = new LinkedHashMap<>();
+        for (AnuncioMidiaEntity vinculo : candidatas) {
+            if (result.containsKey(vinculo.getAnuncioId())) continue;
+            ArquivoMidiaEntity arquivo = arquivos.get(vinculo.getArquivoMidiaId());
+            if (arquivo == null || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO) continue;
+            MidiaPublicaUrlService.ResultadoUrlPublica resolvida = midiaPublicaUrlService.resolver(vinculo, arquivo);
+            if (resolvida.pendenciaMidia() == null && resolvida.urlPublica() != null) {
+                result.put(vinculo.getAnuncioId(), resolvida.urlPublica());
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    private BigDecimal ctr(VisualizacoesCanonicasDto visualizacoes, long cliques) {
+        if (visualizacoes == null
+                || visualizacoes.situacao() == VisualizacoesCanonicasDto.Situacao.HISTORICO_PENDENTE) {
+            return null;
+        }
+        long total = visualizacoes.total();
+        if (total == 0) return new BigDecimal("0.00");
+        return BigDecimal.valueOf(cliques)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP);
+    }
+
+    private String formatarCpf(String cpf) {
+        if (cpf == null || !cpf.matches("[0-9]{11}")) return null;
+        return cpf.substring(0, 3) + "." + cpf.substring(3, 6) + "." + cpf.substring(6, 9)
+                + "-" + cpf.substring(9);
     }
 
     private boolean documentoPendente(AnuncioEntity anuncio) {

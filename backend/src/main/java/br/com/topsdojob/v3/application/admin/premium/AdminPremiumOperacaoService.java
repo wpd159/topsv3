@@ -4,14 +4,22 @@ import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoServic
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoOperacaoDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoDto;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumOpcaoEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
+import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
+import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -32,16 +40,28 @@ public class AdminPremiumOperacaoService {
     private final MovimentoCreditoRepository movimentoRepository;
     private final AdminCreditoOperacaoService creditoService;
     private final BeneficioPremiumRepository beneficioRepository;
+    private final BeneficioPremiumOpcaoRepository opcaoRepository;
+    private final GrupoAtivacaoBeneficioRepository grupoRepository;
+    private final AnuncioRepository anuncioRepository;
+    private final BeneficioAnuncioConsultaService beneficioConsultaService;
 
     public AdminPremiumOperacaoService(
             AtivacaoBeneficioRepository ativacaoRepository,
             MovimentoCreditoRepository movimentoRepository,
             AdminCreditoOperacaoService creditoService,
-            BeneficioPremiumRepository beneficioRepository) {
+            BeneficioPremiumRepository beneficioRepository,
+            BeneficioPremiumOpcaoRepository opcaoRepository,
+            GrupoAtivacaoBeneficioRepository grupoRepository,
+            AnuncioRepository anuncioRepository,
+            BeneficioAnuncioConsultaService beneficioConsultaService) {
         this.ativacaoRepository = ativacaoRepository;
         this.movimentoRepository = movimentoRepository;
         this.creditoService = creditoService;
         this.beneficioRepository = beneficioRepository;
+        this.opcaoRepository = opcaoRepository;
+        this.grupoRepository = grupoRepository;
+        this.anuncioRepository = anuncioRepository;
+        this.beneficioConsultaService = beneficioConsultaService;
     }
 
     @Transactional(readOnly = true)
@@ -71,6 +91,95 @@ public class AdminPremiumOperacaoService {
     }
 
     @Transactional
+    public AdminPremiumAtivacaoOperacaoDto ativarManual(
+            UUID anuncioId,
+            AdminPremiumAtivarRequest request,
+            String idempotencyKey,
+            AdminUserPrincipal administrador,
+            String requestId) {
+        validarAdministrador(administrador);
+        if (request == null || request.beneficioId() == null || request.duracaoDias() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "beneficio e duracao obrigatorios");
+        }
+        String observacao = request.observacao() == null ? "" : request.observacao().trim();
+        if (observacao.length() < 3 || observacao.length() > 500) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "observacao obrigatoria");
+        }
+        String chave = "premium-admin:" + administrador.usuarioId() + ":"
+                + CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
+        var repetido = grupoRepository.findByIdempotencyKey(chave);
+        if (repetido.isPresent()) {
+            return resultadoRepetido(repetido.get(), anuncioId, request);
+        }
+
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+                .filter(item -> item.getRemovidoEm() == null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        var repetidoAposLock = grupoRepository.findByIdempotencyKey(chave);
+        if (repetidoAposLock.isPresent()) {
+            return resultadoRepetido(repetidoAposLock.get(), anuncioId, request);
+        }
+        BeneficioPremiumEntity beneficio = beneficioRepository.findById(request.beneficioId())
+                .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
+                .filter(item -> item.getEscopo() == EscopoBeneficioPremium.ANUNCIO)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        BeneficioPremiumOpcaoEntity opcao = opcaoRepository
+                .findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(
+                        beneficio.getId(), request.duracaoDias())
+                .filter(item -> item.vigente(agora))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada"));
+        boolean duplicadoAtivo = beneficioConsultaService.consultarCalculados(anuncioId).stream()
+                .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                .anyMatch(item -> item.beneficio() != null && item.beneficio().getId().equals(beneficio.getId()));
+        if (duplicadoAtivo) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "beneficio ja ativo no anuncio");
+        }
+
+        OffsetDateTime fim = agora.plusDays(opcao.getDuracaoDias());
+        GrupoAtivacaoBeneficioEntity grupo = grupoRepository.save(
+                GrupoAtivacaoBeneficioEntity.criarAdministrativa(
+                        UUID.randomUUID(),
+                        anuncio.getUsuarioId(),
+                        anuncioId,
+                        administrador.usuarioId(),
+                        agora,
+                        fim,
+                        chave,
+                        observacao,
+                        agora));
+        AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(
+                AtivacaoBeneficioEntity.criarAdministrativa(
+                        UUID.randomUUID(),
+                        beneficio.getId(),
+                        opcao.getId(),
+                        anuncio.getUsuarioId(),
+                        anuncioId,
+                        grupo.getId(),
+                        administrador.usuarioId(),
+                        agora,
+                        fim,
+                        chave + ":ativacao",
+                        agora));
+        creditoService.auditar(
+                administrador.usuarioId(),
+                "PREMIUM_ATIVACAO_ADMINISTRATIVA",
+                "ATIVACAO_BENEFICIO",
+                ativacao.getId(),
+                Map.of("status", "INEXISTENTE"),
+                Map.of(
+                        "status", ativacao.getStatus().name(),
+                        "anuncioId", anuncioId,
+                        "beneficioCodigo", beneficio.getCodigo(),
+                        "duracaoDias", opcao.getDuracaoDias(),
+                        "creditosDebitados", 0,
+                        "observacaoRegistrada", true),
+                requestId);
+        return toDto(ativacao, 0, false);
+    }
+
+    @Transactional
     public AdminPremiumAtivacaoOperacaoDto cancelar(
             UUID ativacaoId,
             String motivo,
@@ -91,7 +200,8 @@ public class AdminPremiumOperacaoService {
                 || ativacao.getStatus() == StatusAtivacaoBeneficio.CANCELADA) {
             return toDto(ativacao, 0, true);
         }
-        if (ativacao.getStatus() != StatusAtivacaoBeneficio.ATIVA) {
+        if (ativacao.getStatus() != StatusAtivacaoBeneficio.ATIVA
+                && ativacao.getStatus() != StatusAtivacaoBeneficio.AGENDADA) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "ativacao nao pode ser cancelada");
         }
         int estornado = 0;
@@ -125,6 +235,30 @@ public class AdminPremiumOperacaoService {
                 Map.of("status", ativacao.getStatus().name(), "creditosEstornados", estornado),
                 requestId);
         return toDto(ativacao, estornado, false);
+    }
+
+    private AdminPremiumAtivacaoOperacaoDto resultadoRepetido(
+            GrupoAtivacaoBeneficioEntity grupo,
+            UUID anuncioId,
+            AdminPremiumAtivarRequest request) {
+        List<AtivacaoBeneficioEntity> ativacoes = ativacaoRepository.findByGrupoAtivacaoId(grupo.getId());
+        AtivacaoBeneficioEntity ativacao = ativacoes.size() == 1 ? ativacoes.get(0) : null;
+        long duracao = grupo.getValidadeInicioEm() == null || grupo.getValidadeFimEm() == null
+                ? -1
+                : java.time.Duration.between(grupo.getValidadeInicioEm(), grupo.getValidadeFimEm()).toDays();
+        if (ativacao == null
+                || !anuncioId.equals(grupo.getAnuncioId())
+                || !request.beneficioId().equals(ativacao.getBeneficioId())
+                || duracao != request.duracaoDias()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key reutilizada com outra operacao");
+        }
+        return toDto(ativacao, 0, true);
+    }
+
+    private void validarAdministrador(AdminUserPrincipal administrador) {
+        if (administrador == null || !administrador.isEnabled()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao administrativa obrigatoria");
+        }
     }
 
     private AdminPremiumAtivacaoOperacaoDto toDto(

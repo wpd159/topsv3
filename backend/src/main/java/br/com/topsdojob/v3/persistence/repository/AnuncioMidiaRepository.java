@@ -29,6 +29,19 @@ public interface AnuncioMidiaRepository
 
     long countByAnuncioId(UUID anuncioId);
 
+    long countByAnuncioIdAndTipoNot(UUID anuncioId, TipoAnuncioMidia tipo);
+
+    @Query("""
+            select m.anuncioId as anuncioId, count(m) as totalMidias
+            from AnuncioMidiaEntity m
+            where m.anuncioId in :anuncioIds
+              and m.tipo <> :tipoExcluido
+            group by m.anuncioId
+            """)
+    List<ContagemPorAnuncioProjection> countByAnuncioIdInAndTipoNot(
+            @Param("anuncioIds") Collection<UUID> anuncioIds,
+            @Param("tipoExcluido") TipoAnuncioMidia tipoExcluido);
+
     List<AnuncioMidiaEntity> findByAnuncioId(UUID anuncioId);
 
     List<AnuncioMidiaEntity> findByAnuncioIdIn(Collection<UUID> anuncioIds);
@@ -49,4 +62,10 @@ public interface AnuncioMidiaRepository
     java.util.Optional<AnuncioMidiaEntity> findByIdForUpdate(@Param("id") UUID id);
 
     long count(Specification<AnuncioMidiaEntity> spec);
+
+    interface ContagemPorAnuncioProjection {
+        UUID getAnuncioId();
+
+        long getTotalMidias();
+    }
 }

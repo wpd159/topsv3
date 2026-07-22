@@ -20,6 +20,21 @@ export type AdminAdvertiserSummary = {
   status?: string | null
 }
 
+export type AdminAdvertiserDetail = {
+  id: string
+  nome?: string | null
+  nomeCivil?: string | null
+  email?: string | null
+  cpf?: string | null
+  whatsapp?: string | null
+  status?: string | null
+}
+
+export type AdminCanonicalViews = {
+  total: number | null
+  situacao: 'DISPONIVEL' | 'ZERO_LEGITIMO' | 'HISTORICO_PENDENTE'
+}
+
 export type AdminOpenReview = {
   id: string
   tipo: string
@@ -31,6 +46,7 @@ export type AdminAdListItem = {
   id: string
   slug: string
   titulo: string
+  miniaturaUrl?: string | null
   status: string
   statusModeracao: string
   localizacao?: AdminLocation | null
@@ -42,11 +58,22 @@ export type AdminAdListItem = {
   contatoConfigurado: boolean
   documentoPendente: boolean
   comercialLimitado: boolean
+  beneficiosPremiumVigentes: string[]
+  visualizacoes: AdminCanonicalViews
+  cliquesWhatsapp: number
   anunciante?: AdminAdvertiserSummary | null
   revisaoAberta?: AdminOpenReview | null
 }
 
-export type AdminAdDetail = AdminAdListItem & {
+export type AdminAdMetrics = {
+  visualizacoes: AdminCanonicalViews
+  cliquesWhatsapp: number
+  ctr?: number | null
+  beneficiosPremiumVigentes: string[]
+  ultimaAcaoAdministrativa?: AdminModerationHistoryItem | null
+}
+
+export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' | 'beneficiosPremiumVigentes' | 'visualizacoes' | 'cliquesWhatsapp'> & {
   descricaoResumo?: string | null
   descricao?: string | null
   categoria?: string | null
@@ -56,6 +83,104 @@ export type AdminAdDetail = AdminAdListItem & {
   whatsapp?: string | null
   locaisAtendimento: string[]
   servicos: string[]
+  anunciante?: AdminAdvertiserDetail | null
+  metricas: AdminAdMetrics
+}
+
+export type AdminKycDocument = {
+  id: string
+  parte: 'UNICO' | 'FRENTE' | 'VERSO'
+  status: string
+  mimeType?: string | null
+  tamanhoBytes: number
+}
+
+export type AdminKycSubmission = {
+  envioId: string
+  usuarioId: string
+  nomeCivil?: string | null
+  cpfMascarado?: string | null
+  dataNascimento?: string | null
+  status: string
+  motivo?: string | null
+  enviadoEm?: string | null
+  revisadoEm?: string | null
+  documentos: AdminKycDocument[]
+}
+
+export type AdminKycTemporaryUrl = {
+  url: string
+  expiraEm: string
+}
+
+export type AdminPremiumBenefit = {
+  id: string
+  beneficioCodigo?: string | null
+  beneficioNome?: string | null
+  escopo?: string | null
+  statusOriginal?: string | null
+  statusCalculado: string
+  origem?: string | null
+  inicioEm?: string | null
+  fimEm?: string | null
+  duracaoDias?: number | null
+  venceEmBreve: boolean
+  grupoVinculado: boolean
+  grupoId?: string | null
+  grupoTipo?: string | null
+  grupoStatus?: string | null
+  grupoFimEm?: string | null
+  observacao?: string | null
+  codigosConsistencia: string[]
+  inconsistente: boolean
+  somenteLeitura: boolean
+}
+
+export type AdminPremiumCatalogOption = {
+  id: string
+  duracaoDias: number
+  custoCreditos: number
+  ativo: boolean
+  ordemExibicao: number
+}
+
+export type AdminPremiumCatalogItem = {
+  id: string
+  codigo: string
+  nome: string
+  descricao?: string | null
+  escopo: string
+  afetaRanking: boolean
+  ativo: boolean
+  ordemExibicao: number
+  opcoes: AdminPremiumCatalogOption[]
+}
+
+export type AdminStorySelection = {
+  ativa: boolean
+  anuncioId?: string | null
+  anuncioSlug?: string | null
+  anuncioTitulo?: string | null
+  fotosAprovadas: number
+  videosAprovados: number
+  ativadoEm?: string | null
+  expiraEm?: string | null
+  classificacao: 'RESTRITA_18'
+  ativadoPorId?: string | null
+  ativadoPorEmail?: string | null
+}
+
+export type AdminAdUpdate = {
+  titulo: string
+  descricao: string
+  categoria: string
+  preco: number | null
+  uf: string
+  cidade: string
+  bairro: string | null
+  locaisAtendimento: string[]
+  servicos: string[]
+  whatsapp: string | null
 }
 
 export type AdminMediaItem = {

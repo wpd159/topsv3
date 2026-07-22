@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.web.admin.readonly;
 
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
+import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycEnvioDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
@@ -10,6 +11,8 @@ import java.util.List;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.UUID;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -52,8 +55,8 @@ public class AdminAnuncioDetalhadoController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
-    public AdminAnuncioDetalheDto detalhar(@PathVariable UUID id) {
-        return service.detalhar(id, false);
+    public ResponseEntity<AdminAnuncioDetalheDto> detalhar(@PathVariable UUID id) {
+        return semCache(service.detalhar(id, false));
     }
 
     @GetMapping("/{id}/midias")
@@ -65,9 +68,19 @@ public class AdminAnuncioDetalhadoController {
         return service.listarMidiasDoAnuncio(id, page, size);
     }
 
+    @GetMapping("/{id}/documentos")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('DOCUMENTO_REVISAR')")
+    public ResponseEntity<List<AdminKycEnvioDto>> documentos(@PathVariable UUID id) {
+        return semCache(service.documentosDoAnunciante(id));
+    }
+
     @GetMapping("/{id}/historico-moderacao")
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and (hasAuthority('ANUNCIO_MODERAR') or hasAuthority('MIDIA_REVISAR'))")
     public List<AdminModeracaoHistoricoItemDto> historicoModeracao(@PathVariable UUID id) {
         return service.historico(id);
+    }
+
+    private <T> ResponseEntity<T> semCache(T body) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }
 }

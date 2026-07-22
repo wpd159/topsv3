@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
@@ -89,7 +90,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 estadoRepository,
                 cidadeRepository,
                 bairroRepository,
-                new ObjectMapper());
+                new ObjectMapper(),
+                new AnuncioAtualizacaoCanonicaValidator());
     }
 
     @Test

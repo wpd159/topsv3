@@ -9,6 +9,7 @@ import br.com.topsdojob.v3.application.admin.premium.dto.AdminBeneficioAnuncioDt
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAnuncioStatusDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoOperacaoDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoDto;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCancelarRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCatalogoUpdateRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumConsistenciaResumoDto;
@@ -113,6 +114,22 @@ public class AdminPremiumController {
         return operacaoService.cancelar(
                 id,
                 body == null ? null : body.motivo(),
+                idempotencyKey,
+                administrador,
+                RequestIdContext.current(request));
+    }
+
+    @PostMapping("/anuncios/{id}/ativacoes")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('PREMIUM_GERENCIAR')")
+    public AdminPremiumAtivacaoOperacaoDto ativarManual(
+            @PathVariable UUID id,
+            @RequestBody AdminPremiumAtivarRequest body,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @AuthenticationPrincipal AdminUserPrincipal administrador,
+            HttpServletRequest request) {
+        return operacaoService.ativarManual(
+                id,
+                body,
                 idempotencyKey,
                 administrador,
                 RequestIdContext.current(request));

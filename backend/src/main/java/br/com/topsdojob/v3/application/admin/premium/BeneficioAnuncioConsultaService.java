@@ -108,14 +108,19 @@ public class BeneficioAnuncioConsultaService {
                 beneficio == null || beneficio.getEscopo() == null ? null : beneficio.getEscopo().name(),
                 ativacao.getStatus() == null ? null : ativacao.getStatus().name(),
                 calculado.status().name(),
+                ativacao.getOrigem() == null ? null : ativacao.getOrigem().name(),
                 ativacao.getInicioEm(),
                 ativacao.getFimEm(),
+                ativacao.getInicioEm() == null || ativacao.getFimEm() == null
+                        ? null
+                        : java.time.Duration.between(ativacao.getInicioEm(), ativacao.getFimEm()).toDays(),
                 calculado.venceEmBreve(),
                 grupo != null,
                 grupo == null ? null : grupo.getId(),
                 grupo == null || grupo.getTipo() == null ? null : grupo.getTipo().name(),
                 grupo == null || grupo.getStatus() == null ? null : grupo.getStatus().name(),
                 grupo == null ? null : grupo.getValidadeFimEm(),
+                grupo == null ? null : grupo.getObservacao(),
                 calculado.codigos().stream().map(Enum::name).toList(),
                 calculado.inconsistente(),
                 true);

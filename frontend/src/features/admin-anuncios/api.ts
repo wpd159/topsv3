@@ -11,11 +11,17 @@ import type {
   AdminAdDetail,
   AdminAdFilters,
   AdminAdListItem,
+  AdminAdUpdate,
+  AdminKycSubmission,
+  AdminKycTemporaryUrl,
   AdminMediaItem,
   AdminMediaPreview,
   AdminModerationActionResponse,
   AdminModerationHistoryItem,
   AdminPage,
+  AdminPremiumBenefit,
+  AdminPremiumCatalogItem,
+  AdminStorySelection,
 } from './types'
 
 function csrfCookieName() {
@@ -98,6 +104,13 @@ export function getAdminAd(id: string) {
   return request<AdminAdDetail>(`/anuncios/${encodeURIComponent(id)}`)
 }
 
+export function updateAdminAd(id: string, payload: AdminAdUpdate) {
+  return request<AdminAdDetail>(`/anuncios/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
 export async function listAdminAdMedia(id: string) {
   const payload = await request<unknown>(`/anuncios/${encodeURIComponent(id)}/midias?page=0&size=50`)
   return pagePayload<AdminMediaItem>(payload)
@@ -107,6 +120,60 @@ export async function listAdminAdHistory(id: string) {
   return requireArrayPayload<AdminModerationHistoryItem>(
     await request(`/anuncios/${encodeURIComponent(id)}/historico-moderacao`)
   )
+}
+
+export async function listAdminAdDocuments(id: string) {
+  return requireArrayPayload<AdminKycSubmission>(
+    await request(`/anuncios/${encodeURIComponent(id)}/documentos`)
+  )
+}
+
+export function getAdminDocumentTemporaryUrl(documentId: string) {
+  return request<AdminKycTemporaryUrl>(`/documentos/${encodeURIComponent(documentId)}/url-temporaria`)
+}
+
+export async function listAdminPremiumBenefits(id: string) {
+  return requireArrayPayload<AdminPremiumBenefit>(
+    await request(`/premium/anuncios/${encodeURIComponent(id)}/beneficios`)
+  )
+}
+
+export async function listAdminPremiumCatalog() {
+  return requireArrayPayload<AdminPremiumCatalogItem>(await request('/premium/catalogo'))
+}
+
+export function activateAdminPremium(
+  anuncioId: string,
+  payload: { beneficioId: string; duracaoDias: number; observacao: string },
+  idempotencyKey: string,
+) {
+  return request(`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function cancelAdminPremium(activationId: string, motivo: string, idempotencyKey: string) {
+  return request(`/premium/ativacoes/${encodeURIComponent(activationId)}/cancelar`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ motivo }),
+  })
+}
+
+export function getAdminStorySelection() {
+  return request<AdminStorySelection>('/stories/selecao')
+}
+
+export function activateAdminStory(anuncioId: string) {
+  return request<AdminStorySelection>(`/stories/selecao/${encodeURIComponent(anuncioId)}`, {
+    method: 'POST',
+  })
+}
+
+export function deactivateAdminStory() {
+  return request<AdminStorySelection>('/stories/selecao', { method: 'DELETE' })
 }
 
 export function getAdminMediaPreview(id: string) {

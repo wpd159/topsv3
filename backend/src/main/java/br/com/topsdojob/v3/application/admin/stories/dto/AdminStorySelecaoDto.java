@@ -11,6 +11,8 @@ public record AdminStorySelecaoDto(
         long fotosAprovadas,
         long videosAprovados,
         OffsetDateTime ativadoEm,
+        OffsetDateTime expiraEm,
+        String classificacao,
         UUID ativadoPorId,
         String ativadoPorEmail) {
 }

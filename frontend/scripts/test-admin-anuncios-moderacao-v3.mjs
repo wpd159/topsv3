@@ -17,6 +17,11 @@ const legacyDetailPage = source('app/(painel-admin)/admin/moderacao-v2/[anuncioI
 const sidebar = source('app/(painel-admin)/admin/components/sidebar/sidebar-links.tsx')
 const list = source('features/admin-anuncios/admin-anuncios-list.tsx')
 const detail = source('features/admin-anuncios/admin-anuncio-moderacao.tsx')
+const documents = source('features/admin-anuncios/admin-anuncio-documentos.tsx')
+const premium = source('features/admin-anuncios/admin-anuncio-premium.tsx')
+const story = source('features/admin-anuncios/admin-anuncio-story.tsx')
+const edit = source('features/admin-anuncios/admin-anuncio-edit-form.tsx')
+const editPage = source('app/(painel-admin)/admin/anuncios/[id]/editar/page.tsx')
 const api = source('features/admin-anuncios/api.ts')
 const types = source('features/admin-anuncios/types.ts')
 
@@ -33,6 +38,10 @@ for (const contract of [
   "request<AdminAdDetail>(`/anuncios/${encodeURIComponent(id)}`)",
   '`/anuncios/${encodeURIComponent(id)}/midias?page=0&size=50`',
   '`/anuncios/${encodeURIComponent(id)}/historico-moderacao`',
+  '`/anuncios/${encodeURIComponent(id)}/documentos`',
+  '`/premium/anuncios/${encodeURIComponent(id)}/beneficios`',
+  '`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes`',
+  "request<AdminStorySelection>('/stories/selecao')",
   '`/midias/${encodeURIComponent(id)}/preview`',
   '`/moderacao/revisoes/${encodeURIComponent(reviewId)}/decidir`',
   '`/midias/${encodeURIComponent(mediaId)}/decidir`',
@@ -48,8 +57,7 @@ assert.ok(types.includes("tipo: 'FOTO' | 'VIDEO'"), 'A fila de midia nao pode ti
 assert.ok(!types.includes("'FOTO' | 'VIDEO' | 'STORY'"), 'Story nao pode integrar o contrato V3 da fila.')
 assert.ok(detail.includes("item.tipo === 'VIDEO' ? 'RESTRITA_18'"), 'Video aprovado deve permanecer RESTRITA_18.')
 assert.ok(detail.includes('Sempre RESTRITA_18'), 'A interface deve informar a classificacao fixa do video.')
-assert.ok(detail.includes('Cada decisão afeta somente a mídia identificada'), 'As decisoes de midia devem ser independentes.')
-assert.ok(detail.includes('Stories não integram esta fila'), 'A interface deve declarar Story fora da fila.')
+assert.ok(detail.includes("filter((item) => String(item.tipo) !== 'STORY')"), 'Story nao pode entrar na secao de midias.')
 assert.ok(detail.includes("action: 'APROVAR'") && detail.includes("action: 'REPROVAR'"), 'Aprovar e rejeitar devem permanecer disponiveis.')
 assert.ok(detail.includes('Motivo obrigatório'), 'Rejeicao deve coletar motivo.')
 assert.ok(detail.includes('disabled={busy'), 'A interface deve bloquear repeticao durante a mutacao.')
@@ -57,8 +65,40 @@ assert.ok(detail.includes('<ContractState error={error}'), 'Falha de carregament
 assert.ok(detail.includes('listAdminAdHistory'), 'O historico auditavel deve ser carregado no detalhe.')
 assert.ok(detail.includes("canReadMedia ? listAdminAdMedia(anuncioId) : Promise.resolve(null)"), 'A tela nao deve falhar inteira quando o perfil nao possui MIDIA_REVISAR.')
 assert.ok(detail.includes("canReadHistory ? listAdminAdHistory(anuncioId) : Promise.resolve([])"), 'O historico deve respeitar as autoridades granulares.')
-assert.ok(detail.includes('Seu perfil não possui permissão para revisar mídias.'), 'A ausencia de permissao de midia nao pode parecer fila vazia.')
+assert.ok(detail.includes('Seu perfil não possui MIDIA_REVISAR.'), 'A ausencia de permissao de midia nao pode parecer fila vazia.')
 assert.ok(list.includes('PAGE_SIZE = 20') && list.includes('totalPages'), 'A fila deve manter paginacao backend.')
 assert.ok(list.includes('statusModeracao') && list.includes('termo'), 'A fila deve manter filtros e busca.')
+for (const queueField of ['miniaturaUrl', 'beneficiosPremiumVigentes', 'visualizacoes', 'cliquesWhatsapp', 'criadoEm']) {
+  assert.ok(list.includes(queueField), `Campo operacional ausente na fila: ${queueField}`)
+}
+assert.ok(!list.includes('.cpf') && !list.includes('.whatsapp'), 'A fila nao pode exibir CPF ou WhatsApp.')
+
+for (const ownerField of ['nomeCivil', '.email', '.cpf', '.whatsapp', '.status']) {
+  assert.ok(detail.includes(ownerField), `Dado integral do proprietario ausente no detalhe: ${ownerField}`)
+}
+assert.ok(detail.includes('https://wa.me/'), 'O WhatsApp do proprietario deve abrir conversa com numero normalizado.')
+assert.ok(detail.includes("views.situacao === 'HISTORICO_PENDENTE' ? '—'"), 'Historico pendente nao pode virar zero.')
+assert.ok(detail.includes('ad.metricas.ctr == null ?'), 'CTR indisponivel nao pode virar zero.')
+assert.ok(detail.includes('AdminAnuncioDocumentos') && detail.includes('AdminAnuncioPremium'), 'Documentos e Premium devem compor o detalhe canonico.')
+
+assert.ok(documents.includes('getAdminDocumentTemporaryUrl'), 'Documento deve ser aberto por URL temporaria administrativa.')
+assert.ok(documents.includes('Visualizar') && documents.includes('Baixar'), 'Documento deve permitir visualizacao e download autorizados.')
+assert.ok(!documents.includes('objectKey') && !documents.includes('bucket'), 'Documento nao pode expor bucket ou object key.')
+
+assert.ok(premium.includes('listAdminPremiumCatalog'), 'Beneficios e duracoes devem vir do catalogo backend.')
+assert.ok(premium.includes('activateAdminPremium') && premium.includes('cancelAdminPremium'), 'ADMIN deve ativar e desativar beneficios.')
+assert.ok(premium.includes('canManage && cancellable'), 'MODERADOR deve permanecer somente leitura no Premium.')
+assert.ok(premium.includes('activationKey.current ?? operationKey()') && premium.includes('cancellationKeys.current[item.id] ?? operationKey()'), 'Retry deve reutilizar a mesma Idempotency-Key.')
+assert.ok(!premium.match(/duracaoDias\s*:\s*(1|7|14|30)/), 'Duracoes nao podem ser hardcoded na interface.')
+
+assert.ok(story.includes('Colocar nos Stories') && story.includes('Remover dos Stories'), 'A acao de Story administrativo deve existir.')
+assert.ok(story.includes('selection?.expiraEm') && story.includes('Restrita 18+'), 'Story deve mostrar expiracao e classificacao restrita.')
+assert.ok(story.includes('disabled={busy}'), 'Story deve bloquear duplo clique.')
+
+assert.ok(editPage.includes('AdminAnuncioEditForm') && !editPage.includes('moderation-v2'), 'A edicao deve usar contrato administrativo V3 proprio.')
+assert.ok(edit.includes('updateAdminAd') && edit.includes("session?.papeis.includes('ADMIN')"), 'Somente ADMIN deve editar pelo adapter canonico.')
+for (const field of ['titulo', 'descricao', 'categoria', 'preco', 'uf', 'cidade', 'bairro', 'servicos', 'locaisAtendimento', 'whatsapp']) {
+  assert.ok(edit.includes(field), `Campo canonico ausente no editor administrativo: ${field}`)
+}
 
 console.log('Moderacao V3 de anuncios e midias: contrato frontend aprovado.')

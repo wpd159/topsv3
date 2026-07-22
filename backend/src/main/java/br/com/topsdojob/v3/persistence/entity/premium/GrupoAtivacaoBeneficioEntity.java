@@ -147,6 +147,34 @@ public class GrupoAtivacaoBeneficioEntity {
     return entity;
   }
 
+  public static GrupoAtivacaoBeneficioEntity criarAdministrativa(
+      UUID id,
+      UUID usuarioId,
+      UUID anuncioId,
+      UUID atorUsuarioId,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      String idempotencyKey,
+      String observacao,
+      OffsetDateTime agora) {
+    GrupoAtivacaoBeneficioEntity entity = new GrupoAtivacaoBeneficioEntity();
+    entity.id = id;
+    entity.tipo = TipoGrupoAtivacaoBeneficio.ADMIN;
+    entity.origem = OrigemBeneficio.ADMIN;
+    entity.usuarioId = usuarioId;
+    entity.anuncioId = anuncioId;
+    entity.atorUsuarioId = atorUsuarioId;
+    entity.campanhaCodigo = null;
+    entity.validadeInicioEm = inicioEm;
+    entity.validadeFimEm = fimEm;
+    entity.status = StatusGrupoAtivacaoBeneficio.ATIVO;
+    entity.idempotencyKey = idempotencyKey;
+    entity.observacao = observacao;
+    entity.criadoEm = agora;
+    entity.atualizadoEm = agora;
+    return entity;
+  }
+
   public static GrupoAtivacaoBeneficioEntity criarFixtureHomologacao(
       UUID id,
       TipoGrupoAtivacaoBeneficio tipo,

@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
+import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,6 +40,7 @@ public class AdminStorySelecaoService {
 
     private static final int MAX_PAGE_SIZE = 50;
     private static final String RECURSO_TIPO = "STORY_SELECAO_ADMINISTRATIVA";
+    private static final Duration DURACAO_ADMINISTRATIVA = Duration.ofHours(24);
 
     private final StorySelecaoAdministrativaRepository selecaoRepository;
     private final AnuncioRepository anuncioRepository;
@@ -65,7 +67,7 @@ public class AdminStorySelecaoService {
     @Transactional(readOnly = true)
     public AdminStorySelecaoDto consultar() {
         StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        return selecao == null ? inativa() : toDto(selecao);
+        return selecao == null || !ativaNoInstante(selecao, agora()) ? inativa() : toDto(selecao);
     }
 
     @Transactional(readOnly = true)
@@ -73,7 +75,7 @@ public class AdminStorySelecaoService {
         int safePage = Math.max(page, 0);
         int safeSize = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
         StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        UUID selecionadoId = selecao != null && selecao.isAtiva() ? selecao.getAnuncioId() : null;
+        UUID selecionadoId = selecao != null && ativaNoInstante(selecao, agora()) ? selecao.getAnuncioId() : null;
         Page<AnuncioEntity> candidatos = anuncioRepository.findAll(
                 candidatoSpec(termo),
                 PageRequest.of(safePage, safeSize, Sort.by(
@@ -101,12 +103,12 @@ public class AdminStorySelecaoService {
         }
 
         StorySelecaoAdministrativaEntity selecao = bloquearSelecao(true);
-        if (selecao.isAtiva() && anuncioId.equals(selecao.getAnuncioId())) {
+        if (ativaNoInstante(selecao, agora()) && anuncioId.equals(selecao.getAnuncioId())) {
             return toDto(selecao);
         }
         String antes = snapshot(selecao, null);
-        String acao = selecao.isAtiva() ? "STORY_ADMIN_SUBSTITUIR" : "STORY_ADMIN_ATIVAR";
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        String acao = ativaNoInstante(selecao, agora()) ? "STORY_ADMIN_SUBSTITUIR" : "STORY_ADMIN_ATIVAR";
+        OffsetDateTime agora = agora();
         selecao.ativar(anuncioId, ator.usuarioId(), agora);
         selecaoRepository.save(selecao);
         String depois = snapshot(selecao, midias);
@@ -127,12 +129,12 @@ public class AdminStorySelecaoService {
     public AdminStorySelecaoDto desativar(AdminUserPrincipal ator, String requestId) {
         validarAtor(ator);
         StorySelecaoAdministrativaEntity selecao = bloquearSelecao(false);
-        if (selecao == null || !selecao.isAtiva()) {
+        if (selecao == null || !ativaNoInstante(selecao, agora())) {
             return inativa();
         }
         UUID anuncioAnteriorId = selecao.getAnuncioId();
         String antes = snapshot(selecao, null);
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime agora = agora();
         selecao.desativar(agora);
         auditoriaRepository.save(AuditoriaEventoEntity.registrar(
                 UUID.randomUUID(),
@@ -165,8 +167,8 @@ public class AdminStorySelecaoService {
     }
 
     private AdminStorySelecaoDto toDto(StorySelecaoAdministrativaEntity selecao) {
-        if (!selecao.isAtiva()) {
-            return new AdminStorySelecaoDto(false, null, null, null, 0, 0, null, null, null);
+        if (!ativaNoInstante(selecao, agora())) {
+            return inativa();
         }
         AnuncioEntity anuncio = anuncioRepository.findById(selecao.getAnuncioId()).orElse(null);
         List<MidiaElegivel> midias = anuncio == null ? List.of() : elegibilidadeService.listar(anuncio.getId());
@@ -174,7 +176,8 @@ public class AdminStorySelecaoService {
     }
 
     private AdminStorySelecaoDto inativa() {
-        return new AdminStorySelecaoDto(false, null, null, null, 0, 0, null, null, null);
+        return new AdminStorySelecaoDto(
+                false, null, null, null, 0, 0, null, null, "RESTRITA_18", null, null);
     }
 
     private AdminStorySelecaoDto toDto(
@@ -185,13 +188,15 @@ public class AdminStorySelecaoService {
                 ? null
                 : usuarioRepository.findById(selecao.getAtivadoPor()).orElse(null);
         return new AdminStorySelecaoDto(
-                selecao.isAtiva(),
+                ativaNoInstante(selecao, agora()),
                 selecao.getAnuncioId(),
                 anuncio == null ? null : anuncio.getSlug(),
                 anuncio == null ? null : anuncio.getTitulo(),
                 contar(midias, TipoAnuncioMidia.FOTO),
                 contar(midias, TipoAnuncioMidia.VIDEO),
                 selecao.getAtivadoEm(),
+                expiraEm(selecao),
+                "RESTRITA_18",
                 selecao.getAtivadoPor(),
                 ator == null ? null : ator.getEmailNormalizado());
     }
@@ -237,6 +242,8 @@ public class AdminStorySelecaoService {
         values.put("anuncioId", selecao.getAnuncioId());
         values.put("ativadoPor", selecao.getAtivadoPor());
         values.put("ativadoEm", selecao.getAtivadoEm() == null ? null : selecao.getAtivadoEm().toString());
+        values.put("expiraEm", expiraEm(selecao) == null ? null : expiraEm(selecao).toString());
+        values.put("classificacao", "RESTRITA_18");
         if (midias != null) {
             values.put("fotosAprovadas", contar(midias, TipoAnuncioMidia.FOTO));
             values.put("videosAprovados", contar(midias, TipoAnuncioMidia.VIDEO));
@@ -252,5 +259,23 @@ public class AdminStorySelecaoService {
         if (ator == null || ator.usuarioId() == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao administrativa obrigatoria");
         }
+    }
+
+    private boolean ativaNoInstante(StorySelecaoAdministrativaEntity selecao, OffsetDateTime instante) {
+        OffsetDateTime expiraEm = expiraEm(selecao);
+        return selecao != null
+                && selecao.isAtiva()
+                && expiraEm != null
+                && expiraEm.isAfter(instante);
+    }
+
+    private OffsetDateTime expiraEm(StorySelecaoAdministrativaEntity selecao) {
+        return selecao == null || selecao.getAtivadoEm() == null
+                ? null
+                : selecao.getAtivadoEm().plus(DURACAO_ADMINISTRATIVA);
+    }
+
+    private OffsetDateTime agora() {
+        return OffsetDateTime.now(ZoneOffset.UTC);
     }
 }

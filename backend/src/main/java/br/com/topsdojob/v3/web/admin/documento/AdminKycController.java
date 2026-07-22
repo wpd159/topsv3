@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,21 +33,21 @@ public class AdminKycController {
   }
 
   @GetMapping
-  public List<AdminKycEnvioDto> listarPendentes() {
-    return service.listarPendentes();
+  public ResponseEntity<List<AdminKycEnvioDto>> listarPendentes() {
+    return semCache(service.listarPendentes());
   }
 
   @GetMapping("/envios/{envioId}")
-  public AdminKycEnvioDto detalhar(@PathVariable UUID envioId) {
-    return service.detalhar(envioId);
+  public ResponseEntity<AdminKycEnvioDto> detalhar(@PathVariable UUID envioId) {
+    return semCache(service.detalhar(envioId));
   }
 
   @GetMapping("/{documentoId}/url-temporaria")
-  public AdminKycUrlTemporariaDto urlTemporaria(
+  public ResponseEntity<AdminKycUrlTemporariaDto> urlTemporaria(
       @PathVariable UUID documentoId,
       @AuthenticationPrincipal AdminUserPrincipal ator,
       HttpServletRequest request) {
-    return service.urlTemporaria(documentoId, ator, RequestIdContext.current(request));
+    return semCache(service.urlTemporaria(documentoId, ator, RequestIdContext.current(request)));
   }
 
   @PostMapping("/envios/{envioId}/decidir")
@@ -55,5 +57,9 @@ public class AdminKycController {
       @AuthenticationPrincipal AdminUserPrincipal ator,
       HttpServletRequest request) {
     return service.decidir(envioId, body, ator, RequestIdContext.current(request));
+  }
+
+  private <T> ResponseEntity<T> semCache(T body) {
+    return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
   }
 }

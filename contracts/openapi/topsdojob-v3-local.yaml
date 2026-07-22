@@ -1617,8 +1617,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}:
     get:
-      summary: Detalhe administrativo sanitizado de anuncio
-      description: Retorna os dados comerciais necessarios a moderacao, proprietario mascarado e revisao aberta, somente para ADMIN ou MODERADOR com ANUNCIO_LER.
+      summary: Detalhe administrativo protegido de anuncio
+      description: Retorna dados comerciais, metricas canonicas e identificacao integral do proprietario somente para ADMIN ou MODERADOR com ANUNCIO_LER. A resposta e no-store e nao integra nenhum contrato publico.
       operationId: getAdminAnuncioDetalhe
       security:
         - AdminSessionCookie: []
@@ -1632,10 +1632,14 @@ paths:
             format: uuid
       responses:
         "200":
-          description: detalhe sanitizado de anuncio
+          description: detalhe administrativo protegido de anuncio
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              schema:
+                type: string
+              description: Sempre no-store.
           content:
             application/json:
               schema:
@@ -1646,6 +1650,52 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    put:
+      summary: Edita integralmente os campos comerciais do anuncio como ADMIN
+      description: Reutiliza as validacoes canonicas da edicao do anunciante sem personificar o proprietario. Preserva estado, moderacao, midias e historico e registra auditoria administrativa.
+      operationId: putAdminAnuncio
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeuAnuncioAtualizacaoRequest"
+      responses:
+        "200":
+          description: anuncio atualizado e auditado
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              schema:
+                type: string
+              description: Sempre no-store.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioDetalhe"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}/midias:
@@ -1686,7 +1736,7 @@ paths:
   /api/admin/anuncios/{id}/historico-moderacao:
     get:
       summary: Historico sanitizado da moderacao de um anuncio
-      description: Retorna decisoes do anuncio e de suas fotos e videos. Stories e snapshots brutos nao sao retornados.
+      description: Retorna decisoes do anuncio, fotos e videos e as acoes auditadas da selecao administrativa de Story. Stories permanecem fora da fila e das decisoes de moderacao; snapshots brutos nao sao retornados.
       operationId: getAdminAnuncioHistoricoModeracao
       security:
         - AdminSessionCookie: []
@@ -1710,6 +1760,45 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AdminModeracaoHistoricoItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/documentos:
+    get:
+      summary: Lista envios documentais privados do proprietario do anuncio
+      description: Restrito a ADMIN ou MODERADOR com DOCUMENTO_REVISAR. Nao retorna bucket, object key nem URL; a credencial temporaria e emitida apenas pelo contrato documental protegido existente.
+      operationId: getAdminAnuncioDocumentos
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: envios documentais privados do proprietario
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              schema:
+                type: string
+              description: Sempre no-store.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminKycEnvio"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1784,6 +1873,47 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/premium/anuncios/{id}/ativacoes:
+    post:
+      summary: Ativa manualmente beneficio vigente para um anuncio
+      description: Operacao exclusiva de ADMIN com PREMIUM_GERENCIAR. Usa duracao ativa do catalogo, nao debita creditos e exige observacao, CSRF, Idempotency-Key e auditoria.
+      operationId: postAdminPremiumAtivacaoManual
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPremiumAtivarRequest"
+      responses:
+        "200":
+          description: ativacao administrativa criada ou resposta idempotente equivalente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPremiumAtivacaoOperacao"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/admin/premium/consistencia:
@@ -2955,7 +3085,7 @@ paths:
   /api/admin/stories/selecao/{anuncioId}:
     post:
       summary: Ativa ou substitui atomicamente o anuncio administrativo
-      description: Nao cria Story pago, nao consome credito e nao copia midia. Exige anuncio publico, aprovado e com foto ou video publicavel.
+      description: Nao cria Story pago, nao consome credito e nao copia midia. Exige anuncio publico, aprovado e com foto ou video publicavel; a selecao e RESTRITA_18 e expira exatamente em 24 horas.
       security:
         - AdminSessionCookie: []
       parameters:
@@ -3403,7 +3533,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApiError"
+                $ref: "#/components/schemas/ApiErrorResponse"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -4907,6 +5037,29 @@ components:
           type:
             - string
             - "null"
+    AdminAnuncianteDetalhe:
+      type: object
+      additionalProperties: false
+      description: Identificacao integral exclusiva do detalhe administrativo protegido; nunca integra listagens ou APIs publicas.
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: [string, "null"]
+        nomeCivil:
+          type: [string, "null"]
+        email:
+          type: [string, "null"]
+          format: email
+        cpf:
+          type: [string, "null"]
+          pattern: "^[0-9]{3}\\.[0-9]{3}\\.[0-9]{3}-[0-9]{2}$"
+        whatsapp:
+          type: [string, "null"]
+          pattern: "^\\+[1-9][0-9]{7,14}$"
+        status:
+          type: [string, "null"]
     AdminRevisaoAberta:
       type: object
       additionalProperties: false
@@ -4937,6 +5090,10 @@ components:
           type:
             - string
             - "null"
+        miniaturaUrl:
+          type: [string, "null"]
+          format: uri
+          description: Somente primeira foto LIVRE, PUBLICAVEL e validada; nunca aponta para storage privado.
         status:
           type:
             - string
@@ -4982,6 +5139,16 @@ components:
           description: Indicador agregado; nao retorna documento privado.
         comercialLimitado:
           type: boolean
+        beneficiosPremiumVigentes:
+          type: array
+          items:
+            type: string
+        visualizacoes:
+          $ref: "#/components/schemas/VisualizacoesCanonicas"
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
         anunciante:
           anyOf:
             - $ref: "#/components/schemas/AdminAnuncianteResumo"
@@ -4991,51 +5158,111 @@ components:
             - $ref: "#/components/schemas/AdminRevisaoAberta"
             - type: "null"
     AdminAnuncioDetalhe:
-      allOf:
-        - $ref: "#/components/schemas/AdminAnuncioListaItem"
-        - type: object
-          additionalProperties: false
-          properties:
-            descricaoResumo:
-              type:
-                - string
-                - "null"
-              description: Texto sanitizado e mascarado; pode ser nulo quando ausente na origem.
-            descricao:
-              type:
-                - string
-                - "null"
-              description: Conteudo comercial integral para moderacao; pode ser nulo quando ausente.
-            categoria:
-              type:
-                - string
-                - "null"
-            ultimaPublicacaoEm:
-              type:
-                - string
-                - "null"
-              format: date-time
-            precoInformado:
-              type: boolean
-            preco:
-              type:
-                - number
-                - "null"
-              format: double
-              description: Preco informado no anuncio; pode ser nulo quando nao informado.
-            whatsapp:
-              type:
-                - string
-                - "null"
-              description: Contato do proprio anuncio para analise; pode ser nulo quando nao informado.
-            locaisAtendimento:
-              type: array
-              items:
-                type: string
-            servicos:
-              type: array
-              items:
-                type: string
+      type: object
+      additionalProperties: false
+      description: Contrato protegido e no-store. Nao deve ser reutilizado em API publica ou listagem administrativa.
+      required:
+        - id
+        - contatoConfigurado
+        - documentoPendente
+        - precoInformado
+        - comercialLimitado
+        - locaisAtendimento
+        - servicos
+        - metricas
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: [string, "null"]
+        titulo:
+          type: [string, "null"]
+        descricaoResumo:
+          type: [string, "null"]
+        descricao:
+          type: [string, "null"]
+        status:
+          type: [string, "null"]
+        statusModeracao:
+          type: [string, "null"]
+        categoria:
+          type: [string, "null"]
+        localizacao:
+          anyOf:
+            - $ref: "#/components/schemas/AdminLocalizacaoSanitizada"
+            - type: "null"
+        criadoEm:
+          type: [string, "null"]
+          format: date-time
+        atualizadoEm:
+          type: [string, "null"]
+          format: date-time
+        publicadoEm:
+          type: [string, "null"]
+          format: date-time
+        ultimaPublicacaoEm:
+          type: [string, "null"]
+          format: date-time
+        midiasTotal:
+          type: [integer, "null"]
+          format: int64
+        revisoesTotal:
+          type: [integer, "null"]
+          format: int64
+        contatoConfigurado:
+          type: boolean
+        documentoPendente:
+          type: boolean
+        precoInformado:
+          type: boolean
+        comercialLimitado:
+          type: boolean
+        preco:
+          type: [number, "null"]
+        whatsapp:
+          type: [string, "null"]
+          pattern: "^\\+[1-9][0-9]{7,14}$"
+        locaisAtendimento:
+          type: array
+          items:
+            type: string
+        servicos:
+          type: array
+          items:
+            type: string
+        anunciante:
+          anyOf:
+            - $ref: "#/components/schemas/AdminAnuncianteDetalhe"
+            - type: "null"
+        metricas:
+          $ref: "#/components/schemas/AdminAnuncioMetricas"
+        revisaoAberta:
+          anyOf:
+            - $ref: "#/components/schemas/AdminRevisaoAberta"
+            - type: "null"
+    AdminAnuncioMetricas:
+      type: object
+      additionalProperties: false
+      required: [visualizacoes, cliquesWhatsapp, beneficiosPremiumVigentes]
+      properties:
+        visualizacoes:
+          $ref: "#/components/schemas/VisualizacoesCanonicas"
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        ctr:
+          type: [number, "null"]
+          minimum: 0
+        beneficiosPremiumVigentes:
+          type: array
+          items:
+            type: string
+        ultimaAcaoAdministrativa:
+          anyOf:
+            - $ref: "#/components/schemas/AdminModeracaoHistoricoItem"
+            - type: "null"
     AdminBeneficioAnuncio:
       type: object
       additionalProperties: false
@@ -5078,6 +5305,9 @@ components:
             - INATIVO
             - INCONSISTENTE
             - null
+        origem:
+          type: [string, "null"]
+          enum: [COMPRA, CREDITO, CORTESIA, CAMPANHA, ADMIN, IMPORTACAO, null]
         inicioEm:
           type:
             - string
@@ -5088,6 +5318,10 @@ components:
             - string
             - "null"
           format: date-time
+        duracaoDias:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
         venceEmBreve:
           type: boolean
         grupoVinculado:
@@ -5106,10 +5340,10 @@ components:
             - string
             - "null"
         grupoFimEm:
-          type:
-            - string
-            - "null"
+          type: [string, "null"]
           format: date-time
+        observacao:
+          type: [string, "null"]
         codigosConsistencia:
           type: array
           items:
@@ -5118,7 +5352,6 @@ components:
           type: boolean
         somenteLeitura:
           type: boolean
-          const: false
     AdminPremiumAnuncioStatus:
       type: object
       additionalProperties: false
@@ -5382,10 +5615,6 @@ components:
           type:
             - string
             - "null"
-          enum:
-            - FOTO
-            - VIDEO
-            - null
           enum:
             - ENTRADA
             - SAIDA
@@ -6040,7 +6269,7 @@ components:
           format: uuid
         alvoTipo:
           type: string
-          enum: [ANUNCIO, REVISAO_ANUNCIO, ANUNCIO_MIDIA]
+          enum: [ANUNCIO, REVISAO_ANUNCIO, ANUNCIO_MIDIA, ATIVACAO_BENEFICIO, STORY_SELECAO_ADMINISTRATIVA]
         alvoId:
           type: string
           format: uuid
@@ -6810,7 +7039,7 @@ components:
     AdminStorySelecao:
       type: object
       additionalProperties: false
-      required: [ativa, fotosAprovadas, videosAprovados]
+      required: [ativa, fotosAprovadas, videosAprovados, classificacao]
       properties:
         ativa:
           type: boolean
@@ -6828,6 +7057,13 @@ components:
         ativadoEm:
           type: [string, "null"]
           format: date-time
+        expiraEm:
+          type: [string, "null"]
+          format: date-time
+          description: Exatamente 24 horas apos ativadoEm enquanto a selecao estiver ativa.
+        classificacao:
+          type: string
+          const: RESTRITA_18
         ativadoPorId:
           type: [string, "null"]
           format: uuid
@@ -7805,6 +8041,21 @@ components:
         creditosEstornados: { type: integer, minimum: 0 }
         fimEm: { type: [string, "null"], format: date-time }
         idempotente: { type: boolean }
+    AdminPremiumAtivarRequest:
+      type: object
+      additionalProperties: false
+      required: [beneficioId, duracaoDias, observacao]
+      properties:
+        beneficioId:
+          type: string
+          format: uuid
+        duracaoDias:
+          type: integer
+          minimum: 1
+        observacao:
+          type: string
+          minLength: 3
+          maxLength: 500
     AdminPremiumCatalogoUpdateRequest:
       type: object
       additionalProperties: false

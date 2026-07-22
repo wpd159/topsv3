@@ -6,6 +6,8 @@ export type AdminStorySelection = {
   fotosAprovadas: number
   videosAprovados: number
   ativadoEm: string | null
+  expiraEm: string | null
+  classificacao: 'RESTRITA_18'
   ativadoPorId: string | null
   ativadoPorEmail: string | null
 }
