@@ -1559,7 +1559,7 @@ paths:
   /api/admin/anuncios:
     get:
       summary: Lista administrativa local de anuncios
-      description: Retorna pagina sanitizada de anuncios. COMERCIAL recebe versao limitada. Nao retorna WhatsApp bruto, documento privado, e-mail privado, valor financeiro sensivel, storage ou payload.
+      description: Retorna pagina sanitizada de anuncios com proprietario mascarado e revisao aberta. COMERCIAL recebe versao limitada. Nao retorna documento privado, e-mail integral, storage ou payload.
       operationId: getAdminAnuncios
       security:
         - AdminSessionCookie: []
@@ -1618,7 +1618,7 @@ paths:
   /api/admin/anuncios/{id}:
     get:
       summary: Detalhe administrativo sanitizado de anuncio
-      description: Retorna detalhe somente leitura. COMERCIAL nao recebe descricao nem contagem detalhada de revisoes.
+      description: Retorna os dados comerciais necessarios a moderacao, proprietario mascarado e revisao aberta. COMERCIAL recebe a versao limitada sem descricao, preco, contato, servicos ou locais de atendimento.
       operationId: getAdminAnuncioDetalhe
       security:
         - AdminSessionCookie: []
@@ -1651,7 +1651,7 @@ paths:
   /api/admin/anuncios/{id}/midias:
     get:
       summary: Lista midias sanitizadas de um anuncio
-      description: Restrito a ADMIN e MODERADOR. Nao retorna bucket, chave, hash, etag, URL privada ou nome original.
+      description: Restrito a ADMIN e MODERADOR. Retorna somente FOTO e VIDEO; STORY nao participa da fila. Nao retorna bucket, chave, hash, etag, URL privada ou nome original.
       operationId: getAdminAnuncioMidias
       security:
         - AdminSessionCookie: []
@@ -1675,6 +1675,41 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminPaginaMidias"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/historico-moderacao:
+    get:
+      summary: Historico sanitizado da moderacao de um anuncio
+      description: Retorna decisoes do anuncio e de suas fotos e videos. Stories e snapshots brutos nao sao retornados.
+      operationId: getAdminAnuncioHistoricoModeracao
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: historico de moderacao sanitizado
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminModeracaoHistoricoItem"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2841,7 +2876,7 @@ paths:
   /api/admin/midias:
     get:
       summary: Lista administrativa local de midias
-      description: Restrito a ADMIN e MODERADOR. Retorna apenas metadados seguros de midia.
+      description: Restrito a ADMIN e MODERADOR. Retorna apenas fotos e videos com metadados seguros. Stories ficam fora desta fila.
       operationId: getAdminMidias
       security:
         - AdminSessionCookie: []
@@ -3007,10 +3042,45 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/midias/{id}/preview:
+    get:
+      summary: Gera previa autorizada de foto ou video para moderacao
+      description: Para midia privada gera URL temporaria de dois minutos; para foto publica retorna a URL publica canonica. Nao atende Story ou documento e nunca retorna bucket ou object key.
+      operationId: getAdminMidiaPreview
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: URL autorizada para previa da midia
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminMidiaPreview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          description: armazenamento ou URL publica indisponivel
   /api/admin/midias/{id}/decidir:
     post:
       summary: Decisao local de midia administrativa
-      description: Restrito a ADMIN e MODERADOR com MIDIA_REVISAR. Atualiza o status de moderacao e a visibilidade individual da midia por ID, com auditoria sanitizada. Foto aprovada exige LIVRE ou RESTRITA_18; video e story aceitam somente RESTRITA_18. REPROVAR e SOLICITAR_AJUSTE exigem motivo valido. Nao apaga arquivo, nao faz upload, nao envia e-mail real e nao retorna bucket, chave, hash ou URL privada.
+      description: Restrito a ADMIN e MODERADOR com MIDIA_REVISAR. Atualiza individualmente uma FOTO ou VIDEO, com lock e auditoria sanitizada. Foto aprovada exige LIVRE ou RESTRITA_18; video aprovado permanece RESTRITA_18. Story retorna 409 e nao participa da moderacao. REPROVAR e SOLICITAR_AJUSTE exigem motivo valido. Nao apaga arquivo, nao envia e-mail real e nao retorna bucket, chave, hash ou URL privada.
       operationId: postAdminMidiaDecidir
       security:
         - AdminSessionCookie: []
@@ -4817,6 +4887,41 @@ components:
           type:
             - string
             - "null"
+    AdminAnuncianteResumo:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type:
+            - string
+            - "null"
+        emailMascarado:
+          type:
+            - string
+            - "null"
+          description: Identificador visual mascarado; nunca retorna o e-mail integral.
+        status:
+          type:
+            - string
+            - "null"
+    AdminRevisaoAberta:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+        status:
+          type: string
+          enum: [ABERTA, EM_ANALISE]
+        criadoEm:
+          type: string
+          format: date-time
     AdminAnuncioListaItem:
       type: object
       additionalProperties: false
@@ -4877,6 +4982,14 @@ components:
           description: Indicador agregado; nao retorna documento privado.
         comercialLimitado:
           type: boolean
+        anunciante:
+          anyOf:
+            - $ref: "#/components/schemas/AdminAnuncianteResumo"
+            - type: "null"
+        revisaoAberta:
+          anyOf:
+            - $ref: "#/components/schemas/AdminRevisaoAberta"
+            - type: "null"
     AdminAnuncioDetalhe:
       allOf:
         - $ref: "#/components/schemas/AdminAnuncioListaItem"
@@ -4888,6 +5001,11 @@ components:
                 - string
                 - "null"
               description: Texto sanitizado e mascarado; nulo para COMERCIAL.
+            descricao:
+              type:
+                - string
+                - "null"
+              description: Conteudo comercial integral para moderacao; nulo para COMERCIAL.
             categoria:
               type:
                 - string
@@ -4899,7 +5017,25 @@ components:
               format: date-time
             precoInformado:
               type: boolean
-              description: Indicador booleano; nao retorna valor financeiro.
+            preco:
+              type:
+                - number
+                - "null"
+              format: double
+              description: Preco informado no anuncio; nulo para COMERCIAL.
+            whatsapp:
+              type:
+                - string
+                - "null"
+              description: Contato do proprio anuncio para analise; nulo para COMERCIAL.
+            locaisAtendimento:
+              type: array
+              items:
+                type: string
+            servicos:
+              type: array
+              items:
+                type: string
     AdminBeneficioAnuncio:
       type: object
       additionalProperties: false
@@ -5246,6 +5382,10 @@ components:
           type:
             - string
             - "null"
+          enum:
+            - FOTO
+            - VIDEO
+            - null
           enum:
             - ENTRADA
             - SAIDA
@@ -5872,6 +6012,68 @@ components:
                 - string
                 - "null"
               format: uuid
+    AdminMidiaPreview:
+      type: object
+      additionalProperties: false
+      required: [url, publica, mimeType]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: URL publica canonica ou URL privada temporaria autorizada.
+        expiraEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        publica:
+          type: boolean
+        mimeType:
+          type: string
+          pattern: "^(image|video)/"
+    AdminModeracaoHistoricoItem:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        alvoTipo:
+          type: string
+          enum: [ANUNCIO, REVISAO_ANUNCIO, ANUNCIO_MIDIA]
+        alvoId:
+          type: string
+          format: uuid
+        acao:
+          type: string
+        decisao:
+          type:
+            - string
+            - "null"
+        motivo:
+          type:
+            - string
+            - "null"
+        status:
+          type:
+            - string
+            - "null"
+        atorId:
+          type:
+            - string
+            - "null"
+          format: uuid
+        requestId:
+          type:
+            - string
+            - "null"
+        resultado:
+          type:
+            - string
+            - "null"
+        criadoEm:
+          type: string
+          format: date-time
     AdminRevisaoListaItem:
       type: object
       additionalProperties: false
@@ -6176,7 +6378,7 @@ components:
           description: Reservado para idempotencia futura. Nesta fase local nao deduplica por requestIdCliente, nao garante reprocessamento seguro e nao deve ser usado como contrato de idempotencia. A duplicidade atual de SOLICITAR_AJUSTE e bloqueada por chave local de outbox, retornando 409.
     AdminDecidirMidiaRequest:
       type: object
-      description: Decisao individual por ID de midia. Foto exige visibilidade em APROVAR; video e story aceitam somente RESTRITA_18. Motivo e obrigatorio em REPROVAR e SOLICITAR_AJUSTE.
+      description: Decisao individual por ID de foto ou video. Foto exige visibilidade em APROVAR; video permanece RESTRITA_18; Story retorna 409. Motivo e obrigatorio em REPROVAR e SOLICITAR_AJUSTE.
       additionalProperties: false
       required:
         - decisao

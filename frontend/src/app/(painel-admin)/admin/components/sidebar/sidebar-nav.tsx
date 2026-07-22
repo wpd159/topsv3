@@ -40,10 +40,10 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
               const notificationCount: number | null =
                 item.notificationKey
                   ? notificationCounts[item.notificationKey] ?? null
-                  : baseHref === '/admin/moderacao-v2'
+                  : baseHref === '/admin/anuncios'
                     ? notificationCounts.revisoes ?? null
                     : null
-              const hasCounter = Boolean(item.notificationKey) || baseHref === '/admin/moderacao-v2'
+              const hasCounter = Boolean(item.notificationKey) || baseHref === '/admin/anuncios'
 
               return (
                 <Link

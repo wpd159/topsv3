@@ -20,7 +20,7 @@ export function AnuncioStaffEditForm({ anuncioId, embedded = false, onSaved }: A
         open
         onCancel={() => {
           if (embedded) return
-          router.push(`/admin/moderacao-v2/${encodeURIComponent(String(anuncioId))}`)
+          router.push(`/admin/anuncios/${encodeURIComponent(String(anuncioId))}`)
         }}
         onSaved={onSaved || (() => undefined)}
       />

@@ -118,7 +118,7 @@ export default function PerformanceAnunciosSection() {
   )
 
   const abrirAnuncio = (id: string | number) => {
-    router.push(`/admin/moderacao-v2/${id}`)
+    router.push(`/admin/anuncios/${id}`)
     setModalAberto(null)
     setBuscaAnuncio("")
   }

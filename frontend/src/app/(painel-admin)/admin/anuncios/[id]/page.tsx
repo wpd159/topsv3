@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-import { ModeracaoV2Detail } from '@/features/moderation-v2/components/moderacao-v2-detail'
+import { AdminAnuncioModeracao } from '@/features/admin-anuncios/admin-anuncio-moderacao'
 
 export default async function AdminAnuncioDetailPage({
   params,
@@ -12,12 +12,12 @@ export default async function AdminAnuncioDetailPage({
     return (
       <div className="py-16 text-center text-gray-500">
         Identificador invalido.{' '}
-        <Link href="/admin/moderacao-v2" className="text-[#f0198f] underline">
+        <Link href="/admin/anuncios" className="text-[#f0198f] underline">
           Voltar
         </Link>
       </div>
     )
   }
 
-  return <ModeracaoV2Detail anuncioId={id} />
+  return <AdminAnuncioModeracao anuncioId={id} />
 }

@@ -1,8 +1,10 @@
 package br.com.topsdojob.v3.web.admin.readonly;
 
 import br.com.topsdojob.v3.application.admin.readonly.AdminMidiaDetalhadaConsultaService;
+import br.com.topsdojob.v3.application.admin.readonly.AdminMidiaPreviewService;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaPreviewDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -20,9 +22,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminMidiaDetalhadaController {
 
     private final AdminMidiaDetalhadaConsultaService service;
+    private final AdminMidiaPreviewService previewService;
 
-    public AdminMidiaDetalhadaController(AdminMidiaDetalhadaConsultaService service) {
+    public AdminMidiaDetalhadaController(
+            AdminMidiaDetalhadaConsultaService service,
+            AdminMidiaPreviewService previewService) {
         this.service = service;
+        this.previewService = previewService;
     }
 
     @GetMapping
@@ -41,5 +47,11 @@ public class AdminMidiaDetalhadaController {
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('MIDIA_REVISAR')")
     public AdminMidiaDetalheDto detalhar(@PathVariable UUID id) {
         return service.detalhar(id);
+    }
+
+    @GetMapping("/{id}/preview")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('MIDIA_REVISAR')")
+    public AdminMidiaPreviewDto preview(@PathVariable UUID id) {
+        return previewService.gerar(id);
     }
 }

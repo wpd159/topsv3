@@ -73,7 +73,7 @@ export default function AnunciosDoUsuarioTable({
   const [busca, setBusca] = useState('')
 
   const handleVerAnuncio = (id: number) => {
-    router.push(`/admin/moderacao-v2/${id}`)
+    router.push(`/admin/anuncios/${id}`)
   }
 
   const anunciosFiltrados = useMemo(() => {

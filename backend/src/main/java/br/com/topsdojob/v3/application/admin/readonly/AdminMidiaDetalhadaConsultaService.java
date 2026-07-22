@@ -64,13 +64,15 @@ public class AdminMidiaDetalhadaConsultaService {
                 page,
                 size,
                 Sort.by(Sort.Order.asc("ordem"), Sort.Order.asc("criadoEm"), Sort.Order.asc("id")));
-        Page<AnuncioMidiaEntity> result = anuncioMidiaRepository.findByAnuncioId(anuncio.getId(), pageable);
+        Page<AnuncioMidiaEntity> result = anuncioMidiaRepository.findByAnuncioIdAndTipoNot(
+                anuncio.getId(), TipoAnuncioMidia.STORY, pageable);
         return page(result);
     }
 
     @Transactional(readOnly = true)
     public AdminMidiaDetalheDto detalhar(UUID id) {
         AnuncioMidiaEntity midia = anuncioMidiaRepository.findById(id)
+                .filter(item -> item.getTipo() != TipoAnuncioMidia.STORY)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
         ArquivoMidiaEntity arquivo = midia.getArquivoMidiaId() == null
                 ? null
@@ -144,7 +146,7 @@ public class AdminMidiaDetalhadaConsultaService {
             TipoAnuncioMidia tipo,
             UUID anuncioId) {
         return (root, query, builder) -> {
-            var predicate = builder.conjunction();
+            var predicate = builder.notEqual(root.get("tipo"), TipoAnuncioMidia.STORY);
             if (status != null) {
                 predicate = builder.and(predicate, builder.equal(root.get("status"), status));
             }

@@ -88,12 +88,13 @@ public class AdminModeracaoAcaoService {
             AdminDecidirRevisaoRequestDto request,
             AdminUserPrincipal actor,
             String requestId) {
+        validarAtor(actor);
         AdminDecisaoModeracaoAcao decisao = validarDecisao(request == null ? null : request.decisao());
         String motivo = motivoSeguroObrigatorioQuandoNecessario(
                 decisao,
                 request == null ? null : request.motivo(),
                 request == null ? null : request.observacao());
-        RevisaoAnuncioEntity revisao = revisaoRepository.findById(id)
+        RevisaoAnuncioEntity revisao = revisaoRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
         if (!revisaoAberta(revisao.getStatus()) || revisao.getFinalizadoEm() != null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao ja finalizada");
@@ -102,7 +103,7 @@ public class AdminModeracaoAcaoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "decisao de revisao ja registrada");
         }
 
-        AnuncioEntity anuncio = anuncioRepository.findById(revisao.getAnuncioId())
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(revisao.getAnuncioId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio da revisao nao encontrado"));
         OffsetDateTime agora = OffsetDateTime.now();
         String antes = snapshotRevisao(revisao, anuncio, null, null);
@@ -185,26 +186,30 @@ public class AdminModeracaoAcaoService {
             AdminDecidirMidiaRequestDto request,
             AdminUserPrincipal actor,
             String requestId) {
+        validarAtor(actor);
         AdminDecisaoModeracaoAcao decisao = validarDecisao(request == null ? null : request.decisao());
         String motivo = motivoSeguroObrigatorioQuandoNecessario(
                 decisao,
                 request == null ? null : request.motivo(),
                 request == null ? null : request.observacao());
-        AnuncioMidiaEntity midia = anuncioMidiaRepository.findById(id)
+        AnuncioMidiaEntity midia = anuncioMidiaRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
+        if (midia.getTipo() == TipoAnuncioMidia.STORY) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "story nao participa da moderacao de midia");
+        }
         if (midia.getStatus() != StatusAnuncioMidia.PENDENTE
-                && midia.getStatus() != StatusAnuncioMidia.AJUSTE_SOLICITADO
-                && midia.getStatus() != StatusAnuncioMidia.PUBLICAVEL) {
+                && midia.getStatus() != StatusAnuncioMidia.AJUSTE_SOLICITADO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "midia ja finalizada");
         }
         if (documentoUsuarioRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(midia.getArquivoMidiaId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "arquivo privado nao moderavel como midia publica");
         }
 
-        ArquivoMidiaEntity arquivo = arquivoMidiaRepository.findById(midia.getArquivoMidiaId())
+        ArquivoMidiaEntity arquivo = arquivoMidiaRepository.findByIdForUpdate(midia.getArquivoMidiaId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
         OffsetDateTime agora = OffsetDateTime.now();
         VisibilidadeMidia visibilidade = visibilidadeParaDecisao(midia, request, decisao);
+        garantirDerivadoMarcadoParaFotoLivre(midia, arquivo, decisao, visibilidade);
         String antes = snapshotMidia(midia, arquivo, null, null);
 
         StatusAnuncioMidia novoStatusMidia = switch (decisao) {
@@ -217,7 +222,7 @@ public class AdminModeracaoAcaoService {
             case REPROVAR -> StatusArquivoMidia.REJEITADO;
             case SOLICITAR_AJUSTE -> StatusArquivoMidia.PENDENTE;
         };
-        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR && visibilidade == VisibilidadeMidia.LIVRE) {
             midiaStorageAprovacaoService.prepararAprovacao(arquivo, visibilidade);
         }
         midia.aplicarDecisao(novoStatusMidia, visibilidade, agora);
@@ -266,7 +271,8 @@ public class AdminModeracaoAcaoService {
             AdminRemeterRevisaoRequestDto request,
             AdminUserPrincipal actor,
             String requestId) {
-        AnuncioEntity anuncio = anuncioRepository.findById(id)
+        validarAtor(actor);
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         String motivo = motivoSeguroObrigatorio(
                 request == null ? null : request.motivo(),
@@ -332,6 +338,12 @@ public class AdminModeracaoAcaoService {
         return decisao;
     }
 
+    private void validarAtor(AdminUserPrincipal actor) {
+        if (actor == null || actor.usuarioId() == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "ator administrativo invalido");
+        }
+    }
+
     private String motivoSeguroObrigatorioQuandoNecessario(
             AdminDecisaoModeracaoAcao decisao,
             String motivo,
@@ -381,9 +393,9 @@ public class AdminModeracaoAcaoService {
             AdminDecidirMidiaRequestDto request,
             AdminDecisaoModeracaoAcao decisao) {
         VisibilidadeMidia solicitada = request == null ? null : request.visibilidadeMidia();
-        if (midia.getTipo() == TipoAnuncioMidia.VIDEO || midia.getTipo() == TipoAnuncioMidia.STORY) {
+        if (midia.getTipo() == TipoAnuncioMidia.VIDEO) {
             if (solicitada == VisibilidadeMidia.LIVRE) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "video e story exigem visibilidade RESTRITA_18");
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "video exige visibilidade RESTRITA_18");
             }
             return VisibilidadeMidia.RESTRITA_18;
         }
@@ -391,6 +403,30 @@ public class AdminModeracaoAcaoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "visibilidade obrigatoria para aprovar foto");
         }
         return solicitada != null ? solicitada : midia.getVisibilidadeMidia();
+    }
+
+    private void garantirDerivadoMarcadoParaFotoLivre(
+            AnuncioMidiaEntity midia,
+            ArquivoMidiaEntity arquivo,
+            AdminDecisaoModeracaoAcao decisao,
+            VisibilidadeMidia visibilidade) {
+        if (decisao != AdminDecisaoModeracaoAcao.APROVAR
+                || midia.getTipo() != TipoAnuncioMidia.FOTO
+                || visibilidade != VisibilidadeMidia.LIVRE
+                || !"R2".equals(arquivo.getStorageProvider())) {
+            return;
+        }
+        if (arquivo.getPipelineVersao() == null
+                || arquivo.getPipelineVersao() < 1
+                || arquivo.getMarcaDaguaVersao() == null
+                || arquivo.getMarcaDaguaVersao().isBlank()
+                || arquivo.getProcessadoEm() == null
+                || arquivo.getSha256Origem() == null
+                || !arquivo.getSha256Origem().matches("[0-9a-f]{64}")) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "foto livre nao possui derivado marcado valido");
+        }
     }
 
     private String motivoSeguro(String motivo, String observacao) {
@@ -538,8 +574,10 @@ public class AdminModeracaoAcaoService {
     }
 
     private String mensagemMidia(AdminDecisaoModeracaoAcao decisao) {
-        return decisao == AdminDecisaoModeracaoAcao.APROVAR
-                ? "midia aprovada localmente"
-                : "midia reprovada localmente";
+        return switch (decisao) {
+            case APROVAR -> "midia aprovada localmente";
+            case REPROVAR -> "midia reprovada localmente";
+            case SOLICITAR_AJUSTE -> "ajuste de midia solicitado localmente";
+        };
     }
 }

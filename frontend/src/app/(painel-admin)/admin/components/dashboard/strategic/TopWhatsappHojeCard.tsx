@@ -81,7 +81,7 @@ export function TopWhatsappHojeCard() {
             >
               {items.map((item, i) => {
                 const rank = i + 1
-                const modHref = `/admin/moderacao-v2/${item.anuncioId}`
+                const modHref = `/admin/anuncios/${item.anuncioId}`
                 const pubHref =
                   item.slug && String(item.slug).trim() !== ''
                     ? `/anuncios/${encodeURIComponent(item.slug)}`

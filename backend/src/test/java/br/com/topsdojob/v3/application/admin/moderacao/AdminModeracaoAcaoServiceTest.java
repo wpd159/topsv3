@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
@@ -26,6 +28,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Constructor;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -94,19 +97,25 @@ class AdminModeracaoAcaoServiceTest {
 
         assertThatThrownBy(() -> decidir(fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.LIVRE, null))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("400");
+                .hasMessageContaining("409");
 
         assertThat(decidir(fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, null, null).visibilidadeMidia())
                 .isEqualTo("RESTRITA_18");
+        verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
     }
 
     @Test
-    void storyNuncaAceitaLivre() {
+    void storyNaoParticipaDaModeracao() {
         Fixture fixture = fixture(TipoAnuncioMidia.STORY, null);
 
-        assertThatThrownBy(() -> decidir(fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.LIVRE, null))
+        assertThatThrownBy(() -> decidir(fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.RESTRITA_18, null))
                 .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("400");
+                .hasMessageContaining("409")
+                .hasMessageContaining("story nao participa");
+
+        verify(arquivoRepository, never()).findByIdForUpdate(any());
+        verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test
@@ -129,6 +138,79 @@ class AdminModeracaoAcaoServiceTest {
 
         assertThat(primeira.midia().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
         assertThat(segunda.getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
+    }
+
+    @Test
+    void rejeicaoExigeMotivoENaoExecutaPromocaoOuExclusao() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+
+        assertThatThrownBy(() -> decidir(fixture.id(), AdminDecisaoModeracaoAcao.REPROVAR, null, " "))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("400")
+                .hasMessageContaining("motivo obrigatorio");
+
+        var response = decidir(fixture.id(), AdminDecisaoModeracaoAcao.REPROVAR, null, "conteudo incompativel");
+
+        assertThat(response.hardDeleteExecutado()).isFalse();
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.REJEITADA);
+        assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.REJEITADO);
+        verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
+        verify(auditoriaRepository).save(any());
+    }
+
+    @Test
+    void videoRejeitadoPermaneceRestritoSemOperacaoDeStorage() {
+        Fixture fixture = fixture(TipoAnuncioMidia.VIDEO, null);
+
+        var response = decidir(fixture.id(), AdminDecisaoModeracaoAcao.REPROVAR, null, "video incompativel");
+
+        assertThat(response.visibilidadeMidia()).isEqualTo("RESTRITA_18");
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.REJEITADA);
+        assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.REJEITADO);
+        verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
+    }
+
+    @Test
+    void midiaInexistenteRetorna404() {
+        UUID id = UUID.randomUUID();
+        when(midiaRepository.findByIdForUpdate(id)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> decidir(id, AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.LIVRE, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
+    }
+
+    @Test
+    void decisaoRepetidaRetornaConflito() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        decidir(fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.RESTRITA_18, null);
+
+        assertThatThrownBy(() -> decidir(
+                fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.RESTRITA_18, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("ja finalizada");
+    }
+
+    @Test
+    void fotoR2LivreExigeDerivadoMarcadoDoPipeline() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        ReflectionTestUtils.setField(fixture.arquivo(), "storageProvider", "R2");
+
+        assertThatThrownBy(() -> decidir(
+                fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.LIVRE, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("derivado marcado");
+
+        fixture.arquivo().registrarProcessamento(
+                1,
+                "watermark-v1",
+                OffsetDateTime.parse("2026-07-22T12:00:00Z"),
+                "a".repeat(64));
+        decidir(fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.LIVRE, null);
+
+        verify(storageAprovacaoService).prepararAprovacao(fixture.arquivo(), VisibilidadeMidia.LIVRE);
     }
 
     private br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto decidir(
@@ -156,8 +238,8 @@ class AdminModeracaoAcaoServiceTest {
         ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
         ReflectionTestUtils.setField(arquivo, "id", arquivoId);
         ReflectionTestUtils.setField(arquivo, "statusArquivo", StatusArquivoMidia.PENDENTE);
-        when(midiaRepository.findById(id)).thenReturn(Optional.of(midia));
-        when(arquivoRepository.findById(arquivoId)).thenReturn(Optional.of(arquivo));
+        when(midiaRepository.findByIdForUpdate(id)).thenReturn(Optional.of(midia));
+        when(arquivoRepository.findByIdForUpdate(arquivoId)).thenReturn(Optional.of(arquivo));
         when(documentoRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivoId)).thenReturn(false);
         return new Fixture(id, midia, arquivo);
     }

@@ -246,7 +246,7 @@ export default function GerenciarAnunciosTable({ busca = "", status = "TODOS" }:
                 size="sm"
                 variant="outline"
                 className="flex-1 text-xs"
-                onClick={() => router.push(`/admin/moderacao-v2/${anuncio.id}`)}
+                onClick={() => router.push(`/admin/anuncios/${anuncio.id}`)}
               >
                 Ver detalhes
                 <ArrowRightIcon className="ml-1 h-4 w-4" />
@@ -312,7 +312,7 @@ export default function GerenciarAnunciosTable({ busca = "", status = "TODOS" }:
                     variant="ghost"
                     className="rounded-md border border-gray-200 p-2 text-gray-500 transition-all hover:bg-gray-100"
                     title="Ver anúncio"
-                    onClick={() => router.push(`/admin/moderacao-v2/${anuncio.id}`)}
+                    onClick={() => router.push(`/admin/anuncios/${anuncio.id}`)}
                   >
                     <ArrowRightIcon className="h-4 w-4" />
                   </Button>

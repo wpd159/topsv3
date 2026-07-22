@@ -6,17 +6,26 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import java.util.List;
 import java.util.Collection;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 
 public interface AnuncioMidiaRepository
         extends JpaRepository<AnuncioMidiaEntity, UUID>, JpaSpecificationExecutor<AnuncioMidiaEntity> {
     long countByStatus(StatusAnuncioMidia status);
 
     long countByVisibilidadeMidia(VisibilidadeMidia visibilidadeMidia);
+
+    long countByStatusAndTipoNot(StatusAnuncioMidia status, TipoAnuncioMidia tipo);
+
+    long countByVisibilidadeMidiaAndTipoNot(VisibilidadeMidia visibilidadeMidia, TipoAnuncioMidia tipo);
 
     long countByAnuncioId(UUID anuncioId);
 
@@ -29,6 +38,15 @@ public interface AnuncioMidiaRepository
     List<AnuncioMidiaEntity> findByArquivoMidiaId(UUID arquivoMidiaId);
 
     Page<AnuncioMidiaEntity> findByAnuncioId(UUID anuncioId, Pageable pageable);
+
+    Page<AnuncioMidiaEntity> findByAnuncioIdAndTipoNot(
+            UUID anuncioId,
+            TipoAnuncioMidia tipo,
+            Pageable pageable);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select midia from AnuncioMidiaEntity midia where midia.id = :id")
+    java.util.Optional<AnuncioMidiaEntity> findByIdForUpdate(@Param("id") UUID id);
 
     long count(Specification<AnuncioMidiaEntity> spec);
 }

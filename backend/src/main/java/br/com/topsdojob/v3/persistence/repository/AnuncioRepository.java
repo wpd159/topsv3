@@ -39,6 +39,10 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     @Query("select anuncio from AnuncioEntity anuncio where anuncio.slug = :slug")
     Optional<AnuncioEntity> findBySlugForLifecycle(@Param("slug") String slug);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select anuncio from AnuncioEntity anuncio where anuncio.id = :id")
+    Optional<AnuncioEntity> findByIdForModeration(@Param("id") UUID id);
+
     Optional<AnuncioEntity> findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
             String slug,
             StatusAnuncio status,

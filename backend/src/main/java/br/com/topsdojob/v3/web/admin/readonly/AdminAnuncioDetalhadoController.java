@@ -4,7 +4,9 @@ import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsu
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminModeracaoHistoricoItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
+import java.util.List;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.UUID;
@@ -63,6 +65,12 @@ public class AdminAnuncioDetalhadoController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return service.listarMidiasDoAnuncio(id, page, size);
+    }
+
+    @GetMapping("/{id}/historico-moderacao")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and (hasAuthority('ANUNCIO_MODERAR') or hasAuthority('MIDIA_REVISAR'))")
+    public List<AdminModeracaoHistoricoItemDto> historicoModeracao(@PathVariable UUID id) {
+        return service.historico(id);
     }
 
     private boolean hasRole(Authentication authentication, String role) {

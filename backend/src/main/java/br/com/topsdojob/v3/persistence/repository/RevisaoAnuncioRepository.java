@@ -6,11 +6,15 @@ import java.util.List;
 import java.util.Collection;
 import java.util.UUID;
 import java.util.Optional;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface RevisaoAnuncioRepository
         extends JpaRepository<RevisaoAnuncioEntity, UUID>, JpaSpecificationExecutor<RevisaoAnuncioEntity> {
@@ -21,6 +25,18 @@ public interface RevisaoAnuncioRepository
     boolean existsByAnuncioIdAndStatusIn(UUID anuncioId, Collection<StatusRevisaoAnuncio> statuses);
 
     List<RevisaoAnuncioEntity> findByAnuncioId(UUID anuncioId);
+
+    List<RevisaoAnuncioEntity> findByAnuncioIdInAndStatusInOrderByCriadoEmDesc(
+            Collection<UUID> anuncioIds,
+            Collection<StatusRevisaoAnuncio> statuses);
+
+    Optional<RevisaoAnuncioEntity> findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
+            UUID anuncioId,
+            Collection<StatusRevisaoAnuncio> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select revisao from RevisaoAnuncioEntity revisao where revisao.id = :id")
+    Optional<RevisaoAnuncioEntity> findByIdForUpdate(@Param("id") UUID id);
 
     Optional<RevisaoAnuncioEntity> findFirstByAnuncioIdAndStatusOrderByCriadoEmDesc(
             UUID anuncioId,

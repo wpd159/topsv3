@@ -55,7 +55,7 @@ export const sidebarLinks: SidebarLink[] = [
   {
     label: 'Anúncios',
     icon: <RectangleStackIcon className="h-5 w-5" />,
-    href: '/admin/moderacao-v2',
+    href: '/admin/anuncios',
     section: 'Operação',
   },
   {

@@ -17,5 +17,7 @@ public record AdminAnuncioListaItemDto(
         Long revisoesTotal,
         boolean contatoConfigurado,
         boolean documentoPendente,
-        boolean comercialLimitado) {
+        boolean comercialLimitado,
+        AdminAnuncianteResumoDto anunciante,
+        AdminRevisaoAbertaDto revisaoAberta) {
 }

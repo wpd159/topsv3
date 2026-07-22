@@ -114,7 +114,7 @@ export function StrategicAdminDashboard() {
         id: 'sem-clique',
         title: `${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% dos anúncios com views não têm clique`,
         subtitle: 'Base com exposição mas sem conversão em WhatsApp.',
-        href: '/admin/moderacao-v2?filtro=com-views-sem-clique',
+        href: '/admin/anuncios?filtro=com-views-sem-clique',
       })
     }
     const nZero = countAltoTrafegoZeroClique(base, 200)
@@ -123,7 +123,7 @@ export function StrategicAdminDashboard() {
         id: 'alto-trafego-zero',
         title: `${nZero} anúncio${nZero !== 1 ? 's' : ''} com muitas views e zero clique`,
         subtitle: 'Candidatos a revisão de criativo, preço ou canal.',
-        href: '/admin/moderacao-v2?filtro=alto-trafego-zero-clique',
+        href: '/admin/anuncios?filtro=alto-trafego-zero-clique',
       })
     }
     const below = cidadeAbaixoDaMediaResumo(cityRows, 3)
@@ -132,7 +132,7 @@ export function StrategicAdminDashboard() {
         id: 'cidade-media',
         title: `Cidade em destaque: ${below.nome}`,
         subtitle: `Conversão agregada ${below.conversao.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% vs média ${below.media.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%.`,
-        href: `/admin/moderacao-v2?${MOD_V2_QUERY_CIDADE}=${encodeURIComponent(below.nome)}`,
+        href: `/admin/anuncios?${MOD_V2_QUERY_CIDADE}=${encodeURIComponent(below.nome)}`,
       })
     }
     const inef =
@@ -144,7 +144,7 @@ export function StrategicAdminDashboard() {
         id: 'premio-dessinc',
         title: 'Possível dessincronia: muitos anúncios sem upsell',
         subtitle: 'Comparar benefícios ativos com tamanho da base comercial.',
-        href: '/admin/moderacao-v2?filtro=sem-upsell',
+        href: '/admin/anuncios?filtro=sem-upsell',
       })
     }
     return out.slice(0, 5)
@@ -158,7 +158,7 @@ export function StrategicAdminDashboard() {
         id: 'sem-upsell',
         title: `${upsell.toLocaleString('pt-BR')} anúncios sem upsell`,
         subtitle: 'Priorize upgrades e pacotes premium.',
-        href: '/admin/moderacao-v2?filtro=sem-upsell',
+        href: '/admin/anuncios?filtro=sem-upsell',
       })
     }
     const venc = premium?.beneficiosVencendoEmBreve ?? 0
@@ -167,7 +167,7 @@ export function StrategicAdminDashboard() {
         id: 'vencendo',
         title: `${venc.toLocaleString('pt-BR')} benefícios vencendo em breve`,
         subtitle: 'Renovação ou nova oferta comercial.',
-        href: '/admin/moderacao-v2?filtro=vencendo-em-breve',
+        href: '/admin/anuncios?filtro=vencendo-em-breve',
       })
     }
     const altoTrafego = base.filter((i) => matchesStrategicAltoTrafego(i.visualizacoes)).length
@@ -176,7 +176,7 @@ export function StrategicAdminDashboard() {
         id: 'alto-trafego',
         title: `${altoTrafego.toLocaleString('pt-BR')} anúncios com alto tráfego acumulado`,
         subtitle: 'Prioridade para monetização e retenção.',
-        href: '/admin/moderacao-v2?filtro=alto-trafego',
+        href: '/admin/anuncios?filtro=alto-trafego',
       })
     }
     const aptosUpgrade = Math.min(upsell, base.filter((i) => (i.visualizacoes ?? 0) >= 500).length)
@@ -185,7 +185,7 @@ export function StrategicAdminDashboard() {
         id: 'aptos',
         title: `Até ${aptosUpgrade.toLocaleString('pt-BR')} anúncios com tráfego médio+ sem upsell`,
         subtitle: 'Lista cruzada aproximada para prospecção.',
-        href: '/admin/moderacao-v2?filtro=sem-upsell',
+        href: '/admin/anuncios?filtro=sem-upsell',
       })
     }
     return out.slice(0, 5)
@@ -201,21 +201,21 @@ export function StrategicAdminDashboard() {
         title: 'Sem upsell',
         value: semUpsell.toLocaleString('pt-BR'),
         description: 'Anúncios elegíveis sem benefício premium.',
-        href: '/admin/moderacao-v2?filtro=sem-upsell',
+        href: '/admin/anuncios?filtro=sem-upsell',
       },
       {
         id: 'm-trafego',
         title: 'Alto tráfego',
         value: alto.toLocaleString('pt-BR'),
         description: 'Anúncios com ≥2k views (acumulado).',
-        href: '/admin/moderacao-v2?filtro=alto-trafego',
+        href: '/admin/anuncios?filtro=alto-trafego',
       },
       {
         id: 'm-inef',
         title: 'Possível ineficiência',
         value: inefCount.toLocaleString('pt-BR'),
         description: 'Com views e conversão muito baixa (menos de 1%).',
-        href: '/admin/moderacao-v2?filtro=baixa-eficiencia',
+        href: '/admin/anuncios?filtro=baixa-eficiencia',
       },
     ]
   }, [premium, base])

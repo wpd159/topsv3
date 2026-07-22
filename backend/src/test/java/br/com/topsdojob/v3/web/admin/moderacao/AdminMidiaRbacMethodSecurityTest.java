@@ -65,6 +65,24 @@ class AdminMidiaRbacMethodSecurityTest {
                 .isInstanceOf(AuthorizationDeniedException.class);
     }
 
+    @Test
+    void adminComAnuncioModerarPodeDecidirRevisao() {
+        autenticar("ROLE_ADMIN", "ANUNCIO_MODERAR");
+
+        controller.decidirRevisao(UUID.randomUUID(), null, null, new MockHttpServletRequest());
+
+        verify(service).decidirRevisao(any(), any(), any(), any());
+    }
+
+    @Test
+    void adminSemAnuncioModerarNaoPodeDecidirRevisao() {
+        autenticar("ROLE_ADMIN");
+
+        assertThatThrownBy(() -> controller.decidirRevisao(
+                UUID.randomUUID(), null, null, new MockHttpServletRequest()))
+                .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
     private void autenticar(String... authorities) {
         var granted = List.of(authorities).stream().map(SimpleGrantedAuthority::new).toList();
         SecurityContextHolder.getContext().setAuthentication(

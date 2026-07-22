@@ -196,7 +196,7 @@ for (const [relativePath, labels] of Object.entries(preservedSurfaces)) {
 }
 
 const canonicalSubstitutes = {
-  'app/(painel-admin)/admin/anuncios/[id]/page.tsx': 'ModeracaoV2Detail',
+  'app/(painel-admin)/admin/anuncios/[id]/page.tsx': 'AdminAnuncioModeracao',
   'features/moderation-v2/components/anuncio-staff-edit-form.tsx': 'AdminAnuncioDadosInlineEditor',
   'app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section.tsx': 'fetchAdminStorySelection',
   'app/(painel-admin)/admin/components/financeiro/financeiro-table.tsx': 'listarAdminPagamentos',

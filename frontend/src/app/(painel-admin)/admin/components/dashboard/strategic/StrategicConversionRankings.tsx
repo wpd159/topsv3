@@ -66,7 +66,7 @@ export function StrategicConversionRankings({ topConversao, piorConversao, loadi
                 <TableRow key={item.id} className="text-sm">
                   <TableCell className="font-semibold text-gray-700">{i + 1}</TableCell>
                   <TableCell className="max-w-[200px] truncate">
-                    <Link href={`/admin/moderacao-v2/${item.id}`} className="font-medium text-gray-900 hover:text-[#f0198f]">
+                    <Link href={`/admin/anuncios/${item.id}`} className="font-medium text-gray-900 hover:text-[#f0198f]">
                       {item.titulo || `Anúncio #${item.id}`}
                     </Link>
                   </TableCell>
@@ -117,7 +117,7 @@ export function StrategicConversionRankings({ topConversao, piorConversao, loadi
                 <TableRow key={item.id} className="text-sm">
                   <TableCell className="font-semibold text-gray-700">{i + 1}</TableCell>
                   <TableCell className="max-w-[200px] truncate">
-                    <Link href={`/admin/moderacao-v2/${item.id}`} className="font-medium text-gray-900 hover:text-[#f0198f]">
+                    <Link href={`/admin/anuncios/${item.id}`} className="font-medium text-gray-900 hover:text-[#f0198f]">
                       {item.titulo || `Anúncio #${item.id}`}
                     </Link>
                   </TableCell>
