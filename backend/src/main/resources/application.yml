@@ -51,6 +51,11 @@ app:
   media-upload:
     max-image-bytes: ${UPLOAD_MAX_IMAGE_BYTES:20971520}
     max-video-bytes: ${UPLOAD_MAX_VIDEO_BYTES:104857600}
+    max-image-pixels: ${UPLOAD_MAX_IMAGE_PIXELS:40000000}
+    max-image-dimension: ${UPLOAD_MAX_IMAGE_DIMENSION:20000}
+    max-processed-side: ${UPLOAD_MAX_PROCESSED_SIDE:2560}
+    jpeg-quality: ${UPLOAD_JPEG_QUALITY:0.92}
+    webp-quality: ${UPLOAD_WEBP_QUALITY:0.90}
   document-upload:
     max-bytes: ${UPLOAD_MAX_DOCUMENT_BYTES:12582912}
 

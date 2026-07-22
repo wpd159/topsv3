@@ -205,6 +205,16 @@ export function consultarLimitesMinhasMidias(slug: string) {
   )
 }
 
+const mediaUploadIdempotencyKeys = new WeakMap<File, string>()
+
+function mediaUploadIdempotencyKey(file: File) {
+  const existing = mediaUploadIdempotencyKeys.get(file)
+  if (existing) return existing
+  const created = crypto.randomUUID()
+  mediaUploadIdempotencyKeys.set(file, created)
+  return created
+}
+
 export async function enviarMinhaMidia(
   slug: string,
   arquivo: File,
@@ -216,6 +226,7 @@ export async function enviarMinhaMidia(
     xhr.open('POST', publicApiUrl(`/minha-conta/anuncios/${encodeURIComponent(slug)}/midias`))
     xhr.withCredentials = true
     xhr.setRequestHeader('Accept', 'application/json')
+    xhr.setRequestHeader('Idempotency-Key', mediaUploadIdempotencyKey(arquivo))
     if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
@@ -236,6 +247,7 @@ export async function enviarMinhaMidia(
         return
       }
       onProgress?.(100)
+      mediaUploadIdempotencyKeys.delete(arquivo)
       resolve(body as MinhasMidiasResponse)
     }
     const form = new FormData()

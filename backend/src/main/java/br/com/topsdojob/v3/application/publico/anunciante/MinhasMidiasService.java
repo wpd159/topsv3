@@ -5,12 +5,16 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaLim
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiasResponseDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -22,12 +26,15 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,6 +60,7 @@ public class MinhasMidiasService {
     private final RevisaoAnuncioRepository revisaoRepository;
     private final LimiteMidiasAnuncioService limiteService;
     private final MidiaUploadValidator uploadValidator;
+    private final FotoUploadProcessor fotoProcessor;
     private final MidiaUploadProperties uploadProperties;
     private final R2StorageProperties storageProperties;
     private final ObjectProvider<ObjectStorage> storageProvider;
@@ -64,6 +72,7 @@ public class MinhasMidiasService {
             RevisaoAnuncioRepository revisaoRepository,
             LimiteMidiasAnuncioService limiteService,
             MidiaUploadValidator uploadValidator,
+            FotoUploadProcessor fotoProcessor,
             MidiaUploadProperties uploadProperties,
             R2StorageProperties storageProperties,
             ObjectProvider<ObjectStorage> storageProvider) {
@@ -73,6 +82,7 @@ public class MinhasMidiasService {
         this.revisaoRepository = revisaoRepository;
         this.limiteService = limiteService;
         this.uploadValidator = uploadValidator;
+        this.fotoProcessor = fotoProcessor;
         this.uploadProperties = uploadProperties;
         this.storageProperties = storageProperties;
         this.storageProvider = storageProvider;
@@ -94,9 +104,26 @@ public class MinhasMidiasService {
     public MeuAnuncioMidiasResponseDto enviar(
             String slug,
             MultipartFile arquivo,
+            String idempotencyKey,
             Authentication authentication) {
         AnuncioEntity anuncio = anuncioMutavel(slug, authentication);
         MidiaValidada validada = uploadValidator.validar(arquivo);
+        String chaveIdempotencia = validada.video() ? null : chaveIdempotencia(idempotencyKey);
+        UUID arquivoId = validada.video()
+                ? UUID.randomUUID()
+                : uuidDeterministico("arquivo", anuncio.getId(), chaveIdempotencia);
+        UUID vinculoId = validada.video()
+                ? UUID.randomUUID()
+                : uuidDeterministico("vinculo", anuncio.getId(), chaveIdempotencia);
+        ObjectStorage storage = storageObrigatorio();
+        if (!validada.video()) {
+            ArquivoMidiaEntity existente = arquivoMidiaRepository.findById(arquivoId).orElse(null);
+            if (existente != null) {
+                validarRepeticaoExistente(anuncio.getId(), vinculoId, existente, validada);
+                verificarArquivoPersistido(storage, existente);
+                return resposta(anuncio);
+            }
+        }
         List<AnuncioMidiaEntity> atuais = vinculosAtivos(anuncio.getId());
         MeuAnuncioMidiaLimitesDto limites = limites(anuncio, atuais);
         if (validada.video() && limites.videosDisponiveis() < 1) {
@@ -106,12 +133,16 @@ public class MinhasMidiasService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "limite de fotos atingido");
         }
 
-        ObjectStorage storage = storageObrigatorio();
-        UUID arquivoId = UUID.randomUUID();
+        FotoProcessada foto = validada.video() ? null : fotoProcessor.processar(validada);
+        byte[] bytesFinais = foto == null ? validada.bytes() : foto.bytes();
+        String mimeFinal = foto == null ? validada.mimeType() : foto.mimeType();
+        String extensaoFinal = foto == null ? validada.extensao() : foto.extensao();
+        Integer larguraFinal = foto == null ? validada.largura() : Integer.valueOf(foto.largura());
+        Integer alturaFinal = foto == null ? validada.altura() : Integer.valueOf(foto.altura());
+        String shaFinal = foto == null ? validada.sha256() : foto.sha256();
         String key = storageProperties.getPrivateMediaPrefix()
-                + "anuncios/" + anuncio.getId() + "/" + arquivoId + "." + validada.extensao();
-        storage.put(StorageArea.PRIVATE_MEDIA, key, validada.bytes(), validada.mimeType());
-        limparObjetoSeRollback(storage, key);
+                + "anuncios/" + anuncio.getId() + "/" + arquivoId + "/"
+                + (foto == null ? "video." + extensaoFinal : "foto-v" + foto.pipelineVersao() + "." + extensaoFinal);
 
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         ArquivoMidiaEntity arquivoEntity = ArquivoMidiaEntity.criarUploadPendente(
@@ -120,21 +151,30 @@ public class MinhasMidiasService {
                 storageProperties.getPrivateMediaBucket(),
                 key,
                 validada.nomeOriginal(),
-                validada.mimeType(),
-                validada.bytes().length,
-                validada.largura(),
-                validada.altura(),
+                mimeFinal,
+                bytesFinais.length,
+                larguraFinal,
+                alturaFinal,
                 null,
-                validada.sha256(),
+                shaFinal,
                 agora);
+        if (foto != null) {
+            arquivoEntity.registrarProcessamento(
+                    foto.pipelineVersao(), foto.marcaDaguaVersao(), foto.processadoEm(), foto.sha256Origem());
+        }
         arquivoMidiaRepository.save(arquivoEntity);
+        arquivoMidiaRepository.flush();
+        ObjectWriteResult writeResult = storage.putIfAbsent(
+                StorageArea.PRIVATE_MEDIA, key, bytesFinais, mimeFinal);
+        if (writeResult == ObjectWriteResult.CREATED) limparObjetoSeRollback(storage, key);
+        verificarObjetoPersistido(storage, key, bytesFinais, mimeFinal, larguraFinal, alturaFinal, foto != null);
         int proximaOrdem = atuais.stream()
                 .map(AnuncioMidiaEntity::getOrdem)
                 .filter(Objects::nonNull)
                 .max(Integer::compareTo)
                 .orElse(-1) + 1;
         anuncioMidiaRepository.save(AnuncioMidiaEntity.criarUploadPendente(
-                UUID.randomUUID(),
+                vinculoId,
                 anuncio.getId(),
                 arquivoId,
                 validada.video() ? TipoAnuncioMidia.VIDEO : TipoAnuncioMidia.FOTO,
@@ -281,6 +321,89 @@ public class MinhasMidiasService {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "storage de midia indisponivel");
         }
         return storage;
+    }
+
+    private void validarRepeticaoExistente(
+            UUID anuncioId,
+            UUID vinculoId,
+            ArquivoMidiaEntity arquivo,
+            MidiaValidada upload) {
+        AnuncioMidiaEntity vinculo = anuncioMidiaRepository.findById(vinculoId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT, "chave idempotente possui registro incompleto"));
+        String shaOrigem = arquivo.getSha256Origem() == null ? arquivo.getSha256() : arquivo.getSha256Origem();
+        if (!anuncioId.equals(vinculo.getAnuncioId())
+                || !arquivo.getId().equals(vinculo.getArquivoMidiaId())
+                || !Objects.equals(shaOrigem, upload.sha256())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "chave idempotente reutilizada com outro arquivo");
+        }
+    }
+
+    private void verificarObjetoPersistido(
+            ObjectStorage storage,
+            String key,
+            byte[] esperado,
+            String mimeType,
+            Integer largura,
+            Integer altura,
+            boolean foto) {
+        StoredObject objeto = storage.get(StorageArea.PRIVATE_MEDIA, key);
+        String mimePersistido = objeto.contentType().split(";", 2)[0].trim().toLowerCase(java.util.Locale.ROOT);
+        if (!Objects.equals(mimeType, mimePersistido)
+                || !Objects.equals(sha256(esperado), sha256(objeto.content()))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "objeto existente diverge do upload processado");
+        }
+        if (foto) fotoProcessor.validarDerivado(objeto.content(), mimeType, largura, altura);
+    }
+
+    private void verificarArquivoPersistido(ObjectStorage storage, ArquivoMidiaEntity arquivo) {
+        if (arquivo.getChaveObjeto() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "registro idempotente sem objeto persistido");
+        }
+        StorageArea area;
+        if (Objects.equals(storageProperties.getPrivateMediaBucket(), arquivo.getBucket())
+                && arquivo.getChaveObjeto().startsWith(storageProperties.getPrivateMediaPrefix())) {
+            area = StorageArea.PRIVATE_MEDIA;
+        } else if (Objects.equals(storageProperties.getPublicMediaBucket(), arquivo.getBucket())
+                && arquivo.getChaveObjeto().startsWith(storageProperties.getPublicMediaPrefix())) {
+            area = StorageArea.PUBLIC_MEDIA;
+        } else {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "registro idempotente aponta para area invalida");
+        }
+        StoredObject objeto = storage.get(area, arquivo.getChaveObjeto());
+        if (objeto == null
+                || !Objects.equals(arquivo.getSha256(), sha256(objeto.content()))
+                || !Objects.equals(
+                        arquivo.getMimeType(),
+                        objeto.contentType().split(";", 2)[0].trim().toLowerCase(java.util.Locale.ROOT))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "registro idempotente diverge do objeto persistido");
+        }
+        if (arquivo.getPipelineVersao() != null) {
+            fotoProcessor.validarDerivado(
+                    objeto.content(), arquivo.getMimeType(), arquivo.getLargura(), arquivo.getAltura());
+        }
+    }
+
+    private String chaveIdempotencia(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (!normalized.matches("[A-Za-z0-9._:-]{1,160}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Idempotency-Key invalida");
+        }
+        return normalized;
+    }
+
+    private UUID uuidDeterministico(String tipo, UUID anuncioId, String idempotencyKey) {
+        return UUID.nameUUIDFromBytes(
+                ("midia-upload-v1:" + tipo + ":" + anuncioId + ":" + idempotencyKey)
+                        .getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (Exception exception) {
+            throw new IllegalStateException("SHA-256 indisponivel", exception);
+        }
     }
 
     private void limparObjetoSeRollback(ObjectStorage storage, String key) {

@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.infrastructure.storage.r2;
 
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import java.net.URI;
@@ -24,6 +25,19 @@ final class R2ObjectStorage implements ObjectStorage {
     }
     Location location = location(area, key);
     operations.put(location.bucket(), key, content.clone(), contentType);
+  }
+
+  @Override
+  public ObjectWriteResult putIfAbsent(
+      StorageArea area,
+      String key,
+      byte[] content,
+      String contentType) {
+    if (content == null || content.length == 0) {
+      throw new IllegalArgumentException("Conteudo do objeto obrigatorio");
+    }
+    Location location = location(area, key);
+    return operations.putIfAbsent(location.bucket(), key, content.clone(), contentType);
   }
 
   @Override

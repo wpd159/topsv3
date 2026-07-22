@@ -6,9 +6,12 @@ import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Set;
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,6 +19,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Component
 public class MidiaUploadValidator {
+
+    static {
+        ImageIO.scanForPlugins();
+    }
 
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
     private static final Set<String> VIDEO_EXTENSIONS = Set.of("mp4", "mov");
@@ -100,40 +107,35 @@ public class MidiaUploadValidator {
     }
 
     private Dimensoes dimensoesImagem(byte[] bytes, TipoDetectado tipo) {
-        if ("image/webp".equals(tipo.mimeType())) {
-            return dimensoesWebp(bytes);
-        }
-        try {
-            BufferedImage image = ImageIO.read(new ByteArrayInputStream(bytes));
-            if (image == null || image.getWidth() < 1 || image.getHeight() < 1) {
-                throw formatoInvalido();
-            }
-            return new Dimensoes(image.getWidth(), image.getHeight());
-        } catch (IOException exception) {
+        Iterator<ImageReader> readers = ImageIO.getImageReadersByMIMEType(tipo.mimeType());
+        if (!readers.hasNext()) throw formatoInvalido();
+        ImageReader reader = readers.next();
+        try (ImageInputStream input = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
+            if (input == null) throw formatoInvalido();
+            reader.setInput(input, true, true);
+            int width = reader.getWidth(0);
+            int height = reader.getHeight(0);
+            validarDimensoesSeguras(width, height);
+            BufferedImage image = reader.read(0, reader.getDefaultReadParam());
+            if (image == null || image.getWidth() != width || image.getHeight() != height) throw formatoInvalido();
+            return new Dimensoes(width, height);
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (Exception exception) {
             throw formatoInvalido();
+        } finally {
+            reader.dispose();
         }
     }
 
-    private Dimensoes dimensoesWebp(byte[] bytes) {
-        if (bytes.length < 30) throw formatoInvalido();
-        String chunk = ascii(bytes, 12, 4);
-        if ("VP8X".equals(chunk)) {
-            int width = 1 + littleEndian24(bytes, 24);
-            int height = 1 + littleEndian24(bytes, 27);
-            if (width > 0 && height > 0) return new Dimensoes(width, height);
+    private void validarDimensoesSeguras(int width, int height) {
+        long pixels = (long) width * height;
+        if (width < 1 || height < 1
+                || width > properties.getMaxImageDimension()
+                || height > properties.getMaxImageDimension()
+                || pixels > properties.getMaxImagePixels()) {
+            throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "imagem excede o limite seguro de pixels");
         }
-        if ("VP8L".equals(chunk) && bytes.length >= 25 && (bytes[20] & 0xff) == 0x2f) {
-            int b1 = bytes[21] & 0xff;
-            int b2 = bytes[22] & 0xff;
-            int b3 = bytes[23] & 0xff;
-            int b4 = bytes[24] & 0xff;
-            return new Dimensoes(1 + (b1 | ((b2 & 0x3f) << 8)), 1 + ((b2 >> 6) | (b3 << 2) | ((b4 & 0x0f) << 10)));
-        }
-        if ("VP8 ".equals(chunk) && bytes.length >= 30
-                && (bytes[23] & 0xff) == 0x9d && (bytes[24] & 0xff) == 0x01 && (bytes[25] & 0xff) == 0x2a) {
-            return new Dimensoes(littleEndian16(bytes, 26) & 0x3fff, littleEndian16(bytes, 28) & 0x3fff);
-        }
-        throw formatoInvalido();
     }
 
     private boolean jpeg(byte[] bytes) {
@@ -254,14 +256,6 @@ public class MidiaUploadValidator {
     private String ascii(byte[] bytes, int offset, int length) {
         if (offset < 0 || length < 0 || offset + length > bytes.length) return "";
         return new String(bytes, offset, length, java.nio.charset.StandardCharsets.US_ASCII);
-    }
-
-    private int littleEndian16(byte[] bytes, int offset) {
-        return (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8);
-    }
-
-    private int littleEndian24(byte[] bytes, int offset) {
-        return (bytes[offset] & 0xff) | ((bytes[offset + 1] & 0xff) << 8) | ((bytes[offset + 2] & 0xff) << 16);
     }
 
     private ResponseStatusException formatoInvalido() {

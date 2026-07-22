@@ -57,6 +57,9 @@ class MidiaUploadValidatorTest {
                 "arquivo", "imagem.exe", "application/octet-stream", png(2, 2)),
                 HttpStatus.UNSUPPORTED_MEDIA_TYPE);
         assertStatus(validator, new MockMultipartFile(
+                "arquivo", "imagem.png", "image/png", jpeg(2, 2)),
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        assertStatus(validator, new MockMultipartFile(
                 "arquivo", "video.mp4", "video/mp4", "0000ftypisom0000moovvide0000mdat".getBytes(StandardCharsets.US_ASCII)),
                 HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
@@ -85,6 +88,13 @@ class MidiaUploadValidatorTest {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         ImageIO.write(image, "png", output);
+        return output.toByteArray();
+    }
+
+    private byte[] jpeg(int width, int height) throws IOException {
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        ImageIO.write(image, "jpg", output);
         return output.toByteArray();
     }
 

@@ -19,6 +19,8 @@
 
   <properties>
     <java.version>17</java.version>
+    <metadata-extractor.version>2.19.0</metadata-extractor.version>
+    <webp-imageio.version>0.11.0</webp-imageio.version>
   </properties>
 
   <dependencies>
@@ -37,6 +39,16 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.drewnoakes</groupId>
+      <artifactId>metadata-extractor</artifactId>
+      <version>${metadata-extractor.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.usefulness</groupId>
+      <artifactId>webp-imageio</artifactId>
+      <version>${webp-imageio.version}</version>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>

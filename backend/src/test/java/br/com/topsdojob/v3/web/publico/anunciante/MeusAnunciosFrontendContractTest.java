@@ -19,6 +19,8 @@ class MeusAnunciosFrontendContractTest {
                 .contains("parseVisualizacoesCanonicas")
                 .contains("/midias")
                 .contains("XMLHttpRequest")
+                .contains("Idempotency-Key")
+                .contains("WeakMap<File, string>")
                 .contains("method: 'PATCH'")
                 .contains("XSRF")
                 .contains("credentials: 'include'")

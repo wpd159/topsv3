@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.admin.moderacao;
 
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
@@ -12,6 +13,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.Locale;
 
 @Service
 public class MidiaStorageAprovacaoService {
@@ -39,6 +43,9 @@ public class MidiaStorageAprovacaoService {
                 || !arquivo.getChaveObjeto().startsWith(properties.getPrivateMediaPrefix())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "midia nao esta na area privada canonica");
         }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException("Promocao de midia exige transacao ativa");
+        }
 
         ObjectStorage storage = storageProvider.getIfAvailable();
         if (storage == null || !properties.isEnabled()) {
@@ -48,15 +55,26 @@ public class MidiaStorageAprovacaoService {
         String relativePath = privateObjectPath.substring(properties.getPrivateMediaPrefix().length());
         String publicObjectPath = properties.getPublicMediaPrefix() + relativePath;
         StoredObject object = storage.get(StorageArea.PRIVATE_MEDIA, privateObjectPath);
-        storage.put(StorageArea.PUBLIC_MEDIA, publicObjectPath, object.content(), object.contentType());
+        ObjectWriteResult writeResult = storage.putIfAbsent(
+                StorageArea.PUBLIC_MEDIA, publicObjectPath, object.content(), object.contentType());
+        StoredObject publicObject = storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+        if (!sha256(object.content()).equals(sha256(publicObject.content()))
+                || !mime(object.contentType()).equals(mime(publicObject.contentType()))) {
+            if (writeResult == ObjectWriteResult.CREATED) {
+                storage.delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+            }
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "objeto publico diverge da midia processada");
+        }
         arquivo.moverNoStorage(properties.getPublicMediaBucket(), publicObjectPath);
-        reconciliarDepoisDaTransacao(storage, privateObjectPath, publicObjectPath);
+        reconciliarDepoisDaTransacao(
+                storage, privateObjectPath, publicObjectPath, writeResult == ObjectWriteResult.CREATED);
     }
 
     private void reconciliarDepoisDaTransacao(
             ObjectStorage storage,
             String privateObjectPath,
-            String publicObjectPath
+            String publicObjectPath,
+            boolean publicObjectCreated
     ) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) return;
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -65,7 +83,7 @@ public class MidiaStorageAprovacaoService {
                 try {
                     if (status == TransactionSynchronization.STATUS_COMMITTED) {
                         storage.delete(StorageArea.PRIVATE_MEDIA, privateObjectPath);
-                    } else {
+                    } else if (publicObjectCreated) {
                         storage.delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
                     }
                 } catch (RuntimeException ignored) {
@@ -73,5 +91,17 @@ public class MidiaStorageAprovacaoService {
                 }
             }
         });
+    }
+
+    private String sha256(byte[] bytes) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (Exception exception) {
+            throw new IllegalStateException("SHA-256 indisponivel", exception);
+        }
+    }
+
+    private String mime(String value) {
+        return value == null ? "application/octet-stream" : value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
     }
 }

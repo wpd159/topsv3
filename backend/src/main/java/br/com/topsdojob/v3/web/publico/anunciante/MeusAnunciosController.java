@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -76,8 +77,9 @@ public class MeusAnunciosController {
     public MeuAnuncioMidiasResponseDto enviarMidia(
             @PathVariable String slug,
             @RequestPart("arquivo") MultipartFile arquivo,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             Authentication authentication) {
-        return midiasService.enviar(slug, arquivo, authentication);
+        return midiasService.enviar(slug, arquivo, idempotencyKey, authentication);
     }
 
     @PatchMapping("/{slug}/midias/ordem")

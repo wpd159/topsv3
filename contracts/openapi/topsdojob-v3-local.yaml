@@ -435,6 +435,15 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CurrentUserAdSlug"
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: Obrigatoria para fotos; identifica retries tecnicos do mesmo upload.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 160
+            pattern: "^[A-Za-z0-9._:-]+$"
       requestBody:
         required: true
         content:

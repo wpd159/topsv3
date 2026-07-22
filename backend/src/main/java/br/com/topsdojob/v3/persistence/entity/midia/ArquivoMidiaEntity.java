@@ -60,6 +60,18 @@ public class ArquivoMidiaEntity {
   @Column(name = "criado_em")
   private OffsetDateTime criadoEm;
 
+  @Column(name = "pipeline_versao")
+  private Integer pipelineVersao;
+
+  @Column(name = "marca_dagua_versao")
+  private String marcaDaguaVersao;
+
+  @Column(name = "processado_em")
+  private OffsetDateTime processadoEm;
+
+  @Column(name = "sha256_origem")
+  private String sha256Origem;
+
   public UUID getId() {
     return id;
   }
@@ -116,6 +128,22 @@ public class ArquivoMidiaEntity {
     return criadoEm;
   }
 
+  public Integer getPipelineVersao() {
+    return pipelineVersao;
+  }
+
+  public String getMarcaDaguaVersao() {
+    return marcaDaguaVersao;
+  }
+
+  public OffsetDateTime getProcessadoEm() {
+    return processadoEm;
+  }
+
+  public String getSha256Origem() {
+    return sha256Origem;
+  }
+
   public void aplicarDecisao(StatusArquivoMidia statusArquivo) {
     this.statusArquivo = statusArquivo;
   }
@@ -124,6 +152,21 @@ public class ArquivoMidiaEntity {
     this.storageProvider = "R2";
     this.bucket = bucket;
     this.chaveObjeto = chaveObjeto;
+  }
+
+  public void registrarProcessamento(
+      int pipelineVersao,
+      String marcaDaguaVersao,
+      OffsetDateTime processadoEm,
+      String sha256Origem) {
+    if (pipelineVersao < 1 || marcaDaguaVersao == null || marcaDaguaVersao.isBlank()
+        || processadoEm == null || sha256Origem == null || !sha256Origem.matches("[0-9a-f]{64}")) {
+      throw new IllegalArgumentException("Metadados do processamento de foto invalidos");
+    }
+    this.pipelineVersao = pipelineVersao;
+    this.marcaDaguaVersao = marcaDaguaVersao;
+    this.processadoEm = processadoEm;
+    this.sha256Origem = sha256Origem;
   }
 
   public static ArquivoMidiaEntity criarUploadPendente(

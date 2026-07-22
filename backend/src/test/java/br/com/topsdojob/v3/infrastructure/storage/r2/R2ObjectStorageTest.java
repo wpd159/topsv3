@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -38,6 +39,18 @@ class R2ObjectStorageTest {
         "PUT:public:hml/midias-aprovadas/teste.jpg",
         "HEAD:private:hml/midias-pendentes/teste.jpg",
         "GET:documents:hml/documentos/teste.pdf");
+  }
+
+  @Test
+  void escritaImutavelEhDelegadaAoClienteR2() {
+    assertThat(storage.putIfAbsent(
+        StorageArea.PRIVATE_MEDIA,
+        "hml/midias-pendentes/foto.jpg",
+        new byte[] {1},
+        "image/jpeg")).isEqualTo(ObjectWriteResult.CREATED);
+
+    assertThat(operations.calls).containsExactly(
+        "PUT_IF_ABSENT:private:hml/midias-pendentes/foto.jpg");
   }
 
   @Test
@@ -131,6 +144,12 @@ class R2ObjectStorageTest {
     @Override
     public void put(String bucket, String key, byte[] content, String contentType) {
       calls.add("PUT:" + bucket + ":" + key);
+    }
+
+    @Override
+    public ObjectWriteResult putIfAbsent(String bucket, String key, byte[] content, String contentType) {
+      calls.add("PUT_IF_ABSENT:" + bucket + ":" + key);
+      return ObjectWriteResult.CREATED;
     }
 
     @Override

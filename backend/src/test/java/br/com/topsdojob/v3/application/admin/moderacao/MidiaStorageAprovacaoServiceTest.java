@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
@@ -22,6 +23,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class MidiaStorageAprovacaoServiceTest {
 
@@ -34,6 +37,11 @@ class MidiaStorageAprovacaoServiceTest {
     @BeforeEach
     void setUp() {
         when(provider.getIfAvailable()).thenReturn(storage);
+        when(storage.putIfAbsent(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any())).thenReturn(ObjectWriteResult.CREATED);
     }
 
     @Test
@@ -41,13 +49,46 @@ class MidiaStorageAprovacaoServiceTest {
         ArquivoMidiaEntity arquivo = arquivoPrivado("hml/midias-pendentes/anuncios/a/foto.jpg");
         when(storage.get(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto()))
                 .thenReturn(new StoredObject(new byte[] {1, 2, 3}, "image/jpeg"));
+        when(storage.get(StorageArea.PUBLIC_MEDIA, "hml/midias-aprovadas/anuncios/a/foto.jpg"))
+                .thenReturn(new StoredObject(new byte[] {1, 2, 3}, "image/jpeg"));
 
-        service.prepararAprovacao(arquivo, VisibilidadeMidia.LIVRE);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.prepararAprovacao(arquivo, VisibilidadeMidia.LIVRE);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
 
         assertThat(arquivo.getBucket()).isEqualTo("publicas");
         assertThat(arquivo.getChaveObjeto()).isEqualTo("hml/midias-aprovadas/anuncios/a/foto.jpg");
-        verify(storage).put(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto(), new byte[] {1, 2, 3}, "image/jpeg");
-        verify(storage, never()).delete(StorageArea.PRIVATE_MEDIA, "hml/midias-pendentes/anuncios/a/foto.jpg");
+        verify(storage).putIfAbsent(
+                StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto(), new byte[] {1, 2, 3}, "image/jpeg");
+        verify(storage).delete(StorageArea.PRIVATE_MEDIA, "hml/midias-pendentes/anuncios/a/foto.jpg");
+    }
+
+    @Test
+    void rollbackRemoveSomenteCopiaPublicaCriadaEPreservaPrivada() {
+        String privateObjectPath = "hml/midias-pendentes/anuncios/a/foto.jpg";
+        String publicObjectPath = "hml/midias-aprovadas/anuncios/a/foto.jpg";
+        ArquivoMidiaEntity arquivo = arquivoPrivado(privateObjectPath);
+        when(storage.get(StorageArea.PRIVATE_MEDIA, privateObjectPath))
+                .thenReturn(new StoredObject(new byte[] {1, 2, 3}, "image/jpeg"));
+        when(storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath))
+                .thenReturn(new StoredObject(new byte[] {1, 2, 3}, "image/jpeg"));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.prepararAprovacao(arquivo, VisibilidadeMidia.LIVRE);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(storage).delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+        verify(storage, never()).delete(StorageArea.PRIVATE_MEDIA, privateObjectPath);
     }
 
     @Test
@@ -58,6 +99,16 @@ class MidiaStorageAprovacaoServiceTest {
 
         assertThat(arquivo.getBucket()).isEqualTo("privadas");
         assertThat(arquivo.getChaveObjeto()).startsWith("hml/midias-pendentes/");
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void fotoLivreFalhaFechadoSemTransacaoParaNaoDeixarDuasCopiasPermanentes() {
+        ArquivoMidiaEntity arquivo = arquivoPrivado("hml/midias-pendentes/anuncios/a/foto.jpg");
+
+        assertThatThrownBy(() -> service.prepararAprovacao(arquivo, VisibilidadeMidia.LIVRE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("transacao ativa");
         verifyNoInteractions(storage);
     }
 

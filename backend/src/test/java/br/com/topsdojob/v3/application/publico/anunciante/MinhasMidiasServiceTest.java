@@ -12,12 +12,16 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadProperties;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -44,6 +48,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class MinhasMidiasServiceTest {
 
@@ -56,16 +62,18 @@ class MinhasMidiasServiceTest {
     private final RevisaoAnuncioRepository revisaoRepository = mock(RevisaoAnuncioRepository.class);
     private final LimiteMidiasAnuncioService limiteService = mock(LimiteMidiasAnuncioService.class);
     private final MidiaUploadValidator validator = mock(MidiaUploadValidator.class);
+    private final FotoUploadProcessor fotoProcessor = mock(FotoUploadProcessor.class);
     private final ObjectStorage storage = mock(ObjectStorage.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ObjectStorage> storageProvider = mock(ObjectProvider.class);
     private final List<AnuncioMidiaEntity> vinculos = new ArrayList<>();
     private final Map<UUID, ArquivoMidiaEntity> arquivos = new LinkedHashMap<>();
+    private final Map<String, StoredObject> objetos = new LinkedHashMap<>();
     private final Authentication authentication = mock(Authentication.class);
     private final R2StorageProperties storageProperties = storageProperties();
     private final MinhasMidiasService service = new MinhasMidiasService(
             consultaService, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
-            validator, new MidiaUploadProperties(), storageProperties, storageProvider);
+            validator, fotoProcessor, new MidiaUploadProperties(), storageProperties, storageProvider);
 
     @BeforeEach
     void setUp() {
@@ -78,6 +86,15 @@ class MinhasMidiasServiceTest {
         when(storageProvider.getIfAvailable()).thenReturn(storage);
         when(storage.temporaryGetUrl(eq(StorageArea.PRIVATE_MEDIA), any(), any()))
                 .thenReturn(URI.create("https://privado.invalid/temporaria"));
+        when(storage.putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), any())).thenAnswer(invocation -> {
+            String key = invocation.getArgument(1);
+            if (objetos.containsKey(key)) return ObjectWriteResult.ALREADY_EXISTS;
+            objetos.put(key, new StoredObject(invocation.getArgument(2), invocation.getArgument(3)));
+            return ObjectWriteResult.CREATED;
+        });
+        when(storage.get(eq(StorageArea.PRIVATE_MEDIA), any())).thenAnswer(invocation ->
+                objetos.get(invocation.getArgument(1)));
+        when(fotoProcessor.processar(any())).thenReturn(processada());
         when(midiaRepository.findByAnuncioId(ANUNCIO_ID)).thenAnswer(ignored -> List.copyOf(vinculos));
         when(midiaRepository.findById(any())).thenAnswer(invocation ->
                 vinculos.stream().filter(item -> item.getId().equals(invocation.getArgument(0))).findFirst());
@@ -93,6 +110,8 @@ class MinhasMidiasServiceTest {
             List<UUID> ids = (List<UUID>) invocation.getArgument(0);
             return ids.stream().map(arquivos::get).filter(java.util.Objects::nonNull).toList();
         });
+        when(arquivoRepository.findById(any())).thenAnswer(invocation ->
+                java.util.Optional.ofNullable(arquivos.get(invocation.getArgument(0))));
         when(arquivoRepository.save(any())).thenAnswer(invocation -> {
             ArquivoMidiaEntity value = invocation.getArgument(0);
             arquivos.put(value.getId(), value);
@@ -105,7 +124,7 @@ class MinhasMidiasServiceTest {
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(false));
 
-        var response = service.enviar(SLUG, multipart, authentication);
+        var response = service.enviar(SLUG, multipart, "foto-1", authentication);
 
         assertThat(vinculos).singleElement().satisfies(vinculo -> {
             assertThat(vinculo.getTipo()).isEqualTo(TipoAnuncioMidia.FOTO);
@@ -114,8 +133,15 @@ class MinhasMidiasServiceTest {
         });
         ArquivoMidiaEntity persistido = arquivos.values().iterator().next();
         assertThat(persistido.getBucket()).isEqualTo("privadas");
-        assertThat(persistido.getChaveObjeto()).startsWith("hml/midias-pendentes/anuncios/" + ANUNCIO_ID + "/");
-        verify(storage).put(eq(StorageArea.PRIVATE_MEDIA), eq(persistido.getChaveObjeto()), any(), eq("image/png"));
+        assertThat(persistido.getChaveObjeto())
+                .startsWith("hml/midias-pendentes/anuncios/" + ANUNCIO_ID + "/")
+                .endsWith("/foto-v1.jpg");
+        assertThat(persistido.getPipelineVersao()).isEqualTo(1);
+        assertThat(persistido.getSha256Origem()).isEqualTo("a".repeat(64));
+        assertThat(objetos).hasSize(1);
+        assertThat(objetos.get(persistido.getChaveObjeto()).content()).containsExactly(9, 8, 7);
+        verify(storage).putIfAbsent(
+                eq(StorageArea.PRIVATE_MEDIA), eq(persistido.getChaveObjeto()), any(), eq("image/jpeg"));
         assertThat(response.toString()).doesNotContain("privadas").doesNotContain("hml/midias-pendentes");
     }
 
@@ -124,16 +150,33 @@ class MinhasMidiasServiceTest {
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(true));
 
-        service.enviar(SLUG, multipart, authentication);
+        service.enviar(SLUG, multipart, null, authentication);
 
         assertThat(vinculos).singleElement().satisfies(vinculo -> {
             assertThat(vinculo.getTipo()).isEqualTo(TipoAnuncioMidia.VIDEO);
             assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
             assertThat(vinculo.getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
         });
-        assertThatThrownBy(() -> service.enviar(SLUG, multipart, authentication))
+        assertThat(arquivos.values()).singleElement().satisfies(arquivo -> {
+            assertThat(arquivo.getPipelineVersao()).isNull();
+            assertThat(arquivo.getMarcaDaguaVersao()).isNull();
+            assertThat(arquivo.getSha256Origem()).isNull();
+        });
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, null, authentication))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+        verify(fotoProcessor, never()).processar(any());
+    }
+
+    @Test
+    void fotoExigeChaveIdempotenteSemAlterarContratoDoVideo() {
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, null, authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+        verify(fotoProcessor, never()).processar(any());
     }
 
     @Test
@@ -142,7 +185,7 @@ class MinhasMidiasServiceTest {
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(false));
 
-        assertThatThrownBy(() -> service.enviar(SLUG, multipart, authentication))
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, "foto-5", authentication))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
 
@@ -157,11 +200,11 @@ class MinhasMidiasServiceTest {
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(false));
 
-        var response = service.enviar(SLUG, multipart, authentication);
+        var response = service.enviar(SLUG, multipart, "foto-10", authentication);
 
         assertThat(response.limites().fotosAtivas()).isEqualTo(10);
         assertThat(response.limites().maxFotos()).isEqualTo(10);
-        assertThatThrownBy(() -> service.enviar(SLUG, multipart, authentication))
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, "foto-11", authentication))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
     }
@@ -222,9 +265,90 @@ class MinhasMidiasServiceTest {
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN));
 
         when(revisaoRepository.existsByAnuncioIdAndStatusIn(eq(ANUNCIO_ID), anyList())).thenReturn(true);
-        assertThatThrownBy(() -> service.enviar(SLUG, mock(MultipartFile.class), authentication))
+        assertThatThrownBy(() -> service.enviar(SLUG, mock(MultipartFile.class), "foto-analise", authentication))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+    }
+
+    @Test
+    void retryTecnicoReutilizaRegistroEObjetoSemReaplicarMarca() {
+        MultipartFile multipart = mock(MultipartFile.class);
+        MidiaValidada upload = validada(false);
+        when(validator.validar(multipart)).thenReturn(upload);
+
+        service.enviar(SLUG, multipart, "retry-1", authentication);
+        service.enviar(SLUG, multipart, "retry-1", authentication);
+
+        assertThat(vinculos).hasSize(1);
+        assertThat(arquivos).hasSize(1);
+        assertThat(objetos).hasSize(1);
+        verify(fotoProcessor, org.mockito.Mockito.times(1)).processar(upload);
+        verify(storage, org.mockito.Mockito.times(1))
+                .putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), eq("image/jpeg"));
+    }
+
+    @Test
+    void retryTecnicoFalhaFechadoQuandoObjetoPersistidoDesaparece() {
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+
+        service.enviar(SLUG, multipart, "retry-sem-objeto", authentication);
+        objetos.clear();
+
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, "retry-sem-objeto", authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+        verify(fotoProcessor, org.mockito.Mockito.times(1)).processar(any());
+    }
+
+    @Test
+    void novoUploadIntencionalDoMesmoArquivoCriaNovaMidia() {
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+
+        service.enviar(SLUG, multipart, "intencional-1", authentication);
+        service.enviar(SLUG, multipart, "intencional-2", authentication);
+
+        assertThat(vinculos).hasSize(2);
+        assertThat(arquivos).hasSize(2);
+        assertThat(objetos).hasSize(2);
+    }
+
+    @Test
+    void falhaR2NaoCriaVinculoNemFingeSucesso() {
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+        when(storage.putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), any()))
+                .thenThrow(new IllegalStateException("falha sintetica R2"));
+
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, "falha-r2", authentication))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("falha sintetica");
+
+        assertThat(vinculos).isEmpty();
+        verify(midiaRepository, never()).save(any());
+    }
+
+    @Test
+    void rollbackDoBancoRemoveSomenteObjetoCriadoPelaTentativa() {
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+        org.mockito.Mockito.doThrow(new IllegalStateException("falha sintetica banco"))
+                .when(midiaRepository).save(any());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.enviar(SLUG, multipart, "falha-banco", authentication))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("falha sintetica banco");
+            List<TransactionSynchronization> synchronizations =
+                    TransactionSynchronizationManager.getSynchronizations();
+            assertThat(synchronizations).hasSize(1);
+            synchronizations.forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(storage).delete(eq(StorageArea.PRIVATE_MEDIA), any());
     }
 
     private AnuncioMidiaEntity vinculo(TipoAnuncioMidia tipo, int ordem) {
@@ -243,6 +367,13 @@ class MinhasMidiasServiceTest {
                 new byte[] {1, 2, 3}, video, video ? "video/mp4" : "image/png",
                 video ? "mp4" : "png", video ? "video.mp4" : "foto.png",
                 video ? null : 2, video ? null : 3, "a".repeat(64));
+    }
+
+    private FotoProcessada processada() {
+        return new FotoProcessada(
+                new byte[] {9, 8, 7}, "image/jpeg", "jpg", 2, 3,
+                "06df4f7e1394f1c57cc6583fba4d8060a5a66f4f4771c14aeff6b9af8a28c9b3", "a".repeat(64),
+                1, FotoUploadProcessor.WATERMARK_VERSION, OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     private R2StorageProperties storageProperties() {

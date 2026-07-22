@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.infrastructure.storage.r2;
 
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -45,13 +46,13 @@ final class R2SigV4Client implements R2Operations {
     this.region = region == null || region.isBlank() ? "auto" : region;
     this.accessKey = accessKey;
     this.signingValue = signingValue;
-    this.host = endpoint.getHost();
+    this.host = endpoint.getRawAuthority();
   }
 
   @Override
   public void put(String bucket, String key, byte[] content, String contentType) {
     String payloadHash = sha256Hex(content);
-    RequestSignature signature = signRequest("PUT", bucket, key, payloadHash);
+    RequestSignature signature = signRequest("PUT", bucket, key, payloadHash, Map.of());
     HttpRequest request = requestBuilder(signature.uri())
         .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
         .header("x-amz-date", signature.amzDate())
@@ -64,8 +65,28 @@ final class R2SigV4Client implements R2Operations {
   }
 
   @Override
+  public ObjectWriteResult putIfAbsent(String bucket, String key, byte[] content, String contentType) {
+    String payloadHash = sha256Hex(content);
+    RequestSignature signature = signRequest(
+        "PUT", bucket, key, payloadHash, Map.of("if-none-match", "*"));
+    HttpRequest request = requestBuilder(signature.uri())
+        .PUT(HttpRequest.BodyPublishers.ofByteArray(content))
+        .header("If-None-Match", "*")
+        .header("x-amz-date", signature.amzDate())
+        .header("x-amz-content-sha256", payloadHash)
+        .header("Authorization", signature.authorization())
+        .header("Content-Type", normalizeContentType(contentType))
+        .build();
+    HttpResponse<Void> response = send(request, HttpResponse.BodyHandlers.discarding(), "PUT_IF_ABSENT");
+    if (response.statusCode() == 200) return ObjectWriteResult.CREATED;
+    if (response.statusCode() == 412) return ObjectWriteResult.ALREADY_EXISTS;
+    if (response.statusCode() == 409 && exists(bucket, key)) return ObjectWriteResult.ALREADY_EXISTS;
+    throw statusException("PUT_IF_ABSENT", response.statusCode());
+  }
+
+  @Override
   public boolean exists(String bucket, String key) {
-    RequestSignature signature = signRequest("HEAD", bucket, key, EMPTY_PAYLOAD_HASH);
+    RequestSignature signature = signRequest("HEAD", bucket, key, EMPTY_PAYLOAD_HASH, Map.of());
     HttpRequest request = requestBuilder(signature.uri())
         .method("HEAD", HttpRequest.BodyPublishers.noBody())
         .header("x-amz-date", signature.amzDate())
@@ -84,7 +105,7 @@ final class R2SigV4Client implements R2Operations {
 
   @Override
   public StoredObject get(String bucket, String key) {
-    RequestSignature signature = signRequest("GET", bucket, key, EMPTY_PAYLOAD_HASH);
+    RequestSignature signature = signRequest("GET", bucket, key, EMPTY_PAYLOAD_HASH, Map.of());
     HttpRequest request = requestBuilder(signature.uri())
         .GET()
         .header("x-amz-date", signature.amzDate())
@@ -101,7 +122,7 @@ final class R2SigV4Client implements R2Operations {
 
   @Override
   public void delete(String bucket, String key) {
-    RequestSignature signature = signRequest("DELETE", bucket, key, EMPTY_PAYLOAD_HASH);
+    RequestSignature signature = signRequest("DELETE", bucket, key, EMPTY_PAYLOAD_HASH, Map.of());
     HttpRequest request = requestBuilder(signature.uri())
         .method("DELETE", HttpRequest.BodyPublishers.noBody())
         .header("x-amz-date", signature.amzDate())
@@ -148,15 +169,24 @@ final class R2SigV4Client implements R2Operations {
         + "?" + canonicalQuery + "&X-Amz-Signature=" + signedDigest);
   }
 
-  private RequestSignature signRequest(String method, String bucket, String key, String payloadHash) {
+  private RequestSignature signRequest(
+      String method,
+      String bucket,
+      String key,
+      String payloadHash,
+      Map<String, String> additionalHeaders) {
     Instant now = Instant.now();
     String amzDate = AMZ_DATE.format(now);
     String dateStamp = DATE_STAMP.format(now);
     String canonicalPath = rawPath(bucket, key);
-    String signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-    String canonicalHeaders = "host:" + host + "\n"
-        + "x-amz-content-sha256:" + payloadHash + "\n"
-        + "x-amz-date:" + amzDate + "\n";
+    Map<String, String> headers = new TreeMap<>();
+    headers.put("host", host);
+    headers.put("x-amz-content-sha256", payloadHash);
+    headers.put("x-amz-date", amzDate);
+    additionalHeaders.forEach((name, value) -> headers.put(name.toLowerCase(), value.trim()));
+    String signedHeaders = String.join(";", headers.keySet());
+    StringBuilder canonicalHeaders = new StringBuilder();
+    headers.forEach((name, value) -> canonicalHeaders.append(name).append(':').append(value).append('\n'));
     String canonicalRequest = method + "\n"
         + canonicalPath + "\n\n"
         + canonicalHeaders + "\n"

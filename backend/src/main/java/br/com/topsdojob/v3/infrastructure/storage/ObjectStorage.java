@@ -8,6 +8,12 @@ public interface ObjectStorage {
 
   void put(StorageArea area, String key, byte[] content, String contentType);
 
+  ObjectWriteResult putIfAbsent(
+      StorageArea area,
+      String key,
+      byte[] content,
+      String contentType);
+
   boolean exists(StorageArea area, String key);
 
   StoredObject get(StorageArea area, String key);
