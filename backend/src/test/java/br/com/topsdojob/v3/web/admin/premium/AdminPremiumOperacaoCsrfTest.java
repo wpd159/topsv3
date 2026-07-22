@@ -82,6 +82,29 @@ class AdminPremiumOperacaoCsrfTest {
     }
 
     @Test
+    void loteExigeCsrfEEncaminhaUmaUnicaOperacaoIdempotente() throws Exception {
+        UUID anuncioId = UUID.randomUUID();
+
+        mockMvc.perform(post("/api/admin/premium/anuncios/{id}/ativacoes/lote", anuncioId)
+                        .with(admin())
+                        .header("Idempotency-Key", "teste-lote-retry")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadLote()))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/admin/premium/anuncios/{id}/ativacoes/lote", anuncioId)
+                        .with(admin())
+                        .with(csrf())
+                        .header("Idempotency-Key", "teste-lote-retry")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadLote()))
+                .andExpect(status().isOk());
+
+        verify(operacaoService).ativarManualLote(
+                eq(anuncioId), any(), eq("teste-lote-retry"), isNull(), anyString());
+    }
+
+    @Test
     void moderadorNaoAtivaMesmoComCsrf() throws Exception {
         mockMvc.perform(post("/api/admin/premium/anuncios/{id}/ativacoes", UUID.randomUUID())
                         .with(user("moderador").authorities(
@@ -97,6 +120,11 @@ class AdminPremiumOperacaoCsrfTest {
     private String payload() {
         return "{\"beneficioId\":\"" + UUID.randomUUID()
                 + "\",\"duracaoDias\":7,\"observacao\":\"Cortesia administrativa\"}";
+    }
+
+    private String payloadLote() {
+        return "{\"beneficios\":[{\"beneficioId\":\"" + UUID.randomUUID()
+                + "\",\"duracaoDias\":7}],\"observacao\":\"Cortesia administrativa\"}";
     }
 
     private org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.UserRequestPostProcessor admin() {

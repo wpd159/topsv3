@@ -66,13 +66,22 @@ public class AnuncioAtualizacaoCanonicaValidator {
     }
 
     public String textoBusca(DadosAtualizacao request) {
+        return textoBusca(request, null);
+    }
+
+    public String textoBusca(DadosAtualizacao request, String enderecoResumido) {
         return String.join(
                 " ",
                 request.titulo(),
                 request.descricao(),
                 request.cidade(),
-                request.bairro() == null ? "" : request.bairro())
+                request.bairro() == null ? "" : request.bairro(),
+                enderecoResumido == null ? "" : enderecoResumido)
                 .toLowerCase(Locale.ROOT);
+    }
+
+    public String validarEnderecoResumido(String value) {
+        return textoOpcional(value, "regiao", 2, 120);
     }
 
     public String slugify(String value) {

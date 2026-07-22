@@ -43,6 +43,85 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     @Query("select anuncio from AnuncioEntity anuncio where anuncio.id = :id")
     Optional<AnuncioEntity> findByIdForModeration(@Param("id") UUID id);
 
+    @Query(
+            value = """
+                    select a.*
+                    from anuncio a
+                    left join agregado_visualizacao_inicial vi on vi.anuncio_id = a.id
+                    left join (
+                      select e.anuncio_id, count(*) as total_eventos
+                      from evento_visualizacao e
+                      left join agregado_visualizacao_inicial corte on corte.anuncio_id = e.anuncio_id
+                      where corte.id is null or e.criado_em > corte.snapshot_corte_em
+                      group by e.anuncio_id
+                    ) eventos on eventos.anuncio_id = a.id
+                    left join (
+                      select c.anuncio_id, count(*) as total_cliques
+                      from clique_whatsapp c
+                      where c.permitido = true
+                      group by c.anuncio_id
+                    ) cliques on cliques.anuncio_id = a.id
+                    left join (
+                      select distinct m.entidade_v3_id as anuncio_id
+                      from importacao_mapeamento m
+                      where m.sistema_origem = 'TOPSDOJOB_PRODUCAO'
+                        and m.tabela_origem = 'anuncios'
+                        and m.entidade_tipo = 'ANUNCIO'
+                        and m.status = 'MAPEADO'
+                    ) legado on legado.anuncio_id = a.id
+                    where a.removido_em is null
+                      and (cast(:statusModeracao as text) is null or a.status_moderacao = :statusModeracao)
+                      and (:filtrarLocalizacao = false or a.id in (:anuncioIdsLocalizacao))
+                      and (
+                        cast(:termo as text) is null
+                        or lower(a.slug) like ('%' || lower(:termo) || '%')
+                        or lower(a.titulo) like ('%' || lower(:termo) || '%')
+                      )
+                    order by
+                      case
+                        when :ordenacao in ('MAIS_VISUALIZACOES', 'MENOS_VISUALIZACOES')
+                          and legado.anuncio_id is not null
+                          and vi.id is null
+                        then 1 else 0
+                      end asc,
+                      case when :ordenacao = 'MAIS_RECENTES' then a.criado_em end desc nulls last,
+                      case when :ordenacao = 'MAIS_ANTIGOS' then a.criado_em end asc nulls last,
+                      case when :ordenacao = 'MAIS_VISUALIZACOES'
+                        then coalesce(vi.total_visualizacoes, 0) + coalesce(eventos.total_eventos, 0)
+                      end desc nulls last,
+                      case when :ordenacao = 'MENOS_VISUALIZACOES'
+                        then coalesce(vi.total_visualizacoes, 0) + coalesce(eventos.total_eventos, 0)
+                      end asc nulls last,
+                      case when :ordenacao = 'MAIS_CLIQUES_WHATSAPP'
+                        then coalesce(cliques.total_cliques, 0)
+                      end desc nulls last,
+                      case when :ordenacao = 'MENOS_CLIQUES_WHATSAPP'
+                        then coalesce(cliques.total_cliques, 0)
+                      end asc nulls last,
+                      a.criado_em desc,
+                      a.id asc
+                    """,
+            countQuery = """
+                    select count(*)
+                    from anuncio a
+                    where a.removido_em is null
+                      and (cast(:statusModeracao as text) is null or a.status_moderacao = :statusModeracao)
+                      and (:filtrarLocalizacao = false or a.id in (:anuncioIdsLocalizacao))
+                      and (
+                        cast(:termo as text) is null
+                        or lower(a.slug) like ('%' || lower(:termo) || '%')
+                        or lower(a.titulo) like ('%' || lower(:termo) || '%')
+                      )
+                    """,
+            nativeQuery = true)
+    Page<AnuncioEntity> findFilaAdministrativa(
+            @Param("statusModeracao") String statusModeracao,
+            @Param("filtrarLocalizacao") boolean filtrarLocalizacao,
+            @Param("anuncioIdsLocalizacao") Collection<UUID> anuncioIdsLocalizacao,
+            @Param("termo") String termo,
+            @Param("ordenacao") String ordenacao,
+            Pageable pageable);
+
     Optional<AnuncioEntity> findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
             String slug,
             StatusAnuncio status,

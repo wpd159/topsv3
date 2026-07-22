@@ -28,6 +28,7 @@ class AdminPremiumControllerContractTest {
                 .contains("@PreAuthorize")
                 .contains("@PutMapping(\"/catalogo/{id}\")")
                 .contains("@PostMapping(\"/anuncios/{id}/ativacoes\")")
+                .contains("@PostMapping(\"/anuncios/{id}/ativacoes/lote\")")
                 .contains("@PostMapping(\"/ativacoes/{id}/cancelar\")")
                 .contains("PREMIUM_GERENCIAR")
                 .contains("@RequestHeader(\"Idempotency-Key\")")

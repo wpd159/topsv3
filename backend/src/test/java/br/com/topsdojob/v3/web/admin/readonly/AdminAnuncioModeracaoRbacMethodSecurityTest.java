@@ -6,8 +6,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioAtualizacaoService;
+import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
-import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.web.admin.anuncio.AdminAnuncioAtualizacaoController;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Arrays;
@@ -103,7 +103,7 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
     @Test
     void somenteAdminComAnuncioModerarEditaCamposComerciais() {
         UUID id = UUID.randomUUID();
-        MeuAnuncioAtualizacaoRequestDto body = mock(MeuAnuncioAtualizacaoRequestDto.class);
+        AdminAnuncioAtualizacaoRequest body = mock(AdminAnuncioAtualizacaoRequest.class);
         HttpServletRequest request = mock(HttpServletRequest.class);
         autenticar("ROLE_ADMIN", "ANUNCIO_MODERAR");
 

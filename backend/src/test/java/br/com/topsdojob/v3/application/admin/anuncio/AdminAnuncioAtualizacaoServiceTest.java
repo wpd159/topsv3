@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
+import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator.DadosAtualizacao;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
@@ -103,11 +104,23 @@ class AdminAnuncioAtualizacaoServiceTest {
                 Set.of(LocalAtendimentoAnuncio.MEU_LOCAL),
                 Set.of(ServicoAnuncio.VIDEOCHAMADA),
                 "+5562888888888");
-        MeuAnuncioAtualizacaoRequestDto request = mock(MeuAnuncioAtualizacaoRequestDto.class);
-        when(validator.validar(request)).thenReturn(dados);
+        AdminAnuncioAtualizacaoRequest request = new AdminAnuncioAtualizacaoRequest(
+                dados.titulo(),
+                dados.descricao(),
+                dados.categoria(),
+                dados.preco(),
+                dados.uf(),
+                dados.cidade(),
+                dados.bairro(),
+                "Regiao central",
+                List.of("MEU_LOCAL"),
+                List.of("VIDEOCHAMADA"),
+                dados.whatsapp());
+        when(validator.validar(any(MeuAnuncioAtualizacaoRequestDto.class))).thenReturn(dados);
+        when(validator.validarEnderecoResumido("Regiao central")).thenReturn("Regiao central");
         when(validator.slugify("Goiania")).thenReturn("goiania");
         when(validator.slugify("Setor Bueno")).thenReturn("setor-bueno");
-        when(validator.textoBusca(dados)).thenReturn("documento de busca atualizado");
+        when(validator.textoBusca(dados, "Regiao central")).thenReturn("documento de busca atualizado");
         when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
         when(localizacaoRepository.findByAnuncioId(anuncioId)).thenReturn(Optional.of(localizacao));
         when(estadoRepository.findByUfIgnoreCase("GO")).thenReturn(Optional.of(estado));
@@ -123,6 +136,7 @@ class AdminAnuncioAtualizacaoServiceTest {
         assertThat(anuncio.getUsuarioId()).isEqualTo(usuarioId);
         assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
         assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(localizacao.getEnderecoResumido()).isEqualTo("Regiao central");
         verify(anuncioRepository).findByIdForModeration(anuncioId);
         verify(documentoBuscaRepository).save(any());
         ArgumentCaptor<AuditoriaEventoEntity> auditoria = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);

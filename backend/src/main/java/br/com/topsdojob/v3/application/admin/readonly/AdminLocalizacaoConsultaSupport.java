@@ -70,7 +70,8 @@ class AdminLocalizacaoConsultaSupport {
             result.put(localizacao.getAnuncioId(), new AdminLocalizacaoSanitizadaDto(
                     estado == null ? null : estado.getUf(),
                     cidade == null ? null : cidade.getNome(),
-                    bairro == null ? null : bairro.getNome()));
+                    bairro == null ? null : bairro.getNome(),
+                    localizacao.getEnderecoResumido()));
         });
         return Collections.unmodifiableMap(result);
     }

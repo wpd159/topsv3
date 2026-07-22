@@ -5,12 +5,15 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoService;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteItemRequest;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
@@ -29,6 +32,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBen
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -260,6 +264,93 @@ class AdminPremiumOperacaoServiceTest {
                 any(),
                 any(),
                 eq("req-cancelamento"));
+    }
+
+    @Test
+    void ativaVariosBeneficiosAtomicamenteERetryNaoDuplica() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        UUID primeiroId = UUID.randomUUID();
+        UUID segundoId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        AnuncioEntity anuncio = AnuncioEntity.criarSolicitacaoLocal(
+                anuncioId,
+                usuarioId,
+                "anuncio-premium-lote",
+                "Anuncio Premium em lote",
+                "Descricao valida para ativacao administrativa em lote",
+                "MASSAGENS",
+                null,
+                null,
+                agora.minusDays(2));
+        BeneficioPremiumEntity primeiro = BeneficioPremiumEntity.criarFixtureHomologacao(
+                primeiroId,
+                "ANUNCIO_TOPO",
+                "Anuncio no topo",
+                "Primeiro beneficio",
+                EscopoBeneficioPremium.ANUNCIO,
+                true,
+                true,
+                agora.minusDays(1));
+        BeneficioPremiumEntity segundo = BeneficioPremiumEntity.criarFixtureHomologacao(
+                segundoId,
+                "OCULTAR_IDADE",
+                "Ocultar idade",
+                "Segundo beneficio",
+                EscopoBeneficioPremium.ANUNCIO,
+                false,
+                true,
+                agora.minusDays(1));
+        BeneficioPremiumOpcaoEntity primeiraOpcao = BeneficioPremiumOpcaoEntity.criar(
+                UUID.randomUUID(), primeiroId, 7, 20, true, 0, agora.minusDays(1));
+        BeneficioPremiumOpcaoEntity segundaOpcao = BeneficioPremiumOpcaoEntity.criar(
+                UUID.randomUUID(), segundoId, 14, 30, true, 0, agora.minusDays(1));
+        Map<String, GrupoAtivacaoBeneficioEntity> grupos = new HashMap<>();
+        Map<UUID, List<AtivacaoBeneficioEntity>> ativacoes = new HashMap<>();
+        when(grupoRepository.findByIdempotencyKey(any()))
+                .thenAnswer(invocation -> Optional.ofNullable(grupos.get(invocation.getArgument(0))));
+        when(grupoRepository.save(any())).thenAnswer(invocation -> {
+            GrupoAtivacaoBeneficioEntity grupo = invocation.getArgument(0);
+            grupos.put(grupo.getIdempotencyKey(), grupo);
+            return grupo;
+        });
+        when(ativacaoRepository.save(any())).thenAnswer(invocation -> {
+            AtivacaoBeneficioEntity ativacao = invocation.getArgument(0);
+            ativacoes.put(ativacao.getGrupoAtivacaoId(), List.of(ativacao));
+            return ativacao;
+        });
+        when(ativacaoRepository.findByGrupoAtivacaoId(any()))
+                .thenAnswer(invocation -> ativacoes.getOrDefault(invocation.getArgument(0), List.of()));
+        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(beneficioRepository.findById(primeiroId)).thenReturn(Optional.of(primeiro));
+        when(beneficioRepository.findById(segundoId)).thenReturn(Optional.of(segundo));
+        when(opcaoRepository.findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(primeiroId, 7))
+                .thenReturn(Optional.of(primeiraOpcao));
+        when(opcaoRepository.findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(segundoId, 14))
+                .thenReturn(Optional.of(segundaOpcao));
+        when(consultaService.consultarCalculados(anuncioId)).thenReturn(List.of());
+        AdminUserPrincipal administrador = admin();
+        AdminPremiumAtivarLoteRequest request = new AdminPremiumAtivarLoteRequest(
+                List.of(
+                        new AdminPremiumAtivarLoteItemRequest(primeiroId, 7),
+                        new AdminPremiumAtivarLoteItemRequest(segundoId, 14)),
+                "Cortesia administrativa em lote");
+
+        var primeiraExecucao = service.ativarManualLote(
+                anuncioId, request, "operacao-lote-001", administrador, "req-lote");
+        var retry = service.ativarManualLote(
+                anuncioId, request, "operacao-lote-001", administrador, "req-lote-retry");
+
+        assertThat(primeiraExecucao.ativacoes()).hasSize(2).allMatch(item -> !item.idempotente());
+        assertThat(primeiraExecucao.idempotente()).isFalse();
+        assertThat(retry.ativacoes()).hasSize(2).allMatch(item -> item.idempotente());
+        assertThat(retry.idempotente()).isTrue();
+        verify(grupoRepository, times(2)).save(any());
+        verify(ativacaoRepository, times(2)).save(any());
+        verify(creditoService, times(2)).auditar(
+                any(), eq("PREMIUM_ATIVACAO_ADMINISTRATIVA"), eq("ATIVACAO_BENEFICIO"),
+                any(), any(), any(), eq("req-lote"));
+        verifyNoInteractions(movimentoRepository);
     }
 
     private AdminUserPrincipal admin() {

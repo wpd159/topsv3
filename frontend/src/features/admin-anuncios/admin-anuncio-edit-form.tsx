@@ -24,6 +24,7 @@ function initial(ad: AdminAdDetail): AdminAdUpdate {
     uf: ad.localizacao?.uf || '',
     cidade: ad.localizacao?.cidade || '',
     bairro: ad.localizacao?.bairro || null,
+    enderecoResumido: ad.localizacao?.enderecoResumido || null,
     locaisAtendimento: ad.locaisAtendimento,
     servicos: ad.servicos,
     whatsapp: ad.whatsapp || null,
@@ -97,6 +98,7 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
         <label><span className="mb-1 block text-sm font-semibold">UF</span><Input value={form.uf} minLength={2} maxLength={2} onChange={(event) => setForm({ ...form, uf: event.target.value.toUpperCase() })} required /></label>
         <label><span className="mb-1 block text-sm font-semibold">Cidade</span><Input value={form.cidade} minLength={2} maxLength={80} onChange={(event) => setForm({ ...form, cidade: event.target.value })} required /></label>
         <label><span className="mb-1 block text-sm font-semibold">Bairro</span><Input value={form.bairro || ''} maxLength={80} onChange={(event) => setForm({ ...form, bairro: event.target.value || null })} /></label>
+        <label><span className="mb-1 block text-sm font-semibold">Região</span><Input value={form.enderecoResumido || ''} maxLength={120} placeholder="Ex.: Centro" onChange={(event) => setForm({ ...form, enderecoResumido: event.target.value || null })} /></label>
         <label><span className="mb-1 block text-sm font-semibold">WhatsApp</span><Input value={form.whatsapp || ''} maxLength={20} onChange={(event) => setForm({ ...form, whatsapp: event.target.value || null })} /></label>
       </div>
       <fieldset><legend className="text-sm font-semibold text-zinc-950">Serviços</legend><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{servicos.map((item) => <label key={item.value} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.servicos.includes(item.value)} onChange={() => toggle('servicos', item.value)} />{item.label}</label>)}</div></fieldset>

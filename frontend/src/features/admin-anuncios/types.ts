@@ -11,6 +11,7 @@ export type AdminLocation = {
   uf?: string | null
   cidade?: string | null
   bairro?: string | null
+  enderecoResumido?: string | null
 }
 
 export type AdminAdvertiserSummary = {
@@ -178,6 +179,7 @@ export type AdminAdUpdate = {
   uf: string
   cidade: string
   bairro: string | null
+  enderecoResumido: string | null
   locaisAtendimento: string[]
   servicos: string[]
   whatsapp: string | null
@@ -242,10 +244,23 @@ export type AdminModerationActionResponse = {
 export type AdminAdFilters = {
   page: number
   size: number
-  status?: string
   statusModeracao?: string
+  ordenacao: string
   uf?: string
   cidade?: string
   bairro?: string
   termo?: string
+}
+
+export type AdminAdQueueTarget = {
+  id: string
+  page: number
+}
+
+export type AdminAdQueueNavigation = {
+  anterior: AdminAdQueueTarget | null
+  proximo: AdminAdQueueTarget | null
+  posicao: number
+  total: number
+  page: number
 }

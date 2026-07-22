@@ -1566,12 +1566,13 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/Page"
-        - $ref: "#/components/parameters/Size"
-        - name: status
+        - name: size
           in: query
           required: false
           schema:
-            type: string
+            type: integer
+            enum: [20, 30, 50, 100]
+            default: 30
         - name: statusModeracao
           in: query
           required: false
@@ -1599,6 +1600,13 @@ paths:
           schema:
             type: string
             maxLength: 80
+        - name: ordenacao
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [MAIS_RECENTES, MAIS_ANTIGOS, MAIS_VISUALIZACOES, MENOS_VISUALIZACOES, MAIS_CLIQUES_WHATSAPP, MENOS_CLIQUES_WHATSAPP]
+            default: MAIS_RECENTES
       responses:
         "200":
           description: pagina de anuncios admin read-only
@@ -1671,7 +1679,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MeuAnuncioAtualizacaoRequest"
+              $ref: "#/components/schemas/AdminAnuncioAtualizacaoRequest"
       responses:
         "200":
           description: anuncio atualizado e auditado
@@ -1904,6 +1912,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminPremiumAtivacaoOperacao"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/premium/anuncios/{id}/ativacoes/lote:
+    post:
+      summary: Ativa em lote beneficios vigentes para um anuncio
+      description: Operacao atomica exclusiva de ADMIN com PREMIUM_GERENCIAR. Valida cada duracao no catalogo, nao debita creditos e exige observacao, CSRF, Idempotency-Key e auditoria por ativacao.
+      operationId: postAdminPremiumAtivacaoManualLote
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPremiumAtivarLoteRequest"
+      responses:
+        "200":
+          description: lote criado ou resposta idempotente equivalente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPremiumAtivacaoLote"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -4562,6 +4611,57 @@ components:
         whatsapp:
           type: [string, "null"]
           pattern: "^\\+[1-9][0-9]{7,14}$"
+    AdminAnuncioAtualizacaoRequest:
+      type: object
+      additionalProperties: false
+      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, enderecoResumido, locaisAtendimento, servicos, whatsapp]
+      properties:
+        titulo:
+          type: string
+          minLength: 10
+          maxLength: 80
+        descricao:
+          type: string
+          minLength: 20
+          maxLength: 600
+        categoria:
+          type: string
+          pattern: "^[A-Z0-9_]{3,40}$"
+        preco:
+          type: [number, "null"]
+          minimum: 0.01
+          maximum: 999999.99
+        uf:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        cidade:
+          type: string
+          minLength: 2
+          maxLength: 80
+        bairro:
+          type: [string, "null"]
+          minLength: 2
+          maxLength: 80
+        enderecoResumido:
+          type: [string, "null"]
+          minLength: 2
+          maxLength: 120
+          description: Regiao canonica do endereco usada pelo dominio e pelo wizard.
+        locaisAtendimento:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [A_COMBINAR, HOTEL_MOTEL, MEU_LOCAL]
+        servicos:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
+        whatsapp:
+          type: [string, "null"]
+          pattern: "^\\+[1-9][0-9]{7,14}$"
     MeuAnuncioLocalizacao:
       type: object
       additionalProperties: false
@@ -5017,6 +5117,11 @@ components:
           type:
             - string
             - "null"
+        enderecoResumido:
+          type:
+            - string
+            - "null"
+          description: Regiao canonica do endereco; nao contem coordenadas nem chave de storage.
     AdminAnuncianteResumo:
       type: object
       additionalProperties: false
@@ -6703,7 +6808,7 @@ components:
           type: integer
         size:
           type: integer
-          maximum: 50
+          enum: [20, 30, 50, 100]
         totalElements:
           type: integer
           format: int64
@@ -8056,6 +8161,45 @@ components:
           type: string
           minLength: 3
           maxLength: 500
+    AdminPremiumAtivarLoteItemRequest:
+      type: object
+      additionalProperties: false
+      required: [beneficioId, duracaoDias]
+      properties:
+        beneficioId:
+          type: string
+          format: uuid
+        duracaoDias:
+          type: integer
+          minimum: 1
+    AdminPremiumAtivarLoteRequest:
+      type: object
+      additionalProperties: false
+      required: [beneficios, observacao]
+      properties:
+        beneficios:
+          type: array
+          minItems: 1
+          maxItems: 20
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/AdminPremiumAtivarLoteItemRequest"
+        observacao:
+          type: string
+          minLength: 3
+          maxLength: 500
+    AdminPremiumAtivacaoLote:
+      type: object
+      additionalProperties: false
+      required: [ativacoes, idempotente]
+      properties:
+        ativacoes:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AdminPremiumAtivacaoOperacao"
+        idempotente:
+          type: boolean
     AdminPremiumCatalogoUpdateRequest:
       type: object
       additionalProperties: false

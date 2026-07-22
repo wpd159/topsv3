@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
   ExternalLink,
   FileWarning,
@@ -31,12 +33,14 @@ import {
   decideAdminMedia,
   decideAdminReview,
   getAdminAd,
+  getAdminAdQueueNavigation,
   getAdminMediaPreview,
   listAdminAdHistory,
   listAdminAdMedia,
   submitAdminReview,
 } from './api'
-import type { AdminAdDetail, AdminMediaItem, AdminMediaPreview, AdminModerationHistoryItem } from './types'
+import { adminAdQueueDetailHref, adminAdQueueListHref, parseAdminAdQueueContext } from './queue-context'
+import type { AdminAdDetail, AdminAdQueueNavigation, AdminMediaItem, AdminMediaPreview, AdminModerationHistoryItem } from './types'
 
 type DecisionIntent =
   | { kind: 'OPEN_REVIEW'; title: string; requiresReason: true }
@@ -112,7 +116,40 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
   )
 }
 
-export function AdminAnuncioModeracao({ anuncioId }: { anuncioId: string }) {
+function MediaVisibilitySelector({
+  mediaId,
+  value,
+  disabled,
+  onChange,
+}: {
+  mediaId: string
+  value?: 'LIVRE' | 'RESTRITA_18'
+  disabled: boolean
+  onChange: (value: 'LIVRE' | 'RESTRITA_18') => void
+}) {
+  return (
+    <fieldset className="mt-4" disabled={disabled}>
+      <legend className="text-xs font-semibold text-zinc-700">Classificação na aprovação</legend>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {(['LIVRE', 'RESTRITA_18'] as const).map((option) => {
+          const id = `visibility-${mediaId}-${option}`
+          const checked = value === option
+          return (
+            <label key={option} htmlFor={id} className={`flex min-h-10 cursor-pointer items-center gap-2 border px-3 py-2 text-sm font-medium ${checked ? 'border-pink-500 bg-pink-50 text-pink-900' : 'border-zinc-200 bg-white text-zinc-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}>
+              <input id={id} type="radio" name={`visibility-${mediaId}`} checked={checked} onChange={() => onChange(option)} className="h-4 w-4 accent-pink-600" />
+              {option}
+            </label>
+          )
+        })}
+      </div>
+    </fieldset>
+  )
+}
+
+export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anuncioId: string; initialQuery?: string }) {
+  const queueParams = useMemo(() => new URLSearchParams(initialQuery), [initialQuery])
+  const hasQueueContext = queueParams.get('fila') === '1'
+  const queueContext = useMemo(() => parseAdminAdQueueContext(queueParams), [queueParams])
   const [ad, setAd] = useState<AdminAdDetail | null>(null)
   const [media, setMedia] = useState<AdminMediaItem[]>([])
   const [history, setHistory] = useState<AdminModerationHistoryItem[]>([])
@@ -125,6 +162,9 @@ export function AdminAnuncioModeracao({ anuncioId }: { anuncioId: string }) {
   const [busy, setBusy] = useState(false)
   const [reload, setReload] = useState(0)
   const [visibility, setVisibility] = useState<Record<string, 'LIVRE' | 'RESTRITA_18'>>({})
+  const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
+  const [navigationError, setNavigationError] = useState<unknown>(null)
+  const [decisionFinished, setDecisionFinished] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -157,6 +197,20 @@ export function AdminAnuncioModeracao({ anuncioId }: { anuncioId: string }) {
 
   useEffect(() => { void load() }, [load, reload])
 
+  useEffect(() => {
+    setDecisionFinished(false)
+  }, [anuncioId])
+
+  useEffect(() => {
+    if (!hasQueueContext) return
+    let active = true
+    setNavigationError(null)
+    getAdminAdQueueNavigation(anuncioId, queueContext)
+      .then((result) => { if (active) setNavigation(result) })
+      .catch((reason) => { if (active) setNavigationError(reason) })
+    return () => { active = false }
+  }, [anuncioId, hasQueueContext, queueContext])
+
   const isAdmin = roles.includes('ADMIN')
   const canModerateAd = permissions.includes('ANUNCIO_MODERAR')
   const canModerateMedia = permissions.includes('MIDIA_REVISAR')
@@ -174,6 +228,7 @@ export function AdminAnuncioModeracao({ anuncioId }: { anuncioId: string }) {
       else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
+        setDecisionFinished(true)
       } else await decideAdminMedia(intent.media.id, intent.action, intent.visibility, reason)
       setIntent(null)
       setReload((value) => value + 1)
@@ -189,16 +244,37 @@ export function AdminAnuncioModeracao({ anuncioId }: { anuncioId: string }) {
 
   const reviewOpen = Boolean(ad.revisaoAberta && ['ABERTA', 'EM_ANALISE'].includes(ad.revisaoAberta.status))
   const whatsappDigits = ad.anunciante?.whatsapp?.replace(/\D/g, '')
+  const effectiveQueueContext = { ...queueContext, page: navigation?.page ?? queueContext.page }
+  const backHref = hasQueueContext ? adminAdQueueListHref(effectiveQueueContext) : '/admin/anuncios'
+  const targetHref = (target: { id: string; page: number }) => adminAdQueueDetailHref(
+    target.id,
+    { ...queueContext, page: target.page },
+  )
 
   return (
     <div className="space-y-5">
       <header className="border-b border-zinc-200 pb-4">
-        <Link href="/admin/anuncios" className="inline-flex items-center gap-2 text-sm font-semibold text-pink-700 hover:text-pink-800"><ArrowLeft className="h-4 w-4" />Voltar para a fila</Link>
+        <Link href={backHref} className="inline-flex items-center gap-2 text-sm font-semibold text-pink-700 hover:text-pink-800"><ArrowLeft className="h-4 w-4" />Voltar para a fila</Link>
         <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-950">{ad.titulo}</h1><p className="mt-1 break-all text-xs text-zinc-500">{ad.slug}</p></div>
           <div className="flex flex-wrap gap-2"><Badge variant="outline" className={moderationTone(ad.status)}>{ad.status}</Badge><Badge variant="outline" className={moderationTone(ad.statusModeracao)}>{ad.statusModeracao}</Badge>{isAdmin && canModerateAd ? <Button asChild size="sm" variant="outline"><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-2 h-4 w-4" />Editar anúncio</Link></Button> : null}</div>
         </div>
       </header>
+
+      {hasQueueContext ? (
+        <nav aria-label="Navegação da fila" className="flex flex-col gap-3 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+          {navigation?.anterior ? <Button asChild type="button" variant="outline"><Link href={targetHref(navigation.anterior)}><ChevronLeft className="mr-2 h-4 w-4" />Anterior</Link></Button> : <Button type="button" variant="outline" disabled><ChevronLeft className="mr-2 h-4 w-4" />Anterior</Button>}
+          <span className="text-center text-sm font-semibold text-zinc-700">{navigation ? `${navigation.posicao} / ${navigation.total}` : navigationError ? 'Contexto indisponível' : 'Carregando posição...'}</span>
+          {navigation?.proximo ? <Button asChild type="button" variant="outline"><Link href={targetHref(navigation.proximo)}>Próximo<ChevronRight className="ml-2 h-4 w-4" /></Link></Button> : <Button type="button" variant="outline" disabled>Próximo<ChevronRight className="ml-2 h-4 w-4" /></Button>}
+        </nav>
+      ) : null}
+      {navigationError ? <ContractState error={navigationError} compact /> : null}
+      {decisionFinished ? (
+        <div role="status" className="flex flex-col gap-3 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:flex-row sm:items-center sm:justify-between">
+          <span>Decisão persistida. O avanço permanece sob seu controle.</span>
+          {navigation?.proximo ? <Button asChild size="sm"><Link href={targetHref(navigation.proximo)}>Próximo da fila<ChevronRight className="ml-2 h-4 w-4" /></Link></Button> : <strong>Fim da fila</strong>}
+        </div>
+      ) : null}
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="rounded-md border border-zinc-200 bg-white p-4">
@@ -236,6 +312,7 @@ export function AdminAnuncioModeracao({ anuncioId }: { anuncioId: string }) {
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Categoria</dt><dd className="mt-1 text-sm">{formatEnum(ad.categoria)}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Preço</dt><dd className="mt-1 text-sm">{formatPrice(ad.preco)}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Localização</dt><dd className="mt-1 text-sm">{[ad.localizacao?.bairro, ad.localizacao?.cidade, ad.localizacao?.uf].filter(Boolean).join(' · ') || 'Não informada'}</dd></div>
+                <div><dt className="text-xs font-semibold uppercase text-zinc-500">Região</dt><dd className="mt-1 text-sm">{ad.localizacao?.enderecoResumido || 'Não informada'}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Criação</dt><dd className="mt-1 text-sm">{formatDate(ad.criadoEm)}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">WhatsApp do anúncio</dt><dd className="mt-1 text-sm">{ad.whatsapp || 'Não informado'}</dd></div>
                 <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-zinc-500">Descrição</dt><dd className="mt-1 whitespace-pre-wrap text-sm leading-6">{ad.descricao || ad.descricaoResumo || 'Não informada'}</dd></div>
@@ -248,7 +325,51 @@ export function AdminAnuncioModeracao({ anuncioId }: { anuncioId: string }) {
         </TabsContent>
 
         <TabsContent value="midias">
-          {!canModerateMedia ? <p className="text-sm font-medium text-amber-700">Seu perfil não possui MIDIA_REVISAR.</p> : media.length === 0 ? <p className="text-sm text-zinc-600">Nenhuma foto ou vídeo vinculado ao anúncio.</p> : <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{media.map((item) => { const actionable = actionableMedia.has(item.status); const selectedVisibility = item.tipo === 'VIDEO' ? 'RESTRITA_18' : visibility[item.id]; return <article key={item.id} className="overflow-hidden rounded-md border border-zinc-200 bg-white"><MediaPreview media={item} /><div className="p-4"><div className="flex items-start justify-between gap-2"><div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} {item.ordem != null ? `#${item.ordem + 1}` : ''}</div><Badge variant="outline" className={moderationTone(item.status)}>{item.status}</Badge></div><dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-600"><div><dt>Dimensões</dt><dd className="font-medium text-zinc-900">{item.largura && item.altura ? `${item.largura} × ${item.altura}` : '—'}</dd></div><div><dt>MIME</dt><dd className="break-all font-medium text-zinc-900">{item.mimeType || '—'}</dd></div><div><dt>Arquivo</dt><dd className="font-medium text-zinc-900">{item.statusArquivo || '—'}</dd></div><div><dt>Classificação</dt><dd className="font-medium text-zinc-900">{item.visibilidadeMidia || '—'}</dd></div></dl>{item.tipo === 'VIDEO' ? <p className="mt-4 flex items-center gap-2 rounded-md bg-pink-50 px-3 py-2 text-xs font-semibold text-pink-900"><ShieldAlert className="h-4 w-4" />Sempre RESTRITA_18</p> : <fieldset className="mt-4" disabled={!actionable || busy}><legend className="text-xs font-semibold text-zinc-700">Classificação na aprovação</legend><div className="mt-2 flex flex-wrap gap-4 text-sm"><label className="flex items-center gap-2"><input type="radio" name={`visibility-${item.id}`} checked={selectedVisibility === 'LIVRE'} onChange={() => setVisibility((current) => ({ ...current, [item.id]: 'LIVRE' }))} />LIVRE</label><label className="flex items-center gap-2"><input type="radio" name={`visibility-${item.id}`} checked={selectedVisibility === 'RESTRITA_18'} onChange={() => setVisibility((current) => ({ ...current, [item.id]: 'RESTRITA_18' }))} />RESTRITA_18</label></div></fieldset>}{actionable ? <div className="mt-4 grid grid-cols-2 gap-2"><Button type="button" size="sm" disabled={!selectedVisibility || busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Aprovar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'APROVAR', visibility: selectedVisibility, requiresReason: false })}>Aprovar</Button><Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Rejeitar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'REPROVAR', requiresReason: true })}>Rejeitar</Button></div> : null}</div></article> })}</div>}
+          {!canModerateMedia ? (
+            <p className="text-sm font-medium text-amber-700">Seu perfil não possui MIDIA_REVISAR.</p>
+          ) : media.length === 0 ? (
+            <p className="text-sm text-zinc-600">Nenhuma foto ou vídeo vinculado ao anúncio.</p>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {media.map((item) => {
+                const actionable = actionableMedia.has(item.status)
+                const selectedVisibility = item.tipo === 'VIDEO' ? 'RESTRITA_18' : visibility[item.id]
+                return (
+                  <article key={item.id} className="overflow-hidden rounded-md border border-zinc-200 bg-white">
+                    <MediaPreview media={item} />
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} {item.ordem != null ? `#${item.ordem + 1}` : ''}</div>
+                        <Badge variant="outline" className={moderationTone(item.status)}>{item.status}</Badge>
+                      </div>
+                      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-600">
+                        <div><dt>Dimensões</dt><dd className="font-medium text-zinc-900">{item.largura && item.altura ? `${item.largura} × ${item.altura}` : '—'}</dd></div>
+                        <div><dt>MIME</dt><dd className="break-all font-medium text-zinc-900">{item.mimeType || '—'}</dd></div>
+                        <div><dt>Arquivo</dt><dd className="font-medium text-zinc-900">{item.statusArquivo || '—'}</dd></div>
+                        <div><dt>Classificação</dt><dd className="font-medium text-zinc-900">{item.visibilidadeMidia || '—'}</dd></div>
+                      </dl>
+                      {item.tipo === 'VIDEO' ? (
+                        <p className="mt-4 flex items-center gap-2 rounded-md bg-pink-50 px-3 py-2 text-xs font-semibold text-pink-900"><ShieldAlert className="h-4 w-4" />Sempre RESTRITA_18</p>
+                      ) : (
+                        <MediaVisibilitySelector
+                          mediaId={item.id}
+                          value={selectedVisibility}
+                          disabled={!actionable || busy}
+                          onChange={(value) => setVisibility((current) => ({ ...current, [item.id]: value }))}
+                        />
+                      )}
+                      {actionable ? (
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <Button type="button" size="sm" disabled={!selectedVisibility || busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Aprovar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'APROVAR', visibility: selectedVisibility, requiresReason: false })}>Aprovar</Button>
+                          <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Rejeitar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'REPROVAR', requiresReason: true })}>Rejeitar</Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="documentos"><AdminAnuncioDocumentos anuncioId={ad.id} anunciante={ad.anunciante} autorizado={canReadDocuments} /></TabsContent>

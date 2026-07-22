@@ -8,7 +8,9 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumStatusConsultaServic
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminBeneficioAnuncioDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAnuncioStatusDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoOperacaoDto;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoLoteDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoDto;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCancelarRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCatalogoUpdateRequest;
@@ -84,7 +86,7 @@ public class AdminPremiumController {
     }
 
     @GetMapping("/catalogo")
-    @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public List<PremiumCatalogoDto> catalogo() {
         return catalogoService.catalogoAdministrativo();
     }
@@ -128,6 +130,22 @@ public class AdminPremiumController {
             @AuthenticationPrincipal AdminUserPrincipal administrador,
             HttpServletRequest request) {
         return operacaoService.ativarManual(
+                id,
+                body,
+                idempotencyKey,
+                administrador,
+                RequestIdContext.current(request));
+    }
+
+    @PostMapping("/anuncios/{id}/ativacoes/lote")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('PREMIUM_GERENCIAR')")
+    public AdminPremiumAtivacaoLoteDto ativarManualLote(
+            @PathVariable UUID id,
+            @RequestBody AdminPremiumAtivarLoteRequest body,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @AuthenticationPrincipal AdminUserPrincipal administrador,
+            HttpServletRequest request) {
+        return operacaoService.ativarManualLote(
                 id,
                 body,
                 idempotencyKey,

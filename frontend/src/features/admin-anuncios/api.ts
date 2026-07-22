@@ -11,6 +11,7 @@ import type {
   AdminAdDetail,
   AdminAdFilters,
   AdminAdListItem,
+  AdminAdQueueNavigation,
   AdminAdUpdate,
   AdminKycSubmission,
   AdminKycTemporaryUrl,
@@ -23,6 +24,8 @@ import type {
   AdminPremiumCatalogItem,
   AdminStorySelection,
 } from './types'
+import type { AdminAdQueueContext } from './queue-context'
+import { adminAdQueueFilters } from './queue-context'
 
 function csrfCookieName() {
   return ['XSRF', 'TOKEN'].join('-')
@@ -111,6 +114,59 @@ export function updateAdminAd(id: string, payload: AdminAdUpdate) {
   })
 }
 
+export async function getAdminAdQueueNavigation(id: string, context: AdminAdQueueContext) {
+  const pages = new Map<number, AdminPage<AdminAdListItem>>()
+  async function load(page: number) {
+    if (page < 0) return null
+    const cached = pages.get(page)
+    if (cached) return cached
+    const loaded = await listAdminAds(adminAdQueueFilters({ ...context, page }))
+    pages.set(page, loaded)
+    return loaded
+  }
+
+  let currentPage = context.page
+  let current = await load(currentPage)
+  let index = current?.itens.findIndex((item) => item.id === id) ?? -1
+  if (index < 0) {
+    for (const candidate of [context.page - 1, context.page + 1]) {
+      const page = await load(candidate)
+      const candidateIndex = page?.itens.findIndex((item) => item.id === id) ?? -1
+      if (candidateIndex >= 0) {
+        currentPage = candidate
+        current = page
+        index = candidateIndex
+        break
+      }
+    }
+  }
+  if (!current || index < 0) return null
+
+  let anterior = index > 0 ? { id: current.itens[index - 1].id, page: currentPage } : null
+  if (!anterior && currentPage > 0) {
+    const previousPage = await load(currentPage - 1)
+    const previousItem = previousPage?.itens.at(-1)
+    if (previousItem) anterior = { id: previousItem.id, page: currentPage - 1 }
+  }
+
+  let proximo = index < current.itens.length - 1
+    ? { id: current.itens[index + 1].id, page: currentPage }
+    : null
+  if (!proximo && !current.last) {
+    const nextPage = await load(currentPage + 1)
+    const nextItem = nextPage?.itens[0]
+    if (nextItem) proximo = { id: nextItem.id, page: currentPage + 1 }
+  }
+
+  return {
+    anterior,
+    proximo,
+    posicao: currentPage * context.size + index + 1,
+    total: current.totalElements,
+    page: currentPage,
+  } satisfies AdminAdQueueNavigation
+}
+
 export async function listAdminAdMedia(id: string) {
   const payload = await request<unknown>(`/anuncios/${encodeURIComponent(id)}/midias?page=0&size=50`)
   return pagePayload<AdminMediaItem>(payload)
@@ -142,12 +198,12 @@ export async function listAdminPremiumCatalog() {
   return requireArrayPayload<AdminPremiumCatalogItem>(await request('/premium/catalogo'))
 }
 
-export function activateAdminPremium(
+export function activateAdminPremiumBatch(
   anuncioId: string,
-  payload: { beneficioId: string; duracaoDias: number; observacao: string },
+  payload: { beneficios: Array<{ beneficioId: string; duracaoDias: number }>; observacao: string },
   idempotencyKey: string,
 ) {
-  return request(`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes`, {
+  return request(`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes/lote`, {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(payload),

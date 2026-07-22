@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.web.admin.readonly;
 
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
+import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioOrdenacao;
 import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycEnvioDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioListaItemDto;
@@ -8,7 +9,6 @@ import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminModeracaoHistoricoItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import java.util.List;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
@@ -34,22 +34,22 @@ public class AdminAnuncioDetalhadoController {
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public AdminPaginaDto<AdminAnuncioListaItemDto> listar(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) StatusAnuncio status,
+            @RequestParam(defaultValue = "30") int size,
             @RequestParam(required = false) StatusModeracaoAnuncio statusModeracao,
             @RequestParam(required = false) String uf,
             @RequestParam(required = false) String cidade,
             @RequestParam(required = false) String bairro,
-            @RequestParam(required = false) String termo) {
+            @RequestParam(required = false) String termo,
+            @RequestParam(defaultValue = "MAIS_RECENTES") AdminAnuncioOrdenacao ordenacao) {
         return service.listar(
                 page,
                 size,
-                status,
                 statusModeracao,
                 uf,
                 cidade,
                 bairro,
                 termo,
+                ordenacao,
                 false);
     }
 

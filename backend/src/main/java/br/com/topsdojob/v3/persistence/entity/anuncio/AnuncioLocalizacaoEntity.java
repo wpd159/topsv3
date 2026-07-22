@@ -136,6 +136,19 @@ public class AnuncioLocalizacaoEntity {
     return entity;
   }
 
+  public static AnuncioLocalizacaoEntity criarEdicaoAdministrativa(
+      UUID anuncioId,
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      String enderecoResumido,
+      OffsetDateTime criadoEm) {
+    AnuncioLocalizacaoEntity entity = criarEdicaoProprietario(
+        anuncioId, estadoId, cidadeId, bairroId, criadoEm);
+    entity.enderecoResumido = enderecoResumido;
+    return entity;
+  }
+
   public void atualizarLocalidade(
       UUID estadoId,
       UUID cidadeId,
@@ -153,6 +166,16 @@ public class AnuncioLocalizacaoEntity {
       this.longitude = null;
     }
     this.atualizadoEm = atualizadoEm;
+  }
+
+  public void atualizarLocalidadeAdministrativa(
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      String enderecoResumido,
+      OffsetDateTime atualizadoEm) {
+    atualizarLocalidade(estadoId, cidadeId, bairroId, atualizadoEm);
+    this.enderecoResumido = enderecoResumido;
   }
 
   public void sincronizarFixtureHomologacao(

@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.admin.anuncio;
 
+import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
@@ -72,11 +73,25 @@ public class AdminAnuncioAtualizacaoService {
     @Transactional
     public AdminAnuncioDetalheDto atualizar(
             UUID anuncioId,
-            MeuAnuncioAtualizacaoRequestDto request,
+            AdminAnuncioAtualizacaoRequest request,
             AdminUserPrincipal administrador,
             String requestId) {
         validarAtor(administrador);
-        DadosAtualizacao validado = validator.validar(request);
+        if (request == null) {
+            throw badRequest("payload obrigatorio");
+        }
+        DadosAtualizacao validado = validator.validar(new MeuAnuncioAtualizacaoRequestDto(
+                request.titulo(),
+                request.descricao(),
+                request.categoria(),
+                request.preco(),
+                request.uf(),
+                request.cidade(),
+                request.bairro(),
+                request.locaisAtendimento(),
+                request.servicos(),
+                request.whatsapp()));
+        String enderecoResumido = validator.validarEnderecoResumido(request.enderecoResumido());
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
                 .filter(item -> item.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
@@ -106,17 +121,19 @@ public class AdminAnuncioAtualizacaoService {
 
         AnuncioLocalizacaoEntity localizacao = localizacaoRepository.findByAnuncioId(anuncioId).orElse(null);
         if (localizacao == null) {
-            localizacao = AnuncioLocalizacaoEntity.criarEdicaoProprietario(
+            localizacao = AnuncioLocalizacaoEntity.criarEdicaoAdministrativa(
                     anuncioId,
                     estado.getId(),
                     cidade.getId(),
                     bairro == null ? null : bairro.getId(),
+                    enderecoResumido,
                     agora);
         } else {
-            localizacao.atualizarLocalidade(
+            localizacao.atualizarLocalidadeAdministrativa(
                     estado.getId(),
                     cidade.getId(),
                     bairro == null ? null : bairro.getId(),
+                    enderecoResumido,
                     agora);
         }
         localizacaoRepository.save(localizacao);
@@ -125,7 +142,7 @@ public class AdminAnuncioAtualizacaoService {
         if (documento == null) {
             documento = DocumentoBuscaAnuncioEntity.criarSolicitacaoLocal(
                     anuncioId,
-                    validator.textoBusca(validado),
+                    validator.textoBusca(validado, enderecoResumido),
                     estado.getId(),
                     cidade.getId(),
                     bairro == null ? null : bairro.getId(),
@@ -134,7 +151,7 @@ public class AdminAnuncioAtualizacaoService {
                     agora);
         } else {
             documento.atualizarAposEdicao(
-                    validator.textoBusca(validado),
+                    validator.textoBusca(validado, enderecoResumido),
                     estado.getId(),
                     cidade.getId(),
                     bairro == null ? null : bairro.getId(),
@@ -169,6 +186,7 @@ public class AdminAnuncioAtualizacaoService {
         result.put("estadoId", localizacao == null ? null : localizacao.getEstadoId());
         result.put("cidadeId", localizacao == null ? null : localizacao.getCidadeId());
         result.put("bairroId", localizacao == null ? null : localizacao.getBairroId());
+        result.put("enderecoResumido", localizacao == null ? null : localizacao.getEnderecoResumido());
         return result;
     }
 

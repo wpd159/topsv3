@@ -34,7 +34,6 @@ import br.com.topsdojob.v3.persistence.repository.CliqueWhatsappRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
@@ -58,8 +57,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +66,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class AdminAnuncioDetalhadoConsultaService {
 
     private static final int DESCRICAO_RESUMO_MAX = 180;
+    private static final Set<Integer> TAMANHOS_FILA_PERMITIDOS = Set.of(20, 30, 50, 100);
+    private static final UUID ID_LOCALIZACAO_NEUTRO = new UUID(0L, 0L);
     private static final List<StatusRevisaoAnuncio> REVISOES_ABERTAS = List.of(
             StatusRevisaoAnuncio.ABERTA,
             StatusRevisaoAnuncio.EM_ANALISE);
@@ -129,24 +128,28 @@ public class AdminAnuncioDetalhadoConsultaService {
     public AdminPaginaDto<AdminAnuncioListaItemDto> listar(
             int page,
             int size,
-            StatusAnuncio status,
             StatusModeracaoAnuncio statusModeracao,
             String uf,
             String cidade,
             String bairro,
             String termo,
+            AdminAnuncioOrdenacao ordenacao,
             boolean comercialLimitado) {
+        int tamanho = validarTamanhoFila(size);
+        AdminAnuncioOrdenacao ordem = ordenacao == null
+                ? AdminAnuncioOrdenacao.MAIS_RECENTES
+                : ordenacao;
         Set<UUID> idsLocalizacao = localizacaoSupport.filtrarAnuncioIds(uf, cidade, bairro);
         if (idsLocalizacao != null && idsLocalizacao.isEmpty()) {
-            return new AdminPaginaDto<>(List.of(), Math.max(page, 0), Math.max(1, Math.min(size, AdminReadOnlyPageRequest.MAX_SIZE)), 0, 0, true);
+            return new AdminPaginaDto<>(List.of(), Math.max(page, 0), tamanho, 0, 0, true);
         }
-        var pageable = AdminReadOnlyPageRequest.of(
-                page,
-                size,
-                Sort.by(Sort.Order.desc("atualizadoEm"), Sort.Order.desc("criadoEm"), Sort.Order.asc("id")));
-        Page<AnuncioEntity> result = anuncioRepository.findAll(
-                anuncioSpec(status, statusModeracao, idsLocalizacao, termo),
-                pageable);
+        Page<AnuncioEntity> result = anuncioRepository.findFilaAdministrativa(
+                enumName(statusModeracao),
+                idsLocalizacao != null,
+                idsLocalizacao == null ? List.of(ID_LOCALIZACAO_NEUTRO) : idsLocalizacao,
+                termoSeguro(termo),
+                ordem.name(),
+                PageRequest.of(Math.max(page, 0), tamanho));
         Map<UUID, AdminLocalizacaoSanitizadaDto> localizacoes = localizacaoSupport.carregar(
                 result.getContent().stream().map(AnuncioEntity::getId).toList());
         Map<UUID, UsuarioEntity> anunciantes = carregarAnunciantes(result.getContent());
@@ -497,8 +500,8 @@ public class AdminAnuncioDetalhadoConsultaService {
                                 || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
                         .map(PremiumBeneficioCalculado::beneficio)
                         .filter(java.util.Objects::nonNull)
-                        .map(item -> item.getCodigo())
-                        .filter(java.util.Objects::nonNull)
+                        .map(item -> item.getNome())
+                        .filter(item -> item != null && !item.isBlank())
                         .distinct()
                         .sorted()
                         .toList()));
@@ -562,33 +565,6 @@ public class AdminAnuncioDetalhadoConsultaService {
                 List.of(StatusDocumentoUsuario.PENDENTE, StatusDocumentoUsuario.EM_ANALISE)) > 0;
     }
 
-    private Specification<AnuncioEntity> anuncioSpec(
-            StatusAnuncio status,
-            StatusModeracaoAnuncio statusModeracao,
-            Set<UUID> idsLocalizacao,
-            String termo) {
-        return (root, query, builder) -> {
-            var predicate = builder.isNull(root.get("removidoEm"));
-            if (status != null) {
-                predicate = builder.and(predicate, builder.equal(root.get("status"), status));
-            }
-            if (statusModeracao != null) {
-                predicate = builder.and(predicate, builder.equal(root.get("statusModeracao"), statusModeracao));
-            }
-            if (idsLocalizacao != null) {
-                predicate = builder.and(predicate, root.get("id").in(idsLocalizacao));
-            }
-            String termoSeguro = termoSeguro(termo);
-            if (termoSeguro != null) {
-                String like = "%" + termoSeguro.toLowerCase() + "%";
-                predicate = builder.and(predicate, builder.or(
-                        builder.like(builder.lower(root.get("slug")), like),
-                        builder.like(builder.lower(root.get("titulo")), like)));
-            }
-            return predicate;
-        };
-    }
-
     private String termoSeguro(String termo) {
         if (termo == null || termo.isBlank()) {
             return null;
@@ -598,6 +574,15 @@ public class AdminAnuncioDetalhadoConsultaService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "termo invalido");
         }
         return value;
+    }
+
+    private int validarTamanhoFila(int size) {
+        if (!TAMANHOS_FILA_PERMITIDOS.contains(size)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "tamanho da pagina deve ser 20, 30, 50 ou 100");
+        }
+        return size;
     }
 
     private String enumName(Enum<?> value) {

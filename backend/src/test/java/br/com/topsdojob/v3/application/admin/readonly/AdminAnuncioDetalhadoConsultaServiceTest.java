@@ -3,8 +3,12 @@ package br.com.topsdojob.v3.application.admin.readonly;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.documento.AdminKycService;
@@ -45,10 +49,14 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 class AdminAnuncioDetalhadoConsultaServiceTest {
 
@@ -116,7 +124,8 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
         when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuario));
         when(localizacaoSupport.carregar(List.of(anuncioId))).thenReturn(Map.of(
-                anuncioId, new AdminLocalizacaoSanitizadaDto("GO", "Goiania", "Setor Bueno")));
+                anuncioId, new AdminLocalizacaoSanitizadaDto(
+                        "GO", "Goiania", "Setor Bueno", "Regiao central")));
         when(revisaoRepository.countByAnuncioId(anuncioId)).thenReturn(0L);
         when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(any(), any()))
                 .thenReturn(Optional.empty());
@@ -156,11 +165,21 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
                 true,
                 true,
                 OffsetDateTime.now().minusDays(1));
+        BeneficioPremiumEntity beneficioExpirado = BeneficioPremiumEntity.criarFixtureHomologacao(
+                UUID.randomUUID(),
+                "WHATSAPP_CARD",
+                "WhatsApp especial",
+                "Beneficio expirado",
+                EscopoBeneficioPremium.ANUNCIO,
+                true,
+                false,
+                OffsetDateTime.now().minusDays(30));
         CliqueWhatsappRepository.ContagemPorAnuncioProjection cliques =
                 mock(CliqueWhatsappRepository.ContagemPorAnuncioProjection.class);
         when(cliques.getAnuncioId()).thenReturn(anuncioId);
         when(cliques.getTotalCliques()).thenReturn(3L);
-        when(anuncioRepository.findAll(any(Specification.class), any(Pageable.class)))
+        when(anuncioRepository.findFilaAdministrativa(
+                any(), anyBoolean(), any(), any(), any(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(anuncio), PageRequest.of(0, 20), 1));
         when(usuarioRepository.findAllById(any())).thenReturn(List.of(usuario));
         when(revisaoRepository.findByAnuncioIdInAndStatusInOrderByCriadoEmDesc(any(), any()))
@@ -180,22 +199,76 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
                         PremiumBeneficioStatusCalculado.ATIVO,
                         List.of(),
                         false,
-                        false))));
+                        false),
+                        new PremiumBeneficioCalculado(
+                                null,
+                                beneficioExpirado,
+                                null,
+                                PremiumBeneficioStatusCalculado.EXPIRADO,
+                                List.of(),
+                                false,
+                                false))));
         when(midiaRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(List.of(vinculo));
         when(arquivoRepository.findByIdIn(List.of(arquivoId))).thenReturn(List.of(arquivo));
         when(urlService.resolver(vinculo, arquivo))
                 .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica("https://media.example.invalid/foto.jpg", null));
 
-        var pagina = service.listar(0, 20, null, null, null, null, null, null, false);
+        var pagina = service.listar(
+                0,
+                20,
+                null,
+                null,
+                null,
+                null,
+                null,
+                AdminAnuncioOrdenacao.MAIS_RECENTES,
+                false);
 
         assertThat(pagina.itens()).hasSize(1);
         var item = pagina.itens().get(0);
         assertThat(item.miniaturaUrl()).isEqualTo("https://media.example.invalid/foto.jpg");
-        assertThat(item.beneficiosPremiumVigentes()).containsExactly("ANUNCIO_TOPO");
+        assertThat(item.beneficiosPremiumVigentes()).containsExactly("Anuncio no topo");
         assertThat(item.visualizacoes().total()).isEqualTo(12);
         assertThat(item.cliquesWhatsapp()).isEqualTo(3);
         assertThat(item.anunciante().emailMascarado()).isEqualTo("p***@example.invalid");
         assertThat(item.toString()).doesNotContain("12345678909", "+5562888888888");
+        assertThat(item.localizacao().enderecoResumido()).isEqualTo("Regiao central");
+        verify(beneficioService).consultarCalculadosPorAnuncio(List.of(anuncioId));
+    }
+
+    @ParameterizedTest
+    @EnumSource(AdminAnuncioOrdenacao.class)
+    void filaEncaminhaTodasAsOrdenacoesParaPaginacaoNoBanco(AdminAnuncioOrdenacao ordenacao) {
+        when(anuncioRepository.findFilaAdministrativa(
+                any(), anyBoolean(), any(), any(), eq(ordenacao.name()), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 30), 0));
+
+        var pagina = service.listar(0, 30, null, null, null, null, null, ordenacao, false);
+
+        assertThat(pagina.itens()).isEmpty();
+        verify(anuncioRepository).findFilaAdministrativa(
+                any(), anyBoolean(), any(), any(), eq(ordenacao.name()), eq(PageRequest.of(0, 30)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {20, 30, 50, 100})
+    void filaAceitaSomenteTamanhosCanonicosDaProducao(int size) {
+        when(anuncioRepository.findFilaAdministrativa(
+                any(), anyBoolean(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, size), 0));
+
+        var pagina = service.listar(
+                0, size, null, null, null, null, null, AdminAnuncioOrdenacao.MAIS_RECENTES, false);
+
+        assertThat(pagina.size()).isEqualTo(size);
+    }
+
+    @Test
+    void filaRecusaTamanhoExcessivo() {
+        assertThatThrownBy(() -> service.listar(
+                0, 101, null, null, null, null, null, AdminAnuncioOrdenacao.MAIS_RECENTES, false))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error ->
+                        assertThat(error.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }
 
     @Test

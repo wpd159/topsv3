@@ -3,7 +3,10 @@ package br.com.topsdojob.v3.application.admin.premium;
 import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoService;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoOperacaoDto;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoLoteDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoDto;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteItemRequest;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
@@ -25,6 +28,10 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Map;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -180,6 +187,98 @@ public class AdminPremiumOperacaoService {
     }
 
     @Transactional
+    public AdminPremiumAtivacaoLoteDto ativarManualLote(
+            UUID anuncioId,
+            AdminPremiumAtivarLoteRequest request,
+            String idempotencyKey,
+            AdminUserPrincipal administrador,
+            String requestId) {
+        validarAdministrador(administrador);
+        List<AdminPremiumAtivarLoteItemRequest> itens = validarLote(request);
+        String observacao = observacaoObrigatoria(request.observacao());
+        String chaveRaiz = "premium-admin-lote:" + administrador.usuarioId() + ":"
+                + CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
+        Map<UUID, GrupoAtivacaoBeneficioEntity> repetidos = localizarGruposDoLote(itens, chaveRaiz);
+        if (!repetidos.isEmpty()) {
+            return resultadoLoteRepetido(repetidos, anuncioId, itens, observacao);
+        }
+
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+                .filter(item -> item.getRemovidoEm() == null)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        Map<UUID, GrupoAtivacaoBeneficioEntity> repetidosAposLock = localizarGruposDoLote(itens, chaveRaiz);
+        if (!repetidosAposLock.isEmpty()) {
+            return resultadoLoteRepetido(repetidosAposLock, anuncioId, itens, observacao);
+        }
+
+        Set<UUID> ativos = beneficioConsultaService.consultarCalculados(anuncioId).stream()
+                .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                .map(PremiumBeneficioCalculado::beneficio)
+                .filter(Objects::nonNull)
+                .map(BeneficioPremiumEntity::getId)
+                .collect(Collectors.toSet());
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        List<AdminPremiumAtivacaoOperacaoDto> resultado = new java.util.ArrayList<>();
+        for (AdminPremiumAtivarLoteItemRequest item : itens) {
+            BeneficioPremiumEntity beneficio = beneficioRepository.findById(item.beneficioId())
+                    .filter(catalogo -> Boolean.TRUE.equals(catalogo.getAtivo()))
+                    .filter(catalogo -> catalogo.getEscopo() == EscopoBeneficioPremium.ANUNCIO)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
+            if (ativos.contains(beneficio.getId())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "beneficio ja ativo no anuncio");
+            }
+            BeneficioPremiumOpcaoEntity opcao = opcaoRepository
+                    .findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(
+                            beneficio.getId(), item.duracaoDias())
+                    .filter(catalogo -> catalogo.vigente(agora))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada"));
+            String chaveItem = chaveRaiz + ":" + beneficio.getId();
+            OffsetDateTime fim = agora.plusDays(opcao.getDuracaoDias());
+            GrupoAtivacaoBeneficioEntity grupo = grupoRepository.save(
+                    GrupoAtivacaoBeneficioEntity.criarAdministrativa(
+                            UUID.randomUUID(),
+                            anuncio.getUsuarioId(),
+                            anuncioId,
+                            administrador.usuarioId(),
+                            agora,
+                            fim,
+                            chaveItem,
+                            observacao,
+                            agora));
+            AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(
+                    AtivacaoBeneficioEntity.criarAdministrativa(
+                            UUID.randomUUID(),
+                            beneficio.getId(),
+                            opcao.getId(),
+                            anuncio.getUsuarioId(),
+                            anuncioId,
+                            grupo.getId(),
+                            administrador.usuarioId(),
+                            agora,
+                            fim,
+                            chaveItem + ":ativacao",
+                            agora));
+            creditoService.auditar(
+                    administrador.usuarioId(),
+                    "PREMIUM_ATIVACAO_ADMINISTRATIVA",
+                    "ATIVACAO_BENEFICIO",
+                    ativacao.getId(),
+                    Map.of("status", "INEXISTENTE"),
+                    Map.of(
+                            "status", ativacao.getStatus().name(),
+                            "anuncioId", anuncioId,
+                            "beneficioCodigo", beneficio.getCodigo(),
+                            "duracaoDias", opcao.getDuracaoDias(),
+                            "creditosDebitados", 0,
+                            "observacaoRegistrada", true),
+                    requestId);
+            resultado.add(toDto(ativacao, 0, false));
+        }
+        return new AdminPremiumAtivacaoLoteDto(List.copyOf(resultado), false);
+    }
+
+    @Transactional
     public AdminPremiumAtivacaoOperacaoDto cancelar(
             UUID ativacaoId,
             String motivo,
@@ -253,6 +352,72 @@ public class AdminPremiumOperacaoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key reutilizada com outra operacao");
         }
         return toDto(ativacao, 0, true);
+    }
+
+    private List<AdminPremiumAtivarLoteItemRequest> validarLote(AdminPremiumAtivarLoteRequest request) {
+        if (request == null || request.beneficios() == null
+                || request.beneficios().isEmpty() || request.beneficios().size() > 20) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "selecione de um a vinte beneficios");
+        }
+        Set<UUID> ids = new LinkedHashSet<>();
+        for (AdminPremiumAtivarLoteItemRequest item : request.beneficios()) {
+            if (item == null || item.beneficioId() == null || item.duracaoDias() == null
+                    || item.duracaoDias() <= 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "beneficio e duracao obrigatorios");
+            }
+            if (!ids.add(item.beneficioId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "beneficio duplicado no lote");
+            }
+        }
+        return List.copyOf(request.beneficios());
+    }
+
+    private String observacaoObrigatoria(String value) {
+        String observacao = value == null ? "" : value.trim();
+        if (observacao.length() < 3 || observacao.length() > 500) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "observacao obrigatoria");
+        }
+        return observacao;
+    }
+
+    private Map<UUID, GrupoAtivacaoBeneficioEntity> localizarGruposDoLote(
+            List<AdminPremiumAtivarLoteItemRequest> itens,
+            String chaveRaiz) {
+        Map<UUID, GrupoAtivacaoBeneficioEntity> encontrados = new LinkedHashMap<>();
+        for (AdminPremiumAtivarLoteItemRequest item : itens) {
+            grupoRepository.findByIdempotencyKey(chaveRaiz + ":" + item.beneficioId())
+                    .ifPresent(grupo -> encontrados.put(item.beneficioId(), grupo));
+        }
+        if (!encontrados.isEmpty() && encontrados.size() != itens.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "lote idempotente incompleto");
+        }
+        return encontrados;
+    }
+
+    private AdminPremiumAtivacaoLoteDto resultadoLoteRepetido(
+            Map<UUID, GrupoAtivacaoBeneficioEntity> grupos,
+            UUID anuncioId,
+            List<AdminPremiumAtivarLoteItemRequest> itens,
+            String observacao) {
+        List<AdminPremiumAtivacaoOperacaoDto> resultado = itens.stream().map(item -> {
+            GrupoAtivacaoBeneficioEntity grupo = grupos.get(item.beneficioId());
+            List<AtivacaoBeneficioEntity> ativacoes = grupo == null
+                    ? List.of()
+                    : ativacaoRepository.findByGrupoAtivacaoId(grupo.getId());
+            AtivacaoBeneficioEntity ativacao = ativacoes.size() == 1 ? ativacoes.get(0) : null;
+            long duracao = grupo == null || grupo.getValidadeInicioEm() == null || grupo.getValidadeFimEm() == null
+                    ? -1
+                    : java.time.Duration.between(grupo.getValidadeInicioEm(), grupo.getValidadeFimEm()).toDays();
+            if (ativacao == null
+                    || !anuncioId.equals(grupo.getAnuncioId())
+                    || !item.beneficioId().equals(ativacao.getBeneficioId())
+                    || duracao != item.duracaoDias()
+                    || !observacao.equals(grupo.getObservacao())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key reutilizada com outro lote");
+            }
+            return toDto(ativacao, 0, true);
+        }).toList();
+        return new AdminPremiumAtivacaoLoteDto(resultado, true);
     }
 
     private void validarAdministrador(AdminUserPrincipal administrador) {

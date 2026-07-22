@@ -1,8 +1,8 @@
 package br.com.topsdojob.v3.web.admin.anuncio;
 
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioAtualizacaoService;
+import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
-import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
@@ -31,7 +31,7 @@ public class AdminAnuncioAtualizacaoController {
     @PreAuthorize("hasRole('ADMIN') and hasAuthority('ANUNCIO_MODERAR')")
     public ResponseEntity<AdminAnuncioDetalheDto> atualizar(
             @PathVariable UUID id,
-            @RequestBody MeuAnuncioAtualizacaoRequestDto body,
+            @RequestBody AdminAnuncioAtualizacaoRequest body,
             @AuthenticationPrincipal AdminUserPrincipal administrador,
             HttpServletRequest request) {
         return ResponseEntity.ok()

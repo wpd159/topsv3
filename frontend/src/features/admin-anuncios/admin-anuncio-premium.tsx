@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 import {
-  activateAdminPremium,
+  activateAdminPremiumBatch,
   cancelAdminPremium,
   listAdminPremiumBenefits,
   listAdminPremiumCatalog,
@@ -26,6 +26,10 @@ function formatDate(value?: string | null) {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
 }
 
+function isCurrent(item: AdminPremiumBenefit) {
+  return ['ATIVO', 'VENCENDO', 'PENDENTE'].includes(item.statusCalculado)
+}
+
 export function AdminAnuncioPremium({
   anuncioId,
   canManage,
@@ -35,8 +39,8 @@ export function AdminAnuncioPremium({
 }) {
   const [benefits, setBenefits] = useState<AdminPremiumBenefit[]>([])
   const [catalog, setCatalog] = useState<AdminPremiumCatalogItem[]>([])
-  const [benefitId, setBenefitId] = useState('')
-  const [duration, setDuration] = useState('')
+  const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [durations, setDurations] = useState<Record<string, string>>({})
   const [observation, setObservation] = useState('')
   const [cancelReasons, setCancelReasons] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
@@ -51,37 +55,65 @@ export function AdminAnuncioPremium({
     try {
       const [current, available] = await Promise.all([
         listAdminPremiumBenefits(anuncioId),
-        canManage ? listAdminPremiumCatalog() : Promise.resolve([]),
+        listAdminPremiumCatalog(),
       ])
       setBenefits(current)
-      setCatalog(available.filter((item) => item.ativo && item.escopo === 'ANUNCIO'))
+      setCatalog(available.filter((item) => item.escopo === 'ANUNCIO'))
     } catch (reason) {
       setError(reason)
     } finally {
       setLoading(false)
     }
-  }, [anuncioId, canManage])
+  }, [anuncioId])
 
   useEffect(() => { void load() }, [load])
 
-  const selected = useMemo(() => catalog.find((item) => item.id === benefitId), [benefitId, catalog])
-  const options = selected?.opcoes.filter((item) => item.ativo) ?? []
+  const latestByCode = useMemo(() => {
+    const result = new Map<string, AdminPremiumBenefit>()
+    benefits.forEach((item) => {
+      if (item.beneficioCodigo) result.set(item.beneficioCodigo, item)
+    })
+    return result
+  }, [benefits])
+
+  const currentByCode = useMemo(() => {
+    const result = new Map<string, AdminPremiumBenefit>()
+    benefits.filter(isCurrent).forEach((item) => {
+      if (item.beneficioCodigo) result.set(item.beneficioCodigo, item)
+    })
+    return result
+  }, [benefits])
+
+  const selectedItems = useMemo(() => catalog.flatMap((item) => {
+    const duration = Number(durations[item.id])
+    return selected[item.id] && Number.isInteger(duration) && duration > 0
+      ? [{ beneficioId: item.id, duracaoDias: duration }]
+      : []
+  }), [catalog, durations, selected])
+
+  function changeSelection(item: AdminPremiumCatalogItem, checked: boolean) {
+    activationKey.current = null
+    setSelected((current) => ({ ...current, [item.id]: checked }))
+    if (checked && !durations[item.id]) {
+      const first = item.opcoes.filter((option) => option.ativo)[0]
+      if (first) setDurations((current) => ({ ...current, [item.id]: String(first.duracaoDias) }))
+    }
+  }
 
   async function activate() {
-    if (busy || !benefitId || !duration || observation.trim().length < 3) return
+    if (busy || selectedItems.length === 0 || observation.trim().length < 3) return
     setBusy(true)
     setError(null)
     const idempotencyKey = activationKey.current ?? operationKey()
     activationKey.current = idempotencyKey
     try {
-      await activateAdminPremium(anuncioId, {
-        beneficioId: benefitId,
-        duracaoDias: Number(duration),
+      await activateAdminPremiumBatch(anuncioId, {
+        beneficios: selectedItems,
         observacao: observation.trim(),
       }, idempotencyKey)
       activationKey.current = null
-      setBenefitId('')
-      setDuration('')
+      setSelected({})
+      setDurations({})
       setObservation('')
       await load()
     } catch (reason) {
@@ -112,41 +144,110 @@ export function AdminAnuncioPremium({
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
-        <div><h3 className="flex items-center gap-2 font-semibold text-zinc-950"><Sparkles className="h-4 w-4 text-pink-700" />Benefícios</h3><p className="mt-1 text-sm text-zinc-600">Ativações vigentes, agendadas e encerradas, calculadas pelo backend.</p></div>
+        <div>
+          <h3 className="flex items-center gap-2 font-semibold text-zinc-950"><Sparkles className="h-4 w-4 text-pink-700" />Benefícios</h3>
+          <p className="mt-1 text-sm text-zinc-600">Catálogo, durações e estados calculados pelo backend.</p>
+        </div>
         <Button type="button" size="sm" variant="outline" onClick={() => void load()} disabled={loading || busy}>Atualizar</Button>
       </div>
+
       {error ? <ContractState error={error} onRetry={() => void load()} compact /> : null}
       {loading ? <p className="flex items-center gap-2 text-sm text-zinc-500"><Loader2 className="h-4 w-4 animate-spin" />Carregando benefícios...</p> : null}
-      {!loading && benefits.length === 0 ? <p className="text-sm text-zinc-600">Nenhuma ativação Premium registrada.</p> : null}
-      <div className="divide-y divide-zinc-200 border-y border-zinc-200">
-        {benefits.map((item) => {
-          const cancellable = item.statusOriginal === 'ATIVA' || item.statusOriginal === 'AGENDADA'
+      {!loading && catalog.length === 0 ? <p className="text-sm text-zinc-600">O catálogo de benefícios está vazio.</p> : null}
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {catalog.map((item) => {
+          const options = item.opcoes.filter((option) => option.ativo)
+          const current = currentByCode.get(item.codigo)
+          const latest = latestByCode.get(item.codigo)
+          const selectable = canManage && item.ativo && options.length > 0 && !current
           return (
-            <article key={item.id} className="grid gap-3 py-4 lg:grid-cols-[minmax(0,1fr)_220px]">
-              <div>
-                <div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-zinc-950">{item.beneficioNome || item.beneficioCodigo}</strong><Badge variant="outline">{item.statusCalculado}</Badge><Badge variant="outline">{item.origem || 'Origem indisponível'}</Badge></div>
-                <p className="mt-2 text-xs text-zinc-600">{item.duracaoDias ?? '—'} dia(s) · {formatDate(item.inicioEm)} até {formatDate(item.fimEm)}</p>
-                {item.observacao ? <p className="mt-2 text-sm text-zinc-700">{item.observacao}</p> : null}
+            <article key={item.id} className={`border p-4 ${selected[item.id] ? 'border-pink-400 bg-pink-50/40' : 'border-zinc-200 bg-white'}`}>
+              <div className="flex items-start gap-3">
+                <input
+                  id={`premium-${item.id}`}
+                  type="checkbox"
+                  checked={Boolean(selected[item.id])}
+                  disabled={!selectable || busy}
+                  onChange={(event) => changeSelection(item, event.target.checked)}
+                  className="mt-1 h-4 w-4 accent-pink-600"
+                />
+                <label htmlFor={`premium-${item.id}`} className={`min-w-0 flex-1 ${selectable ? 'cursor-pointer' : ''}`}>
+                  <span className="block font-semibold text-zinc-950">{item.nome}</span>
+                  <span className="mt-1 block break-all text-xs font-medium text-zinc-500">{item.codigo}</span>
+                </label>
+                <Badge variant="outline">{latest?.statusCalculado || (item.ativo ? 'NÃO ATIVO' : 'CATÁLOGO INATIVO')}</Badge>
               </div>
-              {canManage && cancellable ? (
-                <div className="flex flex-col gap-2"><Input value={cancelReasons[item.id] || ''} onChange={(event) => { delete cancellationKeys.current[item.id]; setCancelReasons((current) => ({ ...current, [item.id]: event.target.value })) }} placeholder="Motivo da desativação" maxLength={500} /><Button type="button" size="sm" variant="outline" disabled={busy || (cancelReasons[item.id]?.trim().length || 0) < 5} onClick={() => void cancel(item)}>Desativar</Button></div>
+              {item.descricao ? <p className="mt-3 text-sm leading-5 text-zinc-600">{item.descricao}</p> : null}
+              <div className="mt-3">
+                <span className="mb-1 block text-xs font-semibold text-zinc-600">Duração permitida</span>
+                <Select
+                  value={durations[item.id] || ''}
+                  disabled={!selectable || !selected[item.id] || busy}
+                  onValueChange={(value) => {
+                    activationKey.current = null
+                    setDurations((values) => ({ ...values, [item.id]: value }))
+                  }}
+                >
+                  <SelectTrigger className="w-full bg-white"><SelectValue placeholder={options.length ? 'Escolha a duração' : 'Sem duração ativa'} /></SelectTrigger>
+                  <SelectContent>{options.map((option) => <SelectItem key={option.id} value={String(option.duracaoDias)}>{option.duracaoDias} dia(s)</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              {current ? (
+                <div className="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-600">
+                  <p>{formatDate(current.inicioEm)} até {formatDate(current.fimEm)}</p>
+                  {canManage ? (
+                    <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        value={cancelReasons[current.id] || ''}
+                        onChange={(event) => {
+                          delete cancellationKeys.current[current.id]
+                          setCancelReasons((values) => ({ ...values, [current.id]: event.target.value }))
+                        }}
+                        placeholder="Motivo da desativação"
+                        maxLength={500}
+                      />
+                      <Button type="button" size="sm" variant="outline" disabled={busy || (cancelReasons[current.id]?.trim().length || 0) < 5} onClick={() => void cancel(current)}>Desativar</Button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </article>
           )
         })}
       </div>
+
       {canManage ? (
-        <section className="rounded-md border border-zinc-200 bg-zinc-50 p-4">
+        <section className="border-t border-zinc-200 pt-4">
           <h4 className="text-sm font-semibold text-zinc-950">Ativação administrativa</h4>
-          <p className="mt-1 text-xs text-zinc-600">Não debita créditos. Benefícios e durações vêm do catálogo vigente.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <Select value={benefitId} onValueChange={(value) => { activationKey.current = null; setBenefitId(value); setDuration('') }}><SelectTrigger className="w-full bg-white"><SelectValue placeholder="Escolha o benefício" /></SelectTrigger><SelectContent>{catalog.map((item) => <SelectItem key={item.id} value={item.id}>{item.nome}</SelectItem>)}</SelectContent></Select>
-            <Select value={duration} onValueChange={(value) => { activationKey.current = null; setDuration(value) }} disabled={!benefitId}><SelectTrigger className="w-full bg-white"><SelectValue placeholder="Escolha a duração" /></SelectTrigger><SelectContent>{options.map((item) => <SelectItem key={item.id} value={String(item.duracaoDias)}>{item.duracaoDias} dia(s)</SelectItem>)}</SelectContent></Select>
-            <Input className="md:col-span-2" value={observation} onChange={(event) => { activationKey.current = null; setObservation(event.target.value) }} placeholder="Observação obrigatória" maxLength={500} />
-          </div>
-          <Button type="button" className="mt-3" disabled={busy || !benefitId || !duration || observation.trim().length < 3} onClick={() => void activate()}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Ativar benefício</Button>
+          <p className="mt-1 text-xs text-zinc-600">Não debita créditos. Somente os benefícios marcados serão ativados.</p>
+          <Input
+            className="mt-3"
+            value={observation}
+            onChange={(event) => { activationKey.current = null; setObservation(event.target.value) }}
+            placeholder="Observação administrativa obrigatória"
+            maxLength={500}
+          />
+          <Button type="button" className="mt-3" disabled={busy || selectedItems.length === 0 || observation.trim().length < 3} onClick={() => void activate()}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Ativar selecionados ({selectedItems.length})
+          </Button>
         </section>
       ) : <p className="text-sm font-medium text-zinc-600">MODERADOR possui acesso somente para leitura.</p>}
+
+      {benefits.length > 0 ? (
+        <details className="border-t border-zinc-200 pt-4">
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-800">Histórico de ativações ({benefits.length})</summary>
+          <div className="mt-3 divide-y divide-zinc-200 border-y border-zinc-200">
+            {benefits.map((item) => (
+              <div key={item.id} className="py-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2"><strong>{item.beneficioNome || item.beneficioCodigo}</strong><Badge variant="outline">{item.statusCalculado}</Badge></div>
+                <p className="mt-1 text-xs text-zinc-600">{formatDate(item.inicioEm)} até {formatDate(item.fimEm)} · {item.origem || 'Origem indisponível'}</p>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   )
 }
