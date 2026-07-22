@@ -1317,7 +1317,7 @@ paths:
   /api/admin/anuncios/resumo:
     get:
       summary: Resumo administrativo local de anuncios
-      description: Retorna apenas contagens agregadas de anuncios para ADMIN, MODERADOR ou COMERCIAL. Nao retorna WhatsApp real nem dados privados.
+      description: Retorna apenas contagens agregadas de anuncios para ADMIN ou MODERADOR com ANUNCIO_LER. Nao retorna WhatsApp real nem dados privados.
       operationId: getAdminAnunciosResumo
       security:
         - AdminSessionCookie: []
@@ -1392,7 +1392,7 @@ paths:
   /api/admin/metricas/resumo:
     get:
       summary: Resumo administrativo local de metricas
-      description: Retorna contagens agregadas de visualizacoes e cliques WhatsApp para ADMIN ou COMERCIAL. Nao retorna IP, User-Agent, referer, WhatsApp real ou identificador bruto.
+      description: Retorna contagens agregadas de visualizacoes e cliques WhatsApp somente para ADMIN. Nao retorna IP, User-Agent, referer, WhatsApp real ou identificador bruto.
       operationId: getAdminMetricasResumo
       security:
         - AdminSessionCookie: []
@@ -1559,7 +1559,7 @@ paths:
   /api/admin/anuncios:
     get:
       summary: Lista administrativa local de anuncios
-      description: Retorna pagina sanitizada de anuncios com proprietario mascarado e revisao aberta. COMERCIAL recebe versao limitada. Nao retorna documento privado, e-mail integral, storage ou payload.
+      description: Retorna pagina sanitizada de anuncios com proprietario mascarado e revisao aberta, somente para ADMIN ou MODERADOR com ANUNCIO_LER. Nao retorna documento privado, e-mail integral, storage ou payload.
       operationId: getAdminAnuncios
       security:
         - AdminSessionCookie: []
@@ -1618,7 +1618,7 @@ paths:
   /api/admin/anuncios/{id}:
     get:
       summary: Detalhe administrativo sanitizado de anuncio
-      description: Retorna os dados comerciais necessarios a moderacao, proprietario mascarado e revisao aberta. COMERCIAL recebe a versao limitada sem descricao, preco, contato, servicos ou locais de atendimento.
+      description: Retorna os dados comerciais necessarios a moderacao, proprietario mascarado e revisao aberta, somente para ADMIN ou MODERADOR com ANUNCIO_LER.
       operationId: getAdminAnuncioDetalhe
       security:
         - AdminSessionCookie: []
@@ -1721,7 +1721,7 @@ paths:
   /api/admin/premium/anuncios/{id}:
     get:
       summary: Status Premium read-only de anuncio
-      description: Retorna calculo local sanitizado de Premium/beneficios para ADMIN, MODERADOR ou COMERCIAL. Nao compra, nao ativa, nao cobra, nao chama Pix/Efi, nao retorna valor pago, saldo, credito real, payload de pagamento, telefone bruto, storage ou documento privado.
+      description: Retorna calculo local sanitizado de Premium/beneficios para ADMIN ou MODERADOR. Nao compra, nao ativa, nao cobra, nao chama Pix/Efi, nao retorna valor pago, saldo, credito real, payload de pagamento, telefone bruto, storage ou documento privado.
       operationId: getAdminPremiumAnuncioStatus
       security:
         - AdminSessionCookie: []
@@ -5000,12 +5000,12 @@ components:
               type:
                 - string
                 - "null"
-              description: Texto sanitizado e mascarado; nulo para COMERCIAL.
+              description: Texto sanitizado e mascarado; pode ser nulo quando ausente na origem.
             descricao:
               type:
                 - string
                 - "null"
-              description: Conteudo comercial integral para moderacao; nulo para COMERCIAL.
+              description: Conteudo comercial integral para moderacao; pode ser nulo quando ausente.
             categoria:
               type:
                 - string
@@ -5022,12 +5022,12 @@ components:
                 - number
                 - "null"
               format: double
-              description: Preco informado no anuncio; nulo para COMERCIAL.
+              description: Preco informado no anuncio; pode ser nulo quando nao informado.
             whatsapp:
               type:
                 - string
                 - "null"
-              description: Contato do proprio anuncio para analise; nulo para COMERCIAL.
+              description: Contato do proprio anuncio para analise; pode ser nulo quando nao informado.
             locaisAtendimento:
               type: array
               items:

@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.web.admin.moderacao;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -36,11 +37,21 @@ class AdminMidiaRbacMethodSecurityTest {
     @AfterEach
     void limparContexto() {
         SecurityContextHolder.clearContext();
+        clearInvocations(service);
     }
 
     @Test
     void adminComMidiaRevisarPodeExecutarRevisao() {
         autenticar("ROLE_ADMIN", "MIDIA_REVISAR");
+
+        controller.decidirMidia(UUID.randomUUID(), null, null, new MockHttpServletRequest());
+
+        verify(service).decidirMidia(any(), any(), any(), any());
+    }
+
+    @Test
+    void moderadorComMidiaRevisarPodeExecutarRevisao() {
+        autenticar("ROLE_MODERADOR", "MIDIA_REVISAR");
 
         controller.decidirMidia(UUID.randomUUID(), null, null, new MockHttpServletRequest());
 
@@ -72,6 +83,24 @@ class AdminMidiaRbacMethodSecurityTest {
         controller.decidirRevisao(UUID.randomUUID(), null, null, new MockHttpServletRequest());
 
         verify(service).decidirRevisao(any(), any(), any(), any());
+    }
+
+    @Test
+    void moderadorComAnuncioModerarPodeDecidirRevisao() {
+        autenticar("ROLE_MODERADOR", "ANUNCIO_MODERAR");
+
+        controller.decidirRevisao(UUID.randomUUID(), null, null, new MockHttpServletRequest());
+
+        verify(service).decidirRevisao(any(), any(), any(), any());
+    }
+
+    @Test
+    void anuncianteMesmoComPermissaoNaoPodeDecidirRevisao() {
+        autenticar("ROLE_ANUNCIANTE", "ANUNCIO_MODERAR");
+
+        assertThatThrownBy(() -> controller.decidirRevisao(
+                UUID.randomUUID(), null, null, new MockHttpServletRequest()))
+                .isInstanceOf(AuthorizationDeniedException.class);
     }
 
     @Test

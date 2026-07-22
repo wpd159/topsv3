@@ -413,7 +413,7 @@ function metricsScript() {
       .replace(/wa\\.me\\/5500000000000/g, "[whatsapp-sintetico]");
     const textSemFixtureAdmin = text
       .replace(/[a-z0-9._%+-]+@example\\.invalid/gi, "")
-      .replace(/\\b(?:admin|moderador|comercial|usuario)\\.local\\b/gi, "")
+      .replace(/\\b(?:admin|moderador|usuario)\\.local\\b/gi, "")
       .replace(/\\+?5500000000000/g, "")
       .replace(/wa\\.me\\/5500000000000/g, "");
     const html = document.documentElement;
@@ -688,7 +688,7 @@ main().catch((error) => {
     "",
     "- Login admin local com sessao/cookie.",
     "- Bloqueio de admin sem sessao.",
-    "- RBAC para ADMIN, MODERADOR, COMERCIAL e USUARIO sinteticos.",
+    "- RBAC para ADMIN, MODERADOR e USUARIO sinteticos.",
     "- Wizard `/api/public/anunciar` cria anuncio pendente e revisao aberta, sem publicacao automatica.",
     "- Admin le anuncio criado pelo wizard como `PENDENTE_REVISAO` e revisao `ABERTA`.",
     "- Listagem/detalhe de anuncios, midias e revisoes administrativas.",

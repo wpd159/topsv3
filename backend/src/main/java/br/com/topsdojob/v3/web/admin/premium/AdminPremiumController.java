@@ -59,25 +59,25 @@ public class AdminPremiumController {
     }
 
     @GetMapping("/anuncios/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public AdminPremiumAnuncioStatusDto status(@PathVariable UUID id) {
         return statusService.consultar(id);
     }
 
     @GetMapping("/anuncios/{id}/beneficios")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public List<AdminBeneficioAnuncioDto> beneficios(@PathVariable UUID id) {
         return beneficioService.consultar(id);
     }
 
     @GetMapping("/consistencia")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public AdminPremiumConsistenciaResumoDto consistencia() {
         return consistenciaService.consultarConsistencia();
     }
 
     @GetMapping("/vencendo")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public AdminPremiumVencendoResumoDto vencendo() {
         return consistenciaService.consultarVencendo();
     }

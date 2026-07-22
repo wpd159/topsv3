@@ -941,36 +941,6 @@ if (-not $SemDadosSinteticos) {
   Add-Check "moderador visao geral sem metricas/sistema" ($moderadorVisaoGeral.Body -match '"metricas"\s*:\s*null' -and $moderadorVisaoGeral.Body -match '"sistema"\s*:\s*null') "MODERADOR nao deve receber metricas/sistema"
   Add-Check "moderador sem sistema admin" ((Invoke-LocalHttp -Path "/api/admin/sistema/status" -ExpectedStatus 403 -Method "GET" -Session $moderadorSession).Status -eq 403) "MODERADOR nao deve ver status restrito"
 
-  $comercialSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-  $comercialLogin = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 200 -Method "POST" -Body (New-AdminLoginBody -Login "comercial.local@example.invalid") -Session $comercialSession
-  Add-Check "comercial login sintetico status 200" ($comercialLogin.Status -eq 200) "login comercial local sintetico deve autenticar"
-  $comercialVisaoGeral = Invoke-LocalHttp -Path "/api/admin/visao-geral" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
-  Add-Check "comercial acessa visao geral" ($comercialVisaoGeral.Status -eq 200) "COMERCIAL deve ler visao geral"
-  Add-Check "comercial visao geral limitada" ($comercialVisaoGeral.Body -match '"moderacao"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"midias"\s*:\s*null' -and $comercialVisaoGeral.Body -match '"sistema"\s*:\s*null') "COMERCIAL nao deve receber moderacao/midia/sistema"
-  Add-Check "comercial acessa metricas" ((Invoke-LocalHttp -Path "/api/admin/metricas/resumo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler metricas agregadas"
-  Add-Check "comercial acessa premium readonly" ((Invoke-LocalHttp -Path "/api/admin/premium/vencendo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler premium sem dado financeiro sensivel"
-  Add-Check "comercial acessa desempenho resumo" ((Invoke-LocalHttp -Path "/api/admin/desempenho/resumo" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler desempenho agregado"
-  Add-Check "comercial acessa desempenho anunciante" ((Invoke-LocalHttp -Path "/api/admin/desempenho/anunciantes/$desempenhoUsuarioId" -ExpectedStatus 200 -Method "GET" -Session $comercialSession).Status -eq 200) "COMERCIAL deve ler desempenho por anunciante sanitizado"
-  Add-Check "comercial sem creditos admin" ((Invoke-LocalHttp -Path "/api/admin/creditos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar ledger de creditos"
-  Add-Check "comercial sem pagamentos admin" ((Invoke-LocalHttp -Path "/api/admin/pagamentos/consistencia" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar pagamentos"
-  $comercialAnuncios = Invoke-LocalHttp -Path "/api/admin/anuncios?page=0&size=2" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
-  Add-Check "comercial acessa anuncios detalhados limitados" ($comercialAnuncios.Status -eq 200 -and $comercialAnuncios.Body -match '"comercialLimitado"\s*:\s*true') "COMERCIAL deve ler anuncios em versao limitada"
-  $comercialDetalhe = Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId" -ExpectedStatus 200 -Method "GET" -Session $comercialSession
-  Add-Check "comercial detalhe anuncio limitado" ($comercialDetalhe.Status -eq 200 -and $comercialDetalhe.Body -match '"descricaoResumo"\s*:\s*null' -and $comercialDetalhe.Body -match '"revisoesTotal"\s*:\s*null') "COMERCIAL nao recebe descricao/revisao detalhada"
-  Add-Check "comercial sem midias do anuncio" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioId/midias" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar midias"
-  Add-Check "comercial sem midia detalhada" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaId" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar midia"
-  Add-Check "comercial sem revisao detalhada" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoId" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar revisao"
-  Add-Check "comercial sem outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve acessar outbox de moderacao"
-  if (-not [string]::IsNullOrWhiteSpace($outboxId)) {
-    Add-Check "comercial nao simula outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/simular-processamento-local" -ExpectedStatus 403 -Method "POST" -Body "{}" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve simular processamento"
-    Add-Check "comercial nao acessa preview outbox" ((Invoke-LocalHttp -Path "/api/admin/outbox/$outboxId/preview" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve ver preview de outbox"
-  }
-  Add-Check "comercial nao decide revisao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/revisoes/$revisaoFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve executar acao moderatoria"
-  Add-Check "comercial nao remete revisao" ((Invoke-LocalHttp -Path "/api/admin/anuncios/$anuncioRemeterConflitoId/remeter-revisao" -ExpectedStatus 403 -Method "POST" -Body (New-RemeterRevisaoBody) -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve remeter revisao"
-  Add-Check "comercial nao decide midia" ((Invoke-LocalHttp -Path "/api/admin/midias/$midiaFinalizadaId/decidir" -ExpectedStatus 403 -Method "POST" -Body (New-DecisaoModeracaoBody -Decisao "APROVAR") -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve executar acao de midia"
-  Add-Check "comercial sem moderacao" ((Invoke-LocalHttp -Path "/api/admin/moderacao/resumo" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve ver moderacao"
-  Add-Check "comercial sem midias" ((Invoke-LocalHttp -Path "/api/admin/midias/resumo" -ExpectedStatus 403 -Method "GET" -Session $comercialSession).Status -eq 403) "COMERCIAL nao deve ver midias"
-
   $usuarioSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
   $usuarioLogin = Invoke-LocalHttp -Path "/api/admin/auth/login" -ExpectedStatus 200 -Method "POST" -Body (New-AdminLoginBody -Login "usuario.local@example.invalid") -Session $usuarioSession
   Add-Check "usuario login sintetico status 200" ($usuarioLogin.Status -eq 200) "login usuario local sintetico deve autenticar"

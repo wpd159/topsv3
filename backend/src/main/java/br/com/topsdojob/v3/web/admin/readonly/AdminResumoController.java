@@ -34,7 +34,7 @@ public class AdminResumoController {
     }
 
     @GetMapping("/anuncios/resumo")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public AdminResumoAnunciosDto anuncios() {
         return anuncioService.consultar();
     }
@@ -52,7 +52,7 @@ public class AdminResumoController {
     }
 
     @GetMapping("/metricas/resumo")
-    @PreAuthorize("hasAnyRole('ADMIN','COMERCIAL') and hasAnyAuthority('COMERCIAL_GERENCIAR','FINANCEIRO_LER')")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_LER')")
     public AdminResumoMetricasDto metricas() {
         return metricaService.consultar();
     }

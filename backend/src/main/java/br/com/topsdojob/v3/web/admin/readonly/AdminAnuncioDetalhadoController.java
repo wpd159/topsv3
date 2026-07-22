@@ -11,7 +11,6 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,7 +28,7 @@ public class AdminAnuncioDetalhadoController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public AdminPaginaDto<AdminAnuncioListaItemDto> listar(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -38,8 +37,7 @@ public class AdminAnuncioDetalhadoController {
             @RequestParam(required = false) String uf,
             @RequestParam(required = false) String cidade,
             @RequestParam(required = false) String bairro,
-            @RequestParam(required = false) String termo,
-            Authentication authentication) {
+            @RequestParam(required = false) String termo) {
         return service.listar(
                 page,
                 size,
@@ -49,13 +47,13 @@ public class AdminAnuncioDetalhadoController {
                 cidade,
                 bairro,
                 termo,
-                hasRole(authentication, "ROLE_COMERCIAL") && !hasRole(authentication, "ROLE_ADMIN"));
+                false);
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
-    public AdminAnuncioDetalheDto detalhar(@PathVariable UUID id, Authentication authentication) {
-        return service.detalhar(id, hasRole(authentication, "ROLE_COMERCIAL") && !hasRole(authentication, "ROLE_ADMIN"));
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
+    public AdminAnuncioDetalheDto detalhar(@PathVariable UUID id) {
+        return service.detalhar(id, false);
     }
 
     @GetMapping("/{id}/midias")
@@ -71,10 +69,5 @@ public class AdminAnuncioDetalhadoController {
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and (hasAuthority('ANUNCIO_MODERAR') or hasAuthority('MIDIA_REVISAR'))")
     public List<AdminModeracaoHistoricoItemDto> historicoModeracao(@PathVariable UUID id) {
         return service.historico(id);
-    }
-
-    private boolean hasRole(Authentication authentication, String role) {
-        return authentication != null
-                && authentication.getAuthorities().stream().anyMatch(authority -> role.equals(authority.getAuthority()));
     }
 }

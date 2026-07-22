@@ -233,11 +233,13 @@ Papeis:
 
 - `ADMIN`;
 - `MODERADOR`;
-- `COMERCIAL`;
 - `USUARIO`.
 
 Regras:
 
+- nao existe perfil operacional `COMERCIAL` na V3; o token historico permanece apenas por compatibilidade de schema e nao recebe permissoes administrativas;
+- `ANUNCIANTE` e tipo de conta e usa o papel `USUARIO`, sem acesso administrativo;
+- somente `ADMIN` e `MODERADOR` recebem `ANUNCIO_LER` e `ANUNCIO_MODERAR`;
 - `/api/admin/**` exige sessao, exceto login;
 - frontend admin usa `credentials: include`;
 - sem localStorage/sessionStorage;

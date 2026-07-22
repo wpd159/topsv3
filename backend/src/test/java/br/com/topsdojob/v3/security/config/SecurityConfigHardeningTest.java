@@ -95,10 +95,9 @@ class SecurityConfigHardeningTest {
                 .contains("/api/admin/outbox/*/preview")
                 .contains("/api/admin/outbox/*/simular-processamento-local")
                 .contains("/api/admin/midias/*/decidir")
-                .contains(".hasAnyRole(\"ADMIN\", \"MODERADOR\", \"COMERCIAL\")")
                 .contains(".hasAnyRole(\"ADMIN\", \"MODERADOR\")")
-                .contains(".hasAnyRole(\"ADMIN\", \"COMERCIAL\")")
-                .contains(".hasRole(\"ADMIN\")");
+                .contains(".hasRole(\"ADMIN\")")
+                .doesNotContain("\"COMERCIAL\"");
     }
 
     @Test

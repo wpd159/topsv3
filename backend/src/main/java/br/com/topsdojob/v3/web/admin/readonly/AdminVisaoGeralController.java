@@ -19,12 +19,12 @@ public class AdminVisaoGeralController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR','COMERCIAL')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR')")
     public AdminVisaoGeralDto consultar(Authentication authentication) {
         return service.consultar(
                 hasRole(authentication, "ROLE_ADMIN"),
                 hasRole(authentication, "ROLE_MODERADOR"),
-                hasRole(authentication, "ROLE_COMERCIAL"));
+                false);
     }
 
     private boolean hasRole(Authentication authentication, String role) {

@@ -86,7 +86,10 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 ## Admin e RBAC
 
 - Admin local usa sessao/cookie.
-- `ADMIN`, `MODERADOR`, `COMERCIAL` e `USUARIO` sao os papeis base.
+- `ADMIN`, `MODERADOR` e `USUARIO` sao os papeis operacionais da V3.
+- Nao existe perfil operacional `COMERCIAL`; o token historico pode permanecer no schema sem usuario provisionado e sem permissao administrativa.
+- `ANUNCIANTE` e tipo de conta, usa o papel `USUARIO` e nao recebe permissao administrativa.
+- A moderacao de anuncios concede `ANUNCIO_LER` e `ANUNCIO_MODERAR` exclusivamente a `ADMIN` e `MODERADOR`.
 - Frontend admin nao guarda credencial em localStorage/sessionStorage.
 - `/api/admin/**` exige sessao, exceto login.
 - Acoes criticas exigem permissao, auditoria, motivo quando aplicavel e fase expressa.

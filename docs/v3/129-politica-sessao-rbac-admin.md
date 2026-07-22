@@ -73,8 +73,9 @@ Os endpoints admin read-only usam `@PreAuthorize` e a matriz RBAC local:
 
 - `ADMIN`: todos os resumos e status do sistema;
 - `MODERADOR`: visao geral, anuncios, moderacao e midia;
-- `COMERCIAL`: visao geral, anuncios e metricas;
 - `USUARIO`: nenhum endpoint admin.
+
+Nao existe perfil operacional `COMERCIAL` na V3. `ANUNCIANTE` e tipo de conta, usa o papel `USUARIO` e nao recebe permissao administrativa. A fila e as decisoes de moderacao exigem `ADMIN` ou `MODERADOR` com `ANUNCIO_LER`/`ANUNCIO_MODERAR`.
 
 Sem sessao, a resposta esperada e `401`. Com sessao sem permissao, a resposta esperada e `403`.
 

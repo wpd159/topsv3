@@ -25,31 +25,31 @@ public class AdminDesempenhoController {
     }
 
     @GetMapping("/anuncios/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','COMERCIAL','MODERADOR') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public AdminDesempenhoAnuncioDto anuncio(@PathVariable UUID id) {
         return consultaService.consultarAnuncio(id);
     }
 
     @GetMapping("/anuncios/{id}/diario")
-    @PreAuthorize("hasAnyRole('ADMIN','COMERCIAL','MODERADOR') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public List<AdminDesempenhoDiarioDto> diario(@PathVariable UUID id) {
         return consultaService.consultarDiario(id);
     }
 
     @GetMapping("/anuncios/{id}/origens")
-    @PreAuthorize("hasAnyRole('ADMIN','COMERCIAL','MODERADOR') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public List<AdminDesempenhoOrigemDto> origens(@PathVariable UUID id) {
         return consultaService.consultarOrigens(id);
     }
 
     @GetMapping("/anunciantes/{usuarioId}")
-    @PreAuthorize("hasAnyRole('ADMIN','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('ANUNCIO_LER')")
     public AdminDesempenhoAnuncianteDto anunciante(@PathVariable UUID usuarioId) {
         return consultaService.consultarAnunciante(usuarioId);
     }
 
     @GetMapping("/resumo")
-    @PreAuthorize("hasAnyRole('ADMIN','COMERCIAL') and hasAuthority('ANUNCIO_LER')")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('ANUNCIO_LER')")
     public AdminDesempenhoResumoDto resumo() {
         return consultaService.consultarResumo();
     }

@@ -14,13 +14,11 @@ Responsável por operações administrativas completas, configurações, staff, 
 
 Responsável por revisar anúncios, mídias, documentos, denúncias e conteúdo sujeito a moderação.
 
-### `COMERCIAL`
-
-Responsável por relacionamento comercial, contatos, oportunidades, acompanhamento e ações não destrutivas.
-
 ### `USUARIO`
 
-Papel operacional dos anunciantes/usuários finais. Incluído para completar a matriz, embora os papéis administrativos obrigatórios sejam os três acima.
+Papel operacional dos anunciantes/usuários finais. Não recebe permissões administrativas.
+
+`ANUNCIANTE` é tipo de conta, não papel administrativo. O token histórico `COMERCIAL` permanece apenas por compatibilidade de schema, sem perfil operacional ou permissões na V3.
 
 ## Matriz de permissões
 
@@ -28,6 +26,7 @@ Permissões devem ser granulares. Exemplos:
 
 - `USUARIO_LER`
 - `USUARIO_EDITAR`
+- `ANUNCIO_LER`
 - `ANUNCIO_MODERAR`
 - `ANUNCIO_EDITAR_STAFF`
 - `MIDIA_REVISAR`
@@ -47,7 +46,8 @@ Regras:
 - Papel não deve depender apenas de prefixo de URL.
 - Método/ação crítica deve validar permissão.
 - Permissões administrativas devem ser testadas por papel.
-- COMERCIAL não deve excluir, aprovar, ajustar crédito ou alterar backup por padrão.
+- `ANUNCIO_LER` e `ANUNCIO_MODERAR` pertencem somente a `ADMIN` e `MODERADOR`.
+- `USUARIO`, `ANUNCIANTE` e tokens históricos sem autorização recebem `403` na moderação.
 
 ## Autenticação
 
@@ -69,7 +69,7 @@ Requisitos:
 - Expiração absoluta e expiração por inatividade.
 - CSRF habilitado em operações autenticadas que alteram estado.
 - CORS restrito por ambiente.
-- ADMIN, MODERADOR e COMERCIAL usam senha mais token por e-mail obrigatório na versão inicial.
+- ADMIN e MODERADOR usam senha mais token por e-mail obrigatório na versão inicial.
 - TOTP/passkey permanecem como evolução futura.
 
 ## Token por e-mail

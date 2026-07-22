@@ -76,7 +76,6 @@ INSERT INTO usuario (
   versao
 ) VALUES
   ('00000000-0000-4000-8000-000000000903', 'Moderador de demonstração', 'moderador.local@example.invalid', NULL, 'ATIVO', 'STAFF', now(), NULL, now(), now(), NULL, 0),
-  ('00000000-0000-4000-8000-000000000904', 'Comercial de demonstração', 'comercial.local@example.invalid', NULL, 'ATIVO', 'STAFF', now(), NULL, now(), now(), NULL, 0),
   ('00000000-0000-4000-8000-000000000905', 'Usuário de demonstração', 'usuario.local@example.invalid', NULL, 'ATIVO', 'ANUNCIANTE', now(), NULL, now(), now(), NULL, 0)
 ON CONFLICT (id) DO NOTHING;
 
@@ -90,7 +89,6 @@ INSERT INTO credencial_usuario (
   criado_em
 ) VALUES
   ('00000000-0000-4000-8000-000000000906', '00000000-0000-4000-8000-000000000903', '$2a$10$Tqle5d1.djgr6CDy9roIAu5lOXctgjD7EmrfiNVqeNmQ5cSEHJn/O', 'BCRYPT', now(), false, now()),
-  ('00000000-0000-4000-8000-000000000907', '00000000-0000-4000-8000-000000000904', '$2a$10$Tqle5d1.djgr6CDy9roIAu5lOXctgjD7EmrfiNVqeNmQ5cSEHJn/O', 'BCRYPT', now(), false, now()),
   ('00000000-0000-4000-8000-000000000908', '00000000-0000-4000-8000-000000000905', '$2a$10$Tqle5d1.djgr6CDy9roIAu5lOXctgjD7EmrfiNVqeNmQ5cSEHJn/O', 'BCRYPT', now(), false, now())
 ON CONFLICT (id) DO NOTHING;
 
@@ -101,7 +99,6 @@ INSERT INTO papel_usuario (
   criado_em
 ) VALUES
   ('00000000-0000-4000-8000-000000000903', 'MODERADOR', NULL, now()),
-  ('00000000-0000-4000-8000-000000000904', 'COMERCIAL', NULL, now()),
   ('00000000-0000-4000-8000-000000000905', 'USUARIO', NULL, now())
 ON CONFLICT (usuario_id, papel) DO NOTHING;
 
@@ -148,12 +145,7 @@ FROM (
     ('MODERADOR', 'MIDIA_REVISAR'),
     ('MODERADOR', 'DOCUMENTO_REVISAR'),
     ('MODERADOR', 'SUPORTE_ATENDER'),
-    ('MODERADOR', 'AUDITORIA_LER'),
-    ('COMERCIAL', 'ANUNCIO_LER'),
-    ('COMERCIAL', 'COMERCIAL_GERENCIAR'),
-    ('COMERCIAL', 'SUPORTE_ATENDER'),
-    ('COMERCIAL', 'FINANCEIRO_LER'),
-    ('USUARIO', 'ANUNCIO_LER')
+    ('MODERADOR', 'AUDITORIA_LER')
 ) AS vinculo(papel, codigo)
 JOIN permissao ON permissao.codigo = vinculo.codigo
 ON CONFLICT (papel, permissao_id) DO NOTHING;
