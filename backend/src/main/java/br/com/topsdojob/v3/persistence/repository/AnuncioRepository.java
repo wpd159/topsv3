@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.persistence.repository;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import jakarta.persistence.LockModeType;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -13,6 +14,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,6 +34,10 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(UUID usuarioId);
 
     Optional<AnuncioEntity> findBySlugAndRemovidoEmIsNull(String slug);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select anuncio from AnuncioEntity anuncio where anuncio.slug = :slug")
+    Optional<AnuncioEntity> findBySlugForLifecycle(@Param("slug") String slug);
 
     Optional<AnuncioEntity> findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
             String slug,

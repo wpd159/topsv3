@@ -2,6 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowLeftIcon,
   EyeIcon,
@@ -13,6 +14,10 @@ import {
   SparklesIcon,
 } from '@heroicons/react/24/solid'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  MeuAnuncioAcoesCicloVida,
+  type CicloVidaAcao,
+} from '@/components/anuncios/meu-anuncio-acoes-ciclo-vida'
 import {
   anuncioModeracao,
   anuncioPodeMonetizar,
@@ -30,6 +35,7 @@ import {
   buscarMeuAnuncio,
   MeusAnunciosApiError,
   type MeuAnuncio,
+  type MeuAnuncioCicloVida,
   type MeuAnuncioMidia,
 } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
@@ -99,6 +105,7 @@ function criarGaleria(anuncio: MeuAnuncio): GaleriaItem[] {
 }
 
 export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
+  const router = useRouter()
   const [anuncio, setAnuncio] = useState<MeuAnuncio | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<DetalheErro | null>(null)
@@ -167,6 +174,25 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
     titulo: 'Não foi possível carregar o anúncio',
     mensagem: 'Tente novamente em instantes.',
   }
+
+  const aplicarCicloVida = useCallback((
+    resultado: MeuAnuncioCicloVida,
+    acao: CicloVidaAcao
+  ) => {
+    if (acao === 'REMOVER' || resultado.status === 'REMOVIDO') {
+      router.replace('/meus-anuncios')
+      return
+    }
+    setAnuncio((atual) => atual && atual.id === resultado.id
+      ? {
+          ...atual,
+          status: resultado.status,
+          statusModeracao: resultado.statusModeracao,
+          atualizadoEm: resultado.atualizadoEm,
+          acoesPermitidas: resultado.acoesPermitidas,
+        }
+      : atual)
+  }, [router])
 
   return (
     <PainelShell
@@ -360,6 +386,11 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
                     Monetizar
                   </Link>
                 ) : null}
+                <MeuAnuncioAcoesCicloVida
+                  anuncio={anuncio}
+                  onSuccess={aplicarCicloVida}
+                  className="w-full pt-2"
+                />
               </div>
             </section>
           </div>

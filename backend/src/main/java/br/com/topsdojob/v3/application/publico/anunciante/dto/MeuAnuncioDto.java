@@ -22,5 +22,6 @@ public record MeuAnuncioDto(
         MeuAnuncioCapaDto capa,
         List<MeuAnuncioMidiaDto> midias,
         OffsetDateTime atualizadoEm,
+        MeuAnuncioAcoesDto acoesPermitidas,
         VisualizacoesCanonicasDto visualizacoes) {
 }

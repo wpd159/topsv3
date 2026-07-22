@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCapaDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAcoesDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioLocalizacaoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaDto;
@@ -185,10 +186,18 @@ public class MeusAnunciosConsultaService {
                         capa(vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of()), arquivos),
                         midias(vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of()), arquivos),
                         anuncio.getAtualizadoEm(),
+                        acoesPermitidas(anuncio),
                         Objects.requireNonNull(
                                 visualizacoes.get(anuncio.getId()),
                                 "visualizacoes canonicas ausentes para anuncio")))
                 .toList();
+    }
+
+    MeuAnuncioAcoesDto acoesPermitidas(AnuncioEntity anuncio) {
+        return new MeuAnuncioAcoesDto(
+                anuncio.podePausarPeloProprietario(),
+                anuncio.podeReativarPeloProprietario(),
+                anuncio.podeRemoverPeloProprietario());
     }
 
     private MeuAnuncioLocalizacaoDto localizacao(

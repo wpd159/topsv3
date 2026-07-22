@@ -1,13 +1,17 @@
 package br.com.topsdojob.v3.web.publico.anunciante;
 
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MinhasMidiasService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCicloVidaDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaLimitesDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiasResponseDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
+import br.com.topsdojob.v3.platform.request.RequestIdContext;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -30,14 +34,17 @@ public class MeusAnunciosController {
 
     private final MeusAnunciosConsultaService consultaService;
     private final MeuAnuncioAtualizacaoService atualizacaoService;
+    private final MeuAnuncioCicloVidaService cicloVidaService;
     private final MinhasMidiasService midiasService;
 
     public MeusAnunciosController(
             MeusAnunciosConsultaService consultaService,
             MeuAnuncioAtualizacaoService atualizacaoService,
+            MeuAnuncioCicloVidaService cicloVidaService,
             MinhasMidiasService midiasService) {
         this.consultaService = consultaService;
         this.atualizacaoService = atualizacaoService;
+        this.cicloVidaService = cicloVidaService;
         this.midiasService = midiasService;
     }
 
@@ -57,6 +64,30 @@ public class MeusAnunciosController {
             @RequestBody MeuAnuncioAtualizacaoRequestDto request,
             Authentication authentication) {
         return atualizacaoService.atualizar(slug, request, authentication);
+    }
+
+    @PostMapping("/{slug}/pausar")
+    public MeuAnuncioCicloVidaDto pausar(
+            @PathVariable String slug,
+            Authentication authentication,
+            HttpServletRequest request) {
+        return cicloVidaService.pausar(slug, authentication, RequestIdContext.current(request));
+    }
+
+    @PostMapping("/{slug}/reativar")
+    public MeuAnuncioCicloVidaDto reativar(
+            @PathVariable String slug,
+            Authentication authentication,
+            HttpServletRequest request) {
+        return cicloVidaService.reativar(slug, authentication, RequestIdContext.current(request));
+    }
+
+    @DeleteMapping("/{slug}")
+    public MeuAnuncioCicloVidaDto remover(
+            @PathVariable String slug,
+            Authentication authentication,
+            HttpServletRequest request) {
+        return cicloVidaService.remover(slug, authentication, RequestIdContext.current(request));
     }
 
     @GetMapping("/{slug}/midias")

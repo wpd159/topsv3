@@ -3,7 +3,11 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { BanknotesIcon, EyeIcon, MapPinIcon, PencilIcon, SparklesIcon } from '@heroicons/react/24/solid'
-import type { MeuAnuncio } from '@/lib/meus-anuncios-api'
+import {
+  MeuAnuncioAcoesCicloVida,
+  type CicloVidaAcao,
+} from '@/components/anuncios/meu-anuncio-acoes-ciclo-vida'
+import type { MeuAnuncio, MeuAnuncioCicloVida } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
 import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
 
@@ -81,7 +85,12 @@ export function meuAnuncioUrlPublicaSegura(url: string | null | undefined) {
   }
 }
 
-export function MeuAnuncioCard({ anuncio }: { anuncio: MeuAnuncio }) {
+type MeuAnuncioCardProps = {
+  anuncio: MeuAnuncio
+  onCicloVida: (resultado: MeuAnuncioCicloVida, acao: CicloVidaAcao) => void
+}
+
+export function MeuAnuncioCard({ anuncio, onCicloVida }: MeuAnuncioCardProps) {
   const status = anuncioStatus(anuncio.status)
   const capaPublica = !anuncio.capa?.restrita
     ? meuAnuncioUrlPublicaSegura(anuncio.capa?.urlPublica)
@@ -151,6 +160,11 @@ export function MeuAnuncioCard({ anuncio }: { anuncio: MeuAnuncio }) {
             </Link>
           ) : null}
         </div>
+        <MeuAnuncioAcoesCicloVida
+          anuncio={anuncio}
+          onSuccess={onCicloVida}
+          className="mt-3 border-t border-gray-100 pt-3"
+        />
       </div>
     </article>
   )

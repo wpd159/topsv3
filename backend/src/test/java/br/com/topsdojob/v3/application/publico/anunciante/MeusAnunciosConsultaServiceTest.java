@@ -162,7 +162,12 @@ class MeusAnunciosConsultaServiceTest {
         assertThat(resultado.get(0).capa().urlPublica()).isEqualTo("/capa-segura.svg");
         assertThat(resultado.get(0).capa().restrita()).isFalse();
         assertThat(resultado.get(0).visualizacoes().total()).isZero();
+        assertThat(resultado.get(0).acoesPermitidas().pausar()).isTrue();
+        assertThat(resultado.get(0).acoesPermitidas().reativar()).isFalse();
+        assertThat(resultado.get(0).acoesPermitidas().remover()).isTrue();
         assertThat(resultado.get(1).status()).isEqualTo("PAUSADO");
+        assertThat(resultado.get(1).acoesPermitidas().pausar()).isFalse();
+        assertThat(resultado.get(1).acoesPermitidas().reativar()).isTrue();
         assertThat(resultado.get(1).capa()).isNull();
     }
 

@@ -4,11 +4,13 @@ import Link from 'next/link'
 import { PlusIcon } from '@heroicons/react/24/solid'
 import { useCallback, useEffect, useState } from 'react'
 import { MeuAnuncioCard } from '@/components/anuncios/meu-anuncio-card'
+import type { CicloVidaAcao } from '@/components/anuncios/meu-anuncio-acoes-ciclo-vida'
 import { PainelShell } from '@/components/painel-anunciante/painel-shell'
 import {
   listarMeusAnuncios,
   MeusAnunciosApiError,
   type MeuAnuncio,
+  type MeuAnuncioCicloVida,
 } from '@/lib/meus-anuncios-api'
 
 type ListaErro = {
@@ -56,6 +58,26 @@ export default function MeusAnunciosPage() {
   useEffect(() => {
     void carregar()
   }, [carregar])
+
+  const aplicarCicloVida = useCallback((
+    resultado: MeuAnuncioCicloVida,
+    acao: CicloVidaAcao
+  ) => {
+    setAnuncios((atuais) => {
+      if (acao === 'REMOVER' || resultado.status === 'REMOVIDO') {
+        return atuais.filter((anuncio) => anuncio.id !== resultado.id)
+      }
+      return atuais.map((anuncio) => anuncio.id === resultado.id
+        ? {
+            ...anuncio,
+            status: resultado.status,
+            statusModeracao: resultado.statusModeracao,
+            atualizadoEm: resultado.atualizadoEm,
+            acoesPermitidas: resultado.acoesPermitidas,
+          }
+        : anuncio)
+    })
+  }, [])
 
   return (
     <PainelShell
@@ -107,7 +129,11 @@ export default function MeusAnunciosPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {anuncios.map((anuncio) => (
-              <MeuAnuncioCard key={anuncio.id} anuncio={anuncio} />
+              <MeuAnuncioCard
+                key={anuncio.id}
+                anuncio={anuncio}
+                onCicloVida={aplicarCicloVida}
+              />
             ))}
           </div>
         )}

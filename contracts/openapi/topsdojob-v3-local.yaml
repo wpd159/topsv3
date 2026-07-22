@@ -407,6 +407,74 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      summary: Remove logicamente um anuncio do usuario autenticado
+      operationId: removeCurrentUserAd
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      description: O proprietario e resolvido exclusivamente pela sessao. A operacao marca o anuncio como REMOVIDO e preserva dados, midias, historico e objetos de storage.
+      responses:
+        "200":
+          description: anuncio removido logicamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeuAnuncioCicloVida"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/minha-conta/anuncios/{slug}/pausar:
+    post:
+      summary: Pausa um anuncio publicado do usuario autenticado
+      operationId: pauseCurrentUserAd
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      description: Aceita somente anuncio PUBLICADO com moderacao APROVADA. Nao altera publicacao, beneficios, prioridade, midias ou historico.
+      responses:
+        "200":
+          description: anuncio pausado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeuAnuncioCicloVida"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/minha-conta/anuncios/{slug}/reativar:
+    post:
+      summary: Reativa um anuncio pausado do usuario autenticado
+      operationId: reactivateCurrentUserAd
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      description: Aceita somente anuncio PAUSADO com moderacao APROVADA. Nao restaura beneficio expirado, nao concede prioridade e nao contorna moderacao.
+      responses:
+        "200":
+          description: anuncio reativado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeuAnuncioCicloVida"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /api/public/minha-conta/anuncios/{slug}/midias:
     get:
       summary: Lista as midias e os limites do anuncio do usuario autenticado
@@ -4158,6 +4226,7 @@ components:
         - capa
         - midias
         - atualizadoEm
+        - acoesPermitidas
         - visualizacoes
       properties:
         id:
@@ -4211,8 +4280,42 @@ components:
         atualizadoEm:
           type: [string, "null"]
           format: date-time
+        acoesPermitidas:
+          $ref: "#/components/schemas/MeuAnuncioAcoesPermitidas"
         visualizacoes:
           $ref: "#/components/schemas/VisualizacoesCanonicas"
+    MeuAnuncioAcoesPermitidas:
+      type: object
+      additionalProperties: false
+      required: [pausar, reativar, remover]
+      properties:
+        pausar:
+          type: boolean
+        reativar:
+          type: boolean
+        remover:
+          type: boolean
+    MeuAnuncioCicloVida:
+      type: object
+      additionalProperties: false
+      required: [id, slug, status, statusModeracao, atualizadoEm, acoesPermitidas]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        status:
+          type: string
+          enum: [PUBLICADO, PAUSADO, REMOVIDO]
+        statusModeracao:
+          type: string
+          enum: [NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO]
+        atualizadoEm:
+          type: [string, "null"]
+          format: date-time
+        acoesPermitidas:
+          $ref: "#/components/schemas/MeuAnuncioAcoesPermitidas"
     MeuAnuncioAtualizacaoRequest:
       type: object
       additionalProperties: false

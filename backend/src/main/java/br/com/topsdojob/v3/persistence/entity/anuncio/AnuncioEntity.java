@@ -173,6 +173,47 @@ public class AnuncioEntity {
     return versao;
   }
 
+  public boolean podePausarPeloProprietario() {
+    return removidoEm == null
+        && status == StatusAnuncio.PUBLICADO
+        && statusModeracao == StatusModeracaoAnuncio.APROVADO;
+  }
+
+  public boolean podeReativarPeloProprietario() {
+    return removidoEm == null
+        && status == StatusAnuncio.PAUSADO
+        && statusModeracao == StatusModeracaoAnuncio.APROVADO;
+  }
+
+  public boolean podeRemoverPeloProprietario() {
+    return removidoEm == null && status != StatusAnuncio.REMOVIDO;
+  }
+
+  public void pausarPeloProprietario(OffsetDateTime atualizadoEm) {
+    if (!podePausarPeloProprietario()) {
+      throw new IllegalStateException("transicao para PAUSADO nao permitida");
+    }
+    this.status = StatusAnuncio.PAUSADO;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public void reativarPeloProprietario(OffsetDateTime atualizadoEm) {
+    if (!podeReativarPeloProprietario()) {
+      throw new IllegalStateException("transicao para PUBLICADO nao permitida");
+    }
+    this.status = StatusAnuncio.PUBLICADO;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public void removerPeloProprietario(OffsetDateTime removidoEm) {
+    if (!podeRemoverPeloProprietario()) {
+      throw new IllegalStateException("transicao para REMOVIDO nao permitida");
+    }
+    this.status = StatusAnuncio.REMOVIDO;
+    this.removidoEm = removidoEm;
+    this.atualizadoEm = removidoEm;
+  }
+
   public void aplicarModeracao(
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,

@@ -22,6 +22,10 @@ class MeusAnunciosFrontendContractTest {
                 .contains("Idempotency-Key")
                 .contains("WeakMap<File, string>")
                 .contains("method: 'PATCH'")
+                .contains("pausarMeuAnuncio")
+                .contains("reativarMeuAnuncio")
+                .contains("removerMeuAnuncio")
+                .contains("acoesPermitidas")
                 .contains("XSRF")
                 .contains("credentials: 'include'")
                 .contains("throw new MeusAnunciosApiError")
@@ -43,6 +47,8 @@ class MeusAnunciosFrontendContractTest {
                 Path.of("app", "(private-routes)", "anunciar", "wizard", "page.tsx")));
         String card = Files.readString(FRONTEND.resolve(
                 Path.of("components", "anuncios", "meu-anuncio-card.tsx")));
+        String cicloVida = Files.readString(FRONTEND.resolve(
+                Path.of("components", "anuncios", "meu-anuncio-acoes-ciclo-vida.tsx")));
         String localidades = Files.readString(FRONTEND.resolve(
                 Path.of("hooks", "useLocalidades.ts")));
         String storage = Files.readString(FRONTEND.resolve(
@@ -107,9 +113,19 @@ class MeusAnunciosFrontendContractTest {
                 .contains("/editar")
                 .contains("Detalhes")
                 .contains("formatarVisualizacoesCanonicas(anuncio.visualizacoes)")
-                .doesNotContain("Excluir")
                 .doesNotContain("ImpulsionarModal")
                 .doesNotContain("Adicionar story");
+        assertThat(cicloVida)
+                .contains("acoesPermitidas.pausar")
+                .contains("acoesPermitidas.reativar")
+                .contains("acoesPermitidas.remover")
+                .contains("setConfirmacao('PAUSAR')")
+                .contains("setConfirmacao('REMOVER')")
+                .contains("emExecucao.current")
+                .contains("disabled={processando !== null}")
+                .contains("onSuccess(resultado, acao)")
+                .doesNotContain("usuarioId")
+                .doesNotContain("email");
     }
 
     @Test

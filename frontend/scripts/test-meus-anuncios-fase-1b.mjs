@@ -18,7 +18,8 @@ const api = source('lib/meus-anuncios-api.ts')
 const listPage = source('app/(private-routes)/meus-anuncios/page.tsx')
 const card = source('components/anuncios/meu-anuncio-card.tsx')
 const detail = source('components/anuncios/meu-anuncio-detalhe-view.tsx')
-const combined = `${listPage}\n${card}\n${detail}`
+const lifecycle = source('components/anuncios/meu-anuncio-acoes-ciclo-vida.tsx')
+const combined = `${listPage}\n${card}\n${detail}\n${lifecycle}`
 const normalizedCombined = normalized(combined)
 
 for (const field of [
@@ -35,6 +36,7 @@ for (const field of [
   'capa',
   'midias',
   'visualizacoes',
+  'acoesPermitidas',
 ]) {
   assert.match(api, new RegExp(`\\b${field}:`), `Campo ausente do MeuAnuncio: ${field}`)
 }
@@ -49,6 +51,17 @@ assert.match(card, /anuncio\.status === 'PUBLICADO'/)
 assert.match(normalized(card), /Detalhes/)
 assert.match(normalized(card), /Editar/)
 assert.match(normalized(card), /Monetizar/)
+assert.match(lifecycle, /acoesPermitidas\.pausar/)
+assert.match(lifecycle, /acoesPermitidas\.reativar/)
+assert.match(lifecycle, /acoesPermitidas\.remover/)
+assert.match(normalized(lifecycle), /Pausar/)
+assert.match(normalized(lifecycle), /Reativar/)
+assert.match(normalized(lifecycle), /Remover anuncio/)
+assert.match(lifecycle, /setConfirmacao\('PAUSAR'\)/)
+assert.match(lifecycle, /setConfirmacao\('REMOVER'\)/)
+assert.match(lifecycle, /emExecucao\.current/)
+assert.match(lifecycle, /disabled=\{processando !== null\}/)
+assert.match(lifecycle, /onSuccess\(resultado, acao\)/)
 
 for (const field of [
   'anuncio.titulo',
@@ -100,8 +113,6 @@ assert.match(normalized(detail), /Nenhum local de atendimento informado/)
 for (const forbidden of [
   'Cliques',
   'CTR',
-  'Pausar',
-  'Reativar',
   'Excluir',
   'Story',
   'Performance',

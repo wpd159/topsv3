@@ -28,6 +28,12 @@ export type MeuAnuncioMidia = {
   restrita: boolean
 }
 
+export type MeuAnuncioAcoes = {
+  pausar: boolean
+  reativar: boolean
+  remover: boolean
+}
+
 export type MinhaMidiaGestao = {
   id: string
   tipo: 'FOTO' | 'VIDEO'
@@ -72,7 +78,17 @@ export type MeuAnuncio = {
   capa: MeuAnuncioCapa | null
   midias: MeuAnuncioMidia[]
   atualizadoEm: string | null
+  acoesPermitidas: MeuAnuncioAcoes
   visualizacoes: VisualizacoesCanonicas
+}
+
+export type MeuAnuncioCicloVida = {
+  id: string
+  slug: string
+  status: string
+  statusModeracao: string
+  atualizadoEm: string | null
+  acoesPermitidas: MeuAnuncioAcoes
 }
 
 export type MeuAnuncioAtualizacao = {
@@ -161,14 +177,57 @@ function mapMeuAnuncio(payload: unknown): MeuAnuncio {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
 
-  const raw = payload as Omit<MeuAnuncio, 'visualizacoes'> & { visualizacoes?: unknown }
+  const raw = payload as Omit<MeuAnuncio, 'visualizacoes' | 'acoesPermitidas'> & {
+    acoesPermitidas?: unknown
+    visualizacoes?: unknown
+  }
   try {
     return {
       ...raw,
+      acoesPermitidas: parseAcoesPermitidas(raw.acoesPermitidas),
       visualizacoes: parseVisualizacoesCanonicas(raw.visualizacoes),
     }
   } catch {
     throw new MeusAnunciosApiError('O servico retornou visualizacoes em formato incompativel.', 502)
+  }
+}
+
+function parseAcoesPermitidas(payload: unknown): MeuAnuncioAcoes {
+  if (!payload || typeof payload !== 'object') {
+    throw new MeusAnunciosApiError('O servico retornou acoes em formato incompativel.', 502)
+  }
+  const raw = payload as Partial<MeuAnuncioAcoes>
+  if (
+    typeof raw.pausar !== 'boolean' ||
+    typeof raw.reativar !== 'boolean' ||
+    typeof raw.remover !== 'boolean'
+  ) {
+    throw new MeusAnunciosApiError('O servico retornou acoes em formato incompativel.', 502)
+  }
+  return { pausar: raw.pausar, reativar: raw.reativar, remover: raw.remover }
+}
+
+function mapCicloVida(payload: unknown): MeuAnuncioCicloVida {
+  if (!payload || typeof payload !== 'object') {
+    throw new MeusAnunciosApiError('O servico retornou uma transicao em formato incompativel.', 502)
+  }
+  const raw = payload as Partial<MeuAnuncioCicloVida> & { acoesPermitidas?: unknown }
+  if (
+    typeof raw.id !== 'string' ||
+    typeof raw.slug !== 'string' ||
+    typeof raw.status !== 'string' ||
+    typeof raw.statusModeracao !== 'string' ||
+    (raw.atualizadoEm !== null && typeof raw.atualizadoEm !== 'string')
+  ) {
+    throw new MeusAnunciosApiError('O servico retornou uma transicao em formato incompativel.', 502)
+  }
+  return {
+    id: raw.id,
+    slug: raw.slug,
+    status: raw.status,
+    statusModeracao: raw.statusModeracao,
+    atualizadoEm: raw.atualizadoEm ?? null,
+    acoesPermitidas: parseAcoesPermitidas(raw.acoesPermitidas),
   }
 }
 
@@ -191,6 +250,27 @@ export async function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtual
     body: JSON.stringify(payload),
   })
   return mapMeuAnuncio(resposta)
+}
+
+export async function pausarMeuAnuncio(slug: string) {
+  return mapCicloVida(await request<unknown>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/pausar`,
+    { method: 'POST' }
+  ))
+}
+
+export async function reativarMeuAnuncio(slug: string) {
+  return mapCicloVida(await request<unknown>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/reativar`,
+    { method: 'POST' }
+  ))
+}
+
+export async function removerMeuAnuncio(slug: string) {
+  return mapCicloVida(await request<unknown>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}`,
+    { method: 'DELETE' }
+  ))
 }
 
 export function listarMinhasMidias(slug: string) {

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCapaDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAcoesDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioLocalizacaoDto;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -199,6 +200,7 @@ class PainelAnunciantePerformanceServiceTest {
                 new MeuAnuncioCapaDto("https://midias.example/hml/capa.jpg", false),
                 List.of(),
                 OffsetDateTime.parse("2026-07-01T00:00:00Z"),
+                new MeuAnuncioAcoesDto(true, false, true),
                 visualizacoes);
     }
 
