@@ -158,13 +158,19 @@ assert.ok(!premium.match(/duracaoDias\s*:\s*(1|7|14|30)/), 'Duracoes nao podem s
 for (const action of ['Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usuário', 'Desbloquear anúncio', 'Desbloquear usuário']) {
   assert.ok(detail.includes(action) || list.includes(action), `Acao administrativa ausente: ${action}`)
 }
+const detailHeader = detail.slice(detail.indexOf('<header'), detail.indexOf('</header>') + '</header>'.length)
+for (const action of ['Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usuário', 'Desbloquear anúncio', 'Desbloquear usuário', 'Editar anúncio']) {
+  assert.ok(detailHeader.includes(action), `Acao administrativa deve permanecer no cabecalho: ${action}`)
+}
 assert.ok(list.includes("item.status === 'PAUSADO'") && list.includes("item.statusModeracao === 'APROVADO'") && list.includes("item.anunciante?.status === 'ATIVO'"), 'A fila deve exibir reativacao somente na transicao canonica.')
 assert.ok(detail.includes('LegalActionDialog') && detail.includes('legalBusy'), 'Acoes juridicas devem ter confirmacao e protecao contra duplo clique.')
 assert.ok(detail.includes("isAdmin && canModerateAd"), 'Somente ADMIN com ANUNCIO_MODERAR pode executar intervencao juridica.')
 assert.ok(detail.includes('categoria obrigatória') || detail.includes('Categoria obrigatória'), 'Bloqueio deve exigir categoria.')
 assert.ok(detail.includes('Motivo obrigatório') && detail.includes('Observação interna opcional'), 'Bloqueio deve coletar motivo e observacao interna opcional.')
-assert.ok(detail.includes('ad.bloqueioJuridico') && detail.includes('Situação jurídica'), 'Detalhe protegido deve mostrar estado juridico.')
-assert.ok(detail.includes('item.categoria') && detail.includes('item.observacaoInterna'), 'Historico deve mostrar categoria e observacao juridica.')
+assert.ok(detail.includes('ad.bloqueioJuridico') && detailHeader.includes('ad.status'), 'Cabecalho protegido deve mostrar o estado juridico por meio do status canonico.')
+assert.ok(detailHeader.includes('Ações jurídicas e administrativas') && detailHeader.includes('lg:max-w-[760px]') && detailHeader.includes('flex-wrap'), 'Controles juridicos devem ficar compactos no desktop e quebrar de forma organizada no mobile.')
+assert.ok(!detail.includes('Situação jurídica') && !detail.includes('legal-status-title'), 'O bloco juridico separado nao pode permanecer no corpo.')
+assert.ok(detail.includes('item.categoria') && detail.includes('item.motivo') && detail.includes('item.observacaoInterna') && detail.includes('item.atorId') && detail.includes('item.criadoEm') && detail.includes('item.requestId'), 'Historico deve preservar categoria, motivo, responsavel, data e requestId juridicos.')
 assert.ok(detail.includes('await load()') && !detail.includes('status: \'BLOQUEADO\''), 'Interface juridica deve atualizar somente apos resposta do backend.')
 
 assert.ok(story.includes('Colocar nos Stories') && story.includes('Remover dos Stories'), 'A acao de Story administrativo deve existir.')
