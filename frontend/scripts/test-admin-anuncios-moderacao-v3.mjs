@@ -36,6 +36,7 @@ assert.ok(legacyListPage.includes("redirect('/admin/anuncios')"), 'A rota antiga
 assert.ok(legacyDetailPage.includes('`/admin/anuncios/${encodeURIComponent(anuncioId)}`'), 'O detalhe antigo deve redirecionar para o detalhe canonico.')
 assert.ok(sidebar.includes("href: '/admin/anuncios'"), 'A sidebar deve abrir a area canonica.')
 assert.ok(!sidebar.includes("href: '/admin/moderacao-v2'"), 'A sidebar nao pode abrir a V2.')
+assert.ok(!sidebar.includes("href: '/admin/stories'") && !sidebar.includes('Stories administrativos'), 'A sidebar nao deve exibir o atalho de Stories administrativos.')
 
 for (const contract of [
   "request(`/anuncios?${query.toString()}`)",
