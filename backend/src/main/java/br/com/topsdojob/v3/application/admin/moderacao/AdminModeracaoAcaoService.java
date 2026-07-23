@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequ
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -266,6 +267,95 @@ public class AdminModeracaoAcaoService {
     }
 
     @Transactional
+    public AdminAcaoModeracaoResponseDto reclassificarMidia(
+            UUID id,
+            AdminReclassificarMidiaRequestDto request,
+            AdminUserPrincipal actor,
+            String requestId) {
+        validarAtor(actor);
+        VisibilidadeMidia novaVisibilidade = request == null ? null : request.visibilidadeMidia();
+        if (novaVisibilidade == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "visibilidade obrigatoria");
+        }
+        String motivo = motivoSeguroObrigatorio(
+                request.motivo(),
+                null,
+                "motivo obrigatorio para reclassificar midia");
+        AnuncioMidiaEntity midia = anuncioMidiaRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
+        if (midia.getTipo() == TipoAnuncioMidia.STORY) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "story nao participa da moderacao de midia");
+        }
+        if (midia.getTipo() == TipoAnuncioMidia.VIDEO) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "video exige visibilidade RESTRITA_18");
+        }
+        if (midia.getStatus() != StatusAnuncioMidia.PUBLICAVEL) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "somente foto finalizada pode ser reclassificada");
+        }
+        if (midia.getVisibilidadeMidia() == novaVisibilidade) {
+            return new AdminAcaoModeracaoResponseDto(
+                    UUID.randomUUID(),
+                    "ANUNCIO_MIDIA",
+                    midia.getId(),
+                    "RECLASSIFICAR",
+                    midia.getStatus().name(),
+                    novaVisibilidade.name(),
+                    false,
+                    false,
+                    false,
+                    requestId,
+                    OffsetDateTime.now(),
+                    "classificacao ja estava aplicada");
+        }
+        if (documentoUsuarioRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(
+                midia.getArquivoMidiaId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "arquivo privado nao moderavel como midia publica");
+        }
+
+        ArquivoMidiaEntity arquivo = arquivoMidiaRepository.findByIdForUpdate(midia.getArquivoMidiaId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
+        if (arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "arquivo da foto nao esta validado");
+        }
+        if (novaVisibilidade == VisibilidadeMidia.LIVRE) {
+            garantirDerivadoMarcado(arquivo);
+        }
+
+        OffsetDateTime agora = OffsetDateTime.now();
+        String antes = snapshotMidia(midia, arquivo, null, motivo);
+        midiaStorageAprovacaoService.prepararReclassificacao(
+                arquivo,
+                midia.getVisibilidadeMidia(),
+                novaVisibilidade);
+        midia.aplicarDecisao(StatusAnuncioMidia.PUBLICAVEL, novaVisibilidade, agora);
+        String depois = snapshotMidia(midia, arquivo, null, motivo);
+        auditoriaRepository.save(AuditoriaEventoEntity.registrar(
+                UUID.randomUUID(),
+                actor.usuarioId(),
+                "MODERACAO_MIDIA_RECLASSIFICAR",
+                "ANUNCIO_MIDIA",
+                midia.getId(),
+                antes,
+                depois,
+                requestId,
+                agora));
+
+        return new AdminAcaoModeracaoResponseDto(
+                UUID.randomUUID(),
+                "ANUNCIO_MIDIA",
+                midia.getId(),
+                "RECLASSIFICAR",
+                midia.getStatus().name(),
+                novaVisibilidade.name(),
+                true,
+                false,
+                false,
+                requestId,
+                agora,
+                "foto reclassificada com storage reconciliado");
+    }
+
+    @Transactional
     public AdminAcaoModeracaoResponseDto remeterAnuncioParaRevisao(
             UUID id,
             AdminRemeterRevisaoRequestDto request,
@@ -416,6 +506,10 @@ public class AdminModeracaoAcaoService {
                 || !"R2".equals(arquivo.getStorageProvider())) {
             return;
         }
+        garantirDerivadoMarcado(arquivo);
+    }
+
+    private void garantirDerivadoMarcado(ArquivoMidiaEntity arquivo) {
         if (arquivo.getPipelineVersao() == null
                 || arquivo.getPipelineVersao() < 1
                 || arquivo.getMarcaDaguaVersao() == null

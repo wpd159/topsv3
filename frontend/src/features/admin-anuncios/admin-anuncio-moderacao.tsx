@@ -37,6 +37,7 @@ import {
   getAdminMediaPreview,
   listAdminAdHistory,
   listAdminAdMedia,
+  reclassifyAdminMedia,
   submitAdminReview,
 } from './api'
 import { adminAdQueueDetailHref, adminAdQueueListHref, parseAdminAdQueueContext } from './queue-context'
@@ -46,6 +47,7 @@ type DecisionIntent =
   | { kind: 'OPEN_REVIEW'; title: string; requiresReason: true }
   | { kind: 'REVIEW'; title: string; action: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE'; requiresReason: boolean }
   | { kind: 'MEDIA'; title: string; media: AdminMediaItem; action: 'APROVAR' | 'REPROVAR'; visibility?: 'LIVRE' | 'RESTRITA_18'; requiresReason: boolean }
+  | { kind: 'RECLASSIFY'; title: string; media: AdminMediaItem; visibility: 'LIVRE' | 'RESTRITA_18'; requiresReason: true }
 
 function formatDate(value?: string | null) {
   if (!value) return 'Não informado'
@@ -129,7 +131,7 @@ function MediaVisibilitySelector({
 }) {
   return (
     <fieldset className="mt-4" disabled={disabled}>
-      <legend className="text-xs font-semibold text-zinc-700">Classificação na aprovação</legend>
+      <legend className="text-xs font-semibold text-zinc-700">Classificação individual</legend>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {(['LIVRE', 'RESTRITA_18'] as const).map((option) => {
           const id = `visibility-${mediaId}-${option}`
@@ -183,8 +185,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       setHistory(historyResponse)
       setPermissions(sessionPermissions)
       setRoles(session?.papeis ?? [])
-      setVisibility((current) => {
-        const next = { ...current }
+      setVisibility(() => {
+        const next: Record<string, 'LIVRE' | 'RESTRITA_18'> = {}
         mediaResponse?.itens.forEach((item) => { if (item.tipo === 'FOTO' && item.visibilidadeMidia) next[item.id] = item.visibilidadeMidia })
         return next
       })
@@ -216,6 +218,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const canModerateMedia = permissions.includes('MIDIA_REVISAR')
   const canReadDocuments = permissions.includes('DOCUMENTO_REVISAR')
   const canManagePremium = isAdmin && permissions.includes('PREMIUM_GERENCIAR')
+  const canReclassifyMedia = isAdmin && canModerateMedia
   const canReadHistory = canModerateAd || canModerateMedia
   const actionableMedia = useMemo(() => new Set(['PENDENTE', 'AJUSTE_SOLICITADO']), [])
 
@@ -229,10 +232,22 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
         setDecisionFinished(true)
-      } else await decideAdminMedia(intent.media.id, intent.action, intent.visibility, reason)
+      } else if (intent.kind === 'MEDIA') {
+        await decideAdminMedia(intent.media.id, intent.action, intent.visibility, reason)
+      } else {
+        await reclassifyAdminMedia(intent.media.id, intent.visibility, reason)
+      }
       setIntent(null)
       setReload((value) => value + 1)
     } catch (reasonError) {
+      if (intent.kind === 'MEDIA' || intent.kind === 'RECLASSIFY') {
+        setVisibility((current) => {
+          const next = { ...current }
+          if (intent.media.visibilidadeMidia) next[intent.media.id] = intent.media.visibilidadeMidia
+          else delete next[intent.media.id]
+          return next
+        })
+      }
       setActionError(reasonError)
     } finally {
       setBusy(false)
@@ -333,6 +348,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {media.map((item) => {
                 const actionable = actionableMedia.has(item.status)
+                const reclassifiable = item.tipo === 'FOTO' && item.status === 'PUBLICAVEL'
                 const selectedVisibility = item.tipo === 'VIDEO' ? 'RESTRITA_18' : visibility[item.id]
                 return (
                   <article key={item.id} className="overflow-hidden rounded-md border border-zinc-200 bg-white">
@@ -354,15 +370,31 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                         <MediaVisibilitySelector
                           mediaId={item.id}
                           value={selectedVisibility}
-                          disabled={!actionable || busy}
+                          disabled={(!actionable && !(reclassifiable && canReclassifyMedia)) || busy}
                           onChange={(value) => setVisibility((current) => ({ ...current, [item.id]: value }))}
                         />
                       )}
                       {actionable ? (
                         <div className="mt-4 grid grid-cols-2 gap-2">
-                          <Button type="button" size="sm" disabled={!selectedVisibility || busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Aprovar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'APROVAR', visibility: selectedVisibility, requiresReason: false })}>Aprovar</Button>
+                          <Button type="button" size="sm" disabled={!selectedVisibility || busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Aplicar e aprovar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'APROVAR', visibility: selectedVisibility, requiresReason: false })}>Aplicar e aprovar</Button>
                           <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Rejeitar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'REPROVAR', requiresReason: true })}>Rejeitar</Button>
                         </div>
+                      ) : reclassifiable && canReclassifyMedia ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="mt-4 w-full"
+                          disabled={busy || !selectedVisibility || selectedVisibility === item.visibilidadeMidia}
+                          onClick={() => selectedVisibility && setIntent({
+                            kind: 'RECLASSIFY',
+                            title: 'Aplicar nova classificação',
+                            media: item,
+                            visibility: selectedVisibility,
+                            requiresReason: true,
+                          })}
+                        >
+                          Aplicar classificação
+                        </Button>
                       ) : null}
                     </div>
                   </article>

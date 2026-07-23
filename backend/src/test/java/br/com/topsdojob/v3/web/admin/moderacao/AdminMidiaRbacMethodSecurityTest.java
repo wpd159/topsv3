@@ -59,6 +59,20 @@ class AdminMidiaRbacMethodSecurityTest {
     }
 
     @Test
+    void somenteAdminComMidiaRevisarPodeReclassificarFotoFinalizada() {
+        autenticar("ROLE_ADMIN", "MIDIA_REVISAR");
+
+        controller.reclassificarMidia(UUID.randomUUID(), null, null, new MockHttpServletRequest());
+
+        verify(service).reclassificarMidia(any(), any(), any(), any());
+
+        autenticar("ROLE_MODERADOR", "MIDIA_REVISAR");
+        assertThatThrownBy(() -> controller.reclassificarMidia(
+                UUID.randomUUID(), null, null, new MockHttpServletRequest()))
+                .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
+    @Test
     void usuarioComumSemMidiaRevisarEhNegado() {
         autenticar("ROLE_USUARIO");
 

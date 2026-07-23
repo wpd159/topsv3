@@ -70,7 +70,15 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         and m.status = 'MAPEADO'
                     ) legado on legado.anuncio_id = a.id
                     where a.removido_em is null
-                      and (cast(:statusModeracao as text) is null or a.status_moderacao = :statusModeracao)
+                      and (
+                        :situacao = 'TODOS'
+                        or (:situacao = 'PENDENTES_MODERACAO'
+                            and a.status = 'PENDENTE_REVISAO'
+                            and a.status_moderacao = 'PENDENTE')
+                        or (:situacao = 'PAUSADOS' and a.status = 'PAUSADO')
+                        or (:situacao = 'REJEITADOS'
+                            and (a.status = 'REJEITADO' or a.status_moderacao = 'REJEITADO'))
+                      )
                       and (:filtrarLocalizacao = false or a.id in (:anuncioIdsLocalizacao))
                       and (
                         cast(:termo as text) is null
@@ -105,7 +113,15 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                     select count(*)
                     from anuncio a
                     where a.removido_em is null
-                      and (cast(:statusModeracao as text) is null or a.status_moderacao = :statusModeracao)
+                      and (
+                        :situacao = 'TODOS'
+                        or (:situacao = 'PENDENTES_MODERACAO'
+                            and a.status = 'PENDENTE_REVISAO'
+                            and a.status_moderacao = 'PENDENTE')
+                        or (:situacao = 'PAUSADOS' and a.status = 'PAUSADO')
+                        or (:situacao = 'REJEITADOS'
+                            and (a.status = 'REJEITADO' or a.status_moderacao = 'REJEITADO'))
+                      )
                       and (:filtrarLocalizacao = false or a.id in (:anuncioIdsLocalizacao))
                       and (
                         cast(:termo as text) is null
@@ -115,7 +131,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                     """,
             nativeQuery = true)
     Page<AnuncioEntity> findFilaAdministrativa(
-            @Param("statusModeracao") String statusModeracao,
+            @Param("situacao") String situacao,
             @Param("filtrarLocalizacao") boolean filtrarLocalizacao,
             @Param("anuncioIdsLocalizacao") Collection<UUID> anuncioIdsLocalizacao,
             @Param("termo") String termo,

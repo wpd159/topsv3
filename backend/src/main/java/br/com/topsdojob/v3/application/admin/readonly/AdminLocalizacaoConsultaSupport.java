@@ -1,6 +1,8 @@
 package br.com.topsdojob.v3.application.admin.readonly;
 
+import br.com.topsdojob.v3.application.anuncio.AnuncioAtualizacaoCanonicaValidator;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalizacaoSanitizadaDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalidadeFiltroDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
@@ -18,7 +20,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 @Component
 class AdminLocalizacaoConsultaSupport {
@@ -27,16 +31,19 @@ class AdminLocalizacaoConsultaSupport {
     private final EstadoRepository estadoRepository;
     private final CidadeRepository cidadeRepository;
     private final BairroRepository bairroRepository;
+    private final AnuncioAtualizacaoCanonicaValidator validator;
 
     AdminLocalizacaoConsultaSupport(
             AnuncioLocalizacaoRepository localizacaoRepository,
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
-            BairroRepository bairroRepository) {
+            BairroRepository bairroRepository,
+            AnuncioAtualizacaoCanonicaValidator validator) {
         this.localizacaoRepository = localizacaoRepository;
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
+        this.validator = validator;
     }
 
     Map<UUID, AdminLocalizacaoSanitizadaDto> carregar(Collection<UUID> anuncioIds) {
@@ -83,6 +90,12 @@ class AdminLocalizacaoConsultaSupport {
         if (!temUf && !temCidade && !temBairro) {
             return null;
         }
+        if (temCidade && !temUf) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "cidade exige UF");
+        }
+        if (temBairro && !temCidade) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bairro exige cidade");
+        }
 
         Set<UUID> cidadeIds = new HashSet<>();
         Set<UUID> bairroIds = new HashSet<>();
@@ -96,11 +109,12 @@ class AdminLocalizacaoConsultaSupport {
         }
 
         if (temCidade) {
+            String cidadeCanonica = validator.slugify(cidadeSlug.trim());
             if (estadoId != null) {
-                cidadeRepository.findByEstadoIdAndSlug(estadoId, cidadeSlug.trim()).map(CidadeEntity::getId)
+                cidadeRepository.findByEstadoIdAndSlug(estadoId, cidadeCanonica).map(CidadeEntity::getId)
                         .ifPresent(cidadeIds::add);
             } else {
-                cidadeRepository.findBySlug(cidadeSlug.trim()).stream().map(CidadeEntity::getId).forEach(cidadeIds::add);
+                cidadeRepository.findBySlug(cidadeCanonica).stream().map(CidadeEntity::getId).forEach(cidadeIds::add);
             }
             if (cidadeIds.isEmpty()) {
                 return Set.of();
@@ -108,13 +122,14 @@ class AdminLocalizacaoConsultaSupport {
         }
 
         if (temBairro) {
+            String bairroCanonico = validator.slugify(bairroSlug.trim());
             if (!cidadeIds.isEmpty()) {
                 for (UUID cidadeId : cidadeIds) {
-                    bairroRepository.findByCidadeIdAndSlug(cidadeId, bairroSlug.trim()).map(BairroEntity::getId)
+                    bairroRepository.findByCidadeIdAndSlug(cidadeId, bairroCanonico).map(BairroEntity::getId)
                             .ifPresent(bairroIds::add);
                 }
             } else {
-                bairroRepository.findBySlug(bairroSlug.trim()).stream().map(BairroEntity::getId).forEach(bairroIds::add);
+                bairroRepository.findBySlug(bairroCanonico).stream().map(BairroEntity::getId).forEach(bairroIds::add);
             }
             if (bairroIds.isEmpty()) {
                 return Set.of();
@@ -137,6 +152,18 @@ class AdminLocalizacaoConsultaSupport {
         Set<UUID> ids = new HashSet<>();
         localizacoes.forEach(localizacao -> ids.add(localizacao.getAnuncioId()));
         return ids;
+    }
+
+    List<AdminLocalidadeFiltroDto> localidadesFiltro() {
+        return localizacaoRepository.findLocalidadesDaFilaAdministrativa().stream()
+                .map(item -> new AdminLocalidadeFiltroDto(
+                        item.getUf(),
+                        item.getEstado(),
+                        item.getCidade(),
+                        item.getCidadeSlug(),
+                        item.getBairro(),
+                        item.getBairroSlug()))
+                .toList();
     }
 
     private boolean hasText(String value) {

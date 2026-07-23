@@ -13,6 +13,7 @@ import type {
   AdminAdListItem,
   AdminAdQueueNavigation,
   AdminAdUpdate,
+  AdminFilterLocation,
   AdminKycSubmission,
   AdminKycTemporaryUrl,
   AdminMediaItem,
@@ -101,6 +102,10 @@ export async function listAdminAds(filters: AdminAdFilters) {
     query.set(name, String(value).trim())
   })
   return pagePayload<AdminAdListItem>(await request(`/anuncios?${query.toString()}`))
+}
+
+export async function listAdminAdFilterLocations() {
+  return requireArrayPayload<AdminFilterLocation>(await request('/anuncios/filtros/localidades'))
 }
 
 export function getAdminAd(id: string) {
@@ -270,5 +275,16 @@ export function decideAdminMedia(
       visibilidadeMidia,
       motivo: motivo?.trim() || undefined,
     }),
+  })
+}
+
+export function reclassifyAdminMedia(
+  mediaId: string,
+  visibilidadeMidia: 'LIVRE' | 'RESTRITA_18',
+  motivo: string,
+) {
+  return request<AdminModerationActionResponse>(`/midias/${encodeURIComponent(mediaId)}/reclassificar`, {
+    method: 'POST',
+    body: JSON.stringify({ visibilidadeMidia, motivo: motivo.trim() }),
   })
 }

@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.admin.moderacao;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -25,6 +26,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class MidiaStorageAprovacaoServiceTest {
 
@@ -121,10 +123,114 @@ class MidiaStorageAprovacaoServiceTest {
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
     }
 
+    @Test
+    void fotoPublicaEhMovidaParaPrivadaAntesDoCommitDaRestricao() {
+        String publicObjectPath = "hml/midias-aprovadas/anuncios/a/foto.jpg";
+        String restrictedObjectPath = "hml/midias-pendentes/anuncios/a/foto.jpg";
+        ArquivoMidiaEntity arquivo = arquivoPublico(publicObjectPath);
+        StoredObject object = new StoredObject(new byte[] {4, 5, 6}, "image/jpeg");
+        when(storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath)).thenReturn(object);
+        when(storage.get(StorageArea.PRIVATE_MEDIA, restrictedObjectPath)).thenReturn(object);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.prepararReclassificacao(arquivo, VisibilidadeMidia.LIVRE, VisibilidadeMidia.RESTRITA_18);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        assertThat(arquivo.getBucket()).isEqualTo("privadas");
+        assertThat(arquivo.getChaveObjeto()).isEqualTo(restrictedObjectPath);
+        verify(storage).putIfAbsent(StorageArea.PRIVATE_MEDIA, restrictedObjectPath, object.content(), object.contentType());
+        verify(storage).delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+        verify(storage, never()).delete(StorageArea.PRIVATE_MEDIA, restrictedObjectPath);
+    }
+
+    @Test
+    void rollbackDaRestricaoRestauraPublicaERemovePrivadaCriada() {
+        String publicObjectPath = "hml/midias-aprovadas/anuncios/a/foto.jpg";
+        String restrictedObjectPath = "hml/midias-pendentes/anuncios/a/foto.jpg";
+        ArquivoMidiaEntity arquivo = arquivoPublico(publicObjectPath);
+        StoredObject object = new StoredObject(new byte[] {7, 8, 9}, "image/jpeg");
+        when(storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath)).thenReturn(object);
+        when(storage.get(StorageArea.PRIVATE_MEDIA, restrictedObjectPath)).thenReturn(object);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.prepararReclassificacao(arquivo, VisibilidadeMidia.LIVRE, VisibilidadeMidia.RESTRITA_18);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(storage).putIfAbsent(StorageArea.PUBLIC_MEDIA, publicObjectPath, object.content(), object.contentType());
+        verify(storage).delete(StorageArea.PRIVATE_MEDIA, restrictedObjectPath);
+    }
+
+    @Test
+    void falhaAoRetirarObjetoPublicoJaPossuiCompensacaoRegistrada() {
+        String publicObjectPath = "hml/midias-aprovadas/anuncios/a/foto.jpg";
+        String restrictedObjectPath = "hml/midias-pendentes/anuncios/a/foto.jpg";
+        ArquivoMidiaEntity arquivo = arquivoPublico(publicObjectPath);
+        StoredObject object = new StoredObject(new byte[] {9, 8, 7}, "image/jpeg");
+        when(storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath)).thenReturn(object);
+        when(storage.get(StorageArea.PRIVATE_MEDIA, restrictedObjectPath)).thenReturn(object);
+        doThrow(new IllegalStateException("falha sintetica de delete"))
+                .when(storage).delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.prepararReclassificacao(
+                    arquivo,
+                    VisibilidadeMidia.LIVRE,
+                    VisibilidadeMidia.RESTRITA_18))
+                    .isInstanceOf(IllegalStateException.class);
+            assertThat(TransactionSynchronizationManager.getSynchronizations()).hasSize(1)
+                    .allSatisfy(item -> item.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(storage).putIfAbsent(StorageArea.PUBLIC_MEDIA, publicObjectPath, object.content(), object.contentType());
+        verify(storage).delete(StorageArea.PRIVATE_MEDIA, restrictedObjectPath);
+    }
+
+    @Test
+    void reclassificacaoRestritaParaLivreReutilizaPromocaoCanonica() {
+        String restrictedObjectPath = "hml/midias-pendentes/anuncios/a/foto.jpg";
+        String publicObjectPath = "hml/midias-aprovadas/anuncios/a/foto.jpg";
+        ArquivoMidiaEntity arquivo = arquivoPrivado(restrictedObjectPath);
+        StoredObject object = new StoredObject(new byte[] {1, 3, 5}, "image/jpeg");
+        when(storage.get(StorageArea.PRIVATE_MEDIA, restrictedObjectPath)).thenReturn(object);
+        when(storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath)).thenReturn(object);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.prepararReclassificacao(arquivo, VisibilidadeMidia.RESTRITA_18, VisibilidadeMidia.LIVRE);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        assertThat(arquivo.getBucket()).isEqualTo("publicas");
+        assertThat(arquivo.getChaveObjeto()).isEqualTo(publicObjectPath);
+        verify(storage).delete(StorageArea.PRIVATE_MEDIA, restrictedObjectPath);
+    }
+
     private ArquivoMidiaEntity arquivoPrivado(String key) {
         return ArquivoMidiaEntity.criarUploadPendente(
                 UUID.randomUUID(), "R2", "privadas", key, "arquivo", "image/jpeg",
                 3, 1, 1, null, "a".repeat(64), OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    private ArquivoMidiaEntity arquivoPublico(String key) {
+        ArquivoMidiaEntity arquivo = arquivoPrivado(key);
+        ReflectionTestUtils.setField(arquivo, "bucket", "publicas");
+        return arquivo;
     }
 
     private R2StorageProperties properties() {

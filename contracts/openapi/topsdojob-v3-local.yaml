@@ -1559,7 +1559,7 @@ paths:
   /api/admin/anuncios:
     get:
       summary: Lista administrativa local de anuncios
-      description: Retorna pagina sanitizada de anuncios com proprietario mascarado e revisao aberta, somente para ADMIN ou MODERADOR com ANUNCIO_LER. Nao retorna documento privado, e-mail integral, storage ou payload.
+      description: Retorna pagina protegida e no-store com nome civil, e-mail e WhatsApp integrais do proprietario, somente para ADMIN ou MODERADOR com ANUNCIO_LER. Nao retorna CPF, documento privado, storage ou payload e nao integra contratos publicos.
       operationId: getAdminAnuncios
       security:
         - AdminSessionCookie: []
@@ -1573,11 +1573,13 @@ paths:
             type: integer
             enum: [20, 30, 50, 100]
             default: 30
-        - name: statusModeracao
+        - name: situacao
           in: query
           required: false
           schema:
             type: string
+            enum: [TODOS, PENDENTES_MODERACAO, PAUSADOS, REJEITADOS, BLOQUEADOS]
+            default: PENDENTES_MODERACAO
         - name: uf
           in: query
           required: false
@@ -1617,6 +1619,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminPaginaAnuncios"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Situacao sem estado canonico vigente
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/filtros/localidades:
+    get:
+      summary: Localidades dependentes da fila administrativa
+      description: Retorna somente localidades canonicas vinculadas a anuncios nao removidos. Resposta protegida e no-store para ADMIN ou MODERADOR com ANUNCIO_LER.
+      operationId: getAdminAnunciosLocalidadesFiltro
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: localidades canonicas para os selects dependentes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminLocalidadeFiltro"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -3299,6 +3327,46 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/midias/{id}/reclassificar:
+    post:
+      summary: Reclassifica foto administrativa finalizada
+      description: Operacao propria e auditada, restrita a ADMIN com MIDIA_REVISAR. Move o mesmo derivado marcado entre storage publico e privado com compensacao; nao cria outra midia logica. Video e Story retornam 409.
+      operationId: postAdminMidiaReclassificar
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminReclassificarMidiaRequest"
+      responses:
+        "200":
+          description: classificacao aplicada ou retry idempotente reconciliado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAcaoModeracaoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          description: armazenamento indisponivel
   /api/admin/moderacao/revisoes:
     get:
       summary: Lista administrativa local de revisoes
@@ -5122,9 +5190,28 @@ components:
             - string
             - "null"
           description: Regiao canonica do endereco; nao contem coordenadas nem chave de storage.
+    AdminLocalidadeFiltro:
+      type: object
+      additionalProperties: false
+      required: [uf, estado, cidade, cidadeSlug]
+      properties:
+        uf:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        estado:
+          type: string
+        cidade:
+          type: string
+        cidadeSlug:
+          type: string
+        bairro:
+          type: [string, "null"]
+        bairroSlug:
+          type: [string, "null"]
     AdminAnuncianteResumo:
       type: object
       additionalProperties: false
+      description: Identificacao integral exclusiva da fila administrativa protegida e no-store. Nao inclui CPF e nao integra APIs publicas.
       properties:
         id:
           type: string
@@ -5133,11 +5220,14 @@ components:
           type:
             - string
             - "null"
-        emailMascarado:
-          type:
-            - string
-            - "null"
-          description: Identificador visual mascarado; nunca retorna o e-mail integral.
+        nomeCivil:
+          type: [string, "null"]
+        email:
+          type: [string, "null"]
+          format: email
+        whatsapp:
+          type: [string, "null"]
+          pattern: '^\+[1-9][0-9]{7,14}$'
         status:
           type:
             - string
@@ -5248,6 +5338,11 @@ components:
           type: array
           items:
             type: string
+        beneficiosPremium:
+          type: array
+          description: Estados calculados em lote para acoes rapidas; expirado ou revogado nunca e marcado como ativo.
+          items:
+            $ref: "#/components/schemas/AdminPremiumFilaItem"
         visualizacoes:
           $ref: "#/components/schemas/VisualizacoesCanonicas"
         cliquesWhatsapp:
@@ -5262,6 +5357,26 @@ components:
           anyOf:
             - $ref: "#/components/schemas/AdminRevisaoAberta"
             - type: "null"
+    AdminPremiumFilaItem:
+      type: object
+      additionalProperties: false
+      required: [ativacaoId, codigo, nome, status]
+      properties:
+        ativacaoId:
+          type: string
+          format: uuid
+        codigo:
+          type: string
+        nome:
+          type: string
+        status:
+          type: string
+        inicioEm:
+          type: [string, "null"]
+          format: date-time
+        fimEm:
+          type: [string, "null"]
+          format: date-time
     AdminAnuncioDetalhe:
       type: object
       additionalProperties: false
@@ -6737,6 +6852,18 @@ components:
             - string
             - "null"
           description: Reservado para idempotencia futura. Nesta fase local nao deduplica, nao garante reprocessamento seguro e nao deve ser usado como contrato de idempotencia.
+    AdminReclassificarMidiaRequest:
+      type: object
+      description: Estado desejado de uma foto PUBLICAVEL. Retry do mesmo estado nao move storage nem duplica auditoria. Video e Story retornam 409.
+      additionalProperties: false
+      required: [visibilidadeMidia, motivo]
+      properties:
+        visibilidadeMidia:
+          $ref: "#/components/schemas/VisibilidadeMidia"
+        motivo:
+          type: string
+          minLength: 1
+          maxLength: 240
     AdminRemeterRevisaoRequest:
       type: object
       additionalProperties: false
@@ -6774,7 +6901,8 @@ components:
           type: string
           format: uuid
         decisao:
-          $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
+          type: string
+          enum: [APROVAR, REPROVAR, SOLICITAR_AJUSTE, REMETER_REVISAO, RECLASSIFICAR]
         status:
           type: string
         visibilidadeMidia:

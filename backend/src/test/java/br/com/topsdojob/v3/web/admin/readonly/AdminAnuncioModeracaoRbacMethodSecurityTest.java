@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
+import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioOrdenacao;
+import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioSituacao;
 import br.com.topsdojob.v3.web.admin.anuncio.AdminAnuncioAtualizacaoController;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Arrays;
@@ -56,6 +58,54 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
 
         verify(service).detalhar(id, false);
         assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+    }
+
+    @Test
+    void filaELocalidadesSaoProtegidasENoStore() {
+        autenticar("ROLE_ADMIN", "ANUNCIO_LER");
+
+        var fila = controller.listar(
+                0,
+                30,
+                AdminAnuncioSituacao.TODOS,
+                null,
+                null,
+                null,
+                null,
+                AdminAnuncioOrdenacao.MAIS_RECENTES);
+        var localidades = controller.localidadesFiltro();
+
+        verify(service).listar(
+                0,
+                30,
+                AdminAnuncioSituacao.TODOS,
+                null,
+                null,
+                null,
+                null,
+                AdminAnuncioOrdenacao.MAIS_RECENTES,
+                false);
+        verify(service).localidadesFiltro();
+        assertThat(fila.getHeaders().getCacheControl()).contains("no-store");
+        assertThat(localidades.getHeaders().getCacheControl()).contains("no-store");
+    }
+
+    @Test
+    void usuarioNaoAcessaFilaNemCatalogoDeLocalidades() {
+        autenticar("ROLE_USUARIO", "ANUNCIO_LER");
+
+        assertThatThrownBy(() -> controller.listar(
+                0,
+                30,
+                AdminAnuncioSituacao.TODOS,
+                null,
+                null,
+                null,
+                null,
+                AdminAnuncioOrdenacao.MAIS_RECENTES))
+                .isInstanceOf(AuthorizationDeniedException.class);
+        assertThatThrownBy(() -> controller.localidadesFiltro())
+                .isInstanceOf(AuthorizationDeniedException.class);
     }
 
     @Test

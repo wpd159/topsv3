@@ -17,8 +17,19 @@ export type AdminLocation = {
 export type AdminAdvertiserSummary = {
   id: string
   nome?: string | null
-  emailMascarado?: string | null
+  nomeCivil?: string | null
+  email?: string | null
+  whatsapp?: string | null
   status?: string | null
+}
+
+export type AdminFilterLocation = {
+  uf: string
+  estado: string
+  cidade: string
+  cidadeSlug: string
+  bairro?: string | null
+  bairroSlug?: string | null
 }
 
 export type AdminAdvertiserDetail = {
@@ -60,10 +71,20 @@ export type AdminAdListItem = {
   documentoPendente: boolean
   comercialLimitado: boolean
   beneficiosPremiumVigentes: string[]
+  beneficiosPremium: AdminQueuePremiumBenefit[]
   visualizacoes: AdminCanonicalViews
   cliquesWhatsapp: number
   anunciante?: AdminAdvertiserSummary | null
   revisaoAberta?: AdminOpenReview | null
+}
+
+export type AdminQueuePremiumBenefit = {
+  ativacaoId: string
+  codigo: string
+  nome: string
+  status: string
+  inicioEm?: string | null
+  fimEm?: string | null
 }
 
 export type AdminAdMetrics = {
@@ -244,13 +265,20 @@ export type AdminModerationActionResponse = {
 export type AdminAdFilters = {
   page: number
   size: number
-  statusModeracao?: string
+  situacao: AdminAdSituation
   ordenacao: string
   uf?: string
   cidade?: string
   bairro?: string
   termo?: string
 }
+
+export type AdminAdSituation =
+  | 'TODOS'
+  | 'PENDENTES_MODERACAO'
+  | 'PAUSADOS'
+  | 'REJEITADOS'
+  | 'BLOQUEADOS'
 
 export type AdminAdQueueTarget = {
   id: string

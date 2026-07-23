@@ -22,6 +22,7 @@ public record AdminAnuncioListaItemDto(
         boolean documentoPendente,
         boolean comercialLimitado,
         List<String> beneficiosPremiumVigentes,
+        List<AdminPremiumFilaItemDto> beneficiosPremium,
         VisualizacoesCanonicasDto visualizacoes,
         long cliquesWhatsapp,
         AdminAnuncianteResumoDto anunciante,

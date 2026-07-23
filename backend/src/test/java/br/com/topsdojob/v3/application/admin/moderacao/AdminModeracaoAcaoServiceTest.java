@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -213,6 +214,64 @@ class AdminModeracaoAcaoServiceTest {
         verify(storageAprovacaoService).prepararAprovacao(fixture.arquivo(), VisibilidadeMidia.LIVRE);
     }
 
+    @Test
+    void fotoFinalizadaPodeSerReclassificadaSemCriarOutraMidiaLogica() {
+        Fixture fixture = fixtureFinalizada(VisibilidadeMidia.LIVRE);
+
+        var response = reclassificar(fixture.id(), VisibilidadeMidia.RESTRITA_18, "classificacao administrativa");
+
+        assertThat(response.visibilidadeMidia()).isEqualTo("RESTRITA_18");
+        assertThat(response.auditoriaRegistrada()).isTrue();
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+        assertThat(fixture.midia().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
+        verify(storageAprovacaoService).prepararReclassificacao(
+                fixture.arquivo(), VisibilidadeMidia.LIVRE, VisibilidadeMidia.RESTRITA_18);
+        verify(auditoriaRepository).save(any());
+    }
+
+    @Test
+    void promocaoDeFotoFinalizadaExigeDerivadoMarcado() {
+        Fixture fixture = fixtureFinalizada(VisibilidadeMidia.RESTRITA_18);
+
+        assertThatThrownBy(() -> reclassificar(fixture.id(), VisibilidadeMidia.LIVRE, "liberacao administrativa"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("derivado marcado");
+
+        fixture.arquivo().registrarProcessamento(
+                1,
+                "watermark-v1",
+                OffsetDateTime.parse("2026-07-22T12:00:00Z"),
+                "b".repeat(64));
+        reclassificar(fixture.id(), VisibilidadeMidia.LIVRE, "liberacao administrativa");
+
+        verify(storageAprovacaoService).prepararReclassificacao(
+                fixture.arquivo(), VisibilidadeMidia.RESTRITA_18, VisibilidadeMidia.LIVRE);
+    }
+
+    @Test
+    void retryDoMesmoEstadoEhIdempotenteSemNovaAuditoriaOuStorage() {
+        Fixture fixture = fixtureFinalizada(VisibilidadeMidia.LIVRE);
+
+        var response = reclassificar(fixture.id(), VisibilidadeMidia.LIVRE, "retry da classificacao");
+
+        assertThat(response.auditoriaRegistrada()).isFalse();
+        assertThat(response.mensagem()).contains("ja estava aplicada");
+        verify(storageAprovacaoService, never()).prepararReclassificacao(any(), any(), any());
+        verify(auditoriaRepository, never()).save(any());
+    }
+
+    @Test
+    void videoNuncaParticipaDaReclassificacao() {
+        Fixture fixture = fixture(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.RESTRITA_18);
+        ReflectionTestUtils.setField(fixture.midia(), "status", StatusAnuncioMidia.PUBLICAVEL);
+
+        assertThatThrownBy(() -> reclassificar(fixture.id(), VisibilidadeMidia.LIVRE, "tentativa invalida"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("video exige");
+    }
+
     private br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto decidir(
             UUID id,
             AdminDecisaoModeracaoAcao decisao,
@@ -223,6 +282,17 @@ class AdminModeracaoAcaoServiceTest {
                 new AdminDecidirMidiaRequestDto(decisao, visibilidade, motivo, null, null),
                 principal(),
                 "req-local-123456");
+    }
+
+    private br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto reclassificar(
+            UUID id,
+            VisibilidadeMidia visibilidade,
+            String motivo) {
+        return service.reclassificarMidia(
+                id,
+                new AdminReclassificarMidiaRequestDto(visibilidade, motivo),
+                principal(),
+                "req-reclassificar-123");
     }
 
     private Fixture fixture(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade) {
@@ -242,6 +312,14 @@ class AdminModeracaoAcaoServiceTest {
         when(arquivoRepository.findByIdForUpdate(arquivoId)).thenReturn(Optional.of(arquivo));
         when(documentoRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivoId)).thenReturn(false);
         return new Fixture(id, midia, arquivo);
+    }
+
+    private Fixture fixtureFinalizada(VisibilidadeMidia visibilidade) {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, visibilidade);
+        ReflectionTestUtils.setField(fixture.midia(), "status", StatusAnuncioMidia.PUBLICAVEL);
+        ReflectionTestUtils.setField(fixture.arquivo(), "statusArquivo", StatusArquivoMidia.VALIDADO);
+        ReflectionTestUtils.setField(fixture.arquivo(), "storageProvider", "R2");
+        return fixture;
     }
 
     private AdminUserPrincipal principal() {

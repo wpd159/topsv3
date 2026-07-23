@@ -6,9 +6,11 @@ import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioMetricasDt
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteResumoDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalizacaoSanitizadaDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalidadeFiltroDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminModeracaoHistoricoItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPremiumFilaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminRevisaoAbertaDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.documento.AdminKycService;
@@ -38,7 +40,6 @@ import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -128,7 +129,7 @@ public class AdminAnuncioDetalhadoConsultaService {
     public AdminPaginaDto<AdminAnuncioListaItemDto> listar(
             int page,
             int size,
-            StatusModeracaoAnuncio statusModeracao,
+            AdminAnuncioSituacao situacao,
             String uf,
             String cidade,
             String bairro,
@@ -139,12 +140,20 @@ public class AdminAnuncioDetalhadoConsultaService {
         AdminAnuncioOrdenacao ordem = ordenacao == null
                 ? AdminAnuncioOrdenacao.MAIS_RECENTES
                 : ordenacao;
+        AdminAnuncioSituacao situacaoOperacional = situacao == null
+                ? AdminAnuncioSituacao.PENDENTES_MODERACAO
+                : situacao;
+        if (situacaoOperacional == AdminAnuncioSituacao.BLOQUEADOS) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "situacao BLOQUEADOS sem estado canonico apos a V018");
+        }
         Set<UUID> idsLocalizacao = localizacaoSupport.filtrarAnuncioIds(uf, cidade, bairro);
         if (idsLocalizacao != null && idsLocalizacao.isEmpty()) {
             return new AdminPaginaDto<>(List.of(), Math.max(page, 0), tamanho, 0, 0, true);
         }
         Page<AnuncioEntity> result = anuncioRepository.findFilaAdministrativa(
-                enumName(statusModeracao),
+                situacaoOperacional.name(),
                 idsLocalizacao != null,
                 idsLocalizacao == null ? List.of(ID_LOCALIZACAO_NEUTRO) : idsLocalizacao,
                 termoSeguro(termo),
@@ -160,7 +169,8 @@ public class AdminAnuncioDetalhadoConsultaService {
         Map<UUID, Boolean> documentosPendentes = documentosPendentes(result.getContent());
         Map<UUID, Long> cliques = contarCliques(anuncioIds);
         Map<UUID, VisualizacoesCanonicasDto> visualizacoes = visualizacaoService.calcularEmLote(anuncioIds);
-        Map<UUID, List<String>> beneficios = beneficiosVigentes(anuncioIds);
+        Map<UUID, List<PremiumBeneficioCalculado>> beneficios = beneficioService
+                .consultarCalculadosPorAnuncio(anuncioIds);
         Map<UUID, String> miniaturas = miniaturasSeguras(anuncioIds);
         return new AdminPaginaDto<>(
                 result.getContent().stream()
@@ -173,7 +183,8 @@ public class AdminAnuncioDetalhadoConsultaService {
                                 midias.getOrDefault(anuncio.getId(), 0L),
                                 revisoes.getOrDefault(anuncio.getId(), 0L),
                                 documentosPendentes.getOrDefault(anuncio.getUsuarioId(), false),
-                                beneficios.getOrDefault(anuncio.getId(), List.of()),
+                                nomesBeneficiosVigentes(beneficios.getOrDefault(anuncio.getId(), List.of())),
+                                beneficiosFila(beneficios.getOrDefault(anuncio.getId(), List.of())),
                                 visualizacoes.get(anuncio.getId()),
                                 cliques.getOrDefault(anuncio.getId(), 0L),
                                 comercialLimitado))
@@ -243,6 +254,11 @@ public class AdminAnuncioDetalhadoConsultaService {
     }
 
     @Transactional(readOnly = true)
+    public List<AdminLocalidadeFiltroDto> localidadesFiltro() {
+        return localizacaoSupport.localidadesFiltro();
+    }
+
+    @Transactional(readOnly = true)
     public AdminPaginaDto<AdminMidiaListaItemDto> listarMidiasDoAnuncio(UUID anuncioId, int page, int size) {
         AnuncioEntity anuncio = anuncioRepository.findById(anuncioId)
                 .filter(entity -> entity.getRemovidoEm() == null)
@@ -295,6 +311,7 @@ public class AdminAnuncioDetalhadoConsultaService {
             long revisoesTotal,
             boolean documentoPendente,
             List<String> beneficios,
+            List<AdminPremiumFilaItemDto> beneficiosPremium,
             VisualizacoesCanonicasDto visualizacoes,
             long cliques,
             boolean comercialLimitado) {
@@ -315,6 +332,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                 documentoPendente,
                 comercialLimitado,
                 beneficios,
+                beneficiosPremium,
                 visualizacoes,
                 cliques,
                 anunciante(anunciante),
@@ -346,7 +364,9 @@ public class AdminAnuncioDetalhadoConsultaService {
         return new AdminAnuncianteResumoDto(
                 usuario.getId(),
                 AdminTextoSanitizer.resumo(usuario.getNome(), 100),
-                emailMascarado(usuario.getEmailNormalizado()),
+                AdminTextoSanitizer.resumo(usuario.getNomeCivil(), 160),
+                usuario.getEmailNormalizado(),
+                usuario.getTelefoneNormalizado(),
                 enumName(usuario.getStatus()));
     }
 
@@ -369,15 +389,6 @@ public class AdminAnuncioDetalhadoConsultaService {
                 enumName(revisao.getTipo()),
                 enumName(revisao.getStatus()),
                 revisao.getCriadoEm());
-    }
-
-    private String emailMascarado(String email) {
-        if (email == null || !email.contains("@")) return null;
-        int separator = email.indexOf('@');
-        String local = email.substring(0, separator);
-        String domain = email.substring(separator + 1);
-        String visible = local.isEmpty() ? "*" : local.substring(0, 1);
-        return visible + "***@" + domain;
     }
 
     private List<String> enumNames(Collection<? extends Enum<?>> values) {
@@ -493,19 +504,34 @@ public class AdminAnuncioDetalhadoConsultaService {
         Map<UUID, List<PremiumBeneficioCalculado>> calculados = beneficioService
                 .consultarCalculadosPorAnuncio(anuncioIds);
         Map<UUID, List<String>> result = new LinkedHashMap<>();
-        calculados.forEach((anuncioId, itens) -> result.put(
-                anuncioId,
-                itens.stream()
-                        .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
-                                || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
-                        .map(PremiumBeneficioCalculado::beneficio)
-                        .filter(java.util.Objects::nonNull)
-                        .map(item -> item.getNome())
-                        .filter(item -> item != null && !item.isBlank())
-                        .distinct()
-                        .sorted()
-                        .toList()));
+        calculados.forEach((anuncioId, itens) -> result.put(anuncioId, nomesBeneficiosVigentes(itens)));
         return Map.copyOf(result);
+    }
+
+    private List<String> nomesBeneficiosVigentes(Collection<PremiumBeneficioCalculado> itens) {
+        return itens.stream()
+                .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                .map(PremiumBeneficioCalculado::beneficio)
+                .filter(java.util.Objects::nonNull)
+                .map(item -> item.getNome())
+                .filter(item -> item != null && !item.isBlank())
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
+    private List<AdminPremiumFilaItemDto> beneficiosFila(Collection<PremiumBeneficioCalculado> itens) {
+        return itens.stream()
+                .filter(item -> item.ativacao() != null && item.beneficio() != null)
+                .map(item -> new AdminPremiumFilaItemDto(
+                        item.ativacao().getId(),
+                        item.beneficio().getCodigo(),
+                        item.beneficio().getNome(),
+                        item.status().name(),
+                        item.ativacao().getInicioEm(),
+                        item.ativacao().getFimEm()))
+                .toList();
     }
 
     private Map<UUID, String> miniaturasSeguras(List<UUID> anuncioIds) {

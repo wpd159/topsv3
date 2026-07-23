@@ -5,6 +5,8 @@ import java.util.UUID;
 public record AdminAnuncianteResumoDto(
         UUID id,
         String nome,
-        String emailMascarado,
+        String nomeCivil,
+        String email,
+        String whatsapp,
         String status) {
 }

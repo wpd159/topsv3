@@ -230,8 +230,10 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         assertThat(item.beneficiosPremiumVigentes()).containsExactly("Anuncio no topo");
         assertThat(item.visualizacoes().total()).isEqualTo(12);
         assertThat(item.cliquesWhatsapp()).isEqualTo(3);
-        assertThat(item.anunciante().emailMascarado()).isEqualTo("p***@example.invalid");
-        assertThat(item.toString()).doesNotContain("12345678909", "+5562888888888");
+        assertThat(item.anunciante().nomeCivil()).isEqualTo("Nome Civil Completo");
+        assertThat(item.anunciante().email()).isEqualTo("pessoa@example.invalid");
+        assertThat(item.anunciante().whatsapp()).isEqualTo("+5562888888888");
+        assertThat(item.toString()).doesNotContain("12345678909");
         assertThat(item.localizacao().enderecoResumido()).isEqualTo("Regiao central");
         verify(beneficioService).consultarCalculadosPorAnuncio(List.of(anuncioId));
     }
@@ -248,6 +250,37 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         assertThat(pagina.itens()).isEmpty();
         verify(anuncioRepository).findFilaAdministrativa(
                 any(), anyBoolean(), any(), any(), eq(ordenacao.name()), eq(PageRequest.of(0, 30)));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = AdminAnuncioSituacao.class, names = "BLOQUEADOS", mode = EnumSource.Mode.EXCLUDE)
+    void filaTraduzSituacoesCanonicasNoPostgresql(AdminAnuncioSituacao situacao) {
+        when(anuncioRepository.findFilaAdministrativa(
+                eq(situacao.name()), anyBoolean(), any(), any(), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 30), 0));
+
+        service.listar(0, 30, situacao, null, null, null, null, AdminAnuncioOrdenacao.MAIS_RECENTES, false);
+
+        verify(anuncioRepository).findFilaAdministrativa(
+                eq(situacao.name()), anyBoolean(), any(), any(), any(), eq(PageRequest.of(0, 30)));
+    }
+
+    @Test
+    void bloqueadosFalhaFechadoSemReintroduzirEstadoRemovidoPelaV018() {
+        assertThatThrownBy(() -> service.listar(
+                0,
+                30,
+                AdminAnuncioSituacao.BLOQUEADOS,
+                null,
+                null,
+                null,
+                null,
+                AdminAnuncioOrdenacao.MAIS_RECENTES,
+                false))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+                    assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(error.getReason()).contains("sem estado canonico apos a V018");
+                });
     }
 
     @ParameterizedTest

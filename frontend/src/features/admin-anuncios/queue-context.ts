@@ -1,4 +1,4 @@
-import type { AdminAdFilters } from './types'
+import type { AdminAdFilters, AdminAdSituation } from './types'
 
 export const ADMIN_AD_PAGE_SIZE_OPTIONS = [20, 30, 50, 100] as const
 
@@ -16,7 +16,7 @@ export type AdminAdSort = (typeof ADMIN_AD_SORT_OPTIONS)[number]['value']
 export type AdminAdQueueContext = {
   page: number
   size: (typeof ADMIN_AD_PAGE_SIZE_OPTIONS)[number]
-  statusModeracao: string
+  situacao: AdminAdSituation
   ordenacao: AdminAdSort
   termo: string
   uf: string
@@ -44,11 +44,17 @@ function sort(value: string | null): AdminAdSort {
     : 'MAIS_RECENTES'
 }
 
+function situation(value: string | null): AdminAdSituation {
+  return ['TODOS', 'PENDENTES_MODERACAO', 'PAUSADOS', 'REJEITADOS', 'BLOQUEADOS'].includes(value || '')
+    ? value as AdminAdSituation
+    : 'PENDENTES_MODERACAO'
+}
+
 export function parseAdminAdQueueContext(params: SearchParamsReader): AdminAdQueueContext {
   return {
     page: nonNegativeInteger(params.get('page'), 0),
     size: pageSize(params.get('size')),
-    statusModeracao: params.get('statusModeracao') || 'PENDENTE',
+    situacao: situation(params.get('situacao')),
     ordenacao: sort(params.get('ordenacao')),
     termo: params.get('termo')?.trim() || '',
     uf: params.get('uf')?.trim().toUpperCase().slice(0, 2) || '',
@@ -61,7 +67,7 @@ export function adminAdQueueFilters(context: AdminAdQueueContext): AdminAdFilter
   return {
     page: context.page,
     size: context.size,
-    statusModeracao: context.statusModeracao === 'TODOS' ? undefined : context.statusModeracao,
+    situacao: context.situacao,
     ordenacao: context.ordenacao,
     termo: context.termo || undefined,
     uf: context.uf || undefined,
@@ -75,7 +81,7 @@ export function adminAdQueueSearch(context: AdminAdQueueContext) {
     fila: '1',
     page: String(context.page),
     size: String(context.size),
-    statusModeracao: context.statusModeracao,
+    situacao: context.situacao,
     ordenacao: context.ordenacao,
   })
   for (const [name, value] of Object.entries({

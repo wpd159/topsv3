@@ -18,9 +18,12 @@ class NovaModeracaoV3ContratoTest {
 
         assertThat(source)
                 .contains("/api/admin/anuncios/{id}/historico-moderacao:")
+                .contains("/api/admin/anuncios/filtros/localidades:")
                 .contains("/api/admin/midias/{id}/preview:")
+                .contains("/api/admin/midias/{id}/reclassificar:")
                 .contains("AdminModeracaoHistoricoItem:")
                 .contains("AdminMidiaPreview:")
+                .contains("AdminReclassificarMidiaRequest:")
                 .contains("Story retorna 409 e nao participa da moderacao")
                 .contains("video aprovado permanece RESTRITA_18")
                 .doesNotContain("/api/admin/moderacao-v2");
@@ -37,5 +40,27 @@ class NovaModeracaoV3ContratoTest {
                 .contains("Nao apaga arquivo")
                 .contains("nao retorna bucket, chave, hash ou URL privada")
                 .doesNotContain("DELETE");
+    }
+
+    @Test
+    void filaProtegidaExplicitaProprietarioIntegralSemCpf() throws Exception {
+        String source = Files.readString(OPENAPI, StandardCharsets.UTF_8);
+        String listContract = source.substring(
+                source.indexOf("/api/admin/anuncios:"),
+                source.indexOf("/api/admin/anuncios/{id}:"));
+        String ownerSchema = source.substring(
+                source.indexOf("    AdminAnuncianteResumo:"),
+                source.indexOf("    AdminAnuncianteDetalhe:"));
+
+        assertThat(listContract)
+                .contains("protegida e no-store")
+                .contains("nome civil, e-mail e WhatsApp integrais")
+                .contains("/api/admin/anuncios/filtros/localidades:");
+        assertThat(ownerSchema)
+                .contains("nomeCivil:")
+                .contains("email:")
+                .contains("whatsapp:")
+                .doesNotContain("emailMascarado")
+                .doesNotContain("cpf:");
     }
 }

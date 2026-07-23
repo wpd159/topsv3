@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoRes
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,6 +44,16 @@ public class AdminModeracaoAcaoController {
             @AuthenticationPrincipal AdminUserPrincipal actor,
             HttpServletRequest httpRequest) {
         return service.decidirMidia(id, request, actor, RequestIdContext.current(httpRequest));
+    }
+
+    @PostMapping("/api/admin/midias/{id}/reclassificar")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('MIDIA_REVISAR')")
+    public AdminAcaoModeracaoResponseDto reclassificarMidia(
+            @PathVariable UUID id,
+            @RequestBody AdminReclassificarMidiaRequestDto request,
+            @AuthenticationPrincipal AdminUserPrincipal actor,
+            HttpServletRequest httpRequest) {
+        return service.reclassificarMidia(id, request, actor, RequestIdContext.current(httpRequest));
     }
 
     @PostMapping("/api/admin/anuncios/{id}/remeter-revisao")

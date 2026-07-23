@@ -2,14 +2,15 @@ package br.com.topsdojob.v3.web.admin.readonly;
 
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioOrdenacao;
+import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioSituacao;
 import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycEnvioDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminModeracaoHistoricoItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalidadeFiltroDto;
 import java.util.List;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.UUID;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -32,25 +33,31 @@ public class AdminAnuncioDetalhadoController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
-    public AdminPaginaDto<AdminAnuncioListaItemDto> listar(
+    public ResponseEntity<AdminPaginaDto<AdminAnuncioListaItemDto>> listar(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "30") int size,
-            @RequestParam(required = false) StatusModeracaoAnuncio statusModeracao,
+            @RequestParam(defaultValue = "PENDENTES_MODERACAO") AdminAnuncioSituacao situacao,
             @RequestParam(required = false) String uf,
             @RequestParam(required = false) String cidade,
             @RequestParam(required = false) String bairro,
             @RequestParam(required = false) String termo,
             @RequestParam(defaultValue = "MAIS_RECENTES") AdminAnuncioOrdenacao ordenacao) {
-        return service.listar(
+        return semCache(service.listar(
                 page,
                 size,
-                statusModeracao,
+                situacao,
                 uf,
                 cidade,
                 bairro,
                 termo,
                 ordenacao,
-                false);
+                false));
+    }
+
+    @GetMapping("/filtros/localidades")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
+    public ResponseEntity<List<AdminLocalidadeFiltroDto>> localidadesFiltro() {
+        return semCache(service.localidadesFiltro());
     }
 
     @GetMapping("/{id}")

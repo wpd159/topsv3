@@ -28,6 +28,10 @@ class AdminAnuncioFilaOrdenacaoSqlContractTest {
                 .contains("MENOS_VISUALIZACOES")
                 .contains("MAIS_CLIQUES_WHATSAPP")
                 .contains("MENOS_CLIQUES_WHATSAPP")
+                .contains(":situacao = 'PENDENTES_MODERACAO'")
+                .contains("a.status = 'PAUSADO'")
+                .contains(":situacao = 'REJEITADOS'")
+                .doesNotContain("a.status_moderacao = 'BLOQUEADO'")
                 .doesNotContain("agregado_visualizacao_diaria");
     }
 
@@ -39,7 +43,10 @@ class AdminAnuncioFilaOrdenacaoSqlContractTest {
 
         assertThat(controller)
                 .contains("@RequestParam(defaultValue = \"30\") int size")
+                .contains("AdminAnuncioSituacao situacao")
                 .contains("AdminAnuncioOrdenacao ordenacao")
+                .contains("return semCache(service.listar")
+                .doesNotContain("StatusModeracaoAnuncio statusModeracao")
                 .doesNotContain("StatusAnuncio status");
     }
 }

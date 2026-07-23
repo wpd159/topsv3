@@ -19,6 +19,7 @@ const list = source('features/admin-anuncios/admin-anuncios-list.tsx')
 const detail = source('features/admin-anuncios/admin-anuncio-moderacao.tsx')
 const documents = source('features/admin-anuncios/admin-anuncio-documentos.tsx')
 const premium = source('features/admin-anuncios/admin-anuncio-premium.tsx')
+const premiumQuick = source('features/admin-anuncios/admin-anuncio-premium-rapido.tsx')
 const story = source('features/admin-anuncios/admin-anuncio-story.tsx')
 const edit = source('features/admin-anuncios/admin-anuncio-edit-form.tsx')
 const editPage = source('app/(painel-admin)/admin/anuncios/[id]/editar/page.tsx')
@@ -46,6 +47,8 @@ for (const contract of [
   '`/midias/${encodeURIComponent(id)}/preview`',
   '`/moderacao/revisoes/${encodeURIComponent(reviewId)}/decidir`',
   '`/midias/${encodeURIComponent(mediaId)}/decidir`',
+  '`/midias/${encodeURIComponent(mediaId)}/reclassificar`',
+  "request('/anuncios/filtros/localidades')",
 ]) {
   assert.ok(api.includes(contract), `Contrato V3 ausente no adapter: ${contract}`)
 }
@@ -59,6 +62,9 @@ assert.ok(!types.includes("'FOTO' | 'VIDEO' | 'STORY'"), 'Story nao pode integra
 assert.ok(detail.includes("item.tipo === 'VIDEO' ? 'RESTRITA_18'"), 'Video aprovado deve permanecer RESTRITA_18.')
 assert.ok(detail.includes('Sempre RESTRITA_18'), 'A interface deve informar a classificacao fixa do video.')
 assert.ok(detail.includes('MediaVisibilitySelector') && detail.includes('type="radio"') && detail.includes("['LIVRE', 'RESTRITA_18']"), 'Fotos devem oferecer classificacao individual, clicavel e explicita.')
+assert.ok(detail.includes('reclassifyAdminMedia') && detail.includes("kind: 'RECLASSIFY'"), 'Foto finalizada deve usar a operacao canonica propria de reclassificacao.')
+assert.ok(detail.includes('Aplicar e aprovar') && detail.includes('Aplicar classifica'), 'Foto pendente e finalizada devem exigir aplicacao explicita.')
+assert.ok(detail.includes('else delete next[intent.media.id]'), 'Falha deve restaurar o estado persistido da classificacao, sem simular sucesso.')
 assert.ok(detail.includes("filter((item) => String(item.tipo) !== 'STORY')"), 'Story nao pode entrar na secao de midias.')
 assert.ok(detail.includes("action: 'APROVAR'") && detail.includes("action: 'REPROVAR'"), 'Aprovar e rejeitar devem permanecer disponiveis.')
 assert.ok(detail.includes('Motivo obrigatório'), 'Rejeicao deve coletar motivo.')
@@ -69,7 +75,17 @@ assert.ok(detail.includes("canReadMedia ? listAdminAdMedia(anuncioId) : Promise.
 assert.ok(detail.includes("canReadHistory ? listAdminAdHistory(anuncioId) : Promise.resolve([])"), 'O historico deve respeitar as autoridades granulares.')
 assert.ok(detail.includes('Seu perfil não possui MIDIA_REVISAR.'), 'A ausencia de permissao de midia nao pode parecer fila vazia.')
 assert.ok(list.includes('ADMIN_AD_PAGE_SIZE_OPTIONS') && list.includes('totalPages'), 'A fila deve manter paginacao backend configuravel.')
-assert.ok(list.includes('statusModeracao') && list.includes('termo'), 'A fila deve manter filtros e busca.')
+assert.ok(list.includes('SITUATION_OPTIONS') && list.includes('termo'), 'A fila deve manter o filtro operacional unico e a busca.')
+assert.deepEqual(
+  [...list.matchAll(/\{ value: '([^']+)', label: '[^']+' \}/g)].slice(0, 5).map((match) => match[1]),
+  ['TODOS', 'PENDENTES_MODERACAO', 'PAUSADOS', 'REJEITADOS', 'BLOQUEADOS'],
+  'A fila deve expor exatamente as cinco situacoes solicitadas.',
+)
+assert.ok(list.includes('listAdminAdFilterLocations()'), 'Localidades devem vir do backend protegido.')
+assert.ok(list.includes("uf: value === 'TODOS' ? '' : value, cidade: '', bairro: ''"), 'Trocar UF deve limpar Cidade e Bairro.')
+assert.ok(list.includes("cidade: value === 'TODAS' ? '' : value, bairro: ''"), 'Trocar Cidade deve limpar Bairro.')
+assert.ok(!list.includes('Slug da cidade') && !list.includes('Slug do bairro'), 'A interface nao pode exigir slugs manuais.')
+assert.ok(list.includes('lg:grid-cols-[minmax('), 'Os oito controles devem compartilhar uma unica grade no desktop.')
 assert.ok(!list.includes('Estado do anúncio'), 'O filtro redundante de estado do anuncio deve ser removido.')
 assert.ok(list.includes('const duplicated = item.status === item.statusModeracao'), 'O badge APROVADO duplicado deve ser omitido.')
 assert.deepEqual(
@@ -83,7 +99,20 @@ assert.ok(detail.includes('overflow-x-auto') && detail.includes('sm:grid-cols-2'
 for (const queueField of ['miniaturaUrl', 'beneficiosPremiumVigentes', 'visualizacoes', 'cliquesWhatsapp', 'criadoEm']) {
   assert.ok(list.includes(queueField), `Campo operacional ausente na fila: ${queueField}`)
 }
-assert.ok(!list.includes('.cpf') && !list.includes('.whatsapp'), 'A fila nao pode exibir CPF ou WhatsApp.')
+for (const ownerField of ['nomeCivil', '.email', '.whatsapp']) {
+  assert.ok(list.includes(ownerField), `Dado protegido do proprietario ausente na fila: ${ownerField}`)
+}
+assert.ok(list.includes('https://wa.me/'), 'O WhatsApp da fila deve abrir conversa com numero normalizado.')
+assert.ok(!list.includes('.cpf'), 'CPF deve permanecer fora da fila administrativa.')
+
+assert.ok(list.includes('listAdminPremiumCatalog()'), 'O catalogo Premium deve ser carregado uma unica vez pela fila.')
+assert.ok(list.includes('item.beneficiosPremium'), 'Os estados Premium devem chegar em lote com cada linha.')
+assert.ok(premiumQuick.includes('activateAdminPremiumBatch') && premiumQuick.includes('cancelAdminPremium'), 'Premium rapido deve ativar e desativar pelos contratos existentes.')
+assert.ok(premiumQuick.includes('item.opcoes.filter') && premiumQuick.includes('duracaoDias'), 'Duracoes do Premium rapido devem vir do backend.')
+assert.ok(premiumQuick.includes('Observa') && premiumQuick.includes('Motivo da desativa'), 'Premium rapido deve exigir justificativa administrativa.')
+assert.ok(premiumQuick.includes("item?.status === 'PENDENTE'") && premiumQuick.includes('border-amber-300'), 'Ativacao pendente deve permanecer distinta de beneficio ativo.')
+assert.ok(premiumQuick.includes('idempotencyKey.current ?? operationKey()'), 'Retry do Premium rapido deve reutilizar Idempotency-Key.')
+assert.ok(!premiumQuick.match(/duracaoDias\s*:\s*(1|7|14|30)/), 'Premium rapido nao pode hardcodar duracoes.')
 
 for (const ownerField of ['nomeCivil', '.email', '.cpf', '.whatsapp', '.status']) {
   assert.ok(detail.includes(ownerField), `Dado integral do proprietario ausente no detalhe: ${ownerField}`)
