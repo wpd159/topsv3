@@ -45,6 +45,8 @@ class AnuncioRepositorySeoPublicoQueryTest {
 
     private void assertQueryCanonica(String query) {
         assertThat(query)
+                .contains("a.status = 'PUBLICADO'")
+                .contains("a.removido_em is null")
                 .contains("bp.codigo = 'ANUNCIO_TOPO'")
                 .contains("bp.afeta_ranking = true")
                 .contains("ab.status = 'ATIVA'")

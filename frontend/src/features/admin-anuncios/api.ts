@@ -12,6 +12,7 @@ import type {
   AdminAdFilters,
   AdminAdListItem,
   AdminAdQueueNavigation,
+  AdminAdRemovalResponse,
   AdminAdUpdate,
   AdminFilterLocation,
   AdminKycSubmission,
@@ -124,6 +125,13 @@ export function updateAdminAd(id: string, payload: AdminAdUpdate) {
 export function reactivateAdminAd(id: string) {
   return request<AdminLegalOperationResponse>(`/anuncios/${encodeURIComponent(id)}/reativar`, {
     method: 'POST',
+  })
+}
+
+export function removeAdminAd(id: string, motivo: string) {
+  return request<AdminAdRemovalResponse>(`/anuncios/${encodeURIComponent(id)}/remocao-logica`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo: motivo.trim() }),
   })
 }
 

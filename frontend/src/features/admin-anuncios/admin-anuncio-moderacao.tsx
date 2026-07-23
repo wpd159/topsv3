@@ -16,6 +16,7 @@ import {
   Pencil,
   RotateCcw,
   ShieldAlert,
+  Trash2,
   Unlock,
   Video,
   XCircle,
@@ -45,6 +46,7 @@ import {
   listAdminAdMedia,
   reactivateAdminAd,
   reclassifyAdminMedia,
+  removeAdminAd,
   submitAdminReview,
   unblockAdminAd,
   unblockAdminUser,
@@ -226,6 +228,61 @@ function LegalActionDialog({ intent, busy, error, onClose, onConfirm }: {
   )
 }
 
+function RemovalDialog({ open, busy, error, onClose, onConfirm }: {
+  open: boolean
+  busy: boolean
+  error: unknown
+  onClose: () => void
+  onConfirm: (reason: string) => void
+}) {
+  const [reason, setReason] = useState('')
+
+  useEffect(() => {
+    setReason('')
+  }, [open])
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen && !busy) onClose() }}>
+      <DialogContent className="rounded-md">
+        <DialogHeader>
+          <DialogTitle>{'Excluir an\u00fancio'}</DialogTitle>
+          <DialogDescription>
+            {'O an\u00fancio ser\u00e1 removido da plataforma, mas seus dados, hist\u00f3rico, propriet\u00e1rio, benef\u00edcios e m\u00eddias permanecer\u00e3o preservados.'}
+          </DialogDescription>
+        </DialogHeader>
+        <label className="block">
+          <span className="mb-2 block text-sm font-semibold text-zinc-800">
+            {'Motivo obrigat\u00f3rio'}
+          </span>
+          <Textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            minLength={5}
+            maxLength={1000}
+            rows={4}
+            disabled={busy}
+          />
+          <span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/1000</span>
+        </label>
+        {error ? <ContractState error={error} compact /> : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button
+            type="button"
+            variant="destructive"
+            className="border border-red-950 bg-red-700 text-white hover:bg-red-800"
+            onClick={() => onConfirm(reason)}
+            disabled={busy || reason.trim().length < 5}
+          >
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            {'Excluir an\u00fancio'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function MediaVisibilitySelector({
   mediaId,
   value,
@@ -273,6 +330,9 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const [legalIntent, setLegalIntent] = useState<LegalIntent | null>(null)
   const [legalActionError, setLegalActionError] = useState<unknown>(null)
   const [legalBusy, setLegalBusy] = useState(false)
+  const [removalOpen, setRemovalOpen] = useState(false)
+  const [removalActionError, setRemovalActionError] = useState<unknown>(null)
+  const [removalBusy, setRemovalBusy] = useState(false)
   const [reload, setReload] = useState(0)
   const [visibility, setVisibility] = useState<Record<string, 'LIVRE' | 'RESTRITA_18'>>({})
   const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
@@ -404,6 +464,21 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   if (loading && !ad) return <p className="py-16 text-center text-sm text-zinc-500">Carregando análise...</p>
   if (error || !ad) return <ContractState error={error ?? new Error('Anúncio indisponível.')} onRetry={() => setReload((value) => value + 1)} />
 
+  async function confirmRemoval(reason: string) {
+    if (!removalOpen || removalBusy || !ad) return
+    setRemovalBusy(true)
+    setRemovalActionError(null)
+    try {
+      await removeAdminAd(ad.id, reason.trim())
+      setRemovalOpen(false)
+      await load()
+    } catch (reasonError) {
+      setRemovalActionError(reasonError)
+    } finally {
+      setRemovalBusy(false)
+    }
+  }
+
   const reviewOpen = Boolean(ad.revisaoAberta && ['ABERTA', 'EM_ANALISE'].includes(ad.revisaoAberta.status))
   const whatsappDigits = ad.anunciante?.whatsapp?.replace(/\D/g, '')
   const effectiveQueueContext = { ...queueContext, page: navigation?.page ?? queueContext.page }
@@ -413,11 +488,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     { ...queueContext, page: target.page },
   )
   const legalBlock = ad.bloqueioJuridico
+  const removed = ad.status === 'REMOVIDO'
   const canReactivate = canManageLegalStatus
     && ad.status === 'PAUSADO'
     && ad.statusModeracao === 'APROVADO'
     && ad.anunciante?.status === 'ATIVO'
     && !legalBlock?.usuarioBloqueado
+  const canRemove = canManageLegalStatus && !removed && ad.status !== 'BLOQUEADO'
+  const headerBusy = legalBusy || removalBusy
 
   return (
     <div className="space-y-5">
@@ -431,14 +509,30 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           >
             <Badge variant="outline" className={moderationTone(ad.status)}>{ad.status}</Badge>
             <Badge variant="outline" className={moderationTone(ad.statusModeracao)}>{ad.statusModeracao}</Badge>
-            {canManageLegalStatus ? (
+            {canManageLegalStatus && !removed ? (
               <>
-                {canReactivate ? <Button type="button" size="sm" variant="outline" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'REACTIVATE', title: 'Reativar anúncio pausado' })}><RotateCcw className="mr-2 h-4 w-4" />Reativar</Button> : null}
-                {legalBlock?.anuncioBloqueado ? <Button type="button" size="sm" variant="outline" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_AD', title: 'Desbloquear anúncio' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear anúncio</Button> : null}
-                {legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="outline" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_USER', title: 'Desbloquear usuário' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear usuário</Button> : null}
-                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="destructive" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_AD', title: 'Bloquear anúncio' })}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear anúncio</Button> : null}
-                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado && ad.anunciante?.status !== 'SUSPENSO' ? <Button type="button" size="sm" variant="destructive" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_USER', title: 'Bloquear anúncio e usuário' })}><ShieldAlert className="mr-2 h-4 w-4" />Bloquear anúncio e usuário</Button> : null}
+                {canReactivate ? <Button type="button" size="sm" variant="outline" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'REACTIVATE', title: 'Reativar anúncio pausado' })}><RotateCcw className="mr-2 h-4 w-4" />Reativar</Button> : null}
+                {legalBlock?.anuncioBloqueado ? <Button type="button" size="sm" variant="outline" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_AD', title: 'Desbloquear anúncio' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear anúncio</Button> : null}
+                {legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="outline" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_USER', title: 'Desbloquear usuário' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear usuário</Button> : null}
+                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="destructive" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_AD', title: 'Bloquear anúncio' })}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear anúncio</Button> : null}
+                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado && ad.anunciante?.status !== 'SUSPENSO' ? <Button type="button" size="sm" variant="destructive" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_USER', title: 'Bloquear anúncio e usuário' })}><ShieldAlert className="mr-2 h-4 w-4" />Bloquear anúncio e usuário</Button> : null}
               </>
+            ) : null}
+            {canRemove ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className="border border-red-950 bg-red-700 text-white hover:bg-red-800"
+                disabled={headerBusy}
+                onClick={() => {
+                  setRemovalActionError(null)
+                  setRemovalOpen(true)
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {'Excluir an\u00fancio'}
+              </Button>
             ) : null}
             {isAdmin && canModerateAd ? <Button asChild size="sm" variant="outline"><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-2 h-4 w-4" />Editar anúncio</Link></Button> : null}
           </div>
@@ -574,12 +668,13 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         </TabsContent>
 
         <TabsContent value="documentos"><AdminAnuncioDocumentos anuncioId={ad.id} anunciante={ad.anunciante} autorizado={canReadDocuments} /></TabsContent>
-        <TabsContent value="premium"><AdminAnuncioPremium anuncioId={ad.id} canManage={canManagePremium} /></TabsContent>
+        <TabsContent value="premium"><AdminAnuncioPremium anuncioId={ad.id} canManage={canManagePremium && !removed} disabledReason={removed ? 'Anuncio removido nao pode receber novas ativacoes Premium.' : undefined} /></TabsContent>
         <TabsContent value="historico">{!canReadHistory ? <p className="text-sm font-medium text-amber-700">Sem permissão para consultar o histórico.</p> : history.length === 0 ? <p className="text-sm text-zinc-600">Nenhuma ação administrativa registrada.</p> : <ol className="divide-y divide-zinc-200 border-y border-zinc-200">{history.map((item) => <li key={item.id} className="grid gap-2 py-4 sm:grid-cols-[1fr_auto]"><div><p className="text-sm font-semibold text-zinc-900">{formatEnum(item.decisao || item.acao)}</p><p className="mt-1 text-xs text-zinc-600">{formatEnum(item.alvoTipo)} · {item.status ? formatEnum(item.status) : 'sem mudança de estado'}</p>{item.categoria ? <p className="mt-2 text-xs font-semibold uppercase text-red-700">{formatEnum(item.categoria)}</p> : null}{item.motivo ? <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">{item.motivo}</p> : null}{item.observacaoInterna ? <p className="mt-2 whitespace-pre-wrap border-l-2 border-zinc-300 pl-3 text-xs text-zinc-600">Observação interna: {item.observacaoInterna}</p> : null}</div><div className="text-left text-xs text-zinc-500 sm:text-right"><p>{formatDate(item.criadoEm)}</p><p className="mt-1">Responsável {item.atorId?.slice(0, 8) || 'não identificado'}</p><p className="mt-1">Request {item.requestId?.slice(0, 16) || 'não informado'}</p></div></li>)}</ol>}</TabsContent>
       </Tabs>
 
       <DecisionDialog intent={intent} busy={busy} error={actionError} onClose={() => { setIntent(null); setActionError(null) }} onConfirm={(reason) => void confirmDecision(reason)} />
       <LegalActionDialog intent={legalIntent} busy={legalBusy} error={legalActionError} onClose={() => { setLegalIntent(null); setLegalActionError(null) }} onConfirm={(category, reason, internalNote) => void confirmLegalAction(category, reason, internalNote)} />
+      <RemovalDialog open={removalOpen} busy={removalBusy} error={removalActionError} onClose={() => { setRemovalOpen(false); setRemovalActionError(null) }} onConfirm={(reason) => void confirmRemoval(reason)} />
     </div>
   )
 }

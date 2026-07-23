@@ -33,9 +33,11 @@ function isCurrent(item: AdminPremiumBenefit) {
 export function AdminAnuncioPremium({
   anuncioId,
   canManage,
+  disabledReason,
 }: {
   anuncioId: string
   canManage: boolean
+  disabledReason?: string
 }) {
   const [benefits, setBenefits] = useState<AdminPremiumBenefit[]>([])
   const [catalog, setCatalog] = useState<AdminPremiumCatalogItem[]>([])
@@ -233,7 +235,7 @@ export function AdminAnuncioPremium({
             Ativar selecionados ({selectedItems.length})
           </Button>
         </section>
-      ) : <p className="text-sm font-medium text-zinc-600">MODERADOR possui acesso somente para leitura.</p>}
+      ) : <p className="text-sm font-medium text-zinc-600">{disabledReason || 'MODERADOR possui acesso somente para leitura.'}</p>}
 
       {benefits.length > 0 ? (
         <details className="border-t border-zinc-200 pt-4">

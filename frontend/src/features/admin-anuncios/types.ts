@@ -144,6 +144,15 @@ export type AdminLegalOperationResponse = {
   executadoEm: string
 }
 
+export type AdminAdRemovalResponse = {
+  anuncioId: string
+  statusAnuncio: 'REMOVIDO'
+  statusModeracao: string
+  acao: 'REMOVER'
+  removidoEm: string
+  executadoEm: string
+}
+
 export type AdminKycDocument = {
   id: string
   parte: 'UNICO' | 'FRENTE' | 'VERSO'

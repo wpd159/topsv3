@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.admin.readonly;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -21,6 +22,7 @@ import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
+import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
@@ -315,6 +317,41 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         assertThat(detalhe.metricas().visualizacoes().total()).isEqualTo(25);
         assertThat(detalhe.metricas().cliquesWhatsapp()).isEqualTo(5);
         assertThat(detalhe.metricas().ctr()).isEqualByComparingTo("20.00");
+    }
+
+    @Test
+    void detalheProtegidoPreservaDadosEHistoricoAposRemocaoLogica() {
+        OffsetDateTime removidoEm = OffsetDateTime.now().minusMinutes(1);
+        set(anuncio, "status", StatusAnuncio.PUBLICADO);
+        anuncio.removerLogicamente(removidoEm);
+        when(visualizacaoService.calcular(anuncioId)).thenReturn(VisualizacoesCanonicasDto.total(25));
+        when(auditoriaRepository.findByRecursoIdInOrderByCriadoEmDesc(any(), any())).thenReturn(List.of(
+                AuditoriaEventoEntity.registrar(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "ANUNCIO_REMOVIDO_ADMINISTRATIVAMENTE",
+                        "ANUNCIO",
+                        anuncioId,
+                        "{\"statusAnuncio\":\"PUBLICADO\"}",
+                        "{\"statusAnuncio\":\"REMOVIDO\",\"decisao\":\"REMOVER\","
+                                + "\"motivoSanitizado\":\"motivo administrativo\"}",
+                        "req-remocao",
+                        removidoEm)));
+
+        var detalhe = service.detalhar(anuncioId, false);
+
+        assertThat(detalhe.status()).isEqualTo("REMOVIDO");
+        assertThat(detalhe.anunciante().email()).isEqualTo("pessoa@example.invalid");
+        assertThat(detalhe.metricas().ultimaAcaoAdministrativa().acao())
+                .isEqualTo("ANUNCIO_REMOVIDO_ADMINISTRATIVAMENTE");
+        assertThat(detalhe.metricas().ultimaAcaoAdministrativa().motivo())
+                .isEqualTo("motivo administrativo");
+        assertThatCode(() -> service.listarMidiasDoAnuncio(anuncioId, 0, 20))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> service.documentosDoAnunciante(anuncioId))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> service.historico(anuncioId))
+                .doesNotThrowAnyException();
     }
 
     @Test

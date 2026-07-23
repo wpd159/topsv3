@@ -24,6 +24,10 @@ const story = source('features/admin-anuncios/admin-anuncio-story.tsx')
 const edit = source('features/admin-anuncios/admin-anuncio-edit-form.tsx')
 const editPage = source('app/(painel-admin)/admin/anuncios/[id]/editar/page.tsx')
 const api = source('features/admin-anuncios/api.ts')
+const removalAdapter = api.slice(
+  api.indexOf('export function removeAdminAd'),
+  api.indexOf('export function blockAdminAd'),
+)
 const types = source('features/admin-anuncios/types.ts')
 const queueContext = source('features/admin-anuncios/queue-context.ts')
 const searchableSelect = source('features/anuncio-wizard/components/searchable-select.tsx')
@@ -53,6 +57,7 @@ for (const contract of [
   '`/midias/${encodeURIComponent(mediaId)}/reclassificar`',
   "request('/anuncios/filtros/localidades')",
   '`/anuncios/${encodeURIComponent(id)}/reativar`',
+  '`/anuncios/${encodeURIComponent(id)}/remocao-logica`',
   '`/anuncios/${encodeURIComponent(id)}/bloqueio-juridico`',
   '`/anuncios/${encodeURIComponent(id)}/bloqueio-juridico/usuario`',
   '`/anuncios/${encodeURIComponent(id)}/desbloqueio-juridico`',
@@ -173,6 +178,15 @@ assert.ok(detailHeader.includes('Ações jurídicas e administrativas') && detai
 assert.ok(!detail.includes('Situação jurídica') && !detail.includes('legal-status-title'), 'O bloco juridico separado nao pode permanecer no corpo.')
 assert.ok(detail.includes('item.categoria') && detail.includes('item.motivo') && detail.includes('item.observacaoInterna') && detail.includes('item.atorId') && detail.includes('item.criadoEm') && detail.includes('item.requestId'), 'Historico deve preservar categoria, motivo, responsavel, data e requestId juridicos.')
 assert.ok(detail.includes('await load()') && !detail.includes('status: \'BLOQUEADO\''), 'Interface juridica deve atualizar somente apos resposta do backend.')
+assert.ok(detail.includes('RemovalDialog') && detail.includes('removalBusy'), 'Exclusao logica deve ter confirmacao propria e protecao contra duplo clique.')
+assert.ok(detail.includes('await removeAdminAd(ad.id, reason.trim())') && detail.includes('await load()'), 'Tela deve refletir REMOVIDO somente depois da resposta do backend.')
+assert.ok(detail.includes("const canRemove = canManageLegalStatus && !removed && ad.status !== 'BLOQUEADO'"), 'Somente ADMIN autorizado deve ver a remocao em transicao valida.')
+assert.ok(detail.includes("ad.status === 'REMOVIDO'") && detail.includes('disabledReason={removed'), 'REMOVIDO deve bloquear novas ativacoes Premium na interface.')
+assert.ok(detail.includes('reason.trim().length < 5') && detail.includes('maxLength={1000}'), 'Exclusao deve exigir motivo dentro do contrato.')
+assert.ok(detail.includes('border border-red-950 bg-red-700'), 'Exclusao deve possuir tratamento destrutivo distinto do bloqueio juridico.')
+assert.ok(detailHeader.includes("Excluir an\\u00fancio"), 'Excluir anuncio deve permanecer no cabecalho administrativo.')
+assert.ok(api.includes('JSON.stringify({ motivo: motivo.trim() })'), 'Adapter deve enviar somente o motivo sanitizado da remocao.')
+assert.ok(removalAdapter.includes("method: 'POST'") && !removalAdapter.includes("method: 'DELETE'"), 'Remocao administrativa deve usar a mutacao logica, nunca DELETE.')
 
 assert.ok(story.includes('Colocar nos Stories') && story.includes('Remover dos Stories'), 'A acao de Story administrativo deve existir.')
 assert.ok(story.includes('selection?.expiraEm') && story.includes('Restrita 18+'), 'Story deve mostrar expiracao e classificacao restrita.')

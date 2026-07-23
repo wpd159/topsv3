@@ -1764,6 +1764,46 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/remocao-logica:
+    post:
+      summary: Remove logicamente um anuncio pela administracao
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Move o anuncio para REMOVIDO sem excluir anuncio, proprietario, historico, Premium, documentos, midias ou objetos R2.
+      operationId: postAdminAnuncioRemocaoLogica
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAnuncioRemocaoRequest"
+      responses:
+        "200":
+          description: anuncio removido logicamente e auditado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioRemocao"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}/bloqueio-juridico:
     post:
       summary: Bloqueia juridicamente somente um anuncio
@@ -5707,6 +5747,23 @@ components:
           enum: [DENUNCIA_GRAVE, USO_NAO_AUTORIZADO_IMAGEM, FRAUDE, ORDEM_OU_RISCO_JURIDICO, OUTRA_INTERVENCAO]
         motivo: { type: string, minLength: 5, maxLength: 1000 }
         observacaoInterna: { type: [string, "null"], maxLength: 2000 }
+    AdminAnuncioRemocaoRequest:
+      type: object
+      additionalProperties: false
+      required: [motivo]
+      properties:
+        motivo: { type: string, minLength: 5, maxLength: 1000 }
+    AdminAnuncioRemocao:
+      type: object
+      additionalProperties: false
+      required: [anuncioId, statusAnuncio, statusModeracao, acao, removidoEm, executadoEm]
+      properties:
+        anuncioId: { type: string, format: uuid }
+        statusAnuncio: { type: string, enum: [REMOVIDO] }
+        statusModeracao: { type: string, enum: [PENDENTE, APROVADO, REJEITADO] }
+        acao: { type: string, enum: [REMOVER] }
+        removidoEm: { type: string, format: date-time }
+        executadoEm: { type: string, format: date-time }
     AdminDesbloqueioJuridicoRequest:
       type: object
       additionalProperties: false

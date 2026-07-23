@@ -241,6 +241,10 @@ public class AnuncioEntity {
   }
 
   public void removerPeloProprietario(OffsetDateTime removidoEm) {
+    removerLogicamente(removidoEm);
+  }
+
+  public void removerLogicamente(OffsetDateTime removidoEm) {
     if (!podeRemoverPeloProprietario()) {
       throw new IllegalStateException("transicao para REMOVIDO nao permitida");
     }

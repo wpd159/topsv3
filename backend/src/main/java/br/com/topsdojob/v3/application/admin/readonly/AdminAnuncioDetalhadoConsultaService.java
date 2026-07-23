@@ -201,7 +201,6 @@ public class AdminAnuncioDetalhadoConsultaService {
     @Transactional(readOnly = true)
     public AdminAnuncioDetalheDto detalhar(UUID id, boolean comercialLimitado) {
         AnuncioEntity anuncio = anuncioRepository.findById(id)
-                .filter(entity -> entity.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         AdminLocalizacaoSanitizadaDto localizacao = localizacaoSupport.carregar(List.of(anuncio.getId()))
                 .get(anuncio.getId());
@@ -264,7 +263,6 @@ public class AdminAnuncioDetalhadoConsultaService {
     @Transactional(readOnly = true)
     public AdminPaginaDto<AdminMidiaListaItemDto> listarMidiasDoAnuncio(UUID anuncioId, int page, int size) {
         AnuncioEntity anuncio = anuncioRepository.findById(anuncioId)
-                .filter(entity -> entity.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         return midiaService.listarPorAnuncio(anuncio, page, size);
     }
@@ -272,7 +270,6 @@ public class AdminAnuncioDetalhadoConsultaService {
     @Transactional(readOnly = true)
     public List<AdminKycEnvioDto> documentosDoAnunciante(UUID anuncioId) {
         AnuncioEntity anuncio = anuncioRepository.findById(anuncioId)
-                .filter(entity -> entity.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         if (anuncio.getUsuarioId() == null) return List.of();
         return kycService.listarPorUsuario(anuncio.getUsuarioId());
@@ -281,7 +278,6 @@ public class AdminAnuncioDetalhadoConsultaService {
     @Transactional(readOnly = true)
     public List<AdminModeracaoHistoricoItemDto> historico(UUID anuncioId) {
         AnuncioEntity anuncio = anuncioRepository.findById(anuncioId)
-                .filter(entity -> entity.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
         List<RevisaoAnuncioEntity> revisoes = revisaoRepository.findByAnuncioId(anuncio.getId());
         List<AnuncioMidiaEntity> midias = anuncioMidiaRepository.findByAnuncioId(anuncio.getId()).stream()
@@ -415,6 +411,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                 || acao.startsWith("STORY_ADMIN_")
                 || acao.contains("BLOQUEIO_JURIDICO")
                 || acao.equals("ANUNCIO_REATIVADO_ADMINISTRATIVAMENTE")
+                || acao.equals("ANUNCIO_REMOVIDO_ADMINISTRATIVAMENTE")
                 || acao.equals("ANUNCIO_REMETER_REVISAO")
                 || acao.equals("ANUNCIO_EDICAO_ADMINISTRATIVA"));
     }
