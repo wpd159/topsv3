@@ -87,7 +87,7 @@ export function AdminAnuncioPremiumRapido({
 
   async function activate(item: AdminPremiumCatalogItem) {
     const days = Number(duration)
-    if (busy || !Number.isInteger(days) || days < 1 || observation.trim().length < 3) return
+    if (busy || !Number.isInteger(days) || days < 1) return
     setBusy(true)
     setError(null)
     const key = idempotencyKey.current ?? operationKey()
@@ -95,7 +95,7 @@ export function AdminAnuncioPremiumRapido({
     try {
       await activateAdminPremiumBatch(anuncioId, {
         beneficios: [{ beneficioId: item.id, duracaoDias: days }],
-        observacao: observation.trim(),
+        observacao: observation.trim() || null,
       }, key)
       await refreshRow()
       idempotencyKey.current = null
@@ -164,7 +164,7 @@ export function AdminAnuncioPremiumRapido({
                 </label>
               ) : null}
               <label className="mt-3 block">
-                <span className="mb-1 block text-xs font-semibold text-zinc-700">{isActive ? 'Motivo da desativação' : 'Observação administrativa'}</span>
+                <span className="mb-1 block text-xs font-semibold text-zinc-700">{isActive ? 'Motivo da desativação' : 'Observação administrativa (opcional)'}</span>
                 <Input value={observation} maxLength={500} disabled={busy} onChange={(event) => { setObservation(event.target.value); idempotencyKey.current = null }} />
               </label>
               {error ? <div className="mt-3"><ContractState error={error} compact /></div> : null}
@@ -173,7 +173,7 @@ export function AdminAnuncioPremiumRapido({
                 size="sm"
                 variant={isActive ? 'destructive' : 'default'}
                 className="mt-3 w-full"
-                disabled={busy || observation.trim().length < (isActive ? 5 : 3) || (!isActive && !duration)}
+                disabled={busy || (isActive && observation.trim().length < 5) || (!isActive && !duration)}
                 onClick={() => latest && isActive ? void cancel(latest) : void activate(item)}
               >
                 {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

@@ -31,5 +31,6 @@ public record AdminAnuncioDetalheDto(
         List<String> servicos,
         AdminAnuncianteDetalheDto anunciante,
         AdminAnuncioMetricasDto metricas,
-        AdminRevisaoAbertaDto revisaoAberta) {
+        AdminRevisaoAbertaDto revisaoAberta,
+        AdminBloqueioJuridicoDto bloqueioJuridico) {
 }

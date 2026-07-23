@@ -1,18 +1,19 @@
 package br.com.topsdojob.v3.application.admin.premium;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoService;
-import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
-import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoOperacaoDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoLoteDto;
+import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoOperacaoDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteItemRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
+import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumOpcaoEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
@@ -20,16 +21,18 @@ import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepositor
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.Map;
-import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -50,6 +53,7 @@ public class AdminPremiumOperacaoService {
     private final BeneficioPremiumOpcaoRepository opcaoRepository;
     private final GrupoAtivacaoBeneficioRepository grupoRepository;
     private final AnuncioRepository anuncioRepository;
+    private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository;
     private final BeneficioAnuncioConsultaService beneficioConsultaService;
 
     public AdminPremiumOperacaoService(
@@ -60,6 +64,7 @@ public class AdminPremiumOperacaoService {
             BeneficioPremiumOpcaoRepository opcaoRepository,
             GrupoAtivacaoBeneficioRepository grupoRepository,
             AnuncioRepository anuncioRepository,
+            AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository,
             BeneficioAnuncioConsultaService beneficioConsultaService) {
         this.ativacaoRepository = ativacaoRepository;
         this.movimentoRepository = movimentoRepository;
@@ -68,6 +73,7 @@ public class AdminPremiumOperacaoService {
         this.opcaoRepository = opcaoRepository;
         this.grupoRepository = grupoRepository;
         this.anuncioRepository = anuncioRepository;
+        this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
         this.beneficioConsultaService = beneficioConsultaService;
     }
 
@@ -108,23 +114,21 @@ public class AdminPremiumOperacaoService {
         if (request == null || request.beneficioId() == null || request.duracaoDias() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "beneficio e duracao obrigatorios");
         }
-        String observacao = request.observacao() == null ? "" : request.observacao().trim();
-        if (observacao.length() < 3 || observacao.length() > 500) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "observacao obrigatoria");
-        }
+        String observacao = observacaoOpcional(request.observacao());
         String chave = "premium-admin:" + administrador.usuarioId() + ":"
                 + CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
         var repetido = grupoRepository.findByIdempotencyKey(chave);
         if (repetido.isPresent()) {
-            return resultadoRepetido(repetido.get(), anuncioId, request);
+            return resultadoRepetido(repetido.get(), anuncioId, request, observacao);
         }
 
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
                 .filter(item -> item.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        validarElegibilidadeJuridica(anuncio);
         var repetidoAposLock = grupoRepository.findByIdempotencyKey(chave);
         if (repetidoAposLock.isPresent()) {
-            return resultadoRepetido(repetidoAposLock.get(), anuncioId, request);
+            return resultadoRepetido(repetidoAposLock.get(), anuncioId, request, observacao);
         }
         BeneficioPremiumEntity beneficio = beneficioRepository.findById(request.beneficioId())
                 .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
@@ -181,7 +185,7 @@ public class AdminPremiumOperacaoService {
                         "beneficioCodigo", beneficio.getCodigo(),
                         "duracaoDias", opcao.getDuracaoDias(),
                         "creditosDebitados", 0,
-                        "observacaoRegistrada", true),
+                        "observacaoRegistrada", observacao != null),
                 requestId);
         return toDto(ativacao, 0, false);
     }
@@ -195,7 +199,7 @@ public class AdminPremiumOperacaoService {
             String requestId) {
         validarAdministrador(administrador);
         List<AdminPremiumAtivarLoteItemRequest> itens = validarLote(request);
-        String observacao = observacaoObrigatoria(request.observacao());
+        String observacao = observacaoOpcional(request.observacao());
         String chaveRaiz = "premium-admin-lote:" + administrador.usuarioId() + ":"
                 + CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
         Map<UUID, GrupoAtivacaoBeneficioEntity> repetidos = localizarGruposDoLote(itens, chaveRaiz);
@@ -206,6 +210,7 @@ public class AdminPremiumOperacaoService {
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
                 .filter(item -> item.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        validarElegibilidadeJuridica(anuncio);
         Map<UUID, GrupoAtivacaoBeneficioEntity> repetidosAposLock = localizarGruposDoLote(itens, chaveRaiz);
         if (!repetidosAposLock.isEmpty()) {
             return resultadoLoteRepetido(repetidosAposLock, anuncioId, itens, observacao);
@@ -271,7 +276,7 @@ public class AdminPremiumOperacaoService {
                             "beneficioCodigo", beneficio.getCodigo(),
                             "duracaoDias", opcao.getDuracaoDias(),
                             "creditosDebitados", 0,
-                            "observacaoRegistrada", true),
+                            "observacaoRegistrada", observacao != null),
                     requestId);
             resultado.add(toDto(ativacao, 0, false));
         }
@@ -339,7 +344,8 @@ public class AdminPremiumOperacaoService {
     private AdminPremiumAtivacaoOperacaoDto resultadoRepetido(
             GrupoAtivacaoBeneficioEntity grupo,
             UUID anuncioId,
-            AdminPremiumAtivarRequest request) {
+            AdminPremiumAtivarRequest request,
+            String observacao) {
         List<AtivacaoBeneficioEntity> ativacoes = ativacaoRepository.findByGrupoAtivacaoId(grupo.getId());
         AtivacaoBeneficioEntity ativacao = ativacoes.size() == 1 ? ativacoes.get(0) : null;
         long duracao = grupo.getValidadeInicioEm() == null || grupo.getValidadeFimEm() == null
@@ -348,7 +354,8 @@ public class AdminPremiumOperacaoService {
         if (ativacao == null
                 || !anuncioId.equals(grupo.getAnuncioId())
                 || !request.beneficioId().equals(ativacao.getBeneficioId())
-                || duracao != request.duracaoDias()) {
+                || duracao != request.duracaoDias()
+                || !Objects.equals(observacao, grupo.getObservacao())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key reutilizada com outra operacao");
         }
         return toDto(ativacao, 0, true);
@@ -372,10 +379,13 @@ public class AdminPremiumOperacaoService {
         return List.copyOf(request.beneficios());
     }
 
-    private String observacaoObrigatoria(String value) {
-        String observacao = value == null ? "" : value.trim();
-        if (observacao.length() < 3 || observacao.length() > 500) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "observacao obrigatoria");
+    private String observacaoOpcional(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String observacao = value.trim();
+        if (observacao.length() > 500) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "observacao excede 500 caracteres");
         }
         return observacao;
     }
@@ -412,7 +422,7 @@ public class AdminPremiumOperacaoService {
                     || !anuncioId.equals(grupo.getAnuncioId())
                     || !item.beneficioId().equals(ativacao.getBeneficioId())
                     || duracao != item.duracaoDias()
-                    || !observacao.equals(grupo.getObservacao())) {
+                    || !Objects.equals(observacao, grupo.getObservacao())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key reutilizada com outro lote");
             }
             return toDto(ativacao, 0, true);
@@ -423,6 +433,18 @@ public class AdminPremiumOperacaoService {
     private void validarAdministrador(AdminUserPrincipal administrador) {
         if (administrador == null || !administrador.isEnabled()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao administrativa obrigatoria");
+        }
+    }
+
+    private void validarElegibilidadeJuridica(AnuncioEntity anuncio) {
+        boolean usuarioBloqueado = bloqueioJuridicoRepository
+                .existsByUsuarioIdAndEscopoAndUsuarioDesbloqueadoEmIsNull(
+                        anuncio.getUsuarioId(),
+                        EscopoBloqueioJuridico.ANUNCIO_E_USUARIO);
+        if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO || usuarioBloqueado) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "bloqueio juridico impede ativacao Premium");
         }
     }
 

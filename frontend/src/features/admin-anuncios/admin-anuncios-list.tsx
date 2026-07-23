@@ -11,9 +11,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { SearchableSelect } from '@/features/anuncio-wizard/components/searchable-select'
 
 import { AdminAnuncioPremiumRapido } from './admin-anuncio-premium-rapido'
-import { listAdminAdFilterLocations, listAdminAds, listAdminPremiumCatalog } from './api'
+import { listAdminAdFilterLocations, listAdminAds, listAdminPremiumCatalog, reactivateAdminAd } from './api'
 import {
   ADMIN_AD_PAGE_SIZE_OPTIONS,
   ADMIN_AD_SORT_OPTIONS,
@@ -42,7 +43,7 @@ const SITUATION_OPTIONS: Array<{ value: AdminAdSituation; label: string }> = [
 
 function statusTone(status: string) {
   if (status === 'APROVADO' || status === 'PUBLICADO') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
-  if (status === 'REJEITADO' || status === 'REMOVIDO') return 'border-red-200 bg-red-50 text-red-800'
+  if (status === 'REJEITADO' || status === 'BLOQUEADO' || status === 'REMOVIDO') return 'border-red-200 bg-red-50 text-red-800'
   if (status === 'PENDENTE' || status === 'PENDENTE_REVISAO') return 'border-amber-200 bg-amber-50 text-amber-800'
   return 'border-zinc-200 bg-zinc-50 text-zinc-700'
 }
@@ -110,10 +111,13 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
   const [locations, setLocations] = useState<AdminFilterLocation[]>([])
   const [catalog, setCatalog] = useState<AdminPremiumCatalogItem[]>([])
   const [canManagePremium, setCanManagePremium] = useState(false)
+  const [canManageAds, setCanManageAds] = useState(false)
   const [loading, setLoading] = useState(true)
   const [supportLoading, setSupportLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
   const [supportError, setSupportError] = useState<unknown>(null)
+  const [actionError, setActionError] = useState<unknown>(null)
+  const [busyAdId, setBusyAdId] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const [supportReload, setSupportReload] = useState(0)
 
@@ -141,6 +145,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
       setLocations(locationResponse)
       setCatalog(catalogResponse.filter((item) => item.escopo === 'ANUNCIO'))
       setCanManagePremium(Boolean(session?.papeis.includes('ADMIN') && session?.permissoes.includes('PREMIUM_GERENCIAR')))
+      setCanManageAds(Boolean(session?.papeis.includes('ADMIN') && session?.permissoes.includes('ANUNCIO_MODERAR')))
     } catch (reason) {
       setSupportError(reason)
     } finally {
@@ -176,6 +181,27 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
     } : current)
   }
 
+  function canReactivate(item: AdminAdListItem) {
+    return canManageAds
+      && item.status === 'PAUSADO'
+      && item.statusModeracao === 'APROVADO'
+      && item.anunciante?.status === 'ATIVO'
+  }
+
+  async function reactivate(item: AdminAdListItem) {
+    if (busyAdId || !canReactivate(item)) return
+    setBusyAdId(item.id)
+    setActionError(null)
+    try {
+      await reactivateAdminAd(item.id)
+      await load()
+    } catch (reason) {
+      setActionError(reason)
+    } finally {
+      setBusyAdId(null)
+    }
+  }
+
   const states = useMemo(() => uniqueBy(locations, (item) => item.uf), [locations])
   const cities = useMemo(() => context.uf
     ? uniqueBy(locations.filter((item) => item.uf === context.uf), (item) => item.cidadeSlug)
@@ -183,6 +209,16 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
   const neighborhoods = useMemo(() => context.cidade
     ? uniqueBy(locations.filter((item) => item.uf === context.uf && item.cidadeSlug === context.cidade && Boolean(item.bairroSlug)), (item) => item.bairroSlug || '')
     : [], [context.cidade, context.uf, locations])
+  const cityOptions = useMemo(() => [
+    { id: 'TODAS', label: 'Todas' },
+    ...cities.map((item) => ({ id: item.cidadeSlug, label: item.cidade })),
+  ], [cities])
+  const neighborhoodOptions = useMemo(() => [
+    { id: 'TODOS', label: 'Todos' },
+    ...neighborhoods.map((item) => ({ id: item.bairroSlug || '', label: item.bairro || '' })),
+  ], [neighborhoods])
+  const selectedCity = cityOptions.find((item) => item.id === (context.cidade || 'TODAS'))
+  const selectedNeighborhood = neighborhoodOptions.find((item) => item.id === (context.bairro || 'TODOS'))
   const items = data?.itens ?? []
 
   return (
@@ -212,14 +248,32 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
             <span className="mb-1 block text-xs font-semibold text-zinc-600">UF</span>
             <Select value={context.uf || 'TODOS'} disabled={supportLoading || Boolean(supportError)} onValueChange={(value) => update({ uf: value === 'TODOS' ? '' : value, cidade: '', bairro: '' })}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todas</SelectItem>{states.map((item) => <SelectItem key={item.uf} value={item.uf}>{item.uf}</SelectItem>)}</SelectContent></Select>
           </label>
-          <label>
+          <div>
             <span className="mb-1 block text-xs font-semibold text-zinc-600">Cidade</span>
-            <Select value={context.cidade || 'TODAS'} disabled={!context.uf || supportLoading || Boolean(supportError)} onValueChange={(value) => update({ cidade: value === 'TODAS' ? '' : value, bairro: '' })}><SelectTrigger className="w-full bg-white"><SelectValue placeholder="Todas" /></SelectTrigger><SelectContent><SelectItem value="TODAS">Todas</SelectItem>{cities.map((item) => <SelectItem key={item.cidadeSlug} value={item.cidadeSlug}>{item.cidade}</SelectItem>)}</SelectContent></Select>
-          </label>
-          <label>
+            <SearchableSelect
+              value={context.cidade || 'TODAS'}
+              label={selectedCity?.label || 'Todas'}
+              placeholder="Todas"
+              searchPlaceholder="Pesquisar cidade"
+              emptyText="Nenhuma cidade encontrada"
+              options={cityOptions}
+              disabled={!context.uf || supportLoading || Boolean(supportError)}
+              onSelect={(value) => update({ cidade: value === 'TODAS' ? '' : value, bairro: '' })}
+            />
+          </div>
+          <div>
             <span className="mb-1 block text-xs font-semibold text-zinc-600">Bairro</span>
-            <Select value={context.bairro || 'TODOS'} disabled={!context.cidade || supportLoading || Boolean(supportError)} onValueChange={(value) => update({ bairro: value === 'TODOS' ? '' : value })}><SelectTrigger className="w-full bg-white"><SelectValue placeholder="Todos" /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todos</SelectItem>{neighborhoods.map((item) => <SelectItem key={item.bairroSlug} value={item.bairroSlug || ''}>{item.bairro}</SelectItem>)}</SelectContent></Select>
-          </label>
+            <SearchableSelect
+              value={context.bairro || 'TODOS'}
+              label={selectedNeighborhood?.label || 'Todos'}
+              placeholder="Todos"
+              searchPlaceholder="Pesquisar bairro"
+              emptyText="Nenhum bairro encontrado"
+              options={neighborhoodOptions}
+              disabled={!context.cidade || supportLoading || Boolean(supportError)}
+              onSelect={(value) => update({ bairro: value === 'TODOS' ? '' : value })}
+            />
+          </div>
           <label>
             <span className="mb-1 block text-xs font-semibold text-zinc-600">Ordenar por</span>
             <Select value={context.ordenacao} onValueChange={(value) => update({ ordenacao: value as AdminAdQueueContext['ordenacao'] })}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{ADMIN_AD_SORT_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
@@ -233,6 +287,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
       </form>
 
       {supportError ? <ContractState error={supportError} onRetry={() => setSupportReload((value) => value + 1)} compact /> : null}
+      {actionError ? <ContractState error={actionError} compact /> : null}
       {error ? <ContractState error={error} onRetry={() => setReload((value) => value + 1)} /> : null}
       {!error && loading && !data ? <p className="py-12 text-center text-sm text-zinc-500">Carregando fila...</p> : null}
       {!error && !loading && items.length === 0 ? <div className="border border-zinc-200 bg-white px-5 py-10 text-center"><p className="font-semibold text-zinc-900">Nenhum anúncio corresponde aos filtros.</p><p className="mt-1 text-sm text-zinc-600">A fila está legitimamente vazia para esta combinação.</p></div> : null}
@@ -247,7 +302,10 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
                 <p className="mt-3 text-xs text-zinc-600">{locationLabel(item)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div><span className="block text-zinc-500">Visualizações</span><strong>{viewsLabel(item)}</strong></div><div><span className="block text-zinc-500">WhatsApp</span><strong>{item.cliquesWhatsapp}</strong></div><div><span className="block text-zinc-500">Criado</span><strong>{dateLabel(item.criadoEm)}</strong></div></div>
                 <div className="mt-3"><AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} /></div>
-                <Button asChild className="mt-4 w-full"><Link href={adminAdQueueDetailHref(item.id, context)}>Abrir análise</Link></Button>
+                <div className="mt-4 grid gap-2">
+                  {canReactivate(item) ? <Button type="button" variant="outline" disabled={Boolean(busyAdId)} onClick={() => void reactivate(item)}>{busyAdId === item.id ? 'Reativando...' : 'Reativar'}</Button> : null}
+                  <Button asChild><Link href={adminAdQueueDetailHref(item.id, context)}>Abrir análise</Link></Button>
+                </div>
               </article>
             ))}
           </div>
@@ -265,7 +323,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
                     <td className="px-4 py-3"><AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} /></td>
                     <td className="px-4 py-3 text-xs text-zinc-700"><strong>{viewsLabel(item)}</strong> views<br /><span>{item.cliquesWhatsapp} cliques</span></td>
                     <td className="px-4 py-3 text-xs text-zinc-600">{dateLabel(item.criadoEm)}</td>
-                    <td className="px-4 py-3 text-right"><Button asChild size="sm"><Link href={adminAdQueueDetailHref(item.id, context)}>Analisar</Link></Button></td>
+                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-2">{canReactivate(item) ? <Button type="button" size="sm" variant="outline" disabled={Boolean(busyAdId)} onClick={() => void reactivate(item)}>{busyAdId === item.id ? 'Reativando...' : 'Reativar'}</Button> : null}<Button asChild size="sm"><Link href={adminAdQueueDetailHref(item.id, context)}>Analisar</Link></Button></div></td>
                   </tr>
                 ))}
               </tbody>

@@ -20,11 +20,13 @@ import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -34,6 +36,9 @@ import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.CategoriaBloqueioJuridico;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -61,6 +66,8 @@ import org.springframework.web.server.ResponseStatusException;
 class AdminAnuncioDetalhadoConsultaServiceTest {
 
     private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+    private final AnuncioBloqueioJuridicoRepository bloqueioRepository =
+            mock(AnuncioBloqueioJuridicoRepository.class);
     private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
     private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     private final RevisaoAnuncioRepository revisaoRepository = mock(RevisaoAnuncioRepository.class);
@@ -77,6 +84,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
     private final AdminKycService kycService = mock(AdminKycService.class);
     private final AdminAnuncioDetalhadoConsultaService service = new AdminAnuncioDetalhadoConsultaService(
             anuncioRepository,
+            bloqueioRepository,
             midiaRepository,
             arquivoRepository,
             revisaoRepository,
@@ -122,6 +130,13 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         usuario.confirmarEmail(agora);
         when(localizacaoSupport.filtrarAnuncioIds(null, null, null)).thenReturn(null);
         when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(bloqueioRepository.findFirstByAnuncioIdAndAnuncioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(anuncioId))
+                .thenReturn(Optional.empty());
+        when(bloqueioRepository
+                .findFirstByUsuarioIdAndEscopoAndUsuarioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(
+                        usuarioId,
+                        EscopoBloqueioJuridico.ANUNCIO_E_USUARIO))
+                .thenReturn(Optional.empty());
         when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuario));
         when(localizacaoSupport.carregar(List.of(anuncioId))).thenReturn(Map.of(
                 anuncioId, new AdminLocalizacaoSanitizadaDto(
@@ -253,7 +268,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = AdminAnuncioSituacao.class, names = "BLOQUEADOS", mode = EnumSource.Mode.EXCLUDE)
+    @EnumSource(AdminAnuncioSituacao.class)
     void filaTraduzSituacoesCanonicasNoPostgresql(AdminAnuncioSituacao situacao) {
         when(anuncioRepository.findFilaAdministrativa(
                 eq(situacao.name()), anyBoolean(), any(), any(), any(), any(Pageable.class)))
@@ -263,24 +278,6 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
 
         verify(anuncioRepository).findFilaAdministrativa(
                 eq(situacao.name()), anyBoolean(), any(), any(), any(), eq(PageRequest.of(0, 30)));
-    }
-
-    @Test
-    void bloqueadosFalhaFechadoSemReintroduzirEstadoRemovidoPelaV018() {
-        assertThatThrownBy(() -> service.listar(
-                0,
-                30,
-                AdminAnuncioSituacao.BLOQUEADOS,
-                null,
-                null,
-                null,
-                null,
-                AdminAnuncioOrdenacao.MAIS_RECENTES,
-                false))
-                .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
-                    assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-                    assertThat(error.getReason()).contains("sem estado canonico apos a V018");
-                });
     }
 
     @ParameterizedTest
@@ -331,5 +328,75 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         assertThat(detalhe.metricas().visualizacoes().situacao())
                 .isEqualTo(VisualizacoesCanonicasDto.Situacao.HISTORICO_PENDENTE);
         assertThat(detalhe.metricas().ctr()).isNull();
+    }
+
+    @Test
+    void detalheProtegidoExibeBloqueioJuridicoAtivoSemIntegrarContratoPublico() {
+        UUID atorId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now();
+        AnuncioBloqueioJuridicoEntity bloqueio = AnuncioBloqueioJuridicoEntity.registrar(
+                UUID.randomUUID(),
+                anuncioId,
+                usuario.getId(),
+                EscopoBloqueioJuridico.ANUNCIO,
+                CategoriaBloqueioJuridico.FRAUDE,
+                null,
+                "evidencia juridica sanitizada",
+                "observacao interna",
+                atorId,
+                "req-juridico",
+                agora);
+        UsuarioEntity responsavel = UsuarioEntity.criarCadastroPublico(
+                atorId,
+                "Responsavel juridico",
+                "responsavel@example.invalid",
+                "+5562777777777",
+                LocalDate.of(1985, 1, 1),
+                agora.minusYears(1));
+        set(anuncio, "status", StatusAnuncio.BLOQUEADO);
+        when(bloqueioRepository.findFirstByAnuncioIdAndAnuncioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(anuncioId))
+                .thenReturn(Optional.of(bloqueio));
+        when(usuarioRepository.findById(atorId)).thenReturn(Optional.of(responsavel));
+        when(visualizacaoService.calcular(anuncioId)).thenReturn(VisualizacoesCanonicasDto.total(0));
+
+        var detalhe = service.detalhar(anuncioId, false);
+
+        assertThat(detalhe.status()).isEqualTo("BLOQUEADO");
+        assertThat(detalhe.bloqueioJuridico().categoria()).isEqualTo("FRAUDE");
+        assertThat(detalhe.bloqueioJuridico().motivo()).isEqualTo("evidencia juridica sanitizada");
+        assertThat(detalhe.bloqueioJuridico().bloqueadoPorNome()).isEqualTo("Responsavel juridico");
+        assertThat(detalhe.bloqueioJuridico().anuncioBloqueado()).isTrue();
+        assertThat(detalhe.bloqueioJuridico().usuarioBloqueado()).isFalse();
+    }
+
+    @Test
+    void bloqueioDoUsuarioNaoFabricaBloqueioIndividualNosOutrosAnuncios() {
+        UUID atorId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now();
+        AnuncioBloqueioJuridicoEntity bloqueio = AnuncioBloqueioJuridicoEntity.registrar(
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                usuario.getId(),
+                EscopoBloqueioJuridico.ANUNCIO_E_USUARIO,
+                CategoriaBloqueioJuridico.ORDEM_OU_RISCO_JURIDICO,
+                br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario.ATIVO,
+                "risco juridico sanitizado",
+                null,
+                atorId,
+                "req-bloqueio-usuario",
+                agora);
+        when(bloqueioRepository.findFirstByAnuncioIdAndAnuncioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(anuncioId))
+                .thenReturn(Optional.empty());
+        when(bloqueioRepository
+                .findFirstByUsuarioIdAndEscopoAndUsuarioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(
+                        usuario.getId(),
+                        EscopoBloqueioJuridico.ANUNCIO_E_USUARIO))
+                .thenReturn(Optional.of(bloqueio));
+        when(visualizacaoService.calcular(anuncioId)).thenReturn(VisualizacoesCanonicasDto.total(0));
+
+        var detalhe = service.detalhar(anuncioId, false);
+
+        assertThat(detalhe.bloqueioJuridico().anuncioBloqueado()).isFalse();
+        assertThat(detalhe.bloqueioJuridico().usuarioBloqueado()).isTrue();
     }
 }

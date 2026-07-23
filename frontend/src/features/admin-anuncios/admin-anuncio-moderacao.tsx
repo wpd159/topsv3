@@ -11,9 +11,12 @@ import {
   ExternalLink,
   FileWarning,
   Image as ImageIcon,
+  LockKeyhole,
   Loader2,
   Pencil,
+  RotateCcw,
   ShieldAlert,
+  Unlock,
   Video,
   XCircle,
 } from 'lucide-react'
@@ -22,6 +25,7 @@ import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getAdminSession } from '@/lib/admin-auth-api'
@@ -30,6 +34,8 @@ import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
 import { AdminAnuncioStory } from './admin-anuncio-story'
 import {
+  blockAdminAd,
+  blockAdminAdAndUser,
   decideAdminMedia,
   decideAdminReview,
   getAdminAd,
@@ -37,17 +43,42 @@ import {
   getAdminMediaPreview,
   listAdminAdHistory,
   listAdminAdMedia,
+  reactivateAdminAd,
   reclassifyAdminMedia,
   submitAdminReview,
+  unblockAdminAd,
+  unblockAdminUser,
 } from './api'
 import { adminAdQueueDetailHref, adminAdQueueListHref, parseAdminAdQueueContext } from './queue-context'
-import type { AdminAdDetail, AdminAdQueueNavigation, AdminMediaItem, AdminMediaPreview, AdminModerationHistoryItem } from './types'
+import type {
+  AdminAdDetail,
+  AdminAdQueueNavigation,
+  AdminLegalBlockCategory,
+  AdminMediaItem,
+  AdminMediaPreview,
+  AdminModerationHistoryItem,
+} from './types'
 
 type DecisionIntent =
   | { kind: 'OPEN_REVIEW'; title: string; requiresReason: true }
   | { kind: 'REVIEW'; title: string; action: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE'; requiresReason: boolean }
   | { kind: 'MEDIA'; title: string; media: AdminMediaItem; action: 'APROVAR' | 'REPROVAR'; visibility?: 'LIVRE' | 'RESTRITA_18'; requiresReason: boolean }
   | { kind: 'RECLASSIFY'; title: string; media: AdminMediaItem; visibility: 'LIVRE' | 'RESTRITA_18'; requiresReason: true }
+
+type LegalIntent =
+  | { kind: 'REACTIVATE'; title: string }
+  | { kind: 'BLOCK_AD'; title: string }
+  | { kind: 'BLOCK_USER'; title: string }
+  | { kind: 'UNBLOCK_AD'; title: string }
+  | { kind: 'UNBLOCK_USER'; title: string }
+
+const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }> = [
+  { value: 'DENUNCIA_GRAVE', label: 'Denúncia grave' },
+  { value: 'USO_NAO_AUTORIZADO_IMAGEM', label: 'Uso não autorizado de imagem' },
+  { value: 'FRAUDE', label: 'Fraude' },
+  { value: 'ORDEM_OU_RISCO_JURIDICO', label: 'Ordem ou risco jurídico' },
+  { value: 'OUTRA_INTERVENCAO', label: 'Outra intervenção excepcional' },
+]
 
 function formatDate(value?: string | null) {
   if (!value) return 'Não informado'
@@ -66,7 +97,7 @@ function formatEnum(value?: string | null) {
 
 function moderationTone(value?: string | null) {
   if (value === 'APROVADO' || value === 'PUBLICAVEL') return 'border-emerald-200 bg-emerald-50 text-emerald-800'
-  if (value === 'REJEITADO' || value === 'REJEITADA') return 'border-red-200 bg-red-50 text-red-800'
+  if (value === 'REJEITADO' || value === 'REJEITADA' || value === 'BLOQUEADO') return 'border-red-200 bg-red-50 text-red-800'
   return 'border-amber-200 bg-amber-50 text-amber-800'
 }
 
@@ -118,6 +149,83 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
   )
 }
 
+function LegalActionDialog({ intent, busy, error, onClose, onConfirm }: {
+  intent: LegalIntent | null
+  busy: boolean
+  error: unknown
+  onClose: () => void
+  onConfirm: (category: AdminLegalBlockCategory | null, reason: string, internalNote: string) => void
+}) {
+  const [category, setCategory] = useState<AdminLegalBlockCategory | ''>('')
+  const [reason, setReason] = useState('')
+  const [internalNote, setInternalNote] = useState('')
+  const isBlock = intent?.kind === 'BLOCK_AD' || intent?.kind === 'BLOCK_USER'
+  const isUnlock = intent?.kind === 'UNBLOCK_AD' || intent?.kind === 'UNBLOCK_USER'
+
+  useEffect(() => {
+    setCategory('')
+    setReason('')
+    setInternalNote('')
+  }, [intent])
+
+  return (
+    <Dialog open={Boolean(intent)} onOpenChange={(open) => { if (!open && !busy) onClose() }}>
+      <DialogContent className="rounded-md">
+        <DialogHeader>
+          <DialogTitle>{intent?.title}</DialogTitle>
+          <DialogDescription>
+            {isBlock
+              ? 'A intervenção retira o anúncio do catálogo sem excluir dados, mídias ou histórico.'
+              : intent?.kind === 'REACTIVATE'
+                ? 'O anúncio será publicado somente após a confirmação do backend.'
+                : 'O desbloqueio não republica anúncios nem reativa Stories ou benefícios expirados.'}
+          </DialogDescription>
+        </DialogHeader>
+        {isBlock ? (
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-zinc-800">Categoria obrigatória</span>
+              <Select value={category} onValueChange={(value) => setCategory(value as AdminLegalBlockCategory)} disabled={busy}>
+                <SelectTrigger className="w-full bg-white"><SelectValue placeholder="Selecione a categoria" /></SelectTrigger>
+                <SelectContent>{LEGAL_CATEGORIES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-zinc-800">Motivo obrigatório</span>
+              <Textarea value={reason} onChange={(event) => setReason(event.target.value)} minLength={5} maxLength={1000} rows={4} disabled={busy} />
+              <span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/1000</span>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-zinc-800">Observação interna opcional</span>
+              <Textarea value={internalNote} onChange={(event) => setInternalNote(event.target.value)} maxLength={2000} rows={3} disabled={busy} />
+              <span className="mt-1 block text-right text-xs text-zinc-500">{internalNote.length}/2000</span>
+            </label>
+          </div>
+        ) : isUnlock ? (
+          <label className="block">
+            <span className="mb-2 block text-sm font-semibold text-zinc-800">Motivo opcional</span>
+            <Textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} rows={3} disabled={busy} />
+            <span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/1000</span>
+          </label>
+        ) : null}
+        {error ? <ContractState error={error} compact /> : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button
+            type="button"
+            variant={isBlock ? 'destructive' : 'default'}
+            onClick={() => onConfirm(category || null, reason, internalNote)}
+            disabled={busy || Boolean(isBlock && (!category || reason.trim().length < 5))}
+          >
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Confirmar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function MediaVisibilitySelector({
   mediaId,
   value,
@@ -162,6 +270,9 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const [intent, setIntent] = useState<DecisionIntent | null>(null)
   const [actionError, setActionError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
+  const [legalIntent, setLegalIntent] = useState<LegalIntent | null>(null)
+  const [legalActionError, setLegalActionError] = useState<unknown>(null)
+  const [legalBusy, setLegalBusy] = useState(false)
   const [reload, setReload] = useState(0)
   const [visibility, setVisibility] = useState<Record<string, 'LIVRE' | 'RESTRITA_18'>>({})
   const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
@@ -218,6 +329,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const canModerateMedia = permissions.includes('MIDIA_REVISAR')
   const canReadDocuments = permissions.includes('DOCUMENTO_REVISAR')
   const canManagePremium = isAdmin && permissions.includes('PREMIUM_GERENCIAR')
+  const canManageLegalStatus = isAdmin && canModerateAd
   const canReclassifyMedia = isAdmin && canModerateMedia
   const canReadHistory = canModerateAd || canModerateMedia
   const actionableMedia = useMemo(() => new Set(['PENDENTE', 'AJUSTE_SOLICITADO']), [])
@@ -254,6 +366,41 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     }
   }
 
+  async function confirmLegalAction(
+    category: AdminLegalBlockCategory | null,
+    reason: string,
+    internalNote: string,
+  ) {
+    if (!legalIntent || legalBusy || !ad) return
+    setLegalBusy(true)
+    setLegalActionError(null)
+    try {
+      if (legalIntent.kind === 'REACTIVATE') await reactivateAdminAd(ad.id)
+      else if (legalIntent.kind === 'BLOCK_AD') {
+        if (!category) return
+        await blockAdminAd(ad.id, {
+          categoria: category,
+          motivo: reason.trim(),
+          observacaoInterna: internalNote.trim() || null,
+        })
+      } else if (legalIntent.kind === 'BLOCK_USER') {
+        if (!category) return
+        await blockAdminAdAndUser(ad.id, {
+          categoria: category,
+          motivo: reason.trim(),
+          observacaoInterna: internalNote.trim() || null,
+        })
+      } else if (legalIntent.kind === 'UNBLOCK_AD') await unblockAdminAd(ad.id, reason)
+      else await unblockAdminUser(ad.id, reason)
+      setLegalIntent(null)
+      await load()
+    } catch (reasonError) {
+      setLegalActionError(reasonError)
+    } finally {
+      setLegalBusy(false)
+    }
+  }
+
   if (loading && !ad) return <p className="py-16 text-center text-sm text-zinc-500">Carregando análise...</p>
   if (error || !ad) return <ContractState error={error ?? new Error('Anúncio indisponível.')} onRetry={() => setReload((value) => value + 1)} />
 
@@ -265,6 +412,12 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     target.id,
     { ...queueContext, page: target.page },
   )
+  const legalBlock = ad.bloqueioJuridico
+  const canReactivate = canManageLegalStatus
+    && ad.status === 'PAUSADO'
+    && ad.statusModeracao === 'APROVADO'
+    && ad.anunciante?.status === 'ATIVO'
+    && !legalBlock?.usuarioBloqueado
 
   return (
     <div className="space-y-5">
@@ -311,6 +464,35 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
             <div><dt className="text-xs text-zinc-500">Premium vigente</dt><dd className="font-semibold">{ad.metricas.beneficiosPremiumVigentes.length ? ad.metricas.beneficiosPremiumVigentes.join(', ') : 'Nenhum'}</dd></div>
           </dl>
           <p className="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-500">Última ação: {ad.metricas.ultimaAcaoAdministrativa ? `${formatEnum(ad.metricas.ultimaAcaoAdministrativa.decisao || ad.metricas.ultimaAcaoAdministrativa.acao)} · ${formatDate(ad.metricas.ultimaAcaoAdministrativa.criadoEm)}` : 'nenhuma ação registrada'}</p>
+        </div>
+      </section>
+
+      <section className="rounded-md border border-zinc-200 bg-white p-4" aria-labelledby="legal-status-title">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h2 id="legal-status-title" className="flex items-center gap-2 text-sm font-semibold text-zinc-950"><LockKeyhole className="h-4 w-4 text-red-700" />Situação jurídica</h2>
+            {legalBlock ? (
+              <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div><dt className="text-xs text-zinc-500">Escopo</dt><dd className="font-semibold">{formatEnum(legalBlock.escopo)}</dd></div>
+                <div><dt className="text-xs text-zinc-500">Categoria</dt><dd className="font-semibold">{formatEnum(legalBlock.categoria)}</dd></div>
+                <div><dt className="text-xs text-zinc-500">Data</dt><dd className="font-semibold">{formatDate(legalBlock.bloqueadoEm)}</dd></div>
+                <div><dt className="text-xs text-zinc-500">Responsável</dt><dd className="font-semibold">{legalBlock.bloqueadoPorNome || legalBlock.bloqueadoPorId.slice(0, 8)}</dd></div>
+                <div className="sm:col-span-2"><dt className="text-xs text-zinc-500">Motivo</dt><dd className="mt-1 whitespace-pre-wrap">{legalBlock.motivo}</dd></div>
+                <div><dt className="text-xs text-zinc-500">Anúncio</dt><dd className="font-semibold">{legalBlock.anuncioBloqueado ? 'Bloqueado' : formatEnum(ad.status)}</dd></div>
+                <div><dt className="text-xs text-zinc-500">Usuário</dt><dd className="font-semibold">{legalBlock.usuarioBloqueado ? 'Bloqueado' : formatEnum(ad.anunciante?.status)}</dd></div>
+                {legalBlock.observacaoInterna ? <div className="sm:col-span-2 lg:col-span-4"><dt className="text-xs text-zinc-500">Observação interna</dt><dd className="mt-1 whitespace-pre-wrap">{legalBlock.observacaoInterna}</dd></div> : null}
+              </dl>
+            ) : <p className="mt-2 text-sm text-zinc-600">Nenhum bloqueio jurídico ativo.</p>}
+          </div>
+          {canManageLegalStatus ? (
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap lg:max-w-[480px] lg:justify-end">
+              {canReactivate ? <Button type="button" variant="outline" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'REACTIVATE', title: 'Reativar anúncio pausado' })}><RotateCcw className="mr-2 h-4 w-4" />Reativar</Button> : null}
+              {legalBlock?.anuncioBloqueado ? <Button type="button" variant="outline" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_AD', title: 'Desbloquear anúncio' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear anúncio</Button> : null}
+              {legalBlock?.usuarioBloqueado ? <Button type="button" variant="outline" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_USER', title: 'Desbloquear usuário' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear usuário</Button> : null}
+              {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado ? <Button type="button" variant="destructive" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_AD', title: 'Bloquear anúncio' })}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear anúncio</Button> : null}
+              {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado && ad.anunciante?.status !== 'SUSPENSO' ? <Button type="button" variant="destructive" disabled={legalBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_USER', title: 'Bloquear anúncio e usuário' })}><ShieldAlert className="mr-2 h-4 w-4" />Bloquear anúncio e usuário</Button> : null}
+            </div>
+          ) : <p className="shrink-0 text-sm font-medium text-amber-700">Somente ADMIN pode bloquear ou desbloquear.</p>}
         </div>
       </section>
 
@@ -406,10 +588,11 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
 
         <TabsContent value="documentos"><AdminAnuncioDocumentos anuncioId={ad.id} anunciante={ad.anunciante} autorizado={canReadDocuments} /></TabsContent>
         <TabsContent value="premium"><AdminAnuncioPremium anuncioId={ad.id} canManage={canManagePremium} /></TabsContent>
-        <TabsContent value="historico">{!canReadHistory ? <p className="text-sm font-medium text-amber-700">Sem permissão para consultar o histórico.</p> : history.length === 0 ? <p className="text-sm text-zinc-600">Nenhuma ação administrativa registrada.</p> : <ol className="divide-y divide-zinc-200 border-y border-zinc-200">{history.map((item) => <li key={item.id} className="grid gap-2 py-4 sm:grid-cols-[1fr_auto]"><div><p className="text-sm font-semibold text-zinc-900">{formatEnum(item.decisao || item.acao)}</p><p className="mt-1 text-xs text-zinc-600">{formatEnum(item.alvoTipo)} · {item.status ? formatEnum(item.status) : 'sem mudança de estado'}</p>{item.motivo ? <p className="mt-2 text-sm text-zinc-700">{item.motivo}</p> : null}</div><div className="text-left text-xs text-zinc-500 sm:text-right"><p>{formatDate(item.criadoEm)}</p><p className="mt-1">Ator {item.atorId?.slice(0, 8) || 'não identificado'}</p><p className="mt-1">Request {item.requestId?.slice(0, 16) || 'não informado'}</p></div></li>)}</ol>}</TabsContent>
+        <TabsContent value="historico">{!canReadHistory ? <p className="text-sm font-medium text-amber-700">Sem permissão para consultar o histórico.</p> : history.length === 0 ? <p className="text-sm text-zinc-600">Nenhuma ação administrativa registrada.</p> : <ol className="divide-y divide-zinc-200 border-y border-zinc-200">{history.map((item) => <li key={item.id} className="grid gap-2 py-4 sm:grid-cols-[1fr_auto]"><div><p className="text-sm font-semibold text-zinc-900">{formatEnum(item.decisao || item.acao)}</p><p className="mt-1 text-xs text-zinc-600">{formatEnum(item.alvoTipo)} · {item.status ? formatEnum(item.status) : 'sem mudança de estado'}</p>{item.categoria ? <p className="mt-2 text-xs font-semibold uppercase text-red-700">{formatEnum(item.categoria)}</p> : null}{item.motivo ? <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-700">{item.motivo}</p> : null}{item.observacaoInterna ? <p className="mt-2 whitespace-pre-wrap border-l-2 border-zinc-300 pl-3 text-xs text-zinc-600">Observação interna: {item.observacaoInterna}</p> : null}</div><div className="text-left text-xs text-zinc-500 sm:text-right"><p>{formatDate(item.criadoEm)}</p><p className="mt-1">Ator {item.atorId?.slice(0, 8) || 'não identificado'}</p><p className="mt-1">Request {item.requestId?.slice(0, 16) || 'não informado'}</p></div></li>)}</ol>}</TabsContent>
       </Tabs>
 
       <DecisionDialog intent={intent} busy={busy} error={actionError} onClose={() => { setIntent(null); setActionError(null) }} onConfirm={(reason) => void confirmDecision(reason)} />
+      <LegalActionDialog intent={legalIntent} busy={legalBusy} error={legalActionError} onClose={() => { setLegalIntent(null); setLegalActionError(null) }} onConfirm={(category, reason, internalNote) => void confirmLegalAction(category, reason, internalNote)} />
     </div>
   )
 }

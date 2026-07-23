@@ -196,6 +196,27 @@ public class UsuarioEntity {
     this.atualizadoEm = agora;
   }
 
+  public StatusUsuario bloquearJuridicamente(OffsetDateTime agora) {
+    if (status == StatusUsuario.SUSPENSO || status == StatusUsuario.DESATIVADO) {
+      throw new IllegalStateException("usuario nao pode ser bloqueado juridicamente");
+    }
+    StatusUsuario statusAnterior = status;
+    status = StatusUsuario.SUSPENSO;
+    atualizadoEm = agora;
+    return statusAnterior;
+  }
+
+  public void desbloquearJuridicamente(StatusUsuario statusAnterior, OffsetDateTime agora) {
+    if (status != StatusUsuario.SUSPENSO
+        || statusAnterior == null
+        || statusAnterior == StatusUsuario.SUSPENSO
+        || statusAnterior == StatusUsuario.DESATIVADO) {
+      throw new IllegalStateException("usuario nao pode ser desbloqueado juridicamente");
+    }
+    status = statusAnterior;
+    atualizadoEm = agora;
+  }
+
   public boolean reconciliarAutenticacaoHomologacao(
       StatusUsuario statusEsperado,
       boolean emailConfirmado,

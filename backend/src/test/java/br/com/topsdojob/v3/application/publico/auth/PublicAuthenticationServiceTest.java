@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.publico.auth;
 
+import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,6 +17,7 @@ import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -148,6 +150,25 @@ class PublicAuthenticationServiceTest {
                     assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
                     assertThat(exception.getMessage()).isEqualTo("E-mail ou senha invalidos.");
                 });
+    }
+
+    @Test
+    void usuarioSuspensoPorBloqueioJuridicoNaoAutentica() {
+        UsuarioEntity usuario = activeUser();
+        set(usuario, "status", StatusUsuario.SUSPENSO);
+        when(usuarioRepository.findByEmailNormalizado("perfil@example.invalid"))
+                .thenReturn(Optional.of(usuario));
+
+        assertThatThrownBy(() -> service.login(
+                new PublicLoginRequestDto("perfil@example.invalid", SYNTHETIC_CREDENTIAL),
+                new MockHttpServletRequest(),
+                new MockHttpServletResponse()))
+                .isInstanceOfSatisfying(PublicAuthException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                    assertThat(exception.getMessage()).isEqualTo("E-mail ou senha invalidos.");
+                });
+
+        verify(passwordEncoder, never()).matches(any(), any());
     }
 
     @Test

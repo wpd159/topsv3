@@ -1623,8 +1623,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "409":
-          description: Situacao sem estado canonico vigente
         "500":
           $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/filtros/localidades:
@@ -1724,6 +1722,194 @@ paths:
                 $ref: "#/components/schemas/AdminAnuncioDetalhe"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/reativar:
+    post:
+      summary: Reativa administrativamente um anuncio pausado e aprovado
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Publica somente PAUSADO com moderacao APROVADA e proprietario ativo; nao restaura Premium, Story ou prioridade.
+      operationId: postAdminAnuncioReativar
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: anuncio reativado e auditado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioOperacaoJuridica"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/bloqueio-juridico:
+    post:
+      summary: Bloqueia juridicamente somente um anuncio
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Preserva anuncio, midias, documentos, historico, Premium e objetos; suspende efeitos publicos e Stories vinculados.
+      operationId: postAdminAnuncioBloqueioJuridico
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminBloqueioJuridicoRequest"
+      responses:
+        "200":
+          description: anuncio bloqueado e auditado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioOperacaoJuridica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/bloqueio-juridico/usuario:
+    post:
+      summary: Bloqueia juridicamente um anuncio e seu proprietario
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Invalida sessoes apos commit, pausa os demais anuncios publicaveis e suspende Stories sem excluir dados ou objetos.
+      operationId: postAdminAnuncioUsuarioBloqueioJuridico
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminBloqueioJuridicoRequest"
+      responses:
+        "200":
+          description: anuncio e usuario bloqueados e auditados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioOperacaoJuridica"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/desbloqueio-juridico:
+    post:
+      summary: Desbloqueia juridicamente somente um anuncio
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Move BLOQUEADO para PAUSADO e nunca republica, reativa Story ou restaura beneficio.
+      operationId: postAdminAnuncioDesbloqueioJuridico
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDesbloqueioJuridicoRequest"
+      responses:
+        "200":
+          description: anuncio desbloqueado para PAUSADO e auditado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioOperacaoJuridica"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/desbloqueio-juridico/usuario:
+    post:
+      summary: Desbloqueia juridicamente o proprietario do anuncio
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Libera a conta sem republicar anuncios, reativar Stories ou restaurar beneficios.
+      operationId: postAdminAnuncioUsuarioDesbloqueioJuridico
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDesbloqueioJuridicoRequest"
+      responses:
+        "200":
+          description: usuario desbloqueado sem republicacao automatica
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAnuncioOperacaoJuridica"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1914,7 +2100,7 @@ paths:
   /api/admin/premium/anuncios/{id}/ativacoes:
     post:
       summary: Ativa manualmente beneficio vigente para um anuncio
-      description: Operacao exclusiva de ADMIN com PREMIUM_GERENCIAR. Usa duracao ativa do catalogo, nao debita creditos e exige observacao, CSRF, Idempotency-Key e auditoria.
+      description: Operacao exclusiva de ADMIN com PREMIUM_GERENCIAR. Usa duracao ativa do catalogo, nao debita creditos e exige CSRF, Idempotency-Key e auditoria; a observacao e opcional.
       operationId: postAdminPremiumAtivacaoManual
       security:
         - AdminSessionCookie: []
@@ -1955,7 +2141,7 @@ paths:
   /api/admin/premium/anuncios/{id}/ativacoes/lote:
     post:
       summary: Ativa em lote beneficios vigentes para um anuncio
-      description: Operacao atomica exclusiva de ADMIN com PREMIUM_GERENCIAR. Valida cada duracao no catalogo, nao debita creditos e exige observacao, CSRF, Idempotency-Key e auditoria por ativacao.
+      description: Operacao atomica exclusiva de ADMIN com PREMIUM_GERENCIAR. Valida cada duracao no catalogo, nao debita creditos e exige CSRF, Idempotency-Key e auditoria por ativacao; a observacao e opcional.
       operationId: postAdminPremiumAtivacaoManualLote
       security:
         - AdminSessionCookie: []
@@ -4577,7 +4763,7 @@ components:
             enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
         status:
           type: string
-          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, REMOVIDO]
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO]
         statusModeracao:
           type: string
           enum: [NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO]
@@ -5232,6 +5418,7 @@ components:
           type:
             - string
             - "null"
+          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO, null]
     AdminAnuncianteDetalhe:
       type: object
       additionalProperties: false
@@ -5255,6 +5442,7 @@ components:
           pattern: "^\\+[1-9][0-9]{7,14}$"
         status:
           type: [string, "null"]
+          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO, null]
     AdminRevisaoAberta:
       type: object
       additionalProperties: false
@@ -5293,6 +5481,7 @@ components:
           type:
             - string
             - "null"
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO, null]
         statusModeracao:
           type:
             - string
@@ -5404,6 +5593,7 @@ components:
           type: [string, "null"]
         status:
           type: [string, "null"]
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO, null]
         statusModeracao:
           type: [string, "null"]
         categoria:
@@ -5461,6 +5651,10 @@ components:
           anyOf:
             - $ref: "#/components/schemas/AdminRevisaoAberta"
             - type: "null"
+        bloqueioJuridico:
+          anyOf:
+            - $ref: "#/components/schemas/AdminBloqueioJuridico"
+            - type: "null"
     AdminAnuncioMetricas:
       type: object
       additionalProperties: false
@@ -5483,6 +5677,61 @@ components:
           anyOf:
             - $ref: "#/components/schemas/AdminModeracaoHistoricoItem"
             - type: "null"
+    AdminBloqueioJuridico:
+      type: object
+      additionalProperties: false
+      required: [id, anuncioId, usuarioId, escopo, categoria, motivo, bloqueadoPorId, bloqueadoEm, anuncioBloqueado, usuarioBloqueado]
+      description: Estado juridico protegido para ADMIN e MODERADOR; nunca integra contratos publicos.
+      properties:
+        id: { type: string, format: uuid }
+        anuncioId: { type: string, format: uuid }
+        usuarioId: { type: string, format: uuid }
+        escopo: { type: string, enum: [ANUNCIO, ANUNCIO_E_USUARIO] }
+        categoria:
+          type: string
+          enum: [DENUNCIA_GRAVE, USO_NAO_AUTORIZADO_IMAGEM, FRAUDE, ORDEM_OU_RISCO_JURIDICO, OUTRA_INTERVENCAO]
+        motivo: { type: string, minLength: 5, maxLength: 1000 }
+        observacaoInterna: { type: [string, "null"], maxLength: 2000 }
+        bloqueadoPorId: { type: string, format: uuid }
+        bloqueadoPorNome: { type: [string, "null"] }
+        bloqueadoEm: { type: string, format: date-time }
+        anuncioBloqueado: { type: boolean }
+        usuarioBloqueado: { type: boolean }
+    AdminBloqueioJuridicoRequest:
+      type: object
+      additionalProperties: false
+      required: [categoria, motivo]
+      properties:
+        categoria:
+          type: string
+          enum: [DENUNCIA_GRAVE, USO_NAO_AUTORIZADO_IMAGEM, FRAUDE, ORDEM_OU_RISCO_JURIDICO, OUTRA_INTERVENCAO]
+        motivo: { type: string, minLength: 5, maxLength: 1000 }
+        observacaoInterna: { type: [string, "null"], maxLength: 2000 }
+    AdminDesbloqueioJuridicoRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        motivo: { type: [string, "null"], maxLength: 1000 }
+    AdminAnuncioOperacaoJuridica:
+      type: object
+      additionalProperties: false
+      required: [anuncioId, statusAnuncio, usuarioId, statusUsuario, acao, anunciosPausados, storiesSuspensos, storyAdministrativoSuspenso, executadoEm]
+      properties:
+        anuncioId: { type: string, format: uuid }
+        statusAnuncio:
+          type: string
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO]
+        usuarioId: { type: string, format: uuid }
+        statusUsuario:
+          type: string
+          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO]
+        acao:
+          type: string
+          enum: [REATIVAR, BLOQUEAR_ANUNCIO, BLOQUEAR_ANUNCIO_E_USUARIO, DESBLOQUEAR_ANUNCIO, DESBLOQUEAR_USUARIO]
+        anunciosPausados: { type: integer, minimum: 0 }
+        storiesSuspensos: { type: integer, minimum: 0 }
+        storyAdministrativoSuspenso: { type: boolean }
+        executadoEm: { type: string, format: date-time }
     AdminBeneficioAnuncio:
       type: object
       additionalProperties: false
@@ -6489,7 +6738,7 @@ components:
           format: uuid
         alvoTipo:
           type: string
-          enum: [ANUNCIO, REVISAO_ANUNCIO, ANUNCIO_MIDIA, ATIVACAO_BENEFICIO, STORY_SELECAO_ADMINISTRATIVA]
+          enum: [ANUNCIO, USUARIO, REVISAO_ANUNCIO, ANUNCIO_MIDIA, ATIVACAO_BENEFICIO, STORY_SELECAO_ADMINISTRATIVA]
         alvoId:
           type: string
           format: uuid
@@ -6503,6 +6752,10 @@ components:
           type:
             - string
             - "null"
+        categoria:
+          type: [string, "null"]
+        observacaoInterna:
+          type: [string, "null"]
         status:
           type:
             - string
@@ -8277,7 +8530,7 @@ components:
     AdminPremiumAtivarRequest:
       type: object
       additionalProperties: false
-      required: [beneficioId, duracaoDias, observacao]
+      required: [beneficioId, duracaoDias]
       properties:
         beneficioId:
           type: string
@@ -8286,8 +8539,7 @@ components:
           type: integer
           minimum: 1
         observacao:
-          type: string
-          minLength: 3
+          type: [string, "null"]
           maxLength: 500
     AdminPremiumAtivarLoteItemRequest:
       type: object
@@ -8303,7 +8555,7 @@ components:
     AdminPremiumAtivarLoteRequest:
       type: object
       additionalProperties: false
-      required: [beneficios, observacao]
+      required: [beneficios]
       properties:
         beneficios:
           type: array
@@ -8313,8 +8565,7 @@ components:
           items:
             $ref: "#/components/schemas/AdminPremiumAtivarLoteItemRequest"
         observacao:
-          type: string
-          minLength: 3
+          type: [string, "null"]
           maxLength: 500
     AdminPremiumAtivacaoLote:
       type: object

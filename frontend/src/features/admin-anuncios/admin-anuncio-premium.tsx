@@ -101,7 +101,7 @@ export function AdminAnuncioPremium({
   }
 
   async function activate() {
-    if (busy || selectedItems.length === 0 || observation.trim().length < 3) return
+    if (busy || selectedItems.length === 0) return
     setBusy(true)
     setError(null)
     const idempotencyKey = activationKey.current ?? operationKey()
@@ -109,7 +109,7 @@ export function AdminAnuncioPremium({
     try {
       await activateAdminPremiumBatch(anuncioId, {
         beneficios: selectedItems,
-        observacao: observation.trim(),
+        observacao: observation.trim() || null,
       }, idempotencyKey)
       activationKey.current = null
       setSelected({})
@@ -225,10 +225,10 @@ export function AdminAnuncioPremium({
             className="mt-3"
             value={observation}
             onChange={(event) => { activationKey.current = null; setObservation(event.target.value) }}
-            placeholder="Observação administrativa obrigatória"
+            placeholder="Observação administrativa (opcional)"
             maxLength={500}
           />
-          <Button type="button" className="mt-3" disabled={busy || selectedItems.length === 0 || observation.trim().length < 3} onClick={() => void activate()}>
+          <Button type="button" className="mt-3" disabled={busy || selectedItems.length === 0} onClick={() => void activate()}>
             {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Ativar selecionados ({selectedItems.length})
           </Button>

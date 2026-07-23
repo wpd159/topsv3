@@ -1,10 +1,11 @@
 package br.com.topsdojob.v3.application.admin.readonly;
 
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteDetalheDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteResumoDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioDetalheDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioListaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncioMetricasDto;
-import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteDetalheDto;
-import br.com.topsdojob.v3.application.admin.readonly.dto.AdminAnuncianteResumoDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminBloqueioJuridicoDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalizacaoSanitizadaDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalidadeFiltroDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminMidiaListaItemDto;
@@ -20,6 +21,7 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalcu
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -27,6 +29,7 @@ import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
@@ -41,12 +44,13 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -74,6 +78,7 @@ public class AdminAnuncioDetalhadoConsultaService {
             StatusRevisaoAnuncio.EM_ANALISE);
 
     private final AnuncioRepository anuncioRepository;
+    private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final RevisaoAnuncioRepository revisaoRepository;
@@ -92,6 +97,7 @@ public class AdminAnuncioDetalhadoConsultaService {
 
     public AdminAnuncioDetalhadoConsultaService(
             AnuncioRepository anuncioRepository,
+            AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             RevisaoAnuncioRepository revisaoRepository,
@@ -108,6 +114,7 @@ public class AdminAnuncioDetalhadoConsultaService {
             AdminKycService kycService,
             ObjectMapper objectMapper) {
         this.anuncioRepository = anuncioRepository;
+        this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.revisaoRepository = revisaoRepository;
@@ -143,11 +150,6 @@ public class AdminAnuncioDetalhadoConsultaService {
         AdminAnuncioSituacao situacaoOperacional = situacao == null
                 ? AdminAnuncioSituacao.PENDENTES_MODERACAO
                 : situacao;
-        if (situacaoOperacional == AdminAnuncioSituacao.BLOQUEADOS) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "situacao BLOQUEADOS sem estado canonico apos a V018");
-        }
         Set<UUID> idsLocalizacao = localizacaoSupport.filtrarAnuncioIds(uf, cidade, bairro);
         if (idsLocalizacao != null && idsLocalizacao.isEmpty()) {
             return new AdminPaginaDto<>(List.of(), Math.max(page, 0), tamanho, 0, 0, true);
@@ -250,7 +252,8 @@ public class AdminAnuncioDetalhadoConsultaService {
                         ctr(visualizacoes, cliques),
                         beneficios,
                         historico.stream().findFirst().orElse(null)),
-                revisaoAberta(revisaoAberta));
+                revisaoAberta(revisaoAberta),
+                bloqueioJuridico(anuncio, anunciante));
     }
 
     @Transactional(readOnly = true)
@@ -291,11 +294,20 @@ public class AdminAnuncioDetalhadoConsultaService {
                 .collect(java.util.stream.Collectors.toSet());
         List<UUID> recursos = new ArrayList<>();
         recursos.add(anuncio.getId());
+        if (anuncio.getUsuarioId() != null) {
+            recursos.add(anuncio.getUsuarioId());
+        }
         recursos.addAll(revisaoIds);
         recursos.addAll(midiaIds);
         recursos.addAll(ativacaoIds);
         return auditoriaRepository.findByRecursoIdInOrderByCriadoEmDesc(recursos, PageRequest.of(0, 100)).stream()
-                .filter(evento -> alvoPermitido(evento, anuncio.getId(), revisaoIds, midiaIds, ativacaoIds))
+                .filter(evento -> alvoPermitido(
+                        evento,
+                        anuncio.getId(),
+                        anuncio.getUsuarioId(),
+                        revisaoIds,
+                        midiaIds,
+                        ativacaoIds))
                 .filter(this::eventoAdministrativoRelevante)
                 .map(this::historicoItem)
                 .toList();
@@ -401,6 +413,8 @@ public class AdminAnuncioDetalhadoConsultaService {
         return acao != null && (acao.startsWith("MODERACAO_")
                 || acao.startsWith("PREMIUM_ATIVACAO_")
                 || acao.startsWith("STORY_ADMIN_")
+                || acao.contains("BLOQUEIO_JURIDICO")
+                || acao.equals("ANUNCIO_REATIVADO_ADMINISTRATIVAMENTE")
                 || acao.equals("ANUNCIO_REMETER_REVISAO")
                 || acao.equals("ANUNCIO_EDICAO_ADMINISTRATIVA"));
     }
@@ -408,12 +422,14 @@ public class AdminAnuncioDetalhadoConsultaService {
     private boolean alvoPermitido(
             AuditoriaEventoEntity evento,
             UUID anuncioId,
+            UUID usuarioId,
             Set<UUID> revisaoIds,
             Set<UUID> midiaIds,
             Set<UUID> ativacaoIds) {
         if (evento.getRecursoTipo() == null) return false;
         return switch (evento.getRecursoTipo()) {
             case "ANUNCIO" -> anuncioId.equals(evento.getRecursoId());
+            case "USUARIO" -> usuarioId != null && usuarioId.equals(evento.getRecursoId());
             case "REVISAO_ANUNCIO" -> revisaoIds.contains(evento.getRecursoId());
             case "ANUNCIO_MIDIA" -> midiaIds.contains(evento.getRecursoId());
             case "ATIVACAO_BENEFICIO" -> ativacaoIds.contains(evento.getRecursoId());
@@ -431,11 +447,42 @@ public class AdminAnuncioDetalhadoConsultaService {
                 evento.getAcao(),
                 text(snapshot, "decisao"),
                 text(snapshot, "motivoSanitizado"),
-                primeiroTexto(snapshot, "statusRevisao", "statusMidia", "statusAnuncio"),
+                text(snapshot, "categoria"),
+                text(snapshot, "observacaoInterna"),
+                primeiroTexto(snapshot, "statusRevisao", "statusMidia", "statusAnuncio", "statusUsuario"),
                 evento.getAtorUsuarioId(),
                 evento.getRequestId(),
                 enumName(evento.getResultado()),
                 evento.getCriadoEm());
+    }
+
+    private AdminBloqueioJuridicoDto bloqueioJuridico(
+            AnuncioEntity anuncio,
+            UsuarioEntity anunciante) {
+        AnuncioBloqueioJuridicoEntity bloqueio = bloqueioJuridicoRepository
+                .findFirstByAnuncioIdAndAnuncioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(anuncio.getId())
+                .orElseGet(() -> anunciante == null
+                        ? null
+                        : bloqueioJuridicoRepository
+                                .findFirstByUsuarioIdAndEscopoAndUsuarioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(
+                                        anunciante.getId(),
+                                        EscopoBloqueioJuridico.ANUNCIO_E_USUARIO)
+                                .orElse(null));
+        if (bloqueio == null) return null;
+        UsuarioEntity responsavel = usuarioRepository.findById(bloqueio.getBloqueadoPorId()).orElse(null);
+        return new AdminBloqueioJuridicoDto(
+                bloqueio.getId(),
+                bloqueio.getAnuncioId(),
+                bloqueio.getUsuarioId(),
+                enumName(bloqueio.getEscopo()),
+                enumName(bloqueio.getCategoria()),
+                bloqueio.getMotivo(),
+                bloqueio.getObservacaoInterna(),
+                bloqueio.getBloqueadoPorId(),
+                responsavel == null ? null : responsavel.getNome(),
+                bloqueio.getBloqueadoEm(),
+                anuncio.getId().equals(bloqueio.getAnuncioId()) && bloqueio.anuncioBloqueado(),
+                bloqueio.usuarioBloqueado());
     }
 
     private JsonNode parseSnapshot(String json) {

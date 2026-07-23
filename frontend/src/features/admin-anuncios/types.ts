@@ -107,6 +107,41 @@ export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' 
   servicos: string[]
   anunciante?: AdminAdvertiserDetail | null
   metricas: AdminAdMetrics
+  bloqueioJuridico?: AdminLegalBlock | null
+}
+
+export type AdminLegalBlockCategory =
+  | 'DENUNCIA_GRAVE'
+  | 'USO_NAO_AUTORIZADO_IMAGEM'
+  | 'FRAUDE'
+  | 'ORDEM_OU_RISCO_JURIDICO'
+  | 'OUTRA_INTERVENCAO'
+
+export type AdminLegalBlock = {
+  id: string
+  anuncioId: string
+  usuarioId: string
+  escopo: 'ANUNCIO' | 'ANUNCIO_E_USUARIO'
+  categoria: AdminLegalBlockCategory
+  motivo: string
+  observacaoInterna?: string | null
+  bloqueadoPorId: string
+  bloqueadoPorNome?: string | null
+  bloqueadoEm: string
+  anuncioBloqueado: boolean
+  usuarioBloqueado: boolean
+}
+
+export type AdminLegalOperationResponse = {
+  anuncioId: string
+  statusAnuncio: string
+  usuarioId: string
+  statusUsuario: string
+  acao: string
+  anunciosPausados: number
+  storiesSuspensos: number
+  storyAdministrativoSuspenso: boolean
+  executadoEm: string
 }
 
 export type AdminKycDocument = {
@@ -240,6 +275,8 @@ export type AdminModerationHistoryItem = {
   acao: string
   decisao?: string | null
   motivo?: string | null
+  categoria?: string | null
+  observacaoInterna?: string | null
   status?: string | null
   atorId?: string | null
   requestId?: string | null

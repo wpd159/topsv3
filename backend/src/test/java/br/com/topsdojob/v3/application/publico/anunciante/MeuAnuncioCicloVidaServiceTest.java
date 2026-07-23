@@ -172,6 +172,20 @@ class MeuAnuncioCicloVidaServiceTest {
         verify(auditoriaRepository, never()).save(any());
     }
 
+    @Test
+    void anuncioBloqueadoJuridicamenteNaoPodeSerMutadoPeloProprietario() {
+        AnuncioEntity anuncio = anuncio(USUARIO_ID, "perfil-bloqueado", StatusAnuncio.BLOQUEADO);
+        when(anuncioRepository.findBySlugForLifecycle("perfil-bloqueado")).thenReturn(Optional.of(anuncio));
+
+        assertStatus(409, () -> service.pausar("perfil-bloqueado", authentication, "request-pausa"));
+        assertStatus(409, () -> service.reativar("perfil-bloqueado", authentication, "request-reativar"));
+        assertStatus(409, () -> service.remover("perfil-bloqueado", authentication, "request-remover"));
+
+        verify(anuncioRepository, never()).save(anuncio);
+        verify(anuncioRepository, never()).delete(any(AnuncioEntity.class));
+        verify(auditoriaRepository, never()).save(any());
+    }
+
     private AnuncioEntity anuncio(UUID usuarioId, String slug, StatusAnuncio status) {
         return AnuncioEntity.criarFixtureHomologacao(
                 ANUNCIO_ID,

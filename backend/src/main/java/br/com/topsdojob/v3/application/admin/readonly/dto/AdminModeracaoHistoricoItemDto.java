@@ -10,6 +10,8 @@ public record AdminModeracaoHistoricoItemDto(
         String acao,
         String decisao,
         String motivo,
+        String categoria,
+        String observacaoInterna,
         String status,
         UUID atorId,
         String requestId,

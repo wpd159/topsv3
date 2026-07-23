@@ -106,6 +106,11 @@ public class AdminModeracaoAcaoService {
 
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(revisao.getAnuncioId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio da revisao nao encontrado"));
+        if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "bloqueio juridico impede decisao de moderacao");
+        }
         OffsetDateTime agora = OffsetDateTime.now();
         String antes = snapshotRevisao(revisao, anuncio, null, null);
 

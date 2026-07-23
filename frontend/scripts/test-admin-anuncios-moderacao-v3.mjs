@@ -26,6 +26,8 @@ const editPage = source('app/(painel-admin)/admin/anuncios/[id]/editar/page.tsx'
 const api = source('features/admin-anuncios/api.ts')
 const types = source('features/admin-anuncios/types.ts')
 const queueContext = source('features/admin-anuncios/queue-context.ts')
+const searchableSelect = source('features/anuncio-wizard/components/searchable-select.tsx')
+const wizardUtils = source('features/anuncio-wizard/wizard-utils.ts')
 
 assert.ok(listPage.includes('AdminAnunciosList'), 'A rota administrativa deve usar a fila V3.')
 assert.ok(detailPage.includes('AdminAnuncioModeracao'), 'O detalhe deve usar a moderacao V3.')
@@ -49,6 +51,11 @@ for (const contract of [
   '`/midias/${encodeURIComponent(mediaId)}/decidir`',
   '`/midias/${encodeURIComponent(mediaId)}/reclassificar`',
   "request('/anuncios/filtros/localidades')",
+  '`/anuncios/${encodeURIComponent(id)}/reativar`',
+  '`/anuncios/${encodeURIComponent(id)}/bloqueio-juridico`',
+  '`/anuncios/${encodeURIComponent(id)}/bloqueio-juridico/usuario`',
+  '`/anuncios/${encodeURIComponent(id)}/desbloqueio-juridico`',
+  '`/anuncios/${encodeURIComponent(id)}/desbloqueio-juridico/usuario`',
 ]) {
   assert.ok(api.includes(contract), `Contrato V3 ausente no adapter: ${contract}`)
 }
@@ -85,6 +92,11 @@ assert.ok(list.includes('listAdminAdFilterLocations()'), 'Localidades devem vir 
 assert.ok(list.includes("uf: value === 'TODOS' ? '' : value, cidade: '', bairro: ''"), 'Trocar UF deve limpar Cidade e Bairro.')
 assert.ok(list.includes("cidade: value === 'TODAS' ? '' : value, bairro: ''"), 'Trocar Cidade deve limpar Bairro.')
 assert.ok(!list.includes('Slug da cidade') && !list.includes('Slug do bairro'), 'A interface nao pode exigir slugs manuais.')
+assert.equal((list.match(/<SearchableSelect/g) ?? []).length, 2, 'Cidade e Bairro devem usar busca digitavel canonica.')
+assert.ok(list.includes('options={cityOptions}') && list.includes('options={neighborhoodOptions}'), 'Cidade e Bairro devem aceitar apenas opcoes do backend.')
+assert.ok(searchableSelect.includes('role="combobox"') && searchableSelect.includes('<CommandInput'), 'A busca de localidade deve ser acessivel por teclado.')
+assert.ok(searchableSelect.includes('onSelect(item.id)') && !searchableSelect.includes('onSelect(query)'), 'Texto livre nao pode ser aplicado como filtro canonico.')
+assert.ok(wizardUtils.includes("normalize('NFD')") && wizardUtils.includes("toLowerCase()"), 'Busca deve ignorar acentos e caixa.')
 assert.ok(list.includes('lg:grid-cols-[minmax('), 'Os oito controles devem compartilhar uma unica grade no desktop.')
 assert.ok(!list.includes('Estado do anúncio'), 'O filtro redundante de estado do anuncio deve ser removido.')
 assert.ok(list.includes('const duplicated = item.status === item.statusModeracao'), 'O badge APROVADO duplicado deve ser omitido.')
@@ -109,7 +121,9 @@ assert.ok(list.includes('listAdminPremiumCatalog()'), 'O catalogo Premium deve s
 assert.ok(list.includes('item.beneficiosPremium'), 'Os estados Premium devem chegar em lote com cada linha.')
 assert.ok(premiumQuick.includes('activateAdminPremiumBatch') && premiumQuick.includes('cancelAdminPremium'), 'Premium rapido deve ativar e desativar pelos contratos existentes.')
 assert.ok(premiumQuick.includes('item.opcoes.filter') && premiumQuick.includes('duracaoDias'), 'Duracoes do Premium rapido devem vir do backend.')
-assert.ok(premiumQuick.includes('Observa') && premiumQuick.includes('Motivo da desativa'), 'Premium rapido deve exigir justificativa administrativa.')
+assert.ok(premiumQuick.includes('Observa') && premiumQuick.includes('(opcional)') && premiumQuick.includes('Motivo da desativa'), 'Ativacao deve aceitar observacao opcional sem alterar a justificativa da desativacao.')
+assert.ok(premiumQuick.includes('observation.trim() || null'), 'Premium rapido nao pode fabricar observacao.')
+assert.ok(!premiumQuick.includes('observation.trim().length < 3'), 'Premium rapido nao pode exigir observacao na ativacao.')
 assert.ok(premiumQuick.includes("item?.status === 'PENDENTE'") && premiumQuick.includes('border-amber-300'), 'Ativacao pendente deve permanecer distinta de beneficio ativo.')
 assert.ok(premiumQuick.includes('idempotencyKey.current ?? operationKey()'), 'Retry do Premium rapido deve reutilizar Idempotency-Key.')
 assert.ok(!premiumQuick.match(/duracaoDias\s*:\s*(1|7|14|30)/), 'Premium rapido nao pode hardcodar duracoes.')
@@ -137,7 +151,21 @@ assert.ok(premium.includes('type="checkbox"') && premium.includes('selectedItems
 assert.ok(premium.includes('latestByCode') && premium.includes('latest?.statusCalculado'), 'O catalogo deve exibir o estado exato da ativacao mais recente.')
 assert.ok(premium.includes('MODERADOR possui acesso somente para leitura.'), 'MODERADOR deve permanecer somente leitura no Premium.')
 assert.ok(premium.includes('activationKey.current ?? operationKey()') && premium.includes('cancellationKeys.current[item.id] ?? operationKey()'), 'Retry deve reutilizar a mesma Idempotency-Key.')
+assert.ok(premium.includes('observation.trim() || null') && premium.includes('Observa') && premium.includes('(opcional)'), 'Ativacao multipla deve persistir observacao opcional como null.')
+assert.ok(!premium.includes('observation.trim().length < 3'), 'Ativacao multipla nao pode exigir observacao.')
 assert.ok(!premium.match(/duracaoDias\s*:\s*(1|7|14|30)/), 'Duracoes nao podem ser hardcoded na interface.')
+
+for (const action of ['Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usuário', 'Desbloquear anúncio', 'Desbloquear usuário']) {
+  assert.ok(detail.includes(action) || list.includes(action), `Acao administrativa ausente: ${action}`)
+}
+assert.ok(list.includes("item.status === 'PAUSADO'") && list.includes("item.statusModeracao === 'APROVADO'") && list.includes("item.anunciante?.status === 'ATIVO'"), 'A fila deve exibir reativacao somente na transicao canonica.')
+assert.ok(detail.includes('LegalActionDialog') && detail.includes('legalBusy'), 'Acoes juridicas devem ter confirmacao e protecao contra duplo clique.')
+assert.ok(detail.includes("isAdmin && canModerateAd"), 'Somente ADMIN com ANUNCIO_MODERAR pode executar intervencao juridica.')
+assert.ok(detail.includes('categoria obrigatória') || detail.includes('Categoria obrigatória'), 'Bloqueio deve exigir categoria.')
+assert.ok(detail.includes('Motivo obrigatório') && detail.includes('Observação interna opcional'), 'Bloqueio deve coletar motivo e observacao interna opcional.')
+assert.ok(detail.includes('ad.bloqueioJuridico') && detail.includes('Situação jurídica'), 'Detalhe protegido deve mostrar estado juridico.')
+assert.ok(detail.includes('item.categoria') && detail.includes('item.observacaoInterna'), 'Historico deve mostrar categoria e observacao juridica.')
+assert.ok(detail.includes('await load()') && !detail.includes('status: \'BLOQUEADO\''), 'Interface juridica deve atualizar somente apos resposta do backend.')
 
 assert.ok(story.includes('Colocar nos Stories') && story.includes('Remover dos Stories'), 'A acao de Story administrativo deve existir.')
 assert.ok(story.includes('selection?.expiraEm') && story.includes('Restrita 18+'), 'Story deve mostrar expiracao e classificacao restrita.')

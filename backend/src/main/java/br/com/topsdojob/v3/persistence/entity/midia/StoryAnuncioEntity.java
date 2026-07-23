@@ -81,6 +81,15 @@ public class StoryAnuncioEntity {
     return atualizadoEm;
   }
 
+  public boolean suspenderPorBloqueio(OffsetDateTime agora) {
+    if (status == StatusStoryAnuncio.EXPIRADO || status == StatusStoryAnuncio.REMOVIDO) {
+      return false;
+    }
+    status = StatusStoryAnuncio.EXPIRADO;
+    atualizadoEm = agora;
+    return true;
+  }
+
   public static StoryAnuncioEntity criarFixtureHomologacao(
       UUID id,
       UUID anuncioMidiaId,

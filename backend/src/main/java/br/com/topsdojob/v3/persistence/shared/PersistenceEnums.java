@@ -17,7 +17,19 @@ public final class PersistenceEnums {
   }
 
   public enum StatusAnuncio {
-    RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, REMOVIDO
+    RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO
+  }
+
+  public enum EscopoBloqueioJuridico {
+    ANUNCIO, ANUNCIO_E_USUARIO
+  }
+
+  public enum CategoriaBloqueioJuridico {
+    DENUNCIA_GRAVE,
+    USO_NAO_AUTORIZADO_IMAGEM,
+    FRAUDE,
+    ORDEM_OU_RISCO_JURIDICO,
+    OUTRA_INTERVENCAO
   }
 
   public enum StatusModeracaoAnuncio {

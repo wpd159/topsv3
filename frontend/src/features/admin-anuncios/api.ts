@@ -16,6 +16,8 @@ import type {
   AdminFilterLocation,
   AdminKycSubmission,
   AdminKycTemporaryUrl,
+  AdminLegalBlockCategory,
+  AdminLegalOperationResponse,
   AdminMediaItem,
   AdminMediaPreview,
   AdminModerationActionResponse,
@@ -119,6 +121,46 @@ export function updateAdminAd(id: string, payload: AdminAdUpdate) {
   })
 }
 
+export function reactivateAdminAd(id: string) {
+  return request<AdminLegalOperationResponse>(`/anuncios/${encodeURIComponent(id)}/reativar`, {
+    method: 'POST',
+  })
+}
+
+export function blockAdminAd(
+  id: string,
+  payload: { categoria: AdminLegalBlockCategory; motivo: string; observacaoInterna?: string | null },
+) {
+  return request<AdminLegalOperationResponse>(`/anuncios/${encodeURIComponent(id)}/bloqueio-juridico`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function blockAdminAdAndUser(
+  id: string,
+  payload: { categoria: AdminLegalBlockCategory; motivo: string; observacaoInterna?: string | null },
+) {
+  return request<AdminLegalOperationResponse>(`/anuncios/${encodeURIComponent(id)}/bloqueio-juridico/usuario`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function unblockAdminAd(id: string, motivo?: string) {
+  return request<AdminLegalOperationResponse>(`/anuncios/${encodeURIComponent(id)}/desbloqueio-juridico`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo: motivo?.trim() || null }),
+  })
+}
+
+export function unblockAdminUser(id: string, motivo?: string) {
+  return request<AdminLegalOperationResponse>(`/anuncios/${encodeURIComponent(id)}/desbloqueio-juridico/usuario`, {
+    method: 'POST',
+    body: JSON.stringify({ motivo: motivo?.trim() || null }),
+  })
+}
+
 export async function getAdminAdQueueNavigation(id: string, context: AdminAdQueueContext) {
   const pages = new Map<number, AdminPage<AdminAdListItem>>()
   async function load(page: number) {
@@ -205,7 +247,7 @@ export async function listAdminPremiumCatalog() {
 
 export function activateAdminPremiumBatch(
   anuncioId: string,
-  payload: { beneficios: Array<{ beneficioId: string; duracaoDias: number }>; observacao: string },
+  payload: { beneficios: Array<{ beneficioId: string; duracaoDias: number }>; observacao?: string | null },
   idempotencyKey: string,
 ) {
   return request(`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes/lote`, {

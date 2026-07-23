@@ -186,7 +186,9 @@ public class AnuncioEntity {
   }
 
   public boolean podeRemoverPeloProprietario() {
-    return removidoEm == null && status != StatusAnuncio.REMOVIDO;
+    return removidoEm == null
+        && status != StatusAnuncio.BLOQUEADO
+        && status != StatusAnuncio.REMOVIDO;
   }
 
   public void pausarPeloProprietario(OffsetDateTime atualizadoEm) {
@@ -202,6 +204,39 @@ public class AnuncioEntity {
       throw new IllegalStateException("transicao para PUBLICADO nao permitida");
     }
     this.status = StatusAnuncio.PUBLICADO;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public void reativarAdministrativamente(OffsetDateTime atualizadoEm) {
+    reativarPeloProprietario(atualizadoEm);
+  }
+
+  public void bloquearJuridicamente(OffsetDateTime atualizadoEm) {
+    if (removidoEm != null
+        || status == StatusAnuncio.REMOVIDO
+        || status == StatusAnuncio.BLOQUEADO) {
+      throw new IllegalStateException("transicao para BLOQUEADO nao permitida");
+    }
+    this.status = StatusAnuncio.BLOQUEADO;
+    this.atualizadoEm = atualizadoEm;
+  }
+
+  public boolean pausarPorBloqueioUsuario(OffsetDateTime atualizadoEm) {
+    if (removidoEm != null
+        || statusModeracao != StatusModeracaoAnuncio.APROVADO
+        || (status != StatusAnuncio.PUBLICADO && status != StatusAnuncio.APROVADO)) {
+      return false;
+    }
+    this.status = StatusAnuncio.PAUSADO;
+    this.atualizadoEm = atualizadoEm;
+    return true;
+  }
+
+  public void desbloquearJuridicamente(OffsetDateTime atualizadoEm) {
+    if (removidoEm != null || status != StatusAnuncio.BLOQUEADO) {
+      throw new IllegalStateException("transicao de BLOQUEADO para PAUSADO nao permitida");
+    }
+    this.status = StatusAnuncio.PAUSADO;
     this.atualizadoEm = atualizadoEm;
   }
 

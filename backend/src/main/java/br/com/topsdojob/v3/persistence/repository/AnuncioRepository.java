@@ -33,6 +33,14 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
 
     List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(UUID usuarioId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select anuncio from AnuncioEntity anuncio
+            where anuncio.usuarioId = :usuarioId
+            order by anuncio.id
+            """)
+    List<AnuncioEntity> findByUsuarioIdForLegalBlock(@Param("usuarioId") UUID usuarioId);
+
     Optional<AnuncioEntity> findBySlugAndRemovidoEmIsNull(String slug);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -78,6 +86,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         or (:situacao = 'PAUSADOS' and a.status = 'PAUSADO')
                         or (:situacao = 'REJEITADOS'
                             and (a.status = 'REJEITADO' or a.status_moderacao = 'REJEITADO'))
+                        or (:situacao = 'BLOQUEADOS' and a.status = 'BLOQUEADO')
                       )
                       and (:filtrarLocalizacao = false or a.id in (:anuncioIdsLocalizacao))
                       and (
@@ -121,6 +130,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         or (:situacao = 'PAUSADOS' and a.status = 'PAUSADO')
                         or (:situacao = 'REJEITADOS'
                             and (a.status = 'REJEITADO' or a.status_moderacao = 'REJEITADO'))
+                        or (:situacao = 'BLOQUEADOS' and a.status = 'BLOQUEADO')
                       )
                       and (:filtrarLocalizacao = false or a.id in (:anuncioIdsLocalizacao))
                       and (

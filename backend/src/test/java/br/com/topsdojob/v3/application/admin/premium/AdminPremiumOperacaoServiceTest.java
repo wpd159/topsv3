@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.admin.premium;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -20,12 +21,14 @@ import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumOpcaoEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
@@ -39,7 +42,10 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.web.server.ResponseStatusException;
 
 class AdminPremiumOperacaoServiceTest {
 
@@ -50,6 +56,8 @@ class AdminPremiumOperacaoServiceTest {
     private final BeneficioPremiumOpcaoRepository opcaoRepository = mock(BeneficioPremiumOpcaoRepository.class);
     private final GrupoAtivacaoBeneficioRepository grupoRepository = mock(GrupoAtivacaoBeneficioRepository.class);
     private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+    private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository =
+            mock(AnuncioBloqueioJuridicoRepository.class);
     private final BeneficioAnuncioConsultaService consultaService = mock(BeneficioAnuncioConsultaService.class);
     private final AdminPremiumOperacaoService service = new AdminPremiumOperacaoService(
             ativacaoRepository,
@@ -59,6 +67,7 @@ class AdminPremiumOperacaoServiceTest {
             opcaoRepository,
             grupoRepository,
             anuncioRepository,
+            bloqueioJuridicoRepository,
             consultaService);
 
     @BeforeEach
@@ -111,6 +120,10 @@ class AdminPremiumOperacaoServiceTest {
         assertThat(response.status()).isEqualTo("ATIVA");
         assertThat(response.creditosEstornados()).isZero();
         assertThat(response.idempotente()).isFalse();
+        ArgumentCaptor<GrupoAtivacaoBeneficioEntity> grupo =
+                ArgumentCaptor.forClass(GrupoAtivacaoBeneficioEntity.class);
+        verify(grupoRepository).save(grupo.capture());
+        assertThat(grupo.getValue().getObservacao()).isEqualTo("Cortesia administrativa autorizada");
         verifyNoInteractions(movimentoRepository);
         verify(creditoService).auditar(
                 any(),
@@ -120,6 +133,98 @@ class AdminPremiumOperacaoServiceTest {
                 eq(Map.of("status", "INEXISTENTE")),
                 any(),
                 eq("req-premium-admin"));
+    }
+
+    @Test
+    void ativaBeneficioSemObservacaoEPersisteNullSemFabricarTexto() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        UUID beneficioId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        AnuncioEntity anuncio = AnuncioEntity.criarSolicitacaoLocal(
+                anuncioId,
+                usuarioId,
+                "premium-sem-observacao",
+                "Anuncio Premium sem observacao",
+                "Descricao valida para ativacao sem observacao",
+                "MASSAGENS",
+                null,
+                null,
+                agora.minusDays(2));
+        BeneficioPremiumEntity beneficio = BeneficioPremiumEntity.criarFixtureHomologacao(
+                beneficioId,
+                "ANUNCIO_TOPO",
+                "Anuncio no topo",
+                "Beneficio sintetico",
+                EscopoBeneficioPremium.ANUNCIO,
+                true,
+                true,
+                agora.minusDays(1));
+        BeneficioPremiumOpcaoEntity opcao = BeneficioPremiumOpcaoEntity.criar(
+                UUID.randomUUID(), beneficioId, 7, 20, true, 0, agora.minusDays(1));
+        when(grupoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(beneficioRepository.findById(beneficioId)).thenReturn(Optional.of(beneficio));
+        when(opcaoRepository.findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(beneficioId, 7))
+                .thenReturn(Optional.of(opcao));
+        when(consultaService.consultarCalculados(anuncioId)).thenReturn(List.of());
+
+        service.ativarManual(
+                anuncioId,
+                new AdminPremiumAtivarRequest(beneficioId, 7, null),
+                "operacao-sem-observacao",
+                admin(),
+                "req-sem-observacao");
+
+        ArgumentCaptor<GrupoAtivacaoBeneficioEntity> grupo =
+                ArgumentCaptor.forClass(GrupoAtivacaoBeneficioEntity.class);
+        verify(grupoRepository).save(grupo.capture());
+        assertThat(grupo.getValue().getObservacao()).isNull();
+        ArgumentCaptor<Map<String, Object>> depois = ArgumentCaptor.forClass(Map.class);
+        verify(creditoService).auditar(
+                any(),
+                eq("PREMIUM_ATIVACAO_ADMINISTRATIVA"),
+                eq("ATIVACAO_BENEFICIO"),
+                any(),
+                any(),
+                depois.capture(),
+                eq("req-sem-observacao"));
+        assertThat(depois.getValue()).containsEntry("observacaoRegistrada", false);
+        verifyNoInteractions(movimentoRepository);
+    }
+
+    @Test
+    void bloqueioJuridicoDoUsuarioImpedeNovaAtivacaoPremium() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        AnuncioEntity anuncio = AnuncioEntity.criarSolicitacaoLocal(
+                anuncioId,
+                usuarioId,
+                "premium-bloqueado",
+                "Anuncio Premium bloqueado",
+                "Descricao valida para bloqueio juridico",
+                "MASSAGENS",
+                null,
+                null,
+                OffsetDateTime.now().minusDays(2));
+        when(grupoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(bloqueioJuridicoRepository.existsByUsuarioIdAndEscopoAndUsuarioDesbloqueadoEmIsNull(
+                usuarioId,
+                EscopoBloqueioJuridico.ANUNCIO_E_USUARIO)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.ativarManual(
+                anuncioId,
+                new AdminPremiumAtivarRequest(UUID.randomUUID(), 7, null),
+                "operacao-bloqueada",
+                admin(),
+                "req-bloqueada"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, error ->
+                        assertThat(error.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+
+        verify(grupoRepository, never()).save(any());
+        verify(ativacaoRepository, never()).save(any());
+        verifyNoInteractions(movimentoRepository);
     }
 
     @Test
