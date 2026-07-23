@@ -184,6 +184,8 @@ assert.ok(detail.includes("const canRemove = canManageLegalStatus && !removed &&
 assert.ok(detail.includes("ad.status === 'REMOVIDO'") && detail.includes('disabledReason={removed'), 'REMOVIDO deve bloquear novas ativacoes Premium na interface.')
 assert.ok(detail.includes('reason.trim().length < 5') && detail.includes('maxLength={1000}'), 'Exclusao deve exigir motivo dentro do contrato.')
 assert.ok(detail.includes('border border-red-950 bg-red-700'), 'Exclusao deve possuir tratamento destrutivo distinto do bloqueio juridico.')
+assert.ok(detail.includes('excluir\\u00e1 definitivamente suas fotos e v\\u00eddeos') && detail.includes('hist\\u00f3rico administrativo ser\\u00e1 preservado'), 'Confirmacao deve informar a limpeza definitiva das midias e a preservacao do historico.')
+assert.ok(!detail.includes('benef\\u00edcios e m\\u00eddias permanecer\\u00e3o preservados'), 'Confirmacao antiga nao pode afirmar que as midias serao preservadas.')
 assert.ok(detailHeader.includes("Excluir an\\u00fancio"), 'Excluir anuncio deve permanecer no cabecalho administrativo.')
 assert.ok(api.includes('JSON.stringify({ motivo: motivo.trim() })'), 'Adapter deve enviar somente o motivo sanitizado da remocao.')
 assert.ok(removalAdapter.includes("method: 'POST'") && !removalAdapter.includes("method: 'DELETE'"), 'Remocao administrativa deve usar a mutacao logica, nunca DELETE.')

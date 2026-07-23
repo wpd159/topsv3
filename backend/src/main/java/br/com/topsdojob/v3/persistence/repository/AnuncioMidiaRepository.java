@@ -46,6 +46,15 @@ public interface AnuncioMidiaRepository
 
     List<AnuncioMidiaEntity> findByAnuncioIdIn(Collection<UUID> anuncioIds);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select midia
+            from AnuncioMidiaEntity midia
+            where midia.anuncioId = :anuncioId
+            order by midia.id
+            """)
+    List<AnuncioMidiaEntity> findByAnuncioIdForUpdate(@Param("anuncioId") UUID anuncioId);
+
     List<AnuncioMidiaEntity> findByIdIn(Collection<UUID> ids);
 
     List<AnuncioMidiaEntity> findByArquivoMidiaId(UUID arquivoMidiaId);
@@ -55,6 +64,12 @@ public interface AnuncioMidiaRepository
     Page<AnuncioMidiaEntity> findByAnuncioIdAndTipoNot(
             UUID anuncioId,
             TipoAnuncioMidia tipo,
+            Pageable pageable);
+
+    Page<AnuncioMidiaEntity> findByAnuncioIdAndTipoNotAndStatusNot(
+            UUID anuncioId,
+            TipoAnuncioMidia tipo,
+            StatusAnuncioMidia status,
             Pageable pageable);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

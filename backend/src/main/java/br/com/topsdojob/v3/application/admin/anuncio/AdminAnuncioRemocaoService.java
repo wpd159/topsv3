@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.application.admin.anuncio;
 
+import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.CleanupException;
+import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.Resultado;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioRemocaoDto;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioRemocaoRequest;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -34,16 +36,22 @@ public class AdminAnuncioRemocaoService {
   private final AnuncioRepository anuncioRepository;
   private final AnuncioStatusHistoricoRepository statusHistoricoRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
+  private final AdminAnuncioMidiaCleanupService midiaCleanupService;
+  private final AdminAnuncioRemocaoFalhaAuditService falhaAuditService;
   private final ObjectMapper objectMapper;
 
   public AdminAnuncioRemocaoService(
       AnuncioRepository anuncioRepository,
       AnuncioStatusHistoricoRepository statusHistoricoRepository,
       AuditoriaEventoRepository auditoriaRepository,
+      AdminAnuncioMidiaCleanupService midiaCleanupService,
+      AdminAnuncioRemocaoFalhaAuditService falhaAuditService,
       ObjectMapper objectMapper) {
     this.anuncioRepository = anuncioRepository;
     this.statusHistoricoRepository = statusHistoricoRepository;
     this.auditoriaRepository = auditoriaRepository;
+    this.midiaCleanupService = midiaCleanupService;
+    this.falhaAuditService = falhaAuditService;
     this.objectMapper = objectMapper;
   }
 
@@ -69,15 +77,28 @@ public class AdminAnuncioRemocaoService {
 
     StatusAnuncio statusAnterior = anuncio.getStatus();
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-    try {
-      anuncio.removerLogicamente(agora);
-    } catch (IllegalStateException exception) {
+    if (!anuncio.podeRemoverPeloProprietario()) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT,
-          "transicao para REMOVIDO nao permitida",
+          "transicao para REMOVIDO nao permitida");
+    }
+
+    Resultado limpeza;
+    try {
+      limpeza = midiaCleanupService.limpar(anuncio.getId(), agora);
+    } catch (CleanupException exception) {
+      falhaAuditService.registrar(
+          anuncio.getId(),
+          administrador.usuarioId(),
+          requestIdValidado,
+          exception.codigo());
+      throw new ResponseStatusException(
+          exception.status(),
+          "falha ao excluir midias do anuncio; tente novamente",
           exception);
     }
 
+    anuncio.removerLogicamente(agora);
     anuncioRepository.save(anuncio);
     statusHistoricoRepository.save(AnuncioStatusHistoricoEntity.registrar(
         UUID.randomUUID(),
@@ -102,6 +123,12 @@ public class AdminAnuncioRemocaoService {
     depois.put("decisao", "REMOVER");
     depois.put("motivoSanitizado", motivo);
     depois.put("removidoEm", anuncio.getRemovidoEm().toString());
+    depois.put("midiasRemovidas", limpeza.midiasRemovidas());
+    depois.put("objetosR2Excluidos", limpeza.objetosExcluidos());
+    depois.put("objetosR2JaAusentes", limpeza.objetosJaAusentes());
+    depois.put("objetosCompartilhadosPreservados", limpeza.objetosCompartilhadosPreservados());
+    depois.put("storiesEncerrados", limpeza.storiesEncerrados());
+    depois.put("storyAdministrativoEncerrado", limpeza.storyAdministrativoEncerrado());
     auditoriaRepository.save(AuditoriaEventoEntity.registrar(
         UUID.randomUUID(),
         administrador.usuarioId(),
@@ -113,11 +140,38 @@ public class AdminAnuncioRemocaoService {
         requestIdValidado,
         agora));
 
+    Map<String, Object> limpezaAntes = new LinkedHashMap<>();
+    limpezaAntes.put("midiasVinculadas", limpeza.midiasRemovidas());
+    Map<String, Object> limpezaDepois = new LinkedHashMap<>();
+    limpezaDepois.put("objetosR2Excluidos", limpeza.objetosExcluidos());
+    limpezaDepois.put("objetosR2JaAusentes", limpeza.objetosJaAusentes());
+    limpezaDepois.put(
+        "objetosCompartilhadosPreservados",
+        limpeza.objetosCompartilhadosPreservados());
+    limpezaDepois.put("storiesEncerrados", limpeza.storiesEncerrados());
+    limpezaDepois.put("storyAdministrativoEncerrado", limpeza.storyAdministrativoEncerrado());
+    auditoriaRepository.save(AuditoriaEventoEntity.registrar(
+        UUID.randomUUID(),
+        administrador.usuarioId(),
+        "ANUNCIO_MIDIAS_EXCLUIDAS_R2",
+        "ANUNCIO",
+        anuncio.getId(),
+        json(limpezaAntes),
+        json(limpezaDepois),
+        requestIdValidado,
+        agora));
+
     return new AdminAnuncioRemocaoDto(
         anuncio.getId(),
         anuncio.getStatus().name(),
         anuncio.getStatusModeracao() == null ? null : anuncio.getStatusModeracao().name(),
         "REMOVER",
+        limpeza.midiasRemovidas(),
+        limpeza.objetosExcluidos(),
+        limpeza.objetosJaAusentes(),
+        limpeza.objetosCompartilhadosPreservados(),
+        limpeza.storiesEncerrados(),
+        limpeza.storyAdministrativoEncerrado(),
         anuncio.getRemovidoEm(),
         agora);
   }

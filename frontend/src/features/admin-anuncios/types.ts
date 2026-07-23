@@ -149,6 +149,12 @@ export type AdminAdRemovalResponse = {
   statusAnuncio: 'REMOVIDO'
   statusModeracao: string
   acao: 'REMOVER'
+  midiasRemovidas: number
+  objetosR2Excluidos: number
+  objetosR2JaAusentes: number
+  objetosCompartilhadosPreservados: number
+  storiesEncerrados: number
+  storyAdministrativoEncerrado: boolean
   removidoEm: string
   executadoEm: string
 }

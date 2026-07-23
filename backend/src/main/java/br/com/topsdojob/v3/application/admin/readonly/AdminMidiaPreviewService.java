@@ -11,6 +11,7 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.net.URI;
 import java.time.Duration;
@@ -51,6 +52,7 @@ public class AdminMidiaPreviewService {
     public AdminMidiaPreviewDto gerar(UUID id) {
         AnuncioMidiaEntity midia = midiaRepository.findById(id)
                 .filter(item -> item.getTipo() != TipoAnuncioMidia.STORY)
+                .filter(item -> item.getStatus() != StatusAnuncioMidia.REMOVIDA)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
         if (midia.getArquivoMidiaId() == null
                 || documentoRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(
@@ -59,6 +61,9 @@ public class AdminMidiaPreviewService {
         }
         ArquivoMidiaEntity arquivo = arquivoRepository.findById(midia.getArquivoMidiaId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
+        if (arquivo.getStatusArquivo() == StatusArquivoMidia.REMOVIDO) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado");
+        }
         validarTipo(arquivo.getMimeType());
 
         ObjectStorage storage = storageProvider.getIfAvailable();

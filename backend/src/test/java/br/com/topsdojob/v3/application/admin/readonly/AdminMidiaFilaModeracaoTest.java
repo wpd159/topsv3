@@ -13,6 +13,7 @@ import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.lang.reflect.Constructor;
 import java.util.Optional;
@@ -38,14 +39,20 @@ class AdminMidiaFilaModeracaoTest {
         UUID anuncioId = UUID.randomUUID();
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         ReflectionTestUtils.setField(anuncio, "id", anuncioId);
-        when(midiaRepository.findByAnuncioIdAndTipoNot(
-                eq(anuncioId), eq(TipoAnuncioMidia.STORY), any(Pageable.class)))
+        when(midiaRepository.findByAnuncioIdAndTipoNotAndStatusNot(
+                eq(anuncioId),
+                eq(TipoAnuncioMidia.STORY),
+                eq(StatusAnuncioMidia.REMOVIDA),
+                any(Pageable.class)))
                 .thenReturn(new PageImpl<>(java.util.List.of()));
 
         service.listarPorAnuncio(anuncio, 0, 20);
 
-        verify(midiaRepository).findByAnuncioIdAndTipoNot(
-                eq(anuncioId), eq(TipoAnuncioMidia.STORY), any(Pageable.class));
+        verify(midiaRepository).findByAnuncioIdAndTipoNotAndStatusNot(
+                eq(anuncioId),
+                eq(TipoAnuncioMidia.STORY),
+                eq(StatusAnuncioMidia.REMOVIDA),
+                any(Pageable.class));
     }
 
     @Test

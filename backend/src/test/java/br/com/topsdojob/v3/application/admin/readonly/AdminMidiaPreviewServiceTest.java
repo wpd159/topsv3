@@ -161,6 +161,23 @@ class AdminMidiaPreviewServiceTest {
         verify(storage, never()).publicUrl(any(), any());
     }
 
+    @Test
+    void midiaRemovidaNaoPossuiMaisPreviewAdministrativo() {
+        UUID id = fixture(
+                TipoAnuncioMidia.FOTO,
+                "midias-publicas",
+                "hml/preprod/midias-aprovadas/removida.webp",
+                "image/webp");
+        AnuncioMidiaEntity midia = midiaRepository.findById(id).orElseThrow();
+        midia.removerLogicamente(java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC));
+
+        assertThatThrownBy(() -> service.gerar(id))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
+        verify(storage, never()).exists(any(), any());
+        verify(storage, never()).publicUrl(any(), any());
+    }
+
     private UUID fixture(TipoAnuncioMidia tipo, String bucket, String key, String mimeType) {
         UUID id = UUID.randomUUID();
         UUID arquivoId = UUID.randomUUID();

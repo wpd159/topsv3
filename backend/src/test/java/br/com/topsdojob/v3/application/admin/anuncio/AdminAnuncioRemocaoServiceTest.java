@@ -4,11 +4,15 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.CleanupException;
+import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.Resultado;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioRemocaoRequest;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
@@ -40,6 +44,10 @@ class AdminAnuncioRemocaoServiceTest {
   private final AnuncioStatusHistoricoRepository statusHistoricoRepository =
       mock(AnuncioStatusHistoricoRepository.class);
   private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
+  private final AdminAnuncioMidiaCleanupService cleanupService =
+      mock(AdminAnuncioMidiaCleanupService.class);
+  private final AdminAnuncioRemocaoFalhaAuditService falhaAuditService =
+      mock(AdminAnuncioRemocaoFalhaAuditService.class);
   private AdminAnuncioRemocaoService service;
 
   @BeforeEach
@@ -48,10 +56,14 @@ class AdminAnuncioRemocaoServiceTest {
         anuncioRepository,
         statusHistoricoRepository,
         auditoriaRepository,
+        cleanupService,
+        falhaAuditService,
         new ObjectMapper());
     when(anuncioRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(statusHistoricoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    when(cleanupService.limpar(any(), any())).thenReturn(
+        new Resultado(3, 5, 1, 0, 1, true));
   }
 
   @Test
@@ -68,6 +80,11 @@ class AdminAnuncioRemocaoServiceTest {
     assertThat(resultado.statusAnuncio()).isEqualTo("REMOVIDO");
     assertThat(resultado.statusModeracao()).isEqualTo("APROVADO");
     assertThat(resultado.acao()).isEqualTo("REMOVER");
+    assertThat(resultado.midiasRemovidas()).isEqualTo(3);
+    assertThat(resultado.objetosR2Excluidos()).isEqualTo(5);
+    assertThat(resultado.objetosR2JaAusentes()).isEqualTo(1);
+    assertThat(resultado.storiesEncerrados()).isEqualTo(1);
+    assertThat(resultado.storyAdministrativoEncerrado()).isTrue();
     assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.REMOVIDO);
     assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
     assertThat(anuncio.getRemovidoEm()).isNotNull();
@@ -85,18 +102,26 @@ class AdminAnuncioRemocaoServiceTest {
         .contains("REMOCAO_ADMINISTRATIVA")
         .contains("solicitacao administrativa confirmada");
 
-    ArgumentCaptor<AuditoriaEventoEntity> auditoria =
+    ArgumentCaptor<AuditoriaEventoEntity> auditorias =
         ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
-    verify(auditoriaRepository).save(auditoria.capture());
-    assertThat(auditoria.getValue().getAtorUsuarioId()).isNotNull();
-    assertThat(auditoria.getValue().getAcao()).isEqualTo("ANUNCIO_REMOVIDO_ADMINISTRATIVAMENTE");
-    assertThat(auditoria.getValue().getRecursoId()).isEqualTo(anuncio.getId());
-    assertThat(auditoria.getValue().getRequestId()).isEqualTo("req-remocao-admin");
-    assertThat(auditoria.getValue().getCriadoEm().getOffset()).isEqualTo(ZoneOffset.UTC);
-    assertThat(auditoria.getValue().getDepoisJson())
+    verify(auditoriaRepository, times(2)).save(auditorias.capture());
+    AuditoriaEventoEntity remocao = auditorias.getAllValues().get(0);
+    AuditoriaEventoEntity limpeza = auditorias.getAllValues().get(1);
+    assertThat(remocao.getAtorUsuarioId()).isNotNull();
+    assertThat(remocao.getAcao()).isEqualTo("ANUNCIO_REMOVIDO_ADMINISTRATIVAMENTE");
+    assertThat(remocao.getRecursoId()).isEqualTo(anuncio.getId());
+    assertThat(remocao.getRequestId()).isEqualTo("req-remocao-admin");
+    assertThat(remocao.getCriadoEm().getOffset()).isEqualTo(ZoneOffset.UTC);
+    assertThat(remocao.getDepoisJson())
         .contains("\"statusAnuncio\":\"REMOVIDO\"")
         .contains("\"decisao\":\"REMOVER\"")
-        .contains("\"motivoSanitizado\":\"solicitacao administrativa confirmada\"");
+        .contains("\"motivoSanitizado\":\"solicitacao administrativa confirmada\"")
+        .contains("\"objetosR2Excluidos\":5");
+    assertThat(limpeza.getAcao()).isEqualTo("ANUNCIO_MIDIAS_EXCLUIDAS_R2");
+    assertThat(limpeza.getDepoisJson())
+        .contains("\"objetosR2Excluidos\":5")
+        .contains("\"storiesEncerrados\":1");
+    verify(cleanupService).limpar(anuncio.getId(), anuncio.getRemovidoEm());
   }
 
   @Test
@@ -125,6 +150,47 @@ class AdminAnuncioRemocaoServiceTest {
 
     verify(statusHistoricoRepository, never()).save(any());
     verify(auditoriaRepository, never()).save(any());
+    verify(cleanupService, never()).limpar(any(), any());
+  }
+
+  @Test
+  void falhaR2NaoRemoveAnuncioNaoFingeSucessoEPermiteRetry() {
+    AnuncioEntity anuncio = anuncio(StatusAnuncio.PUBLICADO);
+    when(anuncioRepository.findByIdForModeration(anuncio.getId())).thenReturn(Optional.of(anuncio));
+    when(cleanupService.limpar(any(), any()))
+        .thenThrow(new CleanupException(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            "FALHA_OPERACIONAL_R2",
+            new IllegalStateException("falha sintetica")))
+        .thenReturn(new Resultado(2, 3, 1, 0, 0, false));
+
+    assertStatus(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        () -> service.remover(
+            anuncio.getId(),
+            new AdminAnuncioRemocaoRequest("limpeza administrativa confirmada"),
+            admin(),
+            "req-falha-r2"));
+
+    assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
+    verify(anuncioRepository, never()).save(anuncio);
+    verify(statusHistoricoRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
+    verify(falhaAuditService).registrar(
+        eq(anuncio.getId()),
+        any(),
+        eq("req-falha-r2"),
+        eq("FALHA_OPERACIONAL_R2"));
+
+    var retry = service.remover(
+        anuncio.getId(),
+        new AdminAnuncioRemocaoRequest("limpeza administrativa confirmada"),
+        admin(),
+        "req-retry-r2");
+
+    assertThat(retry.statusAnuncio()).isEqualTo("REMOVIDO");
+    assertThat(retry.objetosR2Excluidos()).isEqualTo(3);
+    verify(cleanupService, times(2)).limpar(any(), any());
   }
 
   @Test

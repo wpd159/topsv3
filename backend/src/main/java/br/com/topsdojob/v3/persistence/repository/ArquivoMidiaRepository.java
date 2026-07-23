@@ -19,6 +19,15 @@ public interface ArquivoMidiaRepository
     List<ArquivoMidiaEntity> findByIdIn(Collection<UUID> ids);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select arquivo
+            from ArquivoMidiaEntity arquivo
+            where arquivo.id in :ids
+            order by arquivo.id
+            """)
+    List<ArquivoMidiaEntity> findByIdInForUpdate(@Param("ids") Collection<UUID> ids);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select arquivo from ArquivoMidiaEntity arquivo where arquivo.id = :id")
     java.util.Optional<ArquivoMidiaEntity> findByIdForUpdate(@Param("id") UUID id);
 }

@@ -247,7 +247,7 @@ function RemovalDialog({ open, busy, error, onClose, onConfirm }: {
         <DialogHeader>
           <DialogTitle>{'Excluir an\u00fancio'}</DialogTitle>
           <DialogDescription>
-            {'O an\u00fancio ser\u00e1 removido da plataforma, mas seus dados, hist\u00f3rico, propriet\u00e1rio, benef\u00edcios e m\u00eddias permanecer\u00e3o preservados.'}
+            {'Esta a\u00e7\u00e3o remover\u00e1 o an\u00fancio da plataforma e excluir\u00e1 definitivamente suas fotos e v\u00eddeos. O hist\u00f3rico administrativo ser\u00e1 preservado.'}
           </DialogDescription>
         </DialogHeader>
         <label className="block">

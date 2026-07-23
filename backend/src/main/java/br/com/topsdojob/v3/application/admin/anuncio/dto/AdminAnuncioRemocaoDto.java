@@ -8,6 +8,12 @@ public record AdminAnuncioRemocaoDto(
     String statusAnuncio,
     String statusModeracao,
     String acao,
+    int midiasRemovidas,
+    int objetosR2Excluidos,
+    int objetosR2JaAusentes,
+    int objetosCompartilhadosPreservados,
+    int storiesEncerrados,
+    boolean storyAdministrativoEncerrado,
     OffsetDateTime removidoEm,
     OffsetDateTime executadoEm) {
 }
