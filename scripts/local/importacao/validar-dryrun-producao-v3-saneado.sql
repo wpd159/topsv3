@@ -59,6 +59,18 @@ SELECT 'USUARIOS|' || count(*) FROM usuario;
 SELECT 'ANUNCIOS|' || count(*) FROM anuncio;
 SELECT 'ANUNCIOS_PUBLICADOS|' || count(*) FROM anuncio WHERE status = 'PUBLICADO';
 SELECT 'ANUNCIOS_FORA_CATALOGO|' || count(*) FROM anuncio WHERE status <> 'PUBLICADO';
+SELECT 'ANUNCIOS_AGUARDANDO_MODERACAO|' || count(*)
+FROM anuncio
+WHERE status = 'PENDENTE_REVISAO' AND status_moderacao = 'PENDENTE';
+SELECT 'ANUNCIOS_IMPORTADOS_PUBLICADOS_INDEVIDAMENTE|' || count(*)
+FROM anuncio
+WHERE origem_importacao_id IS NOT NULL
+  AND status = 'PUBLICADO';
+SELECT 'ANUNCIOS_IMPORTADOS_MODERADOS_INDEVIDAMENTE|' || count(*)
+FROM anuncio
+WHERE origem_importacao_id IS NOT NULL
+  AND status <> 'REMOVIDO'
+  AND (status <> 'PENDENTE_REVISAO' OR status_moderacao <> 'PENDENTE');
 SELECT 'SLUG_DUPLICADO_EXCESSO|' || coalesce(sum(c - 1), 0)
 FROM (SELECT count(*) c FROM anuncio GROUP BY slug HAVING count(*) > 1) q;
 SELECT 'FK_NAO_VALIDADA|' || count(*)
@@ -78,38 +90,58 @@ FROM stg_anuncio
 WHERE payload_normalizado_json ->> 'primeiraPublicacaoOrigem' = 'CRIADO_EM_INFERIDO';
 SELECT 'MIDIA_LIVRE|' || count(*) FROM anuncio_midia WHERE visibilidade_midia = 'LIVRE';
 SELECT 'MIDIA_RESTRITA_18|' || count(*) FROM anuncio_midia WHERE visibilidade_midia = 'RESTRITA_18';
-SELECT 'MIDIA_SEM_EVIDENCIA_PUBLICA|' || count(*)
-FROM stg_midia WHERE pendencia_codigo = 'MIDIA_SEM_EVIDENCIA_PUBLICA_ANONIMA';
-SELECT 'MIDIA_PRIVADA_QUARENTENA|' || count(*)
-FROM stg_midia WHERE pendencia_codigo = 'MIDIA_PRIVADA_SEM_VERIFICACAO_R2';
-SELECT 'MIDIA_NAO_LIVRE_QUARENTENA|' || count(*)
-FROM stg_midia WHERE pendencia_codigo = 'MIDIA_NAO_LIVRE_QUARENTENA';
-SELECT 'MIDIA_PLACEHOLDER_QUARENTENA|' || count(*)
-FROM stg_midia WHERE pendencia_codigo = 'MIDIA_PLACEHOLDER_INSTITUCIONAL_QUARENTENA';
-SELECT 'MIDIA_PUBLICA_R2_QUARENTENA|' || count(*)
-FROM stg_midia WHERE pendencia_codigo IN (
-  'MIDIA_PUBLICA_R2_QUARENTENA',
-  'MIDIA_PUBLICA_R2_CHECKSUM_DIVERGENTE'
-);
-SELECT 'MIDIA_R2_PUBLICA|' || count(*)
+SELECT 'MIDIA_R2_PUBLICA_IMPORTADA|' || count(*)
 FROM arquivo_midia
 WHERE storage_provider = 'R2'
   AND bucket = :'r2_public_media_bucket'
   AND chave_objeto LIKE :'r2_public_media_prefix' || 'importacao/sha256/%';
-SELECT 'MIDIA_PUBLICA_DESTINO_INVALIDA|' || count(*)
+SELECT 'MIDIA_R2_PRIVADA_IMPORTADA|' || count(*)
+FROM anuncio_midia am
+JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+WHERE ar.storage_provider = 'R2'
+  AND ar.bucket = :'r2_private_media_bucket'
+  AND ar.chave_objeto LIKE :'r2_private_media_prefix' || 'importacao/anuncios/%';
+SELECT 'MIDIA_LOGICA_ORIGEM|' || (resumo_json ->> 'midiasR2PrivadasLogicasOrigem')
+FROM importacao_execucao;
+SELECT 'MIDIA_LOGICA_IMPORTADA|' || (resumo_json ->> 'midiasR2PrivadasLogicasImportadas')
+FROM importacao_execucao;
+SELECT 'MIDIA_LOGICA_QUARENTENA|' || (resumo_json ->> 'midiasR2PrivadasLogicasQuarentena')
+FROM importacao_execucao;
+SELECT 'MIDIA_LOGICA_DIVERGENTE|' || (resumo_json ->> 'midiasR2PrivadasLogicasDivergentes')
+FROM importacao_execucao;
+SELECT 'MIDIA_ORIGEM_AUSENTE|' || count(*)
+FROM importacao_pendencia
+WHERE codigo = 'MIDIA_ORIGEM_AUSENTE';
+SELECT 'MIDIA_PRIVADA_DESTINO_INVALIDA|' || count(*)
 FROM anuncio_midia am
 JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
 CROSS JOIN validar_context c
-WHERE am.visibilidade_midia = 'LIVRE'
+WHERE ar.storage_provider = 'R2'
   AND (
-    ar.storage_provider <> 'R2'
-    OR ar.bucket <> c.r2_public_media_bucket
-    OR ar.chave_objeto NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/%'
-    OR substring(ar.chave_objeto FROM length(c.r2_public_media_prefix) + 1)
-        !~ '^importacao/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(jpg|jpeg|png|webp)$'
+    ar.bucket <> c.r2_private_media_bucket
+    OR ar.chave_objeto NOT LIKE c.r2_private_media_prefix || 'importacao/anuncios/%'
+    OR substring(ar.chave_objeto FROM length(c.r2_private_media_prefix) + 1)
+        !~ '^importacao/anuncios/[1-9][0-9]*/midias/[0-9a-f]{64}/[a-z0-9-]+/[0-9a-f]{64}\.[a-z0-9]+$'
     OR ar.sha256 !~ '^[0-9a-f]{64}$'
-    OR ar.chave_objeto NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/'
-        || left(ar.sha256, 2) || '/' || ar.sha256 || '.%'
+    OR ar.chave_objeto NOT LIKE '%/' || ar.sha256 || '.%'
+  );
+SELECT 'FOTO_FORA_DE_PENDENTE_PRIVADA|' || count(*)
+FROM anuncio_midia am
+JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+WHERE am.tipo = 'FOTO'
+  AND (
+    am.status <> 'PENDENTE'
+    OR am.visibilidade_midia IS NOT NULL
+    OR ar.status_arquivo <> 'PENDENTE'
+  );
+SELECT 'VIDEO_FORA_DE_PENDENTE_RESTRITA|' || count(*)
+FROM anuncio_midia am
+JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+WHERE am.tipo = 'VIDEO'
+  AND (
+    am.status <> 'PENDENTE'
+    OR am.visibilidade_midia <> 'RESTRITA_18'
+    OR ar.status_arquivo <> 'PENDENTE'
   );
 SELECT 'MIDIA_R2_CHECKSUM_AUSENTE|' || count(*)
 FROM arquivo_midia
@@ -123,11 +155,11 @@ FROM (
   GROUP BY bucket, chave_objeto
   HAVING count(*) > 1
 ) q;
-SELECT 'MIDIA_RESTRITA_COM_PROVIDER_PUBLICO_RUNTIME|' || count(*)
+SELECT 'MIDIA_RESTRITA_EM_BUCKET_PUBLICO|' || count(*)
 FROM anuncio_midia am
 JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
 WHERE am.visibilidade_midia = 'RESTRITA_18'
-  AND ar.storage_provider = 'R2';
+  AND ar.bucket = :'r2_public_media_bucket';
 SELECT 'SEO_INDEXAVEL_POR_EVIDENCIA|' || count(*)
 FROM seo_url WHERE tipo = 'ANUNCIO' AND indexavel AND incluir_sitemap;
 SELECT 'SEO_INDEXAVEL_SEM_MIDIA_REAL|' || count(*)
@@ -147,6 +179,34 @@ WHERE s.tipo = 'ANUNCIO'
       AND ar.bucket = c.r2_public_media_bucket
       AND ar.chave_objeto LIKE c.r2_public_media_prefix || 'importacao/sha256/%'
   );
+SELECT 'VISUALIZACAO_SALDO_INICIAL|' || coalesce(sum(total_visualizacoes), 0)
+FROM agregado_visualizacao_inicial;
+SELECT 'VISUALIZACAO_EVENTOS_IMPORTADOS|' || count(*)
+FROM evento_visualizacao
+WHERE request_id LIKE 'import:anuncio_view_log:%';
+SELECT 'VISUALIZACAO_TOTAL_CANONICO_IMPORTADO|' || coalesce(sum(total), 0)
+FROM (
+  SELECT
+    i.anuncio_id,
+    i.total_visualizacoes + count(e.id) AS total
+  FROM agregado_visualizacao_inicial i
+  LEFT JOIN evento_visualizacao e
+    ON e.anuncio_id = i.anuncio_id
+   AND e.request_id LIKE 'import:anuncio_view_log:%'
+  GROUP BY i.anuncio_id, i.total_visualizacoes
+) q;
+SELECT 'CLIQUES_WHATSAPP_IMPORTADOS|' || count(*)
+FROM clique_whatsapp
+WHERE request_id LIKE 'import:cliques_whatsapp:%';
+SELECT 'METRICAS_EVENTOS_ORFAOS|' || (
+  (SELECT count(*) FROM evento_visualizacao e
+   LEFT JOIN anuncio a ON a.id = e.anuncio_id
+   WHERE a.id IS NULL)
+  +
+  (SELECT count(*) FROM clique_whatsapp c
+   LEFT JOIN anuncio a ON a.id = c.anuncio_id
+   WHERE a.id IS NULL)
+);
 SELECT 'STORIES_QUARENTENA|' || count(*) FROM stg_story;
 SELECT 'KYC_CANONICO|' || count(*) FROM documento_usuario;
 SELECT 'KYC_PENDENTE|' || count(*) FROM documento_usuario WHERE status = 'PENDENTE';
@@ -255,6 +315,181 @@ SELECT 'SNAPSHOT_ID|' || (resumo_json ->> 'snapshotId')
 FROM importacao_execucao;
 SELECT 'SNAPSHOT_FINGERPRINT|' || (resumo_json ->> 'snapshotFingerprint')
 FROM importacao_execucao;
+
+DO $$
+DECLARE
+  visualizacoes_origem bigint;
+  eventos_origem bigint;
+  cliques_origem bigint;
+  visualizacoes_destino bigint;
+  midias_logicas_origem bigint;
+  midias_logicas_importadas bigint;
+  midias_logicas_quarentena bigint;
+  midias_logicas_divergentes bigint;
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM anuncio
+    WHERE origem_importacao_id IS NOT NULL
+      AND status = 'PUBLICADO'
+  ) OR EXISTS (
+    SELECT 1
+    FROM seo_url
+    WHERE tipo = 'ANUNCIO' AND (indexavel OR incluir_sitemap)
+  ) OR EXISTS (
+    SELECT 1
+    FROM documento_busca_anuncio
+    WHERE status_publicacao = 'PUBLICAVEL' OR tem_midia_valida
+  ) THEN
+    RAISE EXCEPTION 'anuncio importado foi publicado, indexado ou adicionado ao catalogo';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM anuncio_midia am
+    JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+    CROSS JOIN validar_context c
+    WHERE ar.storage_provider <> 'R2'
+       OR ar.bucket <> c.r2_private_media_bucket
+       OR ar.chave_objeto NOT LIKE c.r2_private_media_prefix || 'importacao/anuncios/%'
+       OR ar.status_arquivo <> 'PENDENTE'
+       OR am.status <> 'PENDENTE'
+       OR (am.tipo = 'FOTO' AND am.visibilidade_midia IS NOT NULL)
+       OR (am.tipo = 'VIDEO' AND am.visibilidade_midia <> 'RESTRITA_18')
+  ) THEN
+    RAISE EXCEPTION 'foto ou video importado fora do contrato privado e pendente';
+  END IF;
+
+  SELECT
+    (resumo_json ->> 'midiasR2PrivadasLogicasOrigem')::bigint,
+    (resumo_json ->> 'midiasR2PrivadasLogicasImportadas')::bigint,
+    (resumo_json ->> 'midiasR2PrivadasLogicasQuarentena')::bigint,
+    (resumo_json ->> 'midiasR2PrivadasLogicasDivergentes')::bigint
+  INTO
+    midias_logicas_origem,
+    midias_logicas_importadas,
+    midias_logicas_quarentena,
+    midias_logicas_divergentes
+  FROM importacao_execucao;
+
+  IF midias_logicas_origem
+      <> midias_logicas_importadas + midias_logicas_quarentena
+     OR midias_logicas_divergentes <> 0
+     OR (
+       SELECT count(*)
+       FROM importacao_pendencia
+       WHERE codigo = 'MIDIA_ORIGEM_AUSENTE'
+     ) <> midias_logicas_quarentena THEN
+    RAISE EXCEPTION 'reconciliacao persistida de midias logicas possui divergencia';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM anuncio_midia am
+    JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+    CROSS JOIN validar_context c
+    WHERE ar.storage_provider = 'R2'
+      AND ar.bucket = c.r2_private_media_bucket
+      AND ar.chave_objeto LIKE c.r2_private_media_prefix || 'importacao/anuncios/%'
+  ) <> midias_logicas_importadas THEN
+    RAISE EXCEPTION 'quantidade de midias operacionais diverge das recuperaveis';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM importacao_pendencia p
+    LEFT JOIN anuncio a
+      ON a.id = md5('legacy:anuncio:' || split_part(p.id_origem, ':', 1))::uuid
+    WHERE p.codigo = 'MIDIA_ORIGEM_AUSENTE'
+      AND (
+        a.id IS NULL
+        OR a.status <> 'PENDENTE_REVISAO'
+        OR a.status_moderacao <> 'PENDENTE'
+      )
+  ) OR EXISTS (
+    SELECT 1
+    FROM importacao_pendencia p
+    JOIN anuncio_midia m
+      ON m.id = md5('legacy:anuncio-midia:' || p.id_origem)::uuid
+    WHERE p.codigo = 'MIDIA_ORIGEM_AUSENTE'
+  ) OR EXISTS (
+    SELECT 1
+    FROM stg_midia s
+    WHERE s.pendencia_codigo = 'MIDIA_ORIGEM_AUSENTE'
+      AND (
+        s.status <> 'PENDENTE_REVISAO'
+        OR s.entidade_v3_id IS NOT NULL
+      )
+  ) THEN
+    RAISE EXCEPTION 'quarentena de midia ausente criou entidade operacional ou liberou anuncio';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM anuncio
+    WHERE origem_importacao_id IS NOT NULL
+  ) <> (
+    SELECT (resumo_json ->> 'anunciosOrigem')::bigint
+    FROM importacao_execucao
+  ) THEN
+    RAISE EXCEPTION 'quarentena de midia impediu a importacao de anuncio da origem';
+  END IF;
+
+  SELECT
+    (resumo_json ->> 'visualizacoesCanonicasOrigem')::bigint,
+    (resumo_json ->> 'eventosVisualizacaoOrigem')::bigint,
+    (resumo_json ->> 'cliquesWhatsappOrigem')::bigint
+  INTO visualizacoes_origem, eventos_origem, cliques_origem
+  FROM importacao_execucao;
+
+  SELECT coalesce(sum(total), 0)
+  INTO visualizacoes_destino
+  FROM (
+    SELECT
+      i.anuncio_id,
+      i.total_visualizacoes + count(e.id) AS total
+    FROM agregado_visualizacao_inicial i
+    LEFT JOIN evento_visualizacao e
+      ON e.anuncio_id = i.anuncio_id
+     AND e.request_id LIKE 'import:anuncio_view_log:%'
+    GROUP BY i.anuncio_id, i.total_visualizacoes
+  ) q;
+
+  IF visualizacoes_destino <> visualizacoes_origem
+     OR (
+       SELECT count(*) FROM evento_visualizacao
+       WHERE request_id LIKE 'import:anuncio_view_log:%'
+     ) <> eventos_origem
+     OR (
+       SELECT count(*) FROM clique_whatsapp
+       WHERE request_id LIKE 'import:cliques_whatsapp:%'
+     ) <> cliques_origem THEN
+    RAISE EXCEPTION 'metricas importadas divergem das contagens do snapshot';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM evento_visualizacao
+    WHERE request_id LIKE 'import:anuncio_view_log:%'
+      AND (
+        visitante_hash IS NOT NULL
+        OR ip_hash IS NOT NULL
+        OR user_agent_hash IS NOT NULL
+        OR referer_hash IS NOT NULL
+      )
+  ) OR EXISTS (
+    SELECT 1
+    FROM clique_whatsapp
+    WHERE request_id LIKE 'import:cliques_whatsapp:%'
+      AND (
+        visitante_hash IS NOT NULL
+        OR ip_hash IS NOT NULL
+        OR user_agent_hash IS NOT NULL
+      )
+  ) THEN
+    RAISE EXCEPTION 'metrica legada importou identificador pessoal desnecessario';
+  END IF;
+END $$;
 
 DO $$
 BEGIN
@@ -551,6 +786,25 @@ WITH hashes AS (
     '|' ORDER BY am.id), ''))
   FROM anuncio_midia am JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
   UNION ALL
+  SELECT 'visualizacao', md5(coalesce(string_agg(
+    concat_ws(':', i.anuncio_id, i.total_visualizacoes,
+              i.snapshot_fingerprint, i.origem_hash, i.snapshot_corte_em,
+              coalesce(e.eventos, 0)),
+    '|' ORDER BY i.anuncio_id), ''))
+  FROM agregado_visualizacao_inicial i
+  LEFT JOIN (
+    SELECT anuncio_id, count(*) AS eventos
+    FROM evento_visualizacao
+    WHERE request_id LIKE 'import:anuncio_view_log:%'
+    GROUP BY anuncio_id
+  ) e ON e.anuncio_id = i.anuncio_id
+  UNION ALL
+  SELECT 'clique-whatsapp', md5(coalesce(string_agg(
+    concat_ws(':', id, anuncio_id, criado_em, request_id),
+    '|' ORDER BY id), ''))
+  FROM clique_whatsapp
+  WHERE request_id LIKE 'import:cliques_whatsapp:%'
+  UNION ALL
   SELECT 'kyc', md5(coalesce(string_agg(
     concat_ws(':', d.id, d.usuario_id, d.arquivo_midia_id, d.envio_id,
               d.parte, d.status, ar.bucket, ar.chave_objeto,
@@ -609,6 +863,25 @@ WITH hashes AS (
               ar.sha256, ar.tamanho_bytes, ar.mime_type),
     '|' ORDER BY am.id), ''))
   FROM anuncio_midia am JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
+  UNION ALL
+  SELECT md5(coalesce(string_agg(
+    concat_ws(':', i.anuncio_id, i.total_visualizacoes,
+              i.snapshot_fingerprint, i.origem_hash, i.snapshot_corte_em,
+              coalesce(e.eventos, 0)),
+    '|' ORDER BY i.anuncio_id), ''))
+  FROM agregado_visualizacao_inicial i
+  LEFT JOIN (
+    SELECT anuncio_id, count(*) AS eventos
+    FROM evento_visualizacao
+    WHERE request_id LIKE 'import:anuncio_view_log:%'
+    GROUP BY anuncio_id
+  ) e ON e.anuncio_id = i.anuncio_id
+  UNION ALL
+  SELECT md5(coalesce(string_agg(
+    concat_ws(':', id, anuncio_id, criado_em, request_id),
+    '|' ORDER BY id), ''))
+  FROM clique_whatsapp
+  WHERE request_id LIKE 'import:cliques_whatsapp:%'
   UNION ALL
   SELECT md5(coalesce(string_agg(
     concat_ws(':', d.id, d.usuario_id, d.arquivo_midia_id, d.envio_id,

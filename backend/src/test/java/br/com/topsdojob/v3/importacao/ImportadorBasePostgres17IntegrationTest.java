@@ -29,12 +29,20 @@ class ImportadorBasePostgres17IntegrationTest {
   @Test
   void executaMesmoSnapshotDuasVezesSemAlterarContagensOuFingerprint() throws Exception {
     Path snapshot = requiredFile("IMPORTADOR_BASE_SNAPSHOT_DUMP");
-    Path publicMedia = requiredFile("IMPORTADOR_BASE_PUBLIC_MEDIA_TSV");
+    Path privateMedia = requiredFile("IMPORTADOR_BASE_PRIVATE_MEDIA_TSV");
     Path kycDocuments = requiredFile("IMPORTADOR_BASE_KYC_TSV");
     Path importer = IMPORTACAO.resolve("dryrun-producao-v3-saneado.sql");
+    Path credentials = IMPORTACAO.resolve("reconciliar-credenciais-usuarios.sql");
     Path ledger = IMPORTACAO.resolve("reconciliar-ledger-saldo-inicial.sql");
+    Path metrics = IMPORTACAO.resolve("reconciliar-historico-visualizacoes.sql");
+    Path premium = IMPORTACAO.resolve("reconciliar-premium-historico.sql");
+    Path validator = IMPORTACAO.resolve("validar-dryrun-producao-v3-saneado.sql");
     assertThat(importer).isRegularFile();
+    assertThat(credentials).isRegularFile();
     assertThat(ledger).isRegularFile();
+    assertThat(metrics).isRegularFile();
+    assertThat(premium).isRegularFile();
+    assertThat(validator).isRegularFile();
 
     String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     String network = "topsv3-idempotencia-test-" + suffix + "-net";
@@ -54,25 +62,58 @@ class ImportadorBasePostgres17IntegrationTest {
       restoreSnapshot(container, dbCredential, snapshot, logs);
       migrate(container, network, dbCredential, logs);
       copy(container, importer, "/tmp/dryrun-producao-v3-saneado.sql", logs);
+      copy(container, credentials, "/tmp/reconciliar-credenciais-usuarios.sql", logs);
       copy(container, ledger, "/tmp/reconciliar-ledger-saldo-inicial.sql", logs);
-      copy(container, publicMedia, "/tmp/dryrun-r2-public-media.tsv", logs);
+      copy(container, metrics, "/tmp/reconciliar-historico-visualizacoes.sql", logs);
+      copy(container, premium, "/tmp/reconciliar-premium-historico.sql", logs);
+      copy(container, validator, "/tmp/validar-dryrun-producao-v3-saneado.sql", logs);
+      copy(container, privateMedia, "/tmp/dryrun-r2-private-media.tsv", logs);
       copy(container, kycDocuments, "/tmp/dryrun-r2-kyc-documents.tsv", logs);
 
       List<String> variables = importVariables();
-      List<String> missingPublicPrefix = withoutSetting(
-          variables, "r2_public_media_prefix=");
+      List<String> missingPrivatePrefix = withoutSetting(
+          variables, "r2_private_media_prefix=");
       Path missingParameterLog = logs.resolve("parametro-ausente.log");
       int missingParameterExit = importSnapshot(
-          container, dbCredential, missingPublicPrefix, missingParameterLog, false);
+          container, dbCredential, missingPrivatePrefix, missingParameterLog, false);
       assertThat(missingParameterExit).isNotZero();
       assertThat(Files.readString(missingParameterLog))
-          .contains("parametro R2 obrigatorio ausente: r2_public_media_prefix");
+          .contains("parametro R2 obrigatorio ausente: r2_private_media_prefix");
 
       importSnapshot(container, dbCredential, variables, logs.resolve("run1.log"), true);
+      importReconciler(
+          container,
+          dbCredential,
+          variables,
+          "/tmp/reconciliar-credenciais-usuarios.sql",
+          logs.resolve("credentials-run1.log"));
+      importReconciler(
+          container,
+          dbCredential,
+          variables,
+          "/tmp/reconciliar-premium-historico.sql",
+          logs.resolve("premium-run1.log"));
+      authorizeMetrics(container, dbCredential, logs);
+      importMetrics(container, dbCredential, variables, logs.resolve("metrics-run1.log"), true);
+      validateSnapshot(container, dbCredential, variables, logs.resolve("validator-run1.log"));
       String counts1 = counts(container, dbCredential);
       String fingerprint1 = fingerprint(container, dbCredential);
 
       importSnapshot(container, dbCredential, variables, logs.resolve("run2.log"), true);
+      importReconciler(
+          container,
+          dbCredential,
+          variables,
+          "/tmp/reconciliar-credenciais-usuarios.sql",
+          logs.resolve("credentials-run2.log"));
+      importReconciler(
+          container,
+          dbCredential,
+          variables,
+          "/tmp/reconciliar-premium-historico.sql",
+          logs.resolve("premium-run2.log"));
+      importMetrics(container, dbCredential, variables, logs.resolve("metrics-run2.log"), true);
+      validateSnapshot(container, dbCredential, variables, logs.resolve("validator-run2.log"));
       String counts2 = counts(container, dbCredential);
       String fingerprint2 = fingerprint(container, dbCredential);
 
@@ -83,14 +124,14 @@ class ImportadorBasePostgres17IntegrationTest {
 
       List<String> otherEnvironment = replacingSetting(
           variables,
-          "r2_public_media_prefix=",
-          "r2_public_media_prefix=hml/outro-ambiente/midias-aprovadas/");
+          "r2_private_media_prefix=",
+          "r2_private_media_prefix=hml/outro-ambiente/midias-pendentes/");
       Path otherEnvironmentLog = logs.resolve("prefixo-outro-ambiente.log");
       int otherEnvironmentExit = importSnapshot(
           container, dbCredential, otherEnvironment, otherEnvironmentLog, false);
       assertThat(otherEnvironmentExit).isNotZero();
       assertThat(Files.readString(otherEnvironmentLog))
-          .contains("manifesto R2 publico nao corresponde ao prefixo e objetos do destino configurado");
+          .contains("manifesto R2 privado nao corresponde ao prefixo e objetos do destino configurado");
       cleanupImportScaffolding(container, dbCredential, logs);
 
       List<String> mismatched = new ArrayList<>(variables);
@@ -135,8 +176,8 @@ class ImportadorBasePostgres17IntegrationTest {
 
   private static void assertDestinationStorage(
       String container, String dbCredential, List<String> variables) throws Exception {
-    String publicBucket = setting(variables, "r2_public_media_bucket=");
-    String publicPrefix = setting(variables, "r2_public_media_prefix=");
+    String privateBucket = setting(variables, "r2_private_media_bucket=");
+    String privatePrefix = setting(variables, "r2_private_media_prefix=");
     String sourceBucket = setting(variables, "r2_preserved_public_bucket=");
     String documentBucket = setting(variables, "r2_document_bucket=");
     String documentPrefix = setting(variables, "r2_document_prefix=");
@@ -148,7 +189,7 @@ class ImportadorBasePostgres17IntegrationTest {
              AND chave_objeto LIKE %s),
           (SELECT count(*) FROM anuncio_midia am
            JOIN arquivo_midia ar ON ar.id = am.arquivo_midia_id
-           WHERE am.visibilidade_midia = 'LIVRE'
+           WHERE am.status = 'PENDENTE'
              AND ar.bucket = %s
              AND ar.chave_objeto LIKE %s),
           (SELECT count(*) FROM arquivo_midia
@@ -160,14 +201,43 @@ class ImportadorBasePostgres17IntegrationTest {
            JOIN arquivo_midia ar ON ar.id = d.arquivo_midia_id
            WHERE ar.bucket <> %s OR ar.chave_objeto NOT LIKE %s),
           (SELECT count(*) FROM arquivo_midia
-           WHERE chave_objeto ~ '^https?://'));
+           WHERE chave_objeto ~ '^https?://'),
+          (SELECT (resumo_json ->> 'midiasR2PrivadasLogicasOrigem')::bigint
+           FROM importacao_execucao),
+          (SELECT (resumo_json ->> 'midiasR2PrivadasLogicasImportadas')::bigint
+           FROM importacao_execucao),
+          (SELECT (resumo_json ->> 'midiasR2PrivadasLogicasQuarentena')::bigint
+           FROM importacao_execucao),
+          (SELECT (resumo_json ->> 'midiasR2PrivadasLogicasDivergentes')::bigint
+           FROM importacao_execucao),
+          (SELECT count(*) FROM importacao_pendencia
+           WHERE codigo = 'MIDIA_ORIGEM_AUSENTE'),
+          (SELECT count(*)
+           FROM importacao_pendencia p
+           JOIN anuncio_midia am
+             ON am.id = md5('legacy:anuncio-midia:' || p.id_origem)::uuid
+           WHERE p.codigo = 'MIDIA_ORIGEM_AUSENTE'),
+          (SELECT count(*)
+           FROM importacao_pendencia p
+           LEFT JOIN anuncio a
+             ON a.id = md5(
+               'legacy:anuncio:' || split_part(p.id_origem, ':', 1)
+             )::uuid
+           WHERE p.codigo = 'MIDIA_ORIGEM_AUSENTE'
+             AND (
+               a.id IS NULL
+               OR a.status <> 'PENDENTE_REVISAO'
+               OR a.status_moderacao <> 'PENDENTE'
+             )));
         """.formatted(
-            sqlLiteral(publicBucket), sqlLiteral(publicPrefix + "importacao/sha256/%"),
-            sqlLiteral(publicBucket), sqlLiteral(publicPrefix + "importacao/sha256/%"),
+            sqlLiteral(privateBucket),
+            sqlLiteral(privatePrefix + "importacao/anuncios/%"),
+            sqlLiteral(privateBucket),
+            sqlLiteral(privatePrefix + "importacao/anuncios/%"),
             sqlLiteral(sourceBucket),
             sqlLiteral(documentBucket), sqlLiteral(documentPrefix + "importacao/%/sha256/%"),
             sqlLiteral(documentBucket), sqlLiteral(documentPrefix + "importacao/%/sha256/%")),
-        "^[0-9]+\\|[0-9]+\\|[0-9]+\\|[0-9]+\\|[0-9]+\\|[0-9]+$");
+        "^[0-9]+(\\|[0-9]+){12}$");
     String[] values = result.split("\\|");
     assertThat(Long.parseLong(values[0])).isPositive();
     assertThat(Long.parseLong(values[1])).isPositive();
@@ -175,6 +245,14 @@ class ImportadorBasePostgres17IntegrationTest {
     assertThat(Long.parseLong(values[3])).isPositive();
     assertThat(Long.parseLong(values[4])).isZero();
     assertThat(Long.parseLong(values[5])).isZero();
+    long logicalSource = Long.parseLong(values[6]);
+    long logicalImported = Long.parseLong(values[7]);
+    long logicalQuarantined = Long.parseLong(values[8]);
+    assertThat(logicalImported + logicalQuarantined).isEqualTo(logicalSource);
+    assertThat(Long.parseLong(values[9])).isZero();
+    assertThat(Long.parseLong(values[10])).isEqualTo(logicalQuarantined);
+    assertThat(Long.parseLong(values[11])).isZero();
+    assertThat(Long.parseLong(values[12])).isZero();
   }
 
   private static void awaitPostgres(String container, String dbCredential, Path logs)
@@ -243,6 +321,64 @@ class ImportadorBasePostgres17IntegrationTest {
     return command(check, log, arguments.toArray(String[]::new));
   }
 
+  private static void authorizeMetrics(
+      String container,
+      String dbCredential,
+      Path logs) throws Exception {
+    command(true, logs.resolve("authorize-metrics.log"),
+        "docker", "exec", "-e", DATABASE_CREDENTIAL_ENV + "=" + dbCredential, container,
+        "psql", "--no-psqlrc", "--host", "127.0.0.1", "--username", "topsv3dry",
+        "--dbname", "v3_dryrun", "--set", "ON_ERROR_STOP=1", "--command",
+        "UPDATE importacao_execucao "
+            + "SET resumo_json = resumo_json || "
+            + "jsonb_build_object('historicoVisualizacoesApplyAutorizado', 'true')");
+  }
+
+  private static int importMetrics(
+      String container,
+      String dbCredential,
+      List<String> variables,
+      Path log,
+      boolean check) throws Exception {
+    return command(check, log,
+        "docker", "exec", "-e", DATABASE_CREDENTIAL_ENV + "=" + dbCredential, container,
+        "psql", "--no-psqlrc", "--host", "127.0.0.1", "--username", "topsv3dry",
+        "--dbname", "v3_dryrun", "--set", "ON_ERROR_STOP=1",
+        "--set", settingArgument(variables, "snapshot_id="),
+        "--set", settingArgument(variables, "snapshot_fingerprint="),
+        "--set", "modo=APLICAR",
+        "--file", "/tmp/reconciliar-historico-visualizacoes.sql");
+  }
+
+  private static void importReconciler(
+      String container,
+      String dbCredential,
+      List<String> variables,
+      String script,
+      Path log) throws Exception {
+    command(true, log,
+        "docker", "exec", "-e", DATABASE_CREDENTIAL_ENV + "=" + dbCredential, container,
+        "psql", "--no-psqlrc", "--host", "127.0.0.1", "--username", "topsv3dry",
+        "--dbname", "v3_dryrun", "--set", "ON_ERROR_STOP=1",
+        "--set", settingArgument(variables, "snapshot_id="),
+        "--set", settingArgument(variables, "snapshot_fingerprint="),
+        "--file", script);
+  }
+
+  private static void validateSnapshot(
+      String container,
+      String dbCredential,
+      List<String> variables,
+      Path log) throws Exception {
+    List<String> arguments = new ArrayList<>(List.of(
+        "docker", "exec", "-e", DATABASE_CREDENTIAL_ENV + "=" + dbCredential, container,
+        "psql", "--no-psqlrc", "--host", "127.0.0.1", "--username", "topsv3dry",
+        "--dbname", "v3_dryrun", "--set", "ON_ERROR_STOP=1"));
+    arguments.addAll(variables);
+    arguments.addAll(List.of("--file", "/tmp/validar-dryrun-producao-v3-saneado.sql"));
+    command(true, log, arguments.toArray(String[]::new));
+  }
+
   private static void cleanupImportScaffolding(
       String container, String dbCredential, Path logs) throws Exception {
     command(true, logs.resolve("cleanup-import-scaffolding.log"),
@@ -264,7 +400,14 @@ class ImportadorBasePostgres17IntegrationTest {
           (SELECT count(*) FROM arquivo_midia),
           (SELECT count(*) FROM anuncio_midia),
           (SELECT count(*) FROM favorito_anuncio),
-          (SELECT count(*) FROM importacao_mapeamento));
+          (SELECT count(*) FROM importacao_mapeamento),
+          (SELECT count(*) FROM agregado_visualizacao_inicial),
+          (SELECT count(*) FROM evento_visualizacao
+           WHERE request_id LIKE 'import:anuncio_view_log:%'),
+          (SELECT count(*) FROM clique_whatsapp
+           WHERE request_id LIKE 'import:cliques_whatsapp:%'),
+          (SELECT count(*) FROM importacao_pendencia
+           WHERE codigo = 'MIDIA_ORIGEM_AUSENTE'));
         """, "^[0-9]+\\|[A-Z_]+\\|.*$");
   }
 
@@ -366,6 +509,10 @@ class ImportadorBasePostgres17IntegrationTest {
 
   private static String setting(List<String> values, String prefix) {
     return values.get(indexOfPrefix(values, prefix)).substring(prefix.length());
+  }
+
+  private static String settingArgument(List<String> values, String prefix) {
+    return prefix + setting(values, prefix);
   }
 
   private static String sqlLiteral(String value) {

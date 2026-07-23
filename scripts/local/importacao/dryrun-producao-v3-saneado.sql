@@ -28,7 +28,7 @@ DO $$ BEGIN RAISE EXCEPTION 'parametro R2 obrigatorio ausente: r2_document_prefi
 -- Transformacao conservadora do snapshot legado para um banco V3 descartavel.
 -- Pre-condicoes:
 --   1. source_snapshot existe no mesmo PostgreSQL local;
---   2. os TSVs /tmp/dryrun-r2-public-media.tsv e
+--   2. os TSVs /tmp/dryrun-r2-private-media.tsv e
 --      /tmp/dryrun-r2-kyc-documents.tsv contem resultados sanitizados;
 --   3. snapshot_at, snapshot_id, snapshot_fingerprint, buckets/prefixos R2 e
 --      a origem publica preservada sao informados pelo chamador.
@@ -39,9 +39,14 @@ CREATE SCHEMA legacy;
 CREATE SERVER legacy_source
   FOREIGN DATA WRAPPER postgres_fdw
   OPTIONS (host '/var/run/postgresql', dbname 'source_snapshot');
-CREATE USER MAPPING FOR CURRENT_USER
-  SERVER legacy_source
-  OPTIONS (user 'topsv3dry');
+DO $$
+BEGIN
+  EXECUTE format(
+    'CREATE USER MAPPING FOR %I SERVER legacy_source OPTIONS (user %L)',
+    current_user,
+    current_user
+  );
+END $$;
 
 IMPORT FOREIGN SCHEMA public LIMIT TO (
   usuarios,
@@ -53,8 +58,9 @@ IMPORT FOREIGN SCHEMA public LIMIT TO (
   anuncio_local_atendimento,
   anuncio_fotos,
   anuncio_videos,
+  anuncio_view_log,
+  cliques_whatsapp,
   protected_media_assets,
-  content_classifications,
   anuncio_revisions,
   stories,
   usuario_documentos,
@@ -69,21 +75,29 @@ IMPORT FOREIGN SCHEMA public LIMIT TO (
   suporte_mensagens
 ) FROM SERVER legacy_source INTO legacy;
 
-CREATE TEMP TABLE dryrun_r2_public_media (
+CREATE TEMP TABLE dryrun_r2_private_media (
   anuncio_origem_id bigint NOT NULL,
+  logical_media_hash text NOT NULL,
+  source_table text NOT NULL,
+  source_id text NOT NULL,
+  tipo text NOT NULL,
+  variante text NOT NULL,
+  principal boolean NOT NULL,
   reference_hash text NOT NULL,
   object_key text,
   sha256 text,
   tamanho_bytes bigint NOT NULL,
   mime_type text,
-  largura integer NOT NULL,
-  altura integer NOT NULL,
+  largura integer,
+  altura integer,
+  duracao_ms integer,
+  ordem integer NOT NULL,
   status text NOT NULL,
   motivo text,
-  PRIMARY KEY (anuncio_origem_id, reference_hash)
+  PRIMARY KEY (source_table, source_id, variante)
 );
 
-\copy dryrun_r2_public_media (anuncio_origem_id, reference_hash, object_key, sha256, tamanho_bytes, mime_type, largura, altura, status, motivo) FROM '/tmp/dryrun-r2-public-media.tsv' WITH (FORMAT text, DELIMITER E'\t', NULL '')
+\copy dryrun_r2_private_media (anuncio_origem_id, logical_media_hash, source_table, source_id, tipo, variante, principal, reference_hash, object_key, sha256, tamanho_bytes, mime_type, largura, altura, duracao_ms, ordem, status, motivo) FROM '/tmp/dryrun-r2-private-media.tsv' WITH (FORMAT text, DELIMITER E'\t', NULL '')
 
 CREATE TEMP TABLE dryrun_r2_kyc_documents (
   usuario_v3_id uuid NOT NULL,
@@ -106,6 +120,64 @@ CREATE TEMP TABLE dryrun_r2_kyc_documents (
 
 BEGIN;
 
+CREATE TEMP TABLE dryrun_midia_referencia_origem ON COMMIT DROP AS
+SELECT DISTINCT
+  'anuncio_fotos'::text AS source_table,
+  f.anuncio_id || ':' || encode(sha256(convert_to(f.url_foto, 'UTF8')), 'hex')
+    AS source_id,
+  f.anuncio_id AS anuncio_origem_id,
+  'FOTO'::text AS tipo,
+  'ORIGINAL'::text AS variante,
+  encode(sha256(convert_to(f.url_foto, 'UTF8')), 'hex') AS reference_hash
+FROM legacy.anuncio_fotos f
+WHERE nullif(trim(f.url_foto), '') IS NOT NULL
+UNION ALL
+SELECT DISTINCT
+  'anuncio_videos',
+  v.anuncio_id || ':' || encode(sha256(convert_to(v.url_video, 'UTF8')), 'hex'),
+  v.anuncio_id,
+  'VIDEO',
+  'ORIGINAL',
+  encode(sha256(convert_to(v.url_video, 'UTF8')), 'hex')
+FROM legacy.anuncio_videos v
+WHERE nullif(trim(v.url_video), '') IS NOT NULL
+UNION ALL
+SELECT
+  'protected_media_assets',
+  p.id::text,
+  p.anuncio_id,
+  CASE WHEN p.media_type = 'VIDEO' THEN 'VIDEO' ELSE 'FOTO' END,
+  'ORIGINAL',
+  encode(sha256(convert_to(p.original_storage_ref, 'UTF8')), 'hex')
+FROM legacy.protected_media_assets p
+WHERE p.original_storage_ref LIKE 'r2://%'
+UNION ALL
+SELECT
+  'protected_media_assets',
+  p.id::text,
+  p.anuncio_id,
+  CASE WHEN p.media_type = 'VIDEO' THEN 'VIDEO' ELSE 'FOTO' END,
+  'LEGADO',
+  encode(sha256(convert_to(p.legacy_original_url, 'UTF8')), 'hex')
+FROM legacy.protected_media_assets p
+WHERE left(
+        p.legacy_original_url,
+        length(regexp_replace(:'r2_preserved_public_base_url'::text, '/+$', '')) + 1
+      ) = regexp_replace(:'r2_preserved_public_base_url'::text, '/+$', '') || '/'
+UNION ALL
+SELECT
+  'protected_media_assets',
+  p.id::text,
+  p.anuncio_id,
+  CASE WHEN p.media_type = 'VIDEO' THEN 'VIDEO' ELSE 'FOTO' END,
+  'PREVIEW',
+  encode(sha256(convert_to(p.preview_public_url, 'UTF8')), 'hex')
+FROM legacy.protected_media_assets p
+WHERE left(
+        p.preview_public_url,
+        length(regexp_replace(:'r2_preserved_public_base_url'::text, '/+$', '')) + 1
+      ) = regexp_replace(:'r2_preserved_public_base_url'::text, '/+$', '') || '/';
+
 CREATE TEMP TABLE dryrun_context AS
 SELECT
   md5('dryrun:snapshot:' || :'snapshot_id')::uuid AS execucao_id,
@@ -127,6 +199,40 @@ SELECT
     :'r2_document_bucket', :'r2_document_prefix'
   )) AS storage_destination_fingerprint,
   md5('dryrun:kyc-migration-actor')::uuid AS kyc_migration_actor_id;
+
+CREATE TEMP TABLE dryrun_midia_logica_reconciliacao ON COMMIT DROP AS
+SELECT
+  r.anuncio_origem_id,
+  r.logical_media_hash,
+  min(r.tipo) AS tipo,
+  count(*) AS referencias,
+  encode(sha256(convert_to(
+    string_agg(
+      r.reference_hash,
+      '|' ORDER BY r.source_table, r.source_id, r.variante
+    ),
+    'UTF8'
+  )), 'hex') AS referencias_hash,
+  CASE
+    WHEN count(*) FILTER (
+      WHERE r.principal AND r.status IN ('MIGRADA', 'PRESERVADA')
+    ) = 1
+      AND count(DISTINCT r.tipo) = 1
+      THEN 'IMPORTAVEL'
+    WHEN count(*) FILTER (
+      WHERE r.status IN ('MIGRADA', 'PRESERVADA')
+    ) = 0
+      AND count(*) FILTER (WHERE r.principal) = 0
+      AND count(*) FILTER (
+        WHERE r.status = 'QUARENTENA'
+          AND r.motivo = 'OBJETO_ORIGEM_AUSENTE'
+      ) = count(*)
+      AND count(DISTINCT r.tipo) = 1
+      THEN 'QUARENTENA_ORIGEM_AUSENTE'
+    ELSE 'DIVERGENTE'
+  END AS reconciliacao_status
+FROM dryrun_r2_private_media r
+GROUP BY r.anuncio_origem_id, r.logical_media_hash;
 
 DO $$
 BEGIN
@@ -180,20 +286,91 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
-    FROM dryrun_r2_public_media r
+    FROM dryrun_r2_private_media r
     CROSS JOIN dryrun_context c
     WHERE r.status IN ('MIGRADA', 'PRESERVADA')
       AND (
         r.object_key IS NULL
+        OR r.logical_media_hash !~ '^[0-9a-f]{64}$'
+        OR r.reference_hash !~ '^[0-9a-f]{64}$'
+        OR r.source_table NOT IN (
+          'protected_media_assets',
+          'anuncio_fotos',
+          'anuncio_videos'
+        )
+        OR r.tipo NOT IN ('FOTO', 'VIDEO')
+        OR r.variante NOT IN (
+          'ORIGINAL',
+          'PREVIEW',
+          'THUMBNAIL',
+          'DERIVADO',
+          'PROCESSADO',
+          'LEGADO'
+        )
         OR r.sha256 !~ '^[0-9a-f]{64}$'
-        OR r.object_key NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/%'
-        OR substring(r.object_key FROM length(c.r2_public_media_prefix) + 1)
-            !~ '^importacao/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(jpg|jpeg|png|webp)$'
-        OR r.object_key NOT LIKE c.r2_public_media_prefix || 'importacao/sha256/'
-            || left(r.sha256, 2) || '/' || r.sha256 || '.%'
+        OR r.object_key NOT LIKE c.r2_private_media_prefix
+            || 'importacao/anuncios/' || r.anuncio_origem_id
+            || '/midias/' || r.logical_media_hash || '/%'
+        OR substring(r.object_key FROM length(c.r2_private_media_prefix) + 1)
+            !~ '^importacao/anuncios/[1-9][0-9]*/midias/[0-9a-f]{64}/[a-z0-9-]+/[0-9a-f]{64}\.[a-z0-9]+$'
+        OR r.object_key NOT LIKE '%/' || r.sha256 || '.%'
+        OR (r.tipo = 'FOTO' AND r.mime_type NOT LIKE 'image/%')
+        OR (r.tipo = 'VIDEO' AND r.mime_type NOT LIKE 'video/%')
+        OR r.tamanho_bytes <= 0
+        OR r.ordem < 0
       )
   ) THEN
-    RAISE EXCEPTION 'manifesto R2 publico nao corresponde ao prefixo e objetos do destino configurado';
+    RAISE EXCEPTION 'manifesto R2 privado nao corresponde ao prefixo e objetos do destino configurado';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_midia_logica_reconciliacao
+    WHERE reconciliacao_status = 'DIVERGENTE'
+  ) THEN
+    RAISE EXCEPTION 'manifesto R2 privado possui midia logica sem principal recuperavel ou quarentena de origem autorizada';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_r2_private_media
+    WHERE status = 'BLOQUEADA'
+  ) THEN
+    RAISE EXCEPTION 'manifesto R2 privado possui falha bloqueante de storage';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_r2_private_media
+    WHERE status IN ('MIGRADA', 'PRESERVADA')
+    GROUP BY object_key
+    HAVING count(DISTINCT anuncio_origem_id) > 1
+  ) THEN
+    RAISE EXCEPTION 'objeto R2 privado foi compartilhado entre anuncios distintos';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_midia_referencia_origem o
+    LEFT JOIN dryrun_r2_private_media r
+      ON r.source_table = o.source_table
+     AND r.source_id = o.source_id
+     AND r.variante = o.variante
+     AND r.anuncio_origem_id = o.anuncio_origem_id
+     AND r.tipo = o.tipo
+     AND r.reference_hash = o.reference_hash
+    WHERE r.source_id IS NULL
+  ) THEN
+    RAISE EXCEPTION 'manifesto R2 privado nao cobre todas as referencias de fotos, videos e assets';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_r2_private_media r
+    LEFT JOIN legacy.anuncios a ON a.id = r.anuncio_origem_id
+    WHERE a.id IS NULL
+  ) THEN
+    RAISE EXCEPTION 'manifesto R2 privado possui vinculo de anuncio orfao';
   END IF;
 
   IF EXISTS (
@@ -524,18 +701,12 @@ SELECT
   a.slug,
   a.titulo,
   a.descricao,
-  CASE a.status
-    WHEN 'ATIVO' THEN 'PUBLICADO'
-    WHEN 'PAUSADO' THEN 'PAUSADO'
-    WHEN 'REJEITADO' THEN 'REJEITADO'
-    ELSE 'RASCUNHO'
+  CASE
+    WHEN a.removido_logicamente_em IS NOT NULL THEN 'REMOVIDO'
+    ELSE 'PENDENTE_REVISAO'
   END AS status,
-  CASE a.status
-    WHEN 'ATIVO' THEN 'APROVADO'
-    WHEN 'PAUSADO' THEN 'APROVADO'
-    WHEN 'REJEITADO' THEN 'REJEITADO'
-    ELSE 'NAO_ENVIADO'
-  END AS status_moderacao,
+  'PENDENTE'::text AS status_moderacao,
+  a.status AS status_origem,
   a.categoria,
   a.preco,
   p.primeira_publicacao_em AT TIME ZONE 'America/Sao_Paulo' AS publicado_em,
@@ -569,7 +740,10 @@ SELECT
   a.id,
   NULL,
   a.status,
-  'IMPORTACAO_' || a.publicacao_origem,
+  CASE
+    WHEN a.status = 'REMOVIDO' THEN 'IMPORTACAO_REMOVIDO_NA_ORIGEM'
+    ELSE 'IMPORTACAO_AGUARDA_MODERACAO_V3'
+  END,
   NULL,
   a.publicado_em
 FROM dryrun_anuncio a;
@@ -626,11 +800,18 @@ SELECT
   a.origem_id::text,
   jsonb_build_object(
     'slug', a.slug,
-    'status', a.status,
+    'statusOrigem', a.status_origem,
+    'statusV3', a.status,
+    'moderacaoV3', a.status_moderacao,
+    'publicadoAutomaticamente', false,
+    'primeiraPublicacaoEm', a.publicado_em,
     'primeiraPublicacaoOrigem', a.publicacao_origem
   ),
-  CASE WHEN a.publicacao_origem = 'CRIADO_EM_INFERIDO' THEN 'PENDENTE_REVISAO' ELSE 'PROCESSADO' END,
-  CASE WHEN a.publicacao_origem = 'CRIADO_EM_INFERIDO' THEN 'PRIMEIRA_PUBLICACAO_INFERIDA' END,
+  'PENDENTE_REVISAO',
+  CASE
+    WHEN a.status = 'REMOVIDO' THEN 'ANUNCIO_REMOVIDO_PRESERVADO'
+    ELSE 'ANUNCIO_AGUARDA_MODERACAO_V3'
+  END,
   a.id,
   c.snapshot_at,
   c.snapshot_at
@@ -653,110 +834,50 @@ SELECT
   c.snapshot_at
 FROM dryrun_anuncio a CROSS JOIN dryrun_context c;
 
--- Midia: a classificacao do anuncio e apenas uma das evidencias. A promocao
--- exige foto real do anuncio retornada pela API publica anonima sem age gate,
--- binario valido e confirmacao no R2 V3. Assets institucionais e previews
--- protegidos permanecem em staging; nenhuma referencia restrita e copiada.
-CREATE TEMP TABLE dryrun_classificacao_publica AS
-WITH historico_ativo AS (
+-- Toda midia recuperavel entra no destino privado e aguarda decisao individual.
+CREATE TEMP TABLE dryrun_midia_privada AS
+WITH principais AS (
   SELECT
-    anuncio_id,
-    count(DISTINCT classification) AS classificacoes_distintas,
-    min(classification) AS classificacao
-  FROM legacy.content_classifications
-  WHERE active
-  GROUP BY anuncio_id
-)
-SELECT a.id AS anuncio_id
-FROM legacy.anuncios a
-LEFT JOIN historico_ativo h ON h.anuncio_id = a.id
-WHERE a.status = 'ATIVO'
-  AND a.removido_logicamente_em IS NULL
-  AND a.content_classification IN ('SAFE_PUBLIC', 'ADULT_NON_EXPLICIT')
-  AND coalesce(h.classificacoes_distintas, 1) = 1
-  AND (h.classificacao IS NULL OR h.classificacao = a.content_classification);
-
-CREATE TEMP TABLE dryrun_midia_publica AS
-WITH referencias AS (
-  SELECT
-    f.anuncio_id,
-    f.url_foto,
-    md5(f.url_foto) AS reference_hash,
-    a.criado_em AS created_at,
+    r.anuncio_origem_id AS anuncio_id,
+    r.logical_media_hash,
+    r.source_table,
+    r.source_id,
+    r.tipo,
+    r.reference_hash,
     r.object_key AS copied_object_key,
     r.sha256,
     r.tamanho_bytes,
     r.mime_type,
     r.largura,
     r.altura,
-    r.status AS migracao_status,
-    c.r2_public_media_prefix,
-    c.r2_preserved_public_prefix,
+    r.duracao_ms,
+    r.ordem,
+    a.criado_em AS created_at
+  FROM dryrun_r2_private_media r
+  JOIN legacy.anuncios a ON a.id = r.anuncio_origem_id
+  WHERE r.principal
+    AND r.status IN ('MIGRADA', 'PRESERVADA')
+), finalidades AS (
+  SELECT
+    p.*,
     CASE
-      WHEN left(f.url_foto, length(c.r2_preserved_public_base_url) + 1)
-          = c.r2_preserved_public_base_url || '/'
-      THEN substring(f.url_foto FROM length(c.r2_preserved_public_base_url) + 2)
-    END AS source_object_key
-  FROM legacy.anuncio_fotos f
-  JOIN legacy.anuncios a ON a.id = f.anuncio_id
-  JOIN dryrun_classificacao_publica cp ON cp.anuncio_id = f.anuncio_id
-  JOIN dryrun_r2_public_media r
-    ON r.anuncio_origem_id = f.anuncio_id
-   AND r.reference_hash = md5(f.url_foto)
-  CROSS JOIN dryrun_context c
-), dedup AS (
-  SELECT DISTINCT ON (f.anuncio_id, f.url_foto)
-    f.anuncio_id,
-    f.reference_hash,
-    f.created_at,
-    f.copied_object_key,
-    f.source_object_key,
-    f.r2_public_media_prefix,
-    f.sha256,
-    f.tamanho_bytes,
-    f.mime_type,
-    f.largura,
-    f.altura,
-    f.migracao_status
-  FROM referencias f
-  WHERE f.url_foto !~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
-    AND f.migracao_status IN ('MIGRADA', 'PRESERVADA')
-    AND f.tamanho_bytes > 0
-    AND f.mime_type IN ('image/jpeg', 'image/png', 'image/webp')
-    AND f.largura > 0
-    AND f.altura > 0
-    AND f.copied_object_key LIKE f.r2_public_media_prefix || 'importacao/sha256/%'
-    AND substring(f.copied_object_key FROM length(f.r2_public_media_prefix) + 1)
-        ~ '^importacao/sha256/[0-9a-f]{2}/[0-9a-f]{64}\.(jpg|jpeg|png|webp)$'
-    AND f.sha256 ~ '^[0-9a-f]{64}$'
-    AND f.copied_object_key LIKE f.r2_public_media_prefix || 'importacao/sha256/'
-        || left(f.sha256, 2) || '/' || f.sha256 || '.%'
-    AND f.source_object_key LIKE f.r2_preserved_public_prefix || '%'
-    AND substring(f.source_object_key FROM length(f.r2_preserved_public_prefix) + 1)
-        ~ '^[0-9a-f]{32}\.(jpg|jpeg|png|webp)$'
-  ORDER BY f.anuncio_id, f.url_foto
-), typed AS (
-  SELECT
-    d.*,
-    'FOTO'::text AS tipo,
-    row_number() OVER (
-      PARTITION BY d.anuncio_id
-      ORDER BY d.reference_hash
-    ) AS tipo_ordem
-  FROM dedup d
-), finalized AS (
-  SELECT
-    t.*,
-    CASE WHEN t.tipo = 'FOTO' AND t.tipo_ordem = 1 THEN 'CAPA' ELSE 'GALERIA' END AS finalidade
-  FROM typed t
+      WHEN p.tipo = 'FOTO'
+        AND row_number() OVER (
+          PARTITION BY p.anuncio_id, p.tipo
+          ORDER BY p.ordem, p.logical_media_hash
+        ) = 1
+      THEN 'CAPA'
+      ELSE 'GALERIA'
+    END AS finalidade
+  FROM principais p
 )
-  SELECT
-    f.*,
-    row_number() OVER (
-      PARTITION BY f.anuncio_id, f.finalidade
-      ORDER BY f.reference_hash
-    ) - 1 AS ordem_final
-FROM finalized f;
+SELECT
+  f.*,
+  row_number() OVER (
+    PARTITION BY f.anuncio_id, f.finalidade
+    ORDER BY f.ordem, f.logical_media_hash
+  ) - 1 AS ordem_final
+FROM finalidades f;
 
 INSERT INTO arquivo_midia (
   id, storage_provider, bucket, chave_objeto, nome_original, mime_type,
@@ -764,18 +885,18 @@ INSERT INTO arquivo_midia (
   status_arquivo, criado_em
 )
 SELECT DISTINCT ON (m.copied_object_key)
-  md5('r2:arquivo-publico-destino:' || c.r2_public_media_bucket || ':'
+  md5('r2:arquivo-privado-destino:' || c.r2_private_media_bucket || ':'
       || m.copied_object_key)::uuid,
   'R2',
-  c.r2_public_media_bucket,
+  c.r2_private_media_bucket,
   m.copied_object_key,
   NULL,
   m.mime_type,
   m.tamanho_bytes,
-  m.largura, m.altura, NULL, m.sha256, NULL,
-  'VALIDADO',
+  m.largura, m.altura, m.duracao_ms, m.sha256, NULL,
+  'PENDENTE',
   m.created_at AT TIME ZONE 'America/Sao_Paulo'
-FROM dryrun_midia_publica m CROSS JOIN dryrun_context c
+FROM dryrun_midia_privada m CROSS JOIN dryrun_context c
 ORDER BY m.copied_object_key, m.reference_hash;
 
 INSERT INTO anuncio_midia (
@@ -783,121 +904,142 @@ INSERT INTO anuncio_midia (
   criado_em, atualizado_em, visibilidade_midia
 )
 SELECT
-  md5('legacy:anuncio-midia:foto:' || m.anuncio_id || ':' || m.reference_hash)::uuid,
+  md5('legacy:anuncio-midia:' || m.anuncio_id || ':' || m.logical_media_hash)::uuid,
   md5('legacy:anuncio:' || m.anuncio_id)::uuid,
-  md5('r2:arquivo-publico-destino:' || c.r2_public_media_bucket || ':'
+  md5('r2:arquivo-privado-destino:' || c.r2_private_media_bucket || ':'
       || m.copied_object_key)::uuid,
   m.tipo,
   m.finalidade,
   m.ordem_final::integer,
-  'PUBLICAVEL',
+  'PENDENTE',
   m.created_at AT TIME ZONE 'America/Sao_Paulo',
   m.created_at AT TIME ZONE 'America/Sao_Paulo',
-  'LIVRE'
-FROM dryrun_midia_publica m CROSS JOIN dryrun_context c;
+  CASE WHEN m.tipo = 'VIDEO' THEN 'RESTRITA_18' END
+FROM dryrun_midia_privada m CROSS JOIN dryrun_context c;
 
 INSERT INTO stg_midia (
-  id, execucao_id, sistema_origem, tabela_origem, id_origem,
+  id, execucao_id, sistema_origem, tabela_origem, id_origem, hash_origem,
   payload_normalizado_json, status, pendencia_codigo, entidade_v3_id,
   criado_em, processado_em
 )
 SELECT
-  md5('stg:asset:' || p.id)::uuid,
+  md5('stg:midia-privada:' || r.source_table || ':' || r.source_id
+      || ':' || r.variante)::uuid,
   c.execucao_id,
   'TOPSDOJOB_PRODUCAO',
-  'protected_media_assets',
-  p.id::text,
+  r.source_table,
+  r.source_id || ':' || r.variante,
+  r.reference_hash,
   jsonb_build_object(
-    'storageMode', p.storage_mode,
-    'ativo', p.active,
-    'referenciaHash', md5(coalesce(p.original_storage_ref, p.preview_public_url, '')),
-    'classificacaoPublicaComprovada', cp.anuncio_id IS NOT NULL
+    'anuncioOrigemId', r.anuncio_origem_id,
+    'logicalMediaHash', r.logical_media_hash,
+    'tipo', r.tipo,
+    'variante', r.variante,
+    'principal', r.principal,
+    'referenciaHash', r.reference_hash,
+    'destinoObjectKeyHash', md5(coalesce(r.object_key, '')),
+    'sha256', r.sha256,
+    'tamanhoBytes', r.tamanho_bytes,
+    'mimeType', r.mime_type,
+    'privada', true,
+    'publicadaAutomaticamente', false
   ),
-  'PENDENTE_REVISAO',
   CASE
-    WHEN p.storage_mode = 'PRIVATE_R2' THEN 'MIDIA_PRIVADA_SEM_VERIFICACAO_R2'
-    WHEN NOT p.active THEN 'MIDIA_INATIVA_PRESERVADA'
-    WHEN p.media_type = 'VIDEO' THEN 'VIDEO_EXIGE_MIGRACAO_PRIVADA_R2'
-    WHEN coalesce(p.preview_public_url, '') ~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
-      THEN 'MIDIA_PLACEHOLDER_INSTITUCIONAL_QUARENTENA'
-    WHEN cp.anuncio_id IS NULL THEN 'MIDIA_NAO_LIVRE_QUARENTENA'
-    ELSE 'MIDIA_PROTEGIDA_SEM_EVIDENCIA_PUBLICA_ANONIMA'
+    WHEN r.status IN ('MIGRADA', 'PRESERVADA') THEN 'PROCESSADO'
+    ELSE 'PENDENTE_REVISAO'
   END,
-  NULL,
-  c.snapshot_at,
-  NULL
-FROM legacy.protected_media_assets p
-CROSS JOIN dryrun_context c
-LEFT JOIN dryrun_classificacao_publica cp ON cp.anuncio_id = p.anuncio_id
-;
-
-INSERT INTO stg_midia (
-  id, execucao_id, sistema_origem, tabela_origem, id_origem,
-  payload_normalizado_json, status, pendencia_codigo,
-  criado_em, processado_em
-)
-SELECT
-  md5('stg:foto:' || f.anuncio_id || ':' || md5(f.url_foto) || ':' || f.ocorrencia)::uuid,
-  c.execucao_id,
-  'TOPSDOJOB_PRODUCAO',
-  'anuncio_fotos',
-  f.anuncio_id || ':' || md5(f.url_foto) || ':' || f.ocorrencia,
-  jsonb_build_object(
-    'anuncioId', f.anuncio_id,
-    'referenciaHash', md5(f.url_foto),
-    'ocorrencia', f.ocorrencia
-  ),
-  CASE WHEN m.reference_hash IS NOT NULL
-    THEN 'PROCESSADO' ELSE 'PENDENTE_REVISAO' END,
   CASE
-    WHEN f.url_foto ~* '(logo|placeholder|sem[-_]?foto|default|favicon|2151117281)'
-      THEN 'MIDIA_PLACEHOLDER_INSTITUCIONAL_QUARENTENA'
-    WHEN r.status = 'BLOQUEADA' THEN 'MIDIA_PUBLICA_R2_CHECKSUM_DIVERGENTE'
-    WHEN r.status = 'QUARENTENA' THEN 'MIDIA_PUBLICA_R2_QUARENTENA'
-    WHEN r.reference_hash IS NULL THEN 'MIDIA_SEM_EVIDENCIA_PUBLICA_ANONIMA'
-    WHEN m.reference_hash IS NULL THEN 'MIDIA_URL_PUBLICA_INCOMPATIVEL'
+    WHEN r.status NOT IN ('MIGRADA', 'PRESERVADA')
+      THEN CASE
+        WHEN r.motivo = 'OBJETO_ORIGEM_AUSENTE' THEN 'MIDIA_ORIGEM_AUSENTE'
+        ELSE coalesce(r.motivo, 'MIDIA_PRIVADA_NAO_TRANSPORTADA')
+      END
+  END,
+  CASE
+    WHEN r.principal AND r.status IN ('MIGRADA', 'PRESERVADA')
+      THEN md5('legacy:anuncio-midia:' || r.anuncio_origem_id
+          || ':' || r.logical_media_hash)::uuid
   END,
   c.snapshot_at,
-  CASE WHEN m.reference_hash IS NOT NULL THEN c.snapshot_at END
-FROM (
-  SELECT
-    x.*,
-    row_number() OVER (
-      PARTITION BY x.anuncio_id, x.url_foto
-      ORDER BY x.anuncio_id, x.url_foto
-    ) AS ocorrencia
-  FROM legacy.anuncio_fotos x
-) f
-CROSS JOIN dryrun_context c
-LEFT JOIN dryrun_r2_public_media r
-  ON r.anuncio_origem_id = f.anuncio_id
- AND r.reference_hash = md5(f.url_foto)
-LEFT JOIN dryrun_midia_publica m
-  ON m.anuncio_id = f.anuncio_id
- AND m.reference_hash = md5(f.url_foto);
+  CASE WHEN r.status IN ('MIGRADA', 'PRESERVADA') THEN c.snapshot_at END
+FROM dryrun_r2_private_media r
+CROSS JOIN dryrun_context c;
 
-INSERT INTO stg_midia (
-  id, execucao_id, sistema_origem, tabela_origem, id_origem,
-  payload_normalizado_json, status, pendencia_codigo,
-  criado_em, processado_em
+INSERT INTO importacao_pendencia (
+  id, execucao_id, codigo, severidade, status, entidade_tipo,
+  id_origem, detalhe_resumido, criado_em
 )
 SELECT
-  md5('stg:video:' || v.anuncio_id || ':' || md5(v.url_video))::uuid,
+  md5('pendencia:midia-origem-ausente:' || q.anuncio_origem_id
+      || ':' || q.logical_media_hash)::uuid,
   c.execucao_id,
-  'TOPSDOJOB_PRODUCAO',
-  'anuncio_videos',
-  v.anuncio_id || ':' || md5(v.url_video),
-  jsonb_build_object('anuncioId', v.anuncio_id, 'referenciaHash', md5(v.url_video)),
-  'PENDENTE_REVISAO',
-  'VIDEO_EXIGE_MIGRACAO_PRIVADA_R2',
-  c.snapshot_at,
-  NULL
-FROM (
-  SELECT DISTINCT anuncio_id, url_video FROM legacy.anuncio_videos
-) v CROSS JOIN dryrun_context c;
+  'MIDIA_ORIGEM_AUSENTE',
+  'ALTA',
+  'ABERTA',
+  'ANUNCIO_MIDIA',
+  q.anuncio_origem_id || ':' || q.logical_media_hash,
+  'Midia logica ausente na origem; anuncio importado pendente e sem objeto operacional.',
+  c.snapshot_at
+FROM dryrun_midia_logica_reconciliacao q
+CROSS JOIN dryrun_context c
+WHERE q.reconciliacao_status = 'QUARENTENA_ORIGEM_AUSENTE'
+ON CONFLICT (id) DO NOTHING;
 
--- Busca e SEO recebem somente a evidencia fisicamente migrada para o R2 V3.
--- A indexacao runtime continua dependente da base publica HML configurada.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_midia_logica_reconciliacao
+    WHERE reconciliacao_status = 'DIVERGENTE'
+  ) OR (
+    SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+  ) <> (
+    SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+    WHERE reconciliacao_status = 'IMPORTAVEL'
+  ) + (
+    SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+    WHERE reconciliacao_status = 'QUARENTENA_ORIGEM_AUSENTE'
+  ) THEN
+    RAISE EXCEPTION 'reconciliacao de midias logicas possui divergencia nao explicada';
+  END IF;
+
+  IF (
+    SELECT count(*) FROM dryrun_midia_privada
+  ) <> (
+    SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+    WHERE reconciliacao_status = 'IMPORTAVEL'
+  ) THEN
+    RAISE EXCEPTION 'midias logicas recuperaveis divergem das midias operacionais importadas';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_midia_logica_reconciliacao q
+    LEFT JOIN anuncio a
+      ON a.id = md5('legacy:anuncio:' || q.anuncio_origem_id)::uuid
+    WHERE q.reconciliacao_status = 'QUARENTENA_ORIGEM_AUSENTE'
+      AND (
+        a.id IS NULL
+        OR a.status <> 'PENDENTE_REVISAO'
+        OR a.status_moderacao <> 'PENDENTE'
+      )
+  ) THEN
+    RAISE EXCEPTION 'anuncio com midia ausente nao permaneceu pendente de moderacao';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_midia_logica_reconciliacao q
+    JOIN anuncio_midia m
+      ON m.id = md5('legacy:anuncio-midia:' || q.anuncio_origem_id
+          || ':' || q.logical_media_hash)::uuid
+    WHERE q.reconciliacao_status = 'QUARENTENA_ORIGEM_AUSENTE'
+  ) THEN
+    RAISE EXCEPTION 'midia ausente na origem gerou midia operacional';
+  END IF;
+END $$;
+
+-- Busca e SEO permanecem deliberadamente fechados ate moderacao individual.
 UPDATE documento_busca_anuncio d
 SET tem_midia_valida = EXISTS (
       SELECT 1 FROM anuncio_midia am
@@ -1705,16 +1847,29 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
       'primeiraPublicacaoInferida', (SELECT count(*) FROM dryrun_anuncio WHERE publicacao_origem = 'CRIADO_EM_INFERIDO'),
       'midiasLivres', (SELECT count(*) FROM anuncio_midia WHERE visibilidade_midia = 'LIVRE'),
       'midiasRestritas', (SELECT count(*) FROM anuncio_midia WHERE visibilidade_midia = 'RESTRITA_18'),
-      'midiasR2Candidatas', (SELECT count(*) FROM dryrun_r2_public_media),
-      'midiasR2ObjetosValidos', (
+      'midiasR2PrivadasCandidatas', (SELECT count(*) FROM dryrun_r2_private_media),
+      'midiasR2PrivadasObjetosValidos', (
         SELECT count(DISTINCT sha256)
-        FROM dryrun_r2_public_media
+        FROM dryrun_r2_private_media
         WHERE status IN ('MIGRADA', 'PRESERVADA')
       ),
-      'midiasR2Migradas', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'MIGRADA'),
-      'midiasR2Preservadas', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'PRESERVADA'),
-      'midiasR2Bloqueadas', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'BLOQUEADA'),
-      'midiasR2Quarentena', (SELECT count(*) FROM dryrun_r2_public_media WHERE status = 'QUARENTENA'),
+      'midiasR2PrivadasMigradas', (
+        SELECT count(*) FROM dryrun_r2_private_media WHERE status = 'MIGRADA'
+      ),
+      'midiasR2PrivadasPreservadas', (
+        SELECT count(*) FROM dryrun_r2_private_media WHERE status = 'PRESERVADA'
+      ),
+      'midiasR2PrivadasBloqueadas', (
+        SELECT count(*) FROM dryrun_r2_private_media WHERE status = 'BLOQUEADA'
+      ),
+      'midiasR2PrivadasQuarentena', (
+        SELECT count(*) FROM dryrun_r2_private_media WHERE status = 'QUARENTENA'
+      ),
+      'visualizacoesCanonicasOrigem', (
+        SELECT coalesce(sum(visualizacoes), 0) FROM legacy.anuncios
+      ),
+      'eventosVisualizacaoOrigem', (SELECT count(*) FROM legacy.anuncio_view_log),
+      'cliquesWhatsappOrigem', (SELECT count(*) FROM legacy.cliques_whatsapp),
       'seoIndexavelPorEvidencia', (SELECT count(*) FROM dryrun_seo_anuncio WHERE indexavel_por_evidencia),
       'saldosOperacionaisValidos', (
         SELECT count(*) FROM stg_credito
@@ -1762,6 +1917,22 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
       'kycReprovadoPreservado', (SELECT count(*) FROM documento_usuario WHERE status = 'REJEITADO'),
       'kycAprovadoAutomaticamente', 0,
       'pagamentosPromovidos', 0
+    ) || jsonb_build_object(
+      'midiasR2PrivadasLogicasOrigem', (
+        SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+      ),
+      'midiasR2PrivadasLogicasImportadas', (
+        SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+        WHERE reconciliacao_status = 'IMPORTAVEL'
+      ),
+      'midiasR2PrivadasLogicasQuarentena', (
+        SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+        WHERE reconciliacao_status = 'QUARENTENA_ORIGEM_AUSENTE'
+      ),
+      'midiasR2PrivadasLogicasDivergentes', (
+        SELECT count(*) FROM dryrun_midia_logica_reconciliacao
+        WHERE reconciliacao_status = 'DIVERGENTE'
+      )
     )
 FROM dryrun_context c
 WHERE e.id = c.execucao_id;

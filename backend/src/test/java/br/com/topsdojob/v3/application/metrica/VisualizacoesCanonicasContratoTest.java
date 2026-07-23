@@ -54,7 +54,7 @@ class VisualizacoesCanonicasContratoTest {
   }
 
   @Test
-  void consultaEmLoteAplicaOCorteSemUsarAgregadoDiario() throws Exception {
+  void consultaEmLoteContaEventoLegadoRealEAplicaOCorteAEventoNativo() throws Exception {
     Query query = EventoVisualizacaoRepository.class
         .getMethod("countCanonicosByAnuncioIdIn", List.class)
         .getAnnotation(Query.class);
@@ -63,6 +63,7 @@ class VisualizacoesCanonicasContratoTest {
     assertThat(query.nativeQuery()).isTrue();
     assertThat(query.value())
         .contains("e.anuncio_id in (:anuncioIds)")
+        .contains("e.request_id like 'import:anuncio_view_log:%'")
         .contains("e.criado_em > i.snapshot_corte_em")
         .doesNotContain("agregado_visualizacao_diaria");
     assertThat(EventoVisualizacaoRepository.ContagemCanonicaProjection.class

@@ -41,7 +41,7 @@ public interface CliqueWhatsappRepository extends JpaRepository<CliqueWhatsappEn
             @Param("usuarioId") UUID usuarioId);
 
     @Query(value = """
-            select (c.criado_em at time zone 'UTC')::date as "dataReferencia",
+            select (c.criado_em at time zone 'America/Sao_Paulo')::date as "dataReferencia",
                    count(*) as "totalCliques"
             from clique_whatsapp c
             join anuncio a on a.id = c.anuncio_id
@@ -50,8 +50,8 @@ public interface CliqueWhatsappRepository extends JpaRepository<CliqueWhatsappEn
               and c.permitido = true
               and c.criado_em >= :inicio
               and c.criado_em < :fimExclusivo
-            group by (c.criado_em at time zone 'UTC')::date
-            order by (c.criado_em at time zone 'UTC')::date
+            group by (c.criado_em at time zone 'America/Sao_Paulo')::date
+            order by (c.criado_em at time zone 'America/Sao_Paulo')::date
             """, nativeQuery = true)
     List<ContagemDiariaProjection> countPermitidosDiariosPorUsuario(
             @Param("usuarioId") UUID usuarioId,

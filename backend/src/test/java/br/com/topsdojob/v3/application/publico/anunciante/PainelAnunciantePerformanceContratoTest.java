@@ -55,7 +55,7 @@ class PainelAnunciantePerformanceContratoTest {
                 .contains("a.usuario_id = :usuarioId")
                 .contains("c.criado_em >= :inicio")
                 .contains("c.criado_em < :fimExclusivo")
-                .contains("at time zone 'UTC'")
+                .contains("at time zone 'America/Sao_Paulo'")
                 .doesNotContain("agregado_clique_whatsapp_diario");
     }
 

@@ -40,4 +40,28 @@ class ImportadorBaseIdempotenciaTest {
         .doesNotContain("TRUNCATE importacao_execucao")
         .doesNotContain("ON CONFLICT (id) DO UPDATE");
   }
+
+  @Test
+  void snapshotIncluiMetricasEManifestoPrivadoSemPublicacaoAutomatica() throws Exception {
+    String sql = Files.readString(IMPORTADOR);
+
+    assertThat(sql)
+        .contains("OPTIONS (user %L)")
+        .contains("current_user,\n    current_user")
+        .contains("anuncio_view_log")
+        .contains("cliques_whatsapp")
+        .contains("/tmp/dryrun-r2-private-media.tsv")
+        .contains("'visualizacoesCanonicasOrigem'")
+        .contains("'eventosVisualizacaoOrigem'")
+        .contains("'cliquesWhatsappOrigem'")
+        .contains("'anunciosPublicados'")
+        .contains("'midiasR2PrivadasLogicasOrigem'")
+        .contains("'midiasR2PrivadasLogicasImportadas'")
+        .contains("'midiasR2PrivadasLogicasQuarentena'")
+        .contains("'midiasR2PrivadasLogicasDivergentes'")
+        .contains("'MIDIA_ORIGEM_AUSENTE'")
+        .contains("ON CONFLICT (id) DO NOTHING")
+        .doesNotContain("OPTIONS (user 'topsv3dry')")
+        .doesNotContain("WHEN 'ATIVO' THEN 'PUBLICADO'");
+  }
 }

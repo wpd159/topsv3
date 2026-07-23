@@ -12,43 +12,68 @@ class HistoricoVisualizacoesImportadorTest {
       "..", "scripts", "local", "importacao", "reconciliar-historico-visualizacoes.sql");
 
   @Test
-  void usaFonteEMapeamentoCanonicosSemCriarEventosFicticios() throws Exception {
+  void separaContadorEventosReaisESaldoLegadoSemFabricarDatas() throws Exception {
     String sql = Files.readString(IMPORTADOR);
 
     assertThat(sql)
-        .contains("FROM legacy.anuncios a")
-        .contains("a.visualizacoes::bigint")
-        .contains("m.tabela_origem = 'anuncios'")
-        .contains("m.entidade_tipo = 'ANUNCIO'")
-        .contains("m.status = 'MAPEADO'")
-        .contains("a.criado_em AT TIME ZONE 'America/Sao_Paulo'")
-        .contains("'FORA_DO_SNAPSHOT'")
-        .contains("'NAO_MAPEADO_BLOQUEANTE'")
-        .contains("classificacao AS codigo")
-        .contains("anuncio_origem_id")
-        .contains("anuncios_fora_do_snapshot")
-        .contains("anuncios_nao_mapeados_bloqueantes")
-        .doesNotContain("a.titulo =")
-        .doesNotContain("similarity(")
-        .doesNotContain("INSERT INTO evento_visualizacao")
-        .doesNotContain("agregado_visualizacao_diaria")
-        .doesNotContain("clique_whatsapp")
-        .doesNotContain("GA4")
-        .doesNotContain("impressao");
+        .contains("a.visualizacoes::bigint AS contador_total")
+        .contains("coalesce(e.total_eventos, 0)::bigint AS eventos_detalhados")
+        .contains("AS saldo_historico_legado")
+        .contains("FROM legacy_metricas.anuncio_view_log v")
+        .contains("v.visto_em AT TIME ZONE 'America/Sao_Paulo'")
+        .contains("INSERT INTO evento_visualizacao")
+        .contains("'import:anuncio_view_log:' || v.id::text")
+        .contains("i.total_visualizacoes + (")
+        .contains("e.request_id LIKE 'import:anuncio_view_log:%'")
+        .doesNotContain("INSERT INTO agregado_visualizacao_diaria")
+        .doesNotContain("generate_series")
+        .doesNotContain("GA4");
   }
 
   @Test
-  void dryRunNaoEscreveEAplicacaoExigeEscopoCompletoEAutorizacao() throws Exception {
+  void saldoNegativoBloqueiaApplySemTruncarEvento() throws Exception {
+    String sql = Files.readString(IMPORTADOR);
+
+    assertThat(sql)
+        .contains("count(*) FILTER (WHERE saldo_historico_legado < 0)")
+        .contains("OR saldos_negativos > 0")
+        .contains("'SALDO_NEGATIVO' AS codigo")
+        .contains("contador_total")
+        .contains("eventos_detalhados")
+        .contains("saldo_historico_legado")
+        .doesNotContain("greatest(saldo_historico_legado, 0)")
+        .doesNotContain("DELETE FROM evento_visualizacao");
+  }
+
+  @Test
+  void importaCliquesSanitizadosComInstanteEDiaLocalOriginais() throws Exception {
+    String sql = Files.readString(IMPORTADOR);
+
+    assertThat(sql)
+        .contains("FROM legacy_metricas.cliques_whatsapp w")
+        .contains("w.data_clique AT TIME ZONE 'America/Sao_Paulo' AS criado_em")
+        .contains("w.data_clique::date AS dia_local")
+        .contains("'import:cliques_whatsapp:' || w.id::text")
+        .contains("INSERT INTO clique_whatsapp")
+        .contains("NULL,\n    NULL,\n    NULL,")
+        .doesNotContain("w.ip")
+        .doesNotContain("w.user_agent");
+  }
+
+  @Test
+  void dryRunNaoEscreveEAplicacaoExigeEscopoIntegroEAutorizacao() throws Exception {
     String sql = Files.readString(IMPORTADOR);
 
     assertThat(sql)
         .contains("c.modo = 'APLICAR'")
         .contains("historicoVisualizacoesApplyAutorizado")
-        .contains("fora_do_snapshot > 0 OR nao_mapeados_bloqueantes > 0 OR NOT apply_autorizado")
-        .contains("APPLY proibido: fora do snapshot %, nao mapeados bloqueantes %, autorizacao %")
+        .contains("eventos_nao_mapeados > 0")
+        .contains("cliques_nao_mapeados > 0")
         .contains("ON CONFLICT (anuncio_id) DO NOTHING")
-        .contains("inseridos bigint NOT NULL")
-        .contains("preservados");
+        .contains("ON CONFLICT (id) DO NOTHING")
+        .contains("agregados_inseridos")
+        .contains("eventos_inseridos")
+        .contains("cliques_inseridos");
   }
 
   @Test
@@ -56,31 +81,32 @@ class HistoricoVisualizacoesImportadorTest {
     String sql = Files.readString(IMPORTADOR);
 
     assertThat(sql)
-        .contains("i.total_visualizacoes <> o.total_visualizacoes")
+        .contains("i.total_visualizacoes <> o.saldo_historico_legado")
         .contains("i.snapshot_fingerprint <> contexto.snapshot_fingerprint")
         .contains("i.origem_hash <> o.origem_hash")
-        .contains("i.snapshot_corte_em <> e.iniciado_em")
-        .contains("historico ja importado diverge em total, fingerprint, hash ou corte temporal")
+        .contains("evento de visualizacao ja importado diverge da origem sanitizada")
+        .contains("clique WhatsApp ja importado diverge da origem sanitizada")
         .doesNotContain("UPDATE agregado_visualizacao_inicial")
         .doesNotContain("ON CONFLICT (anuncio_id) DO UPDATE");
   }
 
   @Test
-  void relatorioReconciliaAnunciosETotaisSemContagensHardcoded() throws Exception {
+  void relatorioReconciliaSemContagensHardcoded() throws Exception {
     String sql = Files.readString(IMPORTADOR);
 
     assertThat(sql)
-        .contains("anuncios_origem")
-        .contains("anuncios_escopo")
-        .contains("anuncios_mapeados")
-        .contains("visualizacoes_escopo")
-        .contains("visualizacoes_reconciliaveis")
-        .contains("visualizacoes_fora_do_snapshot")
-        .contains("visualizacoes_origem")
-        .contains("reconciliacao total divergente")
-        .contains("total_reconciliado <> total_esperado")
-        .doesNotContain("648 AS")
-        .doesNotContain("29807 AS")
-        .doesNotContain("29805 AS");
+        .contains("contador_explicado_integralmente")
+        .contains("saldo_historico_positivo")
+        .contains("saldo_historico_negativo")
+        .contains("soma_saldos_positivos")
+        .contains("visualizacoes_canonicas")
+        .contains("eventos_detalhados")
+        .contains("cliques_whatsapp")
+        .contains("menor_evento_em")
+        .contains("maior_clique_em")
+        .doesNotContain("30154 AS")
+        .doesNotContain("19234 AS")
+        .doesNotContain("10920 AS")
+        .doesNotContain("2788 AS");
   }
 }

@@ -20,7 +20,11 @@ public interface EventoVisualizacaoRepository extends JpaRepository<EventoVisual
             from evento_visualizacao e
             left join agregado_visualizacao_inicial i on i.anuncio_id = e.anuncio_id
             where e.anuncio_id in (:anuncioIds)
-              and (i.id is null or e.criado_em > i.snapshot_corte_em)
+              and (
+                e.request_id like 'import:anuncio_view_log:%'
+                or i.id is null
+                or e.criado_em > i.snapshot_corte_em
+              )
             group by e.anuncio_id
             """, nativeQuery = true)
     List<ContagemCanonicaProjection> countCanonicosByAnuncioIdIn(
