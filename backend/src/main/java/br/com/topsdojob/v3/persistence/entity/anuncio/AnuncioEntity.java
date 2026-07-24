@@ -262,6 +262,23 @@ public class AnuncioEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public void aprovarEPublicarAdministrativamente(OffsetDateTime publicadoEm) {
+    boolean aprovacaoPendente = status == StatusAnuncio.PENDENTE_REVISAO
+        && statusModeracao == StatusModeracaoAnuncio.PENDENTE;
+    boolean aprovacaoLegadaSemPublicacao = status == StatusAnuncio.APROVADO
+        && statusModeracao == StatusModeracaoAnuncio.APROVADO;
+    if (removidoEm != null || (!aprovacaoPendente && !aprovacaoLegadaSemPublicacao)) {
+      throw new IllegalStateException("transicao administrativa para PUBLICADO/APROVADO nao permitida");
+    }
+    this.status = StatusAnuncio.PUBLICADO;
+    this.statusModeracao = StatusModeracaoAnuncio.APROVADO;
+    if (this.publicadoEm == null) {
+      this.publicadoEm = publicadoEm;
+    }
+    this.ultimaPublicacaoEm = publicadoEm;
+    this.atualizadoEm = publicadoEm;
+  }
+
   public void remeterParaRevisao(OffsetDateTime atualizadoEm) {
     this.status = StatusAnuncio.PENDENTE_REVISAO;
     this.statusModeracao = StatusModeracaoAnuncio.PENDENTE;

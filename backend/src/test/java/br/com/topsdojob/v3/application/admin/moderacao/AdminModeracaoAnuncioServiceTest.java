@@ -5,15 +5,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
@@ -22,6 +26,7 @@ import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
@@ -33,6 +38,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -43,6 +49,9 @@ class AdminModeracaoAnuncioServiceTest {
 
     private final RevisaoAnuncioRepository revisaoRepository = mock(RevisaoAnuncioRepository.class);
     private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+    private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
+    private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository =
+            mock(AnuncioBloqueioJuridicoRepository.class);
     private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
     private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     private final DocumentoUsuarioRepository documentoRepository = mock(DocumentoUsuarioRepository.class);
@@ -57,6 +66,8 @@ class AdminModeracaoAnuncioServiceTest {
         service = new AdminModeracaoAcaoService(
                 revisaoRepository,
                 anuncioRepository,
+                usuarioRepository,
+                bloqueioJuridicoRepository,
                 midiaRepository,
                 arquivoRepository,
                 documentoRepository,
@@ -69,14 +80,17 @@ class AdminModeracaoAnuncioServiceTest {
     }
 
     @Test
-    void aprovaAnuncioSemAlterarMidiasERegistraAtorRequestId() {
+    void aprovaEPublicaAnuncioSemAlterarMidiasERegistraAtorRequestId() {
         Fixture fixture = fixture();
 
         var response = decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null);
 
-        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.APROVADO);
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
         assertThat(fixture.anuncio().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(fixture.anuncio().getPublicadoEm()).isNotNull();
+        assertThat(fixture.anuncio().getUltimaPublicacaoEm()).isEqualTo(fixture.anuncio().getPublicadoEm());
         assertThat(fixture.revisao().getStatus()).isEqualTo(StatusRevisaoAnuncio.APROVADA);
+        assertThat(response.mensagem()).isEqualTo("anuncio aprovado e publicado");
         assertThat(response.hardDeleteExecutado()).isFalse();
         verify(decisaoRepository).save(any());
         verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
@@ -108,14 +122,20 @@ class AdminModeracaoAnuncioServiceTest {
     }
 
     @Test
-    void decisaoRepetidaRetornaConflitoSobMesmoRegistro() {
+    void aprovacaoRepetidaEhIdempotenteSemNovaDecisaoOuAuditoria() {
         Fixture fixture = fixture();
-        decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null);
+        var primeira = decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null);
+        OffsetDateTime primeiraPublicacao = fixture.anuncio().getUltimaPublicacaoEm();
 
-        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("409")
-                .hasMessageContaining("ja finalizada");
+        var segunda = decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null);
+
+        assertThat(primeira.auditoriaRegistrada()).isTrue();
+        assertThat(segunda.auditoriaRegistrada()).isFalse();
+        assertThat(segunda.mensagem()).contains("ja estava aprovado e publicado");
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
+        assertThat(fixture.anuncio().getUltimaPublicacaoEm()).isEqualTo(primeiraPublicacao);
+        verify(decisaoRepository, times(1)).save(any());
+        verify(auditoriaRepository, times(1)).save(any());
     }
 
     @Test
@@ -173,6 +193,78 @@ class AdminModeracaoAnuncioServiceTest {
         verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
     }
 
+    @Test
+    void usuarioBloqueadoImpedeAprovacaoEPublicacao() {
+        Fixture fixture = fixture();
+        fixture.usuario().bloquearJuridicamente(OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do proprietario");
+
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
+        assertThat(fixture.revisao().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
+        verify(decisaoRepository, never()).save(any());
+    }
+
+    @Test
+    void bloqueioJuridicoAtivoImpedeAprovacaoEPublicacao() {
+        Fixture fixture = fixture();
+        when(bloqueioJuridicoRepository.findAtivoPorAnuncioForUpdate(fixture.anuncio().getId()))
+                .thenReturn(Optional.of(mock(AnuncioBloqueioJuridicoEntity.class)));
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("bloqueio juridico");
+
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
+        verify(decisaoRepository, never()).save(any());
+    }
+
+    @Test
+    void anuncioRejeitadoSemNovaRevisaoValidaNaoPodeSerAprovado() {
+        Fixture fixture = fixture();
+        fixture.anuncio().aplicarModeracao(
+                StatusAnuncio.REJEITADO,
+                StatusModeracaoAnuncio.REJEITADO,
+                OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do anuncio");
+
+        verify(decisaoRepository, never()).save(any());
+    }
+
+    @Test
+    void regularizaAprovacaoLegadaSemDuplicarDecisao() {
+        Fixture fixture = fixture();
+        fixture.anuncio().aplicarModeracao(
+                StatusAnuncio.APROVADO,
+                StatusModeracaoAnuncio.APROVADO,
+                OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+        fixture.revisao().finalizar(
+                StatusRevisaoAnuncio.APROVADA,
+                OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+        fixture.decisaoRegistrada().set(true);
+
+        var response = decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null);
+
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
+        assertThat(fixture.anuncio().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(fixture.anuncio().getPublicadoEm()).isNotNull();
+        assertThat(response.auditoriaRegistrada()).isTrue();
+        assertThat(response.mensagem()).contains("publicado agora");
+        verify(decisaoRepository, never()).save(any());
+        ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+        verify(auditoriaRepository).save(audit.capture());
+        assertThat(audit.getValue().getAcao())
+                .isEqualTo("MODERACAO_REVISAO_PUBLICACAO_REGULARIZAR");
+    }
+
     private br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto decidir(
             Fixture fixture,
             AdminDecisaoModeracaoAcao decisao,
@@ -186,12 +278,20 @@ class AdminModeracaoAnuncioServiceTest {
 
     private Fixture fixture() {
         UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
         UUID revisaoId = UUID.randomUUID();
         AdminUserPrincipal actor = principal();
         OffsetDateTime now = OffsetDateTime.parse("2026-07-22T12:00:00Z");
+        UsuarioEntity usuario = UsuarioEntity.criarSolicitacaoLocal(
+                usuarioId,
+                "Anunciante Local",
+                "anunciante.local@example.invalid",
+                null,
+                now);
+        usuario.confirmarEmail(now);
         AnuncioEntity anuncio = AnuncioEntity.criarSolicitacaoLocal(
                 anuncioId,
-                UUID.randomUUID(),
+                usuarioId,
                 "anuncio-moderacao-teste",
                 "Anúncio sintético",
                 "Descrição sintética",
@@ -206,10 +306,22 @@ class AdminModeracaoAnuncioServiceTest {
                 "{}",
                 actor.usuarioId(),
                 now);
+        AtomicBoolean decisaoRegistrada = new AtomicBoolean(false);
         when(revisaoRepository.findByIdForUpdate(revisaoId)).thenReturn(Optional.of(revisao));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
         when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
-        when(decisaoRepository.existsByRevisaoAnuncioId(revisaoId)).thenReturn(false);
-        return new Fixture(anuncio, revisao, actor);
+        when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+        when(bloqueioJuridicoRepository.findAtivoPorAnuncioForUpdate(anuncioId))
+                .thenReturn(Optional.empty());
+        when(bloqueioJuridicoRepository.findAtivoPorUsuarioForUpdate(any(), any()))
+                .thenReturn(Optional.empty());
+        when(decisaoRepository.existsByRevisaoAnuncioId(revisaoId))
+                .thenAnswer(invocation -> decisaoRegistrada.get());
+        when(decisaoRepository.save(any())).thenAnswer(invocation -> {
+            decisaoRegistrada.set(true);
+            return invocation.getArgument(0);
+        });
+        return new Fixture(anuncio, usuario, revisao, actor, decisaoRegistrada);
     }
 
     private AdminUserPrincipal principal() {
@@ -228,7 +340,9 @@ class AdminModeracaoAnuncioServiceTest {
 
     private record Fixture(
             AnuncioEntity anuncio,
+            UsuarioEntity usuario,
             RevisaoAnuncioEntity revisao,
-            AdminUserPrincipal actor) {
+            AdminUserPrincipal actor,
+            AtomicBoolean decisaoRegistrada) {
     }
 }

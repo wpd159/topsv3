@@ -14,6 +14,8 @@ import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.DecisaoModeracaoEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
@@ -22,13 +24,16 @@ import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DecisaoModeracao;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusOutbox;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
@@ -51,6 +56,8 @@ public class AdminModeracaoAcaoService {
 
     private final RevisaoAnuncioRepository revisaoRepository;
     private final AnuncioRepository anuncioRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final DocumentoUsuarioRepository documentoUsuarioRepository;
@@ -63,6 +70,8 @@ public class AdminModeracaoAcaoService {
     public AdminModeracaoAcaoService(
             RevisaoAnuncioRepository revisaoRepository,
             AnuncioRepository anuncioRepository,
+            UsuarioRepository usuarioRepository,
+            AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             DocumentoUsuarioRepository documentoUsuarioRepository,
@@ -73,6 +82,8 @@ public class AdminModeracaoAcaoService {
             MidiaStorageAprovacaoService midiaStorageAprovacaoService) {
         this.revisaoRepository = revisaoRepository;
         this.anuncioRepository = anuncioRepository;
+        this.usuarioRepository = usuarioRepository;
+        this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.documentoUsuarioRepository = documentoUsuarioRepository;
@@ -97,20 +108,33 @@ public class AdminModeracaoAcaoService {
                 request == null ? null : request.observacao());
         RevisaoAnuncioEntity revisao = revisaoRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
+        AnuncioEntity anuncio = decisao == AdminDecisaoModeracaoAcao.APROVAR
+                ? carregarContextoPublicacao(revisao.getAnuncioId()).anuncio()
+                : anuncioRepository.findByIdForModeration(revisao.getAnuncioId())
+                        .orElseThrow(() -> new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "anuncio da revisao nao encontrado"));
         if (!revisaoAberta(revisao.getStatus()) || revisao.getFinalizadoEm() != null) {
+            if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+                return repetirOuRegularizarAprovacao(revisao, anuncio, actor, requestId);
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao ja finalizada");
         }
         if (decisaoRepository.existsByRevisaoAnuncioId(revisao.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "decisao de revisao ja registrada");
         }
-
-        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(revisao.getAnuncioId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio da revisao nao encontrado"));
         if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO
                 || anuncio.getStatus() == StatusAnuncio.REMOVIDO) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "estado do anuncio impede decisao de moderacao");
+        }
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR
+                && (anuncio.getStatus() != StatusAnuncio.PENDENTE_REVISAO
+                        || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.PENDENTE)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "estado do anuncio impede aprovacao e publicacao");
         }
         OffsetDateTime agora = OffsetDateTime.now();
         String antes = snapshotRevisao(revisao, anuncio, null, null);
@@ -123,15 +147,23 @@ public class AdminModeracaoAcaoService {
             StatusRevisaoAnuncio novoStatusRevisao = decisao == AdminDecisaoModeracaoAcao.APROVAR
                     ? StatusRevisaoAnuncio.APROVADA
                     : StatusRevisaoAnuncio.REJEITADA;
-            StatusAnuncio novoStatusAnuncio = decisao == AdminDecisaoModeracaoAcao.APROVAR
-                    ? statusAposAprovacao(anuncio.getStatus())
-                    : StatusAnuncio.REJEITADO;
-            StatusModeracaoAnuncio novoStatusModeracao = decisao == AdminDecisaoModeracaoAcao.APROVAR
-                    ? StatusModeracaoAnuncio.APROVADO
-                    : StatusModeracaoAnuncio.REJEITADO;
 
             revisao.finalizar(novoStatusRevisao, agora);
-            anuncio.aplicarModeracao(novoStatusAnuncio, novoStatusModeracao, agora);
+            if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+                try {
+                    anuncio.aprovarEPublicarAdministrativamente(agora);
+                } catch (IllegalStateException exception) {
+                    throw new ResponseStatusException(
+                            HttpStatus.CONFLICT,
+                            "estado do anuncio impede aprovacao e publicacao",
+                            exception);
+                }
+            } else {
+                anuncio.aplicarModeracao(
+                        StatusAnuncio.REJEITADO,
+                        StatusModeracaoAnuncio.REJEITADO,
+                        agora);
+            }
 
             decisaoRepository.save(DecisaoModeracaoEntity.registrar(
                     UUID.randomUUID(),
@@ -384,6 +416,12 @@ public class AdminModeracaoAcaoService {
         validarAtor(actor);
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO
+                || anuncio.getStatus() == StatusAnuncio.REMOVIDO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "estado do anuncio impede abertura de revisao");
+        }
         String motivo = motivoSeguroObrigatorio(
                 request == null ? null : request.motivo(),
                 request == null ? null : request.observacao(),
@@ -491,11 +529,92 @@ public class AdminModeracaoAcaoService {
         return status == StatusRevisaoAnuncio.ABERTA || status == StatusRevisaoAnuncio.EM_ANALISE;
     }
 
-    private StatusAnuncio statusAposAprovacao(StatusAnuncio atual) {
-        if (atual == StatusAnuncio.PENDENTE_REVISAO || atual == StatusAnuncio.RASCUNHO) {
-            return StatusAnuncio.APROVADO;
+    private ContextoPublicacao carregarContextoPublicacao(UUID anuncioId) {
+        AnuncioEntity referencia = anuncioRepository.findById(anuncioId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "anuncio da revisao nao encontrado"));
+        UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(referencia.getUsuarioId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "proprietario do anuncio nao encontrado"));
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "anuncio da revisao nao encontrado"));
+        if (!usuario.getId().equals(anuncio.getUsuarioId())
+                || usuario.getStatus() != StatusUsuario.ATIVO
+                || usuario.getDesativadoEm() != null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "estado do proprietario impede aprovacao e publicacao");
         }
-        return atual;
+        if (bloqueioJuridicoRepository.findAtivoPorAnuncioForUpdate(anuncio.getId()).isPresent()
+                || bloqueioJuridicoRepository.findAtivoPorUsuarioForUpdate(
+                        usuario.getId(),
+                        EscopoBloqueioJuridico.ANUNCIO_E_USUARIO).isPresent()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "bloqueio juridico impede aprovacao e publicacao");
+        }
+        return new ContextoPublicacao(anuncio, usuario);
+    }
+
+    private AdminAcaoModeracaoResponseDto repetirOuRegularizarAprovacao(
+            RevisaoAnuncioEntity revisao,
+            AnuncioEntity anuncio,
+            AdminUserPrincipal actor,
+            String requestId) {
+        if (revisao.getStatus() != StatusRevisaoAnuncio.APROVADA
+                || revisao.getFinalizadoEm() == null
+                || !decisaoRepository.existsByRevisaoAnuncioId(revisao.getId())
+                || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.APROVADO) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao ja finalizada");
+        }
+
+        OffsetDateTime agora = OffsetDateTime.now();
+        boolean regularizada = anuncio.getStatus() == StatusAnuncio.APROVADO;
+        if (regularizada) {
+            String antes = snapshotRevisao(revisao, anuncio, null, null);
+            try {
+                anuncio.aprovarEPublicarAdministrativamente(agora);
+            } catch (IllegalStateException exception) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "estado do anuncio impede regularizacao da publicacao",
+                        exception);
+            }
+            auditoriaRepository.save(AuditoriaEventoEntity.registrar(
+                    UUID.randomUUID(),
+                    actor.usuarioId(),
+                    "MODERACAO_REVISAO_PUBLICACAO_REGULARIZAR",
+                    "REVISAO_ANUNCIO",
+                    revisao.getId(),
+                    antes,
+                    snapshotRevisao(revisao, anuncio, AdminDecisaoModeracaoAcao.APROVAR, null),
+                    requestId,
+                    agora));
+        } else if (anuncio.getStatus() != StatusAnuncio.PUBLICADO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "estado do anuncio impede repeticao da aprovacao");
+        }
+
+        return new AdminAcaoModeracaoResponseDto(
+                UUID.randomUUID(),
+                "REVISAO_ANUNCIO",
+                revisao.getId(),
+                AdminDecisaoModeracaoAcao.APROVAR.name(),
+                revisao.getStatus().name(),
+                null,
+                regularizada,
+                false,
+                false,
+                requestId,
+                agora,
+                regularizada
+                        ? "anuncio aprovado anteriormente e publicado agora"
+                        : "anuncio ja estava aprovado e publicado");
     }
 
     private VisibilidadeMidia visibilidadeParaDecisao(
@@ -698,7 +817,7 @@ public class AdminModeracaoAcaoService {
 
     private String mensagemRevisao(AdminDecisaoModeracaoAcao decisao) {
         return switch (decisao) {
-            case APROVAR -> "revisao aprovada localmente";
+            case APROVAR -> "anuncio aprovado e publicado";
             case REPROVAR -> "revisao reprovada localmente; e-mail real pendente para fase futura";
             case SOLICITAR_AJUSTE -> "ajuste solicitado localmente; revisao permanece aberta para decisao final futura";
         };
@@ -710,5 +829,8 @@ public class AdminModeracaoAcaoService {
             case REPROVAR -> "midia reprovada localmente";
             case SOLICITAR_AJUSTE -> "ajuste de midia solicitado localmente";
         };
+    }
+
+    private record ContextoPublicacao(AnuncioEntity anuncio, UsuarioEntity usuario) {
     }
 }

@@ -22,6 +22,7 @@ import {
   XCircle,
 } from 'lucide-react'
 
+import { revalidarCacheCatalogoPublico } from '@/app/(painel-admin)/admin/anuncios/actions'
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -699,11 +700,13 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         }
         if (!reviewId) throw new Error('A revisão aberta não foi retornada após o envio para análise.')
         await decideAdminReview(reviewId, 'APROVAR')
+        await revalidarCacheCatalogoPublico()
         setDecisionFinished(true)
         setAdApproved(true)
       } else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
+        if (intent.action === 'APROVAR') await revalidarCacheCatalogoPublico()
         setDecisionFinished(true)
         setAdApproved(intent.action === 'APROVAR')
       } else if (intent.kind === 'MEDIA') {
@@ -917,7 +920,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         <div role="status" className="flex flex-col gap-3 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:flex-row sm:items-center sm:justify-between">
           <span>
             {adApproved
-              ? 'Anúncio aprovado. Ele saiu da fila de pendentes e permanece disponível em Todos/Aprovados.'
+              ? 'Anúncio aprovado e publicado com sucesso.'
               : 'Decisão persistida. O avanço permanece sob seu controle.'}
           </span>
           <div className="flex flex-wrap items-center gap-2">

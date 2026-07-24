@@ -324,7 +324,10 @@ function listQuery(pagina: number, tamanho: number, ordemSeed?: string) {
   return `?${query.toString()}`
 }
 
-const cached = { next: { revalidate: 3600 } }
+export const PUBLIC_CATALOG_CACHE_TAG = 'public-catalog'
+const cached = {
+  next: { revalidate: 3600, tags: [PUBLIC_CATALOG_CACHE_TAG] },
+}
 export const PUBLIC_HOME_CATEGORIES_CACHE_TAG = 'public-home-categories'
 const homeCategoriesCached = {
   next: { revalidate: 3600, tags: [PUBLIC_HOME_CATEGORIES_CACHE_TAG] },

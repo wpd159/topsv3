@@ -16,6 +16,7 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
@@ -24,6 +25,7 @@ import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -49,6 +51,9 @@ class AdminModeracaoAcaoServiceTest {
 
     private final RevisaoAnuncioRepository revisaoRepository = mock(RevisaoAnuncioRepository.class);
     private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+    private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
+    private final AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository =
+            mock(AnuncioBloqueioJuridicoRepository.class);
     private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
     private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     private final DocumentoUsuarioRepository documentoRepository = mock(DocumentoUsuarioRepository.class);
@@ -65,6 +70,8 @@ class AdminModeracaoAcaoServiceTest {
         service = new AdminModeracaoAcaoService(
                 revisaoRepository,
                 anuncioRepository,
+                usuarioRepository,
+                bloqueioJuridicoRepository,
                 midiaRepository,
                 arquivoRepository,
                 documentoRepository,
