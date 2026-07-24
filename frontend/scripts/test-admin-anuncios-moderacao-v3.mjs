@@ -159,11 +159,19 @@ assert.ok(detail.includes('getAdminAdQueueNavigation') && detail.includes('Anter
 assert.ok(detail.includes('Próximo da fila') && detail.includes('Fim da fila'), 'A decisao deve oferecer avancar manualmente ou encerrar a fila.')
 assert.ok(api.includes('currentPage * context.size + index + 1'), 'A posicao deve considerar pagina e tamanho atuais.')
 assert.ok(api.includes('context.page - 1, context.page + 1'), 'A navegacao pode consultar apenas paginas adjacentes, sem carregar toda a fila.')
-assert.ok(detail.includes('Abrir revisão') && detail.includes('Aprovar anúncio') && detail.includes('Rejeitar anúncio'), 'O quadro de decisao deve exibir as acoes canonicas com rotulos explicitos.')
+const decisionPanel = detail.slice(
+  detail.indexOf('<h2 className="font-semibold text-zinc-950">Decisão do anúncio</h2>'),
+  detail.indexOf('</aside>', detail.indexOf('<h2 className="font-semibold text-zinc-950">Decisão do anúncio</h2>')),
+)
+assert.ok(decisionPanel.includes('Abrir revisão') && decisionPanel.includes('Rejeitar anúncio'), 'O quadro de decisao deve preservar abertura e rejeicao.')
+assert.ok(!decisionPanel.includes('Aprovar anúncio'), 'A aprovacao nao pode permanecer duplicada no quadro de decisao.')
 assert.ok(detail.includes("const canDecideAdReview = canModerateAd && !removed && ad.status !== 'BLOQUEADO'"), 'Anuncio bloqueado ou removido nao pode exibir acoes de decisao.')
-assert.ok(detail.includes("action: 'APROVAR',") && detail.includes('requiresReason: false') && detail.includes("action: 'REPROVAR',") && detail.includes('requiresReason: true'), 'Somente a rejeicao deve exigir motivo.')
-assert.ok(detail.includes('await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)') && detail.includes('await load()'), 'A decisao deve reutilizar o adapter canonico e atualizar o detalhe imediatamente.')
-assert.ok(detail.includes("intent.kind === 'OPEN_REVIEW' || intent.kind === 'REVIEW'") && detail.includes('O estado do anúncio mudou.'), 'Conflito 409 da decisao deve atualizar o detalhe e informar a causa correta.')
+assert.ok(detail.includes("kind: 'APPROVE_AD'") && detail.includes("kind: 'REVIEW'") && detail.includes("action: 'REPROVAR',") && detail.includes('requiresReason: true'), 'Aprovacao sem motivo e rejeicao com motivo devem permanecer distintas.')
+assert.ok(detail.includes('await submitAdminReview(ad.id, AUTOMATIC_REVIEW_REASON)') && detail.includes('const refreshedAd = await getAdminAd(ad.id)') && detail.includes("await decideAdminReview(reviewId, 'APROVAR')"), 'A aprovacao deve abrir a revisao automaticamente e reutilizar os contratos canonicos.')
+assert.ok(detail.includes("let reviewId = reviewOpen ? ad.revisaoAberta?.id : null"), 'Revisao ja aberta deve ser aprovada sem nova abertura.')
+assert.ok(detail.includes('await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)') && detail.includes('await load()'), 'As demais decisoes devem reutilizar o adapter canonico e atualizar o detalhe imediatamente.')
+assert.ok(detail.includes("intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REVIEW'") && detail.includes('O estado do anúncio mudou.'), 'Conflito 409 da decisao deve atualizar o detalhe e informar a causa correta.')
+assert.ok(detail.includes('decisionLock.current') && detail.includes('disabled={headerBusy}'), 'A aprovacao deve impedir duplo clique durante a decisao.')
 
 assert.ok(documents.includes('getAdminDocumentTemporaryUrl'), 'Documento deve ser aberto por URL temporaria administrativa.')
 assert.ok(documents.includes('Visualizar') && documents.includes('Baixar'), 'Documento deve permitir visualizacao e download autorizados.')
@@ -183,8 +191,15 @@ for (const action of ['Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usu�
   assert.ok(detail.includes(action) || list.includes(action), `Acao administrativa ausente: ${action}`)
 }
 const detailHeader = detail.slice(detail.indexOf('<header'), detail.indexOf('</header>') + '</header>'.length)
-for (const action of ['Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usuário', 'Desbloquear anúncio', 'Desbloquear usuário', 'Editar anúncio']) {
+for (const action of ['Aprovar anúncio', 'Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usuário', 'Desbloquear anúncio', 'Desbloquear usuário', 'Editar anúncio']) {
   assert.ok(detailHeader.includes(action), `Acao administrativa deve permanecer no cabecalho: ${action}`)
+}
+const defaultHeaderActionOrder = ['Aprovar anúncio', 'Bloquear anúncio', 'Bloquear anúncio e usuário', "Excluir an\\u00fancio", 'Editar anúncio']
+for (let index = 1; index < defaultHeaderActionOrder.length; index += 1) {
+  assert.ok(
+    detailHeader.indexOf(defaultHeaderActionOrder[index - 1]) < detailHeader.indexOf(defaultHeaderActionOrder[index]),
+    `Ordem do cabecalho incorreta entre ${defaultHeaderActionOrder[index - 1]} e ${defaultHeaderActionOrder[index]}.`,
+  )
 }
 assert.ok(list.includes("item.status === 'PAUSADO'") && list.includes("item.statusModeracao === 'APROVADO'") && list.includes("item.anunciante?.status === 'ATIVO'"), 'A fila deve exibir reativacao somente na transicao canonica.')
 assert.ok(detail.includes('LegalActionDialog') && detail.includes('legalBusy'), 'Acoes juridicas devem ter confirmacao e protecao contra duplo clique.')
@@ -192,7 +207,9 @@ assert.ok(detail.includes("isAdmin && canModerateAd"), 'Somente ADMIN com ANUNCI
 assert.ok(detail.includes('categoria obrigatória') || detail.includes('Categoria obrigatória'), 'Bloqueio deve exigir categoria.')
 assert.ok(detail.includes('Motivo obrigatório') && detail.includes('Observação interna opcional'), 'Bloqueio deve coletar motivo e observacao interna opcional.')
 assert.ok(detail.includes('ad.bloqueioJuridico') && detailHeader.includes('ad.status'), 'Cabecalho protegido deve mostrar o estado juridico por meio do status canonico.')
-assert.ok(detailHeader.includes('Ações jurídicas e administrativas') && detailHeader.includes('lg:max-w-[760px]') && detailHeader.includes('flex-wrap'), 'Controles juridicos devem ficar compactos no desktop e quebrar de forma organizada no mobile.')
+assert.ok(detailHeader.includes('Ações jurídicas e administrativas') && detailHeader.includes('xl:flex-nowrap') && detailHeader.includes('flex-wrap'), 'Acoes devem ficar em uma linha no desktop e quebrar de forma organizada no mobile.')
+assert.ok(!detailHeader.includes('overflow-x-auto'), 'O cabecalho nao pode criar rolagem horizontal em viewport estreito.')
+assert.ok(detail.includes("ad.statusModeracao === 'PENDENTE'") && detail.includes("ad.status === 'PENDENTE_REVISAO' || reviewOpen"), 'A aprovacao deve aparecer somente para dados pendentes ou revisao aberta pendente.')
 assert.ok(!detail.includes('Situação jurídica') && !detail.includes('legal-status-title'), 'O bloco juridico separado nao pode permanecer no corpo.')
 assert.ok(detail.includes('item.categoria') && detail.includes('item.motivo') && detail.includes('item.observacaoInterna') && detail.includes('item.atorId') && detail.includes('item.criadoEm') && detail.includes('item.requestId'), 'Historico deve preservar categoria, motivo, responsavel, data e requestId juridicos.')
 assert.ok(detail.includes('await load()') && !detail.includes('status: \'BLOQUEADO\''), 'Interface juridica deve atualizar somente apos resposta do backend.')

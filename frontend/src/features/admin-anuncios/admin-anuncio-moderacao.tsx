@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -64,6 +64,7 @@ import type {
 
 type DecisionIntent =
   | { kind: 'OPEN_REVIEW'; title: string; requiresReason: true }
+  | { kind: 'APPROVE_AD'; title: string; requiresReason: false }
   | { kind: 'REVIEW'; title: string; action: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE'; requiresReason: boolean }
   | { kind: 'MEDIA'; title: string; media: AdminMediaItem; action: 'APROVAR' | 'REPROVAR'; visibility?: 'LIVRE' | 'RESTRITA_18'; requiresReason: boolean }
   | { kind: 'RECLASSIFY'; title: string; media: AdminMediaItem; visibility: 'LIVRE' | 'RESTRITA_18'; requiresReason: true }
@@ -82,6 +83,8 @@ const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }>
   { value: 'ORDEM_OU_RISCO_JURIDICO', label: 'Ordem ou risco jurídico' },
   { value: 'OUTRA_INTERVENCAO', label: 'Outra intervenção excepcional' },
 ]
+
+const AUTOMATIC_REVIEW_REASON = 'Revisão aberta automaticamente para aprovação administrativa.'
 
 function formatDate(value?: string | null) {
   if (!value) return 'Não informado'
@@ -167,7 +170,11 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
         {normalizedError ? (
           <div role="alert" className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="font-semibold">
-              {normalizedError.kind === 'CONFLICT' ? 'Estado da mídia atualizado' : 'Não foi possível concluir'}
+              {normalizedError.kind === 'CONFLICT'
+                ? intent?.kind === 'MEDIA' || intent?.kind === 'RECLASSIFY'
+                  ? 'Estado da mídia atualizado'
+                  : 'Estado do anúncio atualizado'
+                : 'Não foi possível concluir'}
             </p>
             <p className="mt-1 text-amber-800">{normalizedError.message}</p>
           </div>
@@ -354,6 +361,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const [intent, setIntent] = useState<DecisionIntent | null>(null)
   const [actionError, setActionError] = useState<unknown>(null)
   const [busy, setBusy] = useState(false)
+  const decisionLock = useRef(false)
   const [legalIntent, setLegalIntent] = useState<LegalIntent | null>(null)
   const [legalActionError, setLegalActionError] = useState<unknown>(null)
   const [legalBusy, setLegalBusy] = useState(false)
@@ -443,12 +451,23 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   }, [media])
 
   async function confirmDecision(reason: string) {
-    if (!intent || busy || !ad) return
+    if (!intent || decisionLock.current || !ad) return
+    decisionLock.current = true
     setBusy(true)
     setActionError(null)
     try {
       if (intent.kind === 'OPEN_REVIEW') await submitAdminReview(ad.id, reason)
-      else if (intent.kind === 'REVIEW') {
+      else if (intent.kind === 'APPROVE_AD') {
+        let reviewId = reviewOpen ? ad.revisaoAberta?.id : null
+        if (!reviewId) {
+          await submitAdminReview(ad.id, AUTOMATIC_REVIEW_REASON)
+          const refreshedAd = await getAdminAd(ad.id)
+          reviewId = refreshedAd.revisaoAberta?.id
+        }
+        if (!reviewId) throw new Error('A revisão aberta não foi retornada após o envio para análise.')
+        await decideAdminReview(reviewId, 'APROVAR')
+        setDecisionFinished(true)
+      } else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
         setDecisionFinished(true)
@@ -475,7 +494,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     } catch (reasonError) {
       const normalized = normalizeApiError(reasonError)
       if (
-        (intent.kind === 'OPEN_REVIEW' || intent.kind === 'REVIEW')
+        (intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REVIEW')
         && normalized.kind === 'CONFLICT'
       ) {
         await load()
@@ -509,6 +528,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       }
       setActionError(reasonError)
     } finally {
+      decisionLock.current = false
       setBusy(false)
     }
   }
@@ -577,33 +597,56 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const legalBlock = ad.bloqueioJuridico
   const removed = ad.status === 'REMOVIDO'
   const canDecideAdReview = canModerateAd && !removed && ad.status !== 'BLOQUEADO'
+  const canApproveAd = canDecideAdReview
+    && ad.statusModeracao === 'PENDENTE'
+    && (ad.status === 'PENDENTE_REVISAO' || reviewOpen)
   const canReactivate = canManageLegalStatus
     && ad.status === 'PAUSADO'
     && ad.statusModeracao === 'APROVADO'
     && ad.anunciante?.status === 'ATIVO'
     && !legalBlock?.usuarioBloqueado
   const canRemove = canManageLegalStatus && !removed && ad.status !== 'BLOQUEADO'
-  const headerBusy = legalBusy || removalBusy
+  const headerBusy = busy || legalBusy || removalBusy
 
   return (
     <div className="space-y-5">
       <header className="border-b border-zinc-200 pb-4">
         <Link href={backHref} className="inline-flex items-center gap-2 text-sm font-semibold text-pink-700 hover:text-pink-800"><ArrowLeft className="h-4 w-4" />Voltar para a fila</Link>
-        <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-950">{ad.titulo}</h1><p className="mt-1 break-all text-xs text-zinc-500">{ad.slug}</p></div>
+        <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-950">{ad.titulo}</h1><p className="mt-1 break-all text-xs text-zinc-500">{ad.slug}</p></div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Badge variant="outline" className={moderationTone(ad.status)}>{ad.status}</Badge>
+              <Badge variant="outline" className={moderationTone(ad.statusModeracao)}>{ad.statusModeracao}</Badge>
+            </div>
+          </div>
           <div
             aria-label="Ações jurídicas e administrativas"
-            className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:max-w-[760px] lg:justify-end"
+            className="flex w-full flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end"
           >
-            <Badge variant="outline" className={moderationTone(ad.status)}>{ad.status}</Badge>
-            <Badge variant="outline" className={moderationTone(ad.statusModeracao)}>{ad.statusModeracao}</Badge>
+            {canApproveAd ? (
+              <Button
+                type="button"
+                size="sm"
+                className="whitespace-nowrap bg-emerald-700 text-white hover:bg-emerald-800"
+                disabled={headerBusy}
+                onClick={() => setIntent({
+                  kind: 'APPROVE_AD',
+                  title: 'Aprovar anúncio',
+                  requiresReason: false,
+                })}
+              >
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                Aprovar anúncio
+              </Button>
+            ) : null}
             {canManageLegalStatus && !removed ? (
               <>
-                {canReactivate ? <Button type="button" size="sm" variant="outline" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'REACTIVATE', title: 'Reativar anúncio pausado' })}><RotateCcw className="mr-2 h-4 w-4" />Reativar</Button> : null}
-                {legalBlock?.anuncioBloqueado ? <Button type="button" size="sm" variant="outline" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_AD', title: 'Desbloquear anúncio' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear anúncio</Button> : null}
-                {legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="outline" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_USER', title: 'Desbloquear usuário' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear usuário</Button> : null}
-                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="destructive" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_AD', title: 'Bloquear anúncio' })}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear anúncio</Button> : null}
-                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado && ad.anunciante?.status !== 'SUSPENSO' ? <Button type="button" size="sm" variant="destructive" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_USER', title: 'Bloquear anúncio e usuário' })}><ShieldAlert className="mr-2 h-4 w-4" />Bloquear anúncio e usuário</Button> : null}
+                {canReactivate ? <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'REACTIVATE', title: 'Reativar anúncio pausado' })}><RotateCcw className="mr-2 h-4 w-4" />Reativar</Button> : null}
+                {legalBlock?.anuncioBloqueado ? <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_AD', title: 'Desbloquear anúncio' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear anúncio</Button> : null}
+                {legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_USER', title: 'Desbloquear usuário' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear usuário</Button> : null}
+                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="destructive" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_AD', title: 'Bloquear anúncio' })}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear anúncio</Button> : null}
+                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado && ad.anunciante?.status !== 'SUSPENSO' ? <Button type="button" size="sm" variant="destructive" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_USER', title: 'Bloquear anúncio e usuário' })}><ShieldAlert className="mr-2 h-4 w-4" />Bloquear anúncio e usuário</Button> : null}
               </>
             ) : null}
             {canRemove ? (
@@ -611,7 +654,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 type="button"
                 size="sm"
                 variant="destructive"
-                className="border border-red-950 bg-red-700 text-white hover:bg-red-800"
+                className="whitespace-nowrap border border-red-950 bg-red-700 text-white hover:bg-red-800"
                 disabled={headerBusy}
                 onClick={() => {
                   setRemovalActionError(null)
@@ -622,7 +665,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 {'Excluir an\u00fancio'}
               </Button>
             ) : null}
-            {isAdmin && canModerateAd ? <Button asChild size="sm" variant="outline"><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-2 h-4 w-4" />Editar anúncio</Link></Button> : null}
+            {isAdmin && canModerateAd ? <Button asChild size="sm" variant="outline" className="whitespace-nowrap"><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-2 h-4 w-4" />Editar anúncio</Link></Button> : null}
           </div>
         </div>
       </header>
@@ -710,18 +753,6 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                   ) : null}
                   {reviewOpen ? (
                     <>
-                      <Button
-                        type="button"
-                        onClick={() => setIntent({
-                          kind: 'REVIEW',
-                          title: 'Aprovar anúncio',
-                          action: 'APROVAR',
-                          requiresReason: false,
-                        })}
-                      >
-                        <CheckCircle2 className="mr-2 h-4 w-4" />
-                        Aprovar anúncio
-                      </Button>
                       <Button
                         type="button"
                         variant="outline"
