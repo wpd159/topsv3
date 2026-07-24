@@ -39,11 +39,13 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnunci
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.net.URI;
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,7 +54,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class AdminModeracaoAcaoService {
 
-    private static final int MOTIVO_MAX_LENGTH = 240;
+    private static final int MOTIVO_MAX_LENGTH = 2_000;
 
     private final RevisaoAnuncioRepository revisaoRepository;
     private final AnuncioRepository anuncioRepository;
@@ -66,6 +68,7 @@ public class AdminModeracaoAcaoService {
     private final OutboxEventoRepository outboxRepository;
     private final ObjectMapper objectMapper;
     private final MidiaStorageAprovacaoService midiaStorageAprovacaoService;
+    private final String canonicalDomain;
 
     public AdminModeracaoAcaoService(
             RevisaoAnuncioRepository revisaoRepository,
@@ -79,7 +82,8 @@ public class AdminModeracaoAcaoService {
             AuditoriaEventoRepository auditoriaRepository,
             OutboxEventoRepository outboxRepository,
             ObjectMapper objectMapper,
-            MidiaStorageAprovacaoService midiaStorageAprovacaoService) {
+            MidiaStorageAprovacaoService midiaStorageAprovacaoService,
+            @Value("${app.canonical-domain:http://localhost}") String canonicalDomain) {
         this.revisaoRepository = revisaoRepository;
         this.anuncioRepository = anuncioRepository;
         this.usuarioRepository = usuarioRepository;
@@ -92,6 +96,7 @@ public class AdminModeracaoAcaoService {
         this.outboxRepository = outboxRepository;
         this.objectMapper = objectMapper;
         this.midiaStorageAprovacaoService = midiaStorageAprovacaoService;
+        this.canonicalDomain = canonicalDomain;
     }
 
     @Transactional
@@ -109,7 +114,8 @@ public class AdminModeracaoAcaoService {
         RevisaoAnuncioEntity revisao = revisaoRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
         AnuncioEntity anuncio = decisao == AdminDecisaoModeracaoAcao.APROVAR
-                ? carregarContextoPublicacao(revisao.getAnuncioId()).anuncio()
+                        || decisao == AdminDecisaoModeracaoAcao.REPROVAR
+                ? carregarContextoDecisaoFinal(revisao.getAnuncioId(), decisao).anuncio()
                 : anuncioRepository.findByIdForModeration(revisao.getAnuncioId())
                         .orElseThrow(() -> new ResponseStatusException(
                                 HttpStatus.NOT_FOUND,
@@ -129,12 +135,15 @@ public class AdminModeracaoAcaoService {
                     HttpStatus.CONFLICT,
                     "estado do anuncio impede decisao de moderacao");
         }
-        if (decisao == AdminDecisaoModeracaoAcao.APROVAR
+        if ((decisao == AdminDecisaoModeracaoAcao.APROVAR
+                        || decisao == AdminDecisaoModeracaoAcao.REPROVAR)
                 && (anuncio.getStatus() != StatusAnuncio.PENDENTE_REVISAO
                         || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.PENDENTE)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "estado do anuncio impede aprovacao e publicacao");
+                    decisao == AdminDecisaoModeracaoAcao.APROVAR
+                            ? "estado do anuncio impede aprovacao e publicacao"
+                            : "estado do anuncio impede reprovacao");
         }
         OffsetDateTime agora = OffsetDateTime.now();
         String antes = snapshotRevisao(revisao, anuncio, null, null);
@@ -529,7 +538,9 @@ public class AdminModeracaoAcaoService {
         return status == StatusRevisaoAnuncio.ABERTA || status == StatusRevisaoAnuncio.EM_ANALISE;
     }
 
-    private ContextoPublicacao carregarContextoPublicacao(UUID anuncioId) {
+    private ContextoPublicacao carregarContextoDecisaoFinal(
+            UUID anuncioId,
+            AdminDecisaoModeracaoAcao decisao) {
         AnuncioEntity referencia = anuncioRepository.findById(anuncioId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
@@ -547,7 +558,9 @@ public class AdminModeracaoAcaoService {
                 || usuario.getDesativadoEm() != null) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "estado do proprietario impede aprovacao e publicacao");
+                    decisao == AdminDecisaoModeracaoAcao.APROVAR
+                            ? "estado do proprietario impede aprovacao e publicacao"
+                            : "estado do proprietario impede reprovacao");
         }
         if (bloqueioJuridicoRepository.findAtivoPorAnuncioForUpdate(anuncio.getId()).isPresent()
                 || bloqueioJuridicoRepository.findAtivoPorUsuarioForUpdate(
@@ -555,7 +568,9 @@ public class AdminModeracaoAcaoService {
                         EscopoBloqueioJuridico.ANUNCIO_E_USUARIO).isPresent()) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "bloqueio juridico impede aprovacao e publicacao");
+                    decisao == AdminDecisaoModeracaoAcao.APROVAR
+                            ? "bloqueio juridico impede aprovacao e publicacao"
+                            : "bloqueio juridico impede reprovacao");
         }
         return new ContextoPublicacao(anuncio, usuario);
     }
@@ -757,6 +772,12 @@ public class AdminModeracaoAcaoService {
         values.put("statusAnuncio", enumName(anuncio.getStatus()));
         values.put("statusModeracao", enumName(anuncio.getStatusModeracao()));
         values.put("motivoSanitizado", motivoSanitizado);
+        if (decisao == AdminDecisaoModeracaoAcao.REPROVAR) {
+            values.put("anuncioTitulo", AdminModeracaoSanitizer.texto(anuncio.getTitulo(), 80));
+            values.put("linkEdicao", linkEdicaoAnuncio(anuncio));
+            values.put("destinatarioUsuarioId", anuncio.getUsuarioId());
+            values.put("destinatarioLogico", "ANUNCIANTE_VINCULADA_AO_ANUNCIO");
+        }
         values.put("emailRealEnviado", false);
         values.put("whatsappRealEnviado", false);
         values.put("hardDeleteExecutado", false);
@@ -793,6 +814,29 @@ public class AdminModeracaoAcaoService {
                 agora));
     }
 
+    private String linkEdicaoAnuncio(AnuncioEntity anuncio) {
+        String base = canonicalDomain == null ? "" : canonicalDomain.trim().replaceAll("/+$", "");
+        String slug = anuncio.getSlug();
+        try {
+            URI uri = URI.create(base);
+            if (!List.of("http", "https").contains(uri.getScheme())
+                    || uri.getHost() == null
+                    || uri.getUserInfo() != null
+                    || uri.getQuery() != null
+                    || uri.getFragment() != null
+                    || slug == null
+                    || !slug.matches("[a-z0-9][a-z0-9-]{1,120}")) {
+                throw new IllegalArgumentException("dominio ou slug invalido");
+            }
+            return base + "/meus-anuncios/" + slug + "/editar";
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "dominio canonico indisponivel para notificacao",
+                    exception);
+        }
+    }
+
     private void garantirSolicitacaoAjusteNaoDuplicada(UUID revisaoId) {
         String idempotencyKey = "MODERACAO_SOLICITAR_AJUSTE:" + revisaoId;
         if (outboxRepository.existsByTipoEventoAndIdempotencyKeyAndStatus(
@@ -818,7 +862,7 @@ public class AdminModeracaoAcaoService {
     private String mensagemRevisao(AdminDecisaoModeracaoAcao decisao) {
         return switch (decisao) {
             case APROVAR -> "anuncio aprovado e publicado";
-            case REPROVAR -> "revisao reprovada localmente; e-mail real pendente para fase futura";
+            case REPROVAR -> "anuncio reprovado; notificacao registrada na outbox";
             case SOLICITAR_AJUSTE -> "ajuste solicitado localmente; revisao permanece aberta para decisao final futura";
         };
     }

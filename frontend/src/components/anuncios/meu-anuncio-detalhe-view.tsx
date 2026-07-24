@@ -169,6 +169,7 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
     galeria.find((item) => item.id === imagemSelecionadaId) ?? galeria[0] ?? null
   const status = anuncio ? anuncioStatus(anuncio.status) : null
   const podeMonetizar = anuncio ? anuncioPodeMonetizar(anuncio) : false
+  const deveCorrigirEReenviar = Boolean(anuncio?.acoesPermitidas.corrigirEReenviar)
   const erroAtual: DetalheErro = erro ?? {
     tipo: 'TECNICO',
     titulo: 'Não foi possível carregar o anúncio',
@@ -315,6 +316,17 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
                 </span>
               </div>
 
+              {deveCorrigirEReenviar && anuncio.reprovacao ? (
+                <div className="mt-5 border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-950">
+                  <p className="font-semibold">Seu anúncio precisa de alterações</p>
+                  <p className="mt-2 whitespace-pre-wrap break-words leading-6">{anuncio.reprovacao.motivo}</p>
+                  <p className="mt-3 text-xs leading-5 text-rose-700">
+                    Reprovado em {new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(anuncio.reprovacao.decididoEm))}.
+                    Edite os dados indicados e salve para reenviar o anúncio à análise.
+                  </p>
+                </div>
+              ) : null}
+
               <h2 id="titulo-anuncio" className="mt-5 break-words text-2xl font-extrabold text-slate-950 sm:text-3xl">
                 {anuncio.titulo}
               </h2>
@@ -375,7 +387,7 @@ export function MeuAnuncioDetalheView({ slug }: { slug: string }) {
                   className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#FC1EAD] px-5 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#e01a9a] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2"
                 >
                   <PencilIcon className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Editar anúncio
+                  {deveCorrigirEReenviar ? 'Corrigir e reenviar' : 'Editar anúncio'}
                 </Link>
                 {podeMonetizar ? (
                   <Link

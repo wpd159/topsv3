@@ -27,6 +27,8 @@ class NovaModeracaoV3ContratoTest {
                 .contains("AdminReclassificarMidiaRequest:")
                 .contains("AdminDecidirFotosLoteRequest:")
                 .contains("AdminDecidirFotosLoteResponse:")
+                .contains("APROVAR leva o anuncio diretamente a PUBLICADO/APROVADO")
+                .contains("notificacao idempotente MODERACAO_REPROVADA")
                 .contains("Story retorna 409 e nao participa da moderacao")
                 .contains("video aprovado permanece RESTRITA_18")
                 .doesNotContain("/api/admin/moderacao-v2");

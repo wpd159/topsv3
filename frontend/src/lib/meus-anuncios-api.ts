@@ -32,6 +32,12 @@ export type MeuAnuncioAcoes = {
   pausar: boolean
   reativar: boolean
   remover: boolean
+  corrigirEReenviar: boolean
+}
+
+export type MeuAnuncioReprovacao = {
+  motivo: string
+  decididoEm: string
 }
 
 export type MinhaMidiaGestao = {
@@ -80,6 +86,7 @@ export type MeuAnuncio = {
   atualizadoEm: string | null
   acoesPermitidas: MeuAnuncioAcoes
   visualizacoes: VisualizacoesCanonicas
+  reprovacao: MeuAnuncioReprovacao | null
 }
 
 export type MeuAnuncioCicloVida = {
@@ -177,18 +184,20 @@ function mapMeuAnuncio(payload: unknown): MeuAnuncio {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
 
-  const raw = payload as Omit<MeuAnuncio, 'visualizacoes' | 'acoesPermitidas'> & {
+  const raw = payload as Omit<MeuAnuncio, 'visualizacoes' | 'acoesPermitidas' | 'reprovacao'> & {
     acoesPermitidas?: unknown
     visualizacoes?: unknown
+    reprovacao?: unknown
   }
   try {
     return {
       ...raw,
       acoesPermitidas: parseAcoesPermitidas(raw.acoesPermitidas),
       visualizacoes: parseVisualizacoesCanonicas(raw.visualizacoes),
+      reprovacao: parseReprovacao(raw.reprovacao),
     }
   } catch {
-    throw new MeusAnunciosApiError('O servico retornou visualizacoes em formato incompativel.', 502)
+    throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
 }
 
@@ -200,11 +209,34 @@ function parseAcoesPermitidas(payload: unknown): MeuAnuncioAcoes {
   if (
     typeof raw.pausar !== 'boolean' ||
     typeof raw.reativar !== 'boolean' ||
-    typeof raw.remover !== 'boolean'
+    typeof raw.remover !== 'boolean' ||
+    typeof raw.corrigirEReenviar !== 'boolean'
   ) {
     throw new MeusAnunciosApiError('O servico retornou acoes em formato incompativel.', 502)
   }
-  return { pausar: raw.pausar, reativar: raw.reativar, remover: raw.remover }
+  return {
+    pausar: raw.pausar,
+    reativar: raw.reativar,
+    remover: raw.remover,
+    corrigirEReenviar: raw.corrigirEReenviar,
+  }
+}
+
+function parseReprovacao(payload: unknown): MeuAnuncioReprovacao | null {
+  if (payload == null) return null
+  if (!payload || typeof payload !== 'object') {
+    throw new MeusAnunciosApiError('O servico retornou uma reprovacao em formato incompativel.', 502)
+  }
+  const raw = payload as Partial<MeuAnuncioReprovacao>
+  if (
+    typeof raw.motivo !== 'string' ||
+    !raw.motivo.trim() ||
+    typeof raw.decididoEm !== 'string' ||
+    !Number.isFinite(Date.parse(raw.decididoEm))
+  ) {
+    throw new MeusAnunciosApiError('O servico retornou uma reprovacao em formato incompativel.', 502)
+  }
+  return { motivo: raw.motivo, decididoEm: raw.decididoEm }
 }
 
 function mapCicloVida(payload: unknown): MeuAnuncioCicloVida {

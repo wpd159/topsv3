@@ -66,7 +66,7 @@ class MeusAnunciosCicloVidaCsrfTest {
                 "PAUSADO",
                 "APROVADO",
                 OffsetDateTime.parse("2026-07-22T12:00:00Z"),
-                new MeuAnuncioAcoesDto(false, true, true));
+                new MeuAnuncioAcoesDto(false, true, true, false));
         when(cicloVidaService.pausar(eq("perfil-teste"), any(), anyString())).thenReturn(resposta);
 
         mockMvc.perform(post("/api/public/minha-conta/anuncios/perfil-teste/pausar").with(csrf()))

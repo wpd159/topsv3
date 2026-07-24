@@ -3717,7 +3717,7 @@ paths:
   /api/admin/moderacao/revisoes/{id}/decidir:
     post:
       summary: Decisao local de revisao administrativa
-      description: Restrito a ADMIN e MODERADOR com ANUNCIO_MODERAR. APROVAR e REPROVAR sao decisoes finais, registram decisao unica por revisao e finalizam a revisao. SOLICITAR_AJUSTE e acao intermediaria local, exige motivo valido, nao finaliza a revisao e nao cria decisao final em decisao_moderacao. SOLICITAR_AJUSTE registra auditoria sanitizada e outbox local pendente MODERACAO_SOLICITAR_AJUSTE, sem envio externo; duplicidade pendente retorna 409 por chave local de outbox. REPROVAR registra outbox local pendente MODERACAO_REPROVADA. Nao envia e-mail real, nao envia WhatsApp real, nao executa hard delete e nao retorna payload de revisao.
+      description: Restrito a ADMIN e MODERADOR com ANUNCIO_MODERAR. APROVAR e REPROVAR sao decisoes finais, registram decisao unica por revisao e finalizam a revisao. APROVAR leva o anuncio diretamente a PUBLICADO/APROVADO. REPROVAR leva a REJEITADO/REJEITADO e registra uma notificacao idempotente MODERACAO_REPROVADA na outbox de e-mail, com titulo, motivo sanitizado e link canonico de edicao. A entrega externa depende do processador configurado no ambiente; pre-producao mantem o provedor externo desabilitado e permite apenas captura segura. SOLICITAR_AJUSTE e acao intermediaria, exige motivo valido, nao finaliza a revisao e nao cria decisao final em decisao_moderacao. Nao envia WhatsApp, nao executa hard delete e nao altera decisoes de midia.
       operationId: postAdminModeracaoRevisaoDecidir
       security:
         - AdminSessionCookie: []
@@ -4816,6 +4816,7 @@ components:
         - atualizadoEm
         - acoesPermitidas
         - visualizacoes
+        - reprovacao
       properties:
         id:
           type: string
@@ -4872,10 +4873,28 @@ components:
           $ref: "#/components/schemas/MeuAnuncioAcoesPermitidas"
         visualizacoes:
           $ref: "#/components/schemas/VisualizacoesCanonicas"
+        reprovacao:
+          description: Ultima reprovacao vigente. Nulo quando o anuncio nao esta em REJEITADO/REJEITADO.
+          oneOf:
+            - $ref: "#/components/schemas/MeuAnuncioReprovacao"
+            - type: "null"
+    MeuAnuncioReprovacao:
+      type: object
+      additionalProperties: false
+      required: [motivo, decididoEm]
+      properties:
+        motivo:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Motivo sanitizado e integral da decisao vigente, disponivel apenas ao proprietario autenticado.
+        decididoEm:
+          type: string
+          format: date-time
     MeuAnuncioAcoesPermitidas:
       type: object
       additionalProperties: false
-      required: [pausar, reativar, remover]
+      required: [pausar, reativar, remover, corrigirEReenviar]
       properties:
         pausar:
           type: boolean
@@ -4883,6 +4902,9 @@ components:
           type: boolean
         remover:
           type: boolean
+        corrigirEReenviar:
+          type: boolean
+          description: Verdadeiro somente em REJEITADO/REJEITADO; salvar a edicao cria uma nova revisao pendente.
     MeuAnuncioCicloVida:
       type: object
       additionalProperties: false
@@ -7174,7 +7196,7 @@ components:
           type:
             - string
             - "null"
-          maxLength: 240
+          maxLength: 2000
           description: Obrigatorio para REPROVAR e SOLICITAR_AJUSTE. Valor vazio, nulo ou apenas espacos retorna 400. O backend sanitiza e mascara e-mail, contato e documento antes de auditoria/outbox.
         observacao:
           type:

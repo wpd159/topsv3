@@ -79,7 +79,8 @@ class AdminModeracaoAcaoServiceTest {
                 auditoriaRepository,
                 outboxRepository,
                 new ObjectMapper(),
-                storageAprovacaoService);
+                storageAprovacaoService,
+                "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 

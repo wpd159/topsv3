@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.admin.outbox.template;
 
 import br.com.topsdojob.v3.application.admin.readonly.AdminTextoSanitizer;
 import br.com.topsdojob.v3.persistence.entity.auditoria.OutboxEventoEntity;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -12,7 +13,7 @@ import java.util.regex.Pattern;
 
 public final class AdminOutboxTemplateSanitizer {
 
-    private static final int VALUE_MAX_LENGTH = 180;
+    private static final int VALUE_MAX_LENGTH = 2_000;
     private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
     private static final Pattern URL = Pattern.compile("(?i)https?://\\S+");
     private static final Pattern EMAIL = Pattern.compile("(?i)[A-Z0-9._%+-]+" + "@" + "[A-Z0-9.-]+\\.[A-Z]{2,}");
@@ -26,9 +27,7 @@ public final class AdminOutboxTemplateSanitizer {
         String bruto = entity.getPayloadJson() == null ? "" : entity.getPayloadJson();
         Set<String> campos = detectarCamposMascarados(bruto);
         List<String> pendencias = new ArrayList<>();
-        pendencias.add("envio real exige fase futura e revisao Pro");
-        pendencias.add("link real de painel nao configurado");
-        pendencias.add("provedor externo nao configurado");
+        pendencias.add("entrega externa depende do processador de outbox configurado no ambiente");
 
         String motivo = safeFromDados(dados, "motivoSanitizado", "[motivo]");
         if ("[motivo]".equals(motivo)) {
@@ -37,11 +36,12 @@ public final class AdminOutboxTemplateSanitizer {
         String acao = acaoNecessaria(entity.getTipoEvento());
         return new AdminOutboxTemplateValores(
                 "[anunciante]",
-                "[anuncio]",
+                safeFromDados(dados, "anuncioTitulo", "[anuncio]"),
                 motivo,
                 acao,
                 "[suporte]",
                 "[link_painel_futuro]",
+                linkSeguro(dados),
                 List.copyOf(campos),
                 List.copyOf(pendencias));
     }
@@ -67,11 +67,31 @@ public final class AdminOutboxTemplateSanitizer {
     private static String acaoNecessaria(String tipoEvento) {
         return switch (tipoEvento == null ? "" : tipoEvento) {
             case "MODERACAO_SOLICITAR_AJUSTE" -> "revisar os pontos solicitados antes de nova analise";
-            case "MODERACAO_REPROVADA" -> "aguardar orientacao futura ou abrir atendimento local";
+            case "MODERACAO_REPROVADA" -> "Realize as correcoes e reenvie o anuncio para analise";
             case "ANUNCIO_REMETIDO_REVISAO" -> "acompanhar a revisao no painel futuro";
             case "MODERACAO_MIDIA_REPROVADA" -> "substituir a midia em fase futura aprovada";
             default -> "aguardar tratamento operacional futuro";
         };
+    }
+
+    private static String linkSeguro(Map<String, Object> dados) {
+        if (dados == null || dados.get("linkEdicao") == null) {
+            return "[link-indisponivel]";
+        }
+        try {
+            URI uri = URI.create(String.valueOf(dados.get("linkEdicao")));
+            if (!Set.of("http", "https").contains(uri.getScheme())
+                    || uri.getHost() == null
+                    || uri.getUserInfo() != null
+                    || uri.getQuery() != null
+                    || uri.getFragment() != null
+                    || !uri.getPath().matches("/meus-anuncios/[a-z0-9][a-z0-9-]{1,120}/editar")) {
+                return "[link-indisponivel]";
+            }
+            return uri.toString();
+        } catch (IllegalArgumentException exception) {
+            return "[link-indisponivel]";
+        }
     }
 
     private static Set<String> detectarCamposMascarados(String raw) {
@@ -110,6 +130,7 @@ record AdminOutboxTemplateValores(
         String acaoNecessaria,
         String suporte,
         String linkPainelFuturo,
+        String linkEdicao,
         List<String> camposMascarados,
         List<String> pendencias) {
 }

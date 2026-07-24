@@ -68,6 +68,7 @@ import type {
 type DecisionIntent =
   | { kind: 'OPEN_REVIEW'; title: string; requiresReason: true }
   | { kind: 'APPROVE_AD'; title: string; requiresReason: false }
+  | { kind: 'REPROVE_AD'; title: string; requiresReason: true }
   | { kind: 'REVIEW'; title: string; action: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE'; requiresReason: boolean }
   | { kind: 'MEDIA'; title: string; media: AdminMediaItem; action: 'APROVAR' | 'REPROVAR'; visibility?: 'LIVRE' | 'RESTRITA_18'; requiresReason: boolean }
   | { kind: 'RECLASSIFY'; title: string; media: AdminMediaItem; visibility: 'LIVRE' | 'RESTRITA_18'; requiresReason: true }
@@ -94,6 +95,7 @@ const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }>
 ]
 
 const AUTOMATIC_REVIEW_REASON = 'Revisão aberta automaticamente para aprovação administrativa.'
+const AUTOMATIC_REPROVAL_REVIEW_REASON = 'Revisão aberta automaticamente para reprovação administrativa.'
 
 function formatDate(value?: string | null) {
   if (!value) return 'Não informado'
@@ -152,6 +154,8 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
 }) {
   const [reason, setReason] = useState('')
   const normalizedError = error ? normalizeApiError(error) : null
+  const isAdReproval = intent?.kind === 'REPROVE_AD'
+  const reasonMaxLength = isAdReproval ? 2000 : 240
   const acceptsObservation = intent?.kind === 'MEDIA'
     && intent.media.tipo === 'FOTO'
     && intent.action === 'APROVAR'
@@ -160,20 +164,31 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
   return (
     <Dialog open={Boolean(intent)} onOpenChange={(open) => { if (!open && !busy) onClose() }}>
       <DialogContent className="rounded-md">
-        <DialogHeader><DialogTitle>{intent?.title}</DialogTitle><DialogDescription>A decisão será registrada com ator, data UTC e identificador da requisição.</DialogDescription></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{intent?.title}</DialogTitle>
+          <DialogDescription>
+            {isAdReproval
+              ? 'O anúncio ficará indisponível e o anunciante receberá um e-mail com o motivo e as alterações necessárias.'
+              : 'A decisão será registrada com ator, data UTC e identificador da requisição.'}
+          </DialogDescription>
+        </DialogHeader>
         {intent?.requiresReason || acceptsObservation ? (
           <label>
             <span className="mb-2 block text-sm font-semibold text-zinc-800">
-              {intent?.requiresReason ? 'Motivo obrigatório' : 'Observações'}
+              {isAdReproval
+                ? 'Motivo e alterações necessárias'
+                : intent?.requiresReason
+                  ? 'Motivo obrigatório'
+                  : 'Observações'}
             </span>
             <Textarea
               value={reason}
               onChange={(event) => setReason(event.target.value)}
-              maxLength={240}
+              maxLength={reasonMaxLength}
               rows={4}
               disabled={busy}
             />
-            <span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/240</span>
+            <span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/{reasonMaxLength}</span>
           </label>
         ) : null}
         {normalizedError ? (
@@ -188,7 +203,7 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
             <p className="mt-1 text-amber-800">{normalizedError.message}</p>
           </div>
         ) : null}
-        <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button><Button type="button" onClick={() => onConfirm(reason)} disabled={busy || Boolean(intent?.requiresReason && !reason.trim())}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirmar</Button></DialogFooter>
+        <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button><Button type="button" variant={isAdReproval ? 'destructive' : 'default'} onClick={() => onConfirm(reason)} disabled={busy || Boolean(intent?.requiresReason && !reason.trim())}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{isAdReproval ? 'Confirmar reprovação' : 'Confirmar'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   )
@@ -512,8 +527,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const photoBatchLock = useRef(false)
   const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
   const [navigationError, setNavigationError] = useState<unknown>(null)
-  const [decisionFinished, setDecisionFinished] = useState(false)
-  const [adApproved, setAdApproved] = useState(false)
+  const [decisionOutcome, setDecisionOutcome] = useState<'APPROVED' | 'REPROVED' | 'OTHER' | null>(null)
 
   const load = useCallback(async (preserveSelection?: {
     mediaId: string
@@ -567,8 +581,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   useEffect(() => { void load() }, [load, reload])
 
   useEffect(() => {
-    setDecisionFinished(false)
-    setAdApproved(false)
+    setDecisionOutcome(null)
   }, [anuncioId])
 
   useEffect(() => {
@@ -691,24 +704,28 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     setActionError(null)
     try {
       if (intent.kind === 'OPEN_REVIEW') await submitAdminReview(ad.id, reason)
-      else if (intent.kind === 'APPROVE_AD') {
+      else if (intent.kind === 'APPROVE_AD' || intent.kind === 'REPROVE_AD') {
+        const action = intent.kind === 'APPROVE_AD' ? 'APROVAR' : 'REPROVAR'
         let reviewId = reviewOpen ? ad.revisaoAberta?.id : null
         if (!reviewId) {
-          await submitAdminReview(ad.id, AUTOMATIC_REVIEW_REASON)
+          await submitAdminReview(
+            ad.id,
+            intent.kind === 'APPROVE_AD'
+              ? AUTOMATIC_REVIEW_REASON
+              : AUTOMATIC_REPROVAL_REVIEW_REASON,
+          )
           const refreshedAd = await getAdminAd(ad.id)
           reviewId = refreshedAd.revisaoAberta?.id
         }
         if (!reviewId) throw new Error('A revisão aberta não foi retornada após o envio para análise.')
-        await decideAdminReview(reviewId, 'APROVAR')
+        await decideAdminReview(reviewId, action, intent.kind === 'REPROVE_AD' ? reason : undefined)
         await revalidarCacheCatalogoPublico()
-        setDecisionFinished(true)
-        setAdApproved(true)
+        setDecisionOutcome(intent.kind === 'APPROVE_AD' ? 'APPROVED' : 'REPROVED')
       } else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
         if (intent.action === 'APROVAR') await revalidarCacheCatalogoPublico()
-        setDecisionFinished(true)
-        setAdApproved(intent.action === 'APROVAR')
+        setDecisionOutcome(intent.action === 'APROVAR' ? 'APPROVED' : intent.action === 'REPROVAR' ? 'REPROVED' : 'OTHER')
       } else if (intent.kind === 'MEDIA') {
         const motivo = intent.action === 'REPROVAR' ? reason : undefined
         const observacao = intent.action === 'APROVAR'
@@ -732,7 +749,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     } catch (reasonError) {
       const normalized = normalizeApiError(reasonError)
       if (
-        (intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REVIEW')
+        (intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REPROVE_AD' || intent.kind === 'REVIEW')
         && normalized.kind === 'CONFLICT'
       ) {
         await load()
@@ -838,6 +855,9 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const canApproveAd = canDecideAdReview
     && ad.statusModeracao === 'PENDENTE'
     && (ad.status === 'PENDENTE_REVISAO' || reviewOpen)
+  const canReproveAd = canApproveAd
+    && ad.anunciante?.status === 'ATIVO'
+    && !ad.bloqueioJuridico?.usuarioBloqueado
   const canReactivate = canManageLegalStatus
     && ad.status === 'PAUSADO'
     && ad.statusModeracao === 'APROVADO'
@@ -845,6 +865,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     && !legalBlock?.usuarioBloqueado
   const canRemove = canManageLegalStatus && !removed && ad.status !== 'BLOQUEADO'
   const headerBusy = busy || legalBusy || removalBusy
+  const headerActionClass = 'h-8 whitespace-nowrap px-2.5 text-xs'
 
   return (
     <div className="space-y-5">
@@ -860,13 +881,13 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           </div>
           <div
             aria-label="Ações jurídicas e administrativas"
-            className="flex w-full flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end"
+            className="flex w-full min-w-0 flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end xl:gap-1.5"
           >
             {canApproveAd ? (
               <Button
                 type="button"
                 size="sm"
-                className="whitespace-nowrap bg-emerald-700 text-white hover:bg-emerald-800"
+                className={`${headerActionClass} bg-emerald-700 text-white hover:bg-emerald-800`}
                 disabled={headerBusy}
                 onClick={() => setIntent({
                   kind: 'APPROVE_AD',
@@ -878,13 +899,30 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 Aprovar anúncio
               </Button>
             ) : null}
+            {canReproveAd ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                className={headerActionClass}
+                disabled={headerBusy}
+                onClick={() => setIntent({
+                  kind: 'REPROVE_AD',
+                  title: 'Reprovar anúncio',
+                  requiresReason: true,
+                })}
+              >
+                <XCircle className="mr-1.5 h-4 w-4" />
+                Reprovar anúncio
+              </Button>
+            ) : null}
             {canManageLegalStatus && !removed ? (
               <>
-                {canReactivate ? <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'REACTIVATE', title: 'Reativar anúncio pausado' })}><RotateCcw className="mr-2 h-4 w-4" />Reativar</Button> : null}
-                {legalBlock?.anuncioBloqueado ? <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_AD', title: 'Desbloquear anúncio' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear anúncio</Button> : null}
-                {legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="outline" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_USER', title: 'Desbloquear usuário' })}><Unlock className="mr-2 h-4 w-4" />Desbloquear usuário</Button> : null}
-                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="destructive" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_AD', title: 'Bloquear anúncio' })}><LockKeyhole className="mr-2 h-4 w-4" />Bloquear anúncio</Button> : null}
-                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado && ad.anunciante?.status !== 'SUSPENSO' ? <Button type="button" size="sm" variant="destructive" className="whitespace-nowrap" disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_USER', title: 'Bloquear anúncio e usuário' })}><ShieldAlert className="mr-2 h-4 w-4" />Bloquear anúncio e usuário</Button> : null}
+                {canReactivate ? <Button type="button" size="sm" variant="outline" className={headerActionClass} disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'REACTIVATE', title: 'Reativar anúncio pausado' })}><RotateCcw className="mr-1.5 h-4 w-4" />Reativar</Button> : null}
+                {legalBlock?.anuncioBloqueado ? <Button type="button" size="sm" variant="outline" className={headerActionClass} disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_AD', title: 'Desbloquear anúncio' })}><Unlock className="mr-1.5 h-4 w-4" />Desbloquear anúncio</Button> : null}
+                {legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="outline" className={headerActionClass} disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'UNBLOCK_USER', title: 'Desbloquear usuário' })}><Unlock className="mr-1.5 h-4 w-4" />Desbloquear usuário</Button> : null}
+                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado ? <Button type="button" size="sm" variant="destructive" className={headerActionClass} disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_AD', title: 'Bloquear anúncio' })}><LockKeyhole className="mr-1.5 h-4 w-4" />Bloquear anúncio</Button> : null}
+                {!legalBlock?.anuncioBloqueado && !legalBlock?.usuarioBloqueado && ad.anunciante?.status !== 'SUSPENSO' ? <Button type="button" size="sm" variant="destructive" className={headerActionClass} disabled={headerBusy} onClick={() => setLegalIntent({ kind: 'BLOCK_USER', title: 'Bloquear anúncio e usuário' })}><ShieldAlert className="mr-1.5 h-4 w-4" />Bloquear anúncio e usuário</Button> : null}
               </>
             ) : null}
             {canRemove ? (
@@ -892,18 +930,18 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 type="button"
                 size="sm"
                 variant="destructive"
-                className="whitespace-nowrap border border-red-950 bg-red-700 text-white hover:bg-red-800"
+                className={`${headerActionClass} border border-red-950 bg-red-700 text-white hover:bg-red-800`}
                 disabled={headerBusy}
                 onClick={() => {
                   setRemovalActionError(null)
                   setRemovalOpen(true)
                 }}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="mr-1.5 h-4 w-4" />
                 {'Excluir an\u00fancio'}
               </Button>
             ) : null}
-            {isAdmin && canModerateAd ? <Button asChild size="sm" variant="outline" className="whitespace-nowrap"><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-2 h-4 w-4" />Editar anúncio</Link></Button> : null}
+            {isAdmin && canModerateAd ? <Button asChild size="sm" variant="outline" className={headerActionClass}><Link href={`/admin/anuncios/${ad.id}/editar`}><Pencil className="mr-1.5 h-4 w-4" />Editar anúncio</Link></Button> : null}
           </div>
         </div>
       </header>
@@ -916,15 +954,17 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         </nav>
       ) : null}
       {navigationError ? <ContractState error={navigationError} compact /> : null}
-      {decisionFinished ? (
+      {decisionOutcome ? (
         <div role="status" className="flex flex-col gap-3 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:flex-row sm:items-center sm:justify-between">
           <span>
-            {adApproved
-              ? 'Anúncio aprovado e publicado com sucesso.'
-              : 'Decisão persistida. O avanço permanece sob seu controle.'}
+            {decisionOutcome === 'APPROVED'
+              ? 'Anúncio aprovado com sucesso.'
+              : decisionOutcome === 'REPROVED'
+                ? 'Anúncio reprovado. O anunciante foi informado sobre as alterações necessárias.'
+                : 'Decisão persistida. O avanço permanece sob seu controle.'}
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            {adApproved ? (
+            {decisionOutcome === 'APPROVED' ? (
               <>
                 <Button asChild size="sm" variant="outline">
                   <Link href={adminAdQueueListHref({ ...queueContext, page: 0, situacao: 'TODOS' })}>Ver Todos</Link>
@@ -1022,19 +1062,6 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                       >
                         <Clock3 className="mr-2 h-4 w-4" />
                         Solicitar ajuste
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        onClick={() => setIntent({
-                          kind: 'REVIEW',
-                          title: 'Rejeitar anúncio',
-                          action: 'REPROVAR',
-                          requiresReason: true,
-                        })}
-                      >
-                        <XCircle className="mr-2 h-4 w-4" />
-                        Rejeitar anúncio
                       </Button>
                     </>
                   ) : null}

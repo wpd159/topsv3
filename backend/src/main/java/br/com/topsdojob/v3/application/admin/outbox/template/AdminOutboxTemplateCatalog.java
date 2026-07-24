@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 public class AdminOutboxTemplateCatalog {
 
     private static final String CANAL_LOCAL_PREVIEW = "CANAL_LOCAL_PREVIEW";
+    private static final String CANAL_EMAIL_OUTBOX = "EMAIL_OUTBOX";
 
     private final Map<String, AdminOutboxTemplateDto> templates;
 
@@ -26,11 +27,11 @@ public class AdminOutboxTemplateCatalog {
         register(values, new AdminOutboxTemplateDto(
                 AdminOutboxTemplateTipo.MODERACAO_REPROVADA,
                 "MODERACAO_REPROVADA",
-                CANAL_LOCAL_PREVIEW,
-                "Revisao nao aprovada para [anuncio]",
-                "Ola [anunciante]. A revisao do anuncio [anuncio] nao foi aprovada nesta previa local. "
-                        + "Motivo: [motivo]. Acao necessaria: [acao_necessaria]. "
-                        + "Suporte: [suporte]. Nesta previa local, nenhuma comunicacao foi enviada."));
+                CANAL_EMAIL_OUTBOX,
+                "Seu an\u00fancio precisa de altera\u00e7\u00f5es",
+                "A an\u00e1lise do an\u00fancio [anuncio] encontrou pend\u00eancias. "
+                        + "Motivo e altera\u00e7\u00f5es necess\u00e1rias: [motivo]. "
+                        + "[acao_necessaria]. Acesse o painel e edite o an\u00fancio em [link_edicao]."));
         register(values, new AdminOutboxTemplateDto(
                 AdminOutboxTemplateTipo.ANUNCIO_REMETIDO_REVISAO,
                 "ANUNCIO_REMETIDO_REVISAO",

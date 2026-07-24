@@ -180,18 +180,23 @@ const decisionPanel = detail.slice(
   detail.indexOf('<h2 className="font-semibold text-zinc-950">Decisão do anúncio</h2>'),
   detail.indexOf('</aside>', detail.indexOf('<h2 className="font-semibold text-zinc-950">Decisão do anúncio</h2>')),
 )
-assert.ok(decisionPanel.includes('Abrir revisão') && decisionPanel.includes('Rejeitar anúncio'), 'O quadro de decisao deve preservar abertura e rejeicao.')
-assert.ok(!decisionPanel.includes('Aprovar anúncio'), 'A aprovacao nao pode permanecer duplicada no quadro de decisao.')
+assert.ok(decisionPanel.includes('Abrir revisão'), 'O quadro de decisao deve preservar a abertura da revisao.')
+for (const duplicate of ['Aprovar anúncio', 'Rejeitar anúncio', 'Reprovar anúncio']) {
+  assert.ok(!decisionPanel.includes(duplicate), `A acao ${duplicate} nao pode permanecer duplicada no quadro de decisao.`)
+}
 assert.ok(detail.includes("const canDecideAdReview = canModerateAd && !removed && ad.status !== 'BLOQUEADO'"), 'Anuncio bloqueado ou removido nao pode exibir acoes de decisao.')
-assert.ok(detail.includes("kind: 'APPROVE_AD'") && detail.includes("kind: 'REVIEW'") && detail.includes("action: 'REPROVAR',") && detail.includes('requiresReason: true'), 'Aprovacao sem motivo e rejeicao com motivo devem permanecer distintas.')
-assert.ok(detail.includes('await submitAdminReview(ad.id, AUTOMATIC_REVIEW_REASON)') && detail.includes('const refreshedAd = await getAdminAd(ad.id)') && detail.includes("await decideAdminReview(reviewId, 'APROVAR')"), 'A aprovacao deve abrir a revisao automaticamente e reutilizar os contratos canonicos.')
+assert.ok(detail.includes("kind: 'APPROVE_AD'") && detail.includes("kind: 'REPROVE_AD'"), 'Aprovacao e reprovacao devem permanecer como intencoes distintas.')
+assert.ok(detail.includes('await submitAdminReview(') && detail.includes('AUTOMATIC_REVIEW_REASON') && detail.includes('AUTOMATIC_REPROVAL_REVIEW_REASON') && detail.includes('const refreshedAd = await getAdminAd(ad.id)') && detail.includes("intent.kind === 'APPROVE_AD' ? 'APROVAR' : 'REPROVAR'"), 'A aprovacao e a reprovacao devem abrir a revisao automaticamente e reutilizar os contratos canonicos.')
 assert.ok(detail.includes("let reviewId = reviewOpen ? ad.revisaoAberta?.id : null"), 'Revisao ja aberta deve ser aprovada sem nova abertura.')
-assert.ok(detail.includes('await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)') && detail.includes('await load()'), 'As demais decisoes devem reutilizar o adapter canonico e atualizar o detalhe imediatamente.')
+assert.ok(detail.includes("await decideAdminReview(reviewId, action, intent.kind === 'REPROVE_AD' ? reason : undefined)") && detail.includes('await load()'), 'A reprovacao deve reutilizar o adapter canonico e atualizar o detalhe imediatamente.')
 assert.ok(detail.includes('await revalidarCacheCatalogoPublico()'), 'A aprovacao deve invalidar o cache publico de catalogo e localidades.')
-assert.ok(detail.includes('Anúncio aprovado e publicado com sucesso.'), 'O sucesso deve confirmar aprovacao e publicacao na mesma acao.')
+assert.ok(detail.includes('Anúncio aprovado com sucesso.'), 'O sucesso deve apresentar a aprovacao como acao administrativa unica.')
+assert.ok(detail.includes('Anúncio reprovado. O anunciante foi informado sobre as alterações necessárias.'), 'A reprovacao deve confirmar a orientacao ao anunciante.')
+assert.ok(detail.includes('Motivo e alterações necessárias') && detail.includes('Confirmar reprovação'), 'O modal deve exigir o motivo integral da reprovacao.')
+assert.ok(detail.includes('O anúncio ficará indisponível e o anunciante receberá um e-mail com o motivo e as alterações necessárias.'), 'O modal deve explicar o efeito da reprovacao.')
 assert.ok(publicCatalogApi.includes("PUBLIC_CATALOG_CACHE_TAG = 'public-catalog'") && publicCatalogApi.includes('tags: [PUBLIC_CATALOG_CACHE_TAG]'), 'Catalogo, localidades e sitemap devem compartilhar a tag canonica de cache.')
 assert.ok(publicCatalogActions.includes('revalidateTag(PUBLIC_CATALOG_CACHE_TAG)'), 'A acao administrativa deve reutilizar a invalidacao de cache do Next.')
-assert.ok(detail.includes("intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REVIEW'") && detail.includes('O estado do anúncio mudou.'), 'Conflito 409 da decisao deve atualizar o detalhe e informar a causa correta.')
+assert.ok(detail.includes("intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REPROVE_AD'") && detail.includes('O estado do anúncio mudou.'), 'Conflito 409 da decisao deve atualizar o detalhe e informar a causa correta.')
 assert.ok(detail.includes('decisionLock.current') && detail.includes('disabled={headerBusy}'), 'A aprovacao deve impedir duplo clique durante a decisao.')
 
 assert.ok(documents.includes('getAdminDocumentTemporaryUrl'), 'Documento deve ser aberto por URL temporaria administrativa.')
@@ -212,10 +217,10 @@ for (const action of ['Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usu�
   assert.ok(detail.includes(action) || list.includes(action), `Acao administrativa ausente: ${action}`)
 }
 const detailHeader = detail.slice(detail.indexOf('<header'), detail.indexOf('</header>') + '</header>'.length)
-for (const action of ['Aprovar anúncio', 'Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usuário', 'Desbloquear anúncio', 'Desbloquear usuário', 'Editar anúncio']) {
+for (const action of ['Aprovar anúncio', 'Reprovar anúncio', 'Reativar', 'Bloquear anúncio', 'Bloquear anúncio e usuário', 'Desbloquear anúncio', 'Desbloquear usuário', 'Editar anúncio']) {
   assert.ok(detailHeader.includes(action), `Acao administrativa deve permanecer no cabecalho: ${action}`)
 }
-const defaultHeaderActionOrder = ['Aprovar anúncio', 'Bloquear anúncio', 'Bloquear anúncio e usuário', "Excluir an\\u00fancio", 'Editar anúncio']
+const defaultHeaderActionOrder = ['Aprovar anúncio', 'Reprovar anúncio', 'Bloquear anúncio', 'Bloquear anúncio e usuário', "Excluir an\\u00fancio", 'Editar anúncio']
 for (let index = 1; index < defaultHeaderActionOrder.length; index += 1) {
   assert.ok(
     detailHeader.indexOf(defaultHeaderActionOrder[index - 1]) < detailHeader.indexOf(defaultHeaderActionOrder[index]),
@@ -228,7 +233,7 @@ assert.ok(detail.includes("isAdmin && canModerateAd"), 'Somente ADMIN com ANUNCI
 assert.ok(detail.includes('categoria obrigatória') || detail.includes('Categoria obrigatória'), 'Bloqueio deve exigir categoria.')
 assert.ok(detail.includes('Motivo obrigatório') && detail.includes('Observação interna opcional'), 'Bloqueio deve coletar motivo e observacao interna opcional.')
 assert.ok(detail.includes('ad.bloqueioJuridico') && detailHeader.includes('ad.status'), 'Cabecalho protegido deve mostrar o estado juridico por meio do status canonico.')
-assert.ok(detailHeader.includes('Ações jurídicas e administrativas') && detailHeader.includes('xl:flex-nowrap') && detailHeader.includes('flex-wrap'), 'Acoes devem ficar em uma linha no desktop e quebrar de forma organizada no mobile.')
+assert.ok(detailHeader.includes('Ações jurídicas e administrativas') && detailHeader.includes('xl:flex-nowrap') && detailHeader.includes('flex-wrap'), 'Acoes devem ficar em uma linha no desktop amplo e quebrar de forma organizada sem overflow abaixo desse breakpoint.')
 assert.ok(!detailHeader.includes('overflow-x-auto'), 'O cabecalho nao pode criar rolagem horizontal em viewport estreito.')
 assert.ok(detail.includes("ad.statusModeracao === 'PENDENTE'") && detail.includes("ad.status === 'PENDENTE_REVISAO' || reviewOpen"), 'A aprovacao deve aparecer somente para dados pendentes ou revisao aberta pendente.')
 assert.ok(!detail.includes('Situação jurídica') && !detail.includes('legal-status-title'), 'O bloco juridico separado nao pode permanecer no corpo.')

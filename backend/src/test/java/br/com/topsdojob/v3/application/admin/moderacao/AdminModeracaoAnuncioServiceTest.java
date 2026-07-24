@@ -15,6 +15,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracao
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
+import br.com.topsdojob.v3.persistence.entity.auditoria.OutboxEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
@@ -75,7 +76,8 @@ class AdminModeracaoAnuncioServiceTest {
                 auditoriaRepository,
                 outboxRepository,
                 new ObjectMapper(),
-                storageService);
+                storageService,
+                "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
@@ -119,6 +121,62 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(response.hardDeleteExecutado()).isFalse();
         verify(anuncioRepository, never()).delete(any(AnuncioEntity.class));
         verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
+    }
+
+    @Test
+    void reprovacaoRegistraUmaNotificacaoIdempotenteComMotivoTituloELinkSanitizados() {
+        Fixture fixture = fixture();
+        String motivo = """
+                Corrigir a descricao <script>alert('x')</script>, completar o documento ausente
+                e remover o contato ana@example.invalid +5511999999999 123.456.789-09.
+                """;
+
+        var response = decidir(fixture, AdminDecisaoModeracaoAcao.REPROVAR, motivo);
+
+        assertThat(response.mensagem()).contains("notificacao registrada na outbox");
+        ArgumentCaptor<OutboxEventoEntity> outbox = ArgumentCaptor.forClass(OutboxEventoEntity.class);
+        verify(outboxRepository).save(outbox.capture());
+        assertThat(outbox.getValue().getTipoEvento()).isEqualTo("MODERACAO_REPROVADA");
+        assertThat(outbox.getValue().getIdempotencyKey())
+                .isEqualTo("MODERACAO_REPROVADA:" + fixture.revisao().getId());
+        assertThat(outbox.getValue().getPayloadJson())
+                .contains(
+                        "\"anuncioTitulo\":\"Anúncio sintético\"",
+                        "\"destinatarioUsuarioId\":\"" + fixture.usuario().getId() + "\"",
+                        "\"destinatarioLogico\":\"ANUNCIANTE_VINCULADA_AO_ANUNCIO\"",
+                        "\"linkEdicao\":\"https://v3.example.invalid/meus-anuncios/anuncio-moderacao-teste/editar\"",
+                        "[email-mascarado]",
+                        "[contato-mascarado]",
+                        "[documento-mascarado]")
+                .doesNotContain("<script>", "ana@example.invalid", "+5511999999999", "123.456.789-09");
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.REPROVAR, motivo))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409");
+        verify(outboxRepository, times(1)).save(any());
+    }
+
+    @Test
+    void estadoAprovadoOuProprietarioBloqueadoNaoReprovaNemCriaNotificacao() {
+        Fixture aprovado = fixture();
+        aprovado.anuncio().aplicarModeracao(
+                StatusAnuncio.PUBLICADO,
+                StatusModeracaoAnuncio.APROVADO,
+                OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+
+        assertThatThrownBy(() -> decidir(aprovado, AdminDecisaoModeracaoAcao.REPROVAR, "corrigir dados"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do anuncio");
+
+        Fixture bloqueado = fixture();
+        bloqueado.usuario().bloquearJuridicamente(OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+        assertThatThrownBy(() -> decidir(bloqueado, AdminDecisaoModeracaoAcao.REPROVAR, "corrigir dados"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do proprietario");
+
+        verify(outboxRepository, never()).save(any());
     }
 
     @Test

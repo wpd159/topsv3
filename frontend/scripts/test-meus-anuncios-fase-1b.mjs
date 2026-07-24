@@ -36,6 +36,7 @@ for (const field of [
   'capa',
   'midias',
   'visualizacoes',
+  'reprovacao',
   'acoesPermitidas',
 ]) {
   assert.match(api, new RegExp(`\\b${field}:`), `Campo ausente do MeuAnuncio: ${field}`)
@@ -48,6 +49,10 @@ assert.match(card, /\/meus-anuncios\/\$\{encodeURIComponent\(anuncio\.slug\)\}/)
 assert.match(card, /\/meus-anuncios\/\$\{encodeURIComponent\(anuncio\.slug\)\}\/editar/)
 assert.match(card, /\/meus-anuncios\/\$\{encodeURIComponent\(anuncio\.slug\)\}\/monetizar/)
 assert.match(card, /anuncio\.status === 'PUBLICADO'/)
+assert.match(card, /anuncio\.reprovacao\.motivo/)
+assert.match(card, /anuncio\.reprovacao\.decididoEm/)
+assert.match(card, /anuncio\.acoesPermitidas\.corrigirEReenviar/)
+assert.match(normalized(card), /Corrigir e reenviar/)
 assert.match(normalized(card), /Detalhes/)
 assert.match(normalized(card), /Editar/)
 assert.match(normalized(card), /Monetizar/)
@@ -79,6 +84,7 @@ for (const field of [
   'anuncio.capa',
   'anuncio.midias',
   'anuncio.visualizacoes',
+  'anuncio.reprovacao',
 ]) {
   assert.ok(detail.includes(field), `Campo do detalhe nao renderizado: ${field}`)
 }
@@ -109,6 +115,10 @@ assert.doesNotMatch(listPage, /mensagem:\s*error instanceof Error/)
 assert.doesNotMatch(detail, /mensagem:\s*error instanceof Error/)
 assert.match(normalized(detail), /Nenhum servico informado/)
 assert.match(normalized(detail), /Nenhum local de atendimento informado/)
+assert.match(detail, /anuncio\.reprovacao\.motivo/)
+assert.match(detail, /anuncio\.reprovacao\.decididoEm/)
+assert.match(detail, /acoesPermitidas\.corrigirEReenviar/)
+assert.match(normalized(detail), /Corrigir e reenviar/)
 
 for (const forbidden of [
   'Cliques',

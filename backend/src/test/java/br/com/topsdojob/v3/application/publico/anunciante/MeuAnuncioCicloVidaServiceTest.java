@@ -57,7 +57,8 @@ class MeuAnuncioCicloVidaServiceTest {
             return new br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAcoesDto(
                     anuncio.podePausarPeloProprietario(),
                     anuncio.podeReativarPeloProprietario(),
-                    anuncio.podeRemoverPeloProprietario());
+                    anuncio.podeRemoverPeloProprietario(),
+                    false);
         });
         service = new MeuAnuncioCicloVidaService(
                 consultaService,

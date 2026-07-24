@@ -87,6 +87,48 @@ class AdminOutboxPreviewServiceTest {
     }
 
     @Test
+    void reprovacaoRenderizaEmailSeguroComMotivoIntegralELinkCanonico() {
+        UUID id = UUID.randomUUID();
+        String payload = """
+                {
+                  "anuncioId": "00000000-0000-4000-8000-000000000501",
+                  "revisaoId": "00000000-0000-4000-8000-000000000801",
+                  "decisao": "REPROVAR",
+                  "anuncioTitulo": "Anuncio sintetico",
+                  "motivoSanitizado": "Corrigir a descricao completa <script>alert(1)</script> e remover o contato ana@example.invalid.",
+                  "linkEdicao": "https://v3.example.invalid/meus-anuncios/anuncio-sintetico/editar",
+                  "destinatarioUsuarioId": "00000000-0000-4000-8000-000000000101",
+                  "destinatarioLogico": "PROPRIETARIO_DO_ANUNCIO",
+                  "documentoKyc": "123.456.789-09",
+                  "storageKey": "documentos/privado.jpg"
+                }
+                """;
+        when(repository.findById(id)).thenReturn(Optional.of(outbox(id, "MODERACAO_REPROVADA", payload)));
+
+        var preview = service.preview(id, principal(PapelUsuario.ADMIN));
+
+        assertThat(preview.assuntoSanitizado()).isEqualTo("Seu anúncio precisa de alterações");
+        assertThat(preview.canalPrevisto()).isEqualTo("EMAIL_OUTBOX");
+        assertThat(preview.envioExternoExecutado()).isFalse();
+        assertThat(preview.somentePreview()).isTrue();
+        assertThat(preview.corpoSanitizado())
+                .contains(
+                        "Anuncio sintetico",
+                        "Corrigir a descricao completa",
+                        "Realize as correcoes e reenvie o anuncio para analise",
+                        "https://v3.example.invalid/meus-anuncios/anuncio-sintetico/editar",
+                        "[email-mascarado]")
+                .doesNotContain(
+                        "<script>",
+                        "ana@example.invalid",
+                        "123.456.789-09",
+                        "documentos/privado.jpg",
+                        "documentoKyc",
+                        "storageKey");
+        verify(repository, never()).save(any(OutboxEventoEntity.class));
+    }
+
+    @Test
     void moderadorNaoAcessaPreviewForaDeModeracao() {
         UUID id = UUID.randomUUID();
         when(repository.findById(id)).thenReturn(Optional.of(outbox(id, "PAGAMENTO_EVENTO_LOCAL", "{}")));

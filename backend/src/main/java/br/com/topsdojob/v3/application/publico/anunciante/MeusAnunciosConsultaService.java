@@ -7,6 +7,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAcoesDto
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioLocalizacaoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioReprovacaoDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
@@ -24,15 +25,19 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
+import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -56,6 +61,7 @@ public class MeusAnunciosConsultaService {
     private final EstadoRepository estadoRepository;
     private final CidadeRepository cidadeRepository;
     private final BairroRepository bairroRepository;
+    private final DecisaoModeracaoRepository decisaoModeracaoRepository;
     private final MidiaPublicaMapper midiaMapper;
     private final MidiaPublicaSeguraPolicy midiaSeguraPolicy;
     private final VisualizacaoTotalCanonicaService visualizacaoService;
@@ -69,6 +75,7 @@ public class MeusAnunciosConsultaService {
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
+            DecisaoModeracaoRepository decisaoModeracaoRepository,
             MidiaPublicaMapper midiaMapper,
             MidiaPublicaSeguraPolicy midiaSeguraPolicy,
             VisualizacaoTotalCanonicaService visualizacaoService) {
@@ -80,6 +87,7 @@ public class MeusAnunciosConsultaService {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
+        this.decisaoModeracaoRepository = decisaoModeracaoRepository;
         this.midiaMapper = midiaMapper;
         this.midiaSeguraPolicy = midiaSeguraPolicy;
         this.visualizacaoService = visualizacaoService;
@@ -168,6 +176,13 @@ public class MeusAnunciosConsultaService {
                         .toList()).stream()
                 .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
         Map<UUID, VisualizacoesCanonicasDto> visualizacoes = visualizacaoService.calcularEmLote(anuncioIds);
+        Map<UUID, MeuAnuncioReprovacaoDto> reprovacoes = decisaoModeracaoRepository
+                .findReprovacoesByAnuncioIdIn(anuncioIds).stream()
+                .collect(Collectors.toMap(
+                        DecisaoModeracaoRepository.ReprovacaoPorAnuncioProjection::getAnuncioId,
+                        item -> new MeuAnuncioReprovacaoDto(item.getMotivo(), item.getDecididoEm()),
+                        (maisRecente, ignorada) -> maisRecente,
+                        LinkedHashMap::new));
 
         return anuncios.stream()
                 .map(anuncio -> new MeuAnuncioDto(
@@ -189,7 +204,8 @@ public class MeusAnunciosConsultaService {
                         acoesPermitidas(anuncio),
                         Objects.requireNonNull(
                                 visualizacoes.get(anuncio.getId()),
-                                "visualizacoes canonicas ausentes para anuncio")))
+                                "visualizacoes canonicas ausentes para anuncio"),
+                        reprovacaoAtual(anuncio, reprovacoes)))
                 .toList();
     }
 
@@ -197,7 +213,19 @@ public class MeusAnunciosConsultaService {
         return new MeuAnuncioAcoesDto(
                 anuncio.podePausarPeloProprietario(),
                 anuncio.podeReativarPeloProprietario(),
-                anuncio.podeRemoverPeloProprietario());
+                anuncio.podeRemoverPeloProprietario(),
+                anuncio.getStatus() == StatusAnuncio.REJEITADO
+                        && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.REJEITADO);
+    }
+
+    private MeuAnuncioReprovacaoDto reprovacaoAtual(
+            AnuncioEntity anuncio,
+            Map<UUID, MeuAnuncioReprovacaoDto> reprovacoes) {
+        if (anuncio.getStatus() != StatusAnuncio.REJEITADO
+                || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.REJEITADO) {
+            return null;
+        }
+        return reprovacoes.get(anuncio.getId());
     }
 
     private MeuAnuncioLocalizacaoDto localizacao(

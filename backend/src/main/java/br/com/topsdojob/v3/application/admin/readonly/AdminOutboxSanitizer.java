@@ -21,6 +21,10 @@ public final class AdminOutboxSanitizer {
             "statusAnuncio",
             "statusModeracao",
             "motivoSanitizado",
+            "anuncioTitulo",
+            "linkEdicao",
+            "destinatarioUsuarioId",
+            "destinatarioLogico",
             "hardDeleteExecutado",
             "envioExternoPendente");
     private static final Set<String> BLOCKED_KEY_FRAGMENTS = Set.of(
@@ -63,7 +67,7 @@ public final class AdminOutboxSanitizer {
         }
         for (String key : SAFE_KEYS) {
             if (parsed.containsKey(key) && !blockedKey(key)) {
-                result.put(key, safeValue(parsed.get(key)));
+                result.put(key, safeValue(key, parsed.get(key)));
             }
         }
         result.put("conteudoDisponivel", !result.isEmpty());
@@ -117,11 +121,12 @@ public final class AdminOutboxSanitizer {
                         || tipoEvento.equals("MODERACAO_MIDIA_REPROVADA"));
     }
 
-    private static Object safeValue(Object value) {
+    private static Object safeValue(String key, Object value) {
         if (value instanceof Boolean || value instanceof Number) {
             return value;
         }
-        return AdminTextoSanitizer.resumo(String.valueOf(value), VALUE_MAX_LENGTH);
+        int maxLength = "motivoSanitizado".equals(key) ? 2_000 : VALUE_MAX_LENGTH;
+        return AdminTextoSanitizer.resumo(String.valueOf(value), maxLength);
     }
 
     private static boolean blockedKey(String key) {

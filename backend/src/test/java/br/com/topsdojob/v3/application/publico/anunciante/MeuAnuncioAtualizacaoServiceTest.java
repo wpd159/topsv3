@@ -214,6 +214,31 @@ class MeuAnuncioAtualizacaoServiceTest {
     }
 
     @Test
+    void anuncioRejeitadoCorrigidoVoltaParaPendenteComNovaRevisaoSemPublicar() {
+        AnuncioEntity anuncio = anuncio();
+        anuncio.aplicarModeracao(
+                StatusAnuncio.REJEITADO,
+                StatusModeracaoAnuncio.REJEITADO,
+                PUBLICADO_EM.plusDays(1));
+        prepararLocalidadeSemBairro(anuncio);
+        when(revisaoRepository.findFirstByAnuncioIdAndStatusOrderByCriadoEmDesc(
+                ANUNCIO_ID, StatusRevisaoAnuncio.ABERTA)).thenReturn(Optional.empty());
+        when(consultaService.detalhar("slug-preservado", authentication))
+                .thenReturn(mock(MeuAnuncioDto.class));
+
+        service.atualizar("slug-preservado", requestSemBairro(), authentication);
+
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
+        assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.PENDENTE);
+        ArgumentCaptor<RevisaoAnuncioEntity> revisaoCaptor =
+                ArgumentCaptor.forClass(RevisaoAnuncioEntity.class);
+        verify(revisaoRepository).save(revisaoCaptor.capture());
+        assertThat(revisaoCaptor.getValue().getTipo()).isEqualTo(TipoRevisaoAnuncio.EDICAO);
+        assertThat(revisaoCaptor.getValue().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
+        verify(revisaoRepository, never()).delete(any(RevisaoAnuncioEntity.class));
+    }
+
+    @Test
     void revisaoEmAnaliseBloqueiaCorridaCom409() {
         when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio());
         when(revisaoRepository.existsByAnuncioIdAndStatusIn(eq(ANUNCIO_ID), any())).thenReturn(true);

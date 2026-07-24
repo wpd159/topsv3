@@ -69,6 +69,13 @@ export function anuncioPodeMonetizar(anuncio: Pick<MeuAnuncio, 'status'>) {
   return anuncio.status === 'PUBLICADO'
 }
 
+function formatarDataReprovacao(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
 export function meuAnuncioUrlPublicaSegura(url: string | null | undefined) {
   const valor = url?.trim()
   if (!valor) return null
@@ -97,6 +104,7 @@ export function MeuAnuncioCard({ anuncio, onCicloVida }: MeuAnuncioCardProps) {
     : null
   const capa = capaPublica ?? '/icone-sem-foto.png'
   const podeMonetizar = anuncioPodeMonetizar(anuncio)
+  const deveCorrigirEReenviar = anuncio.acoesPermitidas.corrigirEReenviar
 
   return (
     <article className="group mx-auto flex w-full max-w-[330px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-all duration-300 hover:-translate-y-0.5 hover:border-gray-300 hover:shadow-md">
@@ -134,6 +142,15 @@ export function MeuAnuncioCard({ anuncio, onCicloVida }: MeuAnuncioCardProps) {
           {formatarVisualizacoesCanonicas(anuncio.visualizacoes)} visualizações
         </p>
         <p className="mt-2 text-xs text-slate-500">{anuncioModeracao(anuncio.statusModeracao)}</p>
+        {deveCorrigirEReenviar && anuncio.reprovacao ? (
+          <div className="mt-3 border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-950">
+            <p className="font-semibold">Alterações necessárias</p>
+            <p className="mt-1 whitespace-pre-wrap break-words leading-5">{anuncio.reprovacao.motivo}</p>
+            <p className="mt-2 text-rose-700">
+              Decisão em {formatarDataReprovacao(anuncio.reprovacao.decididoEm)}. Corrija os dados e salve para reenviar à análise.
+            </p>
+          </div>
+        ) : null}
 
         <div className="mt-auto grid grid-cols-2 gap-2 border-t border-gray-100 pt-4">
           <Link
@@ -148,7 +165,7 @@ export function MeuAnuncioCard({ anuncio, onCicloVida }: MeuAnuncioCardProps) {
             className="inline-flex items-center justify-center rounded-lg bg-[#FC1EAD] px-3 py-2 text-xs font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#e01a9a] hover:shadow-sm"
           >
             <PencilIcon className="mr-1 h-4 w-4" />
-            Editar
+            {deveCorrigirEReenviar ? 'Corrigir e reenviar' : 'Editar'}
           </Link>
           {podeMonetizar ? (
             <Link

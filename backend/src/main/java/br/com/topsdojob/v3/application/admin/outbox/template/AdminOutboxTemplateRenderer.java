@@ -8,7 +8,8 @@ import org.springframework.stereotype.Component;
 public class AdminOutboxTemplateRenderer {
 
     private static final int SUBJECT_MAX_LENGTH = 180;
-    private static final int BODY_MAX_LENGTH = 1200;
+    private static final int BODY_MAX_LENGTH = 5_000;
+    private static final String LINK_PLACEHOLDER = "[link-canonico]";
 
     private final AdminOutboxTemplateCatalog catalog;
 
@@ -43,7 +44,9 @@ public class AdminOutboxTemplateRenderer {
                 .replace("[motivo]", values.motivo())
                 .replace("[acao_necessaria]", values.acaoNecessaria())
                 .replace("[suporte]", values.suporte())
-                .replace("[link_painel_futuro]", values.linkPainelFuturo());
-        return AdminOutboxTemplateSanitizer.textoSeguro(rendered, maxLength);
+                .replace("[link_painel_futuro]", values.linkPainelFuturo())
+                .replace("[link_edicao]", LINK_PLACEHOLDER);
+        String seguro = AdminOutboxTemplateSanitizer.textoSeguro(rendered, maxLength);
+        return seguro == null ? null : seguro.replace(LINK_PLACEHOLDER, values.linkEdicao());
     }
 }

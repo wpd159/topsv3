@@ -27,6 +27,7 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
+import br.com.topsdojob.v3.persistence.repository.DecisaoModeracaoRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
@@ -68,6 +69,7 @@ class MeusAnunciosConsultaServiceTest {
     private EstadoRepository estadoRepository;
     private CidadeRepository cidadeRepository;
     private BairroRepository bairroRepository;
+    private DecisaoModeracaoRepository decisaoModeracaoRepository;
     private MidiaPublicaUrlService urlService;
     private VisualizacaoTotalCanonicaService visualizacaoService;
     private MeusAnunciosConsultaService service;
@@ -82,6 +84,7 @@ class MeusAnunciosConsultaServiceTest {
         estadoRepository = mock(EstadoRepository.class);
         cidadeRepository = mock(CidadeRepository.class);
         bairroRepository = mock(BairroRepository.class);
+        decisaoModeracaoRepository = mock(DecisaoModeracaoRepository.class);
         urlService = mock(MidiaPublicaUrlService.class);
         visualizacaoService = mock(VisualizacaoTotalCanonicaService.class);
         when(visualizacaoService.calcularEmLote(any())).thenAnswer(invocation -> {
@@ -99,6 +102,7 @@ class MeusAnunciosConsultaServiceTest {
                 estadoRepository,
                 cidadeRepository,
                 bairroRepository,
+                decisaoModeracaoRepository,
                 new MidiaPublicaMapper(urlService),
                 new MidiaPublicaSeguraPolicy(),
                 visualizacaoService);
@@ -169,6 +173,41 @@ class MeusAnunciosConsultaServiceTest {
         assertThat(resultado.get(1).acoesPermitidas().pausar()).isFalse();
         assertThat(resultado.get(1).acoesPermitidas().reativar()).isTrue();
         assertThat(resultado.get(1).capa()).isNull();
+    }
+
+    @Test
+    void anuncioRejeitadoExibeMotivoIntegralEAcaoDeCorrecaoEmConsultaLote() {
+        stubUsuarioAtivo();
+        AnuncioEntity rejeitado = anuncio(
+                ANUNCIO_A_ID,
+                USUARIO_ID,
+                "perfil-rejeitado",
+                StatusAnuncio.REJEITADO);
+        rejeitado.aplicarModeracao(
+                StatusAnuncio.REJEITADO,
+                StatusModeracaoAnuncio.REJEITADO,
+                AGORA);
+        when(anuncioRepository.findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(USUARIO_ID))
+                .thenReturn(List.of(rejeitado));
+        when(localizacaoRepository.findByAnuncioIdIn(any())).thenReturn(List.of());
+        when(anuncioMidiaRepository.findByAnuncioIdIn(any())).thenReturn(List.of());
+
+        DecisaoModeracaoRepository.ReprovacaoPorAnuncioProjection decisao =
+                mock(DecisaoModeracaoRepository.ReprovacaoPorAnuncioProjection.class);
+        when(decisao.getAnuncioId()).thenReturn(ANUNCIO_A_ID);
+        when(decisao.getMotivo()).thenReturn("Corrigir a descricao e reenviar.");
+        when(decisao.getDecididoEm()).thenReturn(AGORA);
+        when(decisaoModeracaoRepository.findReprovacoesByAnuncioIdIn(List.of(ANUNCIO_A_ID)))
+                .thenReturn(List.of(decisao));
+
+        var resultado = service.listar(authentication()).get(0);
+
+        assertThat(resultado.status()).isEqualTo("REJEITADO");
+        assertThat(resultado.statusModeracao()).isEqualTo("REJEITADO");
+        assertThat(resultado.reprovacao().motivo()).isEqualTo("Corrigir a descricao e reenviar.");
+        assertThat(resultado.reprovacao().decididoEm()).isEqualTo(AGORA);
+        assertThat(resultado.acoesPermitidas().corrigirEReenviar()).isTrue();
+        verify(decisaoModeracaoRepository).findReprovacoesByAnuncioIdIn(List.of(ANUNCIO_A_ID));
     }
 
     @Test

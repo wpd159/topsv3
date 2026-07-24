@@ -23,6 +23,8 @@ class MeusAnunciosCicloVidaContratoTest {
                 .contains("operationId: pauseCurrentUserAd")
                 .contains("operationId: reactivateCurrentUserAd")
                 .contains("MeuAnuncioAcoesPermitidas")
+                .contains("MeuAnuncioReprovacao")
+                .contains("corrigirEReenviar")
                 .contains("MeuAnuncioCicloVida")
                 .contains("preserva dados, midias, historico e objetos de storage")
                 .contains("Nao restaura beneficio expirado");

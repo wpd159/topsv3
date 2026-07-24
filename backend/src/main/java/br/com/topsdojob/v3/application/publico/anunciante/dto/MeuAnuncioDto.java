@@ -23,5 +23,6 @@ public record MeuAnuncioDto(
         List<MeuAnuncioMidiaDto> midias,
         OffsetDateTime atualizadoEm,
         MeuAnuncioAcoesDto acoesPermitidas,
-        VisualizacoesCanonicasDto visualizacoes) {
+        VisualizacoesCanonicasDto visualizacoes,
+        MeuAnuncioReprovacaoDto reprovacao) {
 }

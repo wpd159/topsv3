@@ -200,8 +200,9 @@ class PainelAnunciantePerformanceServiceTest {
                 new MeuAnuncioCapaDto("https://midias.example/hml/capa.jpg", false),
                 List.of(),
                 OffsetDateTime.parse("2026-07-01T00:00:00Z"),
-                new MeuAnuncioAcoesDto(true, false, true),
-                visualizacoes);
+                new MeuAnuncioAcoesDto(true, false, true, false),
+                visualizacoes,
+                null);
     }
 
     private CliqueWhatsappRepository.ContagemPorAnuncioProjection clique(UUID anuncioId, long total) {
