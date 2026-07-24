@@ -106,10 +106,11 @@ public class AdminModeracaoAcaoService {
 
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(revisao.getAnuncioId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio da revisao nao encontrado"));
-        if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO) {
+        if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO
+                || anuncio.getStatus() == StatusAnuncio.REMOVIDO) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "bloqueio juridico impede decisao de moderacao");
+                    "estado do anuncio impede decisao de moderacao");
         }
         OffsetDateTime agora = OffsetDateTime.now();
         String antes = snapshotRevisao(revisao, anuncio, null, null);
@@ -226,6 +227,9 @@ public class AdminModeracaoAcaoService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
         OffsetDateTime agora = OffsetDateTime.now();
         VisibilidadeMidia visibilidade = visibilidadeParaDecisao(midia, request, decisao);
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR && visibilidade == VisibilidadeMidia.LIVRE) {
+            motivo = null;
+        }
         garantirDerivadoMarcadoParaFotoLivre(midia, arquivo, decisao, visibilidade);
         String antes = snapshotMidia(midia, arquivo, null, null);
 

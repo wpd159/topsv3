@@ -140,12 +140,30 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
 }) {
   const [reason, setReason] = useState('')
   const normalizedError = error ? normalizeApiError(error) : null
+  const acceptsObservation = intent?.kind === 'MEDIA'
+    && intent.media.tipo === 'FOTO'
+    && intent.action === 'APROVAR'
+    && intent.visibility === 'RESTRITA_18'
   useEffect(() => { setReason('') }, [intent])
   return (
     <Dialog open={Boolean(intent)} onOpenChange={(open) => { if (!open && !busy) onClose() }}>
       <DialogContent className="rounded-md">
         <DialogHeader><DialogTitle>{intent?.title}</DialogTitle><DialogDescription>A decisão será registrada com ator, data UTC e identificador da requisição.</DialogDescription></DialogHeader>
-        {intent?.requiresReason ? <label><span className="mb-2 block text-sm font-semibold text-zinc-800">Motivo obrigatório</span><Textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={240} rows={4} disabled={busy} /><span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/240</span></label> : null}
+        {intent?.requiresReason || acceptsObservation ? (
+          <label>
+            <span className="mb-2 block text-sm font-semibold text-zinc-800">
+              {intent?.requiresReason ? 'Motivo obrigatório' : 'Observações'}
+            </span>
+            <Textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              maxLength={240}
+              rows={4}
+              disabled={busy}
+            />
+            <span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/240</span>
+          </label>
+        ) : null}
         {normalizedError ? (
           <div role="alert" className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <p className="font-semibold">
@@ -435,15 +453,40 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
         setDecisionFinished(true)
       } else if (intent.kind === 'MEDIA') {
-        await decideAdminMedia(ad.id, intent.media.id, intent.action, intent.visibility, reason)
+        const motivo = intent.action === 'REPROVAR' ? reason : undefined
+        const observacao = intent.action === 'APROVAR'
+          && intent.media.tipo === 'FOTO'
+          && intent.visibility === 'RESTRITA_18'
+          ? reason
+          : undefined
+        await decideAdminMedia(
+          ad.id,
+          intent.media.id,
+          intent.action,
+          intent.visibility,
+          motivo,
+          observacao,
+        )
       } else {
         await reclassifyAdminMedia(intent.media.id, intent.visibility, reason)
       }
       await load()
       setIntent(null)
     } catch (reasonError) {
+      const normalized = normalizeApiError(reasonError)
+      if (
+        (intent.kind === 'OPEN_REVIEW' || intent.kind === 'REVIEW')
+        && normalized.kind === 'CONFLICT'
+      ) {
+        await load()
+        setActionError(new ApiContractError(
+          'O estado do anúncio mudou. Os dados do detalhe foram atualizados; revise a decisão e tente novamente.',
+          'CONFLICT',
+          409,
+        ))
+        return
+      }
       if (intent.kind === 'MEDIA' || intent.kind === 'RECLASSIFY') {
-        const normalized = normalizeApiError(reasonError)
         if (normalized.kind === 'CONFLICT' && intent.visibility) {
           await load({
             mediaId: intent.media.id,
@@ -533,6 +576,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   )
   const legalBlock = ad.bloqueioJuridico
   const removed = ad.status === 'REMOVIDO'
+  const canDecideAdReview = canModerateAd && !removed && ad.status !== 'BLOQUEADO'
   const canReactivate = canManageLegalStatus
     && ad.status === 'PAUSADO'
     && ad.statusModeracao === 'APROVADO'
@@ -642,7 +686,79 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Locais de atendimento</dt><dd className="mt-1 text-sm">{ad.locaisAtendimento.length ? ad.locaisAtendimento.map(formatEnum).join(', ') : 'Não informados'}</dd></div>
               </dl>
             </div>
-            <aside className="rounded-md border border-zinc-200 p-4"><h2 className="font-semibold text-zinc-950">Decisão do anúncio</h2><p className="mt-2 text-sm text-zinc-600">{reviewOpen ? `Revisão ${ad.revisaoAberta?.status.toLowerCase()} desde ${formatDate(ad.revisaoAberta?.criadoEm)}.` : 'Não existe revisão aberta para decisão.'}</p>{canModerateAd ? <div className="mt-4 flex flex-col gap-2">{!reviewOpen && ad.statusModeracao === 'PENDENTE' ? <Button type="button" variant="outline" onClick={() => setIntent({ kind: 'OPEN_REVIEW', title: 'Abrir revisão do anúncio', requiresReason: true })}>Abrir revisão</Button> : null}{reviewOpen ? <><Button type="button" onClick={() => setIntent({ kind: 'REVIEW', title: 'Aprovar anúncio', action: 'APROVAR', requiresReason: false })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar</Button><Button type="button" variant="outline" onClick={() => setIntent({ kind: 'REVIEW', title: 'Solicitar ajuste no anúncio', action: 'SOLICITAR_AJUSTE', requiresReason: true })}><Clock3 className="mr-2 h-4 w-4" />Solicitar ajuste</Button><Button type="button" variant="destructive" onClick={() => setIntent({ kind: 'REVIEW', title: 'Rejeitar anúncio', action: 'REPROVAR', requiresReason: true })}><XCircle className="mr-2 h-4 w-4" />Rejeitar</Button></> : null}</div> : <p className="mt-4 text-sm font-medium text-amber-700">Sem ANUNCIO_MODERAR.</p>}</aside>
+            <aside className="rounded-md border border-zinc-200 p-4">
+              <h2 className="font-semibold text-zinc-950">Decisão do anúncio</h2>
+              <p className="mt-2 text-sm text-zinc-600">
+                {reviewOpen
+                  ? `Revisão ${ad.revisaoAberta?.status.toLowerCase()} desde ${formatDate(ad.revisaoAberta?.criadoEm)}.`
+                  : 'Não existe revisão aberta para decisão.'}
+              </p>
+              {canDecideAdReview ? (
+                <div className="mt-4 flex flex-col gap-2">
+                  {!reviewOpen && ad.statusModeracao === 'PENDENTE' ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIntent({
+                        kind: 'OPEN_REVIEW',
+                        title: 'Abrir revisão do anúncio',
+                        requiresReason: true,
+                      })}
+                    >
+                      Abrir revisão
+                    </Button>
+                  ) : null}
+                  {reviewOpen ? (
+                    <>
+                      <Button
+                        type="button"
+                        onClick={() => setIntent({
+                          kind: 'REVIEW',
+                          title: 'Aprovar anúncio',
+                          action: 'APROVAR',
+                          requiresReason: false,
+                        })}
+                      >
+                        <CheckCircle2 className="mr-2 h-4 w-4" />
+                        Aprovar anúncio
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIntent({
+                          kind: 'REVIEW',
+                          title: 'Solicitar ajuste no anúncio',
+                          action: 'SOLICITAR_AJUSTE',
+                          requiresReason: true,
+                        })}
+                      >
+                        <Clock3 className="mr-2 h-4 w-4" />
+                        Solicitar ajuste
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={() => setIntent({
+                          kind: 'REVIEW',
+                          title: 'Rejeitar anúncio',
+                          action: 'REPROVAR',
+                          requiresReason: true,
+                        })}
+                      >
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Rejeitar anúncio
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-4 text-sm font-medium text-amber-700">
+                  {canModerateAd
+                    ? 'O estado atual do anúncio não permite decisão.'
+                    : 'Sem ANUNCIO_MODERAR.'}
+                </p>
+              )}
+            </aside>
           </section>
         </TabsContent>
 

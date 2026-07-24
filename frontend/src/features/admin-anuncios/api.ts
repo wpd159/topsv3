@@ -318,6 +318,7 @@ export function decideAdminMedia(
   decisao: 'APROVAR' | 'REPROVAR',
   visibilidadeMidia?: 'LIVRE' | 'RESTRITA_18',
   motivo?: string,
+  observacao?: string,
 ) {
   return request<AdminModerationActionResponse>(`/midias/${encodeURIComponent(mediaId)}/decidir`, {
     method: 'POST',
@@ -326,6 +327,7 @@ export function decideAdminMedia(
       decisao,
       visibilidadeMidia,
       motivo: motivo?.trim() || undefined,
+      observacao: observacao?.trim() || undefined,
     }),
   })
 }

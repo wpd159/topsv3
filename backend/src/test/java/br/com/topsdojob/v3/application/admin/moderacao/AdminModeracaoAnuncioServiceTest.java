@@ -145,6 +145,34 @@ class AdminModeracaoAnuncioServiceTest {
         verifyNoInteractions(revisaoRepository, anuncioRepository);
     }
 
+    @Test
+    void anuncioBloqueadoNaoPodeSerAprovado() {
+        Fixture fixture = fixture();
+        fixture.anuncio().bloquearJuridicamente(OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do anuncio impede");
+
+        verify(decisaoRepository, never()).save(any());
+        verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
+    }
+
+    @Test
+    void anuncioRemovidoNaoPodeSerAprovado() {
+        Fixture fixture = fixture();
+        fixture.anuncio().removerLogicamente(OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do anuncio impede");
+
+        verify(decisaoRepository, never()).save(any());
+        verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
+    }
+
     private br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto decidir(
             Fixture fixture,
             AdminDecisaoModeracaoAcao decisao,

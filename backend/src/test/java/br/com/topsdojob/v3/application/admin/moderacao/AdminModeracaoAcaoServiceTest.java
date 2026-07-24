@@ -13,6 +13,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracao
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
@@ -39,6 +40,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
@@ -96,6 +98,41 @@ class AdminModeracaoAcaoServiceTest {
         assertThat(responseRestrita.visibilidadeMidia()).isEqualTo("RESTRITA_18");
         assertThat(livre.midia().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.LIVRE);
         assertThat(restrita.midia().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
+    }
+
+    @Test
+    void fotoLivreDescartaObservacaoResidual() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+
+        decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.LIVRE,
+                null,
+                "observacao residual restrita");
+
+        ArgumentCaptor<AuditoriaEventoEntity> auditoria = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+        verify(auditoriaRepository).save(auditoria.capture());
+        assertThat(auditoria.getValue().getDepoisJson())
+                .contains("\"motivoSanitizado\":null")
+                .doesNotContain("observacao residual restrita");
+    }
+
+    @Test
+    void fotoRestritaPreservaObservacaoInformada() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+
+        decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.RESTRITA_18,
+                null,
+                "conteudo sensivel confirmado");
+
+        ArgumentCaptor<AuditoriaEventoEntity> auditoria = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+        verify(auditoriaRepository).save(auditoria.capture());
+        assertThat(auditoria.getValue().getDepoisJson())
+                .contains("\"motivoSanitizado\":\"conteudo sensivel confirmado\"");
     }
 
     @Test
@@ -372,6 +409,15 @@ class AdminModeracaoAcaoServiceTest {
             AdminDecisaoModeracaoAcao decisao,
             VisibilidadeMidia visibilidade,
             String motivo) {
+        return decidir(id, decisao, visibilidade, motivo, null);
+    }
+
+    private br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto decidir(
+            UUID id,
+            AdminDecisaoModeracaoAcao decisao,
+            VisibilidadeMidia visibilidade,
+            String motivo,
+            String observacao) {
         return service.decidirMidia(
                 id,
                 new AdminDecidirMidiaRequestDto(
@@ -379,7 +425,7 @@ class AdminModeracaoAcaoServiceTest {
                         decisao,
                         visibilidade,
                         motivo,
-                        null,
+                        observacao,
                         null),
                 principal(),
                 "req-local-123456");
