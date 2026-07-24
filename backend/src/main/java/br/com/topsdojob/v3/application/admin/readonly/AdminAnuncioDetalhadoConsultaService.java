@@ -643,7 +643,7 @@ public class AdminAnuncioDetalhadoConsultaService {
             return null;
         }
         String value = termo.trim();
-        if (value.length() > 80 || !value.matches("[A-Za-z0-9 ._-]+")) {
+        if (value.length() > 80 || !value.matches("[\\p{L}\\p{N} ._'-]+")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "termo invalido");
         }
         return value;

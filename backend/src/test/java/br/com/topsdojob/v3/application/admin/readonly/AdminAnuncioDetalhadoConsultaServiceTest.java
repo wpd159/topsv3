@@ -283,6 +283,32 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
                 eq(situacao.name()), anyBoolean(), any(), any(), any(), eq(PageRequest.of(0, 30)));
     }
 
+    @Test
+    void filaAceitaTituloComCaracteresUnicode() {
+        when(anuncioRepository.findFilaAdministrativa(
+                any(), anyBoolean(), any(), eq("Pérola moreninha"), any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 30), 0));
+
+        service.listar(
+                0,
+                30,
+                AdminAnuncioSituacao.APROVADOS,
+                null,
+                null,
+                null,
+                "Pérola moreninha",
+                AdminAnuncioOrdenacao.MAIS_RECENTES,
+                false);
+
+        verify(anuncioRepository).findFilaAdministrativa(
+                eq(AdminAnuncioSituacao.APROVADOS.name()),
+                anyBoolean(),
+                any(),
+                eq("Pérola moreninha"),
+                eq(AdminAnuncioOrdenacao.MAIS_RECENTES.name()),
+                eq(PageRequest.of(0, 30)));
+    }
+
     @ParameterizedTest
     @ValueSource(ints = {20, 30, 50, 100})
     void filaAceitaSomenteTamanhosCanonicosDaProducao(int size) {
