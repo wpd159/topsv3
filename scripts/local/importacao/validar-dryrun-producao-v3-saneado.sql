@@ -57,6 +57,10 @@ END $$;
 
 SELECT 'USUARIOS|' || count(*) FROM usuario;
 SELECT 'ANUNCIOS|' || count(*) FROM anuncio;
+SELECT 'USUARIOS_NOME_CIVIL|' || count(*) FROM usuario WHERE nome_civil IS NOT NULL;
+SELECT 'USUARIOS_CPF|' || count(*) FROM usuario WHERE cpf_normalizado IS NOT NULL;
+SELECT 'USUARIOS_TELEFONE|' || count(*) FROM usuario WHERE telefone_normalizado IS NOT NULL;
+SELECT 'ANUNCIOS_WHATSAPP|' || count(*) FROM anuncio WHERE whatsapp_normalizado IS NOT NULL;
 SELECT 'ANUNCIOS_PUBLICADOS|' || count(*) FROM anuncio WHERE status = 'PUBLICADO';
 SELECT 'ANUNCIOS_FORA_CATALOGO|' || count(*) FROM anuncio WHERE status <> 'PUBLICADO';
 SELECT 'ANUNCIOS_AGUARDANDO_MODERACAO|' || count(*)
@@ -493,6 +497,62 @@ END $$;
 
 DO $$
 BEGIN
+  IF (
+    SELECT count(*) FROM usuario WHERE nome_civil IS NOT NULL
+  ) <> (
+    SELECT (resumo_json ->> 'usuariosNomeCivilOrigem')::bigint
+    FROM importacao_execucao
+  ) OR (
+    SELECT count(*) FROM usuario WHERE cpf_normalizado IS NOT NULL
+  ) <> (
+    SELECT (resumo_json ->> 'usuariosCpfOrigem')::bigint
+    FROM importacao_execucao
+  ) OR (
+    SELECT count(*) FROM usuario WHERE telefone_normalizado IS NOT NULL
+  ) <> (
+    SELECT (resumo_json ->> 'usuariosTelefoneOrigem')::bigint
+    FROM importacao_execucao
+  ) OR (
+    SELECT count(*) FROM anuncio WHERE whatsapp_normalizado IS NOT NULL
+  ) <> (
+    SELECT (resumo_json ->> 'anunciosWhatsappOrigem')::bigint
+    FROM importacao_execucao
+  ) THEN
+    RAISE EXCEPTION 'dados cadastrais importados divergem das contagens do snapshot';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM anuncio a
+    JOIN usuario u ON u.id = a.usuario_id
+    WHERE a.origem_importacao_id IS NOT NULL
+      AND a.whatsapp_normalizado IS DISTINCT FROM u.telefone_normalizado
+  ) THEN
+    RAISE EXCEPTION 'WhatsApp do anuncio diverge do telefone de seu proprietario';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM stg_usuario
+    WHERE payload_normalizado_json ?| ARRAY[
+      'nomeCivil',
+      'cpfNormalizado',
+      'telefoneNormalizado',
+      'whatsappNormalizado'
+    ]
+  ) OR EXISTS (
+    SELECT 1
+    FROM stg_anuncio
+    WHERE payload_normalizado_json ?| ARRAY[
+      'nomeCivil',
+      'cpfNormalizado',
+      'telefoneNormalizado',
+      'whatsappNormalizado'
+    ]
+  ) THEN
+    RAISE EXCEPTION 'staging sanitizado contem dado cadastral privado';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM stg_usuario
@@ -758,8 +818,10 @@ END $$;
 WITH hashes AS (
   SELECT 'usuario' dominio,
          md5(coalesce(string_agg(
-           concat_ws(':', id, nome, email_normalizado, status, tipo_conta,
-                     coalesce(data_nascimento::text, '')),
+           concat_ws(':', id, nome, email_normalizado,
+                     coalesce(telefone_normalizado, ''), status, tipo_conta,
+                     coalesce(data_nascimento::text, ''),
+                     coalesce(nome_civil, ''), coalesce(cpf_normalizado, '')),
            '|' ORDER BY id), '')) valor
   FROM usuario
   UNION ALL
@@ -774,6 +836,7 @@ WITH hashes AS (
   SELECT 'anuncio', md5(coalesce(string_agg(
     concat_ws(':', id, usuario_id, slug, status, status_moderacao,
               categoria, coalesce(preco::text, ''),
+              coalesce(whatsapp_normalizado, ''),
               coalesce(publicado_em::text, '')),
     '|' ORDER BY id), ''))
   FROM anuncio
@@ -846,13 +909,16 @@ SELECT 'HASH_' || upper(dominio) || '|' || valor FROM hashes ORDER BY dominio;
 
 WITH hashes AS (
   SELECT md5(coalesce(string_agg(
-    concat_ws(':', id, nome, email_normalizado, status, tipo_conta,
-              coalesce(data_nascimento::text, '')),
+    concat_ws(':', id, nome, email_normalizado,
+              coalesce(telefone_normalizado, ''), status, tipo_conta,
+              coalesce(data_nascimento::text, ''),
+              coalesce(nome_civil, ''), coalesce(cpf_normalizado, '')),
     '|' ORDER BY id), '')) valor FROM usuario
   UNION ALL
   SELECT md5(coalesce(string_agg(
     concat_ws(':', id, usuario_id, slug, status, status_moderacao,
               categoria, coalesce(preco::text, ''),
+              coalesce(whatsapp_normalizado, ''),
               coalesce(publicado_em::text, '')),
     '|' ORDER BY id), '')) FROM anuncio
   UNION ALL

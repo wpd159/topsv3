@@ -442,8 +442,8 @@ SELECT
   snapshot_at
 FROM dryrun_context;
 
--- Usuarios: todos os registros da origem sao preservados, mas credenciais,
--- sessoes e identificadores pessoais nao sao promovidos.
+-- Usuarios: dados cadastrais confiaveis sao preservados, mas credenciais,
+-- sessoes e artefatos de autenticacao nao sao promovidos por este importador.
 CREATE TEMP TABLE dryrun_usuario AS
 WITH ranked AS (
   SELECT
@@ -451,6 +451,13 @@ WITH ranked AS (
     count(*) OVER (PARTITION BY lower(trim(u.username))) AS username_total,
     row_number() OVER (PARTITION BY lower(trim(u.username)) ORDER BY u.id) AS username_ordem
   FROM legacy.usuarios u
+), normalized AS (
+  SELECT
+    r.*,
+    nullif(trim(r.nome_completo), '') AS nome_civil_candidato,
+    regexp_replace(coalesce(r.cpf, ''), '[^0-9]', '', 'g') AS cpf_digitos,
+    regexp_replace(coalesce(r.telefone, ''), '[^0-9]', '', 'g') AS telefone_digitos
+  FROM ranked r
 )
 SELECT
   r.id AS origem_id,
@@ -463,6 +470,19 @@ SELECT
   'legacy-' || r.id || '@example.invalid' AS email_normalizado,
   CASE WHEN r.status = 'ATIVO' THEN 'ATIVO' ELSE 'DESATIVADO' END AS status,
   CASE WHEN r.role IN ('ADMIN', 'MODERADOR') THEN 'STAFF' ELSE 'ANUNCIANTE' END AS tipo_conta,
+  CASE
+    WHEN length(r.nome_civil_candidato) BETWEEN 3 AND 180
+      THEN r.nome_civil_candidato
+  END AS nome_civil,
+  CASE
+    WHEN r.cpf_digitos ~ '^[0-9]{11}$' THEN r.cpf_digitos
+  END AS cpf_normalizado,
+  CASE
+    WHEN length(r.telefone_digitos) IN (10, 11)
+      THEN '+55' || r.telefone_digitos
+    WHEN r.telefone_digitos ~ '^[1-9][0-9]{7,14}$'
+      THEN '+' || r.telefone_digitos
+  END AS telefone_normalizado,
   r.data_nascimento,
   r.role,
   CASE
@@ -479,7 +499,53 @@ SELECT
   r.criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_em,
   r.username_total > 1 AS username_conflitante,
   md5(coalesce(lower(trim(r.username)), '')) AS username_hash
-FROM ranked r;
+FROM normalized r;
+
+DO $$
+BEGIN
+  IF (
+    SELECT count(*) FROM legacy.usuarios
+    WHERE nullif(trim(nome_completo), '') IS NOT NULL
+  ) <> (
+    SELECT count(nome_civil) FROM dryrun_usuario
+  ) THEN
+    RAISE EXCEPTION 'nome civil presente na origem nao possui normalizacao canonica';
+  END IF;
+
+  IF (
+    SELECT count(*) FROM legacy.usuarios
+    WHERE nullif(trim(cpf), '') IS NOT NULL
+  ) <> (
+    SELECT count(cpf_normalizado) FROM dryrun_usuario
+  ) THEN
+    RAISE EXCEPTION 'CPF presente na origem nao possui normalizacao canonica';
+  END IF;
+
+  IF (
+    SELECT count(*) FROM legacy.usuarios
+    WHERE nullif(trim(telefone), '') IS NOT NULL
+  ) <> (
+    SELECT count(telefone_normalizado) FROM dryrun_usuario
+  ) THEN
+    RAISE EXCEPTION 'telefone presente na origem nao possui normalizacao canonica';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_usuario
+    WHERE cpf_normalizado IS NOT NULL
+    GROUP BY cpf_normalizado
+    HAVING count(*) > 1
+  ) OR EXISTS (
+    SELECT 1
+    FROM dryrun_usuario
+    WHERE telefone_normalizado IS NOT NULL
+    GROUP BY telefone_normalizado
+    HAVING count(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'dados cadastrais normalizados possuem duplicidade na origem';
+  END IF;
+END $$;
 
 INSERT INTO usuario (
   id, nome, email_normalizado, telefone_normalizado, status, tipo_conta,
@@ -487,8 +553,8 @@ INSERT INTO usuario (
   nome_civil, cpf_normalizado
 )
 SELECT
-  id, nome, email_normalizado, NULL, status, tipo_conta,
-  criado_em, criado_em, NULL, 0, data_nascimento, NULL, NULL
+  id, nome, email_normalizado, telefone_normalizado, status, tipo_conta,
+  criado_em, criado_em, NULL, 0, data_nascimento, nome_civil, cpf_normalizado
 FROM dryrun_usuario;
 
 -- Ator tecnico sem credencial registra apenas a proveniencia da preservacao
@@ -709,6 +775,7 @@ SELECT
   a.status AS status_origem,
   a.categoria,
   a.preco,
+  u.telefone_normalizado AS whatsapp_normalizado,
   p.primeira_publicacao_em AT TIME ZONE 'America/Sao_Paulo' AS publicado_em,
   p.origem AS publicacao_origem,
   a.criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_em,
@@ -716,7 +783,8 @@ SELECT
   a.cidade_id AS cidade_origem_id,
   a.bairro_id AS bairro_origem_id
 FROM legacy.anuncios a
-JOIN dryrun_publicacao p ON p.anuncio_origem_id = a.id;
+JOIN dryrun_publicacao p ON p.anuncio_origem_id = a.id
+JOIN dryrun_usuario u ON u.origem_id = a.usuario_id;
 
 INSERT INTO anuncio (
   id, usuario_id, slug, titulo, descricao, status, status_moderacao,
@@ -726,7 +794,7 @@ INSERT INTO anuncio (
 )
 SELECT
   a.id, a.usuario_id, a.slug, a.titulo, a.descricao, a.status,
-  a.status_moderacao, a.categoria, a.preco, NULL, a.publicado_em,
+  a.status_moderacao, a.categoria, a.preco, a.whatsapp_normalizado, a.publicado_em,
   a.publicado_em, a.criado_em, greatest(a.criado_em, a.publicado_em),
   a.removido_em, c.execucao_id, 0
 FROM dryrun_anuncio a CROSS JOIN dryrun_context c;
@@ -1932,7 +2000,11 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
       'midiasR2PrivadasLogicasDivergentes', (
         SELECT count(*) FROM dryrun_midia_logica_reconciliacao
         WHERE reconciliacao_status = 'DIVERGENTE'
-      )
+      ),
+      'usuariosNomeCivilOrigem', (SELECT count(nome_civil) FROM dryrun_usuario),
+      'usuariosCpfOrigem', (SELECT count(cpf_normalizado) FROM dryrun_usuario),
+      'usuariosTelefoneOrigem', (SELECT count(telefone_normalizado) FROM dryrun_usuario),
+      'anunciosWhatsappOrigem', (SELECT count(whatsapp_normalizado) FROM dryrun_anuncio)
     )
 FROM dryrun_context c
 WHERE e.id = c.execucao_id;

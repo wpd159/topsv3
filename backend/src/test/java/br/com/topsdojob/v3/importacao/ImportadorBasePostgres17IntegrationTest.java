@@ -98,6 +98,7 @@ class ImportadorBasePostgres17IntegrationTest {
       validateSnapshot(container, dbCredential, variables, logs.resolve("validator-run1.log"));
       String counts1 = counts(container, dbCredential);
       String fingerprint1 = fingerprint(container, dbCredential);
+      String registrationData1 = registrationData(container, dbCredential);
 
       importSnapshot(container, dbCredential, variables, logs.resolve("run2.log"), true);
       importReconciler(
@@ -116,10 +117,13 @@ class ImportadorBasePostgres17IntegrationTest {
       validateSnapshot(container, dbCredential, variables, logs.resolve("validator-run2.log"));
       String counts2 = counts(container, dbCredential);
       String fingerprint2 = fingerprint(container, dbCredential);
+      String registrationData2 = registrationData(container, dbCredential);
 
       assertThat(counts2).isEqualTo(counts1);
       assertThat(fingerprint2).isEqualTo(fingerprint1);
+      assertThat(registrationData2).isEqualTo(registrationData1);
       assertThat(counts2).startsWith("1|CONCLUIDA_COM_PENDENCIAS|");
+      assertRegistrationData(registrationData2);
       assertDestinationStorage(container, dbCredential, variables);
 
       List<String> otherEnvironment = replacingSetting(
@@ -409,6 +413,77 @@ class ImportadorBasePostgres17IntegrationTest {
           (SELECT count(*) FROM importacao_pendencia
            WHERE codigo = 'MIDIA_ORIGEM_AUSENTE'));
         """, "^[0-9]+\\|[A-Z_]+\\|.*$");
+  }
+
+  private static String registrationData(String container, String dbCredential) throws Exception {
+    return query(container, dbCredential, """
+        SELECT concat_ws('|',
+          (SELECT (resumo_json ->> 'usuariosNomeCivilOrigem')::bigint
+           FROM importacao_execucao),
+          (SELECT count(*) FROM usuario WHERE nome_civil IS NOT NULL),
+          (SELECT (resumo_json ->> 'usuariosCpfOrigem')::bigint
+           FROM importacao_execucao),
+          (SELECT count(*) FROM usuario WHERE cpf_normalizado IS NOT NULL),
+          (SELECT (resumo_json ->> 'usuariosTelefoneOrigem')::bigint
+           FROM importacao_execucao),
+          (SELECT count(*) FROM usuario WHERE telefone_normalizado IS NOT NULL),
+          (SELECT (resumo_json ->> 'anunciosWhatsappOrigem')::bigint
+           FROM importacao_execucao),
+          (SELECT count(*) FROM anuncio WHERE whatsapp_normalizado IS NOT NULL),
+          (SELECT count(*)
+           FROM anuncio a
+           JOIN usuario u ON u.id = a.usuario_id
+           WHERE a.origem_importacao_id IS NOT NULL
+             AND a.whatsapp_normalizado IS DISTINCT FROM u.telefone_normalizado),
+          (SELECT count(*)
+           FROM stg_usuario
+           WHERE payload_normalizado_json ?| ARRAY[
+             'nomeCivil', 'cpfNormalizado', 'telefoneNormalizado', 'whatsappNormalizado'
+           ]),
+          (SELECT count(*)
+           FROM stg_anuncio
+           WHERE payload_normalizado_json ?| ARRAY[
+             'nomeCivil', 'cpfNormalizado', 'telefoneNormalizado', 'whatsappNormalizado'
+           ]),
+          (SELECT count(*)
+           FROM (
+             SELECT usuario_id
+             FROM anuncio
+             WHERE origem_importacao_id IS NOT NULL
+             GROUP BY usuario_id
+             HAVING count(*) > 1
+           ) proprietarios_multiplos),
+          (SELECT count(*)
+           FROM usuario
+           WHERE (telefone_normalizado IS NOT NULL
+                  AND telefone_normalizado !~ '^\\+[1-9][0-9]{7,14}$')
+              OR (cpf_normalizado IS NOT NULL
+                  AND cpf_normalizado !~ '^[0-9]{11}$')),
+          (SELECT count(*) FROM usuario WHERE cpf_normalizado IS NULL),
+          (SELECT count(*) FROM usuario WHERE telefone_normalizado IS NULL),
+          (SELECT count(*) FROM anuncio WHERE whatsapp_normalizado IS NULL));
+        """, "^[0-9]+(\\|[0-9]+){15}$");
+  }
+
+  private static void assertRegistrationData(String value) {
+    String[] fields = value.split("\\|");
+    assertThat(fields).hasSize(16);
+    assertThat(Long.parseLong(fields[0])).isPositive();
+    assertThat(fields[1]).isEqualTo(fields[0]);
+    assertThat(Long.parseLong(fields[2])).isPositive();
+    assertThat(fields[3]).isEqualTo(fields[2]);
+    assertThat(Long.parseLong(fields[4])).isPositive();
+    assertThat(fields[5]).isEqualTo(fields[4]);
+    assertThat(Long.parseLong(fields[6])).isPositive();
+    assertThat(fields[7]).isEqualTo(fields[6]);
+    assertThat(Long.parseLong(fields[8])).isZero();
+    assertThat(Long.parseLong(fields[9])).isZero();
+    assertThat(Long.parseLong(fields[10])).isZero();
+    assertThat(Long.parseLong(fields[11])).isPositive();
+    assertThat(Long.parseLong(fields[12])).isZero();
+    assertThat(Long.parseLong(fields[13])).isPositive();
+    assertThat(Long.parseLong(fields[14])).isPositive();
+    assertThat(Long.parseLong(fields[15])).isPositive();
   }
 
   private static String fingerprint(String container, String dbCredential) throws Exception {

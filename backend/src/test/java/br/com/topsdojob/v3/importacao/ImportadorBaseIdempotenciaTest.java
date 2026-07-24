@@ -64,4 +64,34 @@ class ImportadorBaseIdempotenciaTest {
         .doesNotContain("OPTIONS (user 'topsv3dry')")
         .doesNotContain("WHEN 'ATIVO' THEN 'PUBLICADO'");
   }
+
+  @Test
+  void transportaDadosCadastraisNormalizadosSemIncluiLosNoStagingSanitizado() throws Exception {
+    String sql = Files.readString(IMPORTADOR);
+
+    assertThat(sql)
+        .contains("nullif(trim(r.nome_completo), '') AS nome_civil_candidato")
+        .contains("regexp_replace(coalesce(r.cpf, ''), '[^0-9]', '', 'g') AS cpf_digitos")
+        .contains(
+            "regexp_replace(coalesce(r.telefone, ''), '[^0-9]', '', 'g') AS telefone_digitos")
+        .contains("THEN '+55' || r.telefone_digitos")
+        .contains("THEN '+' || r.telefone_digitos")
+        .contains(
+            "id, nome, email_normalizado, telefone_normalizado, status, tipo_conta,")
+        .contains(
+            "criado_em, criado_em, NULL, 0, data_nascimento, nome_civil, cpf_normalizado")
+        .contains("u.telefone_normalizado AS whatsapp_normalizado")
+        .contains(
+            "a.status_moderacao, a.categoria, a.preco, a.whatsapp_normalizado, a.publicado_em")
+        .contains("'usuariosNomeCivilOrigem'")
+        .contains("'usuariosCpfOrigem'")
+        .contains("'usuariosTelefoneOrigem'")
+        .contains("'anunciosWhatsappOrigem'");
+
+    assertThat(sql.substring(sql.indexOf("INSERT INTO stg_usuario")))
+        .doesNotContain("'nomeCivil', u.nome_civil")
+        .doesNotContain("'cpfNormalizado', u.cpf_normalizado")
+        .doesNotContain("'telefoneNormalizado', u.telefone_normalizado")
+        .doesNotContain("'whatsappNormalizado', a.whatsapp_normalizado");
+  }
 }
