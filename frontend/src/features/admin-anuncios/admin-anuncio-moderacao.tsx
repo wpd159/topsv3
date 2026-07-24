@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { ApiContractError, normalizeApiError } from '@/lib/api-contract'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
@@ -138,13 +139,21 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
   onConfirm: (reason: string) => void
 }) {
   const [reason, setReason] = useState('')
+  const normalizedError = error ? normalizeApiError(error) : null
   useEffect(() => { setReason('') }, [intent])
   return (
     <Dialog open={Boolean(intent)} onOpenChange={(open) => { if (!open && !busy) onClose() }}>
       <DialogContent className="rounded-md">
         <DialogHeader><DialogTitle>{intent?.title}</DialogTitle><DialogDescription>A decisão será registrada com ator, data UTC e identificador da requisição.</DialogDescription></DialogHeader>
         {intent?.requiresReason ? <label><span className="mb-2 block text-sm font-semibold text-zinc-800">Motivo obrigatório</span><Textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={240} rows={4} disabled={busy} /><span className="mt-1 block text-right text-xs text-zinc-500">{reason.length}/240</span></label> : null}
-        {error ? <ContractState error={error} compact /> : null}
+        {normalizedError ? (
+          <div role="alert" className="border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <p className="font-semibold">
+              {normalizedError.kind === 'CONFLICT' ? 'Estado da mídia atualizado' : 'Não foi possível concluir'}
+            </p>
+            <p className="mt-1 text-amber-800">{normalizedError.message}</p>
+          </div>
+        ) : null}
         <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button><Button type="button" onClick={() => onConfirm(reason)} disabled={busy || Boolean(intent?.requiresReason && !reason.trim())}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Confirmar</Button></DialogFooter>
       </DialogContent>
     </Dialog>
@@ -339,7 +348,11 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const [navigationError, setNavigationError] = useState<unknown>(null)
   const [decisionFinished, setDecisionFinished] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserveSelection?: {
+    mediaId: string
+    value: 'LIVRE' | 'RESTRITA_18'
+    mode: 'DECISION' | 'RECLASSIFY'
+  }) => {
     setLoading(true)
     setError(null)
     try {
@@ -359,6 +372,15 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       setVisibility(() => {
         const next: Record<string, 'LIVRE' | 'RESTRITA_18'> = {}
         mediaResponse?.itens.forEach((item) => { if (item.tipo === 'FOTO' && item.visibilidadeMidia) next[item.id] = item.visibilidadeMidia })
+        if (preserveSelection) {
+          const refreshed = mediaResponse?.itens.find((item) => item.id === preserveSelection.mediaId)
+          const selectionStillApplies = preserveSelection.mode === 'DECISION'
+            ? refreshed && ['PENDENTE', 'AJUSTE_SOLICITADO'].includes(refreshed.status)
+            : refreshed?.status === 'PUBLICAVEL'
+          if (selectionStillApplies && refreshed?.tipo === 'FOTO') {
+            next[preserveSelection.mediaId] = preserveSelection.value
+          }
+        }
         return next
       })
     } catch (reason) {
@@ -393,6 +415,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const canReclassifyMedia = isAdmin && canModerateMedia
   const canReadHistory = canModerateAd || canModerateMedia
   const actionableMedia = useMemo(() => new Set(['PENDENTE', 'AJUSTE_SOLICITADO']), [])
+  const mediaOrdinal = useMemo(() => {
+    const counters = new Map<string, number>()
+    return Object.fromEntries(media.map((item) => {
+      const next = (counters.get(item.tipo) ?? 0) + 1
+      counters.set(item.tipo, next)
+      return [item.id, next]
+    }))
+  }, [media])
 
   async function confirmDecision(reason: string) {
     if (!intent || busy || !ad) return
@@ -405,14 +435,28 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
         setDecisionFinished(true)
       } else if (intent.kind === 'MEDIA') {
-        await decideAdminMedia(intent.media.id, intent.action, intent.visibility, reason)
+        await decideAdminMedia(ad.id, intent.media.id, intent.action, intent.visibility, reason)
       } else {
         await reclassifyAdminMedia(intent.media.id, intent.visibility, reason)
       }
+      await load()
       setIntent(null)
-      setReload((value) => value + 1)
     } catch (reasonError) {
       if (intent.kind === 'MEDIA' || intent.kind === 'RECLASSIFY') {
+        const normalized = normalizeApiError(reasonError)
+        if (normalized.kind === 'CONFLICT' && intent.visibility) {
+          await load({
+            mediaId: intent.media.id,
+            value: intent.visibility,
+            mode: intent.kind === 'MEDIA' ? 'DECISION' : 'RECLASSIFY',
+          })
+          setActionError(new ApiContractError(
+            'O estado da mídia mudou. Os dados do detalhe foram atualizados; revise a decisão e tente novamente.',
+            'CONFLICT',
+            409,
+          ))
+          return
+        }
         setVisibility((current) => {
           const next = { ...current }
           if (intent.media.visibilidadeMidia) next[intent.media.id] = intent.media.visibilidadeMidia
@@ -618,7 +662,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                     <MediaPreview media={item} />
                     <div className="p-4">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} {item.ordem != null ? `#${item.ordem + 1}` : ''}</div>
+                        <div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} #{mediaOrdinal[item.id]}</div>
                         <Badge variant="outline" className={moderationTone(item.status)}>{item.status}</Badge>
                       </div>
                       <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-600">

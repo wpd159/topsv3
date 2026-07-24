@@ -12,6 +12,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequ
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
@@ -23,6 +24,7 @@ import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
@@ -30,7 +32,9 @@ import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Constructor;
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,10 +54,12 @@ class AdminModeracaoAcaoServiceTest {
     private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
     private final OutboxEventoRepository outboxRepository = mock(OutboxEventoRepository.class);
     private final MidiaStorageAprovacaoService storageAprovacaoService = mock(MidiaStorageAprovacaoService.class);
+    private final Map<UUID, UUID> anuncioIdPorMidia = new HashMap<>();
     private AdminModeracaoAcaoService service;
 
     @BeforeEach
     void setUp() {
+        anuncioIdPorMidia.clear();
         service = new AdminModeracaoAcaoService(
                 revisaoRepository,
                 anuncioRepository,
@@ -215,6 +221,95 @@ class AdminModeracaoAcaoServiceTest {
     }
 
     @Test
+    void fotoImportadaPendenteLivreUsaProvenienciaEChecksumDoStaging() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        String sha256 = "c".repeat(64);
+        ReflectionTestUtils.setField(fixture.arquivo(), "storageProvider", "R2");
+        ReflectionTestUtils.setField(fixture.arquivo(), "sha256", sha256);
+        when(midiaRepository.existsFotoImportadaProcessadaComChecksum(fixture.id(), sha256)).thenReturn(true);
+
+        var response = decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.LIVRE,
+                null);
+
+        assertThat(response.visibilidadeMidia()).isEqualTo("LIVRE");
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+        assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+        verify(storageAprovacaoService).prepararAprovacao(fixture.arquivo(), VisibilidadeMidia.LIVRE);
+    }
+
+    @Test
+    void fotoImportadaPendenteRestritaNaoExigePipelineNemMoveStorage() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        ReflectionTestUtils.setField(fixture.arquivo(), "storageProvider", "R2");
+
+        var response = decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.RESTRITA_18,
+                null);
+
+        assertThat(response.visibilidadeMidia()).isEqualTo("RESTRITA_18");
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+        assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+        verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
+    }
+
+    @Test
+    void classificacaoImportadaJaAplicadaPodeSerAprovadaQuandoDecisaoPermanecePendente() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18);
+        ReflectionTestUtils.setField(fixture.arquivo(), "storageProvider", "R2");
+
+        decidir(fixture.id(), AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.RESTRITA_18, null);
+
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+        assertThat(fixture.midia().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
+    }
+
+    @Test
+    void midiaDeOutroAnuncioRetornaConflitoSemAlterarArquivo() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+
+        assertThatThrownBy(() -> service.decidirMidia(
+                fixture.id(),
+                new AdminDecidirMidiaRequestDto(
+                        UUID.randomUUID(),
+                        AdminDecisaoModeracaoAcao.APROVAR,
+                        VisibilidadeMidia.RESTRITA_18,
+                        null,
+                        null,
+                        null),
+                principal(),
+                "req-outro-anuncio"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("nao pertence");
+
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
+        assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.PENDENTE);
+        verify(arquivoRepository, never()).findByIdForUpdate(fixture.midia().getArquivoMidiaId());
+    }
+
+    @Test
+    void anuncioBloqueadoImpedeAprovacaoDaFoto() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        ReflectionTestUtils.setField(fixture.anuncio(), "status", StatusAnuncio.BLOQUEADO);
+
+        assertThatThrownBy(() -> decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.RESTRITA_18,
+                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("estado do anuncio");
+
+        verify(arquivoRepository, never()).findByIdForUpdate(fixture.midia().getArquivoMidiaId());
+    }
+
+    @Test
     void fotoFinalizadaPodeSerReclassificadaSemCriarOutraMidiaLogica() {
         Fixture fixture = fixtureFinalizada(VisibilidadeMidia.LIVRE);
 
@@ -279,7 +374,13 @@ class AdminModeracaoAcaoServiceTest {
             String motivo) {
         return service.decidirMidia(
                 id,
-                new AdminDecidirMidiaRequestDto(decisao, visibilidade, motivo, null, null),
+                new AdminDecidirMidiaRequestDto(
+                        anuncioIdPorMidia.get(id),
+                        decisao,
+                        visibilidade,
+                        motivo,
+                        null,
+                        null),
                 principal(),
                 "req-local-123456");
     }
@@ -298,9 +399,10 @@ class AdminModeracaoAcaoServiceTest {
     private Fixture fixture(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade) {
         UUID id = UUID.randomUUID();
         UUID arquivoId = UUID.randomUUID();
+        UUID anuncioId = UUID.randomUUID();
         AnuncioMidiaEntity midia = entity(AnuncioMidiaEntity.class);
         ReflectionTestUtils.setField(midia, "id", id);
-        ReflectionTestUtils.setField(midia, "anuncioId", UUID.randomUUID());
+        ReflectionTestUtils.setField(midia, "anuncioId", anuncioId);
         ReflectionTestUtils.setField(midia, "arquivoMidiaId", arquivoId);
         ReflectionTestUtils.setField(midia, "tipo", tipo);
         ReflectionTestUtils.setField(midia, "status", StatusAnuncioMidia.PENDENTE);
@@ -308,10 +410,15 @@ class AdminModeracaoAcaoServiceTest {
         ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
         ReflectionTestUtils.setField(arquivo, "id", arquivoId);
         ReflectionTestUtils.setField(arquivo, "statusArquivo", StatusArquivoMidia.PENDENTE);
+        AnuncioEntity anuncio = entity(AnuncioEntity.class);
+        ReflectionTestUtils.setField(anuncio, "id", anuncioId);
+        ReflectionTestUtils.setField(anuncio, "status", StatusAnuncio.PENDENTE_REVISAO);
+        anuncioIdPorMidia.put(id, anuncioId);
         when(midiaRepository.findByIdForUpdate(id)).thenReturn(Optional.of(midia));
+        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
         when(arquivoRepository.findByIdForUpdate(arquivoId)).thenReturn(Optional.of(arquivo));
         when(documentoRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivoId)).thenReturn(false);
-        return new Fixture(id, midia, arquivo);
+        return new Fixture(id, midia, arquivo, anuncio);
     }
 
     private Fixture fixtureFinalizada(VisibilidadeMidia visibilidade) {
@@ -344,6 +451,10 @@ class AdminModeracaoAcaoServiceTest {
         }
     }
 
-    private record Fixture(UUID id, AnuncioMidiaEntity midia, ArquivoMidiaEntity arquivo) {
+    private record Fixture(
+            UUID id,
+            AnuncioMidiaEntity midia,
+            ArquivoMidiaEntity arquivo,
+            AnuncioEntity anuncio) {
     }
 }

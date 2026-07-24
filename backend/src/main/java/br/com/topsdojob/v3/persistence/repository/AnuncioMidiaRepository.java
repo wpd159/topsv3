@@ -76,6 +76,24 @@ public interface AnuncioMidiaRepository
     @Query("select midia from AnuncioMidiaEntity midia where midia.id = :id")
     java.util.Optional<AnuncioMidiaEntity> findByIdForUpdate(@Param("id") UUID id);
 
+    @Query(value = """
+            select exists (
+              select 1
+              from stg_midia staging
+              where staging.entidade_v3_id = :midiaId
+                and staging.status = 'PROCESSADO'
+                and staging.pendencia_codigo is null
+                and staging.processado_em is not null
+                and staging.payload_normalizado_json ->> 'tipo' = 'FOTO'
+                and staging.payload_normalizado_json ->> 'principal' = 'true'
+                and staging.payload_normalizado_json ->> 'privada' = 'true'
+                and lower(staging.payload_normalizado_json ->> 'sha256') = lower(:sha256)
+            )
+            """, nativeQuery = true)
+    boolean existsFotoImportadaProcessadaComChecksum(
+            @Param("midiaId") UUID midiaId,
+            @Param("sha256") String sha256);
+
     long count(Specification<AnuncioMidiaEntity> spec);
 
     interface ContagemPorAnuncioProjection {

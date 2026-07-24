@@ -313,6 +313,7 @@ export function decideAdminReview(
 }
 
 export function decideAdminMedia(
+  anuncioId: string,
   mediaId: string,
   decisao: 'APROVAR' | 'REPROVAR',
   visibilidadeMidia?: 'LIVRE' | 'RESTRITA_18',
@@ -321,6 +322,7 @@ export function decideAdminMedia(
   return request<AdminModerationActionResponse>(`/midias/${encodeURIComponent(mediaId)}/decidir`, {
     method: 'POST',
     body: JSON.stringify({
+      anuncioId,
       decisao,
       visibilidadeMidia,
       motivo: motivo?.trim() || undefined,

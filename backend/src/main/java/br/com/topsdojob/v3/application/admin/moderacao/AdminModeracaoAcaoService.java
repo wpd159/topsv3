@@ -200,6 +200,17 @@ public class AdminModeracaoAcaoService {
                 request == null ? null : request.observacao());
         AnuncioMidiaEntity midia = anuncioMidiaRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
+        if (request == null || request.anuncioId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncio obrigatorio para decidir midia");
+        }
+        if (!midia.getAnuncioId().equals(request.anuncioId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "midia nao pertence ao anuncio informado");
+        }
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(midia.getAnuncioId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio da midia nao encontrado"));
+        if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO || anuncio.getStatus() == StatusAnuncio.REMOVIDO) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "estado do anuncio impede moderacao de midia");
+        }
         if (midia.getTipo() == TipoAnuncioMidia.STORY) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "story nao participa da moderacao de midia");
         }
@@ -511,21 +522,38 @@ public class AdminModeracaoAcaoService {
                 || !"R2".equals(arquivo.getStorageProvider())) {
             return;
         }
+        if (!derivadoMarcadoValido(arquivo)
+                && fotoImportadaProcessadaComChecksum(midia, arquivo)) {
+            return;
+        }
         garantirDerivadoMarcado(arquivo);
     }
 
+    private boolean fotoImportadaProcessadaComChecksum(
+            AnuncioMidiaEntity midia,
+            ArquivoMidiaEntity arquivo) {
+        String sha256 = arquivo.getSha256();
+        return sha256 != null
+                && sha256.matches("[0-9a-fA-F]{64}")
+                && anuncioMidiaRepository.existsFotoImportadaProcessadaComChecksum(midia.getId(), sha256);
+    }
+
     private void garantirDerivadoMarcado(ArquivoMidiaEntity arquivo) {
-        if (arquivo.getPipelineVersao() == null
-                || arquivo.getPipelineVersao() < 1
-                || arquivo.getMarcaDaguaVersao() == null
-                || arquivo.getMarcaDaguaVersao().isBlank()
-                || arquivo.getProcessadoEm() == null
-                || arquivo.getSha256Origem() == null
-                || !arquivo.getSha256Origem().matches("[0-9a-f]{64}")) {
+        if (!derivadoMarcadoValido(arquivo)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "foto livre nao possui derivado marcado valido");
         }
+    }
+
+    private boolean derivadoMarcadoValido(ArquivoMidiaEntity arquivo) {
+        return arquivo.getPipelineVersao() != null
+                && arquivo.getPipelineVersao() >= 1
+                && arquivo.getMarcaDaguaVersao() != null
+                && !arquivo.getMarcaDaguaVersao().isBlank()
+                && arquivo.getProcessadoEm() != null
+                && arquivo.getSha256Origem() != null
+                && arquivo.getSha256Origem().matches("[0-9a-f]{64}");
     }
 
     private String motivoSeguro(String motivo, String observacao) {

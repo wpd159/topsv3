@@ -7145,11 +7145,15 @@ components:
           description: Reservado para idempotencia futura. Nesta fase local nao deduplica por requestIdCliente, nao garante reprocessamento seguro e nao deve ser usado como contrato de idempotencia. A duplicidade atual de SOLICITAR_AJUSTE e bloqueada por chave local de outbox, retornando 409.
     AdminDecidirMidiaRequest:
       type: object
-      description: Decisao individual por ID de foto ou video. Foto exige visibilidade em APROVAR; video permanece RESTRITA_18; Story retorna 409. Motivo e obrigatorio em REPROVAR e SOLICITAR_AJUSTE.
+      description: Decisao individual por ID de foto ou video, vinculada explicitamente ao anuncio exibido. Foto exige visibilidade em APROVAR; video permanece RESTRITA_18; Story retorna 409. Motivo e obrigatorio em REPROVAR e SOLICITAR_AJUSTE.
       additionalProperties: false
       required:
+        - anuncioId
         - decisao
       properties:
+        anuncioId:
+          type: string
+          format: uuid
         decisao:
           $ref: "#/components/schemas/AdminDecisaoModeracaoAcao"
         visibilidadeMidia:

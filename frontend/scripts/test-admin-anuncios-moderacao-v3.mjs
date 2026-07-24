@@ -66,6 +66,10 @@ for (const contract of [
   assert.ok(api.includes(contract), `Contrato V3 ausente no adapter: ${contract}`)
 }
 assert.ok(api.includes('adminApiUrl(path)'), 'O adapter deve reutilizar o resolvedor administrativo.')
+assert.ok(
+  api.includes('anuncioId,') && api.includes('body: JSON.stringify({\n      anuncioId,'),
+  'A decisao de midia deve permanecer vinculada ao anuncio exibido.',
+)
 assert.ok(api.includes('[csrfHeaderName()]: value'), 'Mutacoes devem enviar CSRF.')
 assert.ok(api.includes("credentials: 'include'"), 'A sessao deve ser a unica fonte do ator.')
 assert.ok(api.includes('throw normalizeApiError(error)'), 'Falhas nao podem ser convertidas em sucesso ou vazio.')
@@ -78,6 +82,10 @@ assert.ok(detail.includes('MediaVisibilitySelector') && detail.includes('type="r
 assert.ok(detail.includes('reclassifyAdminMedia') && detail.includes("kind: 'RECLASSIFY'"), 'Foto finalizada deve usar a operacao canonica propria de reclassificacao.')
 assert.ok(detail.includes('Aplicar e aprovar') && detail.includes('Aplicar classifica'), 'Foto pendente e finalizada devem exigir aplicacao explicita.')
 assert.ok(detail.includes('else delete next[intent.media.id]'), 'Falha deve restaurar o estado persistido da classificacao, sem simular sucesso.')
+assert.ok(detail.includes("normalized.kind === 'CONFLICT'") && detail.includes('O estado da mídia mudou.'), 'Conflito real deve atualizar o detalhe e explicar a mudanca de estado.')
+assert.ok(detail.includes('preserveSelection.mode') && detail.includes('selectionStillApplies'), 'A selecao deve ser preservada somente enquanto a decisao continuar aplicavel.')
+assert.ok(detail.includes('await load()') && detail.includes('setIntent(null)'), 'Sucesso deve atualizar o card antes de fechar o modal.')
+assert.ok(detail.includes('mediaOrdinal[item.id]') && !detail.includes('item.ordem + 1'), 'Capa e galeria nao podem repetir a mesma numeracao visual.')
 assert.ok(detail.includes("filter((item) => String(item.tipo) !== 'STORY')"), 'Story nao pode entrar na secao de midias.')
 assert.ok(detail.includes("action: 'APROVAR'") && detail.includes("action: 'REPROVAR'"), 'Aprovar e rejeitar devem permanecer disponiveis.')
 assert.ok(detail.includes('Motivo obrigatório'), 'Rejeicao deve coletar motivo.')
