@@ -31,6 +31,7 @@ class LocalidadePublicaConsultaServiceTest {
         UUID cidadeId = UUID.randomUUID();
         UUID bairroId = UUID.randomUUID();
         UUID anuncioId = UUID.randomUUID();
+        UUID anuncioExclusivoId = UUID.randomUUID();
 
         EstadoEntity estado = entity(EstadoEntity.class);
         set(estado, "id", estadoId);
@@ -50,11 +51,21 @@ class LocalidadePublicaConsultaServiceTest {
         set(anuncio, "id", anuncioId);
         set(anuncio, "status", StatusAnuncio.PUBLICADO);
         set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
+        AnuncioEntity anuncioExclusivo = entity(AnuncioEntity.class);
+        set(anuncioExclusivo, "id", anuncioExclusivoId);
+        set(anuncioExclusivo, "status", StatusAnuncio.PUBLICADO);
+        set(anuncioExclusivo, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
+        set(anuncioExclusivo, "atendimentoExclusivamenteVirtual", true);
         AnuncioLocalizacaoEntity localizacao = entity(AnuncioLocalizacaoEntity.class);
         set(localizacao, "anuncioId", anuncioId);
         set(localizacao, "estadoId", estadoId);
         set(localizacao, "cidadeId", cidadeId);
         set(localizacao, "bairroId", bairroId);
+        AnuncioLocalizacaoEntity localizacaoExclusiva = entity(AnuncioLocalizacaoEntity.class);
+        set(localizacaoExclusiva, "anuncioId", anuncioExclusivoId);
+        set(localizacaoExclusiva, "estadoId", estadoId);
+        set(localizacaoExclusiva, "cidadeId", cidadeId);
+        set(localizacaoExclusiva, "bairroId", bairroId);
 
         EstadoRepository estadoRepository = mock(EstadoRepository.class);
         CidadeRepository cidadeRepository = mock(CidadeRepository.class);
@@ -63,8 +74,9 @@ class LocalidadePublicaConsultaServiceTest {
         AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
         when(anuncioRepository.findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO)).thenReturn(List.of(anuncio));
-        when(localizacaoRepository.findByAnuncioIdIn(any())).thenReturn(List.of(localizacao));
+                StatusModeracaoAnuncio.APROVADO)).thenReturn(List.of(anuncio, anuncioExclusivo));
+        when(localizacaoRepository.findByAnuncioIdIn(any()))
+                .thenReturn(List.of(localizacao, localizacaoExclusiva));
         when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
         when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));
         when(bairroRepository.findAllById(any())).thenReturn(List.of(bairro));
@@ -78,11 +90,16 @@ class LocalidadePublicaConsultaServiceTest {
 
         assertThat(descoberta.estados()).hasSize(1);
         assertThat(descoberta.estados().get(0).uf()).isEqualTo("GO");
+        assertThat(descoberta.estados().get(0).totalAnunciosAtivos()).isEqualTo(1);
         assertThat(descoberta.estados().get(0).cidades()).singleElement()
                 .satisfies(item -> {
                     assertThat(item.slug()).isEqualTo("goiania");
+                    assertThat(item.totalAnunciosAtivos()).isEqualTo(1);
                     assertThat(item.bairros()).singleElement()
-                            .satisfies(value -> assertThat(value.slug()).isEqualTo("setor-bueno"));
+                            .satisfies(value -> {
+                                assertThat(value.slug()).isEqualTo("setor-bueno");
+                                assertThat(value.totalAnunciosAtivos()).isEqualTo(1);
+                            });
                 });
     }
 }

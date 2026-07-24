@@ -78,6 +78,7 @@ export type MeuAnuncio = {
   whatsapp: string | null
   locaisAtendimento: string[]
   servicos: string[]
+  atendimentoExclusivamenteVirtual: boolean
   status: string
   statusModeracao: string
   localizacao: MeuAnuncioLocalizacao | null
@@ -109,6 +110,7 @@ export type MeuAnuncioAtualizacao = {
   locaisAtendimento: string[]
   servicos: string[]
   whatsapp: string | null
+  atendimentoExclusivamenteVirtual: boolean
 }
 
 export class MeusAnunciosApiError extends Error {
@@ -188,6 +190,9 @@ function mapMeuAnuncio(payload: unknown): MeuAnuncio {
     acoesPermitidas?: unknown
     visualizacoes?: unknown
     reprovacao?: unknown
+  }
+  if (typeof raw.atendimentoExclusivamenteVirtual !== 'boolean') {
+    throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
   try {
     return {

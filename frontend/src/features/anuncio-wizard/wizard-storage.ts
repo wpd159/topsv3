@@ -41,9 +41,18 @@ function asStringArray(value: unknown) {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
+function asBoolean(value: unknown) {
+  return value === true
+}
+
 function sanitizeState(input: StoredWizardState | null | undefined): WizardState {
   const form = input?.form
   const rawStep = input?.currentStep
+  const legacyVirtualCategory = asString(form?.categoria) === 'VENDA_DE_CONTEUDO'
+  const servicos = asStringArray(form?.servicos)
+  if (legacyVirtualCategory && !servicos.includes('VIDEOCHAMADA')) {
+    servicos.push('VIDEOCHAMADA')
+  }
   const currentStep = typeof rawStep === 'string' && stepSet.has(rawStep)
       ? (rawStep as WizardState['currentStep'])
       : 'perfil'
@@ -53,12 +62,14 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
     form: {
       ...initialWizardState.form,
       titulo: asString(form?.titulo),
-      categoria: asString(form?.categoria),
+      categoria: legacyVirtualCategory ? 'ACOMPANHANTE_FEMININA' : asString(form?.categoria),
       descricaoPerfil: asString(form?.descricaoPerfil),
       preco: asString(form?.preco),
       horario: asString(form?.horario),
       locaisAtendimento: asStringArray(form?.locaisAtendimento),
-      servicos: asStringArray(form?.servicos),
+      servicos,
+      atendimentoExclusivamenteVirtual:
+        servicos.includes('VIDEOCHAMADA') && asBoolean(form?.atendimentoExclusivamenteVirtual),
       descricao: asString(form?.descricao),
       linkConteudo: asString(form?.linkConteudo),
       whatsapp: asString(form?.whatsapp),

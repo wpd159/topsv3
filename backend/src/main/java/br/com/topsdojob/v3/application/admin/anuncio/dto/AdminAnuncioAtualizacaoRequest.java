@@ -14,5 +14,6 @@ public record AdminAnuncioAtualizacaoRequest(
         String enderecoResumido,
         List<String> locaisAtendimento,
         List<String> servicos,
-        String whatsapp) {
+        String whatsapp,
+        boolean atendimentoExclusivamenteVirtual) {
 }

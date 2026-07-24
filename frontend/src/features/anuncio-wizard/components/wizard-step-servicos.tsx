@@ -1,6 +1,7 @@
 'use client'
 
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import type { WizardFormState } from '../types'
 import { formatCurrencyBRL } from '@/utils/formatter'
 import { horarios, locais, servicos } from '../wizard-constants'
@@ -62,6 +63,26 @@ export function WizardStepServicos({
         selected={state.servicos}
         onToggle={(value) => onToggle('servicos', value)}
       />
+
+      {state.servicos.includes('VIDEOCHAMADA') ? (
+        <label className="flex items-start gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+          <Checkbox
+            checked={state.atendimentoExclusivamenteVirtual}
+            onCheckedChange={(checked) => onPatch({
+              atendimentoExclusivamenteVirtual: checked === true,
+            })}
+            aria-label="Atendimento exclusivamente virtual"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-zinc-900">
+              Atendimento exclusivamente virtual
+            </span>
+            <span className="mt-1 block text-sm text-zinc-600">
+              Marque apenas se você não realiza atendimento presencial
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <Field label="Conte um pouco mais sobre a experiência">
         <AutoResizeTextarea

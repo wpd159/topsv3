@@ -28,6 +28,7 @@ function initial(ad: AdminAdDetail): AdminAdUpdate {
     locaisAtendimento: ad.locaisAtendimento,
     servicos: ad.servicos,
     whatsapp: ad.whatsapp || null,
+    atendimentoExclusivamenteVirtual: ad.atendimentoExclusivamenteVirtual,
   }
 }
 
@@ -60,6 +61,9 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
     setForm((current) => current ? {
       ...current,
       [field]: current[field].includes(value) ? current[field].filter((item) => item !== value) : [...current[field], value],
+      ...(field === 'servicos' && value === 'VIDEOCHAMADA' && current[field].includes(value)
+        ? { atendimentoExclusivamenteVirtual: false }
+        : {}),
     } : current)
   }
 
@@ -102,6 +106,27 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
         <label><span className="mb-1 block text-sm font-semibold">WhatsApp</span><Input value={form.whatsapp || ''} maxLength={20} onChange={(event) => setForm({ ...form, whatsapp: event.target.value || null })} /></label>
       </div>
       <fieldset><legend className="text-sm font-semibold text-zinc-950">Serviços</legend><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{servicos.map((item) => <label key={item.value} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.servicos.includes(item.value)} onChange={() => toggle('servicos', item.value)} />{item.label}</label>)}</div></fieldset>
+      {form.servicos.includes('VIDEOCHAMADA') ? (
+        <label className="flex items-start gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-pink-500"
+            checked={form.atendimentoExclusivamenteVirtual}
+            onChange={(event) => setForm({
+              ...form,
+              atendimentoExclusivamenteVirtual: event.target.checked,
+            })}
+          />
+          <span>
+            <span className="block text-sm font-semibold text-zinc-950">
+              Atendimento exclusivamente virtual
+            </span>
+            <span className="mt-1 block text-sm text-zinc-600">
+              Marque apenas se você não realiza atendimento presencial
+            </span>
+          </span>
+        </label>
+      ) : null}
       <fieldset><legend className="text-sm font-semibold text-zinc-950">Locais de atendimento</legend><div className="mt-3 flex flex-wrap gap-4">{locais.map((item) => <label key={item.value} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.locaisAtendimento.includes(item.value)} onChange={() => toggle('locaisAtendimento', item.value)} />{item.label}</label>)}</div></fieldset>
       <div className="flex justify-end border-t border-zinc-200 pt-5"><Button type="submit" disabled={saving}>{saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}Salvar alterações</Button></div>
     </form>

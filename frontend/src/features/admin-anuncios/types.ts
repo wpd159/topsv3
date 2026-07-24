@@ -105,6 +105,7 @@ export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' 
   whatsapp?: string | null
   locaisAtendimento: string[]
   servicos: string[]
+  atendimentoExclusivamenteVirtual: boolean
   anunciante?: AdminAdvertiserDetail | null
   metricas: AdminAdMetrics
   bloqueioJuridico?: AdminLegalBlock | null
@@ -254,6 +255,7 @@ export type AdminAdUpdate = {
   locaisAtendimento: string[]
   servicos: string[]
   whatsapp: string | null
+  atendimentoExclusivamenteVirtual: boolean
 }
 
 export type AdminMediaItem = {

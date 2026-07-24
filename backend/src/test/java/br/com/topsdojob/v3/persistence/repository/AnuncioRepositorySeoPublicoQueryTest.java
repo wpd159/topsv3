@@ -31,11 +31,17 @@ class AnuncioRepositorySeoPublicoQueryTest {
         assertQueryCanonica(categoriaQuery.value());
         assertQueryCanonica(localidadeQuery.value());
         assertThat(categoriaQuery.countQuery())
-                .contains(":categoria is null or a.categoria = :categoria")
+                .contains(":categoria = 'VENDA_DE_CONTEUDO'")
+                .contains("from anuncio_servicos av")
+                .contains("av.servico = 'VIDEOCHAMADA'")
+                .contains("a.categoria = :categoria")
+                .contains("a.atendimento_exclusivamente_virtual = false")
                 .contains(":busca is null")
+                .doesNotContain("join anuncio_servicos")
                 .doesNotContain("hashtextextended")
                 .doesNotContain("order by");
         assertThat(localidadeQuery.countQuery())
+                .contains("a.atendimento_exclusivamente_virtual = false")
                 .contains("l.estado_id = :estadoId")
                 .contains(":cidadeId is null or l.cidade_id = :cidadeId")
                 .contains(":bairroId is null or l.bairro_id = :bairroId")

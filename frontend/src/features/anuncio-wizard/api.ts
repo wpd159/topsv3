@@ -139,6 +139,8 @@ export async function submitWizardAnuncio(state: WizardFormState) {
       descricao,
       preco: Number(precoParaNumero(state.preco)),
       categoria: state.categoria,
+      servicos: state.servicos,
+      atendimentoExclusivamenteVirtual: state.atendimentoExclusivamenteVirtual,
       aceiteTermos: true,
       confirmacaoIdade: true,
     }),

@@ -88,6 +88,7 @@ function editPayload(state: WizardFormState): MeuAnuncioAtualizacao {
     locaisAtendimento: state.locaisAtendimento,
     servicos: state.servicos,
     whatsapp: state.whatsapp.trim() || null,
+    atendimentoExclusivamenteVirtual: state.atendimentoExclusivamenteVirtual,
   }
 }
 
@@ -170,7 +171,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     .filter(Boolean)
     .join(' · ')
   const previewReference = state.pontoReferenciaTexto.trim()
-  const hasVirtual = state.servicos.includes('VIDEOCHAMADA') || state.categoria === 'VENDA_DE_CONTEUDO'
+  const hasVirtual = state.servicos.includes('VIDEOCHAMADA')
   const quietPreview = currentStep.id === 'perfil' || currentStep.id === 'localizacao'
   const highlightedPreview =
     currentStep.id === 'fotos' ||
@@ -242,6 +243,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
             preco: formatCurrencyBRL(anuncio.preco),
             locaisAtendimento: anuncio.locaisAtendimento || [],
             servicos: anuncio.servicos || [],
+            atendimentoExclusivamenteVirtual: anuncio.atendimentoExclusivamenteVirtual,
             descricao: anuncio.descricao || '',
             whatsapp: anuncio.whatsapp || '',
             estadoId: anuncio.localizacao?.uf || '',
@@ -400,7 +402,12 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     if (set.has(value)) set.delete(value)
     else set.add(value)
     if (field === 'locaisAtendimento') updateForm({ locaisAtendimento: Array.from(set) })
-    else updateForm({ servicos: Array.from(set) })
+    else updateForm({
+      servicos: Array.from(set),
+      ...(value === 'VIDEOCHAMADA' && !set.has(value)
+        ? { atendimentoExclusivamenteVirtual: false }
+        : {}),
+    })
   }
 
   const handleEstado = (value: string) => {

@@ -16,6 +16,7 @@ public record MeuAnuncioDto(
         String whatsapp,
         List<String> locaisAtendimento,
         List<String> servicos,
+        boolean atendimentoExclusivamenteVirtual,
         String status,
         String statusModeracao,
         MeuAnuncioLocalizacaoDto localizacao,

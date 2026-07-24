@@ -10,6 +10,7 @@ export type WizardFormState = {
   horario: string
   locaisAtendimento: string[]
   servicos: string[]
+  atendimentoExclusivamenteVirtual: boolean
   descricao: string
   linkConteudo: string
   whatsapp: string
@@ -51,6 +52,7 @@ export const initialWizardFormState: WizardFormState = {
   horario: '',
   locaisAtendimento: [],
   servicos: [],
+  atendimentoExclusivamenteVirtual: false,
   descricao: '',
   linkConteudo: '',
   whatsapp: '',

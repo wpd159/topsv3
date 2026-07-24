@@ -33,8 +33,7 @@ public class AnuncioAtualizacaoCanonicaValidator {
             throw badRequest("titulo nao pode conter contato, rede social ou URL");
         }
         String descricao = textoObrigatorio(request.descricao(), "descricao", 20, DESCRICAO_MAX);
-        String categoria = CategoriaAnuncio.porCodigo(request.categoria())
-                .map(Enum::name)
+        CategoriaAnuncio categoriaInformada = CategoriaAnuncio.porCodigo(request.categoria())
                 .orElseThrow(() -> badRequest("categoria invalida"));
         BigDecimal preco = request.preco();
         if (preco != null) {
@@ -51,7 +50,17 @@ public class AnuncioAtualizacaoCanonicaValidator {
         String bairro = textoOpcional(request.bairro(), "bairro", 2, 80);
         Set<LocalAtendimentoAnuncio> locais = enums(
                 request.locaisAtendimento(), LocalAtendimentoAnuncio.class, "locaisAtendimento");
-        Set<ServicoAnuncio> servicos = enums(request.servicos(), ServicoAnuncio.class, "servicos");
+        Set<ServicoAnuncio> servicos = new LinkedHashSet<>(
+                enums(request.servicos(), ServicoAnuncio.class, "servicos"));
+        String categoria = categoriaInformada.name();
+        if (categoriaInformada == CategoriaAnuncio.VENDA_DE_CONTEUDO) {
+            categoria = CategoriaAnuncio.ACOMPANHANTE_FEMININA.name();
+            servicos.add(ServicoAnuncio.VIDEOCHAMADA);
+        }
+        boolean atendimentoExclusivamenteVirtual = request.atendimentoExclusivamenteVirtual();
+        if (atendimentoExclusivamenteVirtual && !servicos.contains(ServicoAnuncio.VIDEOCHAMADA)) {
+            throw badRequest("atendimento exclusivamente virtual exige o servico VIDEOCHAMADA");
+        }
         return new DadosAtualizacao(
                 titulo,
                 descricao,
@@ -61,7 +70,8 @@ public class AnuncioAtualizacaoCanonicaValidator {
                 cidade,
                 bairro,
                 locais,
-                servicos,
+                Set.copyOf(servicos),
+                atendimentoExclusivamenteVirtual,
                 whatsapp(request.whatsapp()));
     }
 
@@ -161,6 +171,7 @@ public class AnuncioAtualizacaoCanonicaValidator {
             String bairro,
             Set<LocalAtendimentoAnuncio> locaisAtendimento,
             Set<ServicoAnuncio> servicos,
+            boolean atendimentoExclusivamenteVirtual,
             String whatsapp) {
     }
 }

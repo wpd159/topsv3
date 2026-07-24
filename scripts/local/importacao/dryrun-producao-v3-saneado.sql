@@ -773,7 +773,11 @@ SELECT
   END AS status,
   'PENDENTE'::text AS status_moderacao,
   a.status AS status_origem,
-  a.categoria,
+  a.categoria AS categoria_origem,
+  CASE
+    WHEN a.categoria = 'VENDA_DE_CONTEUDO' THEN 'ACOMPANHANTE_FEMININA'
+    ELSE a.categoria
+  END AS categoria,
   a.preco,
   u.telefone_normalizado AS whatsapp_normalizado,
   p.primeira_publicacao_em AT TIME ZONE 'America/Sao_Paulo' AS publicado_em,
@@ -788,13 +792,13 @@ JOIN dryrun_usuario u ON u.origem_id = a.usuario_id;
 
 INSERT INTO anuncio (
   id, usuario_id, slug, titulo, descricao, status, status_moderacao,
-  categoria, preco, whatsapp_normalizado, publicado_em,
+  categoria, atendimento_exclusivamente_virtual, preco, whatsapp_normalizado, publicado_em,
   ultima_publicacao_em, criado_em, atualizado_em, removido_em,
   origem_importacao_id, versao
 )
 SELECT
   a.id, a.usuario_id, a.slug, a.titulo, a.descricao, a.status,
-  a.status_moderacao, a.categoria, a.preco, a.whatsapp_normalizado, a.publicado_em,
+  a.status_moderacao, a.categoria, false, a.preco, a.whatsapp_normalizado, a.publicado_em,
   a.publicado_em, a.criado_em, greatest(a.criado_em, a.publicado_em),
   a.removido_em, c.execucao_id, 0
 FROM dryrun_anuncio a CROSS JOIN dryrun_context c;
@@ -833,18 +837,29 @@ JOIN dryrun_cidade c ON c.origem_id = a.cidade_origem_id
 LEFT JOIN dryrun_bairro b ON b.origem_id = a.bairro_origem_id;
 
 INSERT INTO anuncio_servicos (anuncio_id, servico, criado_em)
-SELECT DISTINCT
-  md5('legacy:anuncio:' || s.anuncio_id)::uuid,
-  s.servico,
-  c.snapshot_at
-FROM legacy.anuncio_servicos s
-CROSS JOIN dryrun_context c
-WHERE s.servico IN (
-  'ANAL', 'ATRIZ_PORNO', 'FETICHES', 'MASSAGEM_TANTRICA', 'ATIVO',
-  'BDSM', 'JOGOS_DE_INTERPRETACAO', 'ORAL', 'ATOR_PORNO',
-  'EJACULACAO_CORPORAL', 'MASSAGEM_EROTICA', 'PASSIVO', 'NAMORADAS',
-  'TRIO', 'VIDEOCHAMADA'
-);
+SELECT DISTINCT servicos.anuncio_id, servicos.servico, servicos.criado_em
+FROM (
+  SELECT
+    md5('legacy:anuncio:' || s.anuncio_id)::uuid AS anuncio_id,
+    s.servico,
+    c.snapshot_at AS criado_em
+  FROM legacy.anuncio_servicos s
+  CROSS JOIN dryrun_context c
+  WHERE s.servico IN (
+    'ANAL', 'ATRIZ_PORNO', 'FETICHES', 'MASSAGEM_TANTRICA', 'ATIVO',
+    'BDSM', 'JOGOS_DE_INTERPRETACAO', 'ORAL', 'ATOR_PORNO',
+    'EJACULACAO_CORPORAL', 'MASSAGEM_EROTICA', 'PASSIVO', 'NAMORADAS',
+    'TRIO', 'VIDEOCHAMADA'
+  )
+  UNION
+  SELECT
+    a.id,
+    'VIDEOCHAMADA',
+    c.snapshot_at
+  FROM dryrun_anuncio a
+  CROSS JOIN dryrun_context c
+  WHERE a.categoria_origem = 'VENDA_DE_CONTEUDO'
+) servicos;
 
 INSERT INTO anuncio_local_atendimento (anuncio_id, local_atendimento, criado_em)
 SELECT DISTINCT

@@ -272,7 +272,7 @@ class ListagemPublicaConsultaServiceTest {
     }
 
     @Test
-    void listaSomenteAnunciosDaCategoriaVendaDeConteudo() {
+    void listaComoSexoVirtualSemTrocarACategoriaBaseDoAnuncio() {
         UUID anuncioId = UUID.randomUUID();
         UUID usuarioId = UUID.randomUUID();
         UUID estadoId = UUID.randomUUID();
@@ -284,11 +284,11 @@ class ListagemPublicaConsultaServiceTest {
         set(anuncio, "slug", "conteudo-publico");
         set(anuncio, "titulo", "Conteudo online");
         set(anuncio, "descricao", "Videochamadas e conteudo exclusivo");
-        set(anuncio, "categoria", "VENDA_DE_CONTEUDO");
+        set(anuncio, "categoria", "ACOMPANHANTE_FEMININA");
         set(anuncio, "status", StatusAnuncio.PUBLICADO);
         set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
         set(anuncio, "locaisAtendimento", Set.of());
-        set(anuncio, "servicos", Set.of());
+        set(anuncio, "servicos", Set.of(ServicoAnuncio.VIDEOCHAMADA));
 
         AnuncioLocalizacaoEntity localizacao = entity(AnuncioLocalizacaoEntity.class);
         set(localizacao, "anuncioId", anuncioId);
@@ -351,7 +351,7 @@ class ListagemPublicaConsultaServiceTest {
         assertThat(resposta.categoria()).isEqualTo("VENDA_DE_CONTEUDO");
         assertThat(resposta.itens()).singleElement().satisfies(item -> {
             assertThat(item.slug()).isEqualTo("conteudo-publico");
-            assertThat(item.categoria()).isEqualTo("VENDA_DE_CONTEUDO");
+            assertThat(item.categoria()).isEqualTo("ACOMPANHANTE_FEMININA");
         });
     }
 

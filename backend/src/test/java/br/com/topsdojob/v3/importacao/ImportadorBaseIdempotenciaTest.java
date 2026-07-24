@@ -82,7 +82,10 @@ class ImportadorBaseIdempotenciaTest {
             "criado_em, criado_em, NULL, 0, data_nascimento, nome_civil, cpf_normalizado")
         .contains("u.telefone_normalizado AS whatsapp_normalizado")
         .contains(
-            "a.status_moderacao, a.categoria, a.preco, a.whatsapp_normalizado, a.publicado_em")
+            "a.status_moderacao, a.categoria, false, a.preco, a.whatsapp_normalizado, a.publicado_em")
+        .contains("a.categoria AS categoria_origem")
+        .contains("WHEN a.categoria = 'VENDA_DE_CONTEUDO' THEN 'ACOMPANHANTE_FEMININA'")
+        .contains("WHERE a.categoria_origem = 'VENDA_DE_CONTEUDO'")
         .contains("'usuariosNomeCivilOrigem'")
         .contains("'usuariosCpfOrigem'")
         .contains("'usuariosTelefoneOrigem'")

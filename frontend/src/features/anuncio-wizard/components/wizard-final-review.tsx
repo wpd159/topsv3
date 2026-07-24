@@ -40,7 +40,13 @@ export function WizardFinalReview({
       <ReviewRow label="Fotos" value={`${totalFotos} selecionada(s)`} />
       <ReviewRow
         label="Sexo Virtual"
-        value={hasVirtual ? 'Incluído no contexto' : 'Não selecionado'}
+        value={
+          hasVirtual
+            ? state.atendimentoExclusivamenteVirtual
+              ? 'Atendimento exclusivamente virtual'
+              : 'Atendimento presencial e virtual'
+            : 'Não selecionado'
+        }
       />
     </StepPanel>
   )

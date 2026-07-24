@@ -90,7 +90,8 @@ public class AdminAnuncioAtualizacaoService {
                 request.bairro(),
                 request.locaisAtendimento(),
                 request.servicos(),
-                request.whatsapp()));
+                request.whatsapp(),
+                request.atendimentoExclusivamenteVirtual()));
         String enderecoResumido = validator.validarEnderecoResumido(request.enderecoResumido());
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
                 .filter(item -> item.getRemovidoEm() == null)
@@ -116,6 +117,7 @@ public class AdminAnuncioAtualizacaoService {
                 validado.whatsapp(),
                 validado.locaisAtendimento(),
                 validado.servicos(),
+                validado.atendimentoExclusivamenteVirtual(),
                 agora);
         anuncioRepository.save(anuncio);
 
@@ -182,6 +184,7 @@ public class AdminAnuncioAtualizacaoService {
         result.put("preco", anuncio.getPreco());
         result.put("contatoConfigurado", anuncio.getWhatsappNormalizado() != null);
         result.put("servicos", anuncio.getServicos().stream().map(Enum::name).sorted().toList());
+        result.put("atendimentoExclusivamenteVirtual", anuncio.isAtendimentoExclusivamenteVirtual());
         result.put("locaisAtendimento", anuncio.getLocaisAtendimento().stream().map(Enum::name).sorted().toList());
         result.put("estadoId", localizacao == null ? null : localizacao.getEstadoId());
         result.put("cidadeId", localizacao == null ? null : localizacao.getCidadeId());

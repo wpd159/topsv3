@@ -4349,8 +4349,19 @@ components:
           example: 120
         categoria:
           type: string
-          default: ACOMPANHANTE
-          example: ACOMPANHANTE
+          enum: [ACOMPANHANTE_FEMININA, ACOMPANHANTE_MASCULINO, TRANSEX_TRAVESTIS, MASSAGENS]
+          default: ACOMPANHANTE_FEMININA
+          example: ACOMPANHANTE_FEMININA
+        servicos:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
+        atendimentoExclusivamenteVirtual:
+          type: boolean
+          default: false
+          description: So pode ser verdadeiro quando servicos contem VIDEOCHAMADA.
         aceiteTermos:
           type: boolean
           const: true
@@ -4808,6 +4819,7 @@ components:
         - whatsapp
         - locaisAtendimento
         - servicos
+        - atendimentoExclusivamenteVirtual
         - status
         - statusModeracao
         - localizacao
@@ -4847,6 +4859,9 @@ components:
           items:
             type: string
             enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
+        atendimentoExclusivamenteVirtual:
+          type: boolean
+          description: Verdadeiro somente com VIDEOCHAMADA; a localidade permanece preservada.
         status:
           type: string
           enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO]
@@ -4929,7 +4944,7 @@ components:
     MeuAnuncioAtualizacaoRequest:
       type: object
       additionalProperties: false
-      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, locaisAtendimento, servicos, whatsapp]
+      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, locaisAtendimento, servicos, whatsapp, atendimentoExclusivamenteVirtual]
       properties:
         titulo:
           type: string
@@ -4941,7 +4956,7 @@ components:
           maxLength: 600
         categoria:
           type: string
-          pattern: "^[A-Z0-9_]{3,40}$"
+          enum: [ACOMPANHANTE_FEMININA, ACOMPANHANTE_MASCULINO, TRANSEX_TRAVESTIS, MASSAGENS]
         preco:
           type: [number, "null"]
           minimum: 0.01
@@ -4972,10 +4987,13 @@ components:
         whatsapp:
           type: [string, "null"]
           pattern: "^\\+[1-9][0-9]{7,14}$"
+        atendimentoExclusivamenteVirtual:
+          type: boolean
+          description: So pode ser verdadeiro quando servicos contem VIDEOCHAMADA.
     AdminAnuncioAtualizacaoRequest:
       type: object
       additionalProperties: false
-      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, enderecoResumido, locaisAtendimento, servicos, whatsapp]
+      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, enderecoResumido, locaisAtendimento, servicos, whatsapp, atendimentoExclusivamenteVirtual]
       properties:
         titulo:
           type: string
@@ -4987,7 +5005,7 @@ components:
           maxLength: 600
         categoria:
           type: string
-          pattern: "^[A-Z0-9_]{3,40}$"
+          enum: [ACOMPANHANTE_FEMININA, ACOMPANHANTE_MASCULINO, TRANSEX_TRAVESTIS, MASSAGENS]
         preco:
           type: [number, "null"]
           minimum: 0.01
@@ -5023,6 +5041,9 @@ components:
         whatsapp:
           type: [string, "null"]
           pattern: "^\\+[1-9][0-9]{7,14}$"
+        atendimentoExclusivamenteVirtual:
+          type: boolean
+          description: So pode ser verdadeiro quando servicos contem VIDEOCHAMADA.
     MeuAnuncioLocalizacao:
       type: object
       additionalProperties: false
@@ -5685,6 +5706,7 @@ components:
         - comercialLimitado
         - locaisAtendimento
         - servicos
+        - atendimentoExclusivamenteVirtual
         - metricas
       properties:
         id:
@@ -5748,6 +5770,8 @@ components:
           type: array
           items:
             type: string
+        atendimentoExclusivamenteVirtual:
+          type: boolean
         anunciante:
           anyOf:
             - $ref: "#/components/schemas/AdminAnuncianteDetalhe"

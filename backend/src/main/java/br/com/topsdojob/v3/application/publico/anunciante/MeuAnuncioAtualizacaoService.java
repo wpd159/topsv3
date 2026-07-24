@@ -109,6 +109,7 @@ public class MeuAnuncioAtualizacaoService {
                 validado.whatsapp(),
                 validado.locaisAtendimento(),
                 validado.servicos(),
+                validado.atendimentoExclusivamenteVirtual(),
                 agora);
         anuncioRepository.save(anuncio);
 
@@ -181,6 +182,7 @@ public class MeuAnuncioAtualizacaoService {
         payload.put("bairro", bairro == null ? null : bairro.getSlug());
         payload.put("locaisAtendimento", request.locaisAtendimento().stream().map(Enum::name).sorted().toList());
         payload.put("servicos", request.servicos().stream().map(Enum::name).sorted().toList());
+        payload.put("atendimentoExclusivamenteVirtual", request.atendimentoExclusivamenteVirtual());
         payload.put("contatoInformado", request.whatsapp() != null);
         try {
             return objectMapper.writeValueAsString(payload);

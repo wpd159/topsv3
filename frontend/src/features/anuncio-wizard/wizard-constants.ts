@@ -5,7 +5,6 @@ export const categorias = [
   { value: 'ACOMPANHANTE_MASCULINO', label: 'Acompanhante masculino' },
   { value: 'TRANSEX_TRAVESTIS', label: 'Trans / Travestis' },
   { value: 'MASSAGENS', label: 'Massagens' },
-  { value: 'VENDA_DE_CONTEUDO', label: 'Sexo Virtual' },
 ]
 
 export const horarios = [

@@ -18,6 +18,7 @@ import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -121,7 +122,9 @@ public class LocalidadePublicaConsultaService {
                 : anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                         ids,
                         StatusAnuncio.PUBLICADO,
-                        StatusModeracaoAnuncio.APROVADO);
+                        StatusModeracaoAnuncio.APROVADO).stream()
+                        .filter(anuncio -> !anuncio.isAtendimentoExclusivamenteVirtual())
+                        .toList();
         if (anuncios.isEmpty()) {
             throw notFound("cidade sem anuncios publicos");
         }
@@ -147,8 +150,16 @@ public class LocalidadePublicaConsultaService {
         }
 
         Map<String, Long> categorias = anuncios.stream()
-                .map(AnuncioEntity::getCategoria)
-                .filter(value -> value != null && !value.isBlank())
+                .flatMap(anuncio -> {
+                    Set<String> codigos = new java.util.LinkedHashSet<>();
+                    if (anuncio.getCategoria() != null && !anuncio.getCategoria().isBlank()) {
+                        codigos.add(anuncio.getCategoria());
+                    }
+                    if (anuncio.getServicos().contains(ServicoAnuncio.VIDEOCHAMADA)) {
+                        codigos.add("VENDA_DE_CONTEUDO");
+                    }
+                    return codigos.stream();
+                })
                 .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
         List<CategoriaCidadePublicaDto> categoriasDto = categorias.entrySet().stream()
                 .map(entry -> new CategoriaCidadePublicaDto(
@@ -189,7 +200,9 @@ public class LocalidadePublicaConsultaService {
     private List<AnuncioEntity> anunciosPublicos() {
         return anuncioRepository.findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO);
+                StatusModeracaoAnuncio.APROVADO).stream()
+                .filter(anuncio -> !anuncio.isAtendimentoExclusivamenteVirtual())
+                .toList();
     }
 
     private OffsetDateTime ultimaAtualizacao(AnuncioEntity anuncio, AnuncioLocalizacaoEntity localizacao) {

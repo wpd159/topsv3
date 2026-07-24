@@ -162,7 +162,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 null,
                 List.of("FORA_DO_ENUM"),
                 List.of(),
-                "invalido");
+                "invalido",
+                false);
 
         assertStatus(400, () -> service.atualizar("slug-preservado", invalido, authentication));
 
@@ -296,7 +297,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 "Setor Bueno",
                 List.of("MEU_LOCAL", "HOTEL_MOTEL"),
                 List.of("ANAL", "ORAL"),
-                "+55 (62) 99999-9999");
+                "+55 (62) 99999-9999",
+                false);
     }
 
     private MeuAnuncioAtualizacaoRequestDto requestSemBairro() {
@@ -311,7 +313,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 null,
                 request.locaisAtendimento(),
                 request.servicos(),
-                request.whatsapp());
+                request.whatsapp(),
+                request.atendimentoExclusivamenteVirtual());
     }
 
     private void assertStatus(int status, org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {

@@ -55,6 +55,9 @@ public class AnuncioEntity {
   @Column(name = "categoria")
   private String categoria;
 
+  @Column(name = "atendimento_exclusivamente_virtual", nullable = false)
+  private boolean atendimentoExclusivamenteVirtual;
+
   @ElementCollection(fetch = FetchType.LAZY)
   @CollectionTable(name = "anuncio_local_atendimento", joinColumns = @JoinColumn(name = "anuncio_id"))
   @Enumerated(EnumType.STRING)
@@ -127,6 +130,14 @@ public class AnuncioEntity {
 
   public String getCategoria() {
     return categoria;
+  }
+
+  public boolean isAtendimentoExclusivamenteVirtual() {
+    return atendimentoExclusivamenteVirtual;
+  }
+
+  public boolean ofereceSexoVirtual() {
+    return servicos.contains(ServicoAnuncio.VIDEOCHAMADA);
   }
 
   public Set<LocalAtendimentoAnuncio> getLocaisAtendimento() {
@@ -288,10 +299,45 @@ public class AnuncioEntity {
   public void sincronizarAtendimentoEstruturado(
       Set<LocalAtendimentoAnuncio> locaisAtendimento,
       Set<ServicoAnuncio> servicos) {
+    sincronizarAtendimentoEstruturado(
+        locaisAtendimento, servicos, atendimentoExclusivamenteVirtual);
+  }
+
+  public void sincronizarAtendimentoEstruturado(
+      Set<LocalAtendimentoAnuncio> locaisAtendimento,
+      Set<ServicoAnuncio> servicos,
+      boolean atendimentoExclusivamenteVirtual) {
+    Set<ServicoAnuncio> servicosSeguros = servicos == null ? Set.of() : Set.copyOf(servicos);
+    if (atendimentoExclusivamenteVirtual
+        && !servicosSeguros.contains(ServicoAnuncio.VIDEOCHAMADA)) {
+      throw new IllegalArgumentException(
+          "atendimento exclusivamente virtual exige o servico VIDEOCHAMADA");
+    }
     this.locaisAtendimento.clear();
     this.locaisAtendimento.addAll(locaisAtendimento == null ? Set.of() : locaisAtendimento);
     this.servicos.clear();
-    this.servicos.addAll(servicos == null ? Set.of() : servicos);
+    this.servicos.addAll(servicosSeguros);
+    this.atendimentoExclusivamenteVirtual = atendimentoExclusivamenteVirtual;
+  }
+
+  public void atualizarPeloProprietario(
+      String titulo,
+      String descricao,
+      String categoria,
+      BigDecimal preco,
+      String whatsappNormalizado,
+      Set<LocalAtendimentoAnuncio> locaisAtendimento,
+      Set<ServicoAnuncio> servicos,
+      boolean atendimentoExclusivamenteVirtual,
+      OffsetDateTime atualizadoEm) {
+    this.titulo = titulo;
+    this.descricao = descricao;
+    this.categoria = categoria;
+    this.preco = preco;
+    this.whatsappNormalizado = whatsappNormalizado;
+    sincronizarAtendimentoEstruturado(
+        locaisAtendimento, servicos, atendimentoExclusivamenteVirtual);
+    remeterParaRevisao(atualizadoEm);
   }
 
   public void atualizarPeloProprietario(
@@ -303,13 +349,36 @@ public class AnuncioEntity {
       Set<LocalAtendimentoAnuncio> locaisAtendimento,
       Set<ServicoAnuncio> servicos,
       OffsetDateTime atualizadoEm) {
+    atualizarPeloProprietario(
+        titulo,
+        descricao,
+        categoria,
+        preco,
+        whatsappNormalizado,
+        locaisAtendimento,
+        servicos,
+        atendimentoExclusivamenteVirtual,
+        atualizadoEm);
+  }
+
+  public void atualizarAdministrativamente(
+      String titulo,
+      String descricao,
+      String categoria,
+      BigDecimal preco,
+      String whatsappNormalizado,
+      Set<LocalAtendimentoAnuncio> locaisAtendimento,
+      Set<ServicoAnuncio> servicos,
+      boolean atendimentoExclusivamenteVirtual,
+      OffsetDateTime atualizadoEm) {
     this.titulo = titulo;
     this.descricao = descricao;
     this.categoria = categoria;
     this.preco = preco;
     this.whatsappNormalizado = whatsappNormalizado;
-    sincronizarAtendimentoEstruturado(locaisAtendimento, servicos);
-    remeterParaRevisao(atualizadoEm);
+    sincronizarAtendimentoEstruturado(
+        locaisAtendimento, servicos, atendimentoExclusivamenteVirtual);
+    this.atualizadoEm = atualizadoEm;
   }
 
   public void atualizarAdministrativamente(
@@ -321,13 +390,16 @@ public class AnuncioEntity {
       Set<LocalAtendimentoAnuncio> locaisAtendimento,
       Set<ServicoAnuncio> servicos,
       OffsetDateTime atualizadoEm) {
-    this.titulo = titulo;
-    this.descricao = descricao;
-    this.categoria = categoria;
-    this.preco = preco;
-    this.whatsappNormalizado = whatsappNormalizado;
-    sincronizarAtendimentoEstruturado(locaisAtendimento, servicos);
-    this.atualizadoEm = atualizadoEm;
+    atualizarAdministrativamente(
+        titulo,
+        descricao,
+        categoria,
+        preco,
+        whatsappNormalizado,
+        locaisAtendimento,
+        servicos,
+        atendimentoExclusivamenteVirtual,
+        atualizadoEm);
   }
 
   public static AnuncioEntity criarSolicitacaoLocal(
@@ -340,6 +412,32 @@ public class AnuncioEntity {
       BigDecimal preco,
       String whatsappNormalizado,
       OffsetDateTime criadoEm) {
+    return criarSolicitacaoLocal(
+        id,
+        usuarioId,
+        slug,
+        titulo,
+        descricao,
+        categoria,
+        preco,
+        whatsappNormalizado,
+        Set.of(),
+        false,
+        criadoEm);
+  }
+
+  public static AnuncioEntity criarSolicitacaoLocal(
+      UUID id,
+      UUID usuarioId,
+      String slug,
+      String titulo,
+      String descricao,
+      String categoria,
+      BigDecimal preco,
+      String whatsappNormalizado,
+      Set<ServicoAnuncio> servicos,
+      boolean atendimentoExclusivamenteVirtual,
+      OffsetDateTime criadoEm) {
     AnuncioEntity entity = new AnuncioEntity();
     entity.id = id;
     entity.usuarioId = usuarioId;
@@ -349,6 +447,8 @@ public class AnuncioEntity {
     entity.status = StatusAnuncio.PENDENTE_REVISAO;
     entity.statusModeracao = StatusModeracaoAnuncio.PENDENTE;
     entity.categoria = categoria;
+    entity.sincronizarAtendimentoEstruturado(
+        Set.of(), servicos, atendimentoExclusivamenteVirtual);
     entity.preco = preco;
     entity.whatsappNormalizado = whatsappNormalizado;
     entity.publicadoEm = null;
@@ -401,6 +501,7 @@ public class AnuncioEntity {
     entity.status = status;
     entity.statusModeracao = statusModeracao;
     entity.categoria = categoria;
+    entity.atendimentoExclusivamenteVirtual = false;
     entity.preco = null;
     entity.whatsappNormalizado = null;
     entity.publicadoEm = status == StatusAnuncio.PUBLICADO ? criadoEm : null;

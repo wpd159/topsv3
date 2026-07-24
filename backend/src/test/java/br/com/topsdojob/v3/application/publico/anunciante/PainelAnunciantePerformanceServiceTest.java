@@ -194,6 +194,7 @@ class PainelAnunciantePerformanceServiceTest {
                 null,
                 List.of(),
                 List.of(),
+                false,
                 "PUBLICADO",
                 "APROVADO",
                 new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro"),

@@ -31,6 +31,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusPublicacaoBusca;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.math.BigDecimal;
@@ -128,6 +129,46 @@ class SolicitarAnuncioPublicoServiceTest {
     }
 
     @Test
+    void sexoVirtualAdicionalPreservaCategoriaBaseEUmUnicoAnuncio() {
+        mockLocalidadeValida();
+        ObjectNode payload = validPayload();
+        payload.putArray("servicos").add("VIDEOCHAMADA");
+        payload.put("atendimentoExclusivamenteVirtual", false);
+
+        service.solicitar(payload, authentication);
+
+        ArgumentCaptor<AnuncioEntity> anuncio = ArgumentCaptor.forClass(AnuncioEntity.class);
+        verify(anuncioRepository).save(anuncio.capture());
+        assertThat(anuncio.getValue().getCategoria()).isEqualTo("ACOMPANHANTE_FEMININA");
+        assertThat(anuncio.getValue().getServicos()).containsExactly(ServicoAnuncio.VIDEOCHAMADA);
+        assertThat(anuncio.getValue().isAtendimentoExclusivamenteVirtual()).isFalse();
+    }
+
+    @Test
+    void clienteLegadoComCategoriaVirtualENormalizadoSemExclusividade() {
+        mockLocalidadeValida();
+        ObjectNode payload = validPayload();
+        payload.put("categoria", "VENDA_DE_CONTEUDO");
+
+        service.solicitar(payload, authentication);
+
+        ArgumentCaptor<AnuncioEntity> anuncio = ArgumentCaptor.forClass(AnuncioEntity.class);
+        verify(anuncioRepository).save(anuncio.capture());
+        assertThat(anuncio.getValue().getCategoria()).isEqualTo("ACOMPANHANTE_FEMININA");
+        assertThat(anuncio.getValue().getServicos()).containsExactly(ServicoAnuncio.VIDEOCHAMADA);
+        assertThat(anuncio.getValue().isAtendimentoExclusivamenteVirtual()).isFalse();
+    }
+
+    @Test
+    void exclusividadeSemSexoVirtualRetornaErroSemPersistir() {
+        mockLocalidadeValida();
+        ObjectNode payload = validPayload();
+        payload.put("atendimentoExclusivamenteVirtual", true);
+
+        assertValidationCode(payload, "EXCLUSIVIDADE_VIRTUAL_INVALIDA");
+    }
+
+    @Test
     void aceiteTermosAusenteRetornaErroSemPersistir() {
         ObjectNode payload = validPayload();
         payload.put("aceiteTermos", false);
@@ -207,5 +248,21 @@ class SolicitarAnuncioPublicoServiceTest {
         payload.put("aceiteTermos", true);
         payload.put("confirmacaoIdade", true);
         return payload;
+    }
+
+    private void mockLocalidadeValida() {
+        UUID estadoId = UUID.randomUUID();
+        UUID cidadeId = UUID.randomUUID();
+        EstadoEntity estado = mock(EstadoEntity.class);
+        CidadeEntity cidade = mock(CidadeEntity.class);
+        BairroEntity bairro = mock(BairroEntity.class);
+        when(estado.getId()).thenReturn(estadoId);
+        when(cidade.getId()).thenReturn(cidadeId);
+        when(anuncioRepository.existsBySlug(anyString())).thenReturn(false);
+        when(estadoRepository.findByUfIgnoreCase("ZZ")).thenReturn(Optional.of(estado));
+        when(cidadeRepository.findByEstadoIdAndSlug(estadoId, "cidade-sintetica"))
+                .thenReturn(Optional.of(cidade));
+        when(bairroRepository.findByCidadeIdAndSlug(cidadeId, "bairro-sintetico"))
+                .thenReturn(Optional.of(bairro));
     }
 }

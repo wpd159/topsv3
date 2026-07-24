@@ -23,6 +23,7 @@ import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -59,6 +60,8 @@ public class SolicitarAnuncioPublicoService {
             "descricao",
             "preco",
             "categoria",
+            "servicos",
+            "atendimentoExclusivamenteVirtual",
             "aceiteTermos",
             "confirmacaoIdade");
     private static final Set<String> DANGEROUS_FIELDS = Set.of(
@@ -141,6 +144,8 @@ public class SolicitarAnuncioPublicoService {
                 validated.categoria(),
                 validated.preco(),
                 validated.whatsapp(),
+                validated.servicos(),
+                validated.atendimentoExclusivamenteVirtual(),
                 now);
         anuncioRepository.save(anuncio);
         localizacaoRepository.save(AnuncioLocalizacaoEntity.criarSolicitacaoLocal(
@@ -221,6 +226,22 @@ public class SolicitarAnuncioPublicoService {
         String titulo = requiredText(request.titulo(), "titulo", 10, TITULO_MAX, errors);
         String descricao = requiredText(request.descricao(), "descricao", 20, DESCRICAO_MAX, errors);
         String categoria = categoria(request.categoria(), errors);
+        Set<ServicoAnuncio> servicos = servicos(request.servicos(), errors);
+        if (CategoriaAnuncio.VENDA_DE_CONTEUDO.name().equals(categoria)) {
+            categoria = CategoriaAnuncio.ACOMPANHANTE_FEMININA.name();
+            Set<ServicoAnuncio> normalizados = new java.util.LinkedHashSet<>(servicos);
+            normalizados.add(ServicoAnuncio.VIDEOCHAMADA);
+            servicos = Set.copyOf(normalizados);
+        }
+        boolean atendimentoExclusivamenteVirtual =
+                Boolean.TRUE.equals(request.atendimentoExclusivamenteVirtual());
+        if (atendimentoExclusivamenteVirtual
+                && !servicos.contains(ServicoAnuncio.VIDEOCHAMADA)) {
+            errors.add(error(
+                    "atendimentoExclusivamenteVirtual",
+                    "EXCLUSIVIDADE_VIRTUAL_INVALIDA",
+                    "atendimento exclusivamente virtual exige o servico VIDEOCHAMADA"));
+        }
         BigDecimal preco = preco(request.preco(), errors);
 
         if (titulo != null && PHONE_OR_SOCIAL_IN_TITLE.matcher(titulo).find()) {
@@ -274,6 +295,8 @@ public class SolicitarAnuncioPublicoService {
                 descricao,
                 preco,
                 categoria,
+                servicos,
+                atendimentoExclusivamenteVirtual,
                 estado,
                 cidadeEntity,
                 bairroEntity);
@@ -302,6 +325,9 @@ public class SolicitarAnuncioPublicoService {
         payload.put("bairroInformado", request.bairro() != null);
         payload.put("statusInicial", StatusAnuncio.PENDENTE_REVISAO.name());
         payload.put("statusModeracaoInicial", StatusModeracaoAnuncio.PENDENTE.name());
+        payload.put("categoria", request.categoria());
+        payload.put("servicos", request.servicos().stream().map(Enum::name).sorted().toList());
+        payload.put("atendimentoExclusivamenteVirtual", request.atendimentoExclusivamenteVirtual());
         payload.put("uploadRealExecutado", false);
         payload.put("pagamentoCriado", false);
         payload.put("creditoCriado", false);
@@ -393,6 +419,24 @@ public class SolicitarAnuncioPublicoService {
         return categoria.name();
     }
 
+    private Set<ServicoAnuncio> servicos(
+            List<String> values,
+            List<SolicitarAnuncioValidationErrorDto> errors) {
+        if (values == null) {
+            return Set.of();
+        }
+        Set<ServicoAnuncio> resultado = new java.util.LinkedHashSet<>();
+        for (String value : values) {
+            try {
+                resultado.add(ServicoAnuncio.valueOf(
+                        value == null ? "" : value.trim().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException exception) {
+                errors.add(error("servicos", "SERVICO_INVALIDO", "servicos contem valor invalido"));
+            }
+        }
+        return Set.copyOf(resultado);
+    }
+
     private String sanitize(String value) {
         if (value == null) {
             return null;
@@ -428,6 +472,8 @@ public class SolicitarAnuncioPublicoService {
             String descricao,
             BigDecimal preco,
             String categoria,
+            Set<ServicoAnuncio> servicos,
+            boolean atendimentoExclusivamenteVirtual,
             EstadoEntity estado,
             CidadeEntity cidadeEntity,
             BairroEntity bairroEntity) {

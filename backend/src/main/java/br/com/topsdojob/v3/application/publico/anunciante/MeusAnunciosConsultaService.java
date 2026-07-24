@@ -195,6 +195,7 @@ public class MeusAnunciosConsultaService {
                         anuncio.getWhatsappNormalizado(),
                         enumNames(anuncio.getLocaisAtendimento()),
                         enumNames(anuncio.getServicos()),
+                        anuncio.isAtendimentoExclusivamenteVirtual(),
                         enumName(anuncio.getStatus()),
                         enumName(anuncio.getStatusModeracao()),
                         localizacao(localizacoes.get(anuncio.getId()), estados, cidades, bairros),

@@ -96,13 +96,14 @@ class AdminAnuncioAtualizacaoServiceTest {
         DadosAtualizacao dados = new DadosAtualizacao(
                 "Titulo administrativo valido",
                 "Descricao administrativa completa e valida",
-                "VENDA_DE_CONTEUDO",
+                "ACOMPANHANTE_FEMININA",
                 new BigDecimal("250.00"),
                 "GO",
                 "Goiania",
                 "Setor Bueno",
                 Set.of(LocalAtendimentoAnuncio.MEU_LOCAL),
                 Set.of(ServicoAnuncio.VIDEOCHAMADA),
+                true,
                 "+5562888888888");
         AdminAnuncioAtualizacaoRequest request = new AdminAnuncioAtualizacaoRequest(
                 dados.titulo(),
@@ -115,7 +116,8 @@ class AdminAnuncioAtualizacaoServiceTest {
                 "Regiao central",
                 List.of("MEU_LOCAL"),
                 List.of("VIDEOCHAMADA"),
-                dados.whatsapp());
+                dados.whatsapp(),
+                true);
         when(validator.validar(any(MeuAnuncioAtualizacaoRequestDto.class))).thenReturn(dados);
         when(validator.validarEnderecoResumido("Regiao central")).thenReturn("Regiao central");
         when(validator.slugify("Goiania")).thenReturn("goiania");
@@ -136,6 +138,7 @@ class AdminAnuncioAtualizacaoServiceTest {
         assertThat(anuncio.getUsuarioId()).isEqualTo(usuarioId);
         assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
         assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(anuncio.isAtendimentoExclusivamenteVirtual()).isTrue();
         assertThat(localizacao.getEnderecoResumido()).isEqualTo("Regiao central");
         verify(anuncioRepository).findByIdForModeration(anuncioId);
         verify(documentoBuscaRepository).save(any());

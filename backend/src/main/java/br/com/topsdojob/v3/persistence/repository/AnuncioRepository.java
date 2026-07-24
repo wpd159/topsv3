@@ -198,7 +198,23 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
-                      and (:categoria is null or a.categoria = :categoria)
+                      and (
+                        :categoria is null
+                        or (
+                          :categoria = 'VENDA_DE_CONTEUDO'
+                          and exists (
+                            select 1
+                            from anuncio_servicos av
+                            where av.anuncio_id = a.id
+                              and av.servico = 'VIDEOCHAMADA'
+                          )
+                        )
+                        or (
+                          :categoria <> 'VENDA_DE_CONTEUDO'
+                          and a.categoria = :categoria
+                          and a.atendimento_exclusivamente_virtual = false
+                        )
+                      )
                       and (:busca is null or lower(translate(coalesce(a.titulo, '') || ' ' || coalesce(a.descricao, ''),
                             'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
                             'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')) like ('%' || :busca || '%'))
@@ -229,7 +245,23 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
-                      and (:categoria is null or a.categoria = :categoria)
+                      and (
+                        :categoria is null
+                        or (
+                          :categoria = 'VENDA_DE_CONTEUDO'
+                          and exists (
+                            select 1
+                            from anuncio_servicos av
+                            where av.anuncio_id = a.id
+                              and av.servico = 'VIDEOCHAMADA'
+                          )
+                        )
+                        or (
+                          :categoria <> 'VENDA_DE_CONTEUDO'
+                          and a.categoria = :categoria
+                          and a.atendimento_exclusivamente_virtual = false
+                        )
+                      )
                       and (:busca is null or lower(translate(coalesce(a.titulo, '') || ' ' || coalesce(a.descricao, ''),
                             'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
                             'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')) like ('%' || :busca || '%'))
@@ -250,6 +282,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and a.atendimento_exclusivamente_virtual = false
                       and l.estado_id = :estadoId
                       and (:cidadeId is null or l.cidade_id = :cidadeId)
                       and (:bairroId is null or l.bairro_id = :bairroId)
@@ -281,6 +314,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and a.atendimento_exclusivamente_virtual = false
                       and l.estado_id = :estadoId
                       and (:cidadeId is null or l.cidade_id = :cidadeId)
                       and (:bairroId is null or l.bairro_id = :bairroId)

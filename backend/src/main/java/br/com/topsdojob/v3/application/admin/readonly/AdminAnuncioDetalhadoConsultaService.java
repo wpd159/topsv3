@@ -244,6 +244,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                 comercialLimitado ? null : anuncio.getWhatsappNormalizado(),
                 comercialLimitado ? List.of() : enumNames(anuncio.getLocaisAtendimento()),
                 comercialLimitado ? List.of() : enumNames(anuncio.getServicos()),
+                anuncio.isAtendimentoExclusivamenteVirtual(),
                 anuncianteDetalhe(anunciante),
                 new AdminAnuncioMetricasDto(
                         visualizacoes,

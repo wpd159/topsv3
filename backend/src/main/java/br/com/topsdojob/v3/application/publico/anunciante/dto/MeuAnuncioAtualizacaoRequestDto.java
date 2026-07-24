@@ -13,5 +13,6 @@ public record MeuAnuncioAtualizacaoRequestDto(
         String bairro,
         List<String> locaisAtendimento,
         List<String> servicos,
-        String whatsapp) {
+        String whatsapp,
+        boolean atendimentoExclusivamenteVirtual) {
 }

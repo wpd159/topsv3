@@ -3,7 +3,6 @@ export const CATEGORIAS = [
   { label: 'Acompanhante Masculina', value: 'ACOMPANHANTE_MASCULINO' },
   { label: 'Massagens', value: 'MASSAGENS' },
   { label: 'Transex/Travestis', value: 'TRANSEX_TRAVESTIS' },
-  { label: 'Sexo Virtual', value: 'VENDA_DE_CONTEUDO' },
 ] as const
 
 export const HORARIOS = [
