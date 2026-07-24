@@ -1,8 +1,11 @@
 package br.com.topsdojob.v3.web.admin.moderacao;
 
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoAcaoService;
+import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLoteService;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteRequestDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteResponseDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
@@ -21,9 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminModeracaoAcaoController {
 
     private final AdminModeracaoAcaoService service;
+    private final AdminModeracaoFotosLoteService fotosLoteService;
 
-    public AdminModeracaoAcaoController(AdminModeracaoAcaoService service) {
+    public AdminModeracaoAcaoController(
+            AdminModeracaoAcaoService service,
+            AdminModeracaoFotosLoteService fotosLoteService) {
         this.service = service;
+        this.fotosLoteService = fotosLoteService;
     }
 
     @PostMapping("/api/admin/moderacao/revisoes/{id}/decidir")
@@ -44,6 +51,20 @@ public class AdminModeracaoAcaoController {
             @AuthenticationPrincipal AdminUserPrincipal actor,
             HttpServletRequest httpRequest) {
         return service.decidirMidia(id, request, actor, RequestIdContext.current(httpRequest));
+    }
+
+    @PostMapping("/api/admin/anuncios/{id}/midias/decisoes")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('MIDIA_REVISAR')")
+    public AdminDecidirFotosLoteResponseDto decidirFotosEmLote(
+            @PathVariable UUID id,
+            @RequestBody AdminDecidirFotosLoteRequestDto request,
+            @AuthenticationPrincipal AdminUserPrincipal actor,
+            HttpServletRequest httpRequest) {
+        return fotosLoteService.decidir(
+                id,
+                request,
+                actor,
+                RequestIdContext.current(httpRequest));
     }
 
     @PostMapping("/api/admin/midias/{id}/reclassificar")

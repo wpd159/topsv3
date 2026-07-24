@@ -36,11 +36,13 @@ public interface AnuncioMidiaRepository
             from AnuncioMidiaEntity m
             where m.anuncioId in :anuncioIds
               and m.tipo <> :tipoExcluido
+              and m.status <> :statusExcluido
             group by m.anuncioId
             """)
-    List<ContagemPorAnuncioProjection> countByAnuncioIdInAndTipoNot(
+    List<ContagemPorAnuncioProjection> countByAnuncioIdInAndTipoNotAndStatusNot(
             @Param("anuncioIds") Collection<UUID> anuncioIds,
-            @Param("tipoExcluido") TipoAnuncioMidia tipoExcluido);
+            @Param("tipoExcluido") TipoAnuncioMidia tipoExcluido,
+            @Param("statusExcluido") StatusAnuncioMidia statusExcluido);
 
     List<AnuncioMidiaEntity> findByAnuncioId(UUID anuncioId);
 
@@ -56,6 +58,15 @@ public interface AnuncioMidiaRepository
     List<AnuncioMidiaEntity> findByAnuncioIdForUpdate(@Param("anuncioId") UUID anuncioId);
 
     List<AnuncioMidiaEntity> findByIdIn(Collection<UUID> ids);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select midia
+            from AnuncioMidiaEntity midia
+            where midia.id in :ids
+            order by midia.id
+            """)
+    List<AnuncioMidiaEntity> findByIdInForUpdate(@Param("ids") Collection<UUID> ids);
 
     List<AnuncioMidiaEntity> findByArquivoMidiaId(UUID arquivoMidiaId);
 

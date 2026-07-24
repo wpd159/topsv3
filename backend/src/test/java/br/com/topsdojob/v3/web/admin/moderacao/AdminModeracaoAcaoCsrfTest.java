@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoAcaoService;
+import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLoteService;
 import br.com.topsdojob.v3.security.config.AdminSecurityErrorWriter;
 import br.com.topsdojob.v3.security.config.SecurityConfig;
 import java.util.UUID;
@@ -32,6 +33,9 @@ class AdminModeracaoAcaoCsrfTest {
     @MockBean
     private AdminModeracaoAcaoService service;
 
+    @MockBean
+    private AdminModeracaoFotosLoteService fotosLoteService;
+
     @Test
     void mutacoesSemCsrfSaoRecusadas() throws Exception {
         mockMvc.perform(post("/api/admin/midias/{id}/decidir", UUID.randomUUID())
@@ -41,6 +45,13 @@ class AdminModeracaoAcaoCsrfTest {
         mockMvc.perform(post("/api/admin/moderacao/revisoes/{id}/decidir", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decisao\":\"APROVAR\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/admin/anuncios/{id}/midias/decisoes", UUID.randomUUID())
+                        .with(user("admin").authorities(
+                                new SimpleGrantedAuthority("ROLE_ADMIN"),
+                                new SimpleGrantedAuthority("MIDIA_REVISAR")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fotos\":[]}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -56,6 +67,17 @@ class AdminModeracaoAcaoCsrfTest {
                 .andExpect(status().isOk());
 
         verify(service).decidirMidia(any(), any(), any(), any());
+
+        mockMvc.perform(post("/api/admin/anuncios/{id}/midias/decisoes", UUID.randomUUID())
+                        .with(user("moderador").authorities(
+                                new SimpleGrantedAuthority("ROLE_MODERADOR"),
+                                new SimpleGrantedAuthority("MIDIA_REVISAR")))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fotos\":[]}"))
+                .andExpect(status().isOk());
+
+        verify(fotosLoteService).decidir(any(), any(), any(), any());
     }
 
     @Test

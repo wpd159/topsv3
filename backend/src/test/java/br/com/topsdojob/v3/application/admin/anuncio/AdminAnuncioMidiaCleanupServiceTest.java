@@ -165,6 +165,88 @@ class AdminAnuncioMidiaCleanupServiceTest {
   }
 
   @Test
+  void excluiSomenteFotoSelecionadaEPreservaOutraMidiaKycEStoryAdministrativo() {
+    UUID anuncioId = uuid(30);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity alvoArquivo = arquivo(
+        uuid(130),
+        "privadas",
+        PRIVATE_PREFIX + "anuncios/lote/foto-alvo.jpg",
+        "image/jpeg");
+    ArquivoMidiaEntity outraArquivo = arquivo(
+        uuid(131),
+        "publicas",
+        PUBLIC_PREFIX + "anuncios/lote/foto-preservada.jpg",
+        "image/jpeg");
+    AnuncioMidiaEntity alvo = AnuncioMidiaEntity.criarFixtureHomologacao(
+        uuid(230),
+        anuncioId,
+        alvoArquivo.getId(),
+        TipoAnuncioMidia.FOTO,
+        FinalidadeAnuncioMidia.GALERIA,
+        0,
+        StatusAnuncioMidia.PENDENTE,
+        null,
+        agora.minusHours(1));
+    AnuncioMidiaEntity outra = vinculo(
+        uuid(231),
+        anuncioId,
+        outraArquivo.getId(),
+        TipoAnuncioMidia.FOTO,
+        1);
+    when(anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId))
+        .thenReturn(List.of(alvo, outra));
+    when(arquivoMidiaRepository.findByIdInForUpdate(List.of(alvoArquivo.getId())))
+        .thenReturn(List.of(alvoArquivo));
+    when(anuncioMidiaRepository.findByArquivoMidiaId(alvoArquivo.getId()))
+        .thenReturn(List.of(alvo));
+    when(documentoUsuarioRepository
+        .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(alvoArquivo.getId()))
+        .thenReturn(false);
+
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarFixtureHomologacao(
+        uuid(330),
+        alvo.getId(),
+        agora.minusHours(1),
+        agora.plusHours(23),
+        0,
+        uuid(3),
+        agora.minusHours(1));
+    when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(alvo.getId())))
+        .thenReturn(List.of(story));
+    StorySelecaoAdministrativaEntity selecao = StorySelecaoAdministrativaEntity.nova(
+        agora.minusDays(1));
+    selecao.ativar(anuncioId, uuid(3), agora.minusHours(1));
+    when(storyAdminRepository.bloquearSingleton()).thenReturn(Optional.of(selecao));
+
+    colocar(StorageArea.PRIVATE_MEDIA, alvoArquivo.getChaveObjeto());
+    colocar(StorageArea.PUBLIC_MEDIA, outraArquivo.getChaveObjeto());
+    String kycKey = DOCUMENT_PREFIX + "usuario/controle-kyc.jpg";
+    colocar(StorageArea.PRIVATE_DOCUMENT, kycKey);
+
+    var resultado = service.limparMidia(anuncioId, alvo.getId(), agora);
+
+    assertThat(resultado.midiasRemovidas()).isEqualTo(1);
+    assertThat(resultado.objetosExcluidos()).isEqualTo(1);
+    assertThat(resultado.objetosJaAusentes()).isEqualTo(1);
+    assertThat(resultado.storiesEncerrados()).isEqualTo(1);
+    assertThat(resultado.storyAdministrativoEncerrado()).isFalse();
+    assertThat(alvo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
+    assertThat(alvoArquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.REMOVIDO);
+    assertThat(outra.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+    assertThat(outraArquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+    assertThat(story.getStatus()).isEqualTo(StatusStoryAnuncio.EXPIRADO);
+    assertThat(selecao.isAtiva()).isTrue();
+    assertThat(storage.exists(
+        StorageArea.PRIVATE_MEDIA,
+        alvoArquivo.getChaveObjeto())).isFalse();
+    assertThat(storage.exists(
+        StorageArea.PUBLIC_MEDIA,
+        outraArquivo.getChaveObjeto())).isTrue();
+    assertThat(storage.exists(StorageArea.PRIVATE_DOCUMENT, kycKey)).isTrue();
+  }
+
+  @Test
   void falhaR2NaoMudaMetadadosENovaTentativaConcluiSemDuplicar() {
     UUID anuncioId = uuid(10);
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);

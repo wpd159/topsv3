@@ -1578,7 +1578,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [TODOS, PENDENTES_MODERACAO, PAUSADOS, REJEITADOS, BLOQUEADOS]
+            enum: [TODOS, PENDENTES_MODERACAO, APROVADOS, PAUSADOS, REJEITADOS, BLOQUEADOS]
             default: PENDENTES_MODERACAO
         - name: uf
           in: query
@@ -3216,6 +3216,49 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/midias/decisoes:
+    post:
+      summary: Decide fotos pendentes do anuncio em um unico lote
+      description: Restrito a ADMIN e MODERADOR com MIDIA_REVISAR. Prevalida todas as fotos antes de iniciar as mutacoes, nao aceita videos ou Stories e retorna resultado individual para aprovacao, exclusao fisica, retry idempotente ou falha sanitizada. A exclusao reutiliza o ObjectStorage canonico, preserva documentos e objetos compartilhados e nao publica o anuncio.
+      operationId: postAdminAnuncioFotosDecisoes
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDecidirFotosLoteRequest"
+      responses:
+        "200":
+          description: Resultado completo ou parcial do lote, sem sucesso global falso
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDecidirFotosLoteResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "503":
+          description: Falha operacional sanitizada durante a limpeza de uma foto
   /api/admin/documentos:
     get:
       summary: Lista envios documentais aguardando revisao
@@ -7174,6 +7217,92 @@ components:
             - string
             - "null"
           description: Reservado para idempotencia futura. Nesta fase local nao deduplica, nao garante reprocessamento seguro e nao deve ser usado como contrato de idempotencia.
+    AdminDecisaoFotoLoteAcao:
+      type: string
+      enum: [APROVAR, EXCLUIR]
+    AdminDecisaoFotoLoteItem:
+      type: object
+      additionalProperties: false
+      required: [mediaId, decisao]
+      properties:
+        mediaId:
+          type: string
+          format: uuid
+        decisao:
+          $ref: "#/components/schemas/AdminDecisaoFotoLoteAcao"
+        classificacao:
+          anyOf:
+            - $ref: "#/components/schemas/VisibilidadeMidia"
+            - type: "null"
+          description: Obrigatoria em APROVAR e proibida em EXCLUIR.
+        observacao:
+          type: [string, "null"]
+          maxLength: 240
+          description: Individual por foto RESTRITA_18; descartada para LIVRE e proibida em EXCLUIR.
+    AdminDecidirFotosLoteRequest:
+      type: object
+      additionalProperties: false
+      required: [fotos]
+      properties:
+        fotos:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AdminDecisaoFotoLoteItem"
+    AdminResultadoFotoLoteItem:
+      type: object
+      additionalProperties: false
+      required: [mediaId, decisao, classificacao, resultado, status, motivo]
+      properties:
+        mediaId:
+          type: string
+          format: uuid
+        decisao:
+          $ref: "#/components/schemas/AdminDecisaoFotoLoteAcao"
+        classificacao:
+          anyOf:
+            - $ref: "#/components/schemas/VisibilidadeMidia"
+            - type: "null"
+        resultado:
+          type: string
+          enum: [APROVADA, EXCLUIDA, JA_PROCESSADA, FALHA]
+        status:
+          type: [string, "null"]
+        motivo:
+          type: [string, "null"]
+          description: Mensagem sanitizada, presente somente quando a foto exige retry.
+    AdminDecidirFotosLoteResponse:
+      type: object
+      additionalProperties: false
+      required: [anuncioId, resultados, aprovadas, excluidas, jaProcessadas, falhas, concluido, requestId, processadoEm]
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
+        resultados:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminResultadoFotoLoteItem"
+        aprovadas:
+          type: integer
+          minimum: 0
+        excluidas:
+          type: integer
+          minimum: 0
+        jaProcessadas:
+          type: integer
+          minimum: 0
+        falhas:
+          type: integer
+          minimum: 0
+        concluido:
+          type: boolean
+        requestId:
+          type: string
+        processadoEm:
+          type: string
+          format: date-time
     AdminReclassificarMidiaRequest:
       type: object
       description: Estado desejado de uma foto PUBLICAVEL. Retry do mesmo estado nao move storage nem duplica auditoria. Video e Story retornam 409.

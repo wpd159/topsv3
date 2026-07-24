@@ -29,8 +29,11 @@ class AdminAnuncioFilaOrdenacaoSqlContractTest {
                 .contains("MAIS_CLIQUES_WHATSAPP")
                 .contains("MENOS_CLIQUES_WHATSAPP")
                 .contains(":situacao = 'PENDENTES_MODERACAO'")
+                .contains(":situacao = 'APROVADOS'")
+                .contains("a.status_moderacao = 'APROVADO'")
                 .contains("a.status = 'PAUSADO'")
                 .contains(":situacao = 'REJEITADOS'")
+                .contains("cast(a.id as text)")
                 .doesNotContain("a.status_moderacao = 'BLOQUEADO'")
                 .doesNotContain("agregado_visualizacao_diaria");
     }
@@ -48,5 +51,22 @@ class AdminAnuncioFilaOrdenacaoSqlContractTest {
                 .contains("return semCache(service.listar")
                 .doesNotContain("StatusModeracaoAnuncio statusModeracao")
                 .doesNotContain("StatusAnuncio status");
+    }
+
+    @Test
+    void contadorAdministrativoNaoIncluiMidiaRemovida() throws Exception {
+        String repository = Files.readString(Path.of(
+                "src", "main", "java", "br", "com", "topsdojob", "v3",
+                "persistence", "repository", "AnuncioMidiaRepository.java"));
+        String service = Files.readString(Path.of(
+                "src", "main", "java", "br", "com", "topsdojob", "v3",
+                "application", "admin", "readonly", "AdminAnuncioDetalhadoConsultaService.java"));
+
+        assertThat(repository)
+                .contains("and m.status <> :statusExcluido")
+                .contains("countByAnuncioIdInAndTipoNotAndStatusNot");
+        assertThat(service)
+                .contains("StatusAnuncioMidia.REMOVIDA")
+                .contains("countByAnuncioIdInAndTipoNotAndStatusNot");
     }
 }

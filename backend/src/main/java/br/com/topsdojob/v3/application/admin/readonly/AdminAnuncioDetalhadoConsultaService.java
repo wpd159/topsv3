@@ -506,7 +506,10 @@ public class AdminAnuncioDetalhadoConsultaService {
 
     private Map<UUID, Long> contarMidias(List<UUID> anuncioIds) {
         if (anuncioIds.isEmpty()) return Map.of();
-        return anuncioMidiaRepository.countByAnuncioIdInAndTipoNot(anuncioIds, TipoAnuncioMidia.STORY).stream()
+        return anuncioMidiaRepository.countByAnuncioIdInAndTipoNotAndStatusNot(
+                        anuncioIds,
+                        TipoAnuncioMidia.STORY,
+                        StatusAnuncioMidia.REMOVIDA).stream()
                 .collect(Collectors.toMap(
                         AnuncioMidiaRepository.ContagemPorAnuncioProjection::getAnuncioId,
                         AnuncioMidiaRepository.ContagemPorAnuncioProjection::getTotalMidias));

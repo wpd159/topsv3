@@ -314,6 +314,34 @@ export type AdminModerationActionResponse = {
   mensagem: string
 }
 
+export type AdminPhotoBatchDecision = {
+  mediaId: string
+  decisao: 'APROVAR' | 'EXCLUIR'
+  classificacao?: 'LIVRE' | 'RESTRITA_18'
+  observacao?: string
+}
+
+export type AdminPhotoBatchItemResult = {
+  mediaId: string
+  decisao: 'APROVAR' | 'EXCLUIR'
+  classificacao?: 'LIVRE' | 'RESTRITA_18' | null
+  resultado: 'APROVADA' | 'EXCLUIDA' | 'JA_PROCESSADA' | 'FALHA'
+  status?: string | null
+  motivo?: string | null
+}
+
+export type AdminPhotoBatchResponse = {
+  anuncioId: string
+  resultados: AdminPhotoBatchItemResult[]
+  aprovadas: number
+  excluidas: number
+  jaProcessadas: number
+  falhas: number
+  concluido: boolean
+  requestId: string
+  processadoEm: string
+}
+
 export type AdminAdFilters = {
   page: number
   size: number
@@ -328,6 +356,7 @@ export type AdminAdFilters = {
 export type AdminAdSituation =
   | 'TODOS'
   | 'PENDENTES_MODERACAO'
+  | 'APROVADOS'
   | 'PAUSADOS'
   | 'REJEITADOS'
   | 'BLOQUEADOS'

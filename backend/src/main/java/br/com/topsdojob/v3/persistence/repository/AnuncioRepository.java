@@ -83,6 +83,9 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         or (:situacao = 'PENDENTES_MODERACAO'
                             and a.status = 'PENDENTE_REVISAO'
                             and a.status_moderacao = 'PENDENTE')
+                        or (:situacao = 'APROVADOS'
+                            and a.status_moderacao = 'APROVADO'
+                            and a.status <> 'BLOQUEADO')
                         or (:situacao = 'PAUSADOS' and a.status = 'PAUSADO')
                         or (:situacao = 'REJEITADOS'
                             and (a.status = 'REJEITADO' or a.status_moderacao = 'REJEITADO'))
@@ -93,6 +96,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         cast(:termo as text) is null
                         or lower(a.slug) like ('%' || lower(:termo) || '%')
                         or lower(a.titulo) like ('%' || lower(:termo) || '%')
+                        or cast(a.id as text) like ('%' || lower(:termo) || '%')
                       )
                     order by
                       case
@@ -127,6 +131,9 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         or (:situacao = 'PENDENTES_MODERACAO'
                             and a.status = 'PENDENTE_REVISAO'
                             and a.status_moderacao = 'PENDENTE')
+                        or (:situacao = 'APROVADOS'
+                            and a.status_moderacao = 'APROVADO'
+                            and a.status <> 'BLOQUEADO')
                         or (:situacao = 'PAUSADOS' and a.status = 'PAUSADO')
                         or (:situacao = 'REJEITADOS'
                             and (a.status = 'REJEITADO' or a.status_moderacao = 'REJEITADO'))
@@ -137,6 +144,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         cast(:termo as text) is null
                         or lower(a.slug) like ('%' || lower(:termo) || '%')
                         or lower(a.titulo) like ('%' || lower(:termo) || '%')
+                        or cast(a.id as text) like ('%' || lower(:termo) || '%')
                       )
                     """,
             nativeQuery = true)

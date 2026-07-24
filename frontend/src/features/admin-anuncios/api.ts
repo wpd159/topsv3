@@ -24,6 +24,8 @@ import type {
   AdminModerationActionResponse,
   AdminModerationHistoryItem,
   AdminPage,
+  AdminPhotoBatchDecision,
+  AdminPhotoBatchResponse,
   AdminPremiumBenefit,
   AdminPremiumCatalogItem,
   AdminStorySelection,
@@ -330,6 +332,19 @@ export function decideAdminMedia(
       observacao: observacao?.trim() || undefined,
     }),
   })
+}
+
+export function decideAdminPhotosBatch(
+  anuncioId: string,
+  fotos: AdminPhotoBatchDecision[],
+) {
+  return request<AdminPhotoBatchResponse>(
+    `/anuncios/${encodeURIComponent(anuncioId)}/midias/decisoes`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ fotos }),
+    },
+  )
 }
 
 export function reclassifyAdminMedia(

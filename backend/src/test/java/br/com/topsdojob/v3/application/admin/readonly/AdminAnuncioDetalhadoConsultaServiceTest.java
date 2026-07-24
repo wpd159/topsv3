@@ -201,7 +201,8 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         when(usuarioRepository.findAllById(any())).thenReturn(List.of(usuario));
         when(revisaoRepository.findByAnuncioIdInAndStatusInOrderByCriadoEmDesc(any(), any()))
                 .thenReturn(List.of());
-        when(midiaRepository.countByAnuncioIdInAndTipoNot(any(), any())).thenReturn(List.of());
+        when(midiaRepository.countByAnuncioIdInAndTipoNotAndStatusNot(any(), any(), any()))
+                .thenReturn(List.of());
         when(revisaoRepository.countByAnuncioIdIn(any())).thenReturn(List.of());
         when(documentoRepository.countByUsuarioIdInAndStatusIn(any(), any())).thenReturn(List.of());
         when(cliqueRepository.countPermitidosPorAnuncioIdIn(any())).thenReturn(List.of(cliques));

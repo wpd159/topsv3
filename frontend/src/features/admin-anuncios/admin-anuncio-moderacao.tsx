@@ -39,6 +39,7 @@ import {
   blockAdminAd,
   blockAdminAdAndUser,
   decideAdminMedia,
+  decideAdminPhotosBatch,
   decideAdminReview,
   getAdminAd,
   getAdminAdQueueNavigation,
@@ -60,6 +61,7 @@ import type {
   AdminMediaItem,
   AdminMediaPreview,
   AdminModerationHistoryItem,
+  AdminPhotoBatchResponse,
 } from './types'
 
 type DecisionIntent =
@@ -75,6 +77,12 @@ type LegalIntent =
   | { kind: 'BLOCK_USER'; title: string }
   | { kind: 'UNBLOCK_AD'; title: string }
   | { kind: 'UNBLOCK_USER'; title: string }
+
+type PhotoDecision = {
+  decisao: 'APROVAR' | 'EXCLUIR'
+  classificacao?: 'LIVRE' | 'RESTRITA_18'
+  observacao: string
+}
 
 const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }> = [
   { value: 'DENUNCIA_GRAVE', label: 'Denúncia grave' },
@@ -347,6 +355,131 @@ function MediaVisibilitySelector({
   )
 }
 
+function PendingPhotoDecisionSelector({
+  mediaId,
+  value,
+  disabled,
+  onChange,
+  onObservationChange,
+}: {
+  mediaId: string
+  value?: PhotoDecision
+  disabled: boolean
+  onChange: (value: 'LIVRE' | 'RESTRITA_18' | 'EXCLUIR') => void
+  onObservationChange: (value: string) => void
+}) {
+  const selected = value?.decisao === 'EXCLUIR' ? 'EXCLUIR' : value?.classificacao
+  const options = [
+    { value: 'LIVRE', label: 'LIVRE', destructive: false },
+    { value: 'RESTRITA_18', label: 'RESTRITA_18', destructive: false },
+    { value: 'EXCLUIR', label: 'EXCLUIR FOTO', destructive: true },
+  ] as const
+
+  return (
+    <fieldset className="mt-4" disabled={disabled}>
+      <legend className="text-xs font-semibold text-zinc-700">Decisão individual</legend>
+      <div className="mt-2 grid gap-2">
+        {options.map((option) => {
+          const id = `photo-decision-${mediaId}-${option.value}`
+          const checked = selected === option.value
+          const selectedClass = option.destructive
+            ? 'border-red-600 bg-red-50 text-red-900'
+            : 'border-pink-500 bg-pink-50 text-pink-900'
+          return (
+            <label
+              key={option.value}
+              htmlFor={id}
+              className={`flex min-h-10 cursor-pointer items-center gap-2 border px-3 py-2 text-sm font-medium ${checked ? selectedClass : 'border-zinc-200 bg-white text-zinc-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              <input
+                id={id}
+                type="radio"
+                name={`photo-decision-${mediaId}`}
+                checked={checked}
+                onChange={() => onChange(option.value)}
+                className={`h-4 w-4 ${option.destructive ? 'accent-red-700' : 'accent-pink-600'}`}
+              />
+              {option.destructive ? <Trash2 className="h-4 w-4" /> : null}
+              {option.label}
+            </label>
+          )
+        })}
+      </div>
+      {selected === 'RESTRITA_18' ? (
+        <label className="mt-3 block">
+          <span className="mb-2 block text-xs font-semibold text-zinc-700">Observações</span>
+          <Textarea
+            value={value?.observacao ?? ''}
+            onChange={(event) => onObservationChange(event.target.value)}
+            maxLength={240}
+            rows={3}
+            disabled={disabled}
+            placeholder="Observação individual desta foto"
+          />
+        </label>
+      ) : null}
+      {selected === 'EXCLUIR' ? (
+        <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-900">
+          A foto e seus objetos exclusivos serão excluídos somente após a confirmação do lote.
+        </p>
+      ) : null}
+    </fieldset>
+  )
+}
+
+function PhotoBatchDialog({
+  open,
+  busy,
+  error,
+  livre,
+  restrita,
+  excluir,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  busy: boolean
+  error: unknown
+  livre: number
+  restrita: number
+  excluir: number
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  const normalizedError = error ? normalizeApiError(error) : null
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !busy) onClose() }}>
+      <DialogContent className="rounded-md">
+        <DialogHeader>
+          <DialogTitle>Confirmar decisões das fotos</DialogTitle>
+          <DialogDescription>
+            O lote será registrado com resultado individual por foto, ator, data UTC e requestId.
+          </DialogDescription>
+        </DialogHeader>
+        <ul className="space-y-2 border-y border-zinc-200 py-4 text-sm text-zinc-800">
+          <li><strong>{livre}</strong> {livre === 1 ? 'foto LIVRE' : 'fotos LIVRE'}</li>
+          <li><strong>{restrita}</strong> {restrita === 1 ? 'foto RESTRITA_18' : 'fotos RESTRITA_18'}</li>
+          <li className={excluir > 0 ? 'font-semibold text-red-800' : ''}>
+            <strong>{excluir}</strong> {excluir === 1 ? 'foto será excluída definitivamente' : 'fotos serão excluídas definitivamente'}
+          </li>
+        </ul>
+        {normalizedError ? (
+          <div role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+            <p className="font-semibold">Não foi possível concluir o lote</p>
+            <p className="mt-1">{normalizedError.message}</p>
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancelar</Button>
+          <Button type="button" disabled={busy} onClick={onConfirm}>
+            {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processando...</> : 'Confirmar decisões'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anuncioId: string; initialQuery?: string }) {
   const queueParams = useMemo(() => new URLSearchParams(initialQuery), [initialQuery])
   const hasQueueContext = queueParams.get('fila') === '1'
@@ -370,9 +503,16 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const [removalBusy, setRemovalBusy] = useState(false)
   const [reload, setReload] = useState(0)
   const [visibility, setVisibility] = useState<Record<string, 'LIVRE' | 'RESTRITA_18'>>({})
+  const [photoDecisions, setPhotoDecisions] = useState<Record<string, PhotoDecision>>({})
+  const [photoBatchOpen, setPhotoBatchOpen] = useState(false)
+  const [photoBatchBusy, setPhotoBatchBusy] = useState(false)
+  const [photoBatchError, setPhotoBatchError] = useState<unknown>(null)
+  const [photoBatchResult, setPhotoBatchResult] = useState<AdminPhotoBatchResponse | null>(null)
+  const photoBatchLock = useRef(false)
   const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
   const [navigationError, setNavigationError] = useState<unknown>(null)
   const [decisionFinished, setDecisionFinished] = useState(false)
+  const [adApproved, setAdApproved] = useState(false)
 
   const load = useCallback(async (preserveSelection?: {
     mediaId: string
@@ -391,7 +531,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         canReadHistory ? listAdminAdHistory(anuncioId) : Promise.resolve([]),
       ])
       setAd(adResponse)
-      setMedia(mediaResponse?.itens.filter((item) => String(item.tipo) !== 'STORY') ?? [])
+      const visibleMedia = mediaResponse?.itens.filter((item) => String(item.tipo) !== 'STORY') ?? []
+      setMedia(visibleMedia)
+      setPhotoDecisions((current) => Object.fromEntries(
+        visibleMedia
+          .filter((item) => item.tipo === 'FOTO' && ['PENDENTE', 'AJUSTE_SOLICITADO'].includes(item.status))
+          .filter((item) => Boolean(current[item.id]))
+          .map((item) => [item.id, current[item.id]]),
+      ))
       setHistory(historyResponse)
       setPermissions(sessionPermissions)
       setRoles(session?.papeis ?? [])
@@ -420,6 +567,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
 
   useEffect(() => {
     setDecisionFinished(false)
+    setAdApproved(false)
   }, [anuncioId])
 
   useEffect(() => {
@@ -449,6 +597,91 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       return [item.id, next]
     }))
   }, [media])
+  const pendingPhotos = useMemo(
+    () => media.filter((item) => item.tipo === 'FOTO' && actionableMedia.has(item.status)),
+    [actionableMedia, media],
+  )
+  const selectedPhotoCount = pendingPhotos.filter((item) => Boolean(photoDecisions[item.id])).length
+  const allPendingPhotosSelected = pendingPhotos.length > 0
+    && selectedPhotoCount === pendingPhotos.length
+  const photoBatchSummary = pendingPhotos.reduce((summary, item) => {
+    const decision = photoDecisions[item.id]
+    if (decision?.decisao === 'EXCLUIR') summary.excluir += 1
+    else if (decision?.classificacao === 'LIVRE') summary.livre += 1
+    else if (decision?.classificacao === 'RESTRITA_18') summary.restrita += 1
+    return summary
+  }, { livre: 0, restrita: 0, excluir: 0 })
+
+  function selectPhotoDecision(
+    mediaId: string,
+    choice: 'LIVRE' | 'RESTRITA_18' | 'EXCLUIR',
+  ) {
+    setPhotoDecisions((current) => {
+      const previous = current[mediaId]
+      return {
+        ...current,
+        [mediaId]: choice === 'EXCLUIR'
+          ? { decisao: 'EXCLUIR', observacao: '' }
+          : {
+            decisao: 'APROVAR',
+            classificacao: choice,
+            observacao: choice === 'RESTRITA_18' ? previous?.observacao ?? '' : '',
+          },
+      }
+    })
+    setPhotoBatchResult(null)
+  }
+
+  function updatePhotoObservation(mediaId: string, observacao: string) {
+    setPhotoDecisions((current) => {
+      const decision = current[mediaId]
+      if (!decision || decision.classificacao !== 'RESTRITA_18') return current
+      return { ...current, [mediaId]: { ...decision, observacao } }
+    })
+  }
+
+  async function confirmPhotoBatch() {
+    if (
+      photoBatchLock.current
+      || !ad
+      || !allPendingPhotosSelected
+    ) return
+    photoBatchLock.current = true
+    setPhotoBatchBusy(true)
+    setPhotoBatchError(null)
+    try {
+      const response = await decideAdminPhotosBatch(
+        ad.id,
+        pendingPhotos.map((item) => {
+          const decision = photoDecisions[item.id]
+          return {
+            mediaId: item.id,
+            decisao: decision.decisao,
+            classificacao: decision.classificacao,
+            observacao: decision.classificacao === 'RESTRITA_18'
+              ? decision.observacao.trim() || undefined
+              : undefined,
+          }
+        }),
+      )
+      setPhotoBatchResult(response)
+      await load()
+      const failedIds = new Set(
+        response.resultados
+          .filter((item) => item.resultado === 'FALHA')
+          .map((item) => item.mediaId),
+      )
+      setPhotoDecisions((current) => Object.fromEntries(
+        Object.entries(current).filter(([mediaId]) => failedIds.has(mediaId)),
+      ))
+      setPhotoBatchOpen(false)
+    } catch (reason) {
+      setPhotoBatchError(reason)
+    } finally {
+      photoBatchLock.current = false
+      setPhotoBatchBusy(false)
+    }
+  }
 
   async function confirmDecision(reason: string) {
     if (!intent || decisionLock.current || !ad) return
@@ -467,10 +700,12 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         if (!reviewId) throw new Error('A revisão aberta não foi retornada após o envio para análise.')
         await decideAdminReview(reviewId, 'APROVAR')
         setDecisionFinished(true)
+        setAdApproved(true)
       } else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
         setDecisionFinished(true)
+        setAdApproved(intent.action === 'APROVAR')
       } else if (intent.kind === 'MEDIA') {
         const motivo = intent.action === 'REPROVAR' ? reason : undefined
         const observacao = intent.action === 'APROVAR'
@@ -680,8 +915,27 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       {navigationError ? <ContractState error={navigationError} compact /> : null}
       {decisionFinished ? (
         <div role="status" className="flex flex-col gap-3 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:flex-row sm:items-center sm:justify-between">
-          <span>Decisão persistida. O avanço permanece sob seu controle.</span>
-          {navigation?.proximo ? <Button asChild size="sm"><Link href={targetHref(navigation.proximo)}>Próximo da fila<ChevronRight className="ml-2 h-4 w-4" /></Link></Button> : <strong>Fim da fila</strong>}
+          <span>
+            {adApproved
+              ? 'Anúncio aprovado. Ele saiu da fila de pendentes e permanece disponível em Todos/Aprovados.'
+              : 'Decisão persistida. O avanço permanece sob seu controle.'}
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {adApproved ? (
+              <>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={adminAdQueueListHref({ ...queueContext, page: 0, situacao: 'TODOS' })}>Ver Todos</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href={adminAdQueueListHref({ ...queueContext, page: 0, situacao: 'APROVADOS' })}>Ver Aprovados</Link>
+                </Button>
+              </>
+            ) : navigation?.proximo ? (
+              <Button asChild size="sm"><Link href={targetHref(navigation.proximo)}>Próximo da fila<ChevronRight className="ml-2 h-4 w-4" /></Link></Button>
+            ) : (
+              <strong>Fim da fila</strong>
+            )}
+          </div>
         </div>
       ) : null}
 
@@ -799,61 +1053,109 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           ) : media.length === 0 ? (
             <p className="text-sm text-zinc-600">Nenhuma foto ou vídeo vinculado ao anúncio.</p>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {media.map((item) => {
-                const actionable = actionableMedia.has(item.status)
-                const reclassifiable = item.tipo === 'FOTO' && item.status === 'PUBLICAVEL'
-                const selectedVisibility = item.tipo === 'VIDEO' ? 'RESTRITA_18' : visibility[item.id]
-                return (
-                  <article key={item.id} className="overflow-hidden rounded-md border border-zinc-200 bg-white">
-                    <MediaPreview media={item} />
-                    <div className="p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} #{mediaOrdinal[item.id]}</div>
-                        <Badge variant="outline" className={moderationTone(item.status)}>{item.status}</Badge>
-                      </div>
-                      <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-600">
-                        <div><dt>Dimensões</dt><dd className="font-medium text-zinc-900">{item.largura && item.altura ? `${item.largura} × ${item.altura}` : '—'}</dd></div>
-                        <div><dt>MIME</dt><dd className="break-all font-medium text-zinc-900">{item.mimeType || '—'}</dd></div>
-                        <div><dt>Arquivo</dt><dd className="font-medium text-zinc-900">{item.statusArquivo || '—'}</dd></div>
-                        <div><dt>Classificação</dt><dd className="font-medium text-zinc-900">{item.visibilidadeMidia || '—'}</dd></div>
-                      </dl>
-                      {item.tipo === 'VIDEO' ? (
-                        <p className="mt-4 flex items-center gap-2 rounded-md bg-pink-50 px-3 py-2 text-xs font-semibold text-pink-900"><ShieldAlert className="h-4 w-4" />Sempre RESTRITA_18</p>
-                      ) : (
-                        <MediaVisibilitySelector
-                          mediaId={item.id}
-                          value={selectedVisibility}
-                          disabled={(!actionable && !(reclassifiable && canReclassifyMedia)) || busy}
-                          onChange={(value) => setVisibility((current) => ({ ...current, [item.id]: value }))}
-                        />
-                      )}
-                      {actionable ? (
-                        <div className="mt-4 grid grid-cols-2 gap-2">
-                          <Button type="button" size="sm" disabled={!selectedVisibility || busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Aplicar e aprovar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'APROVAR', visibility: selectedVisibility, requiresReason: false })}>Aplicar e aprovar</Button>
-                          <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: `Rejeitar ${formatEnum(item.tipo).toLowerCase()}`, media: item, action: 'REPROVAR', requiresReason: true })}>Rejeitar</Button>
+            <div className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {media.map((item) => {
+                  const actionable = actionableMedia.has(item.status)
+                  const pendingPhoto = item.tipo === 'FOTO' && actionable
+                  const actionableVideo = item.tipo === 'VIDEO' && actionable
+                  const reclassifiable = item.tipo === 'FOTO' && item.status === 'PUBLICAVEL'
+                  const selectedVisibility = item.tipo === 'VIDEO' ? 'RESTRITA_18' : visibility[item.id]
+                  return (
+                    <article key={item.id} className="overflow-hidden rounded-md border border-zinc-200 bg-white">
+                      <MediaPreview media={item} />
+                      <div className="p-4">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} #{mediaOrdinal[item.id]}</div>
+                          <Badge variant="outline" className={moderationTone(item.status)}>{item.status}</Badge>
                         </div>
-                      ) : reclassifiable && canReclassifyMedia ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="mt-4 w-full"
-                          disabled={busy || !selectedVisibility || selectedVisibility === item.visibilidadeMidia}
-                          onClick={() => selectedVisibility && setIntent({
-                            kind: 'RECLASSIFY',
-                            title: 'Aplicar nova classificação',
-                            media: item,
-                            visibility: selectedVisibility,
-                            requiresReason: true,
-                          })}
-                        >
-                          Aplicar classificação
-                        </Button>
-                      ) : null}
-                    </div>
-                  </article>
-                )
-              })}
+                        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-600">
+                          <div><dt>Dimensões</dt><dd className="font-medium text-zinc-900">{item.largura && item.altura ? `${item.largura} × ${item.altura}` : '—'}</dd></div>
+                          <div><dt>MIME</dt><dd className="break-all font-medium text-zinc-900">{item.mimeType || '—'}</dd></div>
+                          <div><dt>Arquivo</dt><dd className="font-medium text-zinc-900">{item.statusArquivo || '—'}</dd></div>
+                          <div><dt>Classificação</dt><dd className="font-medium text-zinc-900">{item.visibilidadeMidia || '—'}</dd></div>
+                        </dl>
+                        {pendingPhoto ? (
+                          <PendingPhotoDecisionSelector
+                            mediaId={item.id}
+                            value={photoDecisions[item.id]}
+                            disabled={photoBatchBusy}
+                            onChange={(value) => selectPhotoDecision(item.id, value)}
+                            onObservationChange={(value) => updatePhotoObservation(item.id, value)}
+                          />
+                        ) : item.tipo === 'VIDEO' ? (
+                          <p className="mt-4 flex items-center gap-2 rounded-md bg-pink-50 px-3 py-2 text-xs font-semibold text-pink-900"><ShieldAlert className="h-4 w-4" />Sempre RESTRITA_18</p>
+                        ) : reclassifiable && canReclassifyMedia ? (
+                          <MediaVisibilitySelector
+                            mediaId={item.id}
+                            value={selectedVisibility}
+                            disabled={busy}
+                            onChange={(value) => setVisibility((current) => ({ ...current, [item.id]: value }))}
+                          />
+                        ) : null}
+                        {actionableVideo ? (
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <Button type="button" size="sm" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: 'Aplicar e aprovar vídeo', media: item, action: 'APROVAR', visibility: 'RESTRITA_18', requiresReason: false })}>Aplicar e aprovar</Button>
+                            <Button type="button" size="sm" variant="destructive" disabled={busy} onClick={() => setIntent({ kind: 'MEDIA', title: 'Rejeitar vídeo', media: item, action: 'REPROVAR', requiresReason: true })}>Rejeitar</Button>
+                          </div>
+                        ) : reclassifiable && canReclassifyMedia ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="mt-4 w-full"
+                            disabled={busy || !selectedVisibility || selectedVisibility === item.visibilidadeMidia}
+                            onClick={() => selectedVisibility && setIntent({
+                              kind: 'RECLASSIFY',
+                              title: 'Aplicar nova classificação',
+                              media: item,
+                              visibility: selectedVisibility,
+                              requiresReason: true,
+                            })}
+                          >
+                            Aplicar classificação
+                          </Button>
+                        ) : null}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+              {photoBatchResult ? (
+                <div
+                  role="status"
+                  className={`border px-4 py-3 text-sm ${photoBatchResult.falhas > 0 ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}
+                >
+                  <p className="font-semibold">
+                    {photoBatchResult.aprovadas} aprovadas, {photoBatchResult.excluidas} excluídas, {photoBatchResult.jaProcessadas} já processadas e {photoBatchResult.falhas} falhas.
+                  </p>
+                  {photoBatchResult.falhas > 0 ? (
+                    <ul className="mt-2 space-y-1">
+                      {photoBatchResult.resultados
+                        .filter((item) => item.resultado === 'FALHA')
+                        .map((item) => (
+                          <li key={item.mediaId}>
+                            Foto #{mediaOrdinal[item.mediaId] ?? item.mediaId.slice(0, 8)}: {item.motivo || 'Não foi possível concluir a decisão.'}
+                          </li>
+                        ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+              {pendingPhotos.length > 0 ? (
+                <div className="flex justify-end border-t border-zinc-200 pt-4">
+                  <Button
+                    type="button"
+                    disabled={!allPendingPhotosSelected || photoBatchBusy}
+                    onClick={() => {
+                      setPhotoBatchError(null)
+                      setPhotoBatchOpen(true)
+                    }}
+                  >
+                    {photoBatchBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Confirmar decisões das fotos ({selectedPhotoCount})
+                  </Button>
+                </div>
+              ) : null}
             </div>
           )}
         </TabsContent>
@@ -864,6 +1166,19 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       </Tabs>
 
       <DecisionDialog intent={intent} busy={busy} error={actionError} onClose={() => { setIntent(null); setActionError(null) }} onConfirm={(reason) => void confirmDecision(reason)} />
+      <PhotoBatchDialog
+        open={photoBatchOpen}
+        busy={photoBatchBusy}
+        error={photoBatchError}
+        livre={photoBatchSummary.livre}
+        restrita={photoBatchSummary.restrita}
+        excluir={photoBatchSummary.excluir}
+        onClose={() => {
+          setPhotoBatchOpen(false)
+          setPhotoBatchError(null)
+        }}
+        onConfirm={() => void confirmPhotoBatch()}
+      />
       <LegalActionDialog intent={legalIntent} busy={legalBusy} error={legalActionError} onClose={() => { setLegalIntent(null); setLegalActionError(null) }} onConfirm={(category, reason, internalNote) => void confirmLegalAction(category, reason, internalNote)} />
       <RemovalDialog open={removalOpen} busy={removalBusy} error={removalActionError} onClose={() => { setRemovalOpen(false); setRemovalActionError(null) }} onConfirm={(reason) => void confirmRemoval(reason)} />
     </div>

@@ -36,6 +36,7 @@ import type {
 const SITUATION_OPTIONS: Array<{ value: AdminAdSituation; label: string }> = [
   { value: 'TODOS', label: 'Todos' },
   { value: 'PENDENTES_MODERACAO', label: 'Pendentes de moderação' },
+  { value: 'APROVADOS', label: 'Aprovados' },
   { value: 'PAUSADOS', label: 'Pausados' },
   { value: 'REJEITADOS', label: 'Rejeitados' },
   { value: 'BLOQUEADOS', label: 'Bloqueados' },
@@ -113,13 +114,15 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
   const [canManagePremium, setCanManagePremium] = useState(false)
   const [canManageAds, setCanManageAds] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [supportLoading, setSupportLoading] = useState(true)
+  const [locationsLoading, setLocationsLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
   const [supportError, setSupportError] = useState<unknown>(null)
+  const [locationsError, setLocationsError] = useState<unknown>(null)
   const [actionError, setActionError] = useState<unknown>(null)
   const [busyAdId, setBusyAdId] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
   const [supportReload, setSupportReload] = useState(0)
+  const [locationsReload, setLocationsReload] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -134,27 +137,35 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
   }, [context])
 
   const loadSupport = useCallback(async () => {
-    setSupportLoading(true)
     setSupportError(null)
     try {
-      const [locationResponse, catalogResponse, session] = await Promise.all([
-        listAdminAdFilterLocations(),
+      const [catalogResponse, session] = await Promise.all([
         listAdminPremiumCatalog(),
         getAdminSession(),
       ])
-      setLocations(locationResponse)
       setCatalog(catalogResponse.filter((item) => item.escopo === 'ANUNCIO'))
       setCanManagePremium(Boolean(session?.papeis.includes('ADMIN') && session?.permissoes.includes('PREMIUM_GERENCIAR')))
       setCanManageAds(Boolean(session?.papeis.includes('ADMIN') && session?.permissoes.includes('ANUNCIO_MODERAR')))
     } catch (reason) {
       setSupportError(reason)
+    }
+  }, [])
+
+  const loadLocations = useCallback(async () => {
+    setLocationsLoading(true)
+    setLocationsError(null)
+    try {
+      setLocations(await listAdminAdFilterLocations())
+    } catch (reason) {
+      setLocationsError(reason)
     } finally {
-      setSupportLoading(false)
+      setLocationsLoading(false)
     }
   }, [])
 
   useEffect(() => { void load() }, [load, reload])
   useEffect(() => { void loadSupport() }, [loadSupport, supportReload])
+  useEffect(() => { void loadLocations() }, [loadLocations, locationsReload])
   useEffect(() => {
     globalThis.history?.replaceState(null, '', adminAdQueueListHref(context))
   }, [context])
@@ -213,12 +224,20 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
     { id: 'TODAS', label: 'Todas' },
     ...cities.map((item) => ({ id: item.cidadeSlug, label: item.cidade })),
   ], [cities])
+  const stateOptions = useMemo(() => [
+    { id: 'TODOS', label: 'Todos' },
+    ...states.map((item) => ({
+      id: item.uf,
+      label: item.estado ? `${item.estado} (${item.uf})` : item.uf,
+    })),
+  ], [states])
   const neighborhoodOptions = useMemo(() => [
     { id: 'TODOS', label: 'Todos' },
     ...neighborhoods.map((item) => ({ id: item.bairroSlug || '', label: item.bairro || '' })),
   ], [neighborhoods])
   const selectedCity = cityOptions.find((item) => item.id === (context.cidade || 'TODAS'))
   const selectedNeighborhood = neighborhoodOptions.find((item) => item.id === (context.bairro || 'TODOS'))
+  const selectedState = stateOptions.find((item) => item.id === (context.uf || 'TODOS'))
   const items = data?.itens ?? []
 
   return (
@@ -235,19 +254,28 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
       </header>
 
       <form onSubmit={submitSearch} className="border-b border-zinc-200 pb-4">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(160px,2fr)_minmax(130px,1.3fr)_64px_minmax(112px,1fr)_minmax(112px,1fr)_minmax(132px,1.1fr)_92px_auto] lg:items-end">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(160px,2fr)_minmax(130px,1.3fr)_minmax(110px,1fr)_minmax(112px,1fr)_minmax(112px,1fr)_minmax(132px,1.1fr)_92px_auto] lg:items-end">
           <label>
             <span className="mb-1 block text-xs font-semibold text-zinc-600">Busca</span>
-            <span className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" aria-hidden="true" /><Input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Título ou slug" className="pl-9" /></span>
+            <span className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" aria-hidden="true" /><Input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Título, slug ou ID" className="pl-9" /></span>
           </label>
           <label>
             <span className="mb-1 block text-xs font-semibold text-zinc-600">Situação</span>
             <Select value={context.situacao} onValueChange={(value) => update({ situacao: value as AdminAdSituation })}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent>{SITUATION_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-semibold text-zinc-600">UF</span>
-            <Select value={context.uf || 'TODOS'} disabled={supportLoading || Boolean(supportError)} onValueChange={(value) => update({ uf: value === 'TODOS' ? '' : value, cidade: '', bairro: '' })}><SelectTrigger className="w-full bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TODOS">Todas</SelectItem>{states.map((item) => <SelectItem key={item.uf} value={item.uf}>{item.uf}</SelectItem>)}</SelectContent></Select>
-          </label>
+          <div>
+            <span className="mb-1 block text-xs font-semibold text-zinc-600">Estado</span>
+            <SearchableSelect
+              value={context.uf || 'TODOS'}
+              label={selectedState?.label || 'Todos'}
+              placeholder="Todos"
+              searchPlaceholder="Pesquisar estado"
+              emptyText="Nenhum estado encontrado"
+              options={stateOptions}
+              disabled={locationsLoading || Boolean(locationsError)}
+              onSelect={(value) => update({ uf: value === 'TODOS' ? '' : value, cidade: '', bairro: '' })}
+            />
+          </div>
           <div>
             <span className="mb-1 block text-xs font-semibold text-zinc-600">Cidade</span>
             <SearchableSelect
@@ -257,7 +285,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
               searchPlaceholder="Pesquisar cidade"
               emptyText="Nenhuma cidade encontrada"
               options={cityOptions}
-              disabled={!context.uf || supportLoading || Boolean(supportError)}
+              disabled={!context.uf || locationsLoading || Boolean(locationsError)}
               onSelect={(value) => update({ cidade: value === 'TODAS' ? '' : value, bairro: '' })}
             />
           </div>
@@ -270,7 +298,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
               searchPlaceholder="Pesquisar bairro"
               emptyText="Nenhum bairro encontrado"
               options={neighborhoodOptions}
-              disabled={!context.cidade || supportLoading || Boolean(supportError)}
+              disabled={!context.cidade || locationsLoading || Boolean(locationsError)}
               onSelect={(value) => update({ bairro: value === 'TODOS' ? '' : value })}
             />
           </div>
@@ -287,6 +315,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
       </form>
 
       {supportError ? <ContractState error={supportError} onRetry={() => setSupportReload((value) => value + 1)} compact /> : null}
+      {locationsError ? <ContractState error={locationsError} onRetry={() => setLocationsReload((value) => value + 1)} compact /> : null}
       {actionError ? <ContractState error={actionError} compact /> : null}
       {error ? <ContractState error={error} onRetry={() => setReload((value) => value + 1)} /> : null}
       {!error && loading && !data ? <p className="py-12 text-center text-sm text-zinc-500">Carregando fila...</p> : null}

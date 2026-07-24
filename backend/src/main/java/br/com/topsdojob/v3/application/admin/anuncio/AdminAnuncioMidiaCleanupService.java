@@ -14,6 +14,7 @@ import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -58,6 +59,39 @@ public class AdminAnuncioMidiaCleanupService {
 
   public Resultado limpar(UUID anuncioId, OffsetDateTime agora) {
     List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId);
+    return limparVinculos(anuncioId, vinculos, agora, true);
+  }
+
+  public Resultado limparMidia(UUID anuncioId, UUID midiaId, OffsetDateTime agora) {
+    List<AnuncioMidiaEntity> vinculosDoAnuncio =
+        anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId);
+    AnuncioMidiaEntity alvo = vinculosDoAnuncio.stream()
+        .filter(item -> midiaId.equals(item.getId()))
+        .findFirst()
+        .orElseThrow(() -> conflito("MIDIA_NAO_PERTENCE_AO_ANUNCIO"));
+    if (alvo.getTipo() != TipoAnuncioMidia.FOTO) {
+      throw conflito("SOMENTE_FOTO_PODE_SER_EXCLUIDA_PELO_LOTE");
+    }
+    if (alvo.getStatus() != StatusAnuncioMidia.PENDENTE
+        && alvo.getStatus() != StatusAnuncioMidia.AJUSTE_SOLICITADO
+        && alvo.getStatus() != StatusAnuncioMidia.REMOVIDA) {
+      throw conflito("TRANSICAO_DE_EXCLUSAO_INCOMPATIVEL");
+    }
+    if (alvo.getArquivoMidiaId() == null) {
+      throw conflito("ARQUIVO_DE_MIDIA_AUSENTE");
+    }
+
+    List<AnuncioMidiaEntity> vinculosDaFoto = vinculosDoAnuncio.stream()
+        .filter(item -> alvo.getArquivoMidiaId().equals(item.getArquivoMidiaId()))
+        .toList();
+    return limparVinculos(anuncioId, vinculosDaFoto, agora, false);
+  }
+
+  private Resultado limparVinculos(
+      UUID anuncioId,
+      List<AnuncioMidiaEntity> vinculos,
+      OffsetDateTime agora,
+      boolean encerrarStoryAdministrativo) {
     List<UUID> arquivoIds = vinculos.stream()
         .map(AnuncioMidiaEntity::getArquivoMidiaId)
         .filter(Objects::nonNull)
@@ -118,7 +152,8 @@ public class AdminAnuncioMidiaCleanupService {
     StoryResult storyResult = encerrarStories(
         anuncioId,
         vinculos.stream().map(AnuncioMidiaEntity::getId).toList(),
-        agora);
+        agora,
+        encerrarStoryAdministrativo);
     return new Resultado(
         vinculosAlterados.size(),
         storageResult.excluidos(),
@@ -208,7 +243,8 @@ public class AdminAnuncioMidiaCleanupService {
   private StoryResult encerrarStories(
       UUID anuncioId,
       List<UUID> anuncioMidiaIds,
-      OffsetDateTime agora) {
+      OffsetDateTime agora,
+      boolean encerrarStoryAdministrativo) {
     List<StoryAnuncioEntity> stories = anuncioMidiaIds.isEmpty()
         ? List.of()
         : storyRepository.findByAnuncioMidiaIdInForUpdate(anuncioMidiaIds);
@@ -222,14 +258,18 @@ public class AdminAnuncioMidiaCleanupService {
       storyRepository.saveAll(alterados);
     }
 
-    storyAdminRepository.bloquearOperacao();
-    StorySelecaoAdministrativaEntity selecao = storyAdminRepository.bloquearSingleton().orElse(null);
-    boolean administrativoEncerrado = selecao != null
-        && selecao.isAtiva()
-        && anuncioId.equals(selecao.getAnuncioId());
-    if (administrativoEncerrado) {
-      selecao.desativar(agora);
-      storyAdminRepository.save(selecao);
+    boolean administrativoEncerrado = false;
+    if (encerrarStoryAdministrativo) {
+      storyAdminRepository.bloquearOperacao();
+      StorySelecaoAdministrativaEntity selecao =
+          storyAdminRepository.bloquearSingleton().orElse(null);
+      administrativoEncerrado = selecao != null
+          && selecao.isAtiva()
+          && anuncioId.equals(selecao.getAnuncioId());
+      if (administrativoEncerrado) {
+        selecao.desativar(agora);
+        storyAdminRepository.save(selecao);
+      }
     }
     return new StoryResult(alterados.size(), administrativoEncerrado);
   }

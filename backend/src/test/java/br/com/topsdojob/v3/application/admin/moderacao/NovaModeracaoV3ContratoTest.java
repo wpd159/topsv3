@@ -19,14 +19,33 @@ class NovaModeracaoV3ContratoTest {
         assertThat(source)
                 .contains("/api/admin/anuncios/{id}/historico-moderacao:")
                 .contains("/api/admin/anuncios/filtros/localidades:")
+                .contains("/api/admin/anuncios/{id}/midias/decisoes:")
                 .contains("/api/admin/midias/{id}/preview:")
                 .contains("/api/admin/midias/{id}/reclassificar:")
                 .contains("AdminModeracaoHistoricoItem:")
                 .contains("AdminMidiaPreview:")
                 .contains("AdminReclassificarMidiaRequest:")
+                .contains("AdminDecidirFotosLoteRequest:")
+                .contains("AdminDecidirFotosLoteResponse:")
                 .contains("Story retorna 409 e nao participa da moderacao")
                 .contains("video aprovado permanece RESTRITA_18")
                 .doesNotContain("/api/admin/moderacao-v2");
+    }
+
+    @Test
+    void loteDeFotosExplicitaResultadoParcialEExclusaoCanonica() throws Exception {
+        String source = Files.readString(OPENAPI, StandardCharsets.UTF_8);
+        String batchContract = source.substring(
+                source.indexOf("/api/admin/anuncios/{id}/midias/decisoes:"),
+                source.indexOf("/api/admin/documentos:"));
+
+        assertThat(batchContract)
+                .contains("Prevalida todas as fotos")
+                .contains("ObjectStorage canonico")
+                .contains("AdminDecidirFotosLoteRequest")
+                .contains("AdminDecidirFotosLoteResponse")
+                .contains("\"503\"")
+                .doesNotContain("DELETE");
     }
 
     @Test

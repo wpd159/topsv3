@@ -45,7 +45,7 @@ function sort(value: string | null): AdminAdSort {
 }
 
 function situation(value: string | null): AdminAdSituation {
-  return ['TODOS', 'PENDENTES_MODERACAO', 'PAUSADOS', 'REJEITADOS', 'BLOQUEADOS'].includes(value || '')
+  return ['TODOS', 'PENDENTES_MODERACAO', 'APROVADOS', 'PAUSADOS', 'REJEITADOS', 'BLOQUEADOS'].includes(value || '')
     ? value as AdminAdSituation
     : 'PENDENTES_MODERACAO'
 }

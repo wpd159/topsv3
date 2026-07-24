@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoAcaoService;
+import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLoteService;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -34,10 +35,13 @@ class AdminMidiaRbacMethodSecurityTest {
     @Autowired
     private AdminModeracaoAcaoService service;
 
+    @Autowired
+    private AdminModeracaoFotosLoteService fotosLoteService;
+
     @AfterEach
     void limparContexto() {
         SecurityContextHolder.clearContext();
-        clearInvocations(service);
+        clearInvocations(service, fotosLoteService);
     }
 
     @Test
@@ -56,6 +60,26 @@ class AdminMidiaRbacMethodSecurityTest {
         controller.decidirMidia(UUID.randomUUID(), null, null, new MockHttpServletRequest());
 
         verify(service).decidirMidia(any(), any(), any(), any());
+    }
+
+    @Test
+    void adminComMidiaRevisarPodeExecutarLoteDeFotos() {
+        autenticar("ROLE_ADMIN", "MIDIA_REVISAR");
+
+        controller.decidirFotosEmLote(
+                UUID.randomUUID(), null, null, new MockHttpServletRequest());
+
+        verify(fotosLoteService).decidir(any(), any(), any(), any());
+    }
+
+    @Test
+    void moderadorComMidiaRevisarPodeExecutarLoteDeFotos() {
+        autenticar("ROLE_MODERADOR", "MIDIA_REVISAR");
+
+        controller.decidirFotosEmLote(
+                UUID.randomUUID(), null, null, new MockHttpServletRequest());
+
+        verify(fotosLoteService).decidir(any(), any(), any(), any());
     }
 
     @Test
@@ -86,6 +110,15 @@ class AdminMidiaRbacMethodSecurityTest {
         autenticar("ROLE_ADMIN");
 
         assertThatThrownBy(() -> controller.decidirMidia(
+                UUID.randomUUID(), null, null, new MockHttpServletRequest()))
+                .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
+    @Test
+    void usuarioComumMesmoComMidiaRevisarNaoPodeExecutarLote() {
+        autenticar("ROLE_USUARIO", "MIDIA_REVISAR");
+
+        assertThatThrownBy(() -> controller.decidirFotosEmLote(
                 UUID.randomUUID(), null, null, new MockHttpServletRequest()))
                 .isInstanceOf(AuthorizationDeniedException.class);
     }
@@ -142,8 +175,15 @@ class AdminMidiaRbacMethodSecurityTest {
         }
 
         @Bean
-        AdminModeracaoAcaoController controller(AdminModeracaoAcaoService service) {
-            return new AdminModeracaoAcaoController(service);
+        AdminModeracaoFotosLoteService fotosLoteService() {
+            return mock(AdminModeracaoFotosLoteService.class);
+        }
+
+        @Bean
+        AdminModeracaoAcaoController controller(
+                AdminModeracaoAcaoService service,
+                AdminModeracaoFotosLoteService fotosLoteService) {
+            return new AdminModeracaoAcaoController(service, fotosLoteService);
         }
     }
 }

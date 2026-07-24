@@ -54,6 +54,7 @@ for (const contract of [
   '`/midias/${encodeURIComponent(id)}/preview`',
   '`/moderacao/revisoes/${encodeURIComponent(reviewId)}/decidir`',
   '`/midias/${encodeURIComponent(mediaId)}/decidir`',
+  '`/anuncios/${encodeURIComponent(anuncioId)}/midias/decisoes`',
   '`/midias/${encodeURIComponent(mediaId)}/reclassificar`',
   "request('/anuncios/filtros/localidades')",
   '`/anuncios/${encodeURIComponent(id)}/reativar`',
@@ -78,9 +79,24 @@ assert.ok(types.includes("tipo: 'FOTO' | 'VIDEO'"), 'A fila de midia nao pode ti
 assert.ok(!types.includes("'FOTO' | 'VIDEO' | 'STORY'"), 'Story nao pode integrar o contrato V3 da fila.')
 assert.ok(detail.includes("item.tipo === 'VIDEO' ? 'RESTRITA_18'"), 'Video aprovado deve permanecer RESTRITA_18.')
 assert.ok(detail.includes('Sempre RESTRITA_18'), 'A interface deve informar a classificacao fixa do video.')
-assert.ok(detail.includes('MediaVisibilitySelector') && detail.includes('type="radio"') && detail.includes("['LIVRE', 'RESTRITA_18']"), 'Fotos devem oferecer classificacao individual, clicavel e explicita.')
+assert.ok(detail.includes('PendingPhotoDecisionSelector') && detail.includes('EXCLUIR FOTO'), 'Foto pendente deve oferecer as tres decisoes locais.')
+assert.ok(detail.includes('MediaVisibilitySelector') && detail.includes("['LIVRE', 'RESTRITA_18']"), 'Foto finalizada deve preservar a reclassificacao individual.')
 assert.ok(detail.includes('reclassifyAdminMedia') && detail.includes("kind: 'RECLASSIFY'"), 'Foto finalizada deve usar a operacao canonica propria de reclassificacao.')
-assert.ok(detail.includes('Aplicar e aprovar') && detail.includes('Aplicar classifica'), 'Foto pendente e finalizada devem exigir aplicacao explicita.')
+assert.ok(detail.includes("title: 'Aplicar e aprovar vídeo'") && detail.includes('Aplicar classificação'), 'Video e foto finalizada devem preservar suas operacoes fora do lote.')
+assert.ok(!detail.includes('Rejeitar foto'), 'Foto pendente nao pode manter a rejeicao logica anterior.')
+assert.ok(detail.includes('Confirmar decisões das fotos ({selectedPhotoCount})'), 'O lote deve usar um unico botao com a quantidade selecionada.')
+assert.ok(detail.includes('<PhotoBatchDialog') && detail.includes('Confirmar decisões das fotos'), 'O lote deve usar um unico modal de confirmacao.')
+assert.ok(detail.includes('decideAdminPhotosBatch') && detail.includes('pendingPhotos.map'), 'O frontend deve enviar uma unica requisicao batch.')
+const localPhotoSelection = detail.slice(
+  detail.indexOf('function selectPhotoDecision'),
+  detail.indexOf('async function confirmPhotoBatch'),
+)
+assert.ok(!localPhotoSelection.includes('decideAdminPhotosBatch') && !localPhotoSelection.includes('decideAdminMedia'), 'Selecionar uma opcao nao pode chamar o backend.')
+assert.ok(detail.includes('allPendingPhotosSelected') && detail.includes('selectedPhotoCount === pendingPhotos.length'), 'Todas as fotos pendentes devem receber decisao antes da confirmacao.')
+assert.ok(detail.includes("choice === 'EXCLUIR'") && detail.includes("choice === 'RESTRITA_18'"), 'Decisoes locais devem separar exclusao e classificacao restrita.')
+assert.ok(detail.includes("choice === 'RESTRITA_18' ? previous?.observacao ?? '' : ''"), 'Trocar para LIVRE ou EXCLUIR deve limpar observacao residual.')
+assert.ok(detail.includes("decision.classificacao === 'RESTRITA_18'") && detail.includes('decision.observacao.trim() || undefined'), 'Somente RESTRITA_18 pode enviar observacao individual.')
+assert.ok(detail.includes("filter((item) => item.resultado === 'FALHA')") && detail.includes('failedIds.has(mediaId)'), 'Falha parcial deve preservar somente itens que exigem retry.')
 assert.ok(detail.includes('else delete next[intent.media.id]'), 'Falha deve restaurar o estado persistido da classificacao, sem simular sucesso.')
 assert.ok(detail.includes("normalized.kind === 'CONFLICT'") && detail.includes('O estado da mídia mudou.'), 'Conflito real deve atualizar o detalhe e explicar a mudanca de estado.')
 assert.ok(detail.includes('preserveSelection.mode') && detail.includes('selectionStillApplies'), 'A selecao deve ser preservada somente enquanto a decisao continuar aplicavel.')
@@ -89,9 +105,7 @@ assert.ok(detail.includes('mediaOrdinal[item.id]') && !detail.includes('item.ord
 assert.ok(detail.includes("filter((item) => String(item.tipo) !== 'STORY')"), 'Story nao pode entrar na secao de midias.')
 assert.ok(detail.includes("action: 'APROVAR'") && detail.includes("action: 'REPROVAR'"), 'Aprovar e rejeitar devem permanecer disponiveis.')
 assert.ok(detail.includes('Motivo obrigatório'), 'Rejeicao deve coletar motivo.')
-assert.ok(detail.includes("intent.media.tipo === 'FOTO'") && detail.includes("intent.visibility === 'RESTRITA_18'") && detail.includes("'Observações'"), 'Somente foto RESTRITA_18 deve oferecer observacao na aprovacao.')
-assert.ok(detail.includes("const motivo = intent.action === 'REPROVAR' ? reason : undefined"), 'Rejeicao deve enviar o texto como motivo.')
-assert.ok(detail.includes("const observacao = intent.action === 'APROVAR'") && detail.includes('motivo,\n          observacao,'), 'Aprovacao restrita deve enviar o texto como observacao separada.')
+assert.ok(detail.includes("selected === 'RESTRITA_18'") && detail.includes('Observações'), 'Somente foto RESTRITA_18 deve oferecer observacao no lote.')
 assert.ok(detail.includes("useEffect(() => { setReason('') }, [intent])"), 'Trocar a decisao deve limpar imediatamente qualquer texto residual.')
 assert.ok(api.includes('observacao: observacao?.trim() || undefined'), 'O adapter deve omitir observacao vazia sem fabricar texto.')
 assert.ok(detail.includes('disabled={busy'), 'A interface deve bloquear repeticao durante a mutacao.')
@@ -103,16 +117,17 @@ assert.ok(detail.includes('Seu perfil não possui MIDIA_REVISAR.'), 'A ausencia 
 assert.ok(list.includes('ADMIN_AD_PAGE_SIZE_OPTIONS') && list.includes('totalPages'), 'A fila deve manter paginacao backend configuravel.')
 assert.ok(list.includes('SITUATION_OPTIONS') && list.includes('termo'), 'A fila deve manter o filtro operacional unico e a busca.')
 assert.deepEqual(
-  [...list.matchAll(/\{ value: '([^']+)', label: '[^']+' \}/g)].slice(0, 5).map((match) => match[1]),
-  ['TODOS', 'PENDENTES_MODERACAO', 'PAUSADOS', 'REJEITADOS', 'BLOQUEADOS'],
-  'A fila deve expor exatamente as cinco situacoes solicitadas.',
+  [...list.matchAll(/\{ value: '([^']+)', label: '[^']+' \}/g)].slice(0, 6).map((match) => match[1]),
+  ['TODOS', 'PENDENTES_MODERACAO', 'APROVADOS', 'PAUSADOS', 'REJEITADOS', 'BLOQUEADOS'],
+  'A fila deve expor as seis situacoes administrativas, incluindo Aprovados.',
 )
 assert.ok(list.includes('listAdminAdFilterLocations()'), 'Localidades devem vir do backend protegido.')
 assert.ok(list.includes("uf: value === 'TODOS' ? '' : value, cidade: '', bairro: ''"), 'Trocar UF deve limpar Cidade e Bairro.')
 assert.ok(list.includes("cidade: value === 'TODAS' ? '' : value, bairro: ''"), 'Trocar Cidade deve limpar Bairro.')
 assert.ok(!list.includes('Slug da cidade') && !list.includes('Slug do bairro'), 'A interface nao pode exigir slugs manuais.')
-assert.equal((list.match(/<SearchableSelect/g) ?? []).length, 2, 'Cidade e Bairro devem usar busca digitavel canonica.')
-assert.ok(list.includes('options={cityOptions}') && list.includes('options={neighborhoodOptions}'), 'Cidade e Bairro devem aceitar apenas opcoes do backend.')
+assert.equal((list.match(/<SearchableSelect/g) ?? []).length, 3, 'Estado, Cidade e Bairro devem usar busca digitavel canonica.')
+assert.ok(list.includes('options={stateOptions}') && list.includes('options={cityOptions}') && list.includes('options={neighborhoodOptions}'), 'Localidades devem aceitar apenas opcoes do backend.')
+assert.ok(list.includes('loadLocations') && list.includes('loadSupport'), 'Falha de servico opcional nao pode esvaziar os filtros de localidades.')
 assert.ok(searchableSelect.includes('role="combobox"') && searchableSelect.includes('<CommandInput'), 'A busca de localidade deve ser acessivel por teclado.')
 assert.ok(searchableSelect.includes('onSelect(item.id)') && !searchableSelect.includes('onSelect(query)'), 'Texto livre nao pode ser aplicado como filtro canonico.')
 assert.ok(wizardUtils.includes("normalize('NFD')") && wizardUtils.includes("toLowerCase()"), 'Busca deve ignorar acentos e caixa.')

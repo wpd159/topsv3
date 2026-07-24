@@ -15,6 +15,8 @@ import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import java.time.OffsetDateTime;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -105,5 +107,22 @@ class AdminLocalizacaoConsultaSupportTest {
             assertThat(item.bairro()).isEqualTo("Setor Bueno");
             assertThat(item.bairroSlug()).isEqualTo("setor-bueno");
         });
+    }
+
+    @Test
+    void inventarioDeLocalidadesIncluiAnunciosAdministrativosNaoRemovidos() throws Exception {
+        String repository = Files.readString(Path.of(
+                "src", "main", "java", "br", "com", "topsdojob", "v3",
+                "persistence", "repository", "AnuncioLocalizacaoRepository.java"));
+        String query = repository.substring(
+                repository.indexOf("select distinct"),
+                repository.indexOf("\"\"\", nativeQuery = true)",
+                        repository.indexOf("select distinct")));
+
+        assertThat(query)
+                .contains("join anuncio a on a.id = al.anuncio_id and a.removido_em is null")
+                .contains("left join bairro")
+                .doesNotContain("a.status = 'PUBLICADO'")
+                .doesNotContain("a.status_moderacao = 'APROVADO'");
     }
 }
