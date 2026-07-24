@@ -4,7 +4,13 @@ import { useEffect, useState } from "react"
 import { PlayCircleIcon } from "@heroicons/react/24/solid"
 
 import type { StoryBundle, StoryItem } from "./stories-types"
-import { getInitials, isExpired, loginPublicoDoBundle, rotuloPublicoDoBundle } from "./stories-types"
+import {
+  getInitials,
+  isExpired,
+  loginPublicoDoBundle,
+  rotuloPublicoComIdade,
+  rotuloPublicoDoBundle,
+} from "./stories-types"
 import { StoryViewerDialog } from "./story-viewer-dialog"
 import { publicApiUrl } from '@/lib/api-contract'
 
@@ -17,6 +23,24 @@ function StoryPreviewAvatar({ bundle, first }: { bundle: StoryBundle; first?: St
   const rotuloPerfil = rotuloPublicoDoBundle(bundle)
   const previewBloqueado = previewExigeBloqueio(first)
 
+  if (previewBloqueado && first?.tipo === "IMAGE" && first.previewUrl) {
+    return (
+      <div className="absolute inset-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={first.previewUrl}
+          alt={`Foto de perfil de ${rotuloPerfil}`}
+          width={64}
+          height={64}
+          className="h-full w-full object-cover"
+        />
+        <span className="absolute bottom-1 right-1 rounded bg-black/75 px-1.5 py-0.5 text-[9px] font-bold text-white">
+          18+
+        </span>
+      </div>
+    )
+  }
+
   if (previewBloqueado) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black text-[10px] font-bold uppercase tracking-wide text-white">
@@ -28,7 +52,13 @@ function StoryPreviewAvatar({ bundle, first }: { bundle: StoryBundle; first?: St
   if (first?.previewState === "AVAILABLE" && first.tipo === "IMAGE" && first.previewUrl) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={first.previewUrl} alt="" className="h-full w-full object-cover" />
+      <img
+        src={first.previewUrl}
+        alt={`Foto de perfil de ${rotuloPerfil}`}
+        width={64}
+        height={64}
+        className="h-full w-full object-cover"
+      />
     )
   }
 
@@ -79,7 +109,9 @@ export function StoriesBar() {
             .filter((item: StoryItem) => !isExpired(item))
             .map((item: StoryItem) => {
               const previewBloqueado = previewExigeBloqueio(item)
-              const previewDisponivel = !previewBloqueado && item.previewState === "AVAILABLE"
+              const previewDisponivel =
+                item.previewState === "AVAILABLE" ||
+                (previewBloqueado && item.tipo === "IMAGE")
 
               return {
                 ...item,
@@ -128,6 +160,7 @@ export function StoriesBar() {
             const login = loginPublicoDoBundle(bundle)
             const rotuloPerfil = rotuloPublicoDoBundle(bundle)
             const primeiro = bundle.itens?.[0]
+            const rotuloComIdade = rotuloPublicoComIdade(rotuloPerfil, primeiro?.idade ?? bundle.idade)
             const pulse = bundle.visto ? "" : "animate-pulse"
             const border = bundle.visto
               ? "bg-gray-200"
@@ -168,7 +201,12 @@ export function StoriesBar() {
                   </button>
                 </div>
 
-                <span className="max-w-[72px] truncate text-[11px] text-gray-700">{rotuloPerfil}</span>
+                <span
+                  className="max-w-[92px] truncate text-[11px] text-gray-700"
+                  title={rotuloComIdade}
+                >
+                  {rotuloComIdade}
+                </span>
               </div>
             )
           })}

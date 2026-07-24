@@ -70,6 +70,19 @@ public interface AnuncioMidiaRepository
 
     List<AnuncioMidiaEntity> findByArquivoMidiaId(UUID arquivoMidiaId);
 
+    @Query("""
+            select midia
+            from AnuncioMidiaEntity midia
+            where midia.tipo = :tipo
+              and midia.status = :status
+              and midia.visibilidadeMidia = :visibilidade
+            order by midia.id
+            """)
+    List<AnuncioMidiaEntity> findFotosRestritasPublicaveis(
+            @Param("tipo") TipoAnuncioMidia tipo,
+            @Param("status") StatusAnuncioMidia status,
+            @Param("visibilidade") VisibilidadeMidia visibilidade);
+
     Page<AnuncioMidiaEntity> findByAnuncioId(UUID anuncioId, Pageable pageable);
 
     Page<AnuncioMidiaEntity> findByAnuncioIdAndTipoNot(

@@ -32,13 +32,22 @@ public class MidiaPublicaUrlService {
     private final String canonicalDomain;
     private final ObjectProvider<ObjectStorage> storageProvider;
     private final R2StorageProperties storageProperties;
+    private final MidiaRestritaDerivacaoService derivacaoService;
 
     public MidiaPublicaUrlService() {
-        this("nao_configurado", "", null, null);
+        this("nao_configurado", "", null, null, null);
     }
 
     MidiaPublicaUrlService(String appEnv, String canonicalDomain) {
-        this(appEnv, canonicalDomain, null, null);
+        this(appEnv, canonicalDomain, null, null, null);
+    }
+
+    MidiaPublicaUrlService(
+            String appEnv,
+            String canonicalDomain,
+            ObjectProvider<ObjectStorage> storageProvider,
+            R2StorageProperties storageProperties) {
+        this(appEnv, canonicalDomain, storageProvider, storageProperties, null);
     }
 
     @Autowired
@@ -46,11 +55,24 @@ public class MidiaPublicaUrlService {
             @Value("${app.env:nao_configurado}") String appEnv,
             @Value("${app.canonical-domain:}") String canonicalDomain,
             ObjectProvider<ObjectStorage> storageProvider,
-            R2StorageProperties storageProperties) {
+            R2StorageProperties storageProperties,
+            MidiaRestritaDerivacaoService derivacaoService) {
         this.appEnv = appEnv;
         this.canonicalDomain = canonicalDomain;
         this.storageProvider = storageProvider;
         this.storageProperties = storageProperties;
+        this.derivacaoService = derivacaoService;
+    }
+
+    public ResultadoUrlPublica resolverPreviewRestrita(ArquivoMidiaEntity arquivo) {
+        if (arquivo == null || derivacaoService == null) {
+            return new ResultadoUrlPublica(
+                    null,
+                    MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA);
+        }
+        MidiaRestritaDerivacaoService.ResultadoPreview preview =
+                derivacaoService.resolverPreviewPublica(arquivo);
+        return new ResultadoUrlPublica(preview.previewUrl(), preview.pendencia());
     }
 
     public ResultadoUrlPublica resolver(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo) {

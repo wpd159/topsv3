@@ -7,6 +7,7 @@ export type StoryItem = {
   anuncioSlug?: string | null
   usuarioUsername?: string | null
   displayUsername?: string | null
+  idade?: number | null
   profileNavigable?: boolean | null
   previewState?: StoryPreviewState | null
   previewUrl?: string | null
@@ -20,6 +21,7 @@ export type StoryViewerItem = {
   anuncioSlug?: string | null
   usuarioUsername?: string | null
   displayUsername?: string | null
+  idade?: number | null
   profileNavigable?: boolean | null
   viewerState: StoryViewerState
   midiaUrl?: string | null
@@ -32,6 +34,7 @@ export type StoryBundle = {
   usuarioId: string | number
   usuarioUsername?: string | null
   displayUsername?: string | null
+  idade?: number | null
   profileNavigable?: boolean | null
   avatarUrl?: string | null
   visto?: boolean
@@ -52,6 +55,13 @@ export function rotuloPublicoDoBundle(
   if (login) return `@${login}`
   const fallback = (b.displayUsername ?? "").trim()
   return fallback || "Perfil"
+}
+
+export function rotuloPublicoComIdade(
+  nome: string,
+  idade?: number | null,
+): string {
+  return idade == null ? nome : `${nome}, ${idade} anos`
 }
 
 export function parseBackendDate(v: unknown): Date | null {

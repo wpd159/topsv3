@@ -1,11 +1,17 @@
 package br.com.topsdojob.v3.application.publico.service;
 
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import java.util.Collection;
+import java.util.Map;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +36,42 @@ public class IdadeAnunciantePublicaService {
     Integer idade = usuario.getDataNascimento() == null
         ? null
         : calcular(usuario.getDataNascimento(), LocalDate.now(ZoneOffset.UTC));
+    return new Resultado(usuario.getNome(), idade, false);
+  }
+
+  @Transactional(readOnly = true)
+  public Map<UUID, Resultado> resolverPorAnuncios(
+      Collection<AnuncioEntity> anuncios,
+      Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
+    if (anuncios == null || anuncios.isEmpty()) {
+      return Map.of();
+    }
+    Map<UUID, UsuarioEntity> usuarios = usuarioRepository.findAllById(anuncios.stream()
+            .map(AnuncioEntity::getUsuarioId)
+            .distinct()
+            .toList()).stream()
+        .collect(Collectors.toMap(UsuarioEntity::getId, Function.identity()));
+    LocalDate hoje = LocalDate.now(ZoneOffset.UTC);
+    return anuncios.stream().collect(Collectors.toMap(
+        AnuncioEntity::getId,
+        anuncio -> resultado(
+            usuarios.get(anuncio.getUsuarioId()),
+            premiumPorAnuncio != null
+                && premiumPorAnuncio.getOrDefault(anuncio.getId(), PremiumPublicoFlagsDto.vazio()).idadeOculta(),
+            hoje),
+        (primeiro, ignorado) -> primeiro));
+  }
+
+  private Resultado resultado(UsuarioEntity usuario, boolean idadeOculta, LocalDate hoje) {
+    if (usuario == null) {
+      return new Resultado(null, null, false);
+    }
+    if (idadeOculta) {
+      return new Resultado(usuario.getNome(), null, true);
+    }
+    Integer idade = usuario.getDataNascimento() == null
+        ? null
+        : calcular(usuario.getDataNascimento(), hoje);
     return new Resultado(usuario.getNome(), idade, false);
   }
 

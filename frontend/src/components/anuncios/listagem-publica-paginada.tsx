@@ -138,6 +138,7 @@ export function ListagemPublicaPaginada({
             id={anuncio.id}
             slug={anuncio.slug}
             nome={anuncio.titulo}
+            idade={anuncio.idade}
             estadoUf={anuncio.estadoUf ?? null}
             cidadeNome={anuncio.cidadeNome ?? null}
             bairroNome={anuncio.bairroNome ?? null}

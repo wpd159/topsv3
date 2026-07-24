@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.admin.moderacao;
 
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -22,16 +23,33 @@ public class MidiaStorageAprovacaoService {
 
     private final ObjectProvider<ObjectStorage> storageProvider;
     private final R2StorageProperties properties;
+    private final MidiaRestritaDerivacaoService derivacaoService;
 
     public MidiaStorageAprovacaoService(
             ObjectProvider<ObjectStorage> storageProvider,
-            R2StorageProperties properties) {
+            R2StorageProperties properties,
+            MidiaRestritaDerivacaoService derivacaoService) {
         this.storageProvider = storageProvider;
         this.properties = properties;
+        this.derivacaoService = derivacaoService;
     }
 
     public void prepararAprovacao(ArquivoMidiaEntity arquivo, VisibilidadeMidia visibilidade) {
-        if (arquivo == null || visibilidade != VisibilidadeMidia.LIVRE || !"R2".equals(arquivo.getStorageProvider())) {
+        if (arquivo == null || !"R2".equals(arquivo.getStorageProvider())) {
+            return;
+        }
+        if (visibilidade == VisibilidadeMidia.RESTRITA_18) {
+            if (arquivo.getMimeType() == null
+                    || !arquivo.getMimeType().toLowerCase(Locale.ROOT).startsWith("image/")) {
+                return;
+            }
+            if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+                throw new IllegalStateException("Aprovacao de midia restrita exige transacao ativa");
+            }
+            derivacaoService.garantir(arquivo);
+            return;
+        }
+        if (visibilidade != VisibilidadeMidia.LIVRE) {
             return;
         }
         if (properties.getPublicMediaBucket().equals(arquivo.getBucket())
@@ -101,6 +119,7 @@ public class MidiaStorageAprovacaoService {
         if (storage == null || !properties.isEnabled()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "storage de midia indisponivel");
         }
+        derivacaoService.garantir(arquivo);
         String publicObjectPath = arquivo.getChaveObjeto();
         String relativePath = publicObjectPath.substring(properties.getPublicMediaPrefix().length());
         String privateObjectPath = properties.getPrivateMediaPrefix() + relativePath;

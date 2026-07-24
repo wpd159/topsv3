@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.mapper;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService.ResultadoUrlPublica;
+import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -18,6 +19,8 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class MidiaPublicaMapper {
+
+    private static final String MIDIA_RESTRITA_IDADE = "MIDIA_RESTRITA_IDADE";
 
     private final MidiaPublicaUrlService urlService;
 
@@ -74,9 +77,22 @@ public class MidiaPublicaMapper {
             return null;
         }
         boolean autorizada = vinculo.getVisibilidadeMidia() == VisibilidadeMidia.LIVRE || idadeConfirmada;
+        ResultadoUrlPublica preview = vinculo.getTipo() == TipoAnuncioMidia.FOTO
+                && vinculo.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18
+                ? urlService.resolverPreviewRestrita(arquivo)
+                : new ResultadoUrlPublica(null, null);
+        if (preview == null) {
+            preview = new ResultadoUrlPublica(
+                    null,
+                    MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA);
+        }
         ResultadoUrlPublica urlPublica = autorizada
                 ? urlService.resolver(vinculo, arquivo)
-                : new ResultadoUrlPublica(null, "MIDIA_RESTRITA_IDADE");
+                : new ResultadoUrlPublica(null, MIDIA_RESTRITA_IDADE);
+        String pendencia = urlPublica.pendenciaMidia();
+        if (!autorizada && preview.urlPublica() == null) {
+            pendencia = preview.pendenciaMidia();
+        }
         return new MidiaPublicaDto(
                 vinculo.getId(),
                 enumName(vinculo.getTipo()),
@@ -85,7 +101,8 @@ public class MidiaPublicaMapper {
                 enumName(vinculo.getVisibilidadeMidia()),
                 autorizada,
                 urlPublica.urlPublica(),
-                urlPublica.pendenciaMidia(),
+                preview.urlPublica(),
+                pendencia,
                 arquivo.getLargura(),
                 arquivo.getAltura(),
                 arquivo.getMimeType());

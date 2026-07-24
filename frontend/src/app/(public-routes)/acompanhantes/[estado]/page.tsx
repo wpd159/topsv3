@@ -4,7 +4,7 @@ import Link from "next/link"
 import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import { gerarDescricaoSeoEstado, gerarTituloSeoEstado } from "@/lib/seo/public-metadata"
-import { selecionarCapaPublicaSegura } from "@/lib/media/public-media"
+import { fontePublicaSegura, selecionarCapaPublicaSegura } from "@/lib/media/public-media"
 import {
   descobrirLocalidadesPublicas,
   isPublicCatalogNotFound,
@@ -194,7 +194,10 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
       position: index + 1,
       name: anuncio.titulo,
       url: buildPublicUrl(buildPublicPath("anuncios", anuncio.slug)),
-      image: selecionarCapaPublicaSegura(anuncio.midias)?.urlPublica || undefined,
+      image: (() => {
+        const capa = selecionarCapaPublicaSegura(anuncio.midias)
+        return capa ? fontePublicaSegura(capa) ?? undefined : undefined
+      })(),
     })),
   }
 

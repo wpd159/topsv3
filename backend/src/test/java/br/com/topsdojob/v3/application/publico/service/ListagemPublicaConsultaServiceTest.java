@@ -62,7 +62,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         assertThatThrownBy(() -> service.porEstado("SP", -1, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -85,7 +86,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         assertThatThrownBy(() -> service.porEstado("sp", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -116,7 +118,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         assertThatThrownBy(() -> service.porCidade("sp", "cidade-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -154,7 +157,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         assertThatThrownBy(() -> service.porBairro("go", "goiania", "bairro-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -252,7 +256,8 @@ class ListagemPublicaConsultaServiceTest {
                 premiumMapper,
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20, null);
 
@@ -344,7 +349,8 @@ class ListagemPublicaConsultaServiceTest {
                 premiumMapper,
                 contatoService,
                 mock(OrdemSeedPublicaService.class),
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         ListaAnunciosCategoriaPublicaDto resposta = service.listar("VENDA_DE_CONTEUDO", null, 0, 20, null);
 
@@ -386,7 +392,8 @@ class ListagemPublicaConsultaServiceTest {
                 premiumMapper,
                 mock(PoliticaContatoPublicoService.class),
                 ordemSeedService,
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         ListaAnunciosCategoriaPublicaDto resposta = service.listar(null, null, 1, 20, seedSegura);
 
@@ -416,7 +423,8 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PremiumPublicoMapper.class),
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
-                visualizacoesCanonicas());
+                visualizacoesCanonicas(),
+                mock(IdadeAnunciantePublicaService.class));
 
         assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->

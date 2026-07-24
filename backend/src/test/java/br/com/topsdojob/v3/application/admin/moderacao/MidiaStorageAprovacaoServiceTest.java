@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -34,7 +35,9 @@ class MidiaStorageAprovacaoServiceTest {
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ObjectStorage> provider = mock(ObjectProvider.class);
     private final R2StorageProperties properties = properties();
-    private final MidiaStorageAprovacaoService service = new MidiaStorageAprovacaoService(provider, properties);
+    private final MidiaRestritaDerivacaoService derivacaoService = mock(MidiaRestritaDerivacaoService.class);
+    private final MidiaStorageAprovacaoService service =
+            new MidiaStorageAprovacaoService(provider, properties, derivacaoService);
 
     @BeforeEach
     void setUp() {
@@ -96,11 +99,27 @@ class MidiaStorageAprovacaoServiceTest {
     @Test
     void restritaPermanecePrivadaSemUrlPublicaPermanente() {
         ArquivoMidiaEntity arquivo = arquivoPrivado("hml/midias-pendentes/anuncios/a/video.mp4");
+        ReflectionTestUtils.setField(arquivo, "mimeType", "video/mp4");
 
         service.prepararAprovacao(arquivo, VisibilidadeMidia.RESTRITA_18);
 
         assertThat(arquivo.getBucket()).isEqualTo("privadas");
         assertThat(arquivo.getChaveObjeto()).startsWith("hml/midias-pendentes/");
+        verifyNoInteractions(storage);
+    }
+
+    @Test
+    void fotoRestritaGaranteDerivacaoBorradaDentroDaTransacao() {
+        ArquivoMidiaEntity arquivo = arquivoPrivado("hml/midias-pendentes/anuncios/a/foto.jpg");
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.prepararAprovacao(arquivo, VisibilidadeMidia.RESTRITA_18);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(derivacaoService).garantir(arquivo);
         verifyNoInteractions(storage);
     }
 

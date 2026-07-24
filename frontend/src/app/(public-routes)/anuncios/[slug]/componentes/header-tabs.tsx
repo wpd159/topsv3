@@ -15,6 +15,8 @@ type HeaderTabsProps = {
     id?: string | number
     slug?: string
     nome: string
+    idade?: number | null
+    estadoUf?: string | null
     cidade?: string | null
     cidadeNome?: string | null
     midias?: MidiaPublica[]
@@ -41,6 +43,10 @@ export default function HeaderTabs({
   const touchStartX = useRef<number | null>(null)
   const nome = corrigirTextoCorrompido(anuncio.nome)
   const cidade = corrigirTextoCorrompido(anuncio.cidadeNome ?? anuncio.cidade ?? '')
+  const nomeComIdade = anuncio.idade != null ? `${nome}, ${anuncio.idade} anos` : nome
+  const altFoto = cidade
+    ? `Foto de perfil de ${nome} em ${cidade}${anuncio.estadoUf ? `, ${anuncio.estadoUf}` : ''}`
+    : `Foto de perfil de ${nome}`
 
   const midias = useMemo(
     () => [...(anuncio.midias ?? [])]
@@ -117,7 +123,7 @@ export default function HeaderTabs({
         midia={midia}
         anuncioId={anuncio.id}
         anuncioSlug={anuncio.slug}
-        alt={cidade ? `${nome} em ${cidade}` : nome}
+        alt={altFoto}
         fill
         priority={priority}
         sizes={sizes}
@@ -204,7 +210,9 @@ export default function HeaderTabs({
       ) : null}
 
       <div className="flex min-w-0 flex-col items-start gap-3 sm:flex-row sm:justify-between">
-        <h1 className="min-w-0 text-4xl font-bold leading-tight text-gray-950 sm:text-5xl">{nome}</h1>
+        <h1 className="min-w-0 text-4xl font-bold leading-tight text-gray-950 sm:text-5xl">
+          {nomeComIdade}
+        </h1>
         {anuncio.slug ? (
           <FavoritoButton slug={anuncio.slug} className="shrink-0 self-end sm:mt-1 sm:self-auto" iconClassName="h-6 w-6" />
         ) : null}

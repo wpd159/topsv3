@@ -13,7 +13,12 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import type { StoryBundle, StoryViewerItem } from "./stories-types"
-import { getInitials, loginPublicoDoBundle, rotuloPublicoDoBundle } from "./stories-types"
+import {
+  getInitials,
+  loginPublicoDoBundle,
+  rotuloPublicoComIdade,
+  rotuloPublicoDoBundle,
+} from "./stories-types"
 import { publicApiUrl } from '@/lib/api-contract'
 
 type Props = {
@@ -31,14 +36,27 @@ function StoryStateCard({
   description,
   primaryAction,
   secondaryAction,
+  backgroundImage,
 }: {
   title: string
   description: string
   primaryAction?: { label: string; onClick: () => void }
   secondaryAction?: { label: string; onClick: () => void }
+  backgroundImage?: string | null
 }) {
   return (
-    <div className="flex h-[100svh] w-full max-w-[100vw] items-center justify-center bg-gradient-to-br from-gray-950 via-black to-gray-900 px-6">
+    <div className="relative flex h-[100svh] w-full max-w-[100vw] items-center justify-center overflow-hidden bg-gradient-to-br from-gray-950 via-black to-gray-900 px-6">
+      {backgroundImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={backgroundImage}
+          alt=""
+          width={960}
+          height={1280}
+          className="absolute inset-0 h-full w-full object-contain"
+        />
+      ) : null}
+      {backgroundImage ? <div className="absolute inset-0 bg-black/45" /> : null}
       <div
         className="relative z-20 w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-2xl backdrop-blur-sm"
         onClick={(event) => {
@@ -244,6 +262,10 @@ export function StoryViewerDialog({
     viewerItem?.profileNavigable && viewerItem?.displayUsername
       ? `@${viewerItem.displayUsername}`
       : rotuloBundle
+  const rotuloPerfilComIdade = rotuloPublicoComIdade(
+    rotuloPerfil,
+    viewerItem?.idade ?? currentFeedItem?.idade ?? currentBundle?.idade,
+  )
 
   function irParaAnuncioDoStory() {
     if (!anuncioSlugViewer) {
@@ -300,6 +322,7 @@ export function StoryViewerDialog({
                 }
               : undefined
           }
+          backgroundImage={currentFeedItem.previewUrl}
         />
       )
     }
@@ -317,6 +340,7 @@ export function StoryViewerDialog({
                 }
               : undefined
           }
+          backgroundImage={currentFeedItem.previewUrl}
         />
       )
     }
@@ -338,6 +362,7 @@ export function StoryViewerDialog({
                 }
               : undefined
           }
+          backgroundImage={viewerItem.midiaUrl ?? currentFeedItem.previewUrl}
         />
       )
     }
@@ -479,7 +504,7 @@ export function StoryViewerDialog({
                   type="button"
                   onClick={irParaAnuncioDoStory}
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                  aria-label={`Ver anuncio de ${rotuloPerfil}`}
+                  aria-label={`Ver anuncio de ${rotuloPerfilComIdade}`}
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10">
                     {currentBundle?.avatarUrl ? (
@@ -491,7 +516,7 @@ export function StoryViewerDialog({
                   </div>
                   <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-white hover:underline">
-                      {rotuloPerfil}
+                      {rotuloPerfilComIdade}
                     </div>
                     <div className="text-xs text-white/70">
                       {itemIndex + 1}/{currentBundle?.itens?.length || 0}
@@ -501,10 +526,10 @@ export function StoryViewerDialog({
               ) : (
                 <div className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10">
-                    <div className="text-xs font-bold text-white">{getInitials(rotuloPerfil)}</div>
+                    <div className="text-xs font-bold text-white">{getInitials(rotuloPerfilComIdade)}</div>
                   </div>
                   <div className="min-w-0">
-                    <div className="truncate text-sm font-semibold text-white">{rotuloPerfil}</div>
+                    <div className="truncate text-sm font-semibold text-white">{rotuloPerfilComIdade}</div>
                     <div className="text-xs text-white/60">
                       {itemIndex + 1}/{currentBundle?.itens?.length || 0}
                     </div>

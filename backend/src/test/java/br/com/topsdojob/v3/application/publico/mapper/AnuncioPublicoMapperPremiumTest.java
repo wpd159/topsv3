@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.application.publico.service.IdadeAnunciantePublicaService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import java.util.List;
 import java.util.Set;
@@ -24,6 +25,7 @@ class AnuncioPublicoMapperPremiumTest {
                 null,
                 List.of(foto(0), foto(1)),
                 PremiumPublicoFlagsDto.vazio(),
+                new IdadeAnunciantePublicaService.Resultado("Perfil teste", 25, false),
                 true,
                 null,
                 VisualizacoesCanonicasDto.total(0));
@@ -33,6 +35,7 @@ class AnuncioPublicoMapperPremiumTest {
         assertThat(dto.whatsappCard()).isFalse();
         assertThat(dto.contatoDisponivel()).isTrue();
         assertThat(dto.midias()).hasSize(1);
+        assertThat(dto.idade()).isEqualTo(25);
     }
 
     @Test
@@ -55,6 +58,7 @@ class AnuncioPublicoMapperPremiumTest {
                 null,
                 List.of(foto(0), foto(1)),
                 vigentes,
+                new IdadeAnunciantePublicaService.Resultado("Perfil teste", null, true),
                 true,
                 null,
                 VisualizacoesCanonicasDto.total(12));
@@ -63,6 +67,7 @@ class AnuncioPublicoMapperPremiumTest {
         assertThat(dto.midiaExtra()).isTrue();
         assertThat(dto.whatsappCard()).isTrue();
         assertThat(dto.midias()).hasSize(2);
+        assertThat(dto.idade()).isNull();
     }
 
     private AnuncioEntity anuncio() {
@@ -84,6 +89,7 @@ class AnuncioPublicoMapperPremiumTest {
                 "LIVRE",
                 true,
                 "/foto-" + ordem,
+                null,
                 null,
                 800,
                 1200,

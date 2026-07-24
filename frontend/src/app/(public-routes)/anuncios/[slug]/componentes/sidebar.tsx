@@ -95,7 +95,6 @@ export default function Sidebar({ anuncio }: SidebarProps) {
           <div className="mb-4 space-y-1">
             <h2 className="flex flex-wrap items-baseline gap-x-1 text-lg font-semibold text-gray-900">
               <span>{usernameLabel}</span>
-              {anuncio.idade != null ? <span>&middot; {anuncio.idade} anos</span> : null}
             </h2>
             {anunciaDesde ? (
               <p className="flex items-center gap-1.5 text-xs text-gray-500">

@@ -55,6 +55,7 @@ public class ListagemPublicaConsultaService {
     private final PoliticaContatoPublicoService contatoService;
     private final OrdemSeedPublicaService ordemSeedService;
     private final VisualizacaoTotalCanonicaService visualizacaoService;
+    private final IdadeAnunciantePublicaService idadeService;
 
     public ListagemPublicaConsultaService(
             EstadoRepository estadoRepository,
@@ -68,7 +69,8 @@ public class ListagemPublicaConsultaService {
             PremiumPublicoMapper premiumMapper,
             PoliticaContatoPublicoService contatoService,
             OrdemSeedPublicaService ordemSeedService,
-            VisualizacaoTotalCanonicaService visualizacaoService) {
+            VisualizacaoTotalCanonicaService visualizacaoService,
+            IdadeAnunciantePublicaService idadeService) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
@@ -81,6 +83,7 @@ public class ListagemPublicaConsultaService {
         this.contatoService = contatoService;
         this.ordemSeedService = ordemSeedService;
         this.visualizacaoService = visualizacaoService;
+        this.idadeService = idadeService;
     }
 
     @Transactional(readOnly = true)
@@ -200,6 +203,8 @@ public class ListagemPublicaConsultaService {
         List<AnuncioLocalizacaoEntity> localizacoes = localizacaoRepository.findByAnuncioIdIn(anuncioIds);
 
         Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(anuncios.getContent());
+        Map<UUID, IdadeAnunciantePublicaService.Resultado> idadePorAnuncio =
+                idadeService.resolverPorAnuncios(anuncios.getContent(), premiumPorAnuncio);
         Map<UUID, VisualizacoesCanonicasDto> visualizacoesPorAnuncio =
                 visualizacaoService.calcularEmLote(anuncioIds);
         Map<UUID, AnuncioLocalizacaoEntity> localizacaoPorAnuncio = localizacoes.stream()
@@ -240,6 +245,7 @@ public class ListagemPublicaConsultaService {
                             toLocalizacao(estado, cidadeAnuncio, bairroAnuncio, localizacao),
                             midiasPorAnuncio.getOrDefault(anuncio.getId(), List.of()),
                             premium,
+                            idadePorAnuncio.get(anuncio.getId()),
                             contatoService.podeExporContato(anuncio),
                             primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()),
                             visualizacoes(visualizacoesPorAnuncio, anuncio.getId()));
@@ -302,6 +308,8 @@ public class ListagemPublicaConsultaService {
                         premiumPorAnuncio);
         Map<UUID, VisualizacoesCanonicasDto> visualizacoesPorAnuncio = visualizacaoService.calcularEmLote(
                 anuncios.stream().map(AnuncioEntity::getId).toList());
+        Map<UUID, IdadeAnunciantePublicaService.Resultado> idadePorAnuncio =
+                idadeService.resolverPorAnuncios(anuncios, premiumPorAnuncio);
 
         return anuncios.stream()
                 .map(anuncio -> {
@@ -324,6 +332,7 @@ public class ListagemPublicaConsultaService {
                             toLocalizacao(estado, cidade, bairro, localizacao),
                             midiasPorAnuncio.getOrDefault(anuncio.getId(), List.of()),
                             premium,
+                            idadePorAnuncio.get(anuncio.getId()),
                             contatoService.podeExporContato(anuncio),
                             primeiraPublicacaoPorUsuario.get(anuncio.getUsuarioId()),
                             visualizacoes(visualizacoesPorAnuncio, anuncio.getId()));

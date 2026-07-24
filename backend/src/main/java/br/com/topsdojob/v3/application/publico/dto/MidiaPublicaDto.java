@@ -10,6 +10,7 @@ public record MidiaPublicaDto(
         String visibilidadeMidia,
         boolean autorizada,
         String urlPublica,
+        String previewUrl,
         String pendenciaMidia,
         Integer largura,
         Integer altura,

@@ -12,6 +12,8 @@ import java.awt.RenderingHints;
 import java.awt.color.ColorSpace;
 import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
+import java.awt.image.ConvolveOp;
+import java.awt.image.Kernel;
 import java.awt.image.Raster;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -50,6 +52,9 @@ public class FotoUploadProcessor {
   private static final double WATERMARK_SCALE = 0.55d;
   private static final float WATERMARK_OPACITY = 0.12f;
   private static final String JPEG_METADATA_FORMAT = "javax_imageio_jpeg_image_1.0";
+  private static final int RESTRICTED_PREVIEW_MAX_SIDE = 960;
+  private static final int RESTRICTED_PREVIEW_BLUR_SIDE = 48;
+  private static final int RESTRICTED_PREVIEW_KERNEL_SIDE = 5;
 
   private final MidiaUploadProperties properties;
   private final BufferedImage watermark;
@@ -85,6 +90,27 @@ public class FotoUploadProcessor {
         PIPELINE_VERSION,
         WATERMARK_VERSION,
         OffsetDateTime.now(ZoneOffset.UTC));
+  }
+
+  public FotoRestritaDerivada gerarDerivacaoRestrita(byte[] bytes, String mimeType) {
+    if (bytes == null || bytes.length == 0 || mimeType == null || !mimeType.startsWith("image/")) {
+      throw new IllegalArgumentException("Imagem restrita obrigatoria");
+    }
+    String mimeNormalizado = mimeType.split(";", 2)[0].trim().toLowerCase(java.util.Locale.ROOT);
+    BufferedImage decoded = decodificar(bytes, mimeNormalizado);
+    BufferedImage oriented = orientar(decoded, orientacaoExif(bytes));
+    BufferedImage srgb = converterSrgb(oriented);
+    BufferedImage preview = reduzirAte(srgb, RESTRICTED_PREVIEW_MAX_SIDE);
+    BufferedImage blurred = aplicarDesfoqueIrreversivel(preview);
+    byte[] derivado = codificarJpeg(blurred);
+    validarDerivado(derivado, "image/jpeg", blurred.getWidth(), blurred.getHeight());
+    return new FotoRestritaDerivada(
+        derivado,
+        "image/jpeg",
+        "jpg",
+        blurred.getWidth(),
+        blurred.getHeight(),
+        sha256(derivado));
   }
 
   public void validarDerivado(byte[] bytes, String mimeType, int largura, int altura) {
@@ -190,9 +216,13 @@ public class FotoUploadProcessor {
   }
 
   private BufferedImage reduzirSeNecessario(BufferedImage source) {
+    return reduzirAte(source, properties.getMaxProcessedSide());
+  }
+
+  private BufferedImage reduzirAte(BufferedImage source, int limiteMaiorLado) {
     int maxSide = Math.max(source.getWidth(), source.getHeight());
-    if (maxSide <= properties.getMaxProcessedSide()) return source;
-    double ratio = properties.getMaxProcessedSide() / (double) maxSide;
+    if (maxSide <= limiteMaiorLado) return source;
+    double ratio = limiteMaiorLado / (double) maxSide;
     int targetWidth = Math.max(1, (int) Math.round(source.getWidth() * ratio));
     int targetHeight = Math.max(1, (int) Math.round(source.getHeight() * ratio));
     BufferedImage current = source;
@@ -204,6 +234,32 @@ public class FotoUploadProcessor {
     return current.getWidth() == targetWidth && current.getHeight() == targetHeight
         ? current
         : redimensionar(current, targetWidth, targetHeight);
+  }
+
+  private BufferedImage aplicarDesfoqueIrreversivel(BufferedImage source) {
+    int maxSide = Math.max(source.getWidth(), source.getHeight());
+    double ratio = Math.min(1d, RESTRICTED_PREVIEW_BLUR_SIDE / (double) maxSide);
+    int reducedWidth = Math.max(1, (int) Math.round(source.getWidth() * ratio));
+    int reducedHeight = Math.max(1, (int) Math.round(source.getHeight() * ratio));
+    BufferedImage reduced = redimensionar(source, reducedWidth, reducedHeight);
+
+    BufferedImage convolved = reduced;
+    if (reducedWidth >= RESTRICTED_PREVIEW_KERNEL_SIDE
+        && reducedHeight >= RESTRICTED_PREVIEW_KERNEL_SIDE) {
+      int samples = RESTRICTED_PREVIEW_KERNEL_SIDE * RESTRICTED_PREVIEW_KERNEL_SIDE;
+      float[] weights = new float[samples];
+      java.util.Arrays.fill(weights, 1f / samples);
+      ConvolveOp blur = new ConvolveOp(
+          new Kernel(RESTRICTED_PREVIEW_KERNEL_SIDE, RESTRICTED_PREVIEW_KERNEL_SIDE, weights),
+          ConvolveOp.EDGE_NO_OP,
+          null);
+      convolved = blur.filter(reduced, null);
+    }
+
+    BufferedImage opaque = convolved.getColorModel().hasAlpha()
+        ? converterOpaca(convolved)
+        : convolved;
+    return redimensionar(opaque, source.getWidth(), source.getHeight());
   }
 
   private BufferedImage redimensionar(BufferedImage source, int width, int height) {
@@ -470,6 +526,24 @@ public class FotoUploadProcessor {
       OffsetDateTime processadoEm) {
 
     public FotoProcessada {
+      bytes = bytes.clone();
+    }
+
+    @Override
+    public byte[] bytes() {
+      return bytes.clone();
+    }
+  }
+
+  public record FotoRestritaDerivada(
+      byte[] bytes,
+      String mimeType,
+      String extensao,
+      int largura,
+      int altura,
+      String sha256) {
+
+    public FotoRestritaDerivada {
       bytes = bytes.clone();
     }
 

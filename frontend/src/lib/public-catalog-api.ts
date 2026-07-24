@@ -45,6 +45,7 @@ export type PublicCatalogCard = {
   descricao?: string | null
   preco?: number | null
   categoria?: string | null
+  idade?: number | null
   midias: MidiaPublica[]
   estadoUf: string
   estadoNome: string
@@ -285,6 +286,7 @@ function mapCard(raw: RawCard): PublicCatalogCard {
     descricao: raw.descricao ?? raw.descricaoResumo ?? null,
     preco: raw.preco ?? null,
     categoria: raw.categoria ?? null,
+    idade: raw.idade ?? null,
     midias,
     estadoUf: localizacao.uf,
     estadoNome: localizacao.estado,

@@ -50,12 +50,16 @@ class MidiaPublicaMapperTest {
     void fotoRestritaNaoEntregaOriginalSemIdade() {
         UUID arquivoId = UUID.randomUUID();
         AnuncioMidiaEntity midia = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, arquivoId, 0);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId);
+        when(urlService.resolverPreviewRestrita(arquivo))
+                .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica("/restritas-borradas/segura.jpg", null));
 
-        var result = mapper.publicas(List.of(midia), Map.of(arquivoId, arquivo(arquivoId)), false);
+        var result = mapper.publicas(List.of(midia), Map.of(arquivoId, arquivo), false);
 
         assertThat(result).singleElement().satisfies(dto -> {
             assertThat(dto.autorizada()).isFalse();
             assertThat(dto.urlPublica()).isNull();
+            assertThat(dto.previewUrl()).isEqualTo("/restritas-borradas/segura.jpg");
             assertThat(dto.pendenciaMidia()).isEqualTo("MIDIA_RESTRITA_IDADE");
         });
     }
@@ -65,10 +69,37 @@ class MidiaPublicaMapperTest {
         UUID arquivoId = UUID.randomUUID();
         AnuncioMidiaEntity midia = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.RESTRITA_18, arquivoId, 0);
         ArquivoMidiaEntity arquivo = arquivo(arquivoId);
+        when(urlService.resolverPreviewRestrita(arquivo))
+                .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica("/restritas-borradas/segura.jpg", null));
         when(urlService.resolver(midia, arquivo)).thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica("/foto-autorizada", null));
 
         assertThat(mapper.publicas(List.of(midia), Map.of(arquivoId, arquivo), true))
-                .singleElement().extracting(dto -> dto.urlPublica()).isEqualTo("/foto-autorizada");
+                .singleElement().satisfies(dto -> {
+                    assertThat(dto.urlPublica()).isEqualTo("/foto-autorizada");
+                    assertThat(dto.previewUrl()).isEqualTo("/restritas-borradas/segura.jpg");
+                });
+    }
+
+    @Test
+    void falhaDaDerivacaoMantemOriginalAusenteEExplicitaPendencia() {
+        UUID arquivoId = UUID.randomUUID();
+        AnuncioMidiaEntity midia = midia(
+                TipoAnuncioMidia.FOTO,
+                VisibilidadeMidia.RESTRITA_18,
+                arquivoId,
+                0);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId);
+        when(urlService.resolverPreviewRestrita(arquivo))
+                .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica(
+                        null,
+                        "PENDENTE_DERIVACAO_RESTRITA"));
+
+        assertThat(mapper.publicas(List.of(midia), Map.of(arquivoId, arquivo), false))
+                .singleElement().satisfies(dto -> {
+                    assertThat(dto.urlPublica()).isNull();
+                    assertThat(dto.previewUrl()).isNull();
+                    assertThat(dto.pendenciaMidia()).isEqualTo("PENDENTE_DERIVACAO_RESTRITA");
+                });
     }
 
     @Test

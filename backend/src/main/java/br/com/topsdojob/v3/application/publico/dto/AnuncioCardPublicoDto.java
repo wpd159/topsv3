@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.publico.dto;
 
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -13,6 +14,7 @@ public record AnuncioCardPublicoDto(
         String descricaoResumo,
         BigDecimal preco,
         String categoria,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Integer idade,
         LocalizacaoPublicaDto localizacao,
         List<MidiaPublicaDto> midias,
         boolean destaque,

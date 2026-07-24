@@ -47,10 +47,15 @@ export function SensitiveImage({
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [erro, setErro] = useState(false)
   const protegida = midiaExigeConfirmacaoIdade(midia)
+  const autorizada = midia.autorizada
   const fonte = fontePublicaSegura(midia)
+  const fonteEhPreviewPublica =
+    protegida &&
+    !autorizada &&
+    Boolean(midia.previewUrl) &&
+    fonte === midia.previewUrl
   const otimizarImagemPublica =
-    midia.visibilidadeMidia === "LIVRE" &&
-    midia.autorizada &&
+    (midia.visibilidadeMidia === "LIVRE" || fonteEhPreviewPublica) &&
     Boolean(fonte && (fonte.startsWith("/") || /^https?:\/\//i.test(fonte)))
 
   const propsImagem = fill

@@ -12,6 +12,7 @@ import type { PublicCatalogCard } from '@/lib/public-catalog-api'
 interface AnuncioRelacionado {
   id: string
   titulo: string
+  idade?: number | null
   preco: number
   estadoUf?: string | null
   cidadeNome?: string | null
@@ -84,6 +85,7 @@ export function AnunciosRelacionados({
         .map((item) => ({
           id: item.id,
           titulo: item.titulo,
+          idade: item.idade,
           preco: Number(item.preco ?? 0),
           estadoUf: item.estadoUf,
           cidadeNome: item.cidadeNome,
@@ -174,7 +176,11 @@ export function AnunciosRelacionados({
                       midia={capa}
                       anuncioId={anuncio.id}
                       anuncioSlug={slugRota}
-                      alt={anuncio.titulo}
+                      alt={
+                        anuncio.cidadeNome
+                          ? `Foto de perfil de ${anuncio.titulo} em ${anuncio.cidadeNome}${anuncio.estadoUf ? `, ${anuncio.estadoUf}` : ''}`
+                          : `Foto de perfil de ${anuncio.titulo}`
+                      }
                       fill
                       sizes="(max-width: 768px) 220px, 25vw"
                       className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
@@ -205,7 +211,11 @@ export function AnunciosRelacionados({
                 </div>
 
                 <div className="flex min-h-[132px] flex-1 flex-col space-y-2 p-3">
-                  <p className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-gray-900">{anuncio.titulo}</p>
+                  <p className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-gray-900">
+                    {anuncio.idade != null
+                      ? `${anuncio.titulo}, ${anuncio.idade} anos`
+                      : anuncio.titulo}
+                  </p>
 
                   <p className="flex items-start gap-1 text-xs leading-tight text-gray-600">
                     <MapPinIcon className="mt-[2px] h-4 w-4 shrink-0 text-pink-500" />

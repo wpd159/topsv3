@@ -82,12 +82,10 @@ class PremiumPublicoMapperTest {
     }
 
     @Test
-    void somenteOcultarIdadePagoAtivoOcultaIdade() {
+    void ocultarIdadeAtivoOcultaIndependentementeDaOrigemCanonica() {
         AnuncioEntity anuncio = anuncio();
         when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
-                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.COMPRA),
-                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
-                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.CORTESIA)));
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.ADMIN)));
 
         PremiumPublicoFlagsDto flags = mapper.flags(anuncio);
 
@@ -96,11 +94,10 @@ class PremiumPublicoMapperTest {
     }
 
     @Test
-    void ocultarIdadeExpiradoOuNaoPagoNaoOcultaIdade() {
+    void ocultarIdadeExpiradoNaoOcultaIdade() {
         AnuncioEntity anuncio = anuncio();
         when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(
-                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA),
-                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO, OrigemBeneficio.ADMIN)));
+                calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA)));
 
         assertThat(mapper.flags(anuncio).idadeOculta()).isFalse();
     }

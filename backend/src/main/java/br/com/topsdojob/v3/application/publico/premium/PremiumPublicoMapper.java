@@ -12,7 +12,6 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -80,7 +79,7 @@ public class PremiumPublicoMapper {
                 true,
                 false,
                 codigos.stream().anyMatch(PremiumBeneficioCodigo.MIDIA_EXTRA::contains),
-                calculados.stream().anyMatch(this::ocultaIdadeComBeneficioPago),
+                codigos.contains(OCULTAR_IDADE),
                 fotosExtrasAtivo,
                 carrosselAtivo,
                 videoAtivo,
@@ -97,22 +96,6 @@ public class PremiumPublicoMapper {
                 && PremiumBeneficioCodigo.TODOS.contains(item.beneficio().getCodigo())
                 && (item.status() == PremiumBeneficioStatusCalculado.ATIVO
                 || item.status() == PremiumBeneficioStatusCalculado.VENCENDO);
-    }
-
-    private boolean ocultaIdadeComBeneficioPago(PremiumBeneficioCalculado item) {
-        if (item.beneficio() == null
-                || !OCULTAR_IDADE.equals(item.beneficio().getCodigo())
-                || item.ativacao() == null) {
-            return false;
-        }
-        OrigemBeneficio origem = item.ativacao().getOrigem();
-        if (origem == OrigemBeneficio.COMPRA) {
-            return item.ativacao().getPrecoSnapshot() != null
-                    && item.ativacao().getPrecoSnapshot().signum() > 0;
-        }
-        return origem == OrigemBeneficio.CREDITO
-                && item.ativacao().getCustoCreditosSnapshot() != null
-                && item.ativacao().getCustoCreditosSnapshot() > 0;
     }
 
     private String rotuloPublico(String codigo) {

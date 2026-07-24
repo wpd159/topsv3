@@ -65,10 +65,6 @@ public class StoryPublicoService {
     public ListaStoriesPublicosDto listar(String slug, HttpServletRequest request) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
         boolean idadeConfirmada = idadeService.idadeConfirmada(request);
-        if (!idadeConfirmada) {
-            return bloqueadoPorIdade(slugSeguro);
-        }
-
         AnuncioEntity anuncio = anuncioRepository
                 .findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                         slugSeguro,
@@ -80,7 +76,7 @@ public class StoryPublicoService {
                 .filter(this::vinculoStoryElegivel)
                 .toList();
         if (vinculos.isEmpty()) {
-            return autorizado(slugSeguro, List.of());
+            return resposta(slugSeguro, idadeConfirmada, List.of());
         }
 
         Map<UUID, AnuncioMidiaEntity> vinculosPorId = vinculos.stream()
@@ -95,38 +91,45 @@ public class StoryPublicoService {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         List<StoryPublicoDto> stories = storyRepository.findByAnuncioMidiaIdIn(vinculosPorId.keySet()).stream()
                 .filter(story -> storyElegivel(story, now))
-                .map(story -> toDto(story, vinculosPorId.get(story.getAnuncioMidiaId()), arquivosPorId))
+                .map(story -> toDto(
+                        story,
+                        vinculosPorId.get(story.getAnuncioMidiaId()),
+                        arquivosPorId,
+                        idadeConfirmada))
                 .filter(java.util.Objects::nonNull)
                 .sorted(Comparator.comparing(
                         StoryPublicoDto::ordem,
                         Comparator.nullsLast(Integer::compareTo)))
                 .toList();
 
-        return autorizado(slugSeguro, stories);
+        return resposta(slugSeguro, idadeConfirmada, stories);
     }
 
-    private ListaStoriesPublicosDto bloqueadoPorIdade(String slug) {
+    private ListaStoriesPublicosDto resposta(
+            String slug,
+            boolean idadeConfirmada,
+            List<StoryPublicoDto> stories) {
         return new ListaStoriesPublicosDto(
                 slug,
-                false,
-                false,
-                List.of(),
-                new PoliticaStoryPublicoDto(false, MOTIVO_IDADE_NAO_CONFIRMADA, null));
-    }
-
-    private ListaStoriesPublicosDto autorizado(String slug, List<StoryPublicoDto> stories) {
-        return new ListaStoriesPublicosDto(
-                slug,
-                true,
-                true,
+                idadeConfirmada,
+                idadeConfirmada,
                 stories,
-                new PoliticaStoryPublicoDto(true, MOTIVO_AUTORIZADO, MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN));
+                idadeConfirmada
+                        ? new PoliticaStoryPublicoDto(
+                                true,
+                                MOTIVO_AUTORIZADO,
+                                MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN)
+                        : new PoliticaStoryPublicoDto(
+                                false,
+                                MOTIVO_IDADE_NAO_CONFIRMADA,
+                                MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA));
     }
 
     private StoryPublicoDto toDto(
             StoryAnuncioEntity story,
             AnuncioMidiaEntity vinculo,
-            Map<UUID, ArquivoMidiaEntity> arquivosPorId) {
+            Map<UUID, ArquivoMidiaEntity> arquivosPorId,
+            boolean idadeConfirmada) {
         if (vinculo == null || vinculo.getVisibilidadeMidia() != VisibilidadeMidia.RESTRITA_18) {
             return null;
         }
@@ -135,7 +138,9 @@ public class StoryPublicoService {
                 || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO) {
             return null;
         }
-        MidiaPublicaUrlService.ResultadoUrlPublica urlPublica = urlService.resolver(vinculo, arquivo);
+        MidiaPublicaUrlService.ResultadoUrlPublica urlPublica = idadeConfirmada
+                ? urlService.resolver(vinculo, arquivo)
+                : urlService.resolverPreviewRestrita(arquivo);
         return new StoryPublicoDto(
                 story.getOrdem(),
                 enumName(vinculo.getTipo()),

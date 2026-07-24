@@ -224,6 +224,7 @@ export default function AnunciosGrid({
             id={anuncio.id}
             slug={anuncio.slug}
             nome={anuncio.titulo}
+            idade={anuncio.idade}
             estadoUf={anuncio.estadoUf}
             cidadeNome={anuncio.cidadeNome}
             bairroNome={anuncio.bairroNome}

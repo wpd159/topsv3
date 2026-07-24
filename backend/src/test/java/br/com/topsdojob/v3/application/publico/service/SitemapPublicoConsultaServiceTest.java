@@ -156,7 +156,7 @@ class SitemapPublicoConsultaServiceTest {
         var restritas = java.util.stream.IntStream.range(0, 1)
                 .mapToObj(ordem -> new br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto(
                         UUID.randomUUID(), "FOTO", "GALERIA", ordem, "RESTRITA_18", false, null,
-                        "MIDIA_RESTRITA_IDADE", 1080, 1920, "image/jpeg"))
+                        "/midia/borrada.jpg", "MIDIA_RESTRITA_IDADE", 1080, 1920, "image/jpeg"))
                 .toList();
 
         assertThat(new AnuncioSeoIndexabilidadePolicy().indexavel(anuncio, localizacao, restritas)).isFalse();

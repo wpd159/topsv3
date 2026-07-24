@@ -9,6 +9,9 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService.MidiaElegivel;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService.ResultadoUrlPublica;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -31,6 +34,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnunci
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +51,10 @@ class StoryFeedPublicoServiceTest {
     private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
     private final StoryMidiaElegibilidadeService elegibilidadeService = mock(StoryMidiaElegibilidadeService.class);
     private final IdadePublicaService idadeService = mock(IdadePublicaService.class);
+    private final IdadeAnunciantePublicaService idadeAnuncianteService =
+            mock(IdadeAnunciantePublicaService.class);
+    private final PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
+    private final MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
     private StoryFeedPublicoService service;
 
     @BeforeEach
@@ -60,7 +68,20 @@ class StoryFeedPublicoServiceTest {
                 usuarioRepository,
                 elegibilidadeService,
                 idadeService,
-                new MidiaPublicaUrlService());
+                idadeAnuncianteService,
+                premiumMapper,
+                urlService);
+        when(premiumMapper.flagsPorAnuncios(any())).thenReturn(Map.of());
+        when(premiumMapper.flags(any())).thenReturn(PremiumPublicoFlagsDto.vazio());
+        when(idadeAnuncianteService.resolverPorAnuncios(any(), any())).thenReturn(Map.of());
+        when(idadeAnuncianteService.resolver(any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(new IdadeAnunciantePublicaService.Resultado("Perfil", null, false));
+        when(urlService.resolverPreviewRestrita(any())).thenAnswer(invocation -> {
+            ArquivoMidiaEntity arquivo = invocation.getArgument(0);
+            return arquivo.getMimeType() != null && arquivo.getMimeType().startsWith("image/")
+                    ? new ResultadoUrlPublica("/restritas-borradas/preview.jpg", null)
+                    : new ResultadoUrlPublica(null, "PENDENTE_DERIVACAO_RESTRITA");
+        });
     }
 
     @Test
@@ -115,6 +136,7 @@ class StoryFeedPublicoServiceTest {
         assertThat(adminBundle.itens().get(0).tipo()).isEqualTo("VIDEO");
         assertThat(paidBundle.itens().get(0).storyId()).isEqualTo(storyPago.getId().toString());
         assertThat(paidBundle.itens().get(0).previewState()).isEqualTo("IDADE_NAO_CONFIRMADA");
+        assertThat(paidBundle.itens().get(0).previewUrl()).contains("restritas-borradas");
 
         var viewer = service.buscar("administrativo:" + adminUnica.vinculo().getId(), request);
         assertThat(viewer.viewerState()).isEqualTo("IDADE_NAO_CONFIRMADA");

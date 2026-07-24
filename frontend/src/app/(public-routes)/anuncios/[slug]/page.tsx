@@ -9,7 +9,11 @@ import {
   obterAnuncioPublicoPorSlug,
 } from "@/lib/public-catalog-api"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
-import { selecionarCapaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
+import {
+  fontePublicaSegura,
+  selecionarCapaPublicaSegura,
+  type MidiaPublica,
+} from "@/lib/media/public-media"
 
 function isComplianceAssetUrl(url?: string | null) {
   if (!url) return false
@@ -31,9 +35,8 @@ async function loadInitialAnuncio(slug: string) {
 
 function selecionarImagemPublicaSeo(midias?: MidiaPublica[]) {
   const capa = selecionarCapaPublicaSegura(midias)
-  return capa?.urlPublica && !isComplianceAssetUrl(capa.urlPublica)
-    ? capa.urlPublica
-    : undefined
+  const fonte = capa ? fontePublicaSegura(capa) : null
+  return fonte && !isComplianceAssetUrl(fonte) ? fonte : undefined
 }
 
 export async function generateMetadata({

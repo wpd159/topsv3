@@ -7,6 +7,7 @@ import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.application.publico.service.IdadeAnunciantePublicaService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
@@ -33,6 +34,7 @@ public class AnuncioPublicoMapper {
             LocalizacaoPublicaDto localizacao,
             List<MidiaPublicaDto> midias,
             PremiumPublicoFlagsDto premium,
+            IdadeAnunciantePublicaService.Resultado idadePublica,
             boolean contatoDisponivel,
             OffsetDateTime anunciaDesde,
             VisualizacoesCanonicasDto visualizacoes) {
@@ -44,6 +46,7 @@ public class AnuncioPublicoMapper {
                 resumo(anuncio.getDescricao()),
                 anuncio.getPreco(),
                 anuncio.getCategoria(),
+                idadePublica == null ? null : idadePublica.idade(),
                 localizacao,
                 midiaPolicy.paraCard(midias, flags.carrosselFotosAtivo()),
                 flags.destaqueAtivo(),

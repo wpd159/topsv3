@@ -855,7 +855,7 @@ paths:
   /api/public/stories/ativos:
     get:
       summary: Compoe o feed publico unico de Stories
-      description: Retorna primeiro a projecao ADMINISTRATIVO ativa e depois os Stories USUARIO vigentes. A deduplicacao usa a identidade canonica do arquivo e preserva o Story pago. Nenhuma URL e entregue antes da confirmacao etaria.
+      description: Retorna a projecao ADMINISTRATIVO ativa e os Stories USUARIO vigentes. A deduplicacao usa a identidade canonica do arquivo e preserva o Story pago. Antes da confirmacao etaria entrega somente a derivacao publica borrada; o original privado e resolvido apenas depois da confirmacao.
       operationId: getPublicStoriesFeed
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -896,7 +896,7 @@ paths:
   /api/public/anuncios/{slug}/stories:
     get:
       summary: Lista stories publicos autorizados por idade
-      description: Stories sao sempre RESTRITA_18. Sem cookie de idade confirmada retorna lista vazia e politica negada; com cookie valido o backend pode retornar metadata segura, sem storage key, bucket, hash ou URL privada.
+      description: Stories sao sempre RESTRITA_18. Sem cookie de idade confirmada retorna apenas derivacoes publicas realmente borradas e politica negada; com cookie valido o backend pode resolver o original pelo fluxo protegido. Nenhuma resposta expoe storage key, bucket ou hash.
       operationId: getPublicAnuncioStories
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -7701,6 +7701,10 @@ components:
           type: [string, "null"]
         displayUsername:
           type: [string, "null"]
+        idade:
+          type: integer
+          minimum: 18
+          description: Omitida integralmente quando o beneficio OCULTAR_IDADE estiver ativo e vigente.
         profileNavigable:
           type: boolean
         previewState:
@@ -7708,6 +7712,7 @@ components:
           enum: [AVAILABLE, IDADE_NAO_CONFIRMADA, UNAVAILABLE]
         previewUrl:
           type: [string, "null"]
+          description: Derivacao publica borrada para IMAGE restrita; nunca contem a URL do original privado.
         tipo:
           type: string
           enum: [IMAGE, VIDEO]
@@ -7725,6 +7730,10 @@ components:
           type: [string, "null"]
         displayUsername:
           type: [string, "null"]
+        idade:
+          type: integer
+          minimum: 18
+          description: Omitida integralmente quando o beneficio OCULTAR_IDADE estiver ativo e vigente.
         profileNavigable:
           type: boolean
         avatarUrl:
@@ -7751,6 +7760,10 @@ components:
           type: [string, "null"]
         displayUsername:
           type: [string, "null"]
+        idade:
+          type: integer
+          minimum: 18
+          description: Omitida integralmente quando o beneficio OCULTAR_IDADE estiver ativo e vigente.
         profileNavigable:
           type: boolean
         viewerState:
@@ -7758,6 +7771,7 @@ components:
           enum: [LIBERADO, IDADE_NAO_CONFIRMADA, INDISPONIVEL]
         midiaUrl:
           type: [string, "null"]
+          description: Derivacao publica borrada antes da confirmacao etaria; original temporario protegido somente depois da confirmacao.
         tipo:
           type: string
           enum: [IMAGE, VIDEO]
@@ -7877,7 +7891,7 @@ components:
           type:
             - string
             - "null"
-          description: Nulo sem autorizacao ou enquanto CDN/storage real estiver pendente. Nunca pode ser derivado de bucket, chaveObjeto, provider, hash ou URL privada.
+          description: Derivacao publica borrada sem confirmacao etaria ou original temporario protegido depois da confirmacao. Nunca contem bucket, chaveObjeto, provider ou hash.
         largura:
           type:
             - integer
@@ -7968,11 +7982,9 @@ components:
             - "null"
           description: Identificador publico da anunciante; nao contem e-mail ou contato privado.
         idade:
-          type:
-            - integer
-            - "null"
+          type: integer
           minimum: 18
-          description: Idade calculada pelo backend; nula quando ausente ou ocultada por beneficio pago ativo.
+          description: Idade calculada pelo backend; a propriedade e omitida quando ausente ou ocultada por OCULTAR_IDADE ativo e vigente.
         idadeOculta:
           type: boolean
           description: Decisao do backend baseada exclusivamente no beneficio pago OCULTAR_IDADE vigente.
@@ -8229,6 +8241,10 @@ components:
           type:
             - string
             - "null"
+        idade:
+          type: integer
+          minimum: 18
+          description: Idade calculada pelo backend; a propriedade e omitida quando ausente ou ocultada por OCULTAR_IDADE ativo e vigente.
         localizacao:
           $ref: "#/components/schemas/LocalizacaoPublica"
         midias:
@@ -8456,6 +8472,7 @@ components:
         - visibilidadeMidia
         - autorizada
         - urlPublica
+        - previewUrl
         - pendenciaMidia
       properties:
         id:
@@ -8481,7 +8498,12 @@ components:
           type:
             - string
             - "null"
-          description: Nulo para midia RESTRITA_18 sem autorizacao e enquanto CDN/storage real estiver pendente. Nunca pode ser derivado de bucket, chaveObjeto, storageProvider, sha256, etag ou URL privada.
+          description: Nulo para RESTRITA_18 sem autorizacao etaria. Depois da confirmacao pode conter apenas a URL temporaria protegida do original. Nunca e serializada previamente no HTML anonimo.
+        previewUrl:
+          type:
+            - string
+            - "null"
+          description: Derivacao publica realmente borrada e deterministica para foto RESTRITA_18. Nunca contem URL assinada, bucket, chave privada ou o arquivo original.
         pendenciaMidia:
           type:
             - string

@@ -4,7 +4,9 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
@@ -33,26 +35,67 @@ import org.springframework.mock.web.MockHttpServletRequest;
 class StoryPublicoServiceTest {
 
     @Test
-    void storiesNaoAparecemSemIdadeConfirmada() {
+    void storySemIdadeConfirmadaEntregaSomentePreviewBorrada() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID arquivoId = UUID.randomUUID();
+        UUID vinculoId = UUID.randomUUID();
+        AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+        AnuncioMidiaRepository anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
+        ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+        StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
         IdadePublicaService idadeService = mock(IdadePublicaService.class);
+        MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
         MockHttpServletRequest request = new MockHttpServletRequest();
+        AnuncioEntity anuncio = entity(AnuncioEntity.class);
+        set(anuncio, "id", anuncioId);
+        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
+        set(vinculo, "id", vinculoId);
+        set(vinculo, "anuncioId", anuncioId);
+        set(vinculo, "arquivoMidiaId", arquivoId);
+        set(vinculo, "tipo", TipoAnuncioMidia.STORY);
+        set(vinculo, "finalidade", FinalidadeAnuncioMidia.STORY);
+        set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
+        set(vinculo, "visibilidadeMidia", VisibilidadeMidia.RESTRITA_18);
+        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
+        set(arquivo, "id", arquivoId);
+        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
+        set(arquivo, "mimeType", "image/jpeg");
+        StoryAnuncioEntity story = entity(StoryAnuncioEntity.class);
+        set(story, "anuncioMidiaId", vinculoId);
+        set(story, "status", StatusStoryAnuncio.PUBLICADO);
+        set(story, "ordem", 1);
         when(idadeService.idadeConfirmada(request)).thenReturn(false);
+        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
+                eq("anuncio-local"),
+                eq(StatusAnuncio.PUBLICADO),
+                eq(StatusModeracaoAnuncio.APROVADO)))
+                .thenReturn(Optional.of(anuncio));
+        when(anuncioMidiaRepository.findByAnuncioId(anuncioId)).thenReturn(List.of(vinculo));
+        when(arquivoRepository.findByIdIn(List.of(arquivoId))).thenReturn(List.of(arquivo));
+        when(storyRepository.findByAnuncioMidiaIdIn(java.util.Set.of(vinculoId))).thenReturn(List.of(story));
+        when(urlService.resolverPreviewRestrita(arquivo))
+                .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica(
+                        "/restritas-borradas/preview.jpg",
+                        null));
 
         StoryPublicoService service = new StoryPublicoService(
-                mock(AnuncioRepository.class),
-                mock(AnuncioMidiaRepository.class),
-                mock(ArquivoMidiaRepository.class),
-                mock(StoryAnuncioRepository.class),
+                anuncioRepository,
+                anuncioMidiaRepository,
+                arquivoRepository,
+                storyRepository,
                 idadeService,
-                new MidiaPublicaUrlService());
+                urlService);
 
         ListaStoriesPublicosDto response = service.listar("anuncio-local", request);
 
         assertThat(response.idadeConfirmada()).isFalse();
         assertThat(response.autorizado()).isFalse();
-        assertThat(response.stories()).isEmpty();
+        assertThat(response.stories()).singleElement().satisfies(item -> {
+            assertThat(item.urlPublica()).isEqualTo("/restritas-borradas/preview.jpg");
+            assertThat(item.visibilidadeMidia()).isEqualTo("RESTRITA_18");
+        });
         assertThat(response.politica().motivoPublico()).isEqualTo("IDADE_NAO_CONFIRMADA");
-        assertThat(response.politica().pendencia()).isNull();
+        verify(urlService, never()).resolver(vinculo, arquivo);
     }
 
     @Test

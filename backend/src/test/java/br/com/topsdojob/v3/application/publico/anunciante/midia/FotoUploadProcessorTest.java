@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
+import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoRestritaDerivada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
 import com.drew.imaging.ImageMetadataReader;
 import com.drew.metadata.Metadata;
@@ -119,6 +120,42 @@ class FotoUploadProcessorTest {
     assertThat(metadataSaida.getFirstDirectoryOfType(ExifIFD0Directory.class)).isNull();
     assertThat(metadataSaida.getFirstDirectoryOfType(GpsDirectory.class)).isNull();
     assertThat(new String(output.bytes(), StandardCharsets.ISO_8859_1)).doesNotContain("Exif").doesNotContain("GPS");
+  }
+
+  @Test
+  void derivacaoRestritaAplicaBlurRealDeterministicoERemoveMetadados() throws Exception {
+    BufferedImage source = amostra(1400, 900, "restrita");
+    byte[] input = adicionarExifOrientacaoEGps(jpeg(source, 0.98f), 1);
+
+    FotoRestritaDerivada primeira = processor.gerarDerivacaoRestrita(input, "image/jpeg");
+    FotoRestritaDerivada segunda = processor.gerarDerivacaoRestrita(input, "image/jpeg");
+    BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(primeira.bytes()));
+    Metadata metadata = ImageMetadataReader.readMetadata(new ByteArrayInputStream(primeira.bytes()));
+
+    assertThat(primeira.largura()).isEqualTo(960);
+    assertThat(primeira.altura()).isEqualTo(617);
+    assertThat(primeira.mimeType()).isEqualTo("image/jpeg");
+    assertThat(primeira.bytes()).containsExactly(segunda.bytes());
+    assertThat(primeira.sha256()).isEqualTo(segunda.sha256());
+    assertThat(variacaoEntrePixels(decoded))
+        .isLessThan(variacaoEntrePixels(source) * 0.35d);
+    assertThat(metadata.getFirstDirectoryOfType(ExifIFD0Directory.class)).isNull();
+    assertThat(metadata.getFirstDirectoryOfType(GpsDirectory.class)).isNull();
+    assertThat(new String(primeira.bytes(), StandardCharsets.ISO_8859_1))
+        .doesNotContain("Exif")
+        .doesNotContain("GPS");
+  }
+
+  @Test
+  void derivacaoRestritaPreservaOrientacaoExif() throws Exception {
+    byte[] input = adicionarExifOrientacaoEGps(
+        jpeg(amostra(600, 400, "restrita-orientada"), 0.96f),
+        6);
+
+    FotoRestritaDerivada output = processor.gerarDerivacaoRestrita(input, "image/jpeg");
+
+    assertThat(output.largura()).isEqualTo(400);
+    assertThat(output.altura()).isEqualTo(600);
   }
 
   @Test
@@ -338,6 +375,22 @@ class FotoUploadProcessorTest {
       }
     }
     return difference / (double) count;
+  }
+
+  private static double variacaoEntrePixels(BufferedImage image) {
+    long total = 0;
+    long samples = 0;
+    for (int y = 0; y < image.getHeight(); y++) {
+      for (int x = 1; x < image.getWidth(); x++) {
+        int left = image.getRGB(x - 1, y);
+        int right = image.getRGB(x, y);
+        for (int shift : new int[] {16, 8, 0}) {
+          total += Math.abs(((left >> shift) & 255) - ((right >> shift) & 255));
+          samples++;
+        }
+      }
+    }
+    return total / (double) samples;
   }
 
   private static double psnrForaMarca(BufferedImage source, BufferedImage output) {

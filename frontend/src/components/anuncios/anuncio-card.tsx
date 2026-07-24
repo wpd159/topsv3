@@ -8,7 +8,11 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { SensitiveImage } from "@/components/compliance/sensitive-image"
 import { FavoritoButton } from "@/components/anuncios/favorito-button"
-import { selecionarGaleriaPublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
+import {
+  fontePublicaSegura,
+  selecionarGaleriaPublicaSegura,
+  type MidiaPublica,
+} from "@/lib/media/public-media"
 import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { publicApiUrl } from "@/lib/api-contract"
@@ -172,9 +176,10 @@ export function AnuncioCard({
         urlPublica,
       }))
     }
-    return selecionarGaleriaPublicaSegura(midias).filter(
-      (midia) => !badSrcs.has(midia.urlPublica ?? "")
-    )
+    return selecionarGaleriaPublicaSegura(midias).filter((midia) => {
+      const fonte = fontePublicaSegura(midia)
+      return fonte !== null && !badSrcs.has(fonte)
+    })
   }, [badSrcs, midias, previewImagens, previewMode])
 
   const [index, setIndex] = useState(0)
@@ -197,9 +202,10 @@ export function AnuncioCard({
     ]
 
     candidates.forEach((media) => {
-      if (!media?.urlPublica) return
+      const fonte = media ? fontePublicaSegura(media) : null
+      if (!fonte) return
       const img = new window.Image()
-      img.src = media.urlPublica
+      img.src = fonte
     })
   }, [carrosselDisponivel, index, midiasSeguras])
 
@@ -270,6 +276,10 @@ export function AnuncioCard({
   const anuncioHref = `/anuncios/${encodeURIComponent(slugRota)}`
   const midiaAtual = midiasSeguras[index]
   const nomeExibido = corrigirTextoCorrompido(nome)
+  const nomeComIdade = idade != null ? `${nomeExibido}, ${idade} anos` : nomeExibido
+  const altFoto = cidadeNome
+    ? `Foto de perfil de ${nomeExibido} em ${clean(cidadeNome)}${clean(estadoUf) ? `, ${clean(estadoUf)}` : ""}`
+    : `Foto de perfil de ${nomeExibido}`
   const descricaoExibida = corrigirTextoCorrompido(
     descricao ?? "Anúncio sem descrição ainda. Abra para ver mais detalhes."
   )
@@ -298,14 +308,17 @@ export function AnuncioCard({
               midia={midiaAtual}
               anuncioId={id}
               anuncioSlug={slugRota}
-              alt={nomeExibido}
+              alt={altFoto}
               fill
               sizes="(max-width: 768px) 100vw, 360px"
               priority={mediaPriority}
               className="transition-transform duration-500 group-hover:scale-[1.02]"
               onVerificationSuccess={onAccessUpdated}
               onAbrirPaginaDoAnuncio={handleVerAnuncio}
-              onError={() => markBad(midiaAtual.urlPublica ?? "")}
+              onError={() => {
+                const fonte = fontePublicaSegura(midiaAtual)
+                if (fonte) markBad(fonte)
+              }}
             />
           </div>
         ) : (
@@ -379,17 +392,13 @@ export function AnuncioCard({
         <div className="flex flex-col gap-1">
           <h3 className="line-clamp-1 text-base font-semibold leading-tight text-gray-900">
             {previewMode ? (
-              <span>{nomeExibido}</span>
+              <span>{nomeComIdade}</span>
             ) : (
               <Link href={anuncioHref} prefetch={false} className="hover:text-pink-600">
-                {nomeExibido}
+                {nomeComIdade}
               </Link>
             )}
           </h3>
-
-          {idade != null ? (
-            <p className="text-sm font-medium text-gray-700">{idade} anos</p>
-          ) : null}
 
           <div className="flex flex-wrap items-center text-xs text-gray-500">
             <MapPinIcon className="mr-1 h-4 w-4" />
