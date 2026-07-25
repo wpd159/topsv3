@@ -1112,6 +1112,23 @@ paths:
                   $ref: "#/components/schemas/CategoriaHomePublica"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/conteudos-site:
+    get:
+      summary: Conteudos institucionais publicados para renderizacao publica SSR
+      operationId: getPublicConteudosSite
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Conteudos publicados; chaves ainda sem publicacao sao omitidas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConteudoSite"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/localidades/{uf}/{cidade}:
     get:
       summary: Agregado real de cidade para navegacao e SEO
@@ -1462,6 +1479,65 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/conteudos-site:
+    get:
+      summary: Lista o catalogo administravel de conteudos institucionais
+      operationId: getAdminConteudosSite
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Catalogo completo, incluindo chaves ainda nao publicadas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConteudoSite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/conteudos-site/{contentKey}:
+    put:
+      summary: Publica ou atualiza um conteudo institucional canonico
+      operationId: putAdminConteudoSite
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: contentKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConteudoSiteRequest"
+      responses:
+        "200":
+          description: Conteudo publicado e pronto para revalidacao do frontend
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConteudoSite"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
     post:
       summary: Cria categoria da Home vinculada a categoria canonica
       operationId: postAdminCategoriaHome
@@ -8093,6 +8169,43 @@ components:
         ativo:
           type: boolean
           const: true
+    ConteudoSite:
+      type: object
+      additionalProperties: false
+      required: [contentKey, titulo, corpo, contentVersion, contentHash, updatedAt]
+      properties:
+        contentKey:
+          type: string
+        titulo:
+          type: [string, "null"]
+          maxLength: 180
+        corpo:
+          type: [string, "null"]
+          maxLength: 200000
+          description: Markdown seguro; HTML executavel nao e aceito.
+        contentVersion:
+          type: [integer, "null"]
+          minimum: 0
+        contentHash:
+          type: [string, "null"]
+          pattern: "^[a-f0-9]{64}$"
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+    ConteudoSiteRequest:
+      type: object
+      additionalProperties: false
+      required: [titulo, corpo]
+      properties:
+        titulo:
+          type: string
+          minLength: 1
+          maxLength: 180
+        corpo:
+          type: string
+          minLength: 1
+          maxLength: 200000
+          description: Markdown seguro; scripts, HTML e protocolos executaveis sao rejeitados.
     CategoriaAnuncioAdmin:
       type: object
       additionalProperties: false

@@ -125,7 +125,6 @@ export function requireArrayPayload<T>(payload: unknown): T[] {
 
 export const PENDING_BACKEND_CONTRACTS = {
   blog: 'Blog e conteudo editorial',
-  siteContent: 'Conteudo institucional administravel',
   support: 'Tickets, chat e suporte',
   reports: 'Denuncias',
   suggestions: 'Sugestoes',
@@ -138,7 +137,6 @@ export const PENDING_BACKEND_CONTRACTS = {
   moderationLegacyActions: 'Acoes legadas de edicao na moderacao',
   premiumLegacyDashboard: 'Dashboard Premium legado',
   complianceAdmin: 'Auditoria administrativa de compliance',
-  complianceContent: 'Conteudo publico de compliance',
   publicProfiles: 'Listagem publica por anunciante',
   financialAnalytics: 'Indicadores e series financeiras',
   referrals: 'Indicacoes e recompensas por indicacao',

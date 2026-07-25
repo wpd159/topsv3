@@ -1,14 +1,5 @@
-import { SiteContentPage } from "@/components/site-content/site-content-page"
-import { getFallbackSiteContent } from "@/lib/site-content"
+import { SiteContentPage } from '@/components/site-content/site-content-page'
 
 export default function SobrePage() {
-  const fallback = getFallbackSiteContent("quem-somos")
-
-  return (
-    <SiteContentPage
-      contentKey="quem-somos"
-      fallbackTitle={fallback.titulo}
-      fallbackBody={fallback.corpo}
-    />
-  )
+  return <SiteContentPage contentKey="quem-somos" />
 }

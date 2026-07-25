@@ -1,4 +1,4 @@
-"use client"
+'use client'
 
 import {
   createContext,
@@ -6,8 +6,8 @@ import {
   useMemo,
   useState,
   type ReactNode,
-} from "react"
-import { Button } from "@/components/ui/button"
+} from 'react'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -15,10 +15,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Checkbox } from "@/components/ui/checkbox"
-import { ContractState, pendingContractError } from '@/components/feedback/contract-state'
-import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
+} from '@/components/ui/dialog'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  getUnavailableSiteContent,
+  type SiteContentEntry,
+} from '@/lib/site-content'
 
 type OpenRequest = {
   url: string
@@ -29,40 +31,43 @@ type ContextValue = {
   openWhatsAppWarning: (request: OpenRequest) => void
 }
 
-const STORAGE_KEY = "tops_whatsapp_warning_hidden"
+const STORAGE_KEY = 'tops_whatsapp_warning_hidden'
 const WhatsAppSafetyContext = createContext<ContextValue | undefined>(undefined)
 
-export function WhatsAppSafetyProvider({ children }: { children: ReactNode }) {
+export function WhatsAppSafetyProvider({
+  children,
+  content = getUnavailableSiteContent('texto-whatsapp'),
+}: {
+  children: ReactNode
+  content?: SiteContentEntry
+}) {
   const [request, setRequest] = useState<OpenRequest | null>(null)
   const [hideNextTime, setHideNextTime] = useState(false)
-  const [message, setMessage] = useState(
-    "A Tops do Job não intermedeia encontros nem pagamentos antecipados. Confirme identidade e condições diretamente com o anunciante."
-  )
 
   const value = useMemo<ContextValue>(
     () => ({
       openWhatsAppWarning: (nextRequest) => {
-        if (typeof window !== "undefined" && localStorage.getItem(STORAGE_KEY) === "1") {
+        if (typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY) === '1') {
           nextRequest.onContinue?.()
-          window.open(nextRequest.url, "_blank", "noopener,noreferrer")
+          window.open(nextRequest.url, '_blank', 'noopener,noreferrer')
           return
         }
         setHideNextTime(false)
         setRequest(nextRequest)
       },
     }),
-    []
+    [],
   )
 
   const close = () => setRequest(null)
 
   const handleContinue = () => {
     if (!request) return
-    if (hideNextTime && typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, "1")
+    if (hideNextTime && typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, '1')
     }
     request.onContinue?.()
-    window.open(request.url, "_blank", "noopener,noreferrer")
+    window.open(request.url, '_blank', 'noopener,noreferrer')
     close()
   }
 
@@ -71,33 +76,34 @@ export function WhatsAppSafetyProvider({ children }: { children: ReactNode }) {
       {children}
 
       <Dialog open={Boolean(request)} onOpenChange={(open) => !open && close()}>
-        <DialogContent className="sm:max-w-md rounded-xl">
+        <DialogContent className="rounded-xl sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-gray-900">Aviso de segurança</DialogTitle>
+            <DialogTitle className="text-gray-900">{content.titulo}</DialogTitle>
             <DialogDescription className="text-gray-600">
-              Antes de seguir para o WhatsApp, leia com atenção.
+              Antes de seguir para o WhatsApp, leia com atencao.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-xl border border-gray-100 bg-pink-50/40 p-4 text-sm text-gray-700 whitespace-pre-line">
-            {message}
+          <div className="whitespace-pre-line rounded-xl border border-gray-100 bg-pink-50/40 p-4 text-sm text-gray-700">
+            {content.corpo}
           </div>
 
-          <ContractState
-            error={pendingContractError(PENDING_BACKEND_CONTRACTS.siteContent)}
-            compact
-          />
-
           <label className="flex items-center gap-3 text-sm text-gray-600">
-            <Checkbox checked={hideNextTime} onCheckedChange={(checked) => setHideNextTime(Boolean(checked))} />
-            <span>Não exibir novamente</span>
+            <Checkbox
+              checked={hideNextTime}
+              onCheckedChange={(checked) => setHideNextTime(Boolean(checked))}
+            />
+            <span>Nao exibir novamente</span>
           </label>
 
           <DialogFooter className="flex gap-2 sm:justify-end">
             <Button variant="outline" onClick={close}>
               Cancelar
             </Button>
-            <Button className="bg-[#25D366] hover:bg-[#20bd5a] text-white" onClick={handleContinue}>
+            <Button
+              className="bg-[#25D366] text-white hover:bg-[#20bd5a]"
+              onClick={handleContinue}
+            >
               Continuar
             </Button>
           </DialogFooter>
@@ -110,7 +116,7 @@ export function WhatsAppSafetyProvider({ children }: { children: ReactNode }) {
 export function useWhatsAppSafety() {
   const context = useContext(WhatsAppSafetyContext)
   if (!context) {
-    throw new Error("useWhatsAppSafety deve ser usado dentro de WhatsAppSafetyProvider")
+    throw new Error('useWhatsAppSafety deve ser usado dentro de WhatsAppSafetyProvider')
   }
   return context
 }

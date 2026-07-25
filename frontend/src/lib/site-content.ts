@@ -1,122 +1,153 @@
-import { BackendContractPendingError, PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
+import {
+  ApiContractError,
+  apiErrorFromResponse,
+  publicApiUrl,
+  requireArrayPayload,
+} from '@/lib/api-contract'
 
 export type SiteContentKey =
-  | "quem-somos"
-  | "footer-resumo-institucional"
-  | "termos-de-uso"
-  | "politica-privacidade"
-  | "politica-cookies"
-  | "consentimento-promocional"
-  | "verificacao"
-  | "popup-login"
-  | "texto-whatsapp"
+  | 'quem-somos'
+  | 'footer-resumo-institucional'
+  | 'termos-de-uso'
+  | 'politica-privacidade'
+  | 'politica-cookies'
+  | 'consentimento-promocional'
+  | 'verificacao'
+  | 'popup-login'
+  | 'texto-whatsapp'
+  | 'termos-conteudo-restrito'
+  | 'privacidade-conteudo-restrito'
+  | 'aviso-legal-conteudo-restrito'
 
 export type SiteContentEntry = {
-  id?: number | null
-  contentKey: string
+  contentKey: SiteContentKey
   titulo: string
   corpo: string
-  contentVersion?: number | null
-  contentHash?: string | null
-  updatedBy?: string | null
-  createdAt?: string | null
-  updatedAt?: string | null
+  contentVersion: number | null
+  contentHash: string | null
+  updatedAt: string | null
+  unavailable?: boolean
 }
 
-const FALLBACKS: Record<SiteContentKey, SiteContentEntry> = {
-  "quem-somos": {
-    contentKey: "quem-somos",
-    titulo: "Quem Somos",
-    corpo:
-      "Bem-vindo ao Tops do Job.\n\nSomos uma plataforma voltada para classificados com foco em privacidade, segurança operacional e boa experiência de navegação.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  "footer-resumo-institucional": {
-    contentKey: "footer-resumo-institucional",
-    titulo: "Resumo institucional do footer",
-    corpo:
-      "O Tops do Job conecta acompanhantes e clientes com discrição, visibilidade e foco em uma experiência mais segura de navegação.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  "termos-de-uso": {
-    contentKey: "termos-de-uso",
-    titulo: "Termos de Uso",
-    corpo: "Atualize os termos de uso no painel administrativo.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  "politica-privacidade": {
-    contentKey: "politica-privacidade",
-    titulo: "Política de Privacidade",
-    corpo: "Atualize a política de privacidade no painel administrativo.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  "politica-cookies": {
-    contentKey: "politica-cookies",
-    titulo: "Política de Cookies",
-    corpo: "Atualize a política de cookies no painel administrativo.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  "consentimento-promocional": {
-    contentKey: "consentimento-promocional",
-    titulo: "Consentimento Promocional",
-    corpo:
-      "Autorizo o envio de comunicados promocionais e novidades da plataforma. Esse consentimento é opcional e pode ser revogado futuramente.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  verificacao: {
-    contentKey: "verificacao",
-    titulo: "Verificação",
-    corpo:
-      "Explique aqui como funciona a verificação, a proteção de conteúdo e os avisos legais aplicáveis.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  "popup-login": {
-    contentKey: "popup-login",
-    titulo: "Aviso Importante",
-    corpo:
-      "Leia os avisos da plataforma e confirme seus dados antes de continuar.",
-    contentVersion: 1,
-    contentHash: null,
-  },
-  "texto-whatsapp": {
-    contentKey: "texto-whatsapp",
-    titulo: "Aviso WhatsApp",
-    corpo:
-      "A Tops do Job não intermedeia encontros nem pagamentos antecipados. Confirme dados e negocie com cautela.",
-    contentVersion: 1,
-    contentHash: null,
-  },
+type SiteContentPayload = {
+  contentKey?: unknown
+  titulo?: unknown
+  corpo?: unknown
+  contentVersion?: unknown
+  contentHash?: unknown
+  updatedAt?: unknown
 }
 
-export async function fetchPublicSiteContent(
-  _key: SiteContentKey
-): Promise<SiteContentEntry> {
-  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.siteContent)
+export const PUBLIC_SITE_CONTENT_CACHE_TAG = 'public-site-content'
+export const PUBLIC_SITE_CONTENT_REVALIDATE_SECONDS = 3600
+
+export const SITE_CONTENT_KEYS: SiteContentKey[] = [
+  'quem-somos',
+  'footer-resumo-institucional',
+  'termos-de-uso',
+  'politica-privacidade',
+  'politica-cookies',
+  'consentimento-promocional',
+  'verificacao',
+  'popup-login',
+  'texto-whatsapp',
+  'termos-conteudo-restrito',
+  'privacidade-conteudo-restrito',
+  'aviso-legal-conteudo-restrito',
+]
+
+export const getUnavailableSiteContent = (contentKey: SiteContentKey): SiteContentEntry => ({
+  contentKey,
+  titulo: 'Conteudo temporariamente indisponivel',
+  corpo: 'Nao foi possivel carregar este conteudo agora. Tente novamente em instantes.',
+  contentVersion: null,
+  contentHash: null,
+  updatedAt: null,
+  unavailable: true,
+})
+
+function isSiteContentKey(value: unknown): value is SiteContentKey {
+  return typeof value === 'string' && SITE_CONTENT_KEYS.includes(value as SiteContentKey)
+}
+
+function mapPayload(payload: SiteContentPayload): SiteContentEntry | null {
+  if (
+    !isSiteContentKey(payload.contentKey) ||
+    typeof payload.titulo !== 'string' ||
+    !payload.titulo.trim() ||
+    typeof payload.corpo !== 'string' ||
+    !payload.corpo.trim()
+  ) {
+    return null
+  }
+  return {
+    contentKey: payload.contentKey,
+    titulo: payload.titulo,
+    corpo: payload.corpo,
+    contentVersion:
+      typeof payload.contentVersion === 'number' ? payload.contentVersion : null,
+    contentHash: typeof payload.contentHash === 'string' ? payload.contentHash : null,
+    updatedAt: typeof payload.updatedAt === 'string' ? payload.updatedAt : null,
+  }
+}
+
+function logSanitizedFailure(error: unknown) {
+  const status =
+    typeof error === 'object' && error && 'status' in error
+      ? String((error as { status?: unknown }).status ?? 'unknown')
+      : 'unknown'
+  console.error('site-content-load-failed', {
+    errorName: error instanceof Error ? error.name : 'UnknownError',
+    status,
+  })
 }
 
 export async function fetchAllPublicSiteContent(): Promise<SiteContentEntry[]> {
-  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.siteContent)
+  const response = await fetch(publicApiUrl('/conteudos-site'), {
+    signal: AbortSignal.timeout(5000),
+    next: {
+      revalidate: PUBLIC_SITE_CONTENT_REVALIDATE_SECONDS,
+      tags: [PUBLIC_SITE_CONTENT_CACHE_TAG],
+    },
+  })
+  if (!response.ok) {
+    throw await apiErrorFromResponse(response)
+  }
+  const payload = requireArrayPayload<SiteContentPayload>(await response.json())
+  return payload.map(mapPayload).filter((entry): entry is SiteContentEntry => entry !== null)
 }
 
-export function getFallbackSiteContent(key: SiteContentKey) {
-  return FALLBACKS[key]
+export async function fetchPublicSiteContent(
+  contentKey: SiteContentKey,
+): Promise<SiteContentEntry> {
+  const entries = await fetchAllPublicSiteContent()
+  const entry = entries.find((candidate) => candidate.contentKey === contentKey)
+  if (!entry) {
+    throw new ApiContractError(
+      'O documento solicitado esta temporariamente indisponivel.',
+      'INTEGRATION_MISSING',
+      404,
+      true,
+    )
+  }
+  return entry
 }
 
-export const SITE_CONTENT_KEYS: SiteContentKey[] = [
-  "quem-somos",
-  "footer-resumo-institucional",
-  "termos-de-uso",
-  "politica-privacidade",
-  "politica-cookies",
-  "consentimento-promocional",
-  "verificacao",
-  "popup-login",
-  "texto-whatsapp",
-]
+export async function resolveAllPublicSiteContent(): Promise<SiteContentEntry[]> {
+  try {
+    const published = await fetchAllPublicSiteContent()
+    const byKey = new Map(published.map((entry) => [entry.contentKey, entry]))
+    return SITE_CONTENT_KEYS.map((key) => byKey.get(key) ?? getUnavailableSiteContent(key))
+  } catch (error) {
+    logSanitizedFailure(error)
+    return SITE_CONTENT_KEYS.map(getUnavailableSiteContent)
+  }
+}
+
+export async function resolvePublicSiteContent(
+  contentKey: SiteContentKey,
+): Promise<SiteContentEntry> {
+  const entries = await resolveAllPublicSiteContent()
+  return entries.find((entry) => entry.contentKey === contentKey)
+    ?? getUnavailableSiteContent(contentKey)
+}

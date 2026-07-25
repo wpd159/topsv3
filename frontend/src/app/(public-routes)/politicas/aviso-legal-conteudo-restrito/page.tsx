@@ -1,11 +1,5 @@
-import CompliancePolicyPage from '@/components/compliance/compliance-policy-page'
+import { SiteContentPage } from '@/components/site-content/site-content-page'
 
 export default function Page() {
-  return (
-    <CompliancePolicyPage
-      title="Aviso Legal de Acesso"
-      description="Aviso legal referente a acesso, bloqueio e responsabilidade sobre material sensivel."
-      field="legalAccessNotice"
-    />
-  )
+  return <SiteContentPage contentKey="aviso-legal-conteudo-restrito" centered={false} />
 }

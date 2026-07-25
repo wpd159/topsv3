@@ -1,15 +1,5 @@
-import { SiteContentPage } from "@/components/site-content/site-content-page"
-import { getFallbackSiteContent } from "@/lib/site-content"
+import { SiteContentPage } from '@/components/site-content/site-content-page'
 
 export default function PoliticaPrivacidadePage() {
-  const fallback = getFallbackSiteContent("politica-privacidade")
-
-  return (
-    <SiteContentPage
-      contentKey="politica-privacidade"
-      fallbackTitle={fallback.titulo}
-      fallbackBody={fallback.corpo}
-      centered={false}
-    />
-  )
+  return <SiteContentPage contentKey="politica-privacidade" centered={false} />
 }

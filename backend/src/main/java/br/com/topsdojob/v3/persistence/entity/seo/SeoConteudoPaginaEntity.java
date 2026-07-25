@@ -18,6 +18,41 @@ public class SeoConteudoPaginaEntity {
   protected SeoConteudoPaginaEntity() {
   }
 
+  public static SeoConteudoPaginaEntity criarPublicada(
+      UUID id,
+      UUID seoUrlId,
+      String chave,
+      String titulo,
+      String corpoMarkdown,
+      UUID atorId,
+      OffsetDateTime agora) {
+    SeoConteudoPaginaEntity entity = new SeoConteudoPaginaEntity();
+    entity.id = id;
+    entity.seoUrlId = seoUrlId;
+    entity.chave = chave;
+    entity.titulo = titulo;
+    entity.corpoMarkdown = corpoMarkdown;
+    entity.status = StatusSeoConteudo.PUBLICADO;
+    entity.origem = OrigemSeoConteudo.ADMIN;
+    entity.criadoPor = atorId;
+    entity.aprovadoPor = atorId;
+    entity.criadoEm = agora;
+    entity.atualizadoEm = agora;
+    entity.aprovadoEm = agora;
+    entity.versao = 0;
+    return entity;
+  }
+
+  public void publicar(String titulo, String corpoMarkdown, UUID atorId, OffsetDateTime agora) {
+    this.titulo = titulo;
+    this.corpoMarkdown = corpoMarkdown;
+    this.status = StatusSeoConteudo.PUBLICADO;
+    this.origem = OrigemSeoConteudo.ADMIN;
+    this.aprovadoPor = atorId;
+    this.atualizadoEm = agora;
+    this.aprovadoEm = agora;
+  }
+
   @Id
   @Column(name = "id")
   private UUID id;

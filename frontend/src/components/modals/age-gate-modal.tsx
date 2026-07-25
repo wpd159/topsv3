@@ -2,23 +2,25 @@
 
 import { useEffect, useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import {
-  ExclamationTriangleIcon,
   CheckCircleIcon,
+  ExclamationTriangleIcon,
   XCircleIcon,
 } from '@heroicons/react/24/outline'
 import {
   acceptAgeGate,
   readAgeGateClientStatus,
 } from '@/lib/compliance/age-gate-storage'
-
-const DEFAULT_LEGAL_NOTICE =
-  'Este site contém conteúdo sexualmente explícito destinado exclusivamente a maiores de 18 anos. Se você for menor de idade ou se este tipo de conteúdo for considerado ofensivo, deve sair imediatamente.'
-const DEFAULT_FOOTER_COPY =
-  'O acesso é restrito a maiores de idade. Todos os perfis, imagens e descrições são de caráter adulto.'
+import { useSiteContent } from '@/components/site-content/site-content-provider'
 
 type AgeGateModalProps = {
   termsHref?: string
@@ -26,10 +28,11 @@ type AgeGateModalProps = {
 }
 
 export function AgeGateModal({
-  termsHref = '/termos',
+  termsHref = '/termos-de-uso',
   denyRedirect = 'https://www.google.com',
 }: AgeGateModalProps) {
   const pathname = usePathname()
+  const legalNotice = useSiteContent('popup-login')
   const [open, setOpen] = useState(false)
   const [accepting, setAccepting] = useState(false)
 
@@ -52,7 +55,7 @@ export function AgeGateModal({
       toast.error(
         error instanceof Error
           ? error.message
-          : 'Não foi possível salvar o aceite. Tente novamente.',
+          : 'Nao foi possivel salvar o aceite. Tente novamente.',
       )
     } finally {
       setAccepting(false)
@@ -65,29 +68,28 @@ export function AgeGateModal({
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-md p-6 rounded-2xl">
-        <DialogHeader className="text-center space-y-2">
+      <DialogContent className="rounded-2xl p-6 sm:max-w-md">
+        <DialogHeader className="space-y-2 text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-pink-100">
             <ExclamationTriangleIcon className="h-7 w-7 text-[#FC1EAD]" />
           </div>
 
-          <DialogTitle className="text-xl font-bold">
-            Aviso de Conteúdo Adulto
-          </DialogTitle>
+          <DialogTitle className="text-xl font-bold">{legalNotice.titulo}</DialogTitle>
 
-          <DialogDescription className="text-gray-600 text-justify">
-            {DEFAULT_LEGAL_NOTICE}
+          <DialogDescription className="whitespace-pre-line text-justify text-gray-600">
+            {legalNotice.corpo}
           </DialogDescription>
         </DialogHeader>
 
-        <p className="text-sm text-center text-gray-600 mt-3 text-justify">
+        <p className="mt-3 text-justify text-center text-sm text-gray-600">
           Ao clicar em <b>Aceitar</b>, declaro que sou maior de 18 anos e li os{' '}
           <a
             href={termsHref}
             className="text-[#FC1EAD] underline underline-offset-2"
           >
             Termos de Uso
-          </a>.
+          </a>
+          .
         </p>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
@@ -97,7 +99,7 @@ export function AgeGateModal({
             className="h-11 border-gray-300 text-gray-700"
             disabled={accepting}
           >
-            <XCircleIcon className="w-5 h-5 mr-2" />
+            <XCircleIcon className="mr-2 h-5 w-5" />
             Sair
           </Button>
 
@@ -106,14 +108,10 @@ export function AgeGateModal({
             className="h-11 bg-[#FC1EAD] hover:bg-[#e01a9a]"
             disabled={accepting}
           >
-            <CheckCircleIcon className="w-5 h-5 mr-2" />
+            <CheckCircleIcon className="mr-2 h-5 w-5" />
             {accepting ? 'Salvando...' : 'Aceitar'}
           </Button>
         </div>
-
-        <p className="text-xs text-center text-gray-400 mt-4 text-justify">
-          {DEFAULT_FOOTER_COPY}
-        </p>
       </DialogContent>
     </Dialog>
   )

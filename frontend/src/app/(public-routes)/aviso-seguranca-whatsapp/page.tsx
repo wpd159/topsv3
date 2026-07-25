@@ -1,15 +1,5 @@
-import { SiteContentPage } from "@/components/site-content/site-content-page"
-import { getFallbackSiteContent } from "@/lib/site-content"
+import { SiteContentPage } from '@/components/site-content/site-content-page'
 
 export default function AvisoSegurancaWhatsappPage() {
-  const fallback = getFallbackSiteContent("texto-whatsapp")
-
-  return (
-    <SiteContentPage
-      contentKey="texto-whatsapp"
-      fallbackTitle={fallback.titulo}
-      fallbackBody={fallback.corpo}
-      centered={false}
-    />
-  )
+  return <SiteContentPage contentKey="texto-whatsapp" centered={false} />
 }

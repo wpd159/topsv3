@@ -19,6 +19,25 @@ public class SeoUrlEntity {
   protected SeoUrlEntity() {
   }
 
+  public static SeoUrlEntity criarConteudoInstitucional(
+      UUID id,
+      String caminhoPublico,
+      OffsetDateTime agora) {
+    SeoUrlEntity entity = new SeoUrlEntity();
+    entity.id = id;
+    entity.caminhoPublico = caminhoPublico;
+    entity.canonicalPath = caminhoPublico;
+    entity.tipo = TipoSeoUrl.INSTITUCIONAL;
+    entity.statusEsperado = StatusEsperadoSeo.OK_200;
+    entity.indexavel = false;
+    entity.incluirSitemap = false;
+    entity.qualidadeStatus = QualidadeSeo.PENDENTE;
+    entity.criadoEm = agora;
+    entity.atualizadoEm = agora;
+    entity.versao = 0;
+    return entity;
+  }
+
   @Id
   @Column(name = "id")
   private UUID id;

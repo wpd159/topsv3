@@ -7,13 +7,15 @@ import "./globals.css"
 import { AuthProvider } from "@/context/AuthContext"
 import { FavoritosProvider } from "@/context/FavoritosContext"
 import { Toaster } from "sonner"
-import { AgeGateModal } from "@/components/modals/age-gate-modal"
-import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
 import { SensitiveImageUnlockProvider } from "@/components/compliance/sensitive-image-unlock-provider"
+import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
+import { SiteContentProvider } from "@/components/site-content/site-content-provider"
+import { getUnavailableSiteContent, SITE_CONTENT_KEYS } from "@/lib/site-content"
 import { buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 
 const publicSiteBaseUrl = getPublicSiteBaseUrl()
 const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "false"
+const unavailableSiteContent = SITE_CONTENT_KEYS.map(getUnavailableSiteContent)
 
 export const metadata: Metadata = {
   metadataBase: new URL(publicSiteBaseUrl),
@@ -84,16 +86,12 @@ export default function RootLayout({
         <AuthProvider>
           <FavoritosProvider>
             <SensitiveImageUnlockProvider>
-              <WhatsAppSafetyProvider>
-              <AgeGateModal
-                termsHref="/termos-de-uso"
-                denyRedirect="https://www.google.com"
-              />
-
-              {children}
-
-              <Toaster position="top-right" richColors closeButton expand />
-              </WhatsAppSafetyProvider>
+              <SiteContentProvider entries={unavailableSiteContent}>
+                <WhatsAppSafetyProvider>
+                  {children}
+                  <Toaster position="top-right" richColors closeButton expand />
+                </WhatsAppSafetyProvider>
+              </SiteContentProvider>
             </SensitiveImageUnlockProvider>
           </FavoritosProvider>
         </AuthProvider>

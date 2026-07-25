@@ -1,15 +1,5 @@
-import { SiteContentPage } from "@/components/site-content/site-content-page"
-import { getFallbackSiteContent } from "@/lib/site-content"
+import { SiteContentPage } from '@/components/site-content/site-content-page'
 
 export default function Page() {
-  const fallback = getFallbackSiteContent("verificacao")
-
-  return (
-    <SiteContentPage
-      contentKey="verificacao"
-      fallbackTitle={fallback.titulo}
-      fallbackBody={fallback.corpo}
-      centered={false}
-    />
-  )
+  return <SiteContentPage contentKey="verificacao" centered={false} />
 }
