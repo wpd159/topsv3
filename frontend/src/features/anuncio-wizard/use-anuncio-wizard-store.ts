@@ -105,13 +105,14 @@ export function validateWizardStep(
       !Number.isFinite(preco) ||
       preco <= 0 ||
       (mode === 'create' && !form.horario) ||
+      !form.whatsapp.trim() ||
       form.locaisAtendimento.length === 0 ||
       form.servicos.length === 0 ||
       (mode === 'edit' && form.descricao.trim().length < 20)
     ) {
       return mode === 'create'
-        ? 'Informe preço, horário, local de atendimento e ao menos um serviço.'
-        : 'Informe preço, descrição, local de atendimento e ao menos um serviço.'
+        ? 'Informe preço, horário, WhatsApp, local de atendimento e ao menos um serviço.'
+        : 'Informe preço, descrição, WhatsApp, local de atendimento e ao menos um serviço.'
     }
   }
   if (mode === 'create' && step === 'fotos' && form.fotos.length === 0) {

@@ -95,7 +95,7 @@ export function WizardStepServicos({
         />
       </Field>
 
-      {mode === 'edit' ? <Field label="WhatsApp">
+      <Field label="WhatsApp">
         <Input
           type="tel"
           value={state.whatsapp}
@@ -103,7 +103,7 @@ export function WizardStepServicos({
           placeholder="+55 62 99999-9999"
           autoComplete="tel"
         />
-      </Field> : null}
+      </Field>
 
       {mode === 'create' ? <Field label="Link de conteúdo">
         <Input
