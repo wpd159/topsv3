@@ -286,7 +286,7 @@ class AdminModeracaoAcaoServiceTest {
     }
 
     @Test
-    void fotoImportadaPendenteRestritaNaoExigePipelineNemMoveStorage() {
+    void fotoImportadaPendenteRestritaGeraPreviewSemMoverOriginalPrivado() {
         Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
         ReflectionTestUtils.setField(fixture.arquivo(), "storageProvider", "R2");
 
@@ -299,7 +299,8 @@ class AdminModeracaoAcaoServiceTest {
         assertThat(response.visibilidadeMidia()).isEqualTo("RESTRITA_18");
         assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
         assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
-        verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
+        verify(storageAprovacaoService)
+                .prepararAprovacao(fixture.arquivo(), VisibilidadeMidia.RESTRITA_18);
     }
 
     @Test

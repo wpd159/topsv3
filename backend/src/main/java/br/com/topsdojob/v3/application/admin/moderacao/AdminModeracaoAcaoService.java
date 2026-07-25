@@ -284,7 +284,8 @@ public class AdminModeracaoAcaoService {
             case REPROVAR -> StatusArquivoMidia.REJEITADO;
             case SOLICITAR_AJUSTE -> StatusArquivoMidia.PENDENTE;
         };
-        if (decisao == AdminDecisaoModeracaoAcao.APROVAR && visibilidade == VisibilidadeMidia.LIVRE) {
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR
+                && midia.getTipo() == TipoAnuncioMidia.FOTO) {
             midiaStorageAprovacaoService.prepararAprovacao(arquivo, visibilidade);
         }
         midia.aplicarDecisao(novoStatusMidia, visibilidade, agora);
