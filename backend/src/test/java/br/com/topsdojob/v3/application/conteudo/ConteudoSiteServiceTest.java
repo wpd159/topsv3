@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -27,6 +28,15 @@ class ConteudoSiteServiceTest {
 
   private static final Clock CLOCK =
       Clock.fixed(Instant.parse("2026-07-25T03:00:00Z"), ZoneOffset.UTC);
+
+  @Test
+  void construtorDeProducaoEhExplicitoParaInjecaoDoSpring() throws Exception {
+    var constructor = ConteudoSiteService.class.getConstructor(
+        SeoConteudoPaginaRepository.class,
+        SeoUrlRepository.class);
+
+    assertThat(constructor.isAnnotationPresent(Autowired.class)).isTrue();
+  }
 
   @Test
   void catalogoAdministrativoIncluiChavesNaoPublicadasSemInventarConteudo() {
