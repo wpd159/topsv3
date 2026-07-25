@@ -3,7 +3,7 @@ set -euo pipefail
 
 api_base_url="${HML_AUTH_SMOKE_API_BASE_URL:-}"
 web_base_url="${HML_AUTH_SMOKE_WEB_BASE_URL:-}"
-runtime_value="${HML_AUTH_SMOKE_RUNTIME_VALUE:-}"
+runtime_value="${FIXTURE_AUTH_SMOKE_RUNTIME_VALUE:-}"
 active_email="auth-smoke-active@hml.example.invalid"
 pending_email="auth-smoke-pending@hml.example.invalid"
 disabled_email="auth-smoke-disabled@hml.example.invalid"
@@ -13,7 +13,7 @@ if [ "${HML_AUTH_SMOKE_ENABLED:-false}" != "true" ]; then
   exit 2
 fi
 if [ "${#runtime_value}" -lt 16 ]; then
-  echo "ERRO: HML_AUTH_SMOKE_RUNTIME_VALUE ausente ou invalida" >&2
+  echo "ERRO: FIXTURE_AUTH_SMOKE_RUNTIME_VALUE ausente ou invalida" >&2
   exit 2
 fi
 if [[ ! "$api_base_url" =~ ^http://127\.0\.0\.1:[0-9]+$ ]]; then

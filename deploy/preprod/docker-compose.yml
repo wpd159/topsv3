@@ -58,10 +58,10 @@ services:
         EXPOSE 8080
         ENTRYPOINT ["java", "-jar", "/app/app.jar"]
     command:
-      - --app.hml-admin-provision.enabled=false
-      - --app.hml-fixture.enabled=false
-      - --app.hml-fixture-owner-credential.enabled=false
-      - --app.hml-auth-smoke.enabled=false
+      - --app.fixture.admin-provision.enabled=false
+      - --app.fixture.stories.enabled=false
+      - --app.fixture.owner-credential.enabled=false
+      - --app.fixture.auth-smoke.enabled=false
     environment:
       SPRING_PROFILES_ACTIVE: homologacao
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${TOPSV3_POSTGRES_DB:-topsv3_preprod}

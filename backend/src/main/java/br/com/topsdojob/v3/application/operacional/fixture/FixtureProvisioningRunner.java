@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -14,11 +14,11 @@ import org.springframework.stereotype.Component;
 
 @Component
 @Profile("homologacao")
-@ConditionalOnExpression("${app.hml-admin-provision.enabled:false}"
-        + " || ${app.hml-fixture.enabled:false}"
-        + " || ${app.hml-fixture-owner-credential.enabled:false}"
-        + " || ${app.hml-auth-smoke.enabled:false}")
-public class HmlAdminProvisioningRunner implements ApplicationRunner {
+@ConditionalOnExpression("${app.fixture.admin-provision.enabled:false}"
+        + " || ${app.fixture.stories.enabled:false}"
+        + " || ${app.fixture.owner-credential.enabled:false}"
+        + " || ${app.fixture.auth-smoke.enabled:false}")
+public class FixtureProvisioningRunner implements ApplicationRunner {
 
     private final String email;
     private final boolean adminEnabled;
@@ -26,23 +26,23 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
     private final boolean fixtureOwnerCredentialEnabled;
     private final boolean authSmokeEnabled;
     private final String authSmokeRuntimeValue;
-    private final HmlAdminProvisioningService service;
-    private final HmlStoriesFixtureService fixtureService;
-    private final HmlAuthSmokeFixtureService authSmokeFixtureService;
+    private final AdminFixtureProvisioningService service;
+    private final StoriesFixtureService fixtureService;
+    private final AuthSmokeFixtureService authSmokeFixtureService;
     private final ConfigurableApplicationContext applicationContext;
     private final CredentialReader credentialReader;
 
     @Autowired
-    public HmlAdminProvisioningRunner(
-            @Value("${HML_ADMIN_PROVISION_EMAIL:}") String email,
-            @Value("${app.hml-admin-provision.enabled:false}") boolean adminEnabled,
-            @Value("${app.hml-fixture.enabled:false}") boolean fixtureEnabled,
-            @Value("${app.hml-fixture-owner-credential.enabled:false}") boolean fixtureOwnerCredentialEnabled,
-            @Value("${app.hml-auth-smoke.enabled:false}") boolean authSmokeEnabled,
-            @Value("${HML_AUTH_SMOKE_RUNTIME_VALUE:}") String authSmokeRuntimeValue,
-            HmlAdminProvisioningService service,
-            HmlStoriesFixtureService fixtureService,
-            HmlAuthSmokeFixtureService authSmokeFixtureService,
+    public FixtureProvisioningRunner(
+            @Value("${FIXTURE_ADMIN_PROVISION_EMAIL:}") String email,
+            @Value("${app.fixture.admin-provision.enabled:false}") boolean adminEnabled,
+            @Value("${app.fixture.stories.enabled:false}") boolean fixtureEnabled,
+            @Value("${app.fixture.owner-credential.enabled:false}") boolean fixtureOwnerCredentialEnabled,
+            @Value("${app.fixture.auth-smoke.enabled:false}") boolean authSmokeEnabled,
+            @Value("${FIXTURE_AUTH_SMOKE_RUNTIME_VALUE:}") String authSmokeRuntimeValue,
+            AdminFixtureProvisioningService service,
+            StoriesFixtureService fixtureService,
+            AuthSmokeFixtureService authSmokeFixtureService,
             ConfigurableApplicationContext applicationContext) {
         this(
                 email,
@@ -55,19 +55,19 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
                 fixtureService,
                 authSmokeFixtureService,
                 applicationContext,
-                HmlAdminProvisioningRunner::lerCredencialStdin);
+                FixtureProvisioningRunner::lerCredencialStdin);
     }
 
-    HmlAdminProvisioningRunner(
+    FixtureProvisioningRunner(
             String email,
             boolean adminEnabled,
             boolean fixtureEnabled,
             boolean fixtureOwnerCredentialEnabled,
             boolean authSmokeEnabled,
             String authSmokeRuntimeValue,
-            HmlAdminProvisioningService service,
-            HmlStoriesFixtureService fixtureService,
-            HmlAuthSmokeFixtureService authSmokeFixtureService,
+            AdminFixtureProvisioningService service,
+            StoriesFixtureService fixtureService,
+            AuthSmokeFixtureService authSmokeFixtureService,
             ConfigurableApplicationContext applicationContext,
             CredentialReader credentialReader) {
         this.email = email;
@@ -98,13 +98,13 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
             }
             if (adminEnabled) {
                 runtimeValue = credentialReader.read();
-                HmlAdminProvisioningService.ProvisioningResult result = service.provisionar(email, runtimeValue);
+                AdminFixtureProvisioningService.ProvisioningResult result = service.provisionar(email, runtimeValue);
                 String status = result.usuarioCriado() ? "CRIADO" : "ATUALIZADO";
-                System.out.println("HML_ADMIN_PROVISION_RESULT=" + status);
+                System.out.println("FIXTURE_ADMIN_PROVISION_RESULT=" + status);
             }
             if (fixtureEnabled) {
-                HmlStoriesFixtureService.FixtureResult fixture = fixtureService.provisionar();
-                System.out.println("HML_STORIES_FIXTURE_RESULT="
+                StoriesFixtureService.FixtureResult fixture = fixtureService.provisionar();
+                System.out.println("STORIES_FIXTURE_RESULT="
                         + fixture.categoriasCriadas() + ":"
                         + fixture.localidadesCriadas() + ":"
                         + fixture.localizacoesCriadas() + ":"
@@ -116,15 +116,15 @@ public class HmlAdminProvisioningRunner implements ApplicationRunner {
             }
             if (fixtureOwnerCredentialEnabled) {
                 runtimeValue = credentialReader.read();
-                HmlStoriesFixtureService.FixtureOwnerCredentialResult result =
+                StoriesFixtureService.FixtureOwnerCredentialResult result =
                         fixtureService.provisionarCredencialProprietario(runtimeValue);
-                System.out.println("HML_FIXTURE_OWNER_CREDENTIAL_RESULT=" + result.status());
+                System.out.println("FIXTURE_OWNER_CREDENTIAL_RESULT=" + result.status());
             }
             if (authSmokeEnabled) {
                 runtimeValue = authSmokeRuntimeValue;
-                HmlAuthSmokeFixtureService.FixtureResult result =
+                AuthSmokeFixtureService.FixtureResult result =
                         authSmokeFixtureService.reconciliar(runtimeValue);
-                System.out.println("HML_AUTH_SMOKE_FIXTURE_RESULT="
+                System.out.println("AUTH_SMOKE_FIXTURE_RESULT="
                         + result.contasCriadas() + ":"
                         + result.contasAtualizadas() + ":"
                         + result.contasPreservadas());

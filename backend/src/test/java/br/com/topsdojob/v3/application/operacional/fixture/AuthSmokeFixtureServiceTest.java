@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -37,7 +37,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 
-class HmlAuthSmokeFixtureServiceTest {
+class AuthSmokeFixtureServiceTest {
 
     private final Map<UUID, UsuarioEntity> usuarios = new HashMap<>();
     private final Map<UUID, CredencialUsuarioEntity> credenciais = new HashMap<>();
@@ -46,7 +46,7 @@ class HmlAuthSmokeFixtureServiceTest {
     private CredencialUsuarioRepository credencialRepository;
     private PapelUsuarioRepository papelRepository;
     private PasswordEncoder passwordEncoder;
-    private HmlAuthSmokeFixtureService service;
+    private AuthSmokeFixtureService service;
 
     @BeforeEach
     void setUp() {
@@ -82,7 +82,7 @@ class HmlAuthSmokeFixtureServiceTest {
             papeis.computeIfAbsent(item.getUsuarioId(), ignored -> new ArrayList<>()).add(item);
             return item;
         });
-        service = new HmlAuthSmokeFixtureService(
+        service = new AuthSmokeFixtureService(
                 "homologacao",
                 usuarioRepository,
                 credencialRepository,
@@ -102,8 +102,8 @@ class HmlAuthSmokeFixtureServiceTest {
         var primeira = service.reconciliar(runtimeValue);
         var segunda = service.reconciliar(runtimeValue);
 
-        assertThat(primeira).isEqualTo(new HmlAuthSmokeFixtureService.FixtureResult(3, 0, 0));
-        assertThat(segunda).isEqualTo(new HmlAuthSmokeFixtureService.FixtureResult(0, 0, 3));
+        assertThat(primeira).isEqualTo(new AuthSmokeFixtureService.FixtureResult(3, 0, 0));
+        assertThat(segunda).isEqualTo(new AuthSmokeFixtureService.FixtureResult(0, 0, 3));
         assertThat(usuarios).hasSize(3);
         assertThat(credenciais).hasSize(3);
         assertThat(papeis).hasSize(3);
@@ -117,17 +117,17 @@ class HmlAuthSmokeFixtureServiceTest {
                 .extracting(PapelUsuarioEntity::getPapel)
                 .isEqualTo(PapelUsuario.USUARIO));
 
-        UsuarioEntity ativo = porEmail(HmlAuthSmokeFixtureService.ACTIVE_EMAIL);
+        UsuarioEntity ativo = porEmail(AuthSmokeFixtureService.ACTIVE_EMAIL);
         assertThat(ativo.getStatus()).isEqualTo(StatusUsuario.ATIVO);
         assertThat(ativo.getEmailVerificadoEm()).isNotNull();
         assertThat(ativo.getDesativadoEm()).isNull();
 
-        UsuarioEntity pendente = porEmail(HmlAuthSmokeFixtureService.PENDING_EMAIL);
+        UsuarioEntity pendente = porEmail(AuthSmokeFixtureService.PENDING_EMAIL);
         assertThat(pendente.getStatus()).isEqualTo(StatusUsuario.ATIVO);
         assertThat(pendente.getEmailVerificadoEm()).isNull();
         assertThat(pendente.getDesativadoEm()).isNull();
 
-        UsuarioEntity desativado = porEmail(HmlAuthSmokeFixtureService.DISABLED_EMAIL);
+        UsuarioEntity desativado = porEmail(AuthSmokeFixtureService.DISABLED_EMAIL);
         assertThat(desativado.getStatus()).isEqualTo(StatusUsuario.DESATIVADO);
         assertThat(desativado.getEmailVerificadoEm()).isNotNull();
         assertThat(desativado.getDesativadoEm()).isNotNull();
@@ -140,24 +140,24 @@ class HmlAuthSmokeFixtureServiceTest {
         PublicAuthenticationService authentication = authenticationService();
 
         var response = authentication.login(
-                new PublicLoginRequestDto(HmlAuthSmokeFixtureService.ACTIVE_EMAIL, runtimeValue),
+                new PublicLoginRequestDto(AuthSmokeFixtureService.ACTIVE_EMAIL, runtimeValue),
                 new MockHttpServletRequest(),
                 new MockHttpServletResponse());
         assertThat(response.autenticado()).isTrue();
 
         SecurityContextHolder.clearContext();
-        assertUnauthorized(authentication, HmlAuthSmokeFixtureService.ACTIVE_EMAIL, runtimeValue + "x");
-        assertUnauthorized(authentication, HmlAuthSmokeFixtureService.PENDING_EMAIL, runtimeValue);
-        assertUnauthorized(authentication, HmlAuthSmokeFixtureService.DISABLED_EMAIL, runtimeValue);
+        assertUnauthorized(authentication, AuthSmokeFixtureService.ACTIVE_EMAIL, runtimeValue + "x");
+        assertUnauthorized(authentication, AuthSmokeFixtureService.PENDING_EMAIL, runtimeValue);
+        assertUnauthorized(authentication, AuthSmokeFixtureService.DISABLED_EMAIL, runtimeValue);
     }
 
     @Test
     void exigeFlagComSegredoValidoERecusaExecucaoForaDeHomologacao() {
         assertThatThrownBy(() -> service.reconciliar(""))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("HML_AUTH_SMOKE_RUNTIME_VALUE");
+                .hasMessageContaining("FIXTURE_AUTH_SMOKE_RUNTIME_VALUE");
 
-        HmlAuthSmokeFixtureService production = new HmlAuthSmokeFixtureService(
+        AuthSmokeFixtureService production = new AuthSmokeFixtureService(
                 "producao",
                 usuarioRepository,
                 credencialRepository,

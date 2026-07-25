@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Profile("homologacao")
-public class HmlAdminProvisioningService {
+public class AdminFixtureProvisioningService {
 
     private static final Pattern EMAIL_FICTICIO = Pattern.compile("^[a-z0-9._-]+@example\\.invalid$");
 
@@ -32,7 +32,7 @@ public class HmlAdminProvisioningService {
     private final PapelUsuarioRepository papelRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public HmlAdminProvisioningService(
+    public AdminFixtureProvisioningService(
             @Value("${app.env:nao_configurado}") String appEnv,
             UsuarioRepository usuarioRepository,
             CredencialUsuarioRepository credencialRepository,

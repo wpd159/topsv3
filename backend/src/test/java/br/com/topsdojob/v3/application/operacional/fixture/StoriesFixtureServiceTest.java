@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -60,7 +60,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-class HmlStoriesFixtureServiceTest {
+class StoriesFixtureServiceTest {
 
     private UsuarioRepository usuarioRepository;
     private CredencialUsuarioRepository credencialRepository;
@@ -98,14 +98,14 @@ class HmlStoriesFixtureServiceTest {
         ativacaoBeneficioRepository = mock(AtivacaoBeneficioRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         when(passwordEncoder.encode(any())).thenReturn("hash-bcrypt-fixture");
-        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+        when(usuarioRepository.findByEmailNormalizado(StoriesFixtureService.USUARIO_EMAIL))
                 .thenReturn(Optional.empty());
         when(papelRepository.findByUsuarioId(any())).thenReturn(List.of());
     }
 
     @Test
     void criaCenarioCompletoSemQualquerDependenciaDeCredito() {
-        HmlStoriesFixtureService service = service("homologacao");
+        StoriesFixtureService service = service("homologacao");
 
         var result = service.provisionar();
 
@@ -228,7 +228,7 @@ class HmlStoriesFixtureServiceTest {
         ArgumentCaptor<UsuarioEntity> usuarioCaptor = ArgumentCaptor.forClass(UsuarioEntity.class);
         verify(usuarioRepository).saveAndFlush(usuarioCaptor.capture());
         assertThat(usuarioCaptor.getValue().getDataNascimento())
-                .isEqualTo(HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO);
+                .isEqualTo(StoriesFixtureService.USUARIO_DATA_NASCIMENTO);
 
         ArgumentCaptor<ArquivoMidiaEntity> arquivoCaptor = ArgumentCaptor.forClass(ArquivoMidiaEntity.class);
         verify(arquivoRepository, times(12)).save(arquivoCaptor.capture());
@@ -260,7 +260,7 @@ class HmlStoriesFixtureServiceTest {
                 .extracting(AnuncioMidiaEntity::getTipo)
                 .containsExactlyInAnyOrder(TipoAnuncioMidia.FOTO, TipoAnuncioMidia.STORY);
 
-        assertThat(Arrays.stream(HmlStoriesFixtureService.class.getDeclaredFields())
+        assertThat(Arrays.stream(StoriesFixtureService.class.getDeclaredFields())
                 .map(Field::getType)
                 .map(Class::getSimpleName))
                 .noneMatch(name -> name.toLowerCase().contains("credito"));
@@ -272,13 +272,13 @@ class HmlStoriesFixtureServiceTest {
         UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
                 UUID.randomUUID(),
                 "Usuario HML",
-                HmlStoriesFixtureService.USUARIO_EMAIL,
+                StoriesFixtureService.USUARIO_EMAIL,
                 null,
-                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
+                StoriesFixtureService.USUARIO_DATA_NASCIMENTO,
                 agora);
         CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
                 UUID.randomUUID(), usuario.getId(), "hash-anterior", agora);
-        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+        when(usuarioRepository.findByEmailNormalizado(StoriesFixtureService.USUARIO_EMAIL))
                 .thenReturn(Optional.of(usuario));
         when(credencialRepository.findByUsuarioId(usuario.getId())).thenReturn(Optional.of(credencial));
         AnuncioEntity anuncioExistente = mock(AnuncioEntity.class);
@@ -410,15 +410,15 @@ class HmlStoriesFixtureServiceTest {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
-                HmlStoriesFixtureService.USUARIO_ID,
+                StoriesFixtureService.USUARIO_ID,
                 "Usuario HML",
-                HmlStoriesFixtureService.USUARIO_EMAIL,
+                StoriesFixtureService.USUARIO_EMAIL,
                 null,
-                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
+                StoriesFixtureService.USUARIO_DATA_NASCIMENTO,
                 agora);
         CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
                 UUID.randomUUID(), usuario.getId(), "hash-bcrypt-existente", agora);
-        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+        when(usuarioRepository.findByEmailNormalizado(StoriesFixtureService.USUARIO_EMAIL))
                 .thenReturn(Optional.of(usuario));
         when(credencialRepository.findByUsuarioId(usuario.getId())).thenReturn(Optional.of(credencial));
         when(passwordEncoder.matches(runtimeValue, credencial.getSenhaHash())).thenReturn(true);
@@ -427,7 +427,7 @@ class HmlStoriesFixtureServiceTest {
                 .provisionarCredencialProprietario(runtimeValue);
 
         assertThat(result.status())
-                .isEqualTo(HmlStoriesFixtureService.FixtureOwnerCredentialStatus.PRESERVADA);
+                .isEqualTo(StoriesFixtureService.FixtureOwnerCredentialStatus.PRESERVADA);
         verify(credencialRepository, never()).save(any());
         verify(passwordEncoder, never()).encode(any());
         verify(usuarioRepository, never()).save(any());
@@ -439,29 +439,29 @@ class HmlStoriesFixtureServiceTest {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
-                HmlStoriesFixtureService.USUARIO_ID,
+                StoriesFixtureService.USUARIO_ID,
                 "Usuario HML",
-                HmlStoriesFixtureService.USUARIO_EMAIL,
+                StoriesFixtureService.USUARIO_EMAIL,
                 null,
-                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
+                StoriesFixtureService.USUARIO_DATA_NASCIMENTO,
                 agora);
         CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
                 UUID.randomUUID(), usuario.getId(), "hash-bcrypt-anterior", agora);
-        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+        when(usuarioRepository.findByEmailNormalizado(StoriesFixtureService.USUARIO_EMAIL))
                 .thenReturn(Optional.of(usuario));
         when(credencialRepository.findByUsuarioId(usuario.getId())).thenReturn(Optional.of(credencial));
         when(passwordEncoder.matches(eq(runtimeValue), any())).thenReturn(false, true);
         when(passwordEncoder.encode(runtimeValue)).thenReturn("hash-bcrypt-novo");
 
-        HmlStoriesFixtureService service = service("homologacao");
+        StoriesFixtureService service = service("homologacao");
         var result = service
                 .provisionarCredencialProprietario(runtimeValue);
         var repeated = service.provisionarCredencialProprietario(runtimeValue);
 
         assertThat(result.status())
-                .isEqualTo(HmlStoriesFixtureService.FixtureOwnerCredentialStatus.ATUALIZADA);
+                .isEqualTo(StoriesFixtureService.FixtureOwnerCredentialStatus.ATUALIZADA);
         assertThat(repeated.status())
-                .isEqualTo(HmlStoriesFixtureService.FixtureOwnerCredentialStatus.PRESERVADA);
+                .isEqualTo(StoriesFixtureService.FixtureOwnerCredentialStatus.PRESERVADA);
         assertThat(credencial.getSenhaHash()).isEqualTo("hash-bcrypt-novo");
         verify(credencialRepository).save(credencial);
         verify(passwordEncoder).encode(runtimeValue);
@@ -476,11 +476,11 @@ class HmlStoriesFixtureServiceTest {
         UsuarioEntity outroUsuario = UsuarioEntity.criarCadastroPublico(
                 UUID.randomUUID(),
                 "Outro usuario",
-                HmlStoriesFixtureService.USUARIO_EMAIL,
+                StoriesFixtureService.USUARIO_EMAIL,
                 null,
-                HmlStoriesFixtureService.USUARIO_DATA_NASCIMENTO,
+                StoriesFixtureService.USUARIO_DATA_NASCIMENTO,
                 OffsetDateTime.now(ZoneOffset.UTC));
-        when(usuarioRepository.findByEmailNormalizado(HmlStoriesFixtureService.USUARIO_EMAIL))
+        when(usuarioRepository.findByEmailNormalizado(StoriesFixtureService.USUARIO_EMAIL))
                 .thenReturn(Optional.of(outroUsuario));
 
         assertThatThrownBy(() -> service("homologacao")
@@ -502,8 +502,8 @@ class HmlStoriesFixtureServiceTest {
         verify(anuncioRepository, never()).save(any());
     }
 
-    private HmlStoriesFixtureService service(String appEnv) {
-        return new HmlStoriesFixtureService(
+    private StoriesFixtureService service(String appEnv) {
+        return new StoriesFixtureService(
                 appEnv,
                 usuarioRepository,
                 credencialRepository,

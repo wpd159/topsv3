@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -19,27 +19,27 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.util.UUID;
 
 @ExtendWith(OutputCaptureExtension.class)
-class HmlAdminProvisioningRunnerTest {
+class FixtureProvisioningRunnerTest {
 
     @Test
     void permaneceRestritoAoProfileHomologacaoEComFlagDesabilitadaPorPadrao() {
-        Profile profile = HmlAdminProvisioningRunner.class.getAnnotation(Profile.class);
+        Profile profile = FixtureProvisioningRunner.class.getAnnotation(Profile.class);
         ConditionalOnExpression condition =
-                HmlAdminProvisioningRunner.class.getAnnotation(ConditionalOnExpression.class);
+                FixtureProvisioningRunner.class.getAnnotation(ConditionalOnExpression.class);
 
         assertThat(profile.value()).containsExactly("homologacao");
-        assertThat(condition.value()).contains("${app.hml-auth-smoke.enabled:false}");
+        assertThat(condition.value()).contains("${app.fixture.auth-smoke.enabled:false}");
     }
 
     @Test
     void executaSomenteFixtureSemLerOuAlterarCredencialAdmin() throws Exception {
-        HmlAdminProvisioningService adminService = mock(HmlAdminProvisioningService.class);
-        HmlStoriesFixtureService fixtureService = mock(HmlStoriesFixtureService.class);
-        HmlAuthSmokeFixtureService authFixtureService = mock(HmlAuthSmokeFixtureService.class);
+        AdminFixtureProvisioningService adminService = mock(AdminFixtureProvisioningService.class);
+        StoriesFixtureService fixtureService = mock(StoriesFixtureService.class);
+        AuthSmokeFixtureService authFixtureService = mock(AuthSmokeFixtureService.class);
         ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
         when(fixtureService.provisionar()).thenReturn(
-                new HmlStoriesFixtureService.FixtureResult(0, 0, 0, 0, 0, 0, 0, false));
-        HmlAdminProvisioningRunner runner = new HmlAdminProvisioningRunner(
+                new StoriesFixtureService.FixtureResult(0, 0, 0, 0, 0, 0, 0, false));
+        FixtureProvisioningRunner runner = new FixtureProvisioningRunner(
                 "admin.hml@example.invalid",
                 false,
                 true,
@@ -64,13 +64,13 @@ class HmlAdminProvisioningRunnerTest {
     @Test
     void provisionamentoAdminContinuaExigindoCredencialSemExecutarFixtureImplicitamente() throws Exception {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
-        HmlAdminProvisioningService adminService = mock(HmlAdminProvisioningService.class);
-        HmlStoriesFixtureService fixtureService = mock(HmlStoriesFixtureService.class);
-        HmlAuthSmokeFixtureService authFixtureService = mock(HmlAuthSmokeFixtureService.class);
+        AdminFixtureProvisioningService adminService = mock(AdminFixtureProvisioningService.class);
+        StoriesFixtureService fixtureService = mock(StoriesFixtureService.class);
+        AuthSmokeFixtureService authFixtureService = mock(AuthSmokeFixtureService.class);
         ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
         when(adminService.provisionar("admin.hml@example.invalid", runtimeValue))
-                .thenReturn(new HmlAdminProvisioningService.ProvisioningResult(false, true));
-        HmlAdminProvisioningRunner runner = new HmlAdminProvisioningRunner(
+                .thenReturn(new AdminFixtureProvisioningService.ProvisioningResult(false, true));
+        FixtureProvisioningRunner runner = new FixtureProvisioningRunner(
                 "admin.hml@example.invalid",
                 true,
                 false,
@@ -93,14 +93,14 @@ class HmlAdminProvisioningRunnerTest {
     @Test
     void provisionaCredencialDoProprietarioSemAlterarAdminOuReconciliarFixture() throws Exception {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
-        HmlAdminProvisioningService adminService = mock(HmlAdminProvisioningService.class);
-        HmlStoriesFixtureService fixtureService = mock(HmlStoriesFixtureService.class);
-        HmlAuthSmokeFixtureService authFixtureService = mock(HmlAuthSmokeFixtureService.class);
+        AdminFixtureProvisioningService adminService = mock(AdminFixtureProvisioningService.class);
+        StoriesFixtureService fixtureService = mock(StoriesFixtureService.class);
+        AuthSmokeFixtureService authFixtureService = mock(AuthSmokeFixtureService.class);
         ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
         when(fixtureService.provisionarCredencialProprietario(runtimeValue))
-                .thenReturn(new HmlStoriesFixtureService.FixtureOwnerCredentialResult(
-                        HmlStoriesFixtureService.FixtureOwnerCredentialStatus.ATUALIZADA));
-        HmlAdminProvisioningRunner runner = new HmlAdminProvisioningRunner(
+                .thenReturn(new StoriesFixtureService.FixtureOwnerCredentialResult(
+                        StoriesFixtureService.FixtureOwnerCredentialStatus.ATUALIZADA));
+        FixtureProvisioningRunner runner = new FixtureProvisioningRunner(
                 "admin.hml@example.invalid",
                 false,
                 false,
@@ -124,11 +124,11 @@ class HmlAdminProvisioningRunnerTest {
     @Test
     void recusaAcoesConcorrentesDeCredencial() {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
-        HmlAdminProvisioningService adminService = mock(HmlAdminProvisioningService.class);
-        HmlStoriesFixtureService fixtureService = mock(HmlStoriesFixtureService.class);
-        HmlAuthSmokeFixtureService authFixtureService = mock(HmlAuthSmokeFixtureService.class);
+        AdminFixtureProvisioningService adminService = mock(AdminFixtureProvisioningService.class);
+        StoriesFixtureService fixtureService = mock(StoriesFixtureService.class);
+        AuthSmokeFixtureService authFixtureService = mock(AuthSmokeFixtureService.class);
         ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
-        HmlAdminProvisioningRunner runner = new HmlAdminProvisioningRunner(
+        FixtureProvisioningRunner runner = new FixtureProvisioningRunner(
                 "admin.hml@example.invalid",
                 true,
                 false,
@@ -154,13 +154,13 @@ class HmlAdminProvisioningRunnerTest {
     void executaFixtureAuthComSegredoDeAmbienteSemLerStdinOuExporValor(CapturedOutput output)
             throws Exception {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
-        HmlAdminProvisioningService adminService = mock(HmlAdminProvisioningService.class);
-        HmlStoriesFixtureService fixtureService = mock(HmlStoriesFixtureService.class);
-        HmlAuthSmokeFixtureService authFixtureService = mock(HmlAuthSmokeFixtureService.class);
+        AdminFixtureProvisioningService adminService = mock(AdminFixtureProvisioningService.class);
+        StoriesFixtureService fixtureService = mock(StoriesFixtureService.class);
+        AuthSmokeFixtureService authFixtureService = mock(AuthSmokeFixtureService.class);
         ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
         when(authFixtureService.reconciliar(runtimeValue))
-                .thenReturn(new HmlAuthSmokeFixtureService.FixtureResult(3, 0, 0));
-        HmlAdminProvisioningRunner runner = new HmlAdminProvisioningRunner(
+                .thenReturn(new AuthSmokeFixtureService.FixtureResult(3, 0, 0));
+        FixtureProvisioningRunner runner = new FixtureProvisioningRunner(
                 "admin.hml@example.invalid",
                 false,
                 false,
@@ -181,18 +181,18 @@ class HmlAdminProvisioningRunnerTest {
         verify(adminService, never()).provisionar(any(), any());
         verify(fixtureService, never()).provisionar();
         verify(context).close();
-        assertThat(output).contains("HML_AUTH_SMOKE_FIXTURE_RESULT=3:0:0");
+        assertThat(output).contains("AUTH_SMOKE_FIXTURE_RESULT=3:0:0");
         assertThat(output).doesNotContain(runtimeValue);
     }
 
     @Test
     void recusaFixtureAuthComFixtureDeStoriesNaMesmaExecucao() {
         String runtimeValue = "Aa1!" + UUID.randomUUID();
-        HmlAdminProvisioningService adminService = mock(HmlAdminProvisioningService.class);
-        HmlStoriesFixtureService fixtureService = mock(HmlStoriesFixtureService.class);
-        HmlAuthSmokeFixtureService authFixtureService = mock(HmlAuthSmokeFixtureService.class);
+        AdminFixtureProvisioningService adminService = mock(AdminFixtureProvisioningService.class);
+        StoriesFixtureService fixtureService = mock(StoriesFixtureService.class);
+        AuthSmokeFixtureService authFixtureService = mock(AuthSmokeFixtureService.class);
         ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
-        HmlAdminProvisioningRunner runner = new HmlAdminProvisioningRunner(
+        FixtureProvisioningRunner runner = new FixtureProvisioningRunner(
                 "admin.hml@example.invalid",
                 false,
                 true,

@@ -49,16 +49,16 @@ if [ "$mode" = "fixture-owner" ]; then
     run --rm -T \
     backend \
     --server.port=0 \
-    --app.hml-fixture-owner-credential.enabled=true
+    --app.fixture.owner-credential.enabled=true
 else
   printf '%s\n' "$runtime_input" | docker compose \
     --env-file "$env_file" \
     -f "$compose_file" \
     run --rm -T \
-    -e HML_ADMIN_PROVISION_EMAIL="$email" \
+    -e FIXTURE_ADMIN_PROVISION_EMAIL="$email" \
     backend \
     --server.port=0 \
-    --app.hml-admin-provision.enabled=true
+    --app.fixture.admin-provision.enabled=true
 fi
 
 runtime_input=""

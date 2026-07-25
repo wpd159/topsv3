@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,13 +23,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-class HmlAdminProvisioningServiceTest {
+class AdminFixtureProvisioningServiceTest {
 
     private UsuarioRepository usuarioRepository;
     private CredencialUsuarioRepository credencialRepository;
     private PapelUsuarioRepository papelRepository;
     private PasswordEncoder passwordEncoder;
-    private HmlAdminProvisioningService service;
+    private AdminFixtureProvisioningService service;
 
     @BeforeEach
     void setUp() {
@@ -37,7 +37,7 @@ class HmlAdminProvisioningServiceTest {
         credencialRepository = mock(CredencialUsuarioRepository.class);
         papelRepository = mock(PapelUsuarioRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
-        service = new HmlAdminProvisioningService(
+        service = new AdminFixtureProvisioningService(
                 "homologacao",
                 usuarioRepository,
                 credencialRepository,
@@ -100,7 +100,7 @@ class HmlAdminProvisioningServiceTest {
 
     @Test
     void recusaExecucaoForaDeHomologacao() {
-        var producao = new HmlAdminProvisioningService(
+        var producao = new AdminFixtureProvisioningService(
                 "producao",
                 usuarioRepository,
                 credencialRepository,

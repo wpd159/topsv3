@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -64,7 +64,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Profile("homologacao")
-public class HmlStoriesFixtureService {
+public class StoriesFixtureService {
 
     static final String USUARIO_EMAIL = "usuario.stories.hml@example.invalid";
     static final LocalDate USUARIO_DATA_NASCIMENTO = LocalDate.of(1990, 6, 15);
@@ -142,7 +142,7 @@ public class HmlStoriesFixtureService {
     private final AtivacaoBeneficioRepository ativacaoBeneficioRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public HmlStoriesFixtureService(
+    public StoriesFixtureService(
             @Value("${app.env:nao_configurado}") String appEnv,
             UsuarioRepository usuarioRepository,
             CredencialUsuarioRepository credencialRepository,

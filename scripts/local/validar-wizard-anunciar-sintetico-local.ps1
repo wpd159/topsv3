@@ -215,12 +215,12 @@ try {
   $env:APP_AGE_GATE_SIGNING_VALUE = "wizard_age_" + [guid]::NewGuid().ToString("N")
   Push-Location $backendRoot
   try {
-    $fixtureOutput = & $maven.Source -q spring-boot:run "-Dspring-boot.run.arguments=$runnerBaseArgs --app.hml-fixture.enabled=true" 2>&1
+    $fixtureOutput = & $maven.Source -q spring-boot:run "-Dspring-boot.run.arguments=$runnerBaseArgs --app.fixture.stories.enabled=true" 2>&1
     $fixtureExit = $LASTEXITCODE
   } finally {
     Pop-Location
   }
-  if ($fixtureExit -ne 0 -or -not (($fixtureOutput -join "`n") -match 'HML_STORIES_FIXTURE_RESULT=')) {
+  if ($fixtureExit -ne 0 -or -not (($fixtureOutput -join "`n") -match 'STORIES_FIXTURE_RESULT=')) {
     Write-Host "VALIDATION_RESULT=FALHA_WIZARD_ANUNCIAR_SINTETICO_LOCAL"
     Write-Host "Motivo: runner unico nao reconciliou a fixture no banco descartavel."
     $fixtureOutput | Where-Object { ([string]$_) -match 'Caused by:|APPLICATION FAILED|Description:|IllegalStateException|ERROR' } | Select-Object -Last 16 | ForEach-Object {
@@ -231,12 +231,12 @@ try {
 
   Push-Location $backendRoot
   try {
-    $ownerOutput = $ownerRuntime | & $maven.Source -q spring-boot:run "-Dspring-boot.run.arguments=$runnerBaseArgs --app.hml-fixture-owner-credential.enabled=true" 2>&1
+    $ownerOutput = $ownerRuntime | & $maven.Source -q spring-boot:run "-Dspring-boot.run.arguments=$runnerBaseArgs --app.fixture.owner-credential.enabled=true" 2>&1
     $ownerExit = $LASTEXITCODE
   } finally {
     Pop-Location
   }
-  if ($ownerExit -ne 0 -or -not (($ownerOutput -join "`n") -match 'HML_FIXTURE_OWNER_CREDENTIAL_RESULT=')) {
+  if ($ownerExit -ne 0 -or -not (($ownerOutput -join "`n") -match 'FIXTURE_OWNER_CREDENTIAL_RESULT=')) {
     Write-Host "VALIDATION_RESULT=FALHA_WIZARD_ANUNCIAR_SINTETICO_LOCAL"
     Write-Host "Motivo: runner unico nao reconciliou a credencial proprietaria no banco descartavel."
     $ownerOutput | Where-Object { ([string]$_) -match 'Caused by:|APPLICATION FAILED|Description:|IllegalStateException|ERROR' } | Select-Object -Last 16 | ForEach-Object {

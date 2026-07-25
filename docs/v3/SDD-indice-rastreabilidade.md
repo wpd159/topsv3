@@ -380,7 +380,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Contratos autenticados de anuncios: `backend/src/main/java/br/com/topsdojob/v3/web/publico/anunciante/MeusAnunciosController.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/anunciante/MeusAnunciosConsultaService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/publico/anunciante/MeuAnuncioAtualizacaoService.java`
 - Adapter, rotas e wizard canonico de Meus anuncios: `frontend/src/lib/meus-anuncios-api.ts`, `frontend/src/app/(private-routes)/meus-anuncios/page.tsx`, `frontend/src/app/(private-routes)/meus-anuncios/[slug]/page.tsx`, `frontend/src/app/(private-routes)/meus-anuncios/[slug]/editar/page.tsx`, `frontend/src/features/anuncio-wizard/anuncio-wizard.tsx`
 - Localidades e cache isolado do wizard: `frontend/src/hooks/useLocalidades.ts`, `frontend/src/lib/public-catalog-api.ts`, `frontend/src/features/anuncio-wizard/wizard-storage.ts`, `frontend/src/features/anuncio-wizard/use-anuncio-wizard-store.ts`
-- Runner e credencial do proprietario ficticio HML: `backend/src/main/java/br/com/topsdojob/v3/application/operacional/hml/HmlAdminProvisioningRunner.java`, `backend/src/main/java/br/com/topsdojob/v3/application/operacional/hml/HmlStoriesFixtureService.java`, `scripts/deploy/provisionar-admin-ficticio-hml.sh`
+- Runner e credencial do proprietario ficticio: `backend/src/main/java/br/com/topsdojob/v3/application/operacional/fixture/FixtureProvisioningRunner.java`, `backend/src/main/java/br/com/topsdojob/v3/application/operacional/fixture/StoriesFixtureService.java`, `scripts/deploy/provisionar-admin-ficticio.sh`
 - Testes de propriedade, atualizacao e contrato frontend: `backend/src/test/java/br/com/topsdojob/v3/application/publico/anunciante/MeusAnunciosConsultaServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/anunciante/MeuAnuncioAtualizacaoServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/web/publico/anunciante/MeusAnunciosFrontendContractTest.java`
 - Selecao administrativa singleton de Stories: `backend/src/main/resources/db/migration/V019__selecao_administrativa_stories.sql`, `backend/src/main/java/br/com/topsdojob/v3/persistence/entity/midia/StorySelecaoAdministrativaEntity.java`
 - Operacao administrativa de Stories: `backend/src/main/java/br/com/topsdojob/v3/application/admin/stories/AdminStorySelecaoService.java`, `backend/src/main/java/br/com/topsdojob/v3/web/admin/stories/AdminStorySelecaoController.java`
@@ -436,9 +436,9 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Contrato e compatibilidade BCrypt: `backend/src/test/java/br/com/topsdojob/v3/importacao/CredenciaisUsuariosDryRunImportadorTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/publico/auth/CredencialLegadaCompatibilidadeTest.java`
 - Manifesto sanitizado das credenciais: `docs/v3/evidencias/importacao/manifesto-snapshot-credenciais-20260716T011029Z.json`
 - Gate Maven do deploy HML: `.github/workflows/deploy-hml.yml`
-- Fixture Auth sintetica HML: `backend/src/main/java/br/com/topsdojob/v3/application/operacional/hml/HmlAuthSmokeFixtureService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/operacional/hml/HmlAdminProvisioningRunner.java`
-- Smoke Auth publico HML: `scripts/deploy/validar-auth-publico-hml.sh`
-- Testes da fixture Auth HML: `backend/src/test/java/br/com/topsdojob/v3/application/operacional/hml/HmlAuthSmokeFixtureServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/operacional/hml/HmlAdminProvisioningRunnerTest.java`
+- Fixture Auth sintetica: `backend/src/main/java/br/com/topsdojob/v3/application/operacional/fixture/AuthSmokeFixtureService.java`, `backend/src/main/java/br/com/topsdojob/v3/application/operacional/fixture/FixtureProvisioningRunner.java`
+- Smoke Auth publico da fixture: `scripts/deploy/validar-auth-publico-fixture.sh`
+- Testes da fixture Auth: `backend/src/test/java/br/com/topsdojob/v3/application/operacional/fixture/AuthSmokeFixtureServiceTest.java`, `backend/src/test/java/br/com/topsdojob/v3/application/operacional/fixture/FixtureProvisioningRunnerTest.java`
 
 - Toolchain: `scripts/local/diagnosticar-toolchain-local.ps1`
 - Build: `scripts/local/validar-build-local.ps1`

@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.fixture;
 
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Profile("homologacao")
-public class HmlAuthSmokeFixtureService {
+public class AuthSmokeFixtureService {
 
     static final String ACTIVE_EMAIL = "auth-smoke-active@hml.example.invalid";
     static final String PENDING_EMAIL = "auth-smoke-pending@hml.example.invalid";
@@ -57,7 +57,7 @@ public class HmlAuthSmokeFixtureService {
     private final PapelUsuarioRepository papelRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public HmlAuthSmokeFixtureService(
+    public AuthSmokeFixtureService(
             @Value("${APP_ENV:}") String appEnv,
             UsuarioRepository usuarioRepository,
             CredencialUsuarioRepository credencialRepository,
@@ -77,7 +77,7 @@ public class HmlAuthSmokeFixtureService {
         }
         if (segredoRuntime == null || segredoRuntime.length() < 16) {
             throw new IllegalArgumentException(
-                    "HML_AUTH_SMOKE_RUNTIME_VALUE obrigatoria e com minimo de 16 caracteres");
+                    "FIXTURE_AUTH_SMOKE_RUNTIME_VALUE obrigatoria e com minimo de 16 caracteres");
         }
 
         int criadas = 0;

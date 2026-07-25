@@ -689,7 +689,7 @@ Antes de admin em ambiente nao local:
 - Pendente operacional, sem bloqueio estrutural: recriar manualmente no painel V3 as categorias editoriais desejadas e manter configurada a base publica do bucket R2 para novas imagens. Nenhum importador historico sera criado.
 - Fechado localmente: idade calculada no backend e visivel por padrao; `OCULTAR_IDADE` pago e vigente e a unica regra de ocultacao.
 - Pendente de dados autorizados: usuarios historicos sem data de nascimento confiavel permanecem com `idade=null`; o importador aprovado deve mapear somente valores reais/sanitizados autorizados, sem inventar datas.
-- Operacao HML autorizada desta fase: apos o workflow verde, executar o runner unico com `app.hml-fixture.enabled=true`, sem habilitar `app.hml-admin-provision.enabled` e sem fornecer credencial. Repetir a execucao deve retornar todos os contadores em zero e preservar ADMIN, usuario ficticio, anuncios, midias, Story, locais, servicos e beneficios.
+- Operacao de fixture autorizada desta fase: apos o workflow verde, executar o runner unico com `app.fixture.stories.enabled=true`, sem habilitar `app.fixture.admin-provision.enabled` e sem fornecer credencial. Repetir a execucao deve retornar todos os contadores em zero e preservar ADMIN, usuario ficticio, anuncios, midias, Story, locais, servicos e beneficios.
 
 ## Storage R2 HML
 

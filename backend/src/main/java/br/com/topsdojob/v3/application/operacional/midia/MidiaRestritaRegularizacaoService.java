@@ -1,4 +1,4 @@
-package br.com.topsdojob.v3.application.operacional.hml;
+package br.com.topsdojob.v3.application.operacional.midia;
 
 import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService;
 import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService.ResultadoGeracao;
