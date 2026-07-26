@@ -48,6 +48,7 @@ let cacheExpiraEm = 0
 let requisicaoPendente: Promise<StatusVisitante> | null = null
 
 const TTL_CACHE_MS = 30_000
+export const AGE_VERIFICATION_CHANGED_EVENT = "topsv3:age-verification-changed"
 const VERIFIED_18_UNTIL_STORAGE_NAME = ["verified", "18", "until"].join("_")
 const EXPLICIT_VERIFIED_UNTIL_STORAGE_KEY = "explicit_verified_until"
 const MAX_CLIENT_MIRROR_MS = 7 * 24 * 60 * 60 * 1000
@@ -183,6 +184,8 @@ export function setVerified(expiresAt?: string | null, explicitExpiresAt?: strin
   } else {
     clearExplicitVerified()
   }
+
+  window.dispatchEvent(new CustomEvent(AGE_VERIFICATION_CHANGED_EVENT))
 }
 
 export function clearVerified() {
@@ -273,17 +276,10 @@ export async function obterStatusVisitante(force = false): Promise<StatusVisitan
     return refreshStatusFromApi()
   }
 
-  const mirrored = readMirroredVisitorStatus()
-  if (mirrored) {
-    cacheStatus = mirrored
-    cacheExpiraEm = Date.now() + TTL_CACHE_MS
-    if (!requisicaoPendente) {
-      void refreshStatusFromApi().catch(() => {
-        // Mantém o espelho local durante falhas transitórias do bootstrap.
-      })
-    }
-    return mirrored
-  }
-
+  // O espelho local serve apenas para renderizacao; nunca autoriza sem validar o cookie HttpOnly.
   return refreshStatusFromApi()
+
+  /*
+        // Mantém o espelho local durante falhas transitórias do bootstrap.
+  */
 }

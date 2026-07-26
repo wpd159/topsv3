@@ -8,7 +8,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { publicApiUrl } from "@/lib/api-contract"
-import type { StatusVisitante } from "@/lib/compliance/visitor-access"
+import {
+  limparCacheStatusVisitante,
+  setVerified,
+  type StatusVisitante,
+} from "@/lib/compliance/visitor-access"
 
 type VisitorVerificationModalProps = {
   open: boolean
@@ -86,6 +90,8 @@ export function VisitorVerificationModal({ open, onOpenChange, onVerified }: Vis
       const payload = (await response.json().catch(() => null)) as StatusIdade | null
       if (!response.ok || !payload?.confirmada) throw new Error(mensagemErro(payload))
 
+      limparCacheStatusVisitante()
+      setVerified(payload.expiraEm, payload.expiraEm)
       toast.success("Idade confirmada. A mídia protegida pode ser solicitada ao servidor.")
       onOpenChange(false)
       onVerified?.({

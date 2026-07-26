@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
+import { VisitorAgeLogs } from './visitor-age-logs'
 
 const SECTIONS = [
   { id: 'admin-logs', label: 'Auditoria administrativa' },
@@ -82,10 +83,7 @@ export default function AdminCompliancePage() {
       </div>
 
       <div id="visitor-logs" hidden={section !== 'visitor-logs'} className="space-y-4">
-        <Card><CardHeader><CardTitle>Logs de visitantes</CardTitle></CardHeader><CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-4"><Input placeholder="Evento" /><Input placeholder="Rota" /><Input placeholder="Sessão" /><Button type="button" onClick={() => runPendingAction('Filtrar logs visitantes')}>Aplicar filtros</Button></div>
-          <PendingTable columns={['Evento', 'Rota', 'Status', 'Resultado', 'IP', 'Data']} error={error} actions={<Button type="button" variant="outline" onClick={() => runPendingAction('Consultar sessão visitante')}>Consultar sessão</Button>} />
-        </CardContent></Card>
+        <VisitorAgeLogs />
       </div>
 
       <div id="visitor-document-fallback" hidden={section !== 'visitor-document-fallback'} className="space-y-4">

@@ -2,6 +2,10 @@ package br.com.topsdojob.v3.application.publico.service;
 
 import br.com.topsdojob.v3.application.publico.dto.ConfirmarIdadePublicaRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.StatusIdadePublicaDto;
+import br.com.topsdojob.v3.domain.metrica.MetricaTipos.ResultadoVerificacaoEtaria;
+import br.com.topsdojob.v3.persistence.entity.metrica.EventoVerificacaoEtariaEntity;
+import br.com.topsdojob.v3.persistence.repository.EventoVerificacaoEtariaRepository;
+import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.LocalDate;
@@ -22,14 +26,30 @@ public class IdadePublicaService {
     private static final String MOTIVO_NAO_CONFIRMADA = "IDADE_NAO_CONFIRMADA";
 
     private final IdadePublicaTokenService tokenService;
+    private final MetricaPublicaHashService hashService;
+    private final EventoVerificacaoEtariaRepository eventoRepository;
 
-    public IdadePublicaService(IdadePublicaTokenService tokenService) {
+    public IdadePublicaService(
+            IdadePublicaTokenService tokenService,
+            MetricaPublicaHashService hashService,
+            EventoVerificacaoEtariaRepository eventoRepository) {
         this.tokenService = tokenService;
+        this.hashService = hashService;
+        this.eventoRepository = eventoRepository;
     }
 
-    public ConfirmacaoIdadeResult confirmar(ConfirmarIdadePublicaRequestDto request) {
-        validarRequest(request);
+    public ConfirmacaoIdadeResult confirmar(
+            ConfirmarIdadePublicaRequestDto request,
+            HttpServletRequest httpRequest) {
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        ResultadoVerificacaoEtaria resultado = validarRequest(request);
+        registrar(resultado, httpRequest, now);
+        if (resultado != ResultadoVerificacaoEtaria.PERMITIDO) {
+            String motivo = resultado == ResultadoVerificacaoEtaria.NEGADO
+                    ? "idade minima nao confirmada"
+                    : "confirmacao de idade invalida";
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, motivo);
+        }
         String idadeCookieValor = tokenService.emitir(now);
         Optional<OffsetDateTime> expiresAt = tokenService.validar(idadeCookieValor, now);
         ResponseCookie cookie = ResponseCookie.from(IdadePublicaTokenService.COOKIE_NAME, idadeCookieValor)
@@ -56,16 +76,29 @@ public class IdadePublicaService {
         return status(request).confirmada();
     }
 
-    private void validarRequest(ConfirmarIdadePublicaRequestDto request) {
+    private ResultadoVerificacaoEtaria validarRequest(ConfirmarIdadePublicaRequestDto request) {
         if (request == null
                 || request.dataNascimento() == null
                 || !Boolean.TRUE.equals(request.declaracaoMaioridade())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "confirmacao de idade invalida");
+            return ResultadoVerificacaoEtaria.INDETERMINADO;
         }
         LocalDate limite = LocalDate.now(ZoneOffset.UTC).minusYears(IDADE_MINIMA);
         if (request.dataNascimento().isAfter(limite)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "idade minima nao confirmada");
+            return ResultadoVerificacaoEtaria.NEGADO;
         }
+        return ResultadoVerificacaoEtaria.PERMITIDO;
+    }
+
+    private void registrar(
+            ResultadoVerificacaoEtaria resultado,
+            HttpServletRequest request,
+            OffsetDateTime now) {
+        eventoRepository.save(EventoVerificacaoEtariaEntity.registrar(
+                resultado,
+                hashService.hash("ip", request == null ? null : request.getRemoteAddr()),
+                hashService.hash("user-agent", request == null ? null : request.getHeader("User-Agent")),
+                request == null ? "" : RequestIdContext.current(request),
+                now));
     }
 
     private String cookieValue(HttpServletRequest request) {

@@ -972,6 +972,36 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/compliance/verificacoes-etarias:
+    get:
+      summary: Lista verificacoes etarias minimizadas para auditoria
+      operationId: getAdminComplianceVerificacoesEtarias
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: limite
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: eventos mais recentes sem IP ou user-agent brutos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminVerificacaoEtaria"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/acompanhantes/{uf}:
     get:
       summary: Listagem publica por estado
@@ -7761,6 +7791,25 @@ components:
           enum:
             - IDADE_CONFIRMADA
             - IDADE_NAO_CONFIRMADA
+    AdminVerificacaoEtaria:
+      type: object
+      additionalProperties: false
+      required: [id, resultado, metodo, requestId, criadoEm]
+      properties:
+        id:
+          type: string
+          format: uuid
+        resultado:
+          type: string
+          enum: [PERMITIDO, NEGADO, INDETERMINADO]
+        metodo:
+          type: string
+          enum: [DECLARACAO, DOCUMENTO, STAFF, IMPORTACAO]
+        requestId:
+          type: string
+        criadoEm:
+          type: string
+          format: date-time
     StoryFeedItem:
       type: object
       additionalProperties: false

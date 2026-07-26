@@ -24,8 +24,9 @@ public class IdadePublicaController {
 
     @PostMapping("/confirmar")
     public ResponseEntity<StatusIdadePublicaDto> confirmar(
-            @RequestBody(required = false) ConfirmarIdadePublicaRequestDto request) {
-        IdadePublicaService.ConfirmacaoIdadeResult result = idadeService.confirmar(request);
+            @RequestBody(required = false) ConfirmarIdadePublicaRequestDto request,
+            HttpServletRequest httpRequest) {
+        IdadePublicaService.ConfirmacaoIdadeResult result = idadeService.confirmar(request, httpRequest);
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, result.cookie().toString())
                 .body(result.status());
