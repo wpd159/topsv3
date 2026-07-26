@@ -155,7 +155,6 @@ public class AdminModeracaoFotosLotePrevalidacaoService {
                         null,
                         true);
             }
-            exigirPendente(midia);
             return new ItemValidado(midia.getId(), item.decisao(), null, null, false);
         }
 

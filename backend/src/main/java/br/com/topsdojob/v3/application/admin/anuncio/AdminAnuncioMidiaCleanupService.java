@@ -72,11 +72,6 @@ public class AdminAnuncioMidiaCleanupService {
     if (alvo.getTipo() != TipoAnuncioMidia.FOTO) {
       throw conflito("SOMENTE_FOTO_PODE_SER_EXCLUIDA_PELO_LOTE");
     }
-    if (alvo.getStatus() != StatusAnuncioMidia.PENDENTE
-        && alvo.getStatus() != StatusAnuncioMidia.AJUSTE_SOLICITADO
-        && alvo.getStatus() != StatusAnuncioMidia.REMOVIDA) {
-      throw conflito("TRANSICAO_DE_EXCLUSAO_INCOMPATIVEL");
-    }
     if (alvo.getArquivoMidiaId() == null) {
       throw conflito("ARQUIVO_DE_MIDIA_AUSENTE");
     }

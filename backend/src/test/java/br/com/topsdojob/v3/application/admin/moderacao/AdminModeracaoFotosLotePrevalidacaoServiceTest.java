@@ -125,6 +125,40 @@ class AdminModeracaoFotosLotePrevalidacaoServiceTest {
     }
 
     @Test
+    void permiteExcluirFotoPublicavelEValidada() {
+        Fixture foto = fixture(StatusAnuncioMidia.PUBLICAVEL, StatusArquivoMidia.VALIDADO);
+        when(foto.midia().getVisibilidadeMidia()).thenReturn(VisibilidadeMidia.RESTRITA_18);
+        preparar(foto);
+
+        var resultado = service.validar(
+                anuncioId,
+                new AdminDecidirFotosLoteRequestDto(List.of(
+                        item(foto.midiaId(), AdminDecisaoFotoLoteAcao.EXCLUIR, null, null))),
+                ator);
+
+        assertThat(resultado.itens()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.decisao()).isEqualTo(AdminDecisaoFotoLoteAcao.EXCLUIR);
+                    assertThat(item.jaProcessada()).isFalse();
+                });
+    }
+
+    @Test
+    void retryDeExclusaoReconheceFotoJaRemovida() {
+        Fixture foto = fixture(StatusAnuncioMidia.REMOVIDA, StatusArquivoMidia.REMOVIDO);
+        preparar(foto);
+
+        var resultado = service.validar(
+                anuncioId,
+                new AdminDecidirFotosLoteRequestDto(List.of(
+                        item(foto.midiaId(), AdminDecisaoFotoLoteAcao.EXCLUIR, null, null))),
+                ator);
+
+        assertThat(resultado.itens()).singleElement()
+                .satisfies(item -> assertThat(item.jaProcessada()).isTrue());
+    }
+
+    @Test
     void anuncioBloqueadoImpedeOLoteAntesDeCarregarMidias() {
         AnuncioEntity anuncio = mock(AnuncioEntity.class);
         when(anuncio.getStatus()).thenReturn(StatusAnuncio.BLOQUEADO);

@@ -81,8 +81,8 @@ type LegalIntent =
   | { kind: 'UNBLOCK_USER'; title: string }
 
 type PhotoDecision = {
-  decisao: 'APROVAR' | 'EXCLUIR'
-  classificacao?: 'LIVRE' | 'RESTRITA_18'
+  decisao: 'APROVAR'
+  classificacao: 'LIVRE' | 'RESTRITA_18'
   observacao: string
 }
 
@@ -137,12 +137,12 @@ function MediaPreview({ media }: { media: AdminMediaItem }) {
     return () => { active = false }
   }, [media.id, reload])
 
-  if (error) return <div className="flex aspect-video items-center justify-center bg-zinc-100 p-4 text-center"><div><FileWarning className="mx-auto h-6 w-6 text-zinc-500" /><p className="mt-2 text-xs text-zinc-600">Prévia indisponível.</p><Button type="button" size="sm" variant="ghost" onClick={() => setReload((value) => value + 1)}>Tentar novamente</Button></div></div>
-  if (!preview) return <div className="flex aspect-video items-center justify-center bg-zinc-100"><Loader2 className="h-5 w-5 animate-spin text-zinc-500" aria-label="Carregando prévia" /></div>
-  if (media.tipo === 'VIDEO') return <video src={preview.url} controls preload="metadata" className="aspect-video w-full bg-black object-contain" />
+  if (error) return <div className="flex aspect-[16/7] items-center justify-center bg-zinc-100 p-3 text-center"><div><FileWarning className="mx-auto h-6 w-6 text-zinc-500" /><p className="mt-2 text-xs text-zinc-600">Prévia indisponível.</p><Button type="button" size="sm" variant="ghost" onClick={() => setReload((value) => value + 1)}>Tentar novamente</Button></div></div>
+  if (!preview) return <div className="flex aspect-[16/7] items-center justify-center bg-zinc-100"><Loader2 className="h-5 w-5 animate-spin text-zinc-500" aria-label="Carregando prévia" /></div>
+  if (media.tipo === 'VIDEO') return <video src={preview.url} controls preload="metadata" className="aspect-[16/7] w-full bg-black object-contain" />
   // A URL temporaria protegida nao deve passar pelo cache compartilhado do Next Image.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={preview.url} alt="Mídia em análise" className="aspect-video w-full bg-zinc-100 object-contain" loading="lazy" />
+  return <img src={preview.url} alt="Mídia em análise" className="aspect-[16/7] w-full bg-zinc-100 object-contain" loading="lazy" />
 }
 
 function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
@@ -381,14 +381,13 @@ function PendingPhotoDecisionSelector({
   mediaId: string
   value?: PhotoDecision
   disabled: boolean
-  onChange: (value: 'LIVRE' | 'RESTRITA_18' | 'EXCLUIR') => void
+  onChange: (value: 'LIVRE' | 'RESTRITA_18') => void
   onObservationChange: (value: string) => void
 }) {
-  const selected = value?.decisao === 'EXCLUIR' ? 'EXCLUIR' : value?.classificacao
+  const selected = value?.classificacao
   const options = [
     { value: 'LIVRE', label: 'LIVRE', destructive: false },
     { value: 'RESTRITA_18', label: 'RESTRITA_18', destructive: false },
-    { value: 'EXCLUIR', label: 'EXCLUIR FOTO', destructive: true },
   ] as const
 
   return (
@@ -415,7 +414,6 @@ function PendingPhotoDecisionSelector({
                 onChange={() => onChange(option.value)}
                 className={`h-4 w-4 ${option.destructive ? 'accent-red-700' : 'accent-pink-600'}`}
               />
-              {option.destructive ? <Trash2 className="h-4 w-4" /> : null}
               {option.label}
             </label>
           )
@@ -434,11 +432,6 @@ function PendingPhotoDecisionSelector({
           />
         </label>
       ) : null}
-      {selected === 'EXCLUIR' ? (
-        <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-900">
-          A foto e seus objetos exclusivos serão excluídos somente após a confirmação do lote.
-        </p>
-      ) : null}
     </fieldset>
   )
 }
@@ -449,7 +442,6 @@ function PhotoBatchDialog({
   error,
   livre,
   restrita,
-  excluir,
   onClose,
   onConfirm,
 }: {
@@ -458,7 +450,6 @@ function PhotoBatchDialog({
   error: unknown
   livre: number
   restrita: number
-  excluir: number
   onClose: () => void
   onConfirm: () => void
 }) {
@@ -475,9 +466,6 @@ function PhotoBatchDialog({
         <ul className="space-y-2 border-y border-zinc-200 py-4 text-sm text-zinc-800">
           <li><strong>{livre}</strong> {livre === 1 ? 'foto LIVRE' : 'fotos LIVRE'}</li>
           <li><strong>{restrita}</strong> {restrita === 1 ? 'foto RESTRITA_18' : 'fotos RESTRITA_18'}</li>
-          <li className={excluir > 0 ? 'font-semibold text-red-800' : ''}>
-            <strong>{excluir}</strong> {excluir === 1 ? 'foto será excluída definitivamente' : 'fotos serão excluídas definitivamente'}
-          </li>
         </ul>
         {normalizedError ? (
           <div role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-900">
@@ -489,6 +477,44 @@ function PhotoBatchDialog({
           <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancelar</Button>
           <Button type="button" disabled={busy} onClick={onConfirm}>
             {busy ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Processando...</> : 'Confirmar decisões'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PhotoDeleteDialog({
+  media,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  media: AdminMediaItem | null
+  busy: boolean
+  error: unknown
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Dialog open={Boolean(media)} onOpenChange={(open) => { if (!open && !busy) onClose() }}>
+      <DialogContent className="rounded-md">
+        <DialogHeader>
+          <DialogTitle>Excluir foto</DialogTitle>
+          <DialogDescription>
+            Esta exclusão é definitiva. A foto, suas prévias, miniaturas e derivados exclusivos serão removidos do armazenamento.
+          </DialogDescription>
+        </DialogHeader>
+        <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          As demais mídias, documentos KYC e o histórico administrativo permanecerão preservados.
+        </p>
+        {error ? <ContractState error={error} compact /> : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
+          <Button type="button" variant="destructive" onClick={onConfirm} disabled={busy}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            {busy ? 'Excluindo...' : 'Excluir foto'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -525,6 +551,10 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const [photoBatchError, setPhotoBatchError] = useState<unknown>(null)
   const [photoBatchResult, setPhotoBatchResult] = useState<AdminPhotoBatchResponse | null>(null)
   const photoBatchLock = useRef(false)
+  const [photoDeleteTarget, setPhotoDeleteTarget] = useState<AdminMediaItem | null>(null)
+  const [photoDeleteBusy, setPhotoDeleteBusy] = useState(false)
+  const [photoDeleteError, setPhotoDeleteError] = useState<unknown>(null)
+  const photoDeleteLock = useRef(false)
   const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
   const [navigationError, setNavigationError] = useState<unknown>(null)
   const [decisionOutcome, setDecisionOutcome] = useState<'APPROVED' | 'REPROVED' | 'OTHER' | null>(null)
@@ -620,27 +650,24 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     && selectedPhotoCount === pendingPhotos.length
   const photoBatchSummary = pendingPhotos.reduce((summary, item) => {
     const decision = photoDecisions[item.id]
-    if (decision?.decisao === 'EXCLUIR') summary.excluir += 1
-    else if (decision?.classificacao === 'LIVRE') summary.livre += 1
+    if (decision?.classificacao === 'LIVRE') summary.livre += 1
     else if (decision?.classificacao === 'RESTRITA_18') summary.restrita += 1
     return summary
-  }, { livre: 0, restrita: 0, excluir: 0 })
+  }, { livre: 0, restrita: 0 })
 
   function selectPhotoDecision(
     mediaId: string,
-    choice: 'LIVRE' | 'RESTRITA_18' | 'EXCLUIR',
+    choice: 'LIVRE' | 'RESTRITA_18',
   ) {
     setPhotoDecisions((current) => {
       const previous = current[mediaId]
       return {
         ...current,
-        [mediaId]: choice === 'EXCLUIR'
-          ? { decisao: 'EXCLUIR', observacao: '' }
-          : {
-            decisao: 'APROVAR',
-            classificacao: choice,
-            observacao: choice === 'RESTRITA_18' ? previous?.observacao ?? '' : '',
-          },
+        [mediaId]: {
+          decisao: 'APROVAR',
+          classificacao: choice,
+          observacao: choice === 'RESTRITA_18' ? previous?.observacao ?? '' : '',
+        },
       }
     })
     setPhotoBatchResult(null)
@@ -694,6 +721,31 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     } finally {
       photoBatchLock.current = false
       setPhotoBatchBusy(false)
+    }
+  }
+
+  async function confirmPhotoDelete() {
+    if (photoDeleteLock.current || !photoDeleteTarget || !ad) return
+    photoDeleteLock.current = true
+    setPhotoDeleteBusy(true)
+    setPhotoDeleteError(null)
+    try {
+      const response = await decideAdminPhotosBatch(ad.id, [{
+        mediaId: photoDeleteTarget.id,
+        decisao: 'EXCLUIR',
+      }])
+      const result = response.resultados.find((item) => item.mediaId === photoDeleteTarget.id)
+      if (!result || result.resultado === 'FALHA') {
+        throw new Error(result?.motivo || 'A limpeza da foto não foi concluída.')
+      }
+      await revalidarCacheCatalogoPublico()
+      await load()
+      setPhotoDeleteTarget(null)
+    } catch (reason) {
+      setPhotoDeleteError(reason)
+    } finally {
+      photoDeleteLock.current = false
+      setPhotoDeleteBusy(false)
     }
   }
 
@@ -1090,16 +1142,17 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                   const pendingPhoto = item.tipo === 'FOTO' && actionable
                   const actionableVideo = item.tipo === 'VIDEO' && actionable
                   const reclassifiable = item.tipo === 'FOTO' && item.status === 'PUBLICAVEL'
+                  const deletablePhoto = item.tipo === 'FOTO' && item.status !== 'REMOVIDA'
                   const selectedVisibility = item.tipo === 'VIDEO' ? 'RESTRITA_18' : visibility[item.id]
                   return (
                     <article key={item.id} className="overflow-hidden rounded-md border border-zinc-200 bg-white">
                       <MediaPreview media={item} />
-                      <div className="p-4">
+                      <div className="p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} #{mediaOrdinal[item.id]}</div>
                           <Badge variant="outline" className={moderationTone(item.status)}>{item.status}</Badge>
                         </div>
-                        <dl className="mt-3 grid grid-cols-2 gap-2 text-xs text-zinc-600">
+                        <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs text-zinc-600">
                           <div><dt>Dimensões</dt><dd className="font-medium text-zinc-900">{item.largura && item.altura ? `${item.largura} × ${item.altura}` : '—'}</dd></div>
                           <div><dt>MIME</dt><dd className="break-all font-medium text-zinc-900">{item.mimeType || '—'}</dd></div>
                           <div><dt>Arquivo</dt><dd className="font-medium text-zinc-900">{item.statusArquivo || '—'}</dd></div>
@@ -1143,6 +1196,22 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                             })}
                           >
                             Aplicar classificação
+                          </Button>
+                        ) : null}
+                        {deletablePhoto ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            className="mt-2 w-full"
+                            disabled={photoDeleteBusy || photoBatchBusy || busy}
+                            onClick={() => {
+                              setPhotoDeleteError(null)
+                              setPhotoDeleteTarget(item)
+                            }}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Excluir foto
                           </Button>
                         ) : null}
                       </div>
@@ -1202,12 +1271,21 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         error={photoBatchError}
         livre={photoBatchSummary.livre}
         restrita={photoBatchSummary.restrita}
-        excluir={photoBatchSummary.excluir}
         onClose={() => {
           setPhotoBatchOpen(false)
           setPhotoBatchError(null)
         }}
         onConfirm={() => void confirmPhotoBatch()}
+      />
+      <PhotoDeleteDialog
+        media={photoDeleteTarget}
+        busy={photoDeleteBusy}
+        error={photoDeleteError}
+        onClose={() => {
+          setPhotoDeleteTarget(null)
+          setPhotoDeleteError(null)
+        }}
+        onConfirm={() => void confirmPhotoDelete()}
       />
       <LegalActionDialog intent={legalIntent} busy={legalBusy} error={legalActionError} onClose={() => { setLegalIntent(null); setLegalActionError(null) }} onConfirm={(category, reason, internalNote) => void confirmLegalAction(category, reason, internalNote)} />
       <RemovalDialog open={removalOpen} busy={removalBusy} error={removalActionError} onClose={() => { setRemovalOpen(false); setRemovalActionError(null) }} onConfirm={(reason) => void confirmRemoval(reason)} />

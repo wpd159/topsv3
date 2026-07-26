@@ -165,7 +165,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
   }
 
   @Test
-  void excluiSomenteFotoSelecionadaEPreservaOutraMidiaKycEStoryAdministrativo() {
+  void excluiFotoAprovadaSelecionadaEPreservaOutraMidiaKycEStoryAdministrativo() {
     UUID anuncioId = uuid(30);
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     ArquivoMidiaEntity alvoArquivo = arquivo(
@@ -185,8 +185,8 @@ class AdminAnuncioMidiaCleanupServiceTest {
         TipoAnuncioMidia.FOTO,
         FinalidadeAnuncioMidia.GALERIA,
         0,
-        StatusAnuncioMidia.PENDENTE,
-        null,
+        StatusAnuncioMidia.PUBLICAVEL,
+        VisibilidadeMidia.LIVRE,
         agora.minusHours(1));
     AnuncioMidiaEntity outra = vinculo(
         uuid(231),
