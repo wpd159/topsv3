@@ -43,7 +43,7 @@ export default function HeaderLogado() {
 
   const dropdownRef = useRef<HTMLDivElement>(null)
   const hoverTimeout = useRef<NodeJS.Timeout | null>(null)
-  const { usuario, logout, novasMensagens, zerarNovasMensagens } = useAuth()
+  const { usuario, logout, novasMensagens } = useAuth()
 
   const nome = usuario?.username || "Usuário"
   const cargo = usuario?.cargo || "Usuário"
@@ -54,10 +54,6 @@ export default function HeaderLogado() {
     router.push(to)
     setOpen(false)
   }
-
-  useEffect(() => {
-    if (pathname === "/chat") zerarNovasMensagens()
-  }, [pathname, zerarNovasMensagens])
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -175,7 +171,6 @@ export default function HeaderLogado() {
                 <li
                   onClick={() => {
                     router.push("/chat")
-                    zerarNovasMensagens()
                   }}
                   className="relative flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer"
                 >
@@ -321,7 +316,6 @@ export default function HeaderLogado() {
                   className="justify-start text-gray-700 relative"
                   onClick={() => {
                     go("/chat")
-                    zerarNovasMensagens()
                   }}
                 >
                   <ChatBubbleLeftRightIcon className="w-5 h-5 mr-2" /> Chat

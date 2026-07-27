@@ -12,6 +12,7 @@ import { corrigirEstruturaTexto } from '@/lib/text/encoding'
 import { getPublicSession, logoutPublic, type PublicAuthUser } from '@/lib/public-auth-api'
 import { logoutAdmin } from '@/lib/admin-auth-api'
 import { adminApiUrl } from '@/lib/api-contract'
+import { fetchChatNaoLidas } from '@/lib/chat-api'
 
 type Usuario = {
   id: string | number
@@ -85,7 +86,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 🔔 badge de mensagens
   const [novasMensagens, setNovasMensagens] = useState<number | null>(null)
-  const zerarNovasMensagens = useCallback(() => setNovasMensagens(null), [])
+  const atualizarNovasMensagens = useCallback(async () => {
+    try {
+      const result = await fetchChatNaoLidas()
+      setNovasMensagens(result.total)
+    } catch {
+      setNovasMensagens(null)
+    }
+  }, [])
+  const zerarNovasMensagens = useCallback(() => {
+    void atualizarNovasMensagens()
+  }, [atualizarNovasMensagens])
 
   // ========== GET /auth/me ==========
   const fetchUsuario = async (): Promise<Usuario | null> => {
@@ -191,6 +202,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     fetchUsuario()
   }, [])
+
+  useEffect(() => {
+    const adminRoute =
+      typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
+    if (!usuario || adminRoute) {
+      setNovasMensagens(null)
+      return
+    }
+
+    void atualizarNovasMensagens()
+    const timer = window.setInterval(() => void atualizarNovasMensagens(), 10_000)
+    const refresh = () => void atualizarNovasMensagens()
+    window.addEventListener('topsv3:chat-nao-lidas', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('topsv3:chat-nao-lidas', refresh)
+    }
+  }, [atualizarNovasMensagens, usuario])
 
   return (
     <AuthContext.Provider

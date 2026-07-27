@@ -59,7 +59,9 @@ export default function AnunciosUsuarioClient({ username }: { username: string }
             </div>
             <div className="grid grid-cols-2 gap-2">
               <Button type="button" onClick={() => runPendingAction('Abrir página do anúncio')}>Ver anúncio</Button>
-              <Button type="button" variant="outline" onClick={() => runPendingAction('Abrir chat')}>Chat</Button>
+              <Button asChild variant="outline">
+                <Link href={`/chat?usuario=${encodeURIComponent(login)}`}>Chat</Link>
+              </Button>
               <Button type="button" variant="outline" onClick={() => setSafetyOpen(true)}>WhatsApp</Button>
               <Button type="button" variant="outline" onClick={() => runPendingAction('Adicionar aos favoritos')}>Adicionar aos favoritos</Button>
             </div>

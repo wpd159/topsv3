@@ -1,18 +1,181 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 
 import ChatWindow from '@/components/chat/chat'
 import ChatSidebar from '@/components/chat/sidebar-chat'
-import { ContractState, pendingContractError } from '@/components/feedback/contract-state'
-import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
+import type { ApiContractError } from '@/lib/api-contract'
+import {
+  chatError,
+  enviarChatMensagem,
+  fetchChatConversa,
+  fetchChatConversas,
+  iniciarChatConversa,
+  marcarChatConversaComoLida,
+  type ChatConversa,
+  type ChatConversaDetalhe,
+} from '@/lib/chat-api'
+
+const CONVERSATION_POLL_MS = 10_000
+const MESSAGE_POLL_MS = 4_000
 
 export default function ChatClient() {
-  const [conversation, setConversation] = useState<unknown>(null)
+  const [conversations, setConversations] = useState<ChatConversa[]>([])
+  const [conversation, setConversation] = useState<ChatConversa | null>(null)
+  const [detail, setDetail] = useState<ChatConversaDetalhe | null>(null)
+  const [error, setError] = useState<ApiContractError | null>(null)
+  const [loadingConversations, setLoadingConversations] = useState(true)
+  const [loadingDetail, setLoadingDetail] = useState(false)
+  const [starting, setStarting] = useState(false)
+  const [sending, setSending] = useState(false)
   const [mobile, setMobile] = useState(false)
   const searchParams = useSearchParams()
-  useEffect(() => { const resize = () => setMobile(window.innerWidth < 768); resize(); window.addEventListener('resize', resize); return () => window.removeEventListener('resize', resize) }, [])
   const requestedUser = searchParams.get('usuario')
-  return <section className="mt-5 space-y-3"><ContractState error={pendingContractError(PENDING_BACKEND_CONTRACTS.support)} compact />{requestedUser ? <p className="text-sm text-gray-600">Conversa solicitada com @{requestedUser}; identificação depende do contrato V3.</p> : null}<div className="flex h-[calc(100vh-180px)] overflow-hidden rounded-xl border border-gray-200 bg-white">{!mobile || !conversation ? <ChatSidebar conversaSelecionada={conversation} onSelectConversa={setConversation} /> : null}{!mobile || conversation ? <div className="flex flex-1 flex-col"><ChatWindow conversa={conversation as { id?: string | number; nome?: string } | null} onVoltar={() => setConversation(null)} isMobile={mobile} /></div> : null}</div></section>
+  const requestedUserHandled = useRef<string | null>(null)
+  const pendingMessage = useRef<{ key: string; body: string } | null>(null)
+
+  const loadConversations = useCallback(async (silent = false) => {
+    if (!silent) setLoadingConversations(true)
+    try {
+      const data = await fetchChatConversas()
+      setConversations(data)
+      setConversation((current) => {
+        if (!current) return current
+        return data.find((item) => item.id === current.id) ?? current
+      })
+      if (!silent) setError(null)
+    } catch (cause) {
+      if (!silent) setError(chatError(cause))
+    } finally {
+      if (!silent) setLoadingConversations(false)
+    }
+  }, [])
+
+  const loadDetail = useCallback(async (selected: ChatConversa, silent = false) => {
+    if (!silent) setLoadingDetail(true)
+    try {
+      const data = await fetchChatConversa(selected.id)
+      setDetail(data)
+      setConversation(data.conversa)
+      if (data.conversa.naoLidas > 0) {
+        await marcarChatConversaComoLida(selected.id)
+        window.dispatchEvent(new Event('topsv3:chat-nao-lidas'))
+        void loadConversations(true)
+      }
+      if (!silent) setError(null)
+    } catch (cause) {
+      if (!silent) setError(chatError(cause))
+    } finally {
+      if (!silent) setLoadingDetail(false)
+    }
+  }, [loadConversations])
+
+  const selectConversation = useCallback((selected: ChatConversa) => {
+    setConversation(selected)
+    setDetail(null)
+    setError(null)
+    void loadDetail(selected)
+  }, [loadDetail])
+
+  const startConversation = useCallback(async (username: string) => {
+    if (starting) return
+    setStarting(true)
+    setError(null)
+    try {
+      const started = await iniciarChatConversa(username.trim())
+      await loadConversations(true)
+      selectConversation(started)
+    } catch (cause) {
+      setError(chatError(cause))
+    } finally {
+      setStarting(false)
+    }
+  }, [loadConversations, selectConversation, starting])
+
+  const sendMessage = useCallback(async (message: string) => {
+    if (!conversation || sending) return false
+    setSending(true)
+    setError(null)
+    const pending = pendingMessage.current
+    const key = pending?.body === message ? pending.key : crypto.randomUUID()
+    pendingMessage.current = { key, body: message }
+    try {
+      await enviarChatMensagem(conversation.id, message, key)
+      pendingMessage.current = null
+      await Promise.all([
+        loadDetail(conversation, true),
+        loadConversations(true),
+      ])
+      window.dispatchEvent(new Event('topsv3:chat-nao-lidas'))
+      return true
+    } catch (cause) {
+      setError(chatError(cause))
+      return false
+    } finally {
+      setSending(false)
+    }
+  }, [conversation, loadConversations, loadDetail, sending])
+
+  useEffect(() => {
+    const resize = () => setMobile(window.innerWidth < 768)
+    resize()
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
+  }, [])
+
+  useEffect(() => {
+    void loadConversations()
+    const timer = window.setInterval(() => void loadConversations(true), CONVERSATION_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [loadConversations])
+
+  useEffect(() => {
+    if (!conversation) return
+    const timer = window.setInterval(() => void loadDetail(conversation, true), MESSAGE_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [conversation, loadDetail])
+
+  useEffect(() => {
+    if (!requestedUser || requestedUserHandled.current === requestedUser) return
+    requestedUserHandled.current = requestedUser
+    void startConversation(requestedUser)
+  }, [requestedUser, startConversation])
+
+  return (
+    <section className="mt-5">
+      <div className="flex h-[calc(100dvh-180px)] min-h-[32rem] overflow-hidden rounded-lg border border-gray-200 bg-white">
+        {!mobile || !conversation ? (
+          <ChatSidebar
+            conversations={conversations}
+            selectedId={conversation?.id ?? null}
+            loading={loadingConversations}
+            starting={starting}
+            error={error}
+            onRetry={() => void loadConversations()}
+            onStartConversation={startConversation}
+            onSelectConversation={selectConversation}
+          />
+        ) : null}
+        {!mobile || conversation ? (
+          <div className="min-w-0 flex flex-1 flex-col">
+            <ChatWindow
+              conversation={conversation}
+              detail={detail}
+              loading={loadingDetail}
+              sending={sending}
+              error={error}
+              onRetry={() => conversation && void loadDetail(conversation)}
+              onSend={sendMessage}
+              onBack={() => {
+                setConversation(null)
+                setDetail(null)
+              }}
+              isMobile={mobile}
+            />
+          </div>
+        ) : null}
+      </div>
+    </section>
+  )
 }

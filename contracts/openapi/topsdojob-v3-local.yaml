@@ -327,6 +327,168 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/chat/conversas:
+    get:
+      summary: Lista as conversas diretas do usuario autenticado
+      operationId: listCurrentUserChatConversations
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Conversas ordenadas pela atividade mais recente
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ChatConversa"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Cria ou reutiliza uma conversa direta pelo username
+      operationId: startCurrentUserChatConversation
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatNovaConversaRequest"
+      responses:
+        "200":
+          description: Conversa criada ou reutilizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatConversa"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/chat/conversas/{conversaId}/mensagens:
+    parameters:
+      - name: conversaId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      summary: Consulta o historico de uma conversa autorizada
+      operationId: getCurrentUserChatConversation
+      security:
+        - PublicSessionCookie: []
+      responses:
+        "200":
+          description: Conversa e mensagens em ordem cronologica
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatConversaDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Envia uma unica mensagem idempotente
+      operationId: sendCurrentUserChatMessage
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatEnviarMensagemRequest"
+      responses:
+        "200":
+          description: Mensagem persistida ou repeticao idempotente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatMensagem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          description: Limite de envio de mensagens excedido
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/chat/conversas/{conversaId}/leitura:
+    post:
+      summary: Marca como lidas as mensagens recebidas na conversa
+      operationId: markCurrentUserChatConversationRead
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - name: conversaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Total global de mensagens ainda nao lidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatNaoLidas"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/chat/nao-lidas:
+    get:
+      summary: Conta mensagens nao lidas do usuario autenticado
+      operationId: countCurrentUserUnreadChatMessages
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Total de mensagens nao lidas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatNaoLidas"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/painel-anunciante/performance:
     get:
       summary: Consolida a performance dos anuncios do usuario autenticado
@@ -5118,6 +5280,119 @@ components:
           type: string
           enum: [DISPONIVEL, ZERO_LEGITIMO, HISTORICO_PENDENTE]
           description: Distingue total disponivel, zero real e historico legado ainda nao importado.
+    ChatConversa:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - participanteUsername
+        - ultimaMensagem
+        - ultimaMensagemEm
+        - naoLidas
+      properties:
+        id:
+          type: string
+          format: uuid
+        participanteUsername:
+          type: string
+          minLength: 1
+          maxLength: 120
+        ultimaMensagem:
+          type:
+            - string
+            - "null"
+          maxLength: 2000
+        ultimaMensagemEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        naoLidas:
+          type: integer
+          format: int64
+          minimum: 0
+    ChatMensagem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - conversaId
+        - remetenteUsername
+        - corpo
+        - enviadoEm
+        - lidoEm
+        - minha
+        - repetida
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversaId:
+          type: string
+          format: uuid
+        remetenteUsername:
+          type: string
+          minLength: 1
+          maxLength: 120
+        corpo:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        enviadoEm:
+          type: string
+          format: date-time
+        lidoEm:
+          type:
+            - string
+            - "null"
+          format: date-time
+        minha:
+          type: boolean
+        repetida:
+          type: boolean
+    ChatConversaDetalhe:
+      type: object
+      additionalProperties: false
+      required:
+        - conversa
+        - mensagens
+      properties:
+        conversa:
+          $ref: "#/components/schemas/ChatConversa"
+        mensagens:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatMensagem"
+    ChatNovaConversaRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - username
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 120
+    ChatEnviarMensagemRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - corpo
+      properties:
+        corpo:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    ChatNaoLidas:
+      type: object
+      additionalProperties: false
+      required:
+        - total
+      properties:
+        total:
+          type: integer
+          format: int64
+          minimum: 0
     PainelAnunciantePerformance:
       type: object
       additionalProperties: false
