@@ -106,18 +106,6 @@ assert.ok(
 )
 
 const preservedSurfaces = {
-  'app/(painel-admin)/admin/usuarios/page.tsx': [
-    'Adicionar usuario', 'Buscar por nome', 'Todas as UFs', 'Todos os tipos',
-    'Visualizar', 'Editar', 'Ativar/Desativar', 'Credito', 'Ajustar creditos',
-    'Adicionar', 'Remover', 'Motivo', 'Anterior', 'Proxima',
-  ],
-  'app/(painel-admin)/admin/usuarios/[id]/page.tsx': [
-    'Adicionar credito', 'Ver anuncios', 'Ver logs e registros', 'Remover 2FA',
-    'Excluir usuario', 'Abrir WhatsApp', 'Abrir ticket', 'Beneficios',
-    'Anuncios do usuario', 'Buscar anuncio', 'Todos os status', 'Todos os beneficios',
-    'Titulo', 'Status', 'Beneficios', 'Data', 'Acoes', 'Limpar filtro',
-    'Gerenciar documentos', 'Visualizar', 'Abrir em nova aba', 'Baixar', 'Novo documento',
-  ],
   'app/(painel-admin)/admin/usuarios/[id]/editar/page.tsx': [
     'Nome completo', 'Nome de usuario', 'E-mail', 'Telefone', 'CPF',
     'Data de nascimento', 'Salvar alteracoes', 'Documentos', 'Ver', 'Novo documento',
@@ -211,6 +199,8 @@ for (const [relativePath, labels] of Object.entries(preservedSurfaces)) {
 }
 
 const canonicalSubstitutes = {
+  'app/(painel-admin)/admin/usuarios/page.tsx': 'AdminUsuariosList',
+  'app/(painel-admin)/admin/usuarios/[id]/page.tsx': 'AdminUsuarioDetail',
   'app/(painel-admin)/admin/anuncios/[id]/page.tsx': 'AdminAnuncioModeracao',
   'features/moderation-v2/components/anuncio-staff-edit-form.tsx': 'AdminAnuncioDadosInlineEditor',
   'app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section.tsx': 'fetchAdminStorySelection',

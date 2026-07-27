@@ -17,4 +17,9 @@ public interface AuditoriaEventoRepository extends JpaRepository<AuditoriaEvento
   List<AuditoriaEventoEntity> findByRecursoIdInOrderByCriadoEmDesc(
       Collection<UUID> recursoIds,
       Pageable pageable);
+
+  List<AuditoriaEventoEntity> findByRecursoTipoAndRecursoIdOrderByCriadoEmDesc(
+      String recursoTipo,
+      UUID recursoId,
+      Pageable pageable);
 }

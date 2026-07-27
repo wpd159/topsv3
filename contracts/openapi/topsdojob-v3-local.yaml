@@ -2141,6 +2141,95 @@ paths:
           $ref: "#/components/responses/UnsupportedMediaType"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/usuarios:
+    get:
+      summary: Lista usuarios para a gestao administrativa
+      description: Retorna uma pagina no-store com dados cadastrais necessarios a operacao, CPF mascarado, situacao de KYC, bloqueio e quantidade de anuncios. Exige ADMIN ou MODERADOR com ANUNCIO_LER.
+      operationId: getAdminUsuarios
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [20, 50, 100]
+            default: 20
+        - name: termo
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO]
+            default: TODOS
+        - name: kyc
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+            default: TODOS
+        - name: ordenacao
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [RECENTES, ANTIGOS]
+            default: RECENTES
+      responses:
+        "200":
+          description: pagina protegida de usuarios
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPaginaUsuarios"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/usuarios/{id}:
+    get:
+      summary: Detalha um usuario para a gestao administrativa
+      description: Retorna dados cadastrais, anuncios, KYC privado e historico sanitizado. O CPF integral e retornado somente para ADMIN; MODERADOR recebe a forma mascarada.
+      operationId: getAdminUsuario
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: detalhe protegido do usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios:
     get:
       summary: Lista administrativa local de anuncios
@@ -8476,6 +8565,127 @@ components:
           format: date-time
         mensagem:
           type: string
+    AdminUsuarioResumo:
+      type: object
+      additionalProperties: false
+      required: [id, nome, email, telefone, cpfMascarado, status, kycStatus, totalAnuncios, bloqueado, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        telefone: { type: [string, "null"] }
+        cpfMascarado:
+          type: [string, "null"]
+          pattern: "^\\*{3}\\.\\*{3}\\.\\*{3}-[0-9]{2}$"
+        status:
+          type: string
+          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO]
+        kycStatus:
+          type: string
+          enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+        totalAnuncios: { type: integer, format: int64, minimum: 0 }
+        bloqueado: { type: boolean }
+        criadoEm: { type: string, format: date-time }
+    AdminUsuarioAnuncio:
+      type: object
+      additionalProperties: false
+      required: [id, slug, titulo, status, statusModeracao, criadoEm, atualizadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string }
+        titulo: { type: string }
+        status:
+          type: string
+          enum: [RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO]
+        statusModeracao:
+          type: string
+          enum: [NAO_ENVIADO, PENDENTE, APROVADO, REJEITADO]
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: [string, "null"], format: date-time }
+    AdminUsuarioHistorico:
+      type: object
+      additionalProperties: false
+      required: [id, acao, resultado, requestId, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        acao: { type: string }
+        resultado: { type: string }
+        requestId: { type: [string, "null"] }
+        criadoEm: { type: string, format: date-time }
+    AdminUsuarioDetalhe:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - nome
+        - nomeCivil
+        - email
+        - telefone
+        - cpf
+        - cpfMascarado
+        - dataNascimento
+        - status
+        - tipoConta
+        - kycStatus
+        - bloqueado
+        - criadoEm
+        - atualizadoEm
+        - anuncioAncoraBloqueioId
+        - podeBloquear
+        - podeDesbloquear
+        - anuncios
+        - kycEnvios
+        - historico
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: [string, "null"] }
+        nomeCivil: { type: [string, "null"] }
+        email: { type: [string, "null"], format: email }
+        telefone: { type: [string, "null"] }
+        cpf: { type: [string, "null"] }
+        cpfMascarado: { type: boolean }
+        dataNascimento: { type: [string, "null"], format: date }
+        status:
+          type: string
+          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO]
+        tipoConta:
+          type: string
+          enum: [ANUNCIANTE, STAFF, SISTEMA]
+        kycStatus:
+          type: string
+          enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+        bloqueado: { type: boolean }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: [string, "null"], format: date-time }
+        anuncioAncoraBloqueioId: { type: [string, "null"], format: uuid }
+        podeBloquear: { type: boolean }
+        podeDesbloquear: { type: boolean }
+        anuncios:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUsuarioAnuncio"
+        kycEnvios:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminKycEnvio"
+        historico:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUsuarioHistorico"
+    AdminPaginaUsuarios:
+      type: object
+      additionalProperties: false
+      required: [itens, page, size, totalElements, totalPages, last]
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUsuarioResumo"
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, enum: [20, 50, 100] }
+        totalElements: { type: integer, format: int64, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+        last: { type: boolean }
     AdminPaginaAnuncios:
       type: object
       additionalProperties: false

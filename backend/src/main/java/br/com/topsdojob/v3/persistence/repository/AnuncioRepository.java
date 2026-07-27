@@ -33,6 +33,8 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
 
     List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(UUID usuarioId);
 
+    List<AnuncioEntity> findByUsuarioIdOrderByCriadoEmDesc(UUID usuarioId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select anuncio from AnuncioEntity anuncio
