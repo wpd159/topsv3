@@ -13,7 +13,10 @@ import {
   type PublicCatalogCard,
   type PublicCatalogDetail,
 } from "@/lib/public-catalog-api"
-import { publicApiUrl } from "@/lib/api-contract"
+import {
+  novaChaveMetricaPublica,
+  registrarVisualizacaoPublica,
+} from "@/lib/public-metrics-api"
 import type { VisualizacoesCanonicas } from "@/lib/visualizacoes-canonicas"
 
 type AnuncioUI = {
@@ -106,9 +109,11 @@ export default function AnuncioDetalhesPageClient({
   const [loadError, setLoadError] = useState(false)
   const visualizacaoRegistradaParaId = useRef<string | null>(null)
   const visualizacaoFetchParaId = useRef<string | null>(null)
+  const visualizacaoChaveParaId = useRef<{ anuncioId: string; chave: string } | null>(null)
   useEffect(() => {
     visualizacaoRegistradaParaId.current = null
     visualizacaoFetchParaId.current = null
+    visualizacaoChaveParaId.current = null
   }, [slug])
 
   useEffect(() => {
@@ -141,22 +146,17 @@ export default function AnuncioDetalhesPageClient({
     if (visualizacaoFetchParaId.current === anuncio.id) return
     visualizacaoFetchParaId.current = anuncio.id
 
-    const url = publicApiUrl(`/anuncios/${encodeURIComponent(slug)}/visualizacao`)
-    if (process.env.NODE_ENV === "development") {
-      console.debug("[AnuncioDetalhes] registrando visualização", { method: "POST", url })
-    }
-
-    void fetch(url, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    })
-      .then((res) => {
-        if (process.env.NODE_ENV === "development") {
-          console.debug("[AnuncioDetalhes] visualizar resposta", res.status, res.ok)
+    const chaveRegistro = visualizacaoChaveParaId.current?.anuncioId === anuncio.id
+      ? visualizacaoChaveParaId.current
+      : {
+          anuncioId: anuncio.id,
+          chave: novaChaveMetricaPublica("visualizacao"),
         }
-        if (res.ok) {
+    visualizacaoChaveParaId.current = chaveRegistro
+
+    void registrarVisualizacaoPublica(slug, chaveRegistro.chave)
+      .then((response) => {
+        if (response.registrado) {
           visualizacaoRegistradaParaId.current = anuncio.id
         }
       })

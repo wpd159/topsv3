@@ -789,6 +789,7 @@ paths:
       operationId: postPublicAnuncioVisualizacao
       parameters:
         - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
         - name: slug
           in: path
           required: true
@@ -815,6 +816,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "500":
           $ref: "#/components/responses/InternalError"
   /api/public/anuncios/{slug}/clique-whatsapp:
@@ -824,6 +827,7 @@ paths:
       operationId: postPublicAnuncioCliqueWhatsapp
       parameters:
         - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
         - name: slug
           in: path
           required: true
@@ -848,6 +852,8 @@ paths:
                 $ref: "#/components/schemas/CliqueWhatsappPublicoResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -8065,6 +8071,7 @@ components:
           enum:
             - REGISTRADO
             - CONTATO_INDISPONIVEL
+            - METRICA_INDISPONIVEL
         politica:
           $ref: "#/components/schemas/PoliticaContatoPublico"
         pendenciaStories:

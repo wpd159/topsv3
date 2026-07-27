@@ -1,15 +1,18 @@
 'use client'
 
-import { useMemo, useState, type MouseEvent } from 'react'
+import { useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CalendarDaysIcon, ChatBubbleLeftIcon, FlagIcon } from '@heroicons/react/24/solid'
 import DenunciaModal from './denuncia-modal'
 import { useWhatsAppSafety } from '@/components/site/whatsapp-safety-provider'
-import { publicApiUrl } from '@/lib/api-contract'
+import { ApiContractError } from '@/lib/api-contract'
 import { VisitorVerificationModal } from '@/components/compliance/visitor-verification-modal'
-import { publicCsrfHeaders } from '@/lib/compliance/age-gate-api'
+import {
+  novaChaveMetricaPublica,
+  registrarCliqueWhatsappPublico,
+} from '@/lib/public-metrics-api'
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" {...props}>
@@ -46,6 +49,9 @@ function clean(value?: string | null) {
 export default function Sidebar({ anuncio }: SidebarProps) {
   const [modalAberto, setModalAberto] = useState(false)
   const [whatsappVerificationOpen, setWhatsappVerificationOpen] = useState(false)
+  const [whatsappPending, setWhatsappPending] = useState(false)
+  const whatsappRequestKey = useRef<string | null>(null)
+  const whatsappInFlight = useRef(false)
   const router = useRouter()
   const { openWhatsAppWarning } = useWhatsAppSafety()
 
@@ -57,26 +63,33 @@ export default function Sidebar({ anuncio }: SidebarProps) {
   }, [anuncio.bairroNome, anuncio.cidade, anuncio.cidadeNome, anuncio.estadoUf, anuncio.localizacao, anuncio.pontoReferenciaTexto])
 
   const requestWhatsApp = async () => {
+    if (whatsappInFlight.current) return
+    whatsappInFlight.current = true
+    setWhatsappPending(true)
+    const idempotencyKey = whatsappRequestKey.current ?? novaChaveMetricaPublica('clique-whatsapp')
+    whatsappRequestKey.current = idempotencyKey
     try {
-      const headers = await publicCsrfHeaders()
-      const response = await fetch(publicApiUrl(`/anuncios/${encodeURIComponent(anuncio.slug)}/clique-whatsapp`), {
-        method: 'POST',
-        credentials: 'include',
-        headers,
-        body: '{}',
-      })
-      const payload = await response.json().catch(() => null)
-      if (response.status === 403) {
+      const payload = await registrarCliqueWhatsappPublico(anuncio.slug, idempotencyKey)
+      if (!payload.disponivel || typeof payload.whatsappUrl !== 'string') {
+        whatsappRequestKey.current = null
+        toast.error('Contato indisponível para este anúncio.')
+        return
+      }
+      if (!payload.registrado) {
+        toast.warning('WhatsApp liberado; a contagem ficará pendente para nova tentativa.')
+      }
+      whatsappRequestKey.current = null
+      openWhatsAppWarning({ url: payload.whatsappUrl })
+    } catch (error) {
+      if (error instanceof ApiContractError && error.status === 403) {
         setWhatsappVerificationOpen(true)
         return
       }
-      if (!response.ok || !payload?.disponivel || typeof payload.whatsappUrl !== 'string') {
-        toast.error(payload?.message || payload?.error || 'Contato indisponível para este anúncio.')
-        return
-      }
-      openWhatsAppWarning({ url: payload.whatsappUrl })
-    } catch {
-      toast.error('Não foi possível acessar o WhatsApp agora.')
+      whatsappRequestKey.current = null
+      toast.error(error instanceof Error ? error.message : 'Não foi possível acessar o WhatsApp agora.')
+    } finally {
+      whatsappInFlight.current = false
+      setWhatsappPending(false)
     }
   }
 
@@ -122,7 +135,12 @@ export default function Sidebar({ anuncio }: SidebarProps) {
           </div>
 
           <div className="mt-5 flex flex-col gap-3">
-            <Button variant="outline" className="flex h-12 w-full items-center justify-center border-emerald-200 font-semibold shadow-[0_0_14px_rgba(37,211,102,0.12)]" onClick={handleWhatsAppClick}>
+            <Button
+              variant="outline"
+              disabled={whatsappPending}
+              className="flex h-12 w-full items-center justify-center border-emerald-200 font-semibold shadow-[0_0_14px_rgba(37,211,102,0.12)]"
+              onClick={handleWhatsAppClick}
+            >
               <span className="inline-flex items-center"><WhatsAppIcon className="mr-2 h-5 w-5" /> Conversar no WhatsApp</span>
             </Button>
             <Button
@@ -150,7 +168,10 @@ export default function Sidebar({ anuncio }: SidebarProps) {
           anuncioId: anuncio.id,
           route: `/anuncios/${anuncio.slug}`,
         }}
-        onOpenChange={setWhatsappVerificationOpen}
+        onOpenChange={(open) => {
+          setWhatsappVerificationOpen(open)
+          if (!open) whatsappRequestKey.current = null
+        }}
         onVerified={() => {
           setWhatsappVerificationOpen(false)
           void requestWhatsApp()

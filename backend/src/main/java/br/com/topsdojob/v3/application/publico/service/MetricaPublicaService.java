@@ -11,60 +11,60 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.metrica.CliqueWhatsappEntity;
 import br.com.topsdojob.v3.persistence.entity.metrica.EventoVisualizacaoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
-import br.com.topsdojob.v3.persistence.repository.CliqueWhatsappRepository;
-import br.com.topsdojob.v3.persistence.repository.EventoVisualizacaoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DispositivoMetrica;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Locale;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class MetricaPublicaService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(MetricaPublicaService.class);
     private static final String STATUS_REGISTRADO = "REGISTRADO";
     private static final String STATUS_CONTATO_INDISPONIVEL = "CONTATO_INDISPONIVEL";
+    private static final String STATUS_METRICA_INDISPONIVEL = "METRICA_INDISPONIVEL";
 
     private final AnuncioRepository anuncioRepository;
-    private final EventoVisualizacaoRepository eventoVisualizacaoRepository;
-    private final CliqueWhatsappRepository cliqueWhatsappRepository;
+    private final MetricaPublicaPersistenceService persistenceService;
     private final MetricaPublicaHashService hashService;
     private final PoliticaContatoPublicoService politicaContatoService;
     private final ComplianceVisitorAccessService visitorAccessService;
 
     public MetricaPublicaService(
             AnuncioRepository anuncioRepository,
-            EventoVisualizacaoRepository eventoVisualizacaoRepository,
-            CliqueWhatsappRepository cliqueWhatsappRepository,
+            MetricaPublicaPersistenceService persistenceService,
             MetricaPublicaHashService hashService,
             PoliticaContatoPublicoService politicaContatoService,
             ComplianceVisitorAccessService visitorAccessService) {
         this.anuncioRepository = anuncioRepository;
-        this.eventoVisualizacaoRepository = eventoVisualizacaoRepository;
-        this.cliqueWhatsappRepository = cliqueWhatsappRepository;
+        this.persistenceService = persistenceService;
         this.hashService = hashService;
         this.politicaContatoService = politicaContatoService;
         this.visitorAccessService = visitorAccessService;
     }
 
-    @Transactional
     public RegistrarVisualizacaoPublicaResponseDto registrarVisualizacao(
             String slug,
             RegistrarVisualizacaoPublicaRequestDto request,
+            String idempotencyKey,
             HttpServletRequest httpRequest) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
+        String chaveIdempotencia = chaveIdempotencia(idempotencyKey);
         AnuncioEntity anuncio = buscarAnuncioPublico(slugSeguro);
         DadosTecnicos dados = dadosTecnicos(request, httpRequest);
         EventoVisualizacaoEntity evento = EventoVisualizacaoEntity.registrar(
-                UUID.randomUUID(),
+                eventoId("visualizacao", anuncio.getId(), chaveIdempotencia),
                 anuncio.getId(),
                 dados.visitanteHash(),
                 dados.ipHash(),
@@ -76,21 +76,33 @@ public class MetricaPublicaService {
                 dados.dispositivo(),
                 RequestIdContext.current(httpRequest),
                 OffsetDateTime.now(ZoneOffset.UTC));
-        EventoVisualizacaoEntity salvo = eventoVisualizacaoRepository.save(evento);
+        try {
+            persistenceService.registrarVisualizacao(evento);
+        } catch (RuntimeException exception) {
+            LOGGER.error(
+                    "metrica_publica_visualizacao_persistencia_falhou anuncioId={} requestId={} exception={}",
+                    anuncio.getId(),
+                    RequestIdContext.current(httpRequest),
+                    exception.getClass().getName());
+            throw new ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "metrica de visualizacao temporariamente indisponivel");
+        }
         return new RegistrarVisualizacaoPublicaResponseDto(
                 true,
                 anuncio.getSlug(),
-                salvo.getId().toString(),
+                evento.getId().toString(),
                 STATUS_REGISTRADO,
                 MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
     }
 
-    @Transactional
     public CliqueWhatsappPublicoResponseDto registrarCliqueWhatsapp(
             String slug,
             CliqueWhatsappPublicoRequestDto request,
+            String idempotencyKey,
             HttpServletRequest httpRequest) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
+        String chaveIdempotencia = chaveIdempotencia(idempotencyKey);
         AnuncioEntity anuncio = buscarAnuncioPublico(slugSeguro);
         if (!visitorAccessService.autorizado(
                 httpRequest,
@@ -102,7 +114,7 @@ public class MetricaPublicaService {
         PoliticaContatoPublicoDto politica = politicaContatoService.avaliar(anuncio);
         DadosTecnicos dados = dadosTecnicos(request, httpRequest);
         CliqueWhatsappEntity clique = CliqueWhatsappEntity.registrar(
-                UUID.randomUUID(),
+                eventoId("clique-whatsapp", anuncio.getId(), chaveIdempotencia),
                 anuncio.getId(),
                 dados.visitanteHash(),
                 dados.ipHash(),
@@ -115,13 +127,26 @@ public class MetricaPublicaService {
                 politica.disponivel() ? null : politica.motivoPublico(),
                 RequestIdContext.current(httpRequest),
                 OffsetDateTime.now(ZoneOffset.UTC));
-        cliqueWhatsappRepository.save(clique);
+        boolean registrado;
+        try {
+            persistenceService.registrarClique(clique);
+            registrado = true;
+        } catch (RuntimeException exception) {
+            registrado = false;
+            LOGGER.error(
+                    "metrica_publica_clique_persistencia_falhou anuncioId={} requestId={} exception={}",
+                    anuncio.getId(),
+                    RequestIdContext.current(httpRequest),
+                    exception.getClass().getName());
+        }
 
         return new CliqueWhatsappPublicoResponseDto(
-                true,
+                registrado,
                 politica.disponivel(),
                 politica.disponivel() ? politicaContatoService.whatsappUrl(anuncio) : null,
-                politica.disponivel() ? STATUS_REGISTRADO : STATUS_CONTATO_INDISPONIVEL,
+                politica.disponivel()
+                        ? (registrado ? STATUS_REGISTRADO : STATUS_METRICA_INDISPONIVEL)
+                        : STATUS_CONTATO_INDISPONIVEL,
                 politica,
                 MidiaPublicaUrlService.PENDENTE_URL_PUBLICA_MIDIA_CDN);
     }
@@ -223,6 +248,20 @@ public class MetricaPublicaService {
 
     private String remoteAddress(HttpServletRequest request) {
         return request == null ? null : request.getRemoteAddr();
+    }
+
+    private String chaveIdempotencia(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (!normalized.matches("[A-Za-z0-9._:-]{1,160}")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Idempotency-Key invalida");
+        }
+        return normalized;
+    }
+
+    private UUID eventoId(String tipo, UUID anuncioId, String idempotencyKey) {
+        return UUID.nameUUIDFromBytes(
+                ("metrica-publica-v1:" + tipo + ":" + anuncioId + ":" + idempotencyKey)
+                        .getBytes(StandardCharsets.UTF_8));
     }
 
     private record DadosTecnicos(

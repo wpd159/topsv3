@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useEffect, useMemo, useState, type MouseEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { SensitiveImage } from "@/components/compliance/sensitive-image"
@@ -16,8 +16,11 @@ import {
 } from "@/lib/media/public-media"
 import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
-import { publicApiUrl } from "@/lib/api-contract"
-import { publicCsrfHeaders } from "@/lib/compliance/age-gate-api"
+import { ApiContractError } from "@/lib/api-contract"
+import {
+  novaChaveMetricaPublica,
+  registrarCliqueWhatsappPublico,
+} from "@/lib/public-metrics-api"
 import {
   formatarVisualizacoesCanonicas,
   type VisualizacoesCanonicas,
@@ -156,6 +159,9 @@ export function AnuncioCard({
 
   const [badSrcs, setBadSrcs] = useState<Set<string>>(new Set())
   const [whatsappVerificationOpen, setWhatsappVerificationOpen] = useState(false)
+  const [whatsappPending, setWhatsappPending] = useState(false)
+  const whatsappRequestKey = useRef<string | null>(null)
+  const whatsappInFlight = useRef(false)
 
   const markBad = (src: string) => {
     if (!src) return
@@ -231,37 +237,33 @@ export function AnuncioCard({
       })
     }
 
+    if (whatsappInFlight.current) return
+    whatsappInFlight.current = true
+    setWhatsappPending(true)
+    const idempotencyKey = whatsappRequestKey.current ?? novaChaveMetricaPublica("clique-whatsapp")
+    whatsappRequestKey.current = idempotencyKey
     try {
-      const headers = await publicCsrfHeaders()
-      const res = await fetch(publicApiUrl(`/anuncios/${encodeURIComponent(slugRota)}/clique-whatsapp`), {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: "{}",
-      })
-
-      if (!res.ok) {
-        if (res.status === 403) {
-          setWhatsappVerificationOpen(true)
-          return
-        }
-        const payload = await res.json().catch(async () => ({ message: (await res.text().catch(() => "")).trim() }))
-        const message =
-          payload?.message ||
-          payload?.error ||
-          "Contato indisponível para este anúncio."
-        toast.error(message)
-        return
-      }
-
-      const payload = await res.json().catch(() => null)
-      if (!payload?.disponivel || typeof payload?.whatsappUrl !== "string") {
+      const payload = await registrarCliqueWhatsappPublico(slugRota, idempotencyKey)
+      if (!payload.disponivel || typeof payload.whatsappUrl !== "string") {
+        whatsappRequestKey.current = null
         toast.error("Contato indisponível para este anúncio.")
         return
       }
+      if (!payload.registrado) {
+        toast.warning("WhatsApp liberado; a contagem ficará pendente para nova tentativa.")
+      }
+      whatsappRequestKey.current = null
       openWhatsAppWarning({ url: payload.whatsappUrl })
-    } catch {
-      toast.error("Não foi possível validar o acesso ao WhatsApp agora.")
+    } catch (error) {
+      if (error instanceof ApiContractError && error.status === 403) {
+        setWhatsappVerificationOpen(true)
+        return
+      }
+      whatsappRequestKey.current = null
+      toast.error(error instanceof Error ? error.message : "Não foi possível validar o acesso ao WhatsApp agora.")
+    } finally {
+      whatsappInFlight.current = false
+      setWhatsappPending(false)
     }
   }
 
@@ -441,6 +443,7 @@ export function AnuncioCard({
           <div className="flex flex-wrap gap-2">
             {whatsappCardEnabled && !previewMode && (
               <Button
+                disabled={whatsappPending}
                 className="flex-1 bg-[#25D366] px-3 py-1 text-xs font-medium text-white hover:bg-[#20bd5a]"
                 onClick={handleWhatsAppClick}
               >
@@ -483,7 +486,10 @@ export function AnuncioCard({
         anuncioId: id,
         route: `/anuncios/${slugRota}`,
       }}
-      onOpenChange={setWhatsappVerificationOpen}
+      onOpenChange={(open) => {
+        setWhatsappVerificationOpen(open)
+        if (!open) whatsappRequestKey.current = null
+      }}
       onVerified={() => {
         setWhatsappVerificationOpen(false)
         onAccessUpdated?.()

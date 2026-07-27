@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -64,15 +65,17 @@ public class AnuncioPublicoController {
     public RegistrarVisualizacaoPublicaResponseDto registrarVisualizacao(
             @PathVariable String slug,
             @RequestBody(required = false) RegistrarVisualizacaoPublicaRequestDto request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             HttpServletRequest httpRequest) {
-        return metricaService.registrarVisualizacao(slug, request, httpRequest);
+        return metricaService.registrarVisualizacao(slug, request, idempotencyKey, httpRequest);
     }
 
     @PostMapping("/{slug}/clique-whatsapp")
     public CliqueWhatsappPublicoResponseDto registrarCliqueWhatsapp(
             @PathVariable String slug,
             @RequestBody(required = false) CliqueWhatsappPublicoRequestDto request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
             HttpServletRequest httpRequest) {
-        return metricaService.registrarCliqueWhatsapp(slug, request, httpRequest);
+        return metricaService.registrarCliqueWhatsapp(slug, request, idempotencyKey, httpRequest);
     }
 }
