@@ -9,7 +9,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
 import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -43,7 +45,8 @@ class StoryPublicoServiceTest {
         AnuncioMidiaRepository anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
         ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
         StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
-        IdadePublicaService idadeService = mock(IdadePublicaService.class);
+        ComplianceVisitorAccessService visitorAccessService =
+                mock(ComplianceVisitorAccessService.class);
         MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
         MockHttpServletRequest request = new MockHttpServletRequest();
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
@@ -64,7 +67,9 @@ class StoryPublicoServiceTest {
         set(story, "anuncioMidiaId", vinculoId);
         set(story, "status", StatusStoryAnuncio.PUBLICADO);
         set(story, "ordem", 1);
-        when(idadeService.idadeConfirmada(request)).thenReturn(false);
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY)).thenReturn(false);
         when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 eq("anuncio-local"),
                 eq(StatusAnuncio.PUBLICADO),
@@ -83,7 +88,7 @@ class StoryPublicoServiceTest {
                 anuncioMidiaRepository,
                 arquivoRepository,
                 storyRepository,
-                idadeService,
+                visitorAccessService,
                 urlService);
 
         ListaStoriesPublicosDto response = service.listar("anuncio-local", request);
@@ -107,7 +112,8 @@ class StoryPublicoServiceTest {
         AnuncioMidiaRepository anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
         ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
         StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
-        IdadePublicaService idadeService = mock(IdadePublicaService.class);
+        ComplianceVisitorAccessService visitorAccessService =
+                mock(ComplianceVisitorAccessService.class);
         MockHttpServletRequest request = new MockHttpServletRequest();
 
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
@@ -133,7 +139,9 @@ class StoryPublicoServiceTest {
         set(story, "status", StatusStoryAnuncio.PUBLICADO);
         set(story, "ordem", 1);
 
-        when(idadeService.idadeConfirmada(request)).thenReturn(true);
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY)).thenReturn(true);
         when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                 eq("anuncio-local"),
                 eq(StatusAnuncio.PUBLICADO),
@@ -148,7 +156,7 @@ class StoryPublicoServiceTest {
                 anuncioMidiaRepository,
                 arquivoRepository,
                 storyRepository,
-                idadeService,
+                visitorAccessService,
                 new MidiaPublicaUrlService());
 
         ListaStoriesPublicosDto response = service.listar("anuncio-local", request);

@@ -1,10 +1,12 @@
 package br.com.topsdojob.v3.application.publico.service;
 
 import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoRequestDto;
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
 import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoResponseDto;
 import br.com.topsdojob.v3.application.publico.dto.PoliticaContatoPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaResponseDto;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.metrica.CliqueWhatsappEntity;
 import br.com.topsdojob.v3.persistence.entity.metrica.EventoVisualizacaoEntity;
@@ -36,18 +38,21 @@ public class MetricaPublicaService {
     private final CliqueWhatsappRepository cliqueWhatsappRepository;
     private final MetricaPublicaHashService hashService;
     private final PoliticaContatoPublicoService politicaContatoService;
+    private final ComplianceVisitorAccessService visitorAccessService;
 
     public MetricaPublicaService(
             AnuncioRepository anuncioRepository,
             EventoVisualizacaoRepository eventoVisualizacaoRepository,
             CliqueWhatsappRepository cliqueWhatsappRepository,
             MetricaPublicaHashService hashService,
-            PoliticaContatoPublicoService politicaContatoService) {
+            PoliticaContatoPublicoService politicaContatoService,
+            ComplianceVisitorAccessService visitorAccessService) {
         this.anuncioRepository = anuncioRepository;
         this.eventoVisualizacaoRepository = eventoVisualizacaoRepository;
         this.cliqueWhatsappRepository = cliqueWhatsappRepository;
         this.hashService = hashService;
         this.politicaContatoService = politicaContatoService;
+        this.visitorAccessService = visitorAccessService;
     }
 
     @Transactional
@@ -87,6 +92,13 @@ public class MetricaPublicaService {
             HttpServletRequest httpRequest) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
         AnuncioEntity anuncio = buscarAnuncioPublico(slugSeguro);
+        if (!visitorAccessService.autorizado(
+                httpRequest,
+                EscopoConteudoVisitante.WHATSAPP)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "verificacao reforcada necessaria");
+        }
         PoliticaContatoPublicoDto politica = politicaContatoService.avaliar(anuncio);
         DadosTecnicos dados = dadosTecnicos(request, httpRequest);
         CliqueWhatsappEntity clique = CliqueWhatsappEntity.registrar(

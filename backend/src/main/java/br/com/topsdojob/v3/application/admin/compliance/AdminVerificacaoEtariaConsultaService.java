@@ -25,6 +25,11 @@ public class AdminVerificacaoEtariaConsultaService {
             item.getId(),
             item.getResultado().name(),
             item.getMetodo().name(),
+            item.getEstado(),
+            item.getEscopo(),
+            item.getChallengeId(),
+            item.getDocumentoStatus(),
+            item.getMotivoSanitizado(),
             item.getRequestId(),
             item.getCriadoEm()))
         .toList();

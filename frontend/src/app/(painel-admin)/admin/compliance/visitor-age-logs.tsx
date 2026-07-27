@@ -49,18 +49,28 @@ export function VisitorAgeLogs() {
               <TableRow>
                 <TableHead>Resultado</TableHead>
                 <TableHead>Método</TableHead>
+                <TableHead>Estado</TableHead>
+                <TableHead>Escopo</TableHead>
+                <TableHead>Challenge</TableHead>
+                <TableHead>Documento</TableHead>
+                <TableHead>Motivo</TableHead>
                 <TableHead>Request ID</TableHead>
                 <TableHead>Data UTC</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {!loading && items.length === 0 ? (
-                <TableRow><TableCell colSpan={4}>Nenhuma verificação registrada.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={10}>Nenhuma verificação registrada.</TableCell></TableRow>
               ) : null}
               {items.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell>{item.resultado}</TableCell>
                   <TableCell>{item.metodo}</TableCell>
+                  <TableCell>{item.estado || '-'}</TableCell>
+                  <TableCell>{item.escopo || '-'}</TableCell>
+                  <TableCell className="font-mono text-xs">{item.challengeId?.slice(0, 8) || '-'}</TableCell>
+                  <TableCell>{item.documentoStatus || '-'}</TableCell>
+                  <TableCell>{item.motivoSanitizado || '-'}</TableCell>
                   <TableCell className="font-mono text-xs">{item.requestId || '-'}</TableCell>
                   <TableCell>{new Date(item.criadoEm).toLocaleString('pt-BR', { timeZone: 'UTC' })}</TableCell>
                 </TableRow>

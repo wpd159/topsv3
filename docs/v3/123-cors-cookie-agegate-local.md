@@ -1,5 +1,9 @@
 # CORS e cookie local do age gate
 
+> Registro historico, superado pela V034. O fluxo ativo usa os contratos
+> `/api/public/compliance/*`, CSRF por `XSRF-TOKEN`/`X-XSRF-TOKEN` e cookies
+> HttpOnly assinados distintos para aceite global e tokens por escopo.
+
 ## Politica local
 
 O backend permite CORS com credentials somente quando `APP_ENV=local` e ha origens locais configuradas em `app.cors.allowed-origins`.

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
@@ -115,7 +116,7 @@ class AnuncioPublicoConsultaServiceTest {
                 new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 new MidiaPublicaMapper(new MidiaPublicaUrlService()),
                 new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
-                mock(IdadePublicaService.class),
+                mock(ComplianceVisitorAccessService.class),
                 premiumMapper,
                 estadoRepository,
                 cidadeRepository,
@@ -158,7 +159,7 @@ class AnuncioPublicoConsultaServiceTest {
                 new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 new MidiaPublicaMapper(new MidiaPublicaUrlService()),
                 new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
-                mock(IdadePublicaService.class),
+                mock(ComplianceVisitorAccessService.class),
                 mock(PremiumPublicoMapper.class),
                 mock(EstadoRepository.class),
                 mock(CidadeRepository.class),
@@ -209,7 +210,7 @@ class AnuncioPublicoConsultaServiceTest {
                 new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 new MidiaPublicaMapper(new MidiaPublicaUrlService("homologacao", "https://v3.esle.cloud")),
                 new SeoPublicoConsultaService(mock(SeoUrlRepository.class), new SeoPublicoMapper()),
-                mock(IdadePublicaService.class),
+                mock(ComplianceVisitorAccessService.class),
                 mock(PremiumPublicoMapper.class),
                 mock(EstadoRepository.class),
                 mock(CidadeRepository.class),

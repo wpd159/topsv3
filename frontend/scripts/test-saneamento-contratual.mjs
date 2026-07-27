@@ -184,8 +184,23 @@ const preservedSurfaces = {
   ],
 }
 
+const preservedSurfaceCompositions = {
+  'app/(painel-admin)/admin/compliance/page.tsx': [
+    'app/(painel-admin)/admin/compliance/visitor-documents.tsx',
+    'app/(painel-admin)/admin/compliance/visitor-risk.tsx',
+    'app/(painel-admin)/admin/compliance/visitor-age-logs.tsx',
+  ],
+}
+
 for (const [relativePath, labels] of Object.entries(preservedSurfaces)) {
-  const pageSource = source(relativePath).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const pageSource = [
+    relativePath,
+    ...(preservedSurfaceCompositions[relativePath] ?? []),
+  ]
+    .map(source)
+    .join('\n')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
   for (const label of labels) {
     assert.ok(pageSource.includes(label), `Controle funcional ausente em ${relativePath}: ${label}`)
   }

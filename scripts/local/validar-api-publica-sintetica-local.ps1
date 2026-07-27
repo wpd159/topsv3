@@ -161,8 +161,8 @@ $data = Get-Content -LiteralPath $fixtureFull -Raw | ConvertFrom-Json
 Add-Check "fixture localOnly" ($data.localOnly -eq $true) "fixture deve ser local"
 Add-Check "fixture noRealData" ($data.noRealData -eq $true) "fixture nao deve usar dado real"
 
+. (Resolve-RepoPath "scripts/local/compliance-age-gate-local.ps1")
 $idadeSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$idadeBody = (@{ dataNascimento = "1990-01-01"; declaracaoMaioridade = $true } | ConvertTo-Json -Compress)
 
 $checksHttp = @(
   @{ Nome = "descoberta de localidades"; Path = "/api/public/localidades"; Status = 200; Session = $null; DeveConter = "goiania"; NaoConter = "wa.me/" },
@@ -192,15 +192,24 @@ foreach ($item in $checksHttp) {
   Assert-NoSensitivePublicData -Nome $item.Nome -Body $response.Body
 }
 
-$idade = Invoke-LocalJson -Path "/api/public/idade/confirmar" -Method "POST" -Body $idadeBody -Session $idadeSession
-Add-Check "idade sintetica confirmada" ($idade.Status -eq 200) "status obtido: $($idade.Status)"
+try {
+  $access = Enable-ComplianceVisitorAccessLocal `
+    -BaseUrl $SafeBaseUrl `
+    -Slug "demo-goiania-midia-restrita" `
+    -Scope "MIDIA_RESTRITA" `
+    -Session $idadeSession
+  Add-Check "age gate reforcado sintetico" ($access.Verified.verified -eq $true) "challenge e verificacao canonicamente concluidos"
+} catch {
+  Add-Check "age gate reforcado sintetico" $false $_.Exception.Message
+}
 
 $restritaComIdade = Invoke-LocalJson -Path "/api/public/anuncios/demo-goiania-midia-restrita" -Session $idadeSession
-Add-Check "midia restrita com idade status" ($restritaComIdade.Status -eq 200) "status obtido: $($restritaComIdade.Status)"
-Assert-NoSensitivePublicData -Nome "midia restrita com idade" -Body $restritaComIdade.Body
+Add-Check "midia restrita com token status" ($restritaComIdade.Status -eq 200) "status obtido: $($restritaComIdade.Status)"
+Add-Check "midia restrita autorizada" ($restritaComIdade.Body -match '"autorizada"\s*:\s*true') "token reforcado reconhecido"
+Assert-NoSensitivePublicData -Nome "midia restrita com token" -Body $restritaComIdade.Body
 
 $cliqueRestritoSemIdade = Invoke-LocalJson -Path "/api/public/anuncios/demo-goiania-midia-restrita/clique-whatsapp" -Method "POST" -Body (@{ visitanteLocalId = "visitante-bloco31"; origemPais = "BR"; origemUf = "GO"; origemCidade = "Goiania"; dispositivo = "DESKTOP" } | ConvertTo-Json -Compress)
-Add-Check "contato com midia restrita independe da idade" ($cliqueRestritoSemIdade.Status -eq 200 -and $cliqueRestritoSemIdade.Body -match '"disponivel"\s*:\s*true') "contato mediado permanece disponivel sem cookie de idade"
+Add-Check "contato bloqueado sem token" ($cliqueRestritoSemIdade.Status -eq 403 -and -not ($cliqueRestritoSemIdade.Body -match 'wa\.me/')) "WhatsApp exige verificacao reforcada"
 
 $seoScript = Resolve-RepoPath "scripts/local/validar-seo-sintetico-local.ps1"
 if (Test-Path -LiteralPath $seoScript -PathType Leaf) {

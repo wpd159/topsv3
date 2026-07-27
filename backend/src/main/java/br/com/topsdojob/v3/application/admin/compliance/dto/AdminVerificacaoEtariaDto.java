@@ -7,6 +7,11 @@ public record AdminVerificacaoEtariaDto(
     UUID id,
     String resultado,
     String metodo,
+    String estado,
+    String escopo,
+    UUID challengeId,
+    String documentoStatus,
+    String motivoSanitizado,
     String requestId,
     OffsetDateTime criadoEm) {
 }

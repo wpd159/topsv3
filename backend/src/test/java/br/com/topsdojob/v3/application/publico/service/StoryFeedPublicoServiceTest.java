@@ -7,12 +7,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService.MidiaElegivel;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService.ResultadoUrlPublica;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -50,7 +52,8 @@ class StoryFeedPublicoServiceTest {
     private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
     private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
     private final StoryMidiaElegibilidadeService elegibilidadeService = mock(StoryMidiaElegibilidadeService.class);
-    private final IdadePublicaService idadeService = mock(IdadePublicaService.class);
+    private final ComplianceVisitorAccessService visitorAccessService =
+            mock(ComplianceVisitorAccessService.class);
     private final IdadeAnunciantePublicaService idadeAnuncianteService =
             mock(IdadeAnunciantePublicaService.class);
     private final PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
@@ -67,7 +70,7 @@ class StoryFeedPublicoServiceTest {
                 anuncioRepository,
                 usuarioRepository,
                 elegibilidadeService,
-                idadeService,
+                visitorAccessService,
                 idadeAnuncianteService,
                 premiumMapper,
                 urlService);
@@ -87,7 +90,9 @@ class StoryFeedPublicoServiceTest {
     @Test
     void administrativoEntraNoFeedEmPosicaoLivreEStoryPagoPrevaleceNaDeduplicacao() {
         MockHttpServletRequest request = new MockHttpServletRequest();
-        when(idadeService.idadeConfirmada(request)).thenReturn(false);
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY)).thenReturn(false);
         UUID arquivoRepetido = UUID.randomUUID();
         UUID arquivoAdmin = UUID.randomUUID();
         UUID anuncioAdminId = UUID.randomUUID();
@@ -160,7 +165,9 @@ class StoryFeedPublicoServiceTest {
     @Test
     void novasMidiasEntramERemovidasSaemSemPersistirLista() {
         MockHttpServletRequest request = new MockHttpServletRequest();
-        when(idadeService.idadeConfirmada(request)).thenReturn(false);
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY)).thenReturn(false);
         UUID anuncioId = UUID.randomUUID();
         AnuncioEntity anuncio = anuncio(anuncioId, UUID.randomUUID(), "admin-dinamico");
         MidiaElegivel primeira = midiaElegivel(anuncioId, UUID.randomUUID(), 0);

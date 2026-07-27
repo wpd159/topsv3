@@ -1,15 +1,19 @@
 "use client"
 
 import Image from "next/image"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import {
   fontePublicaSegura,
-  midiaExigeConfirmacaoIdade,
   type MidiaPublica,
 } from "@/lib/media/public-media"
 import { cn } from "@/lib/utils"
+import { publicApiUrl } from "@/lib/api-contract"
+import {
+  AGE_VERIFICATION_CHANGED_EVENT,
+  obterStatusVisitante,
+} from "@/lib/compliance/visitor-access"
 
 type SensitiveImageProps = {
   midia: MidiaPublica
@@ -46,9 +50,38 @@ export function SensitiveImage({
 }: SensitiveImageProps) {
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [erro, setErro] = useState(false)
-  const protegida = midiaExigeConfirmacaoIdade(midia)
-  const autorizada = midia.autorizada
-  const fonte = fontePublicaSegura(midia)
+  const [sessionAuthorized, setSessionAuthorized] = useState(midia.autorizada)
+
+  useEffect(() => {
+    if (midia.visibilidadeMidia !== "RESTRITA_18") return
+    let active = true
+    const refresh = () => {
+      void obterStatusVisitante(true)
+        .then((status) => {
+          if (!active) return
+          setSessionAuthorized(Boolean(
+            status.verified
+              && (status.level === "REINFORCED" || status.level === "STRONG"),
+          ))
+          setErro(false)
+        })
+        .catch(() => {
+          if (active) setSessionAuthorized(false)
+        })
+    }
+    refresh()
+    window.addEventListener(AGE_VERIFICATION_CHANGED_EVENT, refresh)
+    return () => {
+      active = false
+      window.removeEventListener(AGE_VERIFICATION_CHANGED_EVENT, refresh)
+    }
+  }, [midia.visibilidadeMidia])
+
+  const autorizada = midia.autorizada || sessionAuthorized
+  const protegida = midia.visibilidadeMidia === "RESTRITA_18" && !autorizada
+  const fonte = midia.visibilidadeMidia === "RESTRITA_18" && autorizada
+    ? publicApiUrl(`/compliance/visitor/media/${encodeURIComponent(String(midia.id))}`)
+    : fontePublicaSegura(midia)
   const fonteEhPreviewPublica =
     protegida &&
     !autorizada &&
@@ -75,6 +108,9 @@ export function SensitiveImage({
             className={cn("object-cover object-center transition duration-300", className)}
             onClick={protegida ? undefined : onImageClick}
             onError={() => {
+              if (midia.visibilidadeMidia === "RESTRITA_18") {
+                setSessionAuthorized(false)
+              }
               setErro(true)
               onError?.()
             }}
@@ -136,7 +172,8 @@ export function SensitiveImage({
 
       <VisitorVerificationModal
         open={verificationOpen}
-        level="LIGHT"
+        level="REINFORCED"
+        scope="MIDIA_RESTRITA"
         context={{
           anuncioId: anuncioId ?? undefined,
           route: anuncioSlug ? `/anuncios/${anuncioSlug}` : undefined,
@@ -144,6 +181,8 @@ export function SensitiveImage({
         }}
         onOpenChange={setVerificationOpen}
         onVerified={() => {
+          setSessionAuthorized(true)
+          setErro(false)
           setVerificationOpen(false)
           onVerificationSuccess?.()
         }}

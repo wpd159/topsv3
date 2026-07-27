@@ -1,5 +1,11 @@
 # Bloco 9 - Confirmacao de idade e stories
 
+> Registro historico. O fluxo simplificado descrito neste bloco foi substituido
+> pelo age gate completo por escopo da V034. Os endpoints `/api/public/idade/*`
+> e o cookie `topsv3_idade_confirmada` nao fazem parte do contrato ativo.
+> O fluxo vigente usa aceite global independente e verificacao reforcada com
+> nascimento, CPF, aceites, risco e fallback documental privado.
+
 ## Escopo
 
 O Bloco 9 adiciona confirmacao de idade publica local por declaracao, sem CPF, sem documento e sem conta de usuario.

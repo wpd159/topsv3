@@ -13,6 +13,8 @@ import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoRequestD
 import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoResponseDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaResponseDto;
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.metrica.CliqueWhatsappEntity;
 import br.com.topsdojob.v3.persistence.entity.metrica.EventoVisualizacaoEntity;
@@ -48,7 +50,8 @@ class MetricaPublicaServiceTest {
                 eventoRepository,
                 mock(CliqueWhatsappRepository.class),
                 new MetricaPublicaHashService("valor_local_ficticio", "local"),
-                new PoliticaContatoPublicoService());
+                new PoliticaContatoPublicoService(),
+                mock(ComplianceVisitorAccessService.class));
         MockHttpServletRequest http = new MockHttpServletRequest();
         http.setRemoteAddr("127.0.0.1");
         http.addHeader("User-Agent", "Mozilla local");
@@ -82,18 +85,25 @@ class MetricaPublicaServiceTest {
                 .thenReturn(Optional.of(anuncio));
         when(cliqueRepository.save(any(CliqueWhatsappEntity.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+        ComplianceVisitorAccessService visitorAccessService =
+                mock(ComplianceVisitorAccessService.class);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.WHATSAPP)).thenReturn(true);
 
         MetricaPublicaService service = new MetricaPublicaService(
                 anuncioRepository,
                 mock(EventoVisualizacaoRepository.class),
                 cliqueRepository,
                 new MetricaPublicaHashService("valor_local_ficticio", "local"),
-                new PoliticaContatoPublicoService());
+                new PoliticaContatoPublicoService(),
+                visitorAccessService);
 
         CliqueWhatsappPublicoResponseDto response = service.registrarCliqueWhatsapp(
                 "anuncio-local",
                 new CliqueWhatsappPublicoRequestDto("visitante-local", "BR", "SP", "Cidade Local", "MOBILE"),
-                new MockHttpServletRequest());
+                request);
 
         ArgumentCaptor<CliqueWhatsappEntity> captor = ArgumentCaptor.forClass(CliqueWhatsappEntity.class);
         verify(cliqueRepository).save(captor.capture());

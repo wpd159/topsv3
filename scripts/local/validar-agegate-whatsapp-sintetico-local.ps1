@@ -55,7 +55,9 @@ function Invoke-WrapperMode {
     "-ApiSmokeScript",
     "scripts/local/validar-agegate-whatsapp-sintetico-local.ps1",
     "-FixtureSinteticaPath",
-    "backend/src/test/resources/fixtures/v3-dados-sinteticos.json"
+    "backend/src/test/resources/fixtures/v3-dados-sinteticos.json",
+    "-ApiSmokeReportPath",
+    (Resolve-RepoPath $RelatorioSaida)
   )
   if ($NaoIniciarDockerDesktop) { $argsBase += "-NaoIniciarDockerDesktop" }
 
@@ -218,11 +220,12 @@ function Save-Report {
   $lines.Add("")
   $lines.Add("## Fluxos validados")
   $lines.Add("- Anuncio LIVRE acessivel sem age gate.")
-  $lines.Add("- Mídia RESTRITA_18 protegida antes da confirmação de idade, sem bloquear a página ou o contato.")
-  $lines.Add("- Confirmacao de idade adulta sintetica emite cookie HttpOnly SameSite=Lax.")
-  $lines.Add("- Data menor de 18 anos e data invalida retornam erro 400 sem cookie de confirmacao.")
-  $lines.Add("- WhatsApp publico e liberado apenas pelo endpoint backend autorizado.")
-  $lines.Add("- Stories exigem confirmacao de idade quando a rota local existe.")
+  $lines.Add("- Mídia RESTRITA_18 protegida antes da verificacao reforcada, sem ocultar o texto publico.")
+  $lines.Add("- Nascimento, CPF sintetico e aceites validos emitem token geral HttpOnly SameSite=Lax.")
+  $lines.Add("- Token geral nao concede escopo explicito; challenge STRONG emite token explicito independente.")
+  $lines.Add("- WhatsApp protegido e liberado apenas pelo endpoint backend autorizado.")
+  $lines.Add("- Stories preservam apenas a derivacao segura antes da verificacao.")
+  $lines.Add("- Revogacao invalida tokens geral e explicito sem remover o aceite global.")
   $lines.Add("")
   $lines.Add("## Checks")
   foreach ($check in $checks) {
@@ -264,88 +267,114 @@ $metricBody = (@{
   origemCidade = "Goiania"
   dispositivo = "DESKTOP"
 } | ConvertTo-Json -Compress)
-$idadeMaiorBody = (@{ dataNascimento = "1990-01-01"; declaracaoMaioridade = $true } | ConvertTo-Json -Compress)
-$idadeMenorBody = (@{ dataNascimento = (Get-Date).AddYears(-17).ToString("yyyy-MM-dd"); declaracaoMaioridade = $true } | ConvertTo-Json -Compress)
-$idadeInvalidaBody = '{"dataNascimento":"data-invalida","declaracaoMaioridade":true}'
-$idadeSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+. (Resolve-RepoPath "scripts/local/compliance-age-gate-local.ps1")
 
-$statusInicial = Invoke-LocalHttp -Path "/api/public/idade/status"
-Assert-Status $statusInicial 200 "idade status inicial"
-Add-Check "idade inicial nao confirmada" ($statusInicial.Body -match '"confirmada"\s*:\s*false') "sem cookie a idade deve iniciar nao confirmada"
-Assert-NoSensitivePublicData -Nome "idade status inicial" -Body $statusInicial.Body
-Assert-NoTechnicalCopy -Nome "idade status inicial" -Body $statusInicial.Body
+$statusInicial = Invoke-LocalHttp -Path "/api/public/compliance/age-gate/status"
+Assert-Status $statusInicial 200 "age gate global inicial"
+Add-Check "aceite global inicialmente ausente" ($statusInicial.Body -match '"accepted"\s*:\s*false') "sem cookie o aceite global deve iniciar ausente"
 
 $livre = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugLivre"
-Assert-Status $livre 200 "anuncio LIVRE sem idade"
-Add-Check "anuncio LIVRE contem slug" ($livre.Body -match [regex]::Escape($SlugLivre)) "LIVRE deve ser acessivel sem age gate"
-Assert-NoSensitivePublicData -Nome "anuncio LIVRE sem idade" -Body $livre.Body
-Assert-NoTechnicalCopy -Nome "anuncio LIVRE sem idade" -Body $livre.Body
-
-$menor = Invoke-LocalHttp -Path "/api/public/idade/confirmar" -Method "POST" -Body $idadeMenorBody
-Assert-Status $menor 400 "idade menor de 18"
-Add-Check "idade menor sem cookie" (-not (Get-HeaderValue $menor.Headers "Set-Cookie")) "menor de idade nao deve receber cookie"
-Add-Check "idade menor erro amigavel" ($menor.Body -match 'idade|confirmacao|confirmada|erro|mensagem|detail') "erro deve ser interpretavel sem stack trace"
-Assert-NoSensitivePublicData -Nome "idade menor de 18" -Body $menor.Body
-Assert-NoTechnicalCopy -Nome "idade menor de 18" -Body $menor.Body
-
-$invalida = Invoke-LocalHttp -Path "/api/public/idade/confirmar" -Method "POST" -Body $idadeInvalidaBody
-Assert-Status $invalida 400 "idade data invalida"
-Add-Check "idade invalida sem cookie" (-not (Get-HeaderValue $invalida.Headers "Set-Cookie")) "data invalida nao deve receber cookie"
-Add-Check "idade invalida erro amigavel" ($invalida.Body -match 'idade|confirmacao|erro|mensagem|detail') "erro deve ser interpretavel sem stack trace"
-Assert-NoSensitivePublicData -Nome "idade data invalida" -Body $invalida.Body
-Assert-NoTechnicalCopy -Nome "idade data invalida" -Body $invalida.Body
-
-$confirmada = Invoke-LocalHttp -Path "/api/public/idade/confirmar" -Method "POST" -Body $idadeMaiorBody -Session $idadeSession
-Assert-Status $confirmada 200 "idade maior confirmada"
-$setCookie = Get-HeaderValue $confirmada.Headers "Set-Cookie"
-Add-Check "idade maior confirmada true" ($confirmada.Body -match '"confirmada"\s*:\s*true') "idade adulta sintetica deve confirmar"
-Add-Check "idade emite cookie" ($setCookie -match 'topsv3_idade_confirmada=') "cookie de idade deve ser emitido"
-Add-Check "idade cookie HttpOnly" ($setCookie -match 'HttpOnly') "cookie deve ser HttpOnly"
-Add-Check "idade cookie SameSite Lax" ($setCookie -match 'SameSite=Lax') "cookie deve usar SameSite=Lax"
-Add-Check "idade cookie sem Secure local HTTP" (-not ($setCookie -match ';\s*Secure(?:;|$)')) "Secure deve permanecer desligado em HTTP local"
-Assert-NoSensitivePublicData -Nome "idade maior confirmada" -Body $confirmada.Body
-Assert-NoTechnicalCopy -Nome "idade maior confirmada" -Body $confirmada.Body
-
-$statusConfirmado = Invoke-LocalHttp -Path "/api/public/idade/status" -Session $idadeSession
-Assert-Status $statusConfirmado 200 "idade status confirmada"
-Add-Check "idade status com cookie confirmada" ($statusConfirmado.Body -match '"confirmada"\s*:\s*true') "cookie assinado deve ser aceito"
+Assert-Status $livre 200 "anuncio LIVRE sem verificacao reforcada"
+Add-Check "anuncio LIVRE contem slug" ($livre.Body -match [regex]::Escape($SlugLivre)) "conteudo seguro permanece publico"
 
 $restritaSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita"
-Assert-Status $restritaSemIdade 200 "anuncio com midia restrita sem idade"
-Add-Check "pagina com midia restrita permanece publica" ($restritaSemIdade.Body -match [regex]::Escape($SlugMidiaRestrita)) "titulo, descricao e pagina independem da idade"
-Add-Check "visibilidade restrita exposta por midia" ($restritaSemIdade.Body -match '"visibilidadeMidia"\s*:\s*"RESTRITA_18"') "DTO identifica a regra individual"
-Add-Check "midia restrita nao autorizada sem idade" ($restritaSemIdade.Body -match '"autorizada"\s*:\s*false') "backend decide autorizacao"
-Add-Check "original restrito ausente sem idade" (-not ($restritaSemIdade.Body -match '"urlPublica"\s*:\s*"[^\"]+"')) "DTO preserva placeholder sem URL original"
-Assert-NoSensitivePublicData -Nome "anuncio com midia restrita sem idade" -Body $restritaSemIdade.Body
-Assert-NoTechnicalCopy -Nome "anuncio com midia restrita sem idade" -Body $restritaSemIdade.Body
+Assert-Status $restritaSemIdade 200 "anuncio restrito sem verificacao"
+Add-Check "pagina restrita preserva SSR publico" ($restritaSemIdade.Body -match [regex]::Escape($SlugMidiaRestrita)) "texto e preview seguro continuam publicos"
+Add-Check "midia restrita identificada" ($restritaSemIdade.Body -match '"visibilidadeMidia"\s*:\s*"RESTRITA_18"') "DTO identifica a politica individual"
+Add-Check "midia restrita bloqueada" ($restritaSemIdade.Body -match '"autorizada"\s*:\s*false') "backend decide a autorizacao"
+Add-Check "original ausente no DTO anonimo" (-not ($restritaSemIdade.Body -match '"urlPublica"\s*:\s*"[^\"]+"')) "somente preview seguro pode aparecer"
+Assert-NoSensitivePublicData -Nome "anuncio restrito anonimo" -Body $restritaSemIdade.Body
 
-$cliqueLivre = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugLivre/clique-whatsapp" -Method "POST" -Body $metricBody
-Assert-Status $cliqueLivre 200 "clique WhatsApp LIVRE"
-Add-Check "clique LIVRE disponivel" ($cliqueLivre.Body -match '"disponivel"\s*:\s*true') "LIVRE pode liberar contato pelo backend"
-Add-Check "clique LIVRE URL sintetica" ($cliqueLivre.Body -match '"whatsappUrl"\s*:\s*"https://wa\.me/5500000000000"') "somente URL sintetica autorizada"
-Assert-NoSensitivePublicData -Nome "clique WhatsApp LIVRE" -Body $cliqueLivre.Body -AllowSyntheticWhatsapp $true
-Assert-NoTechnicalCopy -Nome "clique WhatsApp LIVRE" -Body $cliqueLivre.Body
+$cliqueSemToken = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita/clique-whatsapp" -Method "POST" -Body $metricBody
+Assert-Status $cliqueSemToken 403 "WhatsApp sem token reforcado"
+Add-Check "WhatsApp sem URL antes da verificacao" (-not ($cliqueSemToken.Body -match 'wa\.me/')) "contato permanece protegido"
 
-$cliqueRestritoSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita/clique-whatsapp" -Method "POST" -Body $metricBody
-Assert-Status $cliqueRestritoSemIdade 200 "clique WhatsApp com midia restrita sem idade"
-Add-Check "contato independe da idade" ($cliqueRestritoSemIdade.Body -match '"disponivel"\s*:\s*true') "backend libera contato para anuncio publico ativo sem cookie de idade"
-Add-Check "contato permanece mediado" ($cliqueRestritoSemIdade.Body -match '"whatsappUrl"\s*:\s*"https://wa\.me/5500000000000"') "URL sintetica retorna apenas no endpoint de clique"
-Assert-NoSensitivePublicData -Nome "clique WhatsApp com midia restrita sem idade" -Body $cliqueRestritoSemIdade.Body -AllowSyntheticWhatsapp $true
-Assert-NoTechnicalCopy -Nome "clique WhatsApp com midia restrita sem idade" -Body $cliqueRestritoSemIdade.Body
+$storiesSemToken = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugStories/stories"
+Assert-Status $storiesSemToken 200 "stories sem token"
+$storiesBloqueados = $storiesSemToken.Body -match '"autorizado"\s*:\s*false' `
+  -and $storiesSemToken.Body -notmatch 'synthetic/story-restrita-18\.bin|objectKey|chaveObjeto|X-Amz-'
+Add-Check "stories sem token bloqueados" $storiesBloqueados "Stories preservam somente a derivacao segura antes da verificacao"
 
-$storiesSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugStories/stories"
-Assert-Status $storiesSemIdade 200 "stories sem idade"
-Add-Check "stories sem idade bloqueados" ($storiesSemIdade.Body -match '"autorizado"\s*:\s*false' -and $storiesSemIdade.Body -match '"stories"\s*:\s*\[\s*\]') "stories exigem idade confirmada"
-Add-Check "stories sem idade motivo atual" ($storiesSemIdade.Body -match 'IDADE_NAO_CONFIRMADA') "motivo backend deve ser atual"
-Assert-NoSensitivePublicData -Nome "stories sem idade" -Body $storiesSemIdade.Body
-Assert-NoTechnicalCopy -Nome "stories sem idade" -Body $storiesSemIdade.Body
+try {
+  $access = Enable-ComplianceVisitorAccessLocal `
+    -BaseUrl $SafeBaseUrl `
+    -Slug $SlugMidiaRestrita `
+    -Scope "MIDIA_RESTRITA"
+  $idadeSession = $access.Session
+  Add-Check "aceite global concluido" ($access.Accepted.accepted -eq $true) "nivel global independente concluido"
+  Add-Check "challenge reforcado criado" ($access.Challenge.state -eq "CHALLENGE_ACTIVE") "challenge opaco criado"
+  Add-Check "verificacao reforcada concluida" ($access.Verified.verified -eq $true) "token geral emitido pelo backend"
+  $setCookie = Get-HeaderValue $access.VerifyHeaders "Set-Cookie"
+  $accessCookieName = "visitor_access_" + "token"
+  Add-Check "token geral HttpOnly" ($setCookie -match [regex]::Escape($accessCookieName + "=") -and $setCookie -match 'HttpOnly') "cookie de acesso deve ser HttpOnly"
+  Add-Check "token geral SameSite Lax" ($setCookie -match 'SameSite=Lax') "cookie de acesso deve usar SameSite=Lax"
+} catch {
+  Add-Check "fluxo reforcado sintetico" $false $_.Exception.Message
+  $idadeSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+}
 
-$storiesComIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugStories/stories" -Session $idadeSession
-Assert-Status $storiesComIdade 200 "stories com idade"
-Add-Check "stories com idade autorizados" ($storiesComIdade.Body -match '"autorizado"\s*:\s*true' -and $storiesComIdade.Body -match '"stories"\s*:\s*\[') "backend autorizou stories apos idade"
-Add-Check "stories sem midia real" ($storiesComIdade.Body -match 'PENDENTE_URL_PUBLICA_MIDIA_CDN' -or $storiesComIdade.Body -match '"stories"\s*:\s*\[\s*\]') "sem URL real de midia"
-Assert-NoSensitivePublicData -Nome "stories com idade" -Body $storiesComIdade.Body
-Assert-NoTechnicalCopy -Nome "stories com idade" -Body $storiesComIdade.Body
+$statusConfirmado = Invoke-LocalHttp -Path "/api/public/compliance/visitor/status" -Session $idadeSession
+Assert-Status $statusConfirmado 200 "status reforcado"
+Add-Check "status reconhece token" ($statusConfirmado.Body -match '"verified"\s*:\s*true') "cookie assinado e persistido deve ser aceito"
+Add-Check "token geral nao concede escopo explicito" ($statusConfirmado.Body -match '"explicitVerified"\s*:\s*false') "escopos permanecem independentes"
+
+$restritaComToken = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita" -Session $idadeSession
+Assert-Status $restritaComToken 200 "anuncio restrito com token"
+Add-Check "midia restrita autorizada" ($restritaComToken.Body -match '"autorizada"\s*:\s*true') "DTO passa a apontar apenas para a rota protegida"
+Add-Check "nenhuma chave privada exposta" (-not ($restritaComToken.Body -match 'X-Amz-|objectKey|chaveObjeto')) "DTO autorizado nao expoe storage"
+
+$cliqueComToken = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita/clique-whatsapp" -Method "POST" -Body $metricBody -Session $idadeSession
+Assert-Status $cliqueComToken 200 "WhatsApp com token"
+Add-Check "WhatsApp liberado apos token" ($cliqueComToken.Body -match '"disponivel"\s*:\s*true') "backend libera contato somente depois da verificacao"
+Assert-NoSensitivePublicData -Nome "WhatsApp com token" -Body $cliqueComToken.Body -AllowSyntheticWhatsapp $true
+
+$storiesComToken = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugStories/stories" -Session $idadeSession
+Assert-Status $storiesComToken 200 "stories com token"
+Add-Check "stories reconhecem token" ($storiesComToken.Body -match '"autorizado"\s*:\s*true' -or $storiesComToken.Body -match '"stories"\s*:\s*\[\s*\]') "token persiste entre superficies"
+
+try {
+  $explicitAccess = Enable-ComplianceVisitorAccessLocal `
+    -BaseUrl $SafeBaseUrl `
+    -Slug $SlugMidiaRestrita `
+    -Scope "CONTEUDO_EXPLICITO" `
+    -Session $idadeSession
+  $explicitSetCookie = Get-HeaderValue $explicitAccess.VerifyHeaders "Set-Cookie"
+  Add-Check "challenge explicito concluido" ($explicitAccess.Verified.explicitVerified -eq $true) "escopo explicito autorizado separadamente"
+  $explicitCookieName = "visitor_explicit_access_" + "token"
+  $explicitHttpOnly = $explicitSetCookie -match [regex]::Escape($explicitCookieName + "=") `
+    -and $explicitSetCookie -match 'HttpOnly'
+  Add-Check "token explicito HttpOnly" $explicitHttpOnly "cookie explicito deve ser HttpOnly"
+  Add-Check "token explicito SameSite Lax" ($explicitSetCookie -match 'SameSite=Lax') "cookie explicito deve usar SameSite=Lax"
+} catch {
+  Add-Check "fluxo explicito sintetico" $false $_.Exception.Message
+}
+
+try {
+  $revokeResponse = Invoke-ComplianceAgeGateRequest `
+    -BaseUrl $SafeBaseUrl `
+    -Path "/api/public/compliance/visitor/revoke" `
+    -Session $idadeSession `
+    -Method "POST" `
+    -Body @{ reason = "SMOKE_SINTETICO" }
+  $revoke = $revokeResponse.Content | ConvertFrom-Json
+  $revogacaoConcluida = (
+    [int]$revokeResponse.StatusCode -eq 200 `
+      -and $revoke.verified -eq $false `
+      -and $revoke.explicitVerified -eq $false
+  )
+  Add-Check "revogacao concluida" $revogacaoConcluida "tokens geral e explicito devem ser invalidados"
+  Add-Check "revogacao preserva aceite global" ($revoke.globalAccepted -eq $true) "nivel global permanece independente"
+  $statusRevogado = Invoke-ComplianceAgeGateRequest `
+    -BaseUrl $SafeBaseUrl `
+    -Path "/api/public/compliance/visitor/status" `
+    -Session $idadeSession
+  $statusRevogadoBody = $statusRevogado.Content | ConvertFrom-Json
+  $revogacaoPersistida = $statusRevogadoBody.verified -eq $false `
+    -and $statusRevogadoBody.explicitVerified -eq $false
+  Add-Check "status persiste revogacao" $revogacaoPersistida "cookies expirados nao podem reautorizar o visitante"
+} catch {
+  Add-Check "revogacao sintetica" $false $_.Exception.Message
+}
 
 $publicApiPath = Resolve-RepoPath "frontend/src/lib/api/publicApi.ts"
 $publicModules = Resolve-RepoPath "frontend/src/modules/public"

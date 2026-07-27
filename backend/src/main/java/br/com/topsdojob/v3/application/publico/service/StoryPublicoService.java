@@ -1,9 +1,11 @@
 package br.com.topsdojob.v3.application.publico.service;
 
 import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
 import br.com.topsdojob.v3.application.publico.dto.PoliticaStoryPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.StoryPublicoDto;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -43,7 +45,7 @@ public class StoryPublicoService {
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final StoryAnuncioRepository storyRepository;
-    private final IdadePublicaService idadeService;
+    private final ComplianceVisitorAccessService visitorAccessService;
     private final MidiaPublicaUrlService urlService;
 
     public StoryPublicoService(
@@ -51,20 +53,22 @@ public class StoryPublicoService {
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             StoryAnuncioRepository storyRepository,
-            IdadePublicaService idadeService,
+            ComplianceVisitorAccessService visitorAccessService,
             MidiaPublicaUrlService urlService) {
         this.anuncioRepository = anuncioRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.storyRepository = storyRepository;
-        this.idadeService = idadeService;
+        this.visitorAccessService = visitorAccessService;
         this.urlService = urlService;
     }
 
     @Transactional(readOnly = true)
     public ListaStoriesPublicosDto listar(String slug, HttpServletRequest request) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
-        boolean idadeConfirmada = idadeService.idadeConfirmada(request);
+        boolean idadeConfirmada = visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY);
         AnuncioEntity anuncio = anuncioRepository
                 .findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
                         slugSeguro,

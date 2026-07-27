@@ -5,6 +5,7 @@ const FORWARDED_COOKIE_NAMES = [
   "token",
   "access_token",
   "authToken",
+  "age_gate_accepted",
   "visitor_access_token",
   "visitor_explicit_access_token",
   "visitor_session_id",

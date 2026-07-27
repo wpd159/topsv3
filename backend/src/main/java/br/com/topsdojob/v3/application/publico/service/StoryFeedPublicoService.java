@@ -7,6 +7,8 @@ import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService.MidiaElegivel;
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -60,7 +62,7 @@ public class StoryFeedPublicoService {
     private final AnuncioRepository anuncioRepository;
     private final UsuarioRepository usuarioRepository;
     private final StoryMidiaElegibilidadeService elegibilidadeService;
-    private final IdadePublicaService idadeService;
+    private final ComplianceVisitorAccessService visitorAccessService;
     private final IdadeAnunciantePublicaService idadeAnuncianteService;
     private final PremiumPublicoMapper premiumMapper;
     private final MidiaPublicaUrlService urlService;
@@ -73,7 +75,7 @@ public class StoryFeedPublicoService {
             AnuncioRepository anuncioRepository,
             UsuarioRepository usuarioRepository,
             StoryMidiaElegibilidadeService elegibilidadeService,
-            IdadePublicaService idadeService,
+            ComplianceVisitorAccessService visitorAccessService,
             IdadeAnunciantePublicaService idadeAnuncianteService,
             PremiumPublicoMapper premiumMapper,
             MidiaPublicaUrlService urlService) {
@@ -84,7 +86,7 @@ public class StoryFeedPublicoService {
         this.anuncioRepository = anuncioRepository;
         this.usuarioRepository = usuarioRepository;
         this.elegibilidadeService = elegibilidadeService;
-        this.idadeService = idadeService;
+        this.visitorAccessService = visitorAccessService;
         this.idadeAnuncianteService = idadeAnuncianteService;
         this.premiumMapper = premiumMapper;
         this.urlService = urlService;
@@ -92,7 +94,9 @@ public class StoryFeedPublicoService {
 
     @Transactional(readOnly = true)
     public List<StoryFeedBundleDto> listar(HttpServletRequest request) {
-        boolean idadeConfirmada = idadeService.idadeConfirmada(request);
+        boolean idadeConfirmada = visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY);
         List<UsuarioStory> usuarios = carregarStoriesUsuario();
         Map<UUID, IdadeAnunciantePublicaService.Resultado> idades =
                 idadesPorAnuncio(usuarios.stream().map(UsuarioStory::anuncio).distinct().toList());
@@ -320,7 +324,9 @@ public class StoryFeedPublicoService {
             ArquivoMidiaEntity arquivo,
             OffsetDateTime expiraEm,
             HttpServletRequest request) {
-        boolean idadeConfirmada = idadeService.idadeConfirmada(request);
+        boolean idadeConfirmada = visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY);
         String url = idadeConfirmada
                 ? urlService.resolver(vinculo, arquivo).urlPublica()
                 : previewPublica(vinculo, arquivo);

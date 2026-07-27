@@ -152,7 +152,7 @@ A regra global de classificação etária do anúncio foi superada. O anúncio n
 - story: sempre `RESTRITA_18`;
 - rejeição, pendência e solicitação de ajuste permanecem estados de moderação, nunca valores de visibilidade.
 
-O backend é a fonte da decisão. Mídia `RESTRITA_18` não entrega URL original sem autorização etária válida reconhecida pelo backend; placeholder seguro permanece obrigatório enquanto storage/CDN protegido não estiver disponível. Título, descrição, cidade, bairro, página pública, breadcrumb, SEO textual e contato não dependem da idade ou da visibilidade da galeria. A confirmação local usa cookie HttpOnly assinado, sem CPF, documento, conta, localStorage ou sessionStorage.
+O backend é a fonte da decisão. Mídia `RESTRITA_18` não entrega URL original sem autorização etária válida reconhecida pelo backend; placeholder seguro permanece obrigatório enquanto storage/CDN protegido não estiver disponível. Título, descrição, cidade, bairro, página pública, breadcrumb e SEO textual permanecem acessíveis sem o original protegido. A V034 separa o aceite global do fluxo reforçado: o segundo valida nascimento confirmado, CPF, aceites e risco, com fallback documental privado quando exigido. Cookies HttpOnly assinados são a única autoridade de acesso; nenhum dado pessoal, `localStorage`, `sessionStorage` ou estado React autoriza mídia, Story ou WhatsApp protegido.
 
 Registros anteriores sobre anúncio global `LIVRE`/`BLOQUEADO` são históricos e estão expressamente superados por esta seção e pela migration `V018__visibilidade_individual_midia.sql`.
 

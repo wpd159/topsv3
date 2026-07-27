@@ -7,7 +7,6 @@ import "./globals.css"
 import { AuthProvider } from "@/context/AuthContext"
 import { FavoritosProvider } from "@/context/FavoritosContext"
 import { Toaster } from "sonner"
-import { SensitiveImageUnlockProvider } from "@/components/compliance/sensitive-image-unlock-provider"
 import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
 import { SiteContentProvider } from "@/components/site-content/site-content-provider"
 import { getUnavailableSiteContent, SITE_CONTENT_KEYS } from "@/lib/site-content"
@@ -85,14 +84,12 @@ export default function RootLayout({
       <body className="min-w-0 w-full antialiased bg-white text-[#111]">
         <AuthProvider>
           <FavoritosProvider>
-            <SensitiveImageUnlockProvider>
-              <SiteContentProvider entries={unavailableSiteContent}>
-                <WhatsAppSafetyProvider>
-                  {children}
-                  <Toaster position="top-right" richColors closeButton expand />
-                </WhatsAppSafetyProvider>
-              </SiteContentProvider>
-            </SensitiveImageUnlockProvider>
+            <SiteContentProvider entries={unavailableSiteContent}>
+              <WhatsAppSafetyProvider>
+                {children}
+                <Toaster position="top-right" richColors closeButton expand />
+              </WhatsAppSafetyProvider>
+            </SiteContentProvider>
           </FavoritosProvider>
         </AuthProvider>
       </body>

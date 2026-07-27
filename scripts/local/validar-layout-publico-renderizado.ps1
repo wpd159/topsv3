@@ -430,13 +430,39 @@ async function main() {
     await cdp.send("Runtime.enable");
     await cdp.send("Page.navigate", { url: baseUrl });
     await delay(300);
-    await cdp.send("Runtime.evaluate", {
-      expression: `(() => {
-        const expiresAt = Date.now() + 86400000;
-        localStorage.setItem("age_gate_accepted_until", String(expiresAt));
-        document.cookie = "age_gate_accepted=" + encodeURIComponent("v1." + expiresAt) + "; Path=/; SameSite=Lax";
-      })()`
+    const ageGate = await cdp.send("Runtime.evaluate", {
+      expression: `(async () => {
+        const statusUrl = ${JSON.stringify(baseUrl + "/api/public/compliance/age-gate/status")};
+        const acceptUrl = ${JSON.stringify(baseUrl + "/api/public/compliance/age-gate/accept")};
+        const status = await fetch(statusUrl, { credentials: "include", cache: "no-store" });
+        if (!status.ok) return false;
+        const antiForgeryCookieName = "XSRF-" + "TOKEN";
+        const antiForgeryHeaderName = "X-XSRF-" + "TOKEN";
+        const antiForgeryEntry = document.cookie
+          .split("; ")
+          .find((item) => item.startsWith(antiForgeryCookieName + "="));
+        if (!antiForgeryEntry) return false;
+        const antiForgeryValue = decodeURIComponent(
+          antiForgeryEntry.slice(antiForgeryCookieName.length + 1)
+        );
+        const accepted = await fetch(acceptUrl, {
+          method: "POST",
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            [antiForgeryHeaderName]: antiForgeryValue
+          },
+          body: JSON.stringify({ originPath: "/" })
+        });
+        return accepted.ok;
+      })()`,
+      awaitPromise: true,
+      returnByValue: true
     });
+    if (ageGate.result?.value !== true) {
+      throw new Error("Aceite global canonico nao foi inicializado.");
+    }
 
     for (const viewport of viewports) {
       await cdp.send("Emulation.setDeviceMetricsOverride", {

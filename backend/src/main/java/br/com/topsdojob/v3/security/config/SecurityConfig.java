@@ -18,6 +18,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CsrfTokenRequestHandler;
 
@@ -39,13 +40,14 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             SecurityContextRepository securityContextRepository,
-            CsrfTokenRequestHandler csrfTokenRequestHandler) throws Exception {
+            CsrfTokenRequestHandler csrfTokenRequestHandler,
+            CsrfTokenRepository csrfTokenRepository) throws Exception {
         http.cors(Customizer.withDefaults())
                 .csrf(csrf -> {
                     if (local) {
                         csrf.disable();
                     } else {
-                        csrf.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        csrf.csrfTokenRepository(csrfTokenRepository)
                                 .ignoringRequestMatchers(
                                         "/api/public/webhooks/efi",
                                         "/api/public/webhooks/efi/pix")
@@ -155,6 +157,11 @@ public class SecurityConfig {
     @Bean
     public CsrfTokenRequestHandler csrfTokenRequestHandler() {
         return new CsrfTokenRequestAttributeHandler();
+    }
+
+    @Bean
+    public CsrfTokenRepository csrfTokenRepository() {
+        return CookieCsrfTokenRepository.withHttpOnlyFalse();
     }
 
     public boolean csrfDisabledOnlyInLocal() {

@@ -8,6 +8,8 @@ import { CalendarDaysIcon, ChatBubbleLeftIcon, FlagIcon } from '@heroicons/react
 import DenunciaModal from './denuncia-modal'
 import { useWhatsAppSafety } from '@/components/site/whatsapp-safety-provider'
 import { publicApiUrl } from '@/lib/api-contract'
+import { VisitorVerificationModal } from '@/components/compliance/visitor-verification-modal'
+import { publicCsrfHeaders } from '@/lib/compliance/age-gate-api'
 
 const WhatsAppIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" {...props}>
@@ -43,6 +45,7 @@ function clean(value?: string | null) {
 
 export default function Sidebar({ anuncio }: SidebarProps) {
   const [modalAberto, setModalAberto] = useState(false)
+  const [whatsappVerificationOpen, setWhatsappVerificationOpen] = useState(false)
   const router = useRouter()
   const { openWhatsAppWarning } = useWhatsAppSafety()
 
@@ -53,17 +56,20 @@ export default function Sidebar({ anuncio }: SidebarProps) {
     return ponto || clean(anuncio.localizacao) || clean(anuncio.cidade) || 'Cidade não informada'
   }, [anuncio.bairroNome, anuncio.cidade, anuncio.cidadeNome, anuncio.estadoUf, anuncio.localizacao, anuncio.pontoReferenciaTexto])
 
-  const handleWhatsAppClick = async (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
+  const requestWhatsApp = async () => {
     try {
+      const headers = await publicCsrfHeaders()
       const response = await fetch(publicApiUrl(`/anuncios/${encodeURIComponent(anuncio.slug)}/clique-whatsapp`), {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: '{}',
       })
       const payload = await response.json().catch(() => null)
+      if (response.status === 403) {
+        setWhatsappVerificationOpen(true)
+        return
+      }
       if (!response.ok || !payload?.disponivel || typeof payload.whatsappUrl !== 'string') {
         toast.error(payload?.message || payload?.error || 'Contato indisponível para este anúncio.')
         return
@@ -72,6 +78,12 @@ export default function Sidebar({ anuncio }: SidebarProps) {
     } catch {
       toast.error('Não foi possível acessar o WhatsApp agora.')
     }
+  }
+
+  const handleWhatsAppClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    void requestWhatsApp()
   }
 
   const usernameLabel = clean(anuncio.username)
@@ -130,6 +142,20 @@ export default function Sidebar({ anuncio }: SidebarProps) {
       </div>
 
       <DenunciaModal open={modalAberto} onOpenChange={setModalAberto} anuncioId={anuncio.id} slug={anuncio.slug} />
+      <VisitorVerificationModal
+        open={whatsappVerificationOpen}
+        level="REINFORCED"
+        scope="WHATSAPP"
+        context={{
+          anuncioId: anuncio.id,
+          route: `/anuncios/${anuncio.slug}`,
+        }}
+        onOpenChange={setWhatsappVerificationOpen}
+        onVerified={() => {
+          setWhatsappVerificationOpen(false)
+          void requestWhatsApp()
+        }}
+      />
     </>
   )
 }

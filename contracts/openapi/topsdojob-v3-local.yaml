@@ -820,7 +820,7 @@ paths:
   /api/public/anuncios/{slug}/clique-whatsapp:
     post:
       summary: Registra clique WhatsApp publico local
-      description: Retorna whatsappUrl somente quando a politica backend autoriza anuncio PUBLICADO, APROVADO, nao removido e com contato valido. O contato nao depende de confirmacao de idade nem da visibilidade das midias.
+      description: Retorna whatsappUrl somente quando a politica backend autoriza anuncio PUBLICADO, APROVADO, nao removido, com contato valido e token reforcado vigente para o escopo WHATSAPP.
       operationId: postPublicAnuncioCliqueWhatsapp
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -855,7 +855,7 @@ paths:
   /api/public/stories/ativos:
     get:
       summary: Compoe o feed publico unico de Stories
-      description: Retorna a projecao ADMINISTRATIVO ativa e os Stories USUARIO vigentes. A deduplicacao usa a identidade canonica do arquivo e preserva o Story pago. Antes da confirmacao etaria entrega somente a derivacao publica borrada; o original privado e resolvido apenas depois da confirmacao.
+      description: Retorna a projecao ADMINISTRATIVO ativa e os Stories USUARIO vigentes. A deduplicacao usa a identidade canonica do arquivo e preserva o Story pago. Sem token reforcado vigente entrega somente derivacao publica borrada; o original privado e resolvido pelo fluxo protegido.
       operationId: getPublicStoriesFeed
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -895,8 +895,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/public/anuncios/{slug}/stories:
     get:
-      summary: Lista stories publicos autorizados por idade
-      description: Stories sao sempre RESTRITA_18. Sem cookie de idade confirmada retorna apenas derivacoes publicas realmente borradas e politica negada; com cookie valido o backend pode resolver o original pelo fluxo protegido. Nenhuma resposta expoe storage key, bucket ou hash.
+      summary: Lista stories publicos conforme autorizacao reforcada
+      description: Stories sao sempre RESTRITA_18. Sem token reforcado vigente retorna apenas derivacoes publicas realmente borradas e politica negada; com token valido o backend resolve o original pelo fluxo protegido. Nenhuma resposta expoe storage key, bucket ou hash.
       operationId: getPublicAnuncioStories
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -922,30 +922,63 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
-  /api/public/idade/status:
+  /api/public/compliance/age-gate/status:
     get:
-      summary: Consulta status local de confirmacao de idade
-      description: Lê somente cookie HttpOnly local; nao usa CPF, documento, localStorage ou sessionStorage.
-      operationId: getPublicIdadeStatus
+      summary: Consulta o aceite global do age gate
+      description: Valida no backend o cookie global HttpOnly assinado. O aceite global nao autoriza midia restrita, Story ou WhatsApp.
+      operationId: getPublicComplianceAgeGateStatus
       parameters:
         - $ref: "#/components/parameters/RequestId"
       responses:
         "200":
-          description: status de idade avaliado localmente
+          description: estado global e token CSRF inicializados
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatusIdadePublica"
+                $ref: "#/components/schemas/AgeGateGlobalStatus"
         "500":
           $ref: "#/components/responses/InternalError"
-  /api/public/idade/confirmar:
+  /api/public/compliance/age-gate/accept:
     post:
-      summary: Confirma idade local por declaracao
-      description: Em ambiente local aceita CORS apenas de origens localhost configuradas, com credentials para receber cookie HttpOnly. Recebe somente data de nascimento e declaracao local. Se maior de 18, emite cookie HttpOnly SameSite=Lax; Secure deve ser usado fora de local. Nao usa CPF ou documento.
-      operationId: postPublicIdadeConfirmar
+      summary: Registra o aceite global
+      description: Exige CSRF e emite cookie global HttpOnly assinado por sete dias. Nao emite token reforcado.
+      operationId: postPublicComplianceAgeGateAccept
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgeGateAcceptRequest"
+      responses:
+        "200":
+          description: aceite global registrado
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Set-Cookie:
+              description: Cookies HttpOnly assinados `age_gate_accepted` e `visitor_session_id`; SameSite=Lax; Secure fora de local.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgeGateGlobalStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/compliance/visitor/challenge:
+    post:
+      summary: Cria challenge contextual de verificacao reforcada
+      description: Exige aceite global e CSRF. O challenge e opaco, antirreplay, idempotente, limitado por sessao e vinculado ao contexto protegido sanitizado.
+      operationId: postPublicComplianceVisitorChallenge
       parameters:
         - $ref: "#/components/parameters/RequestId"
       requestBody:
@@ -953,25 +986,185 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ConfirmarIdadePublicaRequest"
+              $ref: "#/components/schemas/VisitorChallengeRequest"
       responses:
         "200":
-          description: idade confirmada e cookie emitido
-          headers:
-            X-Request-Id:
-              $ref: "#/components/headers/RequestId"
-            Set-Cookie:
-              description: Cookie HttpOnly `topsv3_idade_confirmada`; SameSite=Lax; Secure fora de local.
-              schema:
-                type: string
+          description: challenge criado ou recuperado pela mesma idempotencia
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/StatusIdadePublica"
+                $ref: "#/components/schemas/VisitorChallengeResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          description: limite temporario de challenges atingido
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/compliance/visitor/verify:
+    post:
+      summary: Verifica os dados reforcados do visitante
+      description: Valida nascimento repetido, maioridade, CPF, aceites, risco e challenge. Token bruto nunca e persistido; somente hashes seguros sao armazenados.
+      operationId: postPublicComplianceVisitorVerify
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisitorVerifyRequest"
+      responses:
+        "200":
+          description: verificacao concluida e cookies por escopo emitidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorAccessStatus"
+        "202":
+          description: fallback documental necessario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorAccessStatus"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          description: challenge expirado
+        "422":
+          description: dados ou aceites invalidos
+        "429":
+          description: verificacao temporariamente bloqueada
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/compliance/visitor/status:
+    get:
+      summary: Consulta autorizacoes reforcadas da sessao
+      description: Valida no backend cookies HttpOnly assinados, hashes persistidos, escopos, expiracao e revogacao.
+      operationId: getPublicComplianceVisitorStatus
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: estado global, geral, explicito, risco e documento
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorAccessStatus"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/compliance/visitor/document:
+    post:
+      summary: Envia um documento privado para fallback manual
+      description: Aceita exatamente uma imagem JPEG/PNG ou PDF de ate 12 MB, validado por assinatura real e armazenado somente na area documental privada.
+      operationId: postPublicComplianceVisitorDocument
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: challengeId
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            maxLength: 160
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+      responses:
+        "202":
+          description: documento privado recebido, sem emissao de token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorDocumentSubmitResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          description: documento acima de 12 MB
+        "415":
+          description: MIME ou assinatura nao permitidos
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/compliance/visitor/revoke:
+    post:
+      summary: Revoga tokens reforcados da sessao
+      description: Exige CSRF, revoga tokens gerais e explicitos persistidos e expira seus cookies. O aceite global permanece independente.
+      operationId: postPublicComplianceVisitorRevoke
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisitorRevokeRequest"
+      responses:
+        "200":
+          description: tokens revogados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitorAccessStatus"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/compliance/visitor/media/{midiaId}:
+    get:
+      summary: Entrega midia restrita pelo fluxo protegido
+      description: Exige token reforcado vigente e retorna bytes privados com no-store. Nenhuma URL assinada, bucket ou object key e exposta.
+      operationId: getPublicComplianceProtectedMedia
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: midiaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: bytes da midia protegida
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          description: storage privado indisponivel
   /api/admin/compliance/verificacoes-etarias:
     get:
       summary: Lista verificacoes etarias minimizadas para auditoria
@@ -1002,6 +1195,124 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/compliance/documentos:
+    get:
+      summary: Lista documentos privados do fallback etario
+      description: Resposta sanitizada para ADMIN com SEGURANCA_GERENCIAR; nao expoe token, hash, bucket, object key ou URL privada.
+      operationId: getAdminComplianceVisitorDocumentos
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: limite
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: documentos sanitizados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminComplianceDocumento"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/compliance/documentos/{id}/arquivo:
+    get:
+      summary: Abre documento privado de visitante
+      operationId: getAdminComplianceVisitorDocumentoArquivo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: bytes privados com no-store
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/compliance/documentos/{id}/decidir:
+    post:
+      summary: Aprova ou rejeita documento do fallback etario
+      description: Registra decisao e auditoria sem emitir token. A rejeicao exige motivo; o visitante deve repetir visitor/verify depois de uma aprovacao.
+      operationId: postAdminComplianceVisitorDocumentoDecidir
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminComplianceDocumentoDecisaoRequest"
+      responses:
+        "200":
+          description: decisao registrada sem token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminComplianceDocumentoDecisaoResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/compliance/risco:
+    get:
+      summary: Lista perfis pseudonimos de risco
+      description: Exibe somente referencia curta de sessao e dados sanitizados; nao expoe IP, user-agent ou hashes.
+      operationId: getAdminComplianceVisitorRisco
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: limite
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: perfis de risco sanitizados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminComplianceRisco"
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /api/public/acompanhantes/{uf}:
     get:
       summary: Listagem publica por estado
@@ -7759,38 +8070,228 @@ components:
         pendenciaStories:
           type: string
           const: PENDENTE_URL_PUBLICA_MIDIA_CDN
-    ConfirmarIdadePublicaRequest:
+    AgeGateAcceptRequest:
       type: object
       additionalProperties: false
-      required:
-        - dataNascimento
-        - declaracaoMaioridade
       properties:
-        dataNascimento:
+        originPath:
+          type: [string, "null"]
+          maxLength: 160
+          pattern: "^/.*$"
+    AgeGateGlobalStatus:
+      type: object
+      additionalProperties: false
+      required: [accepted, state]
+      properties:
+        accepted:
+          type: boolean
+        state:
           type: string
-          format: date
-          description: Data usada somente para declaracao local de maioridade; nao enviar CPF ou documento.
-        declaracaoMaioridade:
-          type: boolean
-    StatusIdadePublica:
+          enum: [GLOBAL_NAO_ACEITO, GLOBAL_ACEITO]
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+    VisitorChallengeRequest:
+      type: object
+      additionalProperties: false
+      required: [level, scope, anuncioId, idempotencyKey]
+      properties:
+        level:
+          type: string
+          enum: [LIGHT, REINFORCED, STRONG]
+        scope:
+          type: string
+          enum: [MIDIA_RESTRITA, WHATSAPP, STORY, CONTEUDO_EXPLICITO]
+        anuncioId:
+          type: string
+          format: uuid
+        midiaId:
+          type: [string, "null"]
+          format: uuid
+        storyId:
+          type: [string, "null"]
+          maxLength: 120
+        route:
+          type: [string, "null"]
+          maxLength: 255
+          pattern: "^/.*$"
+        idempotencyKey:
+          type: string
+          maxLength: 160
+    VisitorChallengeResponse:
       type: object
       additionalProperties: false
       required:
-        - confirmada
-        - motivoPublico
+        - challengeId
+        - state
+        - effectiveLevel
+        - scope
+        - expiresAt
+        - requiresExplicitAcknowledgement
+        - documentRequired
+        - maxAttempts
       properties:
-        confirmada:
-          type: boolean
-        expiraEm:
-          type:
-            - string
-            - "null"
-          format: date-time
-        motivoPublico:
+        challengeId:
+          type: string
+          format: uuid
+        state:
           type: string
           enum:
-            - IDADE_CONFIRMADA
-            - IDADE_NAO_CONFIRMADA
+            - CHALLENGE_ACTIVE
+            - VERIFIED
+            - RETRY
+            - BLOCKED
+            - EXPIRED
+            - DOCUMENT_PENDING
+            - DOCUMENT_APPROVED
+            - DOCUMENT_REJECTED
+        effectiveLevel:
+          type: string
+          enum: [NONE, LIGHT, REINFORCED, STRONG]
+        scope:
+          type: string
+          enum: [MIDIA_RESTRITA, WHATSAPP, STORY, CONTEUDO_EXPLICITO]
+        expiresAt:
+          type: string
+          format: date-time
+        requiresExplicitAcknowledgement:
+          type: boolean
+        documentRequired:
+          type: boolean
+        maxAttempts:
+          type: integer
+          minimum: 1
+          maximum: 10
+        reasonPublic:
+          type: [string, "null"]
+    VisitorVerifyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - challengeId
+        - dataNascimento
+        - confirmacaoDataNascimento
+        - cpf
+        - aceiteMaioridade
+        - aceiteConteudoRestrito
+        - aceitePrivacidade
+        - confirmacaoExplicita
+        - idempotencyKey
+      properties:
+        challengeId:
+          type: string
+          format: uuid
+        dataNascimento:
+          type: string
+          pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+          description: Dado efemero validado no backend; nao e persistido nem registrado em logs.
+        confirmacaoDataNascimento:
+          type: string
+          pattern: "^\\d{2}/\\d{2}/\\d{4}$"
+        cpf:
+          type: string
+          pattern: "^\\d{3}\\.?\\d{3}\\.?\\d{3}-?\\d{2}$"
+          description: Dado efemero com digitos verificadores; nao e persistido nem registrado em logs.
+        aceiteMaioridade:
+          type: boolean
+        aceiteConteudoRestrito:
+          type: boolean
+        aceitePrivacidade:
+          type: boolean
+        confirmacaoExplicita:
+          type: boolean
+        idempotencyKey:
+          type: string
+          maxLength: 160
+    VisitorAccessStatus:
+      type: object
+      additionalProperties: false
+      required:
+        - globalAccepted
+        - verified
+        - level
+        - explicitVerified
+        - explicitLevel
+        - state
+      properties:
+        globalAccepted:
+          type: boolean
+        verified:
+          type: boolean
+        level:
+          type: string
+          enum: [NONE, LIGHT, REINFORCED, STRONG]
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+        explicitVerified:
+          type: boolean
+        explicitLevel:
+          type: string
+          enum: [NONE, LIGHT, REINFORCED, STRONG]
+        explicitExpiresAt:
+          type: [string, "null"]
+          format: date-time
+        state:
+          type: string
+          enum:
+            - GLOBAL_NAO_ACEITO
+            - GLOBAL_ACEITO
+            - CHALLENGE_ACTIVE
+            - VERIFIED
+            - RETRY
+            - BLOCKED
+            - EXPIRED
+            - DOCUMENT_PENDING
+            - DOCUMENT_APPROVED
+            - DOCUMENT_REJECTED
+        riskScore:
+          type: [integer, "null"]
+          minimum: 0
+        decision:
+          type: [string, "null"]
+          enum:
+            - ALLOW_LEVEL_1
+            - REQUIRE_LEVEL_2
+            - REQUIRE_LEVEL_3
+            - REVIEW_FLAG
+            - TEMP_BLOCK
+            - HARD_BLOCK
+            - null
+        documentStatus:
+          type: [string, "null"]
+          enum: [DOCUMENT_PENDING, DOCUMENT_APPROVED, DOCUMENT_REJECTED, null]
+        reasonPublic:
+          type: [string, "null"]
+    VisitorDocumentSubmitResponse:
+      type: object
+      additionalProperties: false
+      required: [submissionId, challengeId, state, status, createdAt, reasonPublic]
+      properties:
+        submissionId:
+          type: string
+          format: uuid
+        challengeId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          const: DOCUMENT_PENDING
+        status:
+          type: string
+          const: PENDING
+        createdAt:
+          type: string
+          format: date-time
+        reasonPublic:
+          type: string
+    VisitorRevokeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: [string, "null"]
+          maxLength: 80
     AdminVerificacaoEtaria:
       type: object
       additionalProperties: false
@@ -7805,9 +8306,131 @@ components:
         metodo:
           type: string
           enum: [DECLARACAO, DOCUMENTO, STAFF, IMPORTACAO]
+        estado:
+          type: [string, "null"]
+        escopo:
+          type: [string, "null"]
+        challengeId:
+          type: [string, "null"]
+          format: uuid
+        documentoStatus:
+          type: [string, "null"]
+        motivoSanitizado:
+          type: [string, "null"]
         requestId:
           type: string
         criadoEm:
+          type: string
+          format: date-time
+    AdminComplianceDocumento:
+      type: object
+      additionalProperties: false
+      required: [id, challengeId, status, mimeType, tamanhoBytes, criadoEm]
+      properties:
+        id:
+          type: string
+          format: uuid
+        challengeId:
+          type: string
+          format: uuid
+        anuncioId:
+          type: [string, "null"]
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, APPROVED, REJECTED]
+        mimeType:
+          type: string
+          enum: [image/jpeg, image/png, application/pdf]
+        tamanhoBytes:
+          type: integer
+          minimum: 1
+          maximum: 12582912
+        motivoPublico:
+          type: [string, "null"]
+        criadoEm:
+          type: string
+          format: date-time
+        revisadoEm:
+          type: [string, "null"]
+          format: date-time
+    AdminComplianceDocumentoDecisaoRequest:
+      type: object
+      additionalProperties: false
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [APPROVE, REJECT]
+        reason:
+          type: [string, "null"]
+          maxLength: 240
+    AdminComplianceDocumentoDecisaoResponse:
+      type: object
+      additionalProperties: false
+      required: [id, status, requestId, decidedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [APPROVED, REJECTED]
+        requestId:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    AdminComplianceRisco:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - referenciaSessao
+        - score
+        - decisao
+        - falhasConsecutivas
+        - acessosRestritos
+        - acessosExplicitos
+        - revisaoSinalizada
+        - atualizadoEm
+      properties:
+        id:
+          type: string
+          format: uuid
+        referenciaSessao:
+          type: string
+          maxLength: 12
+          description: Referencia opaca curta; nao e o hash persistido.
+        score:
+          type: integer
+          minimum: 0
+        decisao:
+          type: string
+          enum:
+            - ALLOW_LEVEL_1
+            - REQUIRE_LEVEL_2
+            - REQUIRE_LEVEL_3
+            - REVIEW_FLAG
+            - TEMP_BLOCK
+            - HARD_BLOCK
+        falhasConsecutivas:
+          type: integer
+          minimum: 0
+        acessosRestritos:
+          type: integer
+          minimum: 0
+        acessosExplicitos:
+          type: integer
+          minimum: 0
+        revisaoSinalizada:
+          type: boolean
+        bloqueadoAte:
+          type: [string, "null"]
+          format: date-time
+        motivoSanitizado:
+          type: [string, "null"]
+        atualizadoEm:
           type: string
           format: date-time
     StoryFeedItem:
@@ -8153,12 +8776,12 @@ components:
           items:
             type: string
         contatoPublico:
-          description: Somente o backend pode preencher contato publico. O contato de anuncio publico e ativo nao depende de confirmacao de idade ou visibilidade de midia.
+          description: Campo legado mantido nulo no contrato anonimo. O WhatsApp e resolvido exclusivamente pelo endpoint de clique depois de token reforcado vigente e das regras publicas do anuncio.
           type:
             - string
             - "null"
         pendenciaContatoPublico:
-          description: Marcador local enquanto a politica futura de contato publico nao for aprovada.
+          description: Marcador sanitizado que impede o frontend de fabricar contato; nao substitui a verificacao reforcada do endpoint de WhatsApp.
           type: string
           const: PENDENTE_POLITICA_EXPOSICAO_WHATSAPP_PUBLICO
         anunciaDesde:

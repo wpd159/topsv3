@@ -10,7 +10,6 @@ import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import java.net.URI;
-import java.time.Duration;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
@@ -111,7 +110,7 @@ public class MidiaPublicaUrlService {
                     && storageProperties.getPrivateMediaBucket().equals(arquivo.getBucket())
                     && arquivo.getChaveObjeto().startsWith(storageProperties.getPrivateMediaPrefix())) {
                 return new ResultadoUrlPublica(
-                        storage.temporaryGetUrl(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto(), Duration.ofMinutes(5)).toString(),
+                        "/api/public/compliance/visitor/media/" + vinculo.getId(),
                         null);
             }
         } catch (RuntimeException ignored) {

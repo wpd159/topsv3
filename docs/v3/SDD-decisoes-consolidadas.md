@@ -24,7 +24,8 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 - Foto exige decisão individual; vídeo e story são sempre `RESTRITA_18` e o backend rejeita tentativa de `LIVRE`.
 - Pendência, rejeição e solicitação de ajuste são estados de moderação, não visibilidades.
 - Mídia restrita exige autorização etária real do backend e não expõe original, preload ou metadata antes dela.
-- Página, texto, localização, SEO e contato não são bloqueados por mídia restrita.
+- Pagina, texto, localizacao e SEO nao sao bloqueados por midia restrita.
+- O WhatsApp protegido exige verificacao reforcada valida no backend.
 - A migration `V018__visibilidade_individual_midia.sql` faz o backfill conservador e remove as colunas globais somente depois dele.
 - V001 a V019 foram aplicadas e validadas com Flyway OSS 12.10.0 em PostgreSQL 17.10 descartavel; V019 consta como `Success` e os recursos Docker temporarios proprios foram removidos.
 - Toda decisão anterior sobre classificação global `LIVRE`/`BLOQUEADO`, inclusive bloqueio de contato, é histórica e está superada.
@@ -56,8 +57,28 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 
 - Frontend nao monta nem exibe WhatsApp bruto por conta propria.
 - Backend valida se o anúncio está público e ativo e medeia o contato.
-- Visibilidade da mídia e confirmação de idade não condicionam o contato.
+- O aceite global isolado nao condiciona a navegacao publica segura, mas nao
+  libera o contato.
+- O endpoint de WhatsApp exige token reforcado vigente para o escopo
+  `WHATSAPP`, alem das regras publicas e comerciais do anuncio.
 - Telefone ou WhatsApp bruto não aparece no HTML público ou metadata; o endpoint de clique preserva métricas e auditoria mínima.
+
+## Age gate completo por escopo
+
+- O aceite global e independente da verificacao reforcada e persiste por sete
+  dias em cookie HttpOnly assinado.
+- O aceite global nao libera original `RESTRITA_18`, Story ou WhatsApp.
+- O nivel reforcado usa challenge opaco, nascimento confirmado, CPF valido,
+  aceites, avaliacao de risco e tokens por escopo validados pelo backend.
+- Conteudo explicito exige token explicito distinto; token geral nao o libera.
+- O fallback documental aceita uma imagem ou PDF de ate 12 MB somente no
+  storage documental privado.
+- A decisao administrativa de documento nao emite token; o visitante deve
+  repetir `visitor/verify`.
+- O contrato simplificado `/api/public/idade/*` e o cookie
+  `topsv3_idade_confirmada` estao descontinuados pela V034.
+- `localStorage`, `sessionStorage` e estado React nunca sao autoridade de
+  autorizacao.
 
 ## Midia segura
 

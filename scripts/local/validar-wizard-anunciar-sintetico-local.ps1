@@ -591,12 +591,36 @@ async function applySession(cdp, session) {
 
 async function prepareBrowserState(cdp) {
   await navigate(cdp, frontendBaseUrl);
-  await evalValue(cdp, `(() => {
-    const expiresAt = Date.now() + 86400000;
-    localStorage.setItem("age_gate_accepted_until", String(expiresAt));
-    document.cookie = "age_gate_accepted=" + encodeURIComponent("v1." + expiresAt) + "; Path=/; SameSite=Lax";
-    return true;
+  const accepted = await evalValue(cdp, `(async () => {
+    const status = await fetch(${JSON.stringify(backendBaseUrl + "/api/public/compliance/age-gate/status")}, {
+      credentials: "include",
+      cache: "no-store"
+    });
+    if (!status.ok) return false;
+    const antiForgeryCookieName = "XSRF-" + "TOKEN";
+    const antiForgeryHeaderName = "X-XSRF-" + "TOKEN";
+    const antiForgeryEntry = document.cookie
+      .split("; ")
+      .find((item) => item.startsWith(antiForgeryCookieName + "="));
+    if (!antiForgeryEntry) return false;
+    const antiForgeryValue = decodeURIComponent(
+      antiForgeryEntry.slice(antiForgeryCookieName.length + 1)
+    );
+    const response = await fetch(${JSON.stringify(backendBaseUrl + "/api/public/compliance/age-gate/accept")}, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        [antiForgeryHeaderName]: antiForgeryValue
+      },
+      body: JSON.stringify({ originPath: "/anunciar/wizard" })
+    });
+    return response.ok;
   })()`);
+  if (accepted !== true) {
+    throw new Error("Aceite global canonico nao foi inicializado.");
+  }
 }
 
 async function apiWithSession(pathname, session, options = {}) {

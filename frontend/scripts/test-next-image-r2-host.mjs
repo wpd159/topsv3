@@ -120,7 +120,12 @@ const detailPageSource = readFileSync(
 )
 assert.match(publicMediaSource, /midia\.visibilidadeMidia === "LIVRE"/)
 assert.match(publicMediaSource, /midia\.autorizada/)
-assert.match(publicMediaSource, /Boolean\(midia\.urlPublica\)/)
+assert.match(publicMediaSource, /Boolean\(fontePublicaSegura\(midia\)\)/)
+assert.match(
+  publicMediaSource,
+  /midia\.autorizada\s*\?\s*midia\.urlPublica\s*\?\?\s*null\s*:\s*midia\.previewUrl\s*\?\?\s*null/,
+)
+assert.doesNotMatch(publicMediaSource, /objectKey|chaveObjeto|urlAssinada/i)
 assert.match(detailPageSource, /selecionarImagemPublicaSeo/)
 assert.match(detailPageSource, /\.\.\.\(imagemPublica/)
 

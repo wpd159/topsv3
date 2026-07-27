@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState, type MouseEvent } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { SensitiveImage } from "@/components/compliance/sensitive-image"
+import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import { FavoritoButton } from "@/components/anuncios/favorito-button"
 import {
   fontePublicaSegura,
@@ -16,6 +17,7 @@ import {
 import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { publicApiUrl } from "@/lib/api-contract"
+import { publicCsrfHeaders } from "@/lib/compliance/age-gate-api"
 import {
   formatarVisualizacoesCanonicas,
   type VisualizacoesCanonicas,
@@ -153,6 +155,7 @@ export function AnuncioCard({
   }, [slug, nome])
 
   const [badSrcs, setBadSrcs] = useState<Set<string>>(new Set())
+  const [whatsappVerificationOpen, setWhatsappVerificationOpen] = useState(false)
 
   const markBad = (src: string) => {
     if (!src) return
@@ -219,8 +222,7 @@ export function AnuncioCard({
     setIndex((i) => (i - 1 + midiasSeguras.length) % midiasSeguras.length)
   }
 
-  const handleWhatsAppClick = async (e: MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation()
+  const requestWhatsApp = async () => {
     if (previewMode) return
     if (typeof window !== "undefined" && (window as any).gtag) {
       ;(window as any).gtag("event", "click_whatsapp", {
@@ -230,14 +232,19 @@ export function AnuncioCard({
     }
 
     try {
+      const headers = await publicCsrfHeaders()
       const res = await fetch(publicApiUrl(`/anuncios/${encodeURIComponent(slugRota)}/clique-whatsapp`), {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: "{}",
       })
 
       if (!res.ok) {
+        if (res.status === 403) {
+          setWhatsappVerificationOpen(true)
+          return
+        }
         const payload = await res.json().catch(async () => ({ message: (await res.text().catch(() => "")).trim() }))
         const message =
           payload?.message ||
@@ -256,6 +263,11 @@ export function AnuncioCard({
     } catch {
       toast.error("Não foi possível validar o acesso ao WhatsApp agora.")
     }
+  }
+
+  const handleWhatsAppClick = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation()
+    void requestWhatsApp()
   }
 
   const handleChatClick = () => {
@@ -294,6 +306,7 @@ export function AnuncioCard({
   }, [anunciaDesde])
 
   return (
+    <>
     <div
       className={`public-anuncio-card group relative mx-auto flex h-full w-full max-w-[360px] flex-col rounded-xl bg-white shadow-[0_0_18px_rgba(252,30,173,0.10)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_0_26px_rgba(252,30,173,0.20)] ${
         destaque
@@ -462,6 +475,22 @@ export function AnuncioCard({
         </div>
       </div>
     </div>
+    <VisitorVerificationModal
+      open={whatsappVerificationOpen}
+      level="REINFORCED"
+      scope="WHATSAPP"
+      context={{
+        anuncioId: id,
+        route: `/anuncios/${slugRota}`,
+      }}
+      onOpenChange={setWhatsappVerificationOpen}
+      onVerified={() => {
+        setWhatsappVerificationOpen(false)
+        onAccessUpdated?.()
+        void requestWhatsApp()
+      }}
+    />
+    </>
   )
 }
 

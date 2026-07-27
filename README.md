@@ -458,25 +458,29 @@ O Bloco 8 adiciona endpoints publicos locais:
 - `POST /api/public/anuncios/{slug}/visualizacao`;
 - `POST /api/public/anuncios/{slug}/clique-whatsapp`.
 
-Os eventos usam hash tecnico para IP/User-Agent/referer e registram dados apenas em banco local descartavel. A politica backend de contato libera WhatsApp para anuncio `LIVRE` sem idade, ou `BLOQUEADO` somente apos confirmacao de idade valida, sempre exigindo `PUBLICADO`, `APROVADO`, sem `removido_em` e contato valido.
+Os eventos usam hash tecnico para IP/User-Agent/referer. O contato continua mediado pelo backend e exige verificacao reforcada valida, alem de anuncio `PUBLICADO`, `APROVADO`, sem `removido_em` e com contato valido.
 
-Stories seguem bloqueados sem confirmacao de idade usando motivo `IDADE_NAO_CONFIRMADA`. Quando a idade esta confirmada e a midia publica/CDN ainda nao existe, a pendencia e `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+Stories e midias `RESTRITA_18` seguem bloqueados sem token de visitante valido. Quando a derivacao publica segura ainda nao existe, a pendencia continua explicita sem expor o original.
 
-## Bloco 9 - confirmacao de idade local e stories
+## Age gate completo por escopo
 
-O Bloco 9 adiciona `POST /api/public/idade/confirmar`, `GET /api/public/idade/status` e `GET /api/public/anuncios/{slug}/stories`.
+O contrato simplificado do Bloco 9 foi substituido pelo conjunto canonico sob `/api/public/compliance`:
 
-A confirmacao usa declaracao/data de nascimento local, cookie HttpOnly assinado, `SameSite=Lax`, sem CPF, sem documento, sem conta de usuario e sem localStorage/sessionStorage. Fora de `local`, salt/hash de metricas e segredo de idade falham se estiverem ausentes ou ficticios.
+- aceite global por sete dias em `/age-gate/accept` e `/age-gate/status`;
+- challenge e verificacao reforcada em `/visitor/challenge`, `/visitor/verify` e `/visitor/status`;
+- fallback documental privado em `/visitor/document`;
+- revogacao em `/visitor/revoke`.
 
-Conteudo `BLOQUEADO` nao libera sem idade confirmada, mas pode ser liberado pelo backend apos confirmacao valida. Stories retornam apenas metadata segura enquanto `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+A verificacao reforcada valida nascimento, CPF e aceites, emite cookies HttpOnly assinados por escopo e persiste somente hashes tecnicos. `localStorage`, `sessionStorage` e estado React nao sao autoridade de acesso. O documento opcional aceita uma imagem ou PDF privado, sem URL publica.
 
-## Bloco 10 - UX local de age gate e CORS/cookie
+O aceite global isolado nao libera WhatsApp, Story nem original `RESTRITA_18`. Esses recursos consultam o token reforcado no backend; conteudo explicito exige o escopo explicito correspondente.
 
-O Bloco 10 corrige a UX local de `/anuncios/[slug]`: quando o detalhe inicial nao retorna por falta de idade confirmada, a pagina ainda renderiza confirmacao local de idade, emite cookie HttpOnly pelo backend e reconsulta o detalhe com `credentials: include`.
+## UX e CSRF do age gate
 
-O frontend nao decide classificacao nem liberacao de conteudo. Ele apenas confirma idade localmente e reconsulta o backend. CORS com credentials fica limitado a `APP_ENV=local` e origens localhost configuradas; fora de local fica fechado.
+O frontend inicializa o cookie `XSRF-TOKEN` por um GET canonicamente protegido e envia o header `X-XSRF-TOKEN` em todos os POSTs. O backend continua sendo a unica autoridade para liberar midia e contato, com `credentials: include`, cookies HttpOnly e atualizacao da interface sem reload completo.
 
-Nao houve limite diario comercial, admin funcional, autenticacao real, Pix/Efi, financeiro, moderacao real, importador real, API externa, producao, VPS, remote, push ou commit.
+O age gate nao ativa Pix/Efi, e-mail, Analytics, webhook, fornecedor externo,
+importador ou operacao no R2 de producao.
 
 ## Bloco 11 - midia publica/CDN local segura
 

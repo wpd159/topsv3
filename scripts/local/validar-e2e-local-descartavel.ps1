@@ -8,7 +8,8 @@
   [switch]$SomenteSmokeHttp,
   [string]$ResourcePrefix = "topsv3-e2e-local",
   [string]$ApiSmokeScript = "",
-  [string]$FixtureSinteticaPath = ""
+  [string]$FixtureSinteticaPath = "",
+  [string]$ApiSmokeReportPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -253,14 +254,26 @@ function Apply-Migrations {
   $mkdir = Invoke-Native -FilePath $dockerExe -Arguments @("exec", $pgName, "mkdir", "-p", $targetDir)
   if ($mkdir.ExitCode -ne 0) { throw "Falha ao preparar pasta de migrations no container." }
   $files = @(Get-ChildItem -LiteralPath $migrationDir -File -Filter "V*.sql" | Sort-Object Name)
-  if ($files.Count -ne 26) { throw "Quantidade esperada de migrations V001-V026 nao encontrada: $($files.Count)" }
+  if ($files.Count -eq 0) { throw "Nenhuma migration versionada foi encontrada." }
+  $versions = @($files | ForEach-Object {
+    if ($_.Name -notmatch '^V(?<version>[0-9]+)__.+\.sql$') {
+      throw "Nome de migration versionada invalido: $($_.Name)"
+    }
+    [int]$matches["version"]
+  })
+  for ($index = 0; $index -lt $versions.Count; $index++) {
+    $expected = $index + 1
+    if ($versions[$index] -ne $expected) {
+      throw "Sequencia de migrations invalida: esperada V$($expected.ToString('000')), encontrada V$($versions[$index].ToString('000'))."
+    }
+  }
   foreach ($file in $files) {
     Copy-FileToContainer -Source $file.FullName -TargetDir $targetDir
     Invoke-PsqlFile -ContainerPath "$targetDir/$($file.Name)"
     $appliedMigrations.Add($file.Name)
   }
   $script:migrationsApplied = $true
-  Add-Step "Migrations V001-V026 aplicadas via psql ordenado no PostgreSQL descartavel."
+  Add-Step "Migrations V001-V$($versions[-1].ToString('000')) aplicadas via psql ordenado no PostgreSQL descartavel."
 }
 
 function Apply-SyntheticData {
@@ -694,6 +707,17 @@ try {
   $env:APP_EVENT_HASH_SALT = "valor_local_ficticio"
   $env:APP_AGE_GATE_SIGNING_VALUE = "valor_local_ficticio_idade"
   $env:EFI_ENABLED = "false"
+  $env:R2_ENABLED = "true"
+  $env:R2_ENDPOINT = "https://r2-local.invalid"
+  $env:R2_ACCESS_KEY = "acesso_local_ficticio"
+  $env:R2_SIGNING_VALUE = "assinatura_local_ficticia"
+  $env:R2_PUBLIC_MEDIA_BUCKET = "midias-publicas-local"
+  $env:R2_PRIVATE_MEDIA_BUCKET = "midias-privadas-local"
+  $env:R2_DOCUMENT_BUCKET = "documentos-privados-local"
+  $env:R2_PUBLIC_MEDIA_PREFIX = "hml/local/midias-publicas/"
+  $env:R2_PRIVATE_MEDIA_PREFIX = "hml/local/midias-privadas/"
+  $env:R2_DOCUMENT_PREFIX = "hml/local/documentos/"
+  $env:R2_PUBLIC_BASE_URL = "https://midias-local.invalid"
   $env:TOPSV3_BACKEND_PORT = "$BackendPort"
 
   $backendProcess = Start-Process -FilePath $mavenPath -ArgumentList @("-q", "spring-boot:run") -WorkingDirectory $backendDir -PassThru -WindowStyle Hidden -RedirectStandardOutput $backendOut -RedirectStandardError $backendErr
@@ -710,6 +734,9 @@ try {
 
   $apiArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $apiSmokeScriptPath, "-BaseUrl", $baseUrl)
   if ($SemDadosSinteticos) { $apiArgs += "-SemDadosSinteticos" }
+  if (-not [string]::IsNullOrWhiteSpace($ApiSmokeReportPath)) {
+    $apiArgs += @("-RelatorioSaida", $ApiSmokeReportPath)
+  }
   $api = Invoke-Native -FilePath (Get-Command powershell).Source -Arguments $apiArgs -WorkingDirectory $repoRoot
   if ($api.ExitCode -ne 0) {
     throw "Smoke HTTP da API publica local falhou: $($api.Output -join ' ')"

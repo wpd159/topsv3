@@ -4,6 +4,7 @@ import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMid
 import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_COM_EXTRA;
 
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioDetalhePublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
@@ -11,6 +12,7 @@ import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
@@ -45,7 +47,7 @@ public class AnuncioPublicoConsultaService {
     private final AnuncioPublicoMapper anuncioMapper;
     private final MidiaPublicaMapper midiaMapper;
     private final SeoPublicoConsultaService seoService;
-    private final IdadePublicaService idadeService;
+    private final ComplianceVisitorAccessService visitorAccessService;
     private final PremiumPublicoMapper premiumMapper;
     private final EstadoRepository estadoRepository;
     private final CidadeRepository cidadeRepository;
@@ -63,7 +65,7 @@ public class AnuncioPublicoConsultaService {
             AnuncioPublicoMapper anuncioMapper,
             MidiaPublicaMapper midiaMapper,
             SeoPublicoConsultaService seoService,
-            IdadePublicaService idadeService,
+            ComplianceVisitorAccessService visitorAccessService,
             PremiumPublicoMapper premiumMapper,
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
@@ -79,7 +81,7 @@ public class AnuncioPublicoConsultaService {
         this.anuncioMapper = anuncioMapper;
         this.midiaMapper = midiaMapper;
         this.seoService = seoService;
-        this.idadeService = idadeService;
+        this.visitorAccessService = visitorAccessService;
         this.premiumMapper = premiumMapper;
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
@@ -97,7 +99,11 @@ public class AnuncioPublicoConsultaService {
 
     @Transactional(readOnly = true)
     public AnuncioDetalhePublicoDto buscarPorSlug(String slug, HttpServletRequest request) {
-        return buscarPorSlug(slug, idadeService.idadeConfirmada(request));
+        return buscarPorSlug(
+                slug,
+                visitorAccessService.autorizado(
+                        request,
+                        EscopoConteudoVisitante.MIDIA_RESTRITA));
     }
 
     private AnuncioDetalhePublicoDto buscarPorSlug(String slug, boolean idadeConfirmada) {

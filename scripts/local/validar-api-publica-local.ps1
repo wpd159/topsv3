@@ -11,6 +11,7 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 $checks = New-Object System.Collections.Generic.List[object]
 $pending = New-Object System.Collections.Generic.List[string]
@@ -383,15 +384,8 @@ $metricBody = (@{
   origemCidade = "Cidade Demonstracao"
   dispositivo = "DESKTOP"
 } | ConvertTo-Json -Compress)
-$idadeMenorBody = (@{
-  dataNascimento = ((Get-Date).Date.AddYears(-17).ToString("yyyy-MM-dd"))
-  declaracaoMaioridade = $true
-} | ConvertTo-Json -Compress)
-$idadeMaiorBody = (@{
-  dataNascimento = "1990-01-01"
-  declaracaoMaioridade = $true
-} | ConvertTo-Json -Compress)
 $idadeSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
+. (Join-Path $repoRoot "scripts/local/compliance-age-gate-local.ps1")
 $adminSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 $credencialAdminLocal = ("Senha" + "Sintetica" + "Local" + "Nao" + "Usar" + "123!")
 $adminLoginBody = New-AdminLoginBody -Login "admin.local@example.invalid"
@@ -404,7 +398,7 @@ $anunciarRevisaoId = $null
 $anunciarSlugLocal = $null
 
 if (-not $SemDadosSinteticos) {
-  $corsPreflight = Invoke-LocalCorsPreflight -Path "/api/public/idade/confirmar"
+  $corsPreflight = Invoke-LocalCorsPreflight -Path "/api/public/compliance/age-gate/accept"
   if ($corsPreflight.ErroOperacional -and $corsPreflight.Status -eq 0) {
     $pending.Add("PENDENTE_BACKEND_LOCAL_INDISPONIVEL: $($corsPreflight.Url)")
     Add-Check "cors preflight local" $false "backend local indisponivel"
@@ -413,7 +407,7 @@ if (-not $SemDadosSinteticos) {
     Add-Check "cors origem local" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Origin") -eq "http://localhost:3000") "somente origem local permitida"
     Add-Check "cors credentials local" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Credentials") -eq "true") "credentials devem ser aceitos so em local"
     Add-Check "cors sem wildcard credentials" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Origin") -ne "*") "wildcard com credentials proibido"
-    Add-Check "cors metodo post" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Methods") -match "POST") "POST deve ser permitido para idade local"
+    Add-Check "cors metodo post" ((Get-HeaderValue $corsPreflight.Headers "Access-Control-Allow-Methods") -match "POST") "POST deve ser permitido para o age gate local"
   }
 
   $adminCorsPreflight = Invoke-LocalCorsPreflight -Path "/api/admin/auth/login"
@@ -469,8 +463,17 @@ if (-not $SemDadosSinteticos) {
     Add-Check "anunciar gratis nao aparece no publico" ($anuncioNaoPublicado.Status -eq 404) "anuncio pendente nao pode ser detalhe publico"
   }
 
-  $requests.Add([pscustomobject]@{ Nome = "idade status sem cookie"; Path = "/api/public/idade/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
-  $requests.Add([pscustomobject]@{ Nome = "idade menor negada"; Path = "/api/public/idade/confirmar"; Status = 400; Method = "POST"; Body = $idadeMenorBody; AllowSyntheticWhatsapp = $false; Session = $null })
+  try {
+    $access = Enable-ComplianceVisitorAccessLocal `
+      -BaseUrl $SafeBaseUrl `
+      -Slug $SlugMidiaRestritaSintetico `
+      -Scope "MIDIA_RESTRITA" `
+      -Session $idadeSession
+    Add-Check "age gate completo sintetico" ($access.Verified.verified -eq $true) "aceite, challenge e verificacao concluidos"
+  } catch {
+    Add-Check "age gate completo sintetico" $false $_.Exception.Message
+  }
+  $requests.Add([pscustomobject]@{ Nome = "age gate global sem cookie"; Path = "/api/public/compliance/age-gate/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "anuncio sintetico"; Path = "/api/public/anuncios/$SlugSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "anuncio gratuito sintetico"; Path = "/api/public/anuncios/$SlugGratuitoSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "anuncio com midia restrita sem idade"; Path = "/api/public/anuncios/$SlugMidiaRestritaSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
@@ -478,13 +481,11 @@ if (-not $SemDadosSinteticos) {
   $requests.Add([pscustomobject]@{ Nome = "bairro sintetico"; Path = "/api/public/acompanhantes/$UfSintetica/$CidadeSintetica/$BairroSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "stories sem idade"; Path = "/api/public/anuncios/$SlugSintetico/stories"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $null })
   $requests.Add([pscustomobject]@{ Nome = "visualizacao sintetica"; Path = "/api/public/anuncios/$SlugSintetico/visualizacao"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $false; Session = $null })
-  $requests.Add([pscustomobject]@{ Nome = "clique whatsapp sintetico"; Path = "/api/public/anuncios/$SlugSintetico/clique-whatsapp"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $true; Session = $null })
-  $requests.Add([pscustomobject]@{ Nome = "clique whatsapp gratuito sintetico"; Path = "/api/public/anuncios/$SlugGratuitoSintetico/clique-whatsapp"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $true; Session = $null })
-  $requests.Add([pscustomobject]@{ Nome = "clique com midia restrita sem idade"; Path = "/api/public/anuncios/$SlugMidiaRestritaSintetico/clique-whatsapp"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $true; Session = $null })
-  $requests.Add([pscustomobject]@{ Nome = "idade maior confirmada"; Path = "/api/public/idade/confirmar"; Status = 200; Method = "POST"; Body = $idadeMaiorBody; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
-  $requests.Add([pscustomobject]@{ Nome = "idade status com cookie"; Path = "/api/public/idade/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
-  $requests.Add([pscustomobject]@{ Nome = "stories com idade"; Path = "/api/public/anuncios/$SlugSintetico/stories"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
-  $requests.Add([pscustomobject]@{ Nome = "anuncio com midia restrita e idade"; Path = "/api/public/anuncios/$SlugMidiaRestritaSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
+  $requests.Add([pscustomobject]@{ Nome = "clique whatsapp sem token"; Path = "/api/public/anuncios/$SlugSintetico/clique-whatsapp"; Status = 403; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $false; Session = $null })
+  $requests.Add([pscustomobject]@{ Nome = "status reforcado com token"; Path = "/api/public/compliance/visitor/status"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
+  $requests.Add([pscustomobject]@{ Nome = "clique whatsapp com token"; Path = "/api/public/anuncios/$SlugMidiaRestritaSintetico/clique-whatsapp"; Status = 200; Method = "POST"; Body = $metricBody; AllowSyntheticWhatsapp = $true; Session = $idadeSession })
+  $requests.Add([pscustomobject]@{ Nome = "stories com token"; Path = "/api/public/anuncios/$SlugSintetico/stories"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
+  $requests.Add([pscustomobject]@{ Nome = "anuncio com midia restrita e token"; Path = "/api/public/anuncios/$SlugMidiaRestritaSintetico"; Status = 200; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false; Session = $idadeSession })
 }
 
 $requests.Add([pscustomobject]@{ Nome = "seo rota proibida perfil"; Path = "/api/public/seo/rota?caminho=$encodedPerfil"; Status = 400; Method = "GET"; Body = $null; AllowSyntheticWhatsapp = $false })
@@ -515,27 +516,18 @@ foreach ($request in $requests) {
     Add-Check "anuncio gratuito sem destaque" ($result.Body -match '"destaque"\s*:\s*false' -and $result.Body -match '"topo"\s*:\s*false') "plano gratuito deve permanecer util, sem beneficio premium artificial"
     Add-Check "anuncio gratuito sem beneficio publico" ($result.Body -match '"beneficiosPublicos"\s*:\s*\[\s*\]') "gratuito nao deve depender de premium"
   }
-  if ($request.Nome -eq "idade status sem cookie") {
-    Add-Check "idade sem cookie nao confirmada" ($result.Body -match '"confirmada"\s*:\s*false') "idade nao deve ser confirmada sem cookie"
+  if ($request.Nome -eq "age gate global sem cookie") {
+    Add-Check "global sem cookie nao aceito" ($result.Body -match '"accepted"\s*:\s*false') "aceite global exige cookie assinado"
   }
-  if ($request.Nome -eq "idade maior confirmada") {
-    $setCookie = Get-HeaderValue $result.Headers "Set-Cookie"
-    Add-Check "idade maior cria confirmacao" ($result.Body -match '"confirmada"\s*:\s*true') "confirmacao local deve ser aceita"
-    Add-Check "idade retorna Set-Cookie" ($setCookie -match 'topsv3_idade_confirmada=') "cookie de idade deve ser emitido"
-    Add-Check "idade cookie HttpOnly" ($setCookie -match 'HttpOnly') "cookie deve ser HttpOnly"
-    Add-Check "idade cookie SameSite Lax" ($setCookie -match 'SameSite=Lax') "cookie deve usar SameSite=Lax"
-    Add-Check "idade cookie sem Secure em local" (-not ($setCookie -match ';\s*Secure(?:;|$)')) "Secure deve ficar desligado em local HTTP"
-  }
-  if ($request.Nome -eq "idade status com cookie") {
-    Add-Check "idade com cookie confirmada" ($result.Body -match '"confirmada"\s*:\s*true') "cookie assinado deve ser aceito"
+  if ($request.Nome -eq "status reforcado com token") {
+    Add-Check "token reforcado reconhecido" ($result.Body -match '"verified"\s*:\s*true') "token persistido deve ser aceito"
   }
   if ($request.Nome -eq "stories sem idade") {
     Add-Check "stories bloqueados sem idade" ($result.Body -match '"autorizado"\s*:\s*false' -and $result.Body -match '"stories"\s*:\s*\[\s*\]') "stories exigem idade confirmada"
     Add-Check "stories sem idade usam motivo atual" ($result.Body -match 'IDADE_NAO_CONFIRMADA') "pendencia antiga de confirmacao nao deve aparecer"
   }
-  if ($request.Nome -eq "stories com idade") {
-    Add-Check "stories liberados com idade" ($result.Body -match '"autorizado"\s*:\s*true' -and $result.Body -match '"stories"\s*:\s*\[') "backend liberou stories autorizados"
-    Add-Check "stories indicam CDN pendente" ($result.Body -match 'PENDENTE_URL_PUBLICA_MIDIA_CDN') "sem URL publica real de midia"
+  if ($request.Nome -eq "stories com token") {
+    Add-Check "stories liberados com token" ($result.Body -match '"autorizado"\s*:\s*true' -and $result.Body -match '"stories"\s*:\s*\[') "backend reconheceu acesso reforcado"
   }
   if ($request.Nome -eq "visualizacao sintetica") {
     Add-Check "visualizacao registrada" ($result.Body -match '"registrado"\s*:\s*true') "evento_visualizacao deve ser registrado"
@@ -545,7 +537,7 @@ foreach ($request in $requests) {
     Add-Check "pagina com midia restrita permanece publica" ($result.Body -match ('"slug"\s*:\s*"' + [regex]::Escape($SlugMidiaRestritaSintetico) + '"')) "pagina publica independe da idade"
     Add-Check "original restrito ausente" ($result.Body -match '"visibilidadeMidia"\s*:\s*"RESTRITA_18"' -and $result.Body -match '"autorizada"\s*:\s*false' -and -not ($result.Body -match '"urlPublica"\s*:\s*"[^\"]+"')) "DTO restrito sem URL original"
   }
-  if ($request.Nome -eq "clique whatsapp sintetico" -or $request.Nome -eq "clique com midia restrita sem idade" -or $request.Nome -eq "clique whatsapp gratuito sintetico") {
+  if ($request.Nome -eq "clique whatsapp com token") {
     Add-Check "clique whatsapp disponivel" ($result.Body -match '"disponivel"\s*:\s*true') "politica backend autorizou contato sintetico"
     Add-Check "clique whatsapp retorna somente URL sintetica" ($result.Body -match '"whatsappUrl"\s*:\s*"https://wa\.me/5500000000000"') "somente endpoint autorizado retorna WhatsApp sintetico"
     Add-Check "clique whatsapp sem campo bruto" (-not ($result.Body -match 'whatsapp_normalizado|whatsappNormalizado')) "telefone bruto nao deve ser retornado"

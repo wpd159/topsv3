@@ -495,11 +495,6 @@ async function runViewport(cdp, viewport) {
     mobile: viewport.key === "mobile"
   });
   await navigate(cdp, `${frontendBaseUrl}/admin`);
-  await evaluate(cdp, `(() => {
-    const expiresAt = Date.now() + 86400000;
-    localStorage.setItem("age_gate_accepted_until", String(expiresAt));
-    document.cookie = "age_gate_accepted=" + encodeURIComponent("v1." + expiresAt) + "; Path=/; SameSite=Lax";
-  })()`);
   const localLoginPayload = { login };
   localLoginPayload["se" + "nha"] = localAccessValue;
   const loginResponse = await fetch(`${backendBaseUrl}/api/admin/auth/login`, {

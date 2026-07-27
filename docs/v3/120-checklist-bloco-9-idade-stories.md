@@ -1,5 +1,9 @@
 # Checklist Bloco 9 - Idade e stories
 
+> Checklist historico, superado pela V034. As afirmacoes abaixo descrevem
+> somente o antigo fluxo local e nao definem o contrato vigente. O age gate
+> atual usa CPF e pode exigir um documento privado no nivel reforcado.
+
 - [x] Inventario inicial fora do repositorio.
 - [x] MetricaPublicaHashService endurecido.
 - [x] Segredo ficticio permitido apenas em local.

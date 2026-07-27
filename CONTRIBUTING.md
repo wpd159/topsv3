@@ -247,21 +247,22 @@ Eles nao podem alterar anuncio, pagamento, credito, moderacao, admin ou importac
 
 Dados tecnicos devem ser minimizados por hash. IP, User-Agent e referer brutos nao podem ser persistidos nem logados.
 
-WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-whatsapp`. Conteudo `LIVRE` pode liberar sem idade; conteudo `BLOQUEADO` exige confirmacao de idade valida pelo backend.
+WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-whatsapp`, depois de verificacao reforcada valida no backend.
 
-## Bloco 9 - idade e stories locais
+## Age gate e stories
 
-- `POST /api/public/idade/confirmar` usa apenas data de nascimento e declaracao local.
-- `GET /api/public/idade/status` le cookie HttpOnly assinado.
-- `GET /api/public/anuncios/{slug}/stories` retorna lista vazia sem idade e metadata segura com idade.
-- CPF, documento, localStorage, sessionStorage, imagem real, storage key, bucket, hash e URL privada continuam proibidos.
-- Fora de `local`, salt de metricas e segredo de idade ficticios devem falhar.
-- Sem idade confirmada, stories usam motivo `IDADE_NAO_CONFIRMADA`; com idade confirmada e sem CDN/midia publica, usam `PENDENTE_URL_PUBLICA_MIDIA_CDN`.
+- O conjunto canonico fica sob `/api/public/compliance`, com aceite global, challenge, verify, status, documento e revoke.
+- O aceite global por sete dias nao libera original `RESTRITA_18`, Story nem WhatsApp.
+- A verificacao reforcada valida nascimento, CPF e aceites; tokens brutos nunca sao persistidos.
+- O fallback documental aceita exatamente um JPEG, PNG ou PDF de ate 12 MB em storage privado.
+- CPF, nascimento, token, storage key, bucket, hash e URL privada nao podem aparecer em respostas administrativas ou logs.
+- `localStorage`, `sessionStorage` e estado React nao podem ser autoridade de seguranca.
+- Fora de `local`, salt de metricas e segredo do age gate ficticios devem falhar.
 
-## Bloco 10 - UX de age gate local
+## UX e CSRF do age gate
 
-- `/anuncios/[slug]` deve manter confirmacao de idade disponivel mesmo se o primeiro detalhe publico retornar indisponivel/404.
-- Apos idade confirmada, o frontend reconsulta o backend com cookie HttpOnly e `credentials: include`.
+- Todos os POSTs publicos do age gate devem enviar o cookie `XSRF-TOKEN`, o header `X-XSRF-TOKEN` e `credentials: include`.
+- Apos verificacao reforcada, o frontend reconsulta o backend e atualiza midia, Story e WhatsApp sem reload completo.
 - CORS com credentials e permitido somente em `APP_ENV=local` para origens localhost configuradas.
 - O frontend continua proibido de decidir classificacao, usar localStorage/sessionStorage ou liberar conteudo sem retorno do backend.
 

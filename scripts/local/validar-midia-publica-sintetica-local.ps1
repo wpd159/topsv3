@@ -299,11 +299,18 @@ try {
 }
 Add-Check "backend local disponivel" $true "readiness respondeu em $SafeBaseUrl"
 
-$idadeMaiorBody = (@{ dataNascimento = "1990-01-01"; declaracaoMaioridade = $true } | ConvertTo-Json -Compress)
+. (Resolve-RepoPath "scripts/local/compliance-age-gate-local.ps1")
 $idadeSession = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-$idadeConfirmada = Invoke-LocalHttp -Path "/api/public/idade/confirmar" -Method "POST" -Body $idadeMaiorBody -Session $idadeSession
-Assert-Status $idadeConfirmada 200 "idade adulta para stories/midia"
-Add-Check "idade adulta confirmada" ($idadeConfirmada.Body -match '"confirmada"\s*:\s*true') "cookie sintetico local emitido para validar stories"
+try {
+  $access = Enable-ComplianceVisitorAccessLocal `
+    -BaseUrl $SafeBaseUrl `
+    -Slug $SlugMidiaRestrita `
+    -Scope "MIDIA_RESTRITA" `
+    -Session $idadeSession
+  Add-Check "verificacao reforcada para midia" ($access.Verified.verified -eq $true) "token geral emitido"
+} catch {
+  Add-Check "verificacao reforcada para midia" $false $_.Exception.Message
+}
 
 $gratuito = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugGratuito"
 Assert-Status $gratuito 200 "anuncio gratuito publico"
@@ -343,17 +350,17 @@ Assert-NoPublicSensitiveMediaPayload -Nome "midia restrita sem idade" -Body $res
 Assert-NoTechnicalVisibleCopy -Nome "midia restrita sem idade" -Body $restritaSemIdade.Body
 
 $contatoRestritoSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita/clique-whatsapp" -Method "POST" -Body (@{ visitanteLocalId = "visitante-midia-restrita"; dispositivo = "DESKTOP" } | ConvertTo-Json -Compress)
-Assert-Status $contatoRestritoSemIdade 200 "contato com midia restrita sem idade"
-Add-Check "contato independe da visibilidade e idade" ($contatoRestritoSemIdade.Body -match '"disponivel"\s*:\s*true') "endpoint mediado libera contato para anuncio publico ativo"
+Assert-Status $contatoRestritoSemIdade 403 "contato sem verificacao reforcada"
+Add-Check "contato bloqueado sem token" (-not ($contatoRestritoSemIdade.Body -match 'wa\.me/')) "nenhuma URL de WhatsApp antes da verificacao"
 
 $restritaComIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugMidiaRestrita" -Session $idadeSession
-Assert-Status $restritaComIdade 200 "anuncio com midia restrita e idade"
+Assert-Status $restritaComIdade 200 "anuncio com midia restrita e token"
 $restritaComIdadeJson = Get-Json $restritaComIdade
 $restritaComIdadeMidias = @($restritaComIdadeJson.midias)
-Assert-PublicMediaItems -Nome "midias restritas com idade" -Items $restritaComIdadeMidias
-Assert-SeoCopyNatural -Nome "midia restrita com idade" -Json $restritaComIdadeJson
-Assert-NoPublicSensitiveMediaPayload -Nome "midia restrita com idade" -Body $restritaComIdade.Body
-Assert-NoTechnicalVisibleCopy -Nome "midia restrita com idade" -Body $restritaComIdade.Body
+Assert-PublicMediaItems -Nome "midias restritas com token" -Items $restritaComIdadeMidias
+Assert-SeoCopyNatural -Nome "midia restrita com token" -Json $restritaComIdadeJson
+Assert-NoPublicSensitiveMediaPayload -Nome "midia restrita com token" -Body $restritaComIdade.Body
+Assert-NoTechnicalVisibleCopy -Nome "midia restrita com token" -Body $restritaComIdade.Body
 
 $storiesSemIdade = Invoke-LocalHttp -Path "/api/public/anuncios/$SlugPremium/stories"
 Assert-Status $storiesSemIdade 200 "stories sem idade"

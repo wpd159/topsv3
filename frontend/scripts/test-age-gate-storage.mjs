@@ -12,19 +12,62 @@ const verification = fs.readFileSync(
   path.join(root, 'src/components/compliance/visitor-verification-modal.tsx'),
   'utf8',
 )
+const api = fs.readFileSync(
+  path.join(root, 'src/lib/compliance/age-gate-api.ts'),
+  'utf8',
+)
 const access = fs.readFileSync(
   path.join(root, 'src/lib/compliance/visitor-access.ts'),
   'utf8',
 )
+const sensitiveImage = fs.readFileSync(
+  path.join(root, 'src/components/compliance/sensitive-image.tsx'),
+  'utf8',
+)
+const sidebar = fs.readFileSync(
+  path.join(root, 'src/app/(public-routes)/anuncios/[slug]/componentes/sidebar.tsx'),
+  'utf8',
+)
 
-assert.match(modal, /obterStatusVisitante\(true\)/)
-assert.match(modal, /VisitorVerificationModal/)
+assert.match(modal, /getGlobalAgeGateStatus/)
+assert.match(modal, /acceptGlobalAgeGate/)
+assert.match(modal, />\s*Sair\s*</)
+assert.match(modal, /Aceitar/)
+assert.doesNotMatch(modal, /VisitorVerificationModal/)
 assert.doesNotMatch(modal, /age-gate-storage|age_gate_accepted/)
 assert.match(verification, /placeholder="dd\/mm\/aaaa"/)
-assert.match(verification, /\/idade\/confirmar/)
-assert.match(verification, /setVerified\(payload\.expiraEm, payload\.expiraEm\)/)
-assert.match(access, /\/idade\/status/)
-assert.match(access, /fonte de verdade/)
-assert.doesNotMatch(access, /return mirrored/)
+assert.match(verification, /confirmacaoDataNascimento/)
+assert.match(verification, /placeholder="000\.000\.000-00"/)
+assert.match(verification, /aceiteMaioridade/)
+assert.match(verification, /aceiteConteudoRestrito/)
+assert.match(verification, /aceitePrivacidade/)
+assert.match(verification, /submitVisitorDocument/)
+assert.match(verification, /DOCUMENT_PENDING/)
+assert.match(verification, /DOCUMENT_APPROVED/)
+assert.match(verification, /12 \* 1024 \* 1024/)
+assert.match(verification, /max-h-\[92vh\]/)
+assert.match(verification, /overflow-y-auto/)
+
+for (const endpoint of [
+  '/compliance/age-gate/accept',
+  '/compliance/age-gate/status',
+  '/compliance/visitor/challenge',
+  '/compliance/visitor/verify',
+  '/compliance/visitor/status',
+  '/compliance/visitor/document',
+  '/compliance/visitor/revoke',
+]) {
+  assert.match(api, new RegExp(endpoint.replaceAll('/', '\\/')))
+}
+
+assert.match(api, /XSRF/)
+assert.match(api, /credentials: 'include'/)
+assert.match(access, /getVisitorStatus/)
+assert.match(access, /CACHE_TTL_MS/)
+assert.doesNotMatch(`${api}\n${access}`, /localStorage|sessionStorage/)
+assert.doesNotMatch(`${api}\n${access}\n${verification}`, /\/idade\/confirmar|\/idade\/status/)
+assert.match(sensitiveImage, /\/compliance\/visitor\/media\//)
+assert.match(sidebar, /scope="WHATSAPP"/)
+assert.doesNotMatch(sensitiveImage, /urlAssinada|chaveObjeto|private.*url/i)
 
 console.log('OK_AGE_GATE_BACKEND_FONTE_UNICA')

@@ -607,11 +607,12 @@ export function StoryViewerDialog({
 
         <VisitorVerificationModal
           open={verificationOpen}
-          level="LIGHT"
+          level="REINFORCED"
+          scope="STORY"
           context={{
             anuncioId: viewerItem?.anuncioId ?? undefined,
             route: viewerItem?.anuncioSlug ? `/anuncios/${viewerItem.anuncioSlug}` : "/stories",
-            midiaId: String(viewerItem?.storyId ?? currentFeedItem?.storyId ?? ""),
+            storyId: String(viewerItem?.storyId ?? currentFeedItem?.storyId ?? ""),
           }}
           onOpenChange={setVerificationOpen}
           onVerified={async () => {

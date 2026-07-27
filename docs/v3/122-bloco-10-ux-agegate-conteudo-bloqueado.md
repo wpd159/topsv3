@@ -1,5 +1,9 @@
 # Bloco 10 - UX local de age gate para conteudo BLOQUEADO
 
+> Registro historico, superado pela V034. O contrato ativo fica sob
+> `/api/public/compliance`, separa aceite global de verificacao reforcada e
+> nao usa `/api/public/idade/confirmar`.
+
 ## Objetivo
 
 Corrigir a pagina local `/anuncios/[slug]` para continuar oferecendo confirmacao de idade quando o detalhe inicial nao e liberado pelo backend.
