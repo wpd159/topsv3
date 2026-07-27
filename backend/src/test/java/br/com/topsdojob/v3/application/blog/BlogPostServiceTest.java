@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.blog;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -99,6 +100,36 @@ class BlogPostServiceTest {
     assertThat(service.listarPublicados()).isEmpty();
 
     verify(repository).findAllByStatusOrderByPublicadoEmDescIdAsc("PUBLICADO");
+  }
+
+  @Test
+  void listagemAdminSemTermoNaoEnviaParametroNuloParaLower() {
+    when(repository.findAllByOrderByAtualizadoEmDescIdAsc()).thenReturn(List.of());
+
+    assertThat(service.listarAdmin(null, null)).isEmpty();
+
+    verify(repository).findAllByOrderByAtualizadoEmDescIdAsc();
+    verify(repository, never()).buscarAdmin(any(), any());
+  }
+
+  @Test
+  void listagemAdminSemTermoFiltraStatusPorMetodoTipado() {
+    when(repository.findAllByStatusOrderByAtualizadoEmDescIdAsc("RASCUNHO"))
+        .thenReturn(List.of());
+
+    assertThat(service.listarAdmin("", "rascunho")).isEmpty();
+
+    verify(repository).findAllByStatusOrderByAtualizadoEmDescIdAsc("RASCUNHO");
+    verify(repository, never()).buscarAdmin(any(), any());
+  }
+
+  @Test
+  void listagemAdminComTermoUsaConsultaTextual() {
+    when(repository.buscarAdmin("homologacao", null)).thenReturn(List.of());
+
+    assertThat(service.listarAdmin(" homologacao ", "TODOS")).isEmpty();
+
+    verify(repository).buscarAdmin("homologacao", null);
   }
 
   private BlogPostRequest request() {

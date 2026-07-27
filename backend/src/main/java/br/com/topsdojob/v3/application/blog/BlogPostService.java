@@ -65,7 +65,15 @@ public class BlogPostService {
       throw badRequest("status editorial invalido");
     }
     String termoSeguro = termo == null || termo.isBlank() ? null : termo.trim();
-    return toDtos(repository.buscarAdmin(termoSeguro, statusSeguro), false);
+    List<BlogPostEntity> posts;
+    if (termoSeguro != null) {
+      posts = repository.buscarAdmin(termoSeguro, statusSeguro);
+    } else if (statusSeguro != null) {
+      posts = repository.findAllByStatusOrderByAtualizadoEmDescIdAsc(statusSeguro);
+    } else {
+      posts = repository.findAllByOrderByAtualizadoEmDescIdAsc();
+    }
+    return toDtos(posts, false);
   }
 
   @Transactional(readOnly = true)

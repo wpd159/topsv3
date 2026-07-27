@@ -23,6 +23,10 @@ public interface BlogPostRepository extends JpaRepository<BlogPostEntity, UUID> 
       """)
   List<BlogPostEntity> buscarAdmin(@Param("termo") String termo, @Param("status") String status);
 
+  List<BlogPostEntity> findAllByOrderByAtualizadoEmDescIdAsc();
+
+  List<BlogPostEntity> findAllByStatusOrderByAtualizadoEmDescIdAsc(String status);
+
   List<BlogPostEntity> findAllByStatusOrderByPublicadoEmDescIdAsc(String status);
 
   List<BlogPostEntity> findAllByStatusAndCategoriaIdOrderByPublicadoEmDescIdAsc(
