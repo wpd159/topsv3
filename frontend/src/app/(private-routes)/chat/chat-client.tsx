@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import ChatWindow from '@/components/chat/chat'
 import ChatSidebar from '@/components/chat/sidebar-chat'
@@ -30,9 +30,12 @@ export default function ChatClient() {
   const [starting, setStarting] = useState(false)
   const [sending, setSending] = useState(false)
   const [mobile, setMobile] = useState(false)
+  const router = useRouter()
   const searchParams = useSearchParams()
   const requestedUser = searchParams.get('usuario')
+  const requestedConversationId = searchParams.get('conversa')
   const requestedUserHandled = useRef<string | null>(null)
+  const requestedConversationHandled = useRef<string | null>(null)
   const pendingMessage = useRef<{ key: string; body: string } | null>(null)
 
   const loadConversations = useCallback(async (silent = false) => {
@@ -71,27 +74,40 @@ export default function ChatClient() {
     }
   }, [loadConversations])
 
-  const selectConversation = useCallback((selected: ChatConversa) => {
+  const openConversation = useCallback((
+    selected: ChatConversa,
+    navigation: 'push' | 'replace' | 'none'
+  ) => {
+    requestedConversationHandled.current = selected.id
     setConversation(selected)
     setDetail(null)
     setError(null)
     void loadDetail(selected)
-  }, [loadDetail])
+    if (navigation === 'push') router.push(`/chat?conversa=${encodeURIComponent(selected.id)}`)
+    if (navigation === 'replace') router.replace(`/chat?conversa=${encodeURIComponent(selected.id)}`)
+  }, [loadDetail, router])
 
-  const startConversation = useCallback(async (username: string) => {
+  const selectConversation = useCallback((selected: ChatConversa) => {
+    openConversation(selected, 'push')
+  }, [openConversation])
+
+  const startConversation = useCallback(async (
+    username: string,
+    navigation: 'push' | 'replace' = 'push'
+  ) => {
     if (starting) return
     setStarting(true)
     setError(null)
     try {
       const started = await iniciarChatConversa(username.trim())
       await loadConversations(true)
-      selectConversation(started)
+      openConversation(started, navigation)
     } catch (cause) {
       setError(chatError(cause))
     } finally {
       setStarting(false)
     }
-  }, [loadConversations, selectConversation, starting])
+  }, [loadConversations, openConversation, starting])
 
   const sendMessage = useCallback(async (message: string) => {
     if (!conversation || sending) return false
@@ -139,8 +155,20 @@ export default function ChatClient() {
   useEffect(() => {
     if (!requestedUser || requestedUserHandled.current === requestedUser) return
     requestedUserHandled.current = requestedUser
-    void startConversation(requestedUser)
+    void startConversation(requestedUser, 'replace')
   }, [requestedUser, startConversation])
+
+  useEffect(() => {
+    if (!requestedConversationId) {
+      requestedConversationHandled.current = null
+      setConversation(null)
+      setDetail(null)
+      return
+    }
+    if (requestedConversationHandled.current === requestedConversationId) return
+    const selected = conversations.find((item) => item.id === requestedConversationId)
+    if (selected) openConversation(selected, 'none')
+  }, [conversations, openConversation, requestedConversationId])
 
   return (
     <section className="mt-5">
@@ -168,8 +196,10 @@ export default function ChatClient() {
               onRetry={() => conversation && void loadDetail(conversation)}
               onSend={sendMessage}
               onBack={() => {
+                requestedConversationHandled.current = null
                 setConversation(null)
                 setDetail(null)
+                router.push('/chat')
               }}
               isMobile={mobile}
             />
