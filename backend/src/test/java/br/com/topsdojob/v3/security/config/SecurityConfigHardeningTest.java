@@ -85,6 +85,7 @@ class SecurityConfigHardeningTest {
                 .contains("/api/admin/desempenho/anuncios/*")
                 .contains("/api/admin/desempenho/anuncios/*/diario")
                 .contains("/api/admin/desempenho/anuncios/*/origens")
+                .contains("/api/admin/anuncios/*/aprovar")
                 .contains("/api/admin/anuncios/*/remeter-revisao")
                 .contains("/api/admin/anuncios/*/midias")
                 .contains("/api/admin/midias")

@@ -54,6 +54,7 @@ for (const contract of [
   '`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes/lote`',
   "request<AdminStorySelection>('/stories/selecao')",
   '`/midias/${encodeURIComponent(id)}/preview`',
+  '`/anuncios/${encodeURIComponent(id)}/aprovar`',
   '`/moderacao/revisoes/${encodeURIComponent(reviewId)}/decidir`',
   '`/midias/${encodeURIComponent(mediaId)}/decidir`',
   '`/anuncios/${encodeURIComponent(anuncioId)}/midias/decisoes`',
@@ -140,7 +141,7 @@ assert.ok(searchableSelect.includes('onSelect(item.id)') && !searchableSelect.in
 assert.ok(wizardUtils.includes("normalize('NFD')") && wizardUtils.includes("toLowerCase()"), 'Busca deve ignorar acentos e caixa.')
 assert.ok(list.includes('lg:grid-cols-[minmax('), 'Os oito controles devem compartilhar uma unica grade no desktop.')
 assert.ok(!list.includes('Estado do anúncio'), 'O filtro redundante de estado do anuncio deve ser removido.')
-assert.ok(list.includes('const duplicated = item.status === item.statusModeracao'), 'O badge APROVADO duplicado deve ser omitido.')
+assert.ok(list.includes("!(item.status === 'PUBLICADO' && item.statusModeracao === 'APROVADO')"), 'A fila deve exibir apenas Publicado depois da aprovacao.')
 assert.deepEqual(
   [...queueContext.matchAll(/\{ value: '([^']+)', label:/g)].map((match) => match[1]),
   ['MAIS_RECENTES', 'MAIS_ANTIGOS', 'MAIS_VISUALIZACOES', 'MENOS_VISUALIZACOES', 'MAIS_CLIQUES_WHATSAPP', 'MENOS_CLIQUES_WHATSAPP'],
@@ -190,12 +191,16 @@ for (const duplicate of ['Aprovar anúncio', 'Rejeitar anúncio', 'Reprovar anú
   assert.ok(!decisionPanel.includes(duplicate), `A acao ${duplicate} nao pode permanecer duplicada no quadro de decisao.`)
 }
 assert.ok(detail.includes("const canDecideAdReview = canModerateAd && !removed && ad.status !== 'BLOQUEADO'"), 'Anuncio bloqueado ou removido nao pode exibir acoes de decisao.')
+assert.ok(detail.includes("const legacyApprovalWithoutPublication = ad.status === 'APROVADO'") && detail.includes('legacyApprovalWithoutPublication || ('), 'A operacao canonica deve permanecer acessivel para regularizar pares legados APROVADO/APROVADO.')
 assert.ok(detail.includes("kind: 'APPROVE_AD'") && detail.includes("kind: 'REPROVE_AD'"), 'Aprovacao e reprovacao devem permanecer como intencoes distintas.')
-assert.ok(detail.includes('await submitAdminReview(') && detail.includes('AUTOMATIC_REVIEW_REASON') && detail.includes('AUTOMATIC_REPROVAL_REVIEW_REASON') && detail.includes('const refreshedAd = await getAdminAd(ad.id)') && detail.includes("intent.kind === 'APPROVE_AD' ? 'APROVAR' : 'REPROVAR'"), 'A aprovacao e a reprovacao devem abrir a revisao automaticamente e reutilizar os contratos canonicos.')
-assert.ok(detail.includes("let reviewId = reviewOpen ? ad.revisaoAberta?.id : null"), 'Revisao ja aberta deve ser aprovada sem nova abertura.')
-assert.ok(detail.includes("await decideAdminReview(reviewId, action, intent.kind === 'REPROVE_AD' ? reason : undefined)") && detail.includes('await load()'), 'A reprovacao deve reutilizar o adapter canonico e atualizar o detalhe imediatamente.')
+assert.ok(detail.includes('await approveAdminAd(ad.id)') && api.includes('export function approveAdminAd'), 'Toda aprovacao deve usar a operacao unica por anuncio.')
+assert.ok(!detail.includes('AUTOMATIC_REVIEW_REASON') && !detail.includes("decideAdminReview(reviewId, 'APROVAR'"), 'A aprovacao nao pode persistir uma etapa intermediaria no frontend.')
+assert.ok(detail.includes('AUTOMATIC_REPROVAL_REVIEW_REASON') && detail.includes('const refreshedAd = await getAdminAd(ad.id)'), 'A reprovacao deve continuar vinculada a uma revisao canonica.')
+assert.ok(detail.includes("let reviewId = reviewOpen ? ad.revisaoAberta?.id : null"), 'Revisao ja aberta deve ser reutilizada pela reprovacao.')
+assert.ok(detail.includes("await decideAdminReview(reviewId, 'REPROVAR', reason)") && detail.includes('await load()'), 'A reprovacao deve reutilizar o adapter canonico e atualizar o detalhe imediatamente.')
 assert.ok(detail.includes('await revalidarCacheCatalogoPublico()'), 'A aprovacao deve invalidar o cache publico de catalogo e localidades.')
-assert.ok(detail.includes('Anúncio aprovado com sucesso.'), 'O sucesso deve apresentar a aprovacao como acao administrativa unica.')
+assert.ok(detail.includes('Anúncio aprovado e publicado com sucesso.'), 'O sucesso deve confirmar aprovacao e publicacao como uma unica operacao.')
+assert.ok(detail.includes("!(ad.status === 'PUBLICADO' && ad.statusModeracao === 'APROVADO')"), 'Publicado deve aparecer como o unico estado principal depois da aprovacao.')
 assert.ok(detail.includes('Anúncio reprovado. O anunciante foi informado sobre as alterações necessárias.'), 'A reprovacao deve confirmar a orientacao ao anunciante.')
 assert.ok(detail.includes('Motivo e alterações necessárias') && detail.includes('Confirmar reprovação'), 'O modal deve exigir o motivo integral da reprovacao.')
 assert.ok(detail.includes('O anúncio ficará indisponível e o anunciante receberá um e-mail com o motivo e as alterações necessárias.'), 'O modal deve explicar o efeito da reprovacao.')

@@ -300,6 +300,12 @@ export function submitAdminReview(id: string, motivo: string) {
   })
 }
 
+export function approveAdminAd(id: string) {
+  return request<AdminModerationActionResponse>(`/anuncios/${encodeURIComponent(id)}/aprovar`, {
+    method: 'POST',
+  })
+}
+
 export function decideAdminReview(
   reviewId: string,
   decisao: 'APROVAR' | 'REPROVAR' | 'SOLICITAR_AJUSTE',

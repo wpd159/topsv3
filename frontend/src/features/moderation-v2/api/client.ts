@@ -237,8 +237,13 @@ async function decideRevision(id: ResourceId, decisao: 'APROVAR' | 'REPROVAR', m
   return readJson<Record<string, unknown>>(response)
 }
 
-export function approveAnuncioApi(id: ResourceId, reason: string) {
-  return decideRevision(id, 'APROVAR', reason)
+export async function approveAnuncioApi(id: ResourceId, _reason: string) {
+  const response = await fetch(adminApiUrl(`/anuncios/${encodeURIComponent(String(id))}/aprovar`), {
+    method: 'POST',
+    credentials: 'include',
+    headers: await adminWriteHeaders(),
+  })
+  return readJson<Record<string, unknown>>(response)
 }
 
 export function rejectAnuncioApi(id: ResourceId, justificativa: string) {

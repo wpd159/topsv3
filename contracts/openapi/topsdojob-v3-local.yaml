@@ -3758,6 +3758,41 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/aprovar:
+    post:
+      summary: Aprova e publica anuncio em uma unica operacao
+      description: Restrito a ADMIN e MODERADOR com ANUNCIO_MODERAR. Abre a revisao quando necessario e conclui, na mesma transacao, a decisao administrativa em PUBLICADO/APROVADO. Reutiliza uma revisao aberta, regulariza APROVADO/APROVADO legado e e idempotente quando o anuncio ja esta PUBLICADO/APROVADO. Qualquer falha reverte toda a operacao, sem aprovacao parcial, publicacao separada ou alteracao das decisoes individuais de midia.
+      operationId: postAdminAnuncioAprovarEPublicar
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: anuncio aprovado e publicado, ou operacao idempotente confirmada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAcaoModeracaoResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}/remeter-revisao:
     post:
       summary: Remete anuncio para revisao local

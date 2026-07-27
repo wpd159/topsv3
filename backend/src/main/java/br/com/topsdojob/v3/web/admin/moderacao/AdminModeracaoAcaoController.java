@@ -43,6 +43,15 @@ public class AdminModeracaoAcaoController {
         return service.decidirRevisao(id, request, actor, RequestIdContext.current(httpRequest));
     }
 
+    @PostMapping("/api/admin/anuncios/{id}/aprovar")
+    @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_MODERAR')")
+    public AdminAcaoModeracaoResponseDto aprovarEPublicarAnuncio(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal AdminUserPrincipal actor,
+            HttpServletRequest httpRequest) {
+        return service.aprovarEPublicarAnuncio(id, actor, RequestIdContext.current(httpRequest));
+    }
+
     @PostMapping("/api/admin/midias/{id}/decidir")
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('MIDIA_REVISAR')")
     public AdminAcaoModeracaoResponseDto decidirMidia(

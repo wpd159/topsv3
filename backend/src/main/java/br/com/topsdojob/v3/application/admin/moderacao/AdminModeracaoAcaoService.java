@@ -55,6 +55,8 @@ import org.springframework.web.server.ResponseStatusException;
 public class AdminModeracaoAcaoService {
 
     private static final int MOTIVO_MAX_LENGTH = 2_000;
+    private static final String MOTIVO_APROVACAO_AUTOMATICA =
+            "Revisao aberta automaticamente pela operacao unica de aprovacao e publicacao.";
 
     private final RevisaoAnuncioRepository revisaoRepository;
     private final AnuncioRepository anuncioRepository;
@@ -100,6 +102,57 @@ public class AdminModeracaoAcaoService {
     }
 
     @Transactional
+    public AdminAcaoModeracaoResponseDto aprovarEPublicarAnuncio(
+            UUID anuncioId,
+            AdminUserPrincipal actor,
+            String requestId) {
+        validarAtor(actor);
+        AnuncioEntity anuncio = carregarContextoDecisaoFinal(
+                        anuncioId,
+                        AdminDecisaoModeracaoAcao.APROVAR)
+                .anuncio();
+
+        if (anuncio.getStatus() == StatusAnuncio.PUBLICADO
+                && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO) {
+            return respostaAprovacaoIdempotente(anuncio, requestId);
+        }
+        if (anuncio.getStatus() == StatusAnuncio.APROVADO
+                && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO) {
+            return regularizarAprovacaoSemPublicacao(anuncio, actor, requestId);
+        }
+        if (anuncio.getStatus() != StatusAnuncio.PENDENTE_REVISAO
+                || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.PENDENTE) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "estado do anuncio impede aprovacao e publicacao");
+        }
+
+        RevisaoAnuncioEntity revisao = revisaoRepository
+                .findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
+                        anuncioId,
+                        List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE))
+                .orElseGet(() -> {
+                    OffsetDateTime agora = OffsetDateTime.now();
+                    RevisaoAnuncioEntity criada = RevisaoAnuncioEntity.abrir(
+                            UUID.randomUUID(),
+                            anuncioId,
+                            TipoRevisaoAnuncio.EDICAO,
+                            payloadRevisaoLocal(MOTIVO_APROVACAO_AUTOMATICA),
+                            actor.usuarioId(),
+                            agora);
+                    return revisaoRepository.save(criada);
+                });
+
+        return decidirRevisaoCarregada(
+                revisao,
+                anuncio,
+                AdminDecisaoModeracaoAcao.APROVAR,
+                null,
+                actor,
+                requestId);
+    }
+
+    @Transactional
     public AdminAcaoModeracaoResponseDto decidirRevisao(
             UUID id,
             AdminDecidirRevisaoRequestDto request,
@@ -111,15 +164,30 @@ public class AdminModeracaoAcaoService {
                 decisao,
                 request == null ? null : request.motivo(),
                 request == null ? null : request.observacao());
-        RevisaoAnuncioEntity revisao = revisaoRepository.findByIdForUpdate(id)
+        RevisaoAnuncioEntity referencia = revisaoRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
         AnuncioEntity anuncio = decisao == AdminDecisaoModeracaoAcao.APROVAR
                         || decisao == AdminDecisaoModeracaoAcao.REPROVAR
-                ? carregarContextoDecisaoFinal(revisao.getAnuncioId(), decisao).anuncio()
-                : anuncioRepository.findByIdForModeration(revisao.getAnuncioId())
+                ? carregarContextoDecisaoFinal(referencia.getAnuncioId(), decisao).anuncio()
+                : anuncioRepository.findByIdForModeration(referencia.getAnuncioId())
                         .orElseThrow(() -> new ResponseStatusException(
                                 HttpStatus.NOT_FOUND,
                                 "anuncio da revisao nao encontrado"));
+        RevisaoAnuncioEntity revisao = revisaoRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
+        if (!revisao.getAnuncioId().equals(anuncio.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao nao pertence ao anuncio informado");
+        }
+        return decidirRevisaoCarregada(revisao, anuncio, decisao, motivo, actor, requestId);
+    }
+
+    private AdminAcaoModeracaoResponseDto decidirRevisaoCarregada(
+            RevisaoAnuncioEntity revisao,
+            AnuncioEntity anuncio,
+            AdminDecisaoModeracaoAcao decisao,
+            String motivo,
+            AdminUserPrincipal actor,
+            String requestId) {
         if (!revisaoAberta(revisao.getStatus()) || revisao.getFinalizadoEm() != null) {
             if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
                 return repetirOuRegularizarAprovacao(revisao, anuncio, actor, requestId);
@@ -631,6 +699,64 @@ public class AdminModeracaoAcaoService {
                 regularizada
                         ? "anuncio aprovado anteriormente e publicado agora"
                         : "anuncio ja estava aprovado e publicado");
+    }
+
+    private AdminAcaoModeracaoResponseDto regularizarAprovacaoSemPublicacao(
+            AnuncioEntity anuncio,
+            AdminUserPrincipal actor,
+            String requestId) {
+        OffsetDateTime agora = OffsetDateTime.now();
+        String antes = snapshotAnuncio(anuncio, null, null);
+        try {
+            anuncio.aprovarEPublicarAdministrativamente(agora);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "estado do anuncio impede regularizacao da publicacao",
+                    exception);
+        }
+        auditoriaRepository.save(AuditoriaEventoEntity.registrar(
+                UUID.randomUUID(),
+                actor.usuarioId(),
+                "MODERACAO_ANUNCIO_PUBLICACAO_REGULARIZAR",
+                "ANUNCIO",
+                anuncio.getId(),
+                antes,
+                snapshotAnuncio(anuncio, null, null),
+                requestId,
+                agora));
+        return new AdminAcaoModeracaoResponseDto(
+                UUID.randomUUID(),
+                "ANUNCIO",
+                anuncio.getId(),
+                AdminDecisaoModeracaoAcao.APROVAR.name(),
+                anuncio.getStatus().name(),
+                null,
+                true,
+                false,
+                false,
+                requestId,
+                agora,
+                "anuncio aprovado anteriormente e publicado agora");
+    }
+
+    private AdminAcaoModeracaoResponseDto respostaAprovacaoIdempotente(
+            AnuncioEntity anuncio,
+            String requestId) {
+        OffsetDateTime agora = OffsetDateTime.now();
+        return new AdminAcaoModeracaoResponseDto(
+                UUID.randomUUID(),
+                "ANUNCIO",
+                anuncio.getId(),
+                AdminDecisaoModeracaoAcao.APROVAR.name(),
+                anuncio.getStatus().name(),
+                null,
+                false,
+                false,
+                false,
+                requestId,
+                agora,
+                "anuncio ja estava aprovado e publicado");
     }
 
     private VisibilidadeMidia visibilidadeParaDecisao(

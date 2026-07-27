@@ -37,6 +37,7 @@ import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
 import { AdminAnuncioStory } from './admin-anuncio-story'
 import {
+  approveAdminAd,
   blockAdminAd,
   blockAdminAdAndUser,
   decideAdminMedia,
@@ -94,7 +95,6 @@ const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }>
   { value: 'OUTRA_INTERVENCAO', label: 'Outra intervenção excepcional' },
 ]
 
-const AUTOMATIC_REVIEW_REASON = 'Revisão aberta automaticamente para aprovação administrativa.'
 const AUTOMATIC_REPROVAL_REVIEW_REASON = 'Revisão aberta automaticamente para reprovação administrativa.'
 
 function formatDate(value?: string | null) {
@@ -756,23 +756,23 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     setActionError(null)
     try {
       if (intent.kind === 'OPEN_REVIEW') await submitAdminReview(ad.id, reason)
-      else if (intent.kind === 'APPROVE_AD' || intent.kind === 'REPROVE_AD') {
-        const action = intent.kind === 'APPROVE_AD' ? 'APROVAR' : 'REPROVAR'
+      else if (intent.kind === 'APPROVE_AD') {
+        await approveAdminAd(ad.id)
+        await revalidarCacheCatalogoPublico()
+        setDecisionOutcome('APPROVED')
+      } else if (intent.kind === 'REPROVE_AD') {
         let reviewId = reviewOpen ? ad.revisaoAberta?.id : null
         if (!reviewId) {
           await submitAdminReview(
             ad.id,
-            intent.kind === 'APPROVE_AD'
-              ? AUTOMATIC_REVIEW_REASON
-              : AUTOMATIC_REPROVAL_REVIEW_REASON,
+            AUTOMATIC_REPROVAL_REVIEW_REASON,
           )
           const refreshedAd = await getAdminAd(ad.id)
           reviewId = refreshedAd.revisaoAberta?.id
         }
         if (!reviewId) throw new Error('A revisão aberta não foi retornada após o envio para análise.')
-        await decideAdminReview(reviewId, action, intent.kind === 'REPROVE_AD' ? reason : undefined)
-        await revalidarCacheCatalogoPublico()
-        setDecisionOutcome(intent.kind === 'APPROVE_AD' ? 'APPROVED' : 'REPROVED')
+        await decideAdminReview(reviewId, 'REPROVAR', reason)
+        setDecisionOutcome('REPROVED')
       } else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
         await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
@@ -904,10 +904,16 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const legalBlock = ad.bloqueioJuridico
   const removed = ad.status === 'REMOVIDO'
   const canDecideAdReview = canModerateAd && !removed && ad.status !== 'BLOQUEADO'
+  const legacyApprovalWithoutPublication = ad.status === 'APROVADO'
+    && ad.statusModeracao === 'APROVADO'
   const canApproveAd = canDecideAdReview
+    && (legacyApprovalWithoutPublication || (
+      ad.statusModeracao === 'PENDENTE'
+      && (ad.status === 'PENDENTE_REVISAO' || reviewOpen)
+    ))
+  const canReproveAd = canDecideAdReview
     && ad.statusModeracao === 'PENDENTE'
     && (ad.status === 'PENDENTE_REVISAO' || reviewOpen)
-  const canReproveAd = canApproveAd
     && ad.anunciante?.status === 'ATIVO'
     && !ad.bloqueioJuridico?.usuarioBloqueado
   const canReactivate = canManageLegalStatus
@@ -927,8 +933,11 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0"><h1 className="text-2xl font-bold text-zinc-950">{ad.titulo}</h1><p className="mt-1 break-all text-xs text-zinc-500">{ad.slug}</p></div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <Badge variant="outline" className={moderationTone(ad.status)}>{ad.status}</Badge>
-              <Badge variant="outline" className={moderationTone(ad.statusModeracao)}>{ad.statusModeracao}</Badge>
+              <Badge variant="outline" className={moderationTone(ad.status)}>{formatEnum(ad.status)}</Badge>
+              {ad.status !== ad.statusModeracao
+                && !(ad.status === 'PUBLICADO' && ad.statusModeracao === 'APROVADO')
+                ? <Badge variant="outline" className={moderationTone(ad.statusModeracao)}>{formatEnum(ad.statusModeracao)}</Badge>
+                : null}
             </div>
           </div>
           <div
@@ -1010,7 +1019,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         <div role="status" className="flex flex-col gap-3 border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 sm:flex-row sm:items-center sm:justify-between">
           <span>
             {decisionOutcome === 'APPROVED'
-              ? 'Anúncio aprovado com sucesso.'
+              ? 'Anúncio aprovado e publicado com sucesso.'
               : decisionOutcome === 'REPROVED'
                 ? 'Anúncio reprovado. O anunciante foi informado sobre as alterações necessárias.'
                 : 'Decisão persistida. O avanço permanece sob seu controle.'}

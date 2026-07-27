@@ -49,6 +49,10 @@ function statusTone(status: string) {
   return 'border-zinc-200 bg-zinc-50 text-zinc-700'
 }
 
+function statusLabel(status: string) {
+  return status.toLowerCase().replaceAll('_', ' ').replace(/(^|\s)\S/g, (letter) => letter.toUpperCase())
+}
+
 function dateLabel(value?: string | null) {
   if (!value) return 'Sem data'
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
@@ -75,11 +79,12 @@ function Thumbnail({ item }: { item: AdminAdListItem }) {
 }
 
 function StatusBadges({ item }: { item: AdminAdListItem }) {
-  const duplicated = item.status === item.statusModeracao
+  const showModeration = item.status !== item.statusModeracao
+    && !(item.status === 'PUBLICADO' && item.statusModeracao === 'APROVADO')
   return (
     <div className="flex flex-wrap gap-1">
-      <Badge variant="outline" className={statusTone(item.status)}>{item.status}</Badge>
-      {!duplicated ? <Badge variant="outline" className={statusTone(item.statusModeracao)}>{item.statusModeracao}</Badge> : null}
+      <Badge variant="outline" className={statusTone(item.status)}>{statusLabel(item.status)}</Badge>
+      {showModeration ? <Badge variant="outline" className={statusTone(item.statusModeracao)}>{statusLabel(item.statusModeracao)}</Badge> : null}
     </div>
   )
 }

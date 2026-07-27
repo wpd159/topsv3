@@ -105,6 +105,75 @@ class AdminModeracaoAnuncioServiceTest {
     }
 
     @Test
+    void operacaoUnicaAprovaRevisaoAbertaEPublicaNaMesmaChamada() {
+        Fixture fixture = fixture();
+        when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
+                fixture.anuncio().getId(),
+                List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
+                .thenReturn(Optional.of(fixture.revisao()));
+
+        var response = service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(),
+                fixture.actor(),
+                "req-operacao-unica");
+
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
+        assertThat(fixture.anuncio().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(fixture.revisao().getStatus()).isEqualTo(StatusRevisaoAnuncio.APROVADA);
+        assertThat(response.mensagem()).isEqualTo("anuncio aprovado e publicado");
+        verify(decisaoRepository).save(any());
+        verify(auditoriaRepository).save(any());
+        verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
+    }
+
+    @Test
+    void operacaoUnicaCriaEFinalizaRevisaoSemEstadoIntermediarioExterno() {
+        Fixture fixture = fixture();
+        when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
+                fixture.anuncio().getId(),
+                List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
+                .thenReturn(Optional.empty());
+        when(revisaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(),
+                fixture.actor(),
+                "req-operacao-unica-sem-revisao");
+
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
+        assertThat(fixture.anuncio().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(response.mensagem()).isEqualTo("anuncio aprovado e publicado");
+        ArgumentCaptor<RevisaoAnuncioEntity> revisaoCriada =
+                ArgumentCaptor.forClass(RevisaoAnuncioEntity.class);
+        verify(revisaoRepository).save(revisaoCriada.capture());
+        assertThat(revisaoCriada.getValue().getStatus()).isEqualTo(StatusRevisaoAnuncio.APROVADA);
+        assertThat(revisaoCriada.getValue().getFinalizadoEm()).isNotNull();
+    }
+
+    @Test
+    void retryDaOperacaoUnicaNaoDuplicaRevisaoDecisaoOuAuditoria() {
+        Fixture fixture = fixture();
+        when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
+                fixture.anuncio().getId(),
+                List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
+                .thenReturn(Optional.of(fixture.revisao()));
+
+        service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(),
+                fixture.actor(),
+                "req-operacao-unica");
+        var retry = service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(),
+                fixture.actor(),
+                "req-operacao-unica");
+
+        assertThat(retry.auditoriaRegistrada()).isFalse();
+        assertThat(retry.mensagem()).contains("ja estava aprovado e publicado");
+        verify(decisaoRepository, times(1)).save(any());
+        verify(auditoriaRepository, times(1)).save(any());
+    }
+
+    @Test
     void rejeicaoExigeMotivoENaoApagaAnuncioOuMidias() {
         Fixture fixture = fixture();
 
@@ -300,10 +369,10 @@ class AdminModeracaoAnuncioServiceTest {
     @Test
     void regularizaAprovacaoLegadaSemDuplicarDecisao() {
         Fixture fixture = fixture();
-        fixture.anuncio().aplicarModeracao(
-                StatusAnuncio.APROVADO,
-                StatusModeracaoAnuncio.APROVADO,
-                OffsetDateTime.parse("2026-07-22T12:05:00Z"));
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                fixture.anuncio(), "status", StatusAnuncio.APROVADO);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                fixture.anuncio(), "statusModeracao", StatusModeracaoAnuncio.APROVADO);
         fixture.revisao().finalizar(
                 StatusRevisaoAnuncio.APROVADA,
                 OffsetDateTime.parse("2026-07-22T12:05:00Z"));
@@ -321,6 +390,42 @@ class AdminModeracaoAnuncioServiceTest {
         verify(auditoriaRepository).save(audit.capture());
         assertThat(audit.getValue().getAcao())
                 .isEqualTo("MODERACAO_REVISAO_PUBLICACAO_REGULARIZAR");
+    }
+
+    @Test
+    void operacaoUnicaRegularizaLegadoMesmoSemRevisaoAberta() {
+        Fixture fixture = fixture();
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                fixture.anuncio(), "status", StatusAnuncio.APROVADO);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                fixture.anuncio(), "statusModeracao", StatusModeracaoAnuncio.APROVADO);
+
+        var response = service.aprovarEPublicarAnuncio(
+                fixture.anuncio().getId(),
+                fixture.actor(),
+                "req-regularizacao-operacao-unica");
+
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
+        assertThat(fixture.anuncio().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        assertThat(response.mensagem()).contains("publicado agora");
+        verify(decisaoRepository, never()).save(any());
+        verify(revisaoRepository, never()).save(any());
+        ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+        verify(auditoriaRepository).save(audit.capture());
+        assertThat(audit.getValue().getAcao())
+                .isEqualTo("MODERACAO_ANUNCIO_PUBLICACAO_REGULARIZAR");
+    }
+
+    @Test
+    void dominioRecusaCriarNovoEstadoAprovadoSemPublicacao() {
+        Fixture fixture = fixture();
+
+        assertThatThrownBy(() -> fixture.anuncio().aplicarModeracao(
+                StatusAnuncio.APROVADO,
+                StatusModeracaoAnuncio.APROVADO,
+                OffsetDateTime.parse("2026-07-22T12:05:00Z")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("estado legado invalido");
     }
 
     private br.com.topsdojob.v3.application.admin.moderacao.dto.AdminAcaoModeracaoResponseDto decidir(
@@ -365,6 +470,7 @@ class AdminModeracaoAnuncioServiceTest {
                 actor.usuarioId(),
                 now);
         AtomicBoolean decisaoRegistrada = new AtomicBoolean(false);
+        when(revisaoRepository.findById(revisaoId)).thenReturn(Optional.of(revisao));
         when(revisaoRepository.findByIdForUpdate(revisaoId)).thenReturn(Optional.of(revisao));
         when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
         when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));

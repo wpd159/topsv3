@@ -46,6 +46,11 @@ class AdminModeracaoAcaoCsrfTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decisao\":\"APROVAR\"}"))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/admin/anuncios/{id}/aprovar", UUID.randomUUID())
+                        .with(user("admin").authorities(
+                                new SimpleGrantedAuthority("ROLE_ADMIN"),
+                                new SimpleGrantedAuthority("ANUNCIO_MODERAR"))))
+                .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/admin/anuncios/{id}/midias/decisoes", UUID.randomUUID())
                         .with(user("admin").authorities(
                                 new SimpleGrantedAuthority("ROLE_ADMIN"),
@@ -67,6 +72,15 @@ class AdminModeracaoAcaoCsrfTest {
                 .andExpect(status().isOk());
 
         verify(service).decidirMidia(any(), any(), any(), any());
+
+        mockMvc.perform(post("/api/admin/anuncios/{id}/aprovar", UUID.randomUUID())
+                        .with(user("moderador").authorities(
+                                new SimpleGrantedAuthority("ROLE_MODERADOR"),
+                                new SimpleGrantedAuthority("ANUNCIO_MODERAR")))
+                        .with(csrf()))
+                .andExpect(status().isOk());
+
+        verify(service).aprovarEPublicarAnuncio(any(), any(), any());
 
         mockMvc.perform(post("/api/admin/anuncios/{id}/midias/decisoes", UUID.randomUUID())
                         .with(user("moderador").authorities(
@@ -94,6 +108,10 @@ class AdminModeracaoAcaoCsrfTest {
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"decisao\":\"APROVAR\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/admin/anuncios/{id}/aprovar", UUID.randomUUID())
+                        .with(user("admin").authorities(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                        .with(csrf()))
                 .andExpect(status().isForbidden());
     }
 }

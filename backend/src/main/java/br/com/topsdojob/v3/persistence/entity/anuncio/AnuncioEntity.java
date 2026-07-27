@@ -268,6 +268,7 @@ public class AnuncioEntity {
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,
       OffsetDateTime atualizadoEm) {
+    validarParAprovacaoPublicacao(status, statusModeracao);
     this.status = status;
     this.statusModeracao = statusModeracao;
     this.atualizadoEm = atualizadoEm;
@@ -492,6 +493,7 @@ public class AnuncioEntity {
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,
       OffsetDateTime criadoEm) {
+    validarParAprovacaoPublicacao(status, statusModeracao);
     AnuncioEntity entity = new AnuncioEntity();
     entity.id = id;
     entity.usuarioId = usuarioId;
@@ -521,6 +523,7 @@ public class AnuncioEntity {
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,
       OffsetDateTime atualizadoEm) {
+    validarParAprovacaoPublicacao(status, statusModeracao);
     this.titulo = titulo;
     this.descricao = descricao;
     this.categoria = categoria;
@@ -534,6 +537,16 @@ public class AnuncioEntity {
       this.ultimaPublicacaoEm = atualizadoEm;
     }
     this.atualizadoEm = atualizadoEm;
+  }
+
+  private static void validarParAprovacaoPublicacao(
+      StatusAnuncio status,
+      StatusModeracaoAnuncio statusModeracao) {
+    if (status == StatusAnuncio.APROVADO
+        && statusModeracao == StatusModeracaoAnuncio.APROVADO) {
+      throw new IllegalArgumentException(
+          "APROVADO/APROVADO e um estado legado invalido; use aprovarEPublicarAdministrativamente");
+    }
   }
 
 }

@@ -105,6 +105,8 @@ public class SecurityConfig {
                         .hasAnyRole("ADMIN", "MODERADOR")
                         .requestMatchers(HttpMethod.POST, "/api/admin/anuncios/*/remeter-revisao")
                         .hasAnyRole("ADMIN", "MODERADOR")
+                        .requestMatchers(HttpMethod.POST, "/api/admin/anuncios/*/aprovar")
+                        .hasAnyRole("ADMIN", "MODERADOR")
                         .requestMatchers(HttpMethod.GET, "/api/admin/anuncios/*/midias")
                         .hasAnyRole("ADMIN", "MODERADOR")
                         .requestMatchers(HttpMethod.GET, "/api/admin/stories/**")

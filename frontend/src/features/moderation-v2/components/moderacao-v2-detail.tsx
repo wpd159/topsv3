@@ -1,10 +1,9 @@
 'use client'
 
 /**
- * Fluxo de decisão (backend AnuncioService):
- * - PUT /anuncios/{id}/aprovar: fila — PENDENTE OU revisão aberta.
- * - PUT /anuncios/{id}/rejeitar: revisão aberta OU PENDENTE sem revisão.
- * Ações legadas de status e remoção permanecem indisponíveis até contrato V3 próprio.
+ * Fluxo de decisao:
+ * - aprovacao usa a operacao unica POST /api/admin/anuncios/{id}/aprovar;
+ * - reprovacao permanece vinculada a uma revisao canonica.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -34,6 +33,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { revalidarCacheCatalogoPublico } from '@/app/(painel-admin)/admin/anuncios/actions'
 import AdminAnuncioStoriesSection from '@/app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section'
 import FotosAnuncioSection from '@/app/(painel-admin)/admin/components/fotos-anuncio-section'
 import { useAuth } from '@/context/AuthContext'
@@ -423,6 +423,7 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: string | number })
     try {
       setBusy(true)
       const payload = await approveAnuncioApi(anuncioId, 'Aprovação registrada na moderação v2.')
+      await revalidarCacheCatalogoPublico()
       toast.success('Decisão registrada (aprovação).')
       notifyModerationDataUpdated()
       void enviarIndexNowNoCliente(
