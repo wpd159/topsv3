@@ -1,7 +1,8 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { HeartIcon } from '@heroicons/react/24/solid'
+import { HeartIcon as HeartOutline } from '@heroicons/react/24/outline'
+import { HeartIcon as HeartSolid } from '@heroicons/react/24/solid'
 import { toast } from 'sonner'
 import { useAuth } from '@/context/AuthContext'
 import { useFavoritos } from '@/context/FavoritosContext'
@@ -44,6 +45,8 @@ export function FavoritoButton({ slug, className, iconClassName }: FavoritoButto
     }
   }
 
+  const Heart = favorito ? HeartSolid : HeartOutline
+
   return (
     <button
       type="button"
@@ -51,12 +54,13 @@ export function FavoritoButton({ slug, className, iconClassName }: FavoritoButto
       disabled={carregandoSessao || pendente}
       aria-label={favorito ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
       aria-pressed={favorito}
+      aria-busy={pendente}
       className={cn(
         'rounded-full border border-gray-200 bg-white/90 p-2 shadow-sm transition hover:bg-white disabled:cursor-wait disabled:opacity-70',
         className
       )}
     >
-      <HeartIcon
+      <Heart
         className={cn('h-5 w-5', favorito ? 'text-[#FC1EAD]' : 'text-gray-600', iconClassName)}
       />
     </button>

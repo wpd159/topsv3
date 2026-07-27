@@ -96,10 +96,11 @@ export function FavoritosProvider({ children }: { children: ReactNode }) {
       if (estavaFavorito) setItens((current) => current.filter((item) => item.slug !== slug))
 
       try {
+        let novoEstado: boolean
         if (estavaFavorito) {
-          await removerFavorito(slug)
+          novoEstado = (await removerFavorito(slug)).favorito
         } else {
-          await incluirFavorito(slug)
+          novoEstado = (await incluirFavorito(slug)).favorito
           try {
             const atualizados = await listarFavoritos()
             aplicar(atualizados)
@@ -111,7 +112,13 @@ export function FavoritosProvider({ children }: { children: ReactNode }) {
             )
           }
         }
-        return !estavaFavorito
+        setSlugs((current) => {
+          const next = new Set(current)
+          if (novoEstado) next.add(slug)
+          else next.delete(slug)
+          return next
+        })
+        return novoEstado
       } catch (error) {
         setSlugs((current) => {
           const next = new Set(current)

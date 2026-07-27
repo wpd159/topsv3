@@ -49,7 +49,7 @@ export default function FavoritosPage() {
   }
 
   return (
-    <section className="mx-auto max-w-[1300px] space-y-6 py-8">
+    <section className="mx-auto max-w-[1300px] space-y-6 px-4 py-8">
       {erro ? <p className="text-sm text-red-600">{erro}</p> : null}
       <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
         {itens.map((anuncio) => (

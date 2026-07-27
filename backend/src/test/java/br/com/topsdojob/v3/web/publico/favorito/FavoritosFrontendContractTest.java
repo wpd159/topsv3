@@ -15,6 +15,8 @@ class FavoritosFrontendContractTest {
         String adapter = Files.readString(FRONTEND.resolve(Path.of("lib", "favoritos-api.ts")));
         String provider = Files.readString(FRONTEND.resolve(Path.of("context", "FavoritosContext.tsx")));
         String card = Files.readString(FRONTEND.resolve(Path.of("components", "anuncios", "anuncio-card.tsx")));
+        String button = Files.readString(FRONTEND.resolve(
+                Path.of("components", "anuncios", "favorito-button.tsx")));
         String pagina = Files.readString(FRONTEND.resolve(
                 Path.of("app", "(private-routes)", "favoritos", "page.tsx")));
 
@@ -27,8 +29,15 @@ class FavoritosFrontendContractTest {
                 .doesNotContain("usuarioId");
         assertThat(provider)
                 .contains("new Set(favoritos.map((item) => item.slug))")
+                .contains("(await incluirFavorito(slug)).favorito")
+                .contains("(await removerFavorito(slug)).favorito")
                 .doesNotContain("localStorage")
                 .doesNotContain("sessionStorage");
+        assertThat(button)
+                .contains("HeartIcon as HeartOutline")
+                .contains("HeartIcon as HeartSolid")
+                .contains("aria-busy={pendente}")
+                .contains("const Heart = favorito ? HeartSolid : HeartOutline");
         assertThat(card)
                 .contains("<FavoritoButton slug={slugRota}")
                 .doesNotContain("/favoritar")
