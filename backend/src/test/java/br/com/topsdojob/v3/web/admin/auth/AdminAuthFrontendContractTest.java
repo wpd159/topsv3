@@ -14,6 +14,7 @@ class AdminAuthFrontendContractTest {
     void loginAdministrativoNavegavelUsaEndpointsReaisComCookieECsrf() throws Exception {
         String adapter = Files.readString(FRONTEND.resolve(Path.of("lib", "admin-auth-api.ts")));
         String apiContract = Files.readString(FRONTEND.resolve(Path.of("lib", "api-contract.ts")));
+        String adminNavigation = Files.readString(FRONTEND.resolve(Path.of("lib", "admin-navigation.ts")));
         String loginPage = Files.readString(FRONTEND.resolve(Path.of(
                 "app", "(admin-auth)", "admin", "login", "page.tsx")));
         String controller = Files.readString(Path.of(
@@ -41,6 +42,10 @@ class AdminAuthFrontendContractTest {
                 .contains("export function adminApiUrl(path: string)")
                 .contains("normalized === '/api/admin' || normalized.startsWith('/api/admin/')")
                 .contains("return `${backendApiRoot()}/api/admin${normalized}`");
+        assertThat(adminNavigation)
+                .contains("export const ADMIN_DASHBOARD_PATH = '/admin/dashboard'")
+                .contains("export function resolveAdminPostLoginSearch(search: string)")
+                .contains("return resolveAdminPostLoginPath(new URLSearchParams(search).get('next'))");
         assertThat(controller)
                 .contains("@RequestMapping(\"/api/admin/auth\")")
                 .contains("@PostMapping(\"/login\")")
@@ -49,9 +54,11 @@ class AdminAuthFrontendContractTest {
         assertThat(loginPage)
                 .contains("const session = await loginAdmin(login.trim(), credential)")
                 .contains("await refresh()")
-                .contains("router.replace('/admin/stories')")
+                .contains("import { resolveAdminPostLoginSearch } from '@/lib/admin-navigation'")
+                .contains("router.replace(postLoginDestination())")
                 .contains("router.refresh()")
                 .contains("await logoutAdmin()")
+                .doesNotContain("router.replace('/admin/stories')")
                 .doesNotContain("fetch(");
     }
 
