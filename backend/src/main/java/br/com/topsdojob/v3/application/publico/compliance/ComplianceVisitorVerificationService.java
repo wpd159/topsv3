@@ -81,7 +81,7 @@ public class ComplianceVisitorVerificationService {
           HttpStatus.CONFLICT,
           "aceite global necessario antes da verificacao reforcada");
     }
-    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     ComplianceVisitorSessionService.SessionContext session =
         sessionService.obterOuCriar(httpRequest);
     EscopoConteudoVisitante escopo = escopo(request == null ? null : request.scope());
@@ -180,7 +180,7 @@ public class ComplianceVisitorVerificationService {
     if (request == null || request.challengeId() == null) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "challenge obrigatorio");
     }
-    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     ComplianceVisitorSessionService.SessionContext session =
         sessionService.obterOuCriar(httpRequest);
     ComplianceVisitorChallengeEntity challenge = challengeRepository

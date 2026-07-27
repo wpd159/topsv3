@@ -80,7 +80,8 @@ public class ComplianceVisitorAccessService {
         session.userAgentHash(),
         agora);
     ComplianceVisitorChallengeEntity latest = challengeRepository
-        .findTopBySessionHashOrderByCriadoEmDesc(session.sessionHash())
+        .findTopBySessionHashOrderByAtualizadoEmDescCriadoEmDescIdDesc(
+            session.sessionHash())
         .orElse(null);
     VisitorAccessStatusDto status = statusDto(
         globalAccepted,

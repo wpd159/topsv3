@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorSessionService.SessionContext;
@@ -230,8 +231,9 @@ class ComplianceVisitorAccessServiceTest {
         now);
     when(fixture.globalService.aceito(any())).thenReturn(true);
     when(fixture.sessionService.obterOuCriar(any())).thenReturn(fixture.session);
-    when(fixture.challengeRepository.findTopBySessionHashOrderByCriadoEmDesc(
-        fixture.session.sessionHash())).thenReturn(Optional.of(challenge));
+    when(fixture.challengeRepository
+        .findTopBySessionHashOrderByAtualizadoEmDescCriadoEmDescIdDesc(
+            fixture.session.sessionHash())).thenReturn(Optional.of(challenge));
     when(fixture.documentoRepository.findTopByChallengeIdOrderByCriadoEmDesc(
         challenge.getId())).thenReturn(Optional.of(documento));
 
@@ -241,6 +243,30 @@ class ComplianceVisitorAccessServiceTest {
     assertThat(result.status().reasonPublic())
         .isEqualTo("Documento ilegivel; envie uma nova imagem.")
         .doesNotContain("DOCUMENTO_REJEITADO");
+  }
+
+  @Test
+  void statusPriorizaChallengeDocumentalAtualizadoMaisRecentemente() {
+    Fixture fixture = fixture();
+    OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
+    ComplianceVisitorChallengeEntity challenge = challenge(
+        fixture.session.sessionHash(),
+        EscopoConteudoVisitante.CONTEUDO_EXPLICITO,
+        true);
+    challenge.marcarDocumentoPendente("4".repeat(64), now.plusSeconds(1));
+    when(fixture.globalService.aceito(any())).thenReturn(true);
+    when(fixture.sessionService.obterOuCriar(any())).thenReturn(fixture.session);
+    when(fixture.challengeRepository
+        .findTopBySessionHashOrderByAtualizadoEmDescCriadoEmDescIdDesc(
+            fixture.session.sessionHash())).thenReturn(Optional.of(challenge));
+
+    var result = fixture.service.status(new MockHttpServletRequest());
+
+    assertThat(result.status().state()).isEqualTo("DOCUMENT_PENDING");
+    assertThat(result.status().documentStatus()).isEqualTo("DOCUMENT_PENDING");
+    verify(fixture.challengeRepository)
+        .findTopBySessionHashOrderByAtualizadoEmDescCriadoEmDescIdDesc(
+            fixture.session.sessionHash());
   }
 
   private Fixture fixture() {

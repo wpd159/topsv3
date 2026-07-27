@@ -24,8 +24,8 @@ public interface ComplianceVisitorChallengeRepository
       String sessionHash,
       String idempotenciaHash);
 
-  Optional<ComplianceVisitorChallengeEntity> findTopBySessionHashOrderByCriadoEmDesc(
-      String sessionHash);
+  Optional<ComplianceVisitorChallengeEntity>
+      findTopBySessionHashOrderByAtualizadoEmDescCriadoEmDescIdDesc(String sessionHash);
 
   long countBySessionHashAndCriadoEmAfter(String sessionHash, OffsetDateTime criadoEm);
 
