@@ -1,5 +1,3 @@
-import Link from "next/link"
-import type { ReactNode } from "react"
 import { getPublicSiteOrigin } from "@/lib/public-site-assets"
 
 const MD_LINK = /^\[([^\]]*)\]\(([^)]+)\)/
@@ -170,38 +168,25 @@ function findNextHtmlAnchor(s: string, from: number): { start: number; text: str
   return null
 }
 
-function BlogBodyLink({ href, label }: { href: string; label: string }) {
+function renderBlogBodyLink(href: string, label: string): string {
   const external = isExternalHref(href)
+  const safeLabel = escapeHtml(label)
 
   if (!external) {
     const path = toInternalAppPath(href)
-    return (
-      <Link href={path} className="text-[#FC1EAD] underline hover:opacity-80">
-        {label}
-      </Link>
-    )
+    return `<a href="${escapeHtml(path)}" class="text-[#FC1EAD] underline hover:opacity-80">${safeLabel}</a>`
   }
 
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-[#FC1EAD] underline hover:opacity-80"
-    >
-      {label}
-    </a>
-  )
+  return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" class="text-[#FC1EAD] underline hover:opacity-80">${safeLabel}</a>`
 }
 
-function renderParagraphNodes(paragraph: string, baseKey: string): ReactNode[] {
-  const nodes: ReactNode[] = []
+function renderSafeBodyHtml(conteudo: string): string {
+  let html = ""
   let pos = 0
-  let n = 0
 
-  while (pos < paragraph.length) {
-    const md = findNextMarkdownLink(paragraph, pos)
-    const ha = findNextHtmlAnchor(paragraph, pos)
+  while (pos < conteudo.length) {
+    const md = findNextMarkdownLink(conteudo, pos)
+    const ha = findNextHtmlAnchor(conteudo, pos)
 
     let next: { start: number; text: string; href: string; end: number } | null = null
     if (md && ha) {
@@ -213,34 +198,22 @@ function renderParagraphNodes(paragraph: string, baseKey: string): ReactNode[] {
     }
 
     if (!next) {
-      const tail = paragraph.slice(pos)
+      const tail = conteudo.slice(pos)
       if (tail) {
-        const html = sanitizeRichTextChunk(tail)
-        nodes.push(
-          <span
-            key={`${baseKey}-t-${n++}`}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        )
+        html += sanitizeRichTextChunk(tail)
       }
       break
     }
 
     if (next.start > pos) {
-      const chunk = paragraph.slice(pos, next.start)
-      const html = sanitizeRichTextChunk(chunk)
-      nodes.push(
-        <span key={`${baseKey}-t-${n++}`} dangerouslySetInnerHTML={{ __html: html }} />
-      )
+      html += sanitizeRichTextChunk(conteudo.slice(pos, next.start))
     }
 
-    nodes.push(
-      <BlogBodyLink key={`${baseKey}-a-${n++}`} href={next.href} label={next.text} />
-    )
+    html += renderBlogBodyLink(next.href, next.text)
     pos = next.end
   }
 
-  return nodes
+  return html
 }
 
 type Props = {
@@ -252,18 +225,10 @@ type Props = {
 export function SafeBlogPostBody({
   conteudo,
   className = "prose prose-gray mt-8 max-w-none",
-  paragraphClassName = "mb-5 text-base leading-8 text-gray-700",
 }: Props) {
-  const raw = conteudo ?? ""
-  const blocks = raw.split(/\n{2,}/)
+  const html = renderSafeBodyHtml(conteudo ?? "")
 
   return (
-    <article className={className}>
-      {blocks.map((block, index) => (
-        <div key={index} className={paragraphClassName}>
-          {renderParagraphNodes(block, `p${index}`)}
-        </div>
-      ))}
-    </article>
+    <article className={className} dangerouslySetInnerHTML={{ __html: html }} />
   )
 }
