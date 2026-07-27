@@ -12,13 +12,15 @@ import br.com.topsdojob.v3.persistence.entity.chat.ChatMensagemEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatConversaRepository;
-import br.com.topsdojob.v3.persistence.repository.chat.ChatConversaResumoProjection;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatMensagemRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.text.Normalizer;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -217,19 +219,66 @@ public class ChatInternoService {
 
     private ChatConversaDto resumo(UUID conversaId, UUID usuarioId) {
         return conversaRepository.listarResumos(usuarioId).stream()
-                .filter(item -> conversaId.equals(item.getId()))
-                .findFirst()
                 .map(this::toConversaDto)
+                .filter(item -> conversaId.equals(item.id()))
+                .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "conversa nao encontrada"));
     }
 
-    private ChatConversaDto toConversaDto(ChatConversaResumoProjection projection) {
+    private ChatConversaDto toConversaDto(Object[] row) {
+        if (row == null || row.length != 5) {
+            throw new IllegalStateException("resumo de conversa invalido");
+        }
         return new ChatConversaDto(
-                projection.getId(),
-                projection.getParticipanteUsername(),
-                projection.getUltimaMensagem(),
-                projection.getUltimaMensagemEm(),
-                projection.getNaoLidas());
+                uuid(row[0]),
+                text(row[1]),
+                nullableText(row[2]),
+                offsetDateTime(row[3]),
+                number(row[4]));
+    }
+
+    private UUID uuid(Object value) {
+        if (value instanceof UUID uuid) {
+            return uuid;
+        }
+        return UUID.fromString(text(value));
+    }
+
+    private String text(Object value) {
+        if (value == null) {
+            throw new IllegalStateException("valor obrigatorio ausente no resumo da conversa");
+        }
+        return value.toString();
+    }
+
+    private String nullableText(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private OffsetDateTime offsetDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime;
+        }
+        if (value instanceof Instant instant) {
+            return instant.atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.atOffset(ZoneOffset.UTC);
+        }
+        return OffsetDateTime.parse(value.toString());
+    }
+
+    private long number(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        return Long.parseLong(text(value));
     }
 
     private ChatMensagemDto validarRepeticao(

@@ -73,5 +73,5 @@ public interface ChatConversaRepository extends JpaRepository<ChatConversaEntity
                OR conversa.participante_b_id = :usuarioId
             ORDER BY conversa.atualizado_em DESC, conversa.id
             """, nativeQuery = true)
-    List<ChatConversaResumoProjection> listarResumos(@Param("usuarioId") UUID usuarioId);
+    List<Object[]> listarResumos(@Param("usuarioId") UUID usuarioId);
 }

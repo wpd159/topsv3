@@ -19,10 +19,10 @@ import br.com.topsdojob.v3.persistence.entity.chat.ChatMensagemEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatConversaRepository;
-import br.com.topsdojob.v3.persistence.repository.chat.ChatConversaResumoProjection;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatMensagemRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -80,8 +80,7 @@ class ChatInternoServiceTest {
                 .thenReturn(1);
         when(conversaRepository.findByParticipanteAIdAndParticipanteBId(USUARIO_A, USUARIO_B))
                 .thenReturn(Optional.of(conversa));
-        ChatConversaResumoProjection resumo = resumo();
-        when(conversaRepository.listarResumos(USUARIO_A)).thenReturn(List.of(resumo));
+        when(conversaRepository.listarResumos(USUARIO_A)).thenReturn(List.<Object[]>of(resumo()));
 
         var primeira = service.iniciar("qa-b", authentication, "request-chat-0001");
         var repetida = service.iniciar("QA-B", authentication, "request-chat-0002");
@@ -234,8 +233,7 @@ class ChatInternoServiceTest {
         when(usuarioRepository.findById(USUARIO_B)).thenReturn(Optional.of(participante));
         when(mensagemRepository.findByConversaIdOrderByCriadoEmAscIdAsc(CONVERSA_ID))
                 .thenReturn(List.of(primeira, segunda));
-        ChatConversaResumoProjection resumo = resumo();
-        when(conversaRepository.listarResumos(USUARIO_A)).thenReturn(List.of(resumo));
+        when(conversaRepository.listarResumos(USUARIO_A)).thenReturn(List.<Object[]>of(resumo()));
 
         var response = service.detalhar(CONVERSA_ID, authentication);
 
@@ -285,13 +283,13 @@ class ChatInternoServiceTest {
         return mensagem;
     }
 
-    private ChatConversaResumoProjection resumo() {
-        ChatConversaResumoProjection resumo = mock(ChatConversaResumoProjection.class);
-        when(resumo.getId()).thenReturn(CONVERSA_ID);
-        when(resumo.getParticipanteUsername()).thenReturn("qa-b");
-        when(resumo.getUltimaMensagem()).thenReturn("Mensagem QA");
-        when(resumo.getUltimaMensagemEm()).thenReturn(OffsetDateTime.parse("2026-07-27T12:00:00Z"));
-        when(resumo.getNaoLidas()).thenReturn(1L);
-        return resumo;
+    private Object[] resumo() {
+        return new Object[] {
+            CONVERSA_ID,
+            "qa-b",
+            "Mensagem QA",
+            Instant.parse("2026-07-27T12:00:00Z"),
+            1L
+        };
     }
 }
