@@ -8,6 +8,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useAuth } from '@/context/AuthContext'
 import { loginAdmin, logoutAdmin } from '@/lib/admin-auth-api'
+import { resolveAdminPostLoginSearch } from '@/lib/admin-navigation'
+
+function postLoginDestination() {
+  return resolveAdminPostLoginSearch(
+    typeof window === 'undefined' ? '' : window.location.search
+  )
+}
 
 export default function AdminLoginPage() {
   const router = useRouter()
@@ -20,7 +27,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (!carregando && usuario && ['ADMIN', 'MODERADOR'].includes(usuario.cargo)) {
-      router.replace('/admin/stories')
+      router.replace(postLoginDestination())
     }
   }, [carregando, router, usuario])
 
@@ -35,7 +42,7 @@ export default function AdminLoginPage() {
         throw new Error('Acesso administrativo não autorizado.')
       }
       await refresh()
-      router.replace('/admin/stories')
+      router.replace(postLoginDestination())
       router.refresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível entrar.')

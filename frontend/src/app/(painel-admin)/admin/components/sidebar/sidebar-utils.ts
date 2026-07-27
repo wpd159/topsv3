@@ -1,4 +1,4 @@
-import { SidebarLink } from './sidebar-links'
+import type { SidebarLink } from './sidebar-links'
 
 const MODERATOR_RESTRICTED_ROUTES = [
   '/admin/staff',
@@ -12,16 +12,8 @@ const MODERATOR_RESTRICTED_ROUTES = [
   '/admin/stories',
 ]
 
-export const filterSidebarLinksByRole = (links: SidebarLink[], role: string): SidebarLink[] => {
-  if (role === 'ADMIN') {
-    return links
-  }
-
-  if (role === 'MODERADOR') {
-    return links.filter((link) => !MODERATOR_RESTRICTED_ROUTES.includes(link.href))
-  }
-
-  return []
+function normalizedRoute(route: string) {
+  return route.split(/[?#]/, 1)[0]
 }
 
 export const canAccessRoute = (route: string, role: string): boolean => {
@@ -30,8 +22,15 @@ export const canAccessRoute = (route: string, role: string): boolean => {
   }
 
   if (role === 'MODERADOR') {
-    return !MODERATOR_RESTRICTED_ROUTES.some((restrictedRoute) => route.startsWith(restrictedRoute))
+    const pathname = normalizedRoute(route)
+    return !MODERATOR_RESTRICTED_ROUTES.some(
+      (restrictedRoute) =>
+        pathname === restrictedRoute || pathname.startsWith(`${restrictedRoute}/`)
+    )
   }
 
   return false
 }
+
+export const filterSidebarLinksByRole = (links: SidebarLink[], role: string): SidebarLink[] =>
+  links.filter((link) => canAccessRoute(link.href, role))

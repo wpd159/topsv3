@@ -87,7 +87,7 @@ export const sidebarLinks: SidebarLink[] = [
   {
     label: 'Benefícios premium',
     icon: <SparklesIcon className="h-5 w-5" />,
-    href: '/admin/beneficios-premium',
+    href: '/admin/creditos#beneficios-premium',
     section: 'Monetização',
   },
   {

@@ -253,7 +253,10 @@ export default function AdminCreditosPage() {
         </div>
       </div>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5">
+      <section
+        id="beneficios-premium"
+        className="scroll-mt-6 rounded-lg border border-gray-200 bg-white p-5"
+      >
         <h2 className="text-base font-semibold text-gray-900">Catalogo de beneficios</h2>
         <p className="mt-1 text-sm text-gray-500">
           Custos e duracoes {duracoesDisponiveis.length ? duracoesDisponiveis.join(', ') : 'disponiveis'} dias sao definidos pelo backend.

@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { activeAdminSidebarHref } from '@/lib/admin-navigation'
 import { SidebarLink } from './sidebar-links'
 
 type SidebarNavProps = {
@@ -12,6 +14,23 @@ type SidebarNavProps = {
 
 export function SidebarNav({ items, onItemClick, notificationCounts = {} }: SidebarNavProps) {
   const pathname = usePathname()
+  const [hash, setHash] = useState('')
+  const activeHref = useMemo(
+    () => activeAdminSidebarHref(items.map((item) => item.href), pathname, hash),
+    [hash, items, pathname]
+  )
+
+  useEffect(() => {
+    const updateHash = () => setHash(window.location.hash)
+    updateHash()
+    window.addEventListener('hashchange', updateHash)
+    window.addEventListener('popstate', updateHash)
+    return () => {
+      window.removeEventListener('hashchange', updateHash)
+      window.removeEventListener('popstate', updateHash)
+    }
+  }, [pathname])
+
   const sections = items.reduce<Array<{ section: SidebarLink["section"]; items: SidebarLink[] }>>((acc, item) => {
     const lastSection = acc[acc.length - 1]
     if (!lastSection || lastSection.section !== item.section) {
@@ -34,9 +53,7 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
           <div className="flex flex-col gap-2">
             {section.items.map((item) => {
               const baseHref = item.href.split('#')[0]
-              const isActive =
-                pathname === baseHref ||
-                (baseHref !== '/admin' && pathname.startsWith(`${baseHref}/`))
+              const isActive = activeHref === item.href
               const notificationCount: number | null =
                 item.notificationKey
                   ? notificationCounts[item.notificationKey] ?? null
@@ -50,6 +67,7 @@ export function SidebarNav({ items, onItemClick, notificationCounts = {} }: Side
                   key={item.label}
                   href={item.href}
                   onClick={onItemClick}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`flex items-center justify-between gap-3 rounded-md px-3 py-2 font-normal ${
                     isActive ? 'bg-pink-600 text-white' : 'hover:bg-white/10'
                   }`}

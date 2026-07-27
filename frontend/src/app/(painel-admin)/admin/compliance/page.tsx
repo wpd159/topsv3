@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import {
   ContractState,
@@ -30,6 +30,13 @@ const SECTIONS = [
 
 type SectionId = (typeof SECTIONS)[number]['id']
 
+function sectionFromHash(hash: string): SectionId {
+  const candidate = hash.replace(/^#/, '')
+  return SECTIONS.some((item) => item.id === candidate)
+    ? candidate as SectionId
+    : 'admin-logs'
+}
+
 function PendingTable({ columns, error, actions }: { columns: string[]; error: unknown; actions?: ReactNode }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200">
@@ -47,9 +54,23 @@ export default function AdminCompliancePage() {
     PENDING_BACKEND_CONTRACTS.complianceAdmin
   )
 
+  useEffect(() => {
+    const syncSection = () => setSection(sectionFromHash(window.location.hash))
+    syncSection()
+    window.addEventListener('hashchange', syncSection)
+    window.addEventListener('popstate', syncSection)
+    return () => {
+      window.removeEventListener('hashchange', syncSection)
+      window.removeEventListener('popstate', syncSection)
+    }
+  }, [])
+
   function chooseSection(id: SectionId) {
     setSection(id)
-    window.history.replaceState(null, '', `#${id}`)
+    if (window.location.hash !== `#${id}`) {
+      window.history.pushState(null, '', `#${id}`)
+      window.dispatchEvent(new Event('hashchange'))
+    }
   }
 
   return (

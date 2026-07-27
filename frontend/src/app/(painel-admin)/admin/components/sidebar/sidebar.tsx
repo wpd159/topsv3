@@ -14,6 +14,7 @@ import { Separator } from '@/components/ui/separator'
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -111,6 +112,9 @@ export default function Sidebar() {
           >
             <SheetHeader>
               <SheetTitle className="sr-only">Menu de navegacao</SheetTitle>
+              <SheetDescription className="sr-only">
+                Navegacao principal do painel administrativo.
+              </SheetDescription>
             </SheetHeader>
 
             <div className="sidebar-scroll flex-1 overflow-y-auto">
