@@ -16,7 +16,6 @@ import type {
   AdminAdUpdate,
   AdminFilterLocation,
   AdminKycSubmission,
-  AdminKycTemporaryUrl,
   AdminLegalBlockCategory,
   AdminLegalOperationResponse,
   AdminMediaItem,
@@ -61,6 +60,10 @@ async function csrfHeaders() {
     'Content-Type': 'application/json',
     [csrfHeaderName()]: value,
   }
+}
+
+export function getAdminMutationHeaders() {
+  return csrfHeaders()
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -239,10 +242,6 @@ export async function listAdminAdDocuments(id: string) {
   return requireArrayPayload<AdminKycSubmission>(
     await request(`/anuncios/${encodeURIComponent(id)}/documentos`)
   )
-}
-
-export function getAdminDocumentTemporaryUrl(documentId: string) {
-  return request<AdminKycTemporaryUrl>(`/documentos/${encodeURIComponent(documentId)}/url-temporaria`)
 }
 
 export async function listAdminPremiumBenefits(id: string) {

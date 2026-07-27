@@ -6,11 +6,13 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Save } from 'lucide-react'
 
 import { ContractState } from '@/components/feedback/contract-state'
+import { MaskedPhoneInput } from '@/components/forms/masked-phone-input'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { categorias, locais, servicos } from '@/features/anuncio-wizard/wizard-constants'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { maskPhoneBR, phoneToE164BR } from '@/lib/phone-mask'
 
 import { getAdminAd, updateAdminAd } from './api'
 import type { AdminAdDetail, AdminAdUpdate } from './types'
@@ -27,7 +29,7 @@ function initial(ad: AdminAdDetail): AdminAdUpdate {
     enderecoResumido: ad.localizacao?.enderecoResumido || null,
     locaisAtendimento: ad.locaisAtendimento,
     servicos: ad.servicos,
-    whatsapp: ad.whatsapp || null,
+    whatsapp: ad.whatsapp ? maskPhoneBR(ad.whatsapp) : null,
     atendimentoExclusivamenteVirtual: ad.atendimentoExclusivamenteVirtual,
   }
 }
@@ -37,6 +39,7 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
   const [form, setForm] = useState<AdminAdUpdate | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [hadWhatsapp, setHadWhatsapp] = useState(false)
   const [error, setError] = useState<unknown>(null)
 
   const load = useCallback(async () => {
@@ -48,6 +51,7 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
         throw new Error('Seu perfil não possui permissão para editar dados comerciais.')
       }
       setForm(initial(ad))
+      setHadWhatsapp(Boolean(ad.whatsapp))
     } catch (reason) {
       setError(reason)
     } finally {
@@ -70,10 +74,18 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!form || saving) return
+    const normalizedWhatsapp = phoneToE164BR(form.whatsapp || '')
+    if ((form.whatsapp && !normalizedWhatsapp) || (hadWhatsapp && !normalizedWhatsapp)) {
+      setError(new Error('Informe DDD e número completo antes de salvar o WhatsApp.'))
+      return
+    }
     setSaving(true)
     setError(null)
     try {
-      await updateAdminAd(anuncioId, form)
+      await updateAdminAd(anuncioId, {
+        ...form,
+        whatsapp: normalizedWhatsapp,
+      })
       router.push(`/admin/anuncios/${anuncioId}`)
       router.refresh()
     } catch (reason) {
@@ -103,7 +115,14 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
         <label><span className="mb-1 block text-sm font-semibold">Cidade</span><Input value={form.cidade} minLength={2} maxLength={80} onChange={(event) => setForm({ ...form, cidade: event.target.value })} required /></label>
         <label><span className="mb-1 block text-sm font-semibold">Bairro</span><Input value={form.bairro || ''} maxLength={80} onChange={(event) => setForm({ ...form, bairro: event.target.value || null })} /></label>
         <label><span className="mb-1 block text-sm font-semibold">Região</span><Input value={form.enderecoResumido || ''} maxLength={120} placeholder="Ex.: Centro" onChange={(event) => setForm({ ...form, enderecoResumido: event.target.value || null })} /></label>
-        <label><span className="mb-1 block text-sm font-semibold">WhatsApp</span><Input value={form.whatsapp || ''} maxLength={20} onChange={(event) => setForm({ ...form, whatsapp: event.target.value || null })} /></label>
+        <label>
+          <span className="mb-1 block text-sm font-semibold">WhatsApp</span>
+          <MaskedPhoneInput
+            value={form.whatsapp || ''}
+            onValueChange={(value) => setForm({ ...form, whatsapp: value || null })}
+            placeholder="(00) 00000-0000"
+          />
+        </label>
       </div>
       <fieldset><legend className="text-sm font-semibold text-zinc-950">Serviços</legend><div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{servicos.map((item) => <label key={item.value} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.servicos.includes(item.value)} onChange={() => toggle('servicos', item.value)} />{item.label}</label>)}</div></fieldset>
       {form.servicos.includes('VIDEOCHAMADA') ? (

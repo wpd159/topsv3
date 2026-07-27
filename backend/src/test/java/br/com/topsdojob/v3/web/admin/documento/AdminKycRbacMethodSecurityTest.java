@@ -6,7 +6,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import br.com.topsdojob.v3.application.admin.documento.AdminKycService;
+import br.com.topsdojob.v3.application.admin.documento.AdminKycThumbnailProcessor;
+import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,6 +23,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 @ExtendWith(SpringExtension.class)
 @ContextConfiguration(classes = AdminKycRbacMethodSecurityTest.Config.class)
@@ -53,6 +57,29 @@ class AdminKycRbacMethodSecurityTest {
 
     authenticate("ROLE_ADMIN");
     assertThatThrownBy(controller::listarPendentes).isInstanceOf(AuthorizationDeniedException.class);
+  }
+
+  @Test
+  void adminEModeradorComDocumentoRevisarRecebemMiniaturaProtegida() {
+    UUID documentoId = UUID.randomUUID();
+    AdminUserPrincipal ator = mock(AdminUserPrincipal.class);
+    var thumbnail = new AdminKycThumbnailProcessor.Thumbnail(
+        new byte[] {1, 2, 3},
+        "image/jpeg",
+        "\"etag\"");
+    org.mockito.Mockito.when(service.miniatura(
+        org.mockito.ArgumentMatchers.eq(documentoId),
+        org.mockito.ArgumentMatchers.eq(ator),
+        org.mockito.ArgumentMatchers.any()))
+        .thenReturn(thumbnail);
+
+    for (String role : List.of("ROLE_ADMIN", "ROLE_MODERADOR")) {
+      authenticate(role, "DOCUMENTO_REVISAR");
+      var response = controller.miniatura(documentoId, ator, new MockHttpServletRequest());
+      assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+      assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+      assertThat(response.getBody()).containsExactly(1, 2, 3);
+    }
   }
 
   private void authenticate(String... authorities) {

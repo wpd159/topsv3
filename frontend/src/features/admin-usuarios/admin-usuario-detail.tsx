@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, ExternalLink, FileText, LockKeyhole, RefreshCw, ShieldCheck, UnlockKeyhole } from 'lucide-react'
+import { ArrowLeft, LockKeyhole, Pencil, ShieldCheck, UnlockKeyhole } from 'lucide-react'
 
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
@@ -20,13 +20,11 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/context/AuthContext'
-import {
-  blockAdminAdAndUser,
-  getAdminDocumentTemporaryUrl,
-  unblockAdminUser,
-} from '@/features/admin-anuncios/api'
+import { blockAdminAdAndUser, unblockAdminUser } from '@/features/admin-anuncios/api'
 import type { AdminLegalBlockCategory } from '@/features/admin-anuncios/types'
+import { AdminKycDocumentGrid } from '@/features/admin-documentos/admin-kyc-document-grid'
 import { normalizeApiError } from '@/lib/api-contract'
+import { maskPhoneBR } from '@/lib/phone-mask'
 
 import { getAdminUser } from './api'
 import type { AdminUserDetail } from './types'
@@ -76,7 +74,6 @@ export function AdminUsuarioDetail() {
   const [legalReason, setLegalReason] = useState('')
   const [legalBusy, setLegalBusy] = useState(false)
   const [legalError, setLegalError] = useState<unknown>(null)
-  const [documentBusy, setDocumentBusy] = useState<string | null>(null)
   const actionLock = useRef(false)
   const userId = params?.id ?? ''
   const admin = usuario?.cargo === 'ADMIN'
@@ -102,20 +99,6 @@ export function AdminUsuarioDetail() {
   useEffect(() => {
     void load()
   }, [load, reload])
-
-  async function openDocument(documentId: string) {
-    if (documentBusy) return
-    setDocumentBusy(documentId)
-    setError(null)
-    try {
-      const result = await getAdminDocumentTemporaryUrl(documentId)
-      window.open(result.url, '_blank', 'noopener,noreferrer')
-    } catch (reason) {
-      setError(reason)
-    } finally {
-      setDocumentBusy(null)
-    }
-  }
 
   async function confirmLegalAction() {
     if (!detail?.anuncioAncoraBloqueioId || !legalIntent || actionLock.current) return
@@ -170,7 +153,7 @@ export function AdminUsuarioDetail() {
               {detail.bloqueado ? <Badge variant="destructive">Bloqueado</Badge> : null}
             </div>
           </div>
-          {admin && (detail.podeBloquear || detail.podeDesbloquear) ? (
+          {admin ? (
             <div className="flex flex-wrap gap-2">
               {detail.podeBloquear ? (
                 <Button type="button" variant="destructive" onClick={() => setLegalIntent('BLOCK')}>
@@ -182,6 +165,11 @@ export function AdminUsuarioDetail() {
                   <UnlockKeyhole className="mr-2 h-4 w-4" /> Desbloquear usuário
                 </Button>
               ) : null}
+              <Button asChild type="button" variant="outline">
+                <Link href={`/admin/usuarios/${encodeURIComponent(detail.id)}/editar`}>
+                  <Pencil className="mr-2 h-4 w-4" /> Editar telefone
+                </Link>
+              </Button>
             </div>
           ) : null}
         </div>
@@ -196,7 +184,7 @@ export function AdminUsuarioDetail() {
             ['Nome de cadastro', detail.nome || 'Não informado'],
             ['Nome civil', detail.nomeCivil || 'Não informado'],
             ['E-mail', detail.email || 'Não informado'],
-            ['Telefone / WhatsApp', detail.telefone || 'Não informado'],
+            ['Telefone / WhatsApp', detail.telefone ? maskPhoneBR(detail.telefone) : 'Não informado'],
             [detail.cpfMascarado ? 'CPF mascarado' : 'CPF', detail.cpf || 'Não informado'],
             ['Data de nascimento', detail.dataNascimento ? new Date(`${detail.dataNascimento}T00:00:00`).toLocaleDateString('pt-BR') : 'Não informado'],
             ['Tipo da conta', pretty(detail.tipoConta)],
@@ -245,41 +233,9 @@ export function AdminUsuarioDetail() {
           <h2 id="kyc-usuario" className="text-lg font-semibold text-zinc-950">KYC privado</h2>
           <ShieldCheck className="h-5 w-5 text-zinc-500" aria-hidden="true" />
         </div>
-        {detail.kycEnvios.length === 0 ? (
-          <p className="mt-3 border-y border-zinc-200 py-8 text-center text-sm text-zinc-500">Nenhum envio de KYC.</p>
-        ) : (
-          <div className="mt-3 divide-y divide-zinc-200 border-y border-zinc-200">
-            {detail.kycEnvios.map((submission) => (
-              <article key={submission.envioId} className="py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold text-zinc-900">Envio de {formatDate(submission.enviadoEm)}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{submission.documentos.length} documento(s)</p>
-                  </div>
-                  <Badge variant="outline" className={statusTone(submission.status)}>{pretty(submission.status)}</Badge>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {submission.documentos.map((document) => (
-                    <Button
-                      key={document.id}
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={Boolean(documentBusy)}
-                      onClick={() => void openDocument(document.id)}
-                    >
-                      {documentBusy === document.id
-                        ? <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                        : <FileText className="mr-2 h-4 w-4" />}
-                      {pretty(document.parte)}
-                      <ExternalLink className="ml-2 h-3.5 w-3.5" />
-                    </Button>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
+        <div className="mt-3">
+          <AdminKycDocumentGrid submissions={detail.kycEnvios} />
+        </div>
       </section>
 
       <section aria-labelledby="historico-usuario">

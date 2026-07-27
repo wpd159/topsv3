@@ -6,6 +6,7 @@ import {
   requireArrayPayload,
 } from '@/lib/api-contract'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
+import { getAdminMutationHeaders } from '@/features/admin-anuncios/api'
 
 import type {
   AdminUserDetail,
@@ -14,9 +15,17 @@ import type {
   AdminUserSummary,
 } from './types'
 
-async function request<T>(path: string): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
+    const method = (init.method || 'GET').toUpperCase()
+    const headers = new Headers(init.headers)
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      const secureHeaders = await getAdminMutationHeaders()
+      Object.entries(secureHeaders).forEach(([name, value]) => headers.set(name, value))
+    }
     const response = await fetch(adminApiUrl(path), {
+      ...init,
+      headers,
       credentials: 'include',
       cache: 'no-store',
     })
@@ -65,4 +74,11 @@ export async function listAdminUsers(filters: AdminUserFilters) {
 
 export function getAdminUser(id: string) {
   return request<AdminUserDetail>(`/usuarios/${encodeURIComponent(id)}`)
+}
+
+export function updateAdminUserPhone(id: string, telefone: string) {
+  return request<AdminUserDetail>(`/usuarios/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ telefone }),
+  })
 }

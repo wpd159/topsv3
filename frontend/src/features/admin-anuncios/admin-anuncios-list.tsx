@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { maskPhoneBR } from '@/lib/phone-mask'
 import { SearchableSelect } from '@/features/anuncio-wizard/components/searchable-select'
 
 import { AdminAnuncioPremiumRapido } from './admin-anuncio-premium-rapido'
@@ -98,7 +99,7 @@ function Owner({ item, compact = false }: { item: AdminAdListItem; compact?: boo
       <p className="mt-1 break-all">{owner?.email || 'E-mail não informado'}</p>
       {digits ? (
         <a href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 font-medium text-pink-700 hover:underline">
-          {owner?.whatsapp}<ExternalLink className="h-3 w-3" aria-hidden="true" />
+          {maskPhoneBR(owner?.whatsapp || '')}<ExternalLink className="h-3 w-3" aria-hidden="true" />
         </a>
       ) : <p className="mt-1">Não informado</p>}
     </div>

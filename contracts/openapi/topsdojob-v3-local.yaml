@@ -2230,6 +2230,45 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
+    patch:
+      summary: Atualiza o telefone cadastral de um usuario
+      description: Restrito a ADMIN com ANUNCIO_MODERAR. Recebe somente telefone brasileiro normalizado e preserva os demais dados cadastrais.
+      operationId: patchAdminUsuarioTelefone
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUsuarioAtualizacaoRequest"
+      responses:
+        "200":
+          description: Usuario atualizado com telefone normalizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioDetalhe"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios:
     get:
       summary: Lista administrativa local de anuncios
@@ -4007,6 +4046,42 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/admin/documentos/{documentoId}/miniatura:
+    get:
+      summary: Entrega miniatura protegida de documento privado
+      operationId: getAdminKycThumbnail
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: documentoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      description: Renderiza imagem otimizada ou a primeira pagina de PDF pela mesma autorizacao privada do documento, sem expor storage ou URL assinada.
+      responses:
+        "200":
+          description: Miniatura JPEG protegida e sem cache publico
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: "no-store"
+            ETag:
+              schema:
+                type: string
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
   /api/admin/documentos/{documentoId}/url-temporaria:
     get:
       summary: Autoriza visualizacao temporaria de documento privado
@@ -5244,8 +5319,29 @@ components:
           type: string
           format: binary
     AdminKycDocumento:
-      allOf:
-        - $ref: "#/components/schemas/KycDocumento"
+      type: object
+      additionalProperties: false
+      required: [id, tipo, parte, status, mimeType, tamanhoBytes, criadoEm]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+        parte:
+          type: string
+          enum: [UNICO, FRENTE, VERSO]
+        status:
+          type: string
+        mimeType:
+          type: [string, "null"]
+        tamanhoBytes:
+          type: integer
+          format: int64
+          minimum: 0
+        criadoEm:
+          type: string
+          format: date-time
     AdminKycEnvio:
       type: object
       additionalProperties: false
@@ -8672,6 +8768,14 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AdminUsuarioHistorico"
+    AdminUsuarioAtualizacaoRequest:
+      type: object
+      additionalProperties: false
+      required: [telefone]
+      properties:
+        telefone:
+          type: string
+          pattern: "^\\+55[0-9]{10,11}$"
     AdminPaginaUsuarios:
       type: object
       additionalProperties: false

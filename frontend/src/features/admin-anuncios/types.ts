@@ -162,10 +162,12 @@ export type AdminAdRemovalResponse = {
 
 export type AdminKycDocument = {
   id: string
+  tipo: string
   parte: 'UNICO' | 'FRENTE' | 'VERSO'
   status: string
   mimeType?: string | null
   tamanhoBytes: number
+  criadoEm?: string | null
 }
 
 export type AdminKycSubmission = {
@@ -179,11 +181,6 @@ export type AdminKycSubmission = {
   enviadoEm?: string | null
   revisadoEm?: string | null
   documentos: AdminKycDocument[]
-}
-
-export type AdminKycTemporaryUrl = {
-  url: string
-  expiraEm: string
 }
 
 export type AdminPremiumBenefit = {

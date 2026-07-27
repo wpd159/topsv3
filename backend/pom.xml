@@ -20,6 +20,7 @@
   <properties>
     <java.version>17</java.version>
     <metadata-extractor.version>2.19.0</metadata-extractor.version>
+    <pdfbox.version>3.0.8</pdfbox.version>
     <webp-imageio.version>0.11.0</webp-imageio.version>
   </properties>
 
@@ -49,6 +50,17 @@
       <groupId>com.github.usefulness</groupId>
       <artifactId>webp-imageio</artifactId>
       <version>${webp-imageio.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId>
+      <artifactId>pdfbox</artifactId>
+      <version>${pdfbox.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>commons-logging</groupId>
+          <artifactId>commons-logging</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.postgresql</groupId>

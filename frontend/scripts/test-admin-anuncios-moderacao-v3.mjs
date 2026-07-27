@@ -209,8 +209,8 @@ assert.ok(publicCatalogActions.includes('revalidateTag(PUBLIC_CATALOG_CACHE_TAG)
 assert.ok(detail.includes("intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REPROVE_AD'") && detail.includes('O estado do anúncio mudou.'), 'Conflito 409 da decisao deve atualizar o detalhe e informar a causa correta.')
 assert.ok(detail.includes('decisionLock.current') && detail.includes('disabled={headerBusy}'), 'A aprovacao deve impedir duplo clique durante a decisao.')
 
-assert.ok(documents.includes('getAdminDocumentTemporaryUrl'), 'Documento deve ser aberto por URL temporaria administrativa.')
-assert.ok(documents.includes('Visualizar') && documents.includes('Baixar'), 'Documento deve permitir visualizacao e download autorizados.')
+assert.ok(documents.includes('AdminKycDocumentGrid'), 'Documento deve reutilizar a grade documental protegida.')
+assert.ok(documents.includes('listAdminAdDocuments'), 'Documentos devem continuar vinculados ao proprietario do anuncio pelo backend.')
 assert.ok(!documents.includes('objectKey') && !documents.includes('bucket'), 'Documento nao pode expor bucket ou object key.')
 
 assert.ok(premium.includes('listAdminPremiumCatalog'), 'Beneficios e duracoes devem vir do catalogo backend.')

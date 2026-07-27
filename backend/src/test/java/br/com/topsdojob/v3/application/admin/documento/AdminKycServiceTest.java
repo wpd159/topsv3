@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.admin.documento;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,7 @@ import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycDecisaoReques
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.documento.DocumentoUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
@@ -32,6 +34,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
@@ -46,6 +49,7 @@ class AdminKycServiceTest {
   private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
   private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
   private final ObjectStorage storage = mock(ObjectStorage.class);
+  private final AdminKycThumbnailProcessor thumbnailProcessor = mock(AdminKycThumbnailProcessor.class);
   @SuppressWarnings("unchecked")
   private final ObjectProvider<ObjectStorage> storageProvider = mock(ObjectProvider.class);
   private final UUID envioId = UUID.randomUUID();
@@ -78,7 +82,8 @@ class AdminKycServiceTest {
       usuarioRepository,
       auditoriaRepository,
       properties(),
-      storageProvider);
+      storageProvider,
+      thumbnailProcessor);
 
   @BeforeEach
   void setUp() {
@@ -102,6 +107,32 @@ class AdminKycServiceTest {
     assertThat(response.url()).startsWith("https://private.invalid/");
     assertThat(response.expiraEm()).isAfter(OffsetDateTime.now(ZoneOffset.UTC));
     assertThat(documento.getStatus()).isEqualTo(StatusDocumentoUsuario.EM_ANALISE);
+    verify(acessoRepository).save(any());
+  }
+
+  @Test
+  void geraMiniaturaPeloMesmoStoragePrivadoSemExporUrlAssinada() {
+    byte[] source = {1, 2, 3};
+    byte[] rendered = {4, 5, 6};
+    when(storage.get(StorageArea.PRIVATE_DOCUMENT, arquivo.getChaveObjeto()))
+        .thenReturn(new StoredObject(source, "application/pdf"));
+    when(thumbnailProcessor.processar(
+        eq(arquivoId),
+        eq(arquivo.getSha256()),
+        eq("application/pdf"),
+        any()))
+        .thenAnswer(invocation -> {
+          @SuppressWarnings("unchecked")
+          Supplier<byte[]> loader = invocation.getArgument(3, Supplier.class);
+          assertThat(loader.get()).containsExactly(source);
+          return new AdminKycThumbnailProcessor.Thumbnail(rendered, "image/jpeg", "\"etag\"");
+        });
+
+    var response = service.miniatura(documento.getId(), admin, "req-thumb");
+
+    assertThat(response.content()).containsExactly(rendered);
+    assertThat(response.contentType()).isEqualTo("image/jpeg");
+    verify(storage).get(StorageArea.PRIVATE_DOCUMENT, arquivo.getChaveObjeto());
     verify(acessoRepository).save(any());
   }
 

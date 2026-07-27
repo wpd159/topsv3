@@ -10,6 +10,7 @@ import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.http.CacheControl;
@@ -48,6 +49,20 @@ public class AdminKycController {
       @AuthenticationPrincipal AdminUserPrincipal ator,
       HttpServletRequest request) {
     return semCache(service.urlTemporaria(documentoId, ator, RequestIdContext.current(request)));
+  }
+
+  @GetMapping(value = "/{documentoId}/miniatura", produces = MediaType.IMAGE_JPEG_VALUE)
+  public ResponseEntity<byte[]> miniatura(
+      @PathVariable UUID documentoId,
+      @AuthenticationPrincipal AdminUserPrincipal ator,
+      HttpServletRequest request) {
+    var thumbnail = service.miniatura(documentoId, ator, RequestIdContext.current(request));
+    return ResponseEntity.ok()
+        .cacheControl(CacheControl.noStore())
+        .header("X-Content-Type-Options", "nosniff")
+        .eTag(thumbnail.etag())
+        .contentType(MediaType.parseMediaType(thumbnail.contentType()))
+        .body(thumbnail.content());
   }
 
   @PostMapping("/envios/{envioId}/decidir")

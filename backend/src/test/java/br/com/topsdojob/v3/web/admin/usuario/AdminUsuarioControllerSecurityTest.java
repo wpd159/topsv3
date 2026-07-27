@@ -3,14 +3,17 @@ package br.com.topsdojob.v3.web.admin.usuario;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioConsultaService;
+import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioAtualizacaoService;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioDetalheDto;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import br.com.topsdojob.v3.security.config.AdminSecurityErrorWriter;
@@ -28,6 +31,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.http.MediaType;
 
 @WebMvcTest(
         controllers = AdminUsuarioController.class,
@@ -40,6 +44,9 @@ class AdminUsuarioControllerSecurityTest {
 
     @MockBean
     private AdminUsuarioConsultaService service;
+
+    @MockBean
+    private AdminUsuarioAtualizacaoService atualizacaoService;
 
     @Test
     void adminEModeradorComAnuncioLerAcessamListaEDetalhe() throws Exception {
@@ -74,17 +81,57 @@ class AdminUsuarioControllerSecurityTest {
         mockMvc.perform(get("/api/admin/usuarios")).andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void somenteAdminComPermissaoECsrfAtualizaTelefone() throws Exception {
+        UUID id = UUID.randomUUID();
+        AdminUsuarioDetalheDto detail = detalhe(id);
+        when(atualizacaoService.atualizarTelefone(any(), any(), any(), any())).thenReturn(detail);
+
+        mockMvc.perform(patch("/api/admin/usuarios/{id}", id)
+                        .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"telefone\":\"+5562999999999\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id.toString()));
+
+        mockMvc.perform(patch("/api/admin/usuarios/{id}", id)
+                        .with(authentication(tokenFor(PapelUsuario.MODERADOR, "ANUNCIO_MODERAR")))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"telefone\":\"+5562999999999\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(patch("/api/admin/usuarios/{id}", id)
+                        .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"telefone\":\"+5562999999999\"}"))
+                .andExpect(status().isForbidden());
+    }
+
     private UsernamePasswordAuthenticationToken tokenFor(PapelUsuario papel) {
-        List<GrantedAuthority> authorities = List.of(
-                new SimpleGrantedAuthority("ROLE_" + papel.name()),
-                new SimpleGrantedAuthority("ANUNCIO_LER"));
+        return tokenFor(papel, "ANUNCIO_LER");
+    }
+
+    private UsernamePasswordAuthenticationToken tokenFor(PapelUsuario papel, String... permissions) {
+        List<GrantedAuthority> authorities = new java.util.ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + papel.name()));
+        authorities.add(new SimpleGrantedAuthority("ANUNCIO_LER"));
+        for (String permission : permissions) {
+            authorities.add(new SimpleGrantedAuthority(permission));
+        }
         var principal = new AdminUserPrincipal(
                 UUID.randomUUID(),
                 "Operador",
                 "operador@example.invalid",
                 "hash",
                 List.of(papel),
-                List.of(new AdminPermissionDto("ANUNCIO_LER", "Leitura administrativa")),
+                authorities.stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .filter(authority -> !authority.startsWith("ROLE_"))
+                        .distinct()
+                        .map(authority -> new AdminPermissionDto(authority, authority))
+                        .toList(),
                 authorities,
                 true);
         return new UsernamePasswordAuthenticationToken(principal, principal.getPassword(), authorities);

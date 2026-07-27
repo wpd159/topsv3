@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycDecisaoRespon
 import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycDocumentoDto;
 import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycEnvioDto;
 import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycUrlTemporariaDto;
+import br.com.topsdojob.v3.application.admin.documento.AdminKycThumbnailProcessor.Thumbnail;
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoSanitizer;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
@@ -51,6 +52,7 @@ public class AdminKycService {
   private final AuditoriaEventoRepository auditoriaRepository;
   private final R2StorageProperties storageProperties;
   private final ObjectProvider<ObjectStorage> storageProvider;
+  private final AdminKycThumbnailProcessor thumbnailProcessor;
 
   public AdminKycService(
       DocumentoUsuarioRepository documentoRepository,
@@ -59,7 +61,8 @@ public class AdminKycService {
       UsuarioRepository usuarioRepository,
       AuditoriaEventoRepository auditoriaRepository,
       R2StorageProperties storageProperties,
-      ObjectProvider<ObjectStorage> storageProvider) {
+      ObjectProvider<ObjectStorage> storageProvider,
+      AdminKycThumbnailProcessor thumbnailProcessor) {
     this.documentoRepository = documentoRepository;
     this.acessoRepository = acessoRepository;
     this.arquivoRepository = arquivoRepository;
@@ -67,6 +70,7 @@ public class AdminKycService {
     this.auditoriaRepository = auditoriaRepository;
     this.storageProperties = storageProperties;
     this.storageProvider = storageProvider;
+    this.thumbnailProcessor = thumbnailProcessor;
   }
 
   @Transactional(readOnly = true)
@@ -110,24 +114,43 @@ public class AdminKycService {
       UUID documentoId,
       AdminUserPrincipal ator,
       String requestId) {
-    DocumentoUsuarioEntity documento = documentoRepository.findById(documentoId)
-        .filter(item -> item.getRemovidoEm() == null && item.getExpurgadoEm() == null)
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "documento nao encontrado"));
-    ArquivoMidiaEntity arquivo = arquivoRepository.findById(documento.getArquivoMidiaId())
-        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo do documento nao encontrado"));
-    validarLocalPrivado(arquivo);
-    ObjectStorage storage = storageObrigatorio();
+    DocumentoArquivo acesso = documentoArquivo(documentoId);
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-    documentosDoEnvio(documento.getEnvioId()).forEach(item -> item.marcarEmAnalise(agora));
+    documentosDoEnvio(acesso.documento().getEnvioId()).forEach(item -> item.marcarEmAnalise(agora));
     acessoRepository.save(DocumentoUsuarioAcessoEntity.registrarPermitido(
         UUID.randomUUID(),
-        documento.getId(),
+        acesso.documento().getId(),
         ator.usuarioId(),
         requestId,
         agora));
     return new AdminKycUrlTemporariaDto(
-        storage.temporaryGetUrl(StorageArea.PRIVATE_DOCUMENT, arquivo.getChaveObjeto(), URL_TTL).toString(),
+        acesso.storage().temporaryGetUrl(
+            StorageArea.PRIVATE_DOCUMENT,
+            acesso.arquivo().getChaveObjeto(),
+            URL_TTL).toString(),
         agora.plus(URL_TTL));
+  }
+
+  @Transactional
+  public Thumbnail miniatura(
+      UUID documentoId,
+      AdminUserPrincipal ator,
+      String requestId) {
+    DocumentoArquivo acesso = documentoArquivo(documentoId);
+    ArquivoMidiaEntity arquivo = acesso.arquivo();
+    Thumbnail thumbnail = thumbnailProcessor.processar(
+        arquivo.getId(),
+        arquivo.getSha256(),
+        arquivo.getMimeType(),
+        () -> acesso.storage().get(StorageArea.PRIVATE_DOCUMENT, arquivo.getChaveObjeto()).content());
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    acessoRepository.save(DocumentoUsuarioAcessoEntity.registrarPermitido(
+        UUID.randomUUID(),
+        acesso.documento().getId(),
+        ator.usuarioId(),
+        requestId,
+        agora));
+    return thumbnail;
   }
 
   @Transactional
@@ -204,10 +227,12 @@ public class AdminKycService {
               ArquivoMidiaEntity arquivo = arquivos.get(documento.getArquivoMidiaId());
               return new AdminKycDocumentoDto(
                   documento.getId(),
+                  documento.getTipo().name(),
                   documento.getParte().name(),
                   documento.getStatus().name(),
                   arquivo == null ? null : arquivo.getMimeType(),
-                  arquivo == null || arquivo.getTamanhoBytes() == null ? 0L : arquivo.getTamanhoBytes());
+                  arquivo == null || arquivo.getTamanhoBytes() == null ? 0L : arquivo.getTamanhoBytes(),
+                  documento.getCriadoEm());
             }).toList());
   }
 
@@ -236,6 +261,16 @@ public class AdminKycService {
     }
   }
 
+  private DocumentoArquivo documentoArquivo(UUID documentoId) {
+    DocumentoUsuarioEntity documento = documentoRepository.findById(documentoId)
+        .filter(item -> item.getRemovidoEm() == null && item.getExpurgadoEm() == null)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "documento nao encontrado"));
+    ArquivoMidiaEntity arquivo = arquivoRepository.findById(documento.getArquivoMidiaId())
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo do documento nao encontrado"));
+    validarLocalPrivado(arquivo);
+    return new DocumentoArquivo(documento, arquivo, storageObrigatorio());
+  }
+
   private ObjectStorage storageObrigatorio() {
     ObjectStorage storage = storageProvider.getIfAvailable();
     if (storage == null || !storageProperties.isEnabled()) {
@@ -246,5 +281,11 @@ public class AdminKycService {
 
   private String mascararCpf(String cpf) {
     return cpf == null || cpf.length() != 11 ? null : "***.***.***-" + cpf.substring(9);
+  }
+
+  private record DocumentoArquivo(
+      DocumentoUsuarioEntity documento,
+      ArquivoMidiaEntity arquivo,
+      ObjectStorage storage) {
   }
 }

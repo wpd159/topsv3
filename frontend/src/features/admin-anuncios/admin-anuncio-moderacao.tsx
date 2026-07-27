@@ -31,6 +31,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { maskPhoneBR } from '@/lib/phone-mask'
 import { ApiContractError, normalizeApiError } from '@/lib/api-contract'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
@@ -1051,7 +1052,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
             <div><span className="block text-xs text-zinc-500">Conta</span><strong>{formatEnum(ad.anunciante?.status)}</strong></div>
             <div><span className="block text-xs text-zinc-500">E-mail</span><span className="break-all">{ad.anunciante?.email || 'Não informado'}</span></div>
             <div><span className="block text-xs text-zinc-500">CPF</span><span>{ad.anunciante?.cpf || 'Não informado'}</span></div>
-            <div className="sm:col-span-2"><span className="block text-xs text-zinc-500">WhatsApp</span>{whatsappDigits ? <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-pink-700 hover:underline">{ad.anunciante?.whatsapp}<ExternalLink className="h-3 w-3" /></a> : <span>Não informado</span>}</div>
+            <div className="sm:col-span-2"><span className="block text-xs text-zinc-500">WhatsApp</span>{whatsappDigits ? <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-pink-700 hover:underline">{maskPhoneBR(ad.anunciante?.whatsapp || '')}<ExternalLink className="h-3 w-3" /></a> : <span>Não informado</span>}</div>
           </div>
         </div>
         <div className="rounded-md border border-zinc-200 bg-white p-4">
@@ -1081,7 +1082,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Localização</dt><dd className="mt-1 text-sm">{[ad.localizacao?.bairro, ad.localizacao?.cidade, ad.localizacao?.uf].filter(Boolean).join(' · ') || 'Não informada'}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Região</dt><dd className="mt-1 text-sm">{ad.localizacao?.enderecoResumido || 'Não informada'}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Criação</dt><dd className="mt-1 text-sm">{formatDate(ad.criadoEm)}</dd></div>
-                <div><dt className="text-xs font-semibold uppercase text-zinc-500">WhatsApp do anúncio</dt><dd className="mt-1 text-sm">{ad.whatsapp || 'Não informado'}</dd></div>
+                <div><dt className="text-xs font-semibold uppercase text-zinc-500">WhatsApp do anúncio</dt><dd className="mt-1 text-sm">{ad.whatsapp ? maskPhoneBR(ad.whatsapp) : 'Não informado'}</dd></div>
                 <div className="sm:col-span-2"><dt className="text-xs font-semibold uppercase text-zinc-500">Descrição</dt><dd className="mt-1 whitespace-pre-wrap text-sm leading-6">{ad.descricao || ad.descricaoResumo || 'Não informada'}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Serviços</dt><dd className="mt-1 text-sm">{ad.servicos.length ? ad.servicos.map(formatEnum).join(', ') : 'Não informados'}</dd></div>
                 <div><dt className="text-xs font-semibold uppercase text-zinc-500">Locais de atendimento</dt><dd className="mt-1 text-sm">{ad.locaisAtendimento.length ? ad.locaisAtendimento.map(formatEnum).join(', ') : 'Não informados'}</dd></div>
