@@ -11,10 +11,10 @@ public class ComplianceAgeGateProperties {
   private int globalTtlDays = 7;
   private int sessionTtlDays = 30;
   private int challengeTtlMinutes = 10;
-  private int lightTokenTtlMinutes = 720;
-  private int reinforcedTokenTtlMinutes = 60;
-  private int strongTokenTtlMinutes = 120;
-  private int explicitTokenTtlMinutes = 30;
+  private int lightTokenTtlMinutes = 10_080;
+  private int reinforcedTokenTtlMinutes = 10_080;
+  private int strongTokenTtlMinutes = 10_080;
+  private int explicitTokenTtlMinutes = 10_080;
   private int riskWindowMinutes = 60;
   private int restrictedBurstWindowMinutes = 10;
   private int tempBlockMinutes = 30;

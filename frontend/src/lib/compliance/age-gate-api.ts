@@ -90,6 +90,8 @@ async function parseFailure(response: Response): Promise<ApiContractError> {
   }
   const kind = response.status === 403
     ? 'ACCESS_DENIED'
+    : response.status === 410
+      ? 'CONFLICT'
     : response.status === 409
       ? 'CONFLICT'
       : response.status === 400 || response.status === 422

@@ -21,6 +21,7 @@ import br.com.topsdojob.v3.persistence.entity.compliance.ComplianceVisitorTokenE
 import br.com.topsdojob.v3.persistence.repository.ComplianceVisitorChallengeRepository;
 import br.com.topsdojob.v3.persistence.repository.ComplianceVisitorDocumentoRepository;
 import br.com.topsdojob.v3.persistence.repository.ComplianceVisitorTokenRepository;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -46,6 +47,16 @@ class ComplianceVisitorAccessServiceTest {
         new MockHttpServletRequest(),
         EscopoConteudoVisitante.MIDIA_RESTRITA)).isFalse();
     assertThat(fixture.tokenRepository.findByTokenHash(any())).isNotPresent();
+  }
+
+  @Test
+  void todosOsNiveisDeAcessoPersistemPorSeteDias() {
+    ComplianceAgeGateProperties properties = new ComplianceAgeGateProperties();
+
+    assertThat(properties.lightTokenTtl()).isEqualTo(Duration.ofDays(7));
+    assertThat(properties.reinforcedTokenTtl()).isEqualTo(Duration.ofDays(7));
+    assertThat(properties.strongTokenTtl()).isEqualTo(Duration.ofDays(7));
+    assertThat(properties.explicitTokenTtl()).isEqualTo(Duration.ofDays(7));
   }
 
   @Test
@@ -77,6 +88,9 @@ class ComplianceVisitorAccessServiceTest {
         .contains("HttpOnly")
         .contains("Secure")
         .contains("SameSite=Lax");
+    assertThat(issued.generalCookie().getMaxAge()).isEqualTo(Duration.ofDays(7));
+    assertThat(storedAccess.getExpiraEm())
+        .isEqualTo(storedAccess.getEmitidoEm().plusDays(7));
 
     when(fixture.globalService.aceito(any())).thenReturn(true);
     when(fixture.sessionService.obterOuCriar(any())).thenReturn(fixture.session);
@@ -122,11 +136,14 @@ class ComplianceVisitorAccessServiceTest {
     assertThat(issued.generalCookie()).isNotNull();
     assertThat(issued.explicitCookie()).isNotNull();
     assertThat(issued.explicitCookie().getMaxAge())
-        .isEqualTo(fixture.properties.explicitTokenTtl());
+        .isEqualTo(Duration.ofDays(7));
     assertThat(persisted)
         .extracting(ComplianceVisitorTokenEntity::getEscopoToken)
         .extracting(Enum::name)
         .containsExactlyInAnyOrder("GENERAL", "EXPLICIT");
+    assertThat(persisted)
+        .allSatisfy(token -> assertThat(token.getExpiraEm())
+            .isEqualTo(token.getEmitidoEm().plusDays(7)));
   }
 
   @Test

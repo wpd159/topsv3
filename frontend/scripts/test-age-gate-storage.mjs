@@ -62,6 +62,7 @@ for (const endpoint of [
 
 assert.match(api, /XSRF/)
 assert.match(api, /credentials: 'include'/)
+assert.match(api, /response\.status === 410/)
 assert.match(access, /getVisitorStatus/)
 assert.match(access, /CACHE_TTL_MS/)
 assert.doesNotMatch(`${api}\n${access}`, /localStorage|sessionStorage/)

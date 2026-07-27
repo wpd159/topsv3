@@ -7,6 +7,7 @@ public enum ApiErrorCode {
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Autenticação necessária."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "Acesso negado."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "Recurso não encontrado."),
+    GONE(HttpStatus.GONE, "Verificacao expirada. Inicie novamente."),
     CONFLICT(HttpStatus.CONFLICT, "Conflito de estado."),
     UNPROCESSABLE_ENTITY(HttpStatus.UNPROCESSABLE_ENTITY, "Dados inválidos."),
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde."),
