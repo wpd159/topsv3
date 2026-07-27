@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next"
+import { PUBLIC_BLOG_CACHE_TAG } from "@/lib/blog-api"
 import { rewriteLegacyProgrammaticBlogPath } from "@/lib/programmatic-blog-api"
 import {
   descobrirAnunciosIndexaveisSitemap,
@@ -25,14 +26,23 @@ function textField(row: Record<string, unknown>, field: string) {
   return typeof value === "string" ? value : undefined
 }
 
-async function fetchOptionalList(url: string) {
+async function fetchList(url: string, required = false) {
   const response = await fetch(url, {
-    next: { revalidate: 3600 },
+    next: { revalidate: 3600, tags: [PUBLIC_BLOG_CACHE_TAG] },
     signal: AbortSignal.timeout(8000),
   })
-  if (!response.ok) return [] as Record<string, unknown>[]
+  if (!response.ok) {
+    if (required) {
+      throw new Error(`Falha no contrato editorial do sitemap: ${response.status}`)
+    }
+    return [] as Record<string, unknown>[]
+  }
   const payload: unknown = await response.json()
-  return Array.isArray(payload) ? (payload as Record<string, unknown>[]) : []
+  if (!Array.isArray(payload)) {
+    if (required) throw new Error("Resposta editorial invalida no sitemap")
+    return [] as Record<string, unknown>[]
+  }
+  return payload as Record<string, unknown>[]
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -114,7 +124,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   if (apiBase) {
     try {
-      for (const post of await fetchOptionalList(`${apiBase}/blog-posts/public/sitemap`)) {
+      for (const post of await fetchList(`${apiBase}/blog-posts/public/sitemap`, true)) {
         const slug = textField(post, "slug")
         if (!slug) continue
         const url = `${baseUrl}/blog/${encodeURIComponent(slug)}`
@@ -125,7 +135,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         dynamicBlogRoutes.push({ url, lastModified, priority: Number(post.priority ?? 0.7) })
       }
 
-      for (const category of await fetchOptionalList(`${apiBase}/blog-categorias/public`)) {
+      for (const category of await fetchList(`${apiBase}/blog-categorias/public`, true)) {
         const slug = textField(category, "slug")
         if (!slug) continue
         const url = `${baseUrl}/blog/categoria/${encodeURIComponent(slug)}`
@@ -138,7 +148,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         dynamicBlogCategoryRoutes.push({ url, lastModified, priority: 0.65 })
       }
 
-      for (const entry of await fetchOptionalList(`${apiBase}/blog-programmatic/public/sitemap-entries`)) {
+      for (const entry of await fetchList(`${apiBase}/blog-programmatic/public/sitemap-entries`)) {
         const rawPath = textField(entry, "path")
         if (!rawPath) continue
         const path = rewriteLegacyProgrammaticBlogPath(
@@ -153,6 +163,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }
     } catch (error) {
       console.error("Falha ao montar as rotas de blog no sitemap.", error)
+      throw error
     }
   }
 

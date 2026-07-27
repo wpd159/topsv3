@@ -37,12 +37,22 @@ function isLegacyCityGuidePost(post: BlogPostSummary): boolean {
   return resolveCategoriaSlug(post).endsWith("-por-cidades")
 }
 
-export function BlogContent({ initialPosts = [] }: { initialPosts?: BlogPostSummary[] }) {
+export function BlogContent({
+  initialPosts = [],
+  initialCategories = [],
+  initialLoaded = false,
+}: {
+  initialPosts?: BlogPostSummary[]
+  initialCategories?: BlogCategoriaPublic[]
+  initialLoaded?: boolean
+}) {
   const [posts, setPosts] = useState<BlogPostSummary[]>(Array.isArray(initialPosts) ? initialPosts : [])
   const [guias, setGuias] = useState<ProgrammaticBlogHomeEntry[]>([])
-  const [loading, setLoading] = useState(initialPosts.length === 0)
+  const [loading, setLoading] = useState(!initialLoaded)
   const [loadingGuias, setLoadingGuias] = useState(true)
-  const [catalogCategorias, setCatalogCategorias] = useState<BlogCategoriaPublic[]>([])
+  const [catalogCategorias, setCatalogCategorias] = useState<BlogCategoriaPublic[]>(
+    Array.isArray(initialCategories) ? initialCategories : []
+  )
   const [postsError, setPostsError] = useState<unknown>(null)
   const [guidesError, setGuidesError] = useState<unknown>(null)
   const [categoriesError, setCategoriesError] = useState<unknown>(null)

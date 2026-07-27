@@ -4548,6 +4548,321 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/blog-posts/public:
+    get:
+      summary: Lista somente posts publicados do Blog
+      operationId: getPublicBlogPosts
+      responses:
+        "200":
+          description: Posts editoriais publicados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogPost"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/blog-posts/public/{slug}:
+    get:
+      summary: Consulta post publicado pelo slug canonico
+      operationId: getPublicBlogPost
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      responses:
+        "200":
+          description: Post editorial publicado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/public/blog-posts/public/categoria/{slug}:
+    get:
+      summary: Lista posts publicados de uma categoria ativa
+      operationId: getPublicBlogPostsByCategory
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Posts publicados da categoria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogPost"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/public/blog-posts/public/sitemap:
+    get:
+      summary: Lista rotas editoriais publicadas para o sitemap
+      operationId: getPublicBlogSitemap
+      responses:
+        "200":
+          description: Entradas editoriais indexaveis
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogSitemap"
+  /api/public/blog-categorias/public:
+    get:
+      summary: Lista categorias editoriais ativas
+      operationId: getPublicBlogCategories
+      responses:
+        "200":
+          description: Categorias ativas e contagem de posts publicados
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogCategoria"
+  /api/admin/blog-posts:
+    get:
+      summary: Lista posts para gestao editorial
+      operationId: getAdminBlogPosts
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: termo
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, RASCUNHO, PUBLICADO, ARQUIVADO]
+      responses:
+        "200":
+          description: Posts editoriais administrativos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogPost"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      summary: Cria rascunho editorial idempotente por requestId
+      operationId: postAdminBlogPost
+      security:
+        - AdminSessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlogPostRequest"
+      responses:
+        "201":
+          description: Rascunho criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/blog-posts/{id}:
+    get:
+      summary: Consulta post editorial para edicao
+      operationId: getAdminBlogPost
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Post editorial
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      summary: Atualiza post com controle otimista de versao
+      operationId: putAdminBlogPost
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlogPostRequest"
+      responses:
+        "200":
+          description: Post atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/blog-posts/{id}/publicar:
+    post:
+      summary: Publica post editorial completo
+      operationId: postAdminBlogPublish
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Post publicado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/blog-posts/{id}/retirar:
+    post:
+      summary: Retira post do publico preservando o rascunho
+      operationId: postAdminBlogUnpublish
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Post retirado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+  /api/admin/blog-posts/{id}/arquivar:
+    post:
+      summary: Arquiva post e o retira do publico
+      operationId: postAdminBlogArchive
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Post arquivado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPost"
+  /api/admin/blog-posts/upload-image:
+    post:
+      summary: Processa imagem editorial e a armazena em area privada
+      operationId: postAdminBlogImage
+      security:
+        - AdminSessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [imagem, tipo]
+              properties:
+                imagem:
+                  type: string
+                  format: binary
+                tipo:
+                  type: string
+                  enum: [CAPA, OG]
+      responses:
+        "201":
+          description: Imagem sanitizada e privada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogImagem"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+  /api/admin/blog-categorias:
+    get:
+      summary: Lista categorias editoriais para administracao
+      operationId: getAdminBlogCategories
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: Categorias editoriais
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogCategoria"
+    post:
+      summary: Cria categoria editorial
+      operationId: postAdminBlogCategory
+      security:
+        - AdminSessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlogCategoriaRequest"
+      responses:
+        "201":
+          description: Categoria criada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogCategoria"
+  /api/admin/blog-categorias/{id}:
+    put:
+      summary: Atualiza categoria editorial
+      operationId: putAdminBlogCategory
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlogCategoriaRequest"
+      responses:
+        "200":
+          description: Categoria atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogCategoria"
+    delete:
+      summary: Desativa categoria editorial sem remover posts
+      operationId: deleteAdminBlogCategory
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      responses:
+        "200":
+          description: Categoria desativada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogCategoria"
 components:
   securitySchemes:
     PublicSessionCookie:
@@ -4567,6 +4882,13 @@ components:
         type: string
         example: 11111111-1111-4111-8111-111111111111
   parameters:
+    UuidPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -10062,3 +10384,129 @@ components:
         value:
           type: string
           example: Sao Paulo
+    BlogCategoria:
+      type: object
+      additionalProperties: false
+      required: [id, nome, slug, ordem, ativa, postCountPublicados, versao]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string, minLength: 2, maxLength: 120 }
+        slug:
+          type: string
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        ordem: { type: integer, minimum: 0 }
+        ativa: { type: boolean }
+        postCountPublicados: { type: integer, minimum: 0 }
+        versao: { type: integer, minimum: 0 }
+        updatedAt: { type: string, format: date-time }
+    BlogCategoriaRequest:
+      type: object
+      additionalProperties: false
+      required: [nome, slug, ordem, ativa]
+      properties:
+        nome: { type: string, minLength: 2, maxLength: 120 }
+        slug:
+          type: string
+          maxLength: 120
+          pattern: "^$|^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        ordem: { type: integer, minimum: 0 }
+        ativa: { type: boolean }
+        versao: { type: [integer, "null"], minimum: 0 }
+    BlogImagem:
+      type: object
+      additionalProperties: false
+      required: [id, tipo, previewUrl, mimeType, sha256, tamanhoBytes, largura, altura]
+      properties:
+        id: { type: string, format: uuid }
+        tipo: { type: string, enum: [CAPA, OG] }
+        previewUrl: { type: string, format: uri }
+        mimeType: { type: string, enum: [image/jpeg, image/png] }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+        tamanhoBytes: { type: integer, minimum: 1 }
+        largura: { type: integer, minimum: 1, maximum: 2400 }
+        altura: { type: integer, minimum: 1, maximum: 2400 }
+    BlogPostRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - categoriaId
+        - titulo
+        - slug
+        - resumo
+        - conteudo
+        - autorNome
+        - seoTitle
+        - seoDescription
+        - sitemapPriority
+        - changeFrequency
+      properties:
+        categoriaId: { type: string, format: uuid }
+        titulo: { type: string, minLength: 3, maxLength: 180 }
+        slug:
+          type: string
+          maxLength: 180
+          pattern: "^$|^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        resumo: { type: string, maxLength: 320 }
+        conteudo: { type: string, maxLength: 200000 }
+        autorNome: { type: string, minLength: 2, maxLength: 120 }
+        seoTitle: { type: string, maxLength: 180 }
+        seoDescription: { type: string, maxLength: 320 }
+        sitemapPriority: { type: number, minimum: 0.1, maximum: 1.0 }
+        changeFrequency: { type: string, enum: [daily, weekly, monthly] }
+        imagemCapaId: { type: [string, "null"], format: uuid }
+        imagemOgId: { type: [string, "null"], format: uuid }
+        versao: { type: [integer, "null"], minimum: 0 }
+    BlogPost:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - titulo
+        - slug
+        - resumo
+        - conteudo
+        - categoria
+        - categoriaId
+        - categoriaSlug
+        - autorNome
+        - status
+        - seoTitle
+        - seoDescription
+        - sitemapPriority
+        - changeFrequency
+        - createdAt
+        - updatedAt
+        - versao
+      properties:
+        id: { type: string, format: uuid }
+        titulo: { type: string }
+        slug: { type: string }
+        resumo: { type: string }
+        conteudo: { type: string }
+        categoria: { type: string }
+        categoriaId: { type: string, format: uuid }
+        categoriaSlug: { type: string }
+        imagemUrl: { type: [string, "null"], format: uri }
+        imagemCapaId: { type: [string, "null"], format: uuid }
+        autorNome: { type: string }
+        status: { type: string, enum: [RASCUNHO, PUBLICADO, ARQUIVADO] }
+        seoTitle: { type: string }
+        seoDescription: { type: string }
+        ogImageUrl: { type: [string, "null"], format: uri }
+        imagemOgId: { type: [string, "null"], format: uuid }
+        sitemapPriority: { type: number }
+        changeFrequency: { type: string, enum: [daily, weekly, monthly] }
+        publishedAt: { type: [string, "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        versao: { type: integer, minimum: 0 }
+    BlogSitemap:
+      type: object
+      additionalProperties: false
+      required: [slug, publishedAt, updatedAt, priority, changeFrequency]
+      properties:
+        slug: { type: string }
+        publishedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        priority: { type: number, minimum: 0.1, maximum: 1.0 }
+        changeFrequency: { type: string, enum: [daily, weekly, monthly] }

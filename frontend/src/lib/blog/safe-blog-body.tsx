@@ -1,8 +1,5 @@
-"use client"
-
 import Link from "next/link"
 import type { ReactNode } from "react"
-import { useMemo } from "react"
 import { getPublicSiteOrigin } from "@/lib/public-site-assets"
 
 const MD_LINK = /^\[([^\]]*)\]\(([^)]+)\)/
@@ -257,10 +254,8 @@ export function SafeBlogPostBody({
   className = "prose prose-gray mt-8 max-w-none",
   paragraphClassName = "mb-5 text-base leading-8 text-gray-700",
 }: Props) {
-  const blocks = useMemo(() => {
-    const raw = conteudo ?? ""
-    return raw.split(/\n{2,}/)
-  }, [conteudo])
+  const raw = conteudo ?? ""
+  const blocks = raw.split(/\n{2,}/)
 
   return (
     <article className={className}>
