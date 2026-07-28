@@ -14,11 +14,11 @@ public interface FaqRepository extends JpaRepository<FaqEntity, UUID> {
 
   @Query("""
       select f from FaqEntity f
-      where (:status is null or f.status = :status)
-        and (:categoria is null or f.categoria = :categoria)
-        and (:termo is null
-          or lower(f.pergunta) like lower(concat('%', :termo, '%'))
-          or lower(f.resposta) like lower(concat('%', :termo, '%')))
+      where (cast(:status as string) is null or f.status = :status)
+        and (cast(:categoria as string) is null or f.categoria = :categoria)
+        and (cast(:termo as string) is null
+          or lower(f.pergunta) like lower(concat('%', cast(:termo as string), '%'))
+          or lower(f.resposta) like lower(concat('%', cast(:termo as string), '%')))
       order by f.ordem, f.atualizadoEm desc, f.id
       """)
   List<FaqEntity> buscarAdmin(
