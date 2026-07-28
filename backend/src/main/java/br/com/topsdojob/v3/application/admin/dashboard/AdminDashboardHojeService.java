@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +23,7 @@ public class AdminDashboardHojeService {
     private final AtivacaoBeneficioRepository beneficioRepository;
     private final Clock clock;
 
+    @Autowired
     public AdminDashboardHojeService(
             AgregadoVisualizacaoDiariaRepository visualizacaoRepository,
             AgregadoCliqueWhatsappDiarioRepository cliqueRepository,

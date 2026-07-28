@@ -10,6 +10,7 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.security.access.prepost.PreAuthorize;
 
@@ -24,6 +25,17 @@ class AdminDashboardContratoTest {
         assertThat(controleAcesso.value())
                 .contains("hasRole('ADMIN')")
                 .contains("hasAuthority('ANUNCIO_LER')");
+    }
+
+    @Test
+    void servicoDeclaraConstrutorDeProducaoParaInjecaoDoSpring() throws Exception {
+        var constructor = br.com.topsdojob.v3.application.admin.dashboard.AdminDashboardHojeService.class
+                .getConstructor(
+                        AgregadoVisualizacaoDiariaRepository.class,
+                        AgregadoCliqueWhatsappDiarioRepository.class,
+                        AtivacaoBeneficioRepository.class);
+
+        assertThat(constructor.getAnnotation(Autowired.class)).isNotNull();
     }
 
     @Test
