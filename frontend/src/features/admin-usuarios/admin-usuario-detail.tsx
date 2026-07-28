@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, LockKeyhole, Pencil, ShieldCheck, UnlockKeyhole } from 'lucide-react'
+import { ArrowLeft, FileUp, LockKeyhole, Pencil, ShieldCheck, UnlockKeyhole, WalletCards } from 'lucide-react'
 
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
@@ -21,12 +21,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/context/AuthContext'
 import { blockAdminAdAndUser, unblockAdminUser } from '@/features/admin-anuncios/api'
-import type { AdminLegalBlockCategory } from '@/features/admin-anuncios/types'
+import type { AdminKycSubmission, AdminLegalBlockCategory } from '@/features/admin-anuncios/types'
 import { AdminKycDocumentGrid } from '@/features/admin-documentos/admin-kyc-document-grid'
+import { AdminKycUploadDialog } from '@/features/admin-documentos/admin-kyc-upload-dialog'
 import { normalizeApiError } from '@/lib/api-contract'
 import { maskPhoneBR } from '@/lib/phone-mask'
 
 import { getAdminUser } from './api'
+import { AdminUsuarioCreditDialog } from './admin-usuario-credit-dialog'
 import type { AdminUserDetail } from './types'
 
 const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }> = [
@@ -74,6 +76,9 @@ export function AdminUsuarioDetail() {
   const [legalReason, setLegalReason] = useState('')
   const [legalBusy, setLegalBusy] = useState(false)
   const [legalError, setLegalError] = useState<unknown>(null)
+  const [documentDialogOpen, setDocumentDialogOpen] = useState(false)
+  const [documentReplacement, setDocumentReplacement] = useState<AdminKycSubmission | null>(null)
+  const [creditDialogOpen, setCreditDialogOpen] = useState(false)
   const actionLock = useRef(false)
   const userId = params?.id ?? ''
   const admin = usuario?.cargo === 'ADMIN'
@@ -155,6 +160,9 @@ export function AdminUsuarioDetail() {
           </div>
           {admin ? (
             <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={() => setCreditDialogOpen(true)}>
+                <WalletCards className="mr-2 h-4 w-4" /> Créditos
+              </Button>
               {detail.podeBloquear ? (
                 <Button type="button" variant="destructive" onClick={() => setLegalIntent('BLOCK')}>
                   <LockKeyhole className="mr-2 h-4 w-4" /> Bloquear usuário
@@ -167,7 +175,7 @@ export function AdminUsuarioDetail() {
               ) : null}
               <Button asChild type="button" variant="outline">
                 <Link href={`/admin/usuarios/${encodeURIComponent(detail.id)}/editar`}>
-                  <Pencil className="mr-2 h-4 w-4" /> Editar telefone
+                  <Pencil className="mr-2 h-4 w-4" /> Editar usuário
                 </Link>
               </Button>
             </div>
@@ -179,28 +187,46 @@ export function AdminUsuarioDetail() {
 
       <section aria-labelledby="dados-usuario">
         <h2 id="dados-usuario" className="text-lg font-semibold text-zinc-950">Dados cadastrais</h2>
-        <div className="mt-3 grid gap-x-8 gap-y-4 border-y border-zinc-200 py-4 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            ['Nome de cadastro', detail.nome || 'Não informado'],
-            ['Nome civil', detail.nomeCivil || 'Não informado'],
-            ['E-mail', detail.email || 'Não informado'],
-            ['Telefone / WhatsApp', detail.telefone ? maskPhoneBR(detail.telefone) : 'Não informado'],
-            [detail.cpfMascarado ? 'CPF mascarado' : 'CPF', detail.cpf || 'Não informado'],
-            ['Data de nascimento', detail.dataNascimento ? new Date(`${detail.dataNascimento}T00:00:00`).toLocaleDateString('pt-BR') : 'Não informado'],
-            ['Tipo da conta', pretty(detail.tipoConta)],
-            ['Cadastro', formatDate(detail.criadoEm)],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <p className="text-xs font-semibold uppercase text-zinc-500">{label}</p>
-              <p className="mt-1 break-words text-sm text-zinc-900">{value}</p>
-            </div>
-          ))}
+        <div className="mt-3 grid gap-6 border-y border-zinc-200 py-5 lg:grid-cols-2">
+          <DataGroup
+            title="Identificação"
+            entries={[
+              ['Nome de cadastro', detail.nome || 'Não informado'],
+              ['Nome civil', detail.nomeCivil || 'Não informado'],
+              [detail.cpfMascarado ? 'CPF mascarado' : 'CPF', detail.cpf || 'Não informado'],
+            ]}
+          />
+          <DataGroup
+            title="Contato"
+            entries={[
+              ['E-mail', detail.email || 'Não informado'],
+              ['Telefone / WhatsApp', detail.telefone ? maskPhoneBR(detail.telefone) : 'Não informado'],
+            ]}
+          />
+          <DataGroup
+            title="Dados pessoais"
+            entries={[
+              ['Data de nascimento', detail.dataNascimento ? new Date(`${detail.dataNascimento}T00:00:00`).toLocaleDateString('pt-BR') : 'Não informado'],
+            ]}
+          />
+          <DataGroup
+            title="Conta e KYC"
+            entries={[
+              ['Tipo da conta', pretty(detail.tipoConta)],
+              ['Estado da conta', pretty(detail.status)],
+              ['Situação do KYC', pretty(detail.kycStatus)],
+              ['Cadastro', formatDate(detail.criadoEm)],
+            ]}
+          />
         </div>
       </section>
 
       <section aria-labelledby="anuncios-usuario">
         <div className="flex items-center justify-between gap-3">
-          <h2 id="anuncios-usuario" className="text-lg font-semibold text-zinc-950">Anúncios vinculados</h2>
+          <div>
+            <h2 id="anuncios-usuario" className="text-lg font-semibold text-zinc-950">Endereço, localidades e anúncios</h2>
+            <p className="mt-1 text-sm text-zinc-500">As localidades cadastrais disponíveis são as vinculadas aos anúncios.</p>
+          </div>
           <Badge variant="outline">{detail.anuncios.length}</Badge>
         </div>
         {detail.anuncios.length === 0 ? (
@@ -229,12 +255,35 @@ export function AdminUsuarioDetail() {
       </section>
 
       <section aria-labelledby="kyc-usuario">
-        <div className="flex items-center justify-between gap-3">
-          <h2 id="kyc-usuario" className="text-lg font-semibold text-zinc-950">KYC privado</h2>
-          <ShieldCheck className="h-5 w-5 text-zinc-500" aria-hidden="true" />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 id="kyc-usuario" className="text-lg font-semibold text-zinc-950">Documentos KYC privados</h2>
+            <p className="mt-1 text-sm text-zinc-500">Inclusões e substituições permanecem restritas à gestão administrativa do usuário.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5 text-zinc-500" aria-hidden="true" />
+            {admin ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setDocumentReplacement(null)
+                  setDocumentDialogOpen(true)
+                }}
+              >
+                <FileUp className="mr-2 h-4 w-4" /> Adicionar documento
+              </Button>
+            ) : null}
+          </div>
         </div>
         <div className="mt-3">
-          <AdminKycDocumentGrid submissions={detail.kycEnvios} />
+          <AdminKycDocumentGrid
+            submissions={detail.kycEnvios}
+            onReplace={admin ? (submission) => {
+              setDocumentReplacement(submission)
+              setDocumentDialogOpen(true)
+            } : undefined}
+          />
         </div>
       </section>
 
@@ -259,6 +308,25 @@ export function AdminUsuarioDetail() {
           </div>
         )}
       </section>
+
+      <AdminKycUploadDialog
+        open={documentDialogOpen}
+        onOpenChange={setDocumentDialogOpen}
+        usuarioId={detail.id}
+        replacing={documentReplacement}
+        onSuccess={async () => {
+          setDocumentDialogOpen(false)
+          setDocumentReplacement(null)
+          await load()
+        }}
+      />
+
+      <AdminUsuarioCreditDialog
+        open={creditDialogOpen}
+        onOpenChange={setCreditDialogOpen}
+        usuarioId={detail.id}
+        nome={displayName}
+      />
 
       <Dialog open={legalIntent !== null} onOpenChange={(open) => { if (!open && !legalBusy) setLegalIntent(null) }}>
         <DialogContent>
@@ -310,5 +378,21 @@ export function AdminUsuarioDetail() {
         </DialogContent>
       </Dialog>
     </section>
+  )
+}
+
+function DataGroup({ title, entries }: { title: string; entries: Array<[string, string]> }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-zinc-950">{title}</h3>
+      <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+        {entries.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-xs font-semibold uppercase text-zinc-500">{label}</dt>
+            <dd className="mt-1 break-words text-sm text-zinc-900">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   )
 }

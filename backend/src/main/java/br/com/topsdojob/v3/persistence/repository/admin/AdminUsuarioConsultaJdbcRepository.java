@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.repository.admin;
 
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -57,8 +58,8 @@ public class AdminUsuarioConsultaJdbcRepository {
     private static final String WHERE = """
             WHERE (
               CAST(:termo AS text) IS NULL
-              OR lower(coalesce(u.nome, '')) LIKE :termoLike
-              OR lower(coalesce(u.nome_civil, '')) LIKE :termoLike
+              OR unaccent(lower(coalesce(u.nome, ''))) LIKE unaccent(:termoLike)
+              OR unaccent(lower(coalesce(u.nome_civil, ''))) LIKE unaccent(:termoLike)
               OR lower(coalesce(u.email_normalizado, '')) LIKE :termoLike
               OR CAST(u.id AS text) LIKE :termoLike
               OR (
@@ -75,6 +76,29 @@ public class AdminUsuarioConsultaJdbcRepository {
             )
               AND (CAST(:status AS text) IS NULL OR u.status = :status)
               AND (CAST(:kycStatus AS text) IS NULL OR coalesce(k.status, 'SEM_ENVIO') = :kycStatus)
+              AND (
+                CAST(:grupo AS text) IS NULL
+                OR (:grupo = 'ATIVOS' AND u.status = 'ATIVO')
+                OR (:grupo = 'INATIVOS' AND u.status <> 'ATIVO')
+                OR (:grupo = 'COM_ANUNCIOS' AND coalesce(a.total, 0) > 0)
+                OR (:grupo = 'SEM_ANUNCIOS' AND coalesce(a.total, 0) = 0)
+              )
+              AND (
+                CAST(:uf AS text) IS NULL
+                OR EXISTS (
+                  SELECT 1
+                  FROM anuncio filtro_anuncio
+                  JOIN anuncio_localizacao filtro_localizacao
+                    ON filtro_localizacao.anuncio_id = filtro_anuncio.id
+                  JOIN estado filtro_estado
+                    ON filtro_estado.id = filtro_localizacao.estado_id
+                  JOIN cidade filtro_cidade
+                    ON filtro_cidade.id = filtro_localizacao.cidade_id
+                  WHERE filtro_anuncio.usuario_id = u.id
+                    AND filtro_estado.uf = :uf
+                    AND (CAST(:cidade AS text) IS NULL OR filtro_cidade.slug = :cidade)
+                )
+              )
             """;
 
     private static final String SELECT = """
@@ -91,11 +115,23 @@ public class AdminUsuarioConsultaJdbcRepository {
               u.atualizado_em,
               coalesce(k.status, 'SEM_ENVIO') AS kyc_status,
               coalesce(a.total, 0) AS total_anuncios,
-              (b.usuario_id IS NOT NULL) AS bloqueado
+              (b.usuario_id IS NOT NULL) AS bloqueado,
+              local_principal.uf AS uf_principal,
+              local_principal.cidade AS cidade_principal
             FROM usuario u
             LEFT JOIN kyc k ON k.usuario_id = u.id
             LEFT JOIN anuncios a ON a.usuario_id = u.id
             LEFT JOIN bloqueios b ON b.usuario_id = u.id
+            LEFT JOIN LATERAL (
+              SELECT e.uf, c.nome AS cidade
+              FROM anuncio a_local
+              JOIN anuncio_localizacao al ON al.anuncio_id = a_local.id
+              JOIN estado e ON e.id = al.estado_id
+              JOIN cidade c ON c.id = al.cidade_id
+              WHERE a_local.usuario_id = u.id
+              ORDER BY a_local.criado_em DESC, a_local.id
+              LIMIT 1
+            ) local_principal ON true
             """;
 
     private final NamedParameterJdbcTemplate jdbc;
@@ -110,14 +146,25 @@ public class AdminUsuarioConsultaJdbcRepository {
             String cpfSufixo,
             String status,
             String kycStatus,
+            String grupo,
+            String uf,
+            String cidade,
             String ordenacao,
             Pageable pageable) {
-        Map<String, Object> parametros = parametros(termo, digitos, cpfSufixo, status, kycStatus);
+        Map<String, Object> parametros = parametros(
+                termo,
+                digitos,
+                cpfSufixo,
+                status,
+                kycStatus,
+                grupo,
+                uf,
+                cidade);
         String orderBy = "ANTIGOS".equals(ordenacao)
                 ? " ORDER BY u.criado_em ASC, u.id ASC "
                 : " ORDER BY u.criado_em DESC, u.id ASC ";
         String sql = CTES + SELECT + WHERE + orderBy + " LIMIT :limite OFFSET :offset ";
-        Map<String, Object> paginados = new java.util.HashMap<>(parametros);
+        Map<String, Object> paginados = new HashMap<>(parametros);
         paginados.put("limite", pageable.getPageSize());
         paginados.put("offset", pageable.getOffset());
 
@@ -127,10 +174,40 @@ public class AdminUsuarioConsultaJdbcRepository {
                         SELECT count(*)
                         FROM usuario u
                         LEFT JOIN kyc k ON k.usuario_id = u.id
+                        LEFT JOIN anuncios a ON a.usuario_id = u.id
                         """ + WHERE,
                 parametros,
                 Long.class);
         return new PageImpl<>(itens, pageable, total == null ? 0L : total);
+    }
+
+    public IndicadoresRow indicadores() {
+        return jdbc.queryForObject(
+                """
+                WITH anuncios AS (
+                  SELECT usuario_id, count(*) AS total
+                  FROM anuncio
+                  GROUP BY usuario_id
+                )
+                SELECT
+                  count(*) AS total_usuarios,
+                  count(*) FILTER (
+                    WHERE u.criado_em >= (
+                      date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')
+                      AT TIME ZONE 'America/Sao_Paulo'
+                    )
+                  ) AS novos_hoje,
+                  count(*) FILTER (WHERE coalesce(a.total, 0) > 0) AS com_anuncios,
+                  count(*) FILTER (WHERE coalesce(a.total, 0) = 0) AS sem_anuncios
+                FROM usuario u
+                LEFT JOIN anuncios a ON a.usuario_id = u.id
+                """,
+                Map.of(),
+                (resultSet, rowNumber) -> new IndicadoresRow(
+                        resultSet.getLong("total_usuarios"),
+                        resultSet.getLong("novos_hoje"),
+                        resultSet.getLong("com_anuncios"),
+                        resultSet.getLong("sem_anuncios")));
     }
 
     private Map<String, Object> parametros(
@@ -138,10 +215,13 @@ public class AdminUsuarioConsultaJdbcRepository {
             String digitos,
             String cpfSufixo,
             String status,
-            String kycStatus) {
+            String kycStatus,
+            String grupo,
+            String uf,
+            String cidade) {
         String termoLike = termo == null ? "" : "%" + termo.toLowerCase(java.util.Locale.ROOT) + "%";
         String digitosLike = digitos == null ? "" : "%" + digitos + "%";
-        Map<String, Object> parametros = new java.util.HashMap<>();
+        Map<String, Object> parametros = new HashMap<>();
         parametros.put("termo", termo);
         parametros.put("termoLike", termoLike);
         parametros.put("digitos", digitos);
@@ -149,6 +229,9 @@ public class AdminUsuarioConsultaJdbcRepository {
         parametros.put("cpfSufixo", cpfSufixo);
         parametros.put("status", status);
         parametros.put("kycStatus", kycStatus);
+        parametros.put("grupo", grupo);
+        parametros.put("uf", uf);
+        parametros.put("cidade", cidade);
         return parametros;
     }
 
@@ -166,7 +249,9 @@ public class AdminUsuarioConsultaJdbcRepository {
                 resultSet.getObject("atualizado_em", OffsetDateTime.class),
                 resultSet.getString("kyc_status"),
                 resultSet.getLong("total_anuncios"),
-                resultSet.getBoolean("bloqueado"));
+                resultSet.getBoolean("bloqueado"),
+                resultSet.getString("uf_principal"),
+                resultSet.getString("cidade_principal"));
     }
 
     public record UsuarioRow(
@@ -182,6 +267,15 @@ public class AdminUsuarioConsultaJdbcRepository {
             OffsetDateTime atualizadoEm,
             String kycStatus,
             long totalAnuncios,
-            boolean bloqueado) {
+            boolean bloqueado,
+            String ufPrincipal,
+            String cidadePrincipal) {
+    }
+
+    public record IndicadoresRow(
+            long totalUsuarios,
+            long novosHoje,
+            long comAnuncios,
+            long semAnuncios) {
     }
 }

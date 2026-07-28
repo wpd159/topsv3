@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { ExternalLink, FileText, Loader2 } from 'lucide-react'
+import { ExternalLink, FileText, Loader2, Replace } from 'lucide-react'
 
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import type { AdminKycDocument, AdminKycSubmission } from '@/features/admin-anuncios/types'
 
 import { adminDocumentThumbnailUrl, getAdminDocumentTemporaryUrl } from './api'
@@ -26,9 +27,11 @@ function documentLabel(document: AdminKycDocument) {
 export function AdminKycDocumentGrid({
   submissions,
   emptyMessage = 'Nenhum envio de KYC.',
+  onReplace,
 }: {
   submissions: AdminKycSubmission[]
   emptyMessage?: string
+  onReplace?: (submission: AdminKycSubmission) => void
 }) {
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [failedThumbnails, setFailedThumbnails] = useState<Set<string>>(new Set())
@@ -62,7 +65,20 @@ export function AdminKycDocumentGrid({
               <p className="text-sm font-semibold text-zinc-900">Envio de {formatDate(submission.enviadoEm)}</p>
               <p className="mt-1 text-xs text-zinc-500">{submission.documentos.length} documento(s)</p>
             </div>
-            <Badge variant="outline">{pretty(submission.status)}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline">{pretty(submission.status)}</Badge>
+              {onReplace ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => onReplace(submission)}
+                >
+                  <Replace className="mr-2 h-4 w-4" />
+                  Substituir
+                </Button>
+              ) : null}
+            </div>
           </div>
           {submission.motivo ? <p className="mt-3 text-sm text-zinc-700">Motivo: {submission.motivo}</p> : null}
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">

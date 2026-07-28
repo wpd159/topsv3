@@ -11,9 +11,25 @@ import { getAdminMutationHeaders } from '@/features/admin-anuncios/api'
 import type {
   AdminUserDetail,
   AdminUserFilters,
+  AdminUserIndicators,
   AdminUserPage,
   AdminUserSummary,
+  AdminUserUpdate,
 } from './types'
+
+export class AdminUserFormError extends ApiContractError {
+  readonly fieldErrors: Record<string, string>
+
+  constructor(message: string, status: number, errors: Array<{ campo?: string; mensagem?: string }>) {
+    super(message, status === 409 ? 'CONFLICT' : 'INVALID_REQUEST', status)
+    this.name = 'AdminUserFormError'
+    this.fieldErrors = Object.fromEntries(
+      errors
+        .filter((item) => item.campo && item.mensagem)
+        .map((item) => [String(item.campo), String(item.mensagem)]),
+    )
+  }
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
@@ -29,7 +45,24 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       credentials: 'include',
       cache: 'no-store',
     })
-    if (!response.ok) throw await apiErrorFromResponse(response)
+    if (!response.ok) {
+      try {
+        const body = await response.clone().json() as {
+          mensagem?: string
+          erros?: Array<{ campo?: string; mensagem?: string }>
+        }
+        if (Array.isArray(body.erros) && body.erros.length > 0) {
+          throw new AdminUserFormError(
+            body.mensagem || 'Revise os dados informados.',
+            response.status,
+            body.erros,
+          )
+        }
+      } catch (error) {
+        if (error instanceof AdminUserFormError) throw error
+      }
+      throw await apiErrorFromResponse(response)
+    }
     try {
       return corrigirEstruturaTexto(await response.json()) as T
     } catch {
@@ -64,21 +97,28 @@ export async function listAdminUsers(filters: AdminUserFilters) {
   const query = new URLSearchParams({
     status: filters.status,
     kyc: filters.kyc,
+    grupo: filters.grupo,
     ordenacao: filters.ordenacao,
     page: String(filters.page),
     size: String(filters.size),
   })
   if (filters.termo?.trim()) query.set('termo', filters.termo.trim())
+  if (filters.uf?.trim()) query.set('uf', filters.uf.trim())
+  if (filters.cidade?.trim()) query.set('cidade', filters.cidade.trim())
   return normalizePage(await request<AdminUserPage>(`/usuarios?${query.toString()}`))
+}
+
+export function getAdminUserIndicators() {
+  return request<AdminUserIndicators>('/usuarios/indicadores')
 }
 
 export function getAdminUser(id: string) {
   return request<AdminUserDetail>(`/usuarios/${encodeURIComponent(id)}`)
 }
 
-export function updateAdminUserPhone(id: string, telefone: string) {
+export function updateAdminUser(id: string, payload: AdminUserUpdate) {
   return request<AdminUserDetail>(`/usuarios/${encodeURIComponent(id)}`, {
     method: 'PATCH',
-    body: JSON.stringify({ telefone }),
+    body: JSON.stringify(payload),
   })
 }

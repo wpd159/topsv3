@@ -43,13 +43,17 @@ assert.ok(maskedInput.includes('setSelectionRange') && maskedInput.includes('req
 assert.ok(maskedInput.includes('maskPhoneBR(event.target.value)'), 'Digitacao e colagem devem passar pela mesma mascara.')
 
 assert.ok(userEdit.includes('MaskedPhoneInput') && userEdit.includes('phoneToE164BR'), 'Telefone do usuario deve manter mascara e persistir normalizado.')
+assert.ok(userEdit.includes('maskCpf') && userEdit.includes('cpfDigits'), 'CPF do usuario deve manter mascara e persistir normalizado.')
+assert.ok(userEdit.includes('BirthDateField') && userEdit.includes('birthDateToIso'), 'Nascimento deve manter mascara e persistir normalizado.')
 assert.ok(adEdit.includes('MaskedPhoneInput') && adEdit.includes('phoneToE164BR'), 'WhatsApp do anuncio deve manter mascara e persistir normalizado.')
 assert.ok(adEdit.includes('hadWhatsapp && !normalizedWhatsapp'), 'Campo existente vazio ou parcial nao pode virar null.')
 assert.ok(userDetail.includes('maskPhoneBR(detail.telefone)'), 'Telefone salvo deve continuar mascarado no detalhe do usuario.')
 assert.ok(adDetail.includes('maskPhoneBR(ad.whatsapp)'), 'WhatsApp salvo deve continuar mascarado no detalhe do anuncio.')
 
 assert.ok(userDetail.includes('AdminKycDocumentGrid'), 'Usuarios deve usar a grade compartilhada.')
+assert.ok(userDetail.includes('AdminKycUploadDialog'), 'A gestao do usuario deve concentrar inclusao e substituicao.')
 assert.ok(adDocuments.includes('AdminKycDocumentGrid'), 'Anuncios deve usar a mesma grade compartilhada.')
+assert.ok(!adDocuments.includes('AdminKycUploadDialog'), 'Anuncios deve permanecer somente leitura para documentos.')
 assert.ok(adDocuments.includes('listAdminAdDocuments(anuncioId)'), 'Anuncios deve obter documentos pelo vinculo canonico com o proprietario.')
 assert.ok(documentGrid.includes('adminDocumentThumbnailUrl(document.id)'), 'JPG, PNG e PDF devem usar o endpoint de miniatura protegida.')
 assert.ok(documentGrid.includes('getAdminDocumentTemporaryUrl(documentId)'), 'Arquivo integral deve ser solicitado somente ao abrir a visualizacao.')

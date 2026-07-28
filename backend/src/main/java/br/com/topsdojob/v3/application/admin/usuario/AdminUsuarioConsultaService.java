@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioAnuncioDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioDetalheDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioHistoricoDto;
+import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioIndicadoresDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioResumoDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -68,12 +69,18 @@ public class AdminUsuarioConsultaService {
             String termo,
             String status,
             String kyc,
+            String grupo,
+            String uf,
+            String cidade,
             String ordenacao,
             int page,
             int size) {
         String termoSeguro = textoOpcional(termo, 120);
         String statusSeguro = status(status);
         String kycSeguro = kyc(kyc);
+        String grupoSeguro = grupo(grupo);
+        String ufSegura = uf(uf);
+        String cidadeSegura = cidade(cidade, ufSegura);
         String ordenacaoSegura = ordenacao(ordenacao);
         int paginaSegura = Math.max(page, 0);
         int tamanhoSeguro = Math.max(1, Math.min(size, 100));
@@ -85,6 +92,9 @@ public class AdminUsuarioConsultaService {
                 cpfSufixo,
                 statusSeguro,
                 kycSeguro,
+                grupoSeguro,
+                ufSegura,
+                cidadeSegura,
                 ordenacaoSegura,
                 PageRequest.of(paginaSegura, tamanhoSeguro));
         return new AdminPaginaDto<>(
@@ -94,6 +104,16 @@ public class AdminUsuarioConsultaService {
                 resultado.getTotalElements(),
                 resultado.getTotalPages(),
                 resultado.isLast());
+    }
+
+    @Transactional(readOnly = true)
+    public AdminUsuarioIndicadoresDto indicadores() {
+        var row = consultaRepository.indicadores();
+        return new AdminUsuarioIndicadoresDto(
+                row.totalUsuarios(),
+                row.novosHoje(),
+                row.comAnuncios(),
+                row.semAnuncios());
     }
 
     @Transactional(readOnly = true)
@@ -137,6 +157,7 @@ public class AdminUsuarioConsultaService {
                         && usuario.getStatus() != StatusUsuario.SUSPENSO
                         && usuario.getStatus() != StatusUsuario.DESATIVADO,
                 admin && bloqueio.isPresent() && anuncioAncora != null,
+                usuario.getVersao(),
                 anuncios.stream().map(this::anuncio).toList(),
                 envios,
                 auditoriaRepository.findByRecursoTipoAndRecursoIdOrderByCriadoEmDesc(
@@ -164,6 +185,8 @@ public class AdminUsuarioConsultaService {
                 row.kycStatus(),
                 row.totalAnuncios(),
                 row.bloqueado(),
+                row.ufPrincipal(),
+                row.cidadePrincipal(),
                 row.criadoEm());
     }
 
@@ -218,6 +241,42 @@ public class AdminUsuarioConsultaService {
             return "ANTIGOS";
         }
         throw invalido("ordenacao de usuarios invalida");
+    }
+
+    private String grupo(String value) {
+        String normalizado = enumOpcional(value);
+        if (normalizado == null || "TODOS".equals(normalizado)) {
+            return null;
+        }
+        if (Set.of("ATIVOS", "INATIVOS", "COM_ANUNCIOS", "SEM_ANUNCIOS").contains(normalizado)) {
+            return normalizado;
+        }
+        throw invalido("grupo de usuarios invalido");
+    }
+
+    private String uf(String value) {
+        String normalizado = enumOpcional(value);
+        if (normalizado == null || "TODAS".equals(normalizado)) {
+            return null;
+        }
+        if (!normalizado.matches("[A-Z]{2}")) {
+            throw invalido("UF invalida");
+        }
+        return normalizado;
+    }
+
+    private String cidade(String value, String uf) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        if (uf == null) {
+            throw invalido("selecione a UF antes da cidade");
+        }
+        String normalizado = value.trim().toLowerCase(Locale.ROOT);
+        if (normalizado.length() > 160 || !normalizado.matches("[a-z0-9]+(?:-[a-z0-9]+)*")) {
+            throw invalido("cidade invalida");
+        }
+        return normalizado;
     }
 
     private String enumOpcional(String value) {

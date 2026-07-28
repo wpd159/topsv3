@@ -10,6 +10,8 @@ export type AdminUserSummary = {
   kycStatus: string
   totalAnuncios: number
   bloqueado: boolean
+  ufPrincipal?: string | null
+  cidadePrincipal?: string | null
   criadoEm: string
 }
 
@@ -49,6 +51,7 @@ export type AdminUserDetail = {
   anuncioAncoraBloqueioId?: string | null
   podeBloquear: boolean
   podeDesbloquear: boolean
+  versao: number
   anuncios: AdminUserAd[]
   kycEnvios: AdminKycSubmission[]
   historico: AdminUserHistory[]
@@ -58,9 +61,29 @@ export type AdminUserFilters = {
   termo?: string
   status: string
   kyc: string
+  grupo: string
+  uf?: string
+  cidade?: string
   ordenacao: string
   page: number
   size: number
 }
 
 export type AdminUserPage = AdminPage<AdminUserSummary>
+
+export type AdminUserIndicators = {
+  totalUsuarios: number
+  novosHoje: number
+  comAnuncios: number
+  semAnuncios: number
+}
+
+export type AdminUserUpdate = {
+  versao: number
+  nome: string
+  nomeCivil: string
+  email: string
+  cpf: string
+  telefone: string
+  dataNascimento: string
+}

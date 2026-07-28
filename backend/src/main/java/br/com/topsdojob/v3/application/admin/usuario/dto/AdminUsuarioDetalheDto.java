@@ -24,6 +24,7 @@ public record AdminUsuarioDetalheDto(
         UUID anuncioAncoraBloqueioId,
         boolean podeBloquear,
         boolean podeDesbloquear,
+        Integer versao,
         List<AdminUsuarioAnuncioDto> anuncios,
         List<AdminKycEnvioDto> kycEnvios,
         List<AdminUsuarioHistoricoDto> historico) {

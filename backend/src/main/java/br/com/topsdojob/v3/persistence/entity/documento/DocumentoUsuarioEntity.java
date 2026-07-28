@@ -157,18 +157,45 @@ public class DocumentoUsuarioEntity {
       UUID envioId,
       ParteDocumentoUsuario parte,
       OffsetDateTime criadoEm) {
+    return criarPendente(
+        id,
+        usuarioId,
+        arquivoMidiaId,
+        envioId,
+        parte,
+        TipoDocumentoUsuario.IDENTIDADE,
+        criadoEm);
+  }
+
+  public static DocumentoUsuarioEntity criarPendente(
+      UUID id,
+      UUID usuarioId,
+      UUID arquivoMidiaId,
+      UUID envioId,
+      ParteDocumentoUsuario parte,
+      TipoDocumentoUsuario tipo,
+      OffsetDateTime criadoEm) {
     DocumentoUsuarioEntity entity = new DocumentoUsuarioEntity();
     entity.id = id;
     entity.usuarioId = usuarioId;
     entity.arquivoMidiaId = arquivoMidiaId;
     entity.envioId = envioId;
     entity.parte = parte;
-    entity.tipo = TipoDocumentoUsuario.IDENTIDADE;
+    entity.tipo = tipo;
     entity.status = StatusDocumentoUsuario.PENDENTE;
     entity.politicaRetencao = PoliticaRetencaoDocumento.ENQUANTO_HOUVER_ANUNCIO;
     entity.criadoEm = criadoEm;
     entity.atualizadoEm = criadoEm;
     return entity;
+  }
+
+  public void marcarSubstituido(OffsetDateTime agora) {
+    if (removidoEm != null || expurgadoEm != null) {
+      return;
+    }
+    status = StatusDocumentoUsuario.REMOVIDO;
+    removidoEm = agora;
+    atualizadoEm = agora;
   }
 
   public void marcarEmAnalise(OffsetDateTime agora) {

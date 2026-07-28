@@ -18,8 +18,12 @@ const editPage = source('app/(painel-admin)/admin/usuarios/[id]/editar/page.tsx'
 const list = source('features/admin-usuarios/admin-usuarios-list.tsx')
 const detail = source('features/admin-usuarios/admin-usuario-detail.tsx')
 const edit = source('features/admin-usuarios/admin-usuario-edit-form.tsx')
+const credit = source('features/admin-usuarios/admin-usuario-credit-dialog.tsx')
+const upload = source('features/admin-documentos/admin-kyc-upload-dialog.tsx')
 const documents = source('features/admin-documentos/admin-kyc-document-grid.tsx')
 const api = source('features/admin-usuarios/api.ts')
+const documentApi = source('features/admin-documentos/api.ts')
+const creditApi = source('lib/admin-creditos-operacionais-api.ts')
 const openapi = readFileSync(
   path.join(repositoryRoot, 'contracts/openapi/topsdojob-v3-local.yaml'),
   'utf8',
@@ -36,37 +40,77 @@ assert.ok(api.includes("credentials: 'include'"), 'A sessao deve ser a unica fon
 assert.ok(api.includes("cache: 'no-store'"), 'Dados pessoais nao podem entrar no cache do navegador.')
 assert.ok(api.includes('apiErrorFromResponse(response)'), 'Falhas HTTP devem permanecer explicitas.')
 assert.ok(api.includes("`/usuarios?${query.toString()}`"), 'A lista deve usar o contrato canonico.')
-assert.ok(api.includes("`/usuarios/${encodeURIComponent(id)}`"), 'O detalhe deve usar o contrato canonico.')
+assert.ok(api.includes("'/usuarios/indicadores'"), 'Indicadores devem vir do backend.')
+assert.ok(api.includes("method: 'PATCH'"), 'A edicao deve usar a mutacao administrativa protegida.')
 
-for (const field of ['termo', 'status', 'kyc', 'ordenacao', 'page', 'size']) {
+for (const field of ['termo', 'status', 'kyc', 'grupo', 'uf', 'cidade', 'ordenacao', 'page', 'size']) {
   assert.ok(list.includes(field), `Filtro ou paginacao ausente: ${field}.`)
 }
-for (const label of ['Nome, e-mail, CPF, telefone ou ID', 'Todos os estados', 'Todos os KYC', 'Mais recentes', 'Mais antigos']) {
+for (const label of [
+  'Total de usuários',
+  'Novos hoje',
+  'Com anúncios',
+  'Sem anúncios',
+  'Nome, e-mail, CPF, telefone ou ID',
+  'Todas as UFs',
+  'Todas as cidades',
+  'Cadastro mais recente',
+  'Cadastro mais antigo',
+]) {
   assert.ok(list.includes(label), `Controle da lista ausente: ${label}.`)
 }
-assert.ok(list.includes('md:hidden') && list.includes('hidden overflow-x-auto') && list.includes('md:block'), 'A lista deve ter layouts desktop e mobile.')
+for (const action of ['Anúncios', 'Crédito', 'Ver']) {
+  assert.ok(list.includes(action), `Acao da linha ausente: ${action}.`)
+}
+assert.ok(list.includes('[20, 30, 50, 100]'), 'A listagem deve oferecer os quatro tamanhos canonicos.')
+assert.ok(list.includes('md:hidden') && list.includes('hidden overflow-x-auto'), 'A lista deve ter layouts desktop e mobile.')
 assert.ok(list.includes('Nenhum usuário encontrado'), 'Resposta 200 vazia deve ser um estado legitimo.')
 assert.ok(list.includes('<ContractState error={error}'), 'Erro tecnico deve permitir nova tentativa.')
 assert.ok(list.includes('retorno='), 'O detalhe deve preservar busca e pagina no retorno.')
 
-for (const section of ['Dados cadastrais', 'Anúncios vinculados', 'KYC privado', 'Histórico administrativo']) {
+for (const section of [
+  'Identificação',
+  'Contato',
+  'Dados pessoais',
+  'Conta e KYC',
+  'Endereço, localidades e anúncios',
+  'Documentos KYC privados',
+  'Histórico administrativo',
+]) {
   assert.ok(detail.includes(section), `Secao protegida ausente: ${section}.`)
 }
 assert.ok(detail.includes('AdminKycDocumentGrid'), 'KYC deve reutilizar a grade documental protegida.')
-assert.ok(documents.includes('getAdminDocumentTemporaryUrl'), 'A visualizacao integral deve usar a URL temporaria privada existente.')
-assert.ok(documents.includes('adminDocumentThumbnailUrl'), 'Os cards devem usar miniaturas protegidas, nao os arquivos integrais.')
+assert.ok(detail.includes('AdminKycUploadDialog'), 'Inclusao e substituicao devem ficar na gestao do usuario.')
+assert.ok(detail.includes('AdminUsuarioCreditDialog'), 'Saldo e ledger devem estar disponiveis no detalhe.')
 assert.ok(!detail.includes('objectKey') && !detail.includes('bucket'), 'Storage privado nao pode aparecer na interface.')
-assert.ok(detail.includes("usuario?.cargo === 'ADMIN'"), 'Acoes juridicas devem permanecer exclusivas de ADMIN.')
-assert.ok(detail.includes('blockAdminAdAndUser') && detail.includes('unblockAdminUser'), 'Bloqueio e desbloqueio devem reutilizar o servico canonico.')
+assert.ok(detail.includes("usuario?.cargo === 'ADMIN'"), 'Mutacoes devem permanecer exclusivas de ADMIN.')
+assert.ok(detail.includes('blockAdminAdAndUser') && detail.includes('unblockAdminUser'), 'Bloqueio deve reutilizar o servico canonico.')
 assert.ok(detail.includes('actionLock.current'), 'A mutacao deve impedir duplo clique.')
-assert.ok(detail.includes('anuncioAncoraBloqueioId'), 'A acao deve reutilizar o anuncio ancora do contrato existente.')
 assert.ok(!detail.includes('Excluir usuário'), 'A gestao nao pode introduzir exclusao fisica de usuario.')
-assert.ok(detail.includes('flex flex-wrap') && detail.includes('sm:grid-cols-2'), 'O detalhe deve quebrar controles sem overflow em 390 px.')
-assert.ok(edit.includes('MaskedPhoneInput') && edit.includes('phoneToE164BR'), 'A edicao deve manter mascara e enviar somente telefone normalizado.')
-assert.ok(api.includes("method: 'PATCH'") && api.includes('JSON.stringify({ telefone })'), 'A atualizacao deve usar o contrato administrativo protegido.')
 
-assert.ok(openapi.includes('/api/admin/usuarios:'), 'OpenAPI deve documentar a lista.')
-assert.ok(openapi.includes('/api/admin/usuarios/{id}:'), 'OpenAPI deve documentar o detalhe.')
-assert.ok(openapi.includes('AdminPaginaUsuarios') && openapi.includes('AdminUsuarioDetalhe'), 'Schemas administrativos de usuario devem estar documentados.')
+for (const field of ['nome', 'nomeCivil', 'email', 'cpf', 'telefone', 'dataNascimento', 'versao']) {
+  assert.ok(edit.includes(field), `Campo cadastral real ausente: ${field}.`)
+}
+assert.ok(edit.includes('MaskedPhoneInput') && edit.includes('phoneToE164BR'), 'Telefone deve manter mascara e persistir normalizado.')
+assert.ok(edit.includes('maskCpf') && edit.includes('cpfDigits'), 'CPF deve manter mascara e persistir normalizado.')
+assert.ok(edit.includes('BirthDateField') && edit.includes('birthDateToIso'), 'Nascimento deve usar mascara e persistir ISO.')
+assert.ok(edit.includes('AdminUserFormError') && edit.includes('fieldErrors'), 'Erros do backend devem aparecer no campo correto.')
 
-console.log('Admin usuarios V3: lista, detalhe, KYC, RBAC e responsividade validados.')
+assert.ok(upload.includes('Adicionar documentos') && upload.includes('Substituir documentos'), 'Fluxos documentais administrativos devem estar visiveis.')
+assert.ok(upload.includes('image/jpeg,image/png,application/pdf'), 'Imagem e PDF devem usar o validador canonico.')
+assert.ok(documentApi.includes('Idempotency-Key') && documentApi.includes('multipart/form-data') === false, 'Upload deve ser idempotente e deixar o navegador definir o boundary.')
+assert.ok(documents.includes('getAdminDocumentTemporaryUrl'), 'A visualizacao integral deve usar a URL temporaria privada existente.')
+assert.ok(documents.includes('adminDocumentThumbnailUrl'), 'Os cards devem usar miniaturas protegidas.')
+assert.ok(documents.includes('onReplace'), 'A grade compartilhada deve oferecer substituicao somente quando autorizada.')
+
+assert.ok(credit.includes('Saldo atual') && credit.includes('Historico'), 'Modal deve exibir saldo e ledger.')
+assert.ok(credit.includes('Adicionar') && credit.includes('Remover'), 'Modal deve oferecer as duas operacoes administrativas.')
+assert.ok(credit.includes('window.confirm'), 'Ajuste de credito deve exigir confirmacao.')
+assert.ok(credit.includes('actionLock.current'), 'Ajuste de credito deve bloquear duplo clique.')
+assert.ok(creditApi.includes('Idempotency-Key') && creditApi.includes('idempotencyKey'), 'Retry deve reutilizar a chave idempotente.')
+
+assert.ok(openapi.includes('/api/admin/usuarios/indicadores:'), 'OpenAPI deve documentar os indicadores.')
+assert.ok(openapi.includes('/api/admin/documentos/usuarios/{usuarioId}/envios:'), 'OpenAPI deve documentar o upload privado.')
+assert.ok(openapi.includes('AdminUsuarioIndicadores') && openapi.includes('AdminUsuarioAtualizacaoRequest'), 'Schemas completos devem estar documentados.')
+
+console.log('Admin usuarios completo: edicao, documentos, filtros, creditos, privacidade e responsividade validados.')

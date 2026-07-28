@@ -58,18 +58,26 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                     null,
                     "ATIVO",
                     "APROVADO",
+                    null,
+                    null,
+                    null,
                     "RECENTES",
                     PageRequest.of(0, 20));
             assertThat(byEmail).singleElement().satisfies(user -> {
-                assertThat(user.nomeCivil()).isEqualTo("QA Aprovado");
+                assertThat(user.nomeCivil()).isEqualTo("QA Aprovádo");
                 assertThat(user.totalAnuncios()).isEqualTo(2);
                 assertThat(user.kycStatus()).isEqualTo("APROVADO");
                 assertThat(user.bloqueado()).isFalse();
+                assertThat(user.ufPrincipal()).isEqualTo("GO");
+                assertThat(user.cidadePrincipal()).isEqualTo("Goiânia");
             });
 
             var byCpf = repository.listar(
                     "78909",
                     "78909",
+                    null,
+                    null,
+                    null,
                     null,
                     null,
                     null,
@@ -84,6 +92,9 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                     "09",
                     null,
                     null,
+                    null,
+                    null,
+                    null,
                     "RECENTES",
                     PageRequest.of(0, 20));
             assertThat(byMaskedCpf).singleElement().satisfies(user ->
@@ -95,6 +106,9 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                     null,
                     null,
                     null,
+                    null,
+                    null,
+                    null,
                     "RECENTES",
                     PageRequest.of(0, 20));
             assertThat(byPhone).singleElement().satisfies(user ->
@@ -102,6 +116,9 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
 
             var byName = repository.listar(
                     "QA Aprovado",
+                    null,
+                    null,
+                    null,
                     null,
                     null,
                     null,
@@ -117,6 +134,9 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                     null,
                     "SUSPENSO",
                     "SEM_ENVIO",
+                    null,
+                    null,
+                    null,
                     "ANTIGOS",
                     PageRequest.of(0, 20));
             assertThat(suspended).singleElement().satisfies(user -> {
@@ -124,7 +144,29 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                 assertThat(user.totalAnuncios()).isZero();
             });
 
+            var byLocationAndGroup = repository.listar(
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    "COM_ANUNCIOS",
+                    "GO",
+                    "goiania",
+                    "RECENTES",
+                    PageRequest.of(0, 20));
+            assertThat(byLocationAndGroup).singleElement().satisfies(user ->
+                    assertThat(user.email()).isEqualTo("qa.aprovado@example.invalid"));
+
+            var indicators = repository.indicadores();
+            assertThat(indicators.totalUsuarios()).isEqualTo(2);
+            assertThat(indicators.comAnuncios()).isEqualTo(1);
+            assertThat(indicators.semAnuncios()).isEqualTo(1);
+
             var firstPage = repository.listar(
+                    null,
+                    null,
+                    null,
                     null,
                     null,
                     null,
@@ -149,7 +191,7 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                   criado_em, atualizado_em, versao
                 ) VALUES
                   (
-                    '10000000-0000-4000-8000-000000000001', 'QA Publico', 'QA Aprovado',
+                    '10000000-0000-4000-8000-000000000001', 'QA Publico', 'QA Aprovádo',
                     'qa.aprovado@example.invalid', '+5562999999999', '12345678909',
                     '1990-01-02', 'ATIVO', 'ANUNCIANTE',
                     '2026-07-20T10:00:00Z', '2026-07-27T10:00:00Z', 0
@@ -178,6 +220,31 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                     'qa-usuario-2', 'QA usuario 2', 'PAUSADO', 'APROVADO', 'MASSAGENS',
                     '2026-07-21T10:00:00Z', '2026-07-21T10:00:00Z', 0
                   )
+                """);
+        jdbc.update("""
+                INSERT INTO estado (id, uf, nome, nome_normalizado, criado_em)
+                VALUES (
+                  '60000000-0000-4000-8000-000000000001',
+                  'GO', 'Goiás', 'goias', '2026-07-20T10:00:00Z'
+                )
+                """);
+        jdbc.update("""
+                INSERT INTO cidade (id, estado_id, nome, nome_normalizado, slug, criado_em)
+                VALUES (
+                  '70000000-0000-4000-8000-000000000001',
+                  '60000000-0000-4000-8000-000000000001',
+                  'Goiânia', 'goiania', 'goiania', '2026-07-20T10:00:00Z'
+                )
+                """);
+        jdbc.update("""
+                INSERT INTO anuncio_localizacao (
+                  anuncio_id, estado_id, cidade_id, criado_em, atualizado_em
+                ) VALUES (
+                  '20000000-0000-4000-8000-000000000001',
+                  '60000000-0000-4000-8000-000000000001',
+                  '70000000-0000-4000-8000-000000000001',
+                  '2026-07-20T10:00:00Z', '2026-07-20T10:00:00Z'
+                )
                 """);
         jdbc.update("""
                 INSERT INTO arquivo_midia (

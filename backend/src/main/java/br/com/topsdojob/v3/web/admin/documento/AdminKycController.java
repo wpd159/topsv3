@@ -19,8 +19,12 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/admin/documentos")
@@ -72,6 +76,34 @@ public class AdminKycController {
       @AuthenticationPrincipal AdminUserPrincipal ator,
       HttpServletRequest request) {
     return service.decidir(envioId, body, ator, RequestIdContext.current(request));
+  }
+
+  @PostMapping(
+      value = "/usuarios/{usuarioId}/envios",
+      consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+  @PreAuthorize("hasRole('ADMIN') and hasAuthority('DOCUMENTO_REVISAR')")
+  public ResponseEntity<AdminKycEnvioDto> enviarAdministrativamente(
+      @PathVariable UUID usuarioId,
+      @RequestParam String tipoDocumento,
+      @RequestParam String modoDocumento,
+      @RequestParam(required = false) UUID envioSubstituidoId,
+      @RequestPart(value = "documentoUnico", required = false) MultipartFile documentoUnico,
+      @RequestPart(value = "documentoFrente", required = false) MultipartFile documentoFrente,
+      @RequestPart(value = "documentoVerso", required = false) MultipartFile documentoVerso,
+      @RequestHeader("Idempotency-Key") String idempotencyKey,
+      @AuthenticationPrincipal AdminUserPrincipal ator,
+      HttpServletRequest request) {
+    return semCache(service.enviarAdministrativamente(
+        usuarioId,
+        tipoDocumento,
+        modoDocumento,
+        envioSubstituidoId,
+        documentoUnico,
+        documentoFrente,
+        documentoVerso,
+        idempotencyKey,
+        ator,
+        RequestIdContext.current(request)));
   }
 
   private <T> ResponseEntity<T> semCache(T body) {

@@ -137,6 +137,23 @@ public class UsuarioEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public void atualizarDadosCadastrais(
+      String nome,
+      String nomeCivil,
+      String emailNormalizado,
+      String cpfNormalizado,
+      String telefoneNormalizado,
+      LocalDate dataNascimento,
+      OffsetDateTime atualizadoEm) {
+    this.nome = nome;
+    this.nomeCivil = nomeCivil;
+    this.emailNormalizado = emailNormalizado;
+    this.cpfNormalizado = cpfNormalizado;
+    this.telefoneNormalizado = telefoneNormalizado;
+    this.dataNascimento = dataNascimento;
+    this.atualizadoEm = atualizadoEm;
+  }
+
   public static UsuarioEntity criarSolicitacaoLocal(
       UUID id,
       String nome,

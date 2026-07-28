@@ -2156,7 +2156,7 @@ paths:
           required: false
           schema:
             type: integer
-            enum: [20, 50, 100]
+            enum: [20, 30, 50, 100]
             default: 20
         - name: termo
           in: query
@@ -2178,6 +2178,25 @@ paths:
             type: string
             enum: [TODOS, SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
             default: TODOS
+        - name: grupo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, ATIVOS, INATIVOS, COM_ANUNCIOS, SEM_ANUNCIOS]
+            default: TODOS
+        - name: uf
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: "^[A-Z]{2}$"
+        - name: cidade
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
         - name: ordenacao
           in: query
           required: false
@@ -2194,6 +2213,28 @@ paths:
                 $ref: "#/components/schemas/AdminPaginaUsuarios"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/usuarios/indicadores:
+    get:
+      summary: Retorna indicadores cadastrais de usuarios
+      description: Calcula total, novos no dia local, usuarios com anuncios e sem anuncios sem fabricar contadores no frontend.
+      operationId: getAdminUsuariosIndicadores
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Indicadores administrativos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioIndicadores"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -2231,9 +2272,9 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
     patch:
-      summary: Atualiza o telefone cadastral de um usuario
-      description: Restrito a ADMIN com ANUNCIO_MODERAR. Recebe somente telefone brasileiro normalizado e preserva os demais dados cadastrais.
-      operationId: patchAdminUsuarioTelefone
+      summary: Atualiza dados cadastrais reais de um usuario
+      description: Restrito a ADMIN com ANUNCIO_MODERAR. A operacao e atomica, exige a versao atual e preserva qualquer campo omitido.
+      operationId: patchAdminUsuario
       security:
         - AdminSessionCookie: []
       parameters:
@@ -2252,7 +2293,7 @@ paths:
               $ref: "#/components/schemas/AdminUsuarioAtualizacaoRequest"
       responses:
         "200":
-          description: Usuario atualizado com telefone normalizado
+          description: Usuario atualizado com dados normalizados
           content:
             application/json:
               schema:
@@ -4027,6 +4068,64 @@ paths:
                   $ref: "#/components/schemas/AdminKycEnvio"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/admin/documentos/usuarios/{usuarioId}/envios:
+    post:
+      summary: Adiciona ou substitui um envio documental privado
+      description: Operacao exclusiva de ADMIN com DOCUMENTO_REVISAR. Valida e confirma o objeto privado antes de substituir o vinculo anterior, que permanece inativo para auditoria.
+      operationId: postAdminKycUserSubmission
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: usuarioId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [tipoDocumento, modoDocumento]
+              properties:
+                tipoDocumento:
+                  type: string
+                  enum: [IDENTIDADE, VERIFICACAO_IDADE, COMPROVANTE, OUTRO]
+                modoDocumento:
+                  type: string
+                  enum: [UNICO, FRENTE_VERSO]
+                envioSubstituidoId:
+                  type: string
+                  format: uuid
+                documentoUnico:
+                  type: string
+                  format: binary
+                documentoFrente:
+                  type: string
+                  format: binary
+                documentoVerso:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Envio criado ou resposta idempotente equivalente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminKycEnvio"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/admin/documentos/envios/{envioId}:
     get:
       summary: Detalha um envio documental privado
@@ -8681,7 +8780,18 @@ components:
           enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
         totalAnuncios: { type: integer, format: int64, minimum: 0 }
         bloqueado: { type: boolean }
+        ufPrincipal: { type: [string, "null"] }
+        cidadePrincipal: { type: [string, "null"] }
         criadoEm: { type: string, format: date-time }
+    AdminUsuarioIndicadores:
+      type: object
+      additionalProperties: false
+      required: [totalUsuarios, novosHoje, comAnuncios, semAnuncios]
+      properties:
+        totalUsuarios: { type: integer, format: int64, minimum: 0 }
+        novosHoje: { type: integer, format: int64, minimum: 0 }
+        comAnuncios: { type: integer, format: int64, minimum: 0 }
+        semAnuncios: { type: integer, format: int64, minimum: 0 }
     AdminUsuarioAnuncio:
       type: object
       additionalProperties: false
@@ -8729,6 +8839,7 @@ components:
         - anuncioAncoraBloqueioId
         - podeBloquear
         - podeDesbloquear
+        - versao
         - anuncios
         - kycEnvios
         - historico
@@ -8756,6 +8867,7 @@ components:
         anuncioAncoraBloqueioId: { type: [string, "null"], format: uuid }
         podeBloquear: { type: boolean }
         podeDesbloquear: { type: boolean }
+        versao: { type: integer, minimum: 0 }
         anuncios:
           type: array
           items:
@@ -8771,11 +8883,32 @@ components:
     AdminUsuarioAtualizacaoRequest:
       type: object
       additionalProperties: false
-      required: [telefone]
+      required: [versao]
       properties:
+        versao:
+          type: integer
+          minimum: 0
+        nome:
+          type: string
+          minLength: 2
+          maxLength: 120
+        nomeCivil:
+          type: string
+          minLength: 3
+          maxLength: 180
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        cpf:
+          type: string
+          pattern: "^[0-9]{11}$"
         telefone:
           type: string
           pattern: "^\\+55[0-9]{10,11}$"
+        dataNascimento:
+          type: string
+          format: date
     AdminPaginaUsuarios:
       type: object
       additionalProperties: false
@@ -8786,7 +8919,7 @@ components:
           items:
             $ref: "#/components/schemas/AdminUsuarioResumo"
         page: { type: integer, minimum: 0 }
-        size: { type: integer, enum: [20, 50, 100] }
+        size: { type: integer, enum: [20, 30, 50, 100] }
         totalElements: { type: integer, format: int64, minimum: 0 }
         totalPages: { type: integer, minimum: 0 }
         last: { type: boolean }

@@ -51,7 +51,8 @@ class AdminUsuarioControllerSecurityTest {
     @Test
     void adminEModeradorComAnuncioLerAcessamListaEDetalhe() throws Exception {
         UUID id = UUID.randomUUID();
-        when(service.listar(any(), any(), any(), any(), any(Integer.class), any(Integer.class)))
+        when(service.listar(
+                any(), any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class)))
                 .thenReturn(new AdminPaginaDto<>(List.of(), 0, 20, 0, 0, true));
         when(service.detalhar(any(), any())).thenReturn(detalhe(id));
 
@@ -82,16 +83,16 @@ class AdminUsuarioControllerSecurityTest {
     }
 
     @Test
-    void somenteAdminComPermissaoECsrfAtualizaTelefone() throws Exception {
+    void somenteAdminComPermissaoECsrfAtualizaDadosCadastrais() throws Exception {
         UUID id = UUID.randomUUID();
         AdminUsuarioDetalheDto detail = detalhe(id);
-        when(atualizacaoService.atualizarTelefone(any(), any(), any(), any())).thenReturn(detail);
+        when(atualizacaoService.atualizar(any(), any(), any(), any())).thenReturn(detail);
 
         mockMvc.perform(patch("/api/admin/usuarios/{id}", id)
                         .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"telefone\":\"+5562999999999\"}"))
+                        .content("{\"versao\":0,\"nome\":\"QA\",\"telefone\":\"+5562999999999\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id.toString()));
 
@@ -99,13 +100,13 @@ class AdminUsuarioControllerSecurityTest {
                         .with(authentication(tokenFor(PapelUsuario.MODERADOR, "ANUNCIO_MODERAR")))
                         .with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"telefone\":\"+5562999999999\"}"))
+                        .content("{\"versao\":0,\"nome\":\"QA\",\"telefone\":\"+5562999999999\"}"))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(patch("/api/admin/usuarios/{id}", id)
                         .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"telefone\":\"+5562999999999\"}"))
+                        .content("{\"versao\":0,\"nome\":\"QA\",\"telefone\":\"+5562999999999\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -157,6 +158,7 @@ class AdminUsuarioControllerSecurityTest {
                 null,
                 false,
                 false,
+                0,
                 List.of(),
                 List.of(),
                 List.of());

@@ -9,11 +9,13 @@ export function BirthDateField({
   onValueChange,
   className,
   id,
+  disabled,
 }: {
   value: string
   onValueChange: (value: string) => void
   className?: string
   id?: string
+  disabled?: boolean
 }) {
   return (
     <Input
@@ -24,6 +26,7 @@ export function BirthDateField({
       placeholder="DD/MM/AAAA"
       value={value}
       maxLength={10}
+      disabled={disabled}
       onChange={(event) => onValueChange(maskBirthDate(event.target.value))}
       className={cn('h-11 text-base', className)}
     />

@@ -109,23 +109,39 @@ class AdminUsuarioConsultaServiceTest {
                 OffsetDateTime.parse("2026-07-27T10:00:00Z"),
                 "APROVADO",
                 2,
-                false);
+                false,
+                "GO",
+                "Goiânia");
         when(consultaRepository.listar(
                 eq("qa@example.invalid"),
                 any(),
                 any(),
                 eq("ATIVO"),
                 eq("APROVADO"),
+                eq("COM_ANUNCIOS"),
+                eq("GO"),
+                eq("goiania"),
                 eq("ANTIGOS"),
                 any()))
                 .thenReturn(new PageImpl<>(List.of(row)));
 
-        var result = service.listar(" qa@example.invalid ", "ATIVO", "APROVADO", "ANTIGOS", 0, 20);
+        var result = service.listar(
+                " qa@example.invalid ",
+                "ATIVO",
+                "APROVADO",
+                "COM_ANUNCIOS",
+                "GO",
+                "goiania",
+                "ANTIGOS",
+                0,
+                20);
 
         assertThat(result.itens()).singleElement().satisfies(item -> {
             assertThat(item.nome()).isEqualTo("Nome Civil QA");
             assertThat(item.cpfMascarado()).isEqualTo("***.***.***-09");
             assertThat(item.totalAnuncios()).isEqualTo(2);
+            assertThat(item.ufPrincipal()).isEqualTo("GO");
+            assertThat(item.cidadePrincipal()).isEqualTo("Goiânia");
         });
         verify(consultaRepository).listar(
                 eq("qa@example.invalid"),
@@ -133,6 +149,9 @@ class AdminUsuarioConsultaServiceTest {
                 any(),
                 eq("ATIVO"),
                 eq("APROVADO"),
+                eq("COM_ANUNCIOS"),
+                eq("GO"),
+                eq("goiania"),
                 eq("ANTIGOS"),
                 any());
     }

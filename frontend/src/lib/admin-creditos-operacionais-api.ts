@@ -12,11 +12,15 @@ export type AdminCreditoSaldo = {
 }
 export type AdminCreditoMovimento = {
   id: string
+  tipo: string
+  direcao: 'CREDITO' | 'DEBITO'
   natureza: string
   quantidade: number
   saldoAntes: number
   saldoDepois: number
+  origem: string
   motivo: string | null
+  administradorId: string | null
   requestId: string | null
   criadoEm: string
 }
@@ -141,10 +145,16 @@ export const AdminCreditosApi = {
   buscarUsuarios: (query: string) => request<AdminCreditoUsuario[]>(`/creditos/usuarios?query=${encodeURIComponent(query)}`),
   saldo: (id: string) => request<AdminCreditoSaldo>(`/creditos/usuarios/${id}/saldo`),
   movimentos: (id: string) => request<AdminCreditoPagina>(`/creditos/usuarios/${id}/movimentos?size=50`),
-  ajustar: (id: string, direcao: 'CREDITO' | 'DEBITO', quantidade: number, motivo: string) =>
+  ajustar: (
+    id: string,
+    direcao: 'CREDITO' | 'DEBITO',
+    quantidade: number,
+    motivo: string,
+    idempotencyKey = operationKey('ajuste'),
+  ) =>
     request<AdminCreditoOperacao>(`/creditos/usuarios/${id}/ajustes`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey('ajuste') },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({ direcao, quantidade, motivo }),
     }),
   estornar: (movimentoId: string, motivo: string) => request<AdminCreditoOperacao>(

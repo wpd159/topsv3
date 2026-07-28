@@ -13,5 +13,7 @@ public record AdminUsuarioResumoDto(
         String kycStatus,
         long totalAnuncios,
         boolean bloqueado,
+        String ufPrincipal,
+        String cidadePrincipal,
         OffsetDateTime criadoEm) {
 }
