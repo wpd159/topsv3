@@ -1,16 +1,65 @@
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { Eye, Pencil } from 'lucide-react'
 
-import { ContractState, PendingActionFeedback, usePendingContractActions } from '@/components/feedback/contract-state'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
+import type { AdminStaffSummary } from '@/features/admin-staff/types'
 
-export default function GerenciarStaffTable({ busca: _busca = '' }: { busca?: string }) {
-  const [deleteOpen, setDeleteOpen] = useState(false)
-  const { error, attemptedAction, runPendingAction } = usePendingContractActions(PENDING_BACKEND_CONTRACTS.adminUsers)
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value))
+}
 
-  return <div className="space-y-3"><PendingActionFeedback attemptedAction={attemptedAction} /><div className="overflow-x-auto rounded-lg border border-gray-200 bg-white"><Table><TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>E-mail</TableHead><TableHead>Cargo</TableHead><TableHead>Status</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader><TableBody><TableRow><TableCell colSpan={5}><ContractState error={error} compact /><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => runPendingAction('Visualizar staff')}>Visualizar</Button><Button type="button" variant="outline" onClick={() => runPendingAction('Editar staff')}>Editar</Button><Button type="button" variant="outline" onClick={() => runPendingAction('Ativar ou desativar staff')}>Ativar/Desativar</Button><Button type="button" variant="destructive" onClick={() => setDeleteOpen(true)}>Excluir</Button></div></TableCell></TableRow></TableBody></Table></div><div className="flex justify-between"><Button type="button" variant="outline" onClick={() => runPendingAction('Página anterior de staff')}>Voltar</Button><Button type="button" variant="outline" onClick={() => runPendingAction('Próxima página de staff')}>Próximo</Button></div><Dialog open={deleteOpen} onOpenChange={setDeleteOpen}><DialogContent><DialogHeader><DialogTitle>Confirmar exclusão</DialogTitle><DialogDescription>Tem certeza que deseja excluir este membro? A ação não pode ser simulada.</DialogDescription></DialogHeader><PendingActionFeedback attemptedAction={attemptedAction} /><DialogFooter><Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>Cancelar</Button><Button type="button" variant="destructive" onClick={() => runPendingAction('Excluir staff')}>Confirmar exclusão</Button></DialogFooter></DialogContent></Dialog></div>
+export default function GerenciarStaffTable({ itens, retorno }: { itens: AdminStaffSummary[]; retorno: string }) {
+  const href = (id: string, edit = false) => `/admin/staff/${encodeURIComponent(id)}${edit ? '/editar' : ''}${
+    retorno ? `?retorno=${encodeURIComponent(retorno)}` : ''
+  }`
+  return (
+    <>
+      <div className="hidden overflow-x-auto border-y border-zinc-200 md:block">
+        <Table>
+          <TableHeader><TableRow><TableHead>Nome</TableHead><TableHead>E-mail</TableHead><TableHead>Papel</TableHead><TableHead>Estado</TableHead><TableHead>Acesso</TableHead><TableHead>Cadastro</TableHead><TableHead className="text-right">Ações</TableHead></TableRow></TableHeader>
+          <TableBody>
+            {itens.map((staff) => (
+              <TableRow key={staff.id}>
+                <TableCell className="font-semibold">{staff.nome}</TableCell>
+                <TableCell>{staff.email}</TableCell>
+                <TableCell><Badge variant="outline">{staff.papelRotulo}</Badge></TableCell>
+                <TableCell><Badge variant={staff.ativo ? 'default' : 'secondary'}>{staff.statusRotulo}</Badge></TableCell>
+                <TableCell>{staff.acessoPendente ? 'Definição pendente' : 'Configurado'}</TableCell>
+                <TableCell className="whitespace-nowrap">{formatDate(staff.criadoEm)}</TableCell>
+                <TableCell>
+                  <div className="flex justify-end gap-2">
+                    <Button asChild size="icon" variant="outline" title="Visualizar staff"><Link href={href(staff.id)}><Eye className="h-4 w-4" /></Link></Button>
+                    <Button asChild size="icon" variant="outline" title="Editar staff"><Link href={href(staff.id, true)}><Pencil className="h-4 w-4" /></Link></Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <div className="divide-y divide-zinc-200 border-y border-zinc-200 md:hidden">
+        {itens.map((staff) => (
+          <article key={staff.id} className="space-y-3 py-4">
+            <div>
+              <p className="font-semibold text-zinc-950">{staff.nome}</p>
+              <p className="break-all text-sm text-zinc-600">{staff.email}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="outline">{staff.papelRotulo}</Badge>
+              <Badge variant={staff.ativo ? 'default' : 'secondary'}>{staff.statusRotulo}</Badge>
+              {staff.acessoPendente ? <Badge variant="outline">Acesso pendente</Badge> : null}
+            </div>
+            <div className="flex gap-2">
+              <Button asChild size="sm" variant="outline"><Link href={href(staff.id)}><Eye className="mr-2 h-4 w-4" />Ver</Link></Button>
+              <Button asChild size="sm" variant="outline"><Link href={href(staff.id, true)}><Pencil className="mr-2 h-4 w-4" />Editar</Link></Button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
+  )
 }

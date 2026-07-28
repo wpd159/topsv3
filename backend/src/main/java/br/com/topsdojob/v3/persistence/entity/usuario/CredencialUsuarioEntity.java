@@ -79,6 +79,16 @@ public class CredencialUsuarioEntity {
     return entity;
   }
 
+  public static CredencialUsuarioEntity criarAcessoPendente(
+      UUID id,
+      UUID usuarioId,
+      String senhaHash,
+      OffsetDateTime criadoEm) {
+    CredencialUsuarioEntity entity = criar(id, usuarioId, senhaHash, criadoEm);
+    entity.precisaRedefinir = true;
+    return entity;
+  }
+
   public void atualizarHashHomologacao(String novoHash, OffsetDateTime alteradaEm) {
     this.senhaHash = novoHash;
     this.algoritmo = "BCRYPT";

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminLoginRequestDto;
+import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionDto;
 import br.com.topsdojob.v3.application.publico.service.MetricaPublicaHashService;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
@@ -172,7 +173,8 @@ class AdminAuthenticationServiceTest {
         return new AdminAuthenticationService(
                 manager,
                 new HttpSessionSecurityContextRepository(),
-                new AdminLoginLockoutService(new MetricaPublicaHashService("salt-sintetico", "local")));
+                new AdminLoginLockoutService(new MetricaPublicaHashService("salt-sintetico", "local")),
+                new PublicSessionRegistry());
     }
 
     private AdminUserPrincipal principal() {

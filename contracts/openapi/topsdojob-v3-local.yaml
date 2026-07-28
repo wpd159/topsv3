@@ -5954,6 +5954,136 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/staff:
+    get:
+      summary: Lista contas administrativas para gestao de staff
+      operationId: getAdminStaffPage
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: termo
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: papel
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, ADMIN, MODERADOR]
+            default: TODOS
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, ATIVO, INATIVO]
+            default: TODOS
+        - name: ordenacao
+          in: query
+          schema:
+            type: string
+            enum: [RECENTES, ANTIGOS]
+            default: RECENTES
+      responses:
+        "200":
+          description: Pagina de staff
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStaffPagina" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      summary: Cria conta de staff sem expor credencial
+      operationId: createAdminStaff
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminStaffCriarRequest" }
+      responses:
+        "200":
+          description: Staff criado com acesso pendente de definicao segura
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStaffDetalhe" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/admin/staff/indicadores:
+    get:
+      summary: Retorna indicadores de staff
+      operationId: getAdminStaffIndicators
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Indicadores de staff por estado e papel
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStaffIndicadores" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/admin/staff/{staffId}:
+    get:
+      summary: Consulta staff, permissoes efetivas e auditoria
+      operationId: getAdminStaff
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: staffId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Detalhe protegido do staff
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStaffDetalhe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      summary: Atualiza nome, papel e estado de uma conta de staff
+      operationId: updateAdminStaff
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: staffId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminStaffAtualizarRequest" }
+      responses:
+        "200":
+          description: Staff atualizado e sessoes sensiveis invalidadas
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStaffDetalhe" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
 components:
   securitySchemes:
     PublicSessionCookie:
@@ -12215,3 +12345,90 @@ components:
           type: string
           enum: [EM_ANALISE, RESOLVIDO, RECUSADO]
         providencia: { type: string, minLength: 3, maxLength: 2000 }
+    AdminStaffResumo:
+      type: object
+      additionalProperties: false
+      required: [id, nome, email, papel, papelRotulo, status, statusRotulo, ativo, acessoPendente, criadoEm, atualizadoEm, versao]
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        papel: { type: string }
+        papelRotulo: { type: string }
+        status: { type: string }
+        statusRotulo: { type: string }
+        ativo: { type: boolean }
+        acessoPendente: { type: boolean }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+        versao: { type: integer, minimum: 0 }
+    AdminStaffPermissao:
+      type: object
+      additionalProperties: false
+      required: [codigo, descricao]
+      properties:
+        codigo: { type: string }
+        descricao: { type: string }
+    AdminStaffHistorico:
+      type: object
+      additionalProperties: false
+      required: [id, acao, acaoRotulo, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        acao: { type: string }
+        acaoRotulo: { type: string }
+        atorNome: { type: [string, "null"] }
+        criadoEm: { type: string, format: date-time }
+        requestId: { type: [string, "null"] }
+    AdminStaffDetalhe:
+      type: object
+      additionalProperties: false
+      required: [staff, permissoes, historico]
+      properties:
+        staff: { $ref: "#/components/schemas/AdminStaffResumo" }
+        permissoes:
+          type: array
+          items: { $ref: "#/components/schemas/AdminStaffPermissao" }
+        historico:
+          type: array
+          items: { $ref: "#/components/schemas/AdminStaffHistorico" }
+    AdminStaffPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, pagina, tamanho, totalElementos, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/AdminStaffResumo" }
+        pagina: { type: integer, minimum: 0 }
+        tamanho: { type: integer, minimum: 1, maximum: 100 }
+        totalElementos: { type: integer, minimum: 0 }
+        totalPaginas: { type: integer, minimum: 0 }
+    AdminStaffIndicadores:
+      type: object
+      additionalProperties: false
+      required: [total, ativos, inativos, administradores, moderadores]
+      properties:
+        total: { type: integer, minimum: 0 }
+        ativos: { type: integer, minimum: 0 }
+        inativos: { type: integer, minimum: 0 }
+        administradores: { type: integer, minimum: 0 }
+        moderadores: { type: integer, minimum: 0 }
+    AdminStaffCriarRequest:
+      type: object
+      additionalProperties: false
+      required: [nome, email, papel, ativo]
+      properties:
+        nome: { type: string, minLength: 2, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 254 }
+        papel: { type: string, enum: [ADMIN, MODERADOR] }
+        ativo: { type: boolean }
+    AdminStaffAtualizarRequest:
+      type: object
+      additionalProperties: false
+      required: [nome, papel, ativo, versao]
+      properties:
+        nome: { type: string, minLength: 2, maxLength: 120 }
+        papel: { type: string, enum: [ADMIN, MODERADOR] }
+        ativo: { type: boolean }
+        versao: { type: integer, minimum: 0 }

@@ -298,4 +298,39 @@ public class UsuarioEntity {
     return entity;
   }
 
+  public static UsuarioEntity criarStaff(
+      UUID id,
+      String nome,
+      String emailNormalizado,
+      boolean ativo,
+      OffsetDateTime criadoEm) {
+    UsuarioEntity entity = new UsuarioEntity();
+    entity.id = id;
+    entity.nome = nome;
+    entity.emailNormalizado = emailNormalizado;
+    entity.telefoneNormalizado = null;
+    entity.status = ativo ? StatusUsuario.ATIVO : StatusUsuario.DESATIVADO;
+    entity.tipoConta = TipoContaUsuario.STAFF;
+    entity.emailVerificadoEm = criadoEm;
+    entity.telefoneVerificadoEm = null;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    entity.desativadoEm = ativo ? null : criadoEm;
+    entity.versao = 0;
+    return entity;
+  }
+
+  public void atualizarStaff(
+      String nome,
+      boolean ativo,
+      OffsetDateTime atualizadoEm) {
+    if (tipoConta != TipoContaUsuario.STAFF) {
+      throw new IllegalStateException("usuario nao e staff");
+    }
+    this.nome = nome;
+    this.status = ativo ? StatusUsuario.ATIVO : StatusUsuario.DESATIVADO;
+    this.desativadoEm = ativo ? null : atualizadoEm;
+    this.atualizadoEm = atualizadoEm;
+  }
+
 }

@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.admin.auth.dto.AdminAuthStatusDto;
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminLoginRequestDto;
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminMeDto;
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionsDto;
+import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.security.admin.AdminUserDetailsService;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,14 +29,17 @@ public class AdminAuthenticationService {
     private final AuthenticationManager authenticationManager;
     private final SecurityContextRepository securityContextRepository;
     private final AdminLoginLockoutService lockoutService;
+    private final PublicSessionRegistry sessionRegistry;
 
     public AdminAuthenticationService(
             AuthenticationManager authenticationManager,
             SecurityContextRepository securityContextRepository,
-            AdminLoginLockoutService lockoutService) {
+            AdminLoginLockoutService lockoutService,
+            PublicSessionRegistry sessionRegistry) {
         this.authenticationManager = authenticationManager;
         this.securityContextRepository = securityContextRepository;
         this.lockoutService = lockoutService;
+        this.sessionRegistry = sessionRegistry;
     }
 
     public AdminMeDto login(
@@ -60,6 +64,9 @@ public class AdminAuthenticationService {
             context.setAuthentication(authentication);
             SecurityContextHolder.setContext(context);
             securityContextRepository.saveContext(context, httpRequest, httpResponse);
+            if (authentication.getPrincipal() instanceof AdminUserPrincipal principal) {
+                sessionRegistry.register(principal.usuarioId(), httpRequest.getSession(false));
+            }
             lockoutService.registerSuccess(attemptContext);
             return me(authentication);
         } catch (AuthenticationException exception) {

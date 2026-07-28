@@ -69,6 +69,22 @@ public class PapelUsuarioEntity {
     return entity;
   }
 
+  public static PapelUsuarioEntity criarStaff(
+      UUID usuarioId,
+      PapelUsuario papel,
+      UUID criadoPor,
+      OffsetDateTime criadoEm) {
+    if (papel != PapelUsuario.ADMIN && papel != PapelUsuario.MODERADOR) {
+      throw new IllegalArgumentException("papel de staff invalido");
+    }
+    PapelUsuarioEntity entity = new PapelUsuarioEntity();
+    entity.usuarioId = usuarioId;
+    entity.papel = papel;
+    entity.criadoPor = criadoPor;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
   public static class PapelUsuarioId implements Serializable {
     private UUID usuarioId;
     private PapelUsuario papel;

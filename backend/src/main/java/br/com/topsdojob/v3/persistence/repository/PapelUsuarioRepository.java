@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface PapelUsuarioRepository extends JpaRepository<PapelUsuarioEntity, PapelUsuarioEntity.PapelUsuarioId> {
   List<PapelUsuarioEntity> findByUsuarioId(UUID usuarioId);
+
+  void deleteByUsuarioId(UUID usuarioId);
 }
