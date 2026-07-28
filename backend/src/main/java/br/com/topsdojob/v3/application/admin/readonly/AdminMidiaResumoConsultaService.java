@@ -9,6 +9,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,7 +40,7 @@ public class AdminMidiaResumoConsultaService {
                 anuncioMidiaRepository.countByStatusAndTipoNot(StatusAnuncioMidia.PENDENTE, TipoAnuncioMidia.STORY),
                 anuncioMidiaRepository.countByVisibilidadeMidiaAndTipoNot(
                         VisibilidadeMidia.RESTRITA_18, TipoAnuncioMidia.STORY),
-                storyRepository.countByStatus(StatusStoryAnuncio.PUBLICADO),
+                storyRepository.countAtivos(StatusStoryAnuncio.PUBLICADO, OffsetDateTime.now(ZoneOffset.UTC)),
                 storyRepository.countByStatus(StatusStoryAnuncio.PENDENTE));
     }
 }

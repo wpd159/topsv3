@@ -1,291 +1,343 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import {
-  fetchPremiumBenefitsDashboard,
-  type PremiumBenefitDashboard,
-} from '@/lib/admin-premium-benefits-api'
-import {
-  fetchAdminPerformanceAnuncios,
-  fetchAdminPerformanceSummary,
-  fetchDesempenhoDiario,
-  type AdminPerformanceResponse,
-  type AdminPerformanceSummary,
-  type DesempenhoDiarioResponse,
-} from '@/lib/admin-estatisticas-api'
-import { ContractState } from '@/components/feedback/contract-state'
-import { TopWhatsappHojeCard } from './TopWhatsappHojeCard'
-import { StrategicPerformanceChart } from './StrategicPerformanceChart'
-import { PriorityAlertsCard, type PriorityAlertItem } from './PriorityAlertsCard'
-import { CommercialOpportunitiesCard, type CommercialOpportunityItem } from './CommercialOpportunitiesCard'
-import { StrategicConversionRankings } from './StrategicConversionRankings'
-import { StrategicAnalysisTables } from './StrategicAnalysisTables'
-import { MonetizationOpportunitiesStrip, type MonetizationCard } from './MonetizationOpportunitiesStrip'
-import UltimosUsuariosTable from '../ultimos-usuarios-table'
-import { MOD_V2_QUERY_CIDADE } from '@/features/moderation-v2/lib/url-dashboard-filters'
-import {
-  aggregateByCity,
-  cidadeAbaixoDaMediaResumo,
-  countAltoTrafegoZeroClique,
-  matchesStrategicAltoTrafego,
-  matchesStrategicBaixaEficiencia,
-  pctAnunciosSemClique,
-  worstConversionWithTraffic,
-} from './strategic-dashboard-utils'
+  BadgeCheck,
+  CirclePause,
+  Clock3,
+  Eye,
+  FileCheck2,
+  Flag,
+  Headphones,
+  Lightbulb,
+  MessageCircle,
+  RefreshCw,
+  Sparkles,
+  Users,
+} from 'lucide-react'
 
-type Period = 7 | 15 | 30
+import { Button } from '@/components/ui/button'
+import { getAdminUserIndicators } from '@/features/admin-usuarios/api'
+import type { AdminUserIndicators } from '@/features/admin-usuarios/types'
+import { getAdminSession, type AdminSession } from '@/lib/admin-auth-api'
+import {
+  fetchDashboardAnuncios,
+  fetchDashboardHoje,
+  fetchDashboardMidias,
+  fetchDashboardModeracao,
+  type AdminDashboardAnuncios,
+  type AdminDashboardHoje,
+  type AdminDashboardMidias,
+  type AdminDashboardModeracao,
+} from '@/lib/admin-dashboard-api'
+import {
+  buscarIndicadoresDenuncias,
+  type AdminDenunciaIndicadores,
+} from '@/lib/admin-denuncia-api'
+import {
+  buscarIndicadoresSugestoes,
+  type AdminSugestaoIndicadores,
+} from '@/lib/admin-sugestao-api'
+import {
+  buscarIndicadoresTickets,
+  type AdminTicketIndicadores,
+} from '@/lib/admin-suporte-api'
+
+type SourceKey =
+  | 'usuarios'
+  | 'anuncios'
+  | 'moderacao'
+  | 'midias'
+  | 'tickets'
+  | 'denuncias'
+  | 'sugestoes'
+  | 'hoje'
+
+type SourceStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+type DashboardData = {
+  usuarios: AdminUserIndicators
+  anuncios: AdminDashboardAnuncios
+  moderacao: AdminDashboardModeracao
+  midias: AdminDashboardMidias
+  tickets: AdminTicketIndicadores
+  denuncias: AdminDenunciaIndicadores
+  sugestoes: AdminSugestaoIndicadores
+  hoje: AdminDashboardHoje
+}
+
+type SourceState = {
+  status: SourceStatus
+  message?: string
+}
+
+type MetricCard = {
+  id: string
+  label: string
+  value?: number
+  source: SourceKey
+  icon: ComponentType<{ className?: string }>
+  href?: string
+  tone?: 'neutral' | 'attention' | 'positive'
+}
+
+const INITIAL_SOURCE_STATE: Record<SourceKey, SourceState> = {
+  usuarios: { status: 'idle' },
+  anuncios: { status: 'idle' },
+  moderacao: { status: 'idle' },
+  midias: { status: 'idle' },
+  tickets: { status: 'idle' },
+  denuncias: { status: 'idle' },
+  sugestoes: { status: 'idle' },
+  hoje: { status: 'idle' },
+}
+
+const EMPTY_DATA: Partial<DashboardData> = {}
+
+function hasPermission(session: AdminSession, permission: string) {
+  return session.permissoes.includes(permission)
+}
+
+function sourceErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message) return error.message
+  return 'Não foi possível carregar este indicador.'
+}
+
+function formatNumber(value: number | undefined) {
+  return value === undefined ? '—' : value.toLocaleString('pt-BR')
+}
+
+function metricTone(tone: MetricCard['tone']) {
+  if (tone === 'attention') return 'border-amber-300 bg-amber-50 text-amber-800'
+  if (tone === 'positive') return 'border-emerald-300 bg-emerald-50 text-emerald-800'
+  return 'border-zinc-200 bg-white text-zinc-800'
+}
+
+function Metric({
+  item,
+  state,
+}: {
+  item: MetricCard
+  state: SourceState
+}) {
+  const Icon = item.icon
+  const loading = state.status === 'loading' || state.status === 'idle'
+  const error = state.status === 'error'
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-zinc-600">{item.label}</p>
+          <p className="mt-2 text-2xl font-bold text-zinc-950">
+            {loading ? <span className="inline-block h-7 w-16 animate-pulse bg-zinc-200" /> : formatNumber(item.value)}
+          </p>
+        </div>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center border ${metricTone(item.tone)}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+      {error ? (
+        <p className="mt-3 text-xs text-red-700" role="alert">{state.message}</p>
+      ) : item.href ? (
+        <p className="mt-3 text-xs font-medium text-pink-700">Abrir fila</p>
+      ) : null}
+    </>
+  )
+
+  const className = [
+    'min-h-28 border border-zinc-200 bg-white p-4',
+    item.href && !error ? 'transition-colors hover:border-pink-300 hover:bg-pink-50/30 focus:outline-none focus:ring-2 focus:ring-pink-300' : '',
+  ].join(' ')
+
+  if (item.href && !error) {
+    return <Link href={item.href} className={className}>{content}</Link>
+  }
+  return <div className={className}>{content}</div>
+}
 
 export function StrategicAdminDashboard() {
-  const [period, setPeriod] = useState<Period>(30)
-  const [daily, setDaily] = useState<DesempenhoDiarioResponse | null>(null)
-  const [dailyLoading, setDailyLoading] = useState(true)
-  const [dailyError, setDailyError] = useState<unknown>(null)
-  const [perf, setPerf] = useState<AdminPerformanceResponse | null>(null)
-  const [perfLoading, setPerfLoading] = useState(true)
-  const [perfError, setPerfError] = useState<unknown>(null)
-  const [premium, setPremium] = useState<PremiumBenefitDashboard | null>(null)
-  const [premiumLoading, setPremiumLoading] = useState(true)
-  const [premiumError, setPremiumError] = useState<unknown>(null)
-  const [summary, setSummary] = useState<AdminPerformanceSummary | null>(null)
-  const [summaryError, setSummaryError] = useState<unknown>(null)
+  const [data, setData] = useState<Partial<DashboardData>>(EMPTY_DATA)
+  const [sources, setSources] = useState<Record<SourceKey, SourceState>>(INITIAL_SOURCE_STATE)
+  const [session, setSession] = useState<AdminSession | null>(null)
+  const [sessionError, setSessionError] = useState<string | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const loadGeneration = useRef(0)
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setDailyLoading(true)
-      setDailyError(null)
-      try {
-        const d = await fetchDesempenhoDiario(period)
-        if (!cancelled) setDaily(d)
-      } catch (error) {
-        if (!cancelled) setDailyError(error)
-      } finally {
-        if (!cancelled) setDailyLoading(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [period])
-
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setPerfLoading(true)
-      setPremiumLoading(true)
-      setPerfError(null)
-      setPremiumError(null)
-      setSummaryError(null)
-      const [perfResult, premiumResult, summaryResult] = await Promise.allSettled([
-        fetchAdminPerformanceAnuncios(),
-        fetchPremiumBenefitsDashboard(),
-        fetchAdminPerformanceSummary(),
-      ])
-      if (cancelled) return
-      if (perfResult.status === 'fulfilled') setPerf(perfResult.value)
-      else setPerfError(perfResult.reason)
-      if (premiumResult.status === 'fulfilled') setPremium(premiumResult.value)
-      else setPremiumError(premiumResult.reason)
-      if (summaryResult.status === 'fulfilled') setSummary(summaryResult.value)
-      else setSummaryError(summaryResult.reason)
-      setPerfLoading(false)
-      setPremiumLoading(false)
-      }
-    )()
-    return () => {
-      cancelled = true
+  const loadSource = useCallback(async <K extends SourceKey>(
+    key: K,
+    request: Promise<DashboardData[K]>,
+    generation: number,
+  ) => {
+    if (loadGeneration.current !== generation) return
+    setSources((current) => ({ ...current, [key]: { status: 'loading' } }))
+    try {
+      const payload = await request
+      if (loadGeneration.current !== generation) return
+      setData((current) => ({ ...current, [key]: payload }))
+      setSources((current) => ({ ...current, [key]: { status: 'ready' } }))
+    } catch (error) {
+      if (loadGeneration.current !== generation) return
+      setSources((current) => ({
+        ...current,
+        [key]: { status: 'error', message: sourceErrorMessage(error) },
+      }))
     }
   }, [])
 
-  const base = useMemo(() => perf?.rankingPorCliques ?? [], [perf?.rankingPorCliques])
+  useEffect(() => {
+    const controller = new AbortController()
+    let active = true
+    const generation = ++loadGeneration.current
 
-  const cityRows = useMemo(() => aggregateByCity(base), [base])
+    async function load() {
+      setSessionError(null)
+      setData(EMPTY_DATA)
+      setSources(INITIAL_SOURCE_STATE)
+      try {
+        const currentSession = await getAdminSession()
+        if (!active || !currentSession) {
+          if (active) setSessionError('Sessão administrativa necessária.')
+          return
+        }
+        setSession(currentSession)
+        const requests: Promise<void>[] = []
+        if (hasPermission(currentSession, 'ANUNCIO_LER')) {
+          requests.push(loadSource('usuarios', getAdminUserIndicators(), generation))
+          requests.push(loadSource('anuncios', fetchDashboardAnuncios(controller.signal), generation))
+          requests.push(loadSource('denuncias', buscarIndicadoresDenuncias(controller.signal), generation))
+        }
+        if (
+          hasPermission(currentSession, 'ANUNCIO_MODERAR')
+          && hasPermission(currentSession, 'DOCUMENTO_REVISAR')
+        ) {
+          requests.push(loadSource('moderacao', fetchDashboardModeracao(controller.signal), generation))
+        }
+        if (hasPermission(currentSession, 'MIDIA_REVISAR')) {
+          requests.push(loadSource('midias', fetchDashboardMidias(controller.signal), generation))
+        }
+        if (hasPermission(currentSession, 'SUPORTE_ATENDER')) {
+          requests.push(loadSource('tickets', buscarIndicadoresTickets(controller.signal), generation))
+          requests.push(loadSource('sugestoes', buscarIndicadoresSugestoes(controller.signal), generation))
+        }
+        if (currentSession.papeis.includes('ADMIN') && hasPermission(currentSession, 'ANUNCIO_LER')) {
+          requests.push(loadSource('hoje', fetchDashboardHoje(controller.signal), generation))
+        }
+        await Promise.allSettled(requests)
+      } catch (error) {
+        if (active) setSessionError(sourceErrorMessage(error))
+      }
+    }
 
-  const topConv = useMemo(() => (perf?.topPorConversao ?? []).slice(0, 5), [perf?.topPorConversao])
-  const piorConv = useMemo(() => worstConversionWithTraffic(base, 100, 5), [base])
+    void load()
+    return () => {
+      active = false
+      controller.abort()
+      if (loadGeneration.current === generation) loadGeneration.current += 1
+    }
+  }, [loadSource, refreshKey])
 
-  const alerts = useMemo((): PriorityAlertItem[] => {
-    const out: PriorityAlertItem[] = []
-    if (base.length === 0) return out
-    const pct = pctAnunciosSemClique(base)
-    if (pct > 0) {
-      out.push({
-        id: 'sem-clique',
-        title: `${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% dos anúncios com views não têm clique`,
-        subtitle: 'Base com exposição mas sem conversão em WhatsApp.',
-        href: '/admin/anuncios?filtro=com-views-sem-clique',
+  const cards = useMemo<MetricCard[]>(() => {
+    const items: MetricCard[] = []
+    if (session && hasPermission(session, 'ANUNCIO_LER')) {
+      items.push(
+        { id: 'usuarios', label: 'Usuários totais', value: data.usuarios?.totalUsuarios, source: 'usuarios', icon: Users, href: '/admin/usuarios' },
+        { id: 'novos', label: 'Novos usuários hoje', value: data.usuarios?.novosHoje, source: 'usuarios', icon: Clock3, href: '/admin/usuarios?ordenacao=RECENTES' },
+        { id: 'publicados', label: 'Anúncios publicados', value: data.anuncios?.publicados, source: 'anuncios', icon: BadgeCheck, tone: 'positive' },
+        { id: 'pendentes', label: 'Anúncios pendentes', value: data.anuncios?.pendentesRevisao, source: 'anuncios', icon: FileCheck2, href: '/admin/anuncios?situacao=PENDENTES_MODERACAO', tone: 'attention' },
+        { id: 'pausados', label: 'Anúncios pausados', value: data.anuncios?.pausados, source: 'anuncios', icon: CirclePause, href: '/admin/anuncios?situacao=PAUSADOS' },
+        { id: 'denuncias', label: 'Denúncias pendentes', value: data.denuncias?.pendentes, source: 'denuncias', icon: Flag, href: '/admin/denuncias?status=PENDENTE', tone: 'attention' },
+      )
+    }
+    if (
+      session
+      && hasPermission(session, 'ANUNCIO_MODERAR')
+      && hasPermission(session, 'DOCUMENTO_REVISAR')
+    ) {
+      items.push({
+        id: 'kyc',
+        label: 'Documentos KYC pendentes',
+        value: data.moderacao?.documentosPendentes,
+        source: 'moderacao',
+        icon: FileCheck2,
+        href: '/admin/usuarios?kyc=PENDENTE',
+        tone: 'attention',
       })
     }
-    const nZero = countAltoTrafegoZeroClique(base, 200)
-    if (nZero > 0) {
-      out.push({
-        id: 'alto-trafego-zero',
-        title: `${nZero} anúncio${nZero !== 1 ? 's' : ''} com muitas views e zero clique`,
-        subtitle: 'Candidatos a revisão de criativo, preço ou canal.',
-        href: '/admin/anuncios?filtro=alto-trafego-zero-clique',
+    if (session && hasPermission(session, 'SUPORTE_ATENDER')) {
+      items.push(
+        { id: 'tickets', label: 'Tickets pendentes', value: data.tickets?.pendentesEquipe, source: 'tickets', icon: Headphones, href: '/admin/tickets?status=ABERTOS', tone: 'attention' },
+        { id: 'sugestoes', label: 'Sugestões pendentes', value: data.sugestoes?.novas, source: 'sugestoes', icon: Lightbulb, href: '/admin/sugestoes?status=PENDENTE', tone: 'attention' },
+      )
+    }
+    if (session && hasPermission(session, 'MIDIA_REVISAR')) {
+      items.push({
+        id: 'stories',
+        label: 'Stories ativos',
+        value: data.midias?.storiesPublicados,
+        source: 'midias',
+        icon: Sparkles,
       })
     }
-    const below = cidadeAbaixoDaMediaResumo(cityRows, 3)
-    if (below && below.nome && below.nome !== '—') {
-      out.push({
-        id: 'cidade-media',
-        title: `Cidade em destaque: ${below.nome}`,
-        subtitle: `Conversão agregada ${below.conversao.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% vs média ${below.media.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%.`,
-        href: `/admin/anuncios?${MOD_V2_QUERY_CIDADE}=${encodeURIComponent(below.nome)}`,
-      })
+    if (session?.papeis.includes('ADMIN') && hasPermission(session, 'ANUNCIO_LER')) {
+      items.push(
+        { id: 'views', label: 'Visualizações hoje', value: data.hoje?.visualizacoes, source: 'hoje', icon: Eye },
+        { id: 'clicks', label: 'Cliques no WhatsApp hoje', value: data.hoje?.cliquesWhatsapp, source: 'hoje', icon: MessageCircle },
+        { id: 'premium', label: 'Benefícios Premium vigentes', value: data.hoje?.beneficiosPremiumVigentes, source: 'hoje', icon: Sparkles },
+      )
     }
-    const inef =
-      (premium?.beneficiosAtivos ?? 0) > 0 &&
-      (premium?.anunciosSemUpsell ?? 0) > 20 &&
-      (premium?.anunciosSemUpsell ?? 0) > (premium?.beneficiosAtivos ?? 0) * 3
-    if (inef) {
-      out.push({
-        id: 'premio-dessinc',
-        title: 'Possível dessincronia: muitos anúncios sem upsell',
-        subtitle: 'Comparar benefícios ativos com tamanho da base comercial.',
-        href: '/admin/anuncios?filtro=sem-upsell',
-      })
-    }
-    return out.slice(0, 5)
-  }, [base, cityRows, premium])
+    return items
+  }, [data, session])
 
-  const opportunities = useMemo((): CommercialOpportunityItem[] => {
-    const out: CommercialOpportunityItem[] = []
-    const upsell = premium?.anunciosSemUpsell ?? 0
-    if (upsell > 0) {
-      out.push({
-        id: 'sem-upsell',
-        title: `${upsell.toLocaleString('pt-BR')} anúncios sem upsell`,
-        subtitle: 'Priorize upgrades e pacotes premium.',
-        href: '/admin/anuncios?filtro=sem-upsell',
-      })
-    }
-    const venc = premium?.beneficiosVencendoEmBreve ?? 0
-    if (venc > 0) {
-      out.push({
-        id: 'vencendo',
-        title: `${venc.toLocaleString('pt-BR')} benefícios vencendo em breve`,
-        subtitle: 'Renovação ou nova oferta comercial.',
-        href: '/admin/anuncios?filtro=vencendo-em-breve',
-      })
-    }
-    const altoTrafego = base.filter((i) => matchesStrategicAltoTrafego(i.visualizacoes)).length
-    if (altoTrafego > 0) {
-      out.push({
-        id: 'alto-trafego',
-        title: `${altoTrafego.toLocaleString('pt-BR')} anúncios com alto tráfego acumulado`,
-        subtitle: 'Prioridade para monetização e retenção.',
-        href: '/admin/anuncios?filtro=alto-trafego',
-      })
-    }
-    const aptosUpgrade = Math.min(upsell, base.filter((i) => (i.visualizacoes ?? 0) >= 500).length)
-    if (aptosUpgrade > 0) {
-      out.push({
-        id: 'aptos',
-        title: `Até ${aptosUpgrade.toLocaleString('pt-BR')} anúncios com tráfego médio+ sem upsell`,
-        subtitle: 'Lista cruzada aproximada para prospecção.',
-        href: '/admin/anuncios?filtro=sem-upsell',
-      })
-    }
-    return out.slice(0, 5)
-  }, [premium, base])
-
-  const monetizationCards = useMemo((): MonetizationCard[] => {
-    const semUpsell = premium?.anunciosSemUpsell ?? 0
-    const alto = base.filter((i) => matchesStrategicAltoTrafego(i.visualizacoes)).length
-    const inefCount = base.filter((i) => matchesStrategicBaixaEficiencia(i.visualizacoes, i.cliquesWhatsapp)).length
-    return [
-      {
-        id: 'm-upsell',
-        title: 'Sem upsell',
-        value: semUpsell.toLocaleString('pt-BR'),
-        description: 'Anúncios elegíveis sem benefício premium.',
-        href: '/admin/anuncios?filtro=sem-upsell',
-      },
-      {
-        id: 'm-trafego',
-        title: 'Alto tráfego',
-        value: alto.toLocaleString('pt-BR'),
-        description: 'Anúncios com ≥2k views (acumulado).',
-        href: '/admin/anuncios?filtro=alto-trafego',
-      },
-      {
-        id: 'm-inef',
-        title: 'Possível ineficiência',
-        value: inefCount.toLocaleString('pt-BR'),
-        description: 'Com views e conversão muito baixa (menos de 1%).',
-        href: '/admin/anuncios?filtro=baixa-eficiencia',
-      },
-    ]
-  }, [premium, base])
-
-  const loadingTables = perfLoading
+  const refreshing = Object.values(sources).some((source) => source.status === 'loading')
 
   return (
-    <section className="space-y-8">
-      <div className="flex flex-col gap-2 border-b border-gray-100 pb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Dashboard estratégico</h1>
-        <p className="max-w-3xl text-sm text-gray-600">
-          Leitura executiva: ritmo diário, alertas, oportunidades de receita e recortes da base. Operação ficou em
-          atalhos ao final.
-        </p>
-      </div>
+    <section className="space-y-6">
+      <header className="flex flex-col justify-between gap-3 border-b border-zinc-200 pb-5 sm:flex-row sm:items-end">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-950">Dashboard</h1>
+          <p className="mt-1 text-sm text-zinc-600">
+            Indicadores operacionais da pré-produção, sem dados simulados.
+          </p>
+          {data.hoje ? (
+            <p className="mt-1 text-xs text-zinc-500">
+              Hoje: {new Intl.DateTimeFormat('pt-BR').format(new Date(`${data.hoje.dataReferencia}T12:00:00`))}
+              {' · '}
+              {data.hoje.fusoHorario}
+            </p>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setRefreshKey((value) => value + 1)}
+          disabled={refreshing}
+        >
+          <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          Atualizar
+        </Button>
+      </header>
 
-      {summary ? (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500">Anuncios com metricas</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{summary.anunciosComMetricas.toLocaleString('pt-BR')}</p>
-          </div>
-          <div className="border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500">Visualizacoes</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{summary.visualizacoesTotal.toLocaleString('pt-BR')}</p>
-          </div>
-          <div className="border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-500">Cliques no WhatsApp</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900">{summary.cliquesWhatsappTotal.toLocaleString('pt-BR')}</p>
-          </div>
+      {sessionError ? (
+        <div className="flex flex-col items-start justify-between gap-3 border border-red-200 bg-red-50 p-4 text-sm text-red-800 sm:flex-row sm:items-center">
+          <p role="alert">{sessionError}</p>
+          <Button type="button" size="sm" variant="outline" onClick={() => setRefreshKey((value) => value + 1)}>
+            Tentar novamente
+          </Button>
         </div>
       ) : null}
-      {summaryError ? <ContractState error={summaryError} /> : null}
 
-      <StrategicPerformanceChart
-        data={daily}
-        loading={dailyLoading}
-        period={period}
-        onPeriodChange={setPeriod}
-        error={dailyError}
-      />
-
-      <TopWhatsappHojeCard />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {perfError ? <ContractState error={perfError} /> : <PriorityAlertsCard items={alerts} loading={perfLoading && base.length === 0} />}
-        {premiumError ? <ContractState error={premiumError} /> : <CommercialOpportunitiesCard items={opportunities} loading={premiumLoading} />}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map((item) => (
+          <Metric key={item.id} item={item} state={sources[item.source]} />
+        ))}
       </div>
 
-      <StrategicConversionRankings topConversao={topConv} piorConversao={piorConv} loading={loadingTables} error={perfError} />
-
-      <StrategicAnalysisTables cidadeRows={cityRows} loading={loadingTables} error={perfError} />
-
-      {perfError || premiumError ? (
-        <ContractState error={perfError || premiumError} />
-      ) : (
-        <MonetizationOpportunitiesStrip cards={monetizationCards} loading={premiumLoading && perfLoading} />
-      )}
-
-      <div className="border-t border-gray-200 pt-8">
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">Monitoramento em tempo real</p>
-        <UltimosUsuariosTable variant="compact" />
-      </div>
-
-      <p className="text-center text-xs text-gray-400">
-        Série diária e rankings usam os endpoints de estatísticas do painel.{' '}
-        <Link href="/admin/financeiro" className="text-[#f0198f] hover:underline">
-          Financeiro
-        </Link>
-      </p>
+      {!sessionError && session && cards.length === 0 ? (
+        <div className="border-y border-zinc-200 py-12 text-center">
+          <p className="text-sm font-medium text-zinc-800">Nenhum indicador disponível para suas permissões.</p>
+        </div>
+      ) : null}
     </section>
   )
 }

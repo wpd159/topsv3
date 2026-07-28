@@ -1840,6 +1840,31 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/dashboard/hoje:
+    get:
+      summary: Indicadores diarios do Dashboard administrativo
+      description: Soma os agregados internos canonicos do dia em America/Sao_Paulo e conta beneficios Premium vigentes. Restrito a ADMIN com ANUNCIO_LER; nao usa GA4, eventos duplicados ou dados financeiros.
+      operationId: getAdminDashboardHoje
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: indicadores reais do dia e beneficios vigentes
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboardHoje"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/resumo:
     get:
       summary: Resumo administrativo local de anuncios
@@ -7635,7 +7660,7 @@ components:
         - revisoesAbertas
         - revisoesEmAnalise
         - anunciosPendentesModeracao
-        - anunciosBloqueados
+        - anunciosRejeitados
         - documentosPendentes
       properties:
         revisoesAbertas:
@@ -7650,7 +7675,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-        anunciosBloqueados:
+        anunciosRejeitados:
           type: integer
           format: int64
           minimum: 0
@@ -7668,7 +7693,7 @@ components:
         - arquivosValidados
         - midiasPublicaveis
         - midiasPendentes
-        - midiasBloqueadas
+        - midiasRestritas18
         - storiesPublicados
         - storiesPendentes
       properties:
@@ -7692,7 +7717,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-        midiasBloqueadas:
+        midiasRestritas18:
           type: integer
           format: int64
           minimum: 0
@@ -7700,10 +7725,45 @@ components:
           type: integer
           format: int64
           minimum: 0
+          description: Stories PUBLICADO cuja janela de inicio e fim esta ativa no instante da consulta.
         storiesPendentes:
           type: integer
           format: int64
           minimum: 0
+    AdminDashboardHoje:
+      type: object
+      additionalProperties: false
+      required:
+        - dataReferencia
+        - fusoHorario
+        - visualizacoes
+        - cliquesWhatsapp
+        - beneficiosPremiumVigentes
+        - calculadoEm
+      properties:
+        dataReferencia:
+          type: string
+          format: date
+        fusoHorario:
+          type: string
+          const: America/Sao_Paulo
+        visualizacoes:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Soma do agregado_visualizacao_diaria na data local.
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Soma do agregado_clique_whatsapp_diario na data local.
+        beneficiosPremiumVigentes:
+          type: integer
+          format: int64
+          minimum: 0
+        calculadoEm:
+          type: string
+          format: date-time
     AdminResumoMetricas:
       type: object
       additionalProperties: false

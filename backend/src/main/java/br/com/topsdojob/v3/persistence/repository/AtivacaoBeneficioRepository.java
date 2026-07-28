@@ -57,6 +57,31 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
             @Param("usuarioId") UUID usuarioId,
             @Param("agora") OffsetDateTime agora);
 
+    @Query(value = """
+            select count(*)
+            from ativacao_beneficio ab
+            join anuncio a on a.id = ab.anuncio_id
+            join beneficio_premium bp on bp.id = ab.beneficio_id
+            join grupo_ativacao_beneficio gb on gb.id = ab.grupo_ativacao_id
+            where a.removido_em is null
+              and ab.usuario_id = a.usuario_id
+              and gb.usuario_id = a.usuario_id
+              and gb.anuncio_id = a.id
+              and gb.origem = ab.origem
+              and bp.escopo = 'ANUNCIO'
+              and bp.ativo = true
+              and ab.status = 'ATIVA'
+              and ab.revogada_em is null
+              and ab.inicio_em <= :agora
+              and ab.fim_em > :agora
+              and ab.inicio_em >= gb.validade_inicio_em
+              and ab.fim_em <= gb.validade_fim_em
+              and gb.status = 'ATIVO'
+              and gb.validade_inicio_em <= :agora
+              and gb.validade_fim_em > :agora
+            """, nativeQuery = true)
+    long countVigentes(@Param("agora") OffsetDateTime agora);
+
     interface ContagemPremiumVigenteProjection {
         UUID getAnuncioId();
 
