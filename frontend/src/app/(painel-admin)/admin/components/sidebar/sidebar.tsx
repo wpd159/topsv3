@@ -37,6 +37,10 @@ type DenunciaIndicators = {
   pendentes: number
 }
 
+type SugestaoIndicators = {
+  novas: number
+}
+
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
   const { usuario } = useAuth()
@@ -66,7 +70,12 @@ export default function Sidebar() {
       if (inFlight) return inFlight
       inFlight = (async () => {
         try {
-          const [moderationResponse, ticketsResponse, denunciasResponse] = await Promise.all([
+          const [
+            moderationResponse,
+            ticketsResponse,
+            denunciasResponse,
+            sugestoesResponse,
+          ] = await Promise.all([
             fetch(adminApiUrl('/moderacao/resumo'), {
               credentials: 'include',
               cache: 'no-store',
@@ -79,18 +88,25 @@ export default function Sidebar() {
               credentials: 'include',
               cache: 'no-store',
             }),
+            fetch(adminApiUrl('/sugestoes/indicadores'), {
+              credentials: 'include',
+              cache: 'no-store',
+            }),
           ])
           if (!moderationResponse.ok) throw await apiErrorFromResponse(moderationResponse)
           if (!ticketsResponse.ok) throw await apiErrorFromResponse(ticketsResponse)
           if (!denunciasResponse.ok) throw await apiErrorFromResponse(denunciasResponse)
+          if (!sugestoesResponse.ok) throw await apiErrorFromResponse(sugestoesResponse)
           const summary = (await moderationResponse.json()) as ModerationSummary
           const tickets = (await ticketsResponse.json()) as TicketIndicators
           const denuncias = (await denunciasResponse.json()) as DenunciaIndicators
+          const sugestoes = (await sugestoesResponse.json()) as SugestaoIndicators
           if (!active) return
           setNotificationCounts((current) => ({
             ...current,
             tickets: Number(tickets.pendentesEquipe),
             denuncias: Number(denuncias.pendentes),
+            sugestoes: Number(sugestoes.novas),
             revisoes:
               Number(summary.revisoesAbertas) +
               Number(summary.revisoesEmAnalise) +
@@ -102,6 +118,7 @@ export default function Sidebar() {
             ...current,
             tickets: null,
             denuncias: null,
+            sugestoes: null,
             revisoes: null,
           }))
         } finally {
@@ -119,6 +136,7 @@ export default function Sidebar() {
     window.addEventListener('admin-revisions-updated', handleRevisionUpdate)
     window.addEventListener('suporte-ticket-changed', handleRevisionUpdate)
     window.addEventListener('admin-denuncias-updated', handleRevisionUpdate)
+    window.addEventListener('admin-sugestoes-updated', handleRevisionUpdate)
 
     return () => {
       active = false
@@ -126,6 +144,7 @@ export default function Sidebar() {
       window.removeEventListener('admin-revisions-updated', handleRevisionUpdate)
       window.removeEventListener('suporte-ticket-changed', handleRevisionUpdate)
       window.removeEventListener('admin-denuncias-updated', handleRevisionUpdate)
+      window.removeEventListener('admin-sugestoes-updated', handleRevisionUpdate)
     }
   }, [usuario])
 

@@ -5797,6 +5797,163 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/sugestoes:
+    post:
+      summary: Envia uma sugestao ou relato de bug autenticado
+      operationId: postPublicSuggestion
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SugestaoCriarRequest"
+      responses:
+        "200":
+          description: Sugestao registrada uma unica vez
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SugestaoCriacao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/sugestoes:
+    get:
+      summary: Lista sugestoes e bugs para tratamento administrativo
+      operationId: getAdminSuggestions
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: termo
+          in: query
+          schema:
+            type: string
+            maxLength: 160
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, PENDENTE, EM_ANALISE, RESOLVIDO, RECUSADO]
+            default: TODOS
+      responses:
+        "200":
+          description: Fila paginada de sugestoes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSugestaoPagina"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/sugestoes/indicadores:
+    get:
+      summary: Retorna contadores administrativos de sugestoes
+      operationId: getAdminSuggestionIndicators
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Contadores por estado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSugestaoIndicadores"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/sugestoes/{sugestaoId}:
+    get:
+      summary: Consulta detalhe e historico de uma sugestao
+      operationId: getAdminSuggestion
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: sugestaoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Sugestao e historico administrativo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSugestaoDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/sugestoes/{sugestaoId}/status:
+    patch:
+      summary: Registra providencia e altera o estado de uma sugestao
+      operationId: patchAdminSuggestionStatus
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: sugestaoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminSugestaoAlterarStatusRequest"
+      responses:
+        "200":
+          description: Estado e historico atualizados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSugestaoDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     PublicSessionCookie:
@@ -11950,3 +12107,111 @@ components:
       required: [status]
       properties:
         status: { $ref: "#/components/schemas/SuporteStatus" }
+    SugestaoTipo:
+      type: string
+      enum: [FEATURE, BUG]
+    SugestaoStatus:
+      type: string
+      enum: [PENDENTE, EM_ANALISE, RESOLVIDO, RECUSADO]
+    SugestaoCriarRequest:
+      type: object
+      additionalProperties: false
+      required: [tipo, titulo, descricao]
+      properties:
+        tipo: { $ref: "#/components/schemas/SugestaoTipo" }
+        titulo: { type: string, minLength: 5, maxLength: 160 }
+        descricao: { type: string, minLength: 10, maxLength: 3000 }
+    SugestaoCriacao:
+      type: object
+      additionalProperties: false
+      required: [id, protocolo, status, statusRotulo, criadoEm, repetida]
+      properties:
+        id: { type: string, format: uuid }
+        protocolo: { type: string }
+        status: { $ref: "#/components/schemas/SugestaoStatus" }
+        statusRotulo: { type: string }
+        criadoEm: { type: string, format: date-time }
+        repetida: { type: boolean }
+    AdminSugestaoResumo:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - protocolo
+        - titulo
+        - tipo
+        - tipoRotulo
+        - status
+        - statusRotulo
+        - usuarioNome
+        - criadoEm
+        - atualizadoEm
+      properties:
+        id: { type: string, format: uuid }
+        protocolo: { type: string }
+        titulo: { type: string }
+        tipo: { $ref: "#/components/schemas/SugestaoTipo" }
+        tipoRotulo: { type: string }
+        status: { $ref: "#/components/schemas/SugestaoStatus" }
+        statusRotulo: { type: string }
+        usuarioNome: { type: string }
+        usuarioEmail: { type: [string, "null"] }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+    AdminSugestaoHistorico:
+      type: object
+      additionalProperties: false
+      required: [id, acao, acaoRotulo, atorNome, criadoEm, requestId]
+      properties:
+        id: { type: string, format: uuid }
+        acao: { type: string }
+        acaoRotulo: { type: string }
+        status: { type: [string, "null"] }
+        providencia: { type: [string, "null"] }
+        atorNome: { type: string }
+        criadoEm: { type: string, format: date-time }
+        requestId: { type: string }
+    AdminSugestaoDetalhe:
+      type: object
+      additionalProperties: false
+      required: [sugestao, descricao, historico]
+      properties:
+        sugestao: { $ref: "#/components/schemas/AdminSugestaoResumo" }
+        descricao: { type: string }
+        providencia: { type: [string, "null"] }
+        responsavelNome: { type: [string, "null"] }
+        decididoEm: { type: [string, "null"], format: date-time }
+        historico:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSugestaoHistorico" }
+    AdminSugestaoPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, pagina, tamanho, totalElementos, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSugestaoResumo" }
+        pagina: { type: integer, minimum: 0 }
+        tamanho: { type: integer, minimum: 1, maximum: 100 }
+        totalElementos: { type: integer, minimum: 0 }
+        totalPaginas: { type: integer, minimum: 0 }
+    AdminSugestaoIndicadores:
+      type: object
+      additionalProperties: false
+      required: [total, novas, emAnalise, resolvidas, recusadas]
+      properties:
+        total: { type: integer, minimum: 0 }
+        novas: { type: integer, minimum: 0 }
+        emAnalise: { type: integer, minimum: 0 }
+        resolvidas: { type: integer, minimum: 0 }
+        recusadas: { type: integer, minimum: 0 }
+    AdminSugestaoAlterarStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status, providencia]
+      properties:
+        status:
+          type: string
+          enum: [EM_ANALISE, RESOLVIDO, RECUSADO]
+        providencia: { type: string, minLength: 3, maxLength: 2000 }

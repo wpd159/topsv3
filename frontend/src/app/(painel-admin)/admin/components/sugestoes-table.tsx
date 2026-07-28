@@ -1,16 +1,61 @@
 'use client'
 
-import { useState } from 'react'
-
-import { ContractState, PendingActionFeedback, usePendingContractActions } from '@/components/feedback/contract-state'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { PENDING_BACKEND_CONTRACTS } from '@/lib/api-contract'
+import type { AdminSugestaoResumo } from '@/lib/admin-sugestao-api'
 
-export default function SugestoesTable({ busca: _busca = '', status: _status = 'TODAS' }: { busca?: string; status?: string }) {
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const { error, attemptedAction, runPendingAction } = usePendingContractActions(PENDING_BACKEND_CONTRACTS.suggestions)
-  return <div className="space-y-3"><PendingActionFeedback attemptedAction={attemptedAction} /><div className="overflow-x-auto rounded-lg border bg-white"><Table><TableHeader><TableRow><TableHead>Título</TableHead><TableHead>Tipo</TableHead><TableHead>Status</TableHead><TableHead>Data</TableHead><TableHead>Ações</TableHead></TableRow></TableHeader><TableBody><TableRow><TableCell colSpan={5}><ContractState error={error} compact /><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" onClick={() => setDetailsOpen(true)}>Ver</Button><Select defaultValue="PENDENTE" onValueChange={() => runPendingAction('Atualizar status da sugestão')}><SelectTrigger className="w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="PENDENTE">Pendente</SelectItem><SelectItem value="EM_ANALISE">Em análise</SelectItem><SelectItem value="CONCLUIDA">Concluída</SelectItem></SelectContent></Select><Button type="button" variant="outline" onClick={() => runPendingAction('Marcar sugestão como resolvida')}>Resolver</Button><Button type="button" variant="outline" onClick={() => runPendingAction('Recusar sugestão')}>Recusar</Button><Button type="button" variant="destructive" onClick={() => runPendingAction('Excluir sugestão')}>Excluir</Button></div></TableCell></TableRow></TableBody></Table></div><div className="flex justify-between"><Button type="button" variant="outline" onClick={() => runPendingAction('Página anterior de sugestões')}>Voltar</Button><Button type="button" variant="outline" onClick={() => runPendingAction('Próxima página de sugestões')}>Próximo</Button></div><Dialog open={detailsOpen} onOpenChange={setDetailsOpen}><DialogContent><DialogHeader><DialogTitle>Informações completas da sugestão</DialogTitle><DialogDescription>Tipo, descrição, status, usuário e data.</DialogDescription></DialogHeader><ContractState error={error} compact /><div className="grid gap-3 sm:grid-cols-2">{['Título', 'Tipo', 'Descrição', 'Status', 'Usuário', 'Data'].map((field) => <div key={field} className="rounded-md border p-3"><p className="text-xs uppercase text-gray-500">{field}</p><p className="text-sm">Dado indisponível</p></div>)}</div><DialogFooter><Button type="button" variant="outline" onClick={() => setDetailsOpen(false)}>Fechar</Button></DialogFooter></DialogContent></Dialog></div>
+function dataHora(value: string) {
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+export default function SugestoesTable({
+  itens,
+  onOpen,
+}: {
+  itens: AdminSugestaoResumo[]
+  onOpen: (id: string) => void
+}) {
+  return (
+    <div className="divide-y border-y">
+      {itens.map((sugestao) => (
+        <article
+          key={sugestao.id}
+          className="grid gap-3 px-1 py-4 sm:px-3 lg:grid-cols-[minmax(0,1.3fr)_140px_150px_180px_auto] lg:items-center"
+        >
+          <div className="min-w-0">
+            <p className="truncate font-semibold text-zinc-950">{sugestao.titulo}</p>
+            <p className="mt-1 text-xs text-zinc-400">{sugestao.protocolo}</p>
+            <p className="truncate text-xs text-zinc-500">
+              {sugestao.usuarioNome}
+              {sugestao.usuarioEmail ? ` - ${sugestao.usuarioEmail}` : ''}
+            </p>
+          </div>
+          <p className="text-sm text-zinc-700">{sugestao.tipoRotulo}</p>
+          <div>
+            <span
+              className={`inline-flex rounded-md border px-2 py-1 text-xs font-medium ${
+                sugestao.status === 'PENDENTE'
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : sugestao.status === 'EM_ANALISE'
+                    ? 'border-blue-200 bg-blue-50 text-blue-800'
+                    : sugestao.status === 'RESOLVIDO'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-zinc-200 bg-zinc-100 text-zinc-700'
+              }`}
+            >
+              {sugestao.statusRotulo}
+            </span>
+          </div>
+          <p className="text-sm text-zinc-600">{dataHora(sugestao.criadoEm)}</p>
+          <div className="lg:text-right">
+            <Button type="button" size="sm" onClick={() => onOpen(sugestao.id)}>
+              Abrir detalhe
+            </Button>
+          </div>
+        </article>
+      ))}
+    </div>
+  )
 }

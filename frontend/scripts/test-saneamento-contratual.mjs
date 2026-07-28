@@ -73,13 +73,14 @@ assert.ok(payments.includes('setErro(error)'), 'Falha financeira nao pode virar 
 assert.ok(payments.includes("'Contagem indisponivel'"), 'Contador financeiro deve diferenciar falha de zero.')
 
 const sidebar = source('app/(painel-admin)/admin/components/sidebar/sidebar.tsx')
-assert.equal((sidebar.match(/fetch\(/g) || []).length, 3, 'Sidebar deve consultar somente os tres contratos reais.')
+assert.equal((sidebar.match(/fetch\(/g) || []).length, 4, 'Sidebar deve consultar somente os quatro contratos reais.')
 assert.ok(sidebar.includes("adminApiUrl('/moderacao/resumo')"), 'Sidebar deve consultar o resumo de moderacao real.')
 assert.ok(sidebar.includes("adminApiUrl('/tickets/indicadores')"), 'Sidebar deve consultar os indicadores reais de tickets.')
 assert.ok(sidebar.includes("adminApiUrl('/denuncias/indicadores')"), 'Sidebar deve consultar os indicadores reais de denuncias.')
+assert.ok(sidebar.includes("adminApiUrl('/sugestoes/indicadores')"), 'Sidebar deve consultar os indicadores reais de sugestoes.')
 assert.ok(sidebar.includes('Promise.all(['), 'Contadores reais devem compartilhar a mesma janela de atualizacao.')
 assert.ok(sidebar.includes('if (inFlight) return inFlight'), 'Polling simultaneo deve ser deduplicado.')
-assert.ok(sidebar.includes('tickets: null') && sidebar.includes('sugestoes: null'), 'Falhas e modulos pendentes nao podem exibir zero falso.')
+assert.ok(sidebar.includes('tickets: null') && sidebar.includes('sugestoes: null'), 'Falhas de contador nao podem exibir zero falso.')
 
 const moderation = source('features/moderation-v2/api/client.ts')
 for (const endpoint of ['/anuncios?page=0&size=100', '/moderacao/revisoes?page=0&size=100', '/midias', '/documentos', '/premium']) {
@@ -152,9 +153,6 @@ const preservedSurfaces = {
   'app/(painel-admin)/admin/components/financeiro/financeiro-charts.tsx': [
     '7 dias', '30 dias', 'Mes atual', 'Receita no periodo', 'Transacoes aprovadas',
     'Creditos entregues', 'Grafico de receita e vendas',
-  ],
-  'app/(painel-admin)/admin/components/sugestoes-table.tsx': [
-    'Ver', 'Resolver', 'Recusar', 'Excluir', 'Fechar',
   ],
   'app/(public-routes)/anuncios/[slug]/componentes/avisos-administracao.tsx': [
     'Aviso anterior', 'Proximo aviso', 'Ir para aviso 1',

@@ -125,7 +125,6 @@ export function requireArrayPayload<T>(payload: unknown): T[] {
 
 export const PENDING_BACKEND_CONTRACTS = {
   blog: 'Blog e conteudo editorial',
-  suggestions: 'Sugestoes',
   notices: 'Avisos e FAQ',
   adminUsers: 'Gestao administrativa de usuarios',
   adminAnalytics: 'Rankings e series detalhadas do dashboard',
