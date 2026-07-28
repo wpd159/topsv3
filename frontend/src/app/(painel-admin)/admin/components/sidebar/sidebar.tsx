@@ -29,6 +29,10 @@ type ModerationSummary = {
   anunciosPendentesModeracao: number
 }
 
+type TicketIndicators = {
+  pendentesEquipe: number
+}
+
 export default function Sidebar() {
   const [open, setOpen] = useState(false)
   const { usuario } = useAuth()
@@ -58,15 +62,24 @@ export default function Sidebar() {
       if (inFlight) return inFlight
       inFlight = (async () => {
         try {
-          const response = await fetch(adminApiUrl('/moderacao/resumo'), {
-            credentials: 'include',
-            cache: 'no-store',
-          })
-          if (!response.ok) throw await apiErrorFromResponse(response)
-          const summary = (await response.json()) as ModerationSummary
+          const [moderationResponse, ticketsResponse] = await Promise.all([
+            fetch(adminApiUrl('/moderacao/resumo'), {
+              credentials: 'include',
+              cache: 'no-store',
+            }),
+            fetch(adminApiUrl('/tickets/indicadores'), {
+              credentials: 'include',
+              cache: 'no-store',
+            }),
+          ])
+          if (!moderationResponse.ok) throw await apiErrorFromResponse(moderationResponse)
+          if (!ticketsResponse.ok) throw await apiErrorFromResponse(ticketsResponse)
+          const summary = (await moderationResponse.json()) as ModerationSummary
+          const tickets = (await ticketsResponse.json()) as TicketIndicators
           if (!active) return
           setNotificationCounts((current) => ({
             ...current,
+            tickets: Number(tickets.pendentesEquipe),
             revisoes:
               Number(summary.revisoesAbertas) +
               Number(summary.revisoesEmAnalise) +
@@ -74,7 +87,7 @@ export default function Sidebar() {
           }))
         } catch {
           if (!active) return
-          setNotificationCounts((current) => ({ ...current, revisoes: null }))
+          setNotificationCounts((current) => ({ ...current, tickets: null, revisoes: null }))
         } finally {
           inFlight = null
         }
@@ -88,11 +101,13 @@ export default function Sidebar() {
       void carregarContadores()
     }
     window.addEventListener('admin-revisions-updated', handleRevisionUpdate)
+    window.addEventListener('suporte-ticket-changed', handleRevisionUpdate)
 
     return () => {
       active = false
       window.clearInterval(interval)
       window.removeEventListener('admin-revisions-updated', handleRevisionUpdate)
+      window.removeEventListener('suporte-ticket-changed', handleRevisionUpdate)
     }
   }, [usuario])
 

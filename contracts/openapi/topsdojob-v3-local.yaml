@@ -5126,6 +5126,330 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlogCategoria"
+  /api/public/suporte/tickets:
+    get:
+      summary: Lista os tickets do usuario autenticado
+      operationId: getPublicSupportTickets
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: grupo
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, ABERTOS, ENCERRADOS]
+            default: TODOS
+      responses:
+        "200":
+          description: Pagina de tickets do usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuporteTicketPagina"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+    post:
+      summary: Abre um ticket de suporte
+      operationId: postPublicSupportTicket
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuporteCriarTicketRequest"
+      responses:
+        "200":
+          description: Ticket criado ou resposta idempotente equivalente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuporteTicketDetalhe"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/BadRequest"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/suporte/tickets/{ticketId}:
+    get:
+      summary: Consulta um ticket pertencente ao usuario autenticado
+      operationId: getPublicSupportTicket
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ticket e mensagens visiveis ao usuario
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuporteTicketDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/suporte/tickets/{ticketId}/mensagens:
+    post:
+      summary: Responde um ticket pertencente ao usuario autenticado
+      operationId: postPublicSupportTicketMessage
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuporteResponderTicketRequest"
+      responses:
+        "200":
+          description: Mensagem registrada uma unica vez
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuporteMensagem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/suporte/tickets/{ticketId}/encerrar:
+    post:
+      summary: Encerra um ticket pertencente ao usuario autenticado
+      operationId: postPublicSupportTicketClose
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ticket encerrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuporteTicketDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/tickets:
+    get:
+      summary: Lista a fila administrativa de tickets
+      operationId: getAdminSupportTickets
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: termo
+          in: query
+          schema:
+            type: string
+            maxLength: 160
+        - name: categoria
+          in: query
+          schema:
+            $ref: "#/components/schemas/SuporteCategoria"
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: ordenacao
+          in: query
+          schema:
+            type: string
+            enum: [RECENTES, ANTIGOS]
+            default: RECENTES
+      responses:
+        "200":
+          description: Fila paginada de tickets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSuporteTicketPagina"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/tickets/indicadores:
+    get:
+      summary: Retorna os contadores administrativos de tickets
+      operationId: getAdminSupportTicketIndicators
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Contadores por estado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSuporteIndicadores"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/tickets/{ticketId}:
+    get:
+      summary: Consulta o detalhe administrativo de um ticket
+      operationId: getAdminSupportTicket
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Ticket e historico completo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSuporteTicketDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/tickets/{ticketId}/mensagens:
+    post:
+      summary: Registra uma resposta da equipe no ticket
+      operationId: postAdminSupportTicketMessage
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuporteResponderTicketRequest"
+      responses:
+        "200":
+          description: Resposta registrada uma unica vez
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuporteMensagem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/tickets/{ticketId}/status:
+    patch:
+      summary: Altera o estado de atendimento de um ticket
+      description: Tickets finalizados nao podem ser reabertos.
+      operationId: patchAdminSupportTicketStatus
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminSuporteAlterarStatusRequest"
+      responses:
+        "200":
+          description: Estado atualizado e auditado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSuporteTicketDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
 components:
   securitySchemes:
     PublicSessionCookie:
@@ -10957,3 +11281,143 @@ components:
         updatedAt: { type: string, format: date-time }
         priority: { type: number, minimum: 0.1, maximum: 1.0 }
         changeFrequency: { type: string, enum: [daily, weekly, monthly] }
+    SuporteCategoria:
+      type: string
+      enum: [ERRO_NO_SISTEMA, PROBLEMAS_COM_PAGAMENTO, ACESSO_CONTA, OUTROS]
+    SuporteStatus:
+      type: string
+      enum: [ABERTO, EM_ATENDIMENTO, AGUARDANDO_USUARIO, RESOLVIDO, ENCERRADO]
+    SuporteTicketResumo:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - protocolo
+        - assunto
+        - categoria
+        - categoriaRotulo
+        - status
+        - statusRotulo
+        - criadoEm
+        - atualizadoEm
+        - totalMensagens
+      properties:
+        id: { type: string, format: uuid }
+        protocolo: { type: string }
+        assunto: { type: string, minLength: 6, maxLength: 160 }
+        categoria: { $ref: "#/components/schemas/SuporteCategoria" }
+        categoriaRotulo: { type: string }
+        status: { $ref: "#/components/schemas/SuporteStatus" }
+        statusRotulo: { type: string }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+        totalMensagens: { type: integer, minimum: 1 }
+    SuporteMensagem:
+      type: object
+      additionalProperties: false
+      required: [id, origem, remetente, corpo, criadoEm, minha, repetida]
+      properties:
+        id: { type: string, format: uuid }
+        origem:
+          type: string
+          enum: [USUARIO, STAFF, SISTEMA, IMPORTACAO]
+        remetente: { type: string }
+        corpo: { type: string, minLength: 1, maxLength: 4000 }
+        criadoEm: { type: string, format: date-time }
+        minha: { type: boolean }
+        repetida: { type: boolean }
+    SuporteTicketDetalhe:
+      type: object
+      additionalProperties: false
+      required: [ticket, mensagens]
+      properties:
+        ticket: { $ref: "#/components/schemas/SuporteTicketResumo" }
+        mensagens:
+          type: array
+          items: { $ref: "#/components/schemas/SuporteMensagem" }
+    SuporteTicketPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, pagina, tamanho, totalElementos, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/SuporteTicketResumo" }
+        pagina: { type: integer, minimum: 0 }
+        tamanho: { type: integer, minimum: 1, maximum: 100 }
+        totalElementos: { type: integer, minimum: 0 }
+        totalPaginas: { type: integer, minimum: 0 }
+    SuporteCriarTicketRequest:
+      type: object
+      additionalProperties: false
+      required: [assunto, categoria, descricao]
+      properties:
+        assunto: { type: string, minLength: 6, maxLength: 160 }
+        categoria: { $ref: "#/components/schemas/SuporteCategoria" }
+        descricao: { type: string, minLength: 10, maxLength: 4000 }
+    SuporteResponderTicketRequest:
+      type: object
+      additionalProperties: false
+      required: [mensagem]
+      properties:
+        mensagem: { type: string, minLength: 1, maxLength: 4000 }
+    AdminSuporteTicketResumo:
+      allOf:
+        - $ref: "#/components/schemas/SuporteTicketResumo"
+        - type: object
+          required: [usuarioId, usuarioNome, usuarioEmail, mensagemInicial]
+          properties:
+            usuarioId: { type: string, format: uuid }
+            usuarioNome: { type: string }
+            usuarioEmail: { type: string, format: email }
+            mensagemInicial: { type: string }
+      unevaluatedProperties: false
+    AdminSuporteTicketPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, pagina, tamanho, totalElementos, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/AdminSuporteTicketResumo" }
+        pagina: { type: integer, minimum: 0 }
+        tamanho: { type: integer, minimum: 1, maximum: 100 }
+        totalElementos: { type: integer, minimum: 0 }
+        totalPaginas: { type: integer, minimum: 0 }
+    AdminSuporteTicketDetalhe:
+      type: object
+      additionalProperties: false
+      required: [ticket, mensagens]
+      properties:
+        ticket: { $ref: "#/components/schemas/AdminSuporteTicketResumo" }
+        mensagens:
+          type: array
+          items: { $ref: "#/components/schemas/SuporteMensagem" }
+        responsavelId: { type: [string, "null"], format: uuid }
+        responsavelNome: { type: [string, "null"] }
+        encerradoEm: { type: [string, "null"], format: date-time }
+    AdminSuporteIndicadores:
+      type: object
+      additionalProperties: false
+      required:
+        - total
+        - abertos
+        - emAtendimento
+        - aguardandoUsuario
+        - resolvidos
+        - encerrados
+        - pendentesEquipe
+      properties:
+        total: { type: integer, minimum: 0 }
+        abertos: { type: integer, minimum: 0 }
+        emAtendimento: { type: integer, minimum: 0 }
+        aguardandoUsuario: { type: integer, minimum: 0 }
+        resolvidos: { type: integer, minimum: 0 }
+        encerrados: { type: integer, minimum: 0 }
+        pendentesEquipe: { type: integer, minimum: 0 }
+    AdminSuporteAlterarStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/SuporteStatus" }

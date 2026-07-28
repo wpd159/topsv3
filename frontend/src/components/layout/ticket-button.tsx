@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { ChatBubbleLeftRightIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { useAuth } from '@/context/AuthContext'
@@ -24,6 +25,7 @@ export default function AbrirTicketButton() {
   const { usuario } = useAuth()
   const [open, setOpen] = useState(false)
   const [problema, setProblema] = useState<MotivoUI | ''>('')
+  const [assunto, setAssunto] = useState('')
   const [descricao, setDescricao] = useState('')
   const endOfMessagesRef = useRef<HTMLDivElement | null>(null)
 
@@ -36,6 +38,7 @@ export default function AbrirTicketButton() {
     enviarMensagem,
     encerrarTicket,
     contractError,
+    processando,
   } = useSuporteChat(usuario)
 
   const emitChanged = () => window.dispatchEvent(new Event('suporte-ticket-changed'))
@@ -58,8 +61,8 @@ export default function AbrirTicketButton() {
   const hideFab = pathname.startsWith('/meus-tickets') // ✅ aqui a tela já tem botão
 
   const handleAbrirChamado = async () => {
-    if (!problema || !descricao.trim()) return
-    await abrirChamado(motivoMap[problema as MotivoUI], descricao)
+    if (!problema || assunto.trim().length < 6 || descricao.trim().length < 10) return
+    await abrirChamado(assunto, motivoMap[problema as MotivoUI], descricao)
     emitChanged()
   }
 
@@ -92,6 +95,13 @@ export default function AbrirTicketButton() {
 
               {contractError ? <ContractState error={contractError} compact /> : null}
 
+              <Input
+                placeholder="Assunto"
+                value={assunto}
+                onChange={(event) => setAssunto(event.target.value)}
+                maxLength={160}
+              />
+
               <Select value={problema} onValueChange={(v: MotivoUI) => setProblema(v)}>
                 <SelectTrigger className="mt-1 w-full py-5 bg-gray-200 border-gray-500/40">
                   <SelectValue placeholder="Tipo de problema" />
@@ -113,7 +123,7 @@ export default function AbrirTicketButton() {
 
               <Button
                 onClick={handleAbrirChamado}
-                disabled={!problema || !descricao.trim()}
+                disabled={processando || !problema || assunto.trim().length < 6 || descricao.trim().length < 10}
                 className="w-full bg-[#FC1EAD] hover:bg-[#e01a9a] text-white font-semibold py-5 disabled:opacity-60"
               >
                 <PaperAirplaneIcon className="w-5 h-5 -rotate-45 mr-2" />
@@ -154,11 +164,12 @@ export default function AbrirTicketButton() {
                 />
 
                 <Button
-                  onClick={() => {
-                    enviarMensagem()
+                  onClick={async () => {
+                    await enviarMensagem()
                     setTimeout(() => endOfMessagesRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
                     emitChanged()
                   }}
+                  disabled={processando || !novaMensagem.trim()}
                   className="w-full bg-[#FC1EAD] hover:bg-[#e01a9a] text-white font-semibold py-5"
                 >
                   <PaperAirplaneIcon className="w-5 h-5 -rotate-45 mr-2" />
@@ -167,6 +178,7 @@ export default function AbrirTicketButton() {
 
                 <Button
                   onClick={handleEncerrar}
+                  disabled={processando}
                   variant="outline"
                   className="w-full border-red-400 text-red-500 hover:bg-red-50 font-semibold py-5"
                 >

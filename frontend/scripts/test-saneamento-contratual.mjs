@@ -73,10 +73,12 @@ assert.ok(payments.includes('setErro(error)'), 'Falha financeira nao pode virar 
 assert.ok(payments.includes("'Contagem indisponivel'"), 'Contador financeiro deve diferenciar falha de zero.')
 
 const sidebar = source('app/(painel-admin)/admin/components/sidebar/sidebar.tsx')
-assert.equal((sidebar.match(/fetch\(/g) || []).length, 1, 'Sidebar deve ter um unico polling real.')
-assert.ok(sidebar.includes("adminApiUrl('/moderacao/resumo')"), 'Sidebar deve consultar apenas o resumo real.')
+assert.equal((sidebar.match(/fetch\(/g) || []).length, 2, 'Sidebar deve consultar somente os dois contratos reais.')
+assert.ok(sidebar.includes("adminApiUrl('/moderacao/resumo')"), 'Sidebar deve consultar o resumo de moderacao real.')
+assert.ok(sidebar.includes("adminApiUrl('/tickets/indicadores')"), 'Sidebar deve consultar os indicadores reais de tickets.')
+assert.ok(sidebar.includes('Promise.all(['), 'Contadores reais devem compartilhar a mesma janela de atualizacao.')
 assert.ok(sidebar.includes('if (inFlight) return inFlight'), 'Polling simultaneo deve ser deduplicado.')
-assert.ok(sidebar.includes('tickets: null') && sidebar.includes('sugestoes: null'), 'Modulos pendentes nao podem exibir zero falso.')
+assert.ok(sidebar.includes('tickets: null') && sidebar.includes('sugestoes: null'), 'Falhas e modulos pendentes nao podem exibir zero falso.')
 
 const moderation = source('features/moderation-v2/api/client.ts')
 for (const endpoint of ['/anuncios?page=0&size=100', '/moderacao/revisoes?page=0&size=100', '/midias', '/documentos', '/premium']) {
@@ -121,14 +123,6 @@ const preservedSurfaces = {
     'Motivo da decisao', 'Historico da decisao', 'Risco por sessao', 'Eventos criticos',
     'Score', 'Falhas', 'Ultimo motivo', 'Salvar configuracoes',
   ],
-  'app/(painel-admin)/admin/tickets/page.tsx': [
-    'Atualizar', 'Abertos', 'Em andamento', 'Fechados', 'Limpar filtros',
-    'Responder', 'Ver detalhes', 'Fechar',
-  ],
-  'app/(private-routes)/meus-tickets/page.tsx': [
-    'Abrir ticket', 'Aplicar filtros', 'Abrir conversa', 'Encerrar ticket',
-    'Anexo', 'Anexar arquivo', 'Enviar mensagem',
-  ],
   'components/chat/sidebar-chat.tsx': ['Nova conversa', 'Digite o username', 'Buscar conversa', 'Iniciar conversa'],
   'components/chat/chat.tsx': ['Ver anuncios', 'Digite uma mensagem', 'Enviar mensagem'],
   'app/(painel-admin)/admin/denuncias/page.tsx': ['Ver anuncio', 'Punir (Excluir anuncio)', 'Nao punir', 'Justificativa'],
@@ -171,6 +165,31 @@ const preservedSurfaces = {
     'Buscar', 'Falar com suporte', 'Limpar busca', 'Abrir ticket', 'LoginModal',
   ],
 }
+
+const ticketsAdmin = [
+  source('app/(painel-admin)/admin/tickets/page.tsx'),
+  source('app/(painel-admin)/admin/components/ticket-details-modal.tsx'),
+  source('app/(painel-admin)/admin/components/ticket-chat-modal.tsx'),
+].join('\n').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+for (const label of [
+  'Atualizar', 'Abertos', 'Em andamento', 'Fechados', 'Limpar',
+  'Responder', 'Ver detalhes', 'Alterar estado', 'Enviar resposta',
+]) {
+  assert.ok(ticketsAdmin.includes(label), `Controle funcional ausente em Tickets admin: ${label}`)
+}
+assert.ok(!ticketsAdmin.includes('PENDING_BACKEND_CONTRACTS'), 'Tickets admin nao podem permanecer pendentes.')
+
+const ticketsUsuario = source('app/(private-routes)/meus-tickets/page.tsx')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+for (const label of [
+  'Abrir ticket', 'Todos', 'Abertos', 'Encerrados', 'Encerrar ticket',
+  'Enviar resposta', 'Tentar novamente',
+]) {
+  assert.ok(ticketsUsuario.includes(label), `Controle funcional ausente em Meus tickets: ${label}`)
+}
+assert.ok(!ticketsUsuario.includes('PENDING_BACKEND_CONTRACTS'), 'Meus tickets nao pode permanecer pendente.')
+assert.ok(!ticketsUsuario.includes('type="file"'), 'Anexos nao comprovados nao devem ser inventados.')
 
 const preservedSurfaceCompositions = {
   'app/(painel-admin)/admin/compliance/page.tsx': [

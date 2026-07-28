@@ -230,4 +230,27 @@ public class AuditoriaEventoEntity {
     return entity;
   }
 
+  public static AuditoriaEventoEntity registrarSuporte(
+      UUID id,
+      UUID atorUsuarioId,
+      String acao,
+      UUID recursoId,
+      String antesJson,
+      String depoisJson,
+      String requestId,
+      OffsetDateTime criadoEm) {
+    AuditoriaEventoEntity entity = registrar(
+        id,
+        atorUsuarioId,
+        acao,
+        "TICKET_SUPORTE",
+        recursoId,
+        antesJson,
+        depoisJson,
+        requestId,
+        criadoEm);
+    entity.origem = OrigemAuditoria.SUPORTE;
+    return entity;
+  }
+
 }
