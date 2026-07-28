@@ -110,20 +110,21 @@ export function StrategicAnalysisTables({
           <p className="mt-1 text-xs text-zinc-600">Cada anúncio contado uma única vez.</p>
         </header>
         <div className="overflow-x-auto">
-          <Table className="min-w-[450px]">
+          <Table className="min-w-[520px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Classificação</TableHead>
                 <TableHead className="text-right">Ativos</TableHead>
                 <TableHead className="text-right">Views</TableHead>
+                <TableHead className="text-right">Cliques</TableHead>
                 <TableHead className="text-right">Conversão</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={4} className="py-8 text-center">Carregando...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} className="py-8 text-center">Carregando...</TableCell></TableRow>
               ) : error || classificacaoRows.length === 0 ? (
-                <EmptyOrError error={error} onRetry={onRetry} colSpan={4} />
+                <EmptyOrError error={error} onRetry={onRetry} colSpan={5} />
               ) : (
                 classificacaoRows.map((row) => (
                   <TableRow key={row.classificacao}>
@@ -132,6 +133,7 @@ export function StrategicAnalysisTables({
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{row.anunciosPublicadosAtivos}</TableCell>
                     <TableCell className="text-right tabular-nums">{row.visualizacoes.toLocaleString('pt-BR')}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.cliquesWhatsapp.toLocaleString('pt-BR')}</TableCell>
                     <TableCell className="text-right font-semibold tabular-nums">{formatPercent(row.conversaoPct)}</TableCell>
                   </TableRow>
                 ))

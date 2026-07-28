@@ -78,6 +78,10 @@ assert.match(analyticUi, /data\?\.temMais/)
 assert.match(analyticUi, /MAX_LIMIT = 48/)
 assert.match(analyticUi, /\/admin\/anuncios\/\$\{item\.anuncioId\}/)
 assert.match(analyticUi, /item\.publicado/)
+assert.match(
+  analyticUi,
+  /classificacaoRows\.map[\s\S]*row\.cliquesWhatsapp\.toLocaleString\('pt-BR'\)/,
+)
 assert.match(analyticUi, /overflow-x-auto/)
 assert.doesNotMatch(analyticUi, /mock|placeholder|GA4.*fetch|window\.innerWidth/i)
 
