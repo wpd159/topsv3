@@ -3,7 +3,14 @@
 import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -70,7 +77,9 @@ export default function DenunciaModal({ open, onOpenChange, anuncioId }: Denunci
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold text-gray-800">Denunciar anuncio</DialogTitle>
-          <p className="mt-1 text-sm text-gray-500">Selecione o motivo e descreva brevemente o problema.</p>
+          <DialogDescription>
+            Selecione o motivo e descreva brevemente o problema.
+          </DialogDescription>
         </DialogHeader>
 
         {protocolo ? (
