@@ -3800,6 +3800,172 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/pagamentos/relatorio/resumo:
+    get:
+      summary: Resumo read-only de receita
+      description: Consolida exclusivamente pagamentos com status interno APROVADO. Pendencias, falhas, cancelamentos, estornos, saldo importado, ajustes administrativos e ativacoes sem pagamento nao compoem receita.
+      operationId: getAdminRelatorioReceitaResumo
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: periodo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [HOJE, 7_DIAS, 30_DIAS, PERSONALIZADO]
+            default: 30_DIAS
+        - name: inicio
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: fim
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, CONFIRMADO, PENDENTE, FALHO, CANCELADO, EXPIRADO, ESTORNADO, LEGADO]
+            default: TODOS
+        - name: metodo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, PIX, LEGADO, DESCONHECIDO]
+            default: TODOS
+        - name: usuario
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+        - name: produto
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+      responses:
+        "200":
+          description: Receita, serie diaria, distribuicao por pacote e alertas de conciliacao
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRelatorioReceitaResumo"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/pagamentos/relatorio/transacoes:
+    get:
+      summary: Transacoes read-only do relatorio de receita
+      description: Lista pagamentos sanitizados com valores administrativos e identificador externo mascarado. Nao executa cobranca, credito, conciliacao ou qualquer mutacao financeira.
+      operationId: getAdminRelatorioReceitaTransacoes
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: periodo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [HOJE, 7_DIAS, 30_DIAS, PERSONALIZADO]
+            default: 30_DIAS
+        - name: inicio
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: fim
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, CONFIRMADO, PENDENTE, FALHO, CANCELADO, EXPIRADO, ESTORNADO, LEGADO]
+            default: TODOS
+        - name: metodo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, PIX, LEGADO, DESCONHECIDO]
+            default: TODOS
+        - name: usuario
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+        - name: produto
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 120
+        - name: ordenacao
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [MAIS_RECENTES, MAIS_ANTIGOS, MAIOR_VALOR, MENOR_VALOR]
+            default: MAIS_RECENTES
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Pagina sanitizada de transacoes e totais confirmados para os mesmos filtros
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRelatorioReceitaPagina"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/pagamentos/{id}:
     get:
       summary: Detalhe de pagamento read-only
@@ -9136,6 +9302,245 @@ components:
             - string
             - "null"
           format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminRelatorioReceitaPontoDiario:
+      type: object
+      additionalProperties: false
+      required: [data, receitaConfirmada, pagamentosConfirmados]
+      properties:
+        data:
+          type: string
+          format: date
+        receitaConfirmada:
+          type: number
+          format: double
+          minimum: 0
+        pagamentosConfirmados:
+          type: integer
+          format: int64
+          minimum: 0
+    AdminRelatorioReceitaProduto:
+      type: object
+      additionalProperties: false
+      required: [codigo, nome, receitaConfirmada, pagamentosConfirmados, creditosVendidos]
+      properties:
+        codigo:
+          type: string
+        nome:
+          type: string
+        receitaConfirmada:
+          type: number
+          format: double
+          minimum: 0
+        pagamentosConfirmados:
+          type: integer
+          format: int64
+          minimum: 0
+        creditosVendidos:
+          type: integer
+          format: int64
+          minimum: 0
+    AdminRelatorioReceitaAlerta:
+      type: object
+      additionalProperties: false
+      required: [codigo, mensagem, quantidade]
+      properties:
+        codigo:
+          type: string
+        mensagem:
+          type: string
+        quantidade:
+          type: integer
+          format: int64
+          minimum: 1
+    AdminRelatorioReceitaResumo:
+      type: object
+      additionalProperties: false
+      required:
+        - receitaConfirmada
+        - pagamentosConfirmados
+        - ticketMedio
+        - creditosVendidos
+        - pagamentosPendentes
+        - pagamentosFalhos
+        - pagamentosCancelados
+        - pagamentosEstornados
+        - evolucaoDiaria
+        - distribuicaoPorProduto
+        - alertasConciliacao
+        - dataInicio
+        - dataFim
+        - timezone
+        - calculadoEm
+        - somenteLeitura
+      properties:
+        receitaConfirmada:
+          type: number
+          format: double
+          minimum: 0
+        pagamentosConfirmados:
+          type: integer
+          format: int64
+          minimum: 0
+        ticketMedio:
+          type: number
+          format: double
+          minimum: 0
+        creditosVendidos:
+          type: integer
+          format: int64
+          minimum: 0
+        pagamentosPendentes:
+          type: integer
+          format: int64
+          minimum: 0
+        pagamentosFalhos:
+          type: integer
+          format: int64
+          minimum: 0
+        pagamentosCancelados:
+          type: integer
+          format: int64
+          minimum: 0
+        pagamentosEstornados:
+          type: integer
+          format: int64
+          minimum: 0
+        evolucaoDiaria:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRelatorioReceitaPontoDiario"
+        distribuicaoPorProduto:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRelatorioReceitaProduto"
+        alertasConciliacao:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRelatorioReceitaAlerta"
+        dataInicio:
+          type: string
+          format: date
+        dataFim:
+          type: string
+          format: date
+        timezone:
+          type: string
+          const: America/Sao_Paulo
+        calculadoEm:
+          type: string
+          format: date-time
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminRelatorioReceitaTransacao:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - data
+        - usuarioNome
+        - tipo
+        - produto
+        - valor
+        - moeda
+        - status
+        - metodo
+        - receitaConfirmada
+        - somenteLeitura
+      properties:
+        id:
+          type: string
+          format: uuid
+        data:
+          type: string
+          format: date-time
+        usuarioNome:
+          type: string
+        usuarioEmailMascarado:
+          type:
+            - string
+            - "null"
+        tipo:
+          type: string
+          enum: [COMPRA_DE_CREDITOS, REGISTRO_LEGADO]
+        produto:
+          type: string
+        valor:
+          type: number
+          format: double
+          minimum: 0
+        moeda:
+          type: string
+        creditos:
+          type:
+            - integer
+            - "null"
+          minimum: 0
+        status:
+          type: string
+          enum: [CONFIRMADO, PENDENTE, FALHO, CANCELADO, EXPIRADO, ESTORNADO, LEGADO, DESCONHECIDO]
+        metodo:
+          type: string
+        identificadorExternoMascarado:
+          type:
+            - string
+            - "null"
+          pattern: '^\*\*\*.*$'
+        receitaConfirmada:
+          type: boolean
+        somenteLeitura:
+          type: boolean
+          const: true
+    AdminRelatorioReceitaPagina:
+      type: object
+      additionalProperties: false
+      required:
+        - itens
+        - total
+        - pagina
+        - tamanho
+        - receitaConfirmadaFiltrada
+        - pagamentosConfirmadosFiltrados
+        - dataInicio
+        - dataFim
+        - timezone
+        - somenteLeitura
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRelatorioReceitaTransacao"
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        pagina:
+          type: integer
+          minimum: 0
+        tamanho:
+          type: integer
+          minimum: 1
+          maximum: 100
+        receitaConfirmadaFiltrada:
+          type: number
+          format: double
+          minimum: 0
+        pagamentosConfirmadosFiltrados:
+          type: integer
+          format: int64
+          minimum: 0
+        dataInicio:
+          type: string
+          format: date
+        dataFim:
+          type: string
+          format: date
+        timezone:
+          type: string
+          const: America/Sao_Paulo
         somenteLeitura:
           type: boolean
           const: true

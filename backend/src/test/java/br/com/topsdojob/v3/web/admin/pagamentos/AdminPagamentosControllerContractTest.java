@@ -27,6 +27,8 @@ class AdminPagamentosControllerContractTest {
                 .contains("@GetMapping")
                 .contains("hasRole('ADMIN')")
                 .contains("FINANCEIRO_LER")
+                .contains("\"/relatorio/resumo\"")
+                .contains("\"/relatorio/transacoes\"")
                 .doesNotContain("@PostMapping")
                 .doesNotContain("@PutMapping")
                 .doesNotContain("@PatchMapping")
