@@ -5126,6 +5126,170 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlogCategoria"
+  /api/public/denuncias/abrir:
+    post:
+      summary: Registra uma denuncia publica sobre anuncio
+      description: Aceita visitante anonimo ou autenticado, aplica CSRF, rate limit e idempotencia e nao altera o estado do anuncio.
+      operationId: postPublicReport
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 160
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DenunciaCriarRequest"
+      responses:
+        "200":
+          description: Denuncia registrada ou repeticao idempotente reconhecida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DenunciaCriada"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          description: Limite de denuncias excedido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+  /api/admin/denuncias:
+    get:
+      summary: Lista denuncias de anuncios
+      description: Fila protegida para ADMIN ou MODERADOR com ANUNCIO_LER.
+      operationId: getAdminReports
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/Size"
+        - name: termo
+          in: query
+          schema: { type: string, maxLength: 160 }
+        - name: motivo
+          in: query
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/DenunciaMotivo"
+              - type: string
+                const: TODOS
+        - name: status
+          in: query
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/DenunciaStatus"
+              - type: string
+                const: TODOS
+        - name: inicio
+          in: query
+          schema: { type: string, format: date }
+        - name: fim
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Pagina de denuncias
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDenunciaPagina"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/denuncias/indicadores:
+    get:
+      summary: Retorna contadores reais da fila de denuncias
+      operationId: getAdminReportIndicators
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Contadores por estado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDenunciaIndicadores"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/denuncias/{denunciaId}:
+    get:
+      summary: Retorna o detalhe e o historico de uma denuncia
+      operationId: getAdminReport
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: denunciaId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Detalhe protegido da denuncia
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDenunciaDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/admin/denuncias/{denunciaId}/status:
+    patch:
+      summary: Registra a providencia administrativa de uma denuncia
+      description: Exige ANUNCIO_MODERAR e nao bloqueia, remove ou reprova automaticamente o anuncio.
+      operationId: patchAdminReportStatus
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: denunciaId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminDenunciaAlterarStatusRequest"
+      responses:
+        "200":
+          description: Providencia registrada e auditada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDenunciaDetalhe"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
   /api/public/suporte/tickets:
     get:
       summary: Lista os tickets do usuario autenticado
@@ -5606,6 +5770,15 @@ components:
             $ref: "#/components/schemas/ApiErrorResponse"
     Conflict:
       description: Estado atual impede a transicao solicitada.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    UnprocessableEntity:
+      description: Dados sintaticamente validos, mas incompativeis com as regras da operacao.
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"
@@ -11281,6 +11454,126 @@ components:
         updatedAt: { type: string, format: date-time }
         priority: { type: number, minimum: 0.1, maximum: 1.0 }
         changeFrequency: { type: string, enum: [daily, weekly, monthly] }
+    DenunciaMotivo:
+      type: string
+      enum: [CONTEUDO_INADEQUADO, PERFIL_FALSO, GOLPE, SPAM, OUTROS]
+    DenunciaStatus:
+      type: string
+      enum: [PENDENTE, PUNIDA, IGNORADA]
+    DenunciaCriarRequest:
+      type: object
+      additionalProperties: false
+      required: [anuncioId, motivo]
+      properties:
+        anuncioId: { type: string, format: uuid }
+        motivo: { $ref: "#/components/schemas/DenunciaMotivo" }
+        descricao: { type: [string, "null"], maxLength: 1000 }
+    DenunciaCriada:
+      type: object
+      additionalProperties: false
+      required: [id, protocolo, status, criadoEm, repetida]
+      properties:
+        id: { type: string, format: uuid }
+        protocolo: { type: string }
+        status: { type: string, const: PENDENTE }
+        criadoEm: { type: string, format: date-time }
+        repetida: { type: boolean }
+    AdminDenunciaResumo:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - protocolo
+        - anuncioId
+        - anuncioTitulo
+        - anuncioSlug
+        - motivo
+        - motivoRotulo
+        - status
+        - statusRotulo
+        - denuncianteNome
+        - criadoEm
+        - atualizadoEm
+      properties:
+        id: { type: string, format: uuid }
+        protocolo: { type: string }
+        anuncioId: { type: string, format: uuid }
+        anuncioTitulo: { type: string }
+        anuncioSlug: { type: string }
+        motivo: { $ref: "#/components/schemas/DenunciaMotivo" }
+        motivoRotulo: { type: string }
+        status: { $ref: "#/components/schemas/DenunciaStatus" }
+        statusRotulo: { type: string }
+        denuncianteNome: { type: string }
+        denuncianteEmail: { type: [string, "null"] }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+    AdminDenunciaPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, pagina, tamanho, totalElementos, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/AdminDenunciaResumo" }
+        pagina: { type: integer, minimum: 0 }
+        tamanho: { type: integer, minimum: 1, maximum: 100 }
+        totalElementos: { type: integer, format: int64, minimum: 0 }
+        totalPaginas: { type: integer, minimum: 0 }
+    AdminDenunciaIndicadores:
+      type: object
+      additionalProperties: false
+      required: [total, pendentes, punidas, ignoradas]
+      properties:
+        total: { type: integer, format: int64, minimum: 0 }
+        pendentes: { type: integer, format: int64, minimum: 0 }
+        punidas: { type: integer, format: int64, minimum: 0 }
+        ignoradas: { type: integer, format: int64, minimum: 0 }
+    AdminDenunciaHistorico:
+      type: object
+      additionalProperties: false
+      required: [id, acao, acaoRotulo, atorNome, criadoEm, requestId]
+      properties:
+        id: { type: string, format: uuid }
+        acao: { type: string }
+        acaoRotulo: { type: string }
+        status: { type: [string, "null"] }
+        providencia: { type: [string, "null"] }
+        atorNome: { type: string }
+        criadoEm: { type: string, format: date-time }
+        requestId: { type: string }
+    AdminDenunciaDetalhe:
+      type: object
+      additionalProperties: false
+      required: [denuncia, anuncio, historico]
+      properties:
+        denuncia: { $ref: "#/components/schemas/AdminDenunciaResumo" }
+        descricao: { type: [string, "null"] }
+        providencia: { type: [string, "null"] }
+        responsavelNome: { type: [string, "null"] }
+        decididaEm: { type: [string, "null"], format: date-time }
+        anuncio:
+          type: object
+          additionalProperties: false
+          required: [id, titulo, slug, status, statusModeracao]
+          properties:
+            id: { type: string, format: uuid }
+            titulo: { type: string }
+            slug: { type: string }
+            status: { type: string }
+            statusModeracao: { type: string }
+        historico:
+          type: array
+          items: { $ref: "#/components/schemas/AdminDenunciaHistorico" }
+    AdminDenunciaAlterarStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status, providencia]
+      properties:
+        status:
+          type: string
+          enum: [PUNIDA, IGNORADA]
+        providencia: { type: string, minLength: 3, maxLength: 2000 }
     SuporteCategoria:
       type: string
       enum: [ERRO_NO_SISTEMA, PROBLEMAS_COM_PAGAMENTO, ACESSO_CONTA, OUTROS]

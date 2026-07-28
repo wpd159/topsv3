@@ -73,9 +73,10 @@ assert.ok(payments.includes('setErro(error)'), 'Falha financeira nao pode virar 
 assert.ok(payments.includes("'Contagem indisponivel'"), 'Contador financeiro deve diferenciar falha de zero.')
 
 const sidebar = source('app/(painel-admin)/admin/components/sidebar/sidebar.tsx')
-assert.equal((sidebar.match(/fetch\(/g) || []).length, 2, 'Sidebar deve consultar somente os dois contratos reais.')
+assert.equal((sidebar.match(/fetch\(/g) || []).length, 3, 'Sidebar deve consultar somente os tres contratos reais.')
 assert.ok(sidebar.includes("adminApiUrl('/moderacao/resumo')"), 'Sidebar deve consultar o resumo de moderacao real.')
 assert.ok(sidebar.includes("adminApiUrl('/tickets/indicadores')"), 'Sidebar deve consultar os indicadores reais de tickets.')
+assert.ok(sidebar.includes("adminApiUrl('/denuncias/indicadores')"), 'Sidebar deve consultar os indicadores reais de denuncias.')
 assert.ok(sidebar.includes('Promise.all(['), 'Contadores reais devem compartilhar a mesma janela de atualizacao.')
 assert.ok(sidebar.includes('if (inFlight) return inFlight'), 'Polling simultaneo deve ser deduplicado.')
 assert.ok(sidebar.includes('tickets: null') && sidebar.includes('sugestoes: null'), 'Falhas e modulos pendentes nao podem exibir zero falso.')
@@ -125,7 +126,9 @@ const preservedSurfaces = {
   ],
   'components/chat/sidebar-chat.tsx': ['Nova conversa', 'Digite o username', 'Buscar conversa', 'Iniciar conversa'],
   'components/chat/chat.tsx': ['Ver anuncios', 'Digite uma mensagem', 'Enviar mensagem'],
-  'app/(painel-admin)/admin/denuncias/page.tsx': ['Ver anuncio', 'Punir (Excluir anuncio)', 'Nao punir', 'Justificativa'],
+  'app/(painel-admin)/admin/denuncias/page.tsx': [
+    'Abrir detalhe', 'Com providencia', 'Sem providencia', 'Data inicial', 'Data final',
+  ],
   'app/(painel-admin)/admin/faqs/page.tsx': ['Nova FAQ', 'Pergunta', 'Resposta', 'Categoria', 'Mover para cima', 'Excluir'],
   'app/(painel-admin)/admin/indicacoes/page.tsx': ['Editar creditos por indicacao', 'Total de indicacoes', 'ranking', 'Salvar'],
   'app/(painel-admin)/admin/registros/page.tsx': ['Todas as acoes', 'Modulo', 'Data inicial', 'Consultar detalhe', 'Proximo'],
