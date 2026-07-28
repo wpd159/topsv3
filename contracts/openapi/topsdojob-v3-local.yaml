@@ -5126,6 +5126,189 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BlogCategoria"
+  /api/public/faqs:
+    get:
+      summary: Lista somente FAQs publicadas
+      operationId: getPublicFaqs
+      responses:
+        "200":
+          description: FAQs publicadas na ordem administrativa
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FaqItem"
+  /api/admin/faqs:
+    get:
+      summary: Lista FAQs para gestao administrativa
+      operationId: getAdminFaqs
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: termo
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, RASCUNHO, PUBLICADO, ARQUIVADO]
+        - name: categoria
+          in: query
+          schema:
+            type: string
+            enum: [TODAS, GERAL, CONTA, PAGAMENTOS, SEGURANCA, ANUNCIOS]
+      responses:
+        "200":
+          description: FAQs administrativas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FaqItem"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      summary: Cria uma FAQ como rascunho
+      operationId: postAdminFaq
+      security:
+        - AdminSessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaqEdicao"
+      responses:
+        "201":
+          description: FAQ criada como rascunho
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaqItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/faqs/{id}:
+    put:
+      summary: Atualiza uma FAQ com controle otimista
+      operationId: putAdminFaq
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaqEdicao"
+      responses:
+        "200":
+          description: FAQ atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaqItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/faqs/{id}/publicar:
+    post:
+      summary: Publica uma FAQ
+      operationId: postAdminFaqPublish
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaqVersao"
+      responses:
+        "200":
+          description: FAQ publicada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaqItem"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/faqs/{id}/retirar:
+    post:
+      summary: Retira uma FAQ da pagina publica
+      operationId: postAdminFaqUnpublish
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaqVersao"
+      responses:
+        "200":
+          description: FAQ retirada e mantida como rascunho
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaqItem"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/faqs/{id}/arquivar:
+    post:
+      summary: Arquiva uma FAQ e a retira do publico
+      operationId: postAdminFaqArchive
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaqVersao"
+      responses:
+        "200":
+          description: FAQ arquivada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaqItem"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/faqs/{id}/ordem:
+    patch:
+      summary: Atualiza a ordem de uma FAQ
+      operationId: patchAdminFaqOrder
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaqOrdem"
+      responses:
+        "200":
+          description: Ordem atualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaqItem"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/public/denuncias/abrir:
     post:
       summary: Registra uma denuncia publica sobre anuncio
@@ -11454,6 +11637,59 @@ components:
         updatedAt: { type: string, format: date-time }
         priority: { type: number, minimum: 0.1, maximum: 1.0 }
         changeFrequency: { type: string, enum: [daily, weekly, monthly] }
+    FaqItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - pergunta
+        - resposta
+        - categoria
+        - categoriaRotulo
+        - status
+        - ordem
+        - atualizadoEm
+        - versao
+      properties:
+        id: { type: string, format: uuid }
+        pergunta: { type: string, minLength: 5, maxLength: 240 }
+        resposta: { type: string, minLength: 10, maxLength: 4000 }
+        categoria:
+          type: string
+          enum: [GERAL, CONTA, PAGAMENTOS, SEGURANCA, ANUNCIOS]
+        categoriaRotulo: { type: string }
+        status:
+          type: string
+          enum: [RASCUNHO, PUBLICADO, ARQUIVADO]
+        ordem: { type: integer, minimum: 0, maximum: 100000 }
+        publicadoEm: { type: [string, "null"], format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+        versao: { type: integer, minimum: 0 }
+    FaqEdicao:
+      type: object
+      additionalProperties: false
+      required: [pergunta, resposta, categoria, ordem]
+      properties:
+        pergunta: { type: string, minLength: 5, maxLength: 240 }
+        resposta: { type: string, minLength: 10, maxLength: 4000 }
+        categoria:
+          type: string
+          enum: [GERAL, CONTA, PAGAMENTOS, SEGURANCA, ANUNCIOS]
+        ordem: { type: integer, minimum: 0, maximum: 100000 }
+        versao: { type: [integer, "null"], minimum: 0 }
+    FaqVersao:
+      type: object
+      additionalProperties: false
+      required: [versao]
+      properties:
+        versao: { type: integer, minimum: 0 }
+    FaqOrdem:
+      allOf:
+        - $ref: "#/components/schemas/FaqVersao"
+        - type: object
+          required: [ordem]
+          properties:
+            ordem: { type: integer, minimum: 0, maximum: 100000 }
     DenunciaMotivo:
       type: string
       enum: [CONTEUDO_INADEQUADO, PERFIL_FALSO, GOLPE, SPAM, OUTROS]
