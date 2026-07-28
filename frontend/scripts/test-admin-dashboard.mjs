@@ -7,11 +7,29 @@ const dashboardPath = new URL(
 )
 const apiPath = new URL('../src/lib/admin-dashboard-api.ts', import.meta.url)
 const pagePath = new URL('../src/app/(painel-admin)/admin/dashboard/page.tsx', import.meta.url)
-const [dashboard, api, page] = await Promise.all([
+const analyticsPath = new URL(
+  '../src/app/(painel-admin)/admin/components/dashboard/strategic/AdminDashboardAnalytics.tsx',
+  import.meta.url,
+)
+const components = [
+  'StrategicPerformanceChart.tsx',
+  'TopWhatsappHojeCard.tsx',
+  'PriorityAlertsCard.tsx',
+  'CommercialOpportunitiesCard.tsx',
+  'StrategicConversionRankings.tsx',
+  'StrategicAnalysisTables.tsx',
+].map((name) => new URL(
+  `../src/app/(painel-admin)/admin/components/dashboard/strategic/${name}`,
+  import.meta.url,
+))
+const [dashboard, api, page, analytics, ...componentSources] = await Promise.all([
   readFile(dashboardPath, 'utf8'),
   readFile(apiPath, 'utf8'),
   readFile(pagePath, 'utf8'),
+  readFile(analyticsPath, 'utf8'),
+  ...components.map((path) => readFile(path, 'utf8')),
 ])
+const analyticUi = componentSources.join('\n')
 
 assert.match(page, /StrategicAdminDashboard/)
 assert.doesNotMatch(dashboard, /BackendContractPendingError|dados simulados.*\d|mock|placeholder/i)
@@ -38,7 +56,29 @@ assert.match(dashboard, /\/admin\/sugestoes\?status=PENDENTE/)
 assert.match(dashboard, /sm:grid-cols-2 xl:grid-cols-4/)
 assert.doesNotMatch(dashboard, /overflow-x-auto|w-\[\d+px\]/)
 assert.match(api, /\/dashboard\/hoje/)
+assert.match(api, /\/dashboard\/desempenho-diario\?dias=/)
+assert.match(api, /\/dashboard\/top-whatsapp-hoje\?limite=/)
+assert.match(api, /\/dashboard\/analises/)
 assert.match(api, /credentials: 'include'/)
 assert.match(api, /cache: 'no-store'/)
+assert.match(dashboard, /<AdminDashboardAnalytics/)
+assert.ok(
+  dashboard.indexOf('<AdminDashboardAnalytics') > dashboard.indexOf('cards.map'),
+  'Os blocos analíticos devem aparecer depois dos cards existentes.',
+)
+assert.match(analytics, /dailyError/)
+assert.match(analytics, /analysesError/)
+assert.match(analytics, /papeis\.includes\('ADMIN'\)/)
+assert.doesNotMatch(analytics + analyticUi, /admin-estatisticas-api|Modera[cç][aã]o v2|BackendContractPendingError/i)
+assert.match(analyticUi, /\(\[7, 15, 30\] as const\)/)
+assert.match(analyticUi, /Barras: visualizações/)
+assert.match(analyticUi, /Linha: cliques no WhatsApp/)
+assert.match(analyticUi, /Conversão:/)
+assert.match(analyticUi, /data\?\.temMais/)
+assert.match(analyticUi, /MAX_LIMIT = 48/)
+assert.match(analyticUi, /\/admin\/anuncios\/\$\{item\.anuncioId\}/)
+assert.match(analyticUi, /item\.publicado/)
+assert.match(analyticUi, /overflow-x-auto/)
+assert.doesNotMatch(analyticUi, /mock|placeholder|GA4.*fetch|window\.innerWidth/i)
 
-console.log('Dashboard administrativo: fontes reais, RBAC, atalhos e falhas parciais validados.')
+console.log('Dashboard administrativo: cards existentes e analytics reais, coesos e responsivos validados.')

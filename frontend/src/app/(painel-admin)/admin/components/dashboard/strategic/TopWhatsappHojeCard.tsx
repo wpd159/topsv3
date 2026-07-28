@@ -2,192 +2,156 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ChatBubbleOvalLeftEllipsisIcon } from '@heroicons/react/24/outline'
-import { cn } from '@/lib/utils'
-import { fetchTopWhatsappHoje, type TopWhatsappHojeItem } from '@/lib/admin-estatisticas-api'
+import { MessageCircle } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
-import { ContractState } from '@/components/feedback/contract-state'
+import {
+  fetchDashboardTopWhatsapp,
+  type AdminDashboardTopWhatsapp,
+} from '@/lib/admin-dashboard-api'
 
 const INITIAL_LIMIT = 12
 const LIMIT_STEP = 12
 const MAX_LIMIT = 48
 
-function fmt(n: number) {
-  return Number(n).toLocaleString('pt-BR')
+function errorMessage(error: unknown) {
+  return error instanceof Error && error.message
+    ? error.message
+    : 'Não foi possível carregar o ranking.'
 }
 
-export function TopWhatsappHojeCard() {
+export function TopWhatsappHojeCard({ refreshKey }: { refreshKey: number }) {
   const [limit, setLimit] = useState(INITIAL_LIMIT)
-  const [items, setItems] = useState<TopWhatsappHojeItem[]>([])
+  const [data, setData] = useState<AdminDashboardTopWhatsapp | null>(null)
   const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
-  const [error, setError] = useState<unknown>(null)
+  const [error, setError] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setFetching(true)
-      setError(null)
-      try {
-        const rows = await fetchTopWhatsappHoje(limit)
-        if (!cancelled) setItems(rows)
-      } catch (loadError) {
-        if (!cancelled) setError(loadError)
-      } finally {
-        if (!cancelled) {
-          setFetching(false)
-          setLoading(false)
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [limit, retryKey])
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+    void fetchDashboardTopWhatsapp(limit, controller.signal)
+      .then(setData)
+      .catch((loadError) => {
+        if (!controller.signal.aborted) setError(errorMessage(loadError))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [limit, refreshKey, retryKey])
 
-  /** Há possivelmente mais linhas no servidor se a API encheu o `limit` pedido. */
-  const hasMore = limit < MAX_LIMIT && items.length >= limit
-  const canShowLess = limit > INITIAL_LIMIT
+  const items = data?.itens ?? []
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm">
-      <div className="border-b border-gray-100 px-5 py-4">
+    <section className="border border-zinc-200 bg-white">
+      <header className="border-b border-zinc-200 px-5 py-4">
         <div className="flex items-center gap-2">
-          <ChatBubbleOvalLeftEllipsisIcon className="h-5 w-5 text-emerald-600" aria-hidden />
-          <h3 className="text-base font-bold text-gray-900">Anúncios com mais cliques no WhatsApp hoje</h3>
+          <MessageCircle className="h-4 w-4 text-emerald-700" aria-hidden />
+          <h3 className="text-base font-bold text-zinc-950">
+            Mais cliques no WhatsApp hoje
+          </h3>
         </div>
-        <p className="mt-0.5 text-xs text-gray-500">
-          Contagem do dia civil atual (registros em{' '}
-          <code className="rounded bg-gray-100 px-1 text-[10px]">cliques_whatsapp</code>).
+        <p className="mt-1 text-xs text-zinc-600">
+          Eventos internos permitidos no dia civil do backend.
         </p>
-      </div>
+      </header>
 
-      <div className="px-5 pb-5 pt-4">
-        {loading && items.length === 0 ? (
-          <p className="py-12 text-center text-sm text-gray-500">Carregando…</p>
+      <div className="p-5">
+        {loading && !data ? (
+          <p className="py-10 text-center text-sm text-zinc-500">Carregando ranking...</p>
         ) : error ? (
-          <ContractState error={error} onRetry={() => setRetryKey((value) => value + 1)} compact />
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
+            <p className="text-sm text-red-700" role="alert">{error}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => setRetryKey((value) => value + 1)}>
+              Tentar novamente
+            </Button>
+          </div>
         ) : items.length === 0 ? (
-          <p className="py-12 text-center text-sm text-gray-500">Nenhum clique registrado hoje.</p>
+          <p className="py-10 text-center text-sm text-zinc-500">
+            Nenhum clique registrado hoje.
+          </p>
         ) : (
           <>
-            <div
-              className={cn(
-                'grid gap-3',
-                'grid-cols-1 md:grid-cols-2 2xl:grid-cols-3',
-                fetching && 'pointer-events-none opacity-70'
-              )}
-            >
-              {items.map((item, i) => {
-                const rank = i + 1
-                const modHref = `/admin/anuncios/${item.anuncioId}`
-                const pubHref =
-                  item.slug && String(item.slug).trim() !== ''
-                    ? `/anuncios/${encodeURIComponent(item.slug)}`
-                    : null
-                const thumb = item.thumbnailUrl?.trim()
-                const isTop = rank === 1
-
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
+              {items.map((item, index) => {
+                const location = [item.cidade, item.uf].filter(Boolean).join(' - ')
                 return (
                   <article
                     key={item.anuncioId}
-                    className={cn(
-                      'flex gap-3 overflow-hidden rounded-xl border bg-white p-3 shadow-sm transition',
-                      isTop
-                        ? 'border-emerald-300/80 ring-1 ring-emerald-100/90'
-                        : 'border-gray-200/90 hover:border-gray-300/90 hover:shadow'
-                    )}
+                    className="grid min-h-[104px] grid-cols-[64px_1fr] gap-3 border border-zinc-200 p-3"
                   >
-                    <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-lg bg-gray-100 ring-1 ring-black/5">
-                      {thumb ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- URL dinâmica do storage (vários hosts)
+                    <div className="h-16 w-16 overflow-hidden bg-zinc-100">
+                      {item.miniaturaUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- URL pública dinâmica do storage canônico.
                         <img
-                          src={thumb}
+                          src={item.miniaturaUrl}
                           alt=""
                           className="h-full w-full object-cover"
                           loading="lazy"
-                          decoding="async"
                         />
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center text-[10px] text-gray-400">
-                          —
-                        </div>
+                        <div className="flex h-full items-center justify-center text-xs text-zinc-400">Sem foto</div>
                       )}
                     </div>
-
-                    <div className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span
-                        className={cn(
-                          'inline-flex w-fit rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums tracking-wide',
-                          isTop ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'
-                        )}
-                      >
-                        #{rank}
-                      </span>
-                      <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-gray-900">
-                        <Link href={modHref} className="hover:text-[#f0198f]">
-                          {item.titulo?.trim() || `Anúncio #${item.anuncioId}`}
+                    <div className="min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link
+                          href={`/admin/anuncios/${item.anuncioId}`}
+                          className="line-clamp-2 text-sm font-semibold text-zinc-950 hover:text-pink-700"
+                        >
+                          {item.titulo}
                         </Link>
-                      </h4>
-                      <p className="line-clamp-1 text-xs text-gray-500">{(item.cidadeNome ?? '—').toString()}</p>
-
-                      <div className="mt-0.5 flex flex-wrap items-end gap-x-2 gap-y-0">
-                        <span className="text-xl font-bold tabular-nums leading-none text-emerald-700">
-                          {fmt(item.cliquesWhatsappHoje)}
-                        </span>
-                        <span className="pb-0.5 text-[9px] font-medium uppercase tracking-wide text-gray-400">
-                          cliques hoje
-                        </span>
+                        <span className="shrink-0 text-xs font-bold text-zinc-500">#{index + 1}</span>
                       </div>
-
-                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
-                        <Link href={modHref} className="font-medium text-[#f0198f] hover:underline">
-                          Moderação v2
+                      <p className="mt-1 truncate text-xs text-zinc-500">{location || 'Local não informado'}</p>
+                      <p className="mt-2 text-sm font-bold text-emerald-700">
+                        {item.cliquesWhatsappHoje.toLocaleString('pt-BR')} cliques
+                      </p>
+                      {item.publicado ? (
+                        <Link
+                          href={`/anuncios/${encodeURIComponent(item.slug)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-pink-700 hover:underline"
+                        >
+                          Abrir anúncio público
                         </Link>
-                        {pubHref ? (
-                          <Link href={pubHref} className="text-gray-600 hover:underline" target="_blank" rel="noreferrer">
-                            Ver anúncio
-                          </Link>
-                        ) : (
-                          <span className="text-gray-400">Sem slug</span>
-                        )}
-                      </div>
+                      ) : null}
                     </div>
                   </article>
                 )
               })}
             </div>
 
-            {(hasMore || canShowLess) && (
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2 border-t border-gray-100 pt-4">
-                {hasMore ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={fetching}
-                    onClick={() => setLimit((l) => Math.min(MAX_LIMIT, l + LIMIT_STEP))}
-                  >
-                    Mostrar mais
-                  </Button>
-                ) : null}
-                {canShowLess ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={fetching}
-                    onClick={() => setLimit((l) => Math.max(INITIAL_LIMIT, l - LIMIT_STEP))}
-                  >
-                    Mostrar menos
-                  </Button>
-                ) : null}
-              </div>
-            )}
+            <div className="mt-4 flex justify-center gap-2 border-t border-zinc-200 pt-4">
+              {data?.temMais && limit < MAX_LIMIT ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={loading}
+                  onClick={() => setLimit((value) => Math.min(MAX_LIMIT, value + LIMIT_STEP))}
+                >
+                  Mostrar mais
+                </Button>
+              ) : null}
+              {limit > INITIAL_LIMIT ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={loading}
+                  onClick={() => setLimit(INITIAL_LIMIT)}
+                >
+                  Mostrar menos
+                </Button>
+              ) : null}
+            </div>
           </>
         )}
       </div>
-    </div>
+    </section>
   )
 }

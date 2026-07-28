@@ -41,6 +41,97 @@ export type AdminDashboardHoje = {
   calculadoEm: string
 }
 
+export type AdminDashboardDailyPoint = {
+  data: string
+  visualizacoes: number
+  cliquesWhatsapp: number
+  conversaoPct: number
+}
+
+export type AdminDashboardDailySummary = AdminDashboardDailyPoint
+
+export type AdminDashboardDailyPerformance = {
+  dias: 7 | 15 | 30
+  inicio: string
+  fim: string
+  fusoHorario: string
+  serieDiaria: AdminDashboardDailyPoint[]
+  hoje: AdminDashboardDailySummary
+  ontem: AdminDashboardDailySummary
+  variacaoVisualizacoesPct: number
+  variacaoCliquesPct: number
+  totalVisualizacoes: number
+  totalCliquesWhatsapp: number
+  calculadoEm: string
+}
+
+export type AdminDashboardTopWhatsappItem = {
+  anuncioId: string
+  titulo: string
+  slug: string
+  cidade?: string | null
+  uf?: string | null
+  cliquesWhatsappHoje: number
+  miniaturaUrl?: string | null
+  publicado: boolean
+}
+
+export type AdminDashboardTopWhatsapp = {
+  dataReferencia: string
+  fusoHorario: string
+  limite: number
+  temMais: boolean
+  itens: AdminDashboardTopWhatsappItem[]
+  calculadoEm: string
+}
+
+export type AdminDashboardInsight = {
+  codigo: string
+  titulo: string
+  descricao: string
+  href?: string | null
+}
+
+export type AdminDashboardAdPerformance = {
+  anuncioId: string
+  titulo: string
+  slug: string
+  cidade?: string | null
+  uf?: string | null
+  visualizacoes: number
+  cliquesWhatsapp: number
+  conversaoPct: number
+}
+
+export type AdminDashboardCityPerformance = {
+  cidade: string
+  cidadeSlug?: string | null
+  uf: string
+  anunciosPublicadosAtivos: number
+  visualizacoes: number
+  cliquesWhatsapp: number
+  conversaoPct: number
+}
+
+export type AdminDashboardClassificationPerformance = {
+  classificacao: 'LIVRE' | 'RESTRITA_18'
+  anunciosPublicadosAtivos: number
+  visualizacoes: number
+  cliquesWhatsapp: number
+  conversaoPct: number
+}
+
+export type AdminDashboardAnalyses = {
+  alertasPrioritarios: AdminDashboardInsight[]
+  oportunidadesComerciais: AdminDashboardInsight[]
+  topConversao: AdminDashboardAdPerformance[]
+  piorConversaoComTrafego: AdminDashboardAdPerformance[]
+  desempenhoPorCidade: AdminDashboardCityPerformance[]
+  desempenhoPorClassificacao: AdminDashboardClassificationPerformance[]
+  minimoVisualizacoesPiorConversao: number
+  calculadoEm: string
+}
+
 async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   try {
     const response = await fetch(adminApiUrl(path), {
@@ -69,4 +160,28 @@ export function fetchDashboardMidias(signal?: AbortSignal) {
 
 export function fetchDashboardHoje(signal?: AbortSignal) {
   return request<AdminDashboardHoje>('/dashboard/hoje', signal)
+}
+
+export function fetchDashboardDailyPerformance(
+  dias: 7 | 15 | 30,
+  signal?: AbortSignal,
+) {
+  return request<AdminDashboardDailyPerformance>(
+    `/dashboard/desempenho-diario?dias=${dias}`,
+    signal,
+  )
+}
+
+export function fetchDashboardTopWhatsapp(
+  limite: number,
+  signal?: AbortSignal,
+) {
+  return request<AdminDashboardTopWhatsapp>(
+    `/dashboard/top-whatsapp-hoje?limite=${limite}`,
+    signal,
+  )
+}
+
+export function fetchDashboardAnalyses(signal?: AbortSignal) {
+  return request<AdminDashboardAnalyses>('/dashboard/analises', signal)
 }

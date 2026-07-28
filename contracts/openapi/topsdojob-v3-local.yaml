@@ -1865,6 +1865,98 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/dashboard/desempenho-diario:
+    get:
+      summary: Serie diaria de desempenho interno
+      description: Retorna visualizacoes e cliques internos agregados em America/Sao_Paulo para 7, 15 ou 30 dias. Disponivel a ADMIN e MODERADOR com ANUNCIO_LER; nao usa GA4.
+      operationId: getAdminDashboardDesempenhoDiario
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: dias
+          in: query
+          required: false
+          schema:
+            type: integer
+            enum: [7, 15, 30]
+            default: 30
+      responses:
+        "200":
+          description: serie diaria, resumo e variacoes
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboardDesempenhoDiario"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/dashboard/top-whatsapp-hoje:
+    get:
+      summary: Ranking de cliques no WhatsApp no dia
+      description: Lista somente anuncios com clique interno no dia, em ordem decrescente e com miniatura publica ou derivada segura. Disponivel a ADMIN e MODERADOR com ANUNCIO_LER.
+      operationId: getAdminDashboardTopWhatsappHoje
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: limite
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 48
+            default: 12
+      responses:
+        "200":
+          description: ranking limitado do dia
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboardTopWhatsappHoje"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/dashboard/analises:
+    get:
+      summary: Alertas, oportunidades e rankings do Dashboard
+      description: Consolida no backend metricas canonicas dos anuncios publicados ativos. Oportunidades comerciais sao retornadas somente a ADMIN; MODERADOR recebe apenas analises compativeis com ANUNCIO_LER.
+      operationId: getAdminDashboardAnalises
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: analises e rankings agregados
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboardAnalises"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/resumo:
     get:
       summary: Resumo administrativo local de anuncios
@@ -7761,6 +7853,295 @@ components:
           type: integer
           format: int64
           minimum: 0
+        calculadoEm:
+          type: string
+          format: date-time
+    AdminDashboardPontoDiario:
+      type: object
+      additionalProperties: false
+      required: [data, visualizacoes, cliquesWhatsapp, conversaoPct]
+      properties:
+        data:
+          type: string
+          format: date
+        visualizacoes:
+          type: integer
+          format: int64
+          minimum: 0
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        conversaoPct:
+          type: number
+          format: double
+          minimum: 0
+    AdminDashboardDesempenhoDiario:
+      type: object
+      additionalProperties: false
+      required:
+        - dias
+        - inicio
+        - fim
+        - fusoHorario
+        - serieDiaria
+        - hoje
+        - ontem
+        - variacaoVisualizacoesPct
+        - variacaoCliquesPct
+        - totalVisualizacoes
+        - totalCliquesWhatsapp
+        - calculadoEm
+      properties:
+        dias:
+          type: integer
+          enum: [7, 15, 30]
+        inicio:
+          type: string
+          format: date
+        fim:
+          type: string
+          format: date
+        fusoHorario:
+          type: string
+          const: America/Sao_Paulo
+        serieDiaria:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDashboardPontoDiario"
+        hoje:
+          $ref: "#/components/schemas/AdminDashboardPontoDiario"
+        ontem:
+          $ref: "#/components/schemas/AdminDashboardPontoDiario"
+        variacaoVisualizacoesPct:
+          type: number
+          format: double
+        variacaoCliquesPct:
+          type: number
+          format: double
+        totalVisualizacoes:
+          type: integer
+          format: int64
+          minimum: 0
+        totalCliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        calculadoEm:
+          type: string
+          format: date-time
+    AdminDashboardTopWhatsappItem:
+      type: object
+      additionalProperties: false
+      required:
+        - anuncioId
+        - titulo
+        - slug
+        - cliquesWhatsappHoje
+        - publicado
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
+        titulo:
+          type: string
+        slug:
+          type: string
+        cidade:
+          type: string
+          nullable: true
+        uf:
+          type: string
+          nullable: true
+        cliquesWhatsappHoje:
+          type: integer
+          format: int64
+          minimum: 1
+        miniaturaUrl:
+          type: string
+          nullable: true
+        publicado:
+          type: boolean
+    AdminDashboardTopWhatsappHoje:
+      type: object
+      additionalProperties: false
+      required: [dataReferencia, fusoHorario, limite, temMais, itens, calculadoEm]
+      properties:
+        dataReferencia:
+          type: string
+          format: date
+        fusoHorario:
+          type: string
+          const: America/Sao_Paulo
+        limite:
+          type: integer
+          minimum: 1
+          maximum: 48
+        temMais:
+          type: boolean
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDashboardTopWhatsappItem"
+        calculadoEm:
+          type: string
+          format: date-time
+    AdminDashboardInsight:
+      type: object
+      additionalProperties: false
+      required: [codigo, titulo, descricao]
+      properties:
+        codigo:
+          type: string
+        titulo:
+          type: string
+        descricao:
+          type: string
+        href:
+          type: string
+          nullable: true
+    AdminDashboardAnuncioDesempenho:
+      type: object
+      additionalProperties: false
+      required:
+        - anuncioId
+        - titulo
+        - slug
+        - visualizacoes
+        - cliquesWhatsapp
+        - conversaoPct
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
+        titulo:
+          type: string
+        slug:
+          type: string
+        cidade:
+          type: string
+          nullable: true
+        uf:
+          type: string
+          nullable: true
+        visualizacoes:
+          type: integer
+          format: int64
+          minimum: 0
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        conversaoPct:
+          type: number
+          format: double
+          minimum: 0
+    AdminDashboardCidadeDesempenho:
+      type: object
+      additionalProperties: false
+      required:
+        - cidade
+        - uf
+        - anunciosPublicadosAtivos
+        - visualizacoes
+        - cliquesWhatsapp
+        - conversaoPct
+      properties:
+        cidade:
+          type: string
+        cidadeSlug:
+          type: string
+          nullable: true
+        uf:
+          type: string
+        anunciosPublicadosAtivos:
+          type: integer
+          format: int64
+          minimum: 0
+        visualizacoes:
+          type: integer
+          format: int64
+          minimum: 0
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        conversaoPct:
+          type: number
+          format: double
+          minimum: 0
+    AdminDashboardClassificacaoDesempenho:
+      type: object
+      additionalProperties: false
+      required:
+        - classificacao
+        - anunciosPublicadosAtivos
+        - visualizacoes
+        - cliquesWhatsapp
+        - conversaoPct
+      properties:
+        classificacao:
+          type: string
+          enum: [LIVRE, RESTRITA_18]
+        anunciosPublicadosAtivos:
+          type: integer
+          format: int64
+          minimum: 0
+        visualizacoes:
+          type: integer
+          format: int64
+          minimum: 0
+        cliquesWhatsapp:
+          type: integer
+          format: int64
+          minimum: 0
+        conversaoPct:
+          type: number
+          format: double
+          minimum: 0
+    AdminDashboardAnalises:
+      type: object
+      additionalProperties: false
+      required:
+        - alertasPrioritarios
+        - oportunidadesComerciais
+        - topConversao
+        - piorConversaoComTrafego
+        - desempenhoPorCidade
+        - desempenhoPorClassificacao
+        - minimoVisualizacoesPiorConversao
+        - calculadoEm
+      properties:
+        alertasPrioritarios:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDashboardInsight"
+        oportunidadesComerciais:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDashboardInsight"
+        topConversao:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/AdminDashboardAnuncioDesempenho"
+        piorConversaoComTrafego:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/AdminDashboardAnuncioDesempenho"
+        desempenhoPorCidade:
+          type: array
+          maxItems: 12
+          items:
+            $ref: "#/components/schemas/AdminDashboardCidadeDesempenho"
+        desempenhoPorClassificacao:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminDashboardClassificacaoDesempenho"
+        minimoVisualizacoesPiorConversao:
+          type: integer
+          const: 100
         calculadoEm:
           type: string
           format: date-time

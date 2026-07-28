@@ -43,6 +43,7 @@ import {
   buscarIndicadoresTickets,
   type AdminTicketIndicadores,
 } from '@/lib/admin-suporte-api'
+import { AdminDashboardAnalytics } from './AdminDashboardAnalytics'
 
 type SourceKey =
   | 'usuarios'
@@ -337,6 +338,10 @@ export function StrategicAdminDashboard() {
         <div className="border-y border-zinc-200 py-12 text-center">
           <p className="text-sm font-medium text-zinc-800">Nenhum indicador disponível para suas permissões.</p>
         </div>
+      ) : null}
+
+      {!sessionError && session ? (
+        <AdminDashboardAnalytics session={session} refreshKey={refreshKey} />
       ) : null}
     </section>
   )

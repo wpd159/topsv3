@@ -1,47 +1,58 @@
 'use client'
 
 import Link from 'next/link'
-import { ChevronRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { AlertTriangle, ChevronRight } from 'lucide-react'
 
-export type PriorityAlertItem = {
-  id: string
-  title: string
-  subtitle: string
-  href: string
-}
+import { Button } from '@/components/ui/button'
+import type { AdminDashboardInsight } from '@/lib/admin-dashboard-api'
 
 type Props = {
-  items: PriorityAlertItem[]
-  loading?: boolean
+  items: AdminDashboardInsight[]
+  loading: boolean
+  error: string | null
+  onRetry: () => void
 }
 
-export function PriorityAlertsCard({ items, loading }: Props) {
+export function PriorityAlertsCard({ items, loading, error, onRetry }: Props) {
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-rose-100/80 bg-white p-5 shadow-sm">
-      <h3 className="text-base font-bold text-gray-900">Alertas prioritários</h3>
-      <p className="mt-1 text-xs text-gray-500">Sinais de atrito ou perda de eficiência na base.</p>
-      <div className="mt-4 space-y-1">
+    <section className="h-full border border-zinc-200 bg-white p-5">
+      <h3 className="text-base font-bold text-zinc-950">Alertas prioritários</h3>
+      <p className="mt-1 text-xs text-zinc-600">Sinais reais de atrito ou baixa eficiência.</p>
+
+      <div className="mt-4 divide-y divide-zinc-200">
         {loading ? (
-          <p className="text-sm text-gray-500">Carregando…</p>
+          <p className="py-6 text-sm text-zinc-500">Calculando alertas...</p>
+        ) : error ? (
+          <div className="py-5">
+            <p className="text-sm text-red-700" role="alert">{error}</p>
+            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={onRetry}>
+              Tentar novamente
+            </Button>
+          </div>
         ) : items.length === 0 ? (
-          <p className="text-sm text-gray-500">Nenhum alerta calculável no momento.</p>
+          <p className="py-6 text-sm text-zinc-500">Nenhum alerta no momento.</p>
         ) : (
-          items.map((item) => (
-            <Link
-              key={item.id}
-              href={item.href}
-              className="group flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50/40 px-3 py-3 transition hover:border-rose-200 hover:bg-rose-50/50"
-            >
-              <ExclamationTriangleIcon className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" aria-hidden />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-gray-900 group-hover:text-rose-900">{item.title}</p>
-                <p className="mt-0.5 text-xs text-gray-600">{item.subtitle}</p>
-              </div>
-              <ChevronRightIcon className="mt-1 h-4 w-4 shrink-0 text-gray-400 group-hover:text-rose-600" />
-            </Link>
-          ))
+          items.map((item) => {
+            const content = (
+              <>
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
+                <span className="min-w-0 flex-1">
+                  <strong className="block text-sm text-zinc-950">{item.titulo}</strong>
+                  <span className="mt-1 block text-xs text-zinc-600">{item.descricao}</span>
+                </span>
+                {item.href ? <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-zinc-400" aria-hidden /> : null}
+              </>
+            )
+            return item.href ? (
+              <Link key={item.codigo} href={item.href} className="flex gap-3 py-3 hover:text-pink-700">
+                {content}
+              </Link>
+            ) : (
+              <div key={item.codigo} className="flex gap-3 py-3">{content}</div>
+            )
+          })
         )}
       </div>
-    </div>
+    </section>
   )
 }

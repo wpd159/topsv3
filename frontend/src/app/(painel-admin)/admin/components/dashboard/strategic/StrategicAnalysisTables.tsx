@@ -1,58 +1,145 @@
 'use client'
 
+import Link from 'next/link'
+
+import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { CidadeAggRow } from './strategic-dashboard-utils'
-import { ContractState } from '@/components/feedback/contract-state'
+import type {
+  AdminDashboardCityPerformance,
+  AdminDashboardClassificationPerformance,
+} from '@/lib/admin-dashboard-api'
 
 type Props = {
-  cidadeRows: CidadeAggRow[]
-  loading?: boolean
-  error?: unknown
+  cidadeRows: AdminDashboardCityPerformance[]
+  classificacaoRows: AdminDashboardClassificationPerformance[]
+  loading: boolean
+  error: string | null
+  onRetry: () => void
 }
 
-function fmt(value: number) {
-  return Number(value).toLocaleString('pt-BR')
+function formatPercent(value: number) {
+  return `${value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  })}%`
 }
 
-function fmtConv(value: number) {
-  return `${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-}
-
-export function StrategicAnalysisTables({ cidadeRows, loading, error }: Props) {
+function EmptyOrError({
+  error,
+  onRetry,
+  colSpan,
+}: {
+  error: string | null
+  onRetry: () => void
+  colSpan: number
+}) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200/80 bg-white shadow-sm">
-      <div className="border-b border-gray-100 px-5 py-4">
-        <h3 className="text-base font-bold text-gray-900">Desempenho por cidade</h3>
-        <p className="mt-0.5 text-xs text-gray-500">Agregado de anúncios ativos na base.</p>
-      </div>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="text-xs font-semibold uppercase text-gray-500">Cidade</TableHead>
-            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Ativos</TableHead>
-            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Views</TableHead>
-            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Cliques</TableHead>
-            <TableHead className="text-right text-xs font-semibold uppercase text-gray-500">Conv.</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {loading ? (
-            <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-gray-500">Carregando...</TableCell></TableRow>
-          ) : error ? (
-            <TableRow><TableCell colSpan={5}><ContractState error={error} compact /></TableCell></TableRow>
-          ) : cidadeRows.length === 0 ? (
-            <TableRow><TableCell colSpan={5} className="py-8 text-center text-sm text-gray-500">Sem dados.</TableCell></TableRow>
-          ) : cidadeRows.map((row) => (
-            <TableRow key={row.cidade} className="text-sm">
-              <TableCell className="font-medium text-gray-900">{row.cidade}</TableCell>
-              <TableCell className="text-right tabular-nums">{row.ativos}</TableCell>
-              <TableCell className="text-right tabular-nums text-gray-800">{fmt(row.views)}</TableCell>
-              <TableCell className="text-right tabular-nums text-gray-800">{fmt(row.cliques)}</TableCell>
-              <TableCell className="text-right tabular-nums font-medium text-gray-800">{fmtConv(row.conversao)}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <TableRow>
+      <TableCell colSpan={colSpan} className="py-8 text-center">
+        {error ? (
+          <>
+            <p className="text-sm text-red-700" role="alert">{error}</p>
+            <Button type="button" size="sm" variant="outline" className="mt-3" onClick={onRetry}>
+              Tentar novamente
+            </Button>
+          </>
+        ) : (
+          <span className="text-sm text-zinc-500">Sem dados elegíveis.</span>
+        )}
+      </TableCell>
+    </TableRow>
+  )
+}
+
+export function StrategicAnalysisTables({
+  cidadeRows,
+  classificacaoRows,
+  loading,
+  error,
+  onRetry,
+}: Props) {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+      <section className="min-w-0 border border-zinc-200 bg-white">
+        <header className="border-b border-zinc-200 px-5 py-4">
+          <h3 className="text-base font-bold text-zinc-950">Desempenho por cidade</h3>
+          <p className="mt-1 text-xs text-zinc-600">Até 12 cidades por volume de visualizações.</p>
+        </header>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[620px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cidade</TableHead>
+                <TableHead className="text-right">Ativos</TableHead>
+                <TableHead className="text-right">Views</TableHead>
+                <TableHead className="text-right">Cliques</TableHead>
+                <TableHead className="text-right">Conversão</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow><TableCell colSpan={5} className="py-8 text-center">Carregando...</TableCell></TableRow>
+              ) : error || cidadeRows.length === 0 ? (
+                <EmptyOrError error={error} onRetry={onRetry} colSpan={5} />
+              ) : (
+                cidadeRows.map((row) => (
+                  <TableRow key={`${row.uf}:${row.cidadeSlug ?? row.cidade}`}>
+                    <TableCell>
+                      <Link
+                        href={`/admin/anuncios?uf=${encodeURIComponent(row.uf)}&cidade=${encodeURIComponent(row.cidadeSlug ?? row.cidade)}`}
+                        className="font-medium hover:text-pink-700"
+                      >
+                        {row.cidade} - {row.uf}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{row.anunciosPublicadosAtivos}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.visualizacoes.toLocaleString('pt-BR')}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.cliquesWhatsapp.toLocaleString('pt-BR')}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{formatPercent(row.conversaoPct)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
+
+      <section className="min-w-0 border border-zinc-200 bg-white">
+        <header className="border-b border-zinc-200 px-5 py-4">
+          <h3 className="text-base font-bold text-zinc-950">Por classificação</h3>
+          <p className="mt-1 text-xs text-zinc-600">Cada anúncio contado uma única vez.</p>
+        </header>
+        <div className="overflow-x-auto">
+          <Table className="min-w-[450px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Classificação</TableHead>
+                <TableHead className="text-right">Ativos</TableHead>
+                <TableHead className="text-right">Views</TableHead>
+                <TableHead className="text-right">Conversão</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow><TableCell colSpan={4} className="py-8 text-center">Carregando...</TableCell></TableRow>
+              ) : error || classificacaoRows.length === 0 ? (
+                <EmptyOrError error={error} onRetry={onRetry} colSpan={4} />
+              ) : (
+                classificacaoRows.map((row) => (
+                  <TableRow key={row.classificacao}>
+                    <TableCell className="font-medium">
+                      {row.classificacao === 'RESTRITA_18' ? 'Restrita 18+' : 'Livre'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{row.anunciosPublicadosAtivos}</TableCell>
+                    <TableCell className="text-right tabular-nums">{row.visualizacoes.toLocaleString('pt-BR')}</TableCell>
+                    <TableCell className="text-right font-semibold tabular-nums">{formatPercent(row.conversaoPct)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
     </div>
   )
 }

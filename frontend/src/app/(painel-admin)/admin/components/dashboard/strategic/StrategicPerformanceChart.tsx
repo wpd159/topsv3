@@ -1,215 +1,228 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   Bar,
   CartesianGrid,
   ComposedChart,
-  Legend,
   Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import type { DesempenhoDiarioResponse } from '@/lib/admin-estatisticas-api'
+
 import { Button } from '@/components/ui/button'
-import { ContractState } from '@/components/feedback/contract-state'
+import type { AdminDashboardDailyPerformance } from '@/lib/admin-dashboard-api'
 import { cn } from '@/lib/utils'
 
 type Period = 7 | 15 | 30
 
 type Props = {
-  data: DesempenhoDiarioResponse | null
+  data: AdminDashboardDailyPerformance | null
   loading: boolean
   period: Period
-  onPeriodChange: (p: Period) => void
-  error?: unknown
+  onPeriodChange: (period: Period) => void
+  error: string | null
+  onRetry: () => void
 }
 
-function formatAxisDate(iso: string) {
-  const [y, m, d] = iso.split('-').map(Number)
-  if (!y || !m || !d) return iso
-  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`
+function formatDate(iso: string) {
+  const [year, month, day] = iso.split('-').map(Number)
+  if (!year || !month || !day) return iso
+  return `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}`
 }
 
-function fmtInt(n: number | undefined) {
-  return Number(n ?? 0).toLocaleString('pt-BR')
+function formatNumber(value: number) {
+  return value.toLocaleString('pt-BR')
 }
 
-function fmtPct(n: number | undefined | null) {
-  if (n == null || Number.isNaN(n)) return '—'
-  const s = `${n > 0 ? '+' : ''}${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })}%`
-  return s
+function formatPercent(value: number, showSign = false) {
+  const sign = showSign && value > 0 ? '+' : ''
+  return `${sign}${value.toLocaleString('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  })}%`
 }
 
-function coerceDailyPoint(p: { data?: string; visualizacoes?: unknown; cliquesWhatsapp?: unknown }) {
-  const dia = typeof p.data === 'string' ? p.data : ''
-  const visualizacoes = Number(p.visualizacoes ?? 0)
-  const cliquesWhatsapp = Number(p.cliquesWhatsapp ?? 0)
-  return {
-    data: dia,
-    visualizacoes: Number.isFinite(visualizacoes) ? Math.max(0, visualizacoes) : 0,
-    cliquesWhatsapp: Number.isFinite(cliquesWhatsapp) ? Math.max(0, cliquesWhatsapp) : 0,
-    label: formatAxisDate(dia),
-  }
-}
-
-export function StrategicPerformanceChart({ data, loading, period, onPeriodChange, error }: Props) {
-  const chartData = useMemo(
-    () => (data?.serieDiaria ?? []).map((p) => coerceDailyPoint(p)),
-    [data?.serieDiaria]
-  )
-
-  const maxViews = useMemo(() => chartData.reduce((m, p) => Math.max(m, p.visualizacoes), 0), [chartData])
-  const maxClicks = useMemo(() => chartData.reduce((m, p) => Math.max(m, p.cliquesWhatsapp), 0), [chartData])
-  const sumViewsSerie = useMemo(() => chartData.reduce((s, p) => s + p.visualizacoes, 0), [chartData])
-
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'development' || !data || chartData.length === 0) return
-    const last = chartData[chartData.length - 1]
-    console.debug('[StrategicPerformanceChart série]', {
-      pontos: chartData.length,
-      maxViews,
-      maxClicks,
-      sumViewsSerie,
-      ultimoDia: last?.data,
-      ultimoViews: last?.visualizacoes,
-      ultimoCliques: last?.cliquesWhatsapp,
-      resumoHojeViews: data.hojeVisualizacoes,
-      resumoHojeCliques: data.hojeCliquesWhatsapp,
-    })
-  }, [data, chartData, maxViews, maxClicks, sumViewsSerie])
-
-  const periods: { key: Period; label: string }[] = [
-    { key: 7, label: '7d' },
-    { key: 15, label: '15d' },
-    { key: 30, label: '30d' },
-  ]
-
-  const resumoCoerente =
-    !data ||
-    chartData.length === 0 ||
-    lastPointRoughlyMatchesHoje(chartData, data.hojeVisualizacoes, data.hojeCliquesWhatsapp)
+function PerformanceTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean
+  payload?: Array<{
+    payload?: {
+      data: string
+      visualizacoes: number
+      cliquesWhatsapp: number
+      conversaoPct: number
+    }
+  }>
+}) {
+  const point = payload?.[0]?.payload
+  if (!active || !point) return null
 
   return (
-    <div className="rounded-2xl border border-gray-200/80 bg-white p-6 shadow-sm">
+    <div className="border border-zinc-200 bg-white p-3 text-xs shadow-lg">
+      <p className="font-semibold text-zinc-950">{formatDate(point.data)}</p>
+      <p className="mt-2 text-blue-700">
+        {formatNumber(point.visualizacoes)} visualizações
+      </p>
+      <p className="text-emerald-700">
+        {formatNumber(point.cliquesWhatsapp)} cliques
+      </p>
+      <p className="text-zinc-600">
+        Conversão: {formatPercent(point.conversaoPct)}
+      </p>
+    </div>
+  )
+}
+
+export function StrategicPerformanceChart({
+  data,
+  loading,
+  period,
+  onPeriodChange,
+  error,
+  onRetry,
+}: Props) {
+  const chartData = useMemo(
+    () =>
+      (data?.serieDiaria ?? []).map((point) => ({
+        ...point,
+        label: formatDate(point.data),
+      })),
+    [data],
+  )
+
+  return (
+    <section className="border border-zinc-200 bg-white p-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold tracking-tight text-gray-900">Desempenho diário</h2>
-          <p className="mt-1 max-w-xl text-sm text-gray-500">
-            Visualizações (log diário na API) e cliques WhatsApp por dia — barras para volume de views, linha para
-            cliques (eixos separados).
+        <div>
+          <h3 className="text-base font-bold text-zinc-950">Desempenho diário</h3>
+          <p className="mt-1 text-xs text-zinc-600">
+            Visualizações internas e cliques no WhatsApp no fuso canônico.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {periods.map(({ key, label }) => (
+          <div className="mt-3 flex gap-2" aria-label="Período do gráfico">
+            {([7, 15, 30] as const).map((days) => (
               <Button
-                key={key}
+                key={days}
                 type="button"
                 size="sm"
-                variant={period === key ? 'default' : 'outline'}
+                variant={period === days ? 'default' : 'outline'}
                 className={cn(
-                  period === key && 'bg-[#f0198f] text-white hover:bg-[#d9157d]',
-                  period !== key && 'border-gray-200 text-gray-700'
+                  period === days && 'bg-pink-600 text-white hover:bg-pink-700',
                 )}
-                onClick={() => onPeriodChange(key)}
+                onClick={() => onPeriodChange(days)}
               >
-                {label}
+                {days} dias
               </Button>
             ))}
           </div>
         </div>
 
-        <div className="w-full shrink-0 rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3 text-sm lg:w-72">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Resumo</p>
-          {loading ? (
-            <p className="mt-2 text-gray-500">Carregando…</p>
-          ) : error ? (
-            <p className="mt-2 text-amber-800">Resumo diario indisponivel.</p>
-          ) : (
-            <>
-              <p className="mt-2 text-gray-800">
-                <span className="font-medium text-gray-600">Hoje:</span>{' '}
-                {fmtInt(data?.hojeVisualizacoes)} views · {fmtInt(data?.hojeCliquesWhatsapp)} cliques ·{' '}
-                {data?.hojeConversaoPct != null
-                  ? `${Number(data.hojeConversaoPct).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
-                  : '—'}
-              </p>
-              <p className="mt-1 text-gray-800">
-                <span className="font-medium text-gray-600">Ontem:</span>{' '}
-                {fmtInt(data?.ontemVisualizacoes)} views · {fmtInt(data?.ontemCliquesWhatsapp)} cliques ·{' '}
-                {data?.ontemConversaoPct != null
-                  ? `${Number(data.ontemConversaoPct).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
-                  : '—'}
-              </p>
-              <p className="mt-2 border-t border-gray-200/80 pt-2 text-gray-800">
-                <span className="font-medium text-gray-600">Variação (vs ontem):</span> views {fmtPct(data?.varVisualizacoesPct)}{' '}
-                · cliques {fmtPct(data?.varCliquesPct)}
-              </p>
-            </>
-          )}
-        </div>
+        {data ? (
+          <div className="grid w-full gap-2 text-xs sm:grid-cols-2 lg:w-auto lg:min-w-[560px] lg:grid-cols-4">
+            <div className="border-l-2 border-blue-500 pl-3">
+              <span className="text-zinc-500">Período</span>
+              <strong className="block text-sm text-zinc-950">
+                {formatNumber(data.totalVisualizacoes)} views
+              </strong>
+              <span className="text-zinc-600">
+                {formatNumber(data.totalCliquesWhatsapp)} cliques
+              </span>
+            </div>
+            <div className="border-l-2 border-zinc-300 pl-3">
+              <span className="text-zinc-500">Hoje</span>
+              <strong className="block text-sm text-zinc-950">
+                {formatNumber(data.hoje.visualizacoes)} views · {formatPercent(data.hoje.conversaoPct)}
+              </strong>
+              <span className="text-zinc-600">
+                {formatNumber(data.hoje.cliquesWhatsapp)} cliques
+              </span>
+            </div>
+            <div className="border-l-2 border-zinc-400 pl-3">
+              <span className="text-zinc-500">Ontem</span>
+              <strong className="block text-sm text-zinc-950">
+                {formatNumber(data.ontem.visualizacoes)} views · {formatPercent(data.ontem.conversaoPct)}
+              </strong>
+              <span className="text-zinc-600">
+                {formatNumber(data.ontem.cliquesWhatsapp)} cliques
+              </span>
+            </div>
+            <div className="border-l-2 border-emerald-500 pl-3">
+              <span className="text-zinc-500">Variação diária</span>
+              <strong className="block text-sm text-zinc-950">
+                {formatPercent(data.variacaoVisualizacoesPct, true)} views
+              </strong>
+              <span className="text-zinc-600">
+                {formatPercent(data.variacaoCliquesPct, true)} cliques
+              </span>
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {!loading && data && !resumoCoerente ? (
-        <p className="mt-3 text-xs text-amber-800">
-          O último ponto da série não bate com o resumo &quot;Hoje&quot; — pode ser fuso horário (servidor vs navegador)
-          ou fechamento do dia ainda não alinhado. Confira os números brutos no painel da API.
-        </p>
-      ) : null}
+      <div className="mt-4 flex flex-wrap gap-4 text-xs text-zinc-600" aria-label="Legenda do gráfico">
+        <span className="inline-flex items-center gap-2">
+          <span className="h-3 w-3 bg-blue-300" aria-hidden />
+          Barras: visualizações
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-0.5 w-5 bg-emerald-600" aria-hidden />
+          Linha: cliques no WhatsApp
+        </span>
+      </div>
 
-      <div className="mt-6 h-[340px] w-full">
+      <div className="mt-5 h-[320px] w-full">
         {loading ? (
-          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 text-sm text-gray-500">
-            Carregando série…
+          <div className="flex h-full items-center justify-center border border-dashed border-zinc-200 text-sm text-zinc-500">
+            Carregando série diária...
           </div>
         ) : error ? (
-          <ContractState error={error} />
+          <div className="flex h-full flex-col items-center justify-center gap-3 border border-red-200 bg-red-50 p-5 text-center">
+            <p className="text-sm text-red-800" role="alert">{error}</p>
+            <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+              Tentar novamente
+            </Button>
+          </div>
         ) : chartData.length === 0 ? (
-          <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 text-sm text-gray-500">
-            Nenhum dado no período.
+          <div className="flex h-full items-center justify-center border border-dashed border-zinc-200 text-sm text-zinc-500">
+            Nenhum evento interno no período.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 8, right: 16, left: 4, bottom: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
+            <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" vertical={false} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 11, fill: '#71717a' }}
+                axisLine={{ stroke: '#d4d4d8' }}
+              />
               <YAxis
                 yAxisId="views"
                 tick={{ fontSize: 11, fill: '#2563eb' }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickFormatter={(v) => Number(v).toLocaleString('pt-BR', { notation: 'compact' })}
+                tickFormatter={(value) => Number(value).toLocaleString('pt-BR', { notation: 'compact' })}
+                axisLine={false}
               />
               <YAxis
-                yAxisId="cliques"
+                yAxisId="clicks"
                 orientation="right"
-                tick={{ fontSize: 11, fill: '#059669' }}
-                axisLine={{ stroke: '#e5e7eb' }}
-                tickFormatter={(v) => Number(v).toLocaleString('pt-BR', { notation: 'compact' })}
+                tick={{ fontSize: 11, fill: '#047857' }}
+                tickFormatter={(value) => Number(value).toLocaleString('pt-BR', { notation: 'compact' })}
+                axisLine={false}
               />
-              <Tooltip
-                contentStyle={{
-                  borderRadius: 10,
-                  border: '1px solid #e5e7eb',
-                  fontSize: 13,
-                }}
-                labelFormatter={(_, payload) => {
-                  const p = payload?.[0]?.payload as { data?: string } | undefined
-                  return p?.data ?? ''
-                }}
-                formatter={(value: number | string, name: string) => [Number(value).toLocaleString('pt-BR'), name]}
-              />
-              <Legend wrapperStyle={{ fontSize: 13, paddingTop: 12 }} />
+              <Tooltip content={<PerformanceTooltip />} />
               <Bar
                 yAxisId="views"
                 dataKey="visualizacoes"
-                name="Visualizações (dia)"
+                name="Visualizações"
                 fill="#93c5fd"
-                radius={[4, 4, 0, 0]}
+                radius={[3, 3, 0, 0]}
                 maxBarSize={28}
               />
               <Line
-                yAxisId="cliques"
+                yAxisId="clicks"
                 type="monotone"
                 dataKey="cliquesWhatsapp"
                 name="Cliques WhatsApp"
@@ -222,27 +235,6 @@ export function StrategicPerformanceChart({ data, loading, period, onPeriodChang
           </ResponsiveContainer>
         )}
       </div>
-      {!loading && chartData.length > 0 ? (
-        <p className="mt-2 text-center text-[11px] text-gray-500">
-          Série: soma de views no período ≈ {sumViewsSerie.toLocaleString('pt-BR')} (somatório dos dias exibidos).
-        </p>
-      ) : null}
-    </div>
+    </section>
   )
-}
-
-function lastPointRoughlyMatchesHoje(
-  chartData: Array<{ data: string; visualizacoes: number; cliquesWhatsapp: number }>,
-  hojeV: number | undefined,
-  hojeC: number | undefined
-): boolean {
-  const last = chartData[chartData.length - 1]
-  if (!last) return true
-  const hv = Number(hojeV ?? 0)
-  const hc = Number(hojeC ?? 0)
-  const tolV = hv === 0 ? 0 : Math.max(5, Math.round(hv * 0.05))
-  const tolC = hc === 0 ? 0 : Math.max(2, Math.round(hc * 0.05))
-  const okV = hv === 0 ? last.visualizacoes === 0 : Math.abs(last.visualizacoes - hv) <= tolV
-  const okC = hc === 0 ? last.cliquesWhatsapp === 0 : Math.abs(last.cliquesWhatsapp - hc) <= tolC
-  return okV && okC
 }
