@@ -128,7 +128,6 @@ export const PENDING_BACKEND_CONTRACTS = {
   adminUsers: 'Gestao administrativa de usuarios',
   adminAnalytics: 'Rankings e series detalhadas do dashboard',
   systemLogs: 'Registros e trilhas operacionais',
-  wizardProgress: 'Observabilidade do progresso do wizard',
   wizardProfile: 'Descricao de perfil no wizard de anuncio',
   moderationLegacyActions: 'Acoes legadas de edicao na moderacao',
   premiumLegacyDashboard: 'Dashboard Premium legado',

@@ -25,7 +25,6 @@ const forbiddenRoutes = [
   '/api/public/api/admin',
   '/localidades/estados',
   '/anuncios/staff',
-  '/wizard-progress/sync',
   '/ws-suporte',
   '/chat/recentes',
   '/usuarios/username',
@@ -132,7 +131,6 @@ const preservedSurfaces = {
   ],
   'app/(painel-admin)/admin/faqs/page.tsx': ['Nova FAQ', 'Pergunta', 'Resposta', 'Categoria', 'Mover para cima', 'Excluir'],
   'app/(painel-admin)/admin/registros/page.tsx': ['Todas as acoes', 'Modulo', 'Data inicial', 'Consultar detalhe', 'Proximo'],
-  'app/(painel-admin)/admin/wizard-progress/page.tsx': ['Buscar anunciante', 'Todos os modos', 'Abrir anuncio', 'Abrir moderacao', 'Editar usuario'],
   'app/(painel-admin)/admin/components/novo-staff-modal.tsx': ['Nome completo', 'Nome de usuario', 'E-mail', 'CPF', 'Administrador', 'Moderador', 'Suporte', 'Mostrar', 'senha'],
   'app/(painel-admin)/admin/components/anuncios/admin-anuncio-dados-inline-editor.tsx': [
     'Titulo', 'Descricao', 'Categoria', 'Preco', 'UF', 'Cidade', 'Bairro',
@@ -242,5 +240,16 @@ assert.ok(
 const wizardApi = source('features/anuncio-wizard/api.ts')
 assert.ok(wizardApi.includes("publicApiUrl('/anunciar')"), 'Wizard deve usar URL publica canonica.')
 assert.ok(wizardApi.includes('PENDING_BACKEND_CONTRACTS.wizardProfile'), 'Contrato ausente do perfil deve ser explicito.')
+
+const wizardProgress = source('app/(painel-admin)/admin/wizard-progress/page.tsx')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+for (const label of [
+  'Buscar por usuario', 'Todos os modos', 'Abrir anuncio',
+  'Abrir moderacao', 'Editar usuario', 'Atualizar', 'Tentar novamente',
+]) {
+  assert.ok(wizardProgress.includes(label), `Controle funcional ausente em Progresso do wizard: ${label}`)
+}
+assert.ok(!wizardProgress.includes('PENDING_BACKEND_CONTRACTS'), 'Progresso do wizard nao pode permanecer pendente.')
 
 console.log('Saneamento contratual: rotas, erros, polling e funcoes pendentes validados.')

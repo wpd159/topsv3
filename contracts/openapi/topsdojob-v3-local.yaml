@@ -6725,6 +6725,123 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/wizard-progress/sync:
+    post:
+      summary: Sincroniza o progresso operacional do wizard de anuncio
+      description: Registra somente sessao opaca, modo, maior etapa alcancada, estado e vinculos canonicos do usuario autenticado. Nao persiste campos preenchidos no formulario.
+      operationId: syncWizardProgress
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WizardProgressSyncRequest"
+      responses:
+        "200":
+          description: Progresso criado, atualizado ou retry idempotente reconciliado
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WizardProgressSyncResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/admin/wizard-progress/dashboard:
+    get:
+      summary: Consulta indicadores reais do progresso do wizard
+      description: Retorna agregados, funil e lista operacional sanitizada para ADMIN ou MODERADOR com ANUNCIO_LER.
+      operationId: getAdminWizardProgressDashboard
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: periodo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [HOJE, 7_DIAS, 30_DIAS, PERSONALIZADO]
+            default: 30_DIAS
+        - name: inicio
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: fim
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: termo
+          in: query
+          required: false
+          schema: { type: string, maxLength: 120 }
+        - name: modo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, CREATE, EDIT]
+            default: TODOS
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, EM_PREENCHIMENTO, AGUARDANDO_MODERACAO, PUBLICADO, REJEITADO]
+            default: TODOS
+        - name: uf
+          in: query
+          required: false
+          schema: { type: string, pattern: "^[A-Z]{2}$" }
+        - name: cidade
+          in: query
+          required: false
+          schema: { type: string, maxLength: 120 }
+        - name: kyc
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, NAO_INICIADO, PENDENTE, APROVADO, REJEITADO]
+            default: TODOS
+        - name: anuncioStatus
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODOS, SEM_ANUNCIO, RASCUNHO, PENDENTE_REVISAO, APROVADO, PUBLICADO, PAUSADO, REJEITADO, BLOQUEADO, REMOVIDO]
+            default: TODOS
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          required: false
+          schema: { type: integer, enum: [20, 30, 50], default: 20 }
+      responses:
+        "200":
+          description: Dashboard de progresso calculado no fuso America/Sao_Paulo
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminWizardProgressDashboard"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
 components:
   securitySchemes:
     PublicSessionCookie:
@@ -13825,3 +13942,131 @@ components:
         papel: { type: string, enum: [ADMIN, MODERADOR] }
         ativo: { type: boolean }
         versao: { type: integer, minimum: 0 }
+    WizardProgressSyncRequest:
+      type: object
+      additionalProperties: false
+      required: [sessionId, mode, ultimoStep, status]
+      properties:
+        sessionId:
+          type: string
+          minLength: 8
+          maxLength: 80
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$"
+        mode:
+          type: string
+          enum: [CREATE, EDIT]
+        ultimoStep:
+          type: string
+          enum: [PERFIL, LOCALIZACAO, SERVICOS, FOTOS, REVISAO, PREMIUM, KYC, CONCLUIDO]
+        status:
+          type: string
+          enum: [EM_PREENCHIMENTO, AGUARDANDO_MODERACAO]
+        anuncioId:
+          type: [string, "null"]
+          format: uuid
+    WizardProgressSyncResponse:
+      type: object
+      additionalProperties: false
+      required: [id, status, ultimoStep, atualizadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [EM_PREENCHIMENTO, AGUARDANDO_MODERACAO]
+        ultimoStep:
+          type: string
+          enum: [PERFIL, LOCALIZACAO, SERVICOS, FOTOS, REVISAO, PREMIUM, KYC, CONCLUIDO]
+        atualizadoEm: { type: string, format: date-time }
+    AdminWizardProgressPeriodo:
+      type: object
+      additionalProperties: false
+      required: [inicio, fim, fusoHorario, calculadoEm]
+      properties:
+        inicio: { type: string, format: date }
+        fim: { type: string, format: date }
+        fusoHorario: { type: string, const: America/Sao_Paulo }
+        calculadoEm: { type: string, format: date-time }
+    AdminWizardProgressIndicadores:
+      type: object
+      additionalProperties: false
+      required: [sessoesObservadas, usuariosObservados, kycNaoIniciado, kycPendente, kycAprovado, emPreenchimento, aguardandoModeracao, anunciosRascunho, anunciosRejeitados, anunciosPublicados]
+      properties:
+        sessoesObservadas: { type: integer, minimum: 0 }
+        usuariosObservados: { type: integer, minimum: 0 }
+        kycNaoIniciado: { type: integer, minimum: 0 }
+        kycPendente: { type: integer, minimum: 0 }
+        kycAprovado: { type: integer, minimum: 0 }
+        emPreenchimento: { type: integer, minimum: 0 }
+        aguardandoModeracao: { type: integer, minimum: 0 }
+        anunciosRascunho: { type: integer, minimum: 0 }
+        anunciosRejeitados: { type: integer, minimum: 0 }
+        anunciosPublicados: { type: integer, minimum: 0 }
+        tempoMedioConclusaoMinutos:
+          type: [integer, "null"]
+          minimum: 0
+    AdminWizardProgressEtapaFunil:
+      type: object
+      additionalProperties: false
+      required: [codigo, rotulo, quantidade, perda, conversaoPercentual]
+      properties:
+        codigo: { type: string }
+        rotulo: { type: string }
+        quantidade: { type: integer, minimum: 0 }
+        perda: { type: integer, minimum: 0 }
+        conversaoPercentual: { type: number, minimum: 0, maximum: 100 }
+    AdminWizardProgressEtapaAtual:
+      type: object
+      additionalProperties: false
+      required: [codigo, rotulo, quantidade]
+      properties:
+        codigo: { type: string }
+        rotulo: { type: string }
+        quantidade: { type: integer, minimum: 0 }
+    AdminWizardProgressItem:
+      type: object
+      additionalProperties: false
+      required: [id, usuarioId, usuario, modo, status, ultimoStep, kycStatus, criadoEm, atualizadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        usuarioId: { type: string, format: uuid }
+        usuario: { type: string }
+        emailMascarado: { type: [string, "null"] }
+        modo: { type: string, enum: [CREATE, EDIT] }
+        status:
+          type: string
+          enum: [EM_PREENCHIMENTO, AGUARDANDO_MODERACAO, PUBLICADO, REJEITADO]
+        ultimoStep: { type: string }
+        kycStatus: { type: string, enum: [NAO_INICIADO, PENDENTE, APROVADO, REJEITADO] }
+        anuncioId: { type: [string, "null"], format: uuid }
+        anuncioSlug: { type: [string, "null"] }
+        anuncioTitulo: { type: [string, "null"] }
+        anuncioStatus: { type: [string, "null"] }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+    AdminWizardProgressPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, page, size, totalElements, totalPages, last]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/AdminWizardProgressItem" }
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, enum: [20, 30, 50] }
+        totalElements: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+        last: { type: boolean }
+    AdminWizardProgressDashboard:
+      type: object
+      additionalProperties: false
+      required: [periodo, indicadores, funil, etapasAtuais, progresso]
+      properties:
+        periodo: { $ref: "#/components/schemas/AdminWizardProgressPeriodo" }
+        indicadores: { $ref: "#/components/schemas/AdminWizardProgressIndicadores" }
+        funil:
+          type: array
+          items: { $ref: "#/components/schemas/AdminWizardProgressEtapaFunil" }
+        etapasAtuais:
+          type: array
+          items: { $ref: "#/components/schemas/AdminWizardProgressEtapaAtual" }
+        progresso: { $ref: "#/components/schemas/AdminWizardProgressPagina" }

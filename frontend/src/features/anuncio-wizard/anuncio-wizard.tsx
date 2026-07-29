@@ -53,6 +53,7 @@ import { WizardStepPerfil } from './components/wizard-step-perfil'
 import { WizardStepPremium } from './components/wizard-step-premium'
 import { WizardStepServicos } from './components/wizard-step-servicos'
 import {
+  clearWizardProgressSessionId,
   createWizardProgressSessionId,
   syncWizardProgress,
   type WizardProgressStatus,
@@ -118,6 +119,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     mode,
     ...(isEdit && slug ? { slug } : {}),
   } : null, [cacheUserId, isEdit, mode, slug])
+  const progressScope = `${cacheUserId ?? 'anonimo'}:${mode}:${slug ?? 'novo'}`
   const store = useAnuncioWizardStore({ cacheScope, backendFirst: isEdit })
   const {
     state: wizardState,
@@ -155,7 +157,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const wizardTopRef = useRef<HTMLDivElement | null>(null)
   const publishLockRef = useRef(false)
   const stepDidMountRef = useRef(false)
-  const wizardSessionIdRef = useRef(createWizardProgressSessionId())
+  const wizardSessionIdRef = useRef<string | null>(null)
   const lastSyncedStepRef = useRef<WizardProgressStep | null>(null)
   const loadedEditSlugRef = useRef<string | null>(null)
   const createdSlugRef = useRef<string | null>(null)
@@ -201,15 +203,18 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       anuncioId?: number | string | null
     ) => {
       lastSyncedStepRef.current = ultimoStep
+      const sessionId = wizardSessionIdRef.current
+        ?? createWizardProgressSessionId(progressScope)
+      wizardSessionIdRef.current = sessionId
       return syncWizardProgress({
-        sessionId: wizardSessionIdRef.current,
+        sessionId,
         mode,
         ultimoStep,
         status,
         anuncioId,
       })
     },
-    [mode]
+    [mode, progressScope]
   )
 
   useEffect(() => {
@@ -496,6 +501,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     const atualizado = await atualizarMeuAnuncio(slug, editPayload(state))
     setEditAnuncio(atualizado)
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', atualizado.id)
+    clearWizardProgressSessionId(progressScope)
     clearCurrentCache()
     toast.success('Alterações salvas e enviadas para revisão.')
     router.push(`/meus-anuncios/${encodeURIComponent(atualizado.slug)}`)
@@ -550,6 +556,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     await enviarArquivos(state.fotos, setFotos)
     await enviarArquivos(state.videos, setVideos)
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', createdAnuncioIdRef.current)
+    clearWizardProgressSessionId(progressScope)
     await refresh().catch(() => null)
     reset()
     createdSlugRef.current = null
