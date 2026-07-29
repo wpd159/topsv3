@@ -5749,6 +5749,207 @@ paths:
                 $ref: "#/components/schemas/FaqItem"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/public/avisos:
+    get:
+      summary: Lista avisos publicados e vigentes para um local de exibicao
+      operationId: getPublicNotices
+      parameters:
+        - name: localExibicao
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/AvisoLocalExibicao"
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 20, default: 5 }
+      responses:
+        "200":
+          description: Avisos vigentes do local solicitado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvisoPublicoPagina"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+  /api/admin/avisos:
+    get:
+      summary: Lista avisos para gestao administrativa
+      operationId: getAdminNotices
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: termo
+          in: query
+          schema: { type: string, maxLength: 120 }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, RASCUNHO, PUBLICADO, ARQUIVADO]
+        - name: localExibicao
+          in: query
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/AvisoLocalExibicao"
+              - type: string
+                const: TODOS
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+      responses:
+        "200":
+          description: Pagina de avisos administrativos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAvisoPagina"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      summary: Cria um aviso como rascunho
+      operationId: postAdminNotice
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            minLength: 8
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvisoEdicao"
+      responses:
+        "201":
+          description: Aviso criado como rascunho
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAvisoItem"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/avisos/indicadores:
+    get:
+      summary: Retorna indicadores reais de avisos por estado temporal
+      operationId: getAdminNoticeIndicators
+      security:
+        - AdminSessionCookie: []
+      responses:
+        "200":
+          description: Indicadores de avisos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AvisoIndicadores"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/avisos/{id}:
+    put:
+      summary: Atualiza um aviso com controle otimista
+      operationId: putAdminNotice
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvisoEdicao"
+      responses:
+        "200":
+          description: Aviso atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAvisoItem"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/avisos/{id}/publicar:
+    post:
+      summary: Publica um aviso
+      operationId: postAdminNoticePublish
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvisoVersao"
+      responses:
+        "200":
+          description: Aviso publicado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAvisoItem"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/avisos/{id}/retirar:
+    post:
+      summary: Retira imediatamente um aviso da exibicao
+      operationId: postAdminNoticeUnpublish
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvisoVersao"
+      responses:
+        "200":
+          description: Aviso retirado e mantido como rascunho
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAvisoItem"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/avisos/{id}/arquivar:
+    post:
+      summary: Arquiva um aviso
+      operationId: postAdminNoticeArchive
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/UuidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AvisoVersao"
+      responses:
+        "200":
+          description: Aviso arquivado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAvisoItem"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/public/denuncias/abrir:
     post:
       summary: Registra uma denuncia publica sobre anuncio
@@ -13057,6 +13258,118 @@ components:
           required: [ordem]
           properties:
             ordem: { type: integer, minimum: 0, maximum: 100000 }
+    AvisoLocalExibicao:
+      type: string
+      enum: [SITE, LOGIN_POPUP, ANUNCIO_RODAPE]
+    AvisoFrequenciaExibicao:
+      type: string
+      enum: [SEMPRE, UMA_VEZ, DIARIO]
+    AvisoStatus:
+      type: string
+      enum: [RASCUNHO, PUBLICADO, ARQUIVADO]
+    AvisoPublicoItem:
+      type: object
+      required:
+        - id
+        - titulo
+        - descricao
+        - localExibicao
+        - frequenciaExibicao
+        - permiteDispensar
+        - publicadoEm
+      properties:
+        id: { type: string, format: uuid }
+        titulo: { type: string, minLength: 3, maxLength: 160 }
+        descricao: { type: string, minLength: 5, maxLength: 4000 }
+        localExibicao: { $ref: "#/components/schemas/AvisoLocalExibicao" }
+        frequenciaExibicao: { $ref: "#/components/schemas/AvisoFrequenciaExibicao" }
+        permiteDispensar: { type: boolean }
+        ativoDe: { type: [string, "null"], format: date-time }
+        ativoAte: { type: [string, "null"], format: date-time }
+        publicadoEm: { type: string, format: date-time }
+    AdminAvisoItem:
+      allOf:
+        - $ref: "#/components/schemas/AvisoPublicoItem"
+        - type: object
+          required:
+            - localExibicaoRotulo
+            - frequenciaExibicaoRotulo
+            - status
+            - situacao
+            - criadoPorNome
+            - criadoEm
+            - atualizadoEm
+            - versao
+          properties:
+            localExibicaoRotulo: { type: string }
+            frequenciaExibicaoRotulo: { type: string }
+            status: { $ref: "#/components/schemas/AvisoStatus" }
+            situacao:
+              type: string
+              enum: [RASCUNHO, PUBLICADO, ARQUIVADO, VIGENTE, AGENDADO, EXPIRADO]
+            criadoPorNome: { type: string }
+            criadoEm: { type: string, format: date-time }
+            atualizadoEm: { type: string, format: date-time }
+            versao: { type: integer, minimum: 0 }
+    AvisoEdicao:
+      type: object
+      additionalProperties: false
+      required:
+        - titulo
+        - descricao
+        - localExibicao
+        - frequenciaExibicao
+        - permiteDispensar
+      properties:
+        titulo: { type: string, minLength: 3, maxLength: 160 }
+        descricao: { type: string, minLength: 5, maxLength: 4000 }
+        localExibicao: { $ref: "#/components/schemas/AvisoLocalExibicao" }
+        frequenciaExibicao: { $ref: "#/components/schemas/AvisoFrequenciaExibicao" }
+        permiteDispensar: { type: boolean }
+        ativoDe: { type: [string, "null"], format: date-time }
+        ativoAte: { type: [string, "null"], format: date-time }
+        versao: { type: [integer, "null"], minimum: 0 }
+    AvisoVersao:
+      type: object
+      additionalProperties: false
+      required: [versao]
+      properties:
+        versao: { type: integer, minimum: 0 }
+    AvisoIndicadores:
+      type: object
+      additionalProperties: false
+      required: [total, rascunhos, vigentes, agendados, expirados, arquivados]
+      properties:
+        total: { type: integer, minimum: 0 }
+        rascunhos: { type: integer, minimum: 0 }
+        vigentes: { type: integer, minimum: 0 }
+        agendados: { type: integer, minimum: 0 }
+        expirados: { type: integer, minimum: 0 }
+        arquivados: { type: integer, minimum: 0 }
+    AvisoPublicoPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, page, size, totalElements, totalPages, first, last]
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvisoPublicoItem"
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        totalElements: { type: integer, minimum: 0 }
+        totalPages: { type: integer, minimum: 0 }
+        first: { type: boolean }
+        last: { type: boolean }
+    AdminAvisoPagina:
+      allOf:
+        - $ref: "#/components/schemas/AvisoPublicoPagina"
+        - type: object
+          properties:
+            itens:
+              type: array
+              items:
+                $ref: "#/components/schemas/AdminAvisoItem"
     DenunciaMotivo:
       type: string
       enum: [CONTEUDO_INADEQUADO, PERFIL_FALSO, GOLPE, SPAM, OUTROS]
