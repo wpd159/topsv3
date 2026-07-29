@@ -117,6 +117,7 @@ jobs:
           test "$(id -un)" = "topsv3"
           test -f /opt/topsv3/secrets/preprod.env
           test -f /opt/topsv3/secrets/preprod-v3.override.yml
+          test -d /opt/topsv3/secrets/efi
           test -L /opt/topsv3/preprod/current
           test -d /opt/topsv3/preprod/releases
           command -v docker >/dev/null
@@ -171,6 +172,8 @@ jobs:
             --exclude='**/*.key' \
             --exclude='./*.crt' \
             --exclude='**/*.crt' \
+            --exclude='./*.p12' \
+            --exclude='**/*.p12' \
             -czf "${ARCHIVE}" .
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'install -d -m 0750 /opt/topsv3/preprod/incoming /opt/topsv3/preprod/releases'
           scp "${SCP_OPTS[@]}" "${ARCHIVE}" "${SSH_TARGET}:/opt/topsv3/preprod/incoming/${GITHUB_SHA}.tar.gz"

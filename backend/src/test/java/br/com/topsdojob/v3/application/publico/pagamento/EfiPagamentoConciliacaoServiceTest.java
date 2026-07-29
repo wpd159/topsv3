@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.publico.pagamento;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -31,6 +32,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class EfiPagamentoConciliacaoServiceTest {
 
@@ -121,6 +124,104 @@ class EfiPagamentoConciliacaoServiceTest {
         assertThat(pagamento.getCreditadoEm()).isNull();
         assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.ERRO);
         verify(ledgerService, never()).registrar(any(), any(), any(), anyInt(), anyInt(), any(), anyString(), any(), anyString(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void webhookConfirmadoCreditaSemConsultaExternaAoProvedor() {
+        OffsetDateTime recebidoEm = OffsetDateTime.parse("2026-07-28T20:00:00Z");
+
+        service.conciliarWebhook(
+                pagamento.getTxid(),
+                "E12345678901234567893",
+                "hash-4",
+                new BigDecimal("5.00"),
+                recebidoEm,
+                "req-4");
+        service.conciliarWebhook(
+                pagamento.getTxid(),
+                "E12345678901234567894",
+                "hash-5",
+                new BigDecimal("5.00"),
+                recebidoEm,
+                "req-5");
+
+        assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.APROVADO);
+        assertThat(pagamento.getAprovadoEm()).isEqualTo(recebidoEm);
+        verify(gateway, never()).consultarCobranca(anyString());
+        verify(ledgerService, times(1)).registrar(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                anyString());
+    }
+
+    @Test
+    void webhookComValorDivergenteFalhaSemCredito() {
+        assertThatThrownBy(() -> service.conciliarWebhook(
+                pagamento.getTxid(),
+                "E12345678901234567895",
+                "hash-6",
+                new BigDecimal("4.99"),
+                OffsetDateTime.parse("2026-07-28T20:00:00Z"),
+                "req-6"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("409 CONFLICT");
+
+        assertThat(pagamento.getCreditadoEm()).isNull();
+        verify(ledgerService, never()).registrar(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                anyString());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = StatusInternoPagamento.class,
+            names = {"EXPIRADO", "CANCELADO"})
+    void pagamentoTerminalNaoEhCreditadoPorCallbackTardio(StatusInternoPagamento status) {
+        pagamento.atualizarStatusProvedor(status, status.name(), OffsetDateTime.now(ZoneOffset.UTC));
+
+        assertThatThrownBy(() -> service.conciliarWebhook(
+                pagamento.getTxid(),
+                "E12345678901234567896",
+                "hash-7",
+                new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-07-28T20:00:00Z"),
+                "req-7"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("409 CONFLICT");
+
+        assertThat(pagamento.getCreditadoEm()).isNull();
+        verify(ledgerService, never()).registrar(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                anyString());
     }
 
     private EfiPixGateway.CobrancaPix confirmada(BigDecimal valorRecebido) {

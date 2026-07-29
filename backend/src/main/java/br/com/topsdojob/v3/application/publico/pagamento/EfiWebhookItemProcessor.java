@@ -3,9 +3,9 @@ package br.com.topsdojob.v3.application.publico.pagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoWebhookEntity;
 import br.com.topsdojob.v3.persistence.repository.PagamentoWebhookRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ValidacaoWebhook;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -49,6 +49,8 @@ public class EfiWebhookItemProcessor {
     public Resultado processar(
             String eventoId,
             String txid,
+            BigDecimal valorRecebido,
+            OffsetDateTime recebidoEm,
             String payloadHash,
             String origemIpHash,
             String requestId) {
@@ -70,11 +72,12 @@ public class EfiWebhookItemProcessor {
             webhook.registrarNovaTentativa();
         }
         try {
-            conciliacaoService.conciliar(
+            conciliacaoService.conciliarWebhook(
                     txid,
                     eventoId,
                     payloadHash,
-                    OrigemConciliacaoPagamento.WEBHOOK,
+                    valorRecebido,
+                    recebidoEm,
                     requestId);
             webhook.concluir("PROCESSADO", null, OffsetDateTime.now(ZoneOffset.UTC));
             webhookRepository.save(webhook);

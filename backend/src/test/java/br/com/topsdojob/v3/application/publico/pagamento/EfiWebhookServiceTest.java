@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.pagamento;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,9 +26,23 @@ class EfiWebhookServiceTest {
 
     @Test
     void processaPayloadValidoSemPersistirPayloadBruto() {
-        when(processor.processar(anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(processor.processar(
+                anyString(),
+                anyString(),
+                any(),
+                any(),
+                anyString(),
+                anyString(),
+                anyString()))
                 .thenReturn(EfiWebhookItemProcessor.Resultado.PROCESSADO);
-        String payload = "{\"pix\":[{\"endToEndId\":\"E12345678901234567890\",\"txid\":\"abcdef1234567890abcdef1234567890\"}]}";
+        String payload = """
+                {"pix":[{
+                  "endToEndId":"E12345678901234567890",
+                  "txid":"abcdef1234567890abcdef1234567890",
+                  "valor":"5.00",
+                  "horario":"2026-07-28T20:00:00Z"
+                }]}
+                """;
 
         var resultado = service.receber("segredo-sintetico", payload, "127.0.0.1", "req-webhook");
 
@@ -36,6 +51,8 @@ class EfiWebhookServiceTest {
         verify(processor).processar(
                 "E12345678901234567890",
                 "abcdef1234567890abcdef1234567890",
+                new java.math.BigDecimal("5.00"),
+                java.time.OffsetDateTime.parse("2026-07-28T20:00:00Z"),
                 hashService.hash(payload),
                 hashService.hash("127.0.0.1"),
                 "req-webhook");
@@ -43,9 +60,23 @@ class EfiWebhookServiceTest {
 
     @Test
     void repeticaoEhExpostaSemNovoProcessamentoFuncional() {
-        when(processor.processar(anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(processor.processar(
+                anyString(),
+                anyString(),
+                any(),
+                any(),
+                anyString(),
+                anyString(),
+                anyString()))
                 .thenReturn(EfiWebhookItemProcessor.Resultado.REPETIDO);
-        String payload = "{\"pix\":[{\"endToEndId\":\"E12345678901234567891\",\"txid\":\"abcdef1234567890abcdef1234567891\"}]}";
+        String payload = """
+                {"pix":[{
+                  "endToEndId":"E12345678901234567891",
+                  "txid":"abcdef1234567890abcdef1234567891",
+                  "valor":"5.00",
+                  "horario":"2026-07-28T20:00:00Z"
+                }]}
+                """;
 
         var resultado = service.receber("segredo-sintetico", payload, "127.0.0.1", "req-webhook");
 
@@ -64,6 +95,49 @@ class EfiWebhookServiceTest {
                 "invalido-" + hashService.hash(payload).substring(0, 32),
                 hashService.hash(payload),
                 hashService.hash("127.0.0.1"));
+    }
+
+    @Test
+    void valorOuHorarioInvalidosSaoRecusadosAntesDoProcessamento() {
+        String valorInvalido = """
+                {"pix":[{
+                  "endToEndId":"E12345678901234567892",
+                  "txid":"abcdef1234567890abcdef1234567892",
+                  "valor":"0.001",
+                  "horario":"2026-07-28T20:00:00Z"
+                }]}
+                """;
+        String horarioInvalido = """
+                {"pix":[{
+                  "endToEndId":"E12345678901234567893",
+                  "txid":"abcdef1234567890abcdef1234567893",
+                  "valor":"5.00",
+                  "horario":"nao-e-data"
+                }]}
+                """;
+
+        assertThatThrownBy(() -> service.receber(
+                "segredo-sintetico",
+                valorInvalido,
+                "127.0.0.1",
+                "req-webhook"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("400 BAD_REQUEST");
+        assertThatThrownBy(() -> service.receber(
+                "segredo-sintetico",
+                horarioInvalido,
+                "127.0.0.1",
+                "req-webhook"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("400 BAD_REQUEST");
+        verify(processor, org.mockito.Mockito.never()).processar(
+                anyString(),
+                anyString(),
+                any(),
+                any(),
+                anyString(),
+                anyString(),
+                anyString());
     }
 
     private EfiPixProperties properties() {

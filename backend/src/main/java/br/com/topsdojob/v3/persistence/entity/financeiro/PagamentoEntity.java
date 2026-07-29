@@ -205,7 +205,8 @@ public class PagamentoEntity {
     this.statusInterno = statusInterno;
     this.statusProvedor = statusProvedor;
     this.atualizadoEm = agora;
-    if (statusInterno == StatusInternoPagamento.EXPIRADO) {
+    if (statusInterno == StatusInternoPagamento.EXPIRADO
+        || statusInterno == StatusInternoPagamento.CANCELADO) {
       this.canceladoEm = agora;
     }
   }

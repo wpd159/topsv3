@@ -1,11 +1,13 @@
 package br.com.topsdojob.v3.web.publico.pagamento;
 
 import br.com.topsdojob.v3.application.publico.pagamento.EfiPagamentoService;
+import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPagamentoHistoricoDto;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutDto;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutRequest;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,6 +25,11 @@ public class EfiPagamentoController {
 
     public EfiPagamentoController(EfiPagamentoService service) {
         this.service = service;
+    }
+
+    @GetMapping
+    public List<EfiPagamentoHistoricoDto> historico(Authentication authentication) {
+        return service.historico(authentication);
     }
 
     @PostMapping("/pix")

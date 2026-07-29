@@ -72,7 +72,7 @@ public class EfiPagamentoConciliacaoService {
         boolean idempotente = pagamento.getCreditadoEm() != null;
 
         if ("CONCLUIDA".equalsIgnoreCase(cobranca.status())) {
-            idempotente = conciliarConfirmada(pagamento, cobranca, origem, requestId, agora);
+            idempotente = conciliarConfirmada(pagamento, cobranca, origem, requestId, agora, agora);
         } else if ("ATIVA".equalsIgnoreCase(cobranca.status())) {
             pagamento.atualizarStatusProvedor(StatusInternoPagamento.AGUARDANDO_PAGAMENTO, cobranca.status(), agora);
         } else if ("EXPIRADA".equalsIgnoreCase(cobranca.status())) {
@@ -86,11 +86,55 @@ public class EfiPagamentoConciliacaoService {
         return new ConciliacaoResultado(pagamento, cobranca, idempotente);
     }
 
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public ConciliacaoResultado conciliarWebhook(
+            String txid,
+            String eventoId,
+            String payloadHash,
+            BigDecimal valorRecebido,
+            OffsetDateTime recebidoEm,
+            String requestId) {
+        PagamentoEntity pagamento = pagamentoRepository.findByTxidForUpdate(txid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pagamento Efi nao encontrado"));
+        if (valorRecebido == null || valorRecebido.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "valor Pix recebido invalido");
+        }
+        if (pagamento.getValor().compareTo(valorRecebido) != 0) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "valor Pix recebido divergente");
+        }
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        EfiPixGateway.CobrancaPix notificacao = new EfiPixGateway.CobrancaPix(
+                pagamento.getTxid(),
+                "CONCLUIDA",
+                pagamento.getIdentificadorProvedor(),
+                pagamento.getValor(),
+                valorRecebido,
+                pagamento.getExpiracaoEm(),
+                null,
+                null);
+        boolean idempotente = conciliarConfirmada(
+                pagamento,
+                notificacao,
+                OrigemConciliacaoPagamento.WEBHOOK,
+                requestId,
+                recebidoEm == null ? agora : recebidoEm,
+                agora);
+        registrarEvento(
+                pagamento,
+                eventoId,
+                payloadHash,
+                notificacao.status(),
+                OrigemConciliacaoPagamento.WEBHOOK,
+                agora);
+        return new ConciliacaoResultado(pagamento, notificacao, idempotente);
+    }
+
     private boolean conciliarConfirmada(
             PagamentoEntity pagamento,
             EfiPixGateway.CobrancaPix cobranca,
             OrigemConciliacaoPagamento origem,
             String requestId,
+            OffsetDateTime aprovadoEm,
             OffsetDateTime agora) {
         BigDecimal recebido = cobranca.valorRecebido() == null ? BigDecimal.ZERO : cobranca.valorRecebido();
         if (pagamento.getValor().compareTo(recebido) != 0) {
@@ -109,6 +153,12 @@ public class EfiPagamentoConciliacaoService {
         if (pagamento.getCreditadoEm() != null) {
             return true;
         }
+        if (pagamento.getStatusInterno() != StatusInternoPagamento.CRIADO
+                && pagamento.getStatusInterno() != StatusInternoPagamento.AGUARDANDO_PAGAMENTO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "pagamento em estado incompatível com crédito");
+        }
 
         int saldoAntes = ledgerService.bloquearEConsultarSaldo(pagamento.getUsuarioId());
         var lancamento = ledgerService.registrar(
@@ -124,7 +174,6 @@ public class EfiPagamentoConciliacaoService {
                 null,
                 "Confirmacao Pix Efi conciliada",
                 requestId);
-        OffsetDateTime aprovadoEm = agora;
         registrarConciliacao(
                 pagamento,
                 lancamento.movimento().getId(),

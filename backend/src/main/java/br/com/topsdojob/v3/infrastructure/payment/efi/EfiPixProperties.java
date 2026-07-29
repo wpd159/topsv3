@@ -16,6 +16,8 @@ public class EfiPixProperties {
     private String certificatePath;
     private String pixKey;
     private String webhookBaseUrl;
+    private boolean webhookRegistrationEnabled;
+    private boolean webhookSkipMtlsChecking;
     private int chargeExpirationSeconds = 3600;
     private final Map<String, String> guardedValues = new HashMap<>();
 
@@ -89,6 +91,22 @@ public class EfiPixProperties {
 
     public void setWebhookBaseUrl(String webhookBaseUrl) {
         this.webhookBaseUrl = webhookBaseUrl;
+    }
+
+    public boolean isWebhookRegistrationEnabled() {
+        return webhookRegistrationEnabled;
+    }
+
+    public void setWebhookRegistrationEnabled(boolean webhookRegistrationEnabled) {
+        this.webhookRegistrationEnabled = webhookRegistrationEnabled;
+    }
+
+    public boolean isWebhookSkipMtlsChecking() {
+        return webhookSkipMtlsChecking;
+    }
+
+    public void setWebhookSkipMtlsChecking(boolean webhookSkipMtlsChecking) {
+        this.webhookSkipMtlsChecking = webhookSkipMtlsChecking;
     }
 
     public String getWebhookVerifier() {

@@ -3327,6 +3327,25 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/public/minha-conta/pagamentos:
+    get:
+      summary: Lista o historico Pix Efi do usuario autenticado
+      operationId: getMeusPagamentosPixEfi
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: pagamentos Pix do usuario com identificacao sanitizada
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 50
+                items:
+                  $ref: "#/components/schemas/EfiPagamentoHistorico"
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/public/minha-conta/pagamentos/pix:
     post:
       summary: Cria cobranca Pix Efí para um pacote ativo de creditos
@@ -3353,6 +3372,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/public/minha-conta/pagamentos/{pagamentoId}:
@@ -3377,6 +3397,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/public/minha-conta/pagamentos/{pagamentoId}/conciliar:
@@ -3401,9 +3422,10 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
-  /api/public/webhooks/efi:
+  /api/public/webhooks/efi/pix:
     post:
       summary: Recebe notificacao Pix Efí validada pelo HMAC exclusivo do ambiente
       operationId: postWebhookPixEfi
@@ -3425,7 +3447,7 @@ paths:
               description: Payload Efí processado em memoria; somente hashes e identificadores sao persistidos.
       responses:
         "200":
-          description: notificacoes processadas, repetidas ou ignoradas de forma idempotente
+          description: notificacoes conciliadas sem chamada externa bloqueante, repetidas ou ignoradas
           content:
             application/json:
               schema:
@@ -6694,6 +6716,15 @@ components:
             $ref: "#/components/schemas/ApiErrorResponse"
     ServiceUnavailable:
       description: Integracao Efí desabilitada ou configuracao segura incompleta.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+    TooManyRequests:
+      description: Limite temporario de operacoes excedido; nenhuma cobranca ou credito adicional foi criado.
+      headers:
+        X-Request-Id:
+          $ref: "#/components/headers/RequestId"
       content:
         application/json:
           schema:
@@ -12530,18 +12561,41 @@ components:
     EfiPixCheckout:
       type: object
       additionalProperties: false
-      required: [pagamentoId, txid, status, valor, quantidadeCreditos, creditado, idempotente]
+      required: [pagamentoId, planoCreditoId, planoNome, identificacaoSanitizada, status, valor, quantidadeCreditos, criadoEm, creditado, idempotente]
       properties:
         pagamentoId: { type: string, format: uuid }
-        txid: { type: string, pattern: "^[A-Za-z0-9]{26,35}$" }
-        status: { type: string }
+        planoCreditoId: { type: string, format: uuid }
+        planoNome: { type: string }
+        identificacaoSanitizada: { type: string }
+        status:
+          type: string
+          enum: [PENDENTE, APROVADO, EXPIRADO, CANCELADO, FALHO]
         valor: { type: number, minimum: 0.01 }
         quantidadeCreditos: { type: integer, minimum: 1 }
+        criadoEm: { type: string, format: date-time }
         expiracaoEm: { type: [string, "null"], format: date-time }
+        confirmadoEm: { type: [string, "null"], format: date-time }
         pixCopiaECola: { type: [string, "null"] }
         imagemQrCode: { type: [string, "null"] }
         creditado: { type: boolean }
         idempotente: { type: boolean }
+    EfiPagamentoHistorico:
+      type: object
+      additionalProperties: false
+      required: [pagamentoId, planoCreditoId, planoNome, quantidadeCreditos, valor, criadoEm, status, identificacaoSanitizada]
+      properties:
+        pagamentoId: { type: string, format: uuid }
+        planoCreditoId: { type: string, format: uuid }
+        planoNome: { type: string }
+        quantidadeCreditos: { type: integer, minimum: 1 }
+        valor: { type: number, minimum: 0.01 }
+        criadoEm: { type: string, format: date-time }
+        expiracaoEm: { type: [string, "null"], format: date-time }
+        status:
+          type: string
+          enum: [PENDENTE, APROVADO, EXPIRADO, CANCELADO, FALHO]
+        identificacaoSanitizada: { type: string }
+        confirmadoEm: { type: [string, "null"], format: date-time }
     EfiWebhookResultado:
       type: object
       additionalProperties: false

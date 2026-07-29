@@ -4,19 +4,15 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-public record EfiPixCheckoutDto(
+public record EfiPagamentoHistoricoDto(
         UUID pagamentoId,
         UUID planoCreditoId,
         String planoNome,
-        String identificacaoSanitizada,
-        String status,
-        BigDecimal valor,
         int quantidadeCreditos,
+        BigDecimal valor,
         OffsetDateTime criadoEm,
         OffsetDateTime expiracaoEm,
-        OffsetDateTime confirmadoEm,
-        String pixCopiaECola,
-        String imagemQrCode,
-        boolean creditado,
-        boolean idempotente) {
+        String status,
+        String identificacaoSanitizada,
+        OffsetDateTime confirmadoEm) {
 }

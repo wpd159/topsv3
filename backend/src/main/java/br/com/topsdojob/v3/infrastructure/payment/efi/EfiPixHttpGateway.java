@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -17,6 +18,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.Base64;
+import java.util.Map;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
@@ -83,6 +85,32 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         return mapearCobranca(cobranca, true);
     }
 
+    @Override
+    public void garantirWebhookConfigurado() {
+        try {
+            String path = "/v2/webhook/" + segmentoUrl(properties.getPixKey());
+            String callbackUrl = webhookCallbackUrl();
+            String payload = objectMapper.createObjectNode()
+                    .put("webhookUrl", callbackUrl)
+                    .toString();
+            enviarAutorizado(
+                    "PUT",
+                    path,
+                    payload,
+                    properties.isWebhookSkipMtlsChecking()
+                            ? Map.of("x-skip-mtls-checking", "true")
+                            : Map.of());
+            JsonNode configuracao = enviarAutorizado("GET", path, null);
+            if (!callbackUrl.equals(configuracao.path("webhookUrl").asText(null))) {
+                throw new EfiPixGatewayException("webhook Efi nao confirmado", true);
+            }
+        } catch (EfiPixGatewayException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new EfiPixGatewayException("falha ao configurar webhook Efi", true, exception);
+        }
+    }
+
     private CobrancaPix mapearCobranca(JsonNode cobranca, boolean carregarQrCode) {
         String txid = textoObrigatorio(cobranca, "txid");
         String status = textoObrigatorio(cobranca, "status");
@@ -114,17 +142,35 @@ public class EfiPixHttpGateway implements EfiPixGateway {
             throw new EfiPixGatewayException("identificador de QR Code Efi invalido", false);
         }
         JsonNode qr = enviarAutorizado("GET", "/v2/loc/" + localizacaoId + "/qrcode", null);
-        return new QrCode(qr.path("qrcode").asText(null), qr.path("imagemQrcode").asText(null));
+        String copiaECola = qr.path("qrcode").asText(null);
+        String imagem = qr.path("imagemQrcode").asText(null);
+        if (copiaECola == null
+                || copiaECola.isBlank()
+                || copiaECola.length() > 2_048
+                || imagem == null
+                || imagem.length() > 1_500_000
+                || !imagem.startsWith("data:image/png;base64,")) {
+            throw new EfiPixGatewayException("QR Code Efi invalido", false);
+        }
+        return new QrCode(copiaECola, imagem);
     }
 
     private JsonNode enviarAutorizado(String method, String path, String body) {
+        return enviarAutorizado(method, path, body, Map.of());
+    }
+
+    private JsonNode enviarAutorizado(
+            String method,
+            String path,
+            String body,
+            Map<String, String> headers) {
         String accessToken = tokenValido();
-        HttpResponse<String> response = enviar(method, path, body, "Bearer " + accessToken);
+        HttpResponse<String> response = enviar(method, path, body, "Bearer " + accessToken, headers);
         if (response.statusCode() == 401) {
             oauthState = null;
-            response = enviar(method, path, body, "Bearer " + tokenValido());
+            response = enviar(method, path, body, "Bearer " + tokenValido(), headers);
         }
-        return respostaJson(response, path);
+        return respostaJson(response, operacaoSegura(path));
     }
 
     private String tokenValido() {
@@ -143,7 +189,8 @@ public class EfiPixHttpGateway implements EfiPixGateway {
                     "POST",
                     "/oauth/token",
                     "{\"grant_type\":\"client_credentials\"}",
-                    "Basic " + basic);
+                    "Basic " + basic,
+                    Map.of());
             JsonNode body = respostaJson(response, "/oauth/token");
             String valor = textoObrigatorio(body, "access_token");
             long expiresIn = Math.max(60, body.path("expires_in").asLong(300));
@@ -152,13 +199,19 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         }
     }
 
-    private HttpResponse<String> enviar(String method, String path, String body, String authorization) {
+    private HttpResponse<String> enviar(
+            String method,
+            String path,
+            String body,
+            String authorization,
+            Map<String, String> headers) {
         try {
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(properties.getBaseUrl() + path))
                     .timeout(Duration.ofSeconds(30))
                     .header("Accept", "application/json")
                     .header("Authorization", authorization);
+            headers.forEach(builder::header);
             if (body == null) {
                 builder.method(method, HttpRequest.BodyPublishers.noBody());
             } else {
@@ -192,7 +245,8 @@ public class EfiPixHttpGateway implements EfiPixGateway {
     }
 
     private SSLContext criarSslContext() {
-        char[] keyMaterial = properties.getCertificateProtection().toCharArray();
+        String protection = properties.getCertificateProtection();
+        char[] keyMaterial = protection == null ? new char[0] : protection.toCharArray();
         try (InputStream input = Files.newInputStream(Path.of(properties.getCertificatePath()))) {
             KeyStore keyStore = KeyStore.getInstance("PKCS12");
             keyStore.load(input, keyMaterial);
@@ -224,11 +278,11 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         if (vazio(properties.getClientId())
                 || vazio(properties.getClientSecret())
                 || vazio(properties.getCertificatePath())
-                || vazio(properties.getCertificateProtection())
                 || vazio(properties.getPixKey())
                 || vazio(properties.getWebhookBaseUrl())
                 || vazio(properties.getWebhookVerifier())
-                || !properties.getWebhookBaseUrl().startsWith("https://")
+                || !webhookBaseUrlValida(properties.getWebhookBaseUrl())
+                || properties.getWebhookVerifier().length() < 32
                 || properties.getChargeExpirationSeconds() < 60
                 || properties.getChargeExpirationSeconds() > 86400) {
             throw configuracaoInvalida();
@@ -247,6 +301,44 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         if (txid == null || !txid.matches("[A-Za-z0-9]{26,35}")) {
             throw new EfiPixGatewayException("txid Efi invalido", false);
         }
+    }
+
+    String webhookCallbackUrl() {
+        String base = texto(properties.getWebhookBaseUrl()).replaceAll("/+$", "");
+        String verifier = URLEncoder.encode(properties.getWebhookVerifier(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        return base + "/pix?hmac=" + verifier + "&ignorar=";
+    }
+
+    String operacaoSegura(String path) {
+        String value = texto(path);
+        if (value.startsWith("/v2/webhook/")) {
+            return "/v2/webhook/{chave}";
+        }
+        if (value.startsWith("/v2/cob/")) {
+            return "/v2/cob/{txid}";
+        }
+        if (value.startsWith("/v2/loc/")) {
+            return "/v2/loc/{id}/qrcode";
+        }
+        return value;
+    }
+
+    private boolean webhookBaseUrlValida(String value) {
+        try {
+            URI uri = URI.create(texto(value).replaceAll("/+$", ""));
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && uri.getHost() != null
+                    && uri.getQuery() == null
+                    && uri.getFragment() == null
+                    && uri.getPath().endsWith("/api/public/webhooks/efi");
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private String segmentoUrl(String value) {
+        return URLEncoder.encode(texto(value), StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     private String textoObrigatorio(JsonNode node, String field) {

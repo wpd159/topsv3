@@ -76,7 +76,19 @@ services:
       APP_ADMIN_SESSION_COOKIE_SECURE: "false"
       APP_EVENT_HASH_SALT: ${APP_EVENT_HASH_SALT:?defina APP_EVENT_HASH_SALT em /opt/topsv3/secrets/preprod.env}
       APP_AGE_GATE_SIGNING_VALUE: ${APP_AGE_GATE_SIGNING_VALUE:?defina APP_AGE_GATE_SIGNING_VALUE em /opt/topsv3/secrets/preprod.env}
-      EFI_ENABLED: "false"
+      EFI_ENABLED: ${EFI_ENABLED:-false}
+      EFI_ENVIRONMENT: homologacao
+      EFI_BASE_URL: https://pix-h.api.efipay.com.br
+      EFI_CLIENT_ID: ${EFI_CLIENT_ID:-}
+      EFI_CLIENT_SECRET: ${EFI_CLIENT_SECRET:-}
+      EFI_CERTIFICATE_PATH: /run/topsv3-efi/homologacao-892970-teste-v3.p12
+      EFI_CERTIFICATE_PROTECTION_VALUE: ${EFI_CERTIFICATE_PROTECTION_VALUE:-}
+      EFI_PIX_KEY: ${EFI_PIX_KEY:-}
+      EFI_WEBHOOK_BASE_URL: ${EFI_WEBHOOK_BASE_URL:-https://v3.esle.cloud/api/public/webhooks/efi}
+      EFI_WEBHOOK_VERIFIER_VALUE: ${EFI_WEBHOOK_VERIFIER_VALUE:-}
+      EFI_WEBHOOK_REGISTRATION_ENABLED: ${EFI_WEBHOOK_REGISTRATION_ENABLED:-false}
+      EFI_WEBHOOK_SKIP_MTLS_CHECKING: ${EFI_WEBHOOK_SKIP_MTLS_CHECKING:-false}
+      EFI_CHARGE_EXPIRATION_SECONDS: ${EFI_CHARGE_EXPIRATION_SECONDS:-3600}
       R2_ENABLED: ${R2_ENABLED:?defina R2_ENABLED em /opt/topsv3/secrets/preprod.env}
       R2_ENDPOINT: ${R2_ENDPOINT:?defina R2_ENDPOINT em /opt/topsv3/secrets/preprod.env}
       R2_REGION: ${R2_REGION:-auto}
@@ -94,6 +106,8 @@ services:
       R2_PRESERVED_PUBLIC_BASE_URL: ""
       R2_SIGNED_URL_TTL_SECONDS: ${R2_SIGNED_URL_TTL_SECONDS:-300}
       UPLOAD_MAX_DOCUMENT_BYTES: ${UPLOAD_MAX_DOCUMENT_BYTES:-12582912}
+    volumes:
+      - /opt/topsv3/secrets/efi:/run/topsv3-efi:ro
     ports:
       - "127.0.0.1:28080:8080"
     networks:

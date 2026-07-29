@@ -4,6 +4,8 @@ import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiWebhookResultado
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -58,6 +60,8 @@ public class EfiWebhookService {
             EfiWebhookItemProcessor.Resultado resultado = processor.processar(
                     notificacao.eventoId(),
                     notificacao.txid(),
+                    notificacao.valor(),
+                    notificacao.horario(),
                     payloadHash,
                     ipHash,
                     requestId);
@@ -94,7 +98,9 @@ public class EfiWebhookService {
                 String eventoId = providerId.matches("[A-Za-z0-9]{20,64}")
                         ? providerId
                         : txid + "-" + payloadHash.substring(0, 16);
-                result.add(new Notificacao(eventoId, txid));
+                BigDecimal valor = decimalPositivo(item.path("valor").asText(""));
+                OffsetDateTime horario = horario(item.path("horario").asText(""));
+                result.add(new Notificacao(eventoId, txid, valor, horario));
             }
             return result;
         } catch (ResponseStatusException exception) {
@@ -108,6 +114,30 @@ public class EfiWebhookService {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, "payload de webhook invalido");
     }
 
-    private record Notificacao(String eventoId, String txid) {
+    private BigDecimal decimalPositivo(String valor) {
+        try {
+            BigDecimal resultado = new BigDecimal(valor);
+            if (resultado.signum() <= 0 || resultado.scale() > 2) {
+                throw payloadInvalido();
+            }
+            return resultado;
+        } catch (NumberFormatException exception) {
+            throw payloadInvalido();
+        }
+    }
+
+    private OffsetDateTime horario(String valor) {
+        try {
+            return OffsetDateTime.parse(valor);
+        } catch (RuntimeException exception) {
+            throw payloadInvalido();
+        }
+    }
+
+    private record Notificacao(
+            String eventoId,
+            String txid,
+            BigDecimal valor,
+            OffsetDateTime horario) {
     }
 }

@@ -2,6 +2,8 @@ package br.com.topsdojob.v3.application.publico.pagamento;
 
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
+import br.com.topsdojob.v3.application.publico.auth.PublicAuthRateLimiter;
+import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPagamentoHistoricoDto;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutDto;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutRequest;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
@@ -11,14 +13,19 @@ import br.com.topsdojob.v3.persistence.entity.financeiro.PlanoCreditoEntity;
 import br.com.topsdojob.v3.persistence.repository.PagamentoRepository;
 import br.com.topsdojob.v3.persistence.repository.PlanoCreditoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -34,6 +41,7 @@ public class EfiPagamentoService {
     private final PagamentoRepository pagamentoRepository;
     private final EfiPixGateway gateway;
     private final EfiPagamentoConciliacaoService conciliacaoService;
+    private final PublicAuthRateLimiter rateLimiter;
 
     public EfiPagamentoService(
             MeusAnunciosConsultaService usuarioService,
@@ -41,13 +49,15 @@ public class EfiPagamentoService {
             PlanoCreditoRepository planoRepository,
             PagamentoRepository pagamentoRepository,
             EfiPixGateway gateway,
-            EfiPagamentoConciliacaoService conciliacaoService) {
+            EfiPagamentoConciliacaoService conciliacaoService,
+            PublicAuthRateLimiter rateLimiter) {
         this.usuarioService = usuarioService;
         this.usuarioRepository = usuarioRepository;
         this.planoRepository = planoRepository;
         this.pagamentoRepository = pagamentoRepository;
         this.gateway = gateway;
         this.conciliacaoService = conciliacaoService;
+        this.rateLimiter = rateLimiter;
     }
 
     @Transactional
@@ -56,16 +66,23 @@ public class EfiPagamentoService {
             String idempotencyKey,
             Authentication authentication) {
         UUID usuarioId = usuarioService.usuarioAutenticado(authentication).getId();
+        rateLimiter.require("efi-pix-criar", usuarioId.toString(), 10, Duration.ofMinutes(5));
         if (request == null || request.planoCreditoId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "plano de credito obrigatorio");
         }
         String chave = chavePagamento(usuarioId, idempotencyKey);
         var existente = pagamentoRepository.findByIdempotencyKey(chave);
         if (existente.isPresent()) {
-            return consultarGateway(existente.get(), true);
+            validarMesmoPlano(existente.get(), request.planoCreditoId());
+            return consultarExistente(existente.get(), true);
         }
         usuarioRepository.findByIdForUpdate(usuarioId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida"));
+        existente = pagamentoRepository.findByIdempotencyKey(chave);
+        if (existente.isPresent()) {
+            validarMesmoPlano(existente.get(), request.planoCreditoId());
+            return consultarExistente(existente.get(), true);
+        }
         PlanoCreditoEntity plano = planoRepository.findById(request.planoCreditoId())
                 .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
                 .filter(item -> item.getValor() != null && item.getValor().signum() > 0)
@@ -75,7 +92,7 @@ public class EfiPagamentoService {
 
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         String txid = txid(usuarioId, chave);
-        PagamentoEntity pagamento = pagamentoRepository.save(PagamentoEntity.criarPixEfi(
+        PagamentoEntity pagamento = pagamentoRepository.saveAndFlush(PagamentoEntity.criarPixEfi(
                 UUID.randomUUID(),
                 usuarioId,
                 plano.getId(),
@@ -104,6 +121,11 @@ public class EfiPagamentoService {
     @Transactional(readOnly = true)
     public EfiPixCheckoutDto consultar(UUID pagamentoId, Authentication authentication) {
         PagamentoEntity pagamento = pagamentoDoUsuario(pagamentoId, authentication);
+        rateLimiter.require(
+                "efi-pix-consultar",
+                pagamento.getUsuarioId().toString(),
+                30,
+                Duration.ofMinutes(5));
         return consultarGateway(pagamento, false);
     }
 
@@ -112,6 +134,11 @@ public class EfiPagamentoService {
             Authentication authentication,
             String requestId) {
         PagamentoEntity pagamento = pagamentoDoUsuario(pagamentoId, authentication);
+        rateLimiter.require(
+                "efi-pix-conciliar",
+                pagamento.getUsuarioId().toString(),
+                30,
+                Duration.ofMinutes(5));
         EfiPagamentoConciliacaoService.ConciliacaoResultado resultado = conciliacaoService.conciliar(
                 pagamento.getTxid(),
                 null,
@@ -119,6 +146,53 @@ public class EfiPagamentoService {
                 br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
                 requestId);
         return dto(resultado.pagamento(), resultado.cobranca(), resultado.idempotente());
+    }
+
+    @Transactional(readOnly = true)
+    public List<EfiPagamentoHistoricoDto> historico(Authentication authentication) {
+        UUID usuarioId = usuarioService.usuarioAutenticado(authentication).getId();
+        List<PagamentoEntity> pagamentos = pagamentoRepository
+                .findByUsuarioIdAndProvedorAndMetodoOrderByCriadoEmDesc(
+                        usuarioId,
+                        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento.EFI,
+                        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.MetodoPagamento.PIX,
+                        PageRequest.of(0, 50));
+        Map<UUID, PlanoCreditoEntity> planos = planoRepository.findAllById(
+                        pagamentos.stream()
+                                .map(PagamentoEntity::getPlanoCreditoId)
+                                .distinct()
+                                .toList())
+                .stream()
+                .collect(Collectors.toMap(PlanoCreditoEntity::getId, Function.identity()));
+        return pagamentos.stream()
+                .map(pagamento -> {
+                    PlanoCreditoEntity plano = planos.get(pagamento.getPlanoCreditoId());
+                    return new EfiPagamentoHistoricoDto(
+                            pagamento.getId(),
+                            pagamento.getPlanoCreditoId(),
+                            plano == null ? "Pacote de creditos" : plano.getNome(),
+                            pagamento.getQuantidadeCreditos(),
+                            pagamento.getValor(),
+                            pagamento.getCriadoEm(),
+                            pagamento.getExpiracaoEm(),
+                            statusPublico(pagamento),
+                            identificacaoSanitizada(pagamento.getTxid()),
+                            pagamento.getAprovadoEm());
+                })
+                .toList();
+    }
+
+    private EfiPixCheckoutDto consultarExistente(PagamentoEntity pagamento, boolean idempotente) {
+        if (pagamento.getCreditadoEm() != null
+                || pagamento.getStatusInterno()
+                == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento.CANCELADO
+                || pagamento.getStatusInterno()
+                == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento.EXPIRADO
+                || pagamento.getStatusInterno()
+                == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento.ERRO) {
+            return dto(pagamento, null, idempotente);
+        }
+        return consultarGateway(pagamento, idempotente);
     }
 
     private EfiPixCheckoutDto consultarGateway(PagamentoEntity pagamento, boolean idempotente) {
@@ -153,17 +227,47 @@ public class EfiPagamentoService {
             PagamentoEntity pagamento,
             EfiPixGateway.CobrancaPix cobranca,
             boolean idempotente) {
+        PlanoCreditoEntity plano = planoRepository.findById(pagamento.getPlanoCreditoId()).orElse(null);
         return new EfiPixCheckoutDto(
                 pagamento.getId(),
-                pagamento.getTxid(),
-                pagamento.getStatusInterno().name(),
+                pagamento.getPlanoCreditoId(),
+                plano == null ? "Pacote de creditos" : plano.getNome(),
+                identificacaoSanitizada(pagamento.getTxid()),
+                statusPublico(pagamento),
                 pagamento.getValor(),
                 pagamento.getQuantidadeCreditos(),
+                pagamento.getCriadoEm(),
                 cobranca == null ? pagamento.getExpiracaoEm() : cobranca.expiracaoEm(),
+                pagamento.getAprovadoEm(),
                 cobranca == null ? null : cobranca.pixCopiaECola(),
                 cobranca == null ? null : cobranca.imagemQrCode(),
                 pagamento.getCreditadoEm() != null,
                 idempotente);
+    }
+
+    private String statusPublico(PagamentoEntity pagamento) {
+        return switch (pagamento.getStatusInterno()) {
+            case CRIADO, AGUARDANDO_PAGAMENTO -> "PENDENTE";
+            case APROVADO -> "APROVADO";
+            case EXPIRADO -> "EXPIRADO";
+            case CANCELADO, ESTORNADO -> "CANCELADO";
+            case ERRO -> "FALHO";
+            case LEGADO -> "FALHO";
+        };
+    }
+
+    private String identificacaoSanitizada(String txid) {
+        String valor = txid == null ? "" : txid.trim();
+        String sufixo = valor.substring(Math.max(0, valor.length() - 8));
+        return "PIX **** " + sufixo;
+    }
+
+    private void validarMesmoPlano(PagamentoEntity pagamento, UUID planoId) {
+        if (!pagamento.getPlanoCreditoId().equals(planoId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Idempotency-Key reutilizada com outro pacote");
+        }
     }
 
     private String chavePagamento(UUID usuarioId, String key) {

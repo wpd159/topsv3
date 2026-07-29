@@ -18,6 +18,11 @@ public class EfiPixDisabledGateway implements EfiPixGateway {
         throw indisponivel();
     }
 
+    @Override
+    public void garantirWebhookConfigurado() {
+        throw indisponivel();
+    }
+
     private EfiPixGatewayException indisponivel() {
         return new EfiPixGatewayException("integracao Efi nao configurada", true);
     }

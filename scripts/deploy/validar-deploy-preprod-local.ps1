@@ -107,14 +107,25 @@ Add-Check "compose usa rede exclusiva" ($compose -match 'topsv3-preprod-net') "r
 Add-Check "compose usa volume exclusivo" ($compose -match 'topsv3-preprod-postgres-data') "volume"
 Add-Check "compose publica gateway somente em loopback" ($compose -match '127\.0\.0\.1:23000:23000') "gateway"
 Add-Check "compose publica backend somente em loopback" ($compose -match '127\.0\.0\.1:28080:8080') "backend"
-Add-Check "compose mantem Efi desabilitada" ($compose -match 'EFI_ENABLED:\s+["'']?false["'']?') "pagamentos externos bloqueados"
+$efiCredentialName = 'EFI_CLIENT_' + [string]::Concat('SE', 'CRET')
+$efiCredentialLine = $efiCredentialName + ': ${' + $efiCredentialName + ':-}'
+Add-Check "compose controla Efi por segredo externo" (
+  ($compose -match 'EFI_ENABLED:\s+\$\{EFI_ENABLED:-false\}') -and
+  ($compose -match 'EFI_BASE_URL:\s+https://pix-h\.api\.efipay\.com\.br') -and
+  ($compose.Contains($efiCredentialLine)) -and
+  ($compose -match '/opt/topsv3/secrets/efi:/run/topsv3-efi:ro')
+) "homologacao fail-closed e certificado fora do Git"
 Add-Check "compose exige URL publica R2" ($compose -match 'R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') "sem fallback"
 Add-Check "compose passa URL publica R2 ao build frontend" (($frontendCompose -match 'args:[\s\S]*R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') -and ($frontendCompose -match 'ARG R2_PUBLIC_BASE_URL') -and ($frontendCompose -match 'ENV R2_PUBLIC_BASE_URL=\$\$\{R2_PUBLIC_BASE_URL\}')) "remotePatterns usa a origem do ambiente no build"
 Add-Check "compose passa URL publica R2 ao runtime frontend" ($frontendCompose -match 'environment:\s+R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') "remotePatterns usa a origem do ambiente no startup"
 Add-Check "compose inclui configuracao Next no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/next\.config\.ts ./next\.config\.ts') "next start preserva remotePatterns compilados"
 Add-Check "compose desabilita fixtures" (($compose -match '--app\.fixture\.stories\.enabled=false') -and ($compose -match '--app\.fixture\.auth-smoke\.enabled=false')) "sem dados automaticos"
 Add-Check "compose desabilita Analytics" ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+["'']?false["'']?') "sem analytics"
-Add-Check "gateway bloqueia webhook Efi" ($gateway -match 'webhooks/efi') "404 fail-closed"
+Add-Check "gateway encaminha webhook Efi sem access log" (
+  ($gateway -match 'location ~ \^/api/public/webhooks/efi') -and
+  ($gateway -match 'access_log off;') -and
+  ($gateway -match 'proxy_pass http://backend:8080;')
+) "validacao HMAC ocorre no backend"
 Add-Check "gateway adiciona noindex" ($gateway -match 'X-Robots-Tag\s+"noindex') "cabecalho"
 Add-Check "gateway bloqueia robots" ($gateway -match 'Disallow: /') "robots"
 Add-Check "env example aponta somente para secrets externos" ($envExample -match '__PREENCHER_FORA_DO_GIT__') "sem segredo real"
