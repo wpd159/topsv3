@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.web.admin.creditos;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoService;
+import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoService;
 import br.com.topsdojob.v3.application.admin.creditos.CreditoConsistenciaService;
 import br.com.topsdojob.v3.application.admin.creditos.CreditoLedgerConsultaService;
 import br.com.topsdojob.v3.application.admin.creditos.CreditoSaldoConsultaService;
@@ -13,10 +14,10 @@ import br.com.topsdojob.v3.application.admin.creditos.dto.AdminCreditoOperacaoDt
 import br.com.topsdojob.v3.application.admin.creditos.dto.AdminCreditoPaginaDto;
 import br.com.topsdojob.v3.application.admin.creditos.dto.AdminCreditoSaldoDto;
 import br.com.topsdojob.v3.application.admin.creditos.dto.AdminCreditoUsuarioDto;
-import br.com.topsdojob.v3.application.admin.premium.AdminPremiumCatalogoService;
-import br.com.topsdojob.v3.application.admin.premium.dto.AdminPlanoCreditoUpdateRequest;
-import br.com.topsdojob.v3.application.premium.PremiumCatalogoService;
-import br.com.topsdojob.v3.application.premium.dto.PlanoCreditoDto;
+import br.com.topsdojob.v3.application.admin.creditos.dto.AdminPlanoCreditoDtos.AtualizarRequest;
+import br.com.topsdojob.v3.application.admin.creditos.dto.AdminPlanoCreditoDtos.CriarRequest;
+import br.com.topsdojob.v3.application.admin.creditos.dto.AdminPlanoCreditoDtos.Resumo;
+import br.com.topsdojob.v3.application.admin.creditos.dto.AdminPlanoCreditoDtos.StatusRequest;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
@@ -42,22 +43,19 @@ public class AdminCreditosController {
     private final CreditoLedgerConsultaService ledgerService;
     private final CreditoConsistenciaService consistenciaService;
     private final AdminCreditoOperacaoService operacaoService;
-    private final PremiumCatalogoService catalogoService;
-    private final AdminPremiumCatalogoService catalogoAdminService;
+    private final AdminPlanoCreditoService planoService;
 
     public AdminCreditosController(
             CreditoSaldoConsultaService saldoService,
             CreditoLedgerConsultaService ledgerService,
             CreditoConsistenciaService consistenciaService,
             AdminCreditoOperacaoService operacaoService,
-            PremiumCatalogoService catalogoService,
-            AdminPremiumCatalogoService catalogoAdminService) {
+            AdminPlanoCreditoService planoService) {
         this.saldoService = saldoService;
         this.ledgerService = ledgerService;
         this.consistenciaService = consistenciaService;
         this.operacaoService = operacaoService;
-        this.catalogoService = catalogoService;
-        this.catalogoAdminService = catalogoAdminService;
+        this.planoService = planoService;
     }
 
     @GetMapping("/usuarios/{id}/saldo")
@@ -133,21 +131,58 @@ public class AdminCreditosController {
 
     @GetMapping("/pacotes")
     @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_LER')")
-    public List<PlanoCreditoDto> pacotes() {
-        return catalogoService.pacotesAdministrativos();
+    public List<Resumo> pacotes(
+            @RequestParam(defaultValue = "") String busca,
+            @RequestParam(defaultValue = "TODOS") String status) {
+        return planoService.listar(busca, status);
+    }
+
+    @GetMapping("/pacotes/{id}")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_LER')")
+    public Resumo detalharPacote(@PathVariable UUID id) {
+        return planoService.detalhar(id);
+    }
+
+    @PostMapping("/pacotes")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_GERENCIAR')")
+    public Resumo criarPacote(
+            @RequestBody CriarRequest body,
+            @AuthenticationPrincipal AdminUserPrincipal administrador,
+            HttpServletRequest request) {
+        return planoService.criar(body, administrador, RequestIdContext.current(request));
     }
 
     @PutMapping("/pacotes/{id}")
     @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_GERENCIAR')")
-    public PlanoCreditoDto atualizarPacote(
+    public Resumo atualizarPacote(
             @PathVariable UUID id,
-            @RequestBody AdminPlanoCreditoUpdateRequest body,
+            @RequestBody AtualizarRequest body,
             @AuthenticationPrincipal AdminUserPrincipal administrador,
             HttpServletRequest request) {
-        return catalogoAdminService.atualizarPacote(
+        return planoService.atualizar(
                 id,
                 body,
                 administrador,
                 RequestIdContext.current(request));
+    }
+
+    @PostMapping("/pacotes/{id}/ativacao")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_GERENCIAR')")
+    public Resumo ativarPacote(
+            @PathVariable UUID id,
+            @RequestBody StatusRequest body,
+            @AuthenticationPrincipal AdminUserPrincipal administrador,
+            HttpServletRequest request) {
+        return planoService.ativar(id, body, administrador, RequestIdContext.current(request));
+    }
+
+    @PostMapping("/pacotes/{id}/desativacao")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('FINANCEIRO_GERENCIAR')")
+    public Resumo desativarPacote(
+            @PathVariable UUID id,
+            @RequestBody StatusRequest body,
+            @AuthenticationPrincipal AdminUserPrincipal administrador,
+            HttpServletRequest request) {
+        return planoService.desativar(id, body, administrador, RequestIdContext.current(request));
     }
 }

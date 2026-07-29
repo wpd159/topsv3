@@ -1,18 +1,14 @@
 package br.com.topsdojob.v3.application.admin.premium;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoService;
-import br.com.topsdojob.v3.application.admin.premium.dto.AdminPlanoCreditoUpdateRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCatalogoUpdateRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumOpcaoUpdateRequest;
 import br.com.topsdojob.v3.application.premium.PremiumCatalogoService;
-import br.com.topsdojob.v3.application.premium.dto.PlanoCreditoDto;
 import br.com.topsdojob.v3.application.premium.dto.PremiumCatalogoDto;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumOpcaoEntity;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
-import br.com.topsdojob.v3.persistence.repository.PlanoCreditoRepository;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -32,19 +28,16 @@ public class AdminPremiumCatalogoService {
 
     private final BeneficioPremiumRepository beneficioRepository;
     private final BeneficioPremiumOpcaoRepository opcaoRepository;
-    private final PlanoCreditoRepository planoRepository;
     private final PremiumCatalogoService catalogoService;
     private final AdminCreditoOperacaoService auditoriaService;
 
     public AdminPremiumCatalogoService(
             BeneficioPremiumRepository beneficioRepository,
             BeneficioPremiumOpcaoRepository opcaoRepository,
-            PlanoCreditoRepository planoRepository,
             PremiumCatalogoService catalogoService,
             AdminCreditoOperacaoService auditoriaService) {
         this.beneficioRepository = beneficioRepository;
         this.opcaoRepository = opcaoRepository;
-        this.planoRepository = planoRepository;
         this.catalogoService = catalogoService;
         this.auditoriaService = auditoriaService;
     }
@@ -132,45 +125,6 @@ public class AdminPremiumCatalogoService {
                 .orElseThrow();
     }
 
-    @Transactional
-    public PlanoCreditoDto atualizarPacote(
-            UUID pacoteId,
-            AdminPlanoCreditoUpdateRequest request,
-            AdminUserPrincipal administrador,
-            String requestId) {
-        validarAdministrador(administrador);
-        if (request == null || request.ativo() == null) {
-            throw badRequest("pacote obrigatorio");
-        }
-        var pacote = planoRepository.findById(pacoteId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pacote nao encontrado"));
-        String nome = texto(request.nome(), 2, 120, "nome invalido");
-        String descricao = texto(request.descricao(), 0, 500, "descricao invalida");
-        int quantidade = positivo(request.quantidadeCreditos(), "quantidade de creditos invalida");
-        int ordem = inteiroNaoNegativo(request.ordemExibicao(), "ordem invalida");
-        BigDecimal valor = request.valor();
-        if (valor == null || valor.signum() < 0) {
-            throw badRequest("valor de referencia invalido");
-        }
-        Map<String, Object> antes = Map.of(
-                "quantidade", pacote.getQuantidadeCreditos(),
-                "ativo", Boolean.TRUE.equals(pacote.getAtivo()));
-        pacote.atualizar(nome, descricao, quantidade, valor, request.ativo(), ordem, OffsetDateTime.now(ZoneOffset.UTC));
-        planoRepository.save(pacote);
-        auditoriaService.auditar(
-                administrador.usuarioId(),
-                "CREDITO_PACOTE_ATUALIZAR",
-                "PLANO_CREDITO",
-                pacoteId,
-                antes,
-                Map.of("quantidade", quantidade, "ativo", request.ativo(), "ordem", ordem),
-                requestId);
-        return catalogoService.pacotesAdministrativos().stream()
-                .filter(item -> item.id().equals(pacoteId))
-                .findFirst()
-                .orElseThrow();
-    }
-
     private void validarAdministrador(AdminUserPrincipal administrador) {
         if (administrador == null || !administrador.isEnabled()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao administrativa obrigatoria");
@@ -183,13 +137,6 @@ public class AdminPremiumCatalogoService {
             throw badRequest(error);
         }
         return texto;
-    }
-
-    private int positivo(Integer value, String error) {
-        if (value == null || value <= 0 || value > 1_000_000) {
-            throw badRequest(error);
-        }
-        return value;
     }
 
     private int inteiroNaoNegativo(Integer value, String error) {

@@ -92,7 +92,13 @@ public class PlanoCreditoEntity {
         return atualizadoEm;
     }
 
-    public void atualizar(
+    public OffsetDateTime getCriadoEm() {
+        return criadoEm;
+    }
+
+    public static PlanoCreditoEntity criar(
+            UUID id,
+            String codigo,
             String nome,
             String descricao,
             int quantidadeCreditos,
@@ -100,12 +106,38 @@ public class PlanoCreditoEntity {
             boolean ativo,
             int ordemExibicao,
             OffsetDateTime agora) {
+        PlanoCreditoEntity entity = new PlanoCreditoEntity();
+        entity.id = id;
+        entity.codigo = codigo;
+        entity.nome = nome;
+        entity.descricao = descricao;
+        entity.quantidadeCreditos = quantidadeCreditos;
+        entity.valor = valor;
+        entity.moeda = "BRL";
+        entity.ativo = ativo;
+        entity.ordemExibicao = ordemExibicao;
+        entity.criadoEm = agora;
+        entity.atualizadoEm = agora;
+        return entity;
+    }
+
+    public void atualizar(
+            String nome,
+            String descricao,
+            int quantidadeCreditos,
+            BigDecimal valor,
+            int ordemExibicao,
+            OffsetDateTime agora) {
         this.nome = nome;
         this.descricao = descricao;
         this.quantidadeCreditos = quantidadeCreditos;
         this.valor = valor;
-        this.ativo = ativo;
         this.ordemExibicao = ordemExibicao;
+        this.atualizadoEm = agora;
+    }
+
+    public void alterarAtivo(boolean ativo, OffsetDateTime agora) {
+        this.ativo = ativo;
         this.atualizadoEm = agora;
     }
 }

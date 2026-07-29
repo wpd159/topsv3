@@ -63,6 +63,21 @@ export type AdminPlanoCredito = {
   moeda: string
   ativo: boolean
   ordemExibicao: number
+  comprasConfirmadas: number
+  criadoEm: string
+  atualizadoEm: string
+}
+export type AdminPlanoCreditoCriar = {
+  codigo: string
+  nome: string
+  descricao: string
+  quantidadeCreditos: number
+  valor: number
+  ativo: boolean
+  ordemExibicao: number
+}
+export type AdminPlanoCreditoAtualizar = Omit<AdminPlanoCreditoCriar, 'codigo' | 'ativo'> & {
+  atualizadoEm: string
 }
 export type AdminPremiumAtivacao = {
   id: string
@@ -185,20 +200,41 @@ export const AdminCreditosApi = {
       }),
     }
   ),
-  pacotes: () => request<AdminPlanoCredito[]>('/creditos/pacotes'),
-  atualizarPacote: (item: AdminPlanoCredito) => request<AdminPlanoCredito>(
-    `/creditos/pacotes/${item.id}`,
+  pacotes: (busca = '', status: 'TODOS' | 'ATIVOS' | 'INATIVOS' = 'TODOS') =>
+    request<AdminPlanoCredito[]>(
+      `/creditos/pacotes?busca=${encodeURIComponent(busca)}&status=${status}`,
+    ),
+  detalharPacote: (id: string) => request<AdminPlanoCredito>(`/creditos/pacotes/${id}`),
+  criarPacote: (item: AdminPlanoCreditoCriar) => request<AdminPlanoCredito>(
+    '/creditos/pacotes',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    }
+  ),
+  atualizarPacote: (id: string, item: AdminPlanoCreditoAtualizar) => request<AdminPlanoCredito>(
+    `/creditos/pacotes/${id}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nome: item.nome,
-        descricao: item.descricao,
-        quantidadeCreditos: item.quantidadeCreditos,
-        valor: item.valor,
-        ativo: item.ativo,
-        ordemExibicao: item.ordemExibicao,
-      }),
+      body: JSON.stringify(item),
+    }
+  ),
+  ativarPacote: (id: string, atualizadoEm: string) => request<AdminPlanoCredito>(
+    `/creditos/pacotes/${id}/ativacao`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ atualizadoEm }),
+    }
+  ),
+  desativarPacote: (id: string, atualizadoEm: string) => request<AdminPlanoCredito>(
+    `/creditos/pacotes/${id}/desativacao`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ atualizadoEm }),
     }
   ),
   ativacoes: (usuarioId: string) => request<AdminPremiumAtivacao[]>(`/premium/ativacoes?usuarioId=${usuarioId}`),

@@ -3587,20 +3587,83 @@ paths:
       operationId: getAdminPacotesCredito
       security:
         - AdminSessionCookie: []
+      parameters:
+        - name: busca
+          in: query
+          schema: { type: string, maxLength: 120, default: "" }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [TODOS, ATIVOS, INATIVOS]
+            default: TODOS
       responses:
         "200":
-          description: pacotes configurados, sem iniciar cobranca
+          description: pacotes configurados e contagem de compras confirmadas
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/PlanoCredito"
+                  $ref: "#/components/schemas/AdminPlanoCredito"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+    post:
+      summary: Cria plano de creditos sem executar pagamento
+      operationId: postAdminPacoteCredito
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlanoCreditoCriarRequest"
+      responses:
+        "200":
+          description: plano criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlanoCredito"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/admin/creditos/pacotes/{id}:
+    get:
+      summary: Detalha plano de creditos administrativo
+      operationId: getAdminPacoteCredito
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: plano encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlanoCredito"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
     put:
       summary: Atualiza pacote de creditos sem executar pagamento
       operationId: putAdminPacoteCredito
@@ -3619,14 +3682,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminPlanoCreditoUpdateRequest"
+              $ref: "#/components/schemas/AdminPlanoCreditoAtualizarRequest"
       responses:
         "200":
           description: pacote atualizado
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PlanoCredito"
+                $ref: "#/components/schemas/AdminPlanoCredito"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -3635,6 +3698,78 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/creditos/pacotes/{id}/ativacao:
+    post:
+      summary: Ativa plano para novas compras
+      operationId: postAdminPacoteCreditoAtivacao
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlanoCreditoStatusRequest"
+      responses:
+        "200":
+          description: plano ativo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlanoCredito"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /api/admin/creditos/pacotes/{id}/desativacao:
+    post:
+      summary: Desativa plano preservando historico financeiro
+      operationId: postAdminPacoteCreditoDesativacao
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlanoCreditoStatusRequest"
+      responses:
+        "200":
+          description: plano inativo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlanoCredito"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/admin/premium/catalogo:
     get:
       summary: Lista catalogo Premium administrativo
@@ -12550,17 +12685,53 @@ components:
               custoCreditos: { type: integer, minimum: 0 }
               ativo: { type: boolean }
               ordemExibicao: { type: integer, minimum: 0 }
-    AdminPlanoCreditoUpdateRequest:
+    AdminPlanoCredito:
       type: object
       additionalProperties: false
-      required: [nome, descricao, quantidadeCreditos, valor, ativo, ordemExibicao]
+      required:
+        [id, codigo, nome, descricao, quantidadeCreditos, valor, moeda, ativo, ordemExibicao, comprasConfirmadas, criadoEm, atualizadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        codigo: { type: string, pattern: "^[A-Z0-9_]{3,50}$" }
+        nome: { type: string }
+        descricao: { type: string }
+        quantidadeCreditos: { type: integer, minimum: 1 }
+        valor: { type: number, exclusiveMinimum: 0 }
+        moeda: { type: string, enum: [BRL] }
+        ativo: { type: boolean }
+        ordemExibicao: { type: integer, minimum: 0 }
+        comprasConfirmadas: { type: integer, format: int64, minimum: 0 }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+    AdminPlanoCreditoCriarRequest:
+      type: object
+      additionalProperties: false
+      required: [codigo, nome, descricao, quantidadeCreditos, valor, ativo, ordemExibicao]
+      properties:
+        codigo: { type: string, pattern: "^[A-Z0-9_]{3,50}$" }
+        nome: { type: string, minLength: 2, maxLength: 120 }
+        descricao: { type: string, maxLength: 500 }
+        quantidadeCreditos: { type: integer, minimum: 1 }
+        valor: { type: number, exclusiveMinimum: 0 }
+        ativo: { type: boolean }
+        ordemExibicao: { type: integer, minimum: 0 }
+    AdminPlanoCreditoAtualizarRequest:
+      type: object
+      additionalProperties: false
+      required: [nome, descricao, quantidadeCreditos, valor, ordemExibicao, atualizadoEm]
       properties:
         nome: { type: string, minLength: 2, maxLength: 120 }
         descricao: { type: string, maxLength: 500 }
         quantidadeCreditos: { type: integer, minimum: 1 }
-        valor: { type: number, minimum: 0 }
-        ativo: { type: boolean }
+        valor: { type: number, exclusiveMinimum: 0 }
         ordemExibicao: { type: integer, minimum: 0 }
+        atualizadoEm: { type: string, format: date-time }
+    AdminPlanoCreditoStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [atualizadoEm]
+      properties:
+        atualizadoEm: { type: string, format: date-time }
     PaginacaoPublica:
       type: object
       additionalProperties: false

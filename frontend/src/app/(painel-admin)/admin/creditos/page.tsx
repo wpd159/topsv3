@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PlanoCreditoManager } from '../components/plano-credito-manager'
 import {
   AdminCreditosApi,
   type AdminAuditoriaFinanceira,
   type AdminCreditoMovimento,
   type AdminCreditoUsuario,
-  type AdminPlanoCredito,
   type AdminPremiumAtivacao,
   type AdminPremiumCatalogo,
 } from '@/lib/admin-creditos-operacionais-api'
@@ -48,7 +48,6 @@ export default function AdminCreditosPage() {
   const [movimentos, setMovimentos] = useState<AdminCreditoMovimento[]>([])
   const [ativacoes, setAtivacoes] = useState<AdminPremiumAtivacao[]>([])
   const [catalogo, setCatalogo] = useState<AdminPremiumCatalogo[]>([])
-  const [pacotes, setPacotes] = useState<AdminPlanoCredito[]>([])
   const [auditoria, setAuditoria] = useState<AdminAuditoriaFinanceira[]>([])
   const [direcao, setDirecao] = useState<'CREDITO' | 'DEBITO'>('CREDITO')
   const [quantidade, setQuantidade] = useState('')
@@ -57,13 +56,11 @@ export default function AdminCreditosPage() {
 
   const carregarAdministracao = async () => {
     try {
-      const [catalogoData, pacotesData, auditoriaData] = await Promise.all([
+      const [catalogoData, auditoriaData] = await Promise.all([
         AdminCreditosApi.catalogo(),
-        AdminCreditosApi.pacotes(),
         AdminCreditosApi.auditoria(),
       ])
       setCatalogo(catalogoData)
-      setPacotes(pacotesData)
       setAuditoria(auditoriaData)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao carregar administracao financeira.')
@@ -170,19 +167,6 @@ export default function AdminCreditosPage() {
     }
   }
 
-  const salvarPacote = async (item: AdminPlanoCredito) => {
-    try {
-      setBusy(true)
-      const atualizado = await AdminCreditosApi.atualizarPacote(item)
-      setPacotes((current) => current.map((entry) => entry.id === item.id ? atualizado : entry))
-      toast.success('Pacote atualizado sem iniciar cobranca externa.')
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Falha ao atualizar pacote.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
   const duracoesDisponiveis = Array.from(new Set(
     catalogo.flatMap((item) => item.opcoes.map((opcao) => opcao.duracaoDias))
   )).sort((a, b) => a - b)
@@ -284,13 +268,7 @@ export default function AdminCreditosPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5">
-        <h2 className="text-base font-semibold text-gray-900">Pacotes de credito</h2>
-        <p className="mt-1 text-sm text-gray-500">Configuracao comercial sem checkout ou cobranca externa nesta fase.</p>
-        <div className="mt-5 grid gap-4 lg:grid-cols-3">
-          {pacotes.map((item) => <div key={item.id} className="space-y-3 rounded-md border border-gray-200 p-4"><Input value={item.nome} onChange={(event) => setPacotes((current) => current.map((entry) => entry.id === item.id ? { ...entry, nome: event.target.value } : entry))} /><Input value={item.descricao} onChange={(event) => setPacotes((current) => current.map((entry) => entry.id === item.id ? { ...entry, descricao: event.target.value } : entry))} /><div className="grid grid-cols-3 gap-2"><label className="text-xs text-gray-500">Creditos<Input type="number" min={1} value={item.quantidadeCreditos} onChange={(event) => setPacotes((current) => current.map((entry) => entry.id === item.id ? { ...entry, quantidadeCreditos: Number(event.target.value) } : entry))} /></label><label className="text-xs text-gray-500">Valor ref.<Input type="number" min={0} step="0.01" value={item.valor} onChange={(event) => setPacotes((current) => current.map((entry) => entry.id === item.id ? { ...entry, valor: Number(event.target.value) } : entry))} /></label><label className="text-xs text-gray-500">Ordem<Input type="number" min={0} value={item.ordemExibicao} onChange={(event) => setPacotes((current) => current.map((entry) => entry.id === item.id ? { ...entry, ordemExibicao: Number(event.target.value) } : entry))} /></label></div><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={item.ativo} onChange={(event) => setPacotes((current) => current.map((entry) => entry.id === item.id ? { ...entry, ativo: event.target.checked } : entry))} />Ativo</label><Button disabled={busy} onClick={() => void salvarPacote(item)}>Salvar pacote</Button></div>)}
-        </div>
-      </section>
+      <PlanoCreditoManager />
 
       <section className="rounded-lg border border-gray-200 bg-white p-5">
         <h2 className="text-base font-semibold text-gray-900">Auditoria operacional</h2>

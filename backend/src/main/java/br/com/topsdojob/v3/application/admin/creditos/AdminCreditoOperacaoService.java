@@ -36,7 +36,10 @@ public class AdminCreditoOperacaoService {
             "CREDITO_ADMIN_AJUSTAR",
             "CREDITO_ADMIN_ESTORNAR",
             "PREMIUM_CATALOGO_ATUALIZAR",
+            "CREDITO_PACOTE_CRIAR",
             "CREDITO_PACOTE_ATUALIZAR",
+            "CREDITO_PACOTE_ATIVAR",
+            "CREDITO_PACOTE_DESATIVAR",
             "PREMIUM_ATIVACAO_CANCELAR");
 
     private final CreditoLedgerOperacaoService ledgerService;
