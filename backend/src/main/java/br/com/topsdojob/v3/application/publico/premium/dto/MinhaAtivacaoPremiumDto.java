@@ -5,10 +5,16 @@ import java.util.UUID;
 
 public record MinhaAtivacaoPremiumDto(
         UUID id,
+        UUID anuncioId,
+        String anuncioSlug,
+        String anuncioTitulo,
         String beneficioCodigo,
         String beneficioNome,
         String status,
         int custoCreditos,
+        int duracaoDias,
         OffsetDateTime inicioEm,
-        OffsetDateTime fimEm) {
+        OffsetDateTime fimEm,
+        String efeitoPublico,
+        String motivoIneficacia) {
 }

@@ -67,17 +67,6 @@ async function readJson<T>(response: Response, fallback: string): Promise<T> {
   }
 }
 
-function isCatalogCode(code: string): code is MonetizacaoOpcaoCodigo {
-  return [
-    'ANUNCIO_TOPO',
-    'FOTOS_EXTRA_5',
-    'VIDEO_1',
-    'WHATSAPP_CARD',
-    'CARROSSEL_FOTOS',
-    'OCULTAR_IDADE',
-  ].includes(code)
-}
-
 function mapAnuncio(anuncio: MeuAnuncio): MonetizacaoWizardData['anuncio'] {
   return {
     id: anuncio.id,
@@ -120,9 +109,9 @@ function mapAnuncioEdit(anuncio: MeuAnuncio): MonetizacaoWizardData['anuncioEdit
 function mapCatalogo(data: MinhaMonetizacaoBackend, anuncioId: string) {
   const activeCodes = new Set(data.beneficiosAtivos.map((item) => item.beneficioCodigo))
   const opcoes = data.catalogo
-    .filter((item) => item.ativo && isCatalogCode(item.codigo))
+    .filter((item) => item.ativo)
     .map<MonetizacaoCotacaoOpcao>((item) => ({
-      codigo: item.codigo as MonetizacaoOpcaoCodigo,
+      codigo: item.codigo,
       titulo: item.nome,
       descricao: item.descricao,
       disponivel: !activeCodes.has(item.codigo),
@@ -172,7 +161,7 @@ export async function fetchMinhaMonetizacao(slug?: string): Promise<MinhaMonetiz
   )
 }
 
-function idempotencyKey() {
+export function newPremiumPurchaseIdempotencyKey() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
@@ -181,13 +170,14 @@ function idempotencyKey() {
 
 export async function comprarBeneficios(
   anuncioSlug: string,
-  itens: Array<{ beneficioCodigo: MonetizacaoOpcaoCodigo; duracaoDias: number }>
+  itens: Array<{ beneficioCodigo: MonetizacaoOpcaoCodigo; duracaoDias: number }>,
+  idempotencyKey: string
 ) {
   const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
   const headers = new Headers({
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    'Idempotency-Key': idempotencyKey(),
+    'Idempotency-Key': idempotencyKey,
   })
   if (csrfValue) headers.set(csrfHeaderName(), csrfValue)
 

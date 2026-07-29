@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { CheckCircle2, ImageIcon, MapPin, ShieldCheck, WalletCards } from 'lucide-react'
 import { PreviewTag } from '@/features/anuncio-wizard/components/wizard-ui'
-import type { AnuncioMeuResumo } from '../types'
+import type { AnuncioMeuResumo, BeneficioAtivoResumo } from '../types'
 
 function formatStatus(status?: string | null) {
   const normalized = String(status || '').toUpperCase()
@@ -16,6 +16,15 @@ function formatStatus(status?: string | null) {
     INATIVO: 'Inativo',
   }
   return map[normalized] || status || 'Status não informado'
+}
+
+function formatDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'data indisponível'
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date)
 }
 
 function featureLabel(codigo: string) {
@@ -49,9 +58,11 @@ function buildActiveBenefits(anuncio: AnuncioMeuResumo) {
 export function MonetizacaoStepAnuncio({
   anuncio,
   saldoCreditos,
+  beneficiosAtivos,
 }: {
   anuncio: AnuncioMeuResumo
   saldoCreditos: number
+  beneficiosAtivos: BeneficioAtivoResumo[]
 }) {
   const activeBenefits = buildActiveBenefits(anuncio)
 
@@ -119,6 +130,34 @@ export function MonetizacaoStepAnuncio({
               )}
             </div>
           </div>
+
+          {beneficiosAtivos.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {beneficiosAtivos.map((beneficio) => (
+                <div
+                  key={beneficio.id}
+                  className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-zinc-950">{beneficio.beneficioNome}</p>
+                    <span className="text-xs font-semibold text-emerald-700">{beneficio.status}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-600">
+                    {beneficio.duracaoDias === 1
+                      ? '1 dia'
+                      : `${beneficio.duracaoDias} dias`}{' '}
+                    · até {formatDate(beneficio.fimEm)}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-600">{beneficio.efeitoPublico}</p>
+                  {beneficio.motivoIneficacia ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700">
+                      Efeito temporariamente indisponível porque o anúncio não está publicado.
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

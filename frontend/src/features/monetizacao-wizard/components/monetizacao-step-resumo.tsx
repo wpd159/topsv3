@@ -1,8 +1,14 @@
 'use client'
 
-import { ReceiptText } from 'lucide-react'
+import Link from 'next/link'
+import { ReceiptText, WalletCards } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { ReviewRow, StepPanel } from '@/features/anuncio-wizard/components/wizard-ui'
-import type { MonetizacaoCotacaoDuracao, MonetizacaoCotacaoOpcao } from '../types'
+import type {
+  AnuncioMeuResumo,
+  MonetizacaoCotacaoDuracao,
+  MonetizacaoCotacaoOpcao,
+} from '../types'
 
 type SelectedMonetizacaoItem = {
   opcao: MonetizacaoCotacaoOpcao
@@ -14,15 +20,22 @@ function durationLabel(dias: number) {
 }
 
 export function MonetizacaoStepResumo({
+  anuncio,
   itens,
   saldoCreditos,
   totalCreditos,
+  loading,
+  onActivate,
 }: {
+  anuncio: AnuncioMeuResumo
   itens: SelectedMonetizacaoItem[]
   saldoCreditos: number
   totalCreditos: number
+  loading: boolean
+  onActivate: () => void
 }) {
-  const saldoApos = Math.max(0, saldoCreditos - totalCreditos)
+  const saldoApos = saldoCreditos - totalCreditos
+  const saldoSuficiente = saldoApos >= 0
 
   return (
     <StepPanel>
@@ -32,8 +45,16 @@ export function MonetizacaoStepResumo({
         </div>
         <div>
           <h3 className="text-lg font-semibold text-zinc-950">Resumo da compra</h3>
-          <p className="text-sm text-zinc-500">Confira os benefícios antes de seguir para o pagamento.</p>
+          <p className="text-sm text-zinc-500">
+            Nenhum crédito será descontado antes da confirmação.
+          </p>
         </div>
+      </div>
+
+      <div className="mb-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+        <p className="text-xs font-semibold uppercase text-zinc-500">Anúncio</p>
+        <p className="mt-1 font-semibold text-zinc-950">{anuncio.titulo}</p>
+        <p className="mt-1 text-xs text-zinc-500">/{anuncio.slug}</p>
       </div>
 
       <div className="space-y-3">
@@ -54,9 +75,37 @@ export function MonetizacaoStepResumo({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        <ReviewRow label="Subtotal" value={`${totalCreditos} créditos`} />
-        <ReviewRow label="Créditos disponíveis" value={`${saldoCreditos} créditos`} />
-        <ReviewRow label="Saldo após compra" value={`${saldoApos} créditos`} />
+        <ReviewRow label="Custo total" value={`${totalCreditos} créditos`} />
+        <ReviewRow label="Saldo atual" value={`${saldoCreditos} créditos`} />
+        <ReviewRow
+          label={saldoSuficiente ? 'Saldo restante' : 'Créditos faltantes'}
+          value={`${Math.abs(saldoApos)} créditos`}
+        />
+      </div>
+
+      <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-[#FC1EAD]/20 bg-[#fff0f8] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <WalletCards className="mt-0.5 h-5 w-5 shrink-0 text-[#FC1EAD]" />
+          <p className="text-sm leading-6 text-zinc-700">
+            {saldoSuficiente
+              ? 'Confirme uma única vez para debitar o ledger e ativar todos os itens.'
+              : 'O saldo atual não cobre esta seleção. Ajuste os benefícios ou adquira créditos.'}
+          </p>
+        </div>
+        {saldoSuficiente ? (
+          <Button
+            type="button"
+            onClick={onActivate}
+            disabled={loading}
+            className="h-11 shrink-0 bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
+          >
+            {loading ? 'Ativando...' : 'Confirmar ativação'}
+          </Button>
+        ) : (
+          <Button asChild variant="outline" className="h-11 shrink-0 bg-white">
+            <Link href="/creditos">Ver créditos</Link>
+          </Button>
+        )}
       </div>
     </StepPanel>
   )

@@ -12495,15 +12495,24 @@ components:
     MinhaAtivacaoPremium:
       type: object
       additionalProperties: false
-      required: [id, beneficioCodigo, beneficioNome, status, custoCreditos, inicioEm, fimEm]
+      required: [id, anuncioId, beneficioCodigo, beneficioNome, status, custoCreditos, duracaoDias, inicioEm, fimEm, efeitoPublico]
       properties:
         id: { type: string, format: uuid }
+        anuncioId: { type: string, format: uuid }
+        anuncioSlug:
+          type: [string, "null"]
+        anuncioTitulo:
+          type: [string, "null"]
         beneficioCodigo: { type: string }
         beneficioNome: { type: string }
         status: { type: string }
         custoCreditos: { type: integer, minimum: 0 }
+        duracaoDias: { type: integer, minimum: 0 }
         inicioEm: { type: string, format: date-time }
         fimEm: { type: string, format: date-time }
+        efeitoPublico: { type: string }
+        motivoIneficacia:
+          type: [string, "null"]
     MinhaMonetizacao:
       type: object
       additionalProperties: false
@@ -12538,7 +12547,7 @@ components:
             required: [beneficioCodigo, duracaoDias]
             properties:
               beneficioCodigo: { type: string }
-              duracaoDias: { type: integer, enum: [1, 7, 14, 30] }
+              duracaoDias: { type: integer, minimum: 1 }
     MinhaCompraPremiumResultado:
       type: object
       additionalProperties: false

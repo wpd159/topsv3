@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -10,12 +10,13 @@ import { calculateAge } from '@/features/anuncio-wizard/wizard-utils'
 import {
   comprarBeneficios,
   fetchMonetizacaoWizardData,
+  newPremiumPurchaseIdempotencyKey,
 } from './api'
+import { revalidarCatalogoAposAtivacao } from './actions'
 import { MonetizacaoWizardPreview } from './components/monetizacao-wizard-preview'
 import { MonetizacaoStepAnuncio } from './components/monetizacao-step-anuncio'
 import { MonetizacaoStepBeneficios } from './components/monetizacao-step-beneficios'
 import { MonetizacaoStepResumo } from './components/monetizacao-step-resumo'
-import { MonetizacaoStepSaldo } from './components/monetizacao-step-saldo'
 import { MonetizacaoStepSucesso } from './components/monetizacao-step-sucesso'
 import type {
   MonetizacaoActivationResult,
@@ -35,31 +36,25 @@ const steps: Array<{
 }> = [
   {
     id: 'anuncio',
-    eyebrow: 'Passo 1 de 5',
+    eyebrow: 'Passo 1 de 4',
     title: 'Conferir anúncio',
     description: 'Revise os dados principais antes de escolher como monetizar.',
   },
   {
     id: 'beneficios',
-    eyebrow: 'Passo 2 de 5',
+    eyebrow: 'Passo 2 de 4',
     title: 'Escolha os benefícios',
     description: 'Escolha entre pacotes recomendados ou benefícios individuais.',
   },
   {
     id: 'resumo',
-    eyebrow: 'Passo 3 de 5',
-    title: 'Resumo da compra',
-    description: 'Revise benefícios, subtotal, créditos disponíveis e validade antes de pagar.',
-  },
-  {
-    id: 'pagamento',
-    eyebrow: 'Passo 4 de 5',
-    title: 'Pagamento',
-    description: 'Confirme a ativação com créditos ou compre mais créditos para concluir.',
+    eyebrow: 'Passo 3 de 4',
+    title: 'Confirmar ativação',
+    description: 'Revise o anúncio, os benefícios, as durações e o saldo antes de confirmar.',
   },
   {
     id: 'sucesso',
-    eyebrow: 'Passo 5 de 5',
+    eyebrow: 'Passo 4 de 4',
     title: 'Confirmação',
     description: 'Veja o resumo da operação concluída.',
   },
@@ -128,6 +123,8 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
   const [previewHintDismissed, setPreviewHintDismissed] = useState(false)
   const [activationLoading, setActivationLoading] = useState(false)
   const [activationResult, setActivationResult] = useState<MonetizacaoActivationResult | null>(null)
+  const activationKeyRef = useRef<string | null>(null)
+  const activationInFlightRef = useRef(false)
 
   const loadWizard = async () => {
     setLoading(true)
@@ -288,6 +285,7 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
     const option = opcoesDoModo.find((item) => item.codigo === codigo)
     if (!option) return
 
+    activationKeyRef.current = null
     setSelectedDurations((current) => {
       if (current[codigo] != null) {
         const next = { ...current }
@@ -315,6 +313,7 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
       return
     }
 
+    activationKeyRef.current = null
     setSelectedDurations((current) => ({ ...current, [codigo]: dias }))
   }
 
@@ -339,35 +338,39 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
   }
 
   const activateSelection = async () => {
-    if (!data || selectedItems.length === 0) return
+    if (!data || selectedItems.length === 0 || activationInFlightRef.current) return
 
     if (data.cotacao.saldoCreditos < totalCreditos) {
       toast.warning('Seu saldo ainda não cobre esta compra.')
       return
     }
 
+    activationInFlightRef.current = true
     setActivationLoading(true)
 
     try {
+      const activationKey =
+        activationKeyRef.current || newPremiumPurchaseIdempotencyKey()
+      activationKeyRef.current = activationKey
       const resultado = await comprarBeneficios(
         data.anuncio.slug,
         selectedItems.map((item) => ({
           beneficioCodigo: item.opcao.codigo,
           duracaoDias: item.duracao.dias,
-        }))
+        })),
+        activationKey
       )
-      const activatedItems: MonetizacaoActivationResult['itens'] = selectedItems.map((item) => ({
-        codigo: item.opcao.codigo,
-        titulo: item.opcao.titulo,
-        dias: item.duracao.dias,
-        creditos: item.duracao.creditos,
-      }))
+      await revalidarCatalogoAposAtivacao()
 
       setActivationResult({
-        itens: activatedItems,
+        itens: resultado.ativacoes,
         totalCreditos: resultado.totalDebitado,
+        saldoAnterior: resultado.saldoAnterior,
+        saldoPosterior: resultado.saldoPosterior,
+        idempotente: resultado.idempotente,
       })
       setSelectedDurations({})
+      activationKeyRef.current = null
 
       await refresh().catch(() => null)
       await loadWizard()
@@ -376,6 +379,7 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
     } catch (error: any) {
       toast.error(error?.message || 'Não foi possível concluir a ativação agora.')
     } finally {
+      activationInFlightRef.current = false
       setActivationLoading(false)
     }
   }
@@ -388,7 +392,13 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
 
     switch (currentStep) {
       case 'anuncio':
-        return <MonetizacaoStepAnuncio anuncio={data.anuncio} saldoCreditos={data.cotacao.saldoCreditos} />
+        return (
+          <MonetizacaoStepAnuncio
+            anuncio={data.anuncio}
+            saldoCreditos={data.cotacao.saldoCreditos}
+            beneficiosAtivos={data.beneficiosAtivos}
+          />
+        )
       case 'beneficios':
         return (
           <MonetizacaoStepBeneficios
@@ -406,14 +416,8 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
       case 'resumo':
         return (
           <MonetizacaoStepResumo
+            anuncio={data.anuncio}
             itens={selectedItems}
-            saldoCreditos={data.cotacao.saldoCreditos}
-            totalCreditos={totalCreditos}
-          />
-        )
-      case 'pagamento':
-        return (
-          <MonetizacaoStepSaldo
             saldoCreditos={data.cotacao.saldoCreditos}
             totalCreditos={totalCreditos}
             loading={activationLoading}
@@ -542,7 +546,7 @@ export default function MonetizacaoWizard({ slug }: { slug: string }) {
                   Voltar
                 </Button>
 
-                {currentStep === 'pagamento' ? null : (
+                {currentStep === 'resumo' ? null : (
                   <Button type="button" onClick={goNext}>
                     Continuar
                     <ChevronRight className="ml-2 h-4 w-4" />

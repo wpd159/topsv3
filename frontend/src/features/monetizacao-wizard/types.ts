@@ -2,13 +2,7 @@
 
 import type { AnuncioEditAPI } from '@/components/anuncios/editar/types'
 
-export type MonetizacaoOpcaoCodigo =
-  | 'ANUNCIO_TOPO'
-  | 'FOTOS_EXTRA_5'
-  | 'VIDEO_1'
-  | 'WHATSAPP_CARD'
-  | 'CARROSSEL_FOTOS'
-  | 'OCULTAR_IDADE'
+export type MonetizacaoOpcaoCodigo = string
 
 export type MonetizacaoCotacaoDuracao = {
   dias: number
@@ -81,12 +75,18 @@ export type CreditoMovimentoResumo = {
 
 export type BeneficioAtivoResumo = {
   id: string
+  anuncioId: string
+  anuncioSlug?: string | null
+  anuncioTitulo?: string | null
   beneficioCodigo: string
   beneficioNome: string
   status: string
   custoCreditos: number
+  duracaoDias: number
   inicioEm: string
   fimEm: string
+  efeitoPublico: string
+  motivoIneficacia?: string | null
 }
 
 export type MonetizacaoWizardData = {
@@ -102,19 +102,16 @@ export type MonetizacaoWizardStepId =
   | 'anuncio'
   | 'beneficios'
   | 'resumo'
-  | 'pagamento'
   | 'sucesso'
 
 export type MonetizacaoSelectionMode = 'individuais'
 
 export type MonetizacaoActivationResult = {
-  itens: Array<{
-    codigo: MonetizacaoOpcaoCodigo
-    titulo: string
-    dias: number
-    creditos: number
-  }>
+  itens: BeneficioAtivoResumo[]
   totalCreditos: number
+  saldoAnterior: number
+  saldoPosterior: number
+  idempotente: boolean
 }
 
 export type CompraPremiumResultado = {

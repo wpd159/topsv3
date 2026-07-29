@@ -1,8 +1,10 @@
 package br.com.topsdojob.v3.application.publico.premium;
 
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
+import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
+import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
 import br.com.topsdojob.v3.application.premium.PremiumCatalogoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.premium.dto.MinhaAtivacaoPremiumDto;
@@ -17,6 +19,7 @@ import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumOpcaoEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
@@ -31,10 +34,14 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -58,6 +65,7 @@ public class MinhaContaPremiumService {
     private final BeneficioPremiumOpcaoRepository opcaoRepository;
     private final GrupoAtivacaoBeneficioRepository grupoRepository;
     private final AtivacaoBeneficioRepository ativacaoRepository;
+    private final AnuncioRepository anuncioRepository;
     private final BeneficioAnuncioConsultaService beneficioConsultaService;
     private final AuditoriaEventoRepository auditoriaRepository;
     private final ObjectMapper objectMapper;
@@ -71,6 +79,7 @@ public class MinhaContaPremiumService {
             BeneficioPremiumOpcaoRepository opcaoRepository,
             GrupoAtivacaoBeneficioRepository grupoRepository,
             AtivacaoBeneficioRepository ativacaoRepository,
+            AnuncioRepository anuncioRepository,
             BeneficioAnuncioConsultaService beneficioConsultaService,
             AuditoriaEventoRepository auditoriaRepository,
             ObjectMapper objectMapper) {
@@ -82,6 +91,7 @@ public class MinhaContaPremiumService {
         this.opcaoRepository = opcaoRepository;
         this.grupoRepository = grupoRepository;
         this.ativacaoRepository = ativacaoRepository;
+        this.anuncioRepository = anuncioRepository;
         this.beneficioConsultaService = beneficioConsultaService;
         this.auditoriaRepository = auditoriaRepository;
         this.objectMapper = objectMapper;
@@ -109,7 +119,9 @@ public class MinhaContaPremiumService {
         return new MinhaMonetizacaoDto(
                 saldo,
                 historico,
-                catalogoService.catalogoAtivo(),
+                catalogoService.catalogoAtivo().stream()
+                        .filter(item -> PremiumBeneficioCodigo.TODOS.contains(item.codigo()))
+                        .toList(),
                 catalogoService.pacotesAtivos(),
                 anuncio == null ? ativacoesAtivasDoUsuario(usuarioId) : ativacoesAtivas(anuncio.getId()));
     }
@@ -123,6 +135,7 @@ public class MinhaContaPremiumService {
         if (request == null || request.itens() == null || request.itens().isEmpty() || request.itens().size() > 10) {
             throw badRequest("itens da compra obrigatorios");
         }
+        List<ItemSolicitado> solicitados = normalizarItens(request.itens());
         AnuncioEntity anuncio = meusAnunciosService.anuncioDoUsuario(request.anuncioSlug(), authentication);
         UUID usuarioId = meusAnunciosService.usuarioAutenticado(authentication).getId();
         if (anuncio.getStatus() != StatusAnuncio.PUBLICADO) {
@@ -133,10 +146,12 @@ public class MinhaContaPremiumService {
         int saldoAtual = ledgerService.bloquearEConsultarSaldo(usuarioId);
         var grupoExistente = grupoRepository.findByIdempotencyKey(chaveGrupo);
         if (grupoExistente.isPresent()) {
+            validarRetry(grupoExistente.get(), anuncio, solicitados);
             return resultadoExistente(grupoExistente.get(), saldoAtual);
         }
 
-        List<ItemCompra> itens = resolverItens(request.itens());
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        List<ItemCompra> itens = resolverItens(solicitados, agora);
         validarSemDuplicidadeAtiva(anuncio.getId(), itens);
         int total = itens.stream().mapToInt(item -> item.opcao().getCustoCreditos()).sum();
         if (total <= 0) {
@@ -146,7 +161,6 @@ public class MinhaContaPremiumService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "saldo de creditos insuficiente");
         }
 
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime fimGrupo = itens.stream()
                 .map(item -> agora.plusDays(item.opcao().getDuracaoDias()))
                 .max(OffsetDateTime::compareTo)
@@ -189,7 +203,9 @@ public class MinhaContaPremiumService {
                     ativacao.getId(),
                     chaveGrupo + ":debito:" + indice,
                     usuarioId,
-                    "Compra de " + item.beneficio().getNome() + " por " + item.opcao().getDuracaoDias() + " dias",
+                    "Compra de " + item.beneficio().getNome()
+                            + " por " + item.opcao().getDuracaoDias()
+                            + " dias no anuncio " + anuncio.getTitulo(),
                     requestId);
             saldoCorrente = lancamento.movimento().getSaldoDepois();
             ativacoes.add(ativacao);
@@ -213,28 +229,90 @@ public class MinhaContaPremiumService {
                 false);
     }
 
-    private List<ItemCompra> resolverItens(List<MinhaCompraPremiumItemRequest> requests) {
+    private List<ItemSolicitado> normalizarItens(List<MinhaCompraPremiumItemRequest> requests) {
         Set<String> codigos = new HashSet<>();
-        List<ItemCompra> itens = new ArrayList<>();
+        List<ItemSolicitado> itens = new ArrayList<>();
         for (MinhaCompraPremiumItemRequest request : requests) {
             String codigo = request == null || request.beneficioCodigo() == null
                     ? ""
                     : request.beneficioCodigo().trim().toUpperCase();
-            if (!codigo.matches("[A-Z0-9_]{3,80}") || !codigos.add(codigo) || request.duracaoDias() == null) {
+            Integer duracaoDias = request == null ? null : request.duracaoDias();
+            if (!codigo.matches("[A-Z0-9_]{3,80}")
+                    || !PremiumBeneficioCodigo.TODOS.contains(codigo)
+                    || !codigos.add(codigo)
+                    || duracaoDias == null
+                    || duracaoDias <= 0) {
                 throw badRequest("beneficio da compra invalido ou duplicado");
             }
-            BeneficioPremiumEntity beneficio = beneficioRepository.findByCodigo(codigo)
+            itens.add(new ItemSolicitado(codigo, duracaoDias));
+        }
+        return itens;
+    }
+
+    private List<ItemCompra> resolverItens(List<ItemSolicitado> requests, OffsetDateTime agora) {
+        List<ItemCompra> itens = new ArrayList<>();
+        for (ItemSolicitado request : requests) {
+            BeneficioPremiumEntity beneficio = beneficioRepository.findByCodigo(request.codigo())
                     .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
             BeneficioPremiumOpcaoEntity opcao = opcaoRepository
                     .findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(
                             beneficio.getId(),
                             request.duracaoDias())
-                    .filter(item -> item.vigente(OffsetDateTime.now(ZoneOffset.UTC)))
+                    .filter(item -> item.vigente(agora))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada"));
+            if (valor(opcao.getCustoCreditos()) <= 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "catalogo sem custo operacional valido");
+            }
             itens.add(new ItemCompra(beneficio, opcao));
         }
         return itens;
+    }
+
+    private void validarRetry(
+            GrupoAtivacaoBeneficioEntity grupo,
+            AnuncioEntity anuncio,
+            List<ItemSolicitado> solicitados) {
+        if (!Objects.equals(grupo.getAnuncioId(), anuncio.getId())) {
+            throw idempotenciaDivergente();
+        }
+        List<AtivacaoBeneficioEntity> ativacoes = ativacaoRepository.findByGrupoAtivacaoId(grupo.getId());
+        if (ativacoes.size() != solicitados.size()) {
+            throw idempotenciaDivergente();
+        }
+        Map<UUID, BeneficioPremiumEntity> beneficios = beneficioRepository
+                .findByIdIn(ativacoes.stream()
+                        .map(AtivacaoBeneficioEntity::getBeneficioId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(BeneficioPremiumEntity::getId, Function.identity()));
+        Map<UUID, BeneficioPremiumOpcaoEntity> opcoes = opcaoRepository
+                .findAllById(ativacoes.stream()
+                        .map(AtivacaoBeneficioEntity::getOpcaoId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(BeneficioPremiumOpcaoEntity::getId, Function.identity()));
+        Map<String, Integer> existentes = new LinkedHashMap<>();
+        for (AtivacaoBeneficioEntity ativacao : ativacoes) {
+            BeneficioPremiumEntity beneficio = beneficios.get(ativacao.getBeneficioId());
+            BeneficioPremiumOpcaoEntity opcao = opcoes.get(ativacao.getOpcaoId());
+            if (beneficio == null
+                    || opcao == null
+                    || existentes.put(beneficio.getCodigo(), opcao.getDuracaoDias()) != null) {
+                throw idempotenciaDivergente();
+            }
+        }
+        Map<String, Integer> recebidos = solicitados.stream().collect(Collectors.toMap(
+                ItemSolicitado::codigo,
+                ItemSolicitado::duracaoDias,
+                (primeiro, ignorado) -> primeiro,
+                LinkedHashMap::new));
+        if (!existentes.equals(recebidos)) {
+            throw idempotenciaDivergente();
+        }
     }
 
     private void validarSemDuplicidadeAtiva(UUID anuncioId, List<ItemCompra> itens) {
@@ -262,6 +340,11 @@ public class MinhaContaPremiumService {
                 .sorted(java.util.Comparator.comparing(
                         br.com.topsdojob.v3.persistence.entity.credito.MovimentoCreditoEntity::getCriadoEm))
                 .toList();
+        if (ativacoes.isEmpty() || debitos.size() != ativacoes.size()) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "operacao idempotente possui ledger ou ativacoes inconsistentes");
+        }
         int total = debitos.stream().mapToInt(item -> valor(item.getQuantidade())).sum();
         int saldoAnterior = debitos.isEmpty() ? saldoAtual : valor(debitos.get(0).getSaldoAntes());
         int saldoPosterior = debitos.isEmpty()
@@ -285,33 +368,65 @@ public class MinhaContaPremiumService {
     }
 
     private List<MinhaAtivacaoPremiumDto> ativacoesAtivas(List<AtivacaoBeneficioEntity> ativacoes) {
-        List<AtivacaoBeneficioEntity> ativas = beneficioConsultaService
+        List<PremiumBeneficioCalculado> ativas = beneficioConsultaService
                 .calcular(ativacoes, OffsetDateTime.now(ZoneOffset.UTC)).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
                         || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
-                .map(item -> item.ativacao())
                 .toList();
-        return ativacoesDto(ativas);
+        Map<UUID, String> statusCalculado = ativas.stream().collect(Collectors.toMap(
+                item -> item.ativacao().getId(),
+                item -> item.status().name()));
+        return ativacoesDto(ativas.stream().map(PremiumBeneficioCalculado::ativacao).toList(), statusCalculado);
     }
 
     private List<MinhaAtivacaoPremiumDto> ativacoesDto(List<AtivacaoBeneficioEntity> ativacoes) {
+        return ativacoesDto(ativacoes, Map.of());
+    }
+
+    private List<MinhaAtivacaoPremiumDto> ativacoesDto(
+            List<AtivacaoBeneficioEntity> ativacoes,
+            Map<UUID, String> statusCalculado) {
         if (ativacoes.isEmpty()) return List.of();
         Map<UUID, BeneficioPremiumEntity> beneficios = beneficioRepository.findByIdIn(ativacoes.stream()
                         .map(AtivacaoBeneficioEntity::getBeneficioId)
                         .distinct()
                         .toList()).stream()
                 .collect(Collectors.toMap(BeneficioPremiumEntity::getId, Function.identity()));
+        Map<UUID, BeneficioPremiumOpcaoEntity> opcoes = opcaoRepository.findAllById(ativacoes.stream()
+                        .map(AtivacaoBeneficioEntity::getOpcaoId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(BeneficioPremiumOpcaoEntity::getId, Function.identity()));
+        Map<UUID, AnuncioEntity> anuncios = anuncioRepository.findAllById(ativacoes.stream()
+                        .map(AtivacaoBeneficioEntity::getAnuncioId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
         return ativacoes.stream()
+                .sorted(Comparator.comparing(AtivacaoBeneficioEntity::getCriadoEm).reversed())
                 .map(item -> {
                     BeneficioPremiumEntity beneficio = beneficios.get(item.getBeneficioId());
+                    BeneficioPremiumOpcaoEntity opcao = opcoes.get(item.getOpcaoId());
+                    AnuncioEntity anuncio = anuncios.get(item.getAnuncioId());
+                    String status = statusCalculado.getOrDefault(
+                            item.getId(),
+                            item.getStatus() == null ? null : item.getStatus().name());
                     return new MinhaAtivacaoPremiumDto(
                             item.getId(),
+                            item.getAnuncioId(),
+                            anuncio == null ? null : anuncio.getSlug(),
+                            anuncio == null ? null : anuncio.getTitulo(),
                             beneficio == null ? null : beneficio.getCodigo(),
                             beneficio == null ? null : beneficio.getNome(),
-                            item.getStatus() == null ? null : item.getStatus().name(),
+                            status,
                             valor(item.getCustoCreditosSnapshot()),
+                            duracaoDias(item, opcao),
                             item.getInicioEm(),
-                            item.getFimEm());
+                            item.getFimEm(),
+                            beneficio == null ? null : efeitoPublico(beneficio.getCodigo()),
+                            motivoIneficacia(anuncio, status));
                 })
                 .toList();
     }
@@ -333,6 +448,50 @@ public class MinhaContaPremiumService {
         return value == null ? 0 : value;
     }
 
+    private int duracaoDias(
+            AtivacaoBeneficioEntity ativacao,
+            BeneficioPremiumOpcaoEntity opcao) {
+        if (opcao != null && opcao.getDuracaoDias() != null) {
+            return opcao.getDuracaoDias();
+        }
+        if (ativacao.getInicioEm() == null || ativacao.getFimEm() == null) {
+            return 0;
+        }
+        return Math.toIntExact(ChronoUnit.DAYS.between(
+                ativacao.getInicioEm(),
+                ativacao.getFimEm()));
+    }
+
+    private String efeitoPublico(String codigo) {
+        return switch (codigo) {
+            case PremiumBeneficioCodigo.ANUNCIO_TOPO -> "Prioridade nas listagens publicas";
+            case PremiumBeneficioCodigo.WHATSAPP_CARD -> "WhatsApp no card sujeito a verificacao etaria";
+            case PremiumBeneficioCodigo.OCULTAR_IDADE -> "Idade ocultada nas superficies publicas";
+            case PremiumBeneficioCodigo.FOTOS_EXTRA_5 -> "Limite ampliado para ate dez fotos";
+            case PremiumBeneficioCodigo.CARROSSEL_FOTOS -> "Carrossel habilitado nas fotos publicas";
+            case PremiumBeneficioCodigo.VIDEO_1 -> "Video aprovado habilitado no anuncio";
+            default -> "Efeito definido pelo catalogo Premium";
+        };
+    }
+
+    private String motivoIneficacia(AnuncioEntity anuncio, String status) {
+        if (anuncio == null) {
+            return "ANUNCIO_NAO_ENCONTRADO";
+        }
+        if (!"ATIVO".equals(status) && !"ATIVA".equals(status) && !"VENCENDO".equals(status)) {
+            return "ATIVACAO_NAO_VIGENTE";
+        }
+        return anuncio.getStatus() == StatusAnuncio.PUBLICADO
+                ? null
+                : "ANUNCIO_NAO_PUBLICADO";
+    }
+
+    private ResponseStatusException idempotenciaDivergente() {
+        return new ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "chave de idempotencia reutilizada com compra diferente");
+    }
+
     private String json(Object value) {
         try {
             return objectMapper.writeValueAsString(value);
@@ -348,5 +507,10 @@ public class MinhaContaPremiumService {
     private record ItemCompra(
             BeneficioPremiumEntity beneficio,
             BeneficioPremiumOpcaoEntity opcao) {
+    }
+
+    private record ItemSolicitado(
+            String codigo,
+            int duracaoDias) {
     }
 }

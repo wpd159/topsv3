@@ -5,6 +5,26 @@ import { CheckCircle2, ChevronLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { MonetizacaoActivationResult } from '../types'
 
+function formatDateTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Data indisponível'
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(date)
+}
+
+function inefficacyLabel(value?: string | null) {
+  if (!value) return null
+  if (value === 'ANUNCIO_NAO_PUBLICADO') {
+    return 'O efeito público começará quando o anúncio voltar a ficar publicado.'
+  }
+  if (value === 'ATIVACAO_NAO_VIGENTE') {
+    return 'A ativação ainda não está vigente.'
+  }
+  return 'O efeito público ainda não está disponível.'
+}
+
 export function MonetizacaoStepSucesso({ result }: { result: MonetizacaoActivationResult | null }) {
   return (
     <div className="rounded-[32px] border border-emerald-200 bg-emerald-50 px-6 py-8 shadow-sm">
@@ -28,16 +48,26 @@ export function MonetizacaoStepSucesso({ result }: { result: MonetizacaoActivati
       {result?.itens.length ? (
         <div className="mt-6 space-y-3">
           {result.itens.map((item) => (
-            <div key={item.codigo} className="rounded-[24px] border border-emerald-200 bg-white px-4 py-4">
+            <div
+              key={item.id}
+              className="rounded-[24px] border border-emerald-200 bg-white px-4 py-4"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-zinc-950">{item.titulo}</p>
+                  <p className="text-sm font-semibold text-zinc-950">{item.beneficioNome}</p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    Expiração prevista: {item.dias === 1 ? '1 dia' : `${item.dias} dias`}
+                    {item.duracaoDias === 1 ? '1 dia' : `${item.duracaoDias} dias`} ·{' '}
+                    {formatDateTime(item.inicioEm)} até {formatDateTime(item.fimEm)}
                   </p>
+                  <p className="mt-2 text-xs text-zinc-700">{item.efeitoPublico}</p>
+                  {inefficacyLabel(item.motivoIneficacia) ? (
+                    <p className="mt-1 text-xs font-medium text-amber-700">
+                      {inefficacyLabel(item.motivoIneficacia)}
+                    </p>
+                  ) : null}
                 </div>
                 <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                  {item.creditos} créditos
+                  {item.custoCreditos} créditos · {item.status}
                 </span>
               </div>
             </div>
@@ -50,7 +80,12 @@ export function MonetizacaoStepSucesso({ result }: { result: MonetizacaoActivati
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
             Total utilizado
           </p>
-          <p className="mt-2 text-lg font-semibold text-zinc-950">{result.totalCreditos} créditos</p>
+          <p className="mt-2 text-lg font-semibold text-zinc-950">
+            {result.totalCreditos} créditos
+          </p>
+          <p className="mt-1 text-sm text-zinc-600">
+            Saldo: {result.saldoAnterior} → {result.saldoPosterior}
+          </p>
         </div>
       ) : null}
 
