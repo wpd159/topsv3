@@ -131,7 +131,6 @@ const preservedSurfaces = {
     'Abrir detalhe', 'Com providencia', 'Sem providencia', 'Data inicial', 'Data final',
   ],
   'app/(painel-admin)/admin/faqs/page.tsx': ['Nova FAQ', 'Pergunta', 'Resposta', 'Categoria', 'Mover para cima', 'Excluir'],
-  'app/(painel-admin)/admin/indicacoes/page.tsx': ['Editar creditos por indicacao', 'Total de indicacoes', 'ranking', 'Salvar'],
   'app/(painel-admin)/admin/registros/page.tsx': ['Todas as acoes', 'Modulo', 'Data inicial', 'Consultar detalhe', 'Proximo'],
   'app/(painel-admin)/admin/wizard-progress/page.tsx': ['Buscar anunciante', 'Todos os modos', 'Abrir anuncio', 'Abrir moderacao', 'Editar usuario'],
   'app/(painel-admin)/admin/components/novo-staff-modal.tsx': ['Nome completo', 'Nome de usuario', 'E-mail', 'CPF', 'Administrador', 'Moderador', 'Suporte', 'Mostrar', 'senha'],

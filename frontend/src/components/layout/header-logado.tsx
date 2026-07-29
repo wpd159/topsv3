@@ -18,7 +18,6 @@ import {
   ShieldCheckIcon,
   BanknotesIcon,
   TicketIcon,
-  LinkIcon,
   MegaphoneIcon,
   RocketLaunchIcon,
 } from "@heroicons/react/24/solid"
@@ -160,10 +159,6 @@ export default function HeaderLogado() {
                   <BanknotesIcon className="w-5 h-5 text-gray-500" /> Créditos
                 </li>
 
-                <li onClick={() => router.push("/indicacoes")} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer">
-                  <LinkIcon className="w-5 h-5 text-gray-500" /> Link de Indicação
-                </li>
-
                 <li onClick={() => router.push("/favoritos")} className="flex items-center gap-2 px-4 py-2 hover:bg-gray-50 cursor-pointer">
                   <HeartIcon className="w-5 h-5 text-gray-500" /> Favoritos
                 </li>
@@ -301,10 +296,6 @@ export default function HeaderLogado() {
 
                 <Button variant="ghost" className="justify-start text-gray-700" onClick={() => go("/creditos")}>
                   <BanknotesIcon className="w-5 h-5 mr-2" /> Créditos
-                </Button>
-
-                <Button variant="ghost" className="justify-start text-gray-700" onClick={() => go("/indicacoes")}>
-                  <LinkIcon className="w-5 h-5 mr-2" /> Link de Indicação
                 </Button>
 
                 <Button variant="ghost" className="justify-start text-gray-700" onClick={() => go("/favoritos")}>

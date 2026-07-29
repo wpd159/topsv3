@@ -6,7 +6,6 @@ const MODERATOR_RESTRICTED_ROUTES = [
   '/admin/registros',
   '/admin/creditos',
   '/admin/beneficios-premium',
-  '/admin/indicacoes',
   '/admin/termos-footer',
   '/admin/blog',
   '/admin/stories',

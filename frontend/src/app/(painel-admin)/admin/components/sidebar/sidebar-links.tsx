@@ -91,12 +91,6 @@ export const sidebarLinks: SidebarLink[] = [
     section: 'Monetização',
   },
   {
-    label: 'Indicações',
-    icon: <SparklesIcon className="h-5 w-5" />,
-    href: '/admin/indicacoes',
-    section: 'Monetização',
-  },
-  {
     label: 'Compliance',
     icon: <AdjustmentsHorizontalIcon className="h-5 w-5" />,
     href: '/admin/compliance',

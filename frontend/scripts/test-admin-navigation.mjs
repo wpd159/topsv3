@@ -89,13 +89,14 @@ const menuEntries = [...sidebarSource.matchAll(
   /label:\s*'([^']+)'[\s\S]*?href:\s*'([^']+)'[\s\S]*?section:\s*'([^']+)'/g
 )].map((match) => ({ label: match[1], href: match[2], section: match[3] }))
 
-assert.equal(menuEntries.length, 23, 'O menu administrativo deve manter os 23 itens canônicos.')
+assert.equal(menuEntries.length, 22, 'O menu administrativo deve manter os 22 itens canônicos.')
 assert.equal(
   new Set(menuEntries.map((item) => item.href)).size,
-  23,
+  22,
   'Os destinos do menu devem ser únicos.'
 )
 assert.ok(!sidebarSource.includes('/admin/stories'), 'Stories administrativos não pode voltar ao menu.')
+assert.ok(!sidebarSource.includes('/admin/indicacoes'), 'Indicações não pode voltar ao menu.')
 assert.ok(
   menuEntries.some(
     (item) =>
@@ -107,13 +108,12 @@ assert.ok(
 
 const adminMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'ADMIN')
 const moderatorMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'MODERADOR')
-assert.equal(adminMenu.length, 23)
+assert.equal(adminMenu.length, 22)
 assert.equal(moderatorMenu.length, 16)
 for (const restricted of [
   '/admin/financeiro',
   '/admin/creditos',
   '/admin/creditos#beneficios-premium',
-  '/admin/indicacoes',
   '/admin/termos-footer',
   '/admin/blog',
   '/admin/staff',

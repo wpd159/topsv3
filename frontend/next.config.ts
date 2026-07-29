@@ -261,8 +261,6 @@ const nextConfig: NextConfig = {
       { source: "/chat/:path*", headers: noindex },
       { source: "/favoritos", headers: noindex },
       { source: "/favoritos/:path*", headers: noindex },
-      { source: "/indicacoes", headers: noindex },
-      { source: "/indicacoes/:path*", headers: noindex },
       { source: "/meus-anuncios", headers: noindex },
       { source: "/meus-anuncios/:path*", headers: noindex },
       { source: "/meus-tickets", headers: noindex },

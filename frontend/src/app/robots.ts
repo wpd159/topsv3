@@ -35,7 +35,6 @@ export default function robots(): MetadataRoute.Robots {
           "/meus-anuncios/*",
           "/meus-tickets",
           "/favoritos",
-          "/indicacoes",
           "/chat",
           "/painel",
           "/painel/*",

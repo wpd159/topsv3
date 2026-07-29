@@ -29,10 +29,6 @@ type Usuario = {
   twoFactorAtivo: boolean
   totalAnuncios: number
   creditos: number
-  totalIndicados: number
-  creditosIndicacaoGanhos: number
-  creditosPorIndicacao: number
-  linkIndicacao: string
   status: string
   cargo: string
 
@@ -72,10 +68,6 @@ function publicUserToContext(data: PublicAuthUser): Usuario {
     twoFactorAtivo: false,
     totalAnuncios: 0,
     creditos: 0,
-    totalIndicados: 0,
-    creditosIndicacaoGanhos: 0,
-    creditosPorIndicacao: 0,
-    linkIndicacao: '',
     status: data.status,
     cargo: data.cargo,
   }
@@ -157,10 +149,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           twoFactorAtivo: false,
           totalAnuncios: 0,
           creditos: 0,
-          totalIndicados: 0,
-          creditosIndicacaoGanhos: 0,
-          creditosPorIndicacao: 0,
-          linkIndicacao: '',
           status: 'ATIVO',
           cargo,
         }

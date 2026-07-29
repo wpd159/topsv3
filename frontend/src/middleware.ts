@@ -34,7 +34,6 @@ export const config = {
     '/anunciar/:path*',
     '/chat/:path*',
     '/favoritos/:path*',
-    '/indicacoes/:path*',
     '/meus-anuncios/:path*',
     '/meus-tickets/:path*',
     '/minha-conta/:path*',

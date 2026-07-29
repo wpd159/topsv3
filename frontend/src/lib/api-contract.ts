@@ -135,5 +135,4 @@ export const PENDING_BACKEND_CONTRACTS = {
   complianceAdmin: 'Auditoria administrativa de compliance',
   publicProfiles: 'Listagem publica por anunciante',
   financialAnalytics: 'Indicadores e series financeiras',
-  referrals: 'Indicacoes e recompensas por indicacao',
 } as const
