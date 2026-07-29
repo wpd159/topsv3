@@ -210,6 +210,7 @@ class AdminModeracaoAnuncioServiceTest {
                 .isEqualTo("MODERACAO_REPROVADA:" + fixture.revisao().getId());
         assertThat(outbox.getValue().getPayloadJson())
                 .contains(
+                        "\"communicationVersion\":1",
                         "\"anuncioTitulo\":\"Anúncio sintético\"",
                         "\"destinatarioUsuarioId\":\"" + fixture.usuario().getId() + "\"",
                         "\"destinatarioLogico\":\"ANUNCIANTE_VINCULADA_AO_ANUNCIO\"",

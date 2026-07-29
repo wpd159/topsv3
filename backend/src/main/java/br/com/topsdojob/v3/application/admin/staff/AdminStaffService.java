@@ -7,13 +7,16 @@ import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Indicadores;
 import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Pagina;
 import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Resumo;
 import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
+import br.com.topsdojob.v3.application.operacional.outbox.OutboxEmailPayloadFactory;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
+import br.com.topsdojob.v3.persistence.entity.auditoria.OutboxEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.admin.AdminStaffJdbcRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
@@ -47,6 +50,8 @@ public class AdminStaffService {
   private final AuditoriaEventoRepository auditorias;
   private final PasswordEncoder passwordEncoder;
   private final PublicSessionRegistry sessions;
+  private final OutboxEventoRepository outbox;
+  private final OutboxEmailPayloadFactory emailPayloads;
 
   public AdminStaffService(
       AdminStaffJdbcRepository consulta,
@@ -55,7 +60,9 @@ public class AdminStaffService {
       CredencialUsuarioRepository credenciais,
       AuditoriaEventoRepository auditorias,
       PasswordEncoder passwordEncoder,
-      PublicSessionRegistry sessions) {
+      PublicSessionRegistry sessions,
+      OutboxEventoRepository outbox,
+      OutboxEmailPayloadFactory emailPayloads) {
     this.consulta = consulta;
     this.usuarios = usuarios;
     this.papeis = papeis;
@@ -63,6 +70,8 @@ public class AdminStaffService {
     this.auditorias = auditorias;
     this.passwordEncoder = passwordEncoder;
     this.sessions = sessions;
+    this.outbox = outbox;
+    this.emailPayloads = emailPayloads;
   }
 
   @Transactional(readOnly = true)
@@ -143,6 +152,16 @@ public class AdminStaffService {
         estadoJson(papel, ativo),
         requestId,
         agora));
+    if (ativo) {
+      outbox.save(OutboxEventoEntity.registrarPendente(
+          UUID.randomUUID(),
+          "USUARIO",
+          id,
+          "STAFF_CONVITE_CRIADO",
+          emailPayloads.staff(id, papel.name()),
+          "STAFF_CONVITE_CRIADO:" + id,
+          agora));
+    }
     return detalhar(id);
   }
 

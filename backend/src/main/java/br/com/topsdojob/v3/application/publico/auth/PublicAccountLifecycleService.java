@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.publico.auth.dto.PublicAccountActionDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicCodeRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicEmailRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicResetPasswordRequestDto;
+import br.com.topsdojob.v3.application.operacional.outbox.OutboxEmailPayloadFactory;
 import br.com.topsdojob.v3.persistence.entity.auditoria.OutboxEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.TokenSegurancaEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -40,6 +41,7 @@ public class PublicAccountLifecycleService {
     private final CredencialUsuarioRepository credenciais;
     private final TokenSegurancaRepository tokens;
     private final OutboxEventoRepository outbox;
+    private final OutboxEmailPayloadFactory emailPayloads;
     private final PasswordEncoder encoder;
     private final PublicAuthRateLimiter rateLimiter;
     private final PublicSessionRegistry sessions;
@@ -50,11 +52,13 @@ public class PublicAccountLifecycleService {
     public PublicAccountLifecycleService(UsuarioRepository usuarios, CredencialUsuarioRepository credenciais,
             TokenSegurancaRepository tokens, OutboxEventoRepository outbox, PasswordEncoder encoder,
             PublicAuthRateLimiter rateLimiter, PublicSessionRegistry sessions, Optional<HmlAuthCodeVault> codeVault,
+            OutboxEmailPayloadFactory emailPayloads,
             @Value("${app.auth.security-token-ttl-seconds:900}") long tokenTtlSeconds) {
         this.usuarios = usuarios;
         this.credenciais = credenciais;
         this.tokens = tokens;
         this.outbox = outbox;
+        this.emailPayloads = emailPayloads;
         this.encoder = encoder;
         this.rateLimiter = rateLimiter;
         this.sessions = sessions;
@@ -124,8 +128,13 @@ public class PublicAccountLifecycleService {
         TokenSegurancaEntity securityRecord = TokenSegurancaEntity.criar(user.getId(), purpose,
                 encoder.encode(code), now.plus(tokenTtl), now);
         tokens.save(securityRecord);
-        String payload = "{\"template\":\"" + purpose + "\",\"destino\":\"" + mask(user.getEmailNormalizado())
-                + "\",\"preview\":\"Codigo protegido; consulte o mecanismo administrativo seguro.\"}";
+        String payload = emailPayloads.auth(
+                eventType,
+                user.getId(),
+                securityRecord.getId(),
+                mask(user.getEmailNormalizado()),
+                code,
+                securityRecord.getExpiraEm());
         UUID outboxId = UUID.randomUUID();
         outbox.save(OutboxEventoEntity.registrarPendente(outboxId, "USUARIO", user.getId(), eventType,
                 payload, eventType + ":" + securityRecord.getId(), now));

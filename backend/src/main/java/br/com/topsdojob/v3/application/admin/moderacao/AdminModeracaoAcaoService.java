@@ -899,11 +899,13 @@ public class AdminModeracaoAcaoService {
         values.put("statusAnuncio", enumName(anuncio.getStatus()));
         values.put("statusModeracao", enumName(anuncio.getStatusModeracao()));
         values.put("motivoSanitizado", motivoSanitizado);
-        if (decisao == AdminDecisaoModeracaoAcao.REPROVAR) {
+        if (decisao == AdminDecisaoModeracaoAcao.REPROVAR
+                || decisao == AdminDecisaoModeracaoAcao.SOLICITAR_AJUSTE) {
             values.put("anuncioTitulo", AdminModeracaoSanitizer.texto(anuncio.getTitulo(), 80));
             values.put("linkEdicao", linkEdicaoAnuncio(anuncio));
             values.put("destinatarioUsuarioId", anuncio.getUsuarioId());
             values.put("destinatarioLogico", "ANUNCIANTE_VINCULADA_AO_ANUNCIO");
+            values.put("communicationVersion", 1);
         }
         values.put("emailRealEnviado", false);
         values.put("whatsappRealEnviado", false);

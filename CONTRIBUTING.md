@@ -322,9 +322,11 @@ WhatsApp so pode ser retornado por `POST /api/public/anuncios/{slug}/clique-what
 - `GET /api/admin/outbox/{id}/preview` e endpoint read-only.
 - Preview de outbox deve retornar `envioExternoExecutado=false` e `somentePreview=true`.
 - Preview nao pode alterar status, marcar `PROCESSADO`, auditar envio ou chamar provider externo.
-- Templates locais devem usar placeholders neutros e nao podem conter dado real, URL real, telefone real, WhatsApp real, documento, Pix ou link de pagamento.
+- A previa administrativa deve usar placeholders neutros e nao pode conter dado real, URL privada, telefone real, WhatsApp real, documento, Pix ou link de pagamento.
 - Frontend pode exibir `Ver previa`, mas nao pode criar enviar, reenviar ou marcar enviado.
-- Envio real permanece proibido ate fase futura com revisao Pro.
+- O worker canonico de e-mail e independente da previa: processa somente eventos novos com `communicationVersion=1`, usa lock, idempotency key, retry e templates server-side.
+- Local e pre-producao usam `CAPTURE` com Mailpit; `DIRECT` e permitido apenas com configuracao explicita de producao, TLS e secrets externos.
+- Codigo de confirmacao ou recuperacao nunca pode ficar em claro na outbox, logs ou endpoints administrativos.
 
 ## Bloco 21 - ajustes visuais pequenos e mobile estavel
 

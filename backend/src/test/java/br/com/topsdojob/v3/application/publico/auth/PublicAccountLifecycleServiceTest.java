@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicCodeRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicEmailRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicResetPasswordRequestDto;
+import br.com.topsdojob.v3.application.operacional.outbox.OutboxEmailPayloadFactory;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.TokenSegurancaEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -37,15 +38,18 @@ class PublicAccountLifecycleServiceTest {
     private final PasswordEncoder encoder = mock(PasswordEncoder.class);
     private final PublicSessionRegistry sessions = mock(PublicSessionRegistry.class);
     private final HmlAuthCodeVault vault = mock(HmlAuthCodeVault.class);
+    private final OutboxEmailPayloadFactory emailPayloads = mock(OutboxEmailPayloadFactory.class);
     private PublicAccountLifecycleService service;
     private UsuarioEntity user;
 
     @BeforeEach void setup() {
         service = new PublicAccountLifecycleService(users, credentials, tokens, outbox, encoder,
-                new PublicAuthRateLimiter(), sessions, Optional.of(vault), 900);
+                new PublicAuthRateLimiter(), sessions, Optional.of(vault), emailPayloads, 900);
         user = UsuarioEntity.criarCadastroPublico(UUID.randomUUID(), "Perfil", "perfil@example.invalid",
                 "+5562999999999", null, OffsetDateTime.now(ZoneOffset.UTC));
         when(users.findByEmailNormalizado("perfil@example.invalid")).thenReturn(Optional.of(user));
+        when(emailPayloads.auth(anyString(), any(), any(), anyString(), anyString(), any()))
+                .thenReturn("{\"communicationVersion\":1}");
     }
 
     @Test void solicitacaoNaoEnumeraEmailInexistente() {

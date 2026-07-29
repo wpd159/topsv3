@@ -1,6 +1,18 @@
 name: topsv3-preprod
 
 services:
+  mailpit:
+    image: axllent/mailpit:v1.20.4
+    container_name: topsv3-preprod-mailpit
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: "1000"
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - topsv3-preprod-mailpit-data:/data
+    networks:
+      - topsv3-preprod-net
+
   postgres:
     image: postgres:17.10-alpine
     container_name: topsv3-preprod-postgres
@@ -43,6 +55,8 @@ services:
     depends_on:
       flyway:
         condition: service_completed_successfully
+      mailpit:
+        condition: service_started
     build:
       context: ../../backend
       dockerfile_inline: |
@@ -71,7 +85,18 @@ services:
       TOPSV3_BACKEND_PORT: 8080
       APP_ENV: preproducao
       APP_AUTH_HML_CODE_VAULT_ENABLED: "false"
-      APP_CANONICAL_DOMAIN: http://preprod.localhost:23000
+      OUTBOX_EMAIL_ENABLED: "true"
+      OUTBOX_PAYLOAD_ENCRYPTION_KEY: ${OUTBOX_PAYLOAD_ENCRYPTION_KEY:?defina OUTBOX_PAYLOAD_ENCRYPTION_KEY em /opt/topsv3/secrets/preprod.env}
+      OUTBOX_RECIPIENT_MODE: CAPTURE
+      OUTBOX_CAPTURE_ADDRESS: ${OUTBOX_CAPTURE_ADDRESS:-capture@preprod.invalid}
+      OUTBOX_SENDER_ADDRESS: ${OUTBOX_SENDER_ADDRESS:-no-reply@topsdojob.com}
+      OUTBOX_SENDER_NAME: ${OUTBOX_SENDER_NAME:-Tops do Job}
+      OUTBOX_REPLY_TO: ${OUTBOX_REPLY_TO:-}
+      OUTBOX_SMTP_HOST: mailpit
+      OUTBOX_SMTP_PORT: "1025"
+      OUTBOX_SMTP_AUTH: "false"
+      OUTBOX_SMTP_STARTTLS: "false"
+      APP_CANONICAL_DOMAIN: https://v3.esle.cloud
       APP_CORS_ALLOWED_ORIGINS: http://preprod.localhost:23000
       APP_ADMIN_SESSION_COOKIE_SECURE: "false"
       APP_EVENT_HASH_SALT: ${APP_EVENT_HASH_SALT:?defina APP_EVENT_HASH_SALT em /opt/topsv3/secrets/preprod.env}
@@ -200,3 +225,5 @@ networks:
 volumes:
   topsv3-preprod-postgres-data:
     name: topsv3-preprod-postgres-data
+  topsv3-preprod-mailpit-data:
+    name: topsv3-preprod-mailpit-data

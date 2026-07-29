@@ -93,10 +93,14 @@ Add-Check "workflow aplica migrations antes de validar" (
   $workflow.IndexOf('flyway validate </dev/null') -gt $workflow.IndexOf('flyway migrate </dev/null')
 ) "Flyway migrate seguido de validate"
 Add-Check "workflow constroi somente backend e frontend" ($workflow -match 'compose\[@\].*build backend frontend') "gateway usa imagem pinada"
-Add-Check "workflow recria somente servicos da aplicacao" ($workflow -match 'up -d --no-deps --force-recreate backend frontend gateway') "PostgreSQL preservado"
+Add-Check "workflow recria somente servicos da aplicacao e captura" ($workflow -match 'up -d --no-deps --force-recreate mailpit backend frontend gateway') "PostgreSQL preservado"
 Add-Check "workflow compara o ID do PostgreSQL" ($workflow -match 'postgres_id_before') "container de banco nao recriado"
 Add-Check "workflow compara o volume PostgreSQL" ($workflow -match 'postgres_volume_before') "volume importado preservado"
 Add-Check "workflow compara contagens do banco" ($workflow -match 'counts_after.*counts_before') "sem escrita operacional"
+Add-Check "workflow valida Mailpit no release" (
+  ($workflow -match 'for service in mailpit backend frontend gateway') -and
+  ($workflow -match '\{\{\.State\.Running\}\}')
+) "captura segura iniciada e verificada"
 Add-Check "workflow verifica noindex" ($workflow -match 'X-Robots-Tag:.*noindex') "preproducao nao indexavel"
 Add-Check "workflow verifica robots" ($workflow -match 'Disallow: /') "robots bloqueado"
 Add-Check "workflow verifica dominio sem instalar Nginx" (($workflow -match 'https://v3\.esle\.cloud') -and -not ($workflow -match 'nginx -s reload|systemctl.*nginx|sites-available')) "upstream externo preservado"
@@ -107,6 +111,16 @@ Add-Check "compose usa rede exclusiva" ($compose -match 'topsv3-preprod-net') "r
 Add-Check "compose usa volume exclusivo" ($compose -match 'topsv3-preprod-postgres-data') "volume"
 Add-Check "compose publica gateway somente em loopback" ($compose -match '127\.0\.0\.1:23000:23000') "gateway"
 Add-Check "compose publica backend somente em loopback" ($compose -match '127\.0\.0\.1:28080:8080') "backend"
+Add-Check "compose usa Mailpit interno sem porta publicada" (
+  ($compose -match 'image:\s+axllent/mailpit:v1\.20\.4') -and
+  ($compose -match 'OUTBOX_SMTP_HOST:\s+mailpit') -and
+  (-not ($compose -match '(?m)^\s*-\s*["'']?\d+:8025'))
+) "captura segura sem acesso externo"
+Add-Check "compose exige criptografia e captura da outbox" (
+  ($compose -match 'OUTBOX_PAYLOAD_ENCRYPTION_KEY:\s+\$\{OUTBOX_PAYLOAD_ENCRYPTION_KEY:\?') -and
+  ($compose -match 'OUTBOX_RECIPIENT_MODE:\s+CAPTURE') -and
+  ($compose -match 'OUTBOX_EMAIL_ENABLED:\s+["'']?true["'']?')
+) "segredo externo e nenhum destinatario real"
 $efiCredentialName = 'EFI_CLIENT_' + [string]::Concat('SE', 'CRET')
 $efiCredentialLine = $efiCredentialName + ': ${' + $efiCredentialName + ':-}'
 Add-Check "compose controla Efi por segredo externo" (
@@ -129,6 +143,10 @@ Add-Check "gateway encaminha webhook Efi sem access log" (
 Add-Check "gateway adiciona noindex" ($gateway -match 'X-Robots-Tag\s+"noindex') "cabecalho"
 Add-Check "gateway bloqueia robots" ($gateway -match 'Disallow: /') "robots"
 Add-Check "env example aponta somente para secrets externos" ($envExample -match '__PREENCHER_FORA_DO_GIT__') "sem segredo real"
+Add-Check "env example documenta outbox segura" (
+  ($envExample -match 'OUTBOX_PAYLOAD_ENCRYPTION_KEY=__PREENCHER_FORA_DO_GIT__') -and
+  ($envExample -match 'OUTBOX_CAPTURE_ADDRESS=capture@preprod\.invalid')
+) "configuracao futura sem valor sensivel"
 
 $failed = @($checks | Where-Object { -not $_.Ok })
 foreach ($check in $checks) {

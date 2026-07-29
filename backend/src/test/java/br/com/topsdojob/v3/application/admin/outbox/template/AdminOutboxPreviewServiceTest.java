@@ -55,12 +55,12 @@ class AdminOutboxPreviewServiceTest {
         assertThat(preview.status()).isEqualTo("PENDENTE");
         assertThat(preview.envioExternoExecutado()).isFalse();
         assertThat(preview.somentePreview()).isTrue();
-        assertThat(preview.canalPrevisto()).isEqualTo("CANAL_LOCAL_PREVIEW");
+        assertThat(preview.canalPrevisto()).isEqualTo("EMAIL_OUTBOX");
         assertThat(preview.camposMascarados())
                 .contains("email", "telefone_ou_whatsapp", "cpf_ou_documento", "storage_bucket_hash", "segredo", "pix_financeiro");
         assertThat(preview.assuntoSanitizado()).contains("[anuncio]");
         assertThat(preview.corpoSanitizado())
-                .contains("nenhuma comunicacao foi enviada")
+                .contains("Acesse o painel")
                 .contains("[email-mascarado]", "[contato-mascarado]", "[documento-mascarado]")
                 .doesNotContain(
                         "ana@example.invalid",

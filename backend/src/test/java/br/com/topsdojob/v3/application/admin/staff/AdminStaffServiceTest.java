@@ -14,12 +14,14 @@ import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.CriarRequest;
 import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Detalhe;
 import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Resumo;
 import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
+import br.com.topsdojob.v3.application.operacional.outbox.OutboxEmailPayloadFactory;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.admin.AdminStaffJdbcRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
@@ -45,6 +47,8 @@ class AdminStaffServiceTest {
   private final AuditoriaEventoRepository auditorias = mock(AuditoriaEventoRepository.class);
   private final PasswordEncoder encoder = mock(PasswordEncoder.class);
   private final PublicSessionRegistry sessions = mock(PublicSessionRegistry.class);
+  private final OutboxEventoRepository outbox = mock(OutboxEventoRepository.class);
+  private final OutboxEmailPayloadFactory emailPayloads = mock(OutboxEmailPayloadFactory.class);
   private AdminStaffService service;
 
   @BeforeEach
@@ -56,12 +60,15 @@ class AdminStaffServiceTest {
         credenciais,
         auditorias,
         encoder,
-        sessions);
+        sessions,
+        outbox,
+        emailPayloads);
   }
 
   @Test
   void criaStaffSemSenhaEmClaroEComRedefinicaoPendente() {
     when(usuarios.findByEmailNormalizado("qa.staff@example.invalid")).thenReturn(Optional.empty());
+    when(emailPayloads.staff(any(), any())).thenReturn("{\"communicationVersion\":1}");
     when(encoder.encode(any())).thenReturn("$2a$10$hash-sintetico");
     when(usuarios.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(consulta.detalhar(any())).thenAnswer(invocation -> Optional.of(resumo(invocation.getArgument(0), "MODERADOR", true)));
@@ -78,6 +85,7 @@ class AdminStaffServiceTest {
     verify(credenciais).save(credencial.capture());
     assertThat(credencial.getValue().getPrecisaRedefinir()).isTrue();
     assertThat(credencial.getValue().getSenhaHash()).isEqualTo("$2a$10$hash-sintetico");
+    verify(outbox).save(any());
   }
 
   @Test

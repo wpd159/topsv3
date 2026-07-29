@@ -88,10 +88,10 @@ public final class AdminOutboxSanitizer {
     public static AdminOutboxPreviewDto previa(OutboxEventoEntity entity, Map<String, Object> dados) {
         String tipoEvento = entity.getTipoEvento();
         String assunto = switch (tipoEvento == null ? "" : tipoEvento) {
-            case "MODERACAO_SOLICITAR_AJUSTE" -> "Solicitacao local de ajuste pendente";
-            case "MODERACAO_REPROVADA" -> "Comunicacao local de reprovacao pendente";
+            case "MODERACAO_SOLICITAR_AJUSTE" -> "Solicitacao de ajuste";
+            case "MODERACAO_REPROVADA" -> "Comunicacao de reprovacao";
             case "ANUNCIO_REMETIDO_REVISAO" -> "Comunicacao local de remeter revisao pendente";
-            default -> "Evento local de outbox pendente";
+            default -> "Evento de outbox";
         };
         String destino = switch (tipoEvento == null ? "" : tipoEvento) {
             case "ANUNCIO_REMETIDO_REVISAO" -> "EQUIPE_MODERACAO_LOCAL";
@@ -99,14 +99,14 @@ public final class AdminOutboxSanitizer {
             default -> "DESTINATARIO_LOGICO_LOCAL";
         };
         String motivo = dados.get("motivoSanitizado") == null ? "" : " Motivo: " + dados.get("motivoSanitizado");
-        String corpo = "Previa local sanitizada do evento "
+        String corpo = "Previa administrativa sanitizada do evento "
                 + safePart(tipoEvento)
                 + " para "
                 + safePart(entity.getAggregateTipo())
-                + ". Nenhuma comunicacao real foi enviada."
+                + ". Esta visualizacao nao envia mensagens; o estado de entrega pertence ao registro da outbox."
                 + motivo;
         return new AdminOutboxPreviewDto(
-                "COMUNICACAO_ADMIN_LOCAL",
+                "COMUNICACAO_OUTBOX",
                 destino,
                 AdminTextoSanitizer.resumo(assunto, VALUE_MAX_LENGTH),
                 AdminTextoSanitizer.resumo(corpo, BODY_MAX_LENGTH),

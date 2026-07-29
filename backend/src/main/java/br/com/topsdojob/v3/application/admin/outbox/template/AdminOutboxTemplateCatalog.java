@@ -18,12 +18,11 @@ public class AdminOutboxTemplateCatalog {
         register(values, new AdminOutboxTemplateDto(
                 AdminOutboxTemplateTipo.MODERACAO_SOLICITAR_AJUSTE,
                 "MODERACAO_SOLICITAR_AJUSTE",
-                CANAL_LOCAL_PREVIEW,
+                CANAL_EMAIL_OUTBOX,
                 "Ajuste necessario no anuncio [anuncio]",
                 "Ola [anunciante]. Identificamos uma pendencia no anuncio [anuncio]. "
                         + "Motivo: [motivo]. Acao necessaria: [acao_necessaria]. "
-                        + "Suporte: [suporte]. Painel futuro: [link_painel_futuro]. "
-                        + "Esta e uma previa local; nenhuma comunicacao foi enviada."));
+                        + "Acesse o painel para editar o anuncio em [link_edicao]."));
         register(values, new AdminOutboxTemplateDto(
                 AdminOutboxTemplateTipo.MODERACAO_REPROVADA,
                 "MODERACAO_REPROVADA",
@@ -58,16 +57,21 @@ public class AdminOutboxTemplateCatalog {
                         + "Nenhuma comunicacao real foi enviada."));
         register(values, new AdminOutboxTemplateDto(
                 AdminOutboxTemplateTipo.AUTH_CONFIRMACAO_CONTA_SOLICITADA,
-                "AUTH_CONFIRMACAO_CONTA_SOLICITADA", CANAL_LOCAL_PREVIEW,
-                "Confirmacao de conta", "Uma confirmacao de conta esta pendente. O codigo nao e exibido nesta previa sanitizada. Nenhum e-mail externo foi enviado."));
+                "AUTH_CONFIRMACAO_CONTA_SOLICITADA", CANAL_EMAIL_OUTBOX,
+                "Confirmacao de conta", "Uma confirmacao de conta esta pendente. O codigo protegido nao e exibido nesta previa administrativa."));
         register(values, new AdminOutboxTemplateDto(
                 AdminOutboxTemplateTipo.AUTH_CONFIRMACAO_CONTA_REENVIADA,
-                "AUTH_CONFIRMACAO_CONTA_REENVIADA", CANAL_LOCAL_PREVIEW,
-                "Nova confirmacao de conta", "Uma nova confirmacao de conta esta pendente. O codigo nao e exibido nesta previa sanitizada. Nenhum e-mail externo foi enviado."));
+                "AUTH_CONFIRMACAO_CONTA_REENVIADA", CANAL_EMAIL_OUTBOX,
+                "Nova confirmacao de conta", "Uma nova confirmacao de conta esta pendente. O codigo protegido nao e exibido nesta previa administrativa."));
         register(values, new AdminOutboxTemplateDto(
                 AdminOutboxTemplateTipo.AUTH_RECUPERACAO_SENHA_SOLICITADA,
-                "AUTH_RECUPERACAO_SENHA_SOLICITADA", CANAL_LOCAL_PREVIEW,
-                "Recuperacao de senha", "Uma recuperacao de senha esta pendente. O codigo nao e exibido nesta previa sanitizada. Nenhum e-mail externo foi enviado."));
+                "AUTH_RECUPERACAO_SENHA_SOLICITADA", CANAL_EMAIL_OUTBOX,
+                "Recuperacao de senha", "Uma recuperacao de senha esta pendente. O codigo protegido nao e exibido nesta previa administrativa."));
+        register(values, new AdminOutboxTemplateDto(
+                AdminOutboxTemplateTipo.STAFF_CONVITE_CRIADO,
+                "STAFF_CONVITE_CRIADO", CANAL_EMAIL_OUTBOX,
+                "Acesso administrativo criado",
+                "Uma conta de staff foi criada. A credencial deve ser definida pelo fluxo seguro de recuperacao de senha."));
         this.templates = Map.copyOf(values);
     }
 

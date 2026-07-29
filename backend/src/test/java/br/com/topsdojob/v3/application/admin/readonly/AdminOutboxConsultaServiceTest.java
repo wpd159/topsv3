@@ -46,7 +46,8 @@ class AdminOutboxConsultaServiceTest {
         assertThat(item.envioExternoExecutado()).isFalse();
         assertThat(item.previa().envioExternoExecutado()).isFalse();
         assertThat(item.previa().corpoSanitizado())
-                .contains("Nenhuma comunicacao real foi enviada")
+                .contains("Esta visualizacao nao envia mensagens")
+                .contains("o estado de entrega pertence ao registro da outbox")
                 .doesNotContain("@example.invalid", "123.456.789-09", "+5511999999999");
     }
 

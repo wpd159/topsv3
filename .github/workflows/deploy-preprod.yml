@@ -231,7 +231,7 @@ jobs:
           rm -f "${current_link}"
           ln -s "releases/${release_sha}" "${current_link}"
           mv -Tf "${current_link}" "${deploy_root}/current"
-          "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
+          "${compose[@]}" up -d --no-deps --force-recreate mailpit backend frontend gateway
           test "$(docker inspect topsv3-preprod-postgres --format '{{.Id}}')" = "${postgres_id_before}"
           test "$(docker inspect topsv3-preprod-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
           counts_after="$(docker exec topsv3-preprod-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
@@ -255,12 +255,13 @@ jobs:
           release_dir="/opt/topsv3/preprod/releases/${release_sha}"
           test "$(readlink -f /opt/topsv3/preprod/current)" = "${release_dir}"
           test "$(cat /opt/topsv3/preprod/current/.release-sha)" = "${release_sha}"
-          for service in backend frontend gateway; do
+          for service in mailpit backend frontend gateway; do
             config_files="$(docker inspect "topsv3-preprod-${service}" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
             case "${config_files}" in
               *"/releases/${release_sha}/deploy/preprod/docker-compose.yml"*) ;;
               *) echo "ERRO: ${service} nao usa o release ${release_sha}." >&2; exit 1 ;;
             esac
+            test "$(docker inspect "topsv3-preprod-${service}" --format '{{.State.Running}}')" = "true"
           done
           for attempt in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \

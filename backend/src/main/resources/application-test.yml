@@ -6,6 +6,12 @@ spring:
 app:
   auth:
     hml-code-vault-enabled: true
+  outbox:
+    email:
+      enabled: false
+      encryption-key: YWFhYWFhYWFhYWFhYWFhYQ==
+      recipient-mode: CAPTURE
+      capture-address: capture@test.invalid
   env: test
   canonical-domain: http://localhost
 

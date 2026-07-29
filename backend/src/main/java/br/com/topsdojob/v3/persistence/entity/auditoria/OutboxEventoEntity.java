@@ -10,6 +10,7 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import java.time.OffsetDateTime;
+import java.time.Duration;
 import java.util.UUID;
 
 @Entity
@@ -142,6 +143,44 @@ public class OutboxEventoEntity {
     this.processadoEm = processadoEm;
     this.erroResumido = null;
     this.atualizadoEm = processadoEm;
+  }
+
+  public void markDelivered(OffsetDateTime deliveredAt) {
+    this.status = StatusOutbox.PROCESSADO;
+    this.processadoEm = deliveredAt;
+    this.proximaTentativaEm = null;
+    this.erroResumido = null;
+    this.atualizadoEm = deliveredAt;
+  }
+
+  public void registerDeliveryFailure(
+      OffsetDateTime failedAt,
+      int maxAttempts,
+      Duration retryDelay,
+      String summarizedError) {
+    int nextAttempts = (this.tentativas == null ? 0 : this.tentativas) + 1;
+    this.tentativas = nextAttempts;
+    this.status = nextAttempts >= Math.max(maxAttempts, 1)
+        ? StatusOutbox.ERRO
+        : StatusOutbox.PENDENTE;
+    this.proximaTentativaEm = this.status == StatusOutbox.PENDENTE
+        ? failedAt.plus(retryDelay)
+        : null;
+    this.processadoEm = null;
+    this.erroResumido = summarizedError == null
+        ? "falha_sanitizada"
+        : summarizedError.substring(0, Math.min(summarizedError.length(), 120));
+    this.atualizadoEm = failedAt;
+  }
+
+  public void cancelDelivery(OffsetDateTime cancelledAt, String reason) {
+    this.status = StatusOutbox.CANCELADO;
+    this.proximaTentativaEm = null;
+    this.processadoEm = null;
+    this.erroResumido = reason == null
+        ? "evento_nao_entregavel"
+        : reason.substring(0, Math.min(reason.length(), 120));
+    this.atualizadoEm = cancelledAt;
   }
 
 }

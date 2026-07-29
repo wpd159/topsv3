@@ -5082,8 +5082,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/outbox:
     get:
-      summary: Lista outbox administrativo local read-only
-      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna apenas eventos locais de outbox em DTO sanitizado, com previa logica de comunicacao e flag envioExternoExecutado=false. Nao envia, reenvia, processa, marca como enviado, aciona worker, scheduler, SMTP, WhatsApp ou API externa. COMERCIAL e USUARIO nao acessam.
+      summary: Lista outbox administrativo read-only
+      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna eventos de moderacao da outbox em DTO sanitizado, sem payload bruto, destinatario real ou segredo. A consulta nao envia nem reenvia mensagens; eventos novos elegiveis sao processados de forma independente pelo worker canonico. COMERCIAL e USUARIO nao acessam.
       operationId: getAdminOutbox
       security:
         - AdminSessionCookie: []
@@ -5123,7 +5123,7 @@ paths:
             format: date-time
       responses:
         "200":
-          description: outbox local listado em modo somente leitura
+          description: outbox listado em modo somente leitura
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
@@ -5139,8 +5139,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/outbox/{id}:
     get:
-      summary: Detalha outbox administrativo local read-only
-      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna detalhe sanitizado e previa logica, sem payload bruto sensivel e sem envio externo. A unica acao de outbox permitida nesta fase e a simulacao local explicita em endpoint separado, restrita a ADMIN.
+      summary: Detalha outbox administrativo read-only
+      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Retorna detalhe e estado sanitizados, sem payload bruto sensivel, destinatario, token ou segredo. A consulta nao interfere no processamento assincrono do worker.
       operationId: getAdminOutboxDetalhe
       security:
         - AdminSessionCookie: []
@@ -5154,7 +5154,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: outbox local detalhado em modo somente leitura
+          description: outbox detalhado em modo somente leitura
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
@@ -5172,8 +5172,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/outbox/{id}/preview:
     get:
-      summary: Renderiza previa sanitizada local de comunicacao de outbox
-      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Renderiza template local controlado para previa sanitizada, sem payload bruto sensivel, sem destino real e sem envio externo. Retorna envioExternoExecutado=false e somentePreview=true. Nao altera status, nao marca PROCESSADO, nao registra envio, nao aciona worker, scheduler, retry, SMTP, WhatsApp API ou provedor externo. COMERCIAL e USUARIO nao acessam.
+      summary: Renderiza previa administrativa sanitizada da outbox
+      description: Restrito a ADMIN e MODERADOR com escopo de moderacao. Renderiza uma previa controlada sem payload bruto, destino real, codigo ou segredo. Retorna envioExternoExecutado=false porque a operacao de preview nao envia; somentePreview=true. Nao altera status nem interfere no worker, retry ou provedor. COMERCIAL e USUARIO nao acessam.
       operationId: getAdminOutboxPreview
       security:
         - AdminSessionCookie: []
@@ -5187,7 +5187,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: previa local sanitizada renderizada sem envio externo
+          description: previa administrativa sanitizada sem envio pela operacao de consulta
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
@@ -5206,7 +5206,7 @@ paths:
   /api/admin/outbox/{id}/simular-processamento-local:
     post:
       summary: Simula processamento local de outbox administrativo
-      description: Restrito a ADMIN e somente operacional quando app.env/APP_ENV for local. Fora de local, incluindo app.env ausente, vazio, nao_configurado ou staging, deve retornar 403 e nao alterar o outbox. Em local, simula processamento de um outbox PENDENTE, registra auditoria sanitizada e pode alterar status para PROCESSADO porque o schema atual permite esse status. PROCESSADO por simulacao local nao equivale a envio real. Nao envia e-mail, WhatsApp, SMS, webhook, SMTP, fila externa ou API externa; nao cria worker, scheduler ou retry real. requestIdCliente e reservado e nao promete idempotencia real.
+      description: Restrito a ADMIN e somente operacional quando app.env/APP_ENV for local. Fora de local retorna 403 e nao altera a outbox. A simulacao continua sem enviar e-mail e nao deve ser usada em evento communicationVersion=1 elegivel ao worker canonico. PROCESSADO por simulacao local nao equivale a entrega. requestIdCliente e reservado e nao promete idempotencia real.
       operationId: postAdminOutboxSimularProcessamentoLocal
       security:
         - AdminSessionCookie: []
@@ -10694,11 +10694,11 @@ components:
           type: array
           items:
             type: string
-          description: Pendencias operacionais para envio real futuro e revisao Pro.
+          description: Pendencias sanitizadas do template ou da configuracao de entrega.
     AdminOutboxListaItem:
       type: object
       additionalProperties: false
-      description: Item read-only de outbox administrativo local. Nao expoe idempotency key, payload bruto, contato real, storage, financeiro ou segredo.
+      description: Item read-only de outbox administrativo. Nao expoe idempotency key, payload bruto, contato real, storage, financeiro, codigo ou segredo.
       properties:
         id:
           type: string
@@ -10838,14 +10838,14 @@ components:
           type: string
     AdminDecisaoModeracaoAcao:
       type: string
-      description: Em revisoes, APROVAR e REPROVAR sao decisoes finais. SOLICITAR_AJUSTE e acao intermediaria local com auditoria e outbox pendente, sem finalizar revisao e sem gravar decisao_moderacao. Em midia, SOLICITAR_AJUSTE permanece pendente por ausencia de status seguro no schema atual.
+      description: Em revisoes, APROVAR e REPROVAR sao decisoes finais. SOLICITAR_AJUSTE e acao intermediaria com auditoria e outbox canonica, sem finalizar revisao e sem gravar decisao_moderacao. Em midia, SOLICITAR_AJUSTE permanece pendente por ausencia de status seguro no schema atual.
       enum:
         - APROVAR
         - REPROVAR
         - SOLICITAR_AJUSTE
     AdminDecidirRevisaoRequest:
       type: object
-      description: Request local de acao sobre revisao. O campo motivo e obrigatorio quando decisao for REPROVAR ou SOLICITAR_AJUSTE; APROVAR pode omitir motivo. APROVAR/REPROVAR finalizam a revisao. SOLICITAR_AJUSTE e intermediario, nao cria decisao final e retorna 409 se ja existir outbox pendente local de ajuste para a revisao.
+      description: Request de acao sobre revisao. O campo motivo e obrigatorio quando decisao for REPROVAR ou SOLICITAR_AJUSTE; APROVAR pode omitir motivo. APROVAR/REPROVAR finalizam a revisao. SOLICITAR_AJUSTE e intermediario, nao cria decisao final e retorna 409 se ja existir outbox pendente de ajuste para a revisao.
       additionalProperties: false
       required:
         - decisao

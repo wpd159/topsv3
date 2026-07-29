@@ -791,3 +791,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local/validar-seo-si
 ```
 
 Limites preservados: sem producao, sem VPS, sem banco de producao, sem restore, sem `POST_DATA`, sem sanitizacao real, sem correcao de orfaos, sem quarentena como staging final, sem Pix/Efi real, sem pagamento, sem upload, sem e-mail/WhatsApp real, sem API externa, sem remote e sem push.
+
+## Comunicacoes externas canonicas
+
+A V3 usa `outbox_evento` como fonte unica para e-mails de confirmacao de conta, recuperacao de senha, moderacao e criacao de staff. Somente eventos novos com `communicationVersion=1` sao elegiveis para o worker; o backlog historico de previas locais nao e enviado.
+
+Codigos de autenticacao ficam cifrados no payload e continuam armazenados somente como hash em `token_seguranca`. O worker usa lock pessimista, chave de idempotencia, tentativas com backoff e `Message-ID` deterministico.
+
+Local e pre-producao usam SMTP interno do Mailpit em modo `CAPTURE`, sem porta publica e sem entrega ao destinatario real. Producao exige configuracao explicita em modo `DIRECT`, TLS e secrets externos.
