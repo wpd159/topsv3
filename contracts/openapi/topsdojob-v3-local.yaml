@@ -2428,8 +2428,8 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
     delete:
-      summary: Exclui fisicamente uma conta de teste sem dependencias
-      description: Restrito a ADMIN com ANUNCIO_MODERAR. Exige confirmacao explicita, CSRF e lock transacional. Remove somente vinculos tecnicos descartaveis; qualquer vinculo de retencao retorna 409 sem alteracao parcial.
+      summary: Encerra definitivamente uma conta comum
+      description: Restrito a ADMIN com ANUNCIO_MODERAR. O backend escolhe exclusao fisica para conta sem historico duravel ou anonimiza irreversivelmente a conta quando os historicos precisam ser preservados. Exige motivo, confirmacao explicita, CSRF, idempotencia e lock transacional.
       operationId: deleteAdminUsuario
       security:
         - AdminSessionCookie: []
@@ -2450,7 +2450,7 @@ paths:
               $ref: "#/components/schemas/AdminUsuarioExclusaoRequest"
       responses:
         "200":
-          description: Conta e vinculos tecnicos excluidos atomicamente
+          description: Conta excluida fisicamente ou encerrada com anonimizacao
           content:
             application/json:
               schema:
@@ -2464,7 +2464,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          description: Conta possui vinculos que devem ser preservados
+          description: Conta staff, operacao concorrente ou falha de integridade
           content:
             application/json:
               schema:
@@ -2473,8 +2473,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/usuarios/{id}/exclusao:
     get:
-      summary: Consulta se uma conta administrativa pode ser excluida fisicamente
-      description: Retorna apenas codigos sanitizados de bloqueio, sem identificadores de dependencias ou dados pessoais.
+      summary: Consulta a estrategia de exclusao de uma conta comum
+      description: Informa a estrategia, as consequencias e a quantidade agregada de vinculos preservados, sem identificadores ou dados pessoais.
       operationId: getAdminUsuarioExclusaoElegibilidade
       security:
         - AdminSessionCookie: []
@@ -11134,7 +11134,7 @@ components:
     AdminUsuarioResumo:
       type: object
       additionalProperties: false
-      required: [id, nome, email, telefone, cpfMascarado, status, kycStatus, totalAnuncios, bloqueado, potencialmenteExcluivel, criadoEm]
+      required: [id, nome, email, telefone, cpfMascarado, status, kycStatus, totalAnuncios, bloqueado, podeExcluir, criadoEm]
       properties:
         id: { type: string, format: uuid }
         nome: { type: [string, "null"] }
@@ -11145,15 +11145,15 @@ components:
           pattern: "^\\*{3}\\.\\*{3}\\.\\*{3}-[0-9]{2}$"
         status:
           type: string
-          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO]
+          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO, EXCLUIDO]
         kycStatus:
           type: string
-          enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+          enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO, PRESERVADO_PRIVADO]
         totalAnuncios: { type: integer, format: int64, minimum: 0 }
         bloqueado: { type: boolean }
-        potencialmenteExcluivel:
+        podeExcluir:
           type: boolean
-          description: Sinalizacao de interface; a decisao final sempre depende da pre-validacao transacional.
+          description: Conta comum ainda nao encerrada; a decisao final sempre depende da pre-validacao transacional.
         ufPrincipal: { type: [string, "null"] }
         cidadePrincipal: { type: [string, "null"] }
         criadoEm: { type: string, format: date-time }
@@ -11210,6 +11210,8 @@ components:
         - bloqueado
         - criadoEm
         - atualizadoEm
+        - exclusaoTipo
+        - excluidoEm
         - anuncioAncoraBloqueioId
         - podeBloquear
         - podeDesbloquear
@@ -11228,16 +11230,20 @@ components:
         dataNascimento: { type: [string, "null"], format: date }
         status:
           type: string
-          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO]
+          enum: [ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO, EXCLUIDO]
         tipoConta:
           type: string
           enum: [ANUNCIANTE, STAFF, SISTEMA]
         kycStatus:
           type: string
-          enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
+          enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO, PRESERVADO_PRIVADO]
         bloqueado: { type: boolean }
         criadoEm: { type: string, format: date-time }
         atualizadoEm: { type: [string, "null"], format: date-time }
+        exclusaoTipo:
+          type: [string, "null"]
+          enum: [EXCLUSAO_COM_ANONIMIZACAO, null]
+        excluidoEm: { type: [string, "null"], format: date-time }
         anuncioAncoraBloqueioId: { type: [string, "null"], format: uuid }
         podeBloquear: { type: boolean }
         podeDesbloquear: { type: boolean }
@@ -11286,36 +11292,48 @@ components:
     AdminUsuarioExclusaoElegibilidade:
       type: object
       additionalProperties: false
-      required: [podeExcluir, bloqueios]
+      required: [podeExcluir, tipoExclusao, anonimizado, vinculosPreservados, consequencias, bloqueios]
       properties:
         podeExcluir: { type: boolean }
+        tipoExclusao:
+          type: string
+          enum: [EXCLUSAO_FISICA, EXCLUSAO_COM_ANONIMIZACAO]
+        anonimizado: { type: boolean }
+        vinculosPreservados: { type: integer, format: int64, minimum: 0 }
+        consequencias:
+          type: array
+          items: { type: string }
         bloqueios:
           type: array
           items:
             type: string
             enum:
               - CONTA_STAFF
-              - USUARIO_IMPORTADO
-              - POSSUI_ANUNCIOS
-              - POSSUI_DOCUMENTOS_KYC
-              - POSSUI_SALDO_OU_LEDGER
-              - POSSUI_PAGAMENTOS
-              - POSSUI_HISTORICO_OPERACIONAL
+              - OPERACAO_CONCORRENTE
+              - CONTA_JA_EXCLUIDA
     AdminUsuarioExclusaoRequest:
       type: object
       additionalProperties: false
-      required: [confirmacao]
+      required: [confirmacao, motivo]
       properties:
         confirmacao:
           type: string
           enum: [EXCLUIR]
+        motivo:
+          type: string
+          minLength: 5
+          maxLength: 500
     AdminUsuarioExclusaoResultado:
       type: object
       additionalProperties: false
-      required: [id, excluido]
+      required: [id, excluido, tipoExclusao, anonimizado]
       properties:
         id: { type: string, format: uuid }
         excluido: { type: boolean, const: true }
+        tipoExclusao:
+          type: string
+          enum: [EXCLUSAO_FISICA, EXCLUSAO_COM_ANONIMIZACAO]
+        anonimizado: { type: boolean }
     AdminUsuarioExclusaoErro:
       type: object
       additionalProperties: false
@@ -11329,12 +11347,8 @@ components:
             type: string
             enum:
               - CONTA_STAFF
-              - USUARIO_IMPORTADO
-              - POSSUI_ANUNCIOS
-              - POSSUI_DOCUMENTOS_KYC
-              - POSSUI_SALDO_OU_LEDGER
-              - POSSUI_PAGAMENTOS
-              - POSSUI_HISTORICO_OPERACIONAL
+              - OPERACAO_CONCORRENTE
+              - CONTA_JA_EXCLUIDA
         requestId: { type: string }
     AdminPaginaUsuarios:
       type: object

@@ -4,5 +4,7 @@ import java.util.UUID;
 
 public record AdminUsuarioExclusaoResultadoDto(
         UUID id,
-        boolean excluido) {
+        boolean excluido,
+        String tipoExclusao,
+        boolean anonimizado) {
 }

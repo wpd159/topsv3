@@ -31,6 +31,7 @@ public interface UsuarioRepository extends JpaRepository<UsuarioEntity, UUID> {
   @Query("""
       select usuario from UsuarioEntity usuario
       where usuario.tipoConta = :tipoConta
+        and usuario.status <> br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario.EXCLUIDO
         and (
           lower(coalesce(usuario.nome, '')) like lower(concat('%', :query, '%'))
           or lower(coalesce(usuario.emailNormalizado, '')) like lower(concat('%', :query, '%'))

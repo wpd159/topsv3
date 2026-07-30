@@ -21,6 +21,8 @@ public record AdminUsuarioDetalheDto(
         boolean bloqueado,
         OffsetDateTime criadoEm,
         OffsetDateTime atualizadoEm,
+        String exclusaoTipo,
+        OffsetDateTime excluidoEm,
         UUID anuncioAncoraBloqueioId,
         boolean podeBloquear,
         boolean podeDesbloquear,

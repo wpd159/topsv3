@@ -15,6 +15,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoC
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -71,6 +72,11 @@ public class AdminCreditoOperacaoService {
         validarAdministrador(administrador);
         DirecaoMovimentoCredito direcao = direcao(request == null ? null : request.direcao());
         int quantidade = request == null || request.quantidade() == null ? 0 : request.quantidade();
+        var usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+        if (usuario.getStatus() == StatusUsuario.EXCLUIDO) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "conta excluida");
+        }
         String chave = "admin-ajuste:" + usuarioId + ":" + CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
         var repetido = movimentoRepository.findByIdempotencyKey(chave);
         if (repetido.isPresent()) {

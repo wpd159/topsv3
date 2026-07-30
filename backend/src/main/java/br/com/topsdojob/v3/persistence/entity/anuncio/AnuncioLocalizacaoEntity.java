@@ -192,4 +192,11 @@ public class AnuncioLocalizacaoEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public void removerDadosPrecisos(OffsetDateTime atualizadoEm) {
+    this.enderecoResumido = null;
+    this.latitude = null;
+    this.longitude = null;
+    this.atualizadoEm = atualizadoEm;
+  }
+
 }

@@ -149,4 +149,14 @@ public class DocumentoBuscaAnuncioEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public void removerDaBusca(OffsetDateTime atualizadoEm) {
+    this.textoBusca = "";
+    this.preco = null;
+    this.statusPublicacao = StatusPublicacaoBusca.REMOVIDO;
+    this.temMidiaValida = false;
+    this.beneficiosRankingJson = "{}";
+    this.rankingBase = BigDecimal.ZERO;
+    this.atualizadoEm = atualizadoEm;
+  }
+
 }

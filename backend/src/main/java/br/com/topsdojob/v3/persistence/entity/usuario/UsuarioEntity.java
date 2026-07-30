@@ -64,6 +64,15 @@ public class UsuarioEntity {
   @Column(name = "desativado_em")
   private OffsetDateTime desativadoEm;
 
+  @Column(name = "exclusao_tipo")
+  private String exclusaoTipo;
+
+  @Column(name = "excluido_em")
+  private OffsetDateTime excluidoEm;
+
+  @Column(name = "excluido_por")
+  private UUID excluidoPor;
+
   @Version
   @Column(name = "versao")
   private Integer versao;
@@ -124,6 +133,18 @@ public class UsuarioEntity {
     return desativadoEm;
   }
 
+  public String getExclusaoTipo() {
+    return exclusaoTipo;
+  }
+
+  public OffsetDateTime getExcluidoEm() {
+    return excluidoEm;
+  }
+
+  public UUID getExcluidoPor() {
+    return excluidoPor;
+  }
+
   public Integer getVersao() {
     return versao;
   }
@@ -152,6 +173,26 @@ public class UsuarioEntity {
     this.telefoneNormalizado = telefoneNormalizado;
     this.dataNascimento = dataNascimento;
     this.atualizadoEm = atualizadoEm;
+  }
+
+  public void anonimizarDefinitivamente(UUID atorId, OffsetDateTime agora) {
+    if (tipoConta != TipoContaUsuario.ANUNCIANTE || status == StatusUsuario.EXCLUIDO) {
+      throw new IllegalStateException("conta nao pode ser anonimizada");
+    }
+    this.nome = "Conta excluida";
+    this.nomeCivil = null;
+    this.emailNormalizado = "conta-excluida+" + id + "@topsdojob.invalid";
+    this.telefoneNormalizado = null;
+    this.cpfNormalizado = null;
+    this.dataNascimento = null;
+    this.emailVerificadoEm = null;
+    this.telefoneVerificadoEm = null;
+    this.status = StatusUsuario.EXCLUIDO;
+    this.desativadoEm = agora;
+    this.exclusaoTipo = "EXCLUSAO_COM_ANONIMIZACAO";
+    this.excluidoEm = agora;
+    this.excluidoPor = atorId;
+    this.atualizadoEm = agora;
   }
 
   public static UsuarioEntity criarSolicitacaoLocal(

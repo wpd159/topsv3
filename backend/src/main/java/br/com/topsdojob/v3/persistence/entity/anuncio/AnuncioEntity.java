@@ -264,6 +264,20 @@ public class AnuncioEntity {
     this.atualizadoEm = removidoEm;
   }
 
+  public boolean removerPorExclusaoDaConta(OffsetDateTime removidoEm) {
+    if (this.removidoEm != null || status == StatusAnuncio.REMOVIDO) {
+      return false;
+    }
+    this.slug = "conta-excluida-" + id;
+    this.titulo = "Anuncio de conta excluida";
+    this.descricao = "Conteudo indisponivel por exclusao da conta.";
+    this.whatsappNormalizado = null;
+    this.status = StatusAnuncio.REMOVIDO;
+    this.removidoEm = removidoEm;
+    this.atualizadoEm = removidoEm;
+    return true;
+  }
+
   public void aplicarModeracao(
       StatusAnuncio status,
       StatusModeracaoAnuncio statusModeracao,

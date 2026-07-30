@@ -7,6 +7,7 @@ import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -53,6 +54,13 @@ public class AdminUsuarioAtualizacaoService {
     }
     UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(usuarioId)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+    if (usuario.getStatus() == StatusUsuario.EXCLUIDO) {
+      throw erro(
+          "dados",
+          "CONTA_EXCLUIDA",
+          "A conta excluida nao pode ser alterada.",
+          HttpStatus.CONFLICT);
+    }
     if (request.getVersao() == null || !request.getVersao().equals(usuario.getVersao())) {
       throw erro(
           "versao",

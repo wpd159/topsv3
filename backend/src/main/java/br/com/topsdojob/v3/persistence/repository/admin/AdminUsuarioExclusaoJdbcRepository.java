@@ -25,9 +25,9 @@ public class AdminUsuarioExclusaoJdbcRepository {
             new Reference("public", "token_seguranca", "usuario_id"),
             new Reference("public", "papel_usuario", "usuario_id"),
             new Reference("public", "favorito_anuncio", "usuario_id"),
-            new Reference("public", "saldo_credito_usuario", "usuario_id"));
-    private static final List<String> BLOCKER_ORDER = List.of(
-            "CONTA_STAFF",
+            new Reference("public", "saldo_credito_usuario", "usuario_id"),
+            new Reference("public", "wizard_progresso", "usuario_id"));
+    private static final List<String> DEPENDENCY_ORDER = List.of(
             "USUARIO_IMPORTADO",
             "POSSUI_ANUNCIOS",
             "POSSUI_DOCUMENTOS_KYC",
@@ -41,95 +41,132 @@ public class AdminUsuarioExclusaoJdbcRepository {
         this.jdbc = jdbc;
     }
 
-    public List<String> bloqueios(UUID usuarioId) {
+    public DependencyAnalysis analisar(UUID usuarioId) {
         Map<String, Object> params = Map.of("usuarioId", usuarioId);
-        Set<String> bloqueios = new LinkedHashSet<>();
+        Set<String> tipos = new LinkedHashSet<>();
+        long vinculos = 0;
 
-        if (exists("""
+        boolean staff = exists("""
                 SELECT EXISTS (
                   SELECT 1
                   FROM papel_usuario
                   WHERE usuario_id = :usuarioId
                     AND papel <> 'USUARIO'
                 )
-                """, params)) {
-            bloqueios.add("CONTA_STAFF");
-        }
-        if (exists("""
+                """, params);
+        boolean importado = exists("""
                 SELECT EXISTS (
                   SELECT 1
                   FROM importacao_mapeamento
                   WHERE entidade_tipo = 'USUARIO'
                     AND entidade_v3_id = :usuarioId
                 )
-                """, params)) {
-            bloqueios.add("USUARIO_IMPORTADO");
+                """, params);
+        if (importado) {
+            tipos.add("USUARIO_IMPORTADO");
+            vinculos++;
         }
-        if (exists("""
-                SELECT EXISTS (
-                  SELECT 1
-                  FROM saldo_credito_usuario
-                  WHERE usuario_id = :usuarioId
-                    AND saldo_atual <> 0
-                )
-                """, params)) {
-            bloqueios.add("POSSUI_SALDO_OU_LEDGER");
+        long saldo = count("""
+                SELECT count(*)
+                FROM saldo_credito_usuario
+                WHERE usuario_id = :usuarioId
+                  AND saldo_atual <> 0
+                """, params);
+        if (saldo > 0) {
+            tipos.add("POSSUI_SALDO_OU_LEDGER");
+            vinculos += saldo;
         }
-        if (exists("""
+        boolean operacaoConcorrente = exists("""
                 SELECT EXISTS (
                   SELECT 1
                   FROM outbox_evento
-                  WHERE aggregate_tipo = 'USUARIO'
-                    AND aggregate_id = :usuarioId
+                  WHERE status = 'PROCESSANDO'
                     AND (
-                      tipo_evento NOT IN (
-                        'AUTH_CONFIRMACAO_CONTA_SOLICITADA',
-                        'AUTH_CONFIRMACAO_CONTA_REENVIADA',
-                        'AUTH_RECUPERACAO_SENHA_SOLICITADA'
+                      (aggregate_tipo = 'USUARIO' AND aggregate_id = :usuarioId)
+                      OR (
+                        aggregate_tipo = 'ANUNCIO'
+                        AND aggregate_id IN (
+                          SELECT id FROM anuncio WHERE usuario_id = :usuarioId
+                        )
                       )
-                      OR status = 'PROCESSANDO'
                     )
                 )
-                """, params)) {
-            bloqueios.add("POSSUI_HISTORICO_OPERACIONAL");
+                """, params);
+        long outboxDuravel = count("""
+                SELECT count(*)
+                FROM outbox_evento
+                WHERE aggregate_tipo = 'USUARIO'
+                  AND aggregate_id = :usuarioId
+                  AND tipo_evento NOT IN (
+                    'AUTH_CONFIRMACAO_CONTA_SOLICITADA',
+                    'AUTH_CONFIRMACAO_CONTA_REENVIADA',
+                    'AUTH_RECUPERACAO_SENHA_SOLICITADA'
+                  )
+                """, params);
+        if (outboxDuravel > 0) {
+            tipos.add("POSSUI_HISTORICO_OPERACIONAL");
+            vinculos += outboxDuravel;
+        }
+        long auditoriasSemFk = count("""
+                SELECT count(*)
+                FROM auditoria_evento
+                WHERE recurso_tipo = 'USUARIO'
+                  AND recurso_id = :usuarioId
+                  AND ator_usuario_id IS DISTINCT FROM :usuarioId
+                """, params);
+        if (auditoriasSemFk > 0) {
+            tipos.add("POSSUI_HISTORICO_OPERACIONAL");
+            vinculos += auditoriasSemFk;
         }
 
         for (Reference reference : userReferences()) {
             if (DISPOSABLE_REFERENCES.contains(reference)) {
                 continue;
             }
-            if (exists(referenceExistsSql(reference), params)) {
-                bloqueios.add(blockerFor(reference.table()));
+            long total = count(referenceCountSql(reference), params);
+            if (total > 0) {
+                tipos.add(blockerFor(reference.table()));
+                vinculos += total;
             }
         }
 
-        List<String> ordered = new ArrayList<>(bloqueios);
+        List<String> ordered = new ArrayList<>(tipos);
         ordered.sort(Comparator.comparingInt(code -> {
-            int index = BLOCKER_ORDER.indexOf(code);
-            return index < 0 ? BLOCKER_ORDER.size() : index;
+            int index = DEPENDENCY_ORDER.indexOf(code);
+            return index < 0 ? DEPENDENCY_ORDER.size() : index;
         }));
-        return List.copyOf(ordered);
+        return new DependencyAnalysis(
+                staff,
+                importado,
+                operacaoConcorrente,
+                vinculos,
+                List.copyOf(ordered));
     }
 
-    public boolean exclusaoConcluida(
+    public java.util.Optional<String> exclusaoConcluida(
             UUID usuarioId,
             UUID atorId,
             String idempotencyHash) {
-        return exists("""
-                SELECT EXISTS (
-                  SELECT 1
-                  FROM auditoria_evento
-                  WHERE acao = 'USUARIO_EXCLUIDO_FISICAMENTE'
-                    AND recurso_tipo = 'USUARIO'
-                    AND recurso_id = :usuarioId
-                    AND ator_usuario_id = :atorId
-                    AND resultado = 'SUCESSO'
-                    AND depois_json ->> 'idempotencyHash' = :idempotencyHash
-                )
+        List<String> strategies = jdbc.query("""
+                SELECT depois_json ->> 'estrategia'
+                FROM auditoria_evento
+                WHERE acao IN (
+                    'USUARIO_EXCLUIDO_FISICAMENTE',
+                    'USUARIO_EXCLUIDO_COM_ANONIMIZACAO'
+                  )
+                  AND recurso_tipo = 'USUARIO'
+                  AND recurso_id = :usuarioId
+                  AND ator_usuario_id = :atorId
+                  AND resultado = 'SUCESSO'
+                  AND depois_json ->> 'idempotencyHash' = :idempotencyHash
+                ORDER BY criado_em DESC
+                LIMIT 1
                 """, Map.of(
                         "usuarioId", usuarioId,
                         "atorId", atorId,
-                        "idempotencyHash", idempotencyHash));
+                        "idempotencyHash", idempotencyHash),
+                (resultSet, rowNumber) -> resultSet.getString(1));
+        return strategies.stream().findFirst();
     }
 
     public TechnicalDeletionResult deleteTechnicalLinks(UUID usuarioId) {
@@ -145,6 +182,9 @@ public class AdminUsuarioExclusaoJdbcRepository {
                 """, params);
         int favorites = jdbc.update(
                 "DELETE FROM favorito_anuncio WHERE usuario_id = :usuarioId",
+                params);
+        int wizard = jdbc.update(
+                "DELETE FROM wizard_progresso WHERE usuario_id = :usuarioId",
                 params);
         int balances = jdbc.update("""
                 DELETE FROM saldo_credito_usuario
@@ -169,8 +209,50 @@ public class AdminUsuarioExclusaoJdbcRepository {
                 tokens,
                 roles,
                 favorites,
+                wizard,
                 balances,
                 outbox);
+    }
+
+    public void anonymizeAuxiliaryData(
+            UUID usuarioId,
+            List<UUID> anuncioIds,
+            java.time.OffsetDateTime agora) {
+        Map<String, Object> params = new java.util.HashMap<>();
+        params.put("usuarioId", usuarioId);
+        params.put("anuncioIds", anuncioIds.isEmpty() ? List.of(new UUID(0L, 0L)) : anuncioIds);
+        params.put("agora", agora);
+        jdbc.update("""
+                UPDATE comercial_contato
+                SET nome_contato = 'Conta excluida',
+                    email_normalizado = NULL,
+                    telefone_normalizado = NULL,
+                    observacao_resumida = NULL,
+                    atualizado_em = :agora
+                WHERE usuario_id = :usuarioId
+                """, params);
+        jdbc.update("""
+                UPDATE outbox_evento
+                SET payload_json = '{"conta":"EXCLUIDA","dadosPessoaisOcultos":true}'::jsonb,
+                    status = CASE
+                      WHEN status IN ('PENDENTE', 'ERRO') THEN 'CANCELADO'
+                      ELSE status
+                    END,
+                    erro_resumido = NULL,
+                    atualizado_em = :agora
+                WHERE (aggregate_tipo = 'USUARIO' AND aggregate_id = :usuarioId)
+                   OR (aggregate_tipo = 'ANUNCIO' AND aggregate_id IN (:anuncioIds))
+                """, params);
+        jdbc.update("""
+                UPDATE auditoria_evento
+                SET antes_json = '{"dadosPessoaisOcultos":true}'::jsonb,
+                    depois_json = '{"dadosPessoaisOcultos":true}'::jsonb
+                WHERE (
+                    recurso_tipo = 'USUARIO'
+                    AND recurso_id = :usuarioId
+                  )
+                  OR ator_usuario_id = :usuarioId
+                """, params);
     }
 
     private List<Reference> userReferences() {
@@ -199,14 +281,19 @@ public class AdminUsuarioExclusaoJdbcRepository {
                         resultSet.getString("column_name")));
     }
 
-    private String referenceExistsSql(Reference reference) {
-        return "SELECT EXISTS (SELECT 1 FROM "
+    private String referenceCountSql(Reference reference) {
+        return "SELECT count(*) FROM "
                 + quote(reference.schema()) + "." + quote(reference.table())
-                + " WHERE " + quote(reference.column()) + " = :usuarioId)";
+                + " WHERE " + quote(reference.column()) + " = :usuarioId";
     }
 
     private boolean exists(String sql, Map<String, ?> params) {
         return Boolean.TRUE.equals(jdbc.queryForObject(sql, params, Boolean.class));
+    }
+
+    private long count(String sql, Map<String, ?> params) {
+        Long total = jdbc.queryForObject(sql, params, Long.class);
+        return total == null ? 0L : total;
     }
 
     private String quote(String identifier) {
@@ -241,7 +328,20 @@ public class AdminUsuarioExclusaoJdbcRepository {
             int tokens,
             int roles,
             int favorites,
+            int wizardProgress,
             int balances,
             int outboxEvents) {
+    }
+
+    public record DependencyAnalysis(
+            boolean contaStaff,
+            boolean importado,
+            boolean operacaoConcorrente,
+            long vinculosDuraveis,
+            List<String> tiposVinculo) {
+
+        public boolean exigeAnonimizacao() {
+            return importado || vinculosDuraveis > 0;
+        }
     }
 }

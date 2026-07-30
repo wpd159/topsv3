@@ -4,5 +4,9 @@ import java.util.List;
 
 public record AdminUsuarioExclusaoElegibilidadeDto(
         boolean podeExcluir,
+        String tipoExclusao,
+        boolean anonimizado,
+        long vinculosPreservados,
+        List<String> consequencias,
         List<String> bloqueios) {
 }

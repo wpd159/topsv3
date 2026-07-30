@@ -40,6 +40,7 @@ const GROUPS = [
   { value: 'INATIVOS', label: 'Inativos' },
   { value: 'COM_ANUNCIOS', label: 'Com anúncios' },
   { value: 'SEM_ANUNCIOS', label: 'Sem anúncios' },
+  { value: 'EXCLUIDOS', label: 'Excluídos' },
 ]
 
 function pretty(value: string) {
@@ -326,12 +327,12 @@ export function AdminUsuariosList() {
                         <Button asChild size="sm" variant="outline">
                           <Link href={detailHref(user.id, '#anuncios-usuario')}><FolderOpen className="mr-1 h-4 w-4" />Anúncios</Link>
                         </Button>
-                        {admin ? (
+                        {admin && user.status !== 'EXCLUIDO' ? (
                           <Button type="button" size="sm" variant="outline" onClick={() => setCreditUser(user)}>
                             <WalletCards className="mr-1 h-4 w-4" />Crédito
                           </Button>
                         ) : null}
-                        {admin && user.potencialmenteExcluivel ? (
+                        {admin && user.podeExcluir ? (
                           <Button
                             type="button"
                             size="sm"
@@ -369,9 +370,9 @@ export function AdminUsuariosList() {
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <Button asChild size="sm" variant="outline"><Link href={detailHref(user.id, '#anuncios-usuario')}>Anúncios</Link></Button>
-                  {admin ? <Button type="button" size="sm" variant="outline" onClick={() => setCreditUser(user)}>Crédito</Button> : null}
+                  {admin && user.status !== 'EXCLUIDO' ? <Button type="button" size="sm" variant="outline" onClick={() => setCreditUser(user)}>Crédito</Button> : null}
                   <Button asChild size="sm" variant="outline"><Link href={detailHref(user.id)}>Ver</Link></Button>
-                  {admin && user.potencialmenteExcluivel ? (
+                  {admin && user.podeExcluir ? (
                     <Button type="button" size="sm" variant="destructive" onClick={() => setDeleteUser(user)}>
                       Excluir
                     </Button>
@@ -413,7 +414,7 @@ export function AdminUsuariosList() {
           onOpenChange={(open) => { if (!open) setDeleteUser(null) }}
           usuarioId={deleteUser.id}
           nome={deleteUser.nome || 'Usuário'}
-          onSuccess={() => {
+          onSuccess={(result) => {
             setPageData((current) => current
               ? {
                   ...current,
@@ -421,7 +422,9 @@ export function AdminUsuariosList() {
                   totalElements: Math.max(0, current.totalElements - 1),
                 }
               : current)
-            toast.success('Usuário excluído com sucesso.')
+            toast.success(result.anonimizado
+              ? 'Conta encerrada e anonimizada com sucesso.'
+              : 'Conta excluída definitivamente.')
             setReload((value) => value + 1)
           }}
         />

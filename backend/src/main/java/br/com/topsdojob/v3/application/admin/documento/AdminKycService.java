@@ -26,6 +26,7 @@ import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ParteDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoDocumentoUsuario;
@@ -97,7 +98,14 @@ public class AdminKycService {
     List<DocumentoUsuarioEntity> documentos = documentoRepository
         .findByStatusInAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmAsc(
             List.of(StatusDocumentoUsuario.PENDENTE, StatusDocumentoUsuario.EM_ANALISE));
+    var excluidos = usuarioRepository.findAllById(
+            documentos.stream().map(DocumentoUsuarioEntity::getUsuarioId).distinct().toList())
+        .stream()
+        .filter(usuario -> usuario.getStatus() == StatusUsuario.EXCLUIDO)
+        .map(UsuarioEntity::getId)
+        .collect(Collectors.toSet());
     return documentos.stream()
+        .filter(documento -> !excluidos.contains(documento.getUsuarioId()))
         .collect(Collectors.groupingBy(
             DocumentoUsuarioEntity::getEnvioId,
             LinkedHashMap::new,
@@ -110,11 +118,18 @@ public class AdminKycService {
 
   @Transactional(readOnly = true)
   public AdminKycEnvioDto detalhar(UUID envioId) {
-    return mapear(documentosDoEnvio(envioId));
+    List<DocumentoUsuarioEntity> documentos = documentosDoEnvio(envioId);
+    validarContaDisponivel(documentos.get(0).getUsuarioId());
+    return mapear(documentos);
   }
 
   @Transactional(readOnly = true)
   public List<AdminKycEnvioDto> listarPorUsuario(UUID usuarioId) {
+    UsuarioEntity usuario = usuarioRepository.findById(usuarioId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+    if (usuario.getStatus() == StatusUsuario.EXCLUIDO) {
+      return List.of();
+    }
     return documentoRepository
         .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(usuarioId)
         .stream()
@@ -189,6 +204,7 @@ public class AdminKycService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "motivo deve ter ao menos 3 caracteres");
     }
     List<DocumentoUsuarioEntity> documentos = documentosDoEnvio(envioId);
+    validarContaDisponivel(documentos.get(0).getUsuarioId());
     if (documentos.stream().anyMatch(item -> item.getStatus() != StatusDocumentoUsuario.PENDENTE
         && item.getStatus() != StatusDocumentoUsuario.EM_ANALISE)) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "envio documental ja decidido");
@@ -239,6 +255,9 @@ public class AdminKycService {
     }
     UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(usuarioId)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+    if (usuario.getStatus() == StatusUsuario.EXCLUIDO) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "conta excluida");
+    }
     String chaveIdempotencia = chaveIdempotencia(idempotencyKey);
     UUID envioId = uuidDeterministico("admin-kyc:" + usuarioId + ":" + chaveIdempotencia);
     List<DocumentoUsuarioEntity> existente = documentoRepository
@@ -491,10 +510,19 @@ public class AdminKycService {
     DocumentoUsuarioEntity documento = documentoRepository.findById(documentoId)
         .filter(item -> item.getRemovidoEm() == null && item.getExpurgadoEm() == null)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "documento nao encontrado"));
+    validarContaDisponivel(documento.getUsuarioId());
     ArquivoMidiaEntity arquivo = arquivoRepository.findById(documento.getArquivoMidiaId())
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo do documento nao encontrado"));
     validarLocalPrivado(arquivo);
     return new DocumentoArquivo(documento, arquivo, storageObrigatorio());
+  }
+
+  private void validarContaDisponivel(UUID usuarioId) {
+    UsuarioEntity usuario = usuarioRepository.findById(usuarioId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+    if (usuario.getStatus() == StatusUsuario.EXCLUIDO) {
+      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "documento nao encontrado");
+    }
   }
 
   private ObjectStorage storageObrigatorio() {

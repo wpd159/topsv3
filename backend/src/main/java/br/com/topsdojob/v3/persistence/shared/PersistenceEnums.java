@@ -5,7 +5,7 @@ public final class PersistenceEnums {
   }
 
   public enum StatusUsuario {
-    ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO
+    ATIVO, PENDENTE, SUSPENSO, DESATIVADO, IMPORTADO, EXCLUIDO
   }
 
   public enum TipoContaUsuario {

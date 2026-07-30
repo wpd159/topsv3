@@ -121,9 +121,19 @@ class AdminUsuarioControllerSecurityTest {
     void somenteAdminComPermissaoECsrfExcluiUsuarioElegivel() throws Exception {
         UUID id = UUID.randomUUID();
         when(exclusaoService.elegibilidade(id))
-                .thenReturn(new AdminUsuarioExclusaoElegibilidadeDto(true, List.of()));
+                .thenReturn(new AdminUsuarioExclusaoElegibilidadeDto(
+                        true,
+                        "EXCLUSAO_COM_ANONIMIZACAO",
+                        true,
+                        3,
+                        List.of("HISTORICOS_FINANCEIROS_E_OPERACIONAIS_PRESERVADOS"),
+                        List.of()));
         when(exclusaoService.excluir(any(), any(), any(), any(), any()))
-                .thenReturn(new AdminUsuarioExclusaoResultadoDto(id, true));
+                .thenReturn(new AdminUsuarioExclusaoResultadoDto(
+                        id,
+                        true,
+                        "EXCLUSAO_COM_ANONIMIZACAO",
+                        true));
 
         mockMvc.perform(get("/api/admin/usuarios/{id}/exclusao", id)
                         .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR"))))
@@ -135,23 +145,24 @@ class AdminUsuarioControllerSecurityTest {
                         .with(csrf())
                         .header("Idempotency-Key", "delete-user-security-0001")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"confirmacao\":\"EXCLUIR\"}"))
+                        .content("{\"confirmacao\":\"EXCLUIR\",\"motivo\":\"Encerramento da conta QA\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.excluido").value(true));
+                .andExpect(jsonPath("$.excluido").value(true))
+                .andExpect(jsonPath("$.tipoExclusao").value("EXCLUSAO_COM_ANONIMIZACAO"));
 
         mockMvc.perform(delete("/api/admin/usuarios/{id}", id)
                         .with(authentication(tokenFor(PapelUsuario.MODERADOR, "ANUNCIO_MODERAR")))
                         .with(csrf())
                         .header("Idempotency-Key", "delete-user-security-0002")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"confirmacao\":\"EXCLUIR\"}"))
+                        .content("{\"confirmacao\":\"EXCLUIR\",\"motivo\":\"Encerramento da conta QA\"}"))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(delete("/api/admin/usuarios/{id}", id)
                         .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
                         .header("Idempotency-Key", "delete-user-security-0003")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"confirmacao\":\"EXCLUIR\"}"))
+                        .content("{\"confirmacao\":\"EXCLUIR\",\"motivo\":\"Encerramento da conta QA\"}"))
                 .andExpect(status().isForbidden());
     }
 
@@ -200,6 +211,8 @@ class AdminUsuarioControllerSecurityTest {
                 false,
                 now,
                 now,
+                null,
+                null,
                 null,
                 false,
                 false,

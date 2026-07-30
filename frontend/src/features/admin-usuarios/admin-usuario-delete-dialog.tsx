@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { revalidarCacheCatalogoPublico } from '@/app/(painel-admin)/admin/anuncios/actions'
 import { normalizeApiError } from '@/lib/api-contract'
 
 import {
@@ -22,16 +24,12 @@ import {
   deleteAdminUser,
   getAdminUserDeletionEligibility,
 } from './api'
-import type { AdminUserDeletionEligibility } from './types'
+import type { AdminUserDeletionEligibility, AdminUserDeletionResult } from './types'
 
 const BLOCKER_LABELS: Record<string, string> = {
   CONTA_STAFF: 'Conta administrativa ou de sistema',
-  USUARIO_IMPORTADO: 'Conta proveniente de importação',
-  POSSUI_ANUNCIOS: 'Possui anúncios vinculados',
-  POSSUI_DOCUMENTOS_KYC: 'Possui documentos ou submissão KYC',
-  POSSUI_SALDO_OU_LEDGER: 'Possui saldo ou histórico de créditos',
-  POSSUI_PAGAMENTOS: 'Possui pagamentos ou conciliações',
-  POSSUI_HISTORICO_OPERACIONAL: 'Possui histórico operacional que deve ser preservado',
+  OPERACAO_CONCORRENTE: 'Existe uma operação concorrente em andamento',
+  CONTA_JA_EXCLUIDA: 'A conta já foi excluída',
 }
 
 type Props = {
@@ -39,7 +37,7 @@ type Props = {
   onOpenChange: (open: boolean) => void
   usuarioId: string
   nome: string
-  onSuccess: () => void | Promise<void>
+  onSuccess: (result: AdminUserDeletionResult) => void | Promise<void>
 }
 
 export function AdminUsuarioDeleteDialog({
@@ -51,6 +49,7 @@ export function AdminUsuarioDeleteDialog({
 }: Props) {
   const [eligibility, setEligibility] = useState<AdminUserDeletionEligibility | null>(null)
   const [confirmation, setConfirmation] = useState('')
+  const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
@@ -61,6 +60,7 @@ export function AdminUsuarioDeleteDialog({
     if (!open) {
       setEligibility(null)
       setConfirmation('')
+      setReason('')
       setError(null)
       idempotencyKey.current = ''
       return
@@ -87,17 +87,25 @@ export function AdminUsuarioDeleteDialog({
   }, [open, usuarioId])
 
   async function confirmDelete() {
-    if (!eligibility?.podeExcluir || confirmation !== 'EXCLUIR' || lock.current) return
+    if (
+      !eligibility?.podeExcluir
+      || confirmation !== 'EXCLUIR'
+      || reason.trim().length < 5
+      || lock.current
+    ) return
     lock.current = true
     setBusy(true)
     setError(null)
     try {
-      await deleteAdminUser(usuarioId, idempotencyKey.current)
-      await onSuccess()
+      const result = await deleteAdminUser(usuarioId, reason.trim(), idempotencyKey.current)
+      await revalidarCacheCatalogoPublico()
+      await onSuccess(result)
       onOpenChange(false)
     } catch (reason) {
       if (reason instanceof AdminUserDeletionError) {
-        setEligibility({ podeExcluir: false, bloqueios: reason.blockers })
+        setEligibility((current) => current
+          ? { ...current, podeExcluir: false, bloqueios: reason.blockers }
+          : null)
         setError(reason)
       } else {
         setError(normalizeApiError(reason))
@@ -109,15 +117,17 @@ export function AdminUsuarioDeleteDialog({
   }
 
   const blockers = eligibility?.bloqueios ?? []
+  const anonymized = eligibility?.tipoExclusao === 'EXCLUSAO_COM_ANONIMIZACAO'
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next) }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Excluir usuário definitivamente</DialogTitle>
+          <DialogTitle>Excluir conta</DialogTitle>
           <DialogDescription>
-            Esta ação é irreversível e só será concluída se a conta não possuir anúncios,
-            documentos, saldo, pagamentos ou outros vínculos que precisem ser preservados.
+            {anonymized
+              ? 'A conta será encerrada e os dados pessoais serão anonimizados. Registros financeiros, auditorias e históricos serão preservados sem identificação pessoal.'
+              : 'Esta conta será excluída definitivamente.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -125,29 +135,53 @@ export function AdminUsuarioDeleteDialog({
           <p className="text-sm text-zinc-700">
             Conta selecionada: <strong>{nome}</strong>
           </p>
-          {loading ? <p className="text-sm text-zinc-500">Verificando dependências...</p> : null}
+          {loading ? <p className="text-sm text-zinc-500">Verificando vínculos...</p> : null}
+          {eligibility?.podeExcluir ? (
+            <div className="border-l-4 border-zinc-400 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
+              <p>E-mail, CPF e telefone serão liberados para um novo cadastro.</p>
+              <p className="mt-1">A operação é irreversível e a nova conta não herdará dados ou saldo.</p>
+              {anonymized ? (
+                <p className="mt-1">
+                  {eligibility.vinculosPreservados} vínculo(s) histórico(s) serão preservados.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {blockers.length > 0 ? (
             <div className="border-l-4 border-amber-500 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-900">A exclusão está bloqueada:</p>
               <ul className="mt-2 space-y-1 text-sm text-amber-900">
                 {blockers.map((blocker) => (
-                  <li key={blocker}>{BLOCKER_LABELS[blocker] || 'Vínculo protegido encontrado'}</li>
+                  <li key={blocker}>{BLOCKER_LABELS[blocker] || 'Falha de integridade encontrada'}</li>
                 ))}
               </ul>
             </div>
           ) : null}
           {eligibility?.podeExcluir ? (
-            <div className="space-y-2">
-              <Label htmlFor="admin-user-delete-confirmation">
-                Digite EXCLUIR para confirmar
-              </Label>
-              <Input
-                id="admin-user-delete-confirmation"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-                autoComplete="off"
-                disabled={busy}
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-delete-reason">Motivo</Label>
+                <Textarea
+                  id="admin-user-delete-reason"
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  maxLength={500}
+                  disabled={busy}
+                  placeholder="Informe o motivo administrativo"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="admin-user-delete-confirmation">
+                  Digite EXCLUIR para confirmar
+                </Label>
+                <Input
+                  id="admin-user-delete-confirmation"
+                  value={confirmation}
+                  onChange={(event) => setConfirmation(event.target.value)}
+                  autoComplete="off"
+                  disabled={busy}
+                />
+              </div>
             </div>
           ) : null}
           {error ? <ContractState error={error} compact /> : null}
@@ -160,11 +194,16 @@ export function AdminUsuarioDeleteDialog({
           <Button
             type="button"
             variant="destructive"
-            disabled={!eligibility?.podeExcluir || confirmation !== 'EXCLUIR' || busy}
+            disabled={
+              !eligibility?.podeExcluir
+              || confirmation !== 'EXCLUIR'
+              || reason.trim().length < 5
+              || busy
+            }
             onClick={() => void confirmDelete()}
           >
             <Trash2 className="mr-2 h-4 w-4" />
-            {busy ? 'Excluindo...' : 'Excluir usuário'}
+            {busy ? 'Excluindo...' : 'Excluir conta'}
           </Button>
         </DialogFooter>
       </DialogContent>

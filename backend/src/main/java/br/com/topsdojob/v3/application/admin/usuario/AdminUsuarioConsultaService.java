@@ -40,7 +40,8 @@ public class AdminUsuarioConsultaService {
             "EM_ANALISE",
             "APROVADO",
             "REJEITADO",
-            "AJUSTE_SOLICITADO");
+            "AJUSTE_SOLICITADO",
+            "PRESERVADO_PRIVADO");
 
     private final AdminUsuarioConsultaJdbcRepository consultaRepository;
     private final UsuarioRepository usuarioRepository;
@@ -120,8 +121,9 @@ public class AdminUsuarioConsultaService {
     public AdminUsuarioDetalheDto detalhar(UUID usuarioId, AdminUserPrincipal ator) {
         UsuarioEntity usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+        boolean excluido = usuario.getStatus() == StatusUsuario.EXCLUIDO;
         List<AnuncioEntity> anuncios = anuncioRepository.findByUsuarioIdOrderByCriadoEmDesc(usuarioId);
-        List<AdminKycEnvioDto> envios = kycService.listarPorUsuario(usuarioId);
+        List<AdminKycEnvioDto> envios = excluido ? List.of() : kycService.listarPorUsuario(usuarioId);
         var bloqueio = bloqueioRepository
                 .findFirstByUsuarioIdAndEscopoAndUsuarioDesbloqueadoEmIsNullOrderByBloqueadoEmDesc(
                         usuarioId,
@@ -135,28 +137,32 @@ public class AdminUsuarioConsultaService {
                         .map(AnuncioEntity::getId)
                         .findFirst()
                         .orElse(null));
-        String cpf = admin ? usuario.getCpfNormalizado() : mascararCpf(usuario.getCpfNormalizado());
+        String cpf = excluido
+                ? null
+                : (admin ? usuario.getCpfNormalizado() : mascararCpf(usuario.getCpfNormalizado()));
 
         return new AdminUsuarioDetalheDto(
                 usuario.getId(),
-                usuario.getNome(),
-                usuario.getNomeCivil(),
-                usuario.getEmailNormalizado(),
-                usuario.getTelefoneNormalizado(),
+                excluido ? "Conta excluida" : usuario.getNome(),
+                excluido ? null : usuario.getNomeCivil(),
+                excluido ? null : usuario.getEmailNormalizado(),
+                excluido ? null : usuario.getTelefoneNormalizado(),
                 cpf,
                 !admin && cpf != null,
-                usuario.getDataNascimento(),
+                excluido ? null : usuario.getDataNascimento(),
                 usuario.getStatus().name(),
                 usuario.getTipoConta().name(),
-                kyc(envios),
+                excluido ? "PRESERVADO_PRIVADO" : kyc(envios),
                 bloqueio.isPresent(),
                 usuario.getCriadoEm(),
                 usuario.getAtualizadoEm(),
+                usuario.getExclusaoTipo(),
+                usuario.getExcluidoEm(),
                 anuncioAncora,
-                admin && bloqueio.isEmpty() && anuncioAncora != null
+                !excluido && admin && bloqueio.isEmpty() && anuncioAncora != null
                         && usuario.getStatus() != StatusUsuario.SUSPENSO
                         && usuario.getStatus() != StatusUsuario.DESATIVADO,
-                admin && bloqueio.isPresent() && anuncioAncora != null,
+                !excluido && admin && bloqueio.isPresent() && anuncioAncora != null,
                 usuario.getVersao(),
                 anuncios.stream().map(this::anuncio).toList(),
                 envios,
@@ -185,10 +191,7 @@ public class AdminUsuarioConsultaService {
                 row.kycStatus(),
                 row.totalAnuncios(),
                 row.bloqueado(),
-                row.totalAnuncios() == 0
-                        && "SEM_ENVIO".equals(row.kycStatus())
-                        && "ANUNCIANTE".equals(row.tipoConta())
-                        && !"IMPORTADO".equals(row.status()),
+                "ANUNCIANTE".equals(row.tipoConta()) && !"EXCLUIDO".equals(row.status()),
                 row.ufPrincipal(),
                 row.cidadePrincipal(),
                 row.criadoEm());
@@ -252,7 +255,8 @@ public class AdminUsuarioConsultaService {
         if (normalizado == null || "TODOS".equals(normalizado)) {
             return null;
         }
-        if (Set.of("ATIVOS", "INATIVOS", "COM_ANUNCIOS", "SEM_ANUNCIOS").contains(normalizado)) {
+        if (Set.of("ATIVOS", "INATIVOS", "COM_ANUNCIOS", "SEM_ANUNCIOS", "EXCLUIDOS")
+                .contains(normalizado)) {
             return normalizado;
         }
         throw invalido("grupo de usuarios invalido");

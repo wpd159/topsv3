@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -20,12 +22,14 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
 
     private static final UUID ADMIN = UUID.fromString("10000000-0000-0000-0000-000000000001");
     private static final UUID ELIGIBLE = UUID.fromString("10000000-0000-0000-0000-000000000002");
-    private static final UUID BLOCKED = UUID.fromString("10000000-0000-0000-0000-000000000003");
+    private static final UUID WITH_HISTORY = UUID.fromString("10000000-0000-0000-0000-000000000003");
+    private static final UUID REUSED = UUID.fromString("10000000-0000-0000-0000-000000000004");
+    private static final UUID AUDIT_ONLY = UUID.fromString("10000000-0000-0000-0000-000000000005");
     private static final Path MIGRATIONS = Path.of(
             "src", "main", "resources", "db", "migration").toAbsolutePath().normalize();
 
     @Test
-    void excluiVinculosTecnicosComRollbackEPreservaAuditoria() throws Exception {
+    void validaExclusaoFisicaAnonimizacaoReutilizacaoERollback() throws Exception {
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         String network = "topsv3-user-delete-" + suffix + "-net";
         String container = "topsv3-user-delete-" + suffix + "-pg17";
@@ -67,9 +71,32 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
             TransactionTemplate transaction = new TransactionTemplate(
                     new DataSourceTransactionManager(dataSource));
 
-            assertThat(repository.bloqueios(ELIGIBLE)).isEmpty();
-            assertThat(repository.bloqueios(BLOCKED))
-                    .containsExactly("POSSUI_SALDO_OU_LEDGER");
+            assertThat(repository.analisar(ELIGIBLE).exigeAnonimizacao()).isFalse();
+            assertThat(repository.analisar(WITH_HISTORY).exigeAnonimizacao()).isTrue();
+            assertThat(repository.analisar(WITH_HISTORY).tiposVinculo())
+                    .contains("POSSUI_SALDO_OU_LEDGER");
+            assertThat(repository.analisar(AUDIT_ONLY).exigeAnonimizacao()).isTrue();
+            assertThat(repository.analisar(AUDIT_ONLY).tiposVinculo())
+                    .contains("POSSUI_HISTORICO_OPERACIONAL");
+            transaction.executeWithoutResult(status ->
+                    repository.anonymizeAuxiliaryData(
+                            AUDIT_ONLY,
+                            List.of(),
+                            OffsetDateTime.now()));
+            assertThat(jdbc.queryForObject("""
+                    SELECT antes_json::text || depois_json::text
+                    FROM auditoria_evento
+                    WHERE recurso_tipo = 'USUARIO'
+                      AND recurso_id = ?
+                    """, String.class, AUDIT_ONLY))
+                    .doesNotContain("qa.auditoria")
+                    .contains("dadosPessoaisOcultos");
+            assertThat(jdbc.queryForObject("""
+                    SELECT count(*)
+                    FROM auditoria_evento
+                    WHERE recurso_tipo = 'USUARIO'
+                      AND recurso_id = ?
+                    """, Long.class, AUDIT_ONLY)).isOne();
 
             assertThatThrownBy(() -> transaction.executeWithoutResult(status -> {
                 repository.deleteTechnicalLinks(ELIGIBLE);
@@ -87,7 +114,7 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
                         ) VALUES (
                           ?, ?, 'USUARIO_EXCLUIDO_FISICAMENTE', 'USUARIO', ?,
                           '{"status":"PRESENTE"}',
-                          '{"status":"EXCLUIDO","idempotencyHash":"qa-hash"}',
+                          '{"status":"EXCLUIDO","estrategia":"EXCLUSAO_FISICA","idempotencyHash":"qa-hash"}',
                           'qa-delete-request', 'ADMIN', 'SUCESSO', now()
                         )
                         """, UUID.randomUUID(), ADMIN, ELIGIBLE);
@@ -107,7 +134,50 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
                       AND acao = 'USUARIO_EXCLUIDO_FISICAMENTE'
                     """, Long.class, ELIGIBLE)).isOne();
             assertThat(repository.exclusaoConcluida(ELIGIBLE, ADMIN, "qa-hash"))
-                    .isTrue();
+                    .contains("EXCLUSAO_FISICA");
+
+            transaction.executeWithoutResult(status -> {
+                repository.deleteTechnicalLinks(WITH_HISTORY);
+                jdbc.update("""
+                        UPDATE usuario
+                        SET nome = 'Conta excluida',
+                            nome_civil = NULL,
+                            email_normalizado = ?,
+                            telefone_normalizado = NULL,
+                            cpf_normalizado = NULL,
+                            data_nascimento = NULL,
+                            email_verificado_em = NULL,
+                            telefone_verificado_em = NULL,
+                            status = 'EXCLUIDO',
+                            desativado_em = now(),
+                            exclusao_tipo = 'EXCLUSAO_COM_ANONIMIZACAO',
+                            excluido_em = now(),
+                            excluido_por = ?,
+                            atualizado_em = now()
+                        WHERE id = ?
+                        """,
+                        "conta-excluida+" + WITH_HISTORY + "@topsdojob.invalid",
+                        ADMIN,
+                        WITH_HISTORY);
+            });
+            assertThat(jdbc.queryForObject(
+                    "SELECT status FROM usuario WHERE id = ?",
+                    String.class,
+                    WITH_HISTORY)).isEqualTo("EXCLUIDO");
+            assertThat(count(jdbc, "saldo_credito_usuario", "usuario_id", WITH_HISTORY)).isOne();
+
+            jdbc.update("""
+                    INSERT INTO usuario (
+                      id, nome, nome_civil, email_normalizado, telefone_normalizado,
+                      cpf_normalizado, status, tipo_conta, criado_em, atualizado_em, versao
+                    ) VALUES (
+                      ?, 'Nova Conta QA', 'Nova Conta QA', 'qa.historico@example.invalid',
+                      '+5562999999901', '12345678909', 'PENDENTE', 'ANUNCIANTE',
+                      now(), now(), 0
+                    )
+                    """, REUSED);
+            assertThat(count(jdbc, "usuario", "id", REUSED)).isOne();
+            assertThat(count(jdbc, "saldo_credito_usuario", "usuario_id", REUSED)).isZero();
         } finally {
             commandIgnoringFailure("docker", "rm", "-f", container);
             commandIgnoringFailure("docker", "network", "rm", network);
@@ -117,20 +187,27 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
     private static void seed(JdbcTemplate jdbc) {
         jdbc.update("""
                 INSERT INTO usuario (
-                  id, nome, email_normalizado, status, tipo_conta,
+                  id, nome, email_normalizado, telefone_normalizado, cpf_normalizado,
+                  status, tipo_conta,
                   criado_em, atualizado_em, versao
                 ) VALUES
-                  (?, 'QA Admin', 'qa.admin@example.invalid', 'ATIVO', 'STAFF', now(), now(), 0),
-                  (?, 'QA Excluivel', 'qa.excluivel@example.invalid', 'PENDENTE', 'ANUNCIANTE', now(), now(), 0),
-                  (?, 'QA Bloqueado', 'qa.bloqueado@example.invalid', 'PENDENTE', 'ANUNCIANTE', now(), now(), 0)
-                """, ADMIN, ELIGIBLE, BLOCKED);
+                  (?, 'QA Admin', 'qa.admin@example.invalid', NULL, NULL,
+                      'ATIVO', 'STAFF', now(), now(), 0),
+                  (?, 'QA Excluivel', 'qa.excluivel@example.invalid', NULL, NULL,
+                      'PENDENTE', 'ANUNCIANTE', now(), now(), 0),
+                  (?, 'QA Historico', 'qa.historico@example.invalid', '+5562999999901',
+                      '12345678909', 'PENDENTE', 'ANUNCIANTE', now(), now(), 0),
+                  (?, 'QA Auditoria', 'qa.auditoria@example.invalid', NULL, NULL,
+                      'PENDENTE', 'ANUNCIANTE', now(), now(), 0)
+                """, ADMIN, ELIGIBLE, WITH_HISTORY, AUDIT_ONLY);
         jdbc.update("""
                 INSERT INTO papel_usuario (usuario_id, papel, criado_por, criado_em)
                 VALUES
                   (?, 'ADMIN', ?, now()),
                   (?, 'USUARIO', ?, now()),
+                  (?, 'USUARIO', ?, now()),
                   (?, 'USUARIO', ?, now())
-                """, ADMIN, ADMIN, ELIGIBLE, ADMIN, BLOCKED, ADMIN);
+                """, ADMIN, ADMIN, ELIGIBLE, ADMIN, WITH_HISTORY, ADMIN, AUDIT_ONLY, ADMIN);
         jdbc.update("""
                 INSERT INTO credencial_usuario (
                   id, usuario_id, senha_hash, algoritmo, alterada_em, criado_em
@@ -153,7 +230,7 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
                 INSERT INTO saldo_credito_usuario (
                   usuario_id, saldo_atual, atualizado_em, versao
                 ) VALUES (?, 0, now(), 0), (?, 1, now(), 0)
-                """, ELIGIBLE, BLOCKED);
+                """, ELIGIBLE, WITH_HISTORY);
         jdbc.update("""
                 INSERT INTO outbox_evento (
                   id, aggregate_tipo, aggregate_id, tipo_evento, payload_json,
@@ -163,6 +240,17 @@ class AdminUsuarioExclusaoPostgres17IntegrationTest {
                   'PENDENTE', 'qa-auth-delete', 0, now(), now()
                 )
                 """, UUID.randomUUID(), ELIGIBLE);
+        jdbc.update("""
+                INSERT INTO auditoria_evento (
+                  id, ator_usuario_id, acao, recurso_tipo, recurso_id,
+                  antes_json, depois_json, request_id, origem, resultado, criado_em
+                ) VALUES (
+                  ?, ?, 'USUARIO_ATUALIZADO', 'USUARIO', ?,
+                  '{"email":"qa.auditoria@example.invalid"}',
+                  '{"email":"qa.auditoria.alterado@example.invalid"}',
+                  'qa-audit-history', 'ADMIN', 'SUCESSO', now()
+                )
+                """, UUID.randomUUID(), ADMIN, AUDIT_ONLY);
     }
 
     private static long count(

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -140,6 +141,7 @@ class AdminUsuarioConsultaServiceTest {
             assertThat(item.nome()).isEqualTo("Nome Civil QA");
             assertThat(item.cpfMascarado()).isEqualTo("***.***.***-09");
             assertThat(item.totalAnuncios()).isEqualTo(2);
+            assertThat(item.podeExcluir()).isTrue();
             assertThat(item.ufPrincipal()).isEqualTo("GO");
             assertThat(item.cidadePrincipal()).isEqualTo("Goiânia");
         });
@@ -177,6 +179,28 @@ class AdminUsuarioConsultaServiceTest {
         assertThat(result.cpfMascarado()).isTrue();
         assertThat(result.podeBloquear()).isFalse();
         assertThat(result.podeDesbloquear()).isFalse();
+    }
+
+    @Test
+    void contaExcluidaRetornaSomenteIdentidadeTecnicaEHistoricoPermitido() {
+        OffsetDateTime agora = OffsetDateTime.parse("2026-07-30T10:00:00Z");
+        usuario.anonimizarDefinitivamente(UUID.randomUUID(), agora);
+
+        var result = service.detalhar(usuarioId, principal(PapelUsuario.ADMIN));
+
+        assertThat(result.nome()).isEqualTo("Conta excluida");
+        assertThat(result.nomeCivil()).isNull();
+        assertThat(result.email()).isNull();
+        assertThat(result.telefone()).isNull();
+        assertThat(result.cpf()).isNull();
+        assertThat(result.dataNascimento()).isNull();
+        assertThat(result.kycStatus()).isEqualTo("PRESERVADO_PRIVADO");
+        assertThat(result.kycEnvios()).isEmpty();
+        assertThat(result.exclusaoTipo()).isEqualTo("EXCLUSAO_COM_ANONIMIZACAO");
+        assertThat(result.excluidoEm()).isEqualTo(agora);
+        assertThat(result.podeBloquear()).isFalse();
+        assertThat(result.podeDesbloquear()).isFalse();
+        verify(kycService, never()).listarPorUsuario(usuarioId);
     }
 
     private AdminKycEnvioDto envio() {

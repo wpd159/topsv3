@@ -70,7 +70,9 @@ assert.ok(list.includes('xl:items-end') && list.includes('min-h-4') && list.incl
 assert.ok(list.includes('Nenhum usuário encontrado'), 'Resposta 200 vazia deve ser um estado legitimo.')
 assert.ok(list.includes('<ContractState error={error}'), 'Erro tecnico deve permitir nova tentativa.')
 assert.ok(list.includes('retorno='), 'O detalhe deve preservar busca e pagina no retorno.')
-assert.ok(list.includes('user.potencialmenteExcluivel'), 'A lista deve oferecer exclusao apenas a contas potencialmente elegiveis.')
+assert.ok(list.includes('user.podeExcluir'), 'A lista deve oferecer uma unica exclusao para toda conta comum ativa.')
+assert.ok(list.includes("value: 'EXCLUIDOS'") && list.includes("label: 'Excluídos'"), 'A lista deve oferecer o filtro de contas excluidas.')
+assert.ok(list.includes("user.status !== 'EXCLUIDO'"), 'Conta excluida nao pode receber credito ou nova mutacao.')
 
 for (const section of [
   'Identificação',
@@ -91,14 +93,22 @@ assert.ok(detail.includes("usuario?.cargo === 'ADMIN'"), 'Mutacoes devem permane
 assert.ok(detail.includes('blockAdminAdAndUser') && detail.includes('unblockAdminUser'), 'Bloqueio deve reutilizar o servico canonico.')
 assert.ok(detail.includes('actionLock.current'), 'A mutacao deve impedir duplo clique.')
 assert.ok(detail.includes('AdminUsuarioDeleteDialog'), 'O detalhe deve reutilizar o modal seguro de exclusao.')
+assert.ok(detail.includes("detail.status === 'EXCLUIDO'"), 'O detalhe deve reconhecer o encerramento definitivo.')
+assert.ok(detail.includes('Registro técnico da conta'), 'Conta excluida deve exibir apenas informacoes tecnicas.')
+assert.ok(detail.includes('Preservado de forma privada e indisponível para consulta'), 'KYC preservado nao pode ser exposto.')
 
-assert.ok(deletion.includes('Excluir usuário definitivamente'), 'O modal deve explicitar a irreversibilidade da exclusao.')
+assert.ok(deletion.includes('Excluir conta'), 'O modal deve manter uma unica acao de exclusao.')
 assert.ok(deletion.includes("confirmation !== 'EXCLUIR'"), 'A exclusao deve exigir confirmacao digitada.')
+assert.ok(deletion.includes('admin-user-delete-reason'), 'A exclusao deve exigir motivo administrativo.')
 assert.ok(deletion.includes('getAdminUserDeletionEligibility'), 'O modal deve consultar a pre-validacao do backend.')
+assert.ok(deletion.includes('EXCLUSAO_COM_ANONIMIZACAO'), 'O modal deve distinguir exclusao fisica de anonimizacao.')
+assert.ok(deletion.includes('E-mail, CPF e telefone serão liberados'), 'O modal deve informar a reutilizacao dos identificadores.')
 assert.ok(deletion.includes('idempotencyKey.current'), 'Retries devem reutilizar a mesma chave idempotente.')
 assert.ok(deletion.includes('lock.current'), 'O modal deve impedir duplo clique.')
+assert.ok(deletion.includes('revalidarCacheCatalogoPublico'), 'A retirada dos anuncios deve invalidar o catalogo publico.')
 assert.ok(api.includes("method: 'DELETE'"), 'A exclusao deve usar o contrato DELETE canonico.')
 assert.ok(api.includes("'Idempotency-Key': idempotencyKey"), 'A exclusao deve enviar a chave idempotente.')
+assert.ok(api.includes("JSON.stringify({ confirmacao: 'EXCLUIR', motivo })"), 'O motivo deve ser enviado no contrato canonico.')
 
 for (const field of ['nome', 'nomeCivil', 'email', 'cpf', 'telefone', 'dataNascimento', 'versao']) {
   assert.ok(edit.includes(field), `Campo cadastral real ausente: ${field}.`)

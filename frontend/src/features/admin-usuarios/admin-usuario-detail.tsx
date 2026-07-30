@@ -144,7 +144,8 @@ export function AdminUsuarioDetail() {
   if (error && !detail) return <ContractState error={error} onRetry={() => setReload((value) => value + 1)} />
   if (!detail) return null
 
-  const displayName = detail.nomeCivil || detail.nome || 'Usuário sem nome'
+  const excluded = detail.status === 'EXCLUIDO'
+  const displayName = excluded ? 'Conta excluída' : detail.nomeCivil || detail.nome || 'Usuário sem nome'
 
   return (
     <section className="space-y-6">
@@ -162,7 +163,7 @@ export function AdminUsuarioDetail() {
               {detail.bloqueado ? <Badge variant="destructive">Bloqueado</Badge> : null}
             </div>
           </div>
-          {admin ? (
+          {admin && !excluded ? (
             <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" onClick={() => setCreditDialogOpen(true)}>
                 <WalletCards className="mr-2 h-4 w-4" /> Créditos
@@ -195,7 +196,23 @@ export function AdminUsuarioDetail() {
       {error ? <ContractState error={error} onRetry={() => setReload((value) => value + 1)} compact /> : null}
 
       <section aria-labelledby="dados-usuario">
-        <h2 id="dados-usuario" className="text-lg font-semibold text-zinc-950">Dados cadastrais</h2>
+        <h2 id="dados-usuario" className="text-lg font-semibold text-zinc-950">
+          {excluded ? 'Registro técnico da conta' : 'Dados cadastrais'}
+        </h2>
+        {excluded ? (
+          <div className="mt-3 border-y border-zinc-200 py-5">
+            <DataGroup
+              title="Encerramento definitivo"
+              entries={[
+                ['Identificação', detail.id],
+                ['Estado da conta', 'Conta excluída'],
+                ['Tratamento', pretty(detail.exclusaoTipo || 'EXCLUSAO_COM_ANONIMIZACAO')],
+                ['Excluída em', formatDate(detail.excluidoEm)],
+                ['KYC', 'Preservado de forma privada e indisponível para consulta'],
+              ]}
+            />
+          </div>
+        ) : (
         <div className="mt-3 grid gap-6 border-y border-zinc-200 py-5 lg:grid-cols-2">
           <DataGroup
             title="Identificação"
@@ -228,6 +245,7 @@ export function AdminUsuarioDetail() {
             ]}
           />
         </div>
+        )}
       </section>
 
       <section aria-labelledby="anuncios-usuario">
@@ -263,7 +281,7 @@ export function AdminUsuarioDetail() {
         )}
       </section>
 
-      <section aria-labelledby="kyc-usuario">
+      {!excluded ? <section aria-labelledby="kyc-usuario">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 id="kyc-usuario" className="text-lg font-semibold text-zinc-950">Documentos KYC privados</h2>
@@ -294,7 +312,7 @@ export function AdminUsuarioDetail() {
             } : undefined}
           />
         </div>
-      </section>
+      </section> : null}
 
       <section aria-labelledby="historico-usuario">
         <h2 id="historico-usuario" className="text-lg font-semibold text-zinc-950">Histórico administrativo</h2>
@@ -318,7 +336,7 @@ export function AdminUsuarioDetail() {
         )}
       </section>
 
-      <AdminKycUploadDialog
+      {!excluded ? <AdminKycUploadDialog
         open={documentDialogOpen}
         onOpenChange={setDocumentDialogOpen}
         usuarioId={detail.id}
@@ -328,25 +346,27 @@ export function AdminUsuarioDetail() {
           setDocumentReplacement(null)
           await load()
         }}
-      />
+      /> : null}
 
-      <AdminUsuarioCreditDialog
+      {!excluded ? <AdminUsuarioCreditDialog
         open={creditDialogOpen}
         onOpenChange={setCreditDialogOpen}
         usuarioId={detail.id}
         nome={displayName}
-      />
+      /> : null}
 
-      <AdminUsuarioDeleteDialog
+      {!excluded ? <AdminUsuarioDeleteDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
         usuarioId={detail.id}
         nome={displayName}
-        onSuccess={() => {
-          toast.success('Usuário excluído com sucesso.')
+        onSuccess={(result) => {
+          toast.success(result.anonimizado
+            ? 'Conta encerrada e anonimizada com sucesso.'
+            : 'Conta excluída definitivamente.')
           router.replace(backHref)
         }}
-      />
+      /> : null}
 
       <Dialog open={legalIntent !== null} onOpenChange={(open) => { if (!open && !legalBusy) setLegalIntent(null) }}>
         <DialogContent>

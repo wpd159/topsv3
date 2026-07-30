@@ -149,12 +149,12 @@ export function getAdminUserDeletionEligibility(id: string) {
   )
 }
 
-export function deleteAdminUser(id: string, idempotencyKey: string) {
+export function deleteAdminUser(id: string, motivo: string, idempotencyKey: string) {
   return request<AdminUserDeletionResult>(`/usuarios/${encodeURIComponent(id)}`, {
     method: 'DELETE',
     headers: {
       'Idempotency-Key': idempotencyKey,
     },
-    body: JSON.stringify({ confirmacao: 'EXCLUIR' }),
+    body: JSON.stringify({ confirmacao: 'EXCLUIR', motivo }),
   })
 }

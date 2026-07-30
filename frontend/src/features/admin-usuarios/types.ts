@@ -10,7 +10,7 @@ export type AdminUserSummary = {
   kycStatus: string
   totalAnuncios: number
   bloqueado: boolean
-  potencialmenteExcluivel: boolean
+  podeExcluir: boolean
   ufPrincipal?: string | null
   cidadePrincipal?: string | null
   criadoEm: string
@@ -49,6 +49,8 @@ export type AdminUserDetail = {
   bloqueado: boolean
   criadoEm: string
   atualizadoEm?: string | null
+  exclusaoTipo?: string | null
+  excluidoEm?: string | null
   anuncioAncoraBloqueioId?: string | null
   podeBloquear: boolean
   podeDesbloquear: boolean
@@ -91,10 +93,16 @@ export type AdminUserUpdate = {
 
 export type AdminUserDeletionEligibility = {
   podeExcluir: boolean
+  tipoExclusao: 'EXCLUSAO_FISICA' | 'EXCLUSAO_COM_ANONIMIZACAO'
+  anonimizado: boolean
+  vinculosPreservados: number
+  consequencias: string[]
   bloqueios: string[]
 }
 
 export type AdminUserDeletionResult = {
   id: string
   excluido: boolean
+  tipoExclusao: 'EXCLUSAO_FISICA' | 'EXCLUSAO_COM_ANONIMIZACAO'
+  anonimizado: boolean
 }

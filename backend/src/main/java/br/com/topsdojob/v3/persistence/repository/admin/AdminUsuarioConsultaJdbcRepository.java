@@ -75,6 +75,11 @@ public class AdminUsuarioConsultaJdbcRepository {
               )
             )
               AND (CAST(:status AS text) IS NULL OR u.status = :status)
+              AND (
+                u.status <> 'EXCLUIDO'
+                OR :status = 'EXCLUIDO'
+                OR :grupo = 'EXCLUIDOS'
+              )
               AND (CAST(:kycStatus AS text) IS NULL OR coalesce(k.status, 'SEM_ENVIO') = :kycStatus)
               AND (
                 CAST(:grupo AS text) IS NULL
@@ -82,6 +87,7 @@ public class AdminUsuarioConsultaJdbcRepository {
                 OR (:grupo = 'INATIVOS' AND u.status <> 'ATIVO')
                 OR (:grupo = 'COM_ANUNCIOS' AND coalesce(a.total, 0) > 0)
                 OR (:grupo = 'SEM_ANUNCIOS' AND coalesce(a.total, 0) = 0)
+                OR (:grupo = 'EXCLUIDOS' AND u.status = 'EXCLUIDO')
               )
               AND (
                 CAST(:uf AS text) IS NULL
@@ -104,16 +110,19 @@ public class AdminUsuarioConsultaJdbcRepository {
     private static final String SELECT = """
             SELECT
               u.id,
-              u.nome,
-              u.nome_civil,
-              u.email_normalizado,
-              u.telefone_normalizado,
-              u.cpf_normalizado,
+              CASE WHEN u.status = 'EXCLUIDO' THEN 'Conta excluida' ELSE u.nome END AS nome,
+              CASE WHEN u.status = 'EXCLUIDO' THEN NULL ELSE u.nome_civil END AS nome_civil,
+              CASE WHEN u.status = 'EXCLUIDO' THEN NULL ELSE u.email_normalizado END AS email_normalizado,
+              CASE WHEN u.status = 'EXCLUIDO' THEN NULL ELSE u.telefone_normalizado END AS telefone_normalizado,
+              CASE WHEN u.status = 'EXCLUIDO' THEN NULL ELSE u.cpf_normalizado END AS cpf_normalizado,
               u.status,
               u.tipo_conta,
               u.criado_em,
               u.atualizado_em,
-              coalesce(k.status, 'SEM_ENVIO') AS kyc_status,
+              CASE
+                WHEN u.status = 'EXCLUIDO' THEN 'PRESERVADO_PRIVADO'
+                ELSE coalesce(k.status, 'SEM_ENVIO')
+              END AS kyc_status,
               coalesce(a.total, 0) AS total_anuncios,
               (b.usuario_id IS NOT NULL) AS bloqueado,
               local_principal.uf AS uf_principal,
@@ -190,15 +199,20 @@ public class AdminUsuarioConsultaJdbcRepository {
                   GROUP BY usuario_id
                 )
                 SELECT
-                  count(*) AS total_usuarios,
+                  count(*) FILTER (WHERE u.status <> 'EXCLUIDO') AS total_usuarios,
                   count(*) FILTER (
-                    WHERE u.criado_em >= (
+                    WHERE u.status <> 'EXCLUIDO'
+                      AND u.criado_em >= (
                       date_trunc('day', CURRENT_TIMESTAMP AT TIME ZONE 'America/Sao_Paulo')
                       AT TIME ZONE 'America/Sao_Paulo'
                     )
                   ) AS novos_hoje,
-                  count(*) FILTER (WHERE coalesce(a.total, 0) > 0) AS com_anuncios,
-                  count(*) FILTER (WHERE coalesce(a.total, 0) = 0) AS sem_anuncios
+                  count(*) FILTER (
+                    WHERE u.status <> 'EXCLUIDO' AND coalesce(a.total, 0) > 0
+                  ) AS com_anuncios,
+                  count(*) FILTER (
+                    WHERE u.status <> 'EXCLUIDO' AND coalesce(a.total, 0) = 0
+                  ) AS sem_anuncios
                 FROM usuario u
                 LEFT JOIN anuncios a ON a.usuario_id = u.id
                 """,
