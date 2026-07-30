@@ -185,6 +185,10 @@ public class AdminUsuarioConsultaService {
                 row.kycStatus(),
                 row.totalAnuncios(),
                 row.bloqueado(),
+                row.totalAnuncios() == 0
+                        && "SEM_ENVIO".equals(row.kycStatus())
+                        && "ANUNCIANTE".equals(row.tipoConta())
+                        && !"IMPORTADO".equals(row.status()),
                 row.ufPrincipal(),
                 row.cidadePrincipal(),
                 row.criadoEm());

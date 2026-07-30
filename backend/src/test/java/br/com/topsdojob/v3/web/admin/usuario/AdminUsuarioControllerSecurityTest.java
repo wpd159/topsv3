@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,6 +14,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioConsultaService;
+import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioExclusaoService;
+import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioExclusaoElegibilidadeDto;
+import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioExclusaoResultadoDto;
 import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioAtualizacaoService;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioDetalheDto;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
@@ -47,6 +51,9 @@ class AdminUsuarioControllerSecurityTest {
 
     @MockBean
     private AdminUsuarioAtualizacaoService atualizacaoService;
+
+    @MockBean
+    private AdminUsuarioExclusaoService exclusaoService;
 
     @Test
     void adminEModeradorComAnuncioLerAcessamListaEDetalhe() throws Exception {
@@ -107,6 +114,44 @@ class AdminUsuarioControllerSecurityTest {
                         .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"versao\":0,\"nome\":\"QA\",\"telefone\":\"+5562999999999\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void somenteAdminComPermissaoECsrfExcluiUsuarioElegivel() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(exclusaoService.elegibilidade(id))
+                .thenReturn(new AdminUsuarioExclusaoElegibilidadeDto(true, List.of()));
+        when(exclusaoService.excluir(any(), any(), any(), any(), any()))
+                .thenReturn(new AdminUsuarioExclusaoResultadoDto(id, true));
+
+        mockMvc.perform(get("/api/admin/usuarios/{id}/exclusao", id)
+                        .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.podeExcluir").value(true));
+
+        mockMvc.perform(delete("/api/admin/usuarios/{id}", id)
+                        .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
+                        .with(csrf())
+                        .header("Idempotency-Key", "delete-user-security-0001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"confirmacao\":\"EXCLUIR\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.excluido").value(true));
+
+        mockMvc.perform(delete("/api/admin/usuarios/{id}", id)
+                        .with(authentication(tokenFor(PapelUsuario.MODERADOR, "ANUNCIO_MODERAR")))
+                        .with(csrf())
+                        .header("Idempotency-Key", "delete-user-security-0002")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"confirmacao\":\"EXCLUIR\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete("/api/admin/usuarios/{id}", id)
+                        .with(authentication(tokenFor(PapelUsuario.ADMIN, "ANUNCIO_MODERAR")))
+                        .header("Idempotency-Key", "delete-user-security-0003")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"confirmacao\":\"EXCLUIR\"}"))
                 .andExpect(status().isForbidden());
     }
 

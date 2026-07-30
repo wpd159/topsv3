@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useParams, useSearchParams } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, FileUp, LockKeyhole, Pencil, ShieldCheck, UnlockKeyhole, WalletCards } from 'lucide-react'
+import { ArrowLeft, FileUp, LockKeyhole, Pencil, ShieldCheck, Trash2, UnlockKeyhole, WalletCards } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
@@ -29,6 +30,7 @@ import { maskPhoneBR } from '@/lib/phone-mask'
 
 import { getAdminUser } from './api'
 import { AdminUsuarioCreditDialog } from './admin-usuario-credit-dialog'
+import { AdminUsuarioDeleteDialog } from './admin-usuario-delete-dialog'
 import type { AdminUserDetail } from './types'
 
 const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }> = [
@@ -65,6 +67,7 @@ type LegalIntent = 'BLOCK' | 'UNBLOCK' | null
 
 export function AdminUsuarioDetail() {
   const params = useParams<{ id: string }>()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const { usuario } = useAuth()
   const [detail, setDetail] = useState<AdminUserDetail | null>(null)
@@ -79,6 +82,7 @@ export function AdminUsuarioDetail() {
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false)
   const [documentReplacement, setDocumentReplacement] = useState<AdminKycSubmission | null>(null)
   const [creditDialogOpen, setCreditDialogOpen] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const actionLock = useRef(false)
   const userId = params?.id ?? ''
   const admin = usuario?.cargo === 'ADMIN'
@@ -178,6 +182,11 @@ export function AdminUsuarioDetail() {
                   <Pencil className="mr-2 h-4 w-4" /> Editar usuário
                 </Link>
               </Button>
+              {detail.tipoConta === 'ANUNCIANTE' ? (
+                <Button type="button" variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Excluir usuário
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -326,6 +335,17 @@ export function AdminUsuarioDetail() {
         onOpenChange={setCreditDialogOpen}
         usuarioId={detail.id}
         nome={displayName}
+      />
+
+      <AdminUsuarioDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        usuarioId={detail.id}
+        nome={displayName}
+        onSuccess={() => {
+          toast.success('Usuário excluído com sucesso.')
+          router.replace(backHref)
+        }}
       />
 
       <Dialog open={legalIntent !== null} onOpenChange={(open) => { if (!open && !legalBusy) setLegalIntent(null) }}>

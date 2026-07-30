@@ -3,11 +3,13 @@
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
 import {
   BriefcaseBusiness,
   Eye,
   FolderOpen,
   Search,
+  Trash2,
   UserMinus,
   UserPlus,
   Users,
@@ -28,6 +30,7 @@ import { maskPhoneBR } from '@/lib/phone-mask'
 
 import { getAdminUserIndicators, listAdminUsers } from './api'
 import { AdminUsuarioCreditDialog } from './admin-usuario-credit-dialog'
+import { AdminUsuarioDeleteDialog } from './admin-usuario-delete-dialog'
 import type { AdminUserIndicators, AdminUserPage, AdminUserSummary } from './types'
 
 const KYC_STATUS = ['SEM_ENVIO', 'PENDENTE', 'EM_ANALISE', 'APROVADO', 'REJEITADO', 'AJUSTE_SOLICITADO']
@@ -72,6 +75,7 @@ export function AdminUsuariosList() {
   const [reload, setReload] = useState(0)
   const [term, setTerm] = useState(searchParams.get('termo') ?? '')
   const [creditUser, setCreditUser] = useState<AdminUserSummary | null>(null)
+  const [deleteUser, setDeleteUser] = useState<AdminUserSummary | null>(null)
   const admin = usuario?.cargo === 'ADMIN'
 
   const filters = useMemo(() => ({
@@ -199,21 +203,21 @@ export function AdminUsuariosList() {
             </Button>
           ))}
         </div>
-        <form onSubmit={submitSearch} className="mt-3 grid gap-3 lg:grid-cols-[minmax(15rem,2fr)_12rem_12rem_12rem_10rem_9rem_auto] lg:items-end">
-          <label>
-            <span className="mb-1 block text-xs font-semibold text-zinc-600">Busca</span>
+        <form onSubmit={submitSearch} className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-12 xl:items-end">
+          <label className="min-w-0 sm:col-span-2 xl:col-span-3">
+            <span className="mb-1 block min-h-4 text-xs font-semibold text-zinc-600">Busca</span>
             <span className="relative block">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
               <Input
                 value={term}
                 onChange={(event) => setTerm(event.target.value)}
                 placeholder="Nome, e-mail, CPF, telefone ou ID"
-                className="pl-9"
+                className="h-10 w-full pl-9"
               />
             </span>
           </label>
-          <div>
-            <span className="mb-1 block text-xs font-semibold text-zinc-600">Estado</span>
+          <div className="min-w-0 xl:col-span-2">
+            <span className="mb-1 block min-h-4 text-xs font-semibold text-zinc-600">Estado</span>
             <SearchableSelect
               value={filters.uf || 'TODOS'}
               label={stateLabel}
@@ -229,8 +233,8 @@ export function AdminUsuariosList() {
               })}
             />
           </div>
-          <div>
-            <span className="mb-1 block text-xs font-semibold text-zinc-600">Cidade</span>
+          <div className="min-w-0 xl:col-span-2">
+            <span className="mb-1 block min-h-4 text-xs font-semibold text-zinc-600">Cidade</span>
             <SearchableSelect
               value={filters.cidade || 'TODAS'}
               label={cityLabel}
@@ -242,36 +246,36 @@ export function AdminUsuariosList() {
               onSelect={(value) => updateQuery({ cidade: value === 'TODAS' ? '' : value, page: null })}
             />
           </div>
-          <label>
-            <span className="mb-1 block text-xs font-semibold text-zinc-600">KYC</span>
+          <label className="min-w-0 xl:col-span-1">
+            <span className="mb-1 block min-h-4 text-xs font-semibold text-zinc-600">KYC</span>
             <Select value={filters.kyc} onValueChange={(value) => updateQuery({ kyc: value, page: null })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="TODOS">Todos</SelectItem>
                 {KYC_STATUS.map((status) => <SelectItem key={status} value={status}>{pretty(status)}</SelectItem>)}
               </SelectContent>
             </Select>
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-semibold text-zinc-600">Ordenação</span>
+          <label className="min-w-0 xl:col-span-2">
+            <span className="mb-1 block min-h-4 text-xs font-semibold text-zinc-600">Ordenação</span>
             <Select value={filters.ordenacao} onValueChange={(value) => updateQuery({ ordenacao: value, page: null })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="RECENTES">Cadastro mais recente</SelectItem>
                 <SelectItem value="ANTIGOS">Cadastro mais antigo</SelectItem>
               </SelectContent>
             </Select>
           </label>
-          <label>
-            <span className="mb-1 block text-xs font-semibold text-zinc-600">Por página</span>
+          <label className="min-w-0 xl:col-span-1">
+            <span className="mb-1 block min-h-4 text-xs font-semibold text-zinc-600">Por página</span>
             <Select value={String(filters.size)} onValueChange={(value) => updateQuery({ size: value, page: null })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {[20, 30, 50, 100].map((size) => <SelectItem key={size} value={String(size)}>{size}</SelectItem>)}
               </SelectContent>
             </Select>
           </label>
-          <Button type="submit">Aplicar</Button>
+          <Button type="submit" className="h-10 w-full sm:col-span-2 xl:col-span-1">Aplicar</Button>
         </form>
       </div>
 
@@ -327,6 +331,18 @@ export function AdminUsuariosList() {
                             <WalletCards className="mr-1 h-4 w-4" />Crédito
                           </Button>
                         ) : null}
+                        {admin && user.potencialmenteExcluivel ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeleteUser(user)}
+                            title="Excluir usuário"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            <span className="sr-only">Excluir usuário</span>
+                          </Button>
+                        ) : null}
                         <Button asChild size="sm" variant="outline">
                           <Link href={detailHref(user.id)}><Eye className="mr-1 h-4 w-4" />Ver</Link>
                         </Button>
@@ -351,10 +367,15 @@ export function AdminUsuariosList() {
                   <Badge variant="outline">{user.totalAnuncios} anúncio(s)</Badge>
                   <Badge variant="outline">KYC {pretty(user.kycStatus)}</Badge>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2">
+                <div className="mt-3 grid grid-cols-2 gap-2">
                   <Button asChild size="sm" variant="outline"><Link href={detailHref(user.id, '#anuncios-usuario')}>Anúncios</Link></Button>
-                  {admin ? <Button type="button" size="sm" variant="outline" onClick={() => setCreditUser(user)}>Crédito</Button> : <span />}
+                  {admin ? <Button type="button" size="sm" variant="outline" onClick={() => setCreditUser(user)}>Crédito</Button> : null}
                   <Button asChild size="sm" variant="outline"><Link href={detailHref(user.id)}>Ver</Link></Button>
+                  {admin && user.potencialmenteExcluivel ? (
+                    <Button type="button" size="sm" variant="destructive" onClick={() => setDeleteUser(user)}>
+                      Excluir
+                    </Button>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -383,6 +404,26 @@ export function AdminUsuariosList() {
           onOpenChange={(open) => { if (!open) setCreditUser(null) }}
           usuarioId={creditUser.id}
           nome={creditUser.nome || 'Usuário'}
+        />
+      ) : null}
+
+      {deleteUser ? (
+        <AdminUsuarioDeleteDialog
+          open
+          onOpenChange={(open) => { if (!open) setDeleteUser(null) }}
+          usuarioId={deleteUser.id}
+          nome={deleteUser.nome || 'Usuário'}
+          onSuccess={() => {
+            setPageData((current) => current
+              ? {
+                  ...current,
+                  itens: current.itens.filter((item) => item.id !== deleteUser.id),
+                  totalElements: Math.max(0, current.totalElements - 1),
+                }
+              : current)
+            toast.success('Usuário excluído com sucesso.')
+            setReload((value) => value + 1)
+          }}
         />
       ) : null}
     </section>

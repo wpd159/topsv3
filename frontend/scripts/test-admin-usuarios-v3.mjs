@@ -19,6 +19,7 @@ const list = source('features/admin-usuarios/admin-usuarios-list.tsx')
 const detail = source('features/admin-usuarios/admin-usuario-detail.tsx')
 const edit = source('features/admin-usuarios/admin-usuario-edit-form.tsx')
 const credit = source('features/admin-usuarios/admin-usuario-credit-dialog.tsx')
+const deletion = source('features/admin-usuarios/admin-usuario-delete-dialog.tsx')
 const upload = source('features/admin-documentos/admin-kyc-upload-dialog.tsx')
 const documents = source('features/admin-documentos/admin-kyc-document-grid.tsx')
 const api = source('features/admin-usuarios/api.ts')
@@ -64,9 +65,12 @@ for (const action of ['Anúncios', 'Crédito', 'Ver']) {
 }
 assert.ok(list.includes('[20, 30, 50, 100]'), 'A listagem deve oferecer os quatro tamanhos canonicos.')
 assert.ok(list.includes('md:hidden') && list.includes('hidden overflow-x-auto'), 'A lista deve ter layouts desktop e mobile.')
+assert.ok(list.includes('xl:grid-cols-12') && list.includes('sm:grid-cols-2'), 'Os filtros devem alinhar no desktop e empilhar responsivamente.')
+assert.ok(list.includes('xl:items-end') && list.includes('min-h-4') && list.includes('h-10'), 'Labels, campos e Aplicar devem compartilhar linha de base e altura.')
 assert.ok(list.includes('Nenhum usuário encontrado'), 'Resposta 200 vazia deve ser um estado legitimo.')
 assert.ok(list.includes('<ContractState error={error}'), 'Erro tecnico deve permitir nova tentativa.')
 assert.ok(list.includes('retorno='), 'O detalhe deve preservar busca e pagina no retorno.')
+assert.ok(list.includes('user.potencialmenteExcluivel'), 'A lista deve oferecer exclusao apenas a contas potencialmente elegiveis.')
 
 for (const section of [
   'Identificação',
@@ -86,7 +90,15 @@ assert.ok(!detail.includes('objectKey') && !detail.includes('bucket'), 'Storage 
 assert.ok(detail.includes("usuario?.cargo === 'ADMIN'"), 'Mutacoes devem permanecer exclusivas de ADMIN.')
 assert.ok(detail.includes('blockAdminAdAndUser') && detail.includes('unblockAdminUser'), 'Bloqueio deve reutilizar o servico canonico.')
 assert.ok(detail.includes('actionLock.current'), 'A mutacao deve impedir duplo clique.')
-assert.ok(!detail.includes('Excluir usuário'), 'A gestao nao pode introduzir exclusao fisica de usuario.')
+assert.ok(detail.includes('AdminUsuarioDeleteDialog'), 'O detalhe deve reutilizar o modal seguro de exclusao.')
+
+assert.ok(deletion.includes('Excluir usuário definitivamente'), 'O modal deve explicitar a irreversibilidade da exclusao.')
+assert.ok(deletion.includes("confirmation !== 'EXCLUIR'"), 'A exclusao deve exigir confirmacao digitada.')
+assert.ok(deletion.includes('getAdminUserDeletionEligibility'), 'O modal deve consultar a pre-validacao do backend.')
+assert.ok(deletion.includes('idempotencyKey.current'), 'Retries devem reutilizar a mesma chave idempotente.')
+assert.ok(deletion.includes('lock.current'), 'O modal deve impedir duplo clique.')
+assert.ok(api.includes("method: 'DELETE'"), 'A exclusao deve usar o contrato DELETE canonico.')
+assert.ok(api.includes("'Idempotency-Key': idempotencyKey"), 'A exclusao deve enviar a chave idempotente.')
 
 for (const field of ['nome', 'nomeCivil', 'email', 'cpf', 'telefone', 'dataNascimento', 'versao']) {
   assert.ok(edit.includes(field), `Campo cadastral real ausente: ${field}.`)
@@ -110,6 +122,8 @@ assert.ok(credit.includes('actionLock.current'), 'Ajuste de credito deve bloquea
 assert.ok(creditApi.includes('Idempotency-Key') && creditApi.includes('idempotencyKey'), 'Retry deve reutilizar a chave idempotente.')
 
 assert.ok(openapi.includes('/api/admin/usuarios/indicadores:'), 'OpenAPI deve documentar os indicadores.')
+assert.ok(openapi.includes('/api/admin/usuarios/{id}/exclusao:'), 'OpenAPI deve documentar a pre-validacao.')
+assert.ok(openapi.includes('AdminUsuarioExclusaoResultado'), 'OpenAPI deve documentar o resultado da exclusao.')
 assert.ok(openapi.includes('/api/admin/documentos/usuarios/{usuarioId}/envios:'), 'OpenAPI deve documentar o upload privado.')
 assert.ok(openapi.includes('AdminUsuarioIndicadores') && openapi.includes('AdminUsuarioAtualizacaoRequest'), 'Schemas completos devem estar documentados.')
 

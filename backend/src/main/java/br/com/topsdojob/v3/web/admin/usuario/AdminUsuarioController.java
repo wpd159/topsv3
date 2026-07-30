@@ -4,9 +4,15 @@ import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioAtualizacaoService;
 import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioAtualizacaoException;
 import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioConsultaService;
+import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioExclusaoBloqueadaException;
+import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioExclusaoService;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioAtualizacaoErroDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioDetalheDto;
+import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioExclusaoElegibilidadeDto;
+import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioExclusaoErroDto;
+import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioExclusaoRequestDto;
+import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioExclusaoResultadoDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioIndicadoresDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioResumoDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
@@ -17,11 +23,13 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,12 +41,15 @@ public class AdminUsuarioController {
 
     private final AdminUsuarioConsultaService service;
     private final AdminUsuarioAtualizacaoService atualizacaoService;
+    private final AdminUsuarioExclusaoService exclusaoService;
 
     public AdminUsuarioController(
             AdminUsuarioConsultaService service,
-            AdminUsuarioAtualizacaoService atualizacaoService) {
+            AdminUsuarioAtualizacaoService atualizacaoService,
+            AdminUsuarioExclusaoService exclusaoService) {
         this.service = service;
         this.atualizacaoService = atualizacaoService;
+        this.exclusaoService = exclusaoService;
     }
 
     @GetMapping
@@ -90,6 +101,29 @@ public class AdminUsuarioController {
                 RequestIdContext.current(request)));
     }
 
+    @GetMapping("/{id}/exclusao")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('ANUNCIO_MODERAR')")
+    public ResponseEntity<AdminUsuarioExclusaoElegibilidadeDto> elegibilidadeExclusao(
+            @PathVariable UUID id) {
+        return semCache(exclusaoService.elegibilidade(id));
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') and hasAuthority('ANUNCIO_MODERAR')")
+    public ResponseEntity<AdminUsuarioExclusaoResultadoDto> excluir(
+            @PathVariable UUID id,
+            @RequestBody(required = false) AdminUsuarioExclusaoRequestDto body,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @AuthenticationPrincipal AdminUserPrincipal ator,
+            HttpServletRequest request) {
+        return semCache(exclusaoService.excluir(
+                id,
+                body,
+                idempotencyKey,
+                ator,
+                RequestIdContext.current(request)));
+    }
+
     @ExceptionHandler(AdminUsuarioAtualizacaoException.class)
     public ResponseEntity<AdminUsuarioAtualizacaoErroDto> handleAtualizacao(
             AdminUsuarioAtualizacaoException exception,
@@ -100,6 +134,19 @@ public class AdminUsuarioController {
                         exception.status().value() == 409 ? "CONFLITO_CADASTRAL" : "DADOS_INVALIDOS",
                         exception.getMessage(),
                         exception.erros(),
+                        RequestIdContext.current(request)));
+    }
+
+    @ExceptionHandler(AdminUsuarioExclusaoBloqueadaException.class)
+    public ResponseEntity<AdminUsuarioExclusaoErroDto> handleExclusaoBloqueada(
+            AdminUsuarioExclusaoBloqueadaException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.status(409)
+                .cacheControl(CacheControl.noStore())
+                .body(new AdminUsuarioExclusaoErroDto(
+                        "USUARIO_NAO_EXCLUIVEL",
+                        exception.getMessage(),
+                        exception.bloqueios(),
                         RequestIdContext.current(request)));
     }
 

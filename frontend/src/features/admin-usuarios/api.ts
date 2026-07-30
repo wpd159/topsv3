@@ -10,6 +10,8 @@ import { getAdminMutationHeaders } from '@/features/admin-anuncios/api'
 
 import type {
   AdminUserDetail,
+  AdminUserDeletionEligibility,
+  AdminUserDeletionResult,
   AdminUserFilters,
   AdminUserIndicators,
   AdminUserPage,
@@ -28,6 +30,16 @@ export class AdminUserFormError extends ApiContractError {
         .filter((item) => item.campo && item.mensagem)
         .map((item) => [String(item.campo), String(item.mensagem)]),
     )
+  }
+}
+
+export class AdminUserDeletionError extends ApiContractError {
+  readonly blockers: string[]
+
+  constructor(message: string, status: number, blockers: string[]) {
+    super(message, status === 409 ? 'CONFLICT' : 'INVALID_REQUEST', status)
+    this.name = 'AdminUserDeletionError'
+    this.blockers = blockers
   }
 }
 
@@ -50,6 +62,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
         const body = await response.clone().json() as {
           mensagem?: string
           erros?: Array<{ campo?: string; mensagem?: string }>
+          bloqueios?: string[]
+        }
+        if (Array.isArray(body.bloqueios)) {
+          throw new AdminUserDeletionError(
+            body.mensagem || 'A conta possui vinculos que precisam ser preservados.',
+            response.status,
+            body.bloqueios.map(String),
+          )
         }
         if (Array.isArray(body.erros) && body.erros.length > 0) {
           throw new AdminUserFormError(
@@ -59,7 +79,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
           )
         }
       } catch (error) {
-        if (error instanceof AdminUserFormError) throw error
+        if (error instanceof AdminUserFormError || error instanceof AdminUserDeletionError) throw error
       }
       throw await apiErrorFromResponse(response)
     }
@@ -120,5 +140,21 @@ export function updateAdminUser(id: string, payload: AdminUserUpdate) {
   return request<AdminUserDetail>(`/usuarios/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
+  })
+}
+
+export function getAdminUserDeletionEligibility(id: string) {
+  return request<AdminUserDeletionEligibility>(
+    `/usuarios/${encodeURIComponent(id)}/exclusao`,
+  )
+}
+
+export function deleteAdminUser(id: string, idempotencyKey: string) {
+  return request<AdminUserDeletionResult>(`/usuarios/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: {
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify({ confirmacao: 'EXCLUIR' }),
   })
 }

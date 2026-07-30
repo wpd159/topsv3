@@ -10,6 +10,7 @@ export type AdminUserSummary = {
   kycStatus: string
   totalAnuncios: number
   bloqueado: boolean
+  potencialmenteExcluivel: boolean
   ufPrincipal?: string | null
   cidadePrincipal?: string | null
   criadoEm: string
@@ -86,4 +87,14 @@ export type AdminUserUpdate = {
   cpf: string
   telefone: string
   dataNascimento: string
+}
+
+export type AdminUserDeletionEligibility = {
+  podeExcluir: boolean
+  bloqueios: string[]
+}
+
+export type AdminUserDeletionResult = {
+  id: string
+  excluido: boolean
 }

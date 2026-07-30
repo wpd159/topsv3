@@ -2427,6 +2427,80 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+    delete:
+      summary: Exclui fisicamente uma conta de teste sem dependencias
+      description: Restrito a ADMIN com ANUNCIO_MODERAR. Exige confirmacao explicita, CSRF e lock transacional. Remove somente vinculos tecnicos descartaveis; qualquer vinculo de retencao retorna 409 sem alteracao parcial.
+      operationId: deleteAdminUsuario
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUsuarioExclusaoRequest"
+      responses:
+        "200":
+          description: Conta e vinculos tecnicos excluidos atomicamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioExclusaoResultado"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Conta possui vinculos que devem ser preservados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioExclusaoErro"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/admin/usuarios/{id}/exclusao:
+    get:
+      summary: Consulta se uma conta administrativa pode ser excluida fisicamente
+      description: Retorna apenas codigos sanitizados de bloqueio, sem identificadores de dependencias ou dados pessoais.
+      operationId: getAdminUsuarioExclusaoElegibilidade
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Resultado da pre-validacao de exclusao
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioExclusaoElegibilidade"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios:
     get:
       summary: Lista administrativa local de anuncios
@@ -11060,7 +11134,7 @@ components:
     AdminUsuarioResumo:
       type: object
       additionalProperties: false
-      required: [id, nome, email, telefone, cpfMascarado, status, kycStatus, totalAnuncios, bloqueado, criadoEm]
+      required: [id, nome, email, telefone, cpfMascarado, status, kycStatus, totalAnuncios, bloqueado, potencialmenteExcluivel, criadoEm]
       properties:
         id: { type: string, format: uuid }
         nome: { type: [string, "null"] }
@@ -11077,6 +11151,9 @@ components:
           enum: [SEM_ENVIO, PENDENTE, EM_ANALISE, APROVADO, REJEITADO, AJUSTE_SOLICITADO]
         totalAnuncios: { type: integer, format: int64, minimum: 0 }
         bloqueado: { type: boolean }
+        potencialmenteExcluivel:
+          type: boolean
+          description: Sinalizacao de interface; a decisao final sempre depende da pre-validacao transacional.
         ufPrincipal: { type: [string, "null"] }
         cidadePrincipal: { type: [string, "null"] }
         criadoEm: { type: string, format: date-time }
@@ -11206,6 +11283,59 @@ components:
         dataNascimento:
           type: string
           format: date
+    AdminUsuarioExclusaoElegibilidade:
+      type: object
+      additionalProperties: false
+      required: [podeExcluir, bloqueios]
+      properties:
+        podeExcluir: { type: boolean }
+        bloqueios:
+          type: array
+          items:
+            type: string
+            enum:
+              - CONTA_STAFF
+              - USUARIO_IMPORTADO
+              - POSSUI_ANUNCIOS
+              - POSSUI_DOCUMENTOS_KYC
+              - POSSUI_SALDO_OU_LEDGER
+              - POSSUI_PAGAMENTOS
+              - POSSUI_HISTORICO_OPERACIONAL
+    AdminUsuarioExclusaoRequest:
+      type: object
+      additionalProperties: false
+      required: [confirmacao]
+      properties:
+        confirmacao:
+          type: string
+          enum: [EXCLUIR]
+    AdminUsuarioExclusaoResultado:
+      type: object
+      additionalProperties: false
+      required: [id, excluido]
+      properties:
+        id: { type: string, format: uuid }
+        excluido: { type: boolean, const: true }
+    AdminUsuarioExclusaoErro:
+      type: object
+      additionalProperties: false
+      required: [codigo, mensagem, bloqueios, requestId]
+      properties:
+        codigo: { type: string, const: USUARIO_NAO_EXCLUIVEL }
+        mensagem: { type: string }
+        bloqueios:
+          type: array
+          items:
+            type: string
+            enum:
+              - CONTA_STAFF
+              - USUARIO_IMPORTADO
+              - POSSUI_ANUNCIOS
+              - POSSUI_DOCUMENTOS_KYC
+              - POSSUI_SALDO_OU_LEDGER
+              - POSSUI_PAGAMENTOS
+              - POSSUI_HISTORICO_OPERACIONAL
+        requestId: { type: string }
     AdminPaginaUsuarios:
       type: object
       additionalProperties: false
