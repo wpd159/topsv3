@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const read = (path) => readFile(`${root}/${path}`, 'utf8')
+const emailLogoPath = `${root}/public/logo-email.png`
 
 const [
   modalSource,
@@ -18,6 +19,10 @@ const [
   read('src/components/auth/register-form.tsx'),
   import(new URL('../src/utils/formatter.ts', import.meta.url)),
 ])
+
+await access(emailLogoPath)
+const emailLogo = await readFile(emailLogoPath)
+assert.deepEqual([...emailLogo.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
 
 assert.equal(Object.values(formatter.validatePassword('Nova@Forte9')).every(Boolean), true)
 for (const invalid of [

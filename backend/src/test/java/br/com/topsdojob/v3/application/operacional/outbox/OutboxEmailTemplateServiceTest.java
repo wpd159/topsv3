@@ -149,7 +149,7 @@ class OutboxEmailTemplateServiceTest {
             "<meta charset=\"UTF-8\">",
             "data-account-email-layout=\"v1\"",
             "role=\"presentation\"",
-            "https://v3.esle.cloud/logo-email.webp",
+            "https://v3.esle.cloud/logo-email.png",
             "alt=\"Tops do Job\"",
             "https://v3.esle.cloud",
             "Mensagem automática")
@@ -162,7 +162,7 @@ class OutboxEmailTemplateServiceTest {
             "${",
             "%s");
     assertThat(count(rendered.htmlBody(), SYNTHETIC_CODE)).isEqualTo(1);
-    assertThat(count(rendered.htmlBody(), "logo-email.webp")).isEqualTo(1);
+    assertThat(count(rendered.htmlBody(), "logo-email.png")).isEqualTo(1);
   }
 
   private int count(String content, String value) {

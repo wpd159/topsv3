@@ -7,7 +7,7 @@ final class AccountEmailLayout {
   private final String logoUrl;
 
   AccountEmailLayout(String canonicalDomain) {
-    this.logoUrl = canonicalDomain + "/logo-email.webp";
+    this.logoUrl = canonicalDomain + "/logo-email.png";
   }
 
   Rendered render(
