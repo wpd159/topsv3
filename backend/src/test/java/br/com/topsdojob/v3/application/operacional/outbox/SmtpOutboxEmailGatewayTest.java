@@ -13,9 +13,21 @@ import java.util.Properties;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.mail.javamail.JavaMailSender;
 
 class SmtpOutboxEmailGatewayTest {
+  @Test
+  void perfilHomologacaoPermiteAllowlistDoCofreComCaptureComoFallback() {
+    YamlPropertiesFactoryBean yaml = new YamlPropertiesFactoryBean();
+    yaml.setResources(new ClassPathResource("application-homologacao.yml"));
+
+    assertThat(yaml.getObject())
+        .isNotNull()
+        .containsEntry("app.outbox.email.recipient-mode", "${OUTBOX_RECIPIENT_MODE:CAPTURE}");
+  }
+
   @Test
   void preproducaoRedirecionaParaCapturaSemExporDestinatarioReal() throws Exception {
     JavaMailSender sender = mock(JavaMailSender.class);

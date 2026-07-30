@@ -31,7 +31,7 @@ app:
     email:
       enabled: ${OUTBOX_EMAIL_ENABLED:false}
       encryption-key: ${OUTBOX_PAYLOAD_ENCRYPTION_KEY}
-      recipient-mode: CAPTURE
+      recipient-mode: ${OUTBOX_RECIPIENT_MODE:CAPTURE}
       capture-address: ${OUTBOX_CAPTURE_ADDRESS:capture@preprod.invalid}
   canonical-domain: ${APP_CANONICAL_DOMAIN:https://v3.esle.cloud}
   cors:
