@@ -133,6 +133,7 @@ Add-Check "compose exige URL publica R2" ($compose -match 'R2_PUBLIC_BASE_URL:\s
 Add-Check "compose passa URL publica R2 ao build frontend" (($frontendCompose -match 'args:[\s\S]*R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') -and ($frontendCompose -match 'ARG R2_PUBLIC_BASE_URL') -and ($frontendCompose -match 'ENV R2_PUBLIC_BASE_URL=\$\$\{R2_PUBLIC_BASE_URL\}')) "remotePatterns usa a origem do ambiente no build"
 Add-Check "compose passa URL publica R2 ao runtime frontend" ($frontendCompose -match 'environment:\s+R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') "remotePatterns usa a origem do ambiente no startup"
 Add-Check "compose inclui configuracao Next no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/next\.config\.ts ./next\.config\.ts') "next start preserva remotePatterns compilados"
+Add-Check "compose inclui politica de indexacao no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/src/lib/seo/search-indexing-policy\.ts ./src/lib/seo/search-indexing-policy\.ts') "next.config.ts resolve a fonte canonica no startup"
 Add-Check "compose desabilita fixtures" (($compose -match '--app\.fixture\.stories\.enabled=false') -and ($compose -match '--app\.fixture\.auth-smoke\.enabled=false')) "sem dados automaticos"
 Add-Check "compose desabilita Analytics" ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+["'']?false["'']?') "sem analytics"
 Add-Check "workflow bloqueia indexacao da preproducao" ($workflow -match 'SEARCH_INDEXING_MODE:\s+blocked') "configuracao canonica fail-closed"

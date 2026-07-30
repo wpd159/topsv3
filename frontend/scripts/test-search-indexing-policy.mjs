@@ -26,6 +26,7 @@ function loadPolicyModule() {
 }
 
 const policyModule = loadPolicyModule()
+const preprodComposeSource = source("../deploy/preprod/docker-compose.yml")
 const {
   buildSearchRobotsRules,
   isNonIndexableRoute,
@@ -165,5 +166,9 @@ for (const nginxSource of [preprodNginxSource, hmlNginxSource]) {
 assert.match(workflowSource, /SEARCH_INDEXING_MODE:\s*blocked/)
 assert.match(workflowSource, /X-Robots-Tag:.*noindex/)
 assert.match(workflowSource, /Disallow: \//)
+assert.match(
+  preprodComposeSource,
+  /COPY --from=build \/app\/src\/lib\/seo\/search-indexing-policy\.ts \.\/src\/lib\/seo\/search-indexing-policy\.ts/,
+)
 
 console.log("SEARCH_INDEXING_POLICY_RESULT=OK")
