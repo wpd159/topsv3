@@ -18,9 +18,10 @@ import org.junit.jupiter.api.Test;
 
 class OutboxEmailTemplateServiceTest {
   private static final String TEST_CIPHER_MATERIAL = "YWFhYWFhYWFhYWFhYWFhYQ==";
+  private static final String SYNTHETIC_CODE = "246810";
 
   @Test
-  void renderizaRecuperacaoSemExporSegredoNoPayloadOuDadosSensiveisNoHtml() {
+  void confirmacaoERecuperacaoUsamLayoutCompartilhadoUtf8ELogoAbsoluta() {
     ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
     OutboxSecretProtector protector = new OutboxSecretProtector(TEST_CIPHER_MATERIAL);
     OutboxEmailPayloadFactory payloads = new OutboxEmailPayloadFactory(objectMapper, protector);
@@ -35,41 +36,70 @@ class OutboxEmailTemplateServiceTest {
         null,
         OffsetDateTime.now(ZoneOffset.UTC));
     when(users.findById(userId)).thenReturn(Optional.of(user));
-    TokenSegurancaEntity securityRecord = TokenSegurancaEntity.criar(
+    TokenSegurancaEntity resetRecord = TokenSegurancaEntity.criar(
         userId,
         "RECUPERACAO_SENHA",
         "hash",
         OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(15),
         OffsetDateTime.now(ZoneOffset.UTC));
-    when(tokens.findById(securityRecord.getId())).thenReturn(Optional.of(securityRecord));
-    String payload = payloads.auth(
+    TokenSegurancaEntity confirmationRecord = TokenSegurancaEntity.criar(
+        userId,
+        "CONFIRMACAO_EMAIL",
+        "hash",
+        OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(15),
+        OffsetDateTime.now(ZoneOffset.UTC));
+    when(tokens.findById(resetRecord.getId())).thenReturn(Optional.of(resetRecord));
+    when(tokens.findById(confirmationRecord.getId())).thenReturn(Optional.of(confirmationRecord));
+    String resetPayload = payloads.auth(
         "AUTH_RECUPERACAO_SENHA_SOLICITADA",
         userId,
-        securityRecord.getId(),
+        resetRecord.getId(),
         "q***@example.invalid",
-        "123456",
+        SYNTHETIC_CODE,
         OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(15));
-    OutboxEventoEntity event = OutboxEventoEntity.registrarPendente(
+    String confirmationPayload = payloads.auth(
+        "AUTH_CONFIRMACAO_CONTA_SOLICITADA",
+        userId,
+        confirmationRecord.getId(),
+        "q***@example.invalid",
+        SYNTHETIC_CODE,
+        OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(15));
+    OutboxEventoEntity resetEvent = OutboxEventoEntity.registrarPendente(
         UUID.randomUUID(),
         "USUARIO",
         userId,
         "AUTH_RECUPERACAO_SENHA_SOLICITADA",
-        payload,
+        resetPayload,
+        "AUTH:" + UUID.randomUUID(),
+        OffsetDateTime.now(ZoneOffset.UTC));
+    OutboxEventoEntity confirmationEvent = OutboxEventoEntity.registrarPendente(
+        UUID.randomUUID(),
+        "USUARIO",
+        userId,
+        "AUTH_CONFIRMACAO_CONTA_SOLICITADA",
+        confirmationPayload,
         "AUTH:" + UUID.randomUUID(),
         OffsetDateTime.now(ZoneOffset.UTC));
 
-    OutboxEmailMessage rendered = new OutboxEmailTemplateService(
+    OutboxEmailTemplateService service = new OutboxEmailTemplateService(
         objectMapper,
         users,
         tokens,
         protector,
-        "https://v3.esle.cloud").render(event);
+        "https://v3.esle.cloud");
+    OutboxEmailMessage reset = service.render(resetEvent);
+    OutboxEmailMessage confirmation = service.render(confirmationEvent);
 
-    assertThat(rendered.recipient()).isEqualTo("qa@example.invalid");
-    assertThat(rendered.textBody()).contains("123456", "https://v3.esle.cloud");
-    assertThat(rendered.htmlBody()).contains("123456", "https://v3.esle.cloud");
-    assertThat(rendered.htmlBody()).doesNotContain("+5562", "requestId", "object key", "<script");
-    assertThat(payload).doesNotContain("123456");
+    assertThat(confirmation.subject()).isEqualTo("Confirme sua conta — Tops do Job");
+    assertThat(reset.subject()).isEqualTo("Recuperação de senha — Tops do Job");
+    assertThat(confirmation.textBody())
+        .contains("código", "expira", "Não compartilhe", "https://v3.esle.cloud");
+    assertThat(reset.textBody())
+        .contains("Redefina sua senha", "código", "Segurança", "você", "automática");
+    assertAccountLayout(confirmation);
+    assertAccountLayout(reset);
+    assertThat(resetPayload).doesNotContain(SYNTHETIC_CODE);
+    assertThat(confirmationPayload).doesNotContain(SYNTHETIC_CODE);
   }
 
   @Test
@@ -110,5 +140,32 @@ class OutboxEmailTemplateServiceTest {
 
     assertThat(rendered.htmlBody()).doesNotContain("<script", "<img", "onerror=");
     assertThat(rendered.htmlBody()).contains("alert(1)");
+  }
+
+  private void assertAccountLayout(OutboxEmailMessage rendered) {
+    assertThat(rendered.recipient()).isEqualTo("qa@example.invalid");
+    assertThat(rendered.htmlBody())
+        .contains(
+            "<meta charset=\"UTF-8\">",
+            "data-account-email-layout=\"v1\"",
+            "role=\"presentation\"",
+            "https://v3.esle.cloud/logo-email.webp",
+            "alt=\"Tops do Job\"",
+            "https://v3.esle.cloud",
+            "Mensagem automática")
+        .doesNotContain(
+            "+5562",
+            "requestId",
+            "object key",
+            "<script",
+            "{{",
+            "${",
+            "%s");
+    assertThat(count(rendered.htmlBody(), SYNTHETIC_CODE)).isEqualTo(1);
+    assertThat(count(rendered.htmlBody(), "logo-email.webp")).isEqualTo(1);
+  }
+
+  private int count(String content, String value) {
+    return (content.length() - content.replace(value, "").length()) / value.length();
   }
 }

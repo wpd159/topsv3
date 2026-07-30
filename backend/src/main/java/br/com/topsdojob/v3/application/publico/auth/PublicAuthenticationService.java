@@ -44,8 +44,6 @@ public class PublicAuthenticationService {
     private static final String STATUS_LOGOUT_OK = "LOGOUT_OK";
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+[1-9][0-9]{7,14}$");
-    private static final Pattern SYMBOL_PATTERN = Pattern.compile("[!@#$%^&*(),.?\":{}|<>]");
-    private static final Pattern COMMON_CREDENTIAL_PATTERN = Pattern.compile("(1234|abcd|senha|password|qwerty)", Pattern.CASE_INSENSITIVE);
 
     private final UsuarioRepository usuarioRepository;
     private final CredencialUsuarioRepository credencialRepository;
@@ -245,7 +243,7 @@ public class PublicAuthenticationService {
             throw badRequest("Telefone invalido.");
         }
         LocalDate dataNascimento = validateBirthDate(request.dataNascimento());
-        validateCredential(request.senha(), request.confirmarSenha());
+        PublicPasswordPolicy.validate(request.senha(), request.confirmarSenha());
         if (!Boolean.TRUE.equals(request.acceptedTermsOfUse())
                 || !Boolean.TRUE.equals(request.acceptedPrivacyPolicy())) {
             throw badRequest("Aceite dos termos de uso e da politica de privacidade e obrigatorio.");
@@ -266,21 +264,6 @@ public class PublicAuthenticationService {
             return birthDate;
         } catch (DateTimeParseException exception) {
             throw badRequest("Data de nascimento invalida.");
-        }
-    }
-
-    private void validateCredential(String credential, String confirmation) {
-        if (isBlank(credential)
-                || credential.length() < 8
-                || !credential.matches(".*[A-Z].*")
-                || !credential.matches(".*[a-z].*")
-                || !credential.matches(".*[0-9].*")
-                || !SYMBOL_PATTERN.matcher(credential).find()
-                || COMMON_CREDENTIAL_PATTERN.matcher(credential).find()) {
-            throw badRequest("Senha nao atende aos requisitos de seguranca.");
-        }
-        if (!credential.equals(confirmation)) {
-            throw badRequest("Confirmacao de senha invalida.");
         }
     }
 

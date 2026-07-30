@@ -33,8 +33,6 @@ public class PublicAccountLifecycleService {
     static final String RESET = "RECUPERACAO_SENHA";
     private static final int MAX_ATTEMPTS = 5;
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-    private static final Pattern SYMBOL = Pattern.compile("[!@#$%^&*(),.?\":{}|<>]");
-    private static final Pattern COMMON = Pattern.compile("(1234|abcd|senha|password|qwerty)", Pattern.CASE_INSENSITIVE);
     private static final String GENERIC_MESSAGE = "Se houver uma conta elegivel, enviaremos as instrucoes ao e-mail informado.";
 
     private final UsuarioRepository usuarios;
@@ -112,7 +110,7 @@ public class PublicAccountLifecycleService {
     public PublicAccountActionDto reset(PublicResetPasswordRequestDto request, String clientKey) {
         rateLimiter.require("reset", clientKey + ':' + normalize(request == null ? null : request.email()), 10, Duration.ofMinutes(15));
         if (request == null) throw invalidToken();
-        validatePassword(request.novaSenha(), request.confirmarSenha());
+        PublicPasswordPolicy.validate(request.novaSenha(), request.confirmarSenha());
         UsuarioEntity user = user(request.email());
         consumeValid(user, RESET, request.codigo());
         var credential = credenciais.findByUsuarioId(user.getId()).orElseThrow(this::invalidToken);
@@ -147,11 +145,17 @@ public class PublicAccountLifecycleService {
     }
 
     private TokenSegurancaEntity validateCurrent(UsuarioEntity user, String purpose, String code) {
-        List<TokenSegurancaEntity> active = tokens.findAtivosForUpdate(user.getId(), purpose);
-        if (active.isEmpty()) throw invalidToken();
-        TokenSegurancaEntity securityRecord = active.get(0);
+        TokenSegurancaEntity securityRecord = tokens.findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(user.getId(), purpose)
+                .orElseThrow(this::invalidToken);
         OffsetDateTime now = now();
-        if (securityRecord.getExpiraEm().isBefore(now) || securityRecord.getTentativas() >= MAX_ATTEMPTS) {
+        if (securityRecord.getConsumidoEm() != null) {
+            throw tokenAlreadyUsed();
+        }
+        if (!securityRecord.getExpiraEm().isAfter(now)) {
+            securityRecord.consumir(now);
+            throw tokenExpired();
+        }
+        if (securityRecord.getTentativas() >= MAX_ATTEMPTS) {
             securityRecord.consumir(now);
             throw invalidToken();
         }
@@ -175,17 +179,14 @@ public class PublicAccountLifecycleService {
         return email;
     }
 
-    private void validatePassword(String candidate, String confirmation) {
-        if (candidate == null || candidate.length() < 8 || !candidate.matches(".*[A-Z].*")
-                || !candidate.matches(".*[a-z].*") || !candidate.matches(".*[0-9].*")
-                || !SYMBOL.matcher(candidate).find() || COMMON.matcher(candidate).find())
-            throw new PublicAuthException(HttpStatus.BAD_REQUEST, "Senha nao atende aos requisitos de seguranca.");
-        if (!candidate.equals(confirmation))
-            throw new PublicAuthException(HttpStatus.BAD_REQUEST, "Confirmacao de senha invalida.");
-    }
-
     private PublicAuthException invalidToken() {
-        return new PublicAuthException(HttpStatus.BAD_REQUEST, "Codigo invalido, expirado ou ja utilizado.");
+        return new PublicAuthException(HttpStatus.BAD_REQUEST, "Código inválido.");
+    }
+    private PublicAuthException tokenExpired() {
+        return new PublicAuthException(HttpStatus.BAD_REQUEST, "Código expirado.");
+    }
+    private PublicAuthException tokenAlreadyUsed() {
+        return new PublicAuthException(HttpStatus.BAD_REQUEST, "Código já utilizado.");
     }
     private String normalize(String email) { return email == null ? "" : email.trim().toLowerCase(Locale.ROOT); }
     private OffsetDateTime now() { return OffsetDateTime.now(ZoneOffset.UTC); }

@@ -22,7 +22,6 @@ import br.com.topsdojob.v3.persistence.repository.TokenSegurancaRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,7 +60,9 @@ class PublicAccountLifecycleServiceTest {
 
     @Test void confirmacaoValidaConsomeTokenEAtivaConta() {
         TokenSegurancaEntity securityRecord = token(PublicAccountLifecycleService.CONFIRMATION);
-        when(tokens.findAtivosForUpdate(user.getId(), PublicAccountLifecycleService.CONFIRMATION)).thenReturn(List.of(securityRecord));
+        when(tokens.findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(
+                user.getId(), PublicAccountLifecycleService.CONFIRMATION))
+                .thenReturn(Optional.of(securityRecord));
         when(encoder.matches("123456", "hash-protegido")).thenReturn(true);
         service.confirm(new PublicCodeRequestDto("perfil@example.invalid", "123456"), "ip-c");
         assertThat(securityRecord.getConsumidoEm()).isNotNull();
@@ -70,7 +71,9 @@ class PublicAccountLifecycleServiceTest {
 
     @Test void tokenInvalidoRetorna400EContaTentativa() {
         TokenSegurancaEntity securityRecord = token(PublicAccountLifecycleService.RESET);
-        when(tokens.findAtivosForUpdate(user.getId(), PublicAccountLifecycleService.RESET)).thenReturn(List.of(securityRecord));
+        when(tokens.findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(
+                user.getId(), PublicAccountLifecycleService.RESET))
+                .thenReturn(Optional.of(securityRecord));
         assertThatThrownBy(() -> service.validateReset(new PublicCodeRequestDto("perfil@example.invalid", "000000"), "ip-d"))
                 .isInstanceOfSatisfying(PublicAuthException.class,
                         error -> assertThat(error.status()).isEqualTo(HttpStatus.BAD_REQUEST));
@@ -80,10 +83,18 @@ class PublicAccountLifecycleServiceTest {
     @Test void tokenExpiradoOuReutilizadoRetorna400SemErroInterno() {
         TokenSegurancaEntity expired = TokenSegurancaEntity.criar(user.getId(), PublicAccountLifecycleService.RESET,
                 "hash-protegido", OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(1), OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(20));
-        when(tokens.findAtivosForUpdate(user.getId(), PublicAccountLifecycleService.RESET)).thenReturn(List.of(expired), List.of());
-        assertBadRequest(() -> service.validateReset(new PublicCodeRequestDto("perfil@example.invalid", "123456"), "ip-expired"));
+        when(tokens.findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(
+                user.getId(), PublicAccountLifecycleService.RESET))
+                .thenReturn(Optional.of(expired));
+        assertThatThrownBy(() -> service.validateReset(
+                new PublicCodeRequestDto("perfil@example.invalid", "123456"), "ip-expired"))
+                .isInstanceOfSatisfying(PublicAuthException.class,
+                        error -> assertThat(error.getMessage()).isEqualTo("Código expirado."));
         assertThat(expired.getConsumidoEm()).isNotNull();
-        assertBadRequest(() -> service.validateReset(new PublicCodeRequestDto("perfil@example.invalid", "123456"), "ip-reused"));
+        assertThatThrownBy(() -> service.validateReset(
+                new PublicCodeRequestDto("perfil@example.invalid", "123456"), "ip-reused"))
+                .isInstanceOfSatisfying(PublicAuthException.class,
+                        error -> assertThat(error.getMessage()).isEqualTo("Código já utilizado."));
     }
 
     @Test void rateLimitBloqueiaExcessoCom429() {
@@ -97,7 +108,9 @@ class PublicAccountLifecycleServiceTest {
     @Test void redefinicaoTrocaHashConsomeTokenEInvalidaSessoes() {
         TokenSegurancaEntity securityRecord = token(PublicAccountLifecycleService.RESET);
         CredencialUsuarioEntity credential = CredencialUsuarioEntity.criar(UUID.randomUUID(), user.getId(), "hash-antigo", OffsetDateTime.now(ZoneOffset.UTC));
-        when(tokens.findAtivosForUpdate(user.getId(), PublicAccountLifecycleService.RESET)).thenReturn(List.of(securityRecord));
+        when(tokens.findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(
+                user.getId(), PublicAccountLifecycleService.RESET))
+                .thenReturn(Optional.of(securityRecord));
         when(encoder.matches("123456", "hash-protegido")).thenReturn(true);
         when(encoder.encode("Nova@Forte9")).thenReturn("hash-novo");
         when(credentials.findByUsuarioId(user.getId())).thenReturn(Optional.of(credential));
@@ -112,8 +125,4 @@ class PublicAccountLifecycleServiceTest {
                 OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(5), OffsetDateTime.now(ZoneOffset.UTC));
     }
 
-    private void assertBadRequest(org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {
-        assertThatThrownBy(callable).isInstanceOfSatisfying(PublicAuthException.class,
-                error -> assertThat(error.status()).isEqualTo(HttpStatus.BAD_REQUEST));
-    }
 }

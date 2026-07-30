@@ -25,6 +25,7 @@ public class OutboxEmailTemplateService {
   private final TokenSegurancaRepository securityTokens;
   private final OutboxSecretProtector secretProtector;
   private final String canonicalDomain;
+  private final AccountEmailLayout accountEmailLayout;
 
   public OutboxEmailTemplateService(
       ObjectMapper objectMapper,
@@ -37,6 +38,7 @@ public class OutboxEmailTemplateService {
     this.securityTokens = securityTokens;
     this.secretProtector = secretProtector;
     this.canonicalDomain = canonicalDomain(canonicalDomain);
+    this.accountEmailLayout = new AccountEmailLayout(this.canonicalDomain);
   }
 
   public OutboxEmailMessage render(OutboxEventoEntity outbox) {
@@ -75,30 +77,33 @@ public class OutboxEmailTemplateService {
   private Content confirmation(JsonNode payload) {
     String code = protectedCode(payload);
     String minutes = expiryMinutes(payload);
-    return content(
-        "Confirme sua conta na Tops do Job",
-        "Use o codigo " + code + " para confirmar sua conta. O codigo expira em " + minutes
-            + " minutos. Abra " + canonicalDomain + " para concluir. Se voce nao solicitou, ignore esta mensagem.",
+    AccountEmailLayout.Rendered rendered = accountEmailLayout.render(
+        "Confirme sua conta — Tops do Job",
         "Confirme sua conta",
-        "Use o codigo abaixo para confirmar sua conta:",
+        "Use o código de seis dígitos abaixo para concluir seu cadastro com segurança.",
         code,
-        "O codigo expira em " + minutes + " minutos.",
-        canonicalDomain);
+        "O código expira em " + minutes + " minutos.",
+        "Acessar a Tops do Job",
+        canonicalDomain,
+        "Não compartilhe este código com ninguém.",
+        "Se você não solicitou este cadastro, ignore esta mensagem.");
+    return new Content(rendered.subject(), rendered.text(), rendered.html());
   }
 
   private Content passwordRecovery(JsonNode payload) {
     String code = protectedCode(payload);
     String minutes = expiryMinutes(payload);
-    return content(
-        "Recuperacao de senha da Tops do Job",
-        "Use o codigo " + code + " para redefinir sua senha. O codigo expira em " + minutes
-            + " minutos. Abra " + canonicalDomain + " e escolha Esqueci minha senha. "
-            + "Se voce nao solicitou, ignore esta mensagem.",
-        "Recuperacao de senha",
-        "Use o codigo abaixo no fluxo Esqueci minha senha.",
+    AccountEmailLayout.Rendered rendered = accountEmailLayout.render(
+        "Recuperação de senha — Tops do Job",
+        "Redefina sua senha",
+        "Use o código de seis dígitos abaixo no fluxo Esqueci minha senha.",
         code,
-        "O codigo expira em " + minutes + " minutos.",
-        canonicalDomain);
+        "O código expira em " + minutes + " minutos.",
+        "Redefinir minha senha",
+        canonicalDomain,
+        "Nunca compartilhe este código ou sua senha.",
+        "Se você não reconhece esta solicitação, ignore esta mensagem.");
+    return new Content(rendered.subject(), rendered.text(), rendered.html());
   }
 
   private Content moderationRejected(JsonNode payload) {

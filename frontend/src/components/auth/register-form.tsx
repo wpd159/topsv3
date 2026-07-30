@@ -1,24 +1,27 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import {
   CalendarDaysIcon,
   EnvelopeIcon,
   ExclamationTriangleIcon,
-  EyeIcon,
-  EyeSlashIcon,
-  LockClosedIcon,
   PhoneIcon,
   UserIcon,
 } from '@heroicons/react/24/outline'
+import { PasswordInput } from '@/components/auth/password-input'
+import {
+  PasswordRequirements,
+  passwordMeetsPolicy,
+  pendingPasswordRequirements,
+} from '@/components/auth/password-requirements'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { getPublicLogoUrl } from '@/lib/public-site-assets'
-import { formatPhone, validateEmail, validatePassword as validateCredential } from '@/utils/formatter'
+import { formatPhone, validateEmail } from '@/utils/formatter'
 import {
   checkDuplicidade,
   fetchLegalDocuments,
@@ -71,21 +74,6 @@ const REGISTER_INPUT_CLASS = cn(
   'focus-visible:border-[#FC1EAD] focus-visible:ring-[3px] focus-visible:ring-[#FC1EAD]/20',
   'focus-visible:ring-offset-0 focus-visible:shadow-[0_0_12px_rgba(252,30,173,0.18)]'
 )
-
-const CREDENTIAL_RULES = [
-  ['Pelo menos 8 caracteres', 'length'],
-  ['Contem letras maiusculas', 'uppercase'],
-  ['Contem letras minusculas', 'lowercase'],
-  ['Contem numeros', 'number'],
-  ['Contem pontuacao ou simbolo', 'symbol'],
-  ['Nao contem dados obvios', 'noCommon'],
-] as const
-
-const CREDENTIAL_VISIBILITY_LABELS = ['Mostrar senha', 'Ocultar senha'] as const
-const CREDENTIAL_CONFIRMATION_VISIBILITY_LABELS = [
-  'Mostrar confirmacao da senha',
-  'Ocultar confirmacao da senha',
-] as const
 
 function maskBirthDate(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 8)
@@ -158,8 +146,6 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
   const [values, setValues] = useState<RegisterValues>(INITIAL_VALUES)
   const [terms, setTerms] = useState<RegisterTerms>(INITIAL_TERMS)
   const [duplicateErrors, setDuplicateErrors] = useState<Partial<Record<DuplicateField, string>>>({})
-  const [mostrarCredencial, setMostrarCredencial] = useState(false)
-  const [mostrarConfirmacaoCredencial, setMostrarConfirmacaoCredencial] = useState(false)
   const [credencialEmFoco, setCredencialEmFoco] = useState(false)
   const [credencialTocada, setCredencialTocada] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -171,8 +157,7 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
     return () => Object.values(requests).forEach((controller) => controller?.abort())
   }, [])
 
-  const validacaoCredencial = useMemo(() => validateCredential(values.credencial), [values.credencial])
-  const credencialOk = Object.values(validacaoCredencial).every(Boolean)
+  const credencialOk = passwordMeetsPolicy(values.credencial)
   const emailValid = validateEmail(values.email)
   const phoneClean = values.phone.replace(/\D/g, '')
   const birthDateComplete = values.dataNascimento.length === 10
@@ -197,9 +182,7 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
     !duplicateErrors.username &&
     !duplicateErrors.telefone
 
-  const regrasCredencialPendentes = CREDENTIAL_RULES.filter(([, key]) => !validacaoCredencial[key]).map(
-    ([text]) => text
-  )
+  const regrasCredencialPendentes = pendingPasswordRequirements(values.credencial)
   const mostrarAvisoCredencial =
     credencialTocada && !credencialEmFoco && values.credencial.trim().length > 0 && !credencialOk
 
@@ -421,32 +404,19 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
           <InlineError message={emailError} />
         </div>
 
-        <div className="relative">
-          <LockClosedIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-          <Input
-            ref={credencialInputRef}
-            type={mostrarCredencial ? 'text' : 'password'}
-            autoComplete="new-password"
-            placeholder="Senha"
-            value={values.credencial}
-            onChange={(event) => updateValue('credencial', event.target.value)}
-            onFocus={() => {
-              setCredencialEmFoco(true)
-              setCredencialTocada(true)
-            }}
-            onBlur={() => setCredencialEmFoco(false)}
-            className={cn(REGISTER_INPUT_CLASS, 'pl-10 pr-10 py-5')}
-          />
-          <button
-            type="button"
-            aria-label={CREDENTIAL_VISIBILITY_LABELS[mostrarCredencial ? 1 : 0]}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => setMostrarCredencial((current) => !current)}
-            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-          >
-            {mostrarCredencial ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-          </button>
-        </div>
+        <PasswordInput
+          inputRef={credencialInputRef}
+          value={values.credencial}
+          onChange={(value) => updateValue('credencial', value)}
+          placeholder="Senha"
+          visibilityContext="senha"
+          onFocus={() => {
+            setCredencialEmFoco(true)
+            setCredencialTocada(true)
+          }}
+          onBlur={() => setCredencialEmFoco(false)}
+          className={REGISTER_INPUT_CLASS}
+        />
 
         <div
           className={cn(
@@ -486,38 +456,19 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
           )}
           aria-hidden={!credencialEmFoco}
         >
-          <ul className="min-h-0 space-y-1 overflow-hidden text-xs text-gray-500">
-            {CREDENTIAL_RULES.map(([text, key]) => (
-              <li
-                key={key}
-                className={cn('flex items-center gap-2', validacaoCredencial[key] ? 'text-green-600' : 'text-gray-400')}
-              >
-                <span>{validacaoCredencial[key] ? 'OK' : '-'}</span> {text}
-              </li>
-            ))}
-          </ul>
+          <PasswordRequirements value={values.credencial} className="min-h-0 overflow-hidden" />
         </div>
 
-        <div className="relative mt-2">
-          <LockClosedIcon className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
-          <Input
-            type={mostrarConfirmacaoCredencial ? 'text' : 'password'}
-            autoComplete="new-password"
-            placeholder="Confirmar senha"
+        <div className="mt-2">
+          <PasswordInput
             value={values.confirmacaoCredencial}
-            onChange={(event) => updateValue('confirmacaoCredencial', event.target.value)}
-            className={cn(REGISTER_INPUT_CLASS, 'pl-10 pr-10 py-5', credenciaisDiferentes && 'border-red-400')}
+            onChange={(value) => updateValue('confirmacaoCredencial', value)}
+            placeholder="Confirmar senha"
+            visibilityContext="confirmação da senha"
+            invalid={credenciaisDiferentes}
+            className={REGISTER_INPUT_CLASS}
           />
-          <button
-            type="button"
-            aria-label={CREDENTIAL_CONFIRMATION_VISIBILITY_LABELS[mostrarConfirmacaoCredencial ? 1 : 0]}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => setMostrarConfirmacaoCredencial((current) => !current)}
-            className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-          >
-            {mostrarConfirmacaoCredencial ? <EyeSlashIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
-          </button>
-          <InlineError message={credenciaisDiferentes ? 'As senhas nao coincidem.' : undefined} />
+          <InlineError message={credenciaisDiferentes ? 'As senhas não coincidem.' : undefined} />
         </div>
 
         <div className="mt-4 space-y-2 text-xs">

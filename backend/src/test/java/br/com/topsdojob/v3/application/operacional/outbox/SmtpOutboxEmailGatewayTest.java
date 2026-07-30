@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import jakarta.mail.Session;
+import jakarta.mail.BodyPart;
+import jakarta.mail.Multipart;
 import jakarta.mail.internet.MimeMessage;
 import java.util.Properties;
 import java.util.UUID;
@@ -98,6 +100,44 @@ class SmtpOutboxEmailGatewayTest {
   }
 
   @Test
+  void mensagemTransacionalPreservaAssuntoEPartesUtf8() throws Exception {
+    JavaMailSender sender = mock(JavaMailSender.class);
+    MimeMessage mimeMessage = new MimeMessage(Session.getInstance(new Properties()));
+    when(sender.createMimeMessage()).thenReturn(mimeMessage);
+    OutboxEmailProperties properties = new OutboxEmailProperties(
+        true,
+        "preproducao",
+        "ALLOWLIST",
+        "capture@preprod.invalid",
+        "qa.autorizado@example.com",
+        "no-reply@topsdojob.com",
+        "Tops do Job",
+        "",
+        10,
+        8,
+        30);
+    SmtpOutboxEmailGateway gateway = new SmtpOutboxEmailGateway(sender, properties);
+
+    gateway.send(new OutboxEmailMessage(
+        UUID.randomUUID(),
+        "idempotencia-utf8",
+        "qa.autorizado@example.com",
+        "Recuperação de senha — Tops do Job",
+        "Código, recuperação, redefinição, automático, não, segurança e você.",
+        "<p>Código, recuperação, redefinição, automático, não, segurança e você.</p>"));
+
+    ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
+    verify(sender).send(captor.capture());
+    MimeMessage sent = captor.getValue();
+    sent.saveChanges();
+
+    assertThat(sent.getSubject()).isEqualTo("Recuperação de senha — Tops do Job");
+    assertThat(contentTypes(sent.getContent()))
+        .anyMatch(type -> type.contains("text/plain") && type.toLowerCase().contains("charset=utf-8"))
+        .anyMatch(type -> type.contains("text/html") && type.toLowerCase().contains("charset=utf-8"));
+  }
+
+  @Test
   void allowlistBloqueiaDestinatarioNaoAutorizadoAntesDoSmtp() {
     JavaMailSender sender = mock(JavaMailSender.class);
     OutboxEmailProperties properties = new OutboxEmailProperties(
@@ -161,5 +201,22 @@ class SmtpOutboxEmailGatewayTest {
         30))
         .isInstanceOf(IllegalStateException.class)
         .hasMessage("OUTBOX_RECIPIENT_MODE=DIRECT nao e permitido na preproducao");
+  }
+
+  private java.util.List<String> contentTypes(Object content) throws Exception {
+    java.util.List<String> types = new java.util.ArrayList<>();
+    collectContentTypes(content, types);
+    return types;
+  }
+
+  private void collectContentTypes(Object content, java.util.List<String> types) throws Exception {
+    if (!(content instanceof Multipart multipart)) {
+      return;
+    }
+    for (int index = 0; index < multipart.getCount(); index++) {
+      BodyPart part = multipart.getBodyPart(index);
+      types.add(part.getContentType());
+      collectContentTypes(part.getContent(), types);
+    }
   }
 }
