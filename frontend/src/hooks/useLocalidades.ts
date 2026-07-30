@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
-  descobrirLocalidadesPublicas,
+  listarCatalogoCompletoLocalidades,
   type PublicCatalogDiscovery,
 } from '@/lib/public-catalog-api'
 
@@ -28,7 +28,7 @@ export function useLocalidades() {
 
   const carregarCatalogo = useCallback(async () => {
     if (catalogoRef.current) return catalogoRef.current
-    const catalogo = await descobrirLocalidadesPublicas()
+    const catalogo = await listarCatalogoCompletoLocalidades()
     catalogoRef.current = catalogo
     return catalogo
   }, [])

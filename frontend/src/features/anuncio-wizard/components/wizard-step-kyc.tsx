@@ -1,7 +1,8 @@
 'use client'
 
-import { CheckCircle2, FileText, IdCard, RefreshCw, ShieldCheck, UploadCloud } from 'lucide-react'
+import { CheckCircle2, FileText, IdCard, RefreshCw, ShieldCheck } from 'lucide-react'
 import { BirthDateField } from '@/components/forms/birth-date-field'
+import { FilePicker } from '@/components/forms/file-picker'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -74,7 +75,14 @@ export function WizardStepKyc({
   const backDoc = state.documentoModo === 'FRENTE_VERSO' ? state.documentos[1] ?? null : null
   const pdfDoc = state.documentoModo === 'PDF' ? state.documentos[0] ?? null : null
 
-  const switchMode = (mode: WizardKycState['documentoModo']) => {
+  const switchMode = (mode: Exclude<WizardKycState['documentoModo'], null>) => {
+    if (state.documentoModo === mode) return
+    if (
+      state.documentos.length > 0
+      && !window.confirm('Trocar o formato removerá os arquivos já selecionados. Deseja continuar?')
+    ) {
+      return
+    }
     onPatch({ documentoModo: mode })
     onSetDocumentos([])
   }
@@ -172,17 +180,17 @@ export function WizardStepKyc({
                 type="button"
                 onClick={() => switchMode('FRENTE_VERSO')}
                 className={cn(
-                  'rounded-2xl border px-4 py-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm',
+                  'rounded-2xl border px-4 py-4 text-left transition-colors hover:border-zinc-400',
                   state.documentoModo === 'FRENTE_VERSO' ? 'border-zinc-900 bg-white' : 'border-zinc-200 bg-white/70'
                 )}
               >
-                <span className="flex items-center gap-2 text-sm font-semibold"><IdCard className="h-4 w-4" /> Frente e verso</span>
+                <span className="flex items-center gap-2 text-sm font-semibold"><IdCard className="h-4 w-4" /> Documento frente e verso</span>
               </button>
               <button
                 type="button"
                 onClick={() => switchMode('PDF')}
                 className={cn(
-                  'rounded-2xl border px-4 py-4 text-left transition hover:-translate-y-0.5 hover:shadow-sm',
+                  'rounded-2xl border px-4 py-4 text-left transition-colors hover:border-zinc-400',
                   state.documentoModo === 'PDF' ? 'border-zinc-900 bg-white' : 'border-zinc-200 bg-white/70'
                 )}
               >
@@ -192,60 +200,45 @@ export function WizardStepKyc({
 
             {state.documentoModo === 'PDF' ? (
               <Field label="PDF do documento">
-                <Input
-                  type="file"
+                <FilePicker
+                  ariaLabel="Selecionar PDF do documento"
+                  buttonLabel="Selecionar arquivo"
                   accept="application/pdf,.pdf"
-                  className="h-11 text-sm"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    onSetDocumentos(file ? [file] : [])
-                    event.currentTarget.value = ''
-                  }}
+                  files={pdfDoc ? [pdfDoc] : []}
+                  onSelect={(files) => onSetDocumentos(files.slice(0, 1))}
+                  onRemove={() => onSetDocumentos([])}
+                  helperText={`PDF de até ${Math.round(status.tamanhoMaximoBytes / 1024 / 1024)} MB.`}
                 />
-                <p className="text-xs font-normal text-zinc-500">{pdfDoc?.name || 'Nenhum PDF selecionado.'}</p>
               </Field>
-            ) : (
+            ) : state.documentoModo === 'FRENTE_VERSO' ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Documento frente">
-                  <Input
-                    type="file"
+                  <FilePicker
+                    ariaLabel="Selecionar imagem da frente do documento"
+                    buttonLabel="Selecionar foto"
                     accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                    className="h-11 text-sm"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null
-                      onSetDocumentos([file, backDoc].filter(Boolean) as File[])
-                      event.currentTarget.value = ''
-                    }}
+                    files={frontDoc ? [frontDoc] : []}
+                    onSelect={(files) => onSetDocumentos([files[0], backDoc].filter(Boolean) as File[])}
+                    onRemove={() => onSetDocumentos([])}
+                    helperText="Imagem principal obrigatória."
                   />
-                  <p className="text-xs font-normal text-zinc-500">{frontDoc?.name || 'Imagem principal obrigatória.'}</p>
                 </Field>
                 <Field label="Documento verso">
-                  <Input
-                    type="file"
+                  <FilePicker
+                    ariaLabel="Selecionar imagem do verso do documento"
+                    buttonLabel="Selecionar foto"
                     accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                    className="h-11 text-sm"
                     disabled={!frontDoc}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null
-                      onSetDocumentos([frontDoc, file].filter(Boolean) as File[])
-                      event.currentTarget.value = ''
-                    }}
-                  />
-                  <p className="text-xs font-normal text-zinc-500">
-                    {backDoc?.name || (frontDoc
+                    files={backDoc ? [backDoc] : []}
+                    onSelect={(files) => onSetDocumentos([frontDoc, files[0]].filter(Boolean) as File[])}
+                    onRemove={() => onSetDocumentos(frontDoc ? [frontDoc] : [])}
+                    helperText={frontDoc
                       ? 'Opcional quando a frente contém todos os dados.'
-                      : 'Selecione primeiro a frente do documento.')}
-                  </p>
+                      : 'Selecione primeiro a frente do documento.'}
+                  />
                 </Field>
               </div>
-            )}
-
-            <div className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-xs text-zinc-600">
-              <UploadCloud className="h-4 w-4" />
-              {state.documentos.length > 0
-                ? `${state.documentos.length} arquivo(s) selecionado(s)`
-                : `Até ${Math.round(status.tamanhoMaximoBytes / 1024 / 1024)} MB por arquivo`}
-            </div>
+            ) : null}
           </div>
         </div>
       )}

@@ -59,6 +59,7 @@ export type MinhasMidiasLimites = {
   videosAtivos: number
   videosDisponiveis: number
   fotosExtrasAtivo: boolean
+  videoAtivo: boolean
   maxFotoBytes: number
   maxVideoBytes: number
 }
@@ -76,6 +77,7 @@ export type MeuAnuncio = {
   categoria: string
   preco: number | null
   whatsapp: string | null
+  linkConteudo: string | null
   locaisAtendimento: string[]
   servicos: string[]
   atendimentoExclusivamenteVirtual: boolean
@@ -109,8 +111,8 @@ export type MeuAnuncioAtualizacao = {
   bairro: string | null
   locaisAtendimento: string[]
   servicos: string[]
-  whatsapp: string | null
   atendimentoExclusivamenteVirtual: boolean
+  linkConteudo: string | null
 }
 
 export class MeusAnunciosApiError extends Error {
@@ -369,6 +371,68 @@ export async function enviarMinhaMidia(
     }
     const form = new FormData()
     form.append('arquivo', arquivo)
+    xhr.send(form)
+  })
+}
+
+const mediaBatchIdempotencyKeys = new Map<string, string>()
+
+function mediaBatchSignature(files: File[]) {
+  return files
+    .map((file) => `${file.name}:${file.size}:${file.lastModified}:${file.type}`)
+    .join('|')
+}
+
+export async function enviarMinhasMidiasEmLote(
+  slug: string,
+  arquivos: File[],
+  onProgress?: (percentual: number) => void
+) {
+  if (!arquivos.length) throw new MeusAnunciosApiError('Selecione ao menos um arquivo.', 400)
+  const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+  const signature = mediaBatchSignature(arquivos)
+  const idempotencyKey = mediaBatchIdempotencyKeys.get(signature) || crypto.randomUUID()
+  mediaBatchIdempotencyKeys.set(signature, idempotencyKey)
+  return new Promise<MinhasMidiasResponse>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', publicApiUrl(`/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/lote`))
+    xhr.withCredentials = true
+    xhr.setRequestHeader('Accept', 'application/json')
+    xhr.setRequestHeader('Idempotency-Key', idempotencyKey)
+    if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
+    }
+    xhr.onerror = () => reject(new MeusAnunciosApiError('Não foi possível enviar as mídias.', 0))
+    xhr.onload = () => {
+      let body: unknown = null
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : null
+      } catch {
+        body = null
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const errorBody = body && typeof body === 'object'
+          ? body as Record<string, unknown>
+          : null
+        const message = errorBody
+          ? [errorBody.message, errorBody.detail, errorBody.mensagem, errorBody.error]
+              .find((value) => typeof value === 'string' && value.trim())
+          : null
+        reject(new MeusAnunciosApiError(
+          typeof message === 'string'
+            ? message
+            : `Não foi possível enviar as mídias (HTTP ${xhr.status}).`,
+          xhr.status
+        ))
+        return
+      }
+      onProgress?.(100)
+      mediaBatchIdempotencyKeys.delete(signature)
+      resolve(body as MinhasMidiasResponse)
+    }
+    const form = new FormData()
+    arquivos.forEach((arquivo) => form.append('arquivos', arquivo))
     xhr.send(form)
   })
 }

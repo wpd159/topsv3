@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PainelShell } from '@/components/painel-anunciante/painel-shell'
+import { MinhaContaSeguranca } from '@/features/minha-conta/minha-conta-seguranca'
 import { useAuth } from '@/context/AuthContext'
 import {
   PublicAuthApiError,
@@ -54,7 +55,7 @@ export default function MinhaContaPage() {
       title="Minha conta"
       description="Consulte seus dados e edite as informações disponíveis para esta conta."
     >
-      <div className="pb-10">
+      <div className="space-y-6 pb-10">
         <Card className="mx-auto max-w-3xl border border-slate-200 shadow-sm">
           <CardContent className="p-6 md:p-8">
             <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
@@ -149,6 +150,7 @@ export default function MinhaContaPage() {
             </form>
           </CardContent>
         </Card>
+        <MinhaContaSeguranca />
       </div>
     </PainelShell>
   )

@@ -169,6 +169,29 @@ public class AdminUsuarioExclusaoJdbcRepository {
         return strategies.stream().findFirst();
     }
 
+    public java.util.Optional<String> exclusaoConcluidaPorRecurso(
+            UUID usuarioId,
+            String idempotencyHash) {
+        List<String> strategies = jdbc.query("""
+                SELECT depois_json ->> 'estrategia'
+                FROM auditoria_evento
+                WHERE acao IN (
+                    'USUARIO_AUTOEXCLUIDO_FISICAMENTE',
+                    'USUARIO_AUTOEXCLUIDO_COM_ANONIMIZACAO'
+                  )
+                  AND recurso_tipo = 'USUARIO'
+                  AND recurso_id = :usuarioId
+                  AND resultado = 'SUCESSO'
+                  AND depois_json ->> 'idempotencyHash' = :idempotencyHash
+                ORDER BY criado_em DESC
+                LIMIT 1
+                """, Map.of(
+                        "usuarioId", usuarioId,
+                        "idempotencyHash", idempotencyHash),
+                (resultSet, rowNumber) -> resultSet.getString(1));
+        return strategies.stream().findFirst();
+    }
+
     public TechnicalDeletionResult deleteTechnicalLinks(UUID usuarioId) {
         Map<String, Object> params = Map.of(
                 "usuarioId", usuarioId,

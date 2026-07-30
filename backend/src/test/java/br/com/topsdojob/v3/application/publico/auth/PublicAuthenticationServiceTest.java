@@ -15,6 +15,7 @@ import br.com.topsdojob.v3.application.publico.auth.dto.PublicRegisterRequestDto
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
@@ -66,7 +67,8 @@ class PublicAuthenticationServiceTest {
                 passwordEncoder,
                 new HttpSessionSecurityContextRepository(),
                 accountLifecycleService,
-                sessionRegistry);
+                sessionRegistry,
+                mock(AnuncioRepository.class));
     }
 
     @AfterEach

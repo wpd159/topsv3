@@ -4,7 +4,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record SolicitarAnuncioPublicoRequestDto(
-        String whatsapp,
         String uf,
         String cidade,
         String bairro,
@@ -13,6 +12,7 @@ public record SolicitarAnuncioPublicoRequestDto(
         BigDecimal preco,
         String categoria,
         List<String> servicos,
+        String linkConteudo,
         Boolean atendimentoExclusivamenteVirtual,
         Boolean aceiteTermos,
         Boolean confirmacaoIdade) {

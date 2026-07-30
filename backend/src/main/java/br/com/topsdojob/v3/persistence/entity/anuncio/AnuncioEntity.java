@@ -78,6 +78,9 @@ public class AnuncioEntity {
   @Column(name = "whatsapp_normalizado")
   private String whatsappNormalizado;
 
+  @Column(name = "link_conteudo", length = 2048)
+  private String linkConteudo;
+
   @Column(name = "publicado_em")
   private OffsetDateTime publicadoEm;
 
@@ -154,6 +157,10 @@ public class AnuncioEntity {
 
   public String getWhatsappNormalizado() {
     return whatsappNormalizado;
+  }
+
+  public String getLinkConteudo() {
+    return linkConteudo;
   }
 
   public OffsetDateTime getPublicadoEm() {
@@ -344,12 +351,14 @@ public class AnuncioEntity {
       Set<LocalAtendimentoAnuncio> locaisAtendimento,
       Set<ServicoAnuncio> servicos,
       boolean atendimentoExclusivamenteVirtual,
+      String linkConteudo,
       OffsetDateTime atualizadoEm) {
     this.titulo = titulo;
     this.descricao = descricao;
     this.categoria = categoria;
     this.preco = preco;
     this.whatsappNormalizado = whatsappNormalizado;
+    this.linkConteudo = linkConteudo;
     sincronizarAtendimentoEstruturado(
         locaisAtendimento, servicos, atendimentoExclusivamenteVirtual);
     remeterParaRevisao(atualizadoEm);
@@ -373,6 +382,7 @@ public class AnuncioEntity {
         locaisAtendimento,
         servicos,
         atendimentoExclusivamenteVirtual,
+        linkConteudo,
         atualizadoEm);
   }
 
@@ -453,6 +463,34 @@ public class AnuncioEntity {
       Set<ServicoAnuncio> servicos,
       boolean atendimentoExclusivamenteVirtual,
       OffsetDateTime criadoEm) {
+    return criarSolicitacaoLocal(
+        id,
+        usuarioId,
+        slug,
+        titulo,
+        descricao,
+        categoria,
+        preco,
+        whatsappNormalizado,
+        servicos,
+        atendimentoExclusivamenteVirtual,
+        null,
+        criadoEm);
+  }
+
+  public static AnuncioEntity criarSolicitacaoLocal(
+      UUID id,
+      UUID usuarioId,
+      String slug,
+      String titulo,
+      String descricao,
+      String categoria,
+      BigDecimal preco,
+      String whatsappNormalizado,
+      Set<ServicoAnuncio> servicos,
+      boolean atendimentoExclusivamenteVirtual,
+      String linkConteudo,
+      OffsetDateTime criadoEm) {
     AnuncioEntity entity = new AnuncioEntity();
     entity.id = id;
     entity.usuarioId = usuarioId;
@@ -466,6 +504,7 @@ public class AnuncioEntity {
         Set.of(), servicos, atendimentoExclusivamenteVirtual);
     entity.preco = preco;
     entity.whatsappNormalizado = whatsappNormalizado;
+    entity.linkConteudo = linkConteudo;
     entity.publicadoEm = null;
     entity.ultimaPublicacaoEm = null;
     entity.criadoEm = criadoEm;

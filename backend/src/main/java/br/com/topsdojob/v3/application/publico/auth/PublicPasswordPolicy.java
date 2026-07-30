@@ -3,7 +3,7 @@ package br.com.topsdojob.v3.application.publico.auth;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 
-final class PublicPasswordPolicy {
+public final class PublicPasswordPolicy {
     private static final Pattern SYMBOL = Pattern.compile("[!@#$%^&*(),.?\":{}|<>]");
     private static final Pattern COMMON =
             Pattern.compile("(1234|abcd|senha|password|qwerty)", Pattern.CASE_INSENSITIVE);
@@ -11,7 +11,7 @@ final class PublicPasswordPolicy {
     private PublicPasswordPolicy() {
     }
 
-    static void validate(String candidate, String confirmation) {
+    public static void validate(String candidate, String confirmation) {
         if (candidate == null
                 || candidate.length() < 8
                 || !candidate.matches(".*[A-Z].*")

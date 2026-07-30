@@ -19,31 +19,39 @@ const constants = frontendSource('src/features/anuncio-wizard/wizard-constants.t
 const legacyEditConstants = frontendSource('src/components/anuncios/editar/constants.ts')
 const servicesStep = frontendSource('src/features/anuncio-wizard/components/wizard-step-servicos.tsx')
 const wizard = frontendSource('src/features/anuncio-wizard/anuncio-wizard.tsx')
+const wizardApi = frontendSource('src/features/anuncio-wizard/api.ts')
 const storage = frontendSource('src/features/anuncio-wizard/wizard-storage.ts')
 const adminEdit = frontendSource('src/features/admin-anuncios/admin-anuncio-edit-form.tsx')
+const createService = repositorySource(
+  'backend/src/main/java/br/com/topsdojob/v3/application/publico/service/SolicitarAnuncioPublicoService.java',
+)
 const repository = repositorySource(
   'backend/src/main/java/br/com/topsdojob/v3/persistence/repository/AnuncioRepository.java',
 )
 const openapi = repositorySource('contracts/openapi/topsdojob-v3-local.yaml')
 
-assert.ok(!constants.includes("{ value: 'VENDA_DE_CONTEUDO', label: 'Sexo Virtual' }"))
+assert.ok(constants.includes("{ value: 'VENDA_DE_CONTEUDO', label: 'Sexo virtual' }"))
 assert.ok(!legacyEditConstants.includes("value: 'VENDA_DE_CONTEUDO'"))
+assert.ok(wizardApi.includes("publicApiUrl('/categorias-home')"))
+assert.ok(wizard.includes('fetchWizardCategories'))
+assert.ok(wizard.includes('categoryCatalog'))
 assert.ok(servicesStep.includes("state.servicos.includes('VIDEOCHAMADA')"))
 assert.ok(servicesStep.includes('Atendimento exclusivamente virtual'))
 assert.ok(servicesStep.includes('Marque apenas se você não realiza atendimento presencial'))
 assert.ok(wizard.includes("value === 'VIDEOCHAMADA' && !set.has(value)"))
 assert.ok(wizard.includes('{ atendimentoExclusivamenteVirtual: false }'))
-assert.ok(storage.includes("legacyVirtualCategory ? 'ACOMPANHANTE_FEMININA'"))
-assert.ok(storage.includes("servicos.push('VIDEOCHAMADA')"))
+assert.ok(createService.includes('CategoriaAnuncio.VENDA_DE_CONTEUDO.name().equals(categoria)'))
+assert.ok(createService.includes('categoria = CategoriaAnuncio.ACOMPANHANTE_FEMININA.name()'))
+assert.ok(createService.includes('normalizados.add(ServicoAnuncio.VIDEOCHAMADA)'))
+assert.ok(storage.includes('categoria: asString(form?.categoria)'))
+assert.ok(storage.includes("servicos.includes('VIDEOCHAMADA')"))
 assert.ok(adminEdit.includes("form.servicos.includes('VIDEOCHAMADA')"))
 assert.ok(adminEdit.includes('atendimentoExclusivamenteVirtual: false'))
 assert.ok(repository.includes(":categoria = 'VENDA_DE_CONTEUDO'"))
 assert.ok(repository.includes("av.servico = 'VIDEOCHAMADA'"))
 assert.ok(repository.includes('a.atendimento_exclusivamente_virtual = false'))
 assert.ok(!repository.includes('join anuncio_servicos av'))
-assert.ok(openapi.includes(
-  'enum: [ACOMPANHANTE_FEMININA, ACOMPANHANTE_MASCULINO, TRANSEX_TRAVESTIS, MASSAGENS]',
-))
+assert.ok(openapi.includes('MASSAGENS, VENDA_DE_CONTEUDO]'))
 assert.ok(openapi.includes('description: So pode ser verdadeiro quando servicos contem VIDEOCHAMADA.'))
 
-console.log('Sexo virtual aditivo: cadastro, edição e catálogo aprovados.')
+console.log('OK_SEXO_VIRTUAL_CATALOGO_BACKEND_E_REGRA_ADITIVA')

@@ -86,8 +86,10 @@ async function bootstrapCsrfValue() {
 async function parseError(response: Response) {
   const fallback = response.status === 401 ? 'E-mail ou senha inválidos.' : 'Não foi possível concluir a solicitação.'
   try {
-    const body = (await response.json()) as { message?: unknown }
-    return typeof body.message === 'string' && body.message.trim() ? body.message : fallback
+    const body = (await response.json()) as { message?: unknown; detail?: unknown }
+    if (typeof body.message === 'string' && body.message.trim()) return body.message
+    if (typeof body.detail === 'string' && body.detail.trim()) return body.detail
+    return fallback
   } catch {
     return fallback
   }
@@ -128,6 +130,57 @@ export function updatePublicProfile(payload: PublicProfileUpdatePayload) {
   return publicRequest<PublicAuthUser>('/auth/me', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export type MyAccountDeletionEligibility = {
+  podeExcluir: boolean
+  tipoExclusao: 'EXCLUSAO_FISICA' | 'EXCLUSAO_COM_ANONIMIZACAO'
+  historicoPreservado: boolean
+  vinculosPreservados: number
+  consequencias: string[]
+  bloqueios: string[]
+}
+
+export type MyAccountDeletionResult = {
+  usuarioId: string
+  excluido: boolean
+  tipoExclusao: 'EXCLUSAO_FISICA' | 'EXCLUSAO_COM_ANONIMIZACAO'
+  anonimizado: boolean
+}
+
+type ChangeMyAccountPasswordPayload = Record<
+  'senhaAtual' | 'novaSenha' | 'confirmarSenha',
+  string
+>
+
+export function changeMyAccountPassword(payload: ChangeMyAccountPasswordPayload) {
+  return publicRequest<PublicAccountAction>('/minha-conta/seguranca/senha', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getMyAccountDeletionEligibility() {
+  return publicRequest<MyAccountDeletionEligibility>('/minha-conta/seguranca/exclusao')
+}
+
+export function deleteMyAccount(
+  payload: {
+    senhaAtual: string
+    confirmacao: string
+    cienteConsequencias: boolean
+  },
+  idempotencyKey: string
+) {
+  return publicRequest<MyAccountDeletionResult>('/minha-conta/seguranca/exclusao', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
     body: JSON.stringify(payload),
   })
 }

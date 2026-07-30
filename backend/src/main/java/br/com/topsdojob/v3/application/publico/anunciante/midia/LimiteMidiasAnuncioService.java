@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.publico.anunciante.midia;
 
 import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.FOTOS_EXTRA_5;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.VIDEO_1;
 
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
@@ -22,14 +23,28 @@ public class LimiteMidiasAnuncioService {
 
     @Transactional(readOnly = true)
     public Resultado resolver(UUID anuncioId) {
-        boolean fotosExtras = beneficioService.consultarCalculados(anuncioId).stream()
+        var beneficios = beneficioService.consultarCalculados(anuncioId);
+        boolean fotosExtras = beneficios.stream()
                 .anyMatch(item -> item.beneficio() != null
                         && FOTOS_EXTRA_5.equals(item.beneficio().getCodigo())
                         && (item.status() == PremiumBeneficioStatusCalculado.ATIVO
                         || item.status() == PremiumBeneficioStatusCalculado.VENCENDO));
-        return new Resultado(fotosExtras ? FOTOS_COM_EXTRA : FOTOS_BASE, VIDEOS, fotosExtras);
+        boolean videoAtivo = beneficios.stream()
+                .anyMatch(item -> item.beneficio() != null
+                        && VIDEO_1.equals(item.beneficio().getCodigo())
+                        && (item.status() == PremiumBeneficioStatusCalculado.ATIVO
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO));
+        return new Resultado(
+                fotosExtras ? FOTOS_COM_EXTRA : FOTOS_BASE,
+                videoAtivo ? VIDEOS : 0,
+                fotosExtras,
+                videoAtivo);
     }
 
-    public record Resultado(int maxFotos, int maxVideos, boolean fotosExtrasAtivo) {
+    public record Resultado(
+            int maxFotos,
+            int maxVideos,
+            boolean fotosExtrasAtivo,
+            boolean videoAtivo) {
     }
 }

@@ -19,6 +19,7 @@ import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
+import java.text.Collator;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -104,6 +105,45 @@ public class LocalidadePublicaConsultaService {
                 .sorted(Comparator.comparing(EstadoLocalidadePublicaDto::uf))
                 .toList();
         return new DescobertaLocalidadesPublicaDto(resultado);
+    }
+
+    @Transactional(readOnly = true)
+    public DescobertaLocalidadesPublicaDto catalogoCompleto() {
+        Comparator<String> nomes = comparadorNomes();
+        Map<UUID, List<BairroEntity>> bairrosPorCidade = bairroRepository.findAll().stream()
+                .filter(item -> item.getCidadeId() != null)
+                .collect(Collectors.groupingBy(BairroEntity::getCidadeId));
+        Map<UUID, List<CidadeEntity>> cidadesPorEstado = cidadeRepository.findAll().stream()
+                .filter(item -> item.getEstadoId() != null)
+                .collect(Collectors.groupingBy(CidadeEntity::getEstadoId));
+
+        List<EstadoLocalidadePublicaDto> estados = estadoRepository.findAll().stream()
+                .map(estado -> new EstadoLocalidadePublicaDto(
+                        estado.getUf(),
+                        estado.getNome(),
+                        0,
+                        null,
+                        cidadesPorEstado.getOrDefault(estado.getId(), List.of()).stream()
+                                .map(cidade -> new CidadeLocalidadePublicaDto(
+                                        cidade.getNome(),
+                                        cidade.getSlug(),
+                                        0,
+                                        null,
+                                        bairrosPorCidade.getOrDefault(cidade.getId(), List.of()).stream()
+                                                .map(bairro -> new BairroLocalidadePublicaDto(
+                                                        bairro.getNome(),
+                                                        bairro.getSlug(),
+                                                        0,
+                                                        null))
+                                                .sorted(Comparator.comparing(
+                                                        BairroLocalidadePublicaDto::nome,
+                                                        nomes))
+                                                .toList()))
+                                .sorted(Comparator.comparing(CidadeLocalidadePublicaDto::nome, nomes))
+                                .toList()))
+                .sorted(Comparator.comparing(EstadoLocalidadePublicaDto::nome, nomes))
+                .toList();
+        return new DescobertaLocalidadesPublicaDto(estados);
     }
 
     @Transactional(readOnly = true)
@@ -231,6 +271,12 @@ public class LocalidadePublicaConsultaService {
             }
         }
         return String.join(" ", palavras);
+    }
+
+    private Comparator<String> comparadorNomes() {
+        Collator collator = Collator.getInstance(Locale.forLanguageTag("pt-BR"));
+        collator.setStrength(Collator.PRIMARY);
+        return collator::compare;
     }
 
     private <T> Map<UUID, T> porId(Collection<T> values, Function<T, UUID> id) {

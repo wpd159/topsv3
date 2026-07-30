@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import javax.imageio.ImageIO;
 import org.springframework.http.HttpStatus;
@@ -42,11 +43,72 @@ public class DocumentoUploadValidator {
         sha256(bytes));
   }
 
+  public DocumentoValidado validarPdf(MultipartFile multipart) {
+    if (multipart == null || multipart.isEmpty()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O arquivo deve estar em PDF.");
+    }
+    if (multipart.getSize() > properties.getMaxBytes()) {
+      throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "O PDF excede o tamanho permitido.");
+    }
+    byte[] bytes = bytes(multipart, "Não foi possível ler o PDF enviado.");
+    if (!"pdf".equals(extensao(multipart.getOriginalFilename()))) {
+      throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "O arquivo deve estar em PDF.");
+    }
+    if (!pdf(bytes)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Não foi possível ler o PDF enviado.");
+    }
+    return new DocumentoValidado(
+        bytes,
+        "application/pdf",
+        "pdf",
+        null,
+        null,
+        sha256(bytes));
+  }
+
+  public DocumentoValidado validarImagem(MultipartFile multipart) {
+    if (multipart == null || multipart.isEmpty()) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Selecione a imagem do documento.");
+    }
+    if (multipart.getSize() > properties.getMaxBytes()) {
+      throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "A imagem excede o tamanho permitido.");
+    }
+    byte[] bytes = bytes(multipart, "Não foi possível ler a imagem enviada.");
+    String extensao = extensao(multipart.getOriginalFilename());
+    if (!List.of("jpg", "jpeg", "png").contains(extensao)) {
+      throw new ResponseStatusException(
+          HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+          "A imagem deve estar em JPG ou PNG.");
+    }
+    boolean jpeg = jpeg(bytes) && ("jpg".equals(extensao) || "jpeg".equals(extensao));
+    boolean png = png(bytes) && "png".equals(extensao);
+    if (!jpeg && !png) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Não foi possível ler a imagem enviada.");
+    }
+    Dimensoes dimensoes;
+    try {
+      dimensoes = dimensoesImagem(bytes);
+    } catch (ResponseStatusException exception) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Não foi possível ler a imagem enviada.");
+    }
+    return new DocumentoValidado(
+        bytes,
+        jpeg ? "image/jpeg" : "image/png",
+        jpeg ? "jpg" : "png",
+        dimensoes.largura(),
+        dimensoes.altura(),
+        sha256(bytes));
+  }
+
   private byte[] bytes(MultipartFile multipart) {
+    return bytes(multipart, "documento nao pode ser lido");
+  }
+
+  private byte[] bytes(MultipartFile multipart, String mensagem) {
     try {
       return multipart.getBytes();
     } catch (IOException exception) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "documento nao pode ser lido");
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, mensagem);
     }
   }
 

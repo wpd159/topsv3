@@ -127,7 +127,8 @@ class CredencialLegadaCompatibilidadeTest {
                 encoder,
                 new HttpSessionSecurityContextRepository(),
                 mock(PublicAccountLifecycleService.class),
-                mock(PublicSessionRegistry.class));
+                mock(PublicSessionRegistry.class),
+                mock(br.com.topsdojob.v3.persistence.repository.AnuncioRepository.class));
     }
 
     private UsuarioEntity activeUser() {

@@ -15,6 +15,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -34,6 +35,19 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(UUID usuarioId);
 
     List<AnuncioEntity> findByUsuarioIdOrderByCriadoEmDesc(UUID usuarioId);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            update AnuncioEntity anuncio
+            set anuncio.whatsappNormalizado = :telefone,
+                anuncio.atualizadoEm = :agora
+            where anuncio.usuarioId = :usuarioId
+              and anuncio.removidoEm is null
+            """)
+    int sincronizarTelefoneDoProprietario(
+            @Param("usuarioId") UUID usuarioId,
+            @Param("telefone") String telefone,
+            @Param("agora") OffsetDateTime agora);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

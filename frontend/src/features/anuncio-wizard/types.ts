@@ -13,7 +13,6 @@ export type WizardFormState = {
   atendimentoExclusivamenteVirtual: boolean
   descricao: string
   linkConteudo: string
-  whatsapp: string
   estadoId: string
   cidadeId: string
   bairroId: string
@@ -33,7 +32,7 @@ export type WizardKycState = {
   nomeCompleto: string
   dataNascimento: string
   cpf: string
-  documentoModo: 'FRENTE_VERSO' | 'PDF'
+  documentoModo: 'FRENTE_VERSO' | 'PDF' | null
   documentos: File[]
   documentoNomes: string[]
 }
@@ -55,7 +54,6 @@ export const initialWizardFormState: WizardFormState = {
   atendimentoExclusivamenteVirtual: false,
   descricao: '',
   linkConteudo: '',
-  whatsapp: '',
   estadoId: '',
   cidadeId: '',
   bairroId: '',
@@ -75,7 +73,7 @@ export const initialWizardKycState: WizardKycState = {
   nomeCompleto: '',
   dataNascimento: '',
   cpf: '',
-  documentoModo: 'FRENTE_VERSO',
+  documentoModo: null,
   documentos: [],
   documentoNomes: [],
 }

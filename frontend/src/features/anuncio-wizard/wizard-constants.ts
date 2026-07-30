@@ -5,6 +5,7 @@ export const categorias = [
   { value: 'ACOMPANHANTE_MASCULINO', label: 'Acompanhante masculino' },
   { value: 'TRANSEX_TRAVESTIS', label: 'Trans / Travestis' },
   { value: 'MASSAGENS', label: 'Massagens' },
+  { value: 'VENDA_DE_CONTEUDO', label: 'Sexo virtual' },
 ]
 
 export const horarios = [
@@ -37,14 +38,14 @@ export const servicos = [
 
 export const stepCopy: Record<WizardStepId, { title: string; description: string }> = {
   perfil: {
-    title: 'Crie a primeira impressão do seu anúncio',
+    title: 'Conte um pouco sobre você',
     description:
-      'Dê nome ao anúncio, escolha a categoria e conte um pouco sobre você. É o começo da identidade que os clientes vão perceber.',
+      'Uma boa descrição ajuda clientes a conhecerem seu estilo e entrarem em contato com mais confiança.',
   },
   localizacao: {
-    title: 'Defina sua área de atendimento',
+    title: 'Onde você atende?',
     description:
-      'Cidade, bairro e referência conhecida aparecem em um passo próprio para deixar tudo mais claro, leve e fácil de encontrar.',
+      'Informe o estado, a cidade e o bairro onde você atende. Isso ajuda as pessoas da sua região a encontrarem seu anúncio.',
   },
   servicos: {
     title: 'Mostre como será a experiência',
@@ -57,14 +58,14 @@ export const stepCopy: Record<WizardStepId, { title: string; description: string
       'Perfis com boas fotos costumam receber mais visualizações e transmitir mais confiança.',
   },
   revisao: {
-    title: 'Revise o anúncio antes de enviar',
+    title: 'Revise seu anúncio',
     description:
-      'Faça uma última checagem com calma antes da etapa final. O resumo aqui já se aproxima do que será visto no site.',
+      'Confira as informações abaixo antes de enviar. Você ainda pode voltar e fazer alterações.',
   },
   premium: {
-    title: 'Impulsione se quiser',
+    title: 'Escolha como deseja publicar',
     description:
-      'Publicar grátis continua disponível. O destaque aparece só no fim, como um upgrade opcional e sem pressão.',
+      'Você pode publicar gratuitamente ou adicionar benefícios pagos ao anúncio. No seu primeiro anúncio, será necessário confirmar sua identidade antes do envio para moderação.',
   },
   kyc: {
     title: 'Confirme seus dados para finalizar',

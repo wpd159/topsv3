@@ -12,10 +12,13 @@ export function WizardStepPerfil({
   descricaoPerfilCount,
   descricaoPerfilNeedsMore,
   descricaoPerfilRemaining,
+  categoriasLoading,
+  categoriasError,
   showProfileDescription = true,
   onTituloChange,
   onCategoriaChange,
   onDescricaoChange,
+  onReloadCategorias,
 }: {
   titulo: string
   categoria: string
@@ -24,15 +27,17 @@ export function WizardStepPerfil({
   descricaoPerfilCount: number
   descricaoPerfilNeedsMore: boolean
   descricaoPerfilRemaining: number
+  categoriasLoading: boolean
+  categoriasError: string | null
   showProfileDescription?: boolean
   onTituloChange: (value: string) => void
   onCategoriaChange: (value: string) => void
   onDescricaoChange: (value: string) => void
+  onReloadCategorias: () => void
 }) {
   return (
     <StepPanel>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <div className="space-y-5 rounded-[26px] border border-zinc-200 bg-[linear-gradient(180deg,#ffffff_0%,#fff8fb_100%)] p-5 shadow-sm">
+      <div className="space-y-5 rounded-[26px] border border-zinc-200 bg-[linear-gradient(180deg,#ffffff_0%,#fff8fb_100%)] p-5 shadow-sm">
           <Field label="Nome do anúncio">
             <Input
               value={titulo}
@@ -46,15 +51,28 @@ export function WizardStepPerfil({
             <select
               className="h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 py-2 text-base ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:ring-offset-2"
               value={categoria}
+              disabled={categoriasLoading || Boolean(categoriasError)}
               onChange={(event) => onCategoriaChange(event.target.value)}
             >
-              <option value="">Selecione</option>
+              <option value="">{categoriasLoading ? 'Carregando categorias...' : 'Selecione'}</option>
               {categorias.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
                 </option>
               ))}
             </select>
+            {categoriasError ? (
+              <span className="flex flex-wrap items-center gap-2 text-xs text-red-700">
+                {categoriasError}
+                <button
+                  type="button"
+                  className="font-semibold underline underline-offset-2"
+                  onClick={onReloadCategorias}
+                >
+                  Tentar novamente
+                </button>
+              </span>
+            ) : null}
           </Field>
 
           {showProfileDescription ? <div className="space-y-3 rounded-[22px] border border-zinc-200 bg-white p-4 shadow-sm">
@@ -63,14 +81,14 @@ export function WizardStepPerfil({
                 Conte um pouco sobre você
               </Label>
               <p className="text-sm leading-6 text-zinc-600">
-                Perfis com descrição personalizada costumam receber mais contatos.
+                Uma boa descrição ajuda clientes a conhecerem seu estilo e entrarem em contato com mais confiança.
               </p>
             </div>
 
             <AutoResizeTextarea
               value={descricaoPerfil}
               onChange={(event) => onDescricaoChange(event.target.value)}
-              placeholder="Descreva seu estilo, atendimento, diferenciais e a experiência que você deseja transmitir."
+              placeholder="Fale sobre seu estilo, atendimento, diferenciais e a experiência que você oferece."
               minRows={5}
               maxRows={5}
               maxLength={500}
@@ -79,34 +97,14 @@ export function WizardStepPerfil({
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className={descricaoPerfilNeedsMore ? 'text-amber-700' : 'text-zinc-500'}>
                 {descricaoPerfilCount === 0
-                  ? 'Escreva com calma. Esse texto será salvo no mesmo perfil usado em Configurações.'
+                  ? 'Essa descrição será exibida no seu perfil. Seja clara, autêntica e destaque o que torna seu atendimento especial.'
                   : descricaoPerfilNeedsMore
                     ? `Mais ${descricaoPerfilRemaining} caracteres deixam a descrição mais convincente.`
-                    : 'Descrição pronta para acompanhar o anúncio.'}
+                    : 'Essa descrição será exibida no seu perfil. Seja clara, autêntica e destaque o que torna seu atendimento especial.'}
               </span>
               <span className="shrink-0 text-zinc-400">{descricaoPerfilCount}/500</span>
             </div>
           </div> : null}
-        </div>
-
-        <div className="rounded-[26px] border border-zinc-200 bg-zinc-50/90 p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
-            Primeira impressão
-          </p>
-          <h3 className="mt-3 text-lg font-semibold text-zinc-950">
-            Seu perfil começa a ganhar forma aqui.
-          </h3>
-          <div className="mt-4 space-y-3 text-sm leading-6 text-zinc-600">
-            <div className="rounded-2xl border border-white/80 bg-white px-4 py-3 shadow-sm">
-              Um nome claro, uma categoria correta e uma descrição autêntica deixam o anúncio
-              mais memorável.
-            </div>
-            <div className="rounded-2xl border border-dashed border-zinc-200 bg-white/70 px-4 py-3">
-              O preview completo já acompanha você ao lado no desktop e fica recolhido no mobile
-              para não roubar foco nesta etapa.
-            </div>
-          </div>
-        </div>
       </div>
     </StepPanel>
   )

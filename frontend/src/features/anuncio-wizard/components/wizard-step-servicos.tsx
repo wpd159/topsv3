@@ -84,34 +84,31 @@ export function WizardStepServicos({
         </label>
       ) : null}
 
-      <Field label="Conte um pouco mais sobre a experiência">
+      {mode === 'edit' ? <Field label="Conte um pouco mais sobre a experiência">
         <AutoResizeTextarea
           value={state.descricao}
           onChange={(event) => onPatch({ descricao: event.target.value })}
           placeholder="Conte o que faz seu atendimento ser especial, o clima que você gosta de transmitir e o que as pessoas podem esperar."
           minRows={4}
           maxRows={7}
-          maxLength={2000}
-        />
-      </Field>
-
-      <Field label="WhatsApp">
-        <Input
-          type="tel"
-          value={state.whatsapp}
-          onChange={(event) => onPatch({ whatsapp: event.target.value })}
-          placeholder="+55 62 99999-9999"
-          autoComplete="tel"
-        />
-      </Field>
-
-      {mode === 'create' ? <Field label="Link de conteúdo">
-        <Input
-          value={state.linkConteudo}
-          onChange={(event) => onPatch({ linkConteudo: event.target.value })}
-          placeholder="https://"
+          maxLength={500}
         />
       </Field> : null}
+
+      <div className="space-y-2">
+        <Field label="Link para seu conteúdo">
+          <Input
+            type="url"
+            value={state.linkConteudo}
+            onChange={(event) => onPatch({ linkConteudo: event.target.value })}
+            placeholder="https://seulink.com"
+            inputMode="url"
+          />
+        </Field>
+        <p className="text-sm leading-6 text-zinc-600">
+          Vende conteúdo? Adicione aqui o link da sua página, plataforma ou catálogo.
+        </p>
+      </div>
     </StepPanel>
   )
 }

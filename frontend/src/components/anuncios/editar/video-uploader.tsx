@@ -1,7 +1,8 @@
 'use client'
 
 import * as React from 'react'
-import { Input } from '@/components/ui/input'
+import { FilePicker } from '@/components/forms/file-picker'
+import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
 export function VideoUploader({
@@ -11,6 +12,7 @@ export function VideoUploader({
   onChangeNew,
   canUpload = true,
   onMediaTouched,
+  onAddBenefit,
 }: {
   existing?: string[]
   onChangeExisting?: (v: string[]) => void
@@ -18,6 +20,7 @@ export function VideoUploader({
   onChangeNew?: (v: File[]) => void
   canUpload?: boolean
   onMediaTouched?: () => void
+  onAddBenefit?: () => void
 }) {
   const previewUrls = React.useMemo(
     () => newVideos.map((file) => URL.createObjectURL(file)),
@@ -28,13 +31,11 @@ export function VideoUploader({
     return () => previewUrls.forEach((url) => URL.revokeObjectURL(url))
   }, [previewUrls])
 
-  const upload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files?.length) return
-    const updated = [...newVideos, ...Array.from(files)].slice(0, 1)
+  const upload = (files: File[]) => {
+    if (!files.length) return
+    const updated = [...newVideos, ...files].slice(0, 1)
     onMediaTouched?.()
     onChangeNew?.(updated)
-    e.currentTarget.value = ''
   }
 
   const removeExisting = (url: string) => {
@@ -90,14 +91,26 @@ export function VideoUploader({
       ) : null}
 
       {canUpload ? (
-        <div className="flex flex-col gap-1">
-          <Input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" onChange={upload} />
-          <p className="text-xs text-gray-500">Formatos: MP4 ou MOV.</p>
-        </div>
+        <FilePicker
+          ariaLabel="Selecionar vídeo do anúncio"
+          buttonLabel="Selecionar vídeo"
+          accept="video/mp4,video/quicktime,.mp4,.mov"
+          files={newVideos}
+          disabled={existing.length + newVideos.length >= 1}
+          helperText="Você pode adicionar 1 vídeo em MP4 ou MOV."
+          onSelect={upload}
+          onRemove={removeNew}
+        />
       ) : (
-        <p className="text-xs text-gray-500">
-          Para enviar vídeos, ative a funcionalidade de vídeo.
-        </p>
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+          <p className="font-semibold text-zinc-900">Vídeo do anúncio</p>
+          <p className="mt-1 text-sm text-zinc-600">
+            Adicione um vídeo ao seu anúncio com o benefício Vídeo.
+          </p>
+          <Button type="button" variant="outline" className="mt-3" onClick={onAddBenefit}>
+            Adicionar benefício
+          </Button>
+        </div>
       )}
     </div>
   )

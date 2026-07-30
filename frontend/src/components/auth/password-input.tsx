@@ -21,6 +21,10 @@ type PasswordInputProps = {
   onFocus?: FocusEventHandler<HTMLInputElement>
   onBlur?: FocusEventHandler<HTMLInputElement>
   className?: string
+  id?: string
+  name?: string
+  autoComplete?: string
+  required?: boolean
 }
 
 export function PasswordInput({
@@ -35,6 +39,10 @@ export function PasswordInput({
   onFocus,
   onBlur,
   className,
+  id,
+  name,
+  autoComplete = 'new-password',
+  required = false,
 }: PasswordInputProps) {
   const [visible, setVisible] = useState(false)
 
@@ -46,8 +54,11 @@ export function PasswordInput({
       />
       <Input
         ref={inputRef}
+        id={id}
+        name={name}
         type={visible ? 'text' : 'password'}
-        autoComplete="new-password"
+        autoComplete={autoComplete}
+        required={required}
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}

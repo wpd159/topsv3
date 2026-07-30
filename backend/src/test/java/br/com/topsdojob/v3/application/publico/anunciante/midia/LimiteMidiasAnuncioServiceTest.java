@@ -21,12 +21,12 @@ class LimiteMidiasAnuncioServiceTest {
     private final LimiteMidiasAnuncioService service = new LimiteMidiasAnuncioService(beneficioService);
 
     @Test
-    void planoBasePermiteQuatroFotosEUmVideo() {
+    void planoBasePermiteQuatroFotosESemVideo() {
         UUID anuncioId = UUID.randomUUID();
         when(beneficioService.consultarCalculados(anuncioId)).thenReturn(List.of());
 
         assertThat(service.resolver(anuncioId))
-                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 1, false));
+                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
     }
 
     @Test
@@ -38,7 +38,7 @@ class LimiteMidiasAnuncioServiceTest {
                 calculado("FOTOS_EXTRA_5", PremiumBeneficioStatusCalculado.VENCENDO)));
 
         assertThat(service.resolver(anuncioId))
-                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(10, 1, true));
+                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(10, 0, true, false));
     }
 
     @Test
@@ -48,7 +48,7 @@ class LimiteMidiasAnuncioServiceTest {
                 calculado("FOTOS_EXTRA", PremiumBeneficioStatusCalculado.ATIVO)));
 
         assertThat(service.resolver(anuncioId))
-                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 1, false));
+                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
     }
 
     @Test
@@ -58,6 +58,26 @@ class LimiteMidiasAnuncioServiceTest {
                 calculado("FOTOS_EXTRA_5", PremiumBeneficioStatusCalculado.EXPIRADO)));
 
         assertThat(service.resolver(anuncioId).maxFotos()).isEqualTo(4);
+    }
+
+    @Test
+    void videoExigeBeneficioCanonicoAtivoOuVencendo() {
+        UUID anuncioId = UUID.randomUUID();
+        when(beneficioService.consultarCalculados(anuncioId)).thenReturn(List.of(
+                calculado("VIDEO_1", PremiumBeneficioStatusCalculado.VENCENDO)));
+
+        assertThat(service.resolver(anuncioId))
+                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 1, false, true));
+    }
+
+    @Test
+    void beneficioVideoExpiradoNaoLiberaUpload() {
+        UUID anuncioId = UUID.randomUUID();
+        when(beneficioService.consultarCalculados(anuncioId)).thenReturn(List.of(
+                calculado("VIDEO_1", PremiumBeneficioStatusCalculado.EXPIRADO)));
+
+        assertThat(service.resolver(anuncioId))
+                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
     }
 
     private PremiumBeneficioCalculado calculado(String codigo, PremiumBeneficioStatusCalculado status) {

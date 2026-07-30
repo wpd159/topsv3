@@ -81,6 +81,7 @@ public class AnuncioPublicoMapper {
                 anuncio.getSlug(),
                 anuncio.getTitulo(),
                 anuncio.getDescricao(),
+                anuncio.getLinkConteudo(),
                 anuncio.getPreco(),
                 anuncio.getCategoria(),
                 username,

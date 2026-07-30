@@ -23,11 +23,11 @@ type Action =
 
 export const wizardSteps: Array<{ id: WizardStepId; title: string; eyebrow: string }> = [
   { id: 'perfil', title: 'Perfil do anúncio', eyebrow: 'Comece pelo essencial' },
-  { id: 'localizacao', title: 'Área de atendimento', eyebrow: 'Localização contextual' },
+  { id: 'localizacao', title: 'Área de atendimento', eyebrow: 'Região de atendimento' },
   { id: 'servicos', title: 'Atendimento', eyebrow: 'Serviços e experiência' },
   { id: 'fotos', title: 'Fotos', eyebrow: 'O anúncio ganha forma' },
-  { id: 'revisao', title: 'Seu anúncio está pronto', eyebrow: 'Revise antes de avançar' },
-  { id: 'premium', title: 'Impulsione se quiser', eyebrow: 'Upgrade opcional' },
+  { id: 'revisao', title: 'Revise seu anúncio', eyebrow: 'Revise antes de avançar' },
+  { id: 'premium', title: 'Escolha como deseja publicar', eyebrow: 'Publicação do anúncio' },
   { id: 'kyc', title: 'Confirmação de identidade', eyebrow: 'Última etapa' },
 ]
 
@@ -105,14 +105,13 @@ export function validateWizardStep(
       !Number.isFinite(preco) ||
       preco <= 0 ||
       (mode === 'create' && !form.horario) ||
-      !form.whatsapp.trim() ||
       form.locaisAtendimento.length === 0 ||
       form.servicos.length === 0 ||
       (mode === 'edit' && form.descricao.trim().length < 20)
     ) {
       return mode === 'create'
-        ? 'Informe preço, horário, WhatsApp, local de atendimento e ao menos um serviço.'
-        : 'Informe preço, descrição, WhatsApp, local de atendimento e ao menos um serviço.'
+        ? 'Informe preço, horário, local de atendimento e ao menos um serviço.'
+        : 'Informe preço, descrição, local de atendimento e ao menos um serviço.'
     }
   }
   if (mode === 'create' && step === 'fotos' && form.fotos.length === 0) {
@@ -132,9 +131,10 @@ export function validateWizardKycState(
     (!persisted?.nomeCivil && !kyc.nomeCompleto.trim()) ||
     (!persisted?.dataNascimento && !kyc.dataNascimento) ||
     (!persisted?.cpf && kyc.cpf.replace(/\D/g, '').length !== 11) ||
+    !kyc.documentoModo ||
     kyc.documentos.length < 1
   ) {
-    return 'Complete nome real, nascimento, CPF e ao menos um documento.'
+    return 'Preencha os dados obrigatórios.'
   }
   return null
 }

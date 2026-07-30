@@ -28,3 +28,29 @@ export function selectClassName() {
 export function normalizeSearchValue(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 }
+
+function labelFor(items: Array<{ value: string; label: string }>, value: string) {
+  return items.find((item) => item.value === value)?.label
+    ?? value.toLowerCase().replaceAll('_', ' ').replace(/^\p{L}/u, (letter) => letter.toUpperCase())
+}
+
+export function formatWizardCategory(value: string) {
+  return value ? labelFor(categorias, value) : 'Não informado'
+}
+
+export function formatWizardSchedule(value: string) {
+  return value ? labelFor(horarios, value) : 'Não informado'
+}
+
+export function formatWizardServices(values: string[]) {
+  return values.length ? values.map((value) => labelFor(servicos, value)).join(', ') : 'Não informado'
+}
+
+export function formatWizardLocations(values: string[]) {
+  return values.length ? values.map((value) => labelFor(locais, value)).join(', ') : 'Não informado'
+}
+
+export function formatWizardPhotoCount(total: number) {
+  return `${total} ${total === 1 ? 'foto selecionada' : 'fotos selecionadas'}`
+}
+import { categorias, horarios, locais, servicos } from './wizard-constants'

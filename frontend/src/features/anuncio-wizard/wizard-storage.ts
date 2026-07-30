@@ -2,7 +2,7 @@ import { initialWizardState, wizardStepIds, type WizardFormState, type WizardSta
 
 const STORAGE_PREFIX = 'topsdojob:anuncio-wizard:v3'
 const UNSAFE_LEGACY_STORAGE_KEY = 'topsdojob:anuncio-wizard:v2'
-const STORAGE_VERSION = 4
+const STORAGE_VERSION = 5
 
 export type WizardCacheScope = {
   userId: string
@@ -48,11 +48,7 @@ function asBoolean(value: unknown) {
 function sanitizeState(input: StoredWizardState | null | undefined): WizardState {
   const form = input?.form
   const rawStep = input?.currentStep
-  const legacyVirtualCategory = asString(form?.categoria) === 'VENDA_DE_CONTEUDO'
   const servicos = asStringArray(form?.servicos)
-  if (legacyVirtualCategory && !servicos.includes('VIDEOCHAMADA')) {
-    servicos.push('VIDEOCHAMADA')
-  }
   const currentStep = typeof rawStep === 'string' && stepSet.has(rawStep)
       ? (rawStep as WizardState['currentStep'])
       : 'perfil'
@@ -62,7 +58,7 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
     form: {
       ...initialWizardState.form,
       titulo: asString(form?.titulo),
-      categoria: legacyVirtualCategory ? 'ACOMPANHANTE_FEMININA' : asString(form?.categoria),
+      categoria: asString(form?.categoria),
       descricaoPerfil: asString(form?.descricaoPerfil),
       preco: asString(form?.preco),
       horario: asString(form?.horario),
@@ -72,7 +68,6 @@ function sanitizeState(input: StoredWizardState | null | undefined): WizardState
         servicos.includes('VIDEOCHAMADA') && asBoolean(form?.atendimentoExclusivamenteVirtual),
       descricao: asString(form?.descricao),
       linkConteudo: asString(form?.linkConteudo),
-      whatsapp: asString(form?.whatsapp),
       estadoId: asString(form?.estadoId),
       cidadeId: asString(form?.cidadeId),
       bairroId: asString(form?.bairroId),

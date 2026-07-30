@@ -1,6 +1,11 @@
 'use client'
 
 import type { WizardFormState } from '../types'
+import {
+  formatWizardPhotoCount,
+  formatWizardSchedule,
+  formatWizardServices,
+} from '../wizard-utils'
 import { ReviewRow, StepPanel } from './wizard-ui'
 
 export function WizardFinalReview({
@@ -24,28 +29,28 @@ export function WizardFinalReview({
 
   return (
     <StepPanel>
-      <ReviewRow label="Anúncio" value={`${previewTitle} · ${categoriaLabel}`} />
+      <ReviewRow label="Seu anúncio" value={`${previewTitle} · ${categoriaLabel}`} />
       <ReviewRow
-        label="Localização"
-        value={`${previewLocation}${previewReference ? ` · ${previewReference}` : ''}`}
+        label="Onde você atende"
+        value={[previewLocation, previewReference].filter(Boolean).join(' · ') || 'Não informado'}
       />
       <ReviewRow
         label="Atendimento"
-        value={[state.horario, state.preco].filter(Boolean).join(' · ') || 'Pendente'}
+        value={[formatWizardSchedule(state.horario), state.preco].filter(Boolean).join(' · ')}
       />
       <ReviewRow
-        label="Serviços"
-        value={state.servicos.length ? state.servicos.join(', ') : 'Pendente'}
+        label="Serviços oferecidos"
+        value={formatWizardServices(state.servicos)}
       />
-      <ReviewRow label="Fotos" value={`${totalFotos} selecionada(s)`} />
+      <ReviewRow label="Fotos" value={formatWizardPhotoCount(totalFotos)} />
       <ReviewRow
-        label="Sexo Virtual"
+        label="Atendimento virtual"
         value={
           hasVirtual
             ? state.atendimentoExclusivamenteVirtual
               ? 'Atendimento exclusivamente virtual'
               : 'Atendimento presencial e virtual'
-            : 'Não selecionado'
+            : 'Não informado'
         }
       />
     </StepPanel>

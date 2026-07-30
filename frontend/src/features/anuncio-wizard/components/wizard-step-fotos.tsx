@@ -1,11 +1,12 @@
 'use client'
 
-import { ArrowDown, ArrowUp, Camera, Loader2, PlayCircle, Trash2, UploadCloud } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, Camera, Loader2, PlayCircle, Trash2 } from 'lucide-react'
 import { GaleriaFotos } from '@/components/anuncios/galeria-fotos'
 import { VideoUploader } from '@/components/anuncios/editar/video-uploader'
+import { FilePicker } from '@/components/forms/file-picker'
+import { useCallback, useEffect, useState } from 'react'
 import {
-  enviarMinhaMidia,
+  enviarMinhasMidiasEmLote,
   listarMinhasMidias,
   removerMinhaMidia,
   reordenarMinhasMidias,
@@ -23,6 +24,7 @@ type WizardStepFotosProps = {
   onChangeVideosNovos: (payload: File[]) => void
   createProgress?: Record<string, number>
   createErrors?: Record<string, string>
+  onAddBenefit?: () => void
 }
 
 function fileKey(file: File) {
@@ -46,13 +48,13 @@ export function WizardStepFotos({
   onChangeVideosNovos,
   createProgress = {},
   createErrors = {},
+  onAddBenefit,
 }: WizardStepFotosProps) {
   const [persisted, setPersisted] = useState<MinhasMidiasResponse | null>(null)
   const [loading, setLoading] = useState(Boolean(slug))
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const inputRef = useRef<HTMLInputElement | null>(null)
 
   const refresh = useCallback(async () => {
     if (!slug) return
@@ -70,26 +72,39 @@ export function WizardStepFotos({
     })
   }, [refresh])
 
-  const uploadPersisted = async (files: FileList | null) => {
-    if (!slug || !files?.length || busy) return
+  const uploadPersisted = async (files: File[]) => {
+    if (!slug || !files.length || busy) return
+    const fotosNovas = files.filter((file) => file.type.startsWith('image/')).length
+    const videosNovos = files.filter((file) => file.type.startsWith('video/')).length
+    if (persisted && fotosNovas > persisted.limites.fotosDisponiveis) {
+      setErrors({ lote: 'Você atingiu o limite de fotos deste anúncio.' })
+      return
+    }
+    if (persisted && videosNovos > persisted.limites.videosDisponiveis) {
+      setErrors({
+        lote: persisted.limites.videoAtivo
+          ? 'Este anúncio já atingiu o limite de vídeos.'
+          : 'Adicione um vídeo ao seu anúncio com o benefício Vídeo.',
+      })
+      return
+    }
     setBusy(true)
     setErrors({})
-    let latest = persisted
-    for (const file of Array.from(files)) {
-      try {
-        latest = await enviarMinhaMidia(slug, file, (value) => {
-          setProgress((current) => ({ ...current, [file.name]: value }))
-        })
-        setPersisted(latest)
-      } catch (error) {
-        setErrors((current) => ({
-          ...current,
-          [file.name]: error instanceof Error ? error.message : 'Falha ao enviar o arquivo.',
-        }))
-      }
+    try {
+      const latest = await enviarMinhasMidiasEmLote(slug, files, (value) => {
+        setProgress((current) => Object.fromEntries([
+          ...Object.entries(current),
+          ...files.map((file) => [file.name, value] as const),
+        ]))
+      })
+      setPersisted(latest)
+    } catch (error) {
+      setErrors({
+        lote: error instanceof Error ? error.message : 'Falha ao enviar os arquivos.',
+      })
+    } finally {
+      setBusy(false)
     }
-    setBusy(false)
-    if (inputRef.current) inputRef.current.value = ''
   }
 
   const move = async (index: number, direction: -1 | 1) => {
@@ -130,21 +145,21 @@ export function WizardStepFotos({
             </div>
             <div>
               <h3 className="text-lg font-semibold text-zinc-950">Fotos do anúncio</h3>
-              <p className="mt-1 text-sm leading-6 text-zinc-600">
-                Os arquivos ficam somente neste navegador até o anúncio ser enviado. O backend valida os limites e formatos.
-              </p>
             </div>
           </header>
           <GaleriaFotos
             initialFiles={initialFiles}
             onChange={onChange}
-            maxCount={10}
+            maxCount={4}
             variant="wizard"
-            showLimit={false}
-            enforceLimit={false}
+            showLimit
+            enforceLimit
           />
+          <p className="text-sm text-zinc-600">
+            Você pode adicionar até 4 fotos gratuitamente.
+          </p>
           <p className="text-xs text-zinc-500">
-            {fotoNomes.length ? `${fotoNomes.length} foto(s) selecionada(s).` : 'JPG, PNG ou WEBP.'}
+            {fotoNomes.length ? `${fotoNomes.length} foto(s) selecionada(s).` : 'Galeria de fotos'}
           </p>
         </section>
         <section className="space-y-5 rounded-[28px] border border-zinc-200/80 bg-white p-5 shadow-[0_18px_60px_rgba(24,24,27,0.04)] sm:p-6">
@@ -160,7 +175,8 @@ export function WizardStepFotos({
           <VideoUploader
             newVideos={videosNovos}
             onChangeNew={onChangeVideosNovos}
-            canUpload
+            canUpload={false}
+            onAddBenefit={onAddBenefit}
           />
           {[...initialFiles, ...videosNovos].map((file) => {
             const key = fileKey(file)
@@ -210,20 +226,43 @@ export function WizardStepFotos({
           ) : null}
         </header>
 
-        <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 px-4 text-center transition hover:border-pink-400 hover:bg-pink-50/40">
-          {busy ? <Loader2 className="h-7 w-7 animate-spin text-pink-500" /> : <UploadCloud className="h-7 w-7 text-zinc-500" />}
-          <span className="mt-3 text-sm font-semibold text-zinc-900">Selecionar fotos ou vídeo</span>
-          <span className="mt-1 text-xs text-zinc-500">JPG, PNG, WEBP, MP4 ou MOV</span>
-          <input
-            ref={inputRef}
-            type="file"
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FilePicker
+            ariaLabel="Selecionar fotos do anúncio"
+            buttonLabel="Selecionar foto"
+            accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+            files={[]}
             multiple
-            accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,.jpg,.jpeg,.png,.webp,.mp4,.mov"
-            className="hidden"
-            disabled={busy}
-            onChange={(event) => void uploadPersisted(event.currentTarget.files)}
+            disabled={busy || !persisted || persisted.limites.fotosDisponiveis === 0}
+            helperText={persisted?.limites.fotosExtrasAtivo
+              ? 'Seu anúncio permite até 10 fotos com o benefício de fotos extras.'
+              : 'Você pode adicionar até 4 fotos gratuitamente.'}
+            onSelect={(files) => void uploadPersisted(files)}
+            onRemove={() => undefined}
           />
-        </label>
+          {persisted?.limites.videoAtivo ? (
+            <FilePicker
+              ariaLabel="Selecionar vídeo do anúncio"
+              buttonLabel="Selecionar vídeo"
+              accept="video/mp4,video/quicktime,.mp4,.mov"
+              files={[]}
+              disabled={busy || persisted.limites.videosDisponiveis === 0}
+              helperText="Você pode adicionar 1 vídeo em MP4 ou MOV."
+              onSelect={(files) => void uploadPersisted(files.slice(0, 1))}
+              onRemove={() => undefined}
+            />
+          ) : (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+              <p className="font-semibold text-zinc-900">Vídeo do anúncio</p>
+              <p className="mt-1 text-sm text-zinc-600">
+                Adicione um vídeo ao seu anúncio com o benefício Vídeo.
+              </p>
+              <button type="button" onClick={onAddBenefit} className="mt-3 rounded-xl border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold">
+                Adicionar benefício
+              </button>
+            </div>
+          )}
+        </div>
 
         {Object.keys(progress).length ? (
           <div className="space-y-2 text-xs text-zinc-600">

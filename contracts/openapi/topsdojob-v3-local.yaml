@@ -327,6 +327,73 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/minha-conta/seguranca/senha:
+    post:
+      summary: Altera a senha do usuario autenticado e encerra todas as sessoes
+      operationId: changeCurrentUserPassword
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MinhaContaAlterarSenhaRequest"
+      responses:
+        "200":
+          description: Senha alterada, tokens ativos consumidos e sessoes invalidadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAccountAction"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { description: Limite de tentativas excedido }
+  /api/public/minha-conta/seguranca/exclusao:
+    get:
+      summary: Consulta o tratamento canonico aplicavel a exclusao da propria conta
+      operationId: getCurrentUserDeletionEligibility
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Elegibilidade e consequencias sanitizadas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioExclusaoElegibilidade"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: Exclui ou anonimiza irreversivelmente a propria conta
+      operationId: deleteCurrentUserAccount
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MinhaContaExcluirRequest"
+      responses:
+        "200":
+          description: Conta excluida fisicamente ou anonimizada conforme os vinculos duraveis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioExclusaoResultado"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { description: Limite de tentativas excedido }
   /api/public/chat/conversas:
     get:
       summary: Lista as conversas diretas do usuario autenticado
@@ -688,6 +755,46 @@ paths:
       responses:
         "200":
           description: Midia privada criada como pendente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhasMidiasResponse"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+  /api/public/minha-conta/anuncios/{slug}/midias/lote:
+    post:
+      summary: Envia um lote atomico de fotos ou video para a area privada do anuncio
+      operationId: uploadCurrentUserAdMediaBatch
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [arquivos]
+              properties:
+                arquivos:
+                  type: array
+                  minItems: 1
+                  maxItems: 11
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "200":
+          description: Lote persistido uma unica vez ou retry idempotente concluido
           content:
             application/json:
               schema:
@@ -1598,6 +1705,21 @@ paths:
       responses:
         "200":
           description: estados, cidades e bairros com anuncios publicos ativos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DescobertaLocalidadesPublica"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/localidades/catalogo:
+    get:
+      summary: Catalogo completo de localidades canonicas para formularios
+      operationId: getPublicLocalityCatalog
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Todos os estados, cidades e bairros cadastrados, independentemente de anuncio publicado
           content:
             application/json:
               schema:
@@ -7338,7 +7460,6 @@ components:
       type: object
       additionalProperties: false
       required:
-        - whatsapp
         - uf
         - cidade
         - titulo
@@ -7347,10 +7468,6 @@ components:
         - aceiteTermos
         - confirmacaoIdade
       properties:
-        whatsapp:
-          type: string
-          description: Apenas WhatsApp sintetico local permitido no E2E.
-          example: "+5500000000000"
         uf:
           type: string
           minLength: 2
@@ -7375,7 +7492,7 @@ components:
         descricao:
           type: string
           minLength: 20
-          maxLength: 600
+          maxLength: 500
           example: Texto sintetico neutro para validar criacao local sem dado real.
         preco:
           type: number
@@ -7383,7 +7500,7 @@ components:
           example: 120
         categoria:
           type: string
-          enum: [ACOMPANHANTE_FEMININA, ACOMPANHANTE_MASCULINO, TRANSEX_TRAVESTIS, MASSAGENS]
+          enum: [ACOMPANHANTE_FEMININA, ACOMPANHANTE_MASCULINO, TRANSEX_TRAVESTIS, MASSAGENS, VENDA_DE_CONTEUDO]
           default: ACOMPANHANTE_FEMININA
           example: ACOMPANHANTE_FEMININA
         servicos:
@@ -7396,6 +7513,12 @@ components:
           type: boolean
           default: false
           description: So pode ser verdadeiro quando servicos contem VIDEOCHAMADA.
+        linkConteudo:
+          type: [string, "null"]
+          format: uri
+          minLength: 8
+          maxLength: 2048
+          description: Link HTTP ou HTTPS opcional para pagina, plataforma ou catalogo de conteudo.
         aceiteTermos:
           type: boolean
           const: true
@@ -7500,9 +7623,8 @@ components:
             - CAMPO_NAO_PERMITIDO
             - CAMPO_OBRIGATORIO
             - TAMANHO_INVALIDO
-            - EMAIL_NAO_SINTETICO
-            - WHATSAPP_NAO_SINTETICO
-            - WHATSAPP_OBRIGATORIO
+            - TELEFONE_DA_CONTA_OBRIGATORIO
+            - TELEFONE_DA_CONTA_INVALIDO
             - PRECO_OBRIGATORIO
             - PRECO_INVALIDO
             - TITULO_CONTATO_OU_REDE_SOCIAL
@@ -7510,7 +7632,11 @@ components:
             - ACEITE_TERMOS_OBRIGATORIO
             - CONFIRMACAO_IDADE_OBRIGATORIA
             - UF_INVALIDA
+            - CATEGORIA_OBRIGATORIA
             - CATEGORIA_INVALIDA
+            - SERVICO_INVALIDO
+            - LINK_CONTEUDO_INVALIDO
+            - EXCLUSIVIDADE_VIRTUAL_INVALIDA
             - LOCALIDADE_SINTETICA_NAO_ENCONTRADA
         mensagem:
           type: string
@@ -7647,6 +7773,47 @@ components:
           format: password
           minLength: 8
           writeOnly: true
+    MinhaContaAlterarSenhaRequest:
+      type: object
+      additionalProperties: false
+      required: [senhaAtual, novaSenha, confirmarSenha]
+      properties:
+        senhaAtual:
+          type: string
+          format: password
+          writeOnly: true
+        novaSenha:
+          type: string
+          format: password
+          minLength: 8
+          writeOnly: true
+        confirmarSenha:
+          type: string
+          format: password
+          minLength: 8
+          writeOnly: true
+    MinhaContaExcluirRequest:
+      type: object
+      additionalProperties: false
+      required: [senhaAtual, confirmacao, cienteConsequencias]
+      properties:
+        senhaAtual:
+          type: string
+          format: password
+          writeOnly: true
+        confirmacao:
+          type: string
+          const: EXCLUIR MINHA CONTA
+        cienteConsequencias:
+          type: boolean
+          const: true
+    PublicAccountAction:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message:
+          type: string
     PublicProfileUpdateRequest:
       type: object
       additionalProperties: false
@@ -7964,6 +8131,7 @@ components:
         - categoria
         - preco
         - whatsapp
+        - linkConteudo
         - locaisAtendimento
         - servicos
         - atendimentoExclusivamenteVirtual
@@ -7994,6 +8162,10 @@ components:
         whatsapp:
           type: [string, "null"]
           description: Contato do proprio anuncio, disponivel somente neste contrato autenticado.
+        linkConteudo:
+          type: [string, "null"]
+          format: uri
+          description: Link opcional informado pelo proprietario; o telefone permanece canonico na conta.
         locaisAtendimento:
           type: array
           uniqueItems: true
@@ -8091,7 +8263,7 @@ components:
     MeuAnuncioAtualizacaoRequest:
       type: object
       additionalProperties: false
-      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, locaisAtendimento, servicos, whatsapp, atendimentoExclusivamenteVirtual]
+      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, locaisAtendimento, servicos, atendimentoExclusivamenteVirtual]
       properties:
         titulo:
           type: string
@@ -8100,7 +8272,7 @@ components:
         descricao:
           type: string
           minLength: 20
-          maxLength: 600
+          maxLength: 500
         categoria:
           type: string
           enum: [ACOMPANHANTE_FEMININA, ACOMPANHANTE_MASCULINO, TRANSEX_TRAVESTIS, MASSAGENS]
@@ -8131,12 +8303,14 @@ components:
           items:
             type: string
             enum: [ANAL, ATRIZ_PORNO, FETICHES, MASSAGEM_TANTRICA, ATIVO, BDSM, JOGOS_DE_INTERPRETACAO, ORAL, ATOR_PORNO, EJACULACAO_CORPORAL, MASSAGEM_EROTICA, PASSIVO, NAMORADAS, TRIO, VIDEOCHAMADA]
-        whatsapp:
-          type: [string, "null"]
-          pattern: "^\\+[1-9][0-9]{7,14}$"
         atendimentoExclusivamenteVirtual:
           type: boolean
           description: So pode ser verdadeiro quando servicos contem VIDEOCHAMADA.
+        linkConteudo:
+          type: [string, "null"]
+          format: uri
+          minLength: 8
+          maxLength: 2048
     AdminAnuncioAtualizacaoRequest:
       type: object
       additionalProperties: false
@@ -8270,15 +8444,16 @@ components:
     MinhasMidiasLimites:
       type: object
       additionalProperties: false
-      required: [maxFotos, fotosAtivas, fotosDisponiveis, maxVideos, videosAtivos, videosDisponiveis, fotosExtrasAtivo, maxFotoBytes, maxVideoBytes]
+      required: [maxFotos, fotosAtivas, fotosDisponiveis, maxVideos, videosAtivos, videosDisponiveis, fotosExtrasAtivo, videoAtivo, maxFotoBytes, maxVideoBytes]
       properties:
         maxFotos: { type: integer, enum: [4, 10] }
         fotosAtivas: { type: integer, minimum: 0 }
         fotosDisponiveis: { type: integer, minimum: 0 }
-        maxVideos: { type: integer, const: 1 }
+        maxVideos: { type: integer, enum: [0, 1] }
         videosAtivos: { type: integer, minimum: 0 }
         videosDisponiveis: { type: integer, minimum: 0 }
         fotosExtrasAtivo: { type: boolean }
+        videoAtivo: { type: boolean }
         maxFotoBytes: { type: integer, format: int64, minimum: 1 }
         maxVideoBytes: { type: integer, format: int64, minimum: 1 }
     ReordenarMinhasMidiasRequest:
@@ -12216,6 +12391,7 @@ components:
         - id
         - slug
         - titulo
+        - linkConteudo
         - idadeOculta
         - midias
         - destaque
@@ -12243,6 +12419,10 @@ components:
           type:
             - string
             - "null"
+        linkConteudo:
+          type: [string, "null"]
+          format: uri
+          description: Link opcional informado pelo anunciante.
         preco:
           type:
             - number

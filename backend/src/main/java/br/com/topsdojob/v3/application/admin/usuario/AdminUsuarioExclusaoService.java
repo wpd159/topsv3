@@ -186,6 +186,81 @@ public class AdminUsuarioExclusaoService {
         return resultado(usuarioId, tipo);
     }
 
+    @Transactional
+    public AdminUsuarioExclusaoResultadoDto excluirPeloProprioUsuario(
+            UUID usuarioId,
+            String idempotencyKey,
+            String requestId) {
+        String chave = Objects.requireNonNullElse(idempotencyKey, "").trim();
+        if (!IDEMPOTENCY_KEY.matcher(chave).matches()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Idempotency-Key invalida");
+        }
+        String chaveHash = sha256(chave);
+        var concluida = exclusaoRepository.exclusaoConcluidaPorRecurso(usuarioId, chaveHash);
+        if (concluida.isPresent()) {
+            return resultado(usuarioId, AdminUsuarioExclusaoTipo.valueOf(concluida.get()));
+        }
+
+        UsuarioEntity usuario = usuarioRepository.findByIdForUpdate(usuarioId).orElse(null);
+        if (usuario == null) {
+            concluida = exclusaoRepository.exclusaoConcluidaPorRecurso(usuarioId, chaveHash);
+            if (concluida.isPresent()) {
+                return resultado(usuarioId, AdminUsuarioExclusaoTipo.valueOf(concluida.get()));
+            }
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado");
+        }
+
+        var analise = exclusaoRepository.analisar(usuarioId);
+        List<String> bloqueios = bloqueios(usuario, analise);
+        if (!bloqueios.isEmpty()) {
+            throw new AdminUsuarioExclusaoBloqueadaException(bloqueios);
+        }
+        if (usuario.getStatus() == StatusUsuario.EXCLUIDO) {
+            throw new AdminUsuarioExclusaoBloqueadaException(List.of("CONTA_JA_EXCLUIDA"));
+        }
+
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        AdminUsuarioExclusaoTipo tipo = tipo(usuario, analise);
+        String motivo = "Solicitacao autenticada do titular da conta";
+        if (tipo == AdminUsuarioExclusaoTipo.EXCLUSAO_FISICA) {
+            auditar(
+                    usuarioId,
+                    null,
+                    "USUARIO_AUTOEXCLUIDO_FISICAMENTE",
+                    tipo,
+                    chaveHash,
+                    motivo,
+                    0,
+                    0,
+                    requestId,
+                    agora);
+            exclusaoRepository.deleteTechnicalLinks(usuarioId);
+            usuarioRepository.delete(usuario);
+            usuarioRepository.flush();
+        } else {
+            Resultado conteudo = conteudoService.encerrar(usuarioId, usuarioId, agora);
+            exclusaoRepository.deleteTechnicalLinks(usuarioId);
+            exclusaoRepository.anonymizeAuxiliaryData(usuarioId, conteudo.anuncioIds(), agora);
+            usuario.anonimizarDefinitivamente(usuarioId, agora);
+            usuarioRepository.saveAndFlush(usuario);
+            auditar(
+                    usuarioId,
+                    usuarioId,
+                    "USUARIO_AUTOEXCLUIDO_COM_ANONIMIZACAO",
+                    tipo,
+                    chaveHash,
+                    motivo,
+                    conteudo.anunciosRemovidos(),
+                    conteudo.storiesEncerrados(),
+                    requestId,
+                    agora);
+        }
+        invalidarSessoesAposCommit(usuarioId);
+        return resultado(usuarioId, tipo);
+    }
+
     private List<String> bloqueios(
             UsuarioEntity usuario,
             AdminUsuarioExclusaoJdbcRepository.DependencyAnalysis analise) {

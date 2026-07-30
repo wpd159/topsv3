@@ -10,6 +10,7 @@ import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
@@ -52,6 +53,7 @@ public class PublicAuthenticationService {
     private final SecurityContextRepository securityContextRepository;
     private final PublicAccountLifecycleService accountLifecycleService;
     private final PublicSessionRegistry sessionRegistry;
+    private final AnuncioRepository anuncioRepository;
 
     public PublicAuthenticationService(
             UsuarioRepository usuarioRepository,
@@ -60,7 +62,8 @@ public class PublicAuthenticationService {
             PasswordEncoder passwordEncoder,
             SecurityContextRepository securityContextRepository,
             PublicAccountLifecycleService accountLifecycleService,
-            PublicSessionRegistry sessionRegistry) {
+            PublicSessionRegistry sessionRegistry,
+            AnuncioRepository anuncioRepository) {
         this.usuarioRepository = usuarioRepository;
         this.credencialRepository = credencialRepository;
         this.papelRepository = papelRepository;
@@ -68,6 +71,7 @@ public class PublicAuthenticationService {
         this.securityContextRepository = securityContextRepository;
         this.accountLifecycleService = accountLifecycleService;
         this.sessionRegistry = sessionRegistry;
+        this.anuncioRepository = anuncioRepository;
     }
 
     @Transactional
@@ -181,8 +185,13 @@ public class PublicAuthenticationService {
                 });
 
         if (!username.equals(usuario.getNome()) || !telefone.equals(usuario.getTelefoneNormalizado())) {
-            usuario.atualizarPerfilPublico(username, telefone, OffsetDateTime.now(ZoneOffset.UTC));
+            OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+            boolean telefoneAlterado = !telefone.equals(usuario.getTelefoneNormalizado());
+            usuario.atualizarPerfilPublico(username, telefone, agora);
             usuarioRepository.save(usuario);
+            if (telefoneAlterado) {
+                anuncioRepository.sincronizarTelefoneDoProprietario(usuario.getId(), telefone, agora);
+            }
         }
         return toDto(usuario);
     }

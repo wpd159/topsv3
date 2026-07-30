@@ -84,14 +84,14 @@ class MeusAnunciosFrontendContractTest {
                 .contains("hydrateFromBackend")
                 .contains("clearCurrentCache")
                 .contains("consultarLimitesMinhasMidias")
-                .contains("enviarMinhaMidia")
+                .contains("enviarMinhasMidiasEmLote")
                 .contains("<WizardStepFotos")
                 .contains("readOnly={isEdit}")
                 .contains("disabled={publishing}")
                 .doesNotContain("fetch(")
                 .doesNotContain("document.body.style.overflow");
         assertThat(localidades)
-                .contains("descobrirLocalidadesPublicas")
+                .contains("listarCatalogoCompletoLocalidades")
                 .doesNotContain("fetch(")
                 .doesNotContain("/localidades/estados")
                 .doesNotContain("mode === 'create'");

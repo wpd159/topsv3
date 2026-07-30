@@ -14,6 +14,7 @@ public record MeuAnuncioDto(
         String categoria,
         BigDecimal preco,
         String whatsapp,
+        String linkConteudo,
         List<String> locaisAtendimento,
         List<String> servicos,
         boolean atendimentoExclusivamenteVirtual,

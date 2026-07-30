@@ -21,7 +21,7 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
         var resultado = validator.validar(request(
                 "ACOMPANHANTE_FEMININA",
                 List.of("ORAL", "VIDEOCHAMADA"),
-                false));
+                false), "+5562999999999");
 
         assertThat(resultado.categoria()).isEqualTo("ACOMPANHANTE_FEMININA");
         assertThat(resultado.servicos())
@@ -34,7 +34,7 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
         var resultado = validator.validar(request(
                 "VENDA_DE_CONTEUDO",
                 List.of("ORAL"),
-                false));
+                false), "+5562999999999");
 
         assertThat(resultado.categoria()).isEqualTo("ACOMPANHANTE_FEMININA");
         assertThat(resultado.servicos())
@@ -47,7 +47,7 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
         var resultado = validator.validar(request(
                 "ACOMPANHANTE_FEMININA",
                 List.of("VIDEOCHAMADA"),
-                true));
+                true), "+5562999999999");
 
         assertThat(resultado.atendimentoExclusivamenteVirtual()).isTrue();
     }
@@ -57,7 +57,7 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
         assertThatThrownBy(() -> validator.validar(request(
                 "ACOMPANHANTE_FEMININA",
                 List.of("ORAL"),
-                true)))
+                true), "+5562999999999"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
                     assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
                     assertThat(exception.getReason())
@@ -79,7 +79,7 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
                 "Setor Bueno",
                 List.of("A_COMBINAR"),
                 servicos,
-                "+5562999999999",
-                exclusivamenteVirtual);
+                exclusivamenteVirtual,
+                "https://example.invalid/conteudo");
     }
 }

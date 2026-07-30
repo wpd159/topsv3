@@ -82,7 +82,8 @@ class MinhasMidiasServiceTest {
                 StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, OffsetDateTime.now(ZoneOffset.UTC));
         when(consultaService.anuncioDoUsuario(SLUG, authentication)).thenReturn(anuncio);
         when(revisaoRepository.existsByAnuncioIdAndStatusIn(eq(ANUNCIO_ID), anyList())).thenReturn(false);
-        when(limiteService.resolver(ANUNCIO_ID)).thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 1, false));
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
         when(storageProvider.getIfAvailable()).thenReturn(storage);
         when(storage.temporaryGetUrl(eq(StorageArea.PRIVATE_MEDIA), any(), any()))
                 .thenReturn(URI.create("https://privado.invalid/temporaria"));
@@ -149,8 +150,10 @@ class MinhasMidiasServiceTest {
     void videoNasceRestritoESegundoVideoEhBloqueado() {
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(true));
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 1, false, true));
 
-        service.enviar(SLUG, multipart, null, authentication);
+        service.enviar(SLUG, multipart, "video-1", authentication);
 
         assertThat(vinculos).singleElement().satisfies(vinculo -> {
             assertThat(vinculo.getTipo()).isEqualTo(TipoAnuncioMidia.VIDEO);
@@ -162,14 +165,14 @@ class MinhasMidiasServiceTest {
             assertThat(arquivo.getMarcaDaguaVersao()).isNull();
             assertThat(arquivo.getSha256Origem()).isNull();
         });
-        assertThatThrownBy(() -> service.enviar(SLUG, multipart, null, authentication))
+        assertThatThrownBy(() -> service.enviar(SLUG, multipart, "video-2", authentication))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
         verify(fotoProcessor, never()).processar(any());
     }
 
     @Test
-    void fotoExigeChaveIdempotenteSemAlterarContratoDoVideo() {
+    void uploadExigeChaveIdempotente() {
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(false));
 
@@ -189,13 +192,74 @@ class MinhasMidiasServiceTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
 
-        verify(storage, never()).put(any(), any(), any(), any());
+        verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+    }
+
+    @Test
+    void loteBaseAceitaQuatroFotosERecusaCincoAntesDeEscreverNoR2() {
+        List<MultipartFile> quatro = multiparts(4);
+        quatro.forEach(file -> when(validator.validar(file)).thenReturn(validada(false)));
+
+        var response = service.enviarLote(
+                SLUG, quatro, "lote-base-quatro", authentication);
+
+        assertThat(response.limites().fotosAtivas()).isEqualTo(4);
+        assertThat(vinculos).hasSize(4);
+        assertThat(objetos).hasSize(4);
+
+        List<MultipartFile> quintaSelecao = multiparts(5);
+        quintaSelecao.forEach(file -> when(validator.validar(file)).thenReturn(validada(false)));
+        org.mockito.Mockito.clearInvocations(storage);
+
+        assertThatThrownBy(() -> service.enviarLote(
+                SLUG, quintaSelecao, "lote-base-cinco", authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode())
+                                .isEqualTo(HttpStatus.CONFLICT));
+        verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+        assertThat(vinculos).hasSize(4);
+    }
+
+    @Test
+    void loteValidaTodosOsArquivosAntesDeEscrever() {
+        MultipartFile primeira = mock(MultipartFile.class);
+        MultipartFile segunda = mock(MultipartFile.class);
+        when(validator.validar(primeira)).thenReturn(validada(false));
+        when(validator.validar(segunda)).thenThrow(
+                new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "arquivo invalido"));
+
+        assertThatThrownBy(() -> service.enviarLote(
+                SLUG,
+                List.of(primeira, segunda),
+                "lote-invalido",
+                authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode())
+                                .isEqualTo(HttpStatus.UNSUPPORTED_MEDIA_TYPE));
+
+        verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+        verify(arquivoRepository, never()).save(any());
+        verify(midiaRepository, never()).save(any());
+    }
+
+    @Test
+    void videoSemBeneficioEhRecusadoAntesDoStorage() {
+        MultipartFile video = mock(MultipartFile.class);
+        when(validator.validar(video)).thenReturn(validada(true));
+
+        assertThatThrownBy(() -> service.enviarLote(
+                SLUG, List.of(video), "video-bloqueado", authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getReason()).contains("beneficio Video");
+                });
+        verify(storage, never()).putIfAbsent(any(), any(), any(), any());
     }
 
     @Test
     void fotosExtraPermiteDezEBloqueiaDecimaPrimeira() {
         when(limiteService.resolver(ANUNCIO_ID))
-                .thenReturn(new LimiteMidiasAnuncioService.Resultado(10, 1, true));
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(10, 0, true, false));
         adicionarFotos(9);
         MultipartFile multipart = mock(MultipartFile.class);
         when(validator.validar(multipart)).thenReturn(validada(false));
@@ -210,15 +274,33 @@ class MinhasMidiasServiceTest {
     }
 
     @Test
+    void loteComFotosExtraAceitaDezERetryNaoDuplicaNemReprocessa() {
+        when(limiteService.resolver(ANUNCIO_ID))
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(10, 0, true, false));
+        List<MultipartFile> dez = multiparts(10);
+        dez.forEach(file -> when(validator.validar(file)).thenReturn(validada(false)));
+
+        service.enviarLote(SLUG, dez, "lote-extra-dez", authentication);
+        service.enviarLote(SLUG, dez, "lote-extra-dez", authentication);
+
+        assertThat(vinculos).hasSize(10);
+        assertThat(arquivos).hasSize(10);
+        assertThat(objetos).hasSize(10);
+        verify(fotoProcessor, org.mockito.Mockito.times(10)).processar(any());
+        verify(storage, org.mockito.Mockito.times(10))
+                .putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), eq("image/jpeg"));
+    }
+
+    @Test
     void expiracaoRetornaLimiteAQuatroSemExcluirArquivos() {
         adicionarFotos(6);
         when(limiteService.resolver(ANUNCIO_ID))
-                .thenReturn(new LimiteMidiasAnuncioService.Resultado(10, 1, true));
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(10, 0, true, false));
         assertThat(service.listar(SLUG, authentication).midias())
                 .noneMatch(item -> item.ocultaPorLimite());
 
         when(limiteService.resolver(ANUNCIO_ID))
-                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 1, false));
+                .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
         var aposExpiracao = service.listar(SLUG, authentication);
 
         assertThat(aposExpiracao.limites().maxFotos()).isEqualTo(4);
@@ -360,6 +442,14 @@ class MinhasMidiasServiceTest {
         for (int ordem = 0; ordem < quantidade; ordem++) {
             vinculos.add(vinculo(TipoAnuncioMidia.FOTO, ordem));
         }
+    }
+
+    private List<MultipartFile> multiparts(int quantidade) {
+        List<MultipartFile> resultado = new ArrayList<>();
+        for (int index = 0; index < quantidade; index++) {
+            resultado.add(mock(MultipartFile.class));
+        }
+        return resultado;
     }
 
     private MidiaValidada validada(boolean video) {

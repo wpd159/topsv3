@@ -30,6 +30,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
 import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -48,11 +49,9 @@ import org.springframework.security.core.Authentication;
 @Service
 public class SolicitarAnuncioPublicoService {
 
-    static final String WHATSAPP_SINTETICO_PERMITIDO = "+5500000000000";
     private static final int TITULO_MAX = 80;
-    private static final int DESCRICAO_MAX = 600;
+    private static final int DESCRICAO_MAX = 500;
     private static final Set<String> ALLOWED_FIELDS = Set.of(
-            "whatsapp",
             "uf",
             "cidade",
             "bairro",
@@ -61,6 +60,7 @@ public class SolicitarAnuncioPublicoService {
             "preco",
             "categoria",
             "servicos",
+            "linkConteudo",
             "atendimentoExclusivamenteVirtual",
             "aceiteTermos",
             "confirmacaoIdade");
@@ -130,7 +130,7 @@ public class SolicitarAnuncioPublicoService {
     public SolicitarAnuncioPublicoResponseDto solicitar(JsonNode payload, Authentication authentication) {
         UsuarioEntity usuario = usuarioService.usuarioAutenticado(authentication);
         kycService.garantirProntoParaAnuncio(usuario.getId());
-        ValidatedRequest validated = validar(payload);
+        ValidatedRequest validated = validar(payload, usuario.getTelefoneNormalizado());
         OffsetDateTime now = OffsetDateTime.now();
 
         UUID anuncioId = UUID.randomUUID();
@@ -146,6 +146,7 @@ public class SolicitarAnuncioPublicoService {
                 validated.whatsapp(),
                 validated.servicos(),
                 validated.atendimentoExclusivamenteVirtual(),
+                validated.linkConteudo(),
                 now);
         anuncioRepository.save(anuncio);
         localizacaoRepository.save(AnuncioLocalizacaoEntity.criarSolicitacaoLocal(
@@ -192,7 +193,7 @@ public class SolicitarAnuncioPublicoService {
                 "solicitacao local criada para revisao");
     }
 
-    ValidatedRequest validar(JsonNode payload) {
+    ValidatedRequest validar(JsonNode payload, String telefoneDaConta) {
         List<SolicitarAnuncioValidationErrorDto> errors = new ArrayList<>();
         if (payload == null || payload.isNull() || !payload.isObject()) {
             errors.add(error("payload", "PAYLOAD_INVALIDO", "payload deve ser um objeto JSON"));
@@ -219,7 +220,7 @@ public class SolicitarAnuncioPublicoService {
             throw new SolicitarAnuncioValidationException(errors);
         }
 
-        String whatsapp = syntheticWhatsapp(request.whatsapp(), errors);
+        String whatsapp = telefoneDaConta(telefoneDaConta, errors);
         String uf = requiredText(request.uf(), "uf", 2, 2, errors).toUpperCase(Locale.ROOT);
         String cidade = requiredText(request.cidade(), "cidade", 3, 80, errors);
         String bairro = optionalText(request.bairro(), 2, 80, "bairro", errors);
@@ -227,6 +228,7 @@ public class SolicitarAnuncioPublicoService {
         String descricao = requiredText(request.descricao(), "descricao", 20, DESCRICAO_MAX, errors);
         String categoria = categoria(request.categoria(), errors);
         Set<ServicoAnuncio> servicos = servicos(request.servicos(), errors);
+        String linkConteudo = linkConteudo(request.linkConteudo(), errors);
         if (CategoriaAnuncio.VENDA_DE_CONTEUDO.name().equals(categoria)) {
             categoria = CategoriaAnuncio.ACOMPANHANTE_FEMININA.name();
             Set<ServicoAnuncio> normalizados = new java.util.LinkedHashSet<>(servicos);
@@ -297,6 +299,7 @@ public class SolicitarAnuncioPublicoService {
                 categoria,
                 servicos,
                 atendimentoExclusivamenteVirtual,
+                linkConteudo,
                 estado,
                 cidadeEntity,
                 bairroEntity);
@@ -328,6 +331,7 @@ public class SolicitarAnuncioPublicoService {
         payload.put("categoria", request.categoria());
         payload.put("servicos", request.servicos().stream().map(Enum::name).sorted().toList());
         payload.put("atendimentoExclusivamenteVirtual", request.atendimentoExclusivamenteVirtual());
+        payload.put("linkConteudoInformado", request.linkConteudo() != null);
         payload.put("uploadRealExecutado", false);
         payload.put("pagamentoCriado", false);
         payload.put("creditoCriado", false);
@@ -378,20 +382,50 @@ public class SolicitarAnuncioPublicoService {
         return sanitized;
     }
 
-    private String syntheticWhatsapp(String value, List<SolicitarAnuncioValidationErrorDto> errors) {
+    private String telefoneDaConta(String value, List<SolicitarAnuncioValidationErrorDto> errors) {
         String sanitized = sanitize(value);
         if (sanitized == null) {
-            errors.add(error("whatsapp", "WHATSAPP_OBRIGATORIO", "WhatsApp sintetico local deve ser informado"));
+            errors.add(error(
+                    "telefone",
+                    "TELEFONE_DA_CONTA_OBRIGATORIO",
+                    "Cadastre seu telefone em Minha Conta antes de criar um anuncio."));
             return null;
         }
         String normalized = sanitized.replaceAll("[^0-9+]", "");
         if (!normalized.startsWith("+") && normalized.matches("[0-9]+")) {
             normalized = "+" + normalized;
         }
-        if (!WHATSAPP_SINTETICO_PERMITIDO.equals(normalized)) {
-            errors.add(error("whatsapp", "WHATSAPP_NAO_SINTETICO", "usar somente WhatsApp sintetico local permitido"));
+        if (!normalized.matches("\\+[1-9][0-9]{7,14}")) {
+            errors.add(error(
+                    "telefone",
+                    "TELEFONE_DA_CONTA_INVALIDO",
+                    "Atualize seu telefone em Minha conta antes de criar um anuncio."));
         }
         return normalized;
+    }
+
+    private String linkConteudo(
+            String value,
+            List<SolicitarAnuncioValidationErrorDto> errors) {
+        String sanitized = sanitize(value);
+        if (sanitized == null) {
+            return null;
+        }
+        if (sanitized.length() > 2048) {
+            errors.add(error("linkConteudo", "LINK_CONTEUDO_INVALIDO", "link de conteudo invalido"));
+            return sanitized;
+        }
+        try {
+            URI uri = URI.create(sanitized);
+            if (uri.getHost() == null
+                    || (!"https".equalsIgnoreCase(uri.getScheme())
+                    && !"http".equalsIgnoreCase(uri.getScheme()))) {
+                errors.add(error("linkConteudo", "LINK_CONTEUDO_INVALIDO", "link de conteudo invalido"));
+            }
+        } catch (IllegalArgumentException exception) {
+            errors.add(error("linkConteudo", "LINK_CONTEUDO_INVALIDO", "link de conteudo invalido"));
+        }
+        return sanitized;
     }
 
     private BigDecimal preco(BigDecimal value, List<SolicitarAnuncioValidationErrorDto> errors) {
@@ -474,6 +508,7 @@ public class SolicitarAnuncioPublicoService {
             String categoria,
             Set<ServicoAnuncio> servicos,
             boolean atendimentoExclusivamenteVirtual,
+            String linkConteudo,
             EstadoEntity estado,
             CidadeEntity cidadeEntity,
             BairroEntity bairroEntity) {

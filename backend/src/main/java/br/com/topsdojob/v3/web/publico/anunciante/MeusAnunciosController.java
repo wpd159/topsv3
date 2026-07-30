@@ -113,6 +113,15 @@ public class MeusAnunciosController {
         return midiasService.enviar(slug, arquivo, idempotencyKey, authentication);
     }
 
+    @PostMapping(path = "/{slug}/midias/lote", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MeuAnuncioMidiasResponseDto enviarMidiasEmLote(
+            @PathVariable String slug,
+            @RequestPart("arquivos") List<MultipartFile> arquivos,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            Authentication authentication) {
+        return midiasService.enviarLote(slug, arquivos, idempotencyKey, authentication);
+    }
+
     @PatchMapping("/{slug}/midias/ordem")
     public MeuAnuncioMidiasResponseDto reordenarMidias(
             @PathVariable String slug,

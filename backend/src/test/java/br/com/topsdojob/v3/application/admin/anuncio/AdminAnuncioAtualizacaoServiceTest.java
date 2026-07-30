@@ -104,7 +104,8 @@ class AdminAnuncioAtualizacaoServiceTest {
                 Set.of(LocalAtendimentoAnuncio.MEU_LOCAL),
                 Set.of(ServicoAnuncio.VIDEOCHAMADA),
                 true,
-                "+5562888888888");
+                "+5562888888888",
+                null);
         AdminAnuncioAtualizacaoRequest request = new AdminAnuncioAtualizacaoRequest(
                 dados.titulo(),
                 dados.descricao(),
@@ -118,7 +119,10 @@ class AdminAnuncioAtualizacaoServiceTest {
                 List.of("VIDEOCHAMADA"),
                 dados.whatsapp(),
                 true);
-        when(validator.validar(any(MeuAnuncioAtualizacaoRequestDto.class))).thenReturn(dados);
+        when(validator.validar(
+                any(MeuAnuncioAtualizacaoRequestDto.class),
+                org.mockito.ArgumentMatchers.eq("+5562888888888")))
+                .thenReturn(dados);
         when(validator.validarEnderecoResumido("Regiao central")).thenReturn("Regiao central");
         when(validator.slugify("Goiania")).thenReturn("goiania");
         when(validator.slugify("Setor Bueno")).thenReturn("setor-bueno");

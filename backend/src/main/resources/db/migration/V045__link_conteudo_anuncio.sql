@@ -1,0 +1,2 @@
+ALTER TABLE anuncio
+    ADD COLUMN IF NOT EXISTS link_conteudo VARCHAR(2048);

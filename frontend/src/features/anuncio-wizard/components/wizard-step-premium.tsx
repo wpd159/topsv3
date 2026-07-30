@@ -59,13 +59,13 @@ export function WizardStepPremium({
           <div className="space-y-1">
             <p className="text-sm font-semibold text-zinc-950">
               {hasExistingKyc
-                ? 'Conta verificada. Seu anúncio será enviado para moderação.'
-                : 'Vamos concluir rapidamente sua verificação para publicar seu anúncio.'}
+                ? 'Identidade já confirmada'
+                : 'Confirmação de identidade no primeiro anúncio'}
             </p>
             <p className="text-sm leading-6 text-zinc-600">
               {hasExistingKyc
-                ? 'Você pode seguir agora. O restante continua no fluxo normal de moderação.'
-                : 'Se faltar documentação, o modal final vai pedir nome completo, CPF, data de nascimento e documentos antes do envio.'}
+                ? 'Seus dados já foram verificados e não serão solicitados novamente.'
+                : 'Para manter a plataforma mais segura, pediremos seu nome completo, CPF, data de nascimento e documento com foto antes de enviar seu primeiro anúncio.'}
             </p>
           </div>
         </div>
@@ -82,14 +82,14 @@ export function WizardStepPremium({
         )}
       >
         <span>
-          <strong className="block">Publicar grátis</strong>
+          <strong className="block">Publicar gratuitamente</strong>
           <span
             className={cn(
               'text-sm',
               premiumChoice === 'gratis' ? 'text-zinc-200' : 'text-zinc-500'
             )}
           >
-            Envio normal para moderação.
+            Envie seu anúncio para moderação sem contratar benefícios.
           </span>
         </span>
         {premiumChoice === 'gratis' && <Check className="h-5 w-5" />}
@@ -108,7 +108,7 @@ export function WizardStepPremium({
         <span>
           <strong className="block">Destacar meu anúncio</strong>
           <span className="text-sm text-zinc-500">
-            Upgrade opcional. A ativação premium continua pelo fluxo existente.
+            Escolha benefícios pagos para aumentar a visibilidade do anúncio.
           </span>
         </span>
         <Crown className="h-5 w-5 text-rose-600" />

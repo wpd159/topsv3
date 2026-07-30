@@ -122,7 +122,9 @@ public class KycPublicoService {
     try {
       for (ParteArquivo item : arquivos) {
         UUID arquivoId = UUID.randomUUID();
-        DocumentoValidado validado = uploadValidator.validar(item.arquivo());
+        DocumentoValidado validado = item.parte() == ParteDocumentoUsuario.UNICO
+            ? uploadValidator.validarPdf(item.arquivo())
+            : uploadValidator.validarImagem(item.arquivo());
         String key = storageProperties.getDocumentPrefix()
             + "usuarios/" + usuario.getId()
             + "/envios/" + envioId
@@ -181,20 +183,22 @@ public class KycPublicoService {
       MultipartFile verso) {
     if ("PDF".equalsIgnoreCase(modo)) {
       if (vazio(unico) || !vazio(frente) || !vazio(verso)) {
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "envie somente o PDF unico");
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "O arquivo deve estar em PDF.");
       }
       return List.of(new ParteArquivo(ParteDocumentoUsuario.UNICO, unico));
     }
     if ("FRENTE_VERSO".equalsIgnoreCase(modo)) {
       if (vazio(frente) || !vazio(unico)) {
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "frente do documento obrigatoria");
+        throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "Selecione a imagem da frente do documento.");
       }
       List<ParteArquivo> resultado = new ArrayList<>();
       resultado.add(new ParteArquivo(ParteDocumentoUsuario.FRENTE, frente));
       if (!vazio(verso)) resultado.add(new ParteArquivo(ParteDocumentoUsuario.VERSO, verso));
       return List.copyOf(resultado);
     }
-    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "modo de documento invalido");
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Preencha os dados obrigatórios.");
   }
 
   private boolean vazio(MultipartFile arquivo) {

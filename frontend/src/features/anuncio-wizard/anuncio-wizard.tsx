@@ -13,25 +13,25 @@ import {
   atualizarMeuAnuncio,
   buscarMeuAnuncio,
   consultarLimitesMinhasMidias,
-  enviarMinhaMidia,
+  enviarMinhasMidiasEmLote,
   MeusAnunciosApiError,
   type MeuAnuncio,
   type MeuAnuncioAtualizacao,
 } from '@/lib/meus-anuncios-api'
 import { formatCurrencyBRL } from '@/utils/formatter'
 import {
+  fetchWizardCategories,
   fetchWizardKycStatus,
   submitWizardKyc,
   submitWizardAnuncio,
+  type WizardCategoryOption,
   type WizardKycStatus,
-  updateWizardProfileDescription,
 } from './api'
 import {
-  categorias,
   stepCopy,
   type SearchableSelectOption,
 } from './wizard-constants'
-import { calculateAge } from './wizard-utils'
+import { calculateAge, formatWizardCategory } from './wizard-utils'
 import {
   useAnuncioWizardStore,
   validateWizardKycState,
@@ -88,8 +88,8 @@ function editPayload(state: WizardFormState): MeuAnuncioAtualizacao {
     bairro: state.bairroNome.trim() || null,
     locaisAtendimento: state.locaisAtendimento,
     servicos: state.servicos,
-    whatsapp: state.whatsapp.trim() || null,
     atendimentoExclusivamenteVirtual: state.atendimentoExclusivamenteVirtual,
+    linkConteudo: state.linkConteudo.trim() || null,
   }
 }
 
@@ -150,6 +150,9 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const [kycStatus, setKycStatus] = useState<WizardKycStatus | null>(null)
   const [kycLoading, setKycLoading] = useState(true)
   const [kycError, setKycError] = useState<string | null>(null)
+  const [categoryCatalog, setCategoryCatalog] = useState<WizardCategoryOption[]>([])
+  const [categoryLoading, setCategoryLoading] = useState(true)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewHintDismissed, setPreviewHintDismissed] = useState(false)
   const [createMediaProgress, setCreateMediaProgress] = useState<Record<string, number>>({})
@@ -183,7 +186,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
   const selectedStateLabel = state.estadoNome
     ? `${state.estadoNome}${state.estadoUf ? ` · ${state.estadoUf}` : ''}`
     : 'Selecione o estado'
-  const persistedProfileDescription = String((usuario as any)?.descricao || '').trim()
   const descricaoPerfilCount = state.descricaoPerfil.trim().length
   const descricaoPerfilNeedsMore = descricaoPerfilCount > 0 && descricaoPerfilCount < 20
   const descricaoPerfilRemaining = Math.max(0, 20 - descricaoPerfilCount)
@@ -250,7 +252,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
             servicos: anuncio.servicos || [],
             atendimentoExclusivamenteVirtual: anuncio.atendimentoExclusivamenteVirtual,
             descricao: anuncio.descricao || '',
-            whatsapp: anuncio.whatsapp || '',
+            linkConteudo: anuncio.linkConteudo || '',
             estadoId: anuncio.localizacao?.uf || '',
             cidadeId: anuncio.localizacao?.cidadeSlug || '',
             bairroId: anuncio.localizacao?.bairroSlug || '',
@@ -273,13 +275,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       if (state.cidadeId) await loadBairros(state.cidadeId)
     })()
   }, [hydrated, loadBairros, loadCidades, state.cidadeId, state.estadoId])
-
-  useEffect(() => {
-    if (!hydrated) return
-    if (isEdit || !persistedProfileDescription) return
-    if (state.descricaoPerfil.trim().length > 0) return
-    updateForm({ descricaoPerfil: persistedProfileDescription })
-  }, [hydrated, isEdit, persistedProfileDescription, state.descricaoPerfil, updateForm])
 
   useEffect(() => {
     if (!hydrated) return
@@ -323,6 +318,43 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     void loadKycStatus()
   }, [carregando, loadKycStatus, usuario])
 
+  const loadCategoryCatalog = useCallback(async () => {
+    setCategoryLoading(true)
+    setCategoryError(null)
+    try {
+      const options = await fetchWizardCategories()
+      if (!options.length) throw new Error('Nenhuma categoria está disponível para publicação.')
+      setCategoryCatalog(options)
+    } catch (error) {
+      setCategoryError(
+        error instanceof Error
+          ? error.message
+          : 'Não foi possível carregar as categorias. Tente novamente.'
+      )
+    } finally {
+      setCategoryLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadCategoryCatalog()
+  }, [loadCategoryCatalog])
+
+  useEffect(() => {
+    if (!hydrated || isEdit || categoryLoading || categoryError || !state.categoria) return
+    if (!categoryCatalog.some((item) => item.value === state.categoria)) {
+      updateForm({ categoria: '' })
+    }
+  }, [
+    categoryCatalog,
+    categoryError,
+    categoryLoading,
+    hydrated,
+    isEdit,
+    state.categoria,
+    updateForm,
+  ])
+
   useEffect(() => {
     if (!hydrated) return
     if (!usuario) return
@@ -333,10 +365,15 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
 
   const categoriaOptions = useMemo(
     () =>
-      state.categoria && !categorias.some((item) => item.value === state.categoria)
-        ? [...categorias, { value: state.categoria, label: state.categoria.replaceAll('_', ' ') }]
-        : categorias,
-    [state.categoria]
+      isEdit
+        && state.categoria
+        && !categoryCatalog.some((item) => item.value === state.categoria)
+        ? [
+            ...categoryCatalog,
+            { value: state.categoria, label: formatWizardCategory(state.categoria) },
+          ]
+        : categoryCatalog,
+    [categoryCatalog, isEdit, state.categoria]
   )
   const categoriaLabel = useMemo(
     () => categoriaOptions.find((item) => item.value === state.categoria)?.label || 'Categoria',
@@ -479,19 +516,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     nextStep()
   }
 
-  const syncProfileDescriptionIfNeeded = async () => {
-    if (isEdit) return
-    if (!usuario?.email) return
-
-    const nextDescription = state.descricaoPerfil.trim()
-    if (nextDescription === persistedProfileDescription) return
-
-    await updateWizardProfileDescription({
-      email: usuario.email,
-      descricaoPerfil: nextDescription,
-    })
-  }
-
   const submitEdit = async () => {
     if (!slug) {
       toast.error('Anúncio não encontrado.')
@@ -513,7 +537,6 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       return
     }
 
-    await syncProfileDescriptionIfNeeded()
     if (!createdSlugRef.current) {
       const created = await submitWizardAnuncio(state)
       createdSlugRef.current = created.slugLocal
@@ -533,28 +556,32 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       throw new Error('Este anúncio já atingiu o limite de vídeos.')
     }
     setCreateMediaErrors({})
-    const enviarArquivos = async (files: File[], onRemaining: (remaining: File[]) => void) => {
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index]
-        const key = uploadFileKey(file)
-        setCreateMediaProgress((current) => ({ ...current, [key]: 0 }))
-        try {
-          await enviarMinhaMidia(targetSlug, file, (value) => {
-            setCreateMediaProgress((current) => ({ ...current, [key]: value }))
-          })
-        } catch (error) {
-          setCreateMediaErrors((current) => ({
-            ...current,
-            [key]: error instanceof Error ? error.message : 'Falha ao enviar o arquivo.',
-          }))
-          setStep('fotos')
-          throw error
-        }
-        onRemaining(files.slice(index + 1))
+    const arquivos = [...state.fotos, ...state.videos]
+    const abrirMonetizacao = state.premiumChoice === 'destaque'
+    arquivos.forEach((file) => {
+      const key = uploadFileKey(file)
+      setCreateMediaProgress((current) => ({ ...current, [key]: 0 }))
+    })
+    if (arquivos.length) {
+      try {
+        await enviarMinhasMidiasEmLote(targetSlug, arquivos, (value) => {
+          setCreateMediaProgress(Object.fromEntries(
+            arquivos.map((file) => [uploadFileKey(file), value])
+          ))
+        })
+      } catch (error) {
+        setCreateMediaErrors(Object.fromEntries(
+          arquivos.map((file) => [
+            uploadFileKey(file),
+            error instanceof Error ? error.message : 'Falha ao enviar o lote.',
+          ])
+        ))
+        setStep('fotos')
+        throw error
       }
     }
-    await enviarArquivos(state.fotos, setFotos)
-    await enviarArquivos(state.videos, setVideos)
+    setFotos([])
+    setVideos([])
     await syncProgress('concluido', 'AGUARDANDO_MODERACAO', createdAnuncioIdRef.current)
     clearWizardProgressSessionId(progressScope)
     await refresh().catch(() => null)
@@ -565,7 +592,11 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
     setCreateMediaProgress({})
     setCreateMediaErrors({})
     toast.success('Anúncio enviado para moderação.')
-    router.push('/meus-anuncios')
+    router.push(
+      abrirMonetizacao
+        ? `/meus-anuncios/${encodeURIComponent(targetSlug)}/monetizar`
+        : '/meus-anuncios'
+    )
   }
 
   const ensureKycReady = async () => {
@@ -608,11 +639,13 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
       if (isEdit) await submitEdit()
       else await submitAnuncio()
     } catch (err: any) {
-      toast.error(
-        isEdit
-          ? editErrorMessage(err)
-          : err?.message || 'Não foi possível concluir a publicação agora.'
-      )
+      const message = isEdit
+        ? editErrorMessage(err)
+        : err?.message || 'Não foi possível concluir a publicação agora.'
+      toast.error(message)
+      if (!isEdit && message.includes('Minha conta')) {
+        router.push('/minha-conta')
+      }
     } finally {
       publishLockRef.current = false
       setPublishing(false)
@@ -653,10 +686,13 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           descricaoPerfilCount={descricaoPerfilCount}
           descricaoPerfilNeedsMore={descricaoPerfilNeedsMore}
           descricaoPerfilRemaining={descricaoPerfilRemaining}
+          categoriasLoading={categoryLoading}
+          categoriasError={categoryError}
           showProfileDescription={!isEdit}
           onTituloChange={(value) => updateForm({ titulo: value })}
           onCategoriaChange={(value) => updateForm({ categoria: value })}
           onDescricaoChange={(value) => updateForm({ descricaoPerfil: value.slice(0, 500) })}
+          onReloadCategorias={() => void loadCategoryCatalog()}
         />
       )
     }
@@ -702,6 +738,14 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           onChangeVideosNovos={setVideos}
           createProgress={createMediaProgress}
           createErrors={createMediaErrors}
+          onAddBenefit={() => {
+            if (isEdit && slug) {
+              router.push(`/meus-anuncios/${encodeURIComponent(slug)}/monetizar`)
+              return
+            }
+            updateForm({ premiumChoice: 'destaque' })
+            setStep('premium')
+          }}
         />
       )
     }

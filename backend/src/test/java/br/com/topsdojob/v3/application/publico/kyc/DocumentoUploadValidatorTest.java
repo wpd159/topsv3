@@ -50,6 +50,44 @@ class DocumentoUploadValidatorTest {
         HttpStatus.UNSUPPORTED_MEDIA_TYPE);
   }
 
+  @Test
+  void validadoresEspecificosRecusamFormatoFalsoComMensagemHumana() throws Exception {
+    DocumentoUploadValidator validator =
+        new DocumentoUploadValidator(new DocumentoUploadProperties());
+
+    assertReason(
+        () -> validator.validarPdf(new MockMultipartFile(
+            "documentoUnico", "identidade.png", "image/png", png())),
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        "O arquivo deve estar em PDF.");
+    assertReason(
+        () -> validator.validarPdf(new MockMultipartFile(
+            "documentoUnico", "identidade.pdf", "application/pdf", "corrompido".getBytes())),
+        HttpStatus.BAD_REQUEST,
+        "Não foi possível ler o PDF enviado.");
+    assertReason(
+        () -> validator.validarImagem(new MockMultipartFile(
+            "documentoFrente", "identidade.webp", "image/webp", png())),
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        "A imagem deve estar em JPG ou PNG.");
+    assertReason(
+        () -> validator.validarImagem(new MockMultipartFile(
+            "documentoFrente", "identidade.png", "image/png", "corrompido".getBytes())),
+        HttpStatus.BAD_REQUEST,
+        "Não foi possível ler a imagem enviada.");
+  }
+
+  private void assertReason(
+      org.assertj.core.api.ThrowableAssert.ThrowingCallable operation,
+      HttpStatus expected,
+      String reason) {
+    assertThatThrownBy(operation)
+        .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+          assertThat(exception.getStatusCode()).isEqualTo(expected);
+          assertThat(exception.getReason()).isEqualTo(reason);
+        });
+  }
+
   private void assertStatus(
       DocumentoUploadValidator validator,
       MockMultipartFile file,

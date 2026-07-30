@@ -26,6 +26,66 @@ import org.junit.jupiter.api.Test;
 class LocalidadePublicaConsultaServiceTest {
 
     @Test
+    void catalogoCompletoIncluiLocalidadesSemAnuncioEOrdenaComAcentos() {
+        UUID goId = UUID.randomUUID();
+        UUID spId = UUID.randomUUID();
+        UUID goianiaId = UUID.randomUUID();
+        UUID aguasId = UUID.randomUUID();
+
+        EstadoEntity go = entity(EstadoEntity.class);
+        set(go, "id", goId);
+        set(go, "uf", "GO");
+        set(go, "nome", "Goiás");
+        EstadoEntity sp = entity(EstadoEntity.class);
+        set(sp, "id", spId);
+        set(sp, "uf", "SP");
+        set(sp, "nome", "São Paulo");
+
+        CidadeEntity goiania = entity(CidadeEntity.class);
+        set(goiania, "id", goianiaId);
+        set(goiania, "estadoId", goId);
+        set(goiania, "nome", "Goiânia");
+        set(goiania, "slug", "goiania");
+        CidadeEntity aguas = entity(CidadeEntity.class);
+        set(aguas, "id", aguasId);
+        set(aguas, "estadoId", goId);
+        set(aguas, "nome", "Águas Lindas de Goiás");
+        set(aguas, "slug", "aguas-lindas-de-goias");
+
+        BairroEntity setor = entity(BairroEntity.class);
+        set(setor, "id", UUID.randomUUID());
+        set(setor, "cidadeId", goianiaId);
+        set(setor, "nome", "Setor Bueno");
+        set(setor, "slug", "setor-bueno");
+
+        EstadoRepository estados = mock(EstadoRepository.class);
+        CidadeRepository cidades = mock(CidadeRepository.class);
+        BairroRepository bairros = mock(BairroRepository.class);
+        when(estados.findAll()).thenReturn(List.of(sp, go));
+        when(cidades.findAll()).thenReturn(List.of(goiania, aguas));
+        when(bairros.findAll()).thenReturn(List.of(setor));
+
+        var catalogo = new LocalidadePublicaConsultaService(
+                estados,
+                cidades,
+                bairros,
+                mock(AnuncioRepository.class),
+                mock(AnuncioLocalizacaoRepository.class)).catalogoCompleto();
+
+        assertThat(catalogo.estados()).extracting(item -> item.nome())
+                .containsExactly("Goiás", "São Paulo");
+        assertThat(catalogo.estados().get(0).cidades()).extracting(item -> item.nome())
+                .containsExactly("Águas Lindas de Goiás", "Goiânia");
+        assertThat(catalogo.estados().get(0).cidades().get(1).bairros())
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.nome()).isEqualTo("Setor Bueno");
+                    assertThat(item.slug()).isEqualTo("setor-bueno");
+                    assertThat(item.totalAnunciosAtivos()).isZero();
+                });
+    }
+
+    @Test
     void descobreSomenteLocalidadesDeAnunciosPublicos() {
         UUID estadoId = UUID.randomUUID();
         UUID cidadeId = UUID.randomUUID();

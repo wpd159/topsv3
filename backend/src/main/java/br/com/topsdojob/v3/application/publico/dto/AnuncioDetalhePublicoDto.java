@@ -12,6 +12,7 @@ public record AnuncioDetalhePublicoDto(
         String slug,
         String titulo,
         String descricao,
+        String linkConteudo,
         BigDecimal preco,
         String categoria,
         String username,

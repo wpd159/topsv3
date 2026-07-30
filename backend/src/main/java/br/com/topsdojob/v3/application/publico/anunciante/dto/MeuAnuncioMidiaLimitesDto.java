@@ -8,6 +8,7 @@ public record MeuAnuncioMidiaLimitesDto(
         int videosAtivos,
         int videosDisponiveis,
         boolean fotosExtrasAtivo,
+        boolean videoAtivo,
         long maxFotoBytes,
         long maxVideoBytes) {
 }

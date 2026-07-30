@@ -1,7 +1,8 @@
 'use client'
 
-import { ImagePlus, UploadCloud } from 'lucide-react'
+import { ImagePlus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { FilePicker } from '@/components/forms/file-picker'
 import { cn } from '@/lib/utils'
 import {
   ALLOWED_IMAGE_ACCEPT,
@@ -76,12 +77,13 @@ export function GaleriaFotos({
   const total = existentes.length + novas.length
   const limiteAtingido = enforceLimit && total >= maxCount
 
-  const pick = (files: FileList | null) => {
-    if (!files?.length) return
-
-    const selecionadas = Array.from(files)
+  const pick = (selecionadas: File[]) => {
+    if (!selecionadas.length) return
     const disponivel = enforceLimit ? Math.max(0, maxCount - total) : selecionadas.length
-    if (disponivel <= 0) return
+    if (disponivel <= 0 || selecionadas.length > disponivel) {
+      setErroArquivo('Você atingiu o limite de fotos deste anúncio.')
+      return
+    }
     if (selecionadas.some(isHeic)) {
       setErroArquivo(INCOMPATIBLE_IMAGE_FORMAT_MESSAGE)
       return
@@ -92,8 +94,7 @@ export function GaleriaFotos({
       return
     }
 
-    const lote = selecionadas.slice(0, disponivel)
-    const merged = [...novas, ...lote]
+    const merged = [...novas, ...selecionadas]
     onMediaTouched?.()
     setErroArquivo(null)
     setNovas(merged)
@@ -131,72 +132,22 @@ export function GaleriaFotos({
         </p>
       )}
 
-      <label
-        className={cn(
-          'cursor-pointer rounded-lg border border-dashed transition',
-          isWizard
-            ? 'flex min-h-[228px] flex-col items-center justify-center border-zinc-200 bg-white px-5 py-6 text-center shadow-sm hover:border-zinc-300 hover:bg-zinc-50/80'
-            : 'flex flex-col items-center justify-center space-y-3 border-gray-300 p-6 text-center hover:bg-gray-50'
-        )}
-      >
-        {isWizard ? (
-          <>
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50 text-zinc-500">
-              <UploadCloud className="h-6 w-6" />
-            </div>
-
-            <div className="mt-4 space-y-2">
-              <p className="text-sm font-semibold text-zinc-900">Adicione fotos ao seu anúncio</p>
-              <p className="text-sm leading-6 text-zinc-500">
-                Escolha imagens que representem bem seu perfil.
-              </p>
-            </div>
-
-            <span className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-zinc-950 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800">
-              Selecionar fotos
-            </span>
-
-            <p className="mt-3 text-xs text-zinc-500">ou arraste arquivos aqui</p>
-            {showLimit ? (
-              <p className="mt-2 text-xs font-medium text-zinc-400">
-                {total}/{maxCount} {total === 1 ? 'foto' : 'fotos'}
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <svg width="36" height="36" viewBox="0 0 24 24" className="text-gray-400" fill="none">
-              <path
-                d="M21 15l-5-5-4 4-2-2-5 5"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" strokeWidth="2" />
-            </svg>
-
-            <p className="text-sm text-gray-500">Arraste e solte ou clique para selecionar</p>
-            {showLimit ? (
-              <p className="text-xs text-gray-400">
-                {total}/{maxCount} {total === 1 ? 'foto' : 'fotos'}
-              </p>
-            ) : null}
-          </>
-        )}
-
-        <input
-          type="file"
-          accept={accept}
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            pick(e.target.files)
-            e.currentTarget.value = ''
-          }}
-          disabled={limiteAtingido}
-        />
-      </label>
+      <FilePicker
+        ariaLabel="Selecionar fotos do anúncio"
+        buttonLabel="Selecionar foto"
+        accept={accept}
+        files={novas}
+        multiple
+        disabled={limiteAtingido}
+        helperText={
+          showLimit
+            ? `${Math.max(0, maxCount - total)} foto(s) ainda podem ser adicionadas.`
+            : 'Arraste arquivos ou use o botão para selecionar.'
+        }
+        onSelect={pick}
+        onRemove={removeNova}
+        className={cn(isWizard && 'rounded-[22px] border border-zinc-200 bg-white p-3 shadow-sm')}
+      />
 
       {erroArquivo ? (
         <p className="text-xs font-medium text-red-600">{erroArquivo}</p>

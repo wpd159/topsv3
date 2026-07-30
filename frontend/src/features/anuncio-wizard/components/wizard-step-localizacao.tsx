@@ -55,10 +55,9 @@ export function WizardStepLocalizacao({
             <MapPin className="h-5 w-5" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-zinc-950">Área de atendimento</h3>
+            <h3 className="text-lg font-semibold text-zinc-950">Sua localização</h3>
             <p className="mt-1 max-w-xl text-sm leading-6 text-zinc-600">
-              Cidade, bairro e referência conhecida ficam juntos em um bloco mais leve, com busca
-              parcial para reduzir fricção no mobile.
+              Escolha sua região e, caso queira, informe um ponto de referência próximo.
             </p>
           </div>
         </div>
@@ -122,20 +121,17 @@ export function WizardStepLocalizacao({
             </Field>
           </div>
 
-          {showReference ? <Field label="Referência conhecida">
+          {showReference ? <Field label="Ponto de referência">
             <Input
               value={pontoReferenciaTexto}
               onChange={(event) => onReferencia(event.target.value)}
-              placeholder="Ex: Próx ao Flamboyant"
+              placeholder="Ex.: próximo ao Flamboyant"
               maxLength={120}
               className="h-12 rounded-xl border-zinc-200 text-base"
             />
           </Field> : null}
         </div>
 
-        <div className="mt-4 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-          Ajude clientes próximos a encontrarem sua região sem mostrar endereço exato.
-        </div>
       </div>
     </StepPanel>
   )

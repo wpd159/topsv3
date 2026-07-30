@@ -12,6 +12,7 @@ import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
@@ -81,8 +82,9 @@ public class MeuAnuncioAtualizacaoService {
             MeuAnuncioAtualizacaoRequestDto request,
             Authentication authentication) {
         AnuncioEntity anuncio = consultaService.anuncioDoUsuario(slug, authentication);
-        kycService.garantirProntoParaAnuncio(anuncio.getUsuarioId());
-        DadosAtualizacao validado = validator.validar(request);
+        UsuarioEntity usuario = consultaService.usuarioAutenticado(authentication);
+        kycService.garantirProntoParaAnuncio(usuario.getId());
+        DadosAtualizacao validado = validator.validar(request, usuario.getTelefoneNormalizado());
         if (revisaoRepository.existsByAnuncioIdAndStatusIn(
                 anuncio.getId(),
                 List.of(StatusRevisaoAnuncio.EM_ANALISE))) {
@@ -110,6 +112,7 @@ public class MeuAnuncioAtualizacaoService {
                 validado.locaisAtendimento(),
                 validado.servicos(),
                 validado.atendimentoExclusivamenteVirtual(),
+                validado.linkConteudo(),
                 agora);
         anuncioRepository.save(anuncio);
 
@@ -183,7 +186,8 @@ public class MeuAnuncioAtualizacaoService {
         payload.put("locaisAtendimento", request.locaisAtendimento().stream().map(Enum::name).sorted().toList());
         payload.put("servicos", request.servicos().stream().map(Enum::name).sorted().toList());
         payload.put("atendimentoExclusivamenteVirtual", request.atendimentoExclusivamenteVirtual());
-        payload.put("contatoInformado", request.whatsapp() != null);
+        payload.put("linkConteudoInformado", request.linkConteudo() != null);
+        payload.put("contatoCanonicoDaConta", request.whatsapp() != null);
         try {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException exception) {

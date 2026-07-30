@@ -184,7 +184,8 @@ class AuthSmokeFixtureServiceTest {
                 passwordEncoder,
                 new HttpSessionSecurityContextRepository(),
                 mock(PublicAccountLifecycleService.class),
-                mock(PublicSessionRegistry.class));
+                mock(PublicSessionRegistry.class),
+                mock(br.com.topsdojob.v3.persistence.repository.AnuncioRepository.class));
     }
 
     private void assertUnauthorized(PublicAuthenticationService authentication, String email, String value) {

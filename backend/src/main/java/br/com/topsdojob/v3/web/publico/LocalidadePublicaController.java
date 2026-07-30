@@ -23,6 +23,11 @@ public class LocalidadePublicaController {
         return consultaService.descobrir();
     }
 
+    @GetMapping("/catalogo")
+    public DescobertaLocalidadesPublicaDto catalogoCompleto() {
+        return consultaService.catalogoCompleto();
+    }
+
     @GetMapping("/{uf}/{cidade}")
     public AgregadoCidadePublicaDto agregadoCidade(
             @PathVariable String uf,

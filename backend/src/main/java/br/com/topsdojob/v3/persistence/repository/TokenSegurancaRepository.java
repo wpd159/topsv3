@@ -16,6 +16,10 @@ public interface TokenSegurancaRepository extends JpaRepository<TokenSegurancaEn
     List<TokenSegurancaEntity> findAtivosForUpdate(@Param("usuarioId") UUID usuarioId, @Param("tipo") String tipo);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select t from TokenSegurancaEntity t where t.usuarioId = :usuarioId and t.consumidoEm is null order by t.criadoEm")
+    List<TokenSegurancaEntity> findTodosAtivosForUpdate(@Param("usuarioId") UUID usuarioId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<TokenSegurancaEntity> findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(
             UUID usuarioId,
             String tipo);

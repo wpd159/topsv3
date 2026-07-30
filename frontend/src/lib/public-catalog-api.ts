@@ -453,6 +453,10 @@ export async function descobrirLocalidadesPublicas() {
   return requestJson<PublicCatalogDiscovery>('/localidades', cached)
 }
 
+export async function listarCatalogoCompletoLocalidades() {
+  return requestJson<PublicCatalogDiscovery>('/localidades/catalogo', cached)
+}
+
 export async function descobrirAnunciosIndexaveisSitemap() {
   return requestJson<PublicSitemapEntry[]>('/seo/sitemap', cached)
 }

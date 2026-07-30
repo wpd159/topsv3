@@ -1,11 +1,12 @@
 import type { WizardFormState, WizardKycState } from './types'
 import { UNSUPPORTED_IMAGE_MESSAGE } from '@/utils/image-upload'
 import { birthDateToIso } from '@/lib/date/birth-date'
-import {
-  BackendContractPendingError,
-  PENDING_BACKEND_CONTRACTS,
-  publicApiUrl,
-} from '@/lib/api-contract'
+import { publicApiUrl } from '@/lib/api-contract'
+
+export type WizardCategoryOption = {
+  value: string
+  label: string
+}
 
 function precoParaNumero(value: string) {
   const digits = String(value || '').replace(/\D/g, '')
@@ -13,24 +14,40 @@ function precoParaNumero(value: string) {
   return (Number(digits) / 100).toFixed(2)
 }
 
-async function readResponse<T>(res: Response, _etapa: string): Promise<T> {
+async function readResponse<T>(res: Response, etapa: string): Promise<T> {
   const raw = await res.text().catch(() => '')
   if (!res.ok) {
     let message = raw || `Erro ${res.status}`
     let code = ''
     try {
       const parsed = JSON.parse(raw)
-      message = parsed.mensagem || parsed.message || parsed.error || message
+      message = parsed.mensagem || parsed.message || parsed.detail || parsed.error || message
       code = parsed.codigo || parsed.code || ''
     } catch {}
-    throw new Error(mapWizardApiError(res.status, message, code))
+    throw new Error(mapWizardApiError(res.status, message, code, etapa))
   }
   return raw ? (JSON.parse(raw) as T) : (null as T)
 }
 
-function mapWizardApiError(status: number, message: string, code = '') {
+function mapWizardApiError(status: number, message: string, code = '', etapa = '') {
   const normalized = String(message || '').trim().toLowerCase()
   const normalizedCode = String(code || '').trim().toUpperCase()
+  const documentMessages = [
+    'O arquivo deve estar em PDF.',
+    'O PDF excede o tamanho permitido.',
+    'Não foi possível ler o PDF enviado.',
+    'Preencha os dados obrigatórios.',
+    'Não foi possível enviar o documento. Tente novamente.',
+    'Selecione a imagem da frente do documento.',
+    'Selecione também o verso deste documento.',
+    'A imagem deve estar em JPG ou PNG.',
+    'A imagem excede o tamanho permitido.',
+    'Não foi possível ler a imagem enviada.',
+  ]
+  const specificDocumentMessage = documentMessages.find(
+    (candidate) => candidate.toLocaleLowerCase('pt-BR') === normalized
+  )
+  if (specificDocumentMessage) return specificDocumentMessage
 
   if (
     status === 409 &&
@@ -93,6 +110,9 @@ function mapWizardApiError(status: number, message: string, code = '') {
   }
 
   if (status >= 500) {
+    if (etapa === 'enviar_kyc') {
+      return 'Não foi possível enviar o documento. Tente novamente.'
+    }
     return 'Nao foi possivel concluir a publicacao agora.'
   }
 
@@ -131,7 +151,6 @@ export async function submitWizardAnuncio(state: WizardFormState) {
       ...(csrf ? { [csrfHeaderName()]: csrf } : {}),
     },
     body: JSON.stringify({
-      whatsapp: state.whatsapp.trim(),
       uf: state.estadoUf,
       cidade: state.cidadeNome,
       bairro: state.bairroNome.trim() || null,
@@ -140,6 +159,7 @@ export async function submitWizardAnuncio(state: WizardFormState) {
       preco: Number(precoParaNumero(state.preco)),
       categoria: state.categoria,
       servicos: state.servicos,
+      linkConteudo: state.linkConteudo.trim() || null,
       atendimentoExclusivamenteVirtual: state.atendimentoExclusivamenteVirtual,
       aceiteTermos: true,
       confirmacaoIdade: true,
@@ -148,11 +168,22 @@ export async function submitWizardAnuncio(state: WizardFormState) {
   return readResponse<{ anuncioId: string; slugLocal: string }>(res, 'publicar_anuncio')
 }
 
-export async function updateWizardProfileDescription(_input: {
-  email: string
-  descricaoPerfil: string
-}) {
-  throw new BackendContractPendingError(PENDING_BACKEND_CONTRACTS.wizardProfile)
+export async function fetchWizardCategories(): Promise<WizardCategoryOption[]> {
+  const res = await fetch(publicApiUrl('/categorias-home'), {
+    credentials: 'include',
+    cache: 'no-store',
+  })
+  const payload = await readResponse<Array<{
+    identificador: string
+    titulo: string
+    ativo: boolean
+  }>>(res, 'consultar_categorias')
+  return payload
+    .filter((item) => item.ativo && item.identificador?.trim() && item.titulo?.trim())
+    .map((item) => ({
+      value: item.identificador.trim(),
+      label: item.titulo.trim(),
+    }))
 }
 
 export type WizardKycStatus = {
@@ -189,6 +220,7 @@ export async function submitWizardKyc(input: WizardKycState) {
   const nascimentoIso = birthDateToIso(input.dataNascimento)
   if (nascimentoIso) fd.append('dataNascimento', nascimentoIso)
   if (input.cpf.trim()) fd.append('cpf', input.cpf.replace(/\D/g, ''))
+  if (!input.documentoModo) throw new Error('Escolha o formato do documento.')
   fd.append('modoDocumento', input.documentoModo)
   if (input.documentoModo === 'PDF') {
     if (input.documentos[0]) fd.append('documentoUnico', input.documentos[0])
@@ -197,11 +229,16 @@ export async function submitWizardKyc(input: WizardKycState) {
     if (input.documentos[1]) fd.append('documentoVerso', input.documentos[1])
   }
   const csrf = readCsrfValue()
-  const res = await fetch(publicApiUrl('/minha-conta/kyc'), {
-    method: 'POST',
-    credentials: 'include',
-    headers: csrf ? { [csrfHeaderName()]: csrf } : undefined,
-    body: fd,
-  })
+  let res: Response
+  try {
+    res = await fetch(publicApiUrl('/minha-conta/kyc'), {
+      method: 'POST',
+      credentials: 'include',
+      headers: csrf ? { [csrfHeaderName()]: csrf } : undefined,
+      body: fd,
+    })
+  } catch {
+    throw new Error('Não foi possível enviar o documento. Tente novamente.')
+  }
   return readResponse<WizardKycStatus>(res, 'enviar_kyc')
 }

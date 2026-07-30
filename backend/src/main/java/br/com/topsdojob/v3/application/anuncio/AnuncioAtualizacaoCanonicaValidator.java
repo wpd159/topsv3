@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoA
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.URI;
 import java.text.Normalizer;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,11 +21,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class AnuncioAtualizacaoCanonicaValidator {
 
     private static final int TITULO_MAX = 80;
-    private static final int DESCRICAO_MAX = 600;
+    private static final int DESCRICAO_MAX = 500;
     private static final Pattern CONTATO_NO_TITULO = Pattern.compile(
             "(?i)(\\+?\\d[\\d .()_-]{7,}\\d|whats|telefone|instagram|insta\\b|telegram|t\\.me|onlyfans|facebook|http|www\\.|@)");
 
-    public DadosAtualizacao validar(MeuAnuncioAtualizacaoRequestDto request) {
+    public DadosAtualizacao validar(
+            MeuAnuncioAtualizacaoRequestDto request,
+            String whatsappCanonico) {
         if (request == null) {
             throw badRequest("payload obrigatorio");
         }
@@ -72,7 +75,8 @@ public class AnuncioAtualizacaoCanonicaValidator {
                 locais,
                 Set.copyOf(servicos),
                 atendimentoExclusivamenteVirtual,
-                whatsapp(request.whatsapp()));
+                whatsapp(whatsappCanonico),
+                linkConteudo(request.linkConteudo()));
     }
 
     public String textoBusca(DadosAtualizacao request) {
@@ -134,6 +138,24 @@ public class AnuncioAtualizacaoCanonicaValidator {
         return normalizado;
     }
 
+    private String linkConteudo(String value) {
+        String texto = textoOpcional(value, "linkConteudo", 8, 2048);
+        if (texto == null) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(texto);
+            if (uri.getHost() == null
+                    || (!"https".equalsIgnoreCase(uri.getScheme())
+                    && !"http".equalsIgnoreCase(uri.getScheme()))) {
+                throw badRequest("linkConteudo invalido");
+            }
+            return texto;
+        } catch (IllegalArgumentException exception) {
+            throw badRequest("linkConteudo invalido");
+        }
+    }
+
     private <E extends Enum<E>> Set<E> enums(List<String> values, Class<E> enumType, String campo) {
         if (values == null) {
             return Set.of();
@@ -172,6 +194,7 @@ public class AnuncioAtualizacaoCanonicaValidator {
             Set<LocalAtendimentoAnuncio> locaisAtendimento,
             Set<ServicoAnuncio> servicos,
             boolean atendimentoExclusivamenteVirtual,
-            String whatsapp) {
+            String whatsapp,
+            String linkConteudo) {
     }
 }

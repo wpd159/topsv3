@@ -17,13 +17,16 @@ const emptyState = {
   currentStep: 'perfil',
   form: {
     titulo: '', categoria: '', descricaoPerfil: '', preco: '', horario: '',
-    locaisAtendimento: [], servicos: [], descricao: '', linkConteudo: '', whatsapp: '',
+    locaisAtendimento: [], servicos: [], atendimentoExclusivamenteVirtual: false,
+    descricao: '', linkConteudo: '',
     estadoId: '', cidadeId: '', bairroId: '', estadoNome: '', estadoUf: '',
     cidadeNome: '', bairroNome: '', pontoReferenciaTexto: '', fotos: [], fotoNomes: [],
+    videos: [], videoNomes: [],
     premiumChoice: 'gratis',
   },
   kyc: {
-    nomeCompleto: '', dataNascimento: '', cpf: '', documentos: [], documentoNomes: [],
+    nomeCompleto: '', dataNascimento: '', cpf: '', documentoModo: null,
+    documentos: [], documentoNomes: [],
   },
 }
 const values = new Map()
@@ -39,7 +42,10 @@ const sandbox = {
   window: { localStorage },
   require: (specifier) => {
     if (specifier === './types') {
-      return { initialWizardState: emptyState, wizardStepIds: ['perfil', 'localizacao', 'servicos', 'fotos', 'revisao', 'premium'] }
+      return {
+        initialWizardState: emptyState,
+        wizardStepIds: ['perfil', 'localizacao', 'servicos', 'fotos', 'revisao', 'premium', 'kyc'],
+      }
     }
     throw new Error(`Unexpected module: ${specifier}`)
   },
@@ -67,6 +73,8 @@ const userAEditTwo = { userId: 'user-a', mode: 'edit', slug: 'anuncio-dois' }
 assert.notEqual(wizardCacheKey(userACreate), wizardCacheKey(userBCreate))
 assert.notEqual(wizardCacheKey(userACreate), wizardCacheKey(userAEditOne))
 assert.notEqual(wizardCacheKey(userAEditOne), wizardCacheKey(userAEditTwo))
+assert.match(source, /STORAGE_VERSION = 5/)
+assert.ok(!source.includes('form?.whatsapp'))
 
 saveWizardCache(userACreate, { ...emptyState, form: { ...emptyState.form, titulo: 'Rascunho A' } }, null)
 saveWizardCache(userBCreate, { ...emptyState, form: { ...emptyState.form, titulo: 'Rascunho B' } }, null)

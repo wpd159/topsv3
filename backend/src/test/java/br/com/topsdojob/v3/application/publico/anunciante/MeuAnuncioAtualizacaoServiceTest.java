@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
@@ -80,6 +81,10 @@ class MeuAnuncioAtualizacaoServiceTest {
         cidadeRepository = mock(CidadeRepository.class);
         bairroRepository = mock(BairroRepository.class);
         authentication = mock(Authentication.class);
+        UsuarioEntity usuario = mock(UsuarioEntity.class);
+        when(usuario.getId()).thenReturn(USUARIO_ID);
+        when(usuario.getTelefoneNormalizado()).thenReturn("+5562999999999");
+        when(consultaService.usuarioAutenticado(authentication)).thenReturn(usuario);
         service = new MeuAnuncioAtualizacaoService(
                 consultaService,
                 kycService,
@@ -144,7 +149,7 @@ class MeuAnuncioAtualizacaoServiceTest {
         assertThat(revisaoCaptor.getValue().getTipo()).isEqualTo(TipoRevisaoAnuncio.EDICAO);
         assertThat(revisaoCaptor.getValue().getCriadoPor()).isEqualTo(USUARIO_ID);
         assertThat(revisaoCaptor.getValue().getPayloadSolicitado())
-                .contains("Novo titulo publico", "contatoInformado")
+                .contains("Novo titulo publico", "contatoCanonicoDaConta")
                 .doesNotContain("+5562999999999");
         verify(documentoBuscaRepository).save(any(DocumentoBuscaAnuncioEntity.class));
     }
@@ -162,8 +167,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 null,
                 List.of("FORA_DO_ENUM"),
                 List.of(),
-                "invalido",
-                false);
+                false,
+                "url-invalida");
 
         assertStatus(400, () -> service.atualizar("slug-preservado", invalido, authentication));
 
@@ -297,8 +302,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 "Setor Bueno",
                 List.of("MEU_LOCAL", "HOTEL_MOTEL"),
                 List.of("ANAL", "ORAL"),
-                "+55 (62) 99999-9999",
-                false);
+                false,
+                "https://example.invalid/conteudo");
     }
 
     private MeuAnuncioAtualizacaoRequestDto requestSemBairro() {
@@ -313,8 +318,8 @@ class MeuAnuncioAtualizacaoServiceTest {
                 null,
                 request.locaisAtendimento(),
                 request.servicos(),
-                request.whatsapp(),
-                request.atendimentoExclusivamenteVirtual());
+                request.atendimentoExclusivamenteVirtual(),
+                request.linkConteudo());
     }
 
     private void assertStatus(int status, org.assertj.core.api.ThrowableAssert.ThrowingCallable callable) {

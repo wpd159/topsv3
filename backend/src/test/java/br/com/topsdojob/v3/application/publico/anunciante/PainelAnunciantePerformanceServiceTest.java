@@ -192,6 +192,7 @@ class PainelAnunciantePerformanceServiceTest {
                 "MASSAGENS",
                 new BigDecimal("100.00"),
                 null,
+                null,
                 List.of(),
                 List.of(),
                 false,

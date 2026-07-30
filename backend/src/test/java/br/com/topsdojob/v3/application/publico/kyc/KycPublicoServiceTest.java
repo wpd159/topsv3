@@ -184,6 +184,63 @@ class KycPublicoServiceTest {
   }
 
   @Test
+  void frenteSemVersoEhAceitaEOsModosNaoPodemSerMisturados() {
+    MockMultipartFile frente = imagemPng("documentoFrente", "frente.png");
+
+    service.enviar(
+        authentication,
+        "Pessoa Civil de Teste",
+        "52998224725",
+        "1990-05-10",
+        "FRENTE_VERSO",
+        null,
+        frente,
+        null,
+        "req-kyc-front-only");
+
+    assertThat(documentos).singleElement()
+        .satisfies(item -> assertThat(item.getParte()).isEqualTo(ParteDocumentoUsuario.FRENTE));
+  }
+
+  @Test
+  void pdfImagemEModoAusenteRetornamMensagensEspecificasSemGravar() {
+    assertReason(() -> service.enviar(
+        authentication,
+        "Pessoa Civil de Teste",
+        "52998224725",
+        "1990-05-10",
+        "PDF",
+        imagemPng("documentoUnico", "identidade.png"),
+        null,
+        null,
+        "req-kyc-wrong-pdf"), "O arquivo deve estar em PDF.");
+
+    assertReason(() -> service.enviar(
+        authentication,
+        "Pessoa Civil de Teste",
+        "52998224725",
+        "1990-05-10",
+        "FRENTE_VERSO",
+        null,
+        null,
+        null,
+        "req-kyc-no-front"), "Selecione a imagem da frente do documento.");
+
+    assertReason(() -> service.enviar(
+        authentication,
+        "Pessoa Civil de Teste",
+        "52998224725",
+        "1990-05-10",
+        "",
+        null,
+        null,
+        null,
+        "req-kyc-no-mode"), "Preencha os dados obrigatórios.");
+
+    verify(storage, never()).put(any(), any(), any(), any());
+  }
+
+  @Test
   void permiteReenvioAposRejeicaoSemAlterarEnvioAnterior() {
     service.enviar(
         authentication,
@@ -252,6 +309,12 @@ class KycPublicoServiceTest {
     assertThatThrownBy(operation::run)
         .isInstanceOfSatisfying(ResponseStatusException.class,
             exception -> assertThat(exception.getStatusCode()).isEqualTo(expected));
+  }
+
+  private void assertReason(Runnable operation, String reason) {
+    assertThatThrownBy(operation::run)
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getReason()).isEqualTo(reason));
   }
 
   private MockMultipartFile pdf() {

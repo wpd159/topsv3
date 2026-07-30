@@ -75,6 +75,7 @@ class SolicitarAnuncioPublicoServiceTest {
     void setUp() {
         when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuarioAutenticado);
         when(usuarioAutenticado.getId()).thenReturn(usuarioId);
+        when(usuarioAutenticado.getTelefoneNormalizado()).thenReturn("+5562999999999");
     }
 
     @Test
@@ -114,6 +115,7 @@ class SolicitarAnuncioPublicoServiceTest {
         verify(revisaoRepository).save(revisao.capture());
 
         assertThat(anuncio.getValue().getUsuarioId()).isEqualTo(usuarioId);
+        assertThat(anuncio.getValue().getWhatsappNormalizado()).isEqualTo("+5562999999999");
         assertThat(anuncio.getValue().getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
         assertThat(anuncio.getValue().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.PENDENTE);
         assertThat(anuncio.getValue().getPublicadoEm()).isNull();
@@ -124,7 +126,7 @@ class SolicitarAnuncioPublicoServiceTest {
         assertThat(revisao.getValue().getPayloadSolicitado())
                 .contains("ANUNCIE_GRATIS_LOCAL")
                 .contains("\"pagamentoCriado\":false")
-                .doesNotContain("+5500000000000")
+                .doesNotContain("+5562999999999")
                 .doesNotContain("example.invalid");
     }
 
@@ -217,6 +219,28 @@ class SolicitarAnuncioPublicoServiceTest {
     }
 
     @Test
+    void whatsappEnviadoPeloClienteEhRecusadoEOCanonicoVemDaConta() {
+        ObjectNode payload = validPayload();
+        payload.put("whatsapp", "+5511999999999");
+
+        assertValidationCode(payload, "CAMPO_NAO_PERMITIDO");
+    }
+
+    @Test
+    void telefoneAusenteNaContaDirecionaCorrecaoParaMinhaConta() {
+        when(usuarioAutenticado.getTelefoneNormalizado()).thenReturn(null);
+
+        assertThatThrownBy(() -> service.solicitar(validPayload(), authentication))
+                .isInstanceOfSatisfying(SolicitarAnuncioValidationException.class, exception ->
+                        assertThat(exception.errors()).anySatisfy(error -> {
+                            assertThat(error.campo()).isEqualTo("telefone");
+                            assertThat(error.codigo()).isEqualTo("TELEFONE_DA_CONTA_OBRIGATORIO");
+                            assertThat(error.mensagem()).contains("Minha Conta");
+                        }));
+        verify(anuncioRepository, never()).save(any());
+    }
+
+    @Test
     void kycAusenteBloqueiaCriacaoAntesDePersistir() {
         doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "KYC pendente"))
                 .when(kycService).garantirProntoParaAnuncio(usuarioId);
@@ -237,7 +261,6 @@ class SolicitarAnuncioPublicoServiceTest {
 
     private ObjectNode validPayload() {
         ObjectNode payload = objectMapper.createObjectNode();
-        payload.put("whatsapp", "+5500000000000");
         payload.put("uf", "ZZ");
         payload.put("cidade", "Cidade Sintetica");
         payload.put("bairro", "Bairro Sintetico");
@@ -245,6 +268,7 @@ class SolicitarAnuncioPublicoServiceTest {
         payload.put("descricao", "Texto sintetico neutro para validar criacao local sem dado real.");
         payload.put("preco", new BigDecimal("120.00"));
         payload.put("categoria", "ACOMPANHANTE_FEMININA");
+        payload.put("linkConteudo", "https://example.invalid/conteudo");
         payload.put("aceiteTermos", true);
         payload.put("confirmacaoIdade", true);
         return payload;

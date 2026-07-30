@@ -193,6 +193,7 @@ public class MeusAnunciosConsultaService {
                         anuncio.getCategoria(),
                         anuncio.getPreco(),
                         anuncio.getWhatsappNormalizado(),
+                        anuncio.getLinkConteudo(),
                         enumNames(anuncio.getLocaisAtendimento()),
                         enumNames(anuncio.getServicos()),
                         anuncio.isAtendimentoExclusivamenteVirtual(),

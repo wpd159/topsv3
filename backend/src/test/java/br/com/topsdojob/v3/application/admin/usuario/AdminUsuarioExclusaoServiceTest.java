@@ -185,6 +185,112 @@ class AdminUsuarioExclusaoServiceTest {
     }
 
     @Test
+    void titularSemHistoricoUsaExclusaoFisicaCanonica() {
+        UUID usuarioId = UUID.randomUUID();
+        UsuarioEntity usuario = usuario(usuarioId, TipoContaUsuario.ANUNCIANTE, StatusUsuario.ATIVO);
+        when(exclusaoRepository.exclusaoConcluidaPorRecurso(eq(usuarioId), any()))
+                .thenReturn(Optional.empty());
+        when(usuarios.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+        when(exclusaoRepository.analisar(usuarioId)).thenReturn(analise(false, false, 0, List.of()));
+
+        var resultado = service.excluirPeloProprioUsuario(
+                usuarioId,
+                "delete-own-account-physical",
+                "request-own-account-physical");
+
+        assertThat(resultado).isEqualTo(new AdminUsuarioExclusaoResultadoDto(
+                usuarioId,
+                true,
+                "EXCLUSAO_FISICA",
+                false));
+        verify(exclusaoRepository).deleteTechnicalLinks(usuarioId);
+        verify(usuarios).delete(usuario);
+        verify(conteudo, never()).encerrar(any(), any(), any());
+        verify(sessions).invalidateAll(usuarioId);
+
+        ArgumentCaptor<AuditoriaEventoEntity> audit =
+                ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+        verify(auditorias).saveAndFlush(audit.capture());
+        assertThat(audit.getValue().getAcao()).isEqualTo("USUARIO_AUTOEXCLUIDO_FISICAMENTE");
+        assertThat(audit.getValue().getDepoisJson())
+                .contains("\"estrategia\":\"EXCLUSAO_FISICA\"")
+                .doesNotContain("delete-own-account-physical");
+    }
+
+    @Test
+    void titularComHistoricoUsaAnonimizacaoCanonicaEPreservaVinculos() {
+        UUID usuarioId = UUID.randomUUID();
+        UUID anuncioId = UUID.randomUUID();
+        UsuarioEntity usuario = usuario(usuarioId, TipoContaUsuario.ANUNCIANTE, StatusUsuario.ATIVO);
+        Resultado encerramento = new Resultado(List.of(anuncioId), 1, 1, false);
+        when(exclusaoRepository.exclusaoConcluidaPorRecurso(eq(usuarioId), any()))
+                .thenReturn(Optional.empty());
+        when(usuarios.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+        when(exclusaoRepository.analisar(usuarioId))
+                .thenReturn(analise(false, false, 3, List.of(
+                        "POSSUI_ANUNCIOS",
+                        "POSSUI_LANCAMENTOS_FINANCEIROS")));
+        when(conteudo.encerrar(eq(usuarioId), eq(usuarioId), any())).thenReturn(encerramento);
+
+        var resultado = service.excluirPeloProprioUsuario(
+                usuarioId,
+                "delete-own-account-history",
+                "request-own-account-history");
+
+        assertThat(resultado.tipoExclusao()).isEqualTo("EXCLUSAO_COM_ANONIMIZACAO");
+        assertThat(resultado.anonimizado()).isTrue();
+        verify(conteudo).encerrar(eq(usuarioId), eq(usuarioId), any());
+        verify(exclusaoRepository).deleteTechnicalLinks(usuarioId);
+        verify(exclusaoRepository).anonymizeAuxiliaryData(eq(usuarioId), eq(List.of(anuncioId)), any());
+        verify(usuario).anonimizarDefinitivamente(eq(usuarioId), any());
+        verify(usuarios).saveAndFlush(usuario);
+        verify(usuarios, never()).delete(usuario);
+        verify(sessions).invalidateAll(usuarioId);
+    }
+
+    @Test
+    void retryDoTitularRetornaResultadoSemRepetirExclusao() {
+        UUID usuarioId = UUID.randomUUID();
+        when(exclusaoRepository.exclusaoConcluidaPorRecurso(eq(usuarioId), any()))
+                .thenReturn(Optional.of("EXCLUSAO_COM_ANONIMIZACAO"));
+
+        var resultado = service.excluirPeloProprioUsuario(
+                usuarioId,
+                "delete-own-account-retry",
+                "request-own-account-retry");
+
+        assertThat(resultado).isEqualTo(new AdminUsuarioExclusaoResultadoDto(
+                usuarioId,
+                true,
+                "EXCLUSAO_COM_ANONIMIZACAO",
+                true));
+        verify(usuarios, never()).findByIdForUpdate(any());
+        verify(exclusaoRepository, never()).deleteTechnicalLinks(any());
+        verify(auditorias, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void chamadaDiretaDeAutoexclusaoContinuaBloqueandoStaff() {
+        UUID usuarioId = UUID.randomUUID();
+        UsuarioEntity staff = usuario(usuarioId, TipoContaUsuario.STAFF, StatusUsuario.ATIVO);
+        when(exclusaoRepository.exclusaoConcluidaPorRecurso(eq(usuarioId), any()))
+                .thenReturn(Optional.empty());
+        when(usuarios.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(staff));
+        when(exclusaoRepository.analisar(usuarioId))
+                .thenReturn(new DependencyAnalysis(true, false, false, 0, List.of()));
+
+        assertThatThrownBy(() -> service.excluirPeloProprioUsuario(
+                usuarioId,
+                "delete-own-staff-blocked",
+                "request-own-staff-blocked"))
+                .isInstanceOf(AdminUsuarioExclusaoBloqueadaException.class);
+
+        verify(exclusaoRepository, never()).deleteTechnicalLinks(any());
+        verify(usuarios, never()).delete(any());
+        verify(auditorias, never()).saveAndFlush(any());
+    }
+
+    @Test
     void staffEOperacaoConcorrenteSaoOsBloqueiosReais() {
         UUID staffId = UUID.randomUUID();
         UsuarioEntity staff = usuario(staffId, TipoContaUsuario.STAFF, StatusUsuario.ATIVO);

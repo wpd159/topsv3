@@ -90,8 +90,9 @@ public class AdminAnuncioAtualizacaoService {
                 request.bairro(),
                 request.locaisAtendimento(),
                 request.servicos(),
-                request.whatsapp(),
-                request.atendimentoExclusivamenteVirtual()));
+                request.atendimentoExclusivamenteVirtual(),
+                null),
+                request.whatsapp());
         String enderecoResumido = validator.validarEnderecoResumido(request.enderecoResumido());
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
                 .filter(item -> item.getRemovidoEm() == null)
