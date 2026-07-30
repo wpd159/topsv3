@@ -16,6 +16,9 @@ const stories = source("src/components/stories/stories-bar.tsx")
 const storyViewer = source("src/components/stories/story-viewer-dialog.tsx")
 const storyTypes = source("src/components/stories/stories-types.ts")
 const publicLayout = source("src/app/(public-routes)/layout.tsx")
+const homePage = source("src/app/(public-routes)/page.tsx")
+const acompanhantesLayout = source("src/app/(public-routes)/acompanhantes/layout.tsx")
+const anunciosLayout = source("src/app/(public-routes)/anuncios/layout.tsx")
 const publicApi = source("src/lib/public-catalog-api.ts")
 
 assert.match(media, /previewUrl\?: string \| null/)
@@ -49,7 +52,14 @@ assert.match(storyTypes, /idade == null \? nome : `\$\{nome\}, \$\{idade\} anos`
 assert.doesNotMatch(stories, /filter:\s*blur|blur\(/i)
 assert.doesNotMatch(storyViewer, /filter:\s*blur|blur\(/i)
 
-const ratingMatches = publicLayout.match(/rating:\s*['"]adult['"]/g) ?? []
-assert.equal(ratingMatches.length, 1, "public layout must declare adult rating exactly once")
+assert.doesNotMatch(
+  publicLayout,
+  /rating:\s*['"]adult['"]/,
+  "institutional public routes must not inherit the adult rating",
+)
+for (const adultRouteSource of [homePage, acompanhantesLayout, anunciosLayout]) {
+  const ratingMatches = adultRouteSource.match(/rating:\s*['"]adult['"]/g) ?? []
+  assert.equal(ratingMatches.length, 1, "adult route tree must declare adult rating exactly once")
+}
 
 console.log("RESTRICTED_MEDIA_AGE_SEO_RESULT=OK")

@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:wizard-cache": "node scripts/test-wizard-cache.mjs"
+    "test:wizard-cache": "node scripts/test-wizard-cache.mjs",
+    "test:search-indexing": "node scripts/test-search-indexing-policy.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

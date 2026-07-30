@@ -12,6 +12,7 @@ import {
 } from "@/lib/public-catalog-api"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { getEstadoNomePorUf } from "@/lib/seo/acompanhantes-navigation"
 import {
   buildPublicPath,
@@ -123,7 +124,7 @@ export async function generateMetadata({
   if (page === null) {
     return {
       title: "Página inválida | Tops do Job",
-      robots: { index: false, follow: true },
+      robots: buildPublicRobotsMetadata(false),
     }
   }
   try {
@@ -146,17 +147,14 @@ export async function generateMetadata({
       description,
       alternates: { canonical: canonicalUrl },
       openGraph: { title, description, url: canonicalUrl, type: "website", siteName: "Tops do Job", locale: "pt_BR" },
-      robots: {
-        index: page === 0 && temCidadeIndexavel,
-        follow: true,
-        "max-image-preview": "large",
-        "max-snippet": -1,
-        "max-video-preview": -1,
-      },
+      robots: buildPublicRobotsMetadata(page === 0 && temCidadeIndexavel, true),
     }
   } catch (error) {
     if (isPublicCatalogNotFound(error)) {
-      return { title: "Estado não encontrado | Tops do Job", robots: { index: false, follow: true } }
+      return {
+        title: "Estado não encontrado | Tops do Job",
+        robots: buildPublicRobotsMetadata(false),
+      }
     }
     throw error
   }

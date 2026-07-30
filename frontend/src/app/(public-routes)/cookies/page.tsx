@@ -1,6 +1,13 @@
 import { CookiePreferences } from '@/app/(public-routes)/cookies/cookie-preferences'
 import { SafeSiteContentBody } from '@/components/site-content/safe-site-content-body'
 import { resolvePublicSiteContent } from '@/lib/site-content'
+import { buildPublicStaticMetadata } from '@/lib/seo/public-static-metadata'
+
+export const metadata = buildPublicStaticMetadata({
+  path: '/cookies',
+  title: 'Política de cookies | Tops do Job',
+  description: 'Entenda como o Tops do Job utiliza cookies e gerencie suas preferências.',
+})
 
 export default async function CookiesPage() {
   const content = await resolvePublicSiteContent('politica-cookies')

@@ -5,7 +5,12 @@ import {
   descobrirAnunciosIndexaveisSitemap,
   descobrirLocalidadesPublicas,
 } from "@/lib/public-catalog-api"
+import { isBairroIndexavelLocal, isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicPath, buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
+import {
+  isSafeSitemapUrl,
+  resolveSearchIndexingPolicy,
+} from "@/lib/seo/search-indexing-policy"
 
 export const dynamic = "force-dynamic"
 
@@ -46,6 +51,9 @@ async function fetchList(url: string, required = false) {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const indexingPolicy = resolveSearchIndexingPolicy()
+  if (!indexingPolicy.sitemapEnabled) return []
+
   const baseUrl = getPublicSiteBaseUrl()
   const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -53,7 +61,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/anuncios`, priority: 0.9 },
     { url: `${baseUrl}/acompanhantes`, priority: 0.95 },
     { url: `${baseUrl}/blog`, priority: 0.7 },
-    { url: `${baseUrl}/creditos`, priority: 0.6 },
     { url: `${baseUrl}/faq`, priority: 0.6 },
     { url: `${baseUrl}/sobre`, priority: 0.5 },
     { url: `${baseUrl}/termos-de-uso`, priority: 0.4 },
@@ -79,13 +86,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const descoberta = await descobrirLocalidadesPublicas()
 
   for (const estado of descoberta.estados) {
+    const cidadesIndexaveis = estado.cidades.filter((cidade) =>
+      isCidadeIndexavelLocal({ totalAnunciosAtivos: cidade.totalAnunciosAtivos })
+    )
+    if (cidadesIndexaveis.length === 0) continue
+
     const estadoLastMod = parseDate(estado.ultimaAtualizacao)
     const estadoUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado.uf))
     urlSet.add(estadoUrl)
     dynamicEstadoRoutes.push({ url: estadoUrl, lastModified: estadoLastMod, priority: 0.9 })
     lastModAcompanhantesIndex = maxDate(lastModAcompanhantesIndex, estadoLastMod)
 
-    for (const cidade of estado.cidades) {
+    for (const cidade of cidadesIndexaveis) {
       const cidadeLastMod = parseDate(cidade.ultimaAtualizacao)
       const cidadeUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado.uf, cidade.slug))
       if (!urlSet.has(cidadeUrl)) {
@@ -99,6 +111,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModAcompanhantesIndex = maxDate(lastModAcompanhantesIndex, cidadeLastMod)
 
       for (const bairro of cidade.bairros) {
+        if (!isBairroIndexavelLocal({ totalAnunciosAtivos: bairro.totalAnunciosAtivos })) continue
+
         const bairroLastMod = parseDate(bairro.ultimaAtualizacao)
         const bairroUrl = buildPublicUrl(
           buildPublicPath("acompanhantes", estado.uf, cidade.slug, bairro.slug)
@@ -194,5 +208,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...dynamicBlogRoutes,
     ...dynamicBlogCategoryRoutes,
     ...dynamicProgBlogRoutes,
-  ]
+  ].filter((route) => isSafeSitemapUrl(route.url, indexingPolicy))
 }

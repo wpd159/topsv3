@@ -18,6 +18,7 @@ import {
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
 import { isBairroIndexavelLocal } from "@/lib/seo/local-indexing"
+import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
   buildPublicPath,
@@ -56,7 +57,7 @@ export async function generateMetadata({
   if (page === null) {
     return {
       title: "Página inválida | Tops do Job",
-      robots: { index: false, follow: true },
+      robots: buildPublicRobotsMetadata(false),
     }
   }
 
@@ -68,7 +69,7 @@ export async function generateMetadata({
       return {
         title: "Acompanhantes não encontradas",
         description: "Nenhuma acompanhante disponível nesta localidade.",
-        robots: { index: false, follow: true },
+        robots: buildPublicRobotsMetadata(false),
       }
     }
     throw error
@@ -114,13 +115,7 @@ export async function generateMetadata({
       siteName: "Tops do Job",
       locale: "pt_BR",
     },
-    robots: {
-      index: indexavel,
-      follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
-    },
+    robots: buildPublicRobotsMetadata(indexavel, true),
   }
 }
 

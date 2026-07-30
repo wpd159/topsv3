@@ -23,6 +23,9 @@ export const metadata: Metadata = {
     siteName: "Tops do Job",
     locale: "pt_BR",
   },
+  other: {
+    rating: "adult",
+  },
 }
 
 interface CidadePopularHome {

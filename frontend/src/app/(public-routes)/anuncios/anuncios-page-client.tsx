@@ -33,6 +33,14 @@ function AnunciosPageContent({ initialData, initialRequest }: AnunciosPageClient
 
   return (
     <section className="space-y-4 px-4 py-4 md:space-y-6 md:py-8">
+      <header className="mx-auto w-full max-w-7xl space-y-2">
+        <h1 className="text-2xl font-bold text-gray-900 md:text-3xl">
+          Anúncios de acompanhantes
+        </h1>
+        <p className="max-w-3xl text-sm leading-6 text-gray-600">
+          Explore perfis publicados e refine a busca por categoria e localização.
+        </p>
+      </header>
       <BarraLocalizacao />
       <StoriesBar />
       <AnunciosGrid

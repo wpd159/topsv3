@@ -9,6 +9,7 @@ import {
   obterAnuncioPublicoPorSlug,
 } from "@/lib/public-catalog-api"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
+import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import {
   fontePublicaSegura,
   selecionarCapaPublicaSegura,
@@ -72,13 +73,7 @@ export async function generateMetadata({
       alternates: {
         canonical: url,
       },
-      robots: {
-        index: indexavel,
-        follow: true,
-        "max-image-preview": "large",
-        "max-snippet": -1,
-        "max-video-preview": -1,
-      },
+      robots: buildPublicRobotsMetadata(indexavel, true),
       openGraph: {
         title,
         description: descricao,
@@ -100,10 +95,7 @@ export async function generateMetadata({
     return {
       title: "Anúncio não encontrado | Tops do Job",
       description: "O anúncio solicitado não está disponível.",
-      robots: {
-        index: false,
-        follow: true,
-      },
+      robots: buildPublicRobotsMetadata(false),
     }
   }
 }

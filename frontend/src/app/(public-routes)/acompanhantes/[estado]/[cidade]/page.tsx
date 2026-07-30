@@ -22,6 +22,7 @@ import {
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
   buildPublicPath,
@@ -62,7 +63,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (page === null) {
     return {
       title: "Página inválida | Tops do Job",
-      robots: { index: false, follow: true },
+      robots: buildPublicRobotsMetadata(false),
     }
   }
 
@@ -82,20 +83,14 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
         siteName: "Tops do Job",
         locale: "pt_BR",
       },
-      robots: {
-        index: indexavel,
-        follow: true,
-        "max-image-preview": "large",
-        "max-snippet": -1,
-        "max-video-preview": -1,
-      },
+      robots: buildPublicRobotsMetadata(indexavel, true),
     }
   } catch (error) {
     if (isPublicCatalogNotFound(error)) {
       return {
         title: "Perfis não encontrados",
         description: "Nenhum perfil ativo foi encontrado nesta localidade.",
-        robots: { index: false, follow: true },
+        robots: buildPublicRobotsMetadata(false),
       }
     }
     throw error

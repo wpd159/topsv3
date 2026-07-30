@@ -43,6 +43,12 @@ function loadCatalogApi(fetchImpl) {
         requireArrayPayload: (value) => value,
       }
     }
+    if (specifier === "@/lib/visualizacoes-canonicas") {
+      return {
+        parseVisualizacoesCanonicas: (value) =>
+          value ?? { total: 0, situacao: "ZERO_LEGITIMO" },
+      }
+    }
     throw new Error(`Import inesperado no adapter publico: ${specifier}`)
   }
   const execute = new Function(

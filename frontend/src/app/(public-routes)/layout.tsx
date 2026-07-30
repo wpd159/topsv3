@@ -1,15 +1,8 @@
-import type { Metadata } from 'next'
 import { PublicChrome } from '@/components/layout/public-chrome'
 import { AgeGateModal } from '@/components/modals/age-gate-modal'
 import { SiteContentProvider } from '@/components/site-content/site-content-provider'
 import { WhatsAppSafetyProvider } from '@/components/site/whatsapp-safety-provider'
 import { resolveAllPublicSiteContent } from '@/lib/site-content'
-
-export const metadata: Metadata = {
-  other: {
-    rating: 'adult',
-  },
-}
 
 export default async function PublicRoutesLayout({ children }: { children: React.ReactNode }) {
   const siteContent = await resolveAllPublicSiteContent()

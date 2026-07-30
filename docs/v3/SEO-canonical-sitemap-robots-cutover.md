@@ -1,66 +1,124 @@
-# SEO - canonical, sitemap e robots para cutover
+# SEO - canonical, sitemap, robots e crawlers no cutover
 
-## Ambiente local
+## Fonte unica por ambiente
 
-- Local sempre seguro e bloqueado para indexacao.
-- Nao remover `noindex` local.
-- Nao emitir canonical de producao em local.
-- Nao usar `https://topsdojob.com` como canonical local.
-- Sitemap local pode conter exemplos seguros, mas nao representa sitemap final.
+A decisao de indexacao usa somente `SEARCH_INDEXING_MODE`:
 
-## Producao futura
+- `blocked`: ambiente integralmente bloqueado;
+- `public`: rastreamento publico habilitado.
 
-Em producao aprovada:
+O dominio canonico continua vindo de `NEXT_PUBLIC_SITE_URL`. A aplicacao aceita
+`SEARCH_INDEXING_MODE=public` apenas quando a origem for exatamente
+`https://topsdojob.com`. Valor ausente resulta em `blocked`; valor desconhecido
+ou combinacao invalida interrompe o build ou startup.
 
-- canonical deve usar `https://topsdojob.com`;
-- nao usar `www` se a decisao do projeto e dominio sem `www`;
-- cidade/bairro/anuncio devem apontar canonical para a propria URL final;
-- anuncios removidos, bloqueados ou nao indexaveis nao devem permanecer no sitemap;
-- paginas vazias/fracas nao devem entrar no sitemap;
-- admin e API nunca entram no sitemap.
+Nao criar flags adicionais para sitemap, Googlebot, OAI-SearchBot ou GPTBot.
 
-## Robots
+## Pre-producao e HML
 
-Antes do cutover:
+`v3.esle.cloud`, HML, pre-producao e ambiente local permanecem:
 
-- staging/homologacao devem continuar bloqueados enquanto necessario;
-- local permanece bloqueado;
-- parametros fracos, busca interna, filtros e UTM devem continuar protegidos.
+- `SEARCH_INDEXING_MODE=blocked`;
+- `X-Robots-Tag: noindex, nofollow, noarchive`;
+- meta robots bloqueado pela aplicacao;
+- `User-agent: *` e `Disallow: /`;
+- sitemap vazio na aplicacao;
+- bloqueio adicional no Nginx.
 
-Depois do cutover aprovado:
+O Nginx e o workflow continuam sendo barreiras independentes. Nenhum deploy
+desta preparacao remove o bloqueio externo.
 
-- liberar apenas o dominio final correto;
-- manter admin/API bloqueados;
-- validar que `robots.txt` aponta para sitemap final correto.
+## Producao final
+
+Somente no cutover aprovado:
+
+```text
+SEARCH_INDEXING_MODE=public
+NEXT_PUBLIC_SITE_URL=https://topsdojob.com
+```
+
+Essa combinacao:
+
+- permite Googlebot e OAI-SearchBot nas rotas publicas;
+- bloqueia GPTBot por padrao;
+- mantem admin, paineis, conta, KYC, documentos, previews, APIs e rotas
+  autenticadas fora do rastreamento;
+- preserva `noindex` das paginas de baixa qualidade;
+- publica sitemap apenas no dominio final.
+
+## Robots e verificacao de bots
+
+O `robots.txt` de producao separa:
+
+- `Googlebot`: permitido nas rotas publicas;
+- `OAI-SearchBot`: permitido nas rotas publicas;
+- `GPTBot`: `Disallow: /`;
+- crawlers comuns: permitidos apenas nas mesmas rotas publicas.
+
+A aplicacao nao entrega conteudo diferente por User-Agent. O age gate, o HTML
+SSR, as derivacoes borradas e os contratos anonimos sao os mesmos para crawler
+e visitante.
+
+Firewall, CDN e rate limit nao devem confiar somente no texto do User-Agent.
+Para Google, usar DNS reverso seguido de DNS direto ou as listas oficiais:
+
+`https://developers.google.com/search/docs/crawling-indexing/verifying-googlebot`
+
+Para OpenAI, consumir as faixas oficiais publicadas, sem copiar IPs para o
+codigo da aplicacao:
+
+`https://openai.com/searchbot.json`
+
+`https://openai.com/gptbot.json`
 
 ## Sitemap
 
-Entram no sitemap final somente:
+Entram somente:
 
-- home aprovada;
-- paginas institucionais aprovadas;
-- cidades com conteudo util;
-- bairros com conteudo suficiente;
-- anuncios publicados, LIVRE/indexaveis e aprovados;
-- `/anunciar`, se fizer parte da estrategia publica.
+- home e indices publicos;
+- Blog e FAQs publicados;
+- paginas institucionais indexaveis;
+- estados com ao menos uma cidade indexavel;
+- cidades e bairros que atendem aos limiares canonicos;
+- anuncios publicados, aprovados e aprovados pela politica
+  `shouldIndexAnuncio`.
 
 Nao entram:
 
-- API;
-- admin;
-- preview;
-- skeleton;
-- pagina vazia;
-- anuncio bloqueado/removido;
-- rota alternativa proibida.
+- pre-producao;
+- API, admin, conta, paineis ou checkout;
+- KYC, documentos, previews ou URLs assinadas;
+- buscas, filtros, UTM e parametros de ordenacao;
+- paginas locais abaixo do limiar;
+- anuncios pendentes, pausados, bloqueados, removidos ou reprovados;
+- URLs 404, redirect ou `noindex`.
 
-## Rollback
+## Conteudo adulto e SSR
 
-Se canonical, sitemap ou robots forem publicados incorretamente:
+Home, catalogo, paginas locais e detalhes de anuncio declaram uma unica tag
+`rating=adult`. Blog, FAQ e paginas institucionais nao herdam essa tag.
 
-- pausar cutover;
-- restaurar regra anterior;
-- remover URLs incorretas do sitemap;
-- revalidar headers e HTML publico;
-- registrar decisao no SDD;
-- monitorar Search Console por cobertura, 404 e queda de consultas.
+O age gate nao remove o conteudo textual SSR. Midia `RESTRITA_18` anonima usa
+somente derivacao publica borrada; o original, KYC e documentos privados nao
+entram no HTML ou payload anonimo. Nao existe bypass por crawler.
+
+## llms.txt
+
+Esta preparacao nao cria `llms.txt`. Robots, sitemap, canonical, HTML SSR e
+dados estruturados continuam sendo as fontes publicas verificaveis.
+
+## Gate e rollback
+
+Antes do cutover:
+
+1. validar a simulacao `public` em build isolado;
+2. testar Googlebot e OAI-SearchBot por mecanismo verificado;
+3. confirmar GPTBot bloqueado;
+4. comparar sitemap com paginas `index`;
+5. validar View Source com JavaScript desativado;
+6. confirmar ausencia de dados privados;
+7. manter `v3.esle.cloud` bloqueado.
+
+Se canonical, sitemap, robots ou headers estiverem incorretos, restaurar
+`SEARCH_INDEXING_MODE=blocked`, retirar URLs incorretas do sitemap e somente
+retomar o cutover depois de nova validacao.

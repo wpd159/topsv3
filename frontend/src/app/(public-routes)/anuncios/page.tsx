@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import AnunciosPageClient from "./anuncios-page-client"
 import { buildPublicUrl } from "@/lib/seo/public-url"
+import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { listarAnunciosPublicos, type PublicCategoryList } from "@/lib/public-catalog-api"
 
 type AnunciosSearchParams = {
@@ -74,13 +75,7 @@ export async function generateMetadata({
       siteName: "Tops do Job",
       locale: "pt_BR",
     },
-    robots: {
-      index: indexavel,
-      follow: true,
-      "max-image-preview": "large",
-      "max-snippet": -1,
-      "max-video-preview": -1,
-    },
+    robots: buildPublicRobotsMetadata(indexavel, true),
   }
 }
 

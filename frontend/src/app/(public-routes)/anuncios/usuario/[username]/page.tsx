@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import AnunciosUsuarioClient from "./anuncios-usuario-client"
+import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 
 export async function generateMetadata({
   params,
@@ -15,10 +16,7 @@ export async function generateMetadata({
   return {
     title,
     description: "Listagem de anúncios ativos deste perfil na plataforma Tops do Job.",
-    robots: {
-      index: false,
-      follow: true,
-    },
+    robots: buildPublicRobotsMetadata(false),
   }
 }
 

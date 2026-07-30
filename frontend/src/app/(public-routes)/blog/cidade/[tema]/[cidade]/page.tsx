@@ -6,6 +6,7 @@ import {
 } from "@/lib/programmatic-blog-api"
 import ProgrammaticBlogPageClient from "./programmatic-blog-page-client"
 import { getPublicSiteBaseUrl } from "@/lib/seo/public-url"
+import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { ContractState } from '@/components/feedback/contract-state'
 import { BackendContractPendingError } from '@/lib/api-contract'
 
@@ -32,9 +33,7 @@ export async function generateMetadata({
       title: page.title,
       description: page.metaDescription || undefined,
       alternates: { canonical },
-      robots: page.indexed
-        ? { index: true, follow: true }
-        : { index: false, follow: true },
+      robots: buildPublicRobotsMetadata(page.indexed),
       openGraph: {
         title: page.title,
         description: page.metaDescription || undefined,
@@ -44,7 +43,10 @@ export async function generateMetadata({
     }
   } catch (e) {
     if (e instanceof ProgrammaticBlogAmbiguousError) {
-      return { title: "Selecione o estado | Blog Tops do Job", robots: { index: false, follow: true } }
+      return {
+        title: "Selecione o estado | Blog Tops do Job",
+        robots: buildPublicRobotsMetadata(false),
+      }
     }
     return { title: "Blog Tops do Job" }
   }

@@ -1,7 +1,7 @@
-const DEFAULT_PUBLIC_SITE_URL = "https://topsdojob.com"
+import { FINAL_PRODUCTION_ORIGIN } from "@/lib/seo/search-indexing-policy"
 
 export function getPublicSiteBaseUrl() {
-  return (process.env.NEXT_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL).replace(/\/$/, "")
+  return (process.env.NEXT_PUBLIC_SITE_URL || FINAL_PRODUCTION_ORIGIN).replace(/\/$/, "")
 }
 
 export function publicRouteSegment(value: string) {

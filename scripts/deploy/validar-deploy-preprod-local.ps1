@@ -135,6 +135,12 @@ Add-Check "compose passa URL publica R2 ao runtime frontend" ($frontendCompose -
 Add-Check "compose inclui configuracao Next no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/next\.config\.ts ./next\.config\.ts') "next start preserva remotePatterns compilados"
 Add-Check "compose desabilita fixtures" (($compose -match '--app\.fixture\.stories\.enabled=false') -and ($compose -match '--app\.fixture\.auth-smoke\.enabled=false')) "sem dados automaticos"
 Add-Check "compose desabilita Analytics" ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+["'']?false["'']?') "sem analytics"
+Add-Check "workflow bloqueia indexacao da preproducao" ($workflow -match 'SEARCH_INDEXING_MODE:\s+blocked') "configuracao canonica fail-closed"
+Add-Check "compose bloqueia indexacao no build e runtime" (
+  ([regex]::Matches($frontendCompose, 'SEARCH_INDEXING_MODE:\s+blocked').Count -ge 2) -and
+  ($frontendCompose -match 'ARG SEARCH_INDEXING_MODE') -and
+  ($frontendCompose -match 'ENV SEARCH_INDEXING_MODE=\$\$\{SEARCH_INDEXING_MODE\}')
+) "preproducao nao pode ativar politica publica"
 Add-Check "gateway encaminha webhook Efi sem access log" (
   ($gateway -match 'location ~ \^/api/public/webhooks/efi') -and
   ($gateway -match 'access_log off;') -and

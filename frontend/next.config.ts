@@ -1,4 +1,8 @@
 import type { NextConfig } from "next"
+import {
+  NEXT_NOINDEX_ROUTE_SOURCES,
+  resolveSearchIndexingPolicy,
+} from "./src/lib/seo/search-indexing-policy"
 
 function toRemotePattern(origin?: string | null) {
   if (!origin) return null
@@ -78,6 +82,7 @@ const dynamicImageOrigins = [
 const dynamicOrigins = Array.from(new Set(dynamicImageOrigins.map(toOrigin)))
 const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "false"
 const forceHttps = process.env.NEXT_PUBLIC_FORCE_HTTPS !== "false"
+const searchIndexingPolicy = resolveSearchIndexingPolicy()
 const securityOrigins =
   process.env.NODE_ENV === "production"
     ? Array.from(
@@ -252,21 +257,13 @@ const nextConfig: NextConfig = {
       { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
     ]
 
+    if (!searchIndexingPolicy.publicIndexingEnabled) {
+      return [{ source: "/:path*", headers: [...securityHeaders, ...noindex] }]
+    }
+
     return [
       { source: "/:path*", headers: securityHeaders },
-      { source: "/admin/:path*", headers: noindex },
-      { source: "/anunciar", headers: noindex },
-      { source: "/anunciar/:path*", headers: noindex },
-      { source: "/chat", headers: noindex },
-      { source: "/chat/:path*", headers: noindex },
-      { source: "/favoritos", headers: noindex },
-      { source: "/favoritos/:path*", headers: noindex },
-      { source: "/meus-anuncios", headers: noindex },
-      { source: "/meus-anuncios/:path*", headers: noindex },
-      { source: "/meus-tickets", headers: noindex },
-      { source: "/meus-tickets/:path*", headers: noindex },
-      { source: "/minha-conta", headers: noindex },
-      { source: "/minha-conta/:path*", headers: noindex },
+      ...NEXT_NOINDEX_ROUTE_SOURCES.map((source) => ({ source, headers: noindex })),
     ]
   },
 }

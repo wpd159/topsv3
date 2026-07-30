@@ -11,13 +11,18 @@ import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provid
 import { SiteContentProvider } from "@/components/site-content/site-content-provider"
 import { getUnavailableSiteContent, SITE_CONTENT_KEYS } from "@/lib/site-content"
 import { buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
+import { resolveSearchIndexingPolicy } from "@/lib/seo/search-indexing-policy"
 
 const publicSiteBaseUrl = getPublicSiteBaseUrl()
+const searchIndexingPolicy = resolveSearchIndexingPolicy()
 const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "false"
 const unavailableSiteContent = SITE_CONTENT_KEYS.map(getUnavailableSiteContent)
 
 export const metadata: Metadata = {
   metadataBase: new URL(publicSiteBaseUrl),
+  robots: searchIndexingPolicy.publicIndexingEnabled
+    ? undefined
+    : { index: false, follow: false, noarchive: true },
   title: "Tops do Job | Acompanhantes por cidade e bairro",
   description:
     "Encontre anúncios de acompanhantes por cidade e bairro, explore perfis publicados e acesse as formas de contato disponíveis em cada anúncio.",

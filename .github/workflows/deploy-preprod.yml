@@ -51,6 +51,7 @@ jobs:
           NEXT_PUBLIC_API_URL: https://v3.esle.cloud/api/public
           NEXT_PUBLIC_ANALYTICS_ENABLED: "false"
           NEXT_PUBLIC_FORCE_HTTPS: "true"
+          SEARCH_INDEXING_MODE: blocked
         run: |
           set -euo pipefail
           npm ci
