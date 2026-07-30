@@ -11,21 +11,28 @@ import { buildPublicUrl } from "@/lib/seo/public-url"
 export const dynamic = "force-dynamic"
 export const revalidate = 3600
 
+const NATIONAL_PAGE_TITLE = "Acompanhantes em Todo o Brasil por Cidade | Tops do Job"
+const NATIONAL_PAGE_DESCRIPTION =
+  "Encontre acompanhantes em todo o Brasil por estado, cidade e bairro. Consulte anúncios ativos e descubra opções disponíveis na sua região."
+
 export const metadata: Metadata = {
-  title: "Acompanhantes em sua cidade | Tops do Job",
-  description:
-    "Encontre acompanhantes na sua cidade e região. Explore páginas locais com anúncios ativos, bairros e contato direto.",
+  title: NATIONAL_PAGE_TITLE,
+  description: NATIONAL_PAGE_DESCRIPTION,
   alternates: {
     canonical: buildPublicUrl("/acompanhantes"),
   },
   openGraph: {
-    title: "Acompanhantes em sua cidade | Tops do Job",
-    description:
-      "Encontre acompanhantes na sua cidade e região. Explore páginas locais com anúncios ativos, bairros e contato direto.",
+    title: NATIONAL_PAGE_TITLE,
+    description: NATIONAL_PAGE_DESCRIPTION,
     url: buildPublicUrl("/acompanhantes"),
     type: "website",
     siteName: "Tops do Job",
     locale: "pt_BR",
+  },
+  twitter: {
+    card: "summary",
+    title: NATIONAL_PAGE_TITLE,
+    description: NATIONAL_PAGE_DESCRIPTION,
   },
 }
 
@@ -45,11 +52,11 @@ export default async function AcompanhantesIndexPage() {
       </nav>
 
       <section className="space-y-4">
-        <h1 className="text-4xl font-bold text-gray-900">Encontre acompanhantes na sua cidade</h1>
+        <h1 className="text-4xl font-bold text-gray-900">
+          Acompanhantes - Cidades do Brasil
+        </h1>
         <p className="max-w-4xl text-lg text-gray-600">
-          Explore anúncios ativos de acompanhantes por cidade, bairros relacionados e navegação
-          local. Esta área organiza regiões com cobertura atual na plataforma e facilita o acesso
-          às páginas mais próximas de você.
+          {NATIONAL_PAGE_DESCRIPTION}
         </p>
       </section>
 
