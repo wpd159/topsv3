@@ -69,8 +69,12 @@ export interface SearchIndexingPolicy {
   publicIndexingEnabled: boolean
   sitemapEnabled: boolean
   googlebotEnabled: boolean
+  googleExtendedEnabled: boolean
   oaiSearchBotEnabled: boolean
-  gptBotEnabled: false
+  gptBotEnabled: boolean
+  chatGptUserEnabled: boolean
+  applebotEnabled: boolean
+  bingbotEnabled: boolean
 }
 
 export interface SearchRobotsRule {
@@ -129,8 +133,12 @@ export function resolveSearchIndexingPolicy(
     publicIndexingEnabled,
     sitemapEnabled: publicIndexingEnabled,
     googlebotEnabled: publicIndexingEnabled,
+    googleExtendedEnabled: publicIndexingEnabled,
     oaiSearchBotEnabled: publicIndexingEnabled,
-    gptBotEnabled: false,
+    gptBotEnabled: publicIndexingEnabled,
+    chatGptUserEnabled: publicIndexingEnabled,
+    applebotEnabled: publicIndexingEnabled,
+    bingbotEnabled: publicIndexingEnabled,
   }
 }
 
@@ -149,12 +157,24 @@ export function buildSearchRobotsRules(
   }
 
   const disallow = buildCrawlerDisallowRules()
-  return [
-    { userAgent: "GPTBot", disallow: ["/"] },
-    { userAgent: "OAI-SearchBot", allow: ["/"], disallow, crawlDelay: 1 },
-    { userAgent: "Googlebot", allow: ["/"], disallow, crawlDelay: 1 },
-    { userAgent: "*", allow: ["/"], disallow, crawlDelay: 1 },
+  const publicCrawlerAgents = [
+    "Googlebot",
+    "Googlebot-Image",
+    "Googlebot-Video",
+    "Google-Extended",
+    "OAI-SearchBot",
+    "GPTBot",
+    "ChatGPT-User",
+    "Applebot",
+    "bingbot",
+    "*",
   ]
+
+  return publicCrawlerAgents.map((userAgent) => ({
+    userAgent,
+    allow: ["/"],
+    disallow,
+  }))
 }
 
 export function isNonIndexableRoute(pathOrUrl: string) {

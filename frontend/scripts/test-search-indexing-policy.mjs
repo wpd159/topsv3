@@ -66,18 +66,35 @@ const production = resolveSearchIndexingPolicy({
   SEARCH_INDEXING_MODE: "public",
 })
 assert.equal(production.googlebotEnabled, true)
+assert.equal(production.googleExtendedEnabled, true)
 assert.equal(production.oaiSearchBotEnabled, true)
-assert.equal(production.gptBotEnabled, false)
+assert.equal(production.gptBotEnabled, true)
+assert.equal(production.chatGptUserEnabled, true)
+assert.equal(production.applebotEnabled, true)
+assert.equal(production.bingbotEnabled, true)
 
 const productionRules = buildSearchRobotsRules(production)
 const rule = (userAgent) =>
   productionRules.find((candidate) => candidate.userAgent === userAgent)
-assert.deepEqual(rule("GPTBot").disallow, ["/"])
-assert.deepEqual(rule("OAI-SearchBot").allow, ["/"])
-assert.ok(rule("OAI-SearchBot").disallow.includes("/admin"))
-assert.ok(rule("OAI-SearchBot").disallow.includes("/api/*"))
-assert.deepEqual(rule("Googlebot").allow, ["/"])
-assert.ok(rule("Googlebot").disallow.includes("/painel"))
+for (const userAgent of [
+  "Googlebot",
+  "Googlebot-Image",
+  "Googlebot-Video",
+  "Google-Extended",
+  "OAI-SearchBot",
+  "GPTBot",
+  "ChatGPT-User",
+  "Applebot",
+  "bingbot",
+  "*",
+]) {
+  assert.deepEqual(rule(userAgent).allow, ["/"], `${userAgent} must access public routes`)
+  assert.ok(rule(userAgent).disallow.includes("/admin"))
+  assert.ok(rule(userAgent).disallow.includes("/api/*"))
+  assert.ok(rule(userAgent).disallow.includes("/painel"))
+  assert.notDeepEqual(rule(userAgent).disallow, ["/"])
+  assert.equal(rule(userAgent).crawlDelay, undefined)
+}
 
 for (const path of [
   "/admin",
@@ -143,7 +160,10 @@ assert.equal(
 )
 assert.match(nextConfigSource, /NEXT_NOINDEX_ROUTE_SOURCES/)
 assert.match(nextConfigSource, /X-Robots-Tag/)
-assert.doesNotMatch(middlewareSource, /Googlebot|OAI-SearchBot|GPTBot/i)
+assert.doesNotMatch(
+  middlewareSource,
+  /Googlebot|Google-Extended|OAI-SearchBot|GPTBot|ChatGPT-User|Applebot|bingbot/i,
+)
 
 assert.doesNotMatch(publicLayoutSource, /rating:\s*["']adult["']/)
 for (const adultSource of [homeSource, acompanhantesLayoutSource, anunciosLayoutSource]) {

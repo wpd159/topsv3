@@ -39,8 +39,11 @@ NEXT_PUBLIC_SITE_URL=https://topsdojob.com
 
 Essa combinacao:
 
-- permite Googlebot e OAI-SearchBot nas rotas publicas;
-- bloqueia GPTBot por padrao;
+- permite Googlebot, Googlebot-Image, Googlebot-Video e Google-Extended nas
+  rotas publicas;
+- permite OAI-SearchBot, GPTBot e ChatGPT-User nas rotas publicas;
+- permite Applebot, bingbot e crawlers legitimos abrangidos por `*` nas rotas
+  publicas;
 - mantem admin, paineis, conta, KYC, documentos, previews, APIs e rotas
   autenticadas fora do rastreamento;
 - preserva `noindex` das paginas de baixa qualidade;
@@ -51,8 +54,11 @@ Essa combinacao:
 O `robots.txt` de producao separa:
 
 - `Googlebot`: permitido nas rotas publicas;
+- `Googlebot-Image` e `Googlebot-Video`: permitidos nos recursos publicos;
+- `Google-Extended`: permitido nas rotas publicas;
 - `OAI-SearchBot`: permitido nas rotas publicas;
-- `GPTBot`: `Disallow: /`;
+- `GPTBot` e `ChatGPT-User`: permitidos nas rotas publicas;
+- `Applebot` e `bingbot`: permitidos nas rotas publicas;
 - crawlers comuns: permitidos apenas nas mesmas rotas publicas.
 
 A aplicacao nao entrega conteudo diferente por User-Agent. O age gate, o HTML
@@ -112,8 +118,8 @@ dados estruturados continuam sendo as fontes publicas verificaveis.
 Antes do cutover:
 
 1. validar a simulacao `public` em build isolado;
-2. testar Googlebot e OAI-SearchBot por mecanismo verificado;
-3. confirmar GPTBot bloqueado;
+2. testar os grupos explicitos de Google, OpenAI, Apple e Bing;
+3. confirmar GPTBot e OAI-SearchBot permitidos somente no conteudo publico;
 4. comparar sitemap com paginas `index`;
 5. validar View Source com JavaScript desativado;
 6. confirmar ausencia de dados privados;

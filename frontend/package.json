@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:wizard-cache": "node scripts/test-wizard-cache.mjs",
-    "test:search-indexing": "node scripts/test-search-indexing-policy.mjs"
+    "test:search-indexing": "node scripts/test-search-indexing-policy.mjs",
+    "test:seo-ai": "node scripts/test-seo-ai-access.mjs"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

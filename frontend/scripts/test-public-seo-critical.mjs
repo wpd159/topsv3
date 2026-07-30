@@ -7,6 +7,10 @@ const nationalPageSource = readFileSync(
   'src/app/(public-routes)/acompanhantes/page.tsx',
   'utf8',
 )
+const nationalSeoSource = readFileSync(
+  'src/lib/seo/acompanhantes-national-seo.ts',
+  'utf8',
+)
 
 for (const expected of [
   'categoria?: string | null',
@@ -56,13 +60,13 @@ assert.ok(
   'national page must render the canonical H1',
 )
 assert.ok(
-  nationalPageSource.includes(nationalTitle) &&
-    nationalPageSource.includes(nationalDescription),
+  nationalSeoSource.includes(nationalTitle) &&
+    nationalSeoSource.includes(nationalDescription),
   'national page must keep the exact title and description in SSR source',
 )
 assert.ok(
-  nationalPageSource.includes('title: NATIONAL_PAGE_TITLE') &&
-    nationalPageSource.includes('description: NATIONAL_PAGE_DESCRIPTION'),
+  nationalPageSource.includes('title: ACOMPANHANTES_NATIONAL_TITLE') &&
+    nationalPageSource.includes('description: ACOMPANHANTES_NATIONAL_DESCRIPTION'),
   'national metadata must reuse one title and description source',
 )
 assert.ok(
@@ -83,8 +87,66 @@ assert.ok(
 )
 assert.equal(
   (nationalPageSource.match(/application\/ld\+json/g) ?? []).length,
-  0,
-  'national page must not duplicate the global structured data',
+  1,
+  'national page must render one route-specific JSON-LD graph',
+)
+for (const schemaType of ['CollectionPage', 'BreadcrumbList', 'ItemList', 'FAQPage']) {
+  assert.ok(nationalSeoSource.includes(`"@type": "${schemaType}"`), `${schemaType} is required`)
+}
+assert.ok(!nationalSeoSource.includes('"@type": "WebSite"'), 'global WebSite must not be duplicated')
+assert.ok(!nationalSeoSource.includes('LocalBusiness'), 'national page is not a LocalBusiness')
+assert.ok(
+  nationalPageSource.includes('buildAcompanhantesNationalCoverage') &&
+    nationalPageSource.includes('listarAnunciosPublicos("TODOS", "", 0, 1)') &&
+    nationalSeoSource.includes('paginacao.totalItens'),
+  'coverage must use real public contracts',
+)
+assert.ok(
+  nationalSeoSource.includes('throw new Error') &&
+    !nationalPageSource.includes('catch') &&
+    !nationalPageSource.includes('totalItens ?? 0'),
+  'contract failures must not be converted to false zeroes',
+)
+assert.ok(
+  nationalPageSource.includes('.filter((cidade) => isCidadeIndexavelLocal(cidade))'),
+  'national links must use the same local indexability threshold as the sitemap',
+)
+for (const heading of [
+  'Cobertura nacional atual',
+  'Como encontrar acompanhantes por cidade',
+  'Segurança e verificação no Tops do Job',
+  'Perguntas frequentes',
+]) {
+  assert.ok(nationalPageSource.includes(heading), `${heading} must be visible in SSR`)
+}
+for (const question of [
+  'Como encontrar acompanhantes na minha cidade?',
+  'Posso pesquisar acompanhantes por bairro?',
+  'Quais cidades possuem anúncios ativos?',
+  'Há anúncios para atendimento virtual?',
+  'Como denunciar um anúncio?',
+  'Como funciona a proteção de conteúdo restrito?',
+]) {
+  assert.ok(nationalSeoSource.includes(question), `${question} must be present`)
+}
+for (const href of [
+  '/aviso-seguranca-whatsapp',
+  '/termos-de-uso',
+  '/anuncios',
+  '/blog',
+  '/faq',
+]) {
+  assert.ok(nationalPageSource.includes(`href="${href}"`), `${href} must be crawlable`)
+}
+assert.ok(
+  nationalPageSource.includes('<details') &&
+    nationalPageSource.includes('<summary') &&
+    nationalPageSource.includes('faq.resposta'),
+  'visible FAQ answers must remain readable without JavaScript',
+)
+assert.ok(
+  nationalPageSource.includes('JSON.stringify(structuredData).replace(/</g, "\\\\u003c")'),
+  'JSON-LD must be serialized safely',
 )
 
 console.log('public SEO critical checks passed')
