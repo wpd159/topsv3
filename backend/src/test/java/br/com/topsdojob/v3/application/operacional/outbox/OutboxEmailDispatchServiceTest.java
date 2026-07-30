@@ -77,6 +77,22 @@ class OutboxEmailDispatchServiceTest {
     verify(fixture.gateway, never()).send(any());
   }
 
+  @Test
+  void destinatarioForaDaAllowlistECanceladoSemRetry() {
+    Fixture fixture = new Fixture(true);
+    when(fixture.repository.lockNextEmail(anyString(), anyList(), any()))
+        .thenReturn(List.of(fixture.event));
+    org.mockito.Mockito.doThrow(new OutboxRecipientNotAllowedException())
+        .when(fixture.gateway).send(any());
+
+    assertThat(fixture.service.processNext()).isTrue();
+
+    assertThat(fixture.event.getStatus()).isEqualTo(StatusOutbox.CANCELADO);
+    assertThat(fixture.event.getErroResumido()).isEqualTo("destinatario_nao_autorizado");
+    assertThat(fixture.event.getProximaTentativaEm()).isNull();
+    verify(fixture.audits).save(any());
+  }
+
   private static final class Fixture {
     private final OutboxEventoRepository repository = mock(OutboxEventoRepository.class);
     private final AuditoriaEventoRepository audits = mock(AuditoriaEventoRepository.class);
@@ -104,8 +120,10 @@ class OutboxEmailDispatchServiceTest {
           "<p>Texto</p>"));
       OutboxEmailProperties properties = new OutboxEmailProperties(
           enabled,
+          "test",
           "CAPTURE",
           "capture@test.invalid",
+          "",
           "no-reply@topsdojob.com",
           "Tops do Job",
           "",

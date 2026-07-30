@@ -46,6 +46,7 @@ app:
       encryption-key: ${OUTBOX_PAYLOAD_ENCRYPTION_KEY:}
       recipient-mode: ${OUTBOX_RECIPIENT_MODE:CAPTURE}
       capture-address: ${OUTBOX_CAPTURE_ADDRESS:capture@preprod.invalid}
+      allowed-recipients: ${OUTBOX_ALLOWED_RECIPIENTS:}
       sender-address: ${OUTBOX_SENDER_ADDRESS:no-reply@topsdojob.com}
       sender-name: ${OUTBOX_SENDER_NAME:Tops do Job}
       reply-to: ${OUTBOX_REPLY_TO:}

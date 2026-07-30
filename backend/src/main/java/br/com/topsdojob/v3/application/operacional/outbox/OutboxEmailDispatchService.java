@@ -69,6 +69,20 @@ public class OutboxEmailDispatchService {
           "{\"canal\":\"EMAIL\",\"status\":\"PROCESSADO\",\"destinatarioExposto\":false}",
           "outbox-email:" + event.getId(),
           now));
+    } catch (OutboxRecipientNotAllowedException exception) {
+      event.cancelDelivery(now, "destinatario_nao_autorizado");
+      auditRepository.save(AuditoriaEventoEntity.registrarSistema(
+          UUID.randomUUID(),
+          null,
+          "OUTBOX_EMAIL_BLOQUEADO",
+          "OUTBOX_EVENTO",
+          event.getId(),
+          null,
+          "{\"canal\":\"EMAIL\",\"status\":\"CANCELADO\","
+              + "\"motivo\":\"DESTINATARIO_NAO_AUTORIZADO\","
+              + "\"destinatarioExposto\":false}",
+          "outbox-email:" + event.getId() + ":bloqueado",
+          now));
     } catch (OutboxPermanentDeliveryException exception) {
       event.cancelDelivery(now, "evento_expirado_ou_substituido");
       auditRepository.save(AuditoriaEventoEntity.registrarSistema(

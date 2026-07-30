@@ -22,6 +22,7 @@ public class SmtpOutboxEmailGateway implements OutboxEmailGateway {
 
   @Override
   public void send(OutboxEmailMessage message) {
+    String destination = destination(message.recipient());
     try {
       MimeMessage mimeMessage = mailSender.createMimeMessage();
       MimeMessageHelper helper = new MimeMessageHelper(
@@ -32,7 +33,7 @@ public class SmtpOutboxEmailGateway implements OutboxEmailGateway {
           properties.senderAddress(),
           properties.senderName(),
           StandardCharsets.UTF_8.name()));
-      helper.setTo(destination(message.recipient()));
+      helper.setTo(destination);
       if (!properties.replyTo().isBlank()) {
         helper.setReplyTo(properties.replyTo());
       }
@@ -48,9 +49,15 @@ public class SmtpOutboxEmailGateway implements OutboxEmailGateway {
   }
 
   private String destination(String recipient) {
-    if (properties.recipientMode() == OutboxEmailProperties.RecipientMode.CAPTURE) {
-      return properties.captureAddress();
-    }
-    return recipient;
+    return switch (properties.recipientMode()) {
+      case CAPTURE -> properties.captureAddress();
+      case DIRECT -> recipient;
+      case ALLOWLIST -> {
+        if (!properties.isRecipientAllowed(recipient)) {
+          throw new OutboxRecipientNotAllowedException();
+        }
+        yield recipient;
+      }
+    };
   }
 }

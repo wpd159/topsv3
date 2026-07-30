@@ -429,7 +429,13 @@ function ConvertTo-TopsSecretCandidateValue {
 function Test-TopsAllowedExternalSecretReference {
   param([AllowNull()][string]$Value)
   $clean = ConvertTo-TopsSecretCandidateValue $Value
-  $allowedNames = @("EFI_CLIENT_SECRET", "DATABASE_PASSWORD", "SPRING_DATASOURCE_PASSWORD", "PREPROD_SSH_PRIVATE_KEY")
+  $allowedNames = @(
+    "EFI_CLIENT_SECRET",
+    "DATABASE_PASSWORD",
+    "SPRING_DATASOURCE_PASSWORD",
+    "SPRING_MAIL_PASSWORD",
+    "PREPROD_SSH_PRIVATE_KEY"
+  )
   if ($clean -match '^\$\{\{\s*secrets\.(?<name>[A-Z0-9_]+)\s*\}\}$') {
     return ($matches["name"] -in $allowedNames)
   }

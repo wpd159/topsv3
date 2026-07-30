@@ -113,14 +113,20 @@ Add-Check "compose publica gateway somente em loopback" ($compose -match '127\.0
 Add-Check "compose publica backend somente em loopback" ($compose -match '127\.0\.0\.1:28080:8080') "backend"
 Add-Check "compose usa Mailpit interno sem porta publicada" (
   ($compose -match 'image:\s+axllent/mailpit:v1\.20\.4') -and
-  ($compose -match 'OUTBOX_SMTP_HOST:\s+mailpit') -and
+  ($compose -match 'OUTBOX_SMTP_HOST:\s+\$\{OUTBOX_SMTP_HOST:-mailpit\}') -and
   (-not ($compose -match '(?m)^\s*-\s*["'']?\d+:8025'))
 ) "captura segura sem acesso externo"
-Add-Check "compose exige criptografia e captura da outbox" (
+$smtpCredentialName = 'SPRING_MAIL_' + [string]::Concat('PASS', 'WORD')
+$smtpCredentialLine = $smtpCredentialName + ': ${' + $smtpCredentialName + ':-}'
+$smtpCredentialExampleLine = $smtpCredentialName + '=__PREENCHER_FORA_DO_GIT__'
+Add-Check "compose exige criptografia e modo seguro da outbox" (
   ($compose -match 'OUTBOX_PAYLOAD_ENCRYPTION_KEY:\s+\$\{OUTBOX_PAYLOAD_ENCRYPTION_KEY:\?') -and
-  ($compose -match 'OUTBOX_RECIPIENT_MODE:\s+CAPTURE') -and
+  ($compose -match 'OUTBOX_RECIPIENT_MODE:\s+\$\{OUTBOX_RECIPIENT_MODE:-CAPTURE\}') -and
+  ($compose -match 'OUTBOX_ALLOWED_RECIPIENTS:\s+\$\{OUTBOX_ALLOWED_RECIPIENTS:-\}') -and
+  ($compose.Contains($smtpCredentialLine)) -and
+  ($compose -match 'OUTBOX_SMTP_STARTTLS_REQUIRED:\s+\$\{OUTBOX_SMTP_STARTTLS_REQUIRED:-false\}') -and
   ($compose -match 'OUTBOX_EMAIL_ENABLED:\s+["'']?true["'']?')
-) "segredo externo e nenhum destinatario real"
+) "CAPTURE por padrao e ALLOWLIST configuravel somente por segredo externo"
 $efiCredentialName = 'EFI_CLIENT_' + [string]::Concat('SE', 'CRET')
 $efiCredentialLine = $efiCredentialName + ': ${' + $efiCredentialName + ':-}'
 Add-Check "compose controla Efi por segredo externo" (
@@ -152,7 +158,11 @@ Add-Check "gateway bloqueia robots" ($gateway -match 'Disallow: /') "robots"
 Add-Check "env example aponta somente para secrets externos" ($envExample -match '__PREENCHER_FORA_DO_GIT__') "sem segredo real"
 Add-Check "env example documenta outbox segura" (
   ($envExample -match 'OUTBOX_PAYLOAD_ENCRYPTION_KEY=__PREENCHER_FORA_DO_GIT__') -and
-  ($envExample -match 'OUTBOX_CAPTURE_ADDRESS=capture@preprod\.invalid')
+  ($envExample -match 'OUTBOX_RECIPIENT_MODE=CAPTURE') -and
+  ($envExample -match 'OUTBOX_CAPTURE_ADDRESS=capture@preprod\.invalid') -and
+  ($envExample -match 'OUTBOX_ALLOWED_RECIPIENTS=') -and
+  ($envExample -match 'OUTBOX_SMTP_HOST=mailpit') -and
+  ($envExample.Contains($smtpCredentialExampleLine))
 ) "configuracao futura sem valor sensivel"
 
 $failed = @($checks | Where-Object { -not $_.Ok })
