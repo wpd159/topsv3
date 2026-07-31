@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRe
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
+import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -40,11 +41,14 @@ import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
+import java.time.Clock;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -70,8 +74,11 @@ public class AdminModeracaoAcaoService {
     private final OutboxEventoRepository outboxRepository;
     private final ObjectMapper objectMapper;
     private final MidiaStorageAprovacaoService midiaStorageAprovacaoService;
+    private final BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService;
     private final String canonicalDomain;
+    private final Clock clock;
 
+    @Autowired
     public AdminModeracaoAcaoService(
             RevisaoAnuncioRepository revisaoRepository,
             AnuncioRepository anuncioRepository,
@@ -85,7 +92,42 @@ public class AdminModeracaoAcaoService {
             OutboxEventoRepository outboxRepository,
             ObjectMapper objectMapper,
             MidiaStorageAprovacaoService midiaStorageAprovacaoService,
+            BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService,
             @Value("${app.canonical-domain:http://localhost}") String canonicalDomain) {
+        this(
+                revisaoRepository,
+                anuncioRepository,
+                usuarioRepository,
+                bloqueioJuridicoRepository,
+                anuncioMidiaRepository,
+                arquivoMidiaRepository,
+                documentoUsuarioRepository,
+                decisaoRepository,
+                auditoriaRepository,
+                outboxRepository,
+                objectMapper,
+                midiaStorageAprovacaoService,
+                fotosExtrasModeracaoService,
+                canonicalDomain,
+                Clock.systemUTC());
+    }
+
+    AdminModeracaoAcaoService(
+            RevisaoAnuncioRepository revisaoRepository,
+            AnuncioRepository anuncioRepository,
+            UsuarioRepository usuarioRepository,
+            AnuncioBloqueioJuridicoRepository bloqueioJuridicoRepository,
+            AnuncioMidiaRepository anuncioMidiaRepository,
+            ArquivoMidiaRepository arquivoMidiaRepository,
+            DocumentoUsuarioRepository documentoUsuarioRepository,
+            DecisaoModeracaoRepository decisaoRepository,
+            AuditoriaEventoRepository auditoriaRepository,
+            OutboxEventoRepository outboxRepository,
+            ObjectMapper objectMapper,
+            MidiaStorageAprovacaoService midiaStorageAprovacaoService,
+            BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService,
+            String canonicalDomain,
+            Clock clock) {
         this.revisaoRepository = revisaoRepository;
         this.anuncioRepository = anuncioRepository;
         this.usuarioRepository = usuarioRepository;
@@ -98,7 +140,9 @@ public class AdminModeracaoAcaoService {
         this.outboxRepository = outboxRepository;
         this.objectMapper = objectMapper;
         this.midiaStorageAprovacaoService = midiaStorageAprovacaoService;
+        this.fotosExtrasModeracaoService = fotosExtrasModeracaoService;
         this.canonicalDomain = canonicalDomain;
+        this.clock = clock;
     }
 
     @Transactional
@@ -132,7 +176,7 @@ public class AdminModeracaoAcaoService {
                         anuncioId,
                         List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE))
                 .orElseGet(() -> {
-                    OffsetDateTime agora = OffsetDateTime.now();
+                    OffsetDateTime agora = agora();
                     RevisaoAnuncioEntity criada = RevisaoAnuncioEntity.abrir(
                             UUID.randomUUID(),
                             anuncioId,
@@ -213,7 +257,7 @@ public class AdminModeracaoAcaoService {
                             ? "estado do anuncio impede aprovacao e publicacao"
                             : "estado do anuncio impede reprovacao");
         }
-        OffsetDateTime agora = OffsetDateTime.now();
+        OffsetDateTime agora = agora();
         String antes = snapshotRevisao(revisao, anuncio, null, null);
 
         if (decisao == AdminDecisaoModeracaoAcao.SOLICITAR_AJUSTE) {
@@ -334,7 +378,7 @@ public class AdminModeracaoAcaoService {
 
         ArquivoMidiaEntity arquivo = arquivoMidiaRepository.findByIdForUpdate(midia.getArquivoMidiaId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
-        OffsetDateTime agora = OffsetDateTime.now();
+        OffsetDateTime agora = agora();
         VisibilidadeMidia visibilidade = visibilidadeParaDecisao(midia, request, decisao);
         if (decisao == AdminDecisaoModeracaoAcao.APROVAR && visibilidade == VisibilidadeMidia.LIVRE) {
             motivo = null;
@@ -352,12 +396,18 @@ public class AdminModeracaoAcaoService {
             case REPROVAR -> StatusArquivoMidia.REJEITADO;
             case SOLICITAR_AJUSTE -> StatusArquivoMidia.PENDENTE;
         };
-        if (decisao == AdminDecisaoModeracaoAcao.APROVAR
-                && midia.getTipo() == TipoAnuncioMidia.FOTO) {
-            midiaStorageAprovacaoService.prepararAprovacao(arquivo, visibilidade);
-        }
         midia.aplicarDecisao(novoStatusMidia, visibilidade, agora);
         arquivo.aplicarDecisao(novoStatusArquivo);
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR
+                && midia.getTipo() == TipoAnuncioMidia.FOTO) {
+            fotosExtrasModeracaoService.iniciarSeCapacidadeAdicionalAprovada(
+                    anuncio.getId(),
+                    midia.getId(),
+                    actor.usuarioId(),
+                    requestId,
+                    agora);
+            midiaStorageAprovacaoService.prepararAprovacao(arquivo, visibilidade);
+        }
 
         if (decisao == AdminDecisaoModeracaoAcao.SOLICITAR_AJUSTE) {
             registrarOutboxLocal(
@@ -434,7 +484,7 @@ public class AdminModeracaoAcaoService {
                     false,
                     false,
                     requestId,
-                    OffsetDateTime.now(),
+                    agora(),
                     "classificacao ja estava aplicada");
         }
         if (documentoUsuarioRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(
@@ -451,7 +501,7 @@ public class AdminModeracaoAcaoService {
             garantirDerivadoMarcado(arquivo);
         }
 
-        OffsetDateTime agora = OffsetDateTime.now();
+        OffsetDateTime agora = agora();
         String antes = snapshotMidia(midia, arquivo, null, motivo);
         midiaStorageAprovacaoService.prepararReclassificacao(
                 arquivo,
@@ -510,7 +560,7 @@ public class AdminModeracaoAcaoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio ja possui revisao aberta");
         }
 
-        OffsetDateTime agora = OffsetDateTime.now();
+        OffsetDateTime agora = agora();
         String antes = snapshotAnuncio(anuncio, null, null);
         UUID revisaoId = UUID.randomUUID();
         RevisaoAnuncioEntity revisao = RevisaoAnuncioEntity.abrir(
@@ -656,7 +706,7 @@ public class AdminModeracaoAcaoService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao ja finalizada");
         }
 
-        OffsetDateTime agora = OffsetDateTime.now();
+        OffsetDateTime agora = agora();
         boolean regularizada = anuncio.getStatus() == StatusAnuncio.APROVADO;
         if (regularizada) {
             String antes = snapshotRevisao(revisao, anuncio, null, null);
@@ -705,7 +755,7 @@ public class AdminModeracaoAcaoService {
             AnuncioEntity anuncio,
             AdminUserPrincipal actor,
             String requestId) {
-        OffsetDateTime agora = OffsetDateTime.now();
+        OffsetDateTime agora = agora();
         String antes = snapshotAnuncio(anuncio, null, null);
         try {
             anuncio.aprovarEPublicarAdministrativamente(agora);
@@ -743,7 +793,7 @@ public class AdminModeracaoAcaoService {
     private AdminAcaoModeracaoResponseDto respostaAprovacaoIdempotente(
             AnuncioEntity anuncio,
             String requestId) {
-        OffsetDateTime agora = OffsetDateTime.now();
+        OffsetDateTime agora = agora();
         return new AdminAcaoModeracaoResponseDto(
                 UUID.randomUUID(),
                 "ANUNCIO",
@@ -986,6 +1036,10 @@ public class AdminModeracaoAcaoService {
 
     private String enumName(Enum<?> value) {
         return value == null ? null : value.name();
+    }
+
+    private OffsetDateTime agora() {
+        return OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
     }
 
     private String mensagemRevisao(AdminDecisaoModeracaoAcao decisao) {

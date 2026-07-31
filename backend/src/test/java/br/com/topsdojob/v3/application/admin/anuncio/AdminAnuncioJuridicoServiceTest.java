@@ -84,7 +84,7 @@ class AdminAnuncioJuridicoServiceTest {
     when(bloqueioRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(statusHistoricoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-    when(storyAdminRepository.bloquearSingleton()).thenReturn(Optional.empty());
+    when(storyAdminRepository.bloquearAtivasDosAnuncios(any())).thenReturn(List.of());
   }
 
   @Test
@@ -176,7 +176,7 @@ class AdminAnuncioJuridicoServiceTest {
     when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(midiaId))).thenReturn(List.of(story));
     StorySelecaoAdministrativaEntity storyAdmin = StorySelecaoAdministrativaEntity.nova(OffsetDateTime.now());
     storyAdmin.ativar(outro.getId(), admin().usuarioId(), OffsetDateTime.now());
-    when(storyAdminRepository.bloquearSingleton()).thenReturn(Optional.of(storyAdmin));
+    when(storyAdminRepository.bloquearAtivasDosAnuncios(any())).thenReturn(List.of(storyAdmin));
 
     var resultado = service.bloquearAnuncioEUsuario(
         fixture.anuncio().getId(),

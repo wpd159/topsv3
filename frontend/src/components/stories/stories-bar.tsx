@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { PlayCircleIcon } from "@heroicons/react/24/solid"
 
 import type { StoryBundle, StoryItem } from "./stories-types"
@@ -13,6 +13,16 @@ import {
 } from "./stories-types"
 import { StoryViewerDialog } from "./story-viewer-dialog"
 import { publicApiUrl } from '@/lib/api-contract'
+import { useAuth } from '@/context/AuthContext'
+import { markStorySeen, orderStoryBundles, readStoryState, storyStorageKey } from './story-ordering'
+
+function browserStorage() {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
 
 function previewExigeBloqueio(item?: StoryItem) {
   if (!item) return false
@@ -85,13 +95,20 @@ function StoryPreviewAvatar({ bundle, first }: { bundle: StoryBundle; first?: St
 }
 
 export function StoriesBar() {
+  const { usuario } = useAuth()
   const [loading, setLoading] = useState(false)
   const [bundles, setBundles] = useState<StoryBundle[]>([])
   const [indisponivel, setIndisponivel] = useState(false)
   const [openViewer, setOpenViewer] = useState(false)
   const [viewerStartIndex, setViewerStartIndex] = useState(0)
+  const audience = usuario?.id ? `user:${usuario.id}` : 'visitor'
 
-  async function fetchStories() {
+  const ordered = useCallback((items: StoryBundle[]) => {
+    const state = readStoryState(browserStorage(), audience, items)
+    return orderStoryBundles(items, state) as StoryBundle[]
+  }, [audience])
+
+  const fetchStories = useCallback(async () => {
     try {
       setLoading(true)
       setIndisponivel(false)
@@ -121,25 +138,45 @@ export function StoriesBar() {
         }))
         .filter((bundle) => (bundle?.itens || []).length > 0)
 
-      setBundles(sanitized)
+      setBundles(ordered(sanitized))
     } catch {
       setIndisponivel(true)
       setBundles([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [ordered])
 
   useEffect(() => {
     void fetchStories()
     const t = setInterval(() => void fetchStories(), 60_000)
     return () => clearInterval(t)
-  }, [])
+  }, [fetchStories])
+
+  useEffect(() => {
+    const prefix = storyStorageKey(audience)
+    const synchronize = (event: StorageEvent) => {
+      if (event.key?.startsWith(prefix)) {
+        setBundles((current) => ordered(current))
+      }
+    }
+    window.addEventListener('storage', synchronize)
+    return () => window.removeEventListener('storage', synchronize)
+  }, [audience, ordered])
 
   function openBundleAt(i: number) {
     setViewerStartIndex(i)
     setOpenViewer(true)
   }
+
+  const handleViewerOpenChange = useCallback((open: boolean) => {
+    setOpenViewer(open)
+    if (!open) setBundles((current) => ordered(current))
+  }, [ordered])
+
+  const handleStoryCurrent = useCallback((item: StoryItem) => {
+    markStorySeen(browserStorage(), audience, item, bundles)
+  }, [audience, bundles])
 
   return (
     <>
@@ -175,7 +212,7 @@ export function StoriesBar() {
             )
 
             return (
-              <div key={String(bundle.usuarioId)} className="shrink-0 flex flex-col items-center gap-2">
+              <div key={`${String(bundle.usuarioId)}:${String(primeiro?.storyId ?? index)}`} className="shrink-0 flex flex-col items-center gap-2">
                 <div className="relative">
                   <button
                     onClick={() => openBundleAt(index)}
@@ -215,10 +252,11 @@ export function StoriesBar() {
 
       <StoryViewerDialog
         open={openViewer}
-        onOpenChange={setOpenViewer}
+        onOpenChange={handleViewerOpenChange}
         bundles={bundles}
         initialBundleIndex={viewerStartIndex}
-        onVerificationRefresh={() => fetchStories()}
+        onVerificationRefresh={fetchStories}
+        onStoryCurrent={handleStoryCurrent}
       />
     </>
   )

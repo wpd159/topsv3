@@ -143,7 +143,7 @@ public final class PersistenceEnums {
   }
 
   public enum StatusAtivacaoBeneficio {
-    AGENDADA, ATIVA, EXPIRADA, REVOGADA, CANCELADA
+    AGUARDANDO_MODERACAO, AGENDADA, ATIVA, EXPIRADA, REVOGADA, CANCELADA
   }
 
   public enum TipoMovimentoCredito {

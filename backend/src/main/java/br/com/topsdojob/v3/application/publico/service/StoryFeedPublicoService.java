@@ -31,7 +31,6 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnunci
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
-import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -40,7 +39,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -53,7 +51,6 @@ public class StoryFeedPublicoService {
 
     private static final String PREFIXO_ADMIN = "administrativo:";
     private static final String IDADE_NAO_CONFIRMADA = "IDADE_NAO_CONFIRMADA";
-    private static final Duration DURACAO_STORY_ADMIN = Duration.ofHours(24);
 
     private final StorySelecaoAdministrativaRepository selecaoRepository;
     private final StoryAnuncioRepository storyRepository;
@@ -106,9 +103,8 @@ public class StoryFeedPublicoService {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         List<StoryFeedBundleDto> resposta = new ArrayList<>(bundlesUsuario(usuarios, idadeConfirmada, idades));
-        bundleAdministrativo(idadeConfirmada, arquivosEmStoriesPagos).ifPresent(admin ->
-                resposta.add(ThreadLocalRandom.current().nextInt(resposta.size() + 1), admin));
-        return List.copyOf(resposta);
+        resposta.addAll(bundlesAdministrativos(idadeConfirmada, arquivosEmStoriesPagos));
+        return semDuplicidades(resposta);
     }
 
     @Transactional(readOnly = true)
@@ -119,19 +115,52 @@ public class StoryFeedPublicoService {
         return buscarUsuario(storyId, request);
     }
 
-    private java.util.Optional<StoryFeedBundleDto> bundleAdministrativo(
+    private List<StoryFeedBundleDto> bundlesAdministrativos(
             boolean idadeConfirmada,
             Set<UUID> arquivosEmStoriesPagos) {
-        StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        if (!storyAdminAtivo(selecao, OffsetDateTime.now(ZoneOffset.UTC))) {
-            return java.util.Optional.empty();
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        List<StorySelecaoAdministrativaEntity> selecoes =
+                selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc().stream()
+                .filter(selecao -> storyAdminAtivo(selecao, agora))
+                .toList();
+        if (selecoes.isEmpty()) {
+            return List.of();
         }
-        AnuncioEntity anuncio = anuncioPublicavel(selecao.getAnuncioId());
+        Map<UUID, AnuncioEntity> anuncios = anuncioRepository.findAllById(selecoes.stream()
+                        .map(StorySelecaoAdministrativaEntity::getAnuncioId)
+                        .distinct()
+                        .toList()).stream()
+                .filter(this::anuncioPublicavel)
+                .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
+        Map<UUID, IdadeAnunciantePublicaService.Resultado> idades =
+                idadesPorAnuncio(List.copyOf(anuncios.values()));
+        Map<UUID, List<MidiaElegivel>> midias =
+                elegibilidadeService.listarPorAnuncios(anuncios.keySet());
+        return selecoes.stream()
+                .map(selecao -> bundleAdministrativo(
+                        selecao,
+                        anuncios,
+                        midias,
+                        idades,
+                        idadeConfirmada,
+                        arquivosEmStoriesPagos))
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    private StoryFeedBundleDto bundleAdministrativo(
+            StorySelecaoAdministrativaEntity selecao,
+            Map<UUID, AnuncioEntity> anuncios,
+            Map<UUID, List<MidiaElegivel>> midias,
+            Map<UUID, IdadeAnunciantePublicaService.Resultado> idades,
+            boolean idadeConfirmada,
+            Set<UUID> arquivosEmStoriesPagos) {
+        AnuncioEntity anuncio = anuncios.get(selecao.getAnuncioId());
         if (anuncio == null) {
-            return java.util.Optional.empty();
+            return null;
         }
-        IdadeAnunciantePublicaService.Resultado idade = idadeAnuncio(anuncio);
-        List<StoryFeedItemDto> itens = elegibilidadeService.listar(anuncio.getId()).stream()
+        IdadeAnunciantePublicaService.Resultado idade = idades.get(anuncio.getId());
+        List<StoryFeedItemDto> itens = midias.getOrDefault(anuncio.getId(), List.of()).stream()
                 .filter(item -> !arquivosEmStoriesPagos.contains(item.vinculo().getArquivoMidiaId()))
                 .map(item -> itemAdministrativo(
                         anuncio,
@@ -141,9 +170,9 @@ public class StoryFeedPublicoService {
                         expiraEm(selecao)))
                 .toList();
         if (itens.isEmpty()) {
-            return java.util.Optional.empty();
+            return null;
         }
-        return java.util.Optional.of(new StoryFeedBundleDto(
+        return new StoryFeedBundleDto(
                 PREFIXO_ADMIN + anuncio.getId(),
                 null,
                 anuncio.getTitulo(),
@@ -151,7 +180,7 @@ public class StoryFeedPublicoService {
                 true,
                 itens.get(0).previewUrl(),
                 false,
-                itens));
+                itens);
     }
 
     private List<UsuarioStory> carregarStoriesUsuario() {
@@ -279,11 +308,11 @@ public class StoryFeedPublicoService {
 
     private StoryViewerPublicoDto buscarAdministrativo(String storyId, HttpServletRequest request) {
         UUID vinculoId = uuidSeguro(storyId.substring(PREFIXO_ADMIN.length()));
-        StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        if (!storyAdminAtivo(selecao, OffsetDateTime.now(ZoneOffset.UTC))) {
-            throw naoEncontrado();
-        }
-        AnuncioEntity anuncio = anuncioPublicavel(selecao.getAnuncioId());
+        AnuncioMidiaEntity vinculo = anuncioMidiaRepository.findById(vinculoId).orElse(null);
+        StorySelecaoAdministrativaEntity selecao = vinculo == null
+                ? null
+                : selecaoAtivaDoAnuncio(vinculo.getAnuncioId(), OffsetDateTime.now(ZoneOffset.UTC));
+        AnuncioEntity anuncio = selecao == null ? null : anuncioPublicavel(selecao.getAnuncioId());
         MidiaElegivel item = anuncio == null ? null : elegibilidadeService.listar(anuncio.getId()).stream()
                 .filter(candidato -> candidato.vinculo().getId().equals(vinculoId))
                 .findFirst()
@@ -376,9 +405,40 @@ public class StoryFeedPublicoService {
     }
 
     private OffsetDateTime expiraEm(StorySelecaoAdministrativaEntity selecao) {
-        return selecao == null || selecao.getAtivadoEm() == null
-                ? null
-                : selecao.getAtivadoEm().plus(DURACAO_STORY_ADMIN);
+        return selecao == null ? null : selecao.getExpiraEm();
+    }
+
+    private StorySelecaoAdministrativaEntity selecaoAtivaDoAnuncio(
+            UUID anuncioId,
+            OffsetDateTime agora) {
+        return selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc().stream()
+                .filter(item -> anuncioId.equals(item.getAnuncioId()))
+                .filter(item -> storyAdminAtivo(item, agora))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private List<StoryFeedBundleDto> semDuplicidades(List<StoryFeedBundleDto> bundles) {
+        Set<String> storyIds = new LinkedHashSet<>();
+        List<StoryFeedBundleDto> resposta = new ArrayList<>();
+        for (StoryFeedBundleDto bundle : bundles) {
+            List<StoryFeedItemDto> itens = bundle.itens().stream()
+                    .filter(item -> item.storyId() != null && storyIds.add(item.storyId()))
+                    .toList();
+            if (itens.isEmpty()) {
+                continue;
+            }
+            resposta.add(new StoryFeedBundleDto(
+                    bundle.usuarioId(),
+                    bundle.usuarioUsername(),
+                    bundle.displayUsername(),
+                    bundle.idade(),
+                    bundle.profileNavigable(),
+                    bundle.avatarUrl(),
+                    false,
+                    itens));
+        }
+        return List.copyOf(resposta);
     }
 
     private AnuncioEntity anuncioPublicavel(UUID id) {

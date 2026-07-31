@@ -256,14 +256,12 @@ public class AdminAnuncioMidiaCleanupService {
     boolean administrativoEncerrado = false;
     if (encerrarStoryAdministrativo) {
       storyAdminRepository.bloquearOperacao();
-      StorySelecaoAdministrativaEntity selecao =
-          storyAdminRepository.bloquearSingleton().orElse(null);
-      administrativoEncerrado = selecao != null
-          && selecao.isAtiva()
-          && anuncioId.equals(selecao.getAnuncioId());
+      List<StorySelecaoAdministrativaEntity> selecoes =
+          storyAdminRepository.bloquearAtivasDoAnuncio(anuncioId);
+      administrativoEncerrado = !selecoes.isEmpty();
       if (administrativoEncerrado) {
-        selecao.desativar(agora);
-        storyAdminRepository.save(selecao);
+        selecoes.forEach(selecao -> selecao.desativar(agora));
+        storyAdminRepository.saveAll(selecoes);
       }
     }
     return new StoryResult(alterados.size(), administrativoEncerrado);

@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,7 +32,7 @@ public class AdminStorySelecaoController {
     }
 
     @GetMapping("/selecao")
-    public AdminStorySelecaoDto consultar() {
+    public List<AdminStorySelecaoDto> consultar() {
         return service.consultar();
     }
 
@@ -45,15 +47,21 @@ public class AdminStorySelecaoController {
     @PostMapping("/selecao/{anuncioId}")
     public AdminStorySelecaoDto ativar(
             @PathVariable UUID anuncioId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
             @AuthenticationPrincipal AdminUserPrincipal ator,
             HttpServletRequest request) {
-        return service.ativar(anuncioId, ator, RequestIdContext.current(request));
+        return service.ativar(
+                anuncioId,
+                idempotencyKey,
+                ator,
+                RequestIdContext.current(request));
     }
 
-    @DeleteMapping("/selecao")
+    @DeleteMapping("/selecao/{anuncioId}")
     public AdminStorySelecaoDto desativar(
+            @PathVariable UUID anuncioId,
             @AuthenticationPrincipal AdminUserPrincipal ator,
             HttpServletRequest request) {
-        return service.desativar(ator, RequestIdContext.current(request));
+        return service.desativar(anuncioId, ator, RequestIdContext.current(request));
     }
 }

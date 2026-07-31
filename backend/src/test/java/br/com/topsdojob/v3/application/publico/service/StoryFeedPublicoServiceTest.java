@@ -5,6 +5,8 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
@@ -79,6 +81,7 @@ class StoryFeedPublicoServiceTest {
         when(idadeAnuncianteService.resolverPorAnuncios(any(), any())).thenReturn(Map.of());
         when(idadeAnuncianteService.resolver(any(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenReturn(new IdadeAnunciantePublicaService.Resultado("Perfil", null, false));
+        when(elegibilidadeService.listarPorAnuncios(any())).thenReturn(Map.of());
         when(urlService.resolverPreviewRestrita(any())).thenAnswer(invocation -> {
             ArquivoMidiaEntity arquivo = invocation.getArgument(0);
             return arquivo.getMimeType() != null && arquivo.getMimeType().startsWith("image/")
@@ -110,19 +113,30 @@ class StoryFeedPublicoServiceTest {
         AnuncioMidiaEntity vinculoPago = vinculoStory(storyPago.getAnuncioMidiaId(), anuncioUsuarioId, arquivoRepetido);
         ArquivoMidiaEntity arquivoPago = arquivo(arquivoRepetido, "image/jpeg");
 
-        when(selecaoRepository.atual()).thenReturn(Optional.of(selecao));
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of(selecao));
         when(anuncioRepository.findById(anuncioAdminId)).thenReturn(Optional.of(anuncioAdmin));
         when(elegibilidadeService.listar(anuncioAdminId)).thenReturn(List.of(adminDuplicada, adminUnica));
         when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
                 .thenReturn(List.of(storyPago));
         when(midiaRepository.findByIdIn(any())).thenReturn(List.of(vinculoPago));
         when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivoPago));
-        when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncioUsuario));
+        when(anuncioRepository.findAllById(any())).thenAnswer(invocation -> {
+            Iterable<UUID> ids = invocation.getArgument(0);
+            java.util.Set<UUID> solicitados = new java.util.HashSet<>();
+            ids.forEach(solicitados::add);
+            return List.of(anuncioAdmin, anuncioUsuario).stream()
+                    .filter(item -> solicitados.contains(item.getId()))
+                    .toList();
+        });
+        when(elegibilidadeService.listarPorAnuncios(any()))
+                .thenReturn(Map.of(anuncioAdminId, List.of(adminDuplicada, adminUnica)));
         UsuarioEntity usuario = entity(UsuarioEntity.class);
         set(usuario, "id", usuarioId);
         set(usuario, "nome", "Perfil de demonstracao");
         when(usuarioRepository.findAllById(any())).thenReturn(List.of(usuario));
         when(midiaRepository.findByArquivoMidiaId(arquivoAdmin)).thenReturn(List.of(adminUnica.vinculo()));
+        when(midiaRepository.findById(adminUnica.vinculo().getId()))
+                .thenReturn(Optional.of(adminUnica.vinculo()));
         when(storyRepository.findByAnuncioMidiaIdIn(List.of(adminUnica.vinculo().getId()))).thenReturn(List.of());
 
         var response = service.listar(request);
@@ -142,6 +156,8 @@ class StoryFeedPublicoServiceTest {
         assertThat(paidBundle.itens().get(0).storyId()).isEqualTo(storyPago.getId().toString());
         assertThat(paidBundle.itens().get(0).previewState()).isEqualTo("IDADE_NAO_CONFIRMADA");
         assertThat(paidBundle.itens().get(0).previewUrl()).contains("restritas-borradas");
+        verify(premiumMapper).flagsPorAnuncios(List.of(anuncioAdmin));
+        verify(elegibilidadeService).listarPorAnuncios(java.util.Set.of(anuncioAdminId));
 
         var viewer = service.buscar("administrativo:" + adminUnica.vinculo().getId(), request);
         assertThat(viewer.viewerState()).isEqualTo("IDADE_NAO_CONFIRMADA");
@@ -150,12 +166,41 @@ class StoryFeedPublicoServiceTest {
     }
 
     @Test
+    void selecoesAdministrativasABCEntramJuntasSemDuplicidade() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        List<UUID> anuncioIds = List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        List<StorySelecaoAdministrativaEntity> selecoes = anuncioIds.stream().map(this::selecao).toList();
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(selecoes);
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of());
+        List<AnuncioEntity> anuncios = new java.util.ArrayList<>();
+        Map<UUID, List<MidiaElegivel>> midias = new java.util.LinkedHashMap<>();
+        for (int index = 0; index < anuncioIds.size(); index++) {
+            UUID anuncioId = anuncioIds.get(index);
+            MidiaElegivel midia = midiaElegivel(anuncioId, UUID.randomUUID(), 0);
+            anuncios.add(anuncio(anuncioId, UUID.randomUUID(), "admin-" + index));
+            midias.put(anuncioId, List.of(midia));
+        }
+        when(anuncioRepository.findAllById(any())).thenReturn(anuncios);
+        when(elegibilidadeService.listarPorAnuncios(any())).thenReturn(midias);
+
+        var response = service.listar(request);
+
+        assertThat(response).hasSize(3);
+        assertThat(response.stream().flatMap(bundle -> bundle.itens().stream()).map(item -> item.storyId()))
+                .hasSize(3)
+                .doesNotHaveDuplicates();
+        verify(anuncioRepository, never()).findById(any());
+        verify(elegibilidadeService, never()).listar(any());
+    }
+
+    @Test
     void selecaoAdministrativaExpiradaNaoEntraNoFeed() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         UUID anuncioId = UUID.randomUUID();
         StorySelecaoAdministrativaEntity expirada = selecao(anuncioId);
-        set(expirada, "ativadoEm", OffsetDateTime.now().minusHours(24).minusSeconds(1));
-        when(selecaoRepository.atual()).thenReturn(Optional.of(expirada));
+        set(expirada, "expiraEm", OffsetDateTime.now().minusSeconds(1));
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of(expirada));
         when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
                 .thenReturn(List.of());
 
@@ -172,14 +217,15 @@ class StoryFeedPublicoServiceTest {
         AnuncioEntity anuncio = anuncio(anuncioId, UUID.randomUUID(), "admin-dinamico");
         MidiaElegivel primeira = midiaElegivel(anuncioId, UUID.randomUUID(), 0);
         MidiaElegivel segunda = midiaElegivel(anuncioId, UUID.randomUUID(), 1);
-        when(selecaoRepository.atual()).thenReturn(Optional.of(selecao(anuncioId)));
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc())
+                .thenReturn(List.of(selecao(anuncioId)));
+        when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
         when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
                 .thenReturn(List.of());
-        when(elegibilidadeService.listar(anuncioId))
-                .thenReturn(List.of(primeira))
-                .thenReturn(List.of(primeira, segunda))
-                .thenReturn(List.of(segunda));
+        when(elegibilidadeService.listarPorAnuncios(any()))
+                .thenReturn(Map.of(anuncioId, List.of(primeira)))
+                .thenReturn(Map.of(anuncioId, List.of(primeira, segunda)))
+                .thenReturn(Map.of(anuncioId, List.of(segunda)));
 
         assertThat(service.listar(request).get(0).itens()).hasSize(1);
         assertThat(service.listar(request).get(0).itens()).hasSize(2);
@@ -190,7 +236,7 @@ class StoryFeedPublicoServiceTest {
 
     private StorySelecaoAdministrativaEntity selecao(UUID anuncioId) {
         StorySelecaoAdministrativaEntity selecao = entity(StorySelecaoAdministrativaEntity.class);
-        set(selecao, "singletonId", (short) 1);
+        set(selecao, "id", 1L);
         selecao.ativar(anuncioId, UUID.randomUUID(), OffsetDateTime.now());
         return selecao;
     }

@@ -72,6 +72,7 @@ class MeusAnunciosConsultaServiceTest {
     private DecisaoModeracaoRepository decisaoModeracaoRepository;
     private MidiaPublicaUrlService urlService;
     private VisualizacaoTotalCanonicaService visualizacaoService;
+    private MeuAnuncioBeneficioConsultaService beneficioConsultaService;
     private MeusAnunciosConsultaService service;
 
     @BeforeEach
@@ -87,11 +88,19 @@ class MeusAnunciosConsultaServiceTest {
         decisaoModeracaoRepository = mock(DecisaoModeracaoRepository.class);
         urlService = mock(MidiaPublicaUrlService.class);
         visualizacaoService = mock(VisualizacaoTotalCanonicaService.class);
+        beneficioConsultaService = mock(MeuAnuncioBeneficioConsultaService.class);
         when(visualizacaoService.calcularEmLote(any())).thenAnswer(invocation -> {
             Collection<UUID> ids = invocation.getArgument(0);
             Map<UUID, VisualizacoesCanonicasDto> totais = new LinkedHashMap<>();
             ids.forEach(id -> totais.put(id, VisualizacoesCanonicasDto.total(0)));
             return totais;
+        });
+        when(beneficioConsultaService.consultarEmLote(any())).thenAnswer(invocation -> {
+            Collection<UUID> ids = invocation.getArgument(0);
+            Map<UUID, List<br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioBeneficioDto>>
+                    beneficios = new LinkedHashMap<>();
+            ids.forEach(id -> beneficios.put(id, List.of()));
+            return beneficios;
         });
         service = new MeusAnunciosConsultaService(
                 usuarioRepository,
@@ -105,7 +114,8 @@ class MeusAnunciosConsultaServiceTest {
                 decisaoModeracaoRepository,
                 new MidiaPublicaMapper(urlService),
                 new MidiaPublicaSeguraPolicy(),
-                visualizacaoService);
+                visualizacaoService,
+                beneficioConsultaService);
     }
 
     @Test

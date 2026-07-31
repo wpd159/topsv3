@@ -36,9 +36,13 @@ public class PremiumExpiracaoPolicyService {
         if (agora == null) {
             codigos.add(PremiumConsistenciaCodigo.REFERENCIA_TEMPORAL_INVALIDA);
         }
-        if (ativacao.getInicioEm() == null
-                || ativacao.getFimEm() == null
-                || !ativacao.getFimEm().isAfter(ativacao.getInicioEm())) {
+        boolean aguardandoModeracao =
+                ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO;
+        if (aguardandoModeracao
+                ? ativacao.getInicioEm() != null || ativacao.getFimEm() != null
+                : ativacao.getInicioEm() == null
+                        || ativacao.getFimEm() == null
+                        || !ativacao.getFimEm().isAfter(ativacao.getInicioEm())) {
             codigos.add(PremiumConsistenciaCodigo.DATA_INVALIDA);
         }
         if (ativacao.getOrigem() == null) {
@@ -93,6 +97,10 @@ public class PremiumExpiracaoPolicyService {
         if (grupoCanceladoOuRevogado(grupo)) {
             codigos.add(PremiumConsistenciaCodigo.GRUPO_INATIVO);
             return PremiumBeneficioStatusCalculado.INATIVO;
+        }
+        if (ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO) {
+            codigos.add(PremiumConsistenciaCodigo.BENEFICIO_AGUARDANDO_MODERACAO);
+            return PremiumBeneficioStatusCalculado.PENDENTE;
         }
         if (grupo.getStatus() == StatusGrupoAtivacaoBeneficio.PLANEJADO
                 || grupo.getValidadeInicioEm().isAfter(agora)) {

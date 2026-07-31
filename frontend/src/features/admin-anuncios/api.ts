@@ -275,17 +275,18 @@ export function cancelAdminPremium(activationId: string, motivo: string, idempot
 }
 
 export function getAdminStorySelection() {
-  return request<AdminStorySelection>('/stories/selecao')
+  return request<AdminStorySelection[]>('/stories/selecao')
 }
 
-export function activateAdminStory(anuncioId: string) {
+export function activateAdminStory(anuncioId: string, idempotencyKey = crypto.randomUUID()) {
   return request<AdminStorySelection>(`/stories/selecao/${encodeURIComponent(anuncioId)}`, {
     method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
   })
 }
 
-export function deactivateAdminStory() {
-  return request<AdminStorySelection>('/stories/selecao', { method: 'DELETE' })
+export function deactivateAdminStory(anuncioId: string) {
+  return request<AdminStorySelection>(`/stories/selecao/${encodeURIComponent(anuncioId)}`, { method: 'DELETE' })
 }
 
 export function getAdminMediaPreview(id: string) {

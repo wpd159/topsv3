@@ -6,14 +6,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService.MidiaElegivel;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
-import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
@@ -27,142 +26,149 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.web.server.ResponseStatusException;
 
 class AdminStorySelecaoServiceTest {
 
-    private final StorySelecaoAdministrativaRepository selecaoRepository = mock(StorySelecaoAdministrativaRepository.class);
+    private static final Instant AGORA = Instant.parse("2026-07-31T13:00:00Z");
+
+    private final StorySelecaoAdministrativaRepository selecaoRepository =
+            mock(StorySelecaoAdministrativaRepository.class);
     private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
     private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
     private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
     private final StoryMidiaElegibilidadeService elegibilidadeService = mock(StoryMidiaElegibilidadeService.class);
-    private final StorySelecaoAdministrativaEntity selecao = entity(StorySelecaoAdministrativaEntity.class);
+    private final List<StorySelecaoAdministrativaEntity> persistidas = new ArrayList<>();
+    private final AtomicLong ids = new AtomicLong(1);
     private AdminStorySelecaoService service;
 
     @BeforeEach
     void setUp() {
-        set(selecao, "singletonId", (short) 1);
-        set(selecao, "ativa", false);
         service = new AdminStorySelecaoService(
                 selecaoRepository,
                 anuncioRepository,
                 usuarioRepository,
                 auditoriaRepository,
                 elegibilidadeService,
-                new ObjectMapper());
-        when(selecaoRepository.bloquearSingleton()).thenReturn(Optional.of(selecao));
-        when(selecaoRepository.atual()).thenReturn(Optional.of(selecao));
+                new ObjectMapper(),
+                Clock.fixed(AGORA, ZoneOffset.UTC));
+        when(anuncioRepository.findById(any())).thenAnswer(invocation ->
+                Optional.of(anuncio(invocation.getArgument(0))));
+        when(elegibilidadeService.listar(any())).thenReturn(List.of(midia(TipoAnuncioMidia.FOTO)));
+        when(selecaoRepository.findByIdempotencyKey(any())).thenAnswer(invocation -> persistidas.stream()
+                .filter(item -> invocation.getArgument(0).equals(item.getIdempotencyKey()))
+                .findFirst());
+        when(selecaoRepository.bloquearAtivasDoAnuncio(any())).thenAnswer(invocation -> persistidas.stream()
+                .filter(StorySelecaoAdministrativaEntity::isAtiva)
+                .filter(item -> invocation.getArgument(0).equals(item.getAnuncioId()))
+                .toList());
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenAnswer(invocation ->
+                persistidas.stream().filter(StorySelecaoAdministrativaEntity::isAtiva).toList());
+        when(selecaoRepository.save(any())).thenAnswer(invocation -> {
+            StorySelecaoAdministrativaEntity item = invocation.getArgument(0);
+            if (item.getId() == null) set(item, "id", ids.getAndIncrement());
+            if (!persistidas.contains(item)) persistidas.add(item);
+            return item;
+        });
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
-    void ativaSemCriarStoryPagoOuCredito() {
-        UUID anuncioId = UUID.randomUUID();
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio(anuncioId)));
-        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of(midia(TipoAnuncioMidia.FOTO)));
+    void ativarABCmantemTodasAsSelecoesComVigenciasIndependentes() {
+        UUID anuncioA = UUID.randomUUID();
+        UUID anuncioB = UUID.randomUUID();
+        UUID anuncioC = UUID.randomUUID();
 
-        var response = service.ativar(anuncioId, ator(), "req-ativar");
+        service.ativar(anuncioA, "story-chave-a", ator(), "req-a");
+        service.ativar(anuncioB, "story-chave-b", ator(), "req-b");
+        service.ativar(anuncioC, "story-chave-c", ator(), "req-c");
 
-        assertThat(response.ativa()).isTrue();
-        assertThat(response.anuncioId()).isEqualTo(anuncioId);
-        assertThat(response.fotosAprovadas()).isEqualTo(1);
-        assertThat(response.classificacao()).isEqualTo("RESTRITA_18");
-        assertThat(response.expiraEm()).isEqualTo(response.ativadoEm().plusHours(24));
-        ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
-        verify(auditoriaRepository).save(audit.capture());
-        assertThat(audit.getValue().getAcao()).isEqualTo("STORY_ADMIN_ATIVAR");
-        assertThat(audit.getValue().getRequestId()).isEqualTo("req-ativar");
+        assertThat(service.consultar())
+                .extracting(item -> item.anuncioId())
+                .containsExactly(anuncioA, anuncioB, anuncioC);
+        assertThat(persistidas).allSatisfy(item -> {
+            assertThat(item.isAtiva()).isTrue();
+            assertThat(item.getExpiraEm()).isEqualTo(item.getAtivadoEm().plusHours(24));
+        });
+        verify(auditoriaRepository, times(3)).save(any());
     }
 
     @Test
-    void primeiraAtivacaoCriaSomenteOLockSingleton() {
+    void retryComMesmaChaveNaoRevalidaEstadoAtualNemDuplicaAuditoria() {
         UUID anuncioId = UUID.randomUUID();
-        when(selecaoRepository.bloquearSingleton()).thenReturn(Optional.empty());
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio(anuncioId)));
-        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of(midia(TipoAnuncioMidia.FOTO)));
+        AdminUserPrincipal actor = ator();
 
-        var response = service.ativar(anuncioId, ator(), "req-primeira");
-
-        assertThat(response.ativa()).isTrue();
-        ArgumentCaptor<StorySelecaoAdministrativaEntity> saved =
-                ArgumentCaptor.forClass(StorySelecaoAdministrativaEntity.class);
-        verify(selecaoRepository).save(saved.capture());
-        assertThat(saved.getValue().getSingletonId()).isEqualTo((short) 1);
-        assertThat(saved.getValue().getAnuncioId()).isEqualTo(anuncioId);
-    }
-
-    @Test
-    void substituiNaMesmaLinhaComAuditoria() {
-        UUID anterior = UUID.randomUUID();
-        UUID proximo = UUID.randomUUID();
-        selecao.ativar(anterior, UUID.randomUUID(), java.time.OffsetDateTime.now());
-        when(anuncioRepository.findById(proximo)).thenReturn(Optional.of(anuncio(proximo)));
-        when(elegibilidadeService.listar(proximo)).thenReturn(List.of(midia(TipoAnuncioMidia.VIDEO)));
-
-        var response = service.ativar(proximo, ator(), "req-substituir");
-
-        assertThat(response.anuncioId()).isEqualTo(proximo);
-        ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
-        verify(auditoriaRepository).save(audit.capture());
-        assertThat(audit.getValue().getAcao()).isEqualTo("STORY_ADMIN_SUBSTITUIR");
-    }
-
-    @Test
-    void retryDoMesmoAnuncioNaoEstendeAsVinteEQuatroHoras() {
-        UUID anuncioId = UUID.randomUUID();
-        java.time.OffsetDateTime ativadoEm = java.time.OffsetDateTime.now().minusHours(2);
-        selecao.ativar(anuncioId, UUID.randomUUID(), ativadoEm);
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio(anuncioId)));
-        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of(midia(TipoAnuncioMidia.FOTO)));
-
-        var response = service.ativar(anuncioId, ator(), "req-retry");
-
-        assertThat(response.ativadoEm()).isEqualTo(ativadoEm);
-        assertThat(response.expiraEm()).isEqualTo(ativadoEm.plusHours(24));
-        verify(auditoriaRepository, never()).save(any());
-    }
-
-    @Test
-    void desativaLimpandoSelecaoERegistrandoAuditoria() {
-        UUID anuncioId = UUID.randomUUID();
-        selecao.ativar(anuncioId, UUID.randomUUID(), java.time.OffsetDateTime.now());
-
-        var response = service.desativar(ator(), "req-desativar");
-
-        assertThat(response.ativa()).isFalse();
-        assertThat(selecao.getAnuncioId()).isNull();
-        ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
-        verify(auditoriaRepository).save(audit.capture());
-        assertThat(audit.getValue().getAcao()).isEqualTo("STORY_ADMIN_DESATIVAR");
-    }
-
-    @Test
-    void rejeitaAnuncioSemMidiaAprovada() {
-        UUID anuncioId = UUID.randomUUID();
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio(anuncioId)));
+        var primeira = service.ativar(anuncioId, "story-retry-001", actor, "req-1");
+        AnuncioEntity pausadoDepoisDaConclusao = anuncio(anuncioId);
+        set(pausadoDepoisDaConclusao, "status", StatusAnuncio.PAUSADO);
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(pausadoDepoisDaConclusao));
         when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of());
+        var repetida = service.ativar(anuncioId, "story-retry-001", actor, "req-2");
 
-        assertThatThrownBy(() -> service.ativar(anuncioId, ator(), "req-sem-midia"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("422")
-                .hasMessageContaining("sem foto ou video aprovado");
+        assertThat(persistidas).hasSize(1);
+        assertThat(repetida.id()).isEqualTo(primeira.id());
+        assertThat(repetida.ativadoEm()).isEqualTo(primeira.ativadoEm());
+        assertThat(repetida.expiraEm()).isEqualTo(primeira.expiraEm());
+        verify(auditoriaRepository).save(any());
     }
 
     @Test
-    void rejeitaAnuncioNaoPublico() {
-        UUID anuncioId = UUID.randomUUID();
-        AnuncioEntity anuncio = anuncio(anuncioId);
-        set(anuncio, "status", StatusAnuncio.PAUSADO);
-        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+    void desativarUmAnuncioPreservaOsDemais() {
+        UUID anuncioA = UUID.randomUUID();
+        UUID anuncioB = UUID.randomUUID();
+        service.ativar(anuncioA, "story-remove-a", ator(), "req-a");
+        service.ativar(anuncioB, "story-remove-b", ator(), "req-b");
 
-        assertThatThrownBy(() -> service.ativar(anuncioId, ator(), "req-pausado"))
+        var removida = service.desativar(anuncioA, ator(), "req-remove");
+
+        assertThat(removida.ativa()).isFalse();
+        assertThat(persistidas.stream().filter(StorySelecaoAdministrativaEntity::isAtiva))
+                .extracting(StorySelecaoAdministrativaEntity::getAnuncioId)
+                .containsExactly(anuncioB);
+        assertThat(persistidas.get(0).getAnuncioId()).isEqualTo(anuncioA);
+    }
+
+    @Test
+    void selecaoExpiradaNaoEConsultada() {
+        StorySelecaoAdministrativaEntity expirada = StorySelecaoAdministrativaEntity.nova(
+                UUID.randomUUID(),
+                ator().usuarioId(),
+                OffsetDateTime.ofInstant(AGORA.minusSeconds(90_000), ZoneOffset.UTC),
+                OffsetDateTime.ofInstant(AGORA.minusSeconds(3_600), ZoneOffset.UTC),
+                "story-expirada");
+        set(expirada, "id", ids.getAndIncrement());
+        persistidas.add(expirada);
+
+        assertThat(service.consultar()).isEmpty();
+    }
+
+    @Test
+    void rejeitaAnuncioSemMidiaAprovadaOuNaoPublico() {
+        UUID semMidia = UUID.randomUUID();
+        when(elegibilidadeService.listar(semMidia)).thenReturn(List.of());
+        assertThatThrownBy(() -> service.ativar(
+                semMidia, "story-sem-midia", ator(), "req-sem-midia"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("422");
+
+        UUID pausado = UUID.randomUUID();
+        AnuncioEntity anuncioPausado = anuncio(pausado);
+        set(anuncioPausado, "status", StatusAnuncio.PAUSADO);
+        when(anuncioRepository.findById(pausado)).thenReturn(Optional.of(anuncioPausado));
+        assertThatThrownBy(() -> service.ativar(
+                pausado, "story-pausado", ator(), "req-pausado"))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("422");
     }
@@ -170,7 +176,7 @@ class AdminStorySelecaoServiceTest {
     private AnuncioEntity anuncio(UUID id) {
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         set(anuncio, "id", id);
-        set(anuncio, "slug", "anuncio-publico");
+        set(anuncio, "slug", "anuncio-" + id);
         set(anuncio, "titulo", "Anuncio de demonstracao");
         set(anuncio, "status", StatusAnuncio.PUBLICADO);
         set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);

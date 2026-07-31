@@ -380,14 +380,14 @@ public class AdminAnuncioJuridicoService {
     }
 
     storyAdminRepository.bloquearOperacao();
-    StorySelecaoAdministrativaEntity selecao = storyAdminRepository.bloquearSingleton().orElse(null);
-    boolean administrativo = selecao != null
-        && selecao.isAtiva()
-        && anuncioIds.contains(selecao.getAnuncioId());
-    if (administrativo) {
-      selecao.desativar(agora);
-      storyAdminRepository.save(selecao);
+    List<StorySelecaoAdministrativaEntity> selecoes = anuncioIds.isEmpty()
+        ? List.of()
+        : storyAdminRepository.bloquearAtivasDosAnuncios(anuncioIds);
+    selecoes.forEach(selecao -> selecao.desativar(agora));
+    if (!selecoes.isEmpty()) {
+      storyAdminRepository.saveAll(selecoes);
     }
+    boolean administrativo = !selecoes.isEmpty();
     return new StorySuspension(alterados.size(), administrativo);
   }
 

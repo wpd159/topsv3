@@ -21,7 +21,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
 import java.time.Duration;
+import java.time.Clock;
 import java.time.ZoneOffset;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +33,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -48,7 +51,9 @@ public class AdminStorySelecaoService {
     private final AuditoriaEventoRepository auditoriaRepository;
     private final StoryMidiaElegibilidadeService elegibilidadeService;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
 
+    @Autowired
     public AdminStorySelecaoService(
             StorySelecaoAdministrativaRepository selecaoRepository,
             AnuncioRepository anuncioRepository,
@@ -56,33 +61,58 @@ public class AdminStorySelecaoService {
             AuditoriaEventoRepository auditoriaRepository,
             StoryMidiaElegibilidadeService elegibilidadeService,
             ObjectMapper objectMapper) {
+        this(
+                selecaoRepository,
+                anuncioRepository,
+                usuarioRepository,
+                auditoriaRepository,
+                elegibilidadeService,
+                objectMapper,
+                Clock.systemUTC());
+    }
+
+    AdminStorySelecaoService(
+            StorySelecaoAdministrativaRepository selecaoRepository,
+            AnuncioRepository anuncioRepository,
+            UsuarioRepository usuarioRepository,
+            AuditoriaEventoRepository auditoriaRepository,
+            StoryMidiaElegibilidadeService elegibilidadeService,
+            ObjectMapper objectMapper,
+            Clock clock) {
         this.selecaoRepository = selecaoRepository;
         this.anuncioRepository = anuncioRepository;
         this.usuarioRepository = usuarioRepository;
         this.auditoriaRepository = auditoriaRepository;
         this.elegibilidadeService = elegibilidadeService;
         this.objectMapper = objectMapper;
+        this.clock = clock;
     }
 
     @Transactional(readOnly = true)
-    public AdminStorySelecaoDto consultar() {
-        StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        return selecao == null || !ativaNoInstante(selecao, agora()) ? inativa() : toDto(selecao);
+    public List<AdminStorySelecaoDto> consultar() {
+        OffsetDateTime agora = agora();
+        return selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc().stream()
+                .filter(selecao -> ativaNoInstante(selecao, agora))
+                .map(this::toDto)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public AdminPaginaDto<AdminStoryCandidatoDto> listarCandidatos(int page, int size, String termo) {
         int safePage = Math.max(page, 0);
         int safeSize = Math.max(1, Math.min(size, MAX_PAGE_SIZE));
-        StorySelecaoAdministrativaEntity selecao = selecaoRepository.atual().orElse(null);
-        UUID selecionadoId = selecao != null && ativaNoInstante(selecao, agora()) ? selecao.getAnuncioId() : null;
+        OffsetDateTime agora = agora();
+        Set<UUID> selecionados = selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc().stream()
+                .filter(selecao -> ativaNoInstante(selecao, agora))
+                .map(StorySelecaoAdministrativaEntity::getAnuncioId)
+                .collect(java.util.stream.Collectors.toSet());
         Page<AnuncioEntity> candidatos = anuncioRepository.findAll(
                 candidatoSpec(termo),
                 PageRequest.of(safePage, safeSize, Sort.by(
                         Sort.Order.desc("atualizadoEm"),
                         Sort.Order.asc("id"))));
         List<AdminStoryCandidatoDto> itens = candidatos.getContent().stream()
-                .map(anuncio -> candidato(anuncio, selecionadoId))
+                .map(anuncio -> candidato(anuncio, selecionados))
                 .toList();
         return new AdminPaginaDto<>(
                 itens,
@@ -94,28 +124,58 @@ public class AdminStorySelecaoService {
     }
 
     @Transactional
-    public AdminStorySelecaoDto ativar(UUID anuncioId, AdminUserPrincipal ator, String requestId) {
+    public AdminStorySelecaoDto ativar(
+            UUID anuncioId,
+            String idempotencyKey,
+            AdminUserPrincipal ator,
+            String requestId) {
         validarAtor(ator);
+        String chave = chaveIdempotencia(ator, idempotencyKey);
+        selecaoRepository.bloquearOperacao();
+        StorySelecaoAdministrativaEntity repetida = selecaoRepository.findByIdempotencyKey(chave).orElse(null);
+        if (repetida != null) {
+            if (!anuncioId.equals(repetida.getAnuncioId())) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Idempotency-Key reutilizada para outro anuncio");
+            }
+            return toDto(repetida);
+        }
+
         AnuncioEntity anuncio = anuncioPublicavel(anuncioId);
         List<MidiaElegivel> midias = elegibilidadeService.listar(anuncioId);
         if (midias.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "anuncio sem foto ou video aprovado");
         }
 
-        StorySelecaoAdministrativaEntity selecao = bloquearSelecao(true);
-        if (ativaNoInstante(selecao, agora()) && anuncioId.equals(selecao.getAnuncioId())) {
-            return toDto(selecao);
-        }
-        String antes = snapshot(selecao, null);
-        String acao = ativaNoInstante(selecao, agora()) ? "STORY_ADMIN_SUBSTITUIR" : "STORY_ADMIN_ATIVAR";
         OffsetDateTime agora = agora();
-        selecao.ativar(anuncioId, ator.usuarioId(), agora);
-        selecaoRepository.save(selecao);
+        List<StorySelecaoAdministrativaEntity> existentes =
+                selecaoRepository.bloquearAtivasDoAnuncio(anuncioId);
+        StorySelecaoAdministrativaEntity vigente = existentes.stream()
+                .filter(item -> ativaNoInstante(item, agora))
+                .findFirst()
+                .orElse(null);
+        if (vigente != null) {
+            return toDto(vigente, anuncio, midias);
+        }
+        existentes.forEach(item -> item.desativar(agora));
+        if (!existentes.isEmpty()) {
+            selecaoRepository.saveAllAndFlush(existentes);
+        }
+
+        StorySelecaoAdministrativaEntity selecao = selecaoRepository.save(
+                StorySelecaoAdministrativaEntity.nova(
+                        anuncioId,
+                        ator.usuarioId(),
+                        agora,
+                        agora.plus(DURACAO_ADMINISTRATIVA),
+                        chave));
+        String antes = "{\"ativa\":false}";
         String depois = snapshot(selecao, midias);
         auditoriaRepository.save(AuditoriaEventoEntity.registrar(
                 UUID.randomUUID(),
                 ator.usuarioId(),
-                acao,
+                "STORY_ADMIN_ATIVAR",
                 RECURSO_TIPO,
                 anuncio.getId(),
                 antes,
@@ -126,13 +186,21 @@ public class AdminStorySelecaoService {
     }
 
     @Transactional
-    public AdminStorySelecaoDto desativar(AdminUserPrincipal ator, String requestId) {
+    public AdminStorySelecaoDto desativar(
+            UUID anuncioId,
+            AdminUserPrincipal ator,
+            String requestId) {
         validarAtor(ator);
-        StorySelecaoAdministrativaEntity selecao = bloquearSelecao(false);
-        if (selecao == null || !ativaNoInstante(selecao, agora())) {
-            return inativa();
+        selecaoRepository.bloquearOperacao();
+        List<StorySelecaoAdministrativaEntity> selecoes =
+                selecaoRepository.bloquearAtivasDoAnuncio(anuncioId);
+        StorySelecaoAdministrativaEntity selecao = selecoes.stream()
+                .filter(item -> ativaNoInstante(item, agora()))
+                .findFirst()
+                .orElse(null);
+        if (selecao == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "story administrativo ativo nao encontrado");
         }
-        UUID anuncioAnteriorId = selecao.getAnuncioId();
         String antes = snapshot(selecao, null);
         OffsetDateTime agora = agora();
         selecao.desativar(agora);
@@ -141,21 +209,12 @@ public class AdminStorySelecaoService {
                 ator.usuarioId(),
                 "STORY_ADMIN_DESATIVAR",
                 RECURSO_TIPO,
-                anuncioAnteriorId,
+                anuncioId,
                 antes,
                 snapshot(selecao, List.of()),
                 requestId,
                 agora));
         return toDto(selecao);
-    }
-
-    private StorySelecaoAdministrativaEntity bloquearSelecao(boolean criarQuandoAusente) {
-        selecaoRepository.bloquearOperacao();
-        StorySelecaoAdministrativaEntity atual = selecaoRepository.bloquearSingleton().orElse(null);
-        if (atual != null || !criarQuandoAusente) {
-            return atual;
-        }
-        return StorySelecaoAdministrativaEntity.nova(OffsetDateTime.now(ZoneOffset.UTC));
     }
 
     private AnuncioEntity anuncioPublicavel(UUID anuncioId) {
@@ -167,17 +226,9 @@ public class AdminStorySelecaoService {
     }
 
     private AdminStorySelecaoDto toDto(StorySelecaoAdministrativaEntity selecao) {
-        if (!ativaNoInstante(selecao, agora())) {
-            return inativa();
-        }
         AnuncioEntity anuncio = anuncioRepository.findById(selecao.getAnuncioId()).orElse(null);
         List<MidiaElegivel> midias = anuncio == null ? List.of() : elegibilidadeService.listar(anuncio.getId());
         return toDto(selecao, anuncio, midias);
-    }
-
-    private AdminStorySelecaoDto inativa() {
-        return new AdminStorySelecaoDto(
-                false, null, null, null, 0, 0, null, null, "RESTRITA_18", null, null);
     }
 
     private AdminStorySelecaoDto toDto(
@@ -188,6 +239,7 @@ public class AdminStorySelecaoService {
                 ? null
                 : usuarioRepository.findById(selecao.getAtivadoPor()).orElse(null);
         return new AdminStorySelecaoDto(
+                selecao.getId(),
                 ativaNoInstante(selecao, agora()),
                 selecao.getAnuncioId(),
                 anuncio == null ? null : anuncio.getSlug(),
@@ -201,7 +253,7 @@ public class AdminStorySelecaoService {
                 ator == null ? null : ator.getEmailNormalizado());
     }
 
-    private AdminStoryCandidatoDto candidato(AnuncioEntity anuncio, UUID selecionadoId) {
+    private AdminStoryCandidatoDto candidato(AnuncioEntity anuncio, Set<UUID> selecionados) {
         List<MidiaElegivel> midias = elegibilidadeService.listar(anuncio.getId());
         return new AdminStoryCandidatoDto(
                 anuncio.getId(),
@@ -209,7 +261,7 @@ public class AdminStorySelecaoService {
                 anuncio.getTitulo(),
                 contar(midias, TipoAnuncioMidia.FOTO),
                 contar(midias, TipoAnuncioMidia.VIDEO),
-                anuncio.getId().equals(selecionadoId));
+                selecionados.contains(anuncio.getId()));
     }
 
     private long contar(List<MidiaElegivel> midias, TipoAnuncioMidia tipo) {
@@ -238,6 +290,7 @@ public class AdminStorySelecaoService {
 
     private String snapshot(StorySelecaoAdministrativaEntity selecao, List<MidiaElegivel> midias) {
         Map<String, Object> values = new LinkedHashMap<>();
+        values.put("id", selecao.getId());
         values.put("ativa", selecao.isAtiva());
         values.put("anuncioId", selecao.getAnuncioId());
         values.put("ativadoPor", selecao.getAtivadoPor());
@@ -270,12 +323,18 @@ public class AdminStorySelecaoService {
     }
 
     private OffsetDateTime expiraEm(StorySelecaoAdministrativaEntity selecao) {
-        return selecao == null || selecao.getAtivadoEm() == null
-                ? null
-                : selecao.getAtivadoEm().plus(DURACAO_ADMINISTRATIVA);
+        return selecao == null ? null : selecao.getExpiraEm();
     }
 
     private OffsetDateTime agora() {
-        return OffsetDateTime.now(ZoneOffset.UTC);
+        return OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+    }
+
+    private String chaveIdempotencia(AdminUserPrincipal ator, String value) {
+        String chave = value == null ? "" : value.trim();
+        if (chave.length() < 8 || chave.length() > 160 || !chave.matches("[A-Za-z0-9._:-]+")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Idempotency-Key invalida");
+        }
+        return "story-admin:" + ator.usuarioId() + ":" + chave;
     }
 }

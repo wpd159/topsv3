@@ -227,6 +227,7 @@ export type AdminPremiumCatalogItem = {
 }
 
 export type AdminStorySelection = {
+  id: number
   ativa: boolean
   anuncioId?: string | null
   anuncioSlug?: string | null

@@ -10,6 +10,7 @@ import {
 import type { MeuAnuncio, MeuAnuncioCicloVida } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
 import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
+import { apresentarBeneficioPremium } from '@/lib/meu-anuncio-beneficios'
 
 const STATUS: Record<string, { label: string; className: string }> = {
   RASCUNHO: { label: 'Rascunho', className: 'border-slate-300 bg-slate-100 text-slate-700' },
@@ -150,6 +151,28 @@ export function MeuAnuncioCard({ anuncio, onCicloVida }: MeuAnuncioCardProps) {
               Decisão em {formatarDataReprovacao(anuncio.reprovacao.decididoEm)}. Corrija os dados e salve para reenviar à análise.
             </p>
           </div>
+        ) : null}
+        {anuncio.beneficiosPremium.length ? (
+          <section className="mt-3 border-t border-slate-100 pt-3" aria-label="Benefícios Premium">
+            <h3 className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+              <SparklesIcon className="h-4 w-4 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
+              Benefícios Premium
+            </h3>
+            <ul className="mt-2 space-y-2">
+              {anuncio.beneficiosPremium.map((beneficio) => {
+                const apresentacao = apresentarBeneficioPremium(beneficio)
+                return (
+                  <li key={beneficio.codigo} className="min-w-0 border-l-2 border-[#FC1EAD]/30 pl-2 text-xs">
+                    <p className="break-words font-semibold text-slate-800">{beneficio.nome}</p>
+                    <p className="mt-0.5 break-words leading-5 text-slate-600">{apresentacao.situacao}</p>
+                    {apresentacao.complemento ? (
+                      <p className="break-words leading-5 text-slate-500">{apresentacao.complemento}</p>
+                    ) : null}
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
         ) : null}
 
         <div className="mt-auto grid grid-cols-2 gap-2 border-t border-gray-100 pt-4">

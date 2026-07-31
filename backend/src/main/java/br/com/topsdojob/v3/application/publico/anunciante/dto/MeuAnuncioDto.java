@@ -26,5 +26,6 @@ public record MeuAnuncioDto(
         OffsetDateTime atualizadoEm,
         MeuAnuncioAcoesDto acoesPermitidas,
         VisualizacoesCanonicasDto visualizacoes,
-        MeuAnuncioReprovacaoDto reprovacao) {
+        MeuAnuncioReprovacaoDto reprovacao,
+        List<MeuAnuncioBeneficioDto> beneficiosPremium) {
 }

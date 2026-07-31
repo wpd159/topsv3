@@ -17,7 +17,6 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
@@ -29,7 +28,6 @@ import org.springframework.web.server.ResponseStatusException;
 public class ComplianceChallengeContextService {
 
   private static final String PREFIXO_STORY_ADMIN = "administrativo:";
-  private static final Duration DURACAO_STORY_ADMIN = Duration.ofHours(24);
 
   private final AnuncioRepository anuncioRepository;
   private final AnuncioMidiaRepository midiaRepository;
@@ -122,14 +120,16 @@ public class ComplianceChallengeContextService {
       UUID anuncioInformado,
       OffsetDateTime agora) {
     UUID midiaId = uuidStory(referencia.substring(PREFIXO_STORY_ADMIN.length()));
-    StorySelecaoAdministrativaEntity selecao = storyAdminRepository.atual()
-        .filter(item -> storyAdminAtivo(item, agora))
-        .orElseThrow(this::storyNaoEncontrado);
-    validarMesmoAnuncio(anuncioInformado, selecao.getAnuncioId());
     AnuncioMidiaEntity midia = midiaRepository.findById(midiaId)
-        .filter(item -> item.getAnuncioId().equals(selecao.getAnuncioId()))
         .filter(this::storyAdminElegivel)
         .orElseThrow(this::storyNaoEncontrado);
+    StorySelecaoAdministrativaEntity selecao = storyAdminRepository
+        .findByAtivaTrueOrderByAtivadoEmAscIdAsc().stream()
+        .filter(item -> midia.getAnuncioId().equals(item.getAnuncioId()))
+        .filter(item -> storyAdminAtivo(item, agora))
+        .findFirst()
+        .orElseThrow(this::storyNaoEncontrado);
+    validarMesmoAnuncio(anuncioInformado, selecao.getAnuncioId());
     return new StoryContext(
         selecao.getAnuncioId(),
         midia.getId(),
@@ -167,8 +167,8 @@ public class ComplianceChallengeContextService {
       OffsetDateTime agora) {
     return selecao.isAtiva()
         && selecao.getAnuncioId() != null
-        && selecao.getAtivadoEm() != null
-        && selecao.getAtivadoEm().plus(DURACAO_STORY_ADMIN).isAfter(agora);
+        && selecao.getExpiraEm() != null
+        && selecao.getExpiraEm().isAfter(agora);
   }
 
   private UUID uuidStory(String value) {

@@ -12,7 +12,7 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
-import type { StoryBundle, StoryViewerItem } from "./stories-types"
+import type { StoryBundle, StoryItem, StoryViewerItem } from "./stories-types"
 import {
   getInitials,
   loginPublicoDoBundle,
@@ -27,6 +27,7 @@ type Props = {
   bundles: StoryBundle[]
   initialBundleIndex: number
   onVerificationRefresh?: () => Promise<void> | void
+  onStoryCurrent?: (item: StoryItem) => void
 }
 
 const IMAGE_MS = 5500
@@ -106,6 +107,7 @@ export function StoryViewerDialog({
   bundles,
   initialBundleIndex,
   onVerificationRefresh,
+  onStoryCurrent,
 }: Props) {
   const router = useRouter()
   const [bundleIndex, setBundleIndex] = useState(0)
@@ -131,6 +133,10 @@ export function StoryViewerDialog({
 
   const currentBundle = bundles[bundleIndex]
   const currentFeedItem = currentBundle?.itens?.[itemIndex]
+
+  useEffect(() => {
+    if (open && currentFeedItem) onStoryCurrent?.(currentFeedItem)
+  }, [currentFeedItem, onStoryCurrent, open])
 
   useEffect(() => {
     if (!open || !currentFeedItem?.storyId) {

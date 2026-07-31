@@ -4934,39 +4934,51 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/stories/selecao:
     get:
-      summary: Consulta a selecao administrativa de Stories
+      summary: Consulta as selecoes administrativas ativas de Stories
       security:
         - AdminSessionCookie: []
       responses:
         "200":
-          description: selecao atual
+          description: selecoes vigentes, cumulativas e independentes por anuncio
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminStorySelecao"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-    delete:
-      summary: Desativa atomicamente a selecao administrativa
-      security:
-        - AdminSessionCookie: []
-      responses:
-        "200":
-          description: selecao desativada e auditada
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminStorySelecao"
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminStorySelecao"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
   /api/admin/stories/selecao/{anuncioId}:
     post:
-      summary: Ativa ou substitui atomicamente o anuncio administrativo
-      description: Nao cria Story pago, nao consome credito e nao copia midia. Exige anuncio publico, aprovado e com foto ou video publicavel; a selecao e RESTRITA_18 e expira exatamente em 24 horas.
+      summary: Acrescenta atomicamente um anuncio aos Stories administrativos
+      description: Nao substitui selecoes vigentes, nao cria Story pago, nao consome credito e nao copia midia. Exige anuncio publico, aprovado e com foto ou video publicavel; a selecao e RESTRITA_18 e expira exatamente em 24 horas.
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - name: anuncioId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: selecao acrescentada ou repeticao idempotente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStorySelecao"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: anuncio inelegivel ou sem midia aprovada
+    delete:
+      summary: Desativa somente a selecao administrativa do anuncio informado
       security:
         - AdminSessionCookie: []
       parameters:
@@ -4978,7 +4990,7 @@ paths:
             format: uuid
       responses:
         "200":
-          description: selecao ativada ou substituida e auditada
+          description: selecao desativada e auditada sem alterar as demais
           content:
             application/json:
               schema:
@@ -4987,8 +4999,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "422":
-          description: anuncio inelegivel ou sem midia aprovada
+        "404":
+          $ref: "#/components/responses/NotFound"
   /api/admin/stories/candidatos:
     get:
       summary: Lista anuncios candidatos aos Stories administrativos
@@ -8170,6 +8182,7 @@ components:
         - acoesPermitidas
         - visualizacoes
         - reprovacao
+        - beneficiosPremium
       properties:
         id:
           type: string
@@ -8238,6 +8251,42 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MeuAnuncioReprovacao"
             - type: "null"
+        beneficiosPremium:
+          type: array
+          description: Situacao temporal efetiva dos beneficios do anuncio, calculada pelo backend.
+          items:
+            $ref: "#/components/schemas/MeuAnuncioBeneficio"
+    MeuAnuncioBeneficio:
+      type: object
+      additionalProperties: false
+      required: [codigo, nome, status, inicioEm, fimEm, duracaoDias, diasRestantes, motivoEspera, origem]
+      properties:
+        codigo:
+          type: string
+        nome:
+          type: string
+        status:
+          type: string
+          enum: [AGUARDANDO_MODERACAO, ATIVO, EXPIRADO, PENDENTE, INATIVO, ERRO]
+        inicioEm:
+          type: [string, "null"]
+          format: date-time
+        fimEm:
+          type: [string, "null"]
+          format: date-time
+          description: Instante efetivo calculado pelo backend; o frontend nao soma duracoes.
+        duracaoDias:
+          type: [integer, "null"]
+          minimum: 0
+        diasRestantes:
+          type: [integer, "null"]
+          minimum: 0
+        motivoEspera:
+          type: [string, "null"]
+          enum: [AGUARDANDO_APROVACAO_MODERACAO, null]
+        origem:
+          type: [string, "null"]
+          enum: [COMPRA, CREDITO, CORTESIA, CAMPANHA, ADMIN, IMPORTACAO, null]
     MeuAnuncioReprovacao:
       type: object
       additionalProperties: false
@@ -12259,8 +12308,11 @@ components:
     AdminStorySelecao:
       type: object
       additionalProperties: false
-      required: [ativa, fotosAprovadas, videosAprovados, classificacao]
+      required: [id, ativa, fotosAprovadas, videosAprovados, classificacao]
       properties:
+        id:
+          type: integer
+          format: int64
         ativa:
           type: boolean
         anuncioId:

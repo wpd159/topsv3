@@ -81,6 +81,41 @@ class PremiumExpiracaoPolicyServiceTest {
     }
 
     @Test
+    void fotosExtrasAguardandoModeracaoNaoIniciamPrazoNemProduzemEfeito() {
+        UUID usuarioId = UUID.randomUUID();
+        UUID anuncioId = UUID.randomUUID();
+        UUID grupoId = UUID.randomUUID();
+        BeneficioPremiumEntity beneficio = beneficio(FOTOS_EXTRA_5);
+        AtivacaoBeneficioEntity ativacao = AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
+                UUID.randomUUID(),
+                beneficio.getId(),
+                UUID.randomUUID(),
+                usuarioId,
+                anuncioId,
+                grupoId,
+                10,
+                "premium-aguardando-" + UUID.randomUUID(),
+                agora.minusDays(2));
+        GrupoAtivacaoBeneficioEntity grupo = grupo(
+                grupoId,
+                usuarioId,
+                anuncioId,
+                OrigemBeneficio.CREDITO,
+                StatusGrupoAtivacaoBeneficio.ATIVO,
+                agora.minusDays(2),
+                agora.plusDays(5));
+
+        PremiumBeneficioCalculado resultado = service.avaliar(ativacao, beneficio, grupo, agora);
+
+        assertThat(resultado.status()).isEqualTo(PremiumBeneficioStatusCalculado.PENDENTE);
+        assertThat(resultado.codigos())
+                .contains(PremiumConsistenciaCodigo.BENEFICIO_AGUARDANDO_MODERACAO);
+        assertThat(resultado.inconsistente()).isFalse();
+        assertThat(ativacao.getInicioEm()).isNull();
+        assertThat(ativacao.getFimEm()).isNull();
+    }
+
+    @Test
     void beneficioCanceladoAntesDaExpiracaoNaoProduzEfeito() {
         Cenario cenario = cenario(
                 WHATSAPP_CARD,

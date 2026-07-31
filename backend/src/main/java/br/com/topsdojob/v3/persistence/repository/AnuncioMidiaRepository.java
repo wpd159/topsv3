@@ -31,6 +31,11 @@ public interface AnuncioMidiaRepository
 
     long countByAnuncioIdAndTipoNot(UUID anuncioId, TipoAnuncioMidia tipo);
 
+    long countByAnuncioIdAndTipoAndStatus(
+            UUID anuncioId,
+            TipoAnuncioMidia tipo,
+            StatusAnuncioMidia status);
+
     @Query("""
             select m.anuncioId as anuncioId, count(m) as totalMidias
             from AnuncioMidiaEntity m

@@ -88,13 +88,13 @@ public class AdminUsuarioEncerramentoConteudoService {
         stories.saveAll(storiesEncerrados);
 
         storyAdministrativo.bloquearOperacao();
-        var selecao = storyAdministrativo.bloquearSingleton().orElse(null);
-        boolean storyAdministrativoEncerrado = selecao != null
-                && selecao.isAtiva()
-                && anuncioIds.contains(selecao.getAnuncioId());
+        var selecoes = anuncioIds.isEmpty()
+                ? List.<br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity>of()
+                : storyAdministrativo.bloquearAtivasDosAnuncios(anuncioIds);
+        boolean storyAdministrativoEncerrado = !selecoes.isEmpty();
         if (storyAdministrativoEncerrado) {
-            selecao.desativar(agora);
-            storyAdministrativo.save(selecao);
+            selecoes.forEach(selecao -> selecao.desativar(agora));
+            storyAdministrativo.saveAll(selecoes);
         }
         return new Resultado(
                 List.copyOf(anuncioIds),

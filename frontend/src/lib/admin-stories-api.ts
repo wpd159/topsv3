@@ -1,4 +1,5 @@
 export type AdminStorySelection = {
+  id: number
   ativa: boolean
   anuncioId: string | null
   anuncioSlug: string | null
@@ -83,7 +84,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function fetchAdminStorySelection() {
-  return request<AdminStorySelection>('/selecao')
+  return request<AdminStorySelection[]>('/selecao')
 }
 
 export function fetchAdminStoryCandidates(termo = '') {
@@ -92,11 +93,14 @@ export function fetchAdminStoryCandidates(termo = '') {
   return request<AdminStoryCandidatePage>(`/candidatos?${query.toString()}`)
 }
 
-export function activateAdminStorySelection(anuncioId: string) {
-  return request<AdminStorySelection>(`/selecao/${encodeURIComponent(anuncioId)}`, { method: 'POST' })
+export function activateAdminStorySelection(anuncioId: string, idempotencyKey = crypto.randomUUID()) {
+  return request<AdminStorySelection>(`/selecao/${encodeURIComponent(anuncioId)}`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+  })
 }
 
-export function deactivateAdminStorySelection() {
-  return request<AdminStorySelection>('/selecao', { method: 'DELETE' })
+export function deactivateAdminStorySelection(anuncioId: string) {
+  return request<AdminStorySelection>(`/selecao/${encodeURIComponent(anuncioId)}`, { method: 'DELETE' })
 }
 import { adminApiUrl } from '@/lib/api-contract'

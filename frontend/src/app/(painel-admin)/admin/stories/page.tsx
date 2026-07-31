@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FilmIcon, MagnifyingGlassIcon, PhotoIcon, SparklesIcon, XMarkIcon } from '@heroicons/react/24/solid'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -21,11 +21,12 @@ function formatDate(value: string | null) {
 }
 
 export default function AdminStoriesPage() {
-  const [selection, setSelection] = useState<AdminStorySelection | null>(null)
+  const [selections, setSelections] = useState<AdminStorySelection[]>([])
   const [candidates, setCandidates] = useState<AdminStoryCandidate[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [pendingId, setPendingId] = useState<string | null>(null)
+  const activationKeys = useRef(new Map<string, string>())
 
   const load = useCallback(async (term = '') => {
     try {
@@ -34,7 +35,7 @@ export default function AdminStoriesPage() {
         fetchAdminStorySelection(),
         fetchAdminStoryCandidates(term),
       ])
-      setSelection(current)
+      setSelections(current)
       setCandidates(page.itens)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Não foi possível carregar os Stories.')
@@ -48,10 +49,16 @@ export default function AdminStoriesPage() {
   }, [load])
 
   async function activate(candidate: AdminStoryCandidate) {
+    const key = activationKeys.current.get(candidate.anuncioId) || crypto.randomUUID()
+    activationKeys.current.set(candidate.anuncioId, key)
     try {
       setPendingId(candidate.anuncioId)
-      const updated = await activateAdminStorySelection(candidate.anuncioId)
-      setSelection(updated)
+      const updated = await activateAdminStorySelection(candidate.anuncioId, key)
+      activationKeys.current.delete(candidate.anuncioId)
+      setSelections((current) => [
+        ...current.filter((item) => item.anuncioId !== updated.anuncioId),
+        updated,
+      ])
       await load(search)
       toast.success('Anúncio exibido nos Stories.')
     } catch (error) {
@@ -61,11 +68,12 @@ export default function AdminStoriesPage() {
     }
   }
 
-  async function deactivate() {
+  async function deactivate(selection: AdminStorySelection) {
     try {
       setPendingId(selection?.anuncioId || 'desativar')
-      const updated = await deactivateAdminStorySelection()
-      setSelection(updated)
+      if (!selection.anuncioId) return
+      await deactivateAdminStorySelection(selection.anuncioId)
+      setSelections((current) => current.filter((item) => item.anuncioId !== selection.anuncioId))
       await load(search)
       toast.success('Anúncio removido dos Stories.')
     } catch (error) {
@@ -87,11 +95,13 @@ export default function AdminStoriesPage() {
       <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <SparklesIcon className="h-5 w-5 text-[#C41E73]" />
-          <h2 className="text-base font-semibold text-gray-900">Anúncio exibido agora</h2>
+          <h2 className="text-base font-semibold text-gray-900">Anúncios exibidos agora</h2>
         </div>
 
-        {selection?.ativa ? (
-          <div className="mt-4 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        {selections.length > 0 ? (
+          <div className="mt-4 space-y-4">
+          {selections.map((selection) => (
+          <div key={selection.id} className="flex flex-col gap-4 border-t border-gray-100 pt-4 first:border-t-0 first:pt-0 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0 space-y-2">
               <p className="break-words text-lg font-semibold text-gray-900">{selection.anuncioTitulo}</p>
               <p className="break-all text-sm text-gray-500">/anuncios/{selection.anuncioSlug}</p>
@@ -102,17 +112,20 @@ export default function AdminStoriesPage() {
               <p className="text-xs text-gray-500">
                 Ativado em {formatDate(selection.ativadoEm)} por {selection.ativadoPorEmail || 'Administrador'}
               </p>
+              <p className="text-xs text-gray-500">Expira em {formatDate(selection.expiraEm)}</p>
             </div>
             <Button
               type="button"
               variant="outline"
               className="w-full border-red-200 text-red-700 hover:bg-red-50 md:w-auto"
               disabled={pendingId !== null}
-              onClick={() => void deactivate()}
+              onClick={() => void deactivate(selection)}
             >
               <XMarkIcon className="mr-1 h-4 w-4" />
               Remover dos Stories
             </Button>
+          </div>
+          ))}
           </div>
         ) : (
           <p className="mt-4 text-sm text-gray-500">Nenhum anúncio está sendo exibido nos Stories.</p>

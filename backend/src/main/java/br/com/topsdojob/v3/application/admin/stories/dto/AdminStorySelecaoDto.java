@@ -4,6 +4,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public record AdminStorySelecaoDto(
+        Long id,
         boolean ativa,
         UUID anuncioId,
         String anuncioSlug,

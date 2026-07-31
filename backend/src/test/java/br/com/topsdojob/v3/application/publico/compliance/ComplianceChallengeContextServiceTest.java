@@ -23,6 +23,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -135,7 +136,8 @@ class ComplianceChallengeContextServiceTest {
     when(selecao.isAtiva()).thenReturn(true);
     when(selecao.getAnuncioId()).thenReturn(anuncioId);
     when(selecao.getAtivadoEm()).thenReturn(agora.minusHours(1));
-    when(storyAdminRepository.atual()).thenReturn(Optional.of(selecao));
+    when(selecao.getExpiraEm()).thenReturn(agora.plusHours(23));
+    when(storyAdminRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of(selecao));
     when(midiaRepository.findById(midiaId)).thenReturn(Optional.of(
         AnuncioMidiaEntity.criarFixtureHomologacao(
             midiaId,

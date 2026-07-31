@@ -5,6 +5,7 @@ import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.VID
 
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,7 +29,10 @@ public class LimiteMidiasAnuncioService {
                 .anyMatch(item -> item.beneficio() != null
                         && FOTOS_EXTRA_5.equals(item.beneficio().getCodigo())
                         && (item.status() == PremiumBeneficioStatusCalculado.ATIVO
-                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO));
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
+                        || (item.ativacao() != null
+                        && item.ativacao().getStatus()
+                        == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO)));
         boolean videoAtivo = beneficios.stream()
                 .anyMatch(item -> item.beneficio() != null
                         && VIDEO_1.equals(item.beneficio().getCodigo())

@@ -182,6 +182,34 @@ public class AtivacaoBeneficioEntity {
     return entity;
   }
 
+  public static AtivacaoBeneficioEntity criarCompraAguardandoModeracao(
+      UUID id,
+      UUID beneficioId,
+      UUID opcaoId,
+      UUID usuarioId,
+      UUID anuncioId,
+      UUID grupoAtivacaoId,
+      int custoCreditos,
+      String idempotencyKey,
+      OffsetDateTime criadoEm) {
+    AtivacaoBeneficioEntity entity = new AtivacaoBeneficioEntity();
+    entity.id = id;
+    entity.beneficioId = beneficioId;
+    entity.opcaoId = opcaoId;
+    entity.usuarioId = usuarioId;
+    entity.anuncioId = anuncioId;
+    entity.grupoAtivacaoId = grupoAtivacaoId;
+    entity.origem = OrigemBeneficio.CREDITO;
+    entity.atorUsuarioId = usuarioId;
+    entity.inicioEm = null;
+    entity.fimEm = null;
+    entity.status = StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO;
+    entity.custoCreditosSnapshot = custoCreditos;
+    entity.idempotencyKey = idempotencyKey;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
   public static AtivacaoBeneficioEntity criarAdministrativa(
       UUID id,
       UUID beneficioId,
@@ -214,6 +242,48 @@ public class AtivacaoBeneficioEntity {
     entity.motivoRevogacao = null;
     entity.criadoEm = criadoEm;
     return entity;
+  }
+
+  public static AtivacaoBeneficioEntity criarAdministrativaAguardandoModeracao(
+      UUID id,
+      UUID beneficioId,
+      UUID opcaoId,
+      UUID usuarioId,
+      UUID anuncioId,
+      UUID grupoAtivacaoId,
+      UUID atorUsuarioId,
+      String idempotencyKey,
+      OffsetDateTime criadoEm) {
+    AtivacaoBeneficioEntity entity = new AtivacaoBeneficioEntity();
+    entity.id = id;
+    entity.beneficioId = beneficioId;
+    entity.opcaoId = opcaoId;
+    entity.usuarioId = usuarioId;
+    entity.anuncioId = anuncioId;
+    entity.grupoAtivacaoId = grupoAtivacaoId;
+    entity.origem = OrigemBeneficio.ADMIN;
+    entity.atorUsuarioId = atorUsuarioId;
+    entity.inicioEm = null;
+    entity.fimEm = null;
+    entity.status = StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO;
+    entity.custoCreditosSnapshot = 0;
+    entity.idempotencyKey = idempotencyKey;
+    entity.criadoEm = criadoEm;
+    return entity;
+  }
+
+  public boolean iniciarAposModeracao(OffsetDateTime inicioEm, OffsetDateTime fimEm) {
+    if (status != StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO) {
+      return false;
+    }
+    if (this.inicioEm != null || this.fimEm != null || inicioEm == null
+        || fimEm == null || !fimEm.isAfter(inicioEm)) {
+      throw new IllegalStateException("janela de ativacao apos moderacao invalida");
+    }
+    this.inicioEm = inicioEm;
+    this.fimEm = fimEm;
+    this.status = StatusAtivacaoBeneficio.ATIVA;
+    return true;
   }
 
   public void revogar(String motivo, OffsetDateTime agora) {

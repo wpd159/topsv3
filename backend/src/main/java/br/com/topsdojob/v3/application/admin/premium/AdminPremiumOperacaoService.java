@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteI
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
+import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
@@ -142,7 +143,8 @@ public class AdminPremiumOperacaoService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada"));
         boolean duplicadoAtivo = beneficioConsultaService.consultarCalculados(anuncioId).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
-                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
+                        || item.status() == PremiumBeneficioStatusCalculado.PENDENTE)
                 .anyMatch(item -> item.beneficio() != null && item.beneficio().getId().equals(beneficio.getId()));
         if (duplicadoAtivo) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "beneficio ja ativo no anuncio");
@@ -160,8 +162,18 @@ public class AdminPremiumOperacaoService {
                         chave,
                         observacao,
                         agora));
-        AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(
-                AtivacaoBeneficioEntity.criarAdministrativa(
+        AtivacaoBeneficioEntity novaAtivacao = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(beneficio.getCodigo())
+                ? AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
+                        UUID.randomUUID(),
+                        beneficio.getId(),
+                        opcao.getId(),
+                        anuncio.getUsuarioId(),
+                        anuncioId,
+                        grupo.getId(),
+                        administrador.usuarioId(),
+                        chave + ":ativacao",
+                        agora)
+                : AtivacaoBeneficioEntity.criarAdministrativa(
                         UUID.randomUUID(),
                         beneficio.getId(),
                         opcao.getId(),
@@ -172,7 +184,8 @@ public class AdminPremiumOperacaoService {
                         agora,
                         fim,
                         chave + ":ativacao",
-                        agora));
+                        agora);
+        AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(novaAtivacao);
         creditoService.auditar(
                 administrador.usuarioId(),
                 "PREMIUM_ATIVACAO_ADMINISTRATIVA",
@@ -218,7 +231,8 @@ public class AdminPremiumOperacaoService {
 
         Set<UUID> ativos = beneficioConsultaService.consultarCalculados(anuncioId).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
-                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
+                        || item.status() == PremiumBeneficioStatusCalculado.PENDENTE)
                 .map(PremiumBeneficioCalculado::beneficio)
                 .filter(Objects::nonNull)
                 .map(BeneficioPremiumEntity::getId)
@@ -251,8 +265,18 @@ public class AdminPremiumOperacaoService {
                             chaveItem,
                             observacao,
                             agora));
-            AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(
-                    AtivacaoBeneficioEntity.criarAdministrativa(
+            AtivacaoBeneficioEntity novaAtivacao = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(beneficio.getCodigo())
+                    ? AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
+                            UUID.randomUUID(),
+                            beneficio.getId(),
+                            opcao.getId(),
+                            anuncio.getUsuarioId(),
+                            anuncioId,
+                            grupo.getId(),
+                            administrador.usuarioId(),
+                            chaveItem + ":ativacao",
+                            agora)
+                    : AtivacaoBeneficioEntity.criarAdministrativa(
                             UUID.randomUUID(),
                             beneficio.getId(),
                             opcao.getId(),
@@ -263,7 +287,8 @@ public class AdminPremiumOperacaoService {
                             agora,
                             fim,
                             chaveItem + ":ativacao",
-                            agora));
+                            agora);
+            AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(novaAtivacao);
             creditoService.auditar(
                     administrador.usuarioId(),
                     "PREMIUM_ATIVACAO_ADMINISTRATIVA",
@@ -305,7 +330,8 @@ public class AdminPremiumOperacaoService {
             return toDto(ativacao, 0, true);
         }
         if (ativacao.getStatus() != StatusAtivacaoBeneficio.ATIVA
-                && ativacao.getStatus() != StatusAtivacaoBeneficio.AGENDADA) {
+                && ativacao.getStatus() != StatusAtivacaoBeneficio.AGENDADA
+                && ativacao.getStatus() != StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "ativacao nao pode ser cancelada");
         }
         int estornado = 0;

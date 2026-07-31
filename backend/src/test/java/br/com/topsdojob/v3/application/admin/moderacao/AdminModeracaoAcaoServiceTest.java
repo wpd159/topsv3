@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
+import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -61,6 +62,8 @@ class AdminModeracaoAcaoServiceTest {
     private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
     private final OutboxEventoRepository outboxRepository = mock(OutboxEventoRepository.class);
     private final MidiaStorageAprovacaoService storageAprovacaoService = mock(MidiaStorageAprovacaoService.class);
+    private final BeneficioFotosExtrasModeracaoService fotosExtrasService =
+            mock(BeneficioFotosExtrasModeracaoService.class);
     private final Map<UUID, UUID> anuncioIdPorMidia = new HashMap<>();
     private AdminModeracaoAcaoService service;
 
@@ -80,6 +83,7 @@ class AdminModeracaoAcaoServiceTest {
                 outboxRepository,
                 new ObjectMapper(),
                 storageAprovacaoService,
+                fotosExtrasService,
                 "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -106,6 +110,8 @@ class AdminModeracaoAcaoServiceTest {
         assertThat(responseRestrita.visibilidadeMidia()).isEqualTo("RESTRITA_18");
         assertThat(livre.midia().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.LIVRE);
         assertThat(restrita.midia().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
+        verify(fotosExtrasService, org.mockito.Mockito.times(2))
+                .iniciarSeCapacidadeAdicionalAprovada(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -207,6 +213,8 @@ class AdminModeracaoAcaoServiceTest {
         assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.REJEITADA);
         assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.REJEITADO);
         verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
+        verify(fotosExtrasService, never())
+                .iniciarSeCapacidadeAdicionalAprovada(any(), any(), any(), any(), any());
         verify(auditoriaRepository).save(any());
     }
 

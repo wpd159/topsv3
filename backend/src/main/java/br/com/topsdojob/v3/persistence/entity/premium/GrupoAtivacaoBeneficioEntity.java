@@ -194,6 +194,17 @@ public class GrupoAtivacaoBeneficioEntity {
     return entity;
   }
 
+  public void estenderValidadeAte(OffsetDateTime fimEm, OffsetDateTime agora) {
+    if (fimEm != null && (validadeFimEm == null || fimEm.isAfter(validadeFimEm))) {
+      validadeFimEm = fimEm;
+    }
+    if (status == StatusGrupoAtivacaoBeneficio.EXPIRADO
+        || status == StatusGrupoAtivacaoBeneficio.PLANEJADO) {
+      status = StatusGrupoAtivacaoBeneficio.ATIVO;
+    }
+    atualizadoEm = agora;
+  }
+
   public boolean sincronizarFixtureHomologacao(
       TipoGrupoAtivacaoBeneficio tipo,
       OrigemBeneficio origem,

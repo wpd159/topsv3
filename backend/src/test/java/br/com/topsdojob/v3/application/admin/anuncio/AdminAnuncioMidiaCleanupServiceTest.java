@@ -75,7 +75,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
   @BeforeEach
   void setUp() {
     when(storageProvider.getIfAvailable()).thenReturn(storage);
-    when(storyAdminRepository.bloquearSingleton()).thenReturn(Optional.empty());
+    when(storyAdminRepository.bloquearAtivasDoAnuncio(any())).thenReturn(List.of());
   }
 
   @Test
@@ -118,7 +118,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
     when(storyRepository.findByAnuncioMidiaIdInForUpdate(any())).thenReturn(List.of(story));
     StorySelecaoAdministrativaEntity selecao = StorySelecaoAdministrativaEntity.nova(agora.minusDays(1));
     selecao.ativar(anuncioId, uuid(3), agora.minusHours(1));
-    when(storyAdminRepository.bloquearSingleton()).thenReturn(Optional.of(selecao));
+    when(storyAdminRepository.bloquearAtivasDoAnuncio(anuncioId)).thenReturn(List.of(selecao));
 
     colocar(StorageArea.PUBLIC_MEDIA, PUBLIC_PREFIX + "anuncios/a/foto-v1.jpg");
     colocar(StorageArea.PRIVATE_MEDIA, PRIVATE_PREFIX + "anuncios/a/foto-v1.jpg");
@@ -217,7 +217,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
     StorySelecaoAdministrativaEntity selecao = StorySelecaoAdministrativaEntity.nova(
         agora.minusDays(1));
     selecao.ativar(anuncioId, uuid(3), agora.minusHours(1));
-    when(storyAdminRepository.bloquearSingleton()).thenReturn(Optional.of(selecao));
+    when(storyAdminRepository.bloquearAtivasDoAnuncio(anuncioId)).thenReturn(List.of(selecao));
 
     colocar(StorageArea.PRIVATE_MEDIA, alvoArquivo.getChaveObjeto());
     colocar(StorageArea.PUBLIC_MEDIA, outraArquivo.getChaveObjeto());

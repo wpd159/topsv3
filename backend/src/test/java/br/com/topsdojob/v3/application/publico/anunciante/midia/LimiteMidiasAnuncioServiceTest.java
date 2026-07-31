@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
+import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
 import java.time.OffsetDateTime;
@@ -49,6 +50,42 @@ class LimiteMidiasAnuncioServiceTest {
 
         assertThat(service.resolver(anuncioId))
                 .isEqualTo(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
+    }
+
+    @Test
+    void fotosExtrasAguardandoModeracaoReservamCapacidadeSemEfeitoPublico() {
+        UUID anuncioId = UUID.randomUUID();
+        BeneficioPremiumEntity beneficio = BeneficioPremiumEntity.criarFixtureHomologacao(
+                UUID.randomUUID(),
+                "FOTOS_EXTRA_5",
+                "Mais fotos",
+                "Mais fotos",
+                EscopoBeneficioPremium.ANUNCIO,
+                false,
+                true,
+                OffsetDateTime.now(ZoneOffset.UTC));
+        AtivacaoBeneficioEntity ativacao = AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
+                UUID.randomUUID(),
+                beneficio.getId(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                anuncioId,
+                UUID.randomUUID(),
+                10,
+                "limite-fotos-aguardando",
+                OffsetDateTime.now(ZoneOffset.UTC));
+        when(beneficioService.consultarCalculados(anuncioId)).thenReturn(List.of(
+                new PremiumBeneficioCalculado(
+                        ativacao,
+                        beneficio,
+                        null,
+                        PremiumBeneficioStatusCalculado.PENDENTE,
+                        List.of(),
+                        false,
+                        false)));
+
+        assertThat(service.resolver(anuncioId))
+                .isEqualTo(new LimiteMidiasAnuncioService.Resultado(10, 0, true, false));
     }
 
     @Test

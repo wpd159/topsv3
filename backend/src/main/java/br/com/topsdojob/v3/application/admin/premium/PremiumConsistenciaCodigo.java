@@ -6,6 +6,7 @@ public enum PremiumConsistenciaCodigo {
     BENEFICIO_EXPIRADO(false),
     BENEFICIO_VENCE_EM_BREVE(false),
     BENEFICIO_PENDENTE(false),
+    BENEFICIO_AGUARDANDO_MODERACAO(false),
     BENEFICIO_INATIVO(false),
     BENEFICIO_CANCELADO_OU_REVOGADO(false),
     BENEFICIO_CATALOGO_INATIVO(false),

@@ -36,6 +36,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPr
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.OffsetDateTime;
@@ -45,6 +46,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.server.ResponseStatusException;
@@ -178,6 +180,37 @@ class MinhaContaPremiumServiceTest {
                 .contains("Prioridade nas listagens publicas")
                 .contains("WhatsApp no card sujeito a verificacao etaria");
         verify(auditoria).save(any());
+    }
+
+    @Test
+    void compraDeFotosExtrasReservaUploadSemIniciarPrazo() {
+        BeneficioPremiumEntity fotos = beneficio("FOTOS_EXTRA_5", "Mais fotos");
+        BeneficioPremiumOpcaoEntity seteDias = opcao(fotos, 7, 10);
+        prepararItem(fotos, seteDias);
+        when(beneficios.findByIdIn(any())).thenReturn(List.of(fotos));
+        when(opcoes.findAllById(any())).thenReturn(List.of(seteDias));
+        when(anuncios.findAllById(any())).thenReturn(List.of(anuncio));
+
+        var resultado = service.comprar(
+                new MinhaCompraPremiumRequest(
+                        anuncio.getSlug(),
+                        List.of(new MinhaCompraPremiumItemRequest("FOTOS_EXTRA_5", 7))),
+                "qa-compra-fotos-espera",
+                authentication,
+                "req-fotos-espera");
+
+        ArgumentCaptor<AtivacaoBeneficioEntity> salva =
+                ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
+        verify(ativacoes).save(salva.capture());
+        assertThat(salva.getValue().getStatus())
+                .isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
+        assertThat(salva.getValue().getInicioEm()).isNull();
+        assertThat(salva.getValue().getFimEm()).isNull();
+        assertThat(resultado.ativacoes()).singleElement().satisfies(item -> {
+            assertThat(item.status()).isEqualTo("AGUARDANDO_MODERACAO");
+            assertThat(item.inicioEm()).isNull();
+            assertThat(item.fimEm()).isNull();
+        });
     }
 
     @Test

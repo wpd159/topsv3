@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.repository;
 
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -27,6 +28,20 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select ativacao from AtivacaoBeneficioEntity ativacao where ativacao.id = :id")
     java.util.Optional<AtivacaoBeneficioEntity> findByIdForUpdate(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select ativacao
+            from AtivacaoBeneficioEntity ativacao
+            where ativacao.anuncioId = :anuncioId
+              and ativacao.beneficioId = :beneficioId
+              and ativacao.status = :status
+            order by ativacao.criadoEm, ativacao.id
+            """)
+    List<AtivacaoBeneficioEntity> findAguardandoModeracaoForUpdate(
+            @Param("anuncioId") UUID anuncioId,
+            @Param("beneficioId") UUID beneficioId,
+            @Param("status") StatusAtivacaoBeneficio status);
 
     @Query(value = """
             select ab.anuncio_id as "anuncioId", count(*) as "totalBeneficios"

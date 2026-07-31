@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
+import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -60,6 +61,8 @@ class AdminModeracaoAnuncioServiceTest {
     private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
     private final OutboxEventoRepository outboxRepository = mock(OutboxEventoRepository.class);
     private final MidiaStorageAprovacaoService storageService = mock(MidiaStorageAprovacaoService.class);
+    private final BeneficioFotosExtrasModeracaoService fotosExtrasService =
+            mock(BeneficioFotosExtrasModeracaoService.class);
     private AdminModeracaoAcaoService service;
 
     @BeforeEach
@@ -77,6 +80,7 @@ class AdminModeracaoAnuncioServiceTest {
                 outboxRepository,
                 new ObjectMapper(),
                 storageService,
+                fotosExtrasService,
                 "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }

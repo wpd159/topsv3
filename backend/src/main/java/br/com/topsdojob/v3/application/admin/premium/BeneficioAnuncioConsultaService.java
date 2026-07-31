@@ -52,12 +52,18 @@ public class BeneficioAnuncioConsultaService {
 
     @Transactional(readOnly = true)
     public Map<UUID, List<PremiumBeneficioCalculado>> consultarCalculadosPorAnuncio(Collection<UUID> anuncioIds) {
+        return consultarCalculadosPorAnuncio(anuncioIds, OffsetDateTime.now(ZoneOffset.UTC));
+    }
+
+    public Map<UUID, List<PremiumBeneficioCalculado>> consultarCalculadosPorAnuncio(
+            Collection<UUID> anuncioIds,
+            OffsetDateTime agora) {
         if (anuncioIds == null || anuncioIds.isEmpty()) {
             return Map.of();
         }
         return calcular(
                 ativacaoRepository.findByAnuncioIdIn(anuncioIds),
-                OffsetDateTime.now(ZoneOffset.UTC)).stream()
+                agora).stream()
                 .filter(item -> item.ativacao() != null && item.ativacao().getAnuncioId() != null)
                 .collect(Collectors.groupingBy(item -> item.ativacao().getAnuncioId()));
     }

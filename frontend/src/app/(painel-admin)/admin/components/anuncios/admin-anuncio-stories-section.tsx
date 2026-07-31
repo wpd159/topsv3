@@ -18,7 +18,7 @@ export default function AdminAnuncioStoriesSection({
   anuncioId: string | number
   apiScope?: 'admin' | 'staff'
 }) {
-  const [selection, setSelection] = useState<AdminStorySelection | null>(null)
+  const [selections, setSelections] = useState<AdminStorySelection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
   const [removing, setRemoving] = useState(false)
@@ -27,7 +27,7 @@ export default function AdminAnuncioStoriesSection({
     setLoading(true)
     setError(null)
     try {
-      setSelection(await fetchAdminStorySelection())
+      setSelections(await fetchAdminStorySelection())
     } catch (loadError) {
       setError(loadError)
     } finally {
@@ -39,14 +39,16 @@ export default function AdminAnuncioStoriesSection({
     void load()
   }, [load])
 
-  const selectedHere = selection?.ativa && String(selection.anuncioId) === String(anuncioId)
+  const selection = selections.find((item) => item.ativa && String(item.anuncioId) === String(anuncioId))
+  const selectedHere = Boolean(selection)
 
   async function remove() {
     if (!selectedHere || removing) return
     if (!window.confirm('Desativar o Story administrativo deste anuncio?')) return
     setRemoving(true)
     try {
-      setSelection(await deactivateAdminStorySelection())
+      await deactivateAdminStorySelection(String(anuncioId))
+      setSelections((current) => current.filter((item) => String(item.anuncioId) !== String(anuncioId)))
       toast.success('Story administrativo desativado.')
     } catch (removeError) {
       setError(removeError)
@@ -69,7 +71,7 @@ export default function AdminAnuncioStoriesSection({
       {!loading && !error && selectedHere ? (
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="font-medium text-gray-900">{selection.anuncioTitulo}</p>
+            <p className="font-medium text-gray-900">{selection?.anuncioTitulo}</p>
             <p className="text-sm text-gray-500">Selecao administrativa ativa</p>
           </div>
           <Button type="button" variant="outline" disabled={removing} onClick={() => void remove()}>

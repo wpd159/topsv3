@@ -204,7 +204,8 @@ class PainelAnunciantePerformanceServiceTest {
                 OffsetDateTime.parse("2026-07-01T00:00:00Z"),
                 new MeuAnuncioAcoesDto(true, false, true, false),
                 visualizacoes,
-                null);
+                null,
+                List.of());
     }
 
     private CliqueWhatsappRepository.ContagemPorAnuncioProjection clique(UUID anuncioId, long total) {

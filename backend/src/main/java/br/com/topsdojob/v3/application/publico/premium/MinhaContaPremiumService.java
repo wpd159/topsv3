@@ -29,6 +29,7 @@ import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -179,8 +180,20 @@ public class MinhaContaPremiumService {
         List<AtivacaoBeneficioEntity> ativacoes = new ArrayList<>();
         for (int indice = 0; indice < itens.size(); indice++) {
             ItemCompra item = itens.get(indice);
-            AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(
-                    AtivacaoBeneficioEntity.criarCompraComCreditos(
+            boolean aguardaModeracao = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(
+                    item.beneficio().getCodigo());
+            AtivacaoBeneficioEntity novaAtivacao = aguardaModeracao
+                    ? AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
+                            UUID.randomUUID(),
+                            item.beneficio().getId(),
+                            item.opcao().getId(),
+                            usuarioId,
+                            anuncio.getId(),
+                            grupo.getId(),
+                            item.opcao().getCustoCreditos(),
+                            chaveGrupo + ":ativacao:" + indice,
+                            agora)
+                    : AtivacaoBeneficioEntity.criarCompraComCreditos(
                             UUID.randomUUID(),
                             item.beneficio().getId(),
                             item.opcao().getId(),
@@ -191,7 +204,8 @@ public class MinhaContaPremiumService {
                             agora.plusDays(item.opcao().getDuracaoDias()),
                             item.opcao().getCustoCreditos(),
                             chaveGrupo + ":ativacao:" + indice,
-                            agora));
+                            agora);
+            AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(novaAtivacao);
             var lancamento = ledgerService.registrar(
                     usuarioId,
                     TipoMovimentoCredito.SAIDA,
@@ -318,7 +332,8 @@ public class MinhaContaPremiumService {
     private void validarSemDuplicidadeAtiva(UUID anuncioId, List<ItemCompra> itens) {
         Set<UUID> idsAtivos = beneficioConsultaService.consultarCalculados(anuncioId).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
-                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
+                        || item.status() == PremiumBeneficioStatusCalculado.PENDENTE)
                 .filter(item -> item.beneficio() != null)
                 .map(item -> item.beneficio().getId())
                 .collect(Collectors.toSet());
@@ -371,7 +386,8 @@ public class MinhaContaPremiumService {
         List<PremiumBeneficioCalculado> ativas = beneficioConsultaService
                 .calcular(ativacoes, OffsetDateTime.now(ZoneOffset.UTC)).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
-                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO)
+                        || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
+                        || item.status() == PremiumBeneficioStatusCalculado.PENDENTE)
                 .toList();
         Map<UUID, String> statusCalculado = ativas.stream().collect(Collectors.toMap(
                 item -> item.ativacao().getId(),
@@ -426,7 +442,7 @@ public class MinhaContaPremiumService {
                             item.getInicioEm(),
                             item.getFimEm(),
                             beneficio == null ? null : efeitoPublico(beneficio.getCodigo()),
-                            motivoIneficacia(anuncio, status));
+                            motivoIneficacia(anuncio, item, status));
                 })
                 .toList();
     }
@@ -474,9 +490,15 @@ public class MinhaContaPremiumService {
         };
     }
 
-    private String motivoIneficacia(AnuncioEntity anuncio, String status) {
+    private String motivoIneficacia(
+            AnuncioEntity anuncio,
+            AtivacaoBeneficioEntity ativacao,
+            String status) {
         if (anuncio == null) {
             return "ANUNCIO_NAO_ENCONTRADO";
+        }
+        if (ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO) {
+            return "AGUARDANDO_APROVACAO_MODERACAO";
         }
         if (!"ATIVO".equals(status) && !"ATIVA".equals(status) && !"VENCENDO".equals(status)) {
             return "ATIVACAO_NAO_VIGENTE";

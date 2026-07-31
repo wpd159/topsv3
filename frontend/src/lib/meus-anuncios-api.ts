@@ -40,6 +40,20 @@ export type MeuAnuncioReprovacao = {
   decididoEm: string
 }
 
+export type MeuAnuncioBeneficio = {
+  codigo: string
+  nome: string
+  status: 'AGUARDANDO_MODERACAO' | 'ATIVO' | 'EXPIRADO' | 'PENDENTE' | 'INATIVO' | 'ERRO'
+  inicioEm: string | null
+  fimEm: string | null
+  duracaoDias: number | null
+  diasRestantes: number | null
+  motivoEspera: string | null
+  origem: string | null
+}
+
+const EMPTY_BENEFICIOS_PREMIUM: readonly MeuAnuncioBeneficio[] = Object.freeze([])
+
 export type MinhaMidiaGestao = {
   id: string
   tipo: 'FOTO' | 'VIDEO'
@@ -90,6 +104,7 @@ export type MeuAnuncio = {
   acoesPermitidas: MeuAnuncioAcoes
   visualizacoes: VisualizacoesCanonicas
   reprovacao: MeuAnuncioReprovacao | null
+  beneficiosPremium: MeuAnuncioBeneficio[]
 }
 
 export type MeuAnuncioCicloVida = {
@@ -188,10 +203,11 @@ function mapMeuAnuncio(payload: unknown): MeuAnuncio {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
 
-  const raw = payload as Omit<MeuAnuncio, 'visualizacoes' | 'acoesPermitidas' | 'reprovacao'> & {
+  const raw = payload as Omit<MeuAnuncio, 'visualizacoes' | 'acoesPermitidas' | 'reprovacao' | 'beneficiosPremium'> & {
     acoesPermitidas?: unknown
     visualizacoes?: unknown
     reprovacao?: unknown
+    beneficiosPremium?: unknown
   }
   if (typeof raw.atendimentoExclusivamenteVirtual !== 'boolean') {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
@@ -202,10 +218,62 @@ function mapMeuAnuncio(payload: unknown): MeuAnuncio {
       acoesPermitidas: parseAcoesPermitidas(raw.acoesPermitidas),
       visualizacoes: parseVisualizacoesCanonicas(raw.visualizacoes),
       reprovacao: parseReprovacao(raw.reprovacao),
+      beneficiosPremium: parseBeneficiosPremium(raw.beneficiosPremium),
     }
   } catch {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
+}
+
+function parseBeneficiosPremium(payload: unknown): MeuAnuncioBeneficio[] {
+  if (payload == null) return EMPTY_BENEFICIOS_PREMIUM.slice()
+  if (!Array.isArray(payload)) {
+    throw new MeusAnunciosApiError('O servico retornou beneficios em formato incompativel.', 502)
+  }
+  return payload.map((item) => {
+    if (!item || typeof item !== 'object') {
+      throw new MeusAnunciosApiError('O servico retornou beneficios em formato incompativel.', 502)
+    }
+    const raw = item as Partial<MeuAnuncioBeneficio>
+    const normalizado = {
+      ...raw,
+      inicioEm: raw.inicioEm ?? null,
+      fimEm: raw.fimEm ?? null,
+      duracaoDias: raw.duracaoDias ?? null,
+      diasRestantes: raw.diasRestantes ?? null,
+      motivoEspera: raw.motivoEspera ?? null,
+      origem: raw.origem ?? null,
+    }
+    const statusValidos = new Set([
+      'AGUARDANDO_MODERACAO', 'ATIVO', 'EXPIRADO', 'PENDENTE', 'INATIVO', 'ERRO',
+    ])
+    if (
+      typeof normalizado.codigo !== 'string' || !normalizado.codigo.trim() ||
+      typeof normalizado.nome !== 'string' || !normalizado.nome.trim() ||
+      typeof normalizado.status !== 'string' || !statusValidos.has(normalizado.status) ||
+      !dataOpcionalValida(normalizado.inicioEm) ||
+      !dataOpcionalValida(normalizado.fimEm) ||
+      !inteiroOpcionalValido(normalizado.duracaoDias) ||
+      !inteiroOpcionalValido(normalizado.diasRestantes) ||
+      !textoOpcionalValido(normalizado.motivoEspera) ||
+      !textoOpcionalValido(normalizado.origem)
+    ) {
+      throw new MeusAnunciosApiError('O servico retornou beneficios em formato incompativel.', 502)
+    }
+    return normalizado as MeuAnuncioBeneficio
+  })
+}
+
+function dataOpcionalValida(value: unknown) {
+  return value === null || (typeof value === 'string' && Number.isFinite(Date.parse(value)))
+}
+
+function inteiroOpcionalValido(value: unknown) {
+  return value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 0)
+}
+
+function textoOpcionalValido(value: unknown) {
+  return value === null || typeof value === 'string'
 }
 
 function parseAcoesPermitidas(payload: unknown): MeuAnuncioAcoes {
