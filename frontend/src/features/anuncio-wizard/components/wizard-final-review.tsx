@@ -44,7 +44,7 @@ export function WizardFinalReview({
       />
       <ReviewRow label="Fotos" value={formatWizardPhotoCount(totalFotos)} />
       <ReviewRow
-        label="Atendimento virtual"
+        label="Atendimento Virtual"
         value={
           hasVirtual
             ? state.atendimentoExclusivamenteVirtual

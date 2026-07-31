@@ -6,7 +6,7 @@
       ENCONTROS_CASUAIS: 'Encontros Casuais',
       MASSAGENS: 'Massagens',
       TRANSEX_TRAVESTIS: 'Transex / Travestis',
-      VENDA_DE_CONTEUDO: 'Sexo Virtual',
+      VENDA_DE_CONTEUDO: 'Atendimento Virtual',
     }
     return map[categoria] || categoria
   }
@@ -91,7 +91,7 @@ export const normalizarHorario = (valor: string | null) => {
     { label: 'BDSM', value: 'BDSM' },
     { label: 'Namorados', value: 'NAMORADAS' },
     { label: 'Trio', value: 'TRIO' },
-    { label: 'Sexo virtual', value: 'VIDEOCHAMADA' },
+    { label: 'Atendimento Virtual', value: 'VIDEOCHAMADA' },
     { label: 'Jogos de Interpretação', value: 'JOGOS_DE_INTERPRETACAO' },
     { label: 'Atriz Pornô', value: 'ATRIZ_PORNO' },
     { label: 'Ator Pornô', value: 'ATOR_PORNO' },

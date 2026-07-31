@@ -110,6 +110,9 @@ function formatPrice(value?: number | null) {
 
 function formatEnum(value?: string | null) {
   if (!value) return 'Não informado'
+  if (value === 'VENDA_DE_CONTEUDO' || value === 'VIDEOCHAMADA') {
+    return 'Atendimento Virtual'
+  }
   return value.toLowerCase().replaceAll('_', ' ').replace(/(^|\s)\S/g, (letter) => letter.toUpperCase())
 }
 

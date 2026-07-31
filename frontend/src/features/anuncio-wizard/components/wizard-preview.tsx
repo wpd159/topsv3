@@ -136,7 +136,7 @@ export function WizardPreview({
                 {hasVirtual && (
                   <PreviewTag
                     icon={<Sparkles className="h-3.5 w-3.5" />}
-                    label="Sexo Virtual"
+                    label="Atendimento Virtual"
                     tone="light"
                   />
                 )}

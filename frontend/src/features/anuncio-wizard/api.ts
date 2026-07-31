@@ -182,7 +182,9 @@ export async function fetchWizardCategories(): Promise<WizardCategoryOption[]> {
     .filter((item) => item.ativo && item.identificador?.trim() && item.titulo?.trim())
     .map((item) => ({
       value: item.identificador.trim(),
-      label: item.titulo.trim(),
+      label: item.identificador.trim() === 'VENDA_DE_CONTEUDO'
+        ? 'Atendimento Virtual'
+        : item.titulo.trim(),
     }))
 }
 

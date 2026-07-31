@@ -5,7 +5,7 @@ export const categorias = [
   { value: 'ACOMPANHANTE_MASCULINO', label: 'Acompanhante masculino' },
   { value: 'TRANSEX_TRAVESTIS', label: 'Trans / Travestis' },
   { value: 'MASSAGENS', label: 'Massagens' },
-  { value: 'VENDA_DE_CONTEUDO', label: 'Sexo virtual' },
+  { value: 'VENDA_DE_CONTEUDO', label: 'Atendimento Virtual' },
 ]
 
 export const horarios = [
@@ -32,7 +32,7 @@ export const servicos = [
   { value: 'BDSM', label: 'BDSM' },
   { value: 'NAMORADAS', label: 'Namorados' },
   { value: 'TRIO', label: 'Trio' },
-  { value: 'VIDEOCHAMADA', label: 'Sexo virtual' },
+  { value: 'VIDEOCHAMADA', label: 'Atendimento Virtual' },
   { value: 'JOGOS_DE_INTERPRETACAO', label: 'Jogos de interpretação' },
 ]
 

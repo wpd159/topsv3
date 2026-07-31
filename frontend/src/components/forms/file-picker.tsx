@@ -40,7 +40,7 @@ export function FilePicker({
   }
 
   return (
-    <div className={cn('min-w-0 space-y-3', className)}>
+    <div className={cn('w-full min-w-0 max-w-full space-y-3 overflow-hidden', className)}>
       <div
         className={cn(
           'flex min-h-28 min-w-0 flex-col items-center justify-center rounded-xl border border-dashed px-4 py-4 text-center transition',
@@ -87,11 +87,11 @@ export function FilePicker({
       </div>
 
       {files.length ? (
-        <ul className="min-w-0 space-y-2" aria-live="polite">
+        <ul className="w-full min-w-0 max-w-full space-y-2 overflow-hidden" aria-live="polite">
           {files.map((file, index) => (
             <li
               key={`${file.name}:${file.size}:${file.lastModified}:${index}`}
-              className="flex min-w-0 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3 py-2"
+              className="flex w-full min-w-0 max-w-full items-center gap-2 overflow-hidden rounded-xl border border-zinc-200 bg-white px-3 py-2"
             >
               <FileText className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden="true" />
               <span className="min-w-0 flex-1 truncate text-sm text-zinc-700" title={file.name}>

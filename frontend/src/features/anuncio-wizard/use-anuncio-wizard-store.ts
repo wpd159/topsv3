@@ -99,7 +99,7 @@ export function validateWizardStep(
   if (step === 'servicos') {
     const preco = Number(form.preco.replace(/\D/g, '')) / 100
     if (form.atendimentoExclusivamenteVirtual && !form.servicos.includes('VIDEOCHAMADA')) {
-      return 'Atendimento exclusivamente virtual exige o serviço Sexo virtual.'
+      return 'Atendimento exclusivamente virtual exige o serviço Atendimento Virtual.'
     }
     if (
       !Number.isFinite(preco) ||

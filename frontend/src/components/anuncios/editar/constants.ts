@@ -3,6 +3,7 @@ export const CATEGORIAS = [
   { label: 'Acompanhante Masculina', value: 'ACOMPANHANTE_MASCULINO' },
   { label: 'Massagens', value: 'MASSAGENS' },
   { label: 'Transex/Travestis', value: 'TRANSEX_TRAVESTIS' },
+  { label: 'Atendimento Virtual', value: 'VENDA_DE_CONTEUDO' },
 ] as const
 
 export const HORARIOS = [
@@ -33,5 +34,5 @@ export const SERVICOS = [
   { label: 'Passivo', value: 'PASSIVO' },
   { label: 'Namorados', value: 'NAMORADAS' },
   { label: 'Trio', value: 'TRIO' },
-  { label: 'Sexo virtual', value: 'VIDEOCHAMADA' },
+  { label: 'Atendimento Virtual', value: 'VIDEOCHAMADA' },
 ] as const

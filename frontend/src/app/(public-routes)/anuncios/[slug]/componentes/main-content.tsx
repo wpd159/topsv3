@@ -34,7 +34,7 @@ const LABEL_SERVICO: Record<string, string> = {
   PASSIVO: 'Passivo',
   NAMORADAS: 'Namorados',
   TRIO: 'Trio',
-  VIDEOCHAMADA: 'Sexo virtual',
+  VIDEOCHAMADA: 'Atendimento Virtual',
 }
 
 function normalizarLink(url: string) {

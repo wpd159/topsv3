@@ -12,7 +12,7 @@ import { formatCpf } from '../wizard-utils'
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="space-y-2 text-sm font-medium text-zinc-800">
+    <label className="block min-w-0 max-w-full space-y-2 text-sm font-medium text-zinc-800">
       <span>{label}</span>
       {children}
     </label>
@@ -88,7 +88,7 @@ export function WizardStepKyc({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 max-w-full space-y-5">
       <div
         className={cn(
           'rounded-2xl border p-4 sm:p-5',
@@ -134,7 +134,7 @@ export function WizardStepKyc({
           ) : null}
         </div>
       ) : (
-        <div className="space-y-5 rounded-2xl border border-zinc-200 bg-white p-4 sm:p-5">
+        <div className="min-w-0 max-w-full space-y-5 overflow-hidden rounded-2xl border border-zinc-200 bg-white p-4 sm:p-5">
           <Field label="Nome civil">
             <Input
               value={state.nomeCompleto}
@@ -167,7 +167,7 @@ export function WizardStepKyc({
             </Field>
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
+          <div className="min-w-0 max-w-full space-y-4 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
             <div>
               <p className="text-sm font-semibold text-zinc-900">Documento de identificação</p>
               <p className="mt-1 text-sm leading-6 text-zinc-600">
@@ -211,7 +211,7 @@ export function WizardStepKyc({
                 />
               </Field>
             ) : state.documentoModo === 'FRENTE_VERSO' ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2">
                 <Field label="Documento frente">
                   <FilePicker
                     ariaLabel="Selecionar imagem da frente do documento"
