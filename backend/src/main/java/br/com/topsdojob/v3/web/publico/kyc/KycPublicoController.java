@@ -1,11 +1,16 @@
 package br.com.topsdojob.v3.web.publico.kyc;
 
+import br.com.topsdojob.v3.application.publico.kyc.KycPublicoException;
 import br.com.topsdojob.v3.application.publico.kyc.KycPublicoService;
+import br.com.topsdojob.v3.application.publico.kyc.dto.KycPublicoErroDto;
 import br.com.topsdojob.v3.application.publico.kyc.dto.KycStatusDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -50,5 +55,17 @@ public class KycPublicoController {
         documentoFrente,
         documentoVerso,
         RequestIdContext.current(request));
+  }
+
+  @ExceptionHandler(KycPublicoException.class)
+  public ResponseEntity<KycPublicoErroDto> handleKycError(
+      KycPublicoException exception,
+      HttpServletRequest request) {
+    return ResponseEntity.status(exception.status())
+        .cacheControl(CacheControl.noStore())
+        .body(new KycPublicoErroDto(
+            exception.code(),
+            exception.getMessage(),
+            RequestIdContext.current(request)));
   }
 }

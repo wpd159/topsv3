@@ -36,6 +36,43 @@ SELECT
   :'r2_document_bucket'::text AS r2_document_bucket,
   :'r2_document_prefix'::text AS r2_document_prefix;
 
+CREATE OR REPLACE FUNCTION pg_temp.cpf_valido(value text)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+AS $cpf$
+DECLARE
+  soma integer;
+  resto integer;
+  primeiro integer;
+  segundo integer;
+  indice integer;
+BEGIN
+  IF value IS NULL
+      OR value !~ '^[0-9]{11}$'
+      OR value = repeat(left(value, 1), 11) THEN
+    RETURN false;
+  END IF;
+
+  soma := 0;
+  FOR indice IN 1..9 LOOP
+    soma := soma + substring(value FROM indice FOR 1)::integer * (11 - indice);
+  END LOOP;
+  resto := soma % 11;
+  primeiro := CASE WHEN resto < 2 THEN 0 ELSE 11 - resto END;
+
+  soma := 0;
+  FOR indice IN 1..10 LOOP
+    soma := soma + substring(value FROM indice FOR 1)::integer * (12 - indice);
+  END LOOP;
+  resto := soma % 11;
+  segundo := CASE WHEN resto < 2 THEN 0 ELSE 11 - resto END;
+
+  RETURN primeiro = substring(value FROM 10 FOR 1)::integer
+     AND segundo = substring(value FROM 11 FOR 1)::integer;
+END
+$cpf$;
+
 DO $$
 BEGIN
   IF EXISTS (
@@ -53,12 +90,28 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'configuracao R2 de destino invalida';
   END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM usuario
+    WHERE cpf_normalizado IS NOT NULL
+      AND NOT pg_temp.cpf_valido(cpf_normalizado)
+  ) THEN
+    RAISE EXCEPTION 'destino contem CPF com digitos verificadores invalidos';
+  END IF;
 END $$;
 
 SELECT 'USUARIOS|' || count(*) FROM usuario;
 SELECT 'ANUNCIOS|' || count(*) FROM anuncio;
 SELECT 'USUARIOS_NOME_CIVIL|' || count(*) FROM usuario WHERE nome_civil IS NOT NULL;
 SELECT 'USUARIOS_CPF|' || count(*) FROM usuario WHERE cpf_normalizado IS NOT NULL;
+SELECT 'USUARIOS_CPF_INVALIDO|' || count(*)
+FROM usuario
+WHERE cpf_normalizado IS NOT NULL
+  AND NOT pg_temp.cpf_valido(cpf_normalizado);
+SELECT 'USUARIOS_CPF_INVALIDO_ORIGEM|'
+  || coalesce(resumo_json ->> 'usuariosCpfInvalidosOrigem', '0')
+FROM importacao_execucao;
 SELECT 'USUARIOS_TELEFONE|' || count(*) FROM usuario WHERE telefone_normalizado IS NOT NULL;
 SELECT 'ANUNCIOS_WHATSAPP|' || count(*) FROM anuncio WHERE whatsapp_normalizado IS NOT NULL;
 SELECT 'ANUNCIOS_PUBLICADOS|' || count(*) FROM anuncio WHERE status = 'PUBLICADO';

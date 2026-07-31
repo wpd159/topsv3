@@ -120,6 +120,43 @@ CREATE TEMP TABLE dryrun_r2_kyc_documents (
 
 BEGIN;
 
+CREATE OR REPLACE FUNCTION pg_temp.cpf_valido(value text)
+RETURNS boolean
+LANGUAGE plpgsql
+IMMUTABLE
+AS $cpf$
+DECLARE
+  soma integer;
+  resto integer;
+  primeiro integer;
+  segundo integer;
+  indice integer;
+BEGIN
+  IF value IS NULL
+      OR value !~ '^[0-9]{11}$'
+      OR value = repeat(left(value, 1), 11) THEN
+    RETURN false;
+  END IF;
+
+  soma := 0;
+  FOR indice IN 1..9 LOOP
+    soma := soma + substring(value FROM indice FOR 1)::integer * (11 - indice);
+  END LOOP;
+  resto := soma % 11;
+  primeiro := CASE WHEN resto < 2 THEN 0 ELSE 11 - resto END;
+
+  soma := 0;
+  FOR indice IN 1..10 LOOP
+    soma := soma + substring(value FROM indice FOR 1)::integer * (12 - indice);
+  END LOOP;
+  resto := soma % 11;
+  segundo := CASE WHEN resto < 2 THEN 0 ELSE 11 - resto END;
+
+  RETURN primeiro = substring(value FROM 10 FOR 1)::integer
+     AND segundo = substring(value FROM 11 FOR 1)::integer;
+END
+$cpf$;
+
 CREATE TEMP TABLE dryrun_midia_referencia_origem ON COMMIT DROP AS
 SELECT DISTINCT
   'anuncio_fotos'::text AS source_table,
@@ -458,6 +495,11 @@ WITH ranked AS (
     regexp_replace(coalesce(r.cpf, ''), '[^0-9]', '', 'g') AS cpf_digitos,
     regexp_replace(coalesce(r.telefone, ''), '[^0-9]', '', 'g') AS telefone_digitos
   FROM ranked r
+), validated AS (
+  SELECT
+    n.*,
+    pg_temp.cpf_valido(n.cpf_digitos) AS cpf_origem_valido
+  FROM normalized n
 )
 SELECT
   r.id AS origem_id,
@@ -475,8 +517,10 @@ SELECT
       THEN r.nome_civil_candidato
   END AS nome_civil,
   CASE
-    WHEN r.cpf_digitos ~ '^[0-9]{11}$' THEN r.cpf_digitos
+    WHEN r.cpf_origem_valido THEN r.cpf_digitos
   END AS cpf_normalizado,
+  nullif(trim(r.cpf), '') IS NOT NULL
+    AND NOT r.cpf_origem_valido AS cpf_origem_invalido,
   CASE
     WHEN length(r.telefone_digitos) IN (10, 11)
       THEN '+55' || r.telefone_digitos
@@ -499,7 +543,7 @@ SELECT
   r.criado_em AT TIME ZONE 'America/Sao_Paulo' AS criado_em,
   r.username_total > 1 AS username_conflitante,
   md5(coalesce(lower(trim(r.username)), '')) AS username_hash
-FROM normalized r;
+FROM validated r;
 
 DO $$
 BEGIN
@@ -516,9 +560,20 @@ BEGIN
     SELECT count(*) FROM legacy.usuarios
     WHERE nullif(trim(cpf), '') IS NOT NULL
   ) <> (
-    SELECT count(cpf_normalizado) FROM dryrun_usuario
+    SELECT count(*)
+    FROM dryrun_usuario
+    WHERE cpf_normalizado IS NOT NULL OR cpf_origem_invalido
   ) THEN
-    RAISE EXCEPTION 'CPF presente na origem nao possui normalizacao canonica';
+    RAISE EXCEPTION 'CPF presente na origem nao foi classificado com seguranca';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM dryrun_usuario
+    WHERE cpf_normalizado IS NOT NULL
+      AND NOT pg_temp.cpf_valido(cpf_normalizado)
+  ) THEN
+    RAISE EXCEPTION 'CPF invalido nao pode ser promovido';
   END IF;
 
   IF (
@@ -610,12 +665,16 @@ SELECT
   u.username_hash,
   jsonb_build_object(
     'usernameConflitante', u.username_conflitante,
+    'cpfOrigemInvalido', u.cpf_origem_invalido,
     'nascimentoPresente', u.data_nascimento IS NOT NULL,
     'kycStatusOrigem', u.kyc_status_origem,
     'credencialImportada', false
   ),
   'PROCESSADO',
-  CASE WHEN u.username_conflitante THEN 'USUARIO_USERNAME_RECONCILIADO' END,
+  CASE
+    WHEN u.cpf_origem_invalido THEN 'USUARIO_CPF_INVALIDO_NAO_PROMOVIDO'
+    WHEN u.username_conflitante THEN 'USUARIO_USERNAME_RECONCILIADO'
+  END,
   u.id,
   c.snapshot_at,
   c.snapshot_at
@@ -2018,6 +2077,9 @@ SET status = 'CONCLUIDA_COM_PENDENCIAS',
       ),
       'usuariosNomeCivilOrigem', (SELECT count(nome_civil) FROM dryrun_usuario),
       'usuariosCpfOrigem', (SELECT count(cpf_normalizado) FROM dryrun_usuario),
+      'usuariosCpfInvalidosOrigem', (
+        SELECT count(*) FROM dryrun_usuario WHERE cpf_origem_invalido
+      ),
       'usuariosTelefoneOrigem', (SELECT count(telefone_normalizado) FROM dryrun_usuario),
       'anunciosWhatsappOrigem', (SELECT count(whatsapp_normalizado) FROM dryrun_anuncio)
     )

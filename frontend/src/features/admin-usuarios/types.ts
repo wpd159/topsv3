@@ -83,12 +83,12 @@ export type AdminUserIndicators = {
 
 export type AdminUserUpdate = {
   versao: number
-  nome: string
-  nomeCivil: string
-  email: string
-  cpf: string
-  telefone: string
-  dataNascimento: string
+  nome?: string
+  nomeCivil?: string
+  email?: string
+  cpf?: string
+  telefone?: string
+  dataNascimento?: string
 }
 
 export type AdminUserDeletionEligibility = {

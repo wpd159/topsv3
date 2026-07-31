@@ -128,15 +128,25 @@ class KycPublicoServiceTest {
     outro.aplicarDadosKyc("Outro Civil", "52998224725", LocalDate.of(1985, 1, 1), OffsetDateTime.now(ZoneOffset.UTC));
     when(usuarioRepository.findByCpfNormalizado("52998224725")).thenReturn(Optional.of(outro));
 
-    assertStatus(() -> service.enviar(
+    assertKycError(() -> service.enviar(
         authentication, "Pessoa Civil", "52998224725", "1990-05-10", "PDF",
-        pdf(), null, null, "req-duplicate"), HttpStatus.CONFLICT);
+        pdf(), null, null, "req-duplicate"), HttpStatus.CONFLICT, "CPF_JA_CADASTRADO");
 
     when(usuarioRepository.findByCpfNormalizado("52998224725")).thenReturn(Optional.empty());
     assertStatus(() -> service.enviar(
         authentication, "Pessoa Civil", "52998224725", LocalDate.now(ZoneOffset.UTC).minusYears(17).toString(), "PDF",
         pdf(), null, null, "req-minor"), HttpStatus.BAD_REQUEST);
 
+    verify(storage, never()).put(any(), any(), any(), any());
+  }
+
+  @Test
+  void distingueCpfInvalidoDeCpfJaCadastradoAntesDoStorage() {
+    assertKycError(() -> service.enviar(
+        authentication, "Pessoa Civil", "52998224724", "1990-05-10", "PDF",
+        pdf(), null, null, "req-invalid-cpf"), HttpStatus.BAD_REQUEST, "CPF_INVALIDO");
+
+    verify(usuarioRepository, never()).findByCpfNormalizado("52998224724");
     verify(storage, never()).put(any(), any(), any(), any());
   }
 
@@ -309,6 +319,17 @@ class KycPublicoServiceTest {
     assertThatThrownBy(operation::run)
         .isInstanceOfSatisfying(ResponseStatusException.class,
             exception -> assertThat(exception.getStatusCode()).isEqualTo(expected));
+  }
+
+  private void assertKycError(
+      Runnable operation,
+      HttpStatus expectedStatus,
+      String expectedCode) {
+    assertThatThrownBy(operation::run)
+        .isInstanceOfSatisfying(KycPublicoException.class, exception -> {
+          assertThat(exception.status()).isEqualTo(expectedStatus);
+          assertThat(exception.code()).isEqualTo(expectedCode);
+        });
   }
 
   private void assertReason(Runnable operation, String reason) {

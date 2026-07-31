@@ -11,12 +11,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { getAdminSession } from '@/lib/admin-auth-api'
-import { cpfDigits, maskCpf } from '@/lib/cpf-mask'
+import { cpfDigits, isValidCpf, maskCpf } from '@/lib/cpf-mask'
 import { birthDateToIso, isoToBirthDate } from '@/lib/date/birth-date'
 import { maskPhoneBR, phoneToE164BR } from '@/lib/phone-mask'
 
 import { AdminUserFormError, getAdminUser, updateAdminUser } from './api'
-import type { AdminUserDetail } from './types'
+import type { AdminUserDetail, AdminUserUpdate } from './types'
 
 type FormState = {
   nome: string
@@ -45,6 +45,33 @@ function formFromDetail(detail: AdminUserDetail): FormState {
     telefone: maskPhoneBR(detail.telefone || ''),
     dataNascimento: isoToBirthDate(detail.dataNascimento),
   }
+}
+
+function normalizedText(value = '') {
+  return value.trim().replace(/\s+/g, ' ')
+}
+
+function updatePayload(detail: AdminUserDetail, form: FormState): AdminUserUpdate {
+  const payload: AdminUserUpdate = { versao: detail.versao }
+  const nome = normalizedText(form.nome)
+  const nomeCivil = normalizedText(form.nomeCivil)
+  const email = form.email.trim().toLowerCase()
+  const cpf = cpfDigits(form.cpf)
+  const telefone = phoneToE164BR(form.telefone) || ''
+  const dataNascimento = birthDateToIso(form.dataNascimento) || ''
+
+  if (nome !== normalizedText(detail.nome || '')) payload.nome = nome
+  if (nomeCivil !== normalizedText(detail.nomeCivil || '')) payload.nomeCivil = nomeCivil
+  if (email !== String(detail.email || '').trim().toLowerCase()) payload.email = email
+  if (cpf !== cpfDigits(detail.cpf || '')) payload.cpf = cpf
+  if (telefone !== (phoneToE164BR(detail.telefone || '') || '')) payload.telefone = telefone
+  if (dataNascimento !== (detail.dataNascimento || '')) payload.dataNascimento = dataNascimento
+
+  return payload
+}
+
+function hasChangedFields(payload: AdminUserUpdate) {
+  return Object.keys(payload).some((field) => field !== 'versao')
 }
 
 export function AdminUsuarioEditForm({ usuarioId }: { usuarioId: string }) {
@@ -88,18 +115,32 @@ export function AdminUsuarioEditForm({ usuarioId }: { usuarioId: string }) {
   async function submit(event: React.FormEvent) {
     event.preventDefault()
     if (!detail || saving) return
-    const telefone = phoneToE164BR(form.telefone)
-    const dataNascimento = birthDateToIso(form.dataNascimento)
-    const cpf = cpfDigits(form.cpf)
+    const payload = updatePayload(detail, form)
     const errors: Record<string, string> = {}
-    if (form.nome.trim().length < 2) errors.nome = 'Informe o nome de exibicao.'
-    if (form.nomeCivil.trim().length < 3) errors.nomeCivil = 'Informe o nome civil.'
-    if (!form.email.includes('@')) errors.email = 'Informe um e-mail valido.'
-    if (cpf.length !== 11) errors.cpf = 'Informe os onze digitos do CPF.'
-    if (!telefone) errors.telefone = 'Informe DDD e numero completo.'
-    if (!dataNascimento) errors.dataNascimento = 'Informe a data no formato DD/MM/AAAA.'
+    if (payload.nome !== undefined && payload.nome.length < 2) {
+      errors.nome = 'Informe o nome de exibicao.'
+    }
+    if (payload.nomeCivil !== undefined && payload.nomeCivil.length < 3) {
+      errors.nomeCivil = 'Informe o nome civil.'
+    }
+    if (payload.email !== undefined && !payload.email.includes('@')) {
+      errors.email = 'Informe um e-mail valido.'
+    }
+    if (payload.cpf !== undefined && !isValidCpf(payload.cpf)) {
+      errors.cpf = 'Informe um CPF valido.'
+    }
+    if (payload.telefone !== undefined && !payload.telefone) {
+      errors.telefone = 'Informe DDD e numero completo.'
+    }
+    if (payload.dataNascimento !== undefined && !payload.dataNascimento) {
+      errors.dataNascimento = 'Informe a data no formato DD/MM/AAAA.'
+    }
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
+      return
+    }
+    if (!hasChangedFields(payload)) {
+      setSaved(true)
       return
     }
 
@@ -108,15 +149,7 @@ export function AdminUsuarioEditForm({ usuarioId }: { usuarioId: string }) {
     setError(null)
     setFieldErrors({})
     try {
-      const updated = await updateAdminUser(detail.id, {
-        versao: detail.versao,
-        nome: form.nome.trim(),
-        nomeCivil: form.nomeCivil.trim(),
-        email: form.email.trim(),
-        cpf,
-        telefone: telefone as string,
-        dataNascimento: dataNascimento as string,
-      })
+      const updated = await updateAdminUser(detail.id, payload)
       setDetail(updated)
       setForm(formFromDetail(updated))
       setSaved(true)

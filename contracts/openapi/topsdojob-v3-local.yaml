@@ -918,9 +918,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/KycStatus"
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: Dados invalidos, incluindo CPF com digitos verificadores incorretos
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ApiErrorResponse"
+                  - $ref: "#/components/schemas/KycPublicoErro"
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "409":
+          description: Estado do KYC incompativel ou CPF pertencente a outra conta
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ApiErrorResponse"
+                  - $ref: "#/components/schemas/KycPublicoErro"
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
   /api/public/usuarios/verificar-duplicidade:
@@ -7347,6 +7361,18 @@ components:
         documentoVerso:
           type: string
           format: binary
+    KycPublicoErro:
+      type: object
+      additionalProperties: false
+      required: [codigo, mensagem, requestId]
+      properties:
+        codigo:
+          type: string
+          enum: [CPF_INVALIDO, CPF_JA_CADASTRADO]
+        mensagem:
+          type: string
+        requestId:
+          type: string
     AdminKycDocumento:
       type: object
       additionalProperties: false

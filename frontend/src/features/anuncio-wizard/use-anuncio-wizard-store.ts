@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { isValidCpf } from '@/lib/cpf-mask'
 import {
   clearWizardCache,
   discardUnsafeLegacyWizardCache,
@@ -130,7 +131,7 @@ export function validateWizardKycState(
   if (
     (!persisted?.nomeCivil && !kyc.nomeCompleto.trim()) ||
     (!persisted?.dataNascimento && !kyc.dataNascimento) ||
-    (!persisted?.cpf && kyc.cpf.replace(/\D/g, '').length !== 11) ||
+    (!persisted?.cpf && !isValidCpf(kyc.cpf)) ||
     !kyc.documentoModo ||
     kyc.documentos.length < 1
   ) {

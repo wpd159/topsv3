@@ -1,5 +1,6 @@
 import type { WizardFormState, WizardKycState } from './types'
 import { UNSUPPORTED_IMAGE_MESSAGE } from '@/utils/image-upload'
+import { isValidCpf } from '@/lib/cpf-mask'
 import { birthDateToIso } from '@/lib/date/birth-date'
 import { publicApiUrl } from '@/lib/api-contract'
 
@@ -48,6 +49,10 @@ function mapWizardApiError(status: number, message: string, code = '', etapa = '
     (candidate) => candidate.toLocaleLowerCase('pt-BR') === normalized
   )
   if (specificDocumentMessage) return specificDocumentMessage
+
+  if (status === 400 && normalizedCode === 'CPF_INVALIDO') {
+    return 'Informe um CPF válido.'
+  }
 
   if (
     status === 409 &&
@@ -221,7 +226,10 @@ export async function submitWizardKyc(input: WizardKycState) {
   if (input.nomeCompleto.trim()) fd.append('nomeCivil', input.nomeCompleto.trim())
   const nascimentoIso = birthDateToIso(input.dataNascimento)
   if (nascimentoIso) fd.append('dataNascimento', nascimentoIso)
-  if (input.cpf.trim()) fd.append('cpf', input.cpf.replace(/\D/g, ''))
+  if (input.cpf.trim()) {
+    if (!isValidCpf(input.cpf)) throw new Error('Informe um CPF válido.')
+    fd.append('cpf', input.cpf.replace(/\D/g, ''))
+  }
   if (!input.documentoModo) throw new Error('Escolha o formato do documento.')
   fd.append('modoDocumento', input.documentoModo)
   if (input.documentoModo === 'PDF') {

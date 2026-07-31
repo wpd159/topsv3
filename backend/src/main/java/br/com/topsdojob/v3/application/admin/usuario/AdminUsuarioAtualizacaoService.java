@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.admin.usuario;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioDetalheDto;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioErroCampoDto;
+import br.com.topsdojob.v3.domain.usuario.CpfValidator;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -190,7 +191,7 @@ public class AdminUsuarioAtualizacaoService {
 
   private String cpf(String value) {
     String normalizado = value == null ? "" : value.replaceAll("\\D", "");
-    if (!cpfValido(normalizado)) {
+    if (!CpfValidator.isValid(normalizado)) {
       throw erro("cpf", "CPF_INVALIDO", "Informe um CPF valido.");
     }
     return normalizado;
@@ -231,21 +232,6 @@ public class AdminUsuarioAtualizacaoService {
           "DATA_NASCIMENTO_INVALIDA",
           "Informe a data no formato dia, mes e ano.");
     }
-  }
-
-  private boolean cpfValido(String value) {
-    if (!value.matches("[0-9]{11}") || value.chars().distinct().count() == 1) return false;
-    return digitoCpf(value, 9, 10) == Character.digit(value.charAt(9), 10)
-        && digitoCpf(value, 10, 11) == Character.digit(value.charAt(10), 10);
-  }
-
-  private int digitoCpf(String value, int tamanho, int pesoInicial) {
-    int soma = 0;
-    for (int index = 0; index < tamanho; index++) {
-      soma += Character.digit(value.charAt(index), 10) * (pesoInicial - index);
-    }
-    int resto = 11 - (soma % 11);
-    return resto >= 10 ? 0 : resto;
   }
 
   private List<String> camposAlterados(

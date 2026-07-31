@@ -92,6 +92,34 @@ class AdminUsuarioAtualizacaoServiceTest {
   }
 
   @Test
+  void permiteEditarOutroCampoSemRevalidarCpfLegadoInalterado() {
+    UUID usuarioId = UUID.randomUUID();
+    UsuarioEntity usuario = usuario(usuarioId, "+556233334444");
+    usuario.aplicarDadosKyc(
+        "QA Civil",
+        "11111111111",
+        LocalDate.of(1990, 1, 1),
+        OffsetDateTime.now(ZoneOffset.UTC));
+    AdminUserPrincipal ator = mock(AdminUserPrincipal.class);
+    when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+    when(usuarioRepository.findByEmailNormalizado(usuario.getEmailNormalizado()))
+        .thenReturn(Optional.of(usuario));
+    when(usuarioRepository.findByCpfNormalizado("11111111111"))
+        .thenReturn(Optional.of(usuario));
+    when(usuarioRepository.findByTelefoneNormalizado("+5562999998888"))
+        .thenReturn(Optional.empty());
+    when(consultaService.detalhar(usuarioId, ator)).thenReturn(mock(AdminUsuarioDetalheDto.class));
+    AdminUsuarioAtualizacaoRequestDto request = request(usuario);
+    request.setTelefone("(62) 99999-8888");
+
+    service.atualizar(usuarioId, request, ator, "req-legacy-cpf");
+
+    assertThat(usuario.getCpfNormalizado()).isEqualTo("11111111111");
+    assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+5562999998888");
+    verify(usuarioRepository).saveAndFlush(usuario);
+  }
+
+  @Test
   void recusaCpfEmailTelefoneDataEVersaoInvalidosSemPersistir() {
     UUID usuarioId = UUID.randomUUID();
     UsuarioEntity usuario = usuario(usuarioId, "+556233334444");
@@ -99,7 +127,13 @@ class AdminUsuarioAtualizacaoServiceTest {
     when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
 
     assertInvalid(usuarioId, ator, usuario, request -> request.setEmail("email-invalido"));
-    assertInvalid(usuarioId, ator, usuario, request -> request.setCpf("111.111.111-11"));
+    AdminUsuarioAtualizacaoRequestDto cpfInvalido = request(usuario);
+    cpfInvalido.setCpf("111.111.111-11");
+    assertThatThrownBy(() -> service.atualizar(
+        usuarioId, cpfInvalido, ator, "req-invalid-cpf"))
+        .isInstanceOfSatisfying(AdminUsuarioAtualizacaoException.class, exception ->
+            assertThat(exception.erros()).singleElement().satisfies(error ->
+                assertThat(error.codigo()).isEqualTo("CPF_INVALIDO")));
     assertInvalid(usuarioId, ator, usuario, request -> request.setTelefone("(62) 9999"));
     assertInvalid(usuarioId, ator, usuario, request -> request.setDataNascimento("2020-01-01"));
     AdminUsuarioAtualizacaoRequestDto stale = request(usuario);

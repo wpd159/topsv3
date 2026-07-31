@@ -72,6 +72,11 @@ class ImportadorBaseIdempotenciaTest {
     assertThat(sql)
         .contains("nullif(trim(r.nome_completo), '') AS nome_civil_candidato")
         .contains("regexp_replace(coalesce(r.cpf, ''), '[^0-9]', '', 'g') AS cpf_digitos")
+        .contains("CREATE OR REPLACE FUNCTION pg_temp.cpf_valido(value text)")
+        .contains("pg_temp.cpf_valido(n.cpf_digitos) AS cpf_origem_valido")
+        .contains("WHEN r.cpf_origem_valido THEN r.cpf_digitos")
+        .contains("'cpfOrigemInvalido', u.cpf_origem_invalido")
+        .contains("'USUARIO_CPF_INVALIDO_NAO_PROMOVIDO'")
         .contains(
             "regexp_replace(coalesce(r.telefone, ''), '[^0-9]', '', 'g') AS telefone_digitos")
         .contains("THEN '+55' || r.telefone_digitos")
@@ -88,12 +93,14 @@ class ImportadorBaseIdempotenciaTest {
         .contains("WHERE a.categoria_origem = 'VENDA_DE_CONTEUDO'")
         .contains("'usuariosNomeCivilOrigem'")
         .contains("'usuariosCpfOrigem'")
+        .contains("'usuariosCpfInvalidosOrigem'")
         .contains("'usuariosTelefoneOrigem'")
         .contains("'anunciosWhatsappOrigem'");
 
     assertThat(sql.substring(sql.indexOf("INSERT INTO stg_usuario")))
         .doesNotContain("'nomeCivil', u.nome_civil")
         .doesNotContain("'cpfNormalizado', u.cpf_normalizado")
+        .doesNotContain("'cpfOrigem', u.cpf_digitos")
         .doesNotContain("'telefoneNormalizado', u.telefone_normalizado")
         .doesNotContain("'whatsappNormalizado', a.whatsapp_normalizado");
   }

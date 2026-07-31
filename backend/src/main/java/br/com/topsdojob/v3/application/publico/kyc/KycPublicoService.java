@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaSe
 import br.com.topsdojob.v3.application.publico.kyc.DocumentoUploadValidator.DocumentoValidado;
 import br.com.topsdojob.v3.application.publico.kyc.dto.KycDocumentoDto;
 import br.com.topsdojob.v3.application.publico.kyc.dto.KycStatusDto;
+import br.com.topsdojob.v3.domain.usuario.CpfValidator;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
@@ -169,7 +170,7 @@ public class KycPublicoService {
       return resposta(usuario);
     } catch (DataIntegrityViolationException exception) {
       limparObjetosAgora(storage, chavesCriadas);
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "CPF ja cadastrado em outra conta");
+      throw cpfJaCadastrado();
     } catch (RuntimeException exception) {
       limparObjetosAgora(storage, chavesCriadas);
       throw exception;
@@ -215,32 +216,25 @@ public class KycPublicoService {
 
   private String validarCpf(String valor, UUID usuarioId) {
     String normalizado = valor == null ? "" : valor.replaceAll("\\D", "");
-    if (!cpfValido(normalizado)) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "CPF invalido");
+    if (!CpfValidator.isValid(normalizado)) {
+      throw new KycPublicoException(
+          HttpStatus.BAD_REQUEST,
+          "CPF_INVALIDO",
+          "Informe um CPF valido.");
     }
     usuarioRepository.findByCpfNormalizado(normalizado)
         .filter(existente -> !existente.getId().equals(usuarioId))
         .ifPresent(existente -> {
-          throw new ResponseStatusException(HttpStatus.CONFLICT, "CPF ja cadastrado em outra conta");
+          throw cpfJaCadastrado();
         });
     return normalizado;
   }
 
-  private boolean cpfValido(String valor) {
-    if (valor == null || !valor.matches("[0-9]{11}") || valor.chars().distinct().count() == 1) return false;
-    int primeiro = digitoCpf(valor, 9, 10);
-    int segundo = digitoCpf(valor, 10, 11);
-    return primeiro == Character.digit(valor.charAt(9), 10)
-        && segundo == Character.digit(valor.charAt(10), 10);
-  }
-
-  private int digitoCpf(String valor, int tamanho, int pesoInicial) {
-    int soma = 0;
-    for (int index = 0; index < tamanho; index++) {
-      soma += Character.digit(valor.charAt(index), 10) * (pesoInicial - index);
-    }
-    int resto = 11 - (soma % 11);
-    return resto >= 10 ? 0 : resto;
+  private KycPublicoException cpfJaCadastrado() {
+    return new KycPublicoException(
+        HttpStatus.CONFLICT,
+        "CPF_JA_CADASTRADO",
+        "Este CPF ja esta cadastrado em outra conta.");
   }
 
   private LocalDate validarNascimento(String valor) {
