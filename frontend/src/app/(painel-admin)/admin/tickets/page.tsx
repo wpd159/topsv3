@@ -27,6 +27,7 @@ const categorias = [
   ['ERRO_NO_SISTEMA', 'Erro no sistema'],
   ['PROBLEMAS_COM_PAGAMENTO', 'Pagamento'],
   ['ACESSO_CONTA', 'Acesso / Conta'],
+  ['SUGESTAO', 'Sugestão'],
   ['OUTROS', 'Outros'],
 ] as const
 

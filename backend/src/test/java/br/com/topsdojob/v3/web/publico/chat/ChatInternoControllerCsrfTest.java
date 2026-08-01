@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import br.com.topsdojob.v3.application.publico.chat.ChatInternoService;
 import br.com.topsdojob.v3.application.publico.chat.dto.ChatConversaDto;
 import br.com.topsdojob.v3.application.publico.chat.dto.ChatMensagemDto;
+import br.com.topsdojob.v3.application.publico.chat.dto.ChatNovaConversaRequestDto;
 import br.com.topsdojob.v3.security.config.AdminSecurityErrorWriter;
 import br.com.topsdojob.v3.security.config.SecurityConfig;
 import java.time.OffsetDateTime;
@@ -71,7 +72,7 @@ class ChatInternoControllerCsrfTest {
                 null,
                 true,
                 false);
-        when(service.iniciar(eq("qa-b"), any(), anyString())).thenReturn(conversa);
+        when(service.iniciar(eq(new ChatNovaConversaRequestDto(null, "qa-b")), any(), anyString())).thenReturn(conversa);
         when(service.enviar(
                 eq(CONVERSA_ID),
                 eq("Mensagem QA"),
@@ -92,7 +93,7 @@ class ChatInternoControllerCsrfTest {
                         .content("{\"corpo\":\"Mensagem QA\"}"))
                 .andExpect(status().isOk());
 
-        verify(service).iniciar(eq("qa-b"), any(), anyString());
+        verify(service).iniciar(eq(new ChatNovaConversaRequestDto(null, "qa-b")), any(), anyString());
         verify(service).enviar(
                 eq(CONVERSA_ID),
                 eq("Mensagem QA"),

@@ -12,6 +12,7 @@ import {
   fetchChatConversa,
   fetchChatConversas,
   iniciarChatConversa,
+  iniciarChatConversaPorAnuncio,
   marcarChatConversaComoLida,
   type ChatConversa,
   type ChatConversaDetalhe,
@@ -33,9 +34,12 @@ export default function ChatClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const requestedUser = searchParams.get('usuario')
+  const requestedAd = searchParams.get('anuncio')
   const requestedConversationId = searchParams.get('conversa')
   const requestedUserHandled = useRef<string | null>(null)
+  const requestedAdHandled = useRef<string | null>(null)
   const requestedConversationHandled = useRef<string | null>(null)
+  const startingRef = useRef(false)
   const pendingMessage = useRef<{ key: string; body: string } | null>(null)
 
   const loadConversations = useCallback(async (silent = false) => {
@@ -95,7 +99,8 @@ export default function ChatClient() {
     username: string,
     navigation: 'push' | 'replace' = 'push'
   ) => {
-    if (starting) return
+    if (startingRef.current) return
+    startingRef.current = true
     setStarting(true)
     setError(null)
     try {
@@ -105,9 +110,39 @@ export default function ChatClient() {
     } catch (cause) {
       setError(chatError(cause))
     } finally {
+      startingRef.current = false
       setStarting(false)
     }
-  }, [loadConversations, openConversation, starting])
+  }, [loadConversations, openConversation])
+
+  const startAdConversation = useCallback(async (anuncioId: string) => {
+    if (startingRef.current) return
+    startingRef.current = true
+    setStarting(true)
+    setError(null)
+    try {
+      const started = await iniciarChatConversaPorAnuncio(anuncioId)
+      await loadConversations(true)
+      openConversation(started, 'replace')
+    } catch (cause) {
+      setError(chatError(cause))
+    } finally {
+      startingRef.current = false
+      setStarting(false)
+    }
+  }, [loadConversations, openConversation])
+
+  const retryCurrentAction = useCallback(() => {
+    if (requestedAd) {
+      void startAdConversation(requestedAd)
+      return
+    }
+    if (requestedUser) {
+      void startConversation(requestedUser, 'replace')
+      return
+    }
+    void loadConversations()
+  }, [loadConversations, requestedAd, requestedUser, startAdConversation, startConversation])
 
   const sendMessage = useCallback(async (message: string) => {
     if (!conversation || sending) return false
@@ -159,6 +194,12 @@ export default function ChatClient() {
   }, [requestedUser, startConversation])
 
   useEffect(() => {
+    if (!requestedAd || requestedAdHandled.current === requestedAd) return
+    requestedAdHandled.current = requestedAd
+    void startAdConversation(requestedAd)
+  }, [requestedAd, startAdConversation])
+
+  useEffect(() => {
     if (!requestedConversationId) {
       requestedConversationHandled.current = null
       setConversation(null)
@@ -180,7 +221,7 @@ export default function ChatClient() {
             loading={loadingConversations}
             starting={starting}
             error={error}
-            onRetry={() => void loadConversations()}
+            onRetry={retryCurrentAction}
             onStartConversation={startConversation}
             onSelectConversation={selectConversation}
           />

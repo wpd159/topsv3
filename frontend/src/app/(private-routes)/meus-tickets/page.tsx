@@ -35,6 +35,7 @@ import {
   type TicketPagina,
   type TicketResumo,
 } from '@/lib/suporte-api'
+import { ApiContractError } from '@/lib/api-contract'
 
 type Grupo = 'TODOS' | 'ABERTOS' | 'ENCERRADOS'
 
@@ -42,6 +43,7 @@ const categorias = [
   ['ERRO_NO_SISTEMA', 'Erro no sistema'],
   ['PROBLEMAS_COM_PAGAMENTO', 'Pagamento'],
   ['ACESSO_CONTA', 'Acesso / Conta'],
+  ['SUGESTAO', 'Sugestão'],
   ['OUTROS', 'Outros'],
 ] as const
 
@@ -72,6 +74,8 @@ export default function MeusTicketsPage() {
   const [dados, setDados] = useState<TicketPagina | null>(null)
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
+  const [erroFormulario, setErroFormulario] = useState<ApiContractError | null>(null)
+  const [confirmacao, setConfirmacao] = useState<string | null>(null)
   const [novoAberto, setNovoAberto] = useState(false)
   const [detalheAberto, setDetalheAberto] = useState(false)
   const [detalhe, setDetalhe] = useState<TicketDetalhe | null>(null)
@@ -84,6 +88,7 @@ export default function MeusTicketsPage() {
   const mutacaoEmCurso = useRef(false)
   const chaveCriacao = useRef<string | null>(null)
   const chaveResposta = useRef<string | null>(null)
+  const intentConsumida = useRef(false)
 
   const carregar = useCallback(async (signal?: AbortSignal) => {
     setCarregando(true)
@@ -111,6 +116,22 @@ export default function MeusTicketsPage() {
   }, [carregar])
 
   useEffect(() => {
+    if (intentConsumida.current || typeof window === 'undefined') return
+    intentConsumida.current = true
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('novo') !== '1') return
+    const categoriaIntent = url.searchParams.get('categoria')
+    if (categorias.some(([value]) => value === categoriaIntent)) {
+      setCategoria(categoriaIntent as (typeof categorias)[number][0])
+    }
+    setErroFormulario(null)
+    setNovoAberto(true)
+    url.searchParams.delete('novo')
+    url.searchParams.delete('categoria')
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+  }, [])
+
+  useEffect(() => {
     if (!detalheAberto || !detalhe?.ticket.id) return
     let consultaEmCurso = false
     const atualizar = async () => {
@@ -134,6 +155,8 @@ export default function MeusTicketsPage() {
     setErro(null)
     try {
       setDetalhe(await detalharTicket(ticketId))
+      window.dispatchEvent(new Event('suporte-ticket-changed'))
+      void carregar()
     } catch (cause) {
       setErro(suporteError(cause).message)
       setDetalheAberto(false)
@@ -145,13 +168,24 @@ export default function MeusTicketsPage() {
   const criar = async (event: FormEvent) => {
     event.preventDefault()
     if (mutacaoEmCurso.current) return
+    const assuntoSeguro = assunto.trim()
+    const descricaoSegura = descricao.trim()
+    if (assuntoSeguro.length < 6 || descricaoSegura.length < 10) {
+      setErroFormulario(new ApiContractError(
+        'Informe um assunto com pelo menos 6 caracteres e uma descrição com pelo menos 10 caracteres.',
+        'INVALID_REQUEST',
+        422,
+      ))
+      return
+    }
     mutacaoEmCurso.current = true
     setMutando(true)
-    setErro(null)
+    setErroFormulario(null)
+    setConfirmacao(null)
     try {
       chaveCriacao.current ??= novaIdempotencyKey('suporte-criar')
       const criado = await criarTicket(
-        { assunto, categoria, descricao },
+        { assunto: assuntoSeguro, categoria, descricao: descricaoSegura },
         chaveCriacao.current,
       )
       chaveCriacao.current = null
@@ -163,13 +197,16 @@ export default function MeusTicketsPage() {
       setDetalheAberto(true)
       setGrupo('TODOS')
       setPagina(0)
-      await carregar()
+      setDados(await listarTickets('TODOS', 0))
+      setCarregando(false)
       window.dispatchEvent(new Event('suporte-ticket-changed'))
-      toast.success('Ticket aberto com sucesso.')
+      const mensagem = `Ticket ${criado.ticket.protocolo} aberto com sucesso. Acompanhe a resposta em Meus Suportes.`
+      setConfirmacao(mensagem)
+      toast.success(mensagem)
     } catch (cause) {
-      const message = suporteError(cause).message
-      setErro(message)
-      toast.error(message)
+      const contractError = suporteError(cause)
+      setErroFormulario(contractError)
+      toast.error(contractError.message)
     } finally {
       mutacaoEmCurso.current = false
       setMutando(false)
@@ -229,11 +266,20 @@ export default function MeusTicketsPage() {
           <h1 className="text-2xl font-bold text-zinc-950">Meus tickets</h1>
           <p className="text-sm text-zinc-600">Acompanhe suas conversas com a equipe de suporte.</p>
         </div>
-        <Button type="button" onClick={() => setNovoAberto(true)}>
+        <Button type="button" onClick={() => {
+          setErroFormulario(null)
+          setNovoAberto(true)
+        }}>
           <LifeBuoy className="mr-2 h-4 w-4" />
           Abrir ticket
         </Button>
       </header>
+
+      {confirmacao ? (
+        <p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          {confirmacao}
+        </p>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2 border-b pb-4">
         {([
@@ -304,7 +350,14 @@ export default function MeusTicketsPage() {
                 {ticket.protocolo} · {ticket.categoriaRotulo} · {ticket.totalMensagens} mensagens
               </span>
             </span>
-            <StatusBadge ticket={ticket} />
+            <span className="flex flex-wrap items-center gap-2">
+              <StatusBadge ticket={ticket} />
+              {ticket.naoLidas > 0 ? (
+                <span className="rounded-full bg-[#FC1EAD] px-2 py-1 text-xs font-semibold text-white">
+                  {ticket.naoLidas > 99 ? '99+' : ticket.naoLidas} nova(s)
+                </span>
+              ) : null}
+            </span>
             <span className="text-xs text-zinc-500 sm:text-right">
               Atualizado {dataHora(ticket.atualizadoEm)}
             </span>
@@ -337,7 +390,7 @@ export default function MeusTicketsPage() {
       ) : null}
 
       <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-h-[100dvh] overflow-y-auto sm:max-w-lg">
           <form onSubmit={criar} className="space-y-4">
             <DialogHeader>
               <DialogTitle>Abrir ticket</DialogTitle>
@@ -350,8 +403,11 @@ export default function MeusTicketsPage() {
                 value={assunto}
                 onChange={(event) => setAssunto(event.target.value)}
                 maxLength={160}
+                minLength={6}
+                aria-describedby="ticket-subject-help"
                 required
               />
+              <p id="ticket-subject-help" className="text-xs text-zinc-500">Mínimo de 6 caracteres.</p>
             </div>
             <div className="space-y-2">
               <Label>Categoria</Label>
@@ -372,15 +428,26 @@ export default function MeusTicketsPage() {
                 onChange={(event) => setDescricao(event.target.value)}
                 rows={6}
                 maxLength={4000}
+                minLength={10}
+                aria-describedby="ticket-description-help"
                 required
               />
+              <p id="ticket-description-help" className="text-xs text-zinc-500">Mínimo de 10 caracteres.</p>
             </div>
+            {erroFormulario ? (
+              <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                <p>{erroFormulario.message}</p>
+                {erroFormulario.requestId ? (
+                  <p className="mt-1 text-xs">Identificador: {erroFormulario.requestId}</p>
+                ) : null}
+              </div>
+            ) : null}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setNovoAberto(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={mutando || assunto.trim().length < 6 || descricao.trim().length < 10}>
-                {mutando ? 'Abrindo...' : 'Abrir ticket'}
+              <Button type="submit" disabled={mutando}>
+                {mutando ? 'Abrindo ticket...' : 'Abrir ticket'}
               </Button>
             </DialogFooter>
           </form>

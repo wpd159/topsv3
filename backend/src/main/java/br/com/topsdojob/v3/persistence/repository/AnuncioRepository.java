@@ -344,6 +344,119 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             @Param("seed") long seed,
             Pageable pageable);
 
+    @Query(value = """
+            select a.*
+            from anuncio a
+            join anuncio_localizacao l on l.anuncio_id = a.id
+            join usuario u on u.id = a.usuario_id
+            join documento_busca_anuncio dba on dba.anuncio_id = a.id
+            where a.id <> :anuncioAtualId
+              and a.categoria = :categoria
+              and a.status = 'PUBLICADO'
+              and a.status_moderacao = 'APROVADO'
+              and a.publicado_em is not null
+              and a.removido_em is null
+              and a.slug is not null
+              and btrim(a.slug) <> ''
+              and a.slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+              and dba.status_publicacao = 'PUBLICAVEL'
+              and dba.tem_midia_valida = true
+              and (
+                (:mesmaCidade = true and l.cidade_id = :cidadeId)
+                or (:mesmaCidade = false and l.cidade_id <> :cidadeId)
+              )
+              and not exists (
+                select 1
+                from anuncio_bloqueio_juridico bloqueio
+                where bloqueio.anuncio_id = a.id
+                  and bloqueio.anuncio_desbloqueado_em is null
+              )
+              and exists (
+                select 1
+                from anuncio_midia am
+                join arquivo_midia arquivo on arquivo.id = am.arquivo_midia_id
+                where am.anuncio_id = a.id
+                  and am.tipo = 'FOTO'
+                  and am.finalidade <> 'STORY'
+                  and am.status = 'PUBLICAVEL'
+                  and am.visibilidade_midia is not null
+                  and arquivo.status_arquivo = 'VALIDADO'
+              )
+              and exists (
+                select 1
+                from ativacao_beneficio ab
+                join beneficio_premium bp on bp.id = ab.beneficio_id
+                join grupo_ativacao_beneficio gb on gb.id = ab.grupo_ativacao_id
+                where ab.anuncio_id = a.id
+                  and ab.usuario_id = a.usuario_id
+                  and gb.anuncio_id = a.id
+                  and gb.usuario_id = a.usuario_id
+                  and ab.origem = gb.origem
+                  and bp.ativo = true
+                  and bp.escopo = 'ANUNCIO'
+                  and bp.codigo in (
+                    'OCULTAR_IDADE', 'FOTOS_EXTRA_5', 'ANUNCIO_TOPO',
+                    'WHATSAPP_CARD', 'CARROSSEL_FOTOS', 'VIDEO_1'
+                  )
+                  and ab.status = 'ATIVA'
+                  and ab.revogada_em is null
+                  and ab.inicio_em <= :agora
+                  and ab.fim_em > :agora
+                  and gb.status = 'ATIVO'
+                  and gb.validade_inicio_em <= :agora
+                  and gb.validade_fim_em > :agora
+                  and (
+                    (ab.origem = 'COMPRA' and coalesce(ab.preco_snapshot, 0) > 0)
+                    or (
+                      ab.origem = 'CREDITO'
+                      and ab.custo_creditos_snapshot > 0
+                      and exists (
+                        select 1
+                        from movimento_credito mc
+                        where mc.usuario_id = ab.usuario_id
+                          and mc.tipo = 'SAIDA'
+                          and mc.direcao = 'DEBITO'
+                          and mc.origem = 'BENEFICIO'
+                          and mc.referencia_tipo = 'ATIVACAO_BENEFICIO'
+                          and mc.referencia_id = ab.id
+                          and mc.quantidade = ab.custo_creditos_snapshot
+                      )
+                    )
+                  )
+              )
+            order by
+              case when exists (
+                select 1
+                from ativacao_beneficio topo
+                join beneficio_premium beneficio_topo on beneficio_topo.id = topo.beneficio_id
+                join grupo_ativacao_beneficio grupo_topo on grupo_topo.id = topo.grupo_ativacao_id
+                where topo.anuncio_id = a.id
+                  and beneficio_topo.codigo = 'ANUNCIO_TOPO'
+                  and beneficio_topo.ativo = true
+                  and beneficio_topo.afeta_ranking = true
+                  and topo.status = 'ATIVA'
+                  and topo.revogada_em is null
+                  and topo.inicio_em <= :agora
+                  and topo.fim_em > :agora
+                  and grupo_topo.status = 'ATIVO'
+                  and grupo_topo.validade_inicio_em <= :agora
+                  and grupo_topo.validade_fim_em > :agora
+              ) then 0 else 1 end,
+              a.publicado_em desc,
+              a.id
+            """, nativeQuery = true)
+    List<AnuncioEntity> findRelacionadosPagos(
+            @Param("anuncioAtualId") UUID anuncioAtualId,
+            @Param("categoria") String categoria,
+            @Param("cidadeId") UUID cidadeId,
+            @Param("mesmaCidade") boolean mesmaCidade,
+            @Param("agora") OffsetDateTime agora,
+            Pageable pageable);
+
     @Query("""
             select a.usuarioId as usuarioId, min(a.publicadoEm) as primeiraPublicacaoEm
             from AnuncioEntity a

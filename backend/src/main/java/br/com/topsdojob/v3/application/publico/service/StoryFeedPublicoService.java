@@ -269,7 +269,9 @@ public class StoryFeedPublicoService {
             boolean idadeConfirmada,
             IdadeAnunciantePublicaService.Resultado idade,
             OffsetDateTime expiraEm) {
-        String url = previewPublica(item.vinculo(), item.arquivo());
+        String url = idadeConfirmada
+                ? previewPublica(item.vinculo(), item.arquivo())
+                : null;
         return new StoryFeedItemDto(
                 PREFIXO_ADMIN + item.vinculo().getId(),
                 anuncio.getId().toString(),
@@ -291,7 +293,9 @@ public class StoryFeedPublicoService {
             AnuncioEntity anuncio,
             boolean idadeConfirmada,
             IdadeAnunciantePublicaService.Resultado idade) {
-        String url = previewPublica(vinculo, arquivo);
+        String url = idadeConfirmada
+                ? previewPublica(vinculo, arquivo)
+                : null;
         return new StoryFeedItemDto(
                 story.getId().toString(),
                 anuncio.getId().toString(),
@@ -358,7 +362,7 @@ public class StoryFeedPublicoService {
                 EscopoConteudoVisitante.STORY);
         String url = idadeConfirmada
                 ? urlService.resolver(vinculo, arquivo).urlPublica()
-                : previewPublica(vinculo, arquivo);
+                : null;
         String state = !idadeConfirmada ? IDADE_NAO_CONFIRMADA : url == null ? "INDISPONIVEL" : "LIBERADO";
         IdadeAnunciantePublicaService.Resultado idade = idadeAnuncio(anuncio);
         return new StoryViewerPublicoDto(
@@ -453,8 +457,8 @@ public class StoryFeedPublicoService {
     }
 
     private String previewState(boolean idadeConfirmada, String url) {
-        if (url == null) return "UNAVAILABLE";
-        return idadeConfirmada ? "AVAILABLE" : IDADE_NAO_CONFIRMADA;
+        if (!idadeConfirmada) return IDADE_NAO_CONFIRMADA;
+        return url == null ? "UNAVAILABLE" : "AVAILABLE";
     }
 
     private Map<UUID, IdadeAnunciantePublicaService.Resultado> idadesPorAnuncio(

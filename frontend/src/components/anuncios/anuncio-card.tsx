@@ -15,6 +15,7 @@ import {
   type MidiaPublica,
 } from "@/lib/media/public-media"
 import { useWhatsAppSafety } from "@/components/site/whatsapp-safety-provider"
+import { useAuth } from "@/context/AuthContext"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import { ApiContractError } from "@/lib/api-contract"
 import {
@@ -126,6 +127,7 @@ export function AnuncioCard({
   mediaPriority = false,
 }: AnuncioCardProps) {
   const router = useRouter()
+  const { usuario } = useAuth()
   const { openWhatsAppWarning } = useWhatsAppSafety()
 
   const localizacaoLabel = useMemo(() => {
@@ -160,6 +162,7 @@ export function AnuncioCard({
   const [badSrcs, setBadSrcs] = useState<Set<string>>(new Set())
   const [whatsappVerificationOpen, setWhatsappVerificationOpen] = useState(false)
   const [whatsappPending, setWhatsappPending] = useState(false)
+  const [chatPending, setChatPending] = useState(false)
   const whatsappRequestKey = useRef<string | null>(null)
   const whatsappInFlight = useRef(false)
 
@@ -272,10 +275,13 @@ export function AnuncioCard({
     void requestWhatsApp()
   }
 
-  const handleChatClick = () => {
+  const handleChatClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
     if (previewMode) return
-    if (!usernameAnunciante) return
-    router.push(`/chat?usuario=${encodeURIComponent(usernameAnunciante)}`)
+    if (chatPending) return
+    setChatPending(true)
+    router.push(`/chat?anuncio=${encodeURIComponent(String(id))}`)
   }
 
   const handleVerAnuncio = () => {
@@ -286,6 +292,13 @@ export function AnuncioCard({
      */
     router.push(`/anuncios/${encodeURIComponent(slugRota)}`)
   }
+
+  const anuncioProprio = Boolean(
+    usuario?.username
+      && usernameAnunciante
+      && usuario.username.replace(/^@+/, '').toLowerCase()
+        === usernameAnunciante.replace(/^@+/, '').toLowerCase()
+  )
 
   const anuncioHref = `/anuncios/${encodeURIComponent(slugRota)}`
   const midiaAtual = midiasSeguras[index]
@@ -451,14 +464,14 @@ export function AnuncioCard({
               </Button>
             )}
 
-            {whatsappCardEnabled && !previewMode && (
+            {!previewMode && !anuncioProprio && (
               <Button
                 onClick={handleChatClick}
-                disabled={!usernameAnunciante}
+                disabled={chatPending}
                 className="flex-1 items-center justify-center gap-1 bg-[#FC1EAD] px-3 py-1 text-xs font-medium text-white hover:bg-[#e01a9a]"
               >
                 <ChatBubbleLeftIcon className="h-4 w-4" />
-                Chat
+                {chatPending ? 'Abrindo conversa...' : 'Chat'}
               </Button>
             )}
 

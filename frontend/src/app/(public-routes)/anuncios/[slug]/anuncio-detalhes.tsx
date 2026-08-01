@@ -5,13 +5,12 @@ import { useEffect, useRef, useState } from "react"
 import HeaderTabs from "./componentes/header-tabs"
 import MainContent from "./componentes/main-content"
 import Sidebar from "./componentes/sidebar"
-import { AnunciosRelacionados } from "./componentes/anuncios-relacionados"
 import { AvisosAdministracao } from "./componentes/avisos-administracao"
 import type { MidiaPublica } from "@/lib/media/public-media"
 import {
   obterAnuncioPublicoPorSlug,
-  type PublicCatalogCard,
   type PublicCatalogDetail,
+  type PublicRelatedAd,
 } from "@/lib/public-catalog-api"
 import {
   novaChaveMetricaPublica,
@@ -88,10 +87,8 @@ function mapAnuncioPayload(slug: string, data: PublicCatalogDetail): AnuncioUI {
 
 export default function AnuncioDetalhesPageClient({
   initialData,
-  initialRelatedData,
 }: {
   initialData?: PublicCatalogDetail | null
-  initialRelatedData?: PublicCatalogCard[]
 }) {
   const params = useParams<{ slug: string }>()
   const slug =
@@ -107,6 +104,9 @@ export default function AnuncioDetalhesPageClient({
   const [imagemAtiva, setImagemAtiva] = useState(0)
   const [reloadMarker, setReloadMarker] = useState(0)
   const [loadError, setLoadError] = useState(false)
+  const [relacionados, setRelacionados] = useState<PublicRelatedAd[]>(
+    () => initialData?.relacionados ?? [],
+  )
   const visualizacaoRegistradaParaId = useRef<string | null>(null)
   const visualizacaoFetchParaId = useRef<string | null>(null)
   const visualizacaoChaveParaId = useRef<{ anuncioId: string; chave: string } | null>(null)
@@ -131,6 +131,7 @@ export default function AnuncioDetalhesPageClient({
         const data = await obterAnuncioPublicoPorSlug(slug)
         setLoadError(false)
         setAnuncio(mapAnuncioPayload(slug, data))
+        setRelacionados(data.relacionados)
       } catch {
         setLoadError(true)
         setAnuncio(null)
@@ -196,18 +197,9 @@ export default function AnuncioDetalhesPageClient({
         </div>
 
         <div className="order-2 lg:order-1 lg:col-span-2">
-          <MainContent anuncio={anuncio} />
+          <MainContent anuncio={anuncio} relacionados={relacionados} />
         </div>
       </section>
-
-      <AnunciosRelacionados
-        anuncioIdAtual={anuncio.id}
-        anuncios={initialRelatedData ?? []}
-        cidadeNome={anuncio.cidadeNome}
-        bairroNome={anuncio.bairroNome}
-        categoria={anuncio.categoria}
-      />
-
     </div>
   )
 }

@@ -61,7 +61,7 @@ class AdminSuporteServiceTest {
         when(repository.porIdComLock(TICKET)).thenReturn(Optional.of(ticket("ABERTO")));
         when(repository.inserirMensagem(
                 any(), eq(TICKET), eq(ADMIN), eq("STAFF"), eq("Resposta QA"),
-                eq(false), eq(KEY), anyString(), any()))
+                eq(false), eq(true), eq(KEY), anyString(), any()))
                 .thenReturn(1);
 
         var response = service.responder(
@@ -91,7 +91,29 @@ class AdminSuporteServiceTest {
         assertThat(response.repetida()).isTrue();
         verify(repository, never()).inserirMensagem(
                 any(), any(), any(), anyString(), anyString(), any(Boolean.class),
-                anyString(), anyString(), any());
+                any(Boolean.class), anyString(), anyString(), any());
+    }
+
+    @Test
+    void retryConcorrenteNaoRepeteEstadoNemAuditoria() {
+        when(repository.mensagemPorIdempotencia(ADMIN, KEY))
+                .thenReturn(Optional.empty(), Optional.of(mensagem("Resposta QA")));
+        when(repository.porIdComLock(TICKET)).thenReturn(Optional.of(ticket("ABERTO")));
+        when(repository.inserirMensagem(
+                any(), eq(TICKET), eq(ADMIN), eq("STAFF"), eq("Resposta QA"),
+                eq(false), eq(true), eq(KEY), anyString(), any()))
+                .thenReturn(0);
+
+        var response = service.responder(
+                TICKET,
+                "Resposta QA",
+                KEY,
+                ator,
+                "request-suporte-admin-concorrente-001");
+
+        assertThat(response.repetida()).isTrue();
+        verify(repository, never()).atualizarStatus(any(), anyString(), any(), any(), any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test
@@ -115,7 +137,7 @@ class AdminSuporteServiceTest {
         when(repository.porIdComLock(TICKET)).thenReturn(Optional.of(ticket("EM_ATENDIMENTO")));
         when(repository.inserirMensagem(
                 any(), any(), any(), anyString(), anyString(), any(Boolean.class),
-                anyString(), anyString(), any()))
+                any(Boolean.class), anyString(), anyString(), any()))
                 .thenReturn(1);
 
         service.responder(
@@ -146,7 +168,8 @@ class AdminSuporteServiceTest {
                 now,
                 now,
                 "ENCERRADO".equals(status) ? now : null,
-                1);
+                1,
+                0);
     }
 
     private SuporteTicketJdbcRepository.MensagemRow mensagem(String corpo) {
@@ -157,6 +180,7 @@ class AdminSuporteServiceTest {
                 "STAFF",
                 corpo,
                 false,
+                true,
                 OffsetDateTime.parse("2026-07-27T12:00:00Z"),
                 "Admin QA");
     }

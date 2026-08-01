@@ -14,6 +14,7 @@ import {
 import { StoryViewerDialog } from "./story-viewer-dialog"
 import { publicApiUrl } from '@/lib/api-contract'
 import { useAuth } from '@/context/AuthContext'
+import { sanitizeStoryFeedItem } from './story-access-policy'
 import { markStorySeen, orderStoryBundles, readStoryState, storyStorageKey } from './story-ordering'
 
 function browserStorage() {
@@ -124,17 +125,7 @@ export function StoriesBar() {
           ...bundle,
           itens: (bundle?.itens || [])
             .filter((item: StoryItem) => !isExpired(item))
-            .map((item: StoryItem) => {
-              const previewBloqueado = previewExigeBloqueio(item)
-              const previewDisponivel =
-                item.previewState === "AVAILABLE" ||
-                (previewBloqueado && item.tipo === "IMAGE")
-
-              return {
-                ...item,
-                previewUrl: previewDisponivel ? item.previewUrl ?? null : null,
-              }
-            }),
+            .map((item: StoryItem) => sanitizeStoryFeedItem(item) as StoryItem),
         }))
         .filter((bundle) => (bundle?.itens || []).length > 0)
 

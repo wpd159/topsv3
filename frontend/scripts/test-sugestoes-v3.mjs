@@ -29,16 +29,14 @@ for (const file of [feedback, adminPage, adminTable, adminDetail]) {
   assert.ok(!file.includes('type="file"'), 'Anexos nao comprovados nao devem existir.')
 }
 
-for (const label of [
-  'Sugestao',
-  'Bug',
-  'Titulo do feedback',
-  'Enviar feedback',
-  'Sugestao enviada com sucesso.',
-]) {
-  assert.ok(feedback.includes(label), `Fluxo autenticado ausente: ${label}.`)
+for (const label of ['Suporte e feedback', 'Reportar problema', 'Enviar sugest', 'Ver meus atendimentos']) {
+  assert.ok(feedback.includes(label), `Entrada acompanhavel ausente: ${label}.`)
 }
-assert.ok(feedback.includes('disabled={enviando}'), 'Duplo clique deve ser bloqueado.')
+assert.ok(feedback.includes('/meus-tickets?novo=1&categoria=ERRO_NO_SISTEMA'))
+assert.ok(feedback.includes('/meus-tickets?novo=1&categoria=SUGESTAO'))
+assert.ok(feedback.includes("router.push(href)"), 'A escolha deve abrir o ticket canonico.')
+assert.ok(!feedback.includes('enviarSugestao'), 'Manifestacao autenticada nao pode gravar em dois fluxos.')
+assert.ok(!feedback.includes('publicApiUrl'), 'O dialogo autenticado nao deve escrever feedback unidirecional.')
 assert.ok(publicApi.includes("publicApiUrl('/sugestoes')"))
 assert.ok(publicApi.includes('Idempotency-Key'))
 assert.ok(publicApi.includes("publicApiUrl('/auth/me')"), 'Mutacao publica deve obter CSRF.')

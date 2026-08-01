@@ -37,7 +37,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 class StoryPublicoServiceTest {
 
     @Test
-    void storySemIdadeConfirmadaEntregaSomentePreviewBorrada() {
+    void storySemIdadeConfirmadaNaoEntregaNenhumaUrlDeMidia() {
         UUID anuncioId = UUID.randomUUID();
         UUID arquivoId = UUID.randomUUID();
         UUID vinculoId = UUID.randomUUID();
@@ -78,11 +78,6 @@ class StoryPublicoServiceTest {
         when(anuncioMidiaRepository.findByAnuncioId(anuncioId)).thenReturn(List.of(vinculo));
         when(arquivoRepository.findByIdIn(List.of(arquivoId))).thenReturn(List.of(arquivo));
         when(storyRepository.findByAnuncioMidiaIdIn(java.util.Set.of(vinculoId))).thenReturn(List.of(story));
-        when(urlService.resolverPreviewRestrita(arquivo))
-                .thenReturn(new MidiaPublicaUrlService.ResultadoUrlPublica(
-                        "/restritas-borradas/preview.jpg",
-                        null));
-
         StoryPublicoService service = new StoryPublicoService(
                 anuncioRepository,
                 anuncioMidiaRepository,
@@ -96,11 +91,13 @@ class StoryPublicoServiceTest {
         assertThat(response.idadeConfirmada()).isFalse();
         assertThat(response.autorizado()).isFalse();
         assertThat(response.stories()).singleElement().satisfies(item -> {
-            assertThat(item.urlPublica()).isEqualTo("/restritas-borradas/preview.jpg");
+            assertThat(item.urlPublica()).isNull();
+            assertThat(item.pendenciaMidia()).isNull();
             assertThat(item.visibilidadeMidia()).isEqualTo("RESTRITA_18");
         });
         assertThat(response.politica().motivoPublico()).isEqualTo("IDADE_NAO_CONFIRMADA");
         verify(urlService, never()).resolver(vinculo, arquivo);
+        verify(urlService, never()).resolverPreviewRestrita(arquivo);
     }
 
     @Test

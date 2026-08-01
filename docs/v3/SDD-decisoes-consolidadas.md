@@ -67,6 +67,14 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 
 - O aceite global e independente da verificacao reforcada e persiste por sete
   dias em cookie HttpOnly assinado.
+- A confirmacao etaria concede acesso global por visitante e por nivel durante
+  o prazo configurado de 10.080 minutos. O escopo identifica o contexto, a
+  politica e a auditoria da solicitacao; ele nao vincula a autorizacao
+  individualmente ao Story que iniciou o challenge.
+- Um visitante com nivel suficiente pode acessar outros Stories protegidos
+  compativeis durante a vigencia, sem repetir a confirmacao. Identidade do
+  visitante, nivel, expiracao, risco, bloqueio e elegibilidade do recurso
+  continuam sendo validados.
 - O aceite global nao libera original `RESTRITA_18`, Story ou WhatsApp.
 - O nivel reforcado usa challenge opaco, nascimento confirmado, CPF valido,
   aceites, avaliacao de risco e tokens por escopo validados pelo backend.

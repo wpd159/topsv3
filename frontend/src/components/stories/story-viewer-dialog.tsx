@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import {
@@ -19,6 +19,7 @@ import {
   rotuloPublicoComIdade,
   rotuloPublicoDoBundle,
 } from "./stories-types"
+import { canNavigateFromStory, sanitizeStoryViewerItem } from "./story-access-policy"
 import { publicApiUrl } from '@/lib/api-contract'
 
 type Props = {
@@ -36,28 +37,13 @@ function StoryStateCard({
   title,
   description,
   primaryAction,
-  secondaryAction,
-  backgroundImage,
 }: {
   title: string
   description: string
   primaryAction?: { label: string; onClick: () => void }
-  secondaryAction?: { label: string; onClick: () => void }
-  backgroundImage?: string | null
 }) {
   return (
     <div className="relative flex h-[100svh] w-full max-w-[100vw] items-center justify-center overflow-hidden bg-gradient-to-br from-gray-950 via-black to-gray-900 px-6">
-      {backgroundImage ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={backgroundImage}
-          alt=""
-          width={960}
-          height={1280}
-          className="absolute inset-0 h-full w-full object-contain"
-        />
-      ) : null}
-      {backgroundImage ? <div className="absolute inset-0 bg-black/45" /> : null}
       <div
         className="relative z-20 w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-2xl backdrop-blur-sm"
         onClick={(event) => {
@@ -83,19 +69,6 @@ function StoryStateCard({
             {primaryAction.label}
           </Button>
         ) : null}
-        {secondaryAction ? (
-          <button
-            type="button"
-            className="mt-3 w-full text-center text-sm font-medium text-white/75 underline underline-offset-2 hover:text-white"
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              secondaryAction.onClick()
-            }}
-          >
-            {secondaryAction.label}
-          </button>
-        ) : null}
       </div>
     </div>
   )
@@ -118,8 +91,10 @@ export function StoryViewerDialog({
   const [viewerLoading, setViewerLoading] = useState(false)
   const [viewerError, setViewerError] = useState<string | null>(null)
   const [mediaError, setMediaError] = useState(false)
+  const [mediaReady, setMediaReady] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const viewedStoryRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -129,14 +104,12 @@ export function StoryViewerDialog({
     setViewerItem(null)
     setViewerError(null)
     setMediaError(false)
+    setMediaReady(false)
+    viewedStoryRef.current = null
   }, [open, initialBundleIndex, bundles.length])
 
   const currentBundle = bundles[bundleIndex]
   const currentFeedItem = currentBundle?.itens?.[itemIndex]
-
-  useEffect(() => {
-    if (open && currentFeedItem) onStoryCurrent?.(currentFeedItem)
-  }, [currentFeedItem, onStoryCurrent, open])
 
   useEffect(() => {
     if (!open || !currentFeedItem?.storyId) {
@@ -162,7 +135,7 @@ export function StoryViewerDialog({
           throw new Error(data?.message || data?.error || "Nao foi possivel carregar o story.")
         }
         if (!cancelled) {
-          setViewerItem(data as StoryViewerItem)
+          setViewerItem(sanitizeStoryViewerItem(data) as StoryViewerItem)
         }
       })
       .catch((error: any) => {
@@ -184,9 +157,20 @@ export function StoryViewerDialog({
   useEffect(() => {
     setVideoProg(0)
     setMediaError(false)
+    setMediaReady(false)
+    viewedStoryRef.current = null
   }, [bundleIndex, itemIndex, reloadTick])
 
-  function nextStory() {
+  function markCurrentStoryVisible() {
+    if (!currentFeedItem || viewerItem?.viewerState !== "LIBERADO" || !viewerItem.midiaUrl) return
+    setMediaReady(true)
+    const identity = String(currentFeedItem.storyId)
+    if (viewedStoryRef.current === identity) return
+    viewedStoryRef.current = identity
+    onStoryCurrent?.(currentFeedItem)
+  }
+
+  const nextStory = useCallback(() => {
     const bundle = bundles[bundleIndex]
     if (!bundle) return
 
@@ -204,9 +188,9 @@ export function StoryViewerDialog({
     }
 
     onOpenChange(false)
-  }
+  }, [bundleIndex, bundles, itemIndex, onOpenChange])
 
-  function prevStory() {
+  const prevStory = useCallback(() => {
     const bundle = bundles[bundleIndex]
     if (!bundle) return
 
@@ -222,11 +206,11 @@ export function StoryViewerDialog({
       setBundleIndex(prevBundle)
       setItemIndex(Math.max(0, (previous?.itens?.length || 1) - 1))
     }
-  }
+  }, [bundleIndex, bundles, itemIndex])
 
   useEffect(() => {
     if (!open) return
-    if (verificationOpen) return
+    if (verificationOpen || !mediaReady) return
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "ArrowRight") nextStory()
@@ -235,11 +219,12 @@ export function StoryViewerDialog({
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [open, bundleIndex, itemIndex, bundles, verificationOpen])
+  }, [mediaReady, nextStory, open, prevStory, verificationOpen])
 
   useEffect(() => {
     if (!open) return
     if (verificationOpen) return
+    if (!mediaReady) return
     if (!viewerItem) return
     if (viewerLoading) return
     if (viewerError) return
@@ -249,7 +234,7 @@ export function StoryViewerDialog({
 
     const t = setTimeout(() => nextStory(), IMAGE_MS)
     return () => clearTimeout(t)
-  }, [open, viewerItem, viewerLoading, viewerError, bundleIndex, itemIndex, verificationOpen])
+  }, [mediaReady, nextStory, open, verificationOpen, viewerError, viewerItem, viewerLoading])
 
   const progressBars = useMemo(() => currentBundle?.itens || [], [currentBundle])
 
@@ -264,6 +249,8 @@ export function StoryViewerDialog({
     (viewerItem?.profileNavigable && loginViewer) || (currentBundle?.profileNavigable && loginBundle)
   )
   const anuncioNavegavel = Boolean(anuncioSlugViewer)
+  const podeNavegarAnuncio = anuncioNavegavel
+    && canNavigateFromStory(viewerItem, mediaReady, verificationOpen)
   const rotuloPerfil =
     viewerItem?.profileNavigable && viewerItem?.displayUsername
       ? `@${viewerItem.displayUsername}`
@@ -274,8 +261,8 @@ export function StoryViewerDialog({
   )
 
   function irParaAnuncioDoStory() {
-    if (!anuncioSlugViewer) {
-      console.warn("[stories] anuncioSlug ausente no story; navegacao cancelada.")
+    if (!anuncioSlugViewer || !podeNavegarAnuncio) {
+      console.warn("[stories] navegacao indisponivel enquanto a midia nao estiver liberada.")
       return
     }
     onOpenChange(false)
@@ -295,6 +282,7 @@ export function StoryViewerDialog({
     bundleIndex === bundles.length - 1 &&
     itemIndex === (currentBundle?.itens?.length || 1) - 1
   const viewerInteracoesTravadas = verificationOpen
+  const viewerNavegacaoTravada = !canNavigateFromStory(viewerItem, mediaReady, verificationOpen)
 
   function renderViewerBody() {
     if (!currentFeedItem) {
@@ -320,15 +308,7 @@ export function StoryViewerDialog({
         <StoryStateCard
           title="Nao foi possivel carregar este story"
           description={viewerError}
-          secondaryAction={
-            anuncioNavegavel
-              ? {
-                  label: "Ver anuncio",
-                  onClick: irParaAnuncioDoStory,
-                }
-              : undefined
-          }
-          backgroundImage={currentFeedItem.previewUrl}
+          primaryAction={{ label: "Tentar novamente", onClick: () => setReloadTick((prev) => prev + 1) }}
         />
       )
     }
@@ -338,15 +318,7 @@ export function StoryViewerDialog({
         <StoryStateCard
           title="Story indisponivel"
           description="Os dados deste story nao puderam ser carregados."
-          secondaryAction={
-            anuncioNavegavel
-              ? {
-                  label: "Ver anuncio",
-                  onClick: irParaAnuncioDoStory,
-                }
-              : undefined
-          }
-          backgroundImage={currentFeedItem.previewUrl}
+          primaryAction={{ label: "Tentar novamente", onClick: () => setReloadTick((prev) => prev + 1) }}
         />
       )
     }
@@ -360,15 +332,6 @@ export function StoryViewerDialog({
             label: "Confirmar maioridade",
             onClick: () => setVerificationOpen(true),
           }}
-          secondaryAction={
-            anuncioNavegavel
-              ? {
-                  label: "Ver anuncio",
-                  onClick: irParaAnuncioDoStory,
-                }
-              : undefined
-          }
-          backgroundImage={viewerItem.midiaUrl ?? currentFeedItem.previewUrl}
         />
       )
     }
@@ -378,14 +341,7 @@ export function StoryViewerDialog({
         <StoryStateCard
           title="Midia indisponivel no momento"
           description="Nao foi possivel exibir este story agora."
-          secondaryAction={
-            anuncioNavegavel
-              ? {
-                  label: "Ver anuncio",
-                  onClick: irParaAnuncioDoStory,
-                }
-              : undefined
-          }
+          primaryAction={{ label: "Tentar novamente", onClick: () => setReloadTick((prev) => prev + 1) }}
         />
       )
     }
@@ -395,14 +351,6 @@ export function StoryViewerDialog({
         <StoryStateCard
           title="Story com dados inconsistentes"
           description="Este story nao esta apto para exibicao publica."
-          secondaryAction={
-            anuncioNavegavel
-              ? {
-                  label: "Ver anuncio",
-                  onClick: irParaAnuncioDoStory,
-                }
-              : undefined
-          }
         />
       )
     }
@@ -411,15 +359,8 @@ export function StoryViewerDialog({
       return (
         <StoryStateCard
           title="Nao foi possivel carregar a midia"
-          description="Tente avancar para o proximo story ou abrir o anuncio vinculado."
-          secondaryAction={
-            anuncioNavegavel
-              ? {
-                  label: "Ver anuncio",
-                  onClick: irParaAnuncioDoStory,
-                }
-              : undefined
-          }
+          description="A midia permanece bloqueada. Tente carregar novamente."
+          primaryAction={{ label: "Tentar novamente", onClick: () => setReloadTick((prev) => prev + 1) }}
         />
       )
     }
@@ -439,6 +380,7 @@ export function StoryViewerDialog({
           onLoadedData={(e) => {
             void e.currentTarget.play().catch(() => {})
           }}
+          onPlaying={markCurrentStoryVisible}
           onEnded={nextStory}
           onError={() => setMediaError(true)}
           onTimeUpdate={(e) => {
@@ -457,6 +399,7 @@ export function StoryViewerDialog({
         src={viewerItem.midiaUrl}
         alt=""
         className="h-[100svh] w-full max-w-[100vw] object-contain"
+        onLoad={markCurrentStoryVisible}
         onError={() => setMediaError(true)}
       />
     )
@@ -505,7 +448,7 @@ export function StoryViewerDialog({
             </div>
 
             <div className="mt-3 flex items-center justify-between gap-2">
-              {perfilNavegavel && anuncioNavegavel ? (
+              {perfilNavegavel && podeNavegarAnuncio ? (
                 <button
                   type="button"
                   onClick={irParaAnuncioDoStory}
@@ -544,7 +487,7 @@ export function StoryViewerDialog({
               )}
 
               <div className="flex shrink-0 items-center gap-2">
-                {anuncioNavegavel ? (
+                {podeNavegarAnuncio ? (
                   <button
                     type="button"
                     onClick={irParaAnuncioDoStory}
@@ -568,12 +511,12 @@ export function StoryViewerDialog({
           <button
             type="button"
             onClick={prevStory}
-            disabled={isFirst || viewerInteracoesTravadas}
+            disabled={isFirst || viewerNavegacaoTravada}
             aria-label="Anterior"
             className={[
               "absolute left-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
-              isFirst || viewerInteracoesTravadas ? "opacity-40 cursor-not-allowed" : "opacity-100",
+              isFirst || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
             ].join(" ")}
           >
             <ChevronLeftIcon className="h-6 w-6 text-white" />
@@ -582,12 +525,12 @@ export function StoryViewerDialog({
           <button
             type="button"
             onClick={nextStory}
-            disabled={isLast || viewerInteracoesTravadas}
+            disabled={isLast || viewerNavegacaoTravada}
             aria-label="Proximo"
             className={[
               "absolute right-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
-              isLast || viewerInteracoesTravadas ? "opacity-40 cursor-not-allowed" : "opacity-100",
+              isLast || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
             ].join(" ")}
           >
             <ChevronRightIcon className="h-6 w-6 text-white" />
@@ -598,14 +541,14 @@ export function StoryViewerDialog({
             onClick={prevStory}
             aria-label="Anterior (area)"
             type="button"
-            disabled={viewerInteracoesTravadas}
+            disabled={viewerNavegacaoTravada}
           />
           <button
             className="absolute right-0 top-0 h-full w-1/3 z-10"
             onClick={nextStory}
             aria-label="Proximo (area)"
             type="button"
-            disabled={viewerInteracoesTravadas}
+            disabled={viewerNavegacaoTravada}
           />
 
           <div className="flex h-full w-full items-center justify-center">{renderViewerBody()}</div>

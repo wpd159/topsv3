@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.auth.PublicAuthException;
 import br.com.topsdojob.v3.application.publico.auth.PublicAuthRateLimiter;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.CriarTicketRequest;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.Mensagem;
+import br.com.topsdojob.v3.application.suporte.SuporteDtos.NaoLidas;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.Pagina;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.TicketDetalhe;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.TicketResumo;
@@ -41,6 +42,7 @@ public class SuporteTicketService {
             "ERRO_NO_SISTEMA",
             "PROBLEMAS_COM_PAGAMENTO",
             "ACESSO_CONTA",
+            "SUGESTAO",
             "OUTROS");
     private static final Set<String> GRUPOS = Set.of("TODOS", "ABERTOS", "ENCERRADOS");
 
@@ -82,11 +84,18 @@ public class SuporteTicketService {
         return pagina(itens, paginaSegura, tamanhoSeguro, total);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TicketDetalhe detalhar(UUID ticketId, Authentication authentication) {
         UUID usuarioId = usuario(authentication).getId();
         SuporteTicketJdbcRepository.TicketRow ticket = ticketDoUsuario(ticketId, usuarioId, false);
-        return detalhe(ticket, usuarioId, false, false);
+        repository.marcarRespostasComoLidas(ticket.id(), usuarioId);
+        return detalhe(repository.porId(ticket.id()).orElseThrow(), usuarioId, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public NaoLidas naoLidas(Authentication authentication) {
+        UUID usuarioId = usuario(authentication).getId();
+        return new NaoLidas(repository.contarNaoLidasDoUsuario(usuarioId));
     }
 
     @Transactional
@@ -135,6 +144,7 @@ public class SuporteTicketService {
                 "USUARIO",
                 descricao,
                 false,
+                false,
                 chave,
                 requestSeguro,
                 agora);
@@ -171,16 +181,25 @@ public class SuporteTicketService {
         SuporteTicketJdbcRepository.TicketRow ticket = ticketDoUsuario(ticketId, ator.getId(), true);
         exigirAberto(ticket.status());
         OffsetDateTime agora = agora();
-        repository.inserirMensagem(
+        int inseridas = repository.inserirMensagem(
                 uuid("suporte-mensagem-v1:" + ator.getId() + ":" + chave),
                 ticket.id(),
                 ator.getId(),
                 "USUARIO",
                 texto,
                 false,
+                false,
                 chave,
                 requestSeguro,
                 agora);
+        if (inseridas == 0) {
+            SuporteTicketJdbcRepository.MensagemRow concorrente = repository
+                    .mensagemPorIdempotencia(ator.getId(), chave)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.INTERNAL_SERVER_ERROR,
+                            "mensagem concorrente nao localizada"));
+            return validarMensagemRepetida(concorrente, ticketId, texto, ator.getId());
+        }
         if ("AGUARDANDO_USUARIO".equals(ticket.status())) {
             repository.atualizarStatus(ticket.id(), "EM_ATENDIMENTO", null, null, agora);
         } else {
@@ -301,7 +320,8 @@ public class SuporteTicketService {
                 statusRotulo(ticket.status()),
                 ticket.criadoEm(),
                 ticket.atualizadoEm(),
-                ticket.totalMensagens());
+                ticket.totalMensagens(),
+                ticket.naoLidas());
     }
 
     private Mensagem mensagem(
@@ -318,7 +338,8 @@ public class SuporteTicketService {
                 item.corpo(),
                 item.criadoEm(),
                 atorId.equals(item.autorId()),
-                repetida);
+                repetida,
+                item.naoLidaUsuario());
     }
 
     private void exigirAberto(String status) {
@@ -434,6 +455,7 @@ public class SuporteTicketService {
             case "ERRO_NO_SISTEMA" -> "Erro no sistema";
             case "PROBLEMAS_COM_PAGAMENTO" -> "Pagamento";
             case "ACESSO_CONTA" -> "Acesso / Conta";
+            case "SUGESTAO" -> "Sugestao";
             default -> "Outros";
         };
     }

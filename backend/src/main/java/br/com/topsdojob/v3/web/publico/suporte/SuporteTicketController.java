@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.web.publico.suporte;
 
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.CriarTicketRequest;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.Mensagem;
+import br.com.topsdojob.v3.application.suporte.SuporteDtos.NaoLidas;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.Pagina;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.ResponderTicketRequest;
 import br.com.topsdojob.v3.application.suporte.SuporteDtos.TicketDetalhe;
@@ -59,6 +60,11 @@ public class SuporteTicketController {
             @PathVariable UUID ticketId,
             Authentication authentication) {
         return semCache(service.detalhar(ticketId, authentication));
+    }
+
+    @GetMapping("/nao-lidas")
+    public ResponseEntity<NaoLidas> naoLidas(Authentication authentication) {
+        return semCache(service.naoLidas(authentication));
     }
 
     @PostMapping("/{ticketId}/mensagens")

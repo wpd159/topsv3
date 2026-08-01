@@ -36,6 +36,7 @@ public class AdminSuporteService {
             "ERRO_NO_SISTEMA",
             "PROBLEMAS_COM_PAGAMENTO",
             "ACESSO_CONTA",
+            "SUGESTAO",
             "OUTROS");
     private static final Set<String> FILTROS_STATUS = Set.of(
             "ABERTO",
@@ -125,16 +126,25 @@ public class AdminSuporteService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "ticket nao encontrado"));
         exigirAberto(ticket.status());
         OffsetDateTime agora = agora();
-        repository.inserirMensagem(
+        int inseridas = repository.inserirMensagem(
                 uuid("suporte-staff-v1:" + admin.usuarioId() + ":" + chave),
                 ticket.id(),
                 admin.usuarioId(),
                 "STAFF",
                 texto,
                 false,
+                true,
                 chave,
                 requestSeguro,
                 agora);
+        if (inseridas == 0) {
+            SuporteTicketJdbcRepository.MensagemRow concorrente = repository
+                    .mensagemPorIdempotencia(admin.usuarioId(), chave)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.INTERNAL_SERVER_ERROR,
+                            "mensagem concorrente nao localizada"));
+            return validarRepetida(concorrente, ticketId, texto, admin.usuarioId());
+        }
         repository.atualizarStatus(
                 ticket.id(),
                 "AGUARDANDO_USUARIO",
@@ -253,7 +263,8 @@ public class AdminSuporteService {
                 row.corpo(),
                 row.criadoEm(),
                 atorId != null && atorId.equals(row.autorId()),
-                repetida);
+                repetida,
+                row.naoLidaUsuario());
     }
 
     private void exigirAberto(String status) {

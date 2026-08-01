@@ -416,7 +416,7 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
     post:
-      summary: Cria ou reutiliza uma conversa direta pelo username
+      summary: Cria ou reutiliza uma conversa direta pelo anuncio ou username
       operationId: startCurrentUserChatConversation
       security:
         - PublicSessionCookie: []
@@ -572,6 +572,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PainelAnunciantePerformance"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+  /api/public/painel-anunciante/recomendacoes:
+    get:
+      summary: Calcula recomendacoes aplicaveis aos anuncios do usuario autenticado
+      operationId: getCurrentAdvertiserRecommendations
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      description: O usuario e obtido exclusivamente da sessao. A resposta distingue recurso habilitado, colecao legitimamente vazia e falha tecnica por status HTTP.
+      responses:
+        "200":
+          description: Recomendacoes calculadas somente com dados dos anuncios proprios
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PainelAnuncianteRecomendacoes"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -1144,7 +1164,7 @@ paths:
   /api/public/stories/ativos:
     get:
       summary: Compoe o feed publico unico de Stories
-      description: Retorna a projecao ADMINISTRATIVO ativa e os Stories USUARIO vigentes. A deduplicacao usa a identidade canonica do arquivo e preserva o Story pago. Sem token reforcado vigente entrega somente derivacao publica borrada; o original privado e resolvido pelo fluxo protegido.
+      description: Retorna a projecao ADMINISTRATIVO ativa e os Stories USUARIO vigentes. A deduplicacao usa a identidade canonica do arquivo e preserva o Story pago. Sem token reforcado vigente entrega somente metadados e previewUrl nulo; nenhuma URL de midia e exposta. Com autorizacao, a midia restrita continua resolvida pelo fluxo protegido.
       operationId: getPublicStoriesFeed
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -1162,7 +1182,7 @@ paths:
   /api/public/stories/{storyId}:
     get:
       summary: Resolve um item do feed de Stories
-      description: IDs de usuario preservam o UUID do Story pago. Itens administrativos usam prefixo namespaced e sao resolvidos dinamicamente, sem registro de Story.
+      description: IDs de usuario preservam o UUID do Story pago. Itens administrativos usam prefixo namespaced e sao resolvidos dinamicamente, sem registro de Story. IDADE_NAO_CONFIRMADA sempre retorna midiaUrl nulo.
       operationId: getPublicStoryViewer
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -1185,7 +1205,7 @@ paths:
   /api/public/anuncios/{slug}/stories:
     get:
       summary: Lista stories publicos conforme autorizacao reforcada
-      description: Stories sao sempre RESTRITA_18. Sem token reforcado vigente retorna apenas derivacoes publicas realmente borradas e politica negada; com token valido o backend resolve o original pelo fluxo protegido. Nenhuma resposta expoe storage key, bucket ou hash.
+      description: Stories sao sempre RESTRITA_18. Sem token reforcado vigente retorna metadados sem URL de midia e politica negada; com token valido o backend resolve o original pelo fluxo protegido. Nenhuma resposta expoe storage key, bucket ou hash.
       operationId: getPublicAnuncioStories
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -1266,7 +1286,7 @@ paths:
   /api/public/compliance/visitor/challenge:
     post:
       summary: Cria challenge contextual de verificacao reforcada
-      description: Exige aceite global e CSRF. O challenge e opaco, antirreplay, idempotente, limitado por sessao e vinculado ao contexto protegido sanitizado.
+      description: Exige aceite global e CSRF. O challenge e opaco, antirreplay, idempotente, limitado por sessao e vinculado ao contexto protegido sanitizado. O contexto, inclusive storyId, orienta politica e auditoria, mas nao cria autorizacao individual por Story.
       operationId: postPublicComplianceVisitorChallenge
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -1298,7 +1318,7 @@ paths:
   /api/public/compliance/visitor/verify:
     post:
       summary: Verifica os dados reforcados do visitante
-      description: Valida nascimento repetido, maioridade, CPF, aceites, risco e challenge. Token bruto nunca e persistido; somente hashes seguros sao armazenados.
+      description: Valida nascimento repetido, maioridade, CPF, aceites, risco e challenge. Token bruto nunca e persistido; somente hashes seguros sao armazenados. A concessao geral e global para o mesmo visitante e nivel, por 10.080 minutos, sem vinculo obrigatorio ao storyId originador; requisitos adicionais de escopo continuam validos.
       operationId: postPublicComplianceVisitorVerify
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -1310,7 +1330,7 @@ paths:
               $ref: "#/components/schemas/VisitorVerifyRequest"
       responses:
         "200":
-          description: verificacao concluida e cookies por escopo emitidos
+          description: verificacao concluida e cookies gerais ou explicitos emitidos conforme a politica
           content:
             application/json:
               schema:
@@ -1338,7 +1358,7 @@ paths:
   /api/public/compliance/visitor/status:
     get:
       summary: Consulta autorizacoes reforcadas da sessao
-      description: Valida no backend cookies HttpOnly assinados, hashes persistidos, escopos, expiracao e revogacao.
+      description: Valida no backend cookies HttpOnly assinados, identidade da sessao, hashes persistidos, nivel global, requisitos de escopo, expiracao e revogacao.
       operationId: getPublicComplianceVisitorStatus
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -6394,6 +6414,25 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/suporte/tickets/nao-lidas:
+    get:
+      summary: Conta respostas da equipe ainda nao lidas pelo usuario autenticado
+      operationId: getPublicSupportUnreadCount
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Total de mensagens nao lidas sem alterar seu estado de leitura
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuporteNaoLidas"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/public/suporte/tickets/{ticketId}:
     get:
       summary: Consulta um ticket pertencente ao usuario autenticado
@@ -8020,13 +8059,22 @@ components:
     ChatNovaConversaRequest:
       type: object
       additionalProperties: false
-      required:
-        - username
       properties:
+        anuncioId:
+          type: string
+          format: uuid
+          description: Identificador canonico do anuncio; o backend deriva o proprietario e valida a elegibilidade.
         username:
           type: string
           minLength: 1
           maxLength: 120
+      oneOf:
+        - required: [anuncioId]
+          not:
+            required: [username]
+        - required: [username]
+          not:
+            required: [anuncioId]
     ChatEnviarMensagemRequest:
       type: object
       additionalProperties: false
@@ -8086,6 +8134,46 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PainelPerformanceAnuncio"
+    PainelAnuncianteRecomendacoes:
+      type: object
+      additionalProperties: false
+      required: [habilitado, itens]
+      properties:
+        habilitado:
+          type: boolean
+          description: Falso somente quando a configuracao canonica desabilitar o recurso.
+        itens:
+          type: array
+          maxItems: 6
+          items:
+            $ref: "#/components/schemas/PainelAnuncianteRecomendacao"
+    PainelAnuncianteRecomendacao:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - anuncioId
+        - anuncioSlug
+        - anuncioTitulo
+        - tipo
+        - titulo
+        - descricao
+        - acaoRotulo
+        - acaoHref
+      properties:
+        id: { type: string }
+        anuncioId: { type: string, format: uuid }
+        anuncioSlug: { type: string }
+        anuncioTitulo: { type: string }
+        tipo:
+          type: string
+          enum: [RENOVACAO, PERFIL, FOTOS, VIDEO, CARROSSEL, IMPULSIONAMENTO]
+        titulo: { type: string }
+        descricao: { type: string }
+        acaoRotulo: { type: string }
+        acaoHref:
+          type: string
+          pattern: ^/(?!/).+
     PainelPerformanceComparativo:
       type: object
       additionalProperties: false
@@ -11888,6 +11976,7 @@ components:
         storyId:
           type: [string, "null"]
           maxLength: 120
+          description: Contexto sanitizado para politica e auditoria do challenge; nao vincula o token geral ao Story.
         route:
           type: [string, "null"]
           maxLength: 255
@@ -12237,7 +12326,7 @@ components:
           enum: [AVAILABLE, IDADE_NAO_CONFIRMADA, UNAVAILABLE]
         previewUrl:
           type: [string, "null"]
-          description: Derivacao publica borrada para IMAGE restrita; nunca contem a URL do original privado.
+          description: Nulo em IDADE_NAO_CONFIRMADA e UNAVAILABLE. Em AVAILABLE pode conter somente preview compativel com a autorizacao vigente; nunca contem URL privada ou assinada.
         tipo:
           type: string
           enum: [IMAGE, VIDEO]
@@ -12263,6 +12352,7 @@ components:
           type: boolean
         avatarUrl:
           type: [string, "null"]
+          description: Derivada do primeiro item autorizado; obrigatoriamente nula enquanto o bundle estiver em IDADE_NAO_CONFIRMADA.
         visto:
           type: boolean
         itens:
@@ -12296,7 +12386,7 @@ components:
           enum: [LIBERADO, IDADE_NAO_CONFIRMADA, INDISPONIVEL]
         midiaUrl:
           type: [string, "null"]
-          description: Derivacao publica borrada antes da confirmacao etaria; original temporario protegido somente depois da confirmacao.
+          description: Obrigatoriamente nulo em IDADE_NAO_CONFIRMADA e INDISPONIVEL. Em LIBERADO aponta para a superficie publica permitida ou para o endpoint protegido, nunca para URL privada ou assinada.
         tipo:
           type: string
           enum: [IMAGE, VIDEO]
@@ -12485,6 +12575,7 @@ components:
         - pendenciaContatoPublico
         - seo
         - visualizacoes
+        - relacionados
       properties:
         id:
           type: string
@@ -12584,6 +12675,44 @@ components:
           $ref: "#/components/schemas/SeoRotaPublica"
         visualizacoes:
           $ref: "#/components/schemas/VisualizacoesCanonicas"
+        relacionados:
+          type: array
+          maxItems: 6
+          description: Anuncios pagos e vigentes da mesma categoria. Usa a cidade exata quando houver candidato local e outras cidades apenas como fallback integral.
+          items:
+            $ref: "#/components/schemas/AnuncioRelacionadoPublico"
+    AnuncioRelacionadoPublico:
+      type: object
+      additionalProperties: false
+      required: [id, slug, titulo, cidadeNome, estadoUf, midias]
+      description: Card publico compacto, sem contato, identificador do proprietario ou proveniencia financeira.
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+        titulo:
+          type: string
+        idade:
+          type: integer
+          minimum: 18
+          description: Omitida quando indisponivel ou protegida por beneficio vigente.
+        preco:
+          type: [number, "null"]
+          minimum: 0
+        cidadeNome:
+          type: string
+        estadoUf:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        midias:
+          type: array
+          maxItems: 1
+          description: Capa publica LIVRE ou preview seguro RESTRITA_18; nunca contem original privado ou URL assinada.
+          items:
+            $ref: "#/components/schemas/MidiaPublica"
     CategoriaAnuncioCodigo:
       type: string
       enum:
@@ -14011,7 +14140,7 @@ components:
         providencia: { type: string, minLength: 3, maxLength: 2000 }
     SuporteCategoria:
       type: string
-      enum: [ERRO_NO_SISTEMA, PROBLEMAS_COM_PAGAMENTO, ACESSO_CONTA, OUTROS]
+      enum: [ERRO_NO_SISTEMA, PROBLEMAS_COM_PAGAMENTO, ACESSO_CONTA, SUGESTAO, OUTROS]
     SuporteStatus:
       type: string
       enum: [ABERTO, EM_ATENDIMENTO, AGUARDANDO_USUARIO, RESOLVIDO, ENCERRADO]
@@ -14029,6 +14158,7 @@ components:
         - criadoEm
         - atualizadoEm
         - totalMensagens
+        - naoLidas
       properties:
         id: { type: string, format: uuid }
         protocolo: { type: string }
@@ -14040,10 +14170,11 @@ components:
         criadoEm: { type: string, format: date-time }
         atualizadoEm: { type: string, format: date-time }
         totalMensagens: { type: integer, minimum: 1 }
+        naoLidas: { type: integer, format: int64, minimum: 0 }
     SuporteMensagem:
       type: object
       additionalProperties: false
-      required: [id, origem, remetente, corpo, criadoEm, minha, repetida]
+      required: [id, origem, remetente, corpo, criadoEm, minha, repetida, naoLida]
       properties:
         id: { type: string, format: uuid }
         origem:
@@ -14054,6 +14185,13 @@ components:
         criadoEm: { type: string, format: date-time }
         minha: { type: boolean }
         repetida: { type: boolean }
+        naoLida: { type: boolean }
+    SuporteNaoLidas:
+      type: object
+      additionalProperties: false
+      required: [total]
+      properties:
+        total: { type: integer, format: int64, minimum: 0 }
     SuporteTicketDetalhe:
       type: object
       additionalProperties: false

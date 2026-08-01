@@ -156,6 +156,18 @@ export type PublicCatalogDetail = PublicCatalogCard & {
   contatoPublico?: string | null
   pendenciaContatoPublico?: string | null
   indexavelSeo: boolean
+  relacionados: PublicRelatedAd[]
+}
+
+export type PublicRelatedAd = {
+  id: string
+  slug: string
+  titulo: string
+  idade?: number | null
+  preco?: number | null
+  cidadeNome: string
+  estadoUf: string
+  midias: MidiaPublica[]
 }
 
 export type PublicHomeCategory = {
@@ -217,6 +229,18 @@ type RawCard = {
     indexavelFuturo?: boolean
   }
   visualizacoes?: unknown
+  relacionados?: RawRelatedAd[]
+}
+
+type RawRelatedAd = {
+  id: string
+  slug: string
+  titulo: string
+  idade?: number | null
+  preco?: number | null
+  cidadeNome: string
+  estadoUf: string
+  midias?: MidiaPublica[]
 }
 
 type RawList = {
@@ -422,6 +446,18 @@ export async function obterAnuncioPublicoPorSlug(slug: string) {
     contatoPublico: raw.contatoPublico ?? null,
     pendenciaContatoPublico: raw.pendenciaContatoPublico ?? null,
     indexavelSeo: raw.seo?.indexavelFuturo === true,
+    relacionados: Array.isArray(raw.relacionados)
+      ? raw.relacionados.map((item) => ({
+          id: item.id,
+          slug: item.slug,
+          titulo: item.titulo,
+          idade: item.idade ?? null,
+          preco: item.preco ?? null,
+          cidadeNome: item.cidadeNome,
+          estadoUf: item.estadoUf,
+          midias: Array.isArray(item.midias) ? item.midias : [],
+        }))
+      : [],
   } satisfies PublicCatalogDetail
 }
 

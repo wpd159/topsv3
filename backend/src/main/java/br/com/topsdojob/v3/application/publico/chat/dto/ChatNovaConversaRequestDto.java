@@ -1,4 +1,6 @@
 package br.com.topsdojob.v3.application.publico.chat.dto;
 
-public record ChatNovaConversaRequestDto(String username) {
+import java.util.UUID;
+
+public record ChatNovaConversaRequestDto(UUID anuncioId, String username) {
 }

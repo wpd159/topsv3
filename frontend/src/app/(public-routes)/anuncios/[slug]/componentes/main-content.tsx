@@ -8,9 +8,12 @@ import {
 } from '@heroicons/react/24/solid'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
+import type { PublicRelatedAd } from '@/lib/public-catalog-api'
+import { AnunciosRelacionados } from './anuncios-relacionados'
 
 interface MainContentProps {
   anuncio: any
+  relacionados: PublicRelatedAd[]
 }
 
 const LABEL_LOCAL: Record<string, string> = {
@@ -69,7 +72,7 @@ function dedupeStrings(values: unknown): string[] {
   return result
 }
 
-export default function MainContent({ anuncio }: MainContentProps) {
+export default function MainContent({ anuncio, relacionados }: MainContentProps) {
   const mapaContainerRef = useRef<HTMLDivElement | null>(null)
   const [mapaCarregado, setMapaCarregado] = useState(false)
   const localizacaoLabel = useMemo(() => {
@@ -262,6 +265,8 @@ export default function MainContent({ anuncio }: MainContentProps) {
           </div>
         )}
       </div>
+
+      <AnunciosRelacionados anuncios={relacionados} />
     </div>
   )
 }

@@ -89,7 +89,47 @@ class ComplianceVisitorRiskServiceTest {
     assertThat(result.bloqueado()).isTrue();
   }
 
+  @Test
+  void bloqueioTemporarioAtivoImpedeNovoAcessoDoMesmoVisitante() {
+    ComplianceAgeGateProperties properties = new ComplianceAgeGateProperties();
+    OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
+    String sessionHash = "7".repeat(64);
+    ComplianceVisitorRiskProfileEntity profile =
+        ComplianceVisitorRiskProfileEntity.criar(sessionHash, now.minusMinutes(5));
+    profile.registrarAvaliacao(
+        properties.getTempBlockScore(),
+        DecisaoRiscoVisitante.TEMP_BLOCK,
+        EscopoConteudoVisitante.STORY,
+        "RISCO_BLOQUEIO_TEMPORARIO",
+        "/stories",
+        UUID.randomUUID(),
+        now.plusMinutes(15),
+        null,
+        now.minusMinutes(1));
+    Fixture fixture = fixture(properties, profile);
+
+    var result = fixture.service.avaliar(
+        sessionHash,
+        NivelAcessoVisitante.REINFORCED,
+        EscopoConteudoVisitante.STORY,
+        "/stories",
+        UUID.randomUUID(),
+        "8".repeat(64),
+        false,
+        now);
+
+    assertThat(result.decisao()).isEqualTo(DecisaoRiscoVisitante.TEMP_BLOCK);
+    assertThat(result.nivelEfetivo()).isEqualTo(NivelAcessoVisitante.NONE);
+    assertThat(result.bloqueado()).isTrue();
+  }
+
   private Fixture fixture(ComplianceAgeGateProperties properties) {
+    return fixture(properties, null);
+  }
+
+  private Fixture fixture(
+      ComplianceAgeGateProperties properties,
+      ComplianceVisitorRiskProfileEntity existingProfile) {
     ComplianceVisitorChallengeRepository challengeRepository =
         mock(ComplianceVisitorChallengeRepository.class);
     ComplianceVisitorRiskProfileRepository profileRepository =
@@ -98,7 +138,8 @@ class ComplianceVisitorRiskServiceTest {
         mock(ComplianceVisitorTokenRepository.class);
     EventoVerificacaoEtariaRepository eventRepository =
         mock(EventoVerificacaoEtariaRepository.class);
-    when(profileRepository.findBySessionHashForUpdate(any())).thenReturn(Optional.empty());
+    when(profileRepository.findBySessionHashForUpdate(any()))
+        .thenReturn(Optional.ofNullable(existingProfile));
     when(profileRepository.save(any(ComplianceVisitorRiskProfileEntity.class)))
         .thenAnswer(invocation -> invocation.getArgument(0));
     when(eventRepository.findTop200BySessionHashAndCriadoEmAfterOrderByCriadoEmAsc(

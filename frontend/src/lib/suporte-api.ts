@@ -20,6 +20,7 @@ export type TicketResumo = {
   criadoEm: string
   atualizadoEm: string
   totalMensagens: number
+  naoLidas: number
 }
 
 export type TicketMensagem = {
@@ -30,6 +31,7 @@ export type TicketMensagem = {
   criadoEm: string
   minha: boolean
   repetida: boolean
+  naoLida: boolean
 }
 
 export type TicketDetalhe = {
@@ -145,6 +147,10 @@ export function encerrarTicket(ticketId: string) {
     `/suporte/tickets/${encodeURIComponent(ticketId)}/encerrar`,
     { method: 'POST' },
   )
+}
+
+export function fetchSuporteNaoLidas(signal?: AbortSignal) {
+  return request<{ total: number }>('/suporte/tickets/nao-lidas', { signal })
 }
 
 export function suporteError(error: unknown): ApiContractError {

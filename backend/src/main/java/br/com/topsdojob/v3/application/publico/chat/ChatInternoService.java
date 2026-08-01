@@ -7,14 +7,19 @@ import br.com.topsdojob.v3.application.publico.chat.dto.ChatConversaDetalheDto;
 import br.com.topsdojob.v3.application.publico.chat.dto.ChatConversaDto;
 import br.com.topsdojob.v3.application.publico.chat.dto.ChatMensagemDto;
 import br.com.topsdojob.v3.application.publico.chat.dto.ChatNaoLidasDto;
+import br.com.topsdojob.v3.application.publico.chat.dto.ChatNovaConversaRequestDto;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.chat.ChatConversaEntity;
 import br.com.topsdojob.v3.persistence.entity.chat.ChatMensagemEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatConversaRepository;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatMensagemRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.text.Normalizer;
@@ -46,6 +51,7 @@ public class ChatInternoService {
 
     private final MeusAnunciosConsultaService usuarioAutenticadoService;
     private final UsuarioRepository usuarioRepository;
+    private final AnuncioRepository anuncioRepository;
     private final ChatConversaRepository conversaRepository;
     private final ChatMensagemRepository mensagemRepository;
     private final PublicAuthRateLimiter rateLimiter;
@@ -53,11 +59,13 @@ public class ChatInternoService {
     public ChatInternoService(
             MeusAnunciosConsultaService usuarioAutenticadoService,
             UsuarioRepository usuarioRepository,
+            AnuncioRepository anuncioRepository,
             ChatConversaRepository conversaRepository,
             ChatMensagemRepository mensagemRepository,
             PublicAuthRateLimiter rateLimiter) {
         this.usuarioAutenticadoService = usuarioAutenticadoService;
         this.usuarioRepository = usuarioRepository;
+        this.anuncioRepository = anuncioRepository;
         this.conversaRepository = conversaRepository;
         this.mensagemRepository = mensagemRepository;
         this.rateLimiter = rateLimiter;
@@ -73,11 +81,11 @@ public class ChatInternoService {
 
     @Transactional
     public ChatConversaDto iniciar(
-            String username,
+            ChatNovaConversaRequestDto request,
             Authentication authentication,
             String requestId) {
         UsuarioEntity ator = usuario(authentication);
-        UsuarioEntity participante = participanteAtivo(username);
+        UsuarioEntity participante = participante(request);
         if (ator.getId().equals(participante.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "conversa consigo mesmo nao permitida");
         }
@@ -191,6 +199,33 @@ public class ChatInternoService {
         return usuarioAutenticadoService.usuarioAutenticado(authentication);
     }
 
+    private UsuarioEntity participante(ChatNovaConversaRequestDto request) {
+        UUID anuncioId = request == null ? null : request.anuncioId();
+        String username = request == null ? null : request.username();
+        boolean possuiAnuncio = anuncioId != null;
+        boolean possuiUsername = username != null && !username.isBlank();
+        if (possuiAnuncio == possuiUsername) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "informe exatamente um anuncioId ou username");
+        }
+        if (!possuiAnuncio) {
+            return participanteAtivo(username);
+        }
+
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        if (anuncio.getRemovidoEm() != null
+                || anuncio.getStatus() != StatusAnuncio.PUBLICADO
+                || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.APROVADO
+                || anuncio.getUsuarioId() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio indisponivel para conversa");
+        }
+        UsuarioEntity proprietario = usuarioRepository.findById(anuncio.getUsuarioId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "proprietario indisponivel"));
+        return exigirParticipanteAtivo(proprietario);
+    }
+
     private UsuarioEntity participanteAtivo(String username) {
         String seguro = username == null ? "" : username.trim();
         if (seguro.isEmpty() || seguro.length() > 120) {
@@ -198,10 +233,14 @@ public class ChatInternoService {
         }
         UsuarioEntity participante = usuarioRepository.findByNomeIgnoreCase(seguro)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado"));
+        return exigirParticipanteAtivo(participante);
+    }
+
+    private UsuarioEntity exigirParticipanteAtivo(UsuarioEntity participante) {
         if (participante.getStatus() != StatusUsuario.ATIVO
                 || participante.getTipoConta() != TipoContaUsuario.ANUNCIANTE
                 || participante.getDesativadoEm() != null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "usuario nao encontrado");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario indisponivel");
         }
         return participante;
     }

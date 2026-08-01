@@ -9,6 +9,7 @@ import DenunciaModal from './denuncia-modal'
 import { useWhatsAppSafety } from '@/components/site/whatsapp-safety-provider'
 import { ApiContractError } from '@/lib/api-contract'
 import { VisitorVerificationModal } from '@/components/compliance/visitor-verification-modal'
+import { useAuth } from '@/context/AuthContext'
 import {
   novaChaveMetricaPublica,
   registrarCliqueWhatsappPublico,
@@ -50,9 +51,11 @@ export default function Sidebar({ anuncio }: SidebarProps) {
   const [modalAberto, setModalAberto] = useState(false)
   const [whatsappVerificationOpen, setWhatsappVerificationOpen] = useState(false)
   const [whatsappPending, setWhatsappPending] = useState(false)
+  const [chatPending, setChatPending] = useState(false)
   const whatsappRequestKey = useRef<string | null>(null)
   const whatsappInFlight = useRef(false)
   const router = useRouter()
+  const { usuario } = useAuth()
   const { openWhatsAppWarning } = useWhatsAppSafety()
 
   const localizacaoLabel = useMemo(() => {
@@ -99,9 +102,23 @@ export default function Sidebar({ anuncio }: SidebarProps) {
     void requestWhatsApp()
   }
 
+  const handleChatClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (chatPending) return
+    setChatPending(true)
+    router.push(`/chat?anuncio=${encodeURIComponent(String(anuncio.id))}`)
+  }
+
   const usernameLabel = clean(anuncio.username)
     ? `@${clean(anuncio.username).replace(/^@+/, '')}`
     : '@usuario'
+  const anuncioProprio = Boolean(
+    usuario?.username
+      && anuncio.username
+      && usuario.username.replace(/^@+/, '').toLowerCase()
+        === anuncio.username.replace(/^@+/, '').toLowerCase()
+  )
   const categoria = clean(anuncio.tipo).toLowerCase().replace(/_/g, ' ').replace(/^\w/, (char) => char.toUpperCase())
   const anunciaDesde = useMemo(() => {
     if (!anuncio.anunciaDesde) return null
@@ -143,14 +160,17 @@ export default function Sidebar({ anuncio }: SidebarProps) {
             >
               <span className="inline-flex items-center"><WhatsAppIcon className="mr-2 h-5 w-5" /> Conversar no WhatsApp</span>
             </Button>
-            <Button
-              type="button"
-              disabled={!anuncio.username}
-              onClick={() => anuncio.username && router.push(`/chat?usuario=${encodeURIComponent(anuncio.username)}`)}
-              className="flex h-12 w-full items-center justify-center bg-[#FC1EAD] font-semibold text-white shadow-[0_0_18px_rgba(252,30,173,0.22)] hover:bg-[#e01a9a]"
-            >
-              <ChatBubbleLeftIcon className="mr-2 h-5 w-5" /> Conversar na plataforma
-            </Button>
+            {!anuncioProprio ? (
+              <Button
+                type="button"
+                disabled={chatPending}
+                onClick={handleChatClick}
+                className="flex h-12 w-full items-center justify-center bg-[#FC1EAD] font-semibold text-white shadow-[0_0_18px_rgba(252,30,173,0.22)] hover:bg-[#e01a9a]"
+              >
+                <ChatBubbleLeftIcon className="mr-2 h-5 w-5" />
+                {chatPending ? 'Abrindo conversa...' : 'Conversar na plataforma'}
+              </Button>
+            ) : null}
           </div>
 
           <button className="mx-auto mt-3 flex items-center gap-1 text-xs text-gray-400 transition hover:text-gray-600" onClick={() => setModalAberto(true)}>

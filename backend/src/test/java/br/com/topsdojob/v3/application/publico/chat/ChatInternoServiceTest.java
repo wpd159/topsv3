@@ -14,13 +14,18 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.auth.PublicAuthRateLimiter;
+import br.com.topsdojob.v3.application.publico.chat.dto.ChatNovaConversaRequestDto;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.chat.ChatConversaEntity;
 import br.com.topsdojob.v3.persistence.entity.chat.ChatMensagemEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatConversaRepository;
 import br.com.topsdojob.v3.persistence.repository.chat.ChatMensagemRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoContaUsuario;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -40,11 +45,13 @@ class ChatInternoServiceTest {
     private static final UUID USUARIO_B = UUID.fromString("20000000-0000-4000-8000-000000000002");
     private static final UUID USUARIO_C = UUID.fromString("30000000-0000-4000-8000-000000000003");
     private static final UUID CONVERSA_ID = UUID.fromString("40000000-0000-4000-8000-000000000004");
+    private static final UUID ANUNCIO_ID = UUID.fromString("60000000-0000-4000-8000-000000000006");
     private static final UUID MENSAGEM_ID = UUID.fromString("50000000-0000-4000-8000-000000000005");
     private static final String IDEMPOTENCY_KEY = "chat-test-0001";
 
     private MeusAnunciosConsultaService autenticacaoService;
     private UsuarioRepository usuarioRepository;
+    private AnuncioRepository anuncioRepository;
     private ChatConversaRepository conversaRepository;
     private ChatMensagemRepository mensagemRepository;
     private PublicAuthRateLimiter rateLimiter;
@@ -57,6 +64,7 @@ class ChatInternoServiceTest {
     void setUp() {
         autenticacaoService = mock(MeusAnunciosConsultaService.class);
         usuarioRepository = mock(UsuarioRepository.class);
+        anuncioRepository = mock(AnuncioRepository.class);
         conversaRepository = mock(ChatConversaRepository.class);
         mensagemRepository = mock(ChatMensagemRepository.class);
         rateLimiter = mock(PublicAuthRateLimiter.class);
@@ -67,6 +75,7 @@ class ChatInternoServiceTest {
         service = new ChatInternoService(
                 autenticacaoService,
                 usuarioRepository,
+                anuncioRepository,
                 conversaRepository,
                 mensagemRepository,
                 rateLimiter);
@@ -82,8 +91,8 @@ class ChatInternoServiceTest {
                 .thenReturn(Optional.of(conversa));
         when(conversaRepository.listarResumos(USUARIO_A)).thenReturn(List.<Object[]>of(resumo()));
 
-        var primeira = service.iniciar("qa-b", authentication, "request-chat-0001");
-        var repetida = service.iniciar("QA-B", authentication, "request-chat-0002");
+        var primeira = service.iniciar(new ChatNovaConversaRequestDto(null, "qa-b"), authentication, "request-chat-0001");
+        var repetida = service.iniciar(new ChatNovaConversaRequestDto(null, "QA-B"), authentication, "request-chat-0002");
 
         assertThat(primeira.id()).isEqualTo(CONVERSA_ID);
         assertThat(repetida.id()).isEqualTo(CONVERSA_ID);
@@ -96,13 +105,97 @@ class ChatInternoServiceTest {
     }
 
     @Test
+    void exigeExatamenteUmIdentificadorDeParticipante() {
+        assertThatThrownBy(() -> service.iniciar(
+                new ChatNovaConversaRequestDto(null, null),
+                authentication,
+                "request-chat-identificador-001"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        assertThatThrownBy(() -> service.iniciar(
+                new ChatNovaConversaRequestDto(ANUNCIO_ID, "qa-b"),
+                authentication,
+                "request-chat-identificador-002"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY));
+
+        verify(conversaRepository, never()).inserirSeAusente(
+                any(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    void insercaoConcorrenteReutilizaConversaCriadaPorOutraAba() {
+        AnuncioEntity anuncio = mock(AnuncioEntity.class);
+        when(anuncio.getStatus()).thenReturn(StatusAnuncio.PUBLICADO);
+        when(anuncio.getStatusModeracao()).thenReturn(StatusModeracaoAnuncio.APROVADO);
+        when(anuncio.getUsuarioId()).thenReturn(USUARIO_B);
+        when(anuncioRepository.findByIdForModeration(ANUNCIO_ID)).thenReturn(Optional.of(anuncio));
+        when(usuarioRepository.findById(USUARIO_B)).thenReturn(Optional.of(participante));
+        when(conversaRepository.inserirSeAusente(any(), eq(USUARIO_A), eq(USUARIO_B), anyString(), any()))
+                .thenReturn(0);
+        ChatConversaEntity conversaConcorrente = conversa(USUARIO_A, USUARIO_B);
+        when(conversaRepository.findByParticipanteAIdAndParticipanteBId(USUARIO_A, USUARIO_B))
+                .thenReturn(Optional.of(conversaConcorrente));
+        when(conversaRepository.listarResumos(USUARIO_A)).thenReturn(List.<Object[]>of(resumo()));
+
+        var resposta = service.iniciar(
+                new ChatNovaConversaRequestDto(ANUNCIO_ID, null),
+                authentication,
+                "request-chat-duas-abas-001");
+
+        assertThat(resposta.id()).isEqualTo(CONVERSA_ID);
+    }
+
+    @Test
     void impedeConversaComOProprioUsuario() {
         when(usuarioRepository.findByNomeIgnoreCase("qa-a")).thenReturn(Optional.of(ator));
 
         assertThatThrownBy(() -> service.iniciar(
-                "qa-a",
+                new ChatNovaConversaRequestDto(null, "qa-a"),
                 authentication,
                 "request-chat-0003"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+        verify(conversaRepository, never()).inserirSeAusente(
+                any(), any(), any(), anyString(), any());
+    }
+
+    @Test
+    void anuncioCanonicoDerivaProprietarioEReutilizaConversa() {
+        AnuncioEntity anuncio = mock(AnuncioEntity.class);
+        when(anuncio.getStatus()).thenReturn(StatusAnuncio.PUBLICADO);
+        when(anuncio.getStatusModeracao()).thenReturn(StatusModeracaoAnuncio.APROVADO);
+        when(anuncio.getUsuarioId()).thenReturn(USUARIO_B);
+        when(anuncioRepository.findByIdForModeration(ANUNCIO_ID)).thenReturn(Optional.of(anuncio));
+        when(usuarioRepository.findById(USUARIO_B)).thenReturn(Optional.of(participante));
+        ChatConversaEntity conversaExistente = conversa(USUARIO_A, USUARIO_B);
+        when(conversaRepository.findByParticipanteAIdAndParticipanteBId(USUARIO_A, USUARIO_B))
+                .thenReturn(Optional.of(conversaExistente));
+        when(conversaRepository.listarResumos(USUARIO_A)).thenReturn(List.<Object[]>of(resumo()));
+
+        var resposta = service.iniciar(
+                new ChatNovaConversaRequestDto(ANUNCIO_ID, null),
+                authentication,
+                "request-chat-ad-0001");
+
+        assertThat(resposta.id()).isEqualTo(CONVERSA_ID);
+        verify(conversaRepository).inserirSeAusente(
+                any(), eq(USUARIO_A), eq(USUARIO_B), anyString(), any());
+    }
+
+    @Test
+    void anuncioNaoPublicavelNaoCriaConversa() {
+        AnuncioEntity anuncio = mock(AnuncioEntity.class);
+        when(anuncio.getStatus()).thenReturn(StatusAnuncio.BLOQUEADO);
+        when(anuncio.getStatusModeracao()).thenReturn(StatusModeracaoAnuncio.APROVADO);
+        when(anuncio.getUsuarioId()).thenReturn(USUARIO_B);
+        when(anuncioRepository.findByIdForModeration(ANUNCIO_ID)).thenReturn(Optional.of(anuncio));
+
+        assertThatThrownBy(() -> service.iniciar(
+                new ChatNovaConversaRequestDto(ANUNCIO_ID, null),
+                authentication,
+                "request-chat-ad-0002"))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
         verify(conversaRepository, never()).inserirSeAusente(

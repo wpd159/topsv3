@@ -144,7 +144,7 @@ public class StoryPublicoService {
         }
         MidiaPublicaUrlService.ResultadoUrlPublica urlPublica = idadeConfirmada
                 ? urlService.resolver(vinculo, arquivo)
-                : urlService.resolverPreviewRestrita(arquivo);
+                : new MidiaPublicaUrlService.ResultadoUrlPublica(null, null);
         return new StoryPublicoDto(
                 story.getOrdem(),
                 enumName(vinculo.getTipo()),

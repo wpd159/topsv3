@@ -151,11 +151,13 @@ class StoryFeedPublicoServiceTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(adminBundle.itens()).hasSize(1);
+        assertThat(adminBundle.avatarUrl()).isNull();
         assertThat(adminBundle.itens().get(0).storyId()).isEqualTo("administrativo:" + adminUnica.vinculo().getId());
         assertThat(adminBundle.itens().get(0).tipo()).isEqualTo("VIDEO");
+        assertThat(paidBundle.avatarUrl()).isNull();
         assertThat(paidBundle.itens().get(0).storyId()).isEqualTo(storyPago.getId().toString());
         assertThat(paidBundle.itens().get(0).previewState()).isEqualTo("IDADE_NAO_CONFIRMADA");
-        assertThat(paidBundle.itens().get(0).previewUrl()).contains("restritas-borradas");
+        assertThat(paidBundle.itens().get(0).previewUrl()).isNull();
         verify(premiumMapper).flagsPorAnuncios(List.of(anuncioAdmin));
         verify(elegibilidadeService).listarPorAnuncios(java.util.Set.of(anuncioAdminId));
 
@@ -163,6 +165,57 @@ class StoryFeedPublicoServiceTest {
         assertThat(viewer.viewerState()).isEqualTo("IDADE_NAO_CONFIRMADA");
         assertThat(viewer.midiaUrl()).isNull();
         assertThat(adminUnica.vinculo().getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.LIVRE);
+        verify(urlService, never()).resolverPreviewRestrita(any());
+        verify(urlService, never()).resolver(any(), any());
+    }
+
+    @Test
+    void autorizacaoValidaMantemPreviewSeparadaELiberaMidiaRestritaSomentePeloEndpointProtegido() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY)).thenReturn(true);
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        UUID arquivoId = UUID.randomUUID();
+        AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "story-autorizado");
+        StoryAnuncioEntity story = story(0);
+        AnuncioMidiaEntity vinculo = vinculoStory(story.getAnuncioMidiaId(), anuncioId, arquivoId);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId, "image/jpeg");
+        UsuarioEntity usuario = entity(UsuarioEntity.class);
+        set(usuario, "id", usuarioId);
+        set(usuario, "nome", "Perfil de demonstracao");
+
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of(story));
+        when(midiaRepository.findByIdIn(any())).thenReturn(List.of(vinculo));
+        when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
+        when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
+        when(usuarioRepository.findAllById(any())).thenReturn(List.of(usuario));
+        when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(story));
+        when(midiaRepository.findById(vinculo.getId())).thenReturn(Optional.of(vinculo));
+        when(arquivoRepository.findById(arquivoId)).thenReturn(Optional.of(arquivo));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(urlService.resolver(vinculo, arquivo)).thenReturn(new ResultadoUrlPublica(
+                "/api/public/compliance/visitor/media/" + vinculo.getId(),
+                null));
+
+        var feed = service.listar(request);
+        var viewer = service.buscar(story.getId().toString(), request);
+
+        assertThat(feed).singleElement().satisfies(bundle -> {
+                assertThat(bundle.avatarUrl()).contains("restritas-borradas");
+                assertThat(bundle.itens()).singleElement().satisfies(item -> {
+                    assertThat(item.previewState()).isEqualTo("AVAILABLE");
+                    assertThat(item.previewUrl()).contains("restritas-borradas");
+                });
+        });
+        assertThat(viewer.viewerState()).isEqualTo("LIBERADO");
+        assertThat(viewer.midiaUrl())
+                .isEqualTo("/api/public/compliance/visitor/media/" + vinculo.getId())
+                .doesNotContain("X-Amz-");
     }
 
     @Test

@@ -6,9 +6,11 @@ import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMid
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioDetalhePublicoDto;
+import br.com.topsdojob.v3.application.publico.dto.AnuncioRelacionadoPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.mapper.AnuncioPublicoMapper;
+import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaSeguraPolicy;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
@@ -32,6 +34,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +51,7 @@ public class AnuncioPublicoConsultaService {
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final AnuncioPublicoMapper anuncioMapper;
     private final MidiaPublicaMapper midiaMapper;
+    private final MidiaPublicaSeguraPolicy midiaSeguraPolicy;
     private final SeoPublicoConsultaService seoService;
     private final ComplianceVisitorAccessService visitorAccessService;
     private final PremiumPublicoMapper premiumMapper;
@@ -64,6 +70,7 @@ public class AnuncioPublicoConsultaService {
             ArquivoMidiaRepository arquivoMidiaRepository,
             AnuncioPublicoMapper anuncioMapper,
             MidiaPublicaMapper midiaMapper,
+            MidiaPublicaSeguraPolicy midiaSeguraPolicy,
             SeoPublicoConsultaService seoService,
             ComplianceVisitorAccessService visitorAccessService,
             PremiumPublicoMapper premiumMapper,
@@ -80,6 +87,7 @@ public class AnuncioPublicoConsultaService {
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.anuncioMapper = anuncioMapper;
         this.midiaMapper = midiaMapper;
+        this.midiaSeguraPolicy = midiaSeguraPolicy;
         this.seoService = seoService;
         this.visitorAccessService = visitorAccessService;
         this.premiumMapper = premiumMapper;
@@ -115,7 +123,11 @@ public class AnuncioPublicoConsultaService {
                         StatusModeracaoAnuncio.APROVADO)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
-        LocalizacaoPublicaDto localizacao = localizacao(anuncio.getId());
+        AnuncioLocalizacaoEntity localizacaoEntity = localizacaoRepository.findByAnuncioId(anuncio.getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "localizacao publica nao encontrada"));
+        LocalizacaoPublicaDto localizacao = toLocalizacao(localizacaoEntity);
         PremiumPublicoFlagsDto premium = premiumMapper.flags(anuncio);
         List<MidiaPublicaDto> midias = midias(anuncio.getId(), idadeConfirmada, premium);
         List<MidiaPublicaDto> midiasSeo = idadeConfirmada
@@ -141,7 +153,95 @@ public class AnuncioPublicoConsultaService {
                 idadeAnunciante.username(),
                 idadeAnunciante.idade(),
                 idadeAnunciante.idadeOculta(),
-                visualizacaoService.calcular(anuncio.getId()));
+                visualizacaoService.calcular(anuncio.getId()),
+                relacionados(anuncio, localizacaoEntity));
+    }
+
+    private List<AnuncioRelacionadoPublicoDto> relacionados(
+            AnuncioEntity anuncioAtual,
+            AnuncioLocalizacaoEntity localizacaoAtual) {
+        if (anuncioAtual.getCategoria() == null || localizacaoAtual.getCidadeId() == null) {
+            return List.of();
+        }
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        var limite = PageRequest.of(0, 6);
+        List<AnuncioEntity> candidatos = anuncioRepository.findRelacionadosPagos(
+                anuncioAtual.getId(),
+                anuncioAtual.getCategoria(),
+                localizacaoAtual.getCidadeId(),
+                true,
+                agora,
+                limite);
+        if (candidatos.isEmpty()) {
+            candidatos = anuncioRepository.findRelacionadosPagos(
+                    anuncioAtual.getId(),
+                    anuncioAtual.getCategoria(),
+                    localizacaoAtual.getCidadeId(),
+                    false,
+                    agora,
+                    limite);
+        }
+        return mapearRelacionados(candidatos);
+    }
+
+    private List<AnuncioRelacionadoPublicoDto> mapearRelacionados(List<AnuncioEntity> candidatos) {
+        if (candidatos == null || candidatos.isEmpty()) {
+            return List.of();
+        }
+        List<UUID> anuncioIds = candidatos.stream().map(AnuncioEntity::getId).toList();
+        Map<UUID, AnuncioLocalizacaoEntity> localizacoes = localizacaoRepository.findByAnuncioIdIn(anuncioIds)
+                .stream()
+                .collect(Collectors.toMap(
+                        AnuncioLocalizacaoEntity::getAnuncioId,
+                        Function.identity(),
+                        (primeiro, ignorado) -> primeiro));
+        Map<UUID, br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity> cidades = cidadeRepository
+                .findAllById(localizacoes.values().stream()
+                        .map(AnuncioLocalizacaoEntity::getCidadeId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity::getId,
+                        Function.identity()));
+        Map<UUID, br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity> estados = estadoRepository
+                .findAllById(cidades.values().stream()
+                        .map(br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity::getEstadoId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity::getId,
+                        Function.identity()));
+        Map<UUID, PremiumPublicoFlagsDto> premium = premiumMapper.flagsPorAnuncios(candidatos);
+        Map<UUID, List<MidiaPublicaDto>> midias = midiasPorAnuncios(anuncioIds, premium);
+        Map<UUID, IdadeAnunciantePublicaService.Resultado> idades =
+                idadeAnuncianteService.resolverPorAnuncios(candidatos, premium);
+
+        return candidatos.stream()
+                .map(anuncio -> {
+                    AnuncioLocalizacaoEntity localizacao = localizacoes.get(anuncio.getId());
+                    var cidade = localizacao == null ? null : cidades.get(localizacao.getCidadeId());
+                    var estado = cidade == null ? null : estados.get(cidade.getEstadoId());
+                    if (cidade == null || estado == null) {
+                        return null;
+                    }
+                    var idade = idades.get(anuncio.getId());
+                    return new AnuncioRelacionadoPublicoDto(
+                            anuncio.getId(),
+                            anuncio.getSlug(),
+                            anuncio.getTitulo(),
+                            idade == null ? null : idade.idade(),
+                            anuncio.getPreco(),
+                            cidade.getNome(),
+                            estado.getUf().trim(),
+                            midiaSeguraPolicy.paraCard(
+                                    midias.getOrDefault(anuncio.getId(), List.of())));
+                })
+                .filter(java.util.Objects::nonNull)
+                .toList();
     }
 
     LocalizacaoPublicaDto localizacao(UUID anuncioId) {

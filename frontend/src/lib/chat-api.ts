@@ -104,6 +104,14 @@ export function iniciarChatConversa(username: string) {
   })
 }
 
+export function iniciarChatConversaPorAnuncio(anuncioId: string | number) {
+  return chatRequest<ChatConversa>('/chat/conversas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ anuncioId: String(anuncioId) }),
+  })
+}
+
 export function fetchChatConversa(conversaId: string, signal?: AbortSignal) {
   return chatRequest<ChatConversaDetalhe>(
     `/chat/conversas/${encodeURIComponent(conversaId)}/mensagens`,

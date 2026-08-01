@@ -27,7 +27,10 @@ public class SuporteTicketJdbcRepository {
               t.criado_em,
               t.atualizado_em,
               t.encerrado_em,
-              count(m.id) FILTER (WHERE NOT m.privado_staff) AS total_mensagens
+              count(m.id) FILTER (WHERE NOT m.privado_staff) AS total_mensagens,
+              count(m.id) FILTER (
+                WHERE NOT m.privado_staff AND m.origem = 'STAFF' AND m.nao_lida_usuario
+              ) AS nao_lidas
             FROM ticket_suporte t
             LEFT JOIN mensagem_suporte m ON m.ticket_id = t.id
             """;
@@ -76,17 +79,18 @@ public class SuporteTicketJdbcRepository {
             String origem,
             String corpo,
             boolean privadoStaff,
+            boolean naoLidaUsuario,
             String idempotencyKey,
             String requestId,
             OffsetDateTime agora) {
         return jdbc.update("""
                 INSERT INTO mensagem_suporte (
                   id, ticket_id, autor_usuario_id, origem, corpo_resumido,
-                  privado_staff, idempotency_key, request_id, criado_em
+                  privado_staff, nao_lida_usuario, idempotency_key, request_id, criado_em
                 )
                 VALUES (
                   :id, :ticketId, :autorId, :origem, :corpo,
-                  :privadoStaff, :idempotencyKey, :requestId, :agora
+                  :privadoStaff, :naoLidaUsuario, :idempotencyKey, :requestId, :agora
                 )
                 ON CONFLICT (autor_usuario_id, idempotency_key)
                 WHERE autor_usuario_id IS NOT NULL AND idempotency_key IS NOT NULL
@@ -98,6 +102,7 @@ public class SuporteTicketJdbcRepository {
                 "origem", origem,
                 "corpo", corpo,
                 "privadoStaff", privadoStaff,
+                "naoLidaUsuario", naoLidaUsuario,
                 "idempotencyKey", idempotencyKey,
                 "requestId", requestId,
                 "agora", agora));
@@ -125,7 +130,12 @@ public class SuporteTicketJdbcRepository {
                   t.id, t.assunto, t.categoria, t.status, t.prioridade,
                   t.usuario_id, t.responsavel_usuario_id, t.criado_em,
                   t.atualizado_em, t.encerrado_em,
-                  (SELECT count(*) FROM mensagem_suporte m WHERE m.ticket_id = t.id) AS total_mensagens
+                  (SELECT count(*) FROM mensagem_suporte m WHERE m.ticket_id = t.id) AS total_mensagens,
+                  (SELECT count(*) FROM mensagem_suporte m
+                   WHERE m.ticket_id = t.id
+                     AND NOT m.privado_staff
+                     AND m.origem = 'STAFF'
+                     AND m.nao_lida_usuario) AS nao_lidas
                 FROM ticket_suporte t
                 WHERE t.id = :id
                 FOR UPDATE
@@ -189,6 +199,9 @@ public class SuporteTicketJdbcRepository {
                   t.usuario_id, t.responsavel_usuario_id, t.criado_em,
                   t.atualizado_em, t.encerrado_em,
                   count(m.id) AS total_mensagens,
+                  count(m.id) FILTER (
+                    WHERE NOT m.privado_staff AND m.origem = 'STAFF' AND m.nao_lida_usuario
+                  ) AS nao_lidas,
                   u.nome AS usuario_nome,
                   u.email_normalizado AS usuario_email,
                   (
@@ -251,6 +264,9 @@ public class SuporteTicketJdbcRepository {
                   t.usuario_id, t.responsavel_usuario_id, t.criado_em,
                   t.atualizado_em, t.encerrado_em,
                   count(m.id) AS total_mensagens,
+                  count(m.id) FILTER (
+                    WHERE NOT m.privado_staff AND m.origem = 'STAFF' AND m.nao_lida_usuario
+                  ) AS nao_lidas,
                   u.nome AS usuario_nome,
                   u.email_normalizado AS usuario_email,
                   (
@@ -273,7 +289,7 @@ public class SuporteTicketJdbcRepository {
         return jdbc.query("""
                 SELECT
                   m.id, m.ticket_id, m.autor_usuario_id, m.origem,
-                  m.corpo_resumido, m.privado_staff, m.criado_em,
+                  m.corpo_resumido, m.privado_staff, m.nao_lida_usuario, m.criado_em,
                   coalesce(u.nome, CASE WHEN m.origem = 'STAFF' THEN 'Equipe' ELSE 'Sistema' END) AS remetente
                 FROM mensagem_suporte m
                 LEFT JOIN usuario u ON u.id = m.autor_usuario_id
@@ -288,6 +304,7 @@ public class SuporteTicketJdbcRepository {
                         rs.getString("origem"),
                         rs.getString("corpo_resumido"),
                         rs.getBoolean("privado_staff"),
+                        rs.getBoolean("nao_lida_usuario"),
                         rs.getObject("criado_em", OffsetDateTime.class),
                         rs.getString("remetente")));
     }
@@ -296,7 +313,7 @@ public class SuporteTicketJdbcRepository {
         List<MensagemRow> rows = jdbc.query("""
                 SELECT
                   m.id, m.ticket_id, m.autor_usuario_id, m.origem,
-                  m.corpo_resumido, m.privado_staff, m.criado_em,
+                  m.corpo_resumido, m.privado_staff, m.nao_lida_usuario, m.criado_em,
                   coalesce(u.nome, CASE WHEN m.origem = 'STAFF' THEN 'Equipe' ELSE 'Sistema' END) AS remetente
                 FROM mensagem_suporte m
                 LEFT JOIN usuario u ON u.id = m.autor_usuario_id
@@ -310,6 +327,7 @@ public class SuporteTicketJdbcRepository {
                         rs.getString("origem"),
                         rs.getString("corpo_resumido"),
                         rs.getBoolean("privado_staff"),
+                        rs.getBoolean("nao_lida_usuario"),
                         rs.getObject("criado_em", OffsetDateTime.class),
                         rs.getString("remetente")));
         return rows.stream().findFirst();
@@ -344,6 +362,34 @@ public class SuporteTicketJdbcRepository {
                 SET atualizado_em = :agora, versao = versao + 1
                 WHERE id = :id
                 """, Map.of("id", id, "agora", agora));
+    }
+
+    public long contarNaoLidasDoUsuario(UUID usuarioId) {
+        Long total = jdbc.queryForObject("""
+                SELECT count(*)
+                FROM mensagem_suporte m
+                JOIN ticket_suporte t ON t.id = m.ticket_id
+                WHERE t.usuario_id = :usuarioId
+                  AND m.origem = 'STAFF'
+                  AND NOT m.privado_staff
+                  AND m.nao_lida_usuario
+                """, Map.of("usuarioId", usuarioId), Long.class);
+        return total == null ? 0 : total;
+    }
+
+    public void marcarRespostasComoLidas(UUID ticketId, UUID usuarioId) {
+        jdbc.update("""
+                UPDATE mensagem_suporte m
+                SET nao_lida_usuario = false
+                WHERE m.ticket_id = :ticketId
+                  AND m.origem = 'STAFF'
+                  AND NOT m.privado_staff
+                  AND m.nao_lida_usuario
+                  AND EXISTS (
+                    SELECT 1 FROM ticket_suporte t
+                    WHERE t.id = m.ticket_id AND t.usuario_id = :usuarioId
+                  )
+                """, Map.of("ticketId", ticketId, "usuarioId", usuarioId));
     }
 
     public Indicadores indicadores() {
@@ -393,7 +439,8 @@ public class SuporteTicketJdbcRepository {
                 rs.getObject("criado_em", OffsetDateTime.class),
                 rs.getObject("atualizado_em", OffsetDateTime.class),
                 rs.getObject("encerrado_em", OffsetDateTime.class),
-                rs.getLong("total_mensagens"));
+                rs.getLong("total_mensagens"),
+                rs.getLong("nao_lidas"));
     }
 
     private AdminTicketRow mapearAdmin(ResultSet rs, int rowNum) throws SQLException {
@@ -416,7 +463,8 @@ public class SuporteTicketJdbcRepository {
             OffsetDateTime criadoEm,
             OffsetDateTime atualizadoEm,
             OffsetDateTime encerradoEm,
-            long totalMensagens) {
+            long totalMensagens,
+            long naoLidas) {
     }
 
     public record AdminTicketRow(
@@ -433,6 +481,7 @@ public class SuporteTicketJdbcRepository {
             String origem,
             String corpo,
             boolean privadoStaff,
+            boolean naoLidaUsuario,
             OffsetDateTime criadoEm,
             String remetente) {
     }

@@ -41,7 +41,7 @@ public class ChatInternoController {
             Authentication authentication,
             HttpServletRequest servletRequest) {
         return service.iniciar(
-                request == null ? null : request.username(),
+                request,
                 authentication,
                 RequestIdContext.current(servletRequest));
     }

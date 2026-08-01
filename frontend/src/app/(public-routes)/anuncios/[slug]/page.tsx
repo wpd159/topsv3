@@ -5,7 +5,6 @@ import { gerarDescricaoSeoAnuncio, gerarTituloSeoAnuncio } from "@/lib/seo/publi
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import {
   isPublicCatalogNotFound,
-  listarPublicosPorCidade,
   obterAnuncioPublicoPorSlug,
 } from "@/lib/public-catalog-api"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
@@ -119,9 +118,6 @@ export default async function Page({
     const imagemPublica = selecionarImagemPublicaSeo(
       initialData?.midias as MidiaPublica[] | undefined,
     )
-    const relacionados = initialData.cidadeSlug
-      ? await listarPublicosPorCidade(initialData.estadoUf, initialData.cidadeSlug, 0, 16)
-      : null
     const webPageJsonLd = {
       "@context": "https://schema.org",
       "@type": "WebPage",
@@ -145,10 +141,7 @@ export default async function Page({
             __html: JSON.stringify(webPageJsonLd).replace(/</g, "\\u003c"),
           }}
         />
-        <AnuncioDetalhesPageClient
-          initialData={initialData}
-          initialRelatedData={relacionados?.itens ?? []}
-        />
+        <AnuncioDetalhesPageClient initialData={initialData} />
       </>
     )
   } catch (error) {

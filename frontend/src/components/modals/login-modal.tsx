@@ -57,12 +57,14 @@ export function LoginModal({
     if (typeof window === 'undefined') return
 
     const candidate = new URLSearchParams(window.location.search).get('next')
-    setQueryRedirectTarget(candidate && candidate.startsWith('/') ? candidate : null)
+    setQueryRedirectTarget(
+      candidate && candidate.startsWith('/') && !candidate.startsWith('//') ? candidate : null,
+    )
   }, [redirectAfterSuccess, open])
 
   const redirectTarget = useMemo(() => {
     const candidate = redirectAfterSuccess || queryRedirectTarget
-    if (candidate && candidate.startsWith('/')) return candidate
+    if (candidate && candidate.startsWith('/') && !candidate.startsWith('//')) return candidate
     return '/meus-anuncios'
   }, [queryRedirectTarget, redirectAfterSuccess])
 

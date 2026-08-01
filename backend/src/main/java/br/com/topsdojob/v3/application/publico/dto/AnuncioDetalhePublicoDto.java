@@ -35,5 +35,6 @@ public record AnuncioDetalhePublicoDto(
         OffsetDateTime anunciaDesde,
         OffsetDateTime publicadoEm,
         SeoRotaPublicaDto seo,
-        VisualizacoesCanonicasDto visualizacoes) {
+        VisualizacoesCanonicasDto visualizacoes,
+        List<AnuncioRelacionadoPublicoDto> relacionados) {
 }

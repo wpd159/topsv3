@@ -11,13 +11,21 @@ export class ApiContractError extends Error {
   readonly status: number | null
   readonly kind: ApiFailureKind
   readonly retryable: boolean
+  readonly requestId: string | null
 
-  constructor(message: string, kind: ApiFailureKind, status: number | null, retryable = false) {
+  constructor(
+    message: string,
+    kind: ApiFailureKind,
+    status: number | null,
+    retryable = false,
+    requestId: string | null = null,
+  ) {
     super(message)
     this.name = 'ApiContractError'
     this.kind = kind
     this.status = status
     this.retryable = retryable
+    this.requestId = requestId
   }
 }
 
@@ -75,28 +83,32 @@ export function adminApiUrl(path: string) {
 }
 
 export async function apiErrorFromResponse(response: Response): Promise<ApiContractError> {
+  const requestId = response.headers.get('X-Request-Id')
   switch (response.status) {
     case 400:
     case 422:
-      return new ApiContractError('Revise os dados informados e tente novamente.', 'INVALID_REQUEST', response.status)
+      return new ApiContractError('Revise os dados informados e tente novamente.', 'INVALID_REQUEST', response.status, false, requestId)
     case 401:
-      return new ApiContractError('Sua sessao expirou. Entre novamente.', 'SESSION_REQUIRED', 401)
+      return new ApiContractError('Sua sessao expirou. Entre novamente.', 'SESSION_REQUIRED', 401, false, requestId)
     case 403:
-      return new ApiContractError('Voce nao tem permissao para acessar esta funcao.', 'ACCESS_DENIED', 403)
+      return new ApiContractError('Voce nao tem permissao para acessar esta funcao.', 'ACCESS_DENIED', 403, false, requestId)
     case 404:
       return new ApiContractError(
         'A integracao necessaria para esta funcao ainda nao esta disponivel.',
         'INTEGRATION_MISSING',
-        404
+        404,
+        false,
+        requestId,
       )
     case 409:
-      return new ApiContractError('A operacao entrou em conflito com o estado atual.', 'CONFLICT', 409)
+      return new ApiContractError('A operacao entrou em conflito com o estado atual.', 'CONFLICT', 409, false, requestId)
     default:
       return new ApiContractError(
         'Nao foi possivel carregar os dados. Tente novamente.',
         'TECHNICAL_FAILURE',
         response.status,
-        response.status >= 500
+        response.status >= 500,
+        requestId,
       )
   }
 }

@@ -13,6 +13,7 @@ import { getPublicSession, logoutPublic, type PublicAuthUser } from '@/lib/publi
 import { logoutAdmin } from '@/lib/admin-auth-api'
 import { adminApiUrl } from '@/lib/api-contract'
 import { fetchChatNaoLidas } from '@/lib/chat-api'
+import { fetchSuporteNaoLidas } from '@/lib/suporte-api'
 
 type Usuario = {
   id: string | number
@@ -44,6 +45,7 @@ type AuthContextType = {
   // 🔔 chat badge
   novasMensagens: number | null
   zerarNovasMensagens: () => void
+  novosSuportes: number | null
 
   login: () => Promise<Usuario | null>
   logout: () => Promise<void>
@@ -78,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 🔔 badge de mensagens
   const [novasMensagens, setNovasMensagens] = useState<number | null>(null)
+  const [novosSuportes, setNovosSuportes] = useState<number | null>(null)
   const atualizarNovasMensagens = useCallback(async () => {
     try {
       const result = await fetchChatNaoLidas()
@@ -89,6 +92,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const zerarNovasMensagens = useCallback(() => {
     void atualizarNovasMensagens()
   }, [atualizarNovasMensagens])
+  const atualizarNovosSuportes = useCallback(async () => {
+    try {
+      const result = await fetchSuporteNaoLidas()
+      setNovosSuportes(result.total)
+    } catch {
+      setNovosSuportes(null)
+    }
+  }, [])
 
   // ========== GET /auth/me ==========
   const fetchUsuario = async (): Promise<Usuario | null> => {
@@ -181,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setUsuario(null)
     setNovasMensagens(null)
+    setNovosSuportes(null)
   }
 
   const refresh = async () => {
@@ -209,6 +221,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [atualizarNovasMensagens, usuario])
 
+  useEffect(() => {
+    const adminRoute =
+      typeof window !== 'undefined' && window.location.pathname.startsWith('/admin')
+    if (!usuario || adminRoute) {
+      setNovosSuportes(null)
+      return
+    }
+
+    void atualizarNovosSuportes()
+    const timer = window.setInterval(() => void atualizarNovosSuportes(), 15_000)
+    const refresh = () => void atualizarNovosSuportes()
+    window.addEventListener('suporte-ticket-changed', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('suporte-ticket-changed', refresh)
+    }
+  }, [atualizarNovosSuportes, usuario])
+
   return (
     <AuthContext.Provider
       value={{
@@ -216,6 +246,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         carregando,
         novasMensagens,
         zerarNovasMensagens,
+        novosSuportes,
         login,
         logout,
         refresh,

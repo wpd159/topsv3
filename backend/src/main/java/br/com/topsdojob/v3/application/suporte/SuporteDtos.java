@@ -26,7 +26,8 @@ public final class SuporteDtos {
             String statusRotulo,
             OffsetDateTime criadoEm,
             OffsetDateTime atualizadoEm,
-            long totalMensagens) {
+            long totalMensagens,
+            long naoLidas) {
     }
 
     public record Mensagem(
@@ -36,7 +37,8 @@ public final class SuporteDtos {
             String corpo,
             OffsetDateTime criadoEm,
             boolean minha,
-            boolean repetida) {
+            boolean repetida,
+            boolean naoLida) {
     }
 
     public record TicketDetalhe(
@@ -89,5 +91,8 @@ public final class SuporteDtos {
             long resolvidos,
             long encerrados,
             long pendentesEquipe) {
+    }
+
+    public record NaoLidas(long total) {
     }
 }

@@ -110,6 +110,159 @@ class ComplianceVisitorAccessServiceTest {
   }
 
   @Test
+  void acessoGlobalIniciadoNoStoryALiberaStoryBCompativelSemTokenPorStory() {
+    Fixture fixture = fixture();
+    List<ComplianceVisitorTokenEntity> persisted = new ArrayList<>();
+    when(fixture.tokenRepository.save(any(ComplianceVisitorTokenEntity.class)))
+        .thenAnswer(invocation -> {
+          ComplianceVisitorTokenEntity savedEntity = invocation.getArgument(0);
+          persisted.add(savedEntity);
+          return savedEntity;
+        });
+    when(fixture.tokenRepository.findByChallengeIdAndStatus(
+        any(),
+        eq(StatusTokenVisitante.ACTIVE))).thenReturn(List.of());
+    ComplianceVisitorChallengeEntity challenge = challenge(
+        fixture.session.sessionHash(),
+        EscopoConteudoVisitante.STORY,
+        false);
+
+    var issued = fixture.service.emitir(
+        challenge,
+        fixture.session,
+        OffsetDateTime.now(ZoneOffset.UTC).withNano(0));
+    ComplianceVisitorTokenEntity general = persisted.get(0);
+
+    when(fixture.globalService.aceito(any())).thenReturn(true);
+    when(fixture.sessionService.obterOuCriar(any())).thenReturn(fixture.session);
+    when(fixture.sessionService.cookie(
+        any(),
+        eq(ComplianceSignedCookieService.ACCESS_COOKIE)))
+        .thenReturn(issued.generalCookie().getValue());
+    when(fixture.tokenRepository.findByTokenHash(general.getTokenHash()))
+        .thenReturn(Optional.of(general));
+
+    MockHttpServletRequest storyA = new MockHttpServletRequest();
+    MockHttpServletRequest storyB = new MockHttpServletRequest();
+    assertThat(challenge.getStoryReferencia()).isNotNull();
+    assertThat(general.getEscopoToken()).isEqualTo(EscopoTokenVisitante.GENERAL);
+    assertThat(general.getEscopoConteudo()).isEqualTo(EscopoConteudoVisitante.STORY);
+    assertThat(fixture.service.autorizado(storyA, EscopoConteudoVisitante.STORY)).isTrue();
+    assertThat(fixture.service.autorizado(storyB, EscopoConteudoVisitante.STORY)).isTrue();
+  }
+
+  @Test
+  void acessoGlobalDeUmVisitanteNaoAutorizaOutroVisitante() {
+    Fixture fixture = fixture();
+    List<ComplianceVisitorTokenEntity> persisted = new ArrayList<>();
+    when(fixture.tokenRepository.save(any(ComplianceVisitorTokenEntity.class)))
+        .thenAnswer(invocation -> {
+          ComplianceVisitorTokenEntity savedEntity = invocation.getArgument(0);
+          persisted.add(savedEntity);
+          return savedEntity;
+        });
+    when(fixture.tokenRepository.findByChallengeIdAndStatus(
+        any(),
+        eq(StatusTokenVisitante.ACTIVE))).thenReturn(List.of());
+    var issued = fixture.service.emitir(
+        challenge(
+            fixture.session.sessionHash(),
+            EscopoConteudoVisitante.STORY,
+            false),
+        fixture.session,
+        OffsetDateTime.now(ZoneOffset.UTC).withNano(0));
+    ComplianceVisitorTokenEntity general = persisted.get(0);
+    SessionContext outroVisitante = new SessionContext(
+        UUID.randomUUID(),
+        "8".repeat(64),
+        fixture.session.userAgentHash(),
+        ResponseCookie.from("visitor_session_id", "outra-sessao").build(),
+        false);
+
+    when(fixture.globalService.aceito(any())).thenReturn(true);
+    when(fixture.sessionService.obterOuCriar(any())).thenReturn(outroVisitante);
+    when(fixture.sessionService.cookie(
+        any(),
+        eq(ComplianceSignedCookieService.ACCESS_COOKIE)))
+        .thenReturn(issued.generalCookie().getValue());
+    when(fixture.tokenRepository.findByTokenHash(general.getTokenHash()))
+        .thenReturn(Optional.of(general));
+
+    assertThat(fixture.service.autorizado(
+        new MockHttpServletRequest(),
+        EscopoConteudoVisitante.STORY)).isFalse();
+  }
+
+  @Test
+  void nivelGlobalRespeitaHierarquiaSemReduzirPoliticaDoStory() {
+    Fixture lightFixture = fixture();
+    List<ComplianceVisitorTokenEntity> lightPersisted = new ArrayList<>();
+    when(lightFixture.tokenRepository.save(any(ComplianceVisitorTokenEntity.class)))
+        .thenAnswer(invocation -> {
+          ComplianceVisitorTokenEntity savedEntity = invocation.getArgument(0);
+          lightPersisted.add(savedEntity);
+          return savedEntity;
+        });
+    when(lightFixture.tokenRepository.findByChallengeIdAndStatus(
+        any(),
+        eq(StatusTokenVisitante.ACTIVE))).thenReturn(List.of());
+    var lightIssued = lightFixture.service.emitir(
+        challenge(
+            lightFixture.session.sessionHash(),
+            EscopoConteudoVisitante.STORY,
+            false,
+            NivelAcessoVisitante.LIGHT),
+        lightFixture.session,
+        OffsetDateTime.now(ZoneOffset.UTC).withNano(0));
+    ComplianceVisitorTokenEntity light = lightPersisted.get(0);
+    when(lightFixture.globalService.aceito(any())).thenReturn(true);
+    when(lightFixture.sessionService.obterOuCriar(any())).thenReturn(lightFixture.session);
+    when(lightFixture.sessionService.cookie(
+        any(),
+        eq(ComplianceSignedCookieService.ACCESS_COOKIE)))
+        .thenReturn(lightIssued.generalCookie().getValue());
+    when(lightFixture.tokenRepository.findByTokenHash(light.getTokenHash()))
+        .thenReturn(Optional.of(light));
+
+    assertThat(lightFixture.service.autorizado(
+        new MockHttpServletRequest(),
+        EscopoConteudoVisitante.STORY)).isFalse();
+
+    Fixture strongFixture = fixture();
+    List<ComplianceVisitorTokenEntity> strongPersisted = new ArrayList<>();
+    when(strongFixture.tokenRepository.save(any(ComplianceVisitorTokenEntity.class)))
+        .thenAnswer(invocation -> {
+          ComplianceVisitorTokenEntity savedEntity = invocation.getArgument(0);
+          strongPersisted.add(savedEntity);
+          return savedEntity;
+        });
+    when(strongFixture.tokenRepository.findByChallengeIdAndStatus(
+        any(),
+        eq(StatusTokenVisitante.ACTIVE))).thenReturn(List.of());
+    var strongIssued = strongFixture.service.emitir(
+        challenge(
+            strongFixture.session.sessionHash(),
+            EscopoConteudoVisitante.STORY,
+            false,
+            NivelAcessoVisitante.STRONG),
+        strongFixture.session,
+        OffsetDateTime.now(ZoneOffset.UTC).withNano(0));
+    ComplianceVisitorTokenEntity strong = strongPersisted.get(0);
+    when(strongFixture.globalService.aceito(any())).thenReturn(true);
+    when(strongFixture.sessionService.obterOuCriar(any())).thenReturn(strongFixture.session);
+    when(strongFixture.sessionService.cookie(
+        any(),
+        eq(ComplianceSignedCookieService.ACCESS_COOKIE)))
+        .thenReturn(strongIssued.generalCookie().getValue());
+    when(strongFixture.tokenRepository.findByTokenHash(strong.getTokenHash()))
+        .thenReturn(Optional.of(strong));
+
+    assertThat(strongFixture.service.autorizado(
+        new MockHttpServletRequest(),
+        EscopoConteudoVisitante.STORY)).isTrue();
+  }
+
+  @Test
   void escopoExplicitoExigeTokenDistinto() {
     Fixture fixture = fixture();
     List<ComplianceVisitorTokenEntity> persisted = new ArrayList<>();
@@ -163,7 +316,7 @@ class ComplianceVisitorAccessServiceTest {
     var issued = fixture.service.emitir(
         challenge(
             fixture.session.sessionHash(),
-            EscopoConteudoVisitante.MIDIA_RESTRITA,
+            EscopoConteudoVisitante.STORY,
             false),
         fixture.session,
         now);
@@ -181,7 +334,10 @@ class ComplianceVisitorAccessServiceTest {
 
     assertThat(fixture.service.autorizado(
         new MockHttpServletRequest(),
-        EscopoConteudoVisitante.MIDIA_RESTRITA)).isFalse();
+        EscopoConteudoVisitante.STORY)).isFalse();
+    assertThat(fixture.service.autorizado(
+        new MockHttpServletRequest(),
+        EscopoConteudoVisitante.STORY)).isFalse();
   }
 
   @Test
@@ -332,17 +488,31 @@ class ComplianceVisitorAccessServiceTest {
       String sessionHash,
       EscopoConteudoVisitante scope,
       boolean explicit) {
+    return challenge(
+        sessionHash,
+        scope,
+        explicit,
+        explicit ? NivelAcessoVisitante.STRONG : NivelAcessoVisitante.REINFORCED);
+  }
+
+  private ComplianceVisitorChallengeEntity challenge(
+      String sessionHash,
+      EscopoConteudoVisitante scope,
+      boolean explicit,
+      NivelAcessoVisitante level) {
     OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
     ComplianceVisitorChallengeEntity challenge =
         ComplianceVisitorChallengeEntity.criar(
             UUID.randomUUID(),
             sessionHash,
-            explicit ? NivelAcessoVisitante.STRONG : NivelAcessoVisitante.REINFORCED,
-            explicit ? NivelAcessoVisitante.STRONG : NivelAcessoVisitante.REINFORCED,
+            level,
+            level,
             scope,
             UUID.randomUUID(),
             explicit ? null : UUID.randomUUID(),
-            null,
+            scope == EscopoConteudoVisitante.STORY
+                ? UUID.randomUUID().toString()
+                : null,
             "/anuncios/teste",
             4,
             DecisaoRiscoVisitante.ALLOW_LEVEL_1,

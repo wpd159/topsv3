@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.mapper;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioCardPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioDetalhePublicoDto;
+import br.com.topsdojob.v3.application.publico.dto.AnuncioRelacionadoPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SeoRotaPublicaDto;
@@ -74,7 +75,8 @@ public class AnuncioPublicoMapper {
             String username,
             Integer idade,
             boolean idadeOculta,
-            VisualizacoesCanonicasDto visualizacoes) {
+            VisualizacoesCanonicasDto visualizacoes,
+            List<AnuncioRelacionadoPublicoDto> relacionados) {
         PremiumPublicoFlagsDto flags = premium == null ? PremiumPublicoFlagsDto.vazio() : premium;
         return new AnuncioDetalhePublicoDto(
                 anuncio.getId(),
@@ -110,7 +112,8 @@ public class AnuncioPublicoMapper {
                 anunciaDesde,
                 anuncio.getPublicadoEm(),
                 seo,
-                Objects.requireNonNull(visualizacoes, "visualizacoes canonicas obrigatorias"));
+                Objects.requireNonNull(visualizacoes, "visualizacoes canonicas obrigatorias"),
+                relacionados == null ? List.of() : List.copyOf(relacionados));
     }
 
     private String resumo(String descricao) {

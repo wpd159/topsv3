@@ -79,7 +79,7 @@ class SuporteTicketServiceTest {
         when(repository.porIdComLock(TICKET)).thenReturn(Optional.of(ticket));
         when(repository.inserirMensagem(
                 any(), eq(TICKET), eq(USUARIO), eq("USUARIO"), anyString(),
-                eq(false), eq(KEY), anyString(), any()))
+                eq(false), eq(false), eq(KEY), anyString(), any()))
                 .thenReturn(1);
         when(auditoriaRepository.existsByAcaoAndRecursoIdAndRequestId(anyString(), any(), anyString()))
                 .thenReturn(false);
@@ -94,7 +94,7 @@ class SuporteTicketServiceTest {
         ArgumentCaptor<String> corpo = ArgumentCaptor.forClass(String.class);
         verify(repository).inserirMensagem(
                 any(), eq(TICKET), eq(USUARIO), eq("USUARIO"), corpo.capture(),
-                eq(false), eq(KEY), anyString(), any());
+                eq(false), eq(false), eq(KEY), anyString(), any());
         assertThat(corpo.getValue()).isEqualTo("Ola suporte");
         assertThat(response.corpo()).isEqualTo("Ola suporte");
         verify(repository).tocar(eq(TICKET), any());
@@ -115,8 +115,32 @@ class SuporteTicketServiceTest {
 
         assertThat(response.repetida()).isTrue();
         verify(repository, never()).inserirMensagem(
-                any(), any(), any(), anyString(), anyString(), anyBoolean(), anyString(), anyString(), any());
+                any(), any(), any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString(), anyString(), any());
         verify(rateLimiter, never()).require(anyString(), anyString(), anyInt(), any());
+    }
+
+    @Test
+    void retryConcorrenteNaoRepeteEstadoNemAuditoria() {
+        SuporteTicketJdbcRepository.MensagemRow armazenada = mensagem("Mensagem QA");
+        when(repository.mensagemPorIdempotencia(USUARIO, KEY))
+                .thenReturn(Optional.empty(), Optional.of(armazenada));
+        when(repository.porIdComLock(TICKET)).thenReturn(Optional.of(ticket("ABERTO", USUARIO)));
+        when(repository.inserirMensagem(
+                any(), eq(TICKET), eq(USUARIO), eq("USUARIO"), eq("Mensagem QA"),
+                eq(false), eq(false), eq(KEY), anyString(), any()))
+                .thenReturn(0);
+
+        var response = service.responder(
+                TICKET,
+                "Mensagem QA",
+                KEY,
+                authentication,
+                "request-suporte-concorrente-001");
+
+        assertThat(response.repetida()).isTrue();
+        verify(repository, never()).tocar(any(), any());
+        verify(repository, never()).atualizarStatus(any(), anyString(), any(), any(), any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test
@@ -148,7 +172,7 @@ class SuporteTicketServiceTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
         verify(repository, never()).inserirMensagem(
-                any(), any(), any(), anyString(), anyString(), anyBoolean(), anyString(), anyString(), any());
+                any(), any(), any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString(), anyString(), any());
     }
 
     @Test
@@ -158,7 +182,7 @@ class SuporteTicketServiceTest {
         when(repository.porIdComLock(TICKET))
                 .thenReturn(Optional.of(ticket("AGUARDANDO_USUARIO", USUARIO)));
         when(repository.inserirMensagem(
-                any(), any(), any(), anyString(), anyString(), anyBoolean(), anyString(), anyString(), any()))
+                any(), any(), any(), anyString(), anyString(), anyBoolean(), anyBoolean(), anyString(), anyString(), any()))
                 .thenReturn(1);
 
         service.responder(
@@ -183,7 +207,32 @@ class SuporteTicketServiceTest {
         assertThat(pagina.totalElementos()).isZero();
     }
 
+    @Test
+    void abrirTicketDoProprioUsuarioMarcaSomenteRespostasDaEquipeComoLidas() {
+        SuporteTicketJdbcRepository.TicketRow antes = ticket("ABERTO", USUARIO, 2);
+        SuporteTicketJdbcRepository.TicketRow depois = ticket("ABERTO", USUARIO, 0);
+        when(repository.porId(TICKET)).thenReturn(Optional.of(antes), Optional.of(depois));
+        when(repository.mensagens(TICKET, false)).thenReturn(List.of());
+
+        var detalhe = service.detalhar(TICKET, authentication);
+
+        verify(repository).marcarRespostasComoLidas(TICKET, USUARIO);
+        assertThat(detalhe.ticket().naoLidas()).isZero();
+    }
+
+    @Test
+    void contadorDeNaoLidasEhSempreDerivadoDaSessao() {
+        when(repository.contarNaoLidasDoUsuario(USUARIO)).thenReturn(3L);
+
+        assertThat(service.naoLidas(authentication).total()).isEqualTo(3);
+        verify(repository).contarNaoLidasDoUsuario(USUARIO);
+    }
+
     private SuporteTicketJdbcRepository.TicketRow ticket(String status, UUID usuarioId) {
+        return ticket(status, usuarioId, 0);
+    }
+
+    private SuporteTicketJdbcRepository.TicketRow ticket(String status, UUID usuarioId, long naoLidas) {
         OffsetDateTime now = OffsetDateTime.parse("2026-07-27T12:00:00Z");
         return new SuporteTicketJdbcRepository.TicketRow(
                 TICKET,
@@ -196,7 +245,8 @@ class SuporteTicketServiceTest {
                 now,
                 now,
                 "ENCERRADO".equals(status) ? now : null,
-                1);
+                1,
+                naoLidas);
     }
 
     private SuporteTicketJdbcRepository.MensagemRow mensagem(String corpo) {
@@ -206,6 +256,7 @@ class SuporteTicketServiceTest {
                 USUARIO,
                 "USUARIO",
                 corpo,
+                false,
                 false,
                 OffsetDateTime.parse("2026-07-27T12:00:00Z"),
                 "QA");
