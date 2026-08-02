@@ -63,6 +63,34 @@ export type MeuAnuncioStory = {
   estadoMidia: 'DISPONIVEL' | 'INDISPONIVEL' | null
 }
 
+export type MeuAnuncioStoryOfertaOpcao = {
+  opcaoId: string
+  duracaoDias: number
+  custoCreditos: number
+  saldoAtual: number
+  saldoAposCompra: number
+  creditosFaltantes: number
+  ordemExibicao: number
+}
+
+export type MeuAnuncioStoryOferta = {
+  estado: 'STORY_ATIVO' | 'DIREITO_DISPONIVEL' | 'OPCOES_DISPONIVEIS' | 'NOVAS_ATIVACOES_INDISPONIVEIS'
+  saldoCreditos: number | null
+  storyAtivo: MeuAnuncioStory | null
+  direitoDisponivel: {
+    ativacaoId: string
+    status: string
+    duracaoDias: number | null
+    custoCreditosSnapshot: number | null
+    inicioEm: string | null
+    fimEm: string | null
+  } | null
+  beneficioCodigo: 'STORIES' | null
+  nome: string | null
+  descricao: string | null
+  opcoes: MeuAnuncioStoryOfertaOpcao[]
+}
+
 const EMPTY_BENEFICIOS_PREMIUM: readonly MeuAnuncioBeneficio[] = Object.freeze([])
 
 export type MinhaMidiaGestao = {
@@ -146,7 +174,8 @@ export class MeusAnunciosApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly code: string | null = null
+    readonly code: string | null = null,
+    readonly requestId: string | null = null
   ) {
     super(message)
     this.name = 'MeusAnunciosApiError'
@@ -207,7 +236,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // A resposta sem JSON preserva o status HTTP real no erro abaixo.
     }
-    throw new MeusAnunciosApiError(message, response.status, code)
+    throw new MeusAnunciosApiError(
+      message,
+      response.status,
+      code,
+      response.headers.get('X-Request-Id')
+    )
   }
 
   return (await response.json()) as T
@@ -386,6 +420,38 @@ export async function listarMeusAnuncios() {
 
 export async function buscarMeuAnuncio(slug: string) {
   return mapMeuAnuncio(await request<unknown>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`))
+}
+
+export async function consultarMeuAnuncioStoryOferta(slug: string) {
+  const payload = await request<MeuAnuncioStoryOferta>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/stories/oferta`
+  )
+  if (
+    !payload ||
+    !['STORY_ATIVO', 'DIREITO_DISPONIVEL', 'OPCOES_DISPONIVEIS', 'NOVAS_ATIVACOES_INDISPONIVEIS']
+      .includes(payload.estado) ||
+    ((payload.estado === 'STORY_ATIVO' || payload.estado === 'DIREITO_DISPONIVEL')
+      ? payload.saldoCreditos !== null
+      : !Number.isInteger(payload.saldoCreditos) || (payload.saldoCreditos ?? -1) < 0) ||
+    !Array.isArray(payload.opcoes)
+  ) {
+    throw new MeusAnunciosApiError('O servico retornou uma oferta de Story incompativel.', 502)
+  }
+  if (payload.estado === 'DIREITO_DISPONIVEL') {
+    const direito = payload.direitoDisponivel
+    if (
+      !direito ||
+      typeof direito.ativacaoId !== 'string' || !direito.ativacaoId ||
+      !['AGUARDANDO_MODERACAO', 'ATIVA'].includes(direito.status) ||
+      !inteiroOpcionalValido(direito.duracaoDias) ||
+      !inteiroOpcionalValido(direito.custoCreditosSnapshot) ||
+      !dataOpcionalValida(direito.inicioEm) ||
+      !dataOpcionalValida(direito.fimEm)
+    ) {
+      throw new MeusAnunciosApiError('O servico retornou um direito de Story incompativel.', 502)
+    }
+  }
+  return payload
 }
 
 export async function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtualizacao) {
@@ -599,7 +665,12 @@ export async function publicarMeuAnuncioStory(
         const code = errorBody && typeof errorBody.code === 'string' && errorBody.code.trim()
           ? errorBody.code
           : null
-        reject(new MeusAnunciosApiError(message, xhr.status, code))
+        reject(new MeusAnunciosApiError(
+          message,
+          xhr.status,
+          code,
+          xhr.getResponseHeader('X-Request-Id')
+        ))
         return
       }
       try {

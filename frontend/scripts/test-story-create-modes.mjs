@@ -145,7 +145,8 @@ check('16. frontend nao envia URL, bucket ou object key', () => {
 })
 
 check('17. loading impede duplo clique', () => {
-  matches(dialog, /disabled=\{submitting \|\| !mode/)
+  matches(dialog, /const busy = loadingOffer \|\| purchasing \|\| publishing/)
+  matches(dialog, /disabled=\{busy\}/)
   matches(dialog, /if \(!busy\) onOpenChange\(next\)/)
 })
 
@@ -191,8 +192,12 @@ check('24. erros 413, 415 e 422 sao especificos', () => {
 })
 
 check('25. erro 500 preserva dialogo e selecao segura', () => {
-  matches(dialog, /catch \(cause\) \{[\s\S]*setError\(errorMessage\(cause\)\)/)
-  excludes(dialog, /catch \(cause\)[\s\S]*setMode\(null\)/)
+  const publishBlock = dialog.slice(
+    dialog.indexOf('async function publishStory'),
+    dialog.indexOf('async function activateAndPublish')
+  )
+  matches(publishBlock, /catch \(cause\) \{[\s\S]*setError\(activatedNow/)
+  excludes(publishBlock, /setMode\(null\)/)
 })
 
 check('26. mobile sem overflow e com 100dvh', () => {

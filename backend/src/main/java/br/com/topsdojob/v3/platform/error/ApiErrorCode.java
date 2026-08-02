@@ -10,6 +10,9 @@ public enum ApiErrorCode {
     GONE(HttpStatus.GONE, "Verificacao expirada. Inicie novamente."),
     CONFLICT(HttpStatus.CONFLICT, "Conflito de estado."),
     STORY_JA_ATIVO(HttpStatus.CONFLICT, "Este anuncio ja possui um Story ativo."),
+    PREMIUM_OFERTA_ATUALIZADA(
+            HttpStatus.CONFLICT,
+            "As condicoes desta opcao foram atualizadas. Confira o novo valor antes de continuar."),
     UNPROCESSABLE_ENTITY(HttpStatus.UNPROCESSABLE_ENTITY, "Dados inválidos."),
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde."),
     PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Arquivo acima do limite permitido."),

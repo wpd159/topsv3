@@ -837,6 +837,32 @@ paths:
         "422": { $ref: "#/components/responses/UnprocessableEntity" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { description: Storage temporariamente indisponivel; nenhum Story e confirmado }
+  /api/public/minha-conta/anuncios/{slug}/stories/oferta:
+    get:
+      summary: Consulta direito adquirido, oferta administrativa e saldo para publicar Story
+      operationId: getCurrentUserAdStoryOffer
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+      description: Deriva usuario e anuncio exclusivamente da sessao. Um direito de STORIES ainda nao consumido e retornado antes de consultar novas opcoes comerciais, de modo que alteracoes posteriores do catalogo nao invalidem uma aquisicao existente.
+      responses:
+        "200":
+          description: Estado comercial canonico do Story
+          headers:
+            Cache-Control:
+              description: Impede armazenamento compartilhado de saldo e oferta da conta autenticada
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeuAnuncioStoryOferta"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /api/public/minha-conta/anuncios/{slug}/midias/lote:
     post:
       summary: Envia um lote atomico de fotos ou video para a area privada do anuncio
@@ -8422,6 +8448,56 @@ components:
         estadoMidia:
           type: [string, "null"]
           enum: [DISPONIVEL, INDISPONIVEL, null]
+    MeuAnuncioStoryOferta:
+      type: object
+      additionalProperties: false
+      required: [estado, saldoCreditos, storyAtivo, direitoDisponivel, beneficioCodigo, nome, descricao, opcoes]
+      properties:
+        estado:
+          type: string
+          enum: [STORY_ATIVO, DIREITO_DISPONIVEL, OPCOES_DISPONIVEIS, NOVAS_ATIVACOES_INDISPONIVEIS]
+        saldoCreditos: { type: [integer, "null"], minimum: 0 }
+        storyAtivo:
+          oneOf:
+            - $ref: "#/components/schemas/MeuAnuncioStory"
+            - type: "null"
+        direitoDisponivel:
+          oneOf:
+            - $ref: "#/components/schemas/MeuAnuncioStoryDireito"
+            - type: "null"
+        beneficioCodigo:
+          type: [string, "null"]
+          enum: [STORIES, null]
+        nome: { type: [string, "null"] }
+        descricao: { type: [string, "null"] }
+        opcoes:
+          type: array
+          items: { $ref: "#/components/schemas/MeuAnuncioStoryOfertaOpcao" }
+    MeuAnuncioStoryDireito:
+      type: object
+      additionalProperties: false
+      required: [ativacaoId, status, duracaoDias, custoCreditosSnapshot, inicioEm, fimEm]
+      properties:
+        ativacaoId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [AGUARDANDO_MODERACAO, ATIVA]
+        duracaoDias: { type: [integer, "null"], minimum: 1 }
+        custoCreditosSnapshot: { type: [integer, "null"], minimum: 0 }
+        inicioEm: { type: [string, "null"], format: date-time }
+        fimEm: { type: [string, "null"], format: date-time }
+    MeuAnuncioStoryOfertaOpcao:
+      type: object
+      additionalProperties: false
+      required: [opcaoId, duracaoDias, custoCreditos, saldoAtual, saldoAposCompra, creditosFaltantes, ordemExibicao]
+      properties:
+        opcaoId: { type: string, format: uuid }
+        duracaoDias: { type: integer, minimum: 1 }
+        custoCreditos: { type: integer, minimum: 0 }
+        saldoAtual: { type: integer, minimum: 0 }
+        saldoAposCompra: { type: integer, minimum: 0 }
+        creditosFaltantes: { type: integer, minimum: 0 }
+        ordemExibicao: { type: integer, minimum: 0 }
     MeuAnuncioBeneficio:
       type: object
       additionalProperties: false
@@ -13512,6 +13588,14 @@ components:
             properties:
               beneficioCodigo: { type: string }
               duracaoDias: { type: integer, minimum: 1 }
+              opcaoId:
+                type: string
+                format: uuid
+                description: Obrigatorio para STORIES; identifica a opcao administrativa explicitamente confirmada.
+              custoCreditosEsperado:
+                type: integer
+                minimum: 1
+                description: Obrigatorio para STORIES; impede debito silencioso quando a oferta muda antes da compra.
     MinhaCompraPremiumResultado:
       type: object
       additionalProperties: false

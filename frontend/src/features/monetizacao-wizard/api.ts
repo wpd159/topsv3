@@ -16,10 +16,23 @@ type CatalogoBackend = {
   descricao: string
   ativo: boolean
   opcoes: Array<{
+    id: string
     duracaoDias: number
     custoCreditos: number
     ativo: boolean
   }>
+}
+
+export class PremiumApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | null,
+    readonly requestId: string | null
+  ) {
+    super(message)
+    this.name = 'PremiumApiError'
+  }
 }
 
 export type MinhaMonetizacaoBackend = {
@@ -58,7 +71,21 @@ async function bootstrapCsrfValue() {
 
 async function readJson<T>(response: Response, fallback: string): Promise<T> {
   const raw = await response.text()
-  if (!response.ok) throw new Error(messageFromApiBody(raw, response.status, fallback))
+  if (!response.ok) {
+    let code: string | null = null
+    try {
+      const body = JSON.parse(raw) as { code?: unknown }
+      if (typeof body.code === 'string' && body.code.trim()) code = body.code
+    } catch {
+      // A mensagem sanitizada abaixo preserva o status real.
+    }
+    throw new PremiumApiError(
+      messageFromApiBody(raw, response.status, fallback),
+      response.status,
+      code,
+      response.headers.get('X-Request-Id')
+    )
+  }
   if (!raw.trim()) throw new Error('Resposta vazia do servidor.')
   try {
     return JSON.parse(raw) as T
@@ -170,7 +197,12 @@ export function newPremiumPurchaseIdempotencyKey() {
 
 export async function comprarBeneficios(
   anuncioSlug: string,
-  itens: Array<{ beneficioCodigo: MonetizacaoOpcaoCodigo; duracaoDias: number }>,
+  itens: Array<{
+    beneficioCodigo: MonetizacaoOpcaoCodigo
+    duracaoDias: number
+    opcaoId?: string
+    custoCreditosEsperado?: number
+  }>,
   idempotencyKey: string
 ) {
   const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())

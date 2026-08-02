@@ -11,9 +11,12 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryOfertaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MinhasMidiasService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryOfertaDto;
+import java.util.List;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -28,19 +31,22 @@ import org.springframework.web.server.ResponseStatusException;
 class MeusAnunciosStoryControllerTest {
 
   private MeuAnuncioStoryService storyService;
+  private MeuAnuncioStoryOfertaService storyOfertaService;
   private MeusAnunciosController controller;
   private Authentication authentication;
 
   @BeforeEach
   void setUp() {
     storyService = mock(MeuAnuncioStoryService.class);
+    storyOfertaService = mock(MeuAnuncioStoryOfertaService.class);
     authentication = mock(Authentication.class);
     controller = new MeusAnunciosController(
         mock(MeusAnunciosConsultaService.class),
         mock(MeuAnuncioAtualizacaoService.class),
         mock(MeuAnuncioCicloVidaService.class),
         mock(MinhasMidiasService.class),
-        storyService);
+        storyService,
+        storyOfertaService);
   }
 
   @Test
@@ -87,6 +93,19 @@ class MeusAnunciosStoryControllerTest {
         "anuncio-qa", "ANUNCIO", null, "intent-3", authentication, request),
         HttpStatus.BAD_REQUEST);
     verify(storyService, never()).publicar(any(), any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void ofertaUsaSlugEAutenticacaoDaSessao() {
+    MeuAnuncioStoryOfertaDto esperado = new MeuAnuncioStoryOfertaDto(
+        "NOVAS_ATIVACOES_INDISPONIVEIS", 0, null, null, "STORIES", null, null, List.of());
+    when(storyOfertaService.consultar("anuncio-qa", authentication)).thenReturn(esperado);
+
+    var response = controller.consultarOfertaStory("anuncio-qa", authentication);
+
+    org.assertj.core.api.Assertions.assertThat(response.getBody()).isSameAs(esperado);
+    org.assertj.core.api.Assertions.assertThat(response.getHeaders().getCacheControl()).isEqualTo("no-store");
+    verify(storyOfertaService).consultar("anuncio-qa", authentication);
   }
 
   private MockMultipartHttpServletRequest multipart(String nome, String valor) {

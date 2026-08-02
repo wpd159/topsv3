@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaSer
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MinhasMidiasService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryOfertaService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCicloVidaDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
@@ -12,6 +13,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaLim
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiasResponseDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryOfertaDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.ServletException;
@@ -19,8 +21,10 @@ import java.io.IOException;
 import java.util.Set;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.CacheControl;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,18 +48,21 @@ public class MeusAnunciosController {
     private final MeuAnuncioCicloVidaService cicloVidaService;
     private final MinhasMidiasService midiasService;
     private final MeuAnuncioStoryService storyService;
+    private final MeuAnuncioStoryOfertaService storyOfertaService;
 
     public MeusAnunciosController(
             MeusAnunciosConsultaService consultaService,
             MeuAnuncioAtualizacaoService atualizacaoService,
             MeuAnuncioCicloVidaService cicloVidaService,
             MinhasMidiasService midiasService,
-            MeuAnuncioStoryService storyService) {
+            MeuAnuncioStoryService storyService,
+            MeuAnuncioStoryOfertaService storyOfertaService) {
         this.consultaService = consultaService;
         this.atualizacaoService = atualizacaoService;
         this.cicloVidaService = cicloVidaService;
         this.midiasService = midiasService;
         this.storyService = storyService;
+        this.storyOfertaService = storyOfertaService;
     }
 
     @GetMapping
@@ -164,6 +171,15 @@ public class MeusAnunciosController {
                 idempotencyKey,
                 authentication,
                 RequestIdContext.current(request));
+    }
+
+    @GetMapping("/{slug}/stories/oferta")
+    public ResponseEntity<MeuAnuncioStoryOfertaDto> consultarOfertaStory(
+            @PathVariable String slug,
+            Authentication authentication) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(storyOfertaService.consultar(slug, authentication));
     }
 
     private void validarContratoMultipartStory(HttpServletRequest request) {

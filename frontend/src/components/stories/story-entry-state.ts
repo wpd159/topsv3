@@ -11,14 +11,14 @@ export type StoryEntryState =
   | {
       kind: 'READY'
       buttonLabel: 'Publicar nos Stories'
-      summary: 'Disponível para publicar'
+      summary: 'Configure e revise seu Story'
       disabled: false
       reason: null
     }
   | {
       kind: 'NEEDS_ACTIVATION'
       buttonLabel: 'Publicar nos Stories'
-      summary: 'Ativar Stories'
+      summary: 'Configure e revise seu Story'
       disabled: false
       reason: null
     }
@@ -86,7 +86,7 @@ export function getStoryEntryState(anuncio: MeuAnuncio): StoryEntryState {
     return {
       kind: 'READY',
       buttonLabel: 'Publicar nos Stories',
-      summary: 'Disponível para publicar',
+      summary: 'Configure e revise seu Story',
       disabled: false,
       reason: null,
     }
@@ -95,7 +95,7 @@ export function getStoryEntryState(anuncio: MeuAnuncio): StoryEntryState {
   return {
     kind: 'NEEDS_ACTIVATION',
     buttonLabel: 'Publicar nos Stories',
-    summary: 'Ativar Stories',
+    summary: 'Configure e revise seu Story',
     disabled: false,
     reason: null,
   }

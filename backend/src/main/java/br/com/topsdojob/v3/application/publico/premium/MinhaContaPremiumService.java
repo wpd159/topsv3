@@ -155,9 +155,6 @@ public class MinhaContaPremiumService {
         List<ItemCompra> itens = resolverItens(solicitados, agora);
         validarSemDuplicidadeAtiva(anuncio.getId(), itens);
         int total = itens.stream().mapToInt(item -> item.opcao().getCustoCreditos()).sum();
-        if (total <= 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "catalogo sem custo operacional valido");
-        }
         if (saldoAtual < total) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "saldo de creditos insuficiente");
         }
@@ -207,22 +204,24 @@ public class MinhaContaPremiumService {
                             chaveGrupo + ":ativacao:" + indice,
                             agora);
             AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(novaAtivacao);
-            var lancamento = ledgerService.registrar(
-                    usuarioId,
-                    TipoMovimentoCredito.SAIDA,
-                    DirecaoMovimentoCredito.DEBITO,
-                    item.opcao().getCustoCreditos(),
-                    saldoCorrente,
-                    OrigemMovimentoCredito.BENEFICIO,
-                    "ATIVACAO_BENEFICIO",
-                    ativacao.getId(),
-                    chaveGrupo + ":debito:" + indice,
-                    usuarioId,
-                    "Compra de " + item.beneficio().getNome()
-                            + " por " + item.opcao().getDuracaoDias()
-                            + " dias no anuncio " + anuncio.getTitulo(),
-                    requestId);
-            saldoCorrente = lancamento.movimento().getSaldoDepois();
+            if (item.opcao().getCustoCreditos() > 0) {
+                var lancamento = ledgerService.registrar(
+                        usuarioId,
+                        TipoMovimentoCredito.SAIDA,
+                        DirecaoMovimentoCredito.DEBITO,
+                        item.opcao().getCustoCreditos(),
+                        saldoCorrente,
+                        OrigemMovimentoCredito.BENEFICIO,
+                        "ATIVACAO_BENEFICIO",
+                        ativacao.getId(),
+                        chaveGrupo + ":debito:" + indice,
+                        usuarioId,
+                        "Compra de " + item.beneficio().getNome()
+                                + " por " + item.opcao().getDuracaoDias()
+                                + " dias no anuncio " + anuncio.getTitulo(),
+                        requestId);
+                saldoCorrente = lancamento.movimento().getSaldoDepois();
+            }
             ativacoes.add(ativacao);
         }
         auditoriaRepository.save(AuditoriaEventoEntity.registrarSistema(
@@ -252,6 +251,8 @@ public class MinhaContaPremiumService {
                     ? ""
                     : request.beneficioCodigo().trim().toUpperCase();
             Integer duracaoDias = request == null ? null : request.duracaoDias();
+            UUID opcaoId = request == null ? null : request.opcaoId();
+            Integer custoCreditosEsperado = request == null ? null : request.custoCreditosEsperado();
             if (!codigo.matches("[A-Z0-9_]{3,80}")
                     || !PremiumBeneficioCodigo.TODOS.contains(codigo)
                     || !codigos.add(codigo)
@@ -259,7 +260,7 @@ public class MinhaContaPremiumService {
                     || duracaoDias <= 0) {
                 throw badRequest("beneficio da compra invalido ou duplicado");
             }
-            itens.add(new ItemSolicitado(codigo, duracaoDias));
+            itens.add(new ItemSolicitado(codigo, duracaoDias, opcaoId, custoCreditosEsperado));
         }
         return itens;
     }
@@ -268,16 +269,39 @@ public class MinhaContaPremiumService {
         List<ItemCompra> itens = new ArrayList<>();
         for (ItemSolicitado request : requests) {
             BeneficioPremiumEntity beneficio = beneficioRepository.findByCodigo(request.codigo())
-                    .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
+            if (!Boolean.TRUE.equals(beneficio.getAtivo())) {
+                if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())) {
+                    throw new PremiumOfertaAtualizadaException();
+                }
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado");
+            }
             BeneficioPremiumOpcaoEntity opcao = opcaoRepository
                     .findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(
                             beneficio.getId(),
                             request.duracaoDias())
-                    .filter(item -> item.vigente(agora))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada"));
-            if (valor(opcao.getCustoCreditos()) <= 0) {
+            if (!opcao.vigente(agora)) {
+                if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())) {
+                    throw new PremiumOfertaAtualizadaException();
+                }
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada");
+            }
+            Integer custoCreditos = opcao.getCustoCreditos();
+            if (custoCreditos == null
+                    || custoCreditos < 0
+                    || (custoCreditos == 0 && !PremiumBeneficioCodigo.STORIES.equals(request.codigo()))) {
+                if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())) {
+                    throw new PremiumOfertaAtualizadaException();
+                }
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "catalogo sem custo operacional valido");
+            }
+            if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())
+                    && (request.opcaoId() == null
+                        || request.custoCreditosEsperado() == null
+                        || !Objects.equals(request.opcaoId(), opcao.getId())
+                        || !Objects.equals(request.custoCreditosEsperado(), opcao.getCustoCreditos()))) {
+                throw new PremiumOfertaAtualizadaException();
             }
             itens.add(new ItemCompra(beneficio, opcao));
         }
@@ -311,12 +335,28 @@ public class MinhaContaPremiumService {
                 .stream()
                 .collect(Collectors.toMap(BeneficioPremiumOpcaoEntity::getId, Function.identity()));
         Map<String, Integer> existentes = new LinkedHashMap<>();
+        Map<String, ItemSolicitado> solicitadosPorCodigo = solicitados.stream().collect(Collectors.toMap(
+                ItemSolicitado::codigo,
+                Function.identity()));
         for (AtivacaoBeneficioEntity ativacao : ativacoes) {
             BeneficioPremiumEntity beneficio = beneficios.get(ativacao.getBeneficioId());
             BeneficioPremiumOpcaoEntity opcao = opcoes.get(ativacao.getOpcaoId());
             if (beneficio == null
                     || opcao == null
                     || existentes.put(beneficio.getCodigo(), opcao.getDuracaoDias()) != null) {
+                throw idempotenciaDivergente();
+            }
+            ItemSolicitado recebido = solicitadosPorCodigo.get(beneficio.getCodigo());
+            boolean stories = PremiumBeneficioCodigo.STORIES.equals(beneficio.getCodigo());
+            if (recebido == null
+                    || (stories
+                        && (recebido.opcaoId() == null || recebido.custoCreditosEsperado() == null))
+                    || (recebido.opcaoId() != null
+                        && !Objects.equals(recebido.opcaoId(), ativacao.getOpcaoId()))
+                    || (recebido.custoCreditosEsperado() != null
+                        && !Objects.equals(
+                            recebido.custoCreditosEsperado(),
+                            ativacao.getCustoCreditosSnapshot()))) {
                 throw idempotenciaDivergente();
             }
         }
@@ -347,16 +387,31 @@ public class MinhaContaPremiumService {
             GrupoAtivacaoBeneficioEntity grupo,
             int saldoAtual) {
         List<AtivacaoBeneficioEntity> ativacoes = ativacaoRepository.findByGrupoAtivacaoId(grupo.getId());
-        List<br.com.topsdojob.v3.persistence.entity.credito.MovimentoCreditoEntity> debitos = movimentoRepository
-                .findByReferenciaTipoAndReferenciaIdIn(
-                        "ATIVACAO_BENEFICIO",
-                        ativacoes.stream().map(AtivacaoBeneficioEntity::getId).toList())
-                .stream()
-                .filter(item -> item.getDirecao() == DirecaoMovimentoCredito.DEBITO)
-                .sorted(java.util.Comparator.comparing(
-                        br.com.topsdojob.v3.persistence.entity.credito.MovimentoCreditoEntity::getCriadoEm))
-                .toList();
-        if (ativacoes.isEmpty() || debitos.size() != ativacoes.size()) {
+        Map<UUID, Integer> custosCobraveis = ativacoes.stream()
+                .filter(item -> valor(item.getCustoCreditosSnapshot()) > 0)
+                .collect(Collectors.toMap(
+                        AtivacaoBeneficioEntity::getId,
+                        item -> valor(item.getCustoCreditosSnapshot())));
+        List<br.com.topsdojob.v3.persistence.entity.credito.MovimentoCreditoEntity> debitos = custosCobraveis.isEmpty()
+                ? List.of()
+                : movimentoRepository
+                        .findByReferenciaTipoAndReferenciaIdIn(
+                                "ATIVACAO_BENEFICIO",
+                                custosCobraveis.keySet().stream().toList())
+                        .stream()
+                        .filter(item -> item.getDirecao() == DirecaoMovimentoCredito.DEBITO)
+                        .sorted(java.util.Comparator.comparing(
+                                br.com.topsdojob.v3.persistence.entity.credito.MovimentoCreditoEntity::getCriadoEm))
+                        .toList();
+        Set<UUID> referenciasDebito = debitos.stream()
+                .map(br.com.topsdojob.v3.persistence.entity.credito.MovimentoCreditoEntity::getReferenciaId)
+                .collect(Collectors.toSet());
+        boolean debitoInconsistente = debitos.stream().anyMatch(item ->
+                !Objects.equals(custosCobraveis.get(item.getReferenciaId()), item.getQuantidade()));
+        if (ativacoes.isEmpty()
+                || debitos.size() != custosCobraveis.size()
+                || referenciasDebito.size() != custosCobraveis.size()
+                || debitoInconsistente) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "operacao idempotente possui ledger ou ativacoes inconsistentes");
@@ -535,6 +590,8 @@ public class MinhaContaPremiumService {
 
     private record ItemSolicitado(
             String codigo,
-            int duracaoDias) {
+            int duracaoDias,
+            UUID opcaoId,
+            Integer custoCreditosEsperado) {
     }
 }

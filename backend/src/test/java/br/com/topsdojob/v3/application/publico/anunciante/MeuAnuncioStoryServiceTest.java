@@ -202,7 +202,7 @@ class MeuAnuncioStoryServiceTest {
 
     assertThat(response.modoConteudo()).isEqualTo("ANUNCIO");
     assertThat(response.inicioEm()).isEqualTo(AGORA);
-    assertThat(response.fimEm()).isEqualTo(FIM);
+    assertThat(response.fimEm()).isEqualTo(FIM.minusHours(1));
     assertThat(stories).singleElement().satisfies(story -> {
       assertThat(story.getAnuncioId()).isEqualTo(ANUNCIO_ID);
       assertThat(story.getAnuncioMidiaId()).isNull();
@@ -213,7 +213,8 @@ class MeuAnuncioStoryServiceTest {
     assertThat(arquivos).isEmpty();
     verify(storage, never()).putIfAbsent(any(), any(), any(), any());
     verify(validator, never()).validarStory(any());
-    verify(ativacaoRepository).save(ativacao);
+    verify(ativacaoRepository, never()).save(ativacao);
+    verify(grupoRepository, never()).save(grupo);
   }
 
   @Test
@@ -273,7 +274,7 @@ class MeuAnuncioStoryServiceTest {
         SLUG, "MIDIA_UPLOAD", List.of(multipart), "story-upload-lento", authentication, "req-tempo");
 
     assertThat(response.inicioEm()).isEqualTo(AGORA.plusMinutes(7));
-    assertThat(response.fimEm()).isEqualTo(AGORA.plusMinutes(7).plusHours(24));
+    assertThat(response.fimEm()).isEqualTo(FIM.minusHours(1));
   }
 
   @Test
@@ -450,7 +451,7 @@ class MeuAnuncioStoryServiceTest {
   }
 
   @Test
-  void uploadQueUltrapassaFimAntigoRecebeDuracaoIntegralNaPublicacao() {
+  void uploadQueUltrapassaFimDaAtivacaoNaoReiniciaNemProlongaVigencia() {
     Clock progressivo = mock(Clock.class);
     when(progressivo.getZone()).thenReturn(ZoneOffset.UTC);
     when(progressivo.instant()).thenReturn(AGORA.toInstant(), FIM.plusSeconds(1).toInstant());
@@ -461,20 +462,20 @@ class MeuAnuncioStoryServiceTest {
     when(fotoProcessor.processar(any())).thenReturn(processada());
     TransactionSynchronizationManager.initSynchronization();
     try {
-      MeuAnuncioStoryDto response = service.publicar(
-          SLUG, "MIDIA_UPLOAD", List.of(multipart), "expirou-no-upload", authentication, "req-expirou");
+      assertStatus(() -> service.publicar(
+          SLUG, "MIDIA_UPLOAD", List.of(multipart), "expirou-no-upload", authentication, "req-expirou"),
+          HttpStatus.CONFLICT);
       TransactionSynchronizationUtils.triggerAfterCompletion(
-          TransactionSynchronization.STATUS_COMMITTED);
-      assertThat(response.inicioEm()).isEqualTo(FIM.plusSeconds(1));
-      assertThat(response.fimEm()).isEqualTo(FIM.plusSeconds(1).plusHours(24));
-      assertThat(ativacao.getInicioEm()).isEqualTo(response.inicioEm());
-      assertThat(ativacao.getFimEm()).isEqualTo(response.fimEm());
+          TransactionSynchronization.STATUS_ROLLED_BACK);
+      assertThat(ativacao.getInicioEm()).isEqualTo(AGORA.minusHours(1));
+      assertThat(ativacao.getFimEm()).isEqualTo(FIM.minusHours(1));
     } finally {
       TransactionSynchronizationManager.clearSynchronization();
     }
 
-    verify(storage, never()).delete(any(), any());
-    assertThat(stories).hasSize(1);
+    verify(cleanupAuditService).limparSeOrfao(
+        eq(storage), any(), eq(ANUNCIO_ID), any(), any(), any());
+    assertThat(stories).isEmpty();
   }
 
   @Test

@@ -384,15 +384,30 @@ public class MeuAnuncioStoryService {
   }
 
   private OffsetDateTime iniciarVigencia(AtivacaoStories selecionada, OffsetDateTime publicadoEm) {
+    AtivacaoBeneficioEntity ativacao = selecionada.ativacao();
+    if (ativacao.getStatus() == StatusAtivacaoBeneficio.ATIVA) {
+      if (ativacao.getInicioEm() == null
+          || ativacao.getFimEm() == null
+          || ativacao.getInicioEm().isAfter(publicadoEm)
+          || !ativacao.getFimEm().isAfter(publicadoEm)) {
+        throw new ResponseStatusException(
+            HttpStatus.CONFLICT,
+            "beneficio STORIES expirou antes da publicacao");
+      }
+      return ativacao.getFimEm();
+    }
+    if (ativacao.getStatus() != StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "beneficio STORIES indisponivel");
+    }
     OffsetDateTime fimEm;
     try {
       fimEm = publicadoEm.plus(selecionada.duracao());
     } catch (RuntimeException exception) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "duracao do beneficio STORIES invalida");
     }
-    selecionada.ativacao().iniciarVigenciaExclusiva(publicadoEm, fimEm);
+    ativacao.iniciarVigenciaExclusiva(publicadoEm, fimEm);
     selecionada.grupo().estenderValidadeAte(fimEm, publicadoEm);
-    ativacaoRepository.save(selecionada.ativacao());
+    ativacaoRepository.save(ativacao);
     grupoRepository.save(selecionada.grupo());
     return fimEm;
   }

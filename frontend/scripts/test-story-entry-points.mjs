@@ -97,9 +97,10 @@ check('12. ausencia de beneficio nao remove o botao', () => {
 })
 
 check('13. ausencia de beneficio carrega fluxo proprio de Stories', () => {
-  matches(dialog, /entry\.kind !== 'NEEDS_ACTIVATION'/)
-  matches(dialog, /fetchMinhaMonetizacao\(anuncio\.slug\)/)
-  matches(dialog, /item\.codigo === 'STORIES'/)
+  matches(dialog, /setStep\('CONFIGURAR_CONTEUDO'\)/)
+  matches(dialog, /setStep\('REVISAR'\)/)
+  matches(dialog, /const slug = anuncio\.slug[\s\S]*consultarMeuAnuncioStoryOferta\(slug\)/)
+  excludes(dialog, /fetchMinhaMonetizacao\(anuncio\.slug\)/)
 })
 
 check('14. fluxo de Stories nao redireciona ao wizard generico', () => {

@@ -43,7 +43,6 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
                 select beneficio.id
                 from BeneficioPremiumEntity beneficio
                 where beneficio.codigo = :codigo
-                  and beneficio.ativo = true
               )
               and not exists (
                 select story.id
@@ -73,7 +72,6 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
                 select beneficio.id
                 from BeneficioPremiumEntity beneficio
                 where beneficio.codigo = :codigo
-                  and beneficio.ativo = true
               )
               and not exists (
                 select story.id
