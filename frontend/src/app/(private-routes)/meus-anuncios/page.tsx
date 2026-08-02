@@ -1,11 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { PlusIcon } from '@heroicons/react/24/solid'
-import { useCallback, useEffect, useState } from 'react'
+import { MegaphoneIcon, PlusIcon } from '@heroicons/react/24/solid'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { MeuAnuncioCard } from '@/components/anuncios/meu-anuncio-card'
 import type { CicloVidaAcao } from '@/components/anuncios/meu-anuncio-acoes-ciclo-vida'
 import { PainelShell } from '@/components/painel-anunciante/painel-shell'
+import { StoryAnuncioSelectorDialog } from '@/components/stories/story-anuncio-selector-dialog'
+import { StoryCreateDialog } from '@/components/stories/story-create-dialog'
 import {
   listarMeusAnuncios,
   MeusAnunciosApiError,
@@ -23,6 +25,10 @@ export default function MeusAnunciosPage() {
   const [anuncios, setAnuncios] = useState<MeuAnuncio[]>([])
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<ListaErro | null>(null)
+  const [storySelectorOpen, setStorySelectorOpen] = useState(false)
+  const [storyDialogOpen, setStoryDialogOpen] = useState(false)
+  const [storyTargetId, setStoryTargetId] = useState<string | null>(null)
+  const storyReturnFocusRef = useRef<HTMLElement | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -86,16 +92,58 @@ export default function MeusAnunciosPage() {
       : anuncio))
   }, [])
 
+  const aplicarAnuncio = useCallback((resultado: MeuAnuncio) => {
+    setAnuncios((atuais) => atuais.map((anuncio) => anuncio.id === resultado.id ? resultado : anuncio))
+  }, [])
+
+  const abrirStory = useCallback((anuncioId: string, trigger?: HTMLElement | null) => {
+    if (trigger) storyReturnFocusRef.current = trigger
+    setStoryTargetId(anuncioId)
+    setStoryDialogOpen(true)
+  }, [])
+
+  const abrirStoryGlobal = useCallback((trigger: HTMLElement) => {
+    if (loading || erro || anuncios.length === 0) return
+    storyReturnFocusRef.current = trigger
+    if (anuncios.length === 1) {
+      abrirStory(anuncios[0].id, trigger)
+      return
+    }
+    setStorySelectorOpen(true)
+  }, [anuncios, abrirStory, erro, loading])
+
+  const storyTarget = anuncios.find((anuncio) => anuncio.id === storyTargetId) ?? null
+  const storyGlobalDisabled = loading || Boolean(erro) || anuncios.length === 0
+  const storyGlobalReason = loading
+    ? 'Aguarde enquanto seus anúncios são carregados.'
+    : erro
+      ? 'Recarregue seus anúncios antes de usar os Stories.'
+      : 'Publique um anúncio antes de usar os Stories.'
+
   return (
     <PainelShell
       title="Meus anúncios"
       description="Consulte o status, a localização e a capa pública dos seus anúncios."
     >
       <div className="space-y-6">
-        <div className="flex justify-end">
+        <div className="flex flex-col justify-end gap-2 sm:flex-row sm:items-center">
+          <button
+            type="button"
+            onClick={(event) => abrirStoryGlobal(event.currentTarget)}
+            disabled={storyGlobalDisabled}
+            aria-describedby={storyGlobalDisabled ? 'story-global-indisponivel' : undefined}
+            title={storyGlobalDisabled ? storyGlobalReason : undefined}
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg border border-[#FC1EAD]/50 bg-white px-5 py-2.5 text-sm font-semibold text-[#b5127a] transition hover:-translate-y-0.5 hover:border-[#FC1EAD] hover:bg-pink-50 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:translate-y-0 disabled:hover:shadow-none sm:w-auto"
+          >
+            <MegaphoneIcon className="mr-2 h-5 w-5" aria-hidden="true" />
+            Publicar nos Stories
+          </button>
+          {storyGlobalDisabled ? (
+            <span id="story-global-indisponivel" className="sr-only">{storyGlobalReason}</span>
+          ) : null}
           <Link
             href="/anunciar/wizard"
-            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-[#FC1EAD] px-5 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#e01a9a] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#FC1EAD] px-5 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-[#e01a9a] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2 sm:w-auto"
           >
             <PlusIcon className="mr-2 h-5 w-5" aria-hidden="true" />
             Publicar novo anúncio
@@ -140,11 +188,33 @@ export default function MeusAnunciosPage() {
                 key={anuncio.id}
                 anuncio={anuncio}
                 onCicloVida={aplicarCicloVida}
-                onStoryChange={aplicarStory}
+                onStoryOpen={abrirStory}
               />
             ))}
           </div>
         )}
+
+        <StoryAnuncioSelectorDialog
+          open={storySelectorOpen}
+          onOpenChange={setStorySelectorOpen}
+          anuncios={anuncios}
+          returnFocusTo={storyReturnFocusRef.current}
+          onSelect={(anuncio) => {
+            setStorySelectorOpen(false)
+            setStoryTargetId(anuncio.id)
+            window.setTimeout(() => setStoryDialogOpen(true), 0)
+          }}
+        />
+        {storyTarget ? (
+          <StoryCreateDialog
+            open={storyDialogOpen}
+            onOpenChange={setStoryDialogOpen}
+            anuncio={storyTarget}
+            returnFocusTo={storyReturnFocusRef.current}
+            onAnuncioChange={aplicarAnuncio}
+            onSuccess={(story) => aplicarStory(storyTarget.id, story)}
+          />
+        ) : null}
       </div>
     </PainelShell>
   )

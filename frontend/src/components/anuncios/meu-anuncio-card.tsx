@@ -2,17 +2,17 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { BanknotesIcon, EyeIcon, MapPinIcon, PencilIcon, SparklesIcon } from '@heroicons/react/24/solid'
-import { useState } from 'react'
+import { BanknotesIcon, EyeIcon, MapPinIcon, MegaphoneIcon, PencilIcon, SparklesIcon } from '@heroicons/react/24/solid'
+import { useId } from 'react'
 import {
   MeuAnuncioAcoesCicloVida,
   type CicloVidaAcao,
 } from '@/components/anuncios/meu-anuncio-acoes-ciclo-vida'
-import type { MeuAnuncio, MeuAnuncioCicloVida, MeuAnuncioStory } from '@/lib/meus-anuncios-api'
+import type { MeuAnuncio, MeuAnuncioCicloVida } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
 import { formatarVisualizacoesCanonicas } from '@/lib/visualizacoes-canonicas'
 import { apresentarBeneficioPremium } from '@/lib/meu-anuncio-beneficios'
-import { StoryCreateDialog } from '@/components/stories/story-create-dialog'
+import { formatStoryDate, getStoryEntryState } from '@/components/stories/story-entry-state'
 
 const STATUS: Record<string, { label: string; className: string }> = {
   RASCUNHO: { label: 'Rascunho', className: 'border-slate-300 bg-slate-100 text-slate-700' },
@@ -20,6 +20,7 @@ const STATUS: Record<string, { label: string; className: string }> = {
   APROVADO: { label: 'Aprovado', className: 'border-sky-300 bg-sky-100 text-sky-800' },
   PUBLICADO: { label: 'Publicado', className: 'border-emerald-300 bg-emerald-100 text-emerald-800' },
   PAUSADO: { label: 'Pausado', className: 'border-slate-300 bg-slate-100 text-slate-700' },
+  BLOQUEADO: { label: 'Bloqueado', className: 'border-rose-300 bg-rose-100 text-rose-800' },
   REJEITADO: { label: 'Rejeitado', className: 'border-rose-300 bg-rose-100 text-rose-800' },
   REMOVIDO: { label: 'Removido', className: 'border-slate-300 bg-slate-100 text-slate-700' },
 }
@@ -98,26 +99,13 @@ export function meuAnuncioUrlPublicaSegura(url: string | null | undefined) {
 type MeuAnuncioCardProps = {
   anuncio: MeuAnuncio
   onCicloVida: (resultado: MeuAnuncioCicloVida, acao: CicloVidaAcao) => void
-  onStoryChange: (anuncioId: string, story: MeuAnuncioStory) => void
+  onStoryOpen: (anuncioId: string, trigger: HTMLButtonElement) => void
 }
 
-function formatarExpiracaoStory(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'America/Sao_Paulo',
-  }).format(new Date(value))
-}
-
-export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryChange }: MeuAnuncioCardProps) {
-  const [storyDialogOpen, setStoryDialogOpen] = useState(false)
+export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryOpen }: MeuAnuncioCardProps) {
+  const storyUnavailableId = useId()
   const status = anuncioStatus(anuncio.status)
-  const podePublicarStory = anuncio.status === 'PUBLICADO'
-    && anuncio.statusModeracao === 'APROVADO'
-    && anuncio.beneficiosPremium.some(
-    (beneficio) => beneficio.codigo === 'STORIES'
-      && ['ATIVO', 'AGUARDANDO_MODERACAO'].includes(beneficio.status)
-    )
+  const storyEntry = getStoryEntryState(anuncio)
   const capaPublica = !anuncio.capa?.restrita
     ? meuAnuncioUrlPublicaSegura(anuncio.capa?.urlPublica)
     : null
@@ -193,36 +181,26 @@ export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryChange }: MeuAnunc
           </section>
         ) : null}
 
-        {podePublicarStory || anuncio.storyAtivo ? (
+        {anuncio.storyAtivo ? (
           <section className="mt-3 border-t border-slate-100 pt-3" aria-label="Stories">
             <h3 className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
               <SparklesIcon className="h-4 w-4 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
               Stories
             </h3>
-            {anuncio.storyAtivo ? (
-              <div className="mt-2 rounded-lg border border-pink-200 bg-pink-50 p-3 text-xs text-slate-700">
-                <p className="font-semibold text-slate-900">Story ativo</p>
-                <p className="mt-1">Modo: {anuncio.storyAtivo.modoConteudo === 'ANUNCIO' ? 'Divulgar meu anúncio' : 'Mídia enviada'}</p>
-                <p className="mt-1">Ativo até {formatarExpiracaoStory(anuncio.storyAtivo.fimEm)}</p>
-                {anuncio.storyAtivo.modoConteudo === 'MIDIA_UPLOAD' && anuncio.storyAtivo.estadoMidia === 'INDISPONIVEL' ? (
-                  <p className="mt-2 font-medium text-amber-800">Story ativo, mas a mídia enviada não está disponível.</p>
-                ) : null}
-                <Link
-                  href={`/anuncios/${encodeURIComponent(anuncio.slug)}`}
-                  className="mt-2 inline-flex min-h-9 items-center font-semibold text-[#b5127a] underline-offset-2 hover:underline"
-                >
-                  Ver anúncio
-                </Link>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setStoryDialogOpen(true)}
-                className="mt-2 inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-[#FC1EAD]/40 bg-pink-50 px-3 py-2 text-xs font-semibold text-[#b5127a] transition hover:border-[#FC1EAD] hover:bg-pink-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2"
+            <div className="mt-2 rounded-lg border border-pink-200 bg-pink-50 p-3 text-xs text-slate-700">
+              <p className="font-semibold text-slate-900">Story ativo</p>
+              <p className="mt-1">Modo: {anuncio.storyAtivo.modoConteudo === 'ANUNCIO' ? 'Divulgar meu anúncio' : 'Mídia enviada'}</p>
+              <p className="mt-1">Ativo até {formatStoryDate(anuncio.storyAtivo.fimEm)}</p>
+              {anuncio.storyAtivo.modoConteudo === 'MIDIA_UPLOAD' && anuncio.storyAtivo.estadoMidia === 'INDISPONIVEL' ? (
+                <p className="mt-2 font-medium text-amber-800">Story ativo, mas a mídia enviada não está disponível.</p>
+              ) : null}
+              <Link
+                href={`/anuncios/${encodeURIComponent(anuncio.slug)}`}
+                className="mt-2 inline-flex min-h-9 items-center font-semibold text-[#b5127a] underline-offset-2 hover:underline"
               >
-                Publicar nos Stories
-              </button>
-            )}
+                Ver anúncio
+              </Link>
+            </div>
           </section>
         ) : null}
 
@@ -250,6 +228,26 @@ export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryChange }: MeuAnunc
               Monetizar
             </Link>
           ) : null}
+          <div className="col-span-2 min-w-0">
+            <button
+              type="button"
+              onClick={(event) => {
+                if (!storyEntry.disabled) onStoryOpen(anuncio.id, event.currentTarget)
+              }}
+              disabled={storyEntry.disabled}
+              aria-describedby={storyEntry.reason ? storyUnavailableId : undefined}
+              title={storyEntry.reason ?? undefined}
+              className="inline-flex min-h-10 w-full items-center justify-center rounded-lg border border-[#FC1EAD]/40 bg-pink-50 px-3 py-2 text-xs font-semibold text-[#b5127a] transition hover:-translate-y-0.5 hover:border-[#FC1EAD] hover:bg-pink-100 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500 disabled:hover:translate-y-0 disabled:hover:shadow-none"
+            >
+              <MegaphoneIcon className="mr-1 h-4 w-4" aria-hidden="true" />
+              {storyEntry.buttonLabel}
+            </button>
+            {storyEntry.reason ? (
+              <p id={storyUnavailableId} className="mt-1.5 break-words text-center text-[11px] leading-4 text-slate-500">
+                {storyEntry.reason}
+              </p>
+            ) : null}
+          </div>
         </div>
         <MeuAnuncioAcoesCicloVida
           anuncio={anuncio}
@@ -257,12 +255,6 @@ export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryChange }: MeuAnunc
           className="mt-3 border-t border-gray-100 pt-3"
         />
       </div>
-      <StoryCreateDialog
-        open={storyDialogOpen}
-        onOpenChange={setStoryDialogOpen}
-        slug={anuncio.slug}
-        onSuccess={(story) => onStoryChange(anuncio.id, story)}
-      />
     </article>
   )
 }

@@ -100,7 +100,7 @@ assert.match(detail, /loading="lazy"/)
 assert.match(normalized(detail), /Midia protegida/)
 assert.match(normalized(detail), /aguardando moderacao/)
 assert.doesNotMatch(combined, /objectKey|object_key|chaveObjeto|bucket|documentoKyc|dataNascimento/)
-assert.doesNotMatch(combined, /\/anuncios\/\$\{.*\}(?!\/editar|\/monetizar)/)
+assert.match(card, /href=\{`\/anuncios\/\$\{encodeURIComponent\(anuncio\.slug\)\}`\}[\s\S]*Ver anúncio/)
 
 assert.match(listPage, /error\.status === 401/)
 assert.match(listPage, /error\.status === 403/)
@@ -124,7 +124,6 @@ for (const forbidden of [
   'Cliques',
   'CTR',
   'Excluir',
-  'Story',
   'Performance',
   'Comprar creditos',
 ]) {

@@ -9,6 +9,8 @@ const [
   dialog,
   card,
   page,
+  selector,
+  entryState,
   api,
   viewer,
   accessPolicy,
@@ -25,6 +27,8 @@ const [
   source('../src/components/stories/story-create-dialog.tsx'),
   source('../src/components/anuncios/meu-anuncio-card.tsx'),
   source('../src/app/(private-routes)/meus-anuncios/page.tsx'),
+  source('../src/components/stories/story-anuncio-selector-dialog.tsx'),
+  source('../src/components/stories/story-entry-state.ts'),
   source('../src/lib/meus-anuncios-api.ts'),
   source('../src/components/stories/story-viewer-dialog.tsx'),
   source('../src/components/stories/story-access-policy.js'),
@@ -62,13 +66,15 @@ function excludes(value, pattern) {
   assert.doesNotMatch(value, pattern)
 }
 
-check('1. botao no bloco de Stories do card', () => {
-  matches(card, /aria-label="Stories"[\s\S]*Publicar nos Stories/)
-  matches(card, /<StoryCreateDialog[\s\S]*slug=\{anuncio\.slug\}/)
+check('1. botao de Stories fica na area principal do card', () => {
+  matches(card, /mt-auto grid grid-cols-2[\s\S]*storyEntry\.buttonLabel/)
+  matches(page, /<StoryCreateDialog[\s\S]*anuncio=\{storyTarget\}/)
 })
 
-check('2. dialogo conectado e aberto pelo card', () => {
-  matches(card, /onClick=\{\(\) => setStoryDialogOpen\(true\)\}/)
+check('2. dialogo unico conectado ao topo e ao card', () => {
+  matches(card, /onStoryOpen\(anuncio\.id, event\.currentTarget\)/)
+  matches(page, /setStoryTargetId\(anuncioId\)[\s\S]*setStoryDialogOpen\(true\)/)
+  matches(selector, /onSelect: \(anuncio: MeuAnuncio\) => void/)
   matches(dialog, /<Dialog[\s\S]*open=\{open\}/)
 })
 
@@ -89,7 +95,7 @@ check('6. selecao do modo MIDIA_UPLOAD', () => {
 })
 
 check('7. selecao acessivel por teclado', () => {
-  assert.equal((dialog.match(/type="radio"/g) || []).length, 2)
+  assert.equal((dialog.match(/name="story-mode"/g) || []).length, 2)
   matches(dialog, /focus-within:ring-2/)
 })
 
@@ -140,7 +146,7 @@ check('16. frontend nao envia URL, bucket ou object key', () => {
 
 check('17. loading impede duplo clique', () => {
   matches(dialog, /disabled=\{submitting \|\| !mode/)
-  matches(dialog, /if \(!submitting\) onOpenChange\(next\)/)
+  matches(dialog, /if \(!busy\) onOpenChange\(next\)/)
 })
 
 check('18. progresso acessivel', () => {
@@ -157,14 +163,14 @@ check('19. sucesso atualiza status sem reload', () => {
 })
 
 check('20. expiracao vem do backend e usa timezone canonico', () => {
-  matches(dialog, /formatDate\(result\.fimEm\)/)
-  matches(dialog, /timeZone: 'America\/Sao_Paulo'/)
-  excludes(dialog, /setHours|setDate|24 \* 60/)
+  matches(dialog, /formatStoryDate\(activeStory\.fimEm\)/)
+  matches(entryState, /timeZone: 'America\/Sao_Paulo'/)
+  excludes(dialog + entryState, /setHours|setDate|24 \* 60/)
 })
 
 check('21. Story ativo nao pode ser substituido pela UI', () => {
-  matches(card, /anuncio\.storyAtivo \? \([\s\S]*Story ativo/)
-  matches(card, /\) : \([\s\S]*Publicar nos Stories/)
+  matches(entryState, /if \(anuncio\.storyAtivo\)[\s\S]*kind: 'ACTIVE'/)
+  matches(dialog, /\{activeStory \? \([\s\S]*Story ativo[\s\S]*\) : entry\.kind === 'UNAVAILABLE'/)
 })
 
 check('22. erros 400, 401 e 403 sao mantidos no dialogo', () => {
@@ -198,6 +204,7 @@ check('26. mobile sem overflow e com 100dvh', () => {
 check('27. foco, Escape e fechamento usam Dialog canonico', () => {
   matches(dialog, /from '@\/components\/ui\/dialog'/)
   matches(dialog, /onOpenChange=\{\(next\) =>/)
+  matches(dialog, /onOpenAutoFocus=\{\(event\)/)
 })
 
 check('28. sucesso e erro possuem papeis acessiveis', () => {
@@ -206,7 +213,7 @@ check('28. sucesso e erro possuem papeis acessiveis', () => {
 })
 
 check('29. limites exibidos vem do backend', () => {
-  matches(dialog, /consultarLimitesMinhasMidias\(slug\)/)
+  matches(dialog, /consultarLimitesMinhasMidias\(anuncio\.slug\)/)
   matches(dialog, /limits\.maxFotoBytes/)
   matches(dialog, /limits\.maxVideoBytes/)
 })
@@ -304,11 +311,13 @@ check('42. Story aceita somente MP4 web compativel e nao anuncia MOV', () => {
   excludes(openapi.slice(openapi.indexOf('/minha-conta/anuncios/{slug}/stories:'), openapi.indexOf('/minha-conta/anuncios/{slug}/stories:') + 5000), /MP4\/MOV|video\/quicktime/)
 })
 
-check('43. botao aparece somente com anuncio aprovado e beneficio STORIES utilizavel', () => {
-  matches(card, /anuncio\.status === 'PUBLICADO'[\s\S]*anuncio\.statusModeracao === 'APROVADO'/)
-  matches(card, /beneficio\.codigo === 'STORIES'[\s\S]*\['ATIVO', 'AGUARDANDO_MODERACAO'\]\.includes\(beneficio\.status\)/)
-  excludes(card, /\['ATIVO', 'AGUARDANDO_MODERACAO', 'PENDENTE'\]/)
-  matches(card, /\{podePublicarStory \|\| anuncio\.storyAtivo \? \(/)
+check('43. botao permanece visivel e estado utiliza elegibilidade canonica', () => {
+  matches(entryState, /anuncio\.status !== 'PUBLICADO' \|\| anuncio\.statusModeracao !== 'APROVADO'/)
+  matches(entryState, /new Set\(\['ATIVO', 'AGUARDANDO_MODERACAO'\]\)/)
+  excludes(entryState, /'PENDENTE'\]/)
+  matches(card, /disabled=\{storyEntry\.disabled\}/)
+  excludes(card, /aria-disabled=\{storyEntry\.disabled\}/)
+  matches(card, /storyEntry\.buttonLabel/)
 })
 
 assert.equal(checks, 43)

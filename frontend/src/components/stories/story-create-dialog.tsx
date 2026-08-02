@@ -1,9 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CircleCheck,
+  CircleDollarSign,
   FileImage,
   Megaphone,
   Trash2,
@@ -19,10 +20,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { formatStoryDate, getStoryEntryState } from '@/components/stories/story-entry-state'
 import {
+  comprarBeneficios,
+  fetchMinhaMonetizacao,
+  newPremiumPurchaseIdempotencyKey,
+  type MinhaMonetizacaoBackend,
+} from '@/features/monetizacao-wizard/api'
+import {
+  buscarMeuAnuncio,
   consultarLimitesMinhasMidias,
   MeusAnunciosApiError,
   publicarMeuAnuncioStory,
+  type MeuAnuncio,
   type MeuAnuncioStory,
   type MinhasMidiasLimites,
 } from '@/lib/meus-anuncios-api'
@@ -33,7 +43,9 @@ type StoryMode = 'ANUNCIO' | 'MIDIA_UPLOAD'
 type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  slug: string
+  anuncio: MeuAnuncio
+  returnFocusTo?: HTMLElement | null
+  onAnuncioChange: (anuncio: MeuAnuncio) => void
   onSuccess: (story: MeuAnuncioStory) => void
 }
 
@@ -45,14 +57,6 @@ function formatBytes(bytes: number) {
     unit: 'megabyte',
     maximumFractionDigits: 0,
   }).format(bytes / 1024 / 1024)
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'America/Sao_Paulo',
-  }).format(new Date(value))
 }
 
 function errorMessage(error: unknown) {
@@ -71,10 +75,26 @@ function errorMessage(error: unknown) {
   return error.message || 'Não foi possível publicar o Story. Tente novamente.'
 }
 
-export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props) {
-  const titleId = useId()
+function purchaseErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) return error.message
+  return 'Não foi possível ativar Stories. Tente novamente.'
+}
+
+function pluralizeCredits(value: number) {
+  return `${value} ${value === 1 ? 'crédito' : 'créditos'}`
+}
+
+export function StoryCreateDialog({
+  open,
+  onOpenChange,
+  anuncio,
+  returnFocusTo,
+  onAnuncioChange,
+  onSuccess,
+}: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const idempotencyKeyRef = useRef<string | null>(null)
+  const publishIdempotencyKeyRef = useRef<string | null>(null)
+  const purchaseIdempotencyKeyRef = useRef<string | null>(null)
   const [mode, setMode] = useState<StoryMode | null>(null)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -83,6 +103,22 @@ export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<MeuAnuncioStory | null>(null)
+  const [accessGranted, setAccessGranted] = useState(false)
+  const [monetizacao, setMonetizacao] = useState<MinhaMonetizacaoBackend | null>(null)
+  const [loadingAcquisition, setLoadingAcquisition] = useState(false)
+  const [purchasing, setPurchasing] = useState(false)
+  const [purchaseError, setPurchaseError] = useState<string | null>(null)
+  const [selectedDuration, setSelectedDuration] = useState<number | null>(null)
+
+  const entry = getStoryEntryState(anuncio)
+  const activeStory = result ?? anuncio.storyAtivo
+  const canCreate = accessGranted || entry.kind === 'READY'
+  const storyCatalog = monetizacao?.catalogo.find(
+    (item) => item.codigo === 'STORIES' && item.ativo
+  ) ?? null
+  const storyOptions = storyCatalog?.opcoes.filter((option) => option.ativo) ?? []
+  const selectedOption = storyOptions.find((option) => option.duracaoDias === selectedDuration) ?? null
+  const busy = submitting || purchasing
 
   useEffect(() => {
     if (!open) {
@@ -93,11 +129,59 @@ export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props
       setProgress(0)
       setError(null)
       setResult(null)
-      idempotencyKeyRef.current = null
+      setAccessGranted(false)
+      setMonetizacao(null)
+      setLoadingAcquisition(false)
+      setPurchasing(false)
+      setPurchaseError(null)
+      setSelectedDuration(null)
+      publishIdempotencyKeyRef.current = null
+      purchaseIdempotencyKeyRef.current = null
       return
     }
+
+    setMode(null)
+    setFile(null)
+    setLimits(null)
+    setProgress(0)
+    setError(null)
+    setResult(null)
+    setAccessGranted(entry.kind === 'READY')
+    setMonetizacao(null)
+    setPurchaseError(null)
+    setSelectedDuration(null)
+    publishIdempotencyKeyRef.current = null
+    purchaseIdempotencyKeyRef.current = null
+  }, [anuncio.id, entry.kind, open])
+
+  useEffect(() => {
+    if (!open || activeStory || canCreate || entry.kind !== 'NEEDS_ACTIVATION') return
     let cancelled = false
-    void consultarLimitesMinhasMidias(slug)
+    setLoadingAcquisition(true)
+    setPurchaseError(null)
+    void fetchMinhaMonetizacao(anuncio.slug)
+      .then((value) => {
+        if (cancelled) return
+        setMonetizacao(value)
+        const catalog = value.catalogo.find((item) => item.codigo === 'STORIES' && item.ativo)
+        const firstOption = catalog?.opcoes.find((option) => option.ativo) ?? null
+        setSelectedDuration(firstOption?.duracaoDias ?? null)
+      })
+      .catch((cause) => {
+        if (!cancelled) setPurchaseError(purchaseErrorMessage(cause))
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAcquisition(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeStory, anuncio.slug, canCreate, entry.kind, open])
+
+  useEffect(() => {
+    if (!open || activeStory || !canCreate) return
+    let cancelled = false
+    void consultarLimitesMinhasMidias(anuncio.slug)
       .then((value) => {
         if (!cancelled) setLimits(value)
       })
@@ -107,7 +191,7 @@ export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props
     return () => {
       cancelled = true
     }
-  }, [open, slug])
+  }, [activeStory, anuncio.slug, canCreate, open])
 
   useEffect(() => {
     if (!file) {
@@ -119,8 +203,8 @@ export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props
     return () => URL.revokeObjectURL(url)
   }, [file])
 
-  function resetIntent() {
-    idempotencyKeyRef.current = null
+  function resetPublishIntent() {
+    publishIdempotencyKeyRef.current = null
     setError(null)
     setProgress(0)
   }
@@ -129,12 +213,50 @@ export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props
     if (next === mode) return
     setMode(next)
     if (next === 'ANUNCIO') setFile(null)
-    resetIntent()
+    resetPublishIntent()
   }
 
   function selectFile(next: File | null) {
     setFile(next)
-    resetIntent()
+    resetPublishIntent()
+  }
+
+  async function purchaseStories() {
+    if (!selectedOption || !storyCatalog || !monetizacao) return
+    if (monetizacao.saldoCreditos < selectedOption.custoCreditos) {
+      setPurchaseError('Seu saldo não é suficiente para esta opção de Stories.')
+      return
+    }
+
+    const key = purchaseIdempotencyKeyRef.current ?? newPremiumPurchaseIdempotencyKey()
+    purchaseIdempotencyKeyRef.current = key
+    setPurchasing(true)
+    setPurchaseError(null)
+    try {
+      const purchase = await comprarBeneficios(
+        anuncio.slug,
+        [{ beneficioCodigo: storyCatalog.codigo, duracaoDias: selectedOption.duracaoDias }],
+        key
+      )
+      const storyActivation = purchase.ativacoes.find(
+        (activation) => activation.beneficioCodigo === 'STORIES'
+      )
+      if (!storyActivation) {
+        throw new Error('A ativação de Stories não foi confirmada pelo servidor.')
+      }
+      setAccessGranted(true)
+      purchaseIdempotencyKeyRef.current = null
+      toast.success('Stories ativado. Escolha agora como deseja publicar.')
+      try {
+        onAnuncioChange(await buscarMeuAnuncio(anuncio.slug))
+      } catch {
+        setPurchaseError('Stories foi ativado, mas a atualização do anúncio não pôde ser concluída. Você ainda pode publicar agora.')
+      }
+    } catch (cause) {
+      setPurchaseError(purchaseErrorMessage(cause))
+    } finally {
+      setPurchasing(false)
+    }
   }
 
   async function publish() {
@@ -146,14 +268,14 @@ export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props
       setError('Selecione uma foto ou um vídeo para publicar.')
       return
     }
-    const key = idempotencyKeyRef.current ?? crypto.randomUUID()
-    idempotencyKeyRef.current = key
+    const key = publishIdempotencyKeyRef.current ?? crypto.randomUUID()
+    publishIdempotencyKeyRef.current = key
     setSubmitting(true)
     setProgress(0)
     setError(null)
     try {
       const story = await publicarMeuAnuncioStory(
-        slug,
+        anuncio.slug,
         mode,
         mode === 'MIDIA_UPLOAD' ? file : null,
         key,
@@ -169,41 +291,177 @@ export function StoryCreateDialog({ open, onOpenChange, slug, onSuccess }: Props
     }
   }
 
+  const title = activeStory
+    ? 'Gerenciar Story'
+    : entry.kind === 'UNAVAILABLE'
+      ? 'Stories indisponíveis para este anúncio'
+      : canCreate
+        ? 'Como você quer aparecer nos Stories?'
+        : 'Ativar Stories'
+
+  const description = activeStory
+    ? 'Consulte o modo e a vigência informados pelo servidor.'
+    : entry.kind === 'UNAVAILABLE'
+      ? entry.reason
+      : canCreate
+        ? 'Escolha o anúncio ou envie uma mídia exclusiva para esta publicação.'
+        : 'Escolha uma opção do catálogo de Stories para continuar.'
+
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!submitting) onOpenChange(next)
+        if (!busy) onOpenChange(next)
       }}
     >
-      <DialogContent className="flex max-h-[100dvh] w-[calc(100vw-1rem)] max-w-lg flex-col overflow-hidden p-0 sm:max-h-[calc(100dvh-2rem)]">
-        <div className="overflow-y-auto px-5 py-5 sm:px-6" aria-labelledby={titleId}>
+      <DialogContent
+        className="flex max-h-[100dvh] w-[calc(100vw-1rem)] max-w-lg flex-col overflow-hidden p-0 sm:max-h-[calc(100dvh-2rem)]"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          const content = event.currentTarget as HTMLElement | null
+          if (!content) return
+          requestAnimationFrame(() => {
+            content.querySelector<HTMLElement>('input:not(:disabled), button:not(:disabled), a[href]')?.focus()
+          })
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          requestAnimationFrame(() => {
+            if (returnFocusTo?.isConnected) returnFocusTo.focus()
+          })
+        }}
+      >
+        <div className="overflow-y-auto px-5 py-5 sm:px-6">
           <DialogHeader className="pr-7 text-left">
-            <DialogTitle id={titleId}>Como você quer aparecer nos Stories?</DialogTitle>
-            <DialogDescription>
-              Escolha o anúncio ou envie uma mídia exclusiva para esta publicação.
-            </DialogDescription>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
 
-          {result ? (
+          {activeStory ? (
             <div className="mt-5 space-y-4" role="status">
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
                 <div className="flex items-center gap-2 font-semibold">
                   <CircleCheck className="h-5 w-5" aria-hidden="true" />
-                  Seu Story foi publicado.
+                  {result ? 'Seu Story foi publicado.' : 'Story ativo'}
                 </div>
                 <dl className="mt-3 grid gap-2 text-sm">
-                  <div><dt className="inline font-medium">Modo: </dt><dd className="inline">{result.modoConteudo === 'ANUNCIO' ? 'Divulgar meu anúncio' : 'Mídia enviada'}</dd></div>
-                  <div><dt className="inline font-medium">Status: </dt><dd className="inline">Ativo</dd></div>
-                  <div><dt className="inline font-medium">Início: </dt><dd className="inline">{formatDate(result.inicioEm)}</dd></div>
-                  <div><dt className="inline font-medium">Expira em: </dt><dd className="inline">{formatDate(result.fimEm)}</dd></div>
+                  <div><dt className="inline font-medium">Modo: </dt><dd className="inline">{activeStory.modoConteudo === 'ANUNCIO' ? 'Divulgar meu anúncio' : 'Mídia enviada'}</dd></div>
+                  <div><dt className="inline font-medium">Status: </dt><dd className="inline">{activeStory.status}</dd></div>
+                  <div><dt className="inline font-medium">Início: </dt><dd className="inline">{formatStoryDate(activeStory.inicioEm)}</dd></div>
+                  <div><dt className="inline font-medium">Expira em: </dt><dd className="inline">{formatStoryDate(activeStory.fimEm)}</dd></div>
+                  {activeStory.modoConteudo === 'MIDIA_UPLOAD' ? (
+                    <div>
+                      <dt className="inline font-medium">Mídia: </dt>
+                      <dd className="inline">{activeStory.estadoMidia === 'INDISPONIVEL' ? 'Indisponível' : 'Disponível'}</dd>
+                    </div>
+                  ) : null}
                 </dl>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button asChild variant="outline">
-                  <Link href={`/anuncios/${encodeURIComponent(slug)}`}>Ver anúncio</Link>
+                  <Link href={`/anuncios/${encodeURIComponent(anuncio.slug)}`}>Ver anúncio</Link>
                 </Button>
                 <Button type="button" onClick={() => onOpenChange(false)}>Concluir</Button>
+              </div>
+            </div>
+          ) : entry.kind === 'UNAVAILABLE' ? (
+            <div className="mt-5 space-y-4">
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+                {entry.reason}
+              </p>
+              <Button type="button" variant="outline" className="w-full" onClick={() => onOpenChange(false)}>
+                Fechar
+              </Button>
+            </div>
+          ) : !canCreate ? (
+            <div className="mt-5 space-y-5">
+              {loadingAcquisition ? (
+                <p className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700" role="status">
+                  Carregando opções de Stories...
+                </p>
+              ) : storyCatalog && storyOptions.length > 0 && monetizacao ? (
+                <>
+                  <div className="rounded-lg border border-pink-200 bg-pink-50 p-4">
+                    <div className="flex items-center gap-2 font-semibold text-slate-950">
+                      <CircleDollarSign className="h-5 w-5 text-[#FC1EAD]" aria-hidden="true" />
+                      {storyCatalog.nome}
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{storyCatalog.descricao}</p>
+                    <p className="mt-3 text-sm font-medium text-slate-800">
+                      Saldo disponível: {pluralizeCredits(monetizacao.saldoCreditos)}
+                    </p>
+                  </div>
+
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-semibold text-slate-900">Duração e créditos</legend>
+                    {storyOptions.map((option) => {
+                      const checked = selectedDuration === option.duracaoDias
+                      return (
+                        <label
+                          key={`${option.duracaoDias}-${option.custoCreditos}`}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition focus-within:ring-2 focus-within:ring-[#FC1EAD]',
+                            checked ? 'border-[#FC1EAD] bg-pink-50' : 'border-slate-200 hover:border-pink-300'
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            name="story-duration"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedDuration(option.duracaoDias)
+                              setPurchaseError(null)
+                              purchaseIdempotencyKeyRef.current = null
+                            }}
+                            disabled={purchasing}
+                            className="shrink-0 accent-[#FC1EAD]"
+                          />
+                          <span className="min-w-0 flex-1 text-sm text-slate-800">
+                            <span className="font-semibold">{option.duracaoDias} dias</span>
+                            <span className="mx-1.5 text-slate-400">•</span>
+                            <span>{pluralizeCredits(option.custoCreditos)}</span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </fieldset>
+
+                  {selectedOption && monetizacao.saldoCreditos < selectedOption.custoCreditos ? (
+                    <p className="text-sm leading-6 text-amber-800">
+                      Faltam {pluralizeCredits(selectedOption.custoCreditos - monetizacao.saldoCreditos)} para esta opção.{' '}
+                      <Link href="/creditos" className="font-semibold underline underline-offset-2">Consultar créditos e planos</Link>
+                    </p>
+                  ) : null}
+                </>
+              ) : purchaseError ? null : (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+                  Stories não está disponível no catálogo retornado pelo servidor para esta conta.
+                </p>
+              )}
+
+              {purchaseError ? (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" role="alert">
+                  {purchaseError}
+                </p>
+              ) : null}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={purchasing}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void purchaseStories()}
+                  disabled={
+                    purchasing
+                    || loadingAcquisition
+                    || !selectedOption
+                    || !monetizacao
+                    || monetizacao.saldoCreditos < selectedOption.custoCreditos
+                  }
+                >
+                  {purchasing ? 'Ativando Stories...' : 'Ativar e continuar'}
+                </Button>
               </div>
             </div>
           ) : (
