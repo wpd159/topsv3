@@ -55,13 +55,28 @@ class MeusAnunciosFrontendContractTest {
                 Path.of("features", "anuncio-wizard", "wizard-storage.ts")));
         String wizardStore = Files.readString(FRONTEND.resolve(
                 Path.of("features", "anuncio-wizard", "use-anuncio-wizard-store.ts")));
+        String storyDialog = Files.readString(FRONTEND.resolve(
+                Path.of("components", "stories", "story-create-dialog.tsx")));
+        String storySelector = Files.readString(FRONTEND.resolve(
+                Path.of("components", "stories", "story-anuncio-selector-dialog.tsx")));
 
         assertThat(listagem)
                 .contains("listarMeusAnuncios")
                 .contains("Você ainda não possui anúncios")
+                .contains("import { StoryCreateDialog } from '@/components/stories/story-create-dialog'")
+                .contains("import { StoryAnuncioSelectorDialog } from '@/components/stories/story-anuncio-selector-dialog'")
+                .contains("const [storyDialogOpen, setStoryDialogOpen] = useState(false)")
+                .contains("const [storyTargetId, setStoryTargetId] = useState<string | null>(null)")
+                .contains("onClick={(event) => abrirStoryGlobal(event.currentTarget)}")
+                .contains("onStoryOpen={abrirStory}")
+                .contains("<StoryAnuncioSelectorDialog")
+                .contains("<StoryCreateDialog")
                 .doesNotContain("fetch(")
-                .doesNotContain("StoryCreateDialog")
+                .doesNotContain("/anuncios/meus")
+                .doesNotContain("/monetizar")
                 .doesNotContain("features/catalogo");
+        assertThat(contarOcorrencias(listagem, "<StoryCreateDialog")).isEqualTo(1);
+        assertThat(contarOcorrencias(listagem, "<StoryAnuncioSelectorDialog")).isEqualTo(1);
         assertThat(detalhe)
                 .contains("buscarMeuAnuncio")
                 .contains("formatarVisualizacoesCanonicas(anuncio.visualizacoes)")
@@ -113,8 +128,37 @@ class MeusAnunciosFrontendContractTest {
                 .contains("/editar")
                 .contains("Detalhes")
                 .contains("formatarVisualizacoesCanonicas(anuncio.visualizacoes)")
+                .contains("onStoryOpen: (anuncioId: string, trigger: HTMLButtonElement) => void")
+                .contains("onStoryOpen(anuncio.id, event.currentTarget)")
+                .contains("getStoryEntryState(anuncio)")
                 .doesNotContain("ImpulsionarModal")
-                .doesNotContain("Adicionar story");
+                .doesNotContain("Adicionar story")
+                .doesNotContain("StoryCreateDialog")
+                .doesNotContain("StoryAnuncioSelectorDialog")
+                .doesNotContain("publicarMeuAnuncioStory")
+                .doesNotContain("comprarBeneficios")
+                .doesNotContain("storyDialogOpen")
+                .doesNotContain("fetch(")
+                .doesNotContain("\"/stories")
+                .doesNotContain("'/stories")
+                .doesNotContain("/minha-conta/anuncios/");
+        assertThat(storySelector)
+                .contains("onSelect: (anuncio: MeuAnuncio) => void")
+                .contains("getStoryEntryState(anuncio)")
+                .doesNotContain("StoryCreateDialog")
+                .doesNotContain("publicarMeuAnuncioStory")
+                .doesNotContain("comprarBeneficios")
+                .doesNotContain("fetch(");
+        assertThat(storyDialog)
+                .contains("from '@/lib/meus-anuncios-api'")
+                .contains("from '@/features/monetizacao-wizard/api'")
+                .contains("comprarBeneficios")
+                .contains("publicarMeuAnuncioStory")
+                .contains("newPremiumPurchaseIdempotencyKey")
+                .doesNotContain("fetch(")
+                .doesNotContain("XMLHttpRequest")
+                .doesNotContain("'/api/")
+                .doesNotContain("\"/api/");
         assertThat(cicloVida)
                 .contains("acoesPermitidas.pausar")
                 .contains("acoesPermitidas.reativar")
@@ -126,6 +170,16 @@ class MeusAnunciosFrontendContractTest {
                 .contains("onSuccess(resultado, acao)")
                 .doesNotContain("usuarioId")
                 .doesNotContain("email");
+    }
+
+    private static int contarOcorrencias(String conteudo, String trecho) {
+        int quantidade = 0;
+        int inicio = 0;
+        while ((inicio = conteudo.indexOf(trecho, inicio)) >= 0) {
+            quantidade++;
+            inicio += trecho.length();
+        }
+        return quantidade;
     }
 
     @Test
