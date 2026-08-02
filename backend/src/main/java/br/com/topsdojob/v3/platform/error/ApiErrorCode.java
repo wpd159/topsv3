@@ -9,6 +9,7 @@ public enum ApiErrorCode {
     NOT_FOUND(HttpStatus.NOT_FOUND, "Recurso não encontrado."),
     GONE(HttpStatus.GONE, "Verificacao expirada. Inicie novamente."),
     CONFLICT(HttpStatus.CONFLICT, "Conflito de estado."),
+    STORY_JA_ATIVO(HttpStatus.CONFLICT, "Este anuncio ja possui um Story ativo."),
     UNPROCESSABLE_ENTITY(HttpStatus.UNPROCESSABLE_ENTITY, "Dados inválidos."),
     TOO_MANY_REQUESTS(HttpStatus.TOO_MANY_REQUESTS, "Muitas tentativas. Tente novamente mais tarde."),
     PAYLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Arquivo acima do limite permitido."),

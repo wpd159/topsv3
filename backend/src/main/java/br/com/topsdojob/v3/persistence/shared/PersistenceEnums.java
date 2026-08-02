@@ -82,6 +82,10 @@ public final class PersistenceEnums {
     RASCUNHO, PENDENTE, PUBLICADO, EXPIRADO, REMOVIDO
   }
 
+  public enum ModoConteudoStory {
+    ANUNCIO, MIDIA_UPLOAD
+  }
+
   public enum TipoDocumentoUsuario {
     IDENTIDADE, VERIFICACAO_IDADE, COMPROVANTE, OUTRO
   }

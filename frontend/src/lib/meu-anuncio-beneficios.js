@@ -15,6 +15,12 @@ export function formatarDataBeneficio(value) {
 
 export function apresentarBeneficioPremium(beneficio) {
   if (beneficio.status === 'AGUARDANDO_MODERACAO') {
+    if (beneficio.motivoEspera === 'AGUARDANDO_PUBLICACAO_STORY') {
+      return {
+        situacao: 'Disponível para publicar Story',
+        complemento: 'O prazo começa quando o Story for publicado.',
+      }
+    }
     return {
       situacao: 'Aguardando aprovação da moderação',
       complemento: 'O prazo ainda não começou.',

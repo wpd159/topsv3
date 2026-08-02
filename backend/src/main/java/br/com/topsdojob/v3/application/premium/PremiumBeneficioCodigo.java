@@ -10,6 +10,7 @@ public final class PremiumBeneficioCodigo {
     public static final String WHATSAPP_CARD = "WHATSAPP_CARD";
     public static final String CARROSSEL_FOTOS = "CARROSSEL_FOTOS";
     public static final String VIDEO_1 = "VIDEO_1";
+    public static final String STORIES = "STORIES";
 
     public static final Set<String> TODOS = Set.of(
             OCULTAR_IDADE,
@@ -17,7 +18,8 @@ public final class PremiumBeneficioCodigo {
             ANUNCIO_TOPO,
             WHATSAPP_CARD,
             CARROSSEL_FOTOS,
-            VIDEO_1);
+            VIDEO_1,
+            STORIES);
 
     public static final Set<String> MIDIA_EXTRA = Set.of(
             FOTOS_EXTRA_5,

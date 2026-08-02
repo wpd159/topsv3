@@ -11,6 +11,7 @@ import {
   MeusAnunciosApiError,
   type MeuAnuncio,
   type MeuAnuncioCicloVida,
+  type MeuAnuncioStory,
 } from '@/lib/meus-anuncios-api'
 
 type ListaErro = {
@@ -79,6 +80,12 @@ export default function MeusAnunciosPage() {
     })
   }, [])
 
+  const aplicarStory = useCallback((anuncioId: string, story: MeuAnuncioStory) => {
+    setAnuncios((atuais) => atuais.map((anuncio) => anuncio.id === anuncioId
+      ? { ...anuncio, storyAtivo: story }
+      : anuncio))
+  }, [])
+
   return (
     <PainelShell
       title="Meus anúncios"
@@ -133,6 +140,7 @@ export default function MeusAnunciosPage() {
                 key={anuncio.id}
                 anuncio={anuncio}
                 onCicloVida={aplicarCicloVida}
+                onStoryChange={aplicarStory}
               />
             ))}
           </div>

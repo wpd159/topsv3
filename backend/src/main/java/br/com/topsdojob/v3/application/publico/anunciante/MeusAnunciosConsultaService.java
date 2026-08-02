@@ -66,6 +66,7 @@ public class MeusAnunciosConsultaService {
     private final MidiaPublicaSeguraPolicy midiaSeguraPolicy;
     private final VisualizacaoTotalCanonicaService visualizacaoService;
     private final MeuAnuncioBeneficioConsultaService beneficioConsultaService;
+    private final MeuAnuncioStoryConsultaService storyConsultaService;
 
     public MeusAnunciosConsultaService(
             UsuarioRepository usuarioRepository,
@@ -80,7 +81,8 @@ public class MeusAnunciosConsultaService {
             MidiaPublicaMapper midiaMapper,
             MidiaPublicaSeguraPolicy midiaSeguraPolicy,
             VisualizacaoTotalCanonicaService visualizacaoService,
-            MeuAnuncioBeneficioConsultaService beneficioConsultaService) {
+            MeuAnuncioBeneficioConsultaService beneficioConsultaService,
+            MeuAnuncioStoryConsultaService storyConsultaService) {
         this.usuarioRepository = usuarioRepository;
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
@@ -94,6 +96,7 @@ public class MeusAnunciosConsultaService {
         this.midiaSeguraPolicy = midiaSeguraPolicy;
         this.visualizacaoService = visualizacaoService;
         this.beneficioConsultaService = beneficioConsultaService;
+        this.storyConsultaService = storyConsultaService;
     }
 
     @Transactional(readOnly = true)
@@ -181,6 +184,8 @@ public class MeusAnunciosConsultaService {
         Map<UUID, VisualizacoesCanonicasDto> visualizacoes = visualizacaoService.calcularEmLote(anuncioIds);
         Map<UUID, List<br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioBeneficioDto>>
                 beneficiosPremium = beneficioConsultaService.consultarEmLote(anuncioIds);
+        Map<UUID, br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDto>
+                storiesAtivos = storyConsultaService.consultarAtivos(anuncioIds);
         Map<UUID, MeuAnuncioReprovacaoDto> reprovacoes = decisaoModeracaoRepository
                 .findReprovacoesByAnuncioIdIn(anuncioIds).stream()
                 .collect(Collectors.toMap(
@@ -213,7 +218,8 @@ public class MeusAnunciosConsultaService {
                                 visualizacoes.get(anuncio.getId()),
                                 "visualizacoes canonicas ausentes para anuncio"),
                         reprovacaoAtual(anuncio, reprovacoes),
-                        beneficiosPremium.getOrDefault(anuncio.getId(), List.of())))
+                        beneficiosPremium.getOrDefault(anuncio.getId(), List.of()),
+                        storiesAtivos.get(anuncio.getId())))
                 .toList();
     }
 

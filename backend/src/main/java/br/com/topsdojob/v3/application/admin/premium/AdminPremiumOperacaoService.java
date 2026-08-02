@@ -162,7 +162,7 @@ public class AdminPremiumOperacaoService {
                         chave,
                         observacao,
                         agora));
-        AtivacaoBeneficioEntity novaAtivacao = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(beneficio.getCodigo())
+        AtivacaoBeneficioEntity novaAtivacao = aguardaUso(beneficio.getCodigo())
                 ? AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
                         UUID.randomUUID(),
                         beneficio.getId(),
@@ -265,7 +265,7 @@ public class AdminPremiumOperacaoService {
                             chaveItem,
                             observacao,
                             agora));
-            AtivacaoBeneficioEntity novaAtivacao = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(beneficio.getCodigo())
+            AtivacaoBeneficioEntity novaAtivacao = aguardaUso(beneficio.getCodigo())
                     ? AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
                             UUID.randomUUID(),
                             beneficio.getId(),
@@ -306,6 +306,11 @@ public class AdminPremiumOperacaoService {
             resultado.add(toDto(ativacao, 0, false));
         }
         return new AdminPremiumAtivacaoLoteDto(List.copyOf(resultado), false);
+    }
+
+    private boolean aguardaUso(String codigo) {
+        return PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(codigo)
+                || PremiumBeneficioCodigo.STORIES.equals(codigo);
     }
 
     @Transactional

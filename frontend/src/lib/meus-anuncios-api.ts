@@ -52,6 +52,17 @@ export type MeuAnuncioBeneficio = {
   origem: string | null
 }
 
+export type MeuAnuncioStory = {
+  storyId: string
+  anuncioId: string
+  modoConteudo: 'ANUNCIO' | 'MIDIA_UPLOAD'
+  tipoMidia: 'FOTO' | 'VIDEO' | null
+  status: string
+  inicioEm: string
+  fimEm: string
+  estadoMidia: 'DISPONIVEL' | 'INDISPONIVEL' | null
+}
+
 const EMPTY_BENEFICIOS_PREMIUM: readonly MeuAnuncioBeneficio[] = Object.freeze([])
 
 export type MinhaMidiaGestao = {
@@ -105,6 +116,7 @@ export type MeuAnuncio = {
   visualizacoes: VisualizacoesCanonicas
   reprovacao: MeuAnuncioReprovacao | null
   beneficiosPremium: MeuAnuncioBeneficio[]
+  storyAtivo: MeuAnuncioStory | null
 }
 
 export type MeuAnuncioCicloVida = {
@@ -133,7 +145,8 @@ export type MeuAnuncioAtualizacao = {
 export class MeusAnunciosApiError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly code: string | null = null
   ) {
     super(message)
     this.name = 'MeusAnunciosApiError'
@@ -186,13 +199,15 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     let message = `Não foi possível concluir a solicitação (HTTP ${response.status}).`
+    let code: string | null = null
     try {
-      const body = (await response.json()) as { message?: unknown }
+      const body = (await response.json()) as { message?: unknown; code?: unknown }
       if (typeof body.message === 'string' && body.message.trim()) message = body.message
+      if (typeof body.code === 'string' && body.code.trim()) code = body.code
     } catch {
       // A resposta sem JSON preserva o status HTTP real no erro abaixo.
     }
-    throw new MeusAnunciosApiError(message, response.status)
+    throw new MeusAnunciosApiError(message, response.status, code)
   }
 
   return (await response.json()) as T
@@ -203,11 +218,12 @@ function mapMeuAnuncio(payload: unknown): MeuAnuncio {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
 
-  const raw = payload as Omit<MeuAnuncio, 'visualizacoes' | 'acoesPermitidas' | 'reprovacao' | 'beneficiosPremium'> & {
+  const raw = payload as Omit<MeuAnuncio, 'visualizacoes' | 'acoesPermitidas' | 'reprovacao' | 'beneficiosPremium' | 'storyAtivo'> & {
     acoesPermitidas?: unknown
     visualizacoes?: unknown
     reprovacao?: unknown
     beneficiosPremium?: unknown
+    storyAtivo?: unknown
   }
   if (typeof raw.atendimentoExclusivamenteVirtual !== 'boolean') {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
@@ -219,10 +235,32 @@ function mapMeuAnuncio(payload: unknown): MeuAnuncio {
       visualizacoes: parseVisualizacoesCanonicas(raw.visualizacoes),
       reprovacao: parseReprovacao(raw.reprovacao),
       beneficiosPremium: parseBeneficiosPremium(raw.beneficiosPremium),
+      storyAtivo: parseStoryAtivo(raw.storyAtivo),
     }
   } catch {
     throw new MeusAnunciosApiError('O servico retornou um anuncio em formato incompativel.', 502)
   }
+}
+
+function parseStoryAtivo(payload: unknown): MeuAnuncioStory | null {
+  if (payload == null) return null
+  if (!payload || typeof payload !== 'object') {
+    throw new MeusAnunciosApiError('O serviço retornou um Story em formato incompatível.', 502)
+  }
+  const raw = payload as Partial<MeuAnuncioStory>
+  if (
+    typeof raw.storyId !== 'string' || !raw.storyId ||
+    typeof raw.anuncioId !== 'string' || !raw.anuncioId ||
+    (raw.modoConteudo !== 'ANUNCIO' && raw.modoConteudo !== 'MIDIA_UPLOAD') ||
+    (raw.tipoMidia !== null && raw.tipoMidia !== 'FOTO' && raw.tipoMidia !== 'VIDEO') ||
+    typeof raw.status !== 'string' || !raw.status ||
+    typeof raw.inicioEm !== 'string' || !Number.isFinite(Date.parse(raw.inicioEm)) ||
+    typeof raw.fimEm !== 'string' || !Number.isFinite(Date.parse(raw.fimEm)) ||
+    (raw.estadoMidia !== null && raw.estadoMidia !== 'DISPONIVEL' && raw.estadoMidia !== 'INDISPONIVEL')
+  ) {
+    throw new MeusAnunciosApiError('O serviço retornou um Story em formato incompatível.', 502)
+  }
+  return raw as MeuAnuncioStory
 }
 
 function parseBeneficiosPremium(payload: unknown): MeuAnuncioBeneficio[] {
@@ -521,4 +559,62 @@ export function removerMinhaMidia(slug: string, midiaId: string) {
     `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/${encodeURIComponent(midiaId)}`,
     { method: 'DELETE' }
   )
+}
+
+export async function publicarMeuAnuncioStory(
+  slug: string,
+  modoConteudo: 'ANUNCIO' | 'MIDIA_UPLOAD',
+  arquivo: File | null,
+  idempotencyKey: string,
+  onProgress?: (percentual: number) => void
+) {
+  const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+  return new Promise<MeuAnuncioStory>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', publicApiUrl(`/minha-conta/anuncios/${encodeURIComponent(slug)}/stories`))
+    xhr.withCredentials = true
+    xhr.setRequestHeader('Accept', 'application/json')
+    xhr.setRequestHeader('Idempotency-Key', idempotencyKey)
+    if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+      }
+    }
+    xhr.onerror = () => reject(new MeusAnunciosApiError('Não foi possível publicar o Story.', 0))
+    xhr.onload = () => {
+      let body: unknown = null
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : null
+      } catch {
+        body = null
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const errorBody = body && typeof body === 'object'
+          ? body as Record<string, unknown>
+          : null
+        const message = errorBody && typeof errorBody.message === 'string' && errorBody.message.trim()
+          ? errorBody.message
+          : `Não foi possível publicar o Story (HTTP ${xhr.status}).`
+        const code = errorBody && typeof errorBody.code === 'string' && errorBody.code.trim()
+          ? errorBody.code
+          : null
+        reject(new MeusAnunciosApiError(message, xhr.status, code))
+        return
+      }
+      try {
+        const story = parseStoryAtivo(body)
+        if (!story) throw new Error('Resposta vazia')
+        onProgress?.(100)
+        resolve(story)
+      } catch {
+        reject(new MeusAnunciosApiError('O serviço retornou um Story em formato incompatível.', 502))
+      }
+    }
+    const form = new FormData()
+    form.append('modoConteudo', modoConteudo)
+    if (arquivo) form.append('arquivo', arquivo)
+    onProgress?.(0)
+    xhr.send(form)
+  })
 }

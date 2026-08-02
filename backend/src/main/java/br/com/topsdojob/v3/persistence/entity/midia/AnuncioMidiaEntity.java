@@ -136,6 +136,30 @@ public class AnuncioMidiaEntity {
     return entity;
   }
 
+  public static AnuncioMidiaEntity criarStoryUploadValidado(
+      UUID id,
+      UUID anuncioId,
+      UUID arquivoMidiaId,
+      Integer ordem,
+      OffsetDateTime criadoEm) {
+    if (id == null || anuncioId == null || arquivoMidiaId == null
+        || ordem == null || ordem < 0 || criadoEm == null) {
+      throw new IllegalArgumentException("Vinculo de midia do Story invalido");
+    }
+    AnuncioMidiaEntity entity = new AnuncioMidiaEntity();
+    entity.id = id;
+    entity.anuncioId = anuncioId;
+    entity.arquivoMidiaId = arquivoMidiaId;
+    entity.tipo = TipoAnuncioMidia.STORY;
+    entity.finalidade = FinalidadeAnuncioMidia.STORY;
+    entity.ordem = ordem;
+    entity.status = StatusAnuncioMidia.PUBLICAVEL;
+    entity.visibilidadeMidia = VisibilidadeMidia.RESTRITA_18;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
   public static AnuncioMidiaEntity criarFixtureHomologacao(
       UUID id,
       UUID anuncioId,

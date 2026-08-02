@@ -214,20 +214,33 @@ class MinhaContaPremiumServiceTest {
     }
 
     @Test
-    void rejeitaStoriesAntesDeConsultarCatalogoOuDebitar() {
-        assertThatThrownBy(() -> service.comprar(
+    void compraDeStoriesReservaPrazoAteAPublicacao() {
+        BeneficioPremiumEntity stories = beneficio("STORIES", "Stories");
+        BeneficioPremiumOpcaoEntity umDia = opcao(stories, 1, 5);
+        prepararItem(stories, umDia);
+        when(beneficios.findByIdIn(any())).thenReturn(List.of(stories));
+        when(opcoes.findAllById(any())).thenReturn(List.of(umDia));
+        when(anuncios.findAllById(any())).thenReturn(List.of(anuncio));
+
+        var resultado = service.comprar(
                 new MinhaCompraPremiumRequest(
                         anuncio.getSlug(),
                         List.of(new MinhaCompraPremiumItemRequest("STORIES", 1))),
                 "qa-compra-story",
                 authentication,
-                "req-story"))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
-                        .isEqualTo(HttpStatus.BAD_REQUEST));
+                "req-story");
 
-        verify(ledger, never()).bloquearEConsultarSaldo(any());
-        verify(ativacoes, never()).save(any());
+        ArgumentCaptor<AtivacaoBeneficioEntity> salva =
+                ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
+        verify(ativacoes).save(salva.capture());
+        assertThat(salva.getValue().getStatus())
+                .isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
+        assertThat(salva.getValue().getInicioEm()).isNull();
+        assertThat(salva.getValue().getFimEm()).isNull();
+        assertThat(resultado.ativacoes()).singleElement().satisfies(item -> {
+            assertThat(item.status()).isEqualTo("AGUARDANDO_MODERACAO");
+            assertThat(item.efeitoPublico()).isEqualTo("Publicacao de um Story vinculada ao anuncio");
+        });
     }
 
     @Test

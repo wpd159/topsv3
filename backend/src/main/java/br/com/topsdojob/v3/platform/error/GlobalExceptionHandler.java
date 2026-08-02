@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.platform.error;
 import java.time.Instant;
 
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
+import br.com.topsdojob.v3.application.publico.anunciante.StoryJaAtivoException;
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.slf4j.Logger;
@@ -50,6 +51,13 @@ public class GlobalExceptionHandler {
             ResponseStatusException exception,
             HttpServletRequest request) {
         return build(fromStatus(exception.getStatusCode().value()), request);
+    }
+
+    @ExceptionHandler(StoryJaAtivoException.class)
+    public ResponseEntity<ApiErrorResponse> handleStoryJaAtivo(
+            StoryJaAtivoException exception,
+            HttpServletRequest request) {
+        return build(ApiErrorCode.STORY_JA_ATIVO, request);
     }
 
     @ExceptionHandler(AccessDeniedException.class)

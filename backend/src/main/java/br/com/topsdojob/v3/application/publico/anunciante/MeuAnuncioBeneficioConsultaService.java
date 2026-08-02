@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
 import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.FOTOS_EXTRA_5;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.STORIES;
 
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
@@ -31,6 +32,8 @@ public class MeuAnuncioBeneficioConsultaService {
 
     private static final String AGUARDANDO_APROVACAO_MODERACAO =
             "AGUARDANDO_APROVACAO_MODERACAO";
+    private static final String AGUARDANDO_PUBLICACAO_STORY =
+            "AGUARDANDO_PUBLICACAO_STORY";
 
     private final BeneficioAnuncioConsultaService beneficioConsultaService;
     private final BeneficioPremiumOpcaoRepository opcaoRepository;
@@ -148,8 +151,14 @@ public class MeuAnuncioBeneficioConsultaService {
                 item.ativacao().getFimEm(),
                 duracaoDias(item, opcao),
                 "ATIVO".equals(status) ? diasRestantes(item.ativacao().getFimEm(), agora) : null,
-                aguardando ? AGUARDANDO_APROVACAO_MODERACAO : null,
+                aguardando ? motivoEspera(item.beneficio().getCodigo()) : null,
                 item.ativacao().getOrigem() == null ? null : item.ativacao().getOrigem().name());
+    }
+
+    private String motivoEspera(String codigo) {
+        return STORIES.equals(codigo)
+                ? AGUARDANDO_PUBLICACAO_STORY
+                : AGUARDANDO_APROVACAO_MODERACAO;
     }
 
     private String nomeExibicao(PremiumBeneficioCalculado item) {

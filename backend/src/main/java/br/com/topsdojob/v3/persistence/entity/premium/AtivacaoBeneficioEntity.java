@@ -286,6 +286,19 @@ public class AtivacaoBeneficioEntity {
     return true;
   }
 
+  public void iniciarVigenciaExclusiva(OffsetDateTime inicioEm, OffsetDateTime fimEm) {
+    if (status != StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO
+        && status != StatusAtivacaoBeneficio.ATIVA) {
+      throw new IllegalStateException("ativacao indisponivel para vigencia exclusiva");
+    }
+    if (revogadaEm != null || inicioEm == null || fimEm == null || !fimEm.isAfter(inicioEm)) {
+      throw new IllegalStateException("janela de vigencia exclusiva invalida");
+    }
+    this.inicioEm = inicioEm;
+    this.fimEm = fimEm;
+    this.status = StatusAtivacaoBeneficio.ATIVA;
+  }
+
   public void revogar(String motivo, OffsetDateTime agora) {
     this.status = StatusAtivacaoBeneficio.REVOGADA;
     this.revogadaEm = agora;

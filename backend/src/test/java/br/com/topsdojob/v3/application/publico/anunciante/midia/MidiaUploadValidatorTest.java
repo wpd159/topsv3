@@ -33,17 +33,33 @@ class MidiaUploadValidatorTest {
     }
 
     @Test
-    void validaContainerMp4ComTrilhaDeVideoReal() {
+    void validaMp4H264ComDimensoesDuracaoEAudioAacLc() {
         MidiaUploadValidator validator = new MidiaUploadValidator(new MidiaUploadProperties());
 
-        var resultado = validator.validar(new MockMultipartFile(
-                "arquivo", "video.mp4", "application/octet-stream", mp4ComTrilhaVideo()));
+        var resultado = validator.validarStory(new MockMultipartFile(
+                "arquivo", "video.mp4", "application/octet-stream", mp4Compativel(true)));
 
         assertThat(resultado.video()).isTrue();
         assertThat(resultado.mimeType()).isEqualTo("video/mp4");
         assertThat(resultado.extensao()).isEqualTo("mp4");
-        assertThat(resultado.largura()).isNull();
-        assertThat(resultado.altura()).isNull();
+        assertThat(resultado.largura()).isEqualTo(720);
+        assertThat(resultado.altura()).isEqualTo(1280);
+        assertThat(resultado.duracaoMs()).isEqualTo(15_000L);
+    }
+
+    @Test
+    void recusaMovCodecNaoH264EAudioNaoAacLc() {
+        MidiaUploadValidator validator = new MidiaUploadValidator(new MidiaUploadProperties());
+
+        assertStoryStatus(validator, new MockMultipartFile(
+                "arquivo", "video.mov", "video/quicktime", mp4Compativel(false)),
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        assertStoryStatus(validator, new MockMultipartFile(
+                "arquivo", "video.mp4", "video/mp4", mp4ComCodec("hvc1", false)),
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        assertStoryStatus(validator, new MockMultipartFile(
+                "arquivo", "video.mp4", "video/mp4", mp4ComAudio(false)),
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE);
     }
 
     @Test
@@ -84,6 +100,15 @@ class MidiaUploadValidatorTest {
                         exception -> assertThat(exception.getStatusCode()).isEqualTo(status));
     }
 
+    private void assertStoryStatus(
+            MidiaUploadValidator validator,
+            MockMultipartFile arquivo,
+            HttpStatus status) {
+        assertThatThrownBy(() -> validator.validarStory(arquivo))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(status));
+    }
+
     private byte[] png(int width, int height) throws IOException {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -98,13 +123,68 @@ class MidiaUploadValidatorTest {
         return output.toByteArray();
     }
 
-    private byte[] mp4ComTrilhaVideo() {
+    private byte[] mp4Compativel(boolean audio) {
+        return audio ? mp4ComAudio(true) : mp4ComCodec("avc1", false);
+    }
+
+    private byte[] mp4ComCodec(String codec, boolean audio) {
         byte[] ftyp = box("ftyp", concat("isom".getBytes(StandardCharsets.US_ASCII), new byte[4],
                 "isom".getBytes(StandardCharsets.US_ASCII), "mp42".getBytes(StandardCharsets.US_ASCII)));
-        byte[] hdlr = box("hdlr", concat(new byte[8], "vide".getBytes(StandardCharsets.US_ASCII), new byte[4]));
-        byte[] moov = box("moov", box("trak", box("mdia", hdlr)));
+        byte[] video = videoTrack(codec);
+        byte[] moov = box("moov", audio ? concat(video, audioTrack(true)) : video);
         byte[] mdat = box("mdat", new byte[] {1, 2, 3, 4});
         return concat(ftyp, moov, mdat);
+    }
+
+    private byte[] mp4ComAudio(boolean aacLc) {
+        byte[] ftyp = box("ftyp", concat("isom".getBytes(StandardCharsets.US_ASCII), new byte[4],
+                "isom".getBytes(StandardCharsets.US_ASCII), "mp42".getBytes(StandardCharsets.US_ASCII)));
+        byte[] moov = box("moov", concat(videoTrack("avc1"), audioTrack(aacLc)));
+        return concat(ftyp, moov, box("mdat", new byte[] {1, 2, 3, 4}));
+    }
+
+    private byte[] videoTrack(String codec) {
+        byte[] mdhd = mdhd(1_000, 15_000);
+        byte[] hdlr = box("hdlr", concat(new byte[8], "vide".getBytes(StandardCharsets.US_ASCII), new byte[4]));
+        byte[] visual = new byte[78];
+        ByteBuffer.wrap(visual).putShort(24, (short) 720).putShort(26, (short) 1280);
+        byte[] codecConfig = box("avcC", new byte[] {1, 100, 0, 31});
+        byte[] sample = box(codec, concat(visual, codecConfig));
+        byte[] stsd = box("stsd", concat(new byte[4], intBytes(1), sample));
+        byte[] minf = box("minf", box("stbl", stsd));
+        return box("trak", box("mdia", concat(mdhd, hdlr, minf)));
+    }
+
+    private byte[] audioTrack(boolean aacLc) {
+        byte[] mdhd = mdhd(48_000, 720_000);
+        byte[] hdlr = box("hdlr", concat(new byte[8], "soun".getBytes(StandardCharsets.US_ASCII), new byte[4]));
+        byte[] audioSample = new byte[28];
+        byte[] decoderFixed = new byte[13];
+        decoderFixed[0] = aacLc ? (byte) 0x40 : (byte) 0x6b;
+        byte[] config = descriptor(0x05, new byte[] {0x12, 0x10});
+        byte[] decoder = descriptor(0x04, concat(decoderFixed, config));
+        byte[] es = descriptor(0x03, concat(new byte[] {0, 1, 0}, decoder));
+        byte[] esds = box("esds", concat(new byte[4], es));
+        byte[] sample = box("mp4a", concat(audioSample, esds));
+        byte[] stsd = box("stsd", concat(new byte[4], intBytes(1), sample));
+        byte[] minf = box("minf", box("stbl", stsd));
+        return box("trak", box("mdia", concat(mdhd, hdlr, minf)));
+    }
+
+    private byte[] mdhd(int timescale, int duration) {
+        ByteBuffer payload = ByteBuffer.allocate(20);
+        payload.position(12);
+        payload.putInt(timescale).putInt(duration);
+        return box("mdhd", payload.array());
+    }
+
+    private byte[] descriptor(int tag, byte[] payload) {
+        if (payload.length > 127) throw new IllegalArgumentException("fixture descriptor muito grande");
+        return concat(new byte[] {(byte) tag, (byte) payload.length}, payload);
+    }
+
+    private byte[] intBytes(int value) {
+        return ByteBuffer.allocate(4).putInt(value).array();
     }
 
     private byte[] box(String type, byte[] payload) {

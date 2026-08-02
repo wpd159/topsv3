@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
 import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.FOTOS_EXTRA_5;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.STORIES;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -112,6 +113,33 @@ class MeuAnuncioBeneficioConsultaServiceTest {
         assertThat(dto.duracaoDias()).isEqualTo(7);
         assertThat(dto.diasRestantes()).isEqualTo(6);
         assertThat(dto.motivoEspera()).isNull();
+    }
+
+    @Test
+    void identificaStoryAguardandoPublicacaoSemIniciarPrazo() {
+        beneficio = BeneficioPremiumEntity.criarFixtureHomologacao(
+                UUID.randomUUID(),
+                STORIES,
+                "Stories",
+                "Publicacao de Story",
+                EscopoBeneficioPremium.ANUNCIO,
+                false,
+                true,
+                AGORA.minusYears(1));
+        opcao = BeneficioPremiumOpcaoEntity.criar(
+                UUID.randomUUID(), beneficio.getId(), 7, 10, true, 1, AGORA.minusYears(1));
+        when(opcaoRepository.findAllById(any())).thenReturn(List.of(opcao));
+        AtivacaoBeneficioEntity ativacao = AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
+                UUID.randomUUID(), beneficio.getId(), opcao.getId(), usuarioId, anuncioId,
+                UUID.randomUUID(), 10, "story-aguardando", AGORA.minusDays(3));
+        preparar(ativacao, PremiumBeneficioStatusCalculado.PENDENTE);
+
+        MeuAnuncioBeneficioDto dto = unico();
+
+        assertThat(dto.status()).isEqualTo("AGUARDANDO_MODERACAO");
+        assertThat(dto.inicioEm()).isNull();
+        assertThat(dto.fimEm()).isNull();
+        assertThat(dto.motivoEspera()).isEqualTo("AGUARDANDO_PUBLICACAO_STORY");
     }
 
     @Test

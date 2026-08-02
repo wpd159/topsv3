@@ -180,9 +180,10 @@ public class MinhaContaPremiumService {
         List<AtivacaoBeneficioEntity> ativacoes = new ArrayList<>();
         for (int indice = 0; indice < itens.size(); indice++) {
             ItemCompra item = itens.get(indice);
-            boolean aguardaModeracao = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(
-                    item.beneficio().getCodigo());
-            AtivacaoBeneficioEntity novaAtivacao = aguardaModeracao
+            boolean aguardaUso = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(
+                    item.beneficio().getCodigo())
+                    || PremiumBeneficioCodigo.STORIES.equals(item.beneficio().getCodigo());
+            AtivacaoBeneficioEntity novaAtivacao = aguardaUso
                     ? AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
                             UUID.randomUUID(),
                             item.beneficio().getId(),
@@ -486,6 +487,7 @@ public class MinhaContaPremiumService {
             case PremiumBeneficioCodigo.FOTOS_EXTRA_5 -> "Limite ampliado para ate dez fotos";
             case PremiumBeneficioCodigo.CARROSSEL_FOTOS -> "Carrossel habilitado nas fotos publicas";
             case PremiumBeneficioCodigo.VIDEO_1 -> "Video aprovado habilitado no anuncio";
+            case PremiumBeneficioCodigo.STORIES -> "Publicacao de um Story vinculada ao anuncio";
             default -> "Efeito definido pelo catalogo Premium";
         };
     }

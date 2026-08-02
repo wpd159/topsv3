@@ -8,6 +8,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   ExclamationTriangleIcon,
+  MapPinIcon,
 } from "@heroicons/react/24/solid"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
@@ -94,6 +95,7 @@ export function StoryViewerDialog({
   const [mediaReady, setMediaReady] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const anuncioStoryRef = useRef<HTMLElement | null>(null)
   const viewedStoryRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -161,14 +163,28 @@ export function StoryViewerDialog({
     viewedStoryRef.current = null
   }, [bundleIndex, itemIndex, reloadTick])
 
-  function markCurrentStoryVisible() {
-    if (!currentFeedItem || viewerItem?.viewerState !== "LIBERADO" || !viewerItem.midiaUrl) return
+  const markCurrentStoryVisible = useCallback(() => {
+    if (!currentFeedItem || viewerItem?.viewerState !== "LIBERADO") return
+    if (viewerItem.modoConteudo !== "ANUNCIO" && !viewerItem.midiaUrl) return
     setMediaReady(true)
     const identity = String(currentFeedItem.storyId)
     if (viewedStoryRef.current === identity) return
     viewedStoryRef.current = identity
     onStoryCurrent?.(currentFeedItem)
-  }
+  }, [currentFeedItem, onStoryCurrent, viewerItem])
+
+  useEffect(() => {
+    if (!open || viewerItem?.viewerState !== "LIBERADO" || viewerItem.modoConteudo !== "ANUNCIO") return
+    const node = anuncioStoryRef.current
+    if (!node || typeof IntersectionObserver === "undefined") return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.6)) {
+        markCurrentStoryVisible()
+      }
+    }, { threshold: [0.6] })
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [markCurrentStoryVisible, open, viewerItem?.modoConteudo, viewerItem?.storyId, viewerItem?.viewerState])
 
   const nextStory = useCallback(() => {
     const bundle = bundles[bundleIndex]
@@ -230,7 +246,7 @@ export function StoryViewerDialog({
     if (viewerError) return
     if (viewerItem.viewerState !== "LIBERADO") return
     if (viewerItem.tipo === "VIDEO") return
-    if (!viewerItem.midiaUrl) return
+    if (viewerItem.modoConteudo !== "ANUNCIO" && !viewerItem.midiaUrl) return
 
     const t = setTimeout(() => nextStory(), IMAGE_MS)
     return () => clearTimeout(t)
@@ -355,6 +371,44 @@ export function StoryViewerDialog({
       )
     }
 
+    if (viewerItem.modoConteudo === "ANUNCIO") {
+      const local = [viewerItem.cidade, viewerItem.uf].filter(Boolean).join(" - ")
+      const preco = viewerItem.preco == null
+        ? null
+        : Number(viewerItem.preco).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+      return (
+        <article
+          ref={anuncioStoryRef}
+          className="relative z-20 flex min-h-[100svh] w-full max-w-xl flex-col justify-center bg-slate-950 px-8 py-28 text-white sm:px-12"
+          onClick={(event) => event.stopPropagation()}
+          aria-label="Apresentação do anúncio no Story"
+        >
+          <div className="h-1 w-16 rounded-full bg-[#FC1EAD]" aria-hidden="true" />
+          <p className="mt-6 text-xs font-semibold uppercase text-pink-300">Anúncio em destaque</p>
+          <h2 className="mt-3 break-words text-3xl font-bold leading-tight sm:text-4xl">
+            {viewerItem.displayUsername || "Anúncio"}
+          </h2>
+          {viewerItem.idade != null ? <p className="mt-2 text-lg text-white/85">{viewerItem.idade} anos</p> : null}
+          {local ? (
+            <p className="mt-5 flex items-center gap-2 text-sm text-white/80">
+              <MapPinIcon className="h-5 w-5 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
+              {local}
+            </p>
+          ) : null}
+          {preco ? <p className="mt-4 text-2xl font-bold text-pink-300">{preco}</p> : null}
+          {viewerItem.resumo ? <p className="mt-5 max-w-prose text-sm leading-6 text-white/75">{viewerItem.resumo}</p> : null}
+          <Button
+            type="button"
+            onClick={irParaAnuncioDoStory}
+            disabled={!podeNavegarAnuncio}
+            className="mt-8 min-h-12 w-full bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
+          >
+            Ver anúncio
+          </Button>
+        </article>
+      )
+    }
+
     if (mediaError || !viewerItem.midiaUrl) {
       return (
         <StoryStateCard
@@ -429,9 +483,9 @@ export function StoryViewerDialog({
                   width = `${Math.round(videoProg * 100)}%`
                 } else if (
                   isActive &&
-                  viewerItem?.tipo === "IMAGE" &&
+                  (viewerItem?.tipo === "IMAGE" || viewerItem?.modoConteudo === "ANUNCIO") &&
                   viewerItem?.viewerState === "LIBERADO" &&
-                  viewerItem?.midiaUrl
+                  (viewerItem?.modoConteudo === "ANUNCIO" || viewerItem?.midiaUrl)
                 ) {
                   animate = true
                 }

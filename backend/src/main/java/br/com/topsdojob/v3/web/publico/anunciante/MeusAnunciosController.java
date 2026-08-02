@@ -4,14 +4,19 @@ import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoS
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MinhasMidiasService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCicloVidaDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaLimitesDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiasResponseDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.ServletException;
+import java.io.IOException;
+import java.util.Set;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
@@ -27,6 +32,8 @@ import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/public/minha-conta/anuncios")
@@ -36,16 +43,19 @@ public class MeusAnunciosController {
     private final MeuAnuncioAtualizacaoService atualizacaoService;
     private final MeuAnuncioCicloVidaService cicloVidaService;
     private final MinhasMidiasService midiasService;
+    private final MeuAnuncioStoryService storyService;
 
     public MeusAnunciosController(
             MeusAnunciosConsultaService consultaService,
             MeuAnuncioAtualizacaoService atualizacaoService,
             MeuAnuncioCicloVidaService cicloVidaService,
-            MinhasMidiasService midiasService) {
+            MinhasMidiasService midiasService,
+            MeuAnuncioStoryService storyService) {
         this.consultaService = consultaService;
         this.atualizacaoService = atualizacaoService;
         this.cicloVidaService = cicloVidaService;
         this.midiasService = midiasService;
+        this.storyService = storyService;
     }
 
     @GetMapping
@@ -136,5 +146,42 @@ public class MeusAnunciosController {
             @PathVariable UUID midiaId,
             Authentication authentication) {
         return midiasService.remover(slug, midiaId, authentication);
+    }
+
+    @PostMapping(path = "/{slug}/stories", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public MeuAnuncioStoryDto publicarStory(
+            @PathVariable String slug,
+            @RequestPart("modoConteudo") String modoConteudo,
+            @RequestPart(value = "arquivo", required = false) List<MultipartFile> arquivos,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            Authentication authentication,
+            HttpServletRequest request) {
+        validarContratoMultipartStory(request);
+        return storyService.publicar(
+                slug,
+                modoConteudo,
+                arquivos,
+                idempotencyKey,
+                authentication,
+                RequestIdContext.current(request));
+    }
+
+    private void validarContratoMultipartStory(HttpServletRequest request) {
+        if (request.getQueryString() != null && !request.getQueryString().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "parametros de Story nao permitidos");
+        }
+        Set<String> permitidos = Set.of("modoConteudo", "arquivo");
+        try {
+            boolean desconhecido = request.getParts().stream()
+                    .map(part -> part.getName())
+                    .anyMatch(nome -> !permitidos.contains(nome));
+            if (desconhecido) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "campo nao permitido no contrato de Story");
+            }
+        } catch (IOException | ServletException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "multipart de Story invalido");
+        }
     }
 }

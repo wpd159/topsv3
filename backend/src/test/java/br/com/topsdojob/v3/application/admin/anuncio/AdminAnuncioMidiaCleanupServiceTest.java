@@ -24,6 +24,7 @@ import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
@@ -115,7 +116,19 @@ class AdminAnuncioMidiaCleanupServiceTest {
         0,
         uuid(3),
         agora.minusHours(1));
-    when(storyRepository.findByAnuncioMidiaIdInForUpdate(any())).thenReturn(List.of(story));
+    StoryAnuncioEntity storyDireto = StoryAnuncioEntity.criarAutogestao(
+        uuid(302),
+        anuncioId,
+        null,
+        ModoConteudoStory.ANUNCIO,
+        uuid(303),
+        "cleanup-story-direto",
+        "d".repeat(64),
+        agora.minusHours(1),
+        agora.plusHours(23),
+        uuid(3));
+    when(storyRepository.findByAnuncioIdForUpdate(anuncioId))
+        .thenReturn(List.of(story, storyDireto));
     StorySelecaoAdministrativaEntity selecao = StorySelecaoAdministrativaEntity.nova(agora.minusDays(1));
     selecao.ativar(anuncioId, uuid(3), agora.minusHours(1));
     when(storyAdminRepository.bloquearAtivasDoAnuncio(anuncioId)).thenReturn(List.of(selecao));
@@ -137,7 +150,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
     assertThat(resultado.objetosExcluidos()).isEqualTo(7);
     assertThat(resultado.objetosJaAusentes()).isEqualTo(5);
     assertThat(resultado.objetosCompartilhadosPreservados()).isEqualTo(1);
-    assertThat(resultado.storiesEncerrados()).isEqualTo(1);
+    assertThat(resultado.storiesEncerrados()).isEqualTo(2);
     assertThat(resultado.storyAdministrativoEncerrado()).isTrue();
     assertThat(vinculos).allMatch(item -> item.getStatus() == StatusAnuncioMidia.REMOVIDA);
     assertThat(arquivos.subList(0, 6))
@@ -145,6 +158,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
     assertThat(arquivos.get(6).getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
     assertThat(compartilhadaOutro.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
     assertThat(story.getStatus()).isEqualTo(StatusStoryAnuncio.EXPIRADO);
+    assertThat(storyDireto.getStatus()).isEqualTo(StatusStoryAnuncio.EXPIRADO);
     assertThat(selecao.isAtiva()).isFalse();
     assertThat(storage.exists(
         StorageArea.PUBLIC_MEDIA,
@@ -262,7 +276,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
         TipoAnuncioMidia.FOTO,
         0);
     prepararRepositorios(anuncioId, List.of(foto), List.of(vinculo), null);
-    when(storyRepository.findByAnuncioMidiaIdInForUpdate(any())).thenReturn(List.of());
+    when(storyRepository.findByAnuncioIdForUpdate(anuncioId)).thenReturn(List.of());
     colocar(StorageArea.PUBLIC_MEDIA, foto.getChaveObjeto());
     storage.falharUmaVez(StorageArea.PUBLIC_MEDIA, foto.getChaveObjeto());
 

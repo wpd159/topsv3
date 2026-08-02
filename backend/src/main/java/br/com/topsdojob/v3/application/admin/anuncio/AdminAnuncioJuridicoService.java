@@ -12,7 +12,6 @@ import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
-import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioStatusHistoricoRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -54,7 +53,6 @@ public class AdminAnuncioJuridicoService {
   private final UsuarioRepository usuarioRepository;
   private final AnuncioBloqueioJuridicoRepository bloqueioRepository;
   private final AnuncioStatusHistoricoRepository statusHistoricoRepository;
-  private final AnuncioMidiaRepository anuncioMidiaRepository;
   private final StoryAnuncioRepository storyRepository;
   private final StorySelecaoAdministrativaRepository storyAdminRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
@@ -66,7 +64,6 @@ public class AdminAnuncioJuridicoService {
       UsuarioRepository usuarioRepository,
       AnuncioBloqueioJuridicoRepository bloqueioRepository,
       AnuncioStatusHistoricoRepository statusHistoricoRepository,
-      AnuncioMidiaRepository anuncioMidiaRepository,
       StoryAnuncioRepository storyRepository,
       StorySelecaoAdministrativaRepository storyAdminRepository,
       AuditoriaEventoRepository auditoriaRepository,
@@ -76,7 +73,6 @@ public class AdminAnuncioJuridicoService {
     this.usuarioRepository = usuarioRepository;
     this.bloqueioRepository = bloqueioRepository;
     this.statusHistoricoRepository = statusHistoricoRepository;
-    this.anuncioMidiaRepository = anuncioMidiaRepository;
     this.storyRepository = storyRepository;
     this.storyAdminRepository = storyAdminRepository;
     this.auditoriaRepository = auditoriaRepository;
@@ -366,12 +362,9 @@ public class AdminAnuncioJuridicoService {
   }
 
   private StorySuspension suspenderStories(Set<UUID> anuncioIds, OffsetDateTime agora) {
-    List<UUID> midiaIds = anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds).stream()
-        .map(item -> item.getId())
-        .toList();
-    List<StoryAnuncioEntity> stories = midiaIds.isEmpty()
+    List<StoryAnuncioEntity> stories = anuncioIds.isEmpty()
         ? List.of()
-        : storyRepository.findByAnuncioMidiaIdInForUpdate(midiaIds);
+        : storyRepository.findByAnuncioIdsForUpdate(anuncioIds);
     List<StoryAnuncioEntity> alterados = stories.stream()
         .filter(item -> item.suspenderPorBloqueio(agora))
         .toList();

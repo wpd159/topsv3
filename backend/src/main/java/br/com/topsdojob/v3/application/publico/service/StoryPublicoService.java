@@ -10,17 +10,21 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -32,6 +36,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -45,22 +50,42 @@ public class StoryPublicoService {
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final StoryAnuncioRepository storyRepository;
+    private final UsuarioRepository usuarioRepository;
     private final ComplianceVisitorAccessService visitorAccessService;
     private final MidiaPublicaUrlService urlService;
+    private final StoryAnuncioApresentacaoService apresentacaoService;
 
+    @Autowired
     public StoryPublicoService(
             AnuncioRepository anuncioRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             StoryAnuncioRepository storyRepository,
+            UsuarioRepository usuarioRepository,
             ComplianceVisitorAccessService visitorAccessService,
-            MidiaPublicaUrlService urlService) {
+            MidiaPublicaUrlService urlService,
+            StoryAnuncioApresentacaoService apresentacaoService) {
         this.anuncioRepository = anuncioRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.storyRepository = storyRepository;
+        this.usuarioRepository = usuarioRepository;
         this.visitorAccessService = visitorAccessService;
         this.urlService = urlService;
+        this.apresentacaoService = apresentacaoService;
+    }
+
+    StoryPublicoService(
+            AnuncioRepository anuncioRepository,
+            AnuncioMidiaRepository anuncioMidiaRepository,
+            ArquivoMidiaRepository arquivoMidiaRepository,
+            StoryAnuncioRepository storyRepository,
+            UsuarioRepository usuarioRepository,
+            ComplianceVisitorAccessService visitorAccessService,
+            MidiaPublicaUrlService urlService) {
+        this(
+                anuncioRepository, anuncioMidiaRepository, arquivoMidiaRepository,
+                storyRepository, usuarioRepository, visitorAccessService, urlService, null);
     }
 
     @Transactional(readOnly = true)
@@ -75,31 +100,40 @@ public class StoryPublicoService {
                         StatusAnuncio.PUBLICADO,
                         StatusModeracaoAnuncio.APROVADO)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+        if (!proprietarioAtivo(anuncio)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado");
+        }
 
-        List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioId(anuncio.getId()).stream()
-                .filter(this::vinculoStoryElegivel)
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        List<StoryAnuncioEntity> storiesAtivos = storyRepository.findByAnuncioIds(List.of(anuncio.getId())).stream()
+                .filter(story -> storyElegivel(story, now))
                 .toList();
-        if (vinculos.isEmpty()) {
+        if (storiesAtivos.isEmpty()) {
             return resposta(slugSeguro, idadeConfirmada, List.of());
         }
 
-        Map<UUID, AnuncioMidiaEntity> vinculosPorId = vinculos.stream()
+        Map<UUID, AnuncioMidiaEntity> vinculosPorId = anuncioMidiaRepository.findByIdIn(storiesAtivos.stream()
+                        .map(StoryAnuncioEntity::getAnuncioMidiaId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .filter(this::vinculoStoryElegivel)
                 .collect(Collectors.toMap(AnuncioMidiaEntity::getId, Function.identity()));
-        Map<UUID, ArquivoMidiaEntity> arquivosPorId = arquivoMidiaRepository.findByIdIn(vinculos.stream()
+        Map<UUID, ArquivoMidiaEntity> arquivosPorId = arquivoMidiaRepository.findByIdIn(vinculosPorId.values().stream()
                         .map(AnuncioMidiaEntity::getArquivoMidiaId)
                         .filter(java.util.Objects::nonNull)
                         .distinct()
                         .toList()).stream()
                 .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
 
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        List<StoryPublicoDto> stories = storyRepository.findByAnuncioMidiaIdIn(vinculosPorId.keySet()).stream()
-                .filter(story -> storyElegivel(story, now))
-                .map(story -> toDto(
-                        story,
-                        vinculosPorId.get(story.getAnuncioMidiaId()),
-                        arquivosPorId,
-                        idadeConfirmada))
+        List<StoryPublicoDto> stories = storiesAtivos.stream()
+                .map(story -> story.getModoConteudo() == ModoConteudoStory.ANUNCIO
+                        ? toDtoAnuncio(story, anuncio, idadeConfirmada)
+                        : toDtoMidia(
+                                story,
+                                vinculosPorId.get(story.getAnuncioMidiaId()),
+                                arquivosPorId,
+                                idadeConfirmada))
                 .filter(java.util.Objects::nonNull)
                 .sorted(Comparator.comparing(
                         StoryPublicoDto::ordem,
@@ -129,7 +163,7 @@ public class StoryPublicoService {
                                 MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA));
     }
 
-    private StoryPublicoDto toDto(
+    private StoryPublicoDto toDtoMidia(
             StoryAnuncioEntity story,
             AnuncioMidiaEntity vinculo,
             Map<UUID, ArquivoMidiaEntity> arquivosPorId,
@@ -146,6 +180,8 @@ public class StoryPublicoService {
                 ? urlService.resolver(vinculo, arquivo)
                 : new MidiaPublicaUrlService.ResultadoUrlPublica(null, null);
         return new StoryPublicoDto(
+                story.getId().toString(),
+                story.getModoConteudoEfetivo().name(),
                 story.getOrdem(),
                 enumName(vinculo.getTipo()),
                 enumName(vinculo.getFinalidade()),
@@ -155,7 +191,40 @@ public class StoryPublicoService {
                 arquivo.getAltura(),
                 arquivo.getDuracaoMs(),
                 arquivo.getMimeType(),
-                urlPublica.pendenciaMidia());
+                urlPublica.pendenciaMidia(),
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private StoryPublicoDto toDtoAnuncio(
+            StoryAnuncioEntity story,
+            AnuncioEntity anuncio,
+            boolean idadeConfirmada) {
+        StoryAnuncioApresentacaoService.Apresentacao apresentacao = idadeConfirmada
+                && apresentacaoService != null
+                ? apresentacaoService.apresentar(anuncio)
+                : null;
+        return new StoryPublicoDto(
+                story.getId().toString(),
+                ModoConteudoStory.ANUNCIO.name(),
+                story.getOrdem(),
+                "ANUNCIO",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                idadeConfirmada ? null : MOTIVO_IDADE_NAO_CONFIRMADA,
+                apresentacao == null ? null : apresentacao.titulo(),
+                apresentacao == null ? null : apresentacao.cidade(),
+                apresentacao == null ? null : apresentacao.uf(),
+                apresentacao == null ? null : apresentacao.preco(),
+                apresentacao == null ? null : apresentacao.resumo());
     }
 
     private boolean vinculoStoryElegivel(AnuncioMidiaEntity vinculo) {
@@ -170,6 +239,18 @@ public class StoryPublicoService {
                 && story.getStatus() == StatusStoryAnuncio.PUBLICADO
                 && (story.getInicioEm() == null || !story.getInicioEm().isAfter(now))
                 && (story.getFimEm() == null || story.getFimEm().isAfter(now));
+    }
+
+    private boolean proprietarioAtivo(AnuncioEntity anuncio) {
+        return usuarioRepository.findById(anuncio.getUsuarioId())
+                .filter(this::usuarioAtivo)
+                .isPresent();
+    }
+
+    private boolean usuarioAtivo(UsuarioEntity usuario) {
+        return usuario.getStatus() == StatusUsuario.ATIVO
+                && usuario.getDesativadoEm() == null
+                && usuario.getExcluidoEm() == null;
     }
 
     private String enumName(Enum<?> value) {

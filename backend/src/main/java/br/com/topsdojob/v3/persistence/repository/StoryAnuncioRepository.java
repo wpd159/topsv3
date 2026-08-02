@@ -41,4 +41,50 @@ public interface StoryAnuncioRepository extends JpaRepository<StoryAnuncioEntity
     List<StoryAnuncioEntity> findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio status);
 
     Optional<StoryAnuncioEntity> findByIdAndStatus(UUID id, StatusStoryAnuncio status);
+
+    Optional<StoryAnuncioEntity> findByAnuncioIdAndCriadoPorAndIdempotencyKey(
+        UUID anuncioId,
+        UUID criadoPor,
+        String idempotencyKey);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select distinct story
+        from StoryAnuncioEntity story
+        where story.anuncioId = :anuncioId
+           or story.anuncioMidiaId in (
+             select midia.id
+             from AnuncioMidiaEntity midia
+             where midia.anuncioId = :anuncioId
+           )
+        order by story.id
+        """)
+    List<StoryAnuncioEntity> findByAnuncioIdForUpdate(@Param("anuncioId") UUID anuncioId);
+
+    @Query("""
+        select distinct story
+        from StoryAnuncioEntity story
+        where story.anuncioId in :anuncioIds
+           or story.anuncioMidiaId in (
+             select midia.id
+             from AnuncioMidiaEntity midia
+             where midia.anuncioId in :anuncioIds
+           )
+        """)
+    List<StoryAnuncioEntity> findByAnuncioIds(@Param("anuncioIds") Collection<UUID> anuncioIds);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+        select distinct story
+        from StoryAnuncioEntity story
+        where story.anuncioId in :anuncioIds
+           or story.anuncioMidiaId in (
+             select midia.id
+             from AnuncioMidiaEntity midia
+             where midia.anuncioId in :anuncioIds
+           )
+        order by story.id
+        """)
+    List<StoryAnuncioEntity> findByAnuncioIdsForUpdate(
+        @Param("anuncioIds") Collection<UUID> anuncioIds);
 }

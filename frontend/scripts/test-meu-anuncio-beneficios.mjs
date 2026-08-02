@@ -13,6 +13,14 @@ assert.deepEqual(apresentarBeneficioPremium({ status: 'AGUARDANDO_MODERACAO' }),
   complemento: 'O prazo ainda não começou.',
 })
 
+assert.deepEqual(apresentarBeneficioPremium({
+  status: 'AGUARDANDO_MODERACAO',
+  motivoEspera: 'AGUARDANDO_PUBLICACAO_STORY',
+}), {
+  situacao: 'Disponível para publicar Story',
+  complemento: 'O prazo começa quando o Story for publicado.',
+})
+
 assert.equal(
   formatarDataBeneficio('2026-08-09T18:30:00Z'),
   '09/08/2026 às 15:30',

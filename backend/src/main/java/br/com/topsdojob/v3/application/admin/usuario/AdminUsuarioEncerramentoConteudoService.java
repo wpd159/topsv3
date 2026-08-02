@@ -2,7 +2,6 @@ package br.com.topsdojob.v3.application.admin.usuario;
 
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioStatusHistoricoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
-import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioStatusHistoricoRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoBuscaAnuncioRepository;
@@ -23,7 +22,6 @@ public class AdminUsuarioEncerramentoConteudoService {
     private final AnuncioStatusHistoricoRepository historicos;
     private final AnuncioLocalizacaoRepository localizacoes;
     private final DocumentoBuscaAnuncioRepository busca;
-    private final AnuncioMidiaRepository midias;
     private final StoryAnuncioRepository stories;
     private final StorySelecaoAdministrativaRepository storyAdministrativo;
 
@@ -32,14 +30,12 @@ public class AdminUsuarioEncerramentoConteudoService {
             AnuncioStatusHistoricoRepository historicos,
             AnuncioLocalizacaoRepository localizacoes,
             DocumentoBuscaAnuncioRepository busca,
-            AnuncioMidiaRepository midias,
             StoryAnuncioRepository stories,
             StorySelecaoAdministrativaRepository storyAdministrativo) {
         this.anuncios = anuncios;
         this.historicos = historicos;
         this.localizacoes = localizacoes;
         this.busca = busca;
-        this.midias = midias;
         this.stories = stories;
         this.storyAdministrativo = storyAdministrativo;
     }
@@ -76,12 +72,9 @@ public class AdminUsuarioEncerramentoConteudoService {
             localizacoes.saveAll(locais);
         }
 
-        List<UUID> midiaIds = anuncioIds.isEmpty()
-                ? List.of()
-                : midias.findByAnuncioIdIn(anuncioIds).stream().map(item -> item.getId()).toList();
-        var storiesUsuario = midiaIds.isEmpty()
+        var storiesUsuario = anuncioIds.isEmpty()
                 ? List.<br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity>of()
-                : stories.findByAnuncioMidiaIdInForUpdate(midiaIds);
+                : stories.findByAnuncioIdsForUpdate(anuncioIds);
         var storiesEncerrados = storiesUsuario.stream()
                 .filter(item -> item.suspenderPorBloqueio(agora))
                 .toList();

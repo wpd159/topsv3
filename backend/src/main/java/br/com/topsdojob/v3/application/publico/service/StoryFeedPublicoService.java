@@ -28,7 +28,9 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -43,6 +45,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -63,7 +66,9 @@ public class StoryFeedPublicoService {
     private final IdadeAnunciantePublicaService idadeAnuncianteService;
     private final PremiumPublicoMapper premiumMapper;
     private final MidiaPublicaUrlService urlService;
+    private final StoryAnuncioApresentacaoService apresentacaoService;
 
+    @Autowired
     public StoryFeedPublicoService(
             StorySelecaoAdministrativaRepository selecaoRepository,
             StoryAnuncioRepository storyRepository,
@@ -75,7 +80,8 @@ public class StoryFeedPublicoService {
             ComplianceVisitorAccessService visitorAccessService,
             IdadeAnunciantePublicaService idadeAnuncianteService,
             PremiumPublicoMapper premiumMapper,
-            MidiaPublicaUrlService urlService) {
+            MidiaPublicaUrlService urlService,
+            StoryAnuncioApresentacaoService apresentacaoService) {
         this.selecaoRepository = selecaoRepository;
         this.storyRepository = storyRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -87,6 +93,26 @@ public class StoryFeedPublicoService {
         this.idadeAnuncianteService = idadeAnuncianteService;
         this.premiumMapper = premiumMapper;
         this.urlService = urlService;
+        this.apresentacaoService = apresentacaoService;
+    }
+
+    StoryFeedPublicoService(
+            StorySelecaoAdministrativaRepository selecaoRepository,
+            StoryAnuncioRepository storyRepository,
+            AnuncioMidiaRepository anuncioMidiaRepository,
+            ArquivoMidiaRepository arquivoMidiaRepository,
+            AnuncioRepository anuncioRepository,
+            UsuarioRepository usuarioRepository,
+            StoryMidiaElegibilidadeService elegibilidadeService,
+            ComplianceVisitorAccessService visitorAccessService,
+            IdadeAnunciantePublicaService idadeAnuncianteService,
+            PremiumPublicoMapper premiumMapper,
+            MidiaPublicaUrlService urlService) {
+        this(
+                selecaoRepository, storyRepository, anuncioMidiaRepository,
+                arquivoMidiaRepository, anuncioRepository, usuarioRepository,
+                elegibilidadeService, visitorAccessService, idadeAnuncianteService,
+                premiumMapper, urlService, null);
     }
 
     @Transactional(readOnly = true)
@@ -99,7 +125,9 @@ public class StoryFeedPublicoService {
                 idadesPorAnuncio(usuarios.stream().map(UsuarioStory::anuncio).distinct().toList());
         Set<UUID> arquivosEmStoriesPagos = usuarios.stream()
                 .map(UsuarioStory::vinculo)
+                .filter(java.util.Objects::nonNull)
                 .map(AnuncioMidiaEntity::getArquivoMidiaId)
+                .filter(java.util.Objects::nonNull)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         List<StoryFeedBundleDto> resposta = new ArrayList<>(bundlesUsuario(usuarios, idadeConfirmada, idades));
@@ -126,12 +154,11 @@ public class StoryFeedPublicoService {
         if (selecoes.isEmpty()) {
             return List.of();
         }
-        Map<UUID, AnuncioEntity> anuncios = anuncioRepository.findAllById(selecoes.stream()
+        Map<UUID, AnuncioEntity> anuncios = anunciosPublicaveisComProprietarioAtivo(
+                anuncioRepository.findAllById(selecoes.stream()
                         .map(StorySelecaoAdministrativaEntity::getAnuncioId)
                         .distinct()
-                        .toList()).stream()
-                .filter(this::anuncioPublicavel)
-                .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
+                        .toList()));
         Map<UUID, IdadeAnunciantePublicaService.Resultado> idades =
                 idadesPorAnuncio(List.copyOf(anuncios.values()));
         Map<UUID, List<MidiaElegivel>> midias =
@@ -194,6 +221,7 @@ public class StoryFeedPublicoService {
         }
         Map<UUID, AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByIdIn(stories.stream()
                         .map(StoryAnuncioEntity::getAnuncioMidiaId)
+                        .filter(java.util.Objects::nonNull)
                         .distinct()
                         .toList()).stream()
                 .collect(Collectors.toMap(AnuncioMidiaEntity::getId, Function.identity()));
@@ -202,11 +230,16 @@ public class StoryFeedPublicoService {
                         .distinct()
                         .toList()).stream()
                 .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
-        Map<UUID, AnuncioEntity> anuncios = anuncioRepository.findAllById(vinculos.values().stream()
-                        .map(AnuncioMidiaEntity::getAnuncioId)
-                        .distinct()
-                        .toList()).stream()
-                .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
+        Set<UUID> anuncioIds = stories.stream()
+                .map(StoryAnuncioEntity::getAnuncioId)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        anuncioIds.addAll(vinculos.values().stream()
+                .map(AnuncioMidiaEntity::getAnuncioId)
+                .filter(java.util.Objects::nonNull)
+                .toList());
+        Map<UUID, AnuncioEntity> anuncios = anunciosPublicaveisComProprietarioAtivo(
+                anuncioRepository.findAllById(anuncioIds));
         return stories.stream()
                 .map(story -> usuarioStory(story, vinculos, arquivos, anuncios))
                 .filter(java.util.Objects::nonNull)
@@ -219,6 +252,12 @@ public class StoryFeedPublicoService {
             Map<UUID, ArquivoMidiaEntity> arquivos,
             Map<UUID, AnuncioEntity> anuncios) {
         AnuncioMidiaEntity vinculo = vinculos.get(story.getAnuncioMidiaId());
+        if (story.getModoConteudo() == ModoConteudoStory.ANUNCIO) {
+            AnuncioEntity anuncio = anuncios.get(story.getAnuncioId());
+            return anuncioPublicavel(anuncio)
+                    ? new UsuarioStory(story, null, null, anuncio)
+                    : null;
+        }
         if (!vinculoStoryUsuarioElegivel(vinculo)) {
             return null;
         }
@@ -236,12 +275,13 @@ public class StoryFeedPublicoService {
             Map<UUID, IdadeAnunciantePublicaService.Resultado> idades) {
         Map<UUID, List<UsuarioStory>> porUsuario = new LinkedHashMap<>();
         stories.forEach(item -> porUsuario.computeIfAbsent(item.anuncio().getUsuarioId(), ignored -> new ArrayList<>()).add(item));
-        Map<UUID, UsuarioEntity> usuarios = usuarioRepository.findAllById(porUsuario.keySet()).stream()
-                .collect(Collectors.toMap(UsuarioEntity::getId, Function.identity()));
         return porUsuario.entrySet().stream().map(entry -> {
             List<UsuarioStory> itens = entry.getValue();
-            UsuarioEntity usuario = usuarios.get(entry.getKey());
-            String nome = usuario == null ? itens.get(0).anuncio().getTitulo() : usuario.getNome();
+            boolean possuiApresentacaoDireta = itens.stream()
+                    .anyMatch(item -> item.story().getModoConteudo() == ModoConteudoStory.ANUNCIO);
+            String nome = idadeConfirmada || !possuiApresentacaoDireta
+                    ? itens.get(0).anuncio().getTitulo()
+                    : null;
             List<StoryFeedItemDto> feed = itens.stream()
                     .map(item -> itemUsuario(
                             item.story(),
@@ -293,6 +333,21 @@ public class StoryFeedPublicoService {
             AnuncioEntity anuncio,
             boolean idadeConfirmada,
             IdadeAnunciantePublicaService.Resultado idade) {
+        if (story.getModoConteudo() == ModoConteudoStory.ANUNCIO) {
+            return new StoryFeedItemDto(
+                    story.getId().toString(),
+                    anuncio.getId().toString(),
+                    anuncio.getSlug(),
+                    null,
+                    idadeConfirmada ? anuncio.getTitulo() : null,
+                    idadeConfirmada && idade != null ? idade.idade() : null,
+                    true,
+                    idadeConfirmada ? "AVAILABLE" : IDADE_NAO_CONFIRMADA,
+                    null,
+                    ModoConteudoStory.ANUNCIO.name(),
+                    "ANUNCIO",
+                    story.getFimEm());
+        }
         String url = idadeConfirmada
                 ? previewPublica(vinculo, arquivo)
                 : null;
@@ -306,6 +361,7 @@ public class StoryFeedPublicoService {
                 true,
                 previewState(idadeConfirmada, url),
                 url,
+                story.getModoConteudoEfetivo().name(),
                 tipoPublico(vinculo, arquivo),
                 story.getFimEm());
     }
@@ -338,6 +394,12 @@ public class StoryFeedPublicoService {
         StoryAnuncioEntity story = storyRepository.findByIdAndStatus(id, StatusStoryAnuncio.PUBLICADO)
                 .filter(item -> janelaValida(item, OffsetDateTime.now(ZoneOffset.UTC)))
                 .orElseThrow(this::naoEncontrado);
+        if (story.getModoConteudo() == ModoConteudoStory.ANUNCIO) {
+            AnuncioEntity anuncio = anuncioRepository.findById(story.getAnuncioId())
+                    .filter(this::anuncioComProprietarioAtivo)
+                    .orElseThrow(this::naoEncontrado);
+            return viewerAnuncio(story, anuncio, request);
+        }
         AnuncioMidiaEntity vinculo = anuncioMidiaRepository.findById(story.getAnuncioMidiaId())
                 .filter(this::vinculoStoryUsuarioElegivel)
                 .orElseThrow(this::naoEncontrado);
@@ -345,7 +407,7 @@ public class StoryFeedPublicoService {
                 .filter(item -> item.getStatusArquivo() == StatusArquivoMidia.VALIDADO)
                 .orElseThrow(this::naoEncontrado);
         AnuncioEntity anuncio = anuncioRepository.findById(vinculo.getAnuncioId())
-                .filter(this::anuncioPublicavel)
+                .filter(this::anuncioComProprietarioAtivo)
                 .orElseThrow(this::naoEncontrado);
         return viewer(storyId, anuncio, vinculo, arquivo, story.getFimEm(), request);
     }
@@ -375,15 +437,55 @@ public class StoryFeedPublicoService {
                 true,
                 state,
                 url,
+                ModoConteudoStory.MIDIA_UPLOAD.name(),
                 tipoPublico(vinculo, arquivo),
                 expiraEm,
-                idadeConfirmada ? null : IDADE_NAO_CONFIRMADA);
+                idadeConfirmada ? null : IDADE_NAO_CONFIRMADA,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private StoryViewerPublicoDto viewerAnuncio(
+            StoryAnuncioEntity story,
+            AnuncioEntity anuncio,
+            HttpServletRequest request) {
+        boolean idadeConfirmada = visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY);
+        IdadeAnunciantePublicaService.Resultado idade = idadeAnuncio(anuncio);
+        StoryAnuncioApresentacaoService.Apresentacao apresentacao = idadeConfirmada
+                && apresentacaoService != null
+                ? apresentacaoService.apresentar(anuncio)
+                : null;
+        return new StoryViewerPublicoDto(
+                story.getId().toString(),
+                anuncio.getId().toString(),
+                anuncio.getSlug(),
+                null,
+                idadeConfirmada ? anuncio.getTitulo() : null,
+                idadeConfirmada ? idade.idade() : null,
+                true,
+                idadeConfirmada ? "LIBERADO" : IDADE_NAO_CONFIRMADA,
+                null,
+                ModoConteudoStory.ANUNCIO.name(),
+                "ANUNCIO",
+                story.getFimEm(),
+                idadeConfirmada ? null : IDADE_NAO_CONFIRMADA,
+                apresentacao == null ? null : apresentacao.cidade(),
+                apresentacao == null ? null : apresentacao.uf(),
+                apresentacao == null ? null : apresentacao.preco(),
+                apresentacao == null ? null : apresentacao.resumo());
     }
 
     private boolean arquivoPossuiStoryPago(UUID arquivoMidiaId) {
         List<UUID> vinculos = anuncioMidiaRepository.findByArquivoMidiaId(arquivoMidiaId).stream()
                 .map(AnuncioMidiaEntity::getId)
                 .toList();
+        if (vinculos.isEmpty()) {
+            return false;
+        }
         return !storyRepository.findByAnuncioMidiaIdIn(vinculos).stream()
                 .filter(story -> story.getStatus() == StatusStoryAnuncio.PUBLICADO)
                 .filter(story -> janelaValida(story, OffsetDateTime.now(ZoneOffset.UTC)))
@@ -446,7 +548,9 @@ public class StoryFeedPublicoService {
     }
 
     private AnuncioEntity anuncioPublicavel(UUID id) {
-        return id == null ? null : anuncioRepository.findById(id).filter(this::anuncioPublicavel).orElse(null);
+        return id == null ? null : anuncioRepository.findById(id)
+                .filter(this::anuncioComProprietarioAtivo)
+                .orElse(null);
     }
 
     private boolean anuncioPublicavel(AnuncioEntity anuncio) {
@@ -454,6 +558,39 @@ public class StoryFeedPublicoService {
                 && anuncio.getRemovidoEm() == null
                 && anuncio.getStatus() == StatusAnuncio.PUBLICADO
                 && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO;
+    }
+
+    private boolean anuncioComProprietarioAtivo(AnuncioEntity anuncio) {
+        return anuncioPublicavel(anuncio)
+                && usuarioRepository.findById(anuncio.getUsuarioId())
+                        .filter(this::usuarioAtivo)
+                        .isPresent();
+    }
+
+    private Map<UUID, AnuncioEntity> anunciosPublicaveisComProprietarioAtivo(
+            Iterable<AnuncioEntity> candidatos) {
+        List<AnuncioEntity> publicaveis = new ArrayList<>();
+        candidatos.forEach(anuncio -> {
+            if (anuncioPublicavel(anuncio)) publicaveis.add(anuncio);
+        });
+        Set<UUID> proprietariosAtivos = usuarioRepository.findAllById(publicaveis.stream()
+                        .map(AnuncioEntity::getUsuarioId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList()).stream()
+                .filter(this::usuarioAtivo)
+                .map(UsuarioEntity::getId)
+                .collect(Collectors.toSet());
+        return publicaveis.stream()
+                .filter(anuncio -> proprietariosAtivos.contains(anuncio.getUsuarioId()))
+                .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
+    }
+
+    private boolean usuarioAtivo(UsuarioEntity usuario) {
+        return usuario != null
+                && usuario.getStatus() == StatusUsuario.ATIVO
+                && usuario.getDesativadoEm() == null
+                && usuario.getExcluidoEm() == null;
     }
 
     private String previewState(boolean idadeConfirmada, String url) {

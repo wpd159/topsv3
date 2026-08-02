@@ -13,6 +13,24 @@ public record StoryFeedItemDto(
         boolean profileNavigable,
         String previewState,
         String previewUrl,
+        String modoConteudo,
         String tipo,
         OffsetDateTime expiraEm) {
+
+    public StoryFeedItemDto(
+            String storyId,
+            String anuncioId,
+            String anuncioSlug,
+            String usuarioUsername,
+            String displayUsername,
+            Integer idade,
+            boolean profileNavigable,
+            String previewState,
+            String previewUrl,
+            String tipo,
+            OffsetDateTime expiraEm) {
+        this(
+                storyId, anuncioId, anuncioSlug, usuarioUsername, displayUsername,
+                idade, profileNavigable, previewState, previewUrl, null, tipo, expiraEm);
+    }
 }

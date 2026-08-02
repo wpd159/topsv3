@@ -73,6 +73,7 @@ class MeusAnunciosConsultaServiceTest {
     private MidiaPublicaUrlService urlService;
     private VisualizacaoTotalCanonicaService visualizacaoService;
     private MeuAnuncioBeneficioConsultaService beneficioConsultaService;
+    private MeuAnuncioStoryConsultaService storyConsultaService;
     private MeusAnunciosConsultaService service;
 
     @BeforeEach
@@ -89,6 +90,7 @@ class MeusAnunciosConsultaServiceTest {
         urlService = mock(MidiaPublicaUrlService.class);
         visualizacaoService = mock(VisualizacaoTotalCanonicaService.class);
         beneficioConsultaService = mock(MeuAnuncioBeneficioConsultaService.class);
+        storyConsultaService = mock(MeuAnuncioStoryConsultaService.class);
         when(visualizacaoService.calcularEmLote(any())).thenAnswer(invocation -> {
             Collection<UUID> ids = invocation.getArgument(0);
             Map<UUID, VisualizacoesCanonicasDto> totais = new LinkedHashMap<>();
@@ -102,6 +104,7 @@ class MeusAnunciosConsultaServiceTest {
             ids.forEach(id -> beneficios.put(id, List.of()));
             return beneficios;
         });
+        when(storyConsultaService.consultarAtivos(any())).thenReturn(Map.of());
         service = new MeusAnunciosConsultaService(
                 usuarioRepository,
                 anuncioRepository,
@@ -115,7 +118,8 @@ class MeusAnunciosConsultaServiceTest {
                 new MidiaPublicaMapper(urlService),
                 new MidiaPublicaSeguraPolicy(),
                 visualizacaoService,
-                beneficioConsultaService);
+                beneficioConsultaService,
+                storyConsultaService);
     }
 
     @Test

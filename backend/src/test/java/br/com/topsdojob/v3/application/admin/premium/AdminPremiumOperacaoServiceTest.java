@@ -188,6 +188,58 @@ class AdminPremiumOperacaoServiceTest {
     }
 
     @Test
+    void concessaoAdministrativaDeStoriesReservaPrazoAteAPublicacao() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        UUID beneficioId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        AnuncioEntity anuncio = AnuncioEntity.criarSolicitacaoLocal(
+                anuncioId,
+                usuarioId,
+                "stories-admin",
+                "Stories administrativos",
+                "Descricao valida para concessao administrativa",
+                "MASSAGENS",
+                null,
+                null,
+                agora.minusDays(2));
+        BeneficioPremiumEntity beneficio = BeneficioPremiumEntity.criarFixtureHomologacao(
+                beneficioId,
+                "STORIES",
+                "Stories",
+                "Publicacao de Story",
+                EscopoBeneficioPremium.ANUNCIO,
+                false,
+                true,
+                agora.minusDays(1));
+        BeneficioPremiumOpcaoEntity opcao = BeneficioPremiumOpcaoEntity.criar(
+                UUID.randomUUID(), beneficioId, 7, 20, true, 0, agora.minusDays(1));
+        when(grupoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(beneficioRepository.findById(beneficioId)).thenReturn(Optional.of(beneficio));
+        when(opcaoRepository.findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(beneficioId, 7))
+                .thenReturn(Optional.of(opcao));
+        when(consultaService.consultarCalculados(anuncioId)).thenReturn(List.of());
+
+        var response = service.ativarManual(
+                anuncioId,
+                new AdminPremiumAtivarRequest(beneficioId, 7, null),
+                "operacao-stories-espera",
+                admin(),
+                "req-stories-espera");
+
+        ArgumentCaptor<AtivacaoBeneficioEntity> salva =
+                ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
+        verify(ativacaoRepository).save(salva.capture());
+        assertThat(response.status()).isEqualTo("AGUARDANDO_MODERACAO");
+        assertThat(salva.getValue().getStatus())
+                .isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
+        assertThat(salva.getValue().getInicioEm()).isNull();
+        assertThat(salva.getValue().getFimEm()).isNull();
+        verifyNoInteractions(movimentoRepository);
+    }
+
+    @Test
     void ativaBeneficioSemObservacaoEPersisteNullSemFabricarTexto() {
         UUID anuncioId = UUID.randomUUID();
         UUID usuarioId = UUID.randomUUID();

@@ -34,6 +34,65 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
             select ativacao
             from AtivacaoBeneficioEntity ativacao
             where ativacao.anuncioId = :anuncioId
+              and ativacao.usuarioId = :usuarioId
+              and ativacao.status = :status
+              and ativacao.revogadaEm is null
+              and ativacao.inicioEm <= :agora
+              and ativacao.fimEm > :agora
+              and ativacao.beneficioId in (
+                select beneficio.id
+                from BeneficioPremiumEntity beneficio
+                where beneficio.codigo = :codigo
+                  and beneficio.ativo = true
+              )
+              and not exists (
+                select story.id
+                from StoryAnuncioEntity story
+                where story.ativacaoBeneficioId = ativacao.id
+              )
+            order by ativacao.fimEm, ativacao.id
+            """)
+    List<AtivacaoBeneficioEntity> findVigentesByCodigoForUpdate(
+            @Param("anuncioId") UUID anuncioId,
+            @Param("usuarioId") UUID usuarioId,
+            @Param("codigo") String codigo,
+            @Param("status") StatusAtivacaoBeneficio status,
+            @Param("agora") OffsetDateTime agora);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select ativacao
+            from AtivacaoBeneficioEntity ativacao
+            where ativacao.anuncioId = :anuncioId
+              and ativacao.usuarioId = :usuarioId
+              and ativacao.status = :status
+              and ativacao.revogadaEm is null
+              and ativacao.inicioEm is null
+              and ativacao.fimEm is null
+              and ativacao.beneficioId in (
+                select beneficio.id
+                from BeneficioPremiumEntity beneficio
+                where beneficio.codigo = :codigo
+                  and beneficio.ativo = true
+              )
+              and not exists (
+                select story.id
+                from StoryAnuncioEntity story
+                where story.ativacaoBeneficioId = ativacao.id
+              )
+            order by ativacao.criadoEm, ativacao.id
+            """)
+    List<AtivacaoBeneficioEntity> findAguardandoUsoByCodigoForUpdate(
+            @Param("anuncioId") UUID anuncioId,
+            @Param("usuarioId") UUID usuarioId,
+            @Param("codigo") String codigo,
+            @Param("status") StatusAtivacaoBeneficio status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select ativacao
+            from AtivacaoBeneficioEntity ativacao
+            where ativacao.anuncioId = :anuncioId
               and ativacao.beneficioId = :beneficioId
               and ativacao.status = :status
             order by ativacao.criadoEm, ativacao.id

@@ -12,15 +12,19 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -38,6 +42,7 @@ class ComplianceChallengeContextServiceTest {
   private final StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
   private final StorySelecaoAdministrativaRepository storyAdminRepository =
       mock(StorySelecaoAdministrativaRepository.class);
+  private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
 
   private ComplianceChallengeContextService service;
 
@@ -47,7 +52,12 @@ class ComplianceChallengeContextServiceTest {
         anuncioRepository,
         midiaRepository,
         storyRepository,
-        storyAdminRepository);
+        storyAdminRepository,
+        usuarioRepository);
+    UsuarioEntity usuario = mock(UsuarioEntity.class);
+    when(usuario.getStatus()).thenReturn(StatusUsuario.ATIVO);
+    when(usuarioRepository.findById(org.mockito.ArgumentMatchers.any()))
+        .thenReturn(Optional.of(usuario));
   }
 
   @Test
@@ -79,6 +89,39 @@ class ComplianceChallengeContextServiceTest {
 
     assertThat(contexto.anuncioId()).isEqualTo(anuncioId);
     assertThat(contexto.midiaId()).isEqualTo(midiaId);
+    assertThat(contexto.storyReferencia()).isEqualTo(storyId.toString());
+  }
+
+  @Test
+  void aceitaStoryDoModoAnuncioSemFabricarMidiaDaGaleria() {
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    UUID anuncioId = UUID.randomUUID();
+    UUID storyId = UUID.randomUUID();
+    UUID usuarioId = UUID.randomUUID();
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarAutogestao(
+        storyId,
+        anuncioId,
+        null,
+        ModoConteudoStory.ANUNCIO,
+        UUID.randomUUID(),
+        "story-anuncio-contexto",
+        "a".repeat(64),
+        agora.minusMinutes(1),
+        agora.plusHours(1),
+        usuarioId);
+    when(storyRepository.findByIdAndStatus(
+        storyId,
+        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio.PUBLICADO))
+        .thenReturn(Optional.of(story));
+    when(anuncioRepository.findById(anuncioId))
+        .thenReturn(Optional.of(anuncioPublicado(anuncioId, agora)));
+
+    ComplianceChallengeContextService.Contexto contexto = service.validar(
+        request(anuncioId, storyId.toString()),
+        EscopoConteudoVisitante.STORY);
+
+    assertThat(contexto.anuncioId()).isEqualTo(anuncioId);
+    assertThat(contexto.midiaId()).isNull();
     assertThat(contexto.storyReferencia()).isEqualTo(storyId.toString());
   }
 
@@ -167,6 +210,38 @@ class ComplianceChallengeContextServiceTest {
             request(UUID.randomUUID(), "story-inexistente"),
             EscopoConteudoVisitante.STORY),
         HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  void recusaStoryQuandoProprietarioEstaInativo() {
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    UUID anuncioId = UUID.randomUUID();
+    UUID storyId = UUID.randomUUID();
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarAutogestao(
+        storyId,
+        anuncioId,
+        null,
+        ModoConteudoStory.ANUNCIO,
+        UUID.randomUUID(),
+        "story-proprietario-inativo",
+        "b".repeat(64),
+        agora.minusMinutes(1),
+        agora.plusHours(1),
+        UUID.randomUUID());
+    UsuarioEntity usuario = mock(UsuarioEntity.class);
+    when(usuario.getStatus()).thenReturn(StatusUsuario.DESATIVADO);
+    when(storyRepository.findByIdAndStatus(
+        storyId,
+        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio.PUBLICADO))
+        .thenReturn(Optional.of(story));
+    when(anuncioRepository.findById(anuncioId))
+        .thenReturn(Optional.of(anuncioPublicado(anuncioId, agora)));
+    when(usuarioRepository.findById(org.mockito.ArgumentMatchers.any()))
+        .thenReturn(Optional.of(usuario));
+
+    assertStatus(
+        () -> service.validar(request(anuncioId, storyId.toString()), EscopoConteudoVisitante.STORY),
+        HttpStatus.NOT_FOUND);
   }
 
   private VisitorChallengeRequestDto request(UUID anuncioId, String storyId) {

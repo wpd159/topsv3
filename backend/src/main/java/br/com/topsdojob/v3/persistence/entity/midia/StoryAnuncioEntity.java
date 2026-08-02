@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.entity.midia;
 
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,6 +23,22 @@ public class StoryAnuncioEntity {
 
   @Column(name = "anuncio_midia_id")
   private UUID anuncioMidiaId;
+
+  @Column(name = "anuncio_id")
+  private UUID anuncioId;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "modo_conteudo")
+  private ModoConteudoStory modoConteudo;
+
+  @Column(name = "ativacao_beneficio_id")
+  private UUID ativacaoBeneficioId;
+
+  @Column(name = "idempotency_key")
+  private String idempotencyKey;
+
+  @Column(name = "request_fingerprint")
+  private String requestFingerprint;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status")
@@ -51,6 +68,30 @@ public class StoryAnuncioEntity {
 
   public UUID getAnuncioMidiaId() {
     return anuncioMidiaId;
+  }
+
+  public UUID getAnuncioId() {
+    return anuncioId;
+  }
+
+  public ModoConteudoStory getModoConteudo() {
+    return modoConteudo;
+  }
+
+  public ModoConteudoStory getModoConteudoEfetivo() {
+    return modoConteudo == null ? ModoConteudoStory.MIDIA_UPLOAD : modoConteudo;
+  }
+
+  public UUID getAtivacaoBeneficioId() {
+    return ativacaoBeneficioId;
+  }
+
+  public String getIdempotencyKey() {
+    return idempotencyKey;
+  }
+
+  public String getRequestFingerprint() {
+    return requestFingerprint;
   }
 
   public StatusStoryAnuncio getStatus() {
@@ -88,6 +129,55 @@ public class StoryAnuncioEntity {
     status = StatusStoryAnuncio.EXPIRADO;
     atualizadoEm = agora;
     return true;
+  }
+
+  public boolean expirarSeVencido(OffsetDateTime agora) {
+    if (status != StatusStoryAnuncio.PUBLICADO
+        || fimEm == null
+        || fimEm.isAfter(agora)) {
+      return false;
+    }
+    status = StatusStoryAnuncio.EXPIRADO;
+    atualizadoEm = agora;
+    return true;
+  }
+
+  public static StoryAnuncioEntity criarAutogestao(
+      UUID id,
+      UUID anuncioId,
+      UUID anuncioMidiaId,
+      ModoConteudoStory modoConteudo,
+      UUID ativacaoBeneficioId,
+      String idempotencyKey,
+      String requestFingerprint,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      UUID criadoPor) {
+    if (id == null || anuncioId == null || modoConteudo == null
+        || ativacaoBeneficioId == null || criadoPor == null
+        || idempotencyKey == null || idempotencyKey.isBlank()
+        || requestFingerprint == null || !requestFingerprint.matches("[0-9a-f]{64}")
+        || inicioEm == null || fimEm == null || !fimEm.isAfter(inicioEm)
+        || (modoConteudo == ModoConteudoStory.ANUNCIO && anuncioMidiaId != null)
+        || (modoConteudo == ModoConteudoStory.MIDIA_UPLOAD && anuncioMidiaId == null)) {
+      throw new IllegalArgumentException("Dados do Story de autogestao invalidos");
+    }
+    StoryAnuncioEntity entity = new StoryAnuncioEntity();
+    entity.id = id;
+    entity.anuncioId = anuncioId;
+    entity.anuncioMidiaId = anuncioMidiaId;
+    entity.modoConteudo = modoConteudo;
+    entity.ativacaoBeneficioId = ativacaoBeneficioId;
+    entity.idempotencyKey = idempotencyKey;
+    entity.requestFingerprint = requestFingerprint;
+    entity.status = StatusStoryAnuncio.PUBLICADO;
+    entity.inicioEm = inicioEm;
+    entity.fimEm = fimEm;
+    entity.ordem = 0;
+    entity.criadoPor = criadoPor;
+    entity.criadoEm = inicioEm;
+    entity.atualizadoEm = inicioEm;
+    return entity;
   }
 
   public static StoryAnuncioEntity criarFixtureHomologacao(

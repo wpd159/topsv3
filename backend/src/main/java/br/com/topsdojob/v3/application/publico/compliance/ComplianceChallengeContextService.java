@@ -6,16 +6,20 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -33,16 +37,19 @@ public class ComplianceChallengeContextService {
   private final AnuncioMidiaRepository midiaRepository;
   private final StoryAnuncioRepository storyRepository;
   private final StorySelecaoAdministrativaRepository storyAdminRepository;
+  private final UsuarioRepository usuarioRepository;
 
   public ComplianceChallengeContextService(
       AnuncioRepository anuncioRepository,
       AnuncioMidiaRepository midiaRepository,
       StoryAnuncioRepository storyRepository,
-      StorySelecaoAdministrativaRepository storyAdminRepository) {
+      StorySelecaoAdministrativaRepository storyAdminRepository,
+      UsuarioRepository usuarioRepository) {
     this.anuncioRepository = anuncioRepository;
     this.midiaRepository = midiaRepository;
     this.storyRepository = storyRepository;
     this.storyAdminRepository = storyAdminRepository;
+    this.usuarioRepository = usuarioRepository;
   }
 
   public Contexto validar(
@@ -82,7 +89,7 @@ public class ComplianceChallengeContextService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncio protegido obrigatorio");
     }
     AnuncioEntity anuncio = anuncioRepository.findById(anuncioId)
-        .filter(this::publicavel)
+        .filter(this::publicavelComProprietarioAtivo)
         .orElseThrow(() -> new ResponseStatusException(
             HttpStatus.NOT_FOUND,
             "conteudo protegido nao encontrado"));
@@ -108,6 +115,14 @@ public class ComplianceChallengeContextService {
         .findByIdAndStatus(id, StatusStoryAnuncio.PUBLICADO)
         .filter(item -> janelaValida(item, agora))
         .orElseThrow(this::storyNaoEncontrado);
+    if (story.getModoConteudo() == ModoConteudoStory.ANUNCIO) {
+      UUID anuncioId = story.getAnuncioId();
+      if (anuncioId == null) {
+        throw storyNaoEncontrado();
+      }
+      validarMesmoAnuncio(anuncioInformado, anuncioId);
+      return new StoryContext(anuncioId, null, id.toString());
+    }
     AnuncioMidiaEntity midia = midiaRepository.findById(story.getAnuncioMidiaId())
         .filter(this::storyUsuarioElegivel)
         .orElseThrow(this::storyNaoEncontrado);
@@ -187,6 +202,19 @@ public class ComplianceChallengeContextService {
     return anuncio.getRemovidoEm() == null
         && anuncio.getStatus() == StatusAnuncio.PUBLICADO
         && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO;
+  }
+
+  private boolean publicavelComProprietarioAtivo(AnuncioEntity anuncio) {
+    return publicavel(anuncio)
+        && usuarioRepository.findById(anuncio.getUsuarioId())
+            .filter(this::usuarioAtivo)
+            .isPresent();
+  }
+
+  private boolean usuarioAtivo(UsuarioEntity usuario) {
+    return usuario.getStatus() == StatusUsuario.ATIVO
+        && usuario.getDesativadoEm() == null
+        && usuario.getExcluidoEm() == null;
   }
 
   private String sanitizarRota(String value) {

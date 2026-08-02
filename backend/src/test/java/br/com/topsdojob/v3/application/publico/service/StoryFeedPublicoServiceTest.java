@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.service;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,11 +31,13 @@ import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -60,6 +63,8 @@ class StoryFeedPublicoServiceTest {
             mock(IdadeAnunciantePublicaService.class);
     private final PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
     private final MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
+    private final StoryAnuncioApresentacaoService apresentacaoService =
+            mock(StoryAnuncioApresentacaoService.class);
     private StoryFeedPublicoService service;
 
     @BeforeEach
@@ -75,19 +80,96 @@ class StoryFeedPublicoServiceTest {
                 visitorAccessService,
                 idadeAnuncianteService,
                 premiumMapper,
-                urlService);
+                urlService,
+                apresentacaoService);
         when(premiumMapper.flagsPorAnuncios(any())).thenReturn(Map.of());
         when(premiumMapper.flags(any())).thenReturn(PremiumPublicoFlagsDto.vazio());
         when(idadeAnuncianteService.resolverPorAnuncios(any(), any())).thenReturn(Map.of());
         when(idadeAnuncianteService.resolver(any(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenReturn(new IdadeAnunciantePublicaService.Resultado("Perfil", null, false));
         when(elegibilidadeService.listarPorAnuncios(any())).thenReturn(Map.of());
+        when(usuarioRepository.findAllById(any())).thenAnswer(invocation -> {
+            Iterable<UUID> ids = invocation.getArgument(0);
+            java.util.ArrayList<UsuarioEntity> usuarios = new java.util.ArrayList<>();
+            ids.forEach(id -> usuarios.add(usuarioAtivo(id)));
+            return usuarios;
+        });
+        when(usuarioRepository.findById(any())).thenAnswer(invocation ->
+                Optional.of(usuarioAtivo(invocation.getArgument(0))));
         when(urlService.resolverPreviewRestrita(any())).thenAnswer(invocation -> {
             ArquivoMidiaEntity arquivo = invocation.getArgument(0);
             return arquivo.getMimeType() != null && arquivo.getMimeType().startsWith("image/")
                     ? new ResultadoUrlPublica("/restritas-borradas/preview.jpg", null)
                     : new ResultadoUrlPublica(null, "PENDENTE_DERIVACAO_RESTRITA");
         });
+    }
+
+    @Test
+    void storyAnuncioAntesDoGateUsaSuperficieNeutraSemConsultarGaleria() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "story-anuncio-neutro");
+        StoryAnuncioEntity story = storyAnuncio(anuncioId, 0);
+        when(visitorAccessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(false);
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of(story));
+        when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
+        when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(story));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+
+        var feed = service.listar(request);
+        var viewer = service.buscar(story.getId().toString(), request);
+
+        assertThat(feed).singleElement().satisfies(bundle -> {
+            assertThat(bundle.displayUsername()).isNull();
+            assertThat(bundle.avatarUrl()).isNull();
+            assertThat(bundle.itens()).singleElement().satisfies(item -> {
+                assertThat(item.modoConteudo()).isEqualTo("ANUNCIO");
+                assertThat(item.tipo()).isEqualTo("ANUNCIO");
+                assertThat(item.previewState()).isEqualTo("IDADE_NAO_CONFIRMADA");
+                assertThat(item.previewUrl()).isNull();
+                assertThat(item.displayUsername()).isNull();
+            });
+        });
+        assertThat(viewer.viewerState()).isEqualTo("IDADE_NAO_CONFIRMADA");
+        assertThat(viewer.midiaUrl()).isNull();
+        assertThat(viewer.displayUsername()).isNull();
+        assertThat(viewer.cidade()).isNull();
+        verify(apresentacaoService, never()).apresentar(any());
+        verify(urlService, never()).resolver(any(), any());
+        verify(urlService, never()).resolverPreviewRestrita(any());
+    }
+
+    @Test
+    void storyAnuncioDepoisDoGateLiberaApresentacaoSemSelecionarMidia() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "story-anuncio-liberado");
+        StoryAnuncioEntity story = storyAnuncio(anuncioId, 0);
+        when(visitorAccessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
+        when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(story));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(apresentacaoService.apresentar(anuncio)).thenReturn(
+                new StoryAnuncioApresentacaoService.Apresentacao(
+                        anuncio.getTitulo(), "Cidade QA", "GO", java.math.BigDecimal.valueOf(150), "Resumo seguro"));
+
+        var viewer = service.buscar(story.getId().toString(), request);
+
+        assertThat(viewer.viewerState()).isEqualTo("LIBERADO");
+        assertThat(viewer.modoConteudo()).isEqualTo("ANUNCIO");
+        assertThat(viewer.tipo()).isEqualTo("ANUNCIO");
+        assertThat(viewer.midiaUrl()).isNull();
+        assertThat(viewer.displayUsername()).isEqualTo(anuncio.getTitulo());
+        assertThat(viewer.cidade()).isEqualTo("Cidade QA");
+        assertThat(viewer.uf()).isEqualTo("GO");
+        assertThat(viewer.resumo()).isEqualTo("Resumo seguro");
+        verify(midiaRepository, never()).findById(any());
+        verify(urlService, never()).resolver(any(), any());
     }
 
     @Test
@@ -130,10 +212,6 @@ class StoryFeedPublicoServiceTest {
         });
         when(elegibilidadeService.listarPorAnuncios(any()))
                 .thenReturn(Map.of(anuncioAdminId, List.of(adminDuplicada, adminUnica)));
-        UsuarioEntity usuario = entity(UsuarioEntity.class);
-        set(usuario, "id", usuarioId);
-        set(usuario, "nome", "Perfil de demonstracao");
-        when(usuarioRepository.findAllById(any())).thenReturn(List.of(usuario));
         when(midiaRepository.findByArquivoMidiaId(arquivoAdmin)).thenReturn(List.of(adminUnica.vinculo()));
         when(midiaRepository.findById(adminUnica.vinculo().getId()))
                 .thenReturn(Optional.of(adminUnica.vinculo()));
@@ -182,9 +260,6 @@ class StoryFeedPublicoServiceTest {
         StoryAnuncioEntity story = story(0);
         AnuncioMidiaEntity vinculo = vinculoStory(story.getAnuncioMidiaId(), anuncioId, arquivoId);
         ArquivoMidiaEntity arquivo = arquivo(arquivoId, "image/jpeg");
-        UsuarioEntity usuario = entity(UsuarioEntity.class);
-        set(usuario, "id", usuarioId);
-        set(usuario, "nome", "Perfil de demonstracao");
 
         when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
         when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
@@ -192,7 +267,6 @@ class StoryFeedPublicoServiceTest {
         when(midiaRepository.findByIdIn(any())).thenReturn(List.of(vinculo));
         when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
         when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
-        when(usuarioRepository.findAllById(any())).thenReturn(List.of(usuario));
         when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
                 .thenReturn(Optional.of(story));
         when(midiaRepository.findById(vinculo.getId())).thenReturn(Optional.of(vinculo));
@@ -287,6 +361,32 @@ class StoryFeedPublicoServiceTest {
                 .containsExactly("administrativo:" + segunda.vinculo().getId());
     }
 
+    @Test
+    void proprietarioInativoNaoApareceNoFeedNemNoViewer() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "story-inativo");
+        StoryAnuncioEntity story = storyAnuncio(anuncioId, 0);
+        UsuarioEntity inativo = entity(UsuarioEntity.class);
+        set(inativo, "id", usuarioId);
+        set(inativo, "status", StatusUsuario.DESATIVADO);
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of(story));
+        when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
+        org.mockito.Mockito.doReturn(List.of(inativo)).when(usuarioRepository).findAllById(any());
+        when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(story));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(inativo));
+
+        assertThat(service.listar(request)).isEmpty();
+        assertThatThrownBy(() -> service.buscar(story.getId().toString(), request))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("404");
+    }
+
     private StorySelecaoAdministrativaEntity selecao(UUID anuncioId) {
         StorySelecaoAdministrativaEntity selecao = entity(StorySelecaoAdministrativaEntity.class);
         set(selecao, "id", 1L);
@@ -327,6 +427,18 @@ class StoryFeedPublicoServiceTest {
         return story;
     }
 
+    private StoryAnuncioEntity storyAnuncio(UUID anuncioId, int ordem) {
+        StoryAnuncioEntity story = entity(StoryAnuncioEntity.class);
+        set(story, "id", UUID.randomUUID());
+        set(story, "anuncioId", anuncioId);
+        set(story, "modoConteudo", ModoConteudoStory.ANUNCIO);
+        set(story, "status", StatusStoryAnuncio.PUBLICADO);
+        set(story, "inicioEm", OffsetDateTime.now().minusHours(1));
+        set(story, "fimEm", OffsetDateTime.now().plusHours(1));
+        set(story, "ordem", ordem);
+        return story;
+    }
+
     private AnuncioMidiaEntity vinculoStory(UUID id, UUID anuncioId, UUID arquivoId) {
         AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
         set(vinculo, "id", id);
@@ -345,5 +457,12 @@ class StoryFeedPublicoServiceTest {
         set(arquivo, "mimeType", mimeType);
         set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
         return arquivo;
+    }
+
+    private UsuarioEntity usuarioAtivo(UUID id) {
+        UsuarioEntity usuario = entity(UsuarioEntity.class);
+        set(usuario, "id", id);
+        set(usuario, "status", StatusUsuario.ATIVO);
+        return usuario;
     }
 }

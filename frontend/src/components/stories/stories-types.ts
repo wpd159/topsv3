@@ -1,9 +1,10 @@
 export type StoryPreviewState = "AVAILABLE" | "IDADE_NAO_CONFIRMADA" | "UNAVAILABLE"
 export type StoryViewerState = "LIBERADO" | "IDADE_NAO_CONFIRMADA" | "INDISPONIVEL" | "ERRO_DADOS"
+export type StoryContentMode = "ANUNCIO" | "MIDIA_UPLOAD"
 
 export type StoryItem = {
   storyId: string | number
-  anuncioId?: number | null
+  anuncioId?: string | number | null
   anuncioSlug?: string | null
   usuarioUsername?: string | null
   displayUsername?: string | null
@@ -11,13 +12,14 @@ export type StoryItem = {
   profileNavigable?: boolean | null
   previewState?: StoryPreviewState | null
   previewUrl?: string | null
-  tipo: "IMAGE" | "VIDEO"
+  modoConteudo?: StoryContentMode | null
+  tipo: "ANUNCIO" | "IMAGE" | "VIDEO"
   expiraEm?: unknown
 }
 
 export type StoryViewerItem = {
   storyId: string | number
-  anuncioId?: number | null
+  anuncioId?: string | number | null
   anuncioSlug?: string | null
   usuarioUsername?: string | null
   displayUsername?: string | null
@@ -25,9 +27,14 @@ export type StoryViewerItem = {
   profileNavigable?: boolean | null
   viewerState: StoryViewerState
   midiaUrl?: string | null
-  tipo: "IMAGE" | "VIDEO"
+  modoConteudo?: StoryContentMode | null
+  tipo: "ANUNCIO" | "IMAGE" | "VIDEO"
   expiraEm?: unknown
   blockedReason?: string | null
+  cidade?: string | null
+  uf?: string | null
+  preco?: number | null
+  resumo?: string | null
 }
 
 export type StoryBundle = {

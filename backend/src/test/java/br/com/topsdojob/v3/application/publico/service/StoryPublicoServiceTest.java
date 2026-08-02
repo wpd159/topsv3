@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.service;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
@@ -17,18 +18,23 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.util.List;
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -45,12 +51,15 @@ class StoryPublicoServiceTest {
         AnuncioMidiaRepository anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
         ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
         StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
+        UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
         ComplianceVisitorAccessService visitorAccessService =
                 mock(ComplianceVisitorAccessService.class);
         MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
         MockHttpServletRequest request = new MockHttpServletRequest();
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         set(anuncio, "id", anuncioId);
+        UUID usuarioId = UUID.randomUUID();
+        set(anuncio, "usuarioId", usuarioId);
         AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
         set(vinculo, "id", vinculoId);
         set(vinculo, "anuncioId", anuncioId);
@@ -64,6 +73,7 @@ class StoryPublicoServiceTest {
         set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
         set(arquivo, "mimeType", "image/jpeg");
         StoryAnuncioEntity story = entity(StoryAnuncioEntity.class);
+        set(story, "id", UUID.randomUUID());
         set(story, "anuncioMidiaId", vinculoId);
         set(story, "status", StatusStoryAnuncio.PUBLICADO);
         set(story, "ordem", 1);
@@ -75,14 +85,16 @@ class StoryPublicoServiceTest {
                 eq(StatusAnuncio.PUBLICADO),
                 eq(StatusModeracaoAnuncio.APROVADO)))
                 .thenReturn(Optional.of(anuncio));
-        when(anuncioMidiaRepository.findByAnuncioId(anuncioId)).thenReturn(List.of(vinculo));
+        when(storyRepository.findByAnuncioIds(List.of(anuncioId))).thenReturn(List.of(story));
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuarioAtivo(usuarioId)));
+        when(anuncioMidiaRepository.findByIdIn(List.of(vinculoId))).thenReturn(List.of(vinculo));
         when(arquivoRepository.findByIdIn(List.of(arquivoId))).thenReturn(List.of(arquivo));
-        when(storyRepository.findByAnuncioMidiaIdIn(java.util.Set.of(vinculoId))).thenReturn(List.of(story));
         StoryPublicoService service = new StoryPublicoService(
                 anuncioRepository,
                 anuncioMidiaRepository,
                 arquivoRepository,
                 storyRepository,
+                usuarioRepository,
                 visitorAccessService,
                 urlService);
 
@@ -109,12 +121,15 @@ class StoryPublicoServiceTest {
         AnuncioMidiaRepository anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
         ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
         StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
+        UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
         ComplianceVisitorAccessService visitorAccessService =
                 mock(ComplianceVisitorAccessService.class);
         MockHttpServletRequest request = new MockHttpServletRequest();
 
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         set(anuncio, "id", anuncioId);
+        UUID usuarioId = UUID.randomUUID();
+        set(anuncio, "usuarioId", usuarioId);
         AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
         set(vinculo, "id", vinculoId);
         set(vinculo, "anuncioId", anuncioId);
@@ -132,6 +147,7 @@ class StoryPublicoServiceTest {
         set(arquivo, "duracaoMs", 1000);
         set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
         StoryAnuncioEntity story = entity(StoryAnuncioEntity.class);
+        set(story, "id", UUID.randomUUID());
         set(story, "anuncioMidiaId", vinculoId);
         set(story, "status", StatusStoryAnuncio.PUBLICADO);
         set(story, "ordem", 1);
@@ -144,15 +160,17 @@ class StoryPublicoServiceTest {
                 eq(StatusAnuncio.PUBLICADO),
                 eq(StatusModeracaoAnuncio.APROVADO)))
                 .thenReturn(Optional.of(anuncio));
-        when(anuncioMidiaRepository.findByAnuncioId(anuncioId)).thenReturn(List.of(vinculo));
+        when(storyRepository.findByAnuncioIds(List.of(anuncioId))).thenReturn(List.of(story));
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuarioAtivo(usuarioId)));
+        when(anuncioMidiaRepository.findByIdIn(List.of(vinculoId))).thenReturn(List.of(vinculo));
         when(arquivoRepository.findByIdIn(List.of(arquivoId))).thenReturn(List.of(arquivo));
-        when(storyRepository.findByAnuncioMidiaIdIn(java.util.Set.of(vinculoId))).thenReturn(List.of(story));
 
         StoryPublicoService service = new StoryPublicoService(
                 anuncioRepository,
                 anuncioMidiaRepository,
                 arquivoRepository,
                 storyRepository,
+                usuarioRepository,
                 visitorAccessService,
                 new MidiaPublicaUrlService());
 
@@ -166,5 +184,74 @@ class StoryPublicoServiceTest {
                 .doesNotContain("bucket-privado")
                 .doesNotContain("synthetic/story.bin")
                 .doesNotContain("aaaaaaaa");
+    }
+
+    @Test
+    void modoAnuncioPermaneceNeutroAntesDoGateELiberaSomenteApresentacaoDepois() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID storyId = UUID.randomUUID();
+        AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+        AnuncioMidiaRepository anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
+        ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+        StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
+        UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
+        ComplianceVisitorAccessService visitorAccessService = mock(ComplianceVisitorAccessService.class);
+        MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
+        StoryAnuncioApresentacaoService apresentacaoService = mock(StoryAnuncioApresentacaoService.class);
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        AnuncioEntity anuncio = entity(AnuncioEntity.class);
+        set(anuncio, "id", anuncioId);
+        UUID usuarioId = UUID.randomUUID();
+        set(anuncio, "usuarioId", usuarioId);
+        set(anuncio, "titulo", "Anuncio QA");
+        StoryAnuncioEntity story = entity(StoryAnuncioEntity.class);
+        set(story, "id", storyId);
+        set(story, "anuncioId", anuncioId);
+        set(story, "modoConteudo", ModoConteudoStory.ANUNCIO);
+        set(story, "status", StatusStoryAnuncio.PUBLICADO);
+        set(story, "ordem", 0);
+        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
+                eq("anuncio-local"), eq(StatusAnuncio.PUBLICADO), eq(StatusModeracaoAnuncio.APROVADO)))
+                .thenReturn(Optional.of(anuncio));
+        when(storyRepository.findByAnuncioIds(List.of(anuncioId))).thenReturn(List.of(story));
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuarioAtivo(usuarioId)));
+        when(visitorAccessService.autorizado(request, EscopoConteudoVisitante.STORY))
+                .thenReturn(false, true);
+        when(apresentacaoService.apresentar(anuncio)).thenReturn(
+                new StoryAnuncioApresentacaoService.Apresentacao(
+                        "Anuncio QA", "Cidade QA", "GO", BigDecimal.valueOf(200), "Resumo seguro"));
+        StoryPublicoService service = new StoryPublicoService(
+                anuncioRepository,
+                anuncioMidiaRepository,
+                arquivoRepository,
+                storyRepository,
+                usuarioRepository,
+                visitorAccessService,
+                urlService,
+                apresentacaoService);
+
+        var bloqueado = service.listar("anuncio-local", request).stories().get(0);
+        var liberado = service.listar("anuncio-local", request).stories().get(0);
+
+        assertThat(bloqueado.modoConteudo()).isEqualTo("ANUNCIO");
+        assertThat(bloqueado.urlPublica()).isNull();
+        assertThat(bloqueado.visibilidadeMidia()).isNull();
+        assertThat(bloqueado.titulo()).isNull();
+        assertThat(bloqueado.cidade()).isNull();
+        assertThat(liberado.titulo()).isEqualTo("Anuncio QA");
+        assertThat(liberado.cidade()).isEqualTo("Cidade QA");
+        assertThat(liberado.uf()).isEqualTo("GO");
+        assertThat(liberado.preco()).isEqualByComparingTo("200");
+        assertThat(liberado.resumo()).isEqualTo("Resumo seguro");
+        assertThat(liberado.urlPublica()).isNull();
+        verify(anuncioMidiaRepository, never()).findById(any());
+        verify(urlService, never()).resolver(any(), any());
+    }
+
+    private UsuarioEntity usuarioAtivo(UUID id) {
+        UsuarioEntity usuario = entity(UsuarioEntity.class);
+        set(usuario, "id", id);
+        set(usuario, "status", StatusUsuario.ATIVO);
+        return usuario;
     }
 }

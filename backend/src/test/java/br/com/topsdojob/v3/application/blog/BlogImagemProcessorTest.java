@@ -31,7 +31,7 @@ class BlogImagemProcessorTest {
     MockMultipartFile file = new MockMultipartFile(
         "imagem", "capa.jpg", "image/jpeg", original);
     when(validator.validar(file)).thenReturn(new MidiaValidada(
-        original, false, "image/jpeg", "jpg", "capa.jpg", 3000, 1000, "origem"));
+        original, false, "image/jpeg", "jpg", "capa.jpg", 3000, 1000, null, "origem"));
 
     var result = new BlogImagemProcessor(validator).processar(file);
 

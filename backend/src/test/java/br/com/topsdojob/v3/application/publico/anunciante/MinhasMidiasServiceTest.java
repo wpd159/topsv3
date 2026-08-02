@@ -456,7 +456,8 @@ class MinhasMidiasServiceTest {
         return new MidiaValidada(
                 new byte[] {1, 2, 3}, video, video ? "video/mp4" : "image/png",
                 video ? "mp4" : "png", video ? "video.mp4" : "foto.png",
-                video ? null : 2, video ? null : 3, "a".repeat(64));
+                video ? 720 : 2, video ? 1280 : 3, video ? 15_000L : null,
+                "a".repeat(64));
     }
 
     private FotoProcessada processada() {

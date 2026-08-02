@@ -17,12 +17,10 @@ import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
-import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
-import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioStatusHistoricoRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -60,7 +58,6 @@ class AdminAnuncioJuridicoServiceTest {
       mock(AnuncioBloqueioJuridicoRepository.class);
   private final AnuncioStatusHistoricoRepository statusHistoricoRepository =
       mock(AnuncioStatusHistoricoRepository.class);
-  private final AnuncioMidiaRepository anuncioMidiaRepository = mock(AnuncioMidiaRepository.class);
   private final StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
   private final StorySelecaoAdministrativaRepository storyAdminRepository =
       mock(StorySelecaoAdministrativaRepository.class);
@@ -75,7 +72,6 @@ class AdminAnuncioJuridicoServiceTest {
         usuarioRepository,
         bloqueioRepository,
         statusHistoricoRepository,
-        anuncioMidiaRepository,
         storyRepository,
         storyAdminRepository,
         auditoriaRepository,
@@ -160,20 +156,18 @@ class AdminAnuncioJuridicoServiceTest {
         StatusModeracaoAnuncio.PENDENTE);
     when(anuncioRepository.findByUsuarioIdForLegalBlock(fixture.usuario().getId()))
         .thenReturn(List.of(fixture.anuncio(), outro, pendente));
-    UUID midiaId = UUID.randomUUID();
-    AnuncioMidiaEntity midia = entity(AnuncioMidiaEntity.class);
-    set(midia, "id", midiaId);
-    set(midia, "anuncioId", outro.getId());
-    when(anuncioMidiaRepository.findByAnuncioIdIn(any(Set.class))).thenReturn(List.of(midia));
-    StoryAnuncioEntity story = StoryAnuncioEntity.criarFixtureHomologacao(
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarAutogestao(
         UUID.randomUUID(),
-        midiaId,
+        outro.getId(),
+        null,
+        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory.ANUNCIO,
+        UUID.randomUUID(),
+        "story-direto-bloqueio",
+        "a".repeat(64),
         OffsetDateTime.now().minusHours(1),
         OffsetDateTime.now().plusHours(23),
-        0,
-        fixture.usuario().getId(),
-        OffsetDateTime.now().minusHours(1));
-    when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(midiaId))).thenReturn(List.of(story));
+        fixture.usuario().getId());
+    when(storyRepository.findByAnuncioIdsForUpdate(any(Set.class))).thenReturn(List.of(story));
     StorySelecaoAdministrativaEntity storyAdmin = StorySelecaoAdministrativaEntity.nova(OffsetDateTime.now());
     storyAdmin.ativar(outro.getId(), admin().usuarioId(), OffsetDateTime.now());
     when(storyAdminRepository.bloquearAtivasDosAnuncios(any())).thenReturn(List.of(storyAdmin));
@@ -299,7 +293,6 @@ class AdminAnuncioJuridicoServiceTest {
     when(bloqueioRepository.findAtivoPorAnuncioForUpdate(anuncioId)).thenReturn(Optional.empty());
     when(bloqueioRepository.findAtivoPorUsuarioForUpdate(
         usuarioId, EscopoBloqueioJuridico.ANUNCIO_E_USUARIO)).thenReturn(Optional.empty());
-    when(anuncioMidiaRepository.findByAnuncioIdIn(any(Set.class))).thenReturn(List.of());
     return new Fixture(anuncio, usuario);
   }
 

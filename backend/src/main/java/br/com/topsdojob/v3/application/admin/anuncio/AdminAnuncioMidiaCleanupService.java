@@ -240,9 +240,11 @@ public class AdminAnuncioMidiaCleanupService {
       List<UUID> anuncioMidiaIds,
       OffsetDateTime agora,
       boolean encerrarStoryAdministrativo) {
-    List<StoryAnuncioEntity> stories = anuncioMidiaIds.isEmpty()
-        ? List.of()
-        : storyRepository.findByAnuncioMidiaIdInForUpdate(anuncioMidiaIds);
+    List<StoryAnuncioEntity> stories = encerrarStoryAdministrativo
+        ? storyRepository.findByAnuncioIdForUpdate(anuncioId)
+        : anuncioMidiaIds.isEmpty()
+            ? List.of()
+            : storyRepository.findByAnuncioMidiaIdInForUpdate(anuncioMidiaIds);
     List<StoryAnuncioEntity> alterados = new ArrayList<>();
     for (StoryAnuncioEntity story : stories) {
       if (story.suspenderPorBloqueio(agora)) {
