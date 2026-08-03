@@ -200,8 +200,6 @@ export async function comprarBeneficios(
   itens: Array<{
     beneficioCodigo: MonetizacaoOpcaoCodigo
     duracaoDias: number
-    opcaoId?: string
-    custoCreditosEsperado?: number
   }>,
   idempotencyKey: string
 ) {

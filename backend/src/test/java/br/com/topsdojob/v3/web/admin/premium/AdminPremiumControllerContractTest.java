@@ -26,7 +26,7 @@ class AdminPremiumControllerContractTest {
         assertThat(controller)
                 .contains("@GetMapping")
                 .contains("@PreAuthorize")
-                .contains("@PostMapping(\"/catalogo\")")
+                .doesNotContain("@PostMapping(\"/catalogo\")")
                 .contains("@PutMapping(\"/catalogo/{id}\")")
                 .contains("@PostMapping(\"/anuncios/{id}/ativacoes\")")
                 .contains("@PostMapping(\"/anuncios/{id}/ativacoes/lote\")")

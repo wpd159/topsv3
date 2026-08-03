@@ -56,35 +56,6 @@ class AdminPremiumOperacaoCsrfTest {
     private AdminPremiumOperacaoService operacaoService;
 
     @Test
-    void criacaoDeCatalogoSemCsrfERecusada() throws Exception {
-        mockMvc.perform(post("/api/admin/premium/catalogo")
-                        .with(admin())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payloadCatalogo()))
-                .andExpect(status().isForbidden());
-    }
-
-    @Test
-    void criacaoDeCatalogoComCsrfChegaAoServicoCanonico() throws Exception {
-        mockMvc.perform(post("/api/admin/premium/catalogo")
-                        .with(admin())
-                        .with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(payloadCatalogo()))
-                .andExpect(status().isOk());
-
-        verify(catalogoAdminService).criarBeneficio(any(), isNull(), anyString());
-    }
-
-    private String payloadCatalogo() {
-        return """
-                {"codigo":"STORIES","nome":"Stories","descricao":"Publicacao comercial de Story",
-                 "ativo":false,"ordemExibicao":40,
-                 "opcoes":[{"duracaoDias":3,"custoCreditos":9,"ativo":true,"ordemExibicao":0}]}
-                """;
-    }
-
-    @Test
     void ativacaoSemCsrfERecusada() throws Exception {
         mockMvc.perform(post("/api/admin/premium/anuncios/{id}/ativacoes", UUID.randomUUID())
                         .with(admin())

@@ -4,7 +4,6 @@ import java.time.Instant;
 
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.application.publico.anunciante.StoryJaAtivoException;
-import br.com.topsdojob.v3.application.publico.premium.PremiumOfertaAtualizadaException;
 import jakarta.servlet.http.HttpServletRequest;
 
 import org.slf4j.Logger;
@@ -61,12 +60,6 @@ public class GlobalExceptionHandler {
         return build(ApiErrorCode.STORY_JA_ATIVO, request);
     }
 
-    @ExceptionHandler(PremiumOfertaAtualizadaException.class)
-    public ResponseEntity<ApiErrorResponse> handlePremiumOfertaAtualizada(
-            PremiumOfertaAtualizadaException exception,
-            HttpServletRequest request) {
-        return build(ApiErrorCode.PREMIUM_OFERTA_ATUALIZADA, request);
-    }
 
     @ExceptionHandler(AccessDeniedException.class)
     public ResponseEntity<ApiErrorResponse> handleAccessDenied(

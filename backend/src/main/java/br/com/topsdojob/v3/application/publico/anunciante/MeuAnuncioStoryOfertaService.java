@@ -1,16 +1,17 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
+import static br.com.topsdojob.v3.application.admin.stories.AdminStoryConfiguracaoService.DURACAO_HORAS;
+import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.STORIES;
+
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
-import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
-import br.com.topsdojob.v3.application.premium.PremiumCatalogoService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDireitoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryOfertaDto;
-import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryOfertaOpcaoDto;
+import br.com.topsdojob.v3.persistence.entity.midia.StoryConfiguracaoComercialEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
-import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.StoryConfiguracaoComercialRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -26,13 +27,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class MeuAnuncioStoryOfertaService {
-
   private final MeusAnunciosConsultaService anunciosService;
   private final MeuAnuncioStoryConsultaService storyConsultaService;
   private final CreditoLedgerOperacaoService ledgerService;
-  private final PremiumCatalogoService catalogoService;
+  private final StoryConfiguracaoComercialRepository configuracaoRepository;
   private final BeneficioPremiumRepository beneficioRepository;
-  private final BeneficioPremiumOpcaoRepository opcaoRepository;
   private final AtivacaoBeneficioRepository ativacaoRepository;
   private final StoryAnuncioRepository storyRepository;
 
@@ -40,17 +39,15 @@ public class MeuAnuncioStoryOfertaService {
       MeusAnunciosConsultaService anunciosService,
       MeuAnuncioStoryConsultaService storyConsultaService,
       CreditoLedgerOperacaoService ledgerService,
-      PremiumCatalogoService catalogoService,
+      StoryConfiguracaoComercialRepository configuracaoRepository,
       BeneficioPremiumRepository beneficioRepository,
-      BeneficioPremiumOpcaoRepository opcaoRepository,
       AtivacaoBeneficioRepository ativacaoRepository,
       StoryAnuncioRepository storyRepository) {
     this.anunciosService = anunciosService;
     this.storyConsultaService = storyConsultaService;
     this.ledgerService = ledgerService;
-    this.catalogoService = catalogoService;
+    this.configuracaoRepository = configuracaoRepository;
     this.beneficioRepository = beneficioRepository;
-    this.opcaoRepository = opcaoRepository;
     this.ativacaoRepository = ativacaoRepository;
     this.storyRepository = storyRepository;
   }
@@ -62,88 +59,48 @@ public class MeuAnuncioStoryOfertaService {
     var storyAtivo = storyConsultaService.consultarAtivos(List.of(anuncio.getId())).get(anuncio.getId());
     if (storyAtivo != null) {
       return new MeuAnuncioStoryOfertaDto(
-          "STORY_ATIVO", null, storyAtivo, null, null, null, null, List.of());
+          "STORY_ATIVO", null, null, DURACAO_HORAS, null,
+          null, null, null, storyAtivo, null, null);
     }
 
     AtivacaoBeneficioEntity direito = localizarDireitoDisponivel(anuncio.getId(), usuarioId);
     if (direito != null) {
-      Integer duracao = direito.getOpcaoId() == null
-          ? null
-          : opcaoRepository.findById(direito.getOpcaoId())
-              .map(item -> item.getDuracaoDias())
-              .orElse(null);
       return new MeuAnuncioStoryOfertaDto(
-          "DIREITO_DISPONIVEL",
-          null,
-          null,
+          "DIREITO_DISPONIVEL", null, null, DURACAO_HORAS, null,
+          null, null, null, null,
           new MeuAnuncioStoryDireitoDto(
-              direito.getId(),
-              statusPublico(direito),
-              duracao,
-              direito.getCustoCreditosSnapshot(),
-              direito.getInicioEm(),
-              direito.getFimEm()),
-          PremiumBeneficioCodigo.STORIES,
-          null,
-          null,
-          List.of());
+              direito.getId(), statusPublico(direito),
+              direito.getCustoCreditosSnapshot(), direito.getInicioEm(), direito.getFimEm()),
+          null);
+    }
+
+    var configuracao = configuracaoRepository
+        .findById(StoryConfiguracaoComercialEntity.SINGLETON_ID)
+        .orElse(null);
+    if (configuracao == null) {
+      return indisponivel(false, null);
+    }
+    if (!Boolean.TRUE.equals(configuracao.getAtivo())) {
+      return indisponivel(true, configuracao.getVersao());
     }
 
     int saldo = ledgerService.consultarSaldo(usuarioId);
-    var stories = catalogoService.catalogoAtivo().stream()
-        .filter(item -> PremiumBeneficioCodigo.STORIES.equals(item.codigo()))
-        .findFirst()
-        .orElse(null);
-    if (stories == null || stories.opcoes().isEmpty()) {
-      return new MeuAnuncioStoryOfertaDto(
-          "NOVAS_ATIVACOES_INDISPONIVEIS",
-          saldo,
-          null,
-          null,
-          PremiumBeneficioCodigo.STORIES,
-          null,
-          null,
-          List.of());
-    }
-
-    List<MeuAnuncioStoryOfertaOpcaoDto> opcoes = stories.opcoes().stream()
-        .filter(item -> item.ativo())
-        .map(item -> new MeuAnuncioStoryOfertaOpcaoDto(
-            item.id(),
-            item.duracaoDias(),
-            item.custoCreditos(),
-            saldo,
-            Math.max(0, saldo - item.custoCreditos()),
-            Math.max(0, item.custoCreditos() - saldo),
-            item.ordemExibicao()))
-        .toList();
-    if (opcoes.isEmpty()) {
-      return new MeuAnuncioStoryOfertaDto(
-          "NOVAS_ATIVACOES_INDISPONIVEIS",
-          saldo,
-          null,
-          null,
-          PremiumBeneficioCodigo.STORIES,
-          stories.nome(),
-          stories.descricao(),
-          List.of());
-    }
+    int custo = configuracao.getCustoCreditos();
     return new MeuAnuncioStoryOfertaDto(
-        "OPCOES_DISPONIVEIS",
-        saldo,
-        null,
-        null,
-        PremiumBeneficioCodigo.STORIES,
-        stories.nome(),
-        stories.descricao(),
-        opcoes);
+        "OFERTA_DISPONIVEL", true, true, DURACAO_HORAS, custo,
+        saldo, Math.max(0, saldo - custo), Math.max(0, custo - saldo),
+        null, null, configuracao.getVersao());
+  }
+
+  private MeuAnuncioStoryOfertaDto indisponivel(boolean configurada, Long versao) {
+    return new MeuAnuncioStoryOfertaDto(
+        "NOVAS_ATIVACOES_INDISPONIVEIS", configurada, false, DURACAO_HORAS,
+        null, null, null, null, null, null, versao);
   }
 
   private AtivacaoBeneficioEntity localizarDireitoDisponivel(UUID anuncioId, UUID usuarioId) {
-    var beneficio = beneficioRepository.findByCodigo(PremiumBeneficioCodigo.STORIES).orElse(null);
-    if (beneficio == null) {
-      return null;
-    }
+    var beneficio = beneficioRepository.findByCodigo(STORIES).orElse(null);
+    if (beneficio == null) return null;
     Set<UUID> consumidas = storyRepository.findByAnuncioIds(List.of(anuncioId)).stream()
         .map(item -> item.getAtivacaoBeneficioId())
         .filter(Objects::nonNull)
@@ -157,26 +114,16 @@ public class MeuAnuncioStoryOfertaService {
         .toList();
     AtivacaoBeneficioEntity ativa = candidatas.stream()
         .filter(item -> ativaDisponivel(item, agora))
-        .sorted(Comparator
-            .comparing(AtivacaoBeneficioEntity::getFimEm)
-            .thenComparing(
-                AtivacaoBeneficioEntity::getCriadoEm,
-                Comparator.nullsLast(Comparator.naturalOrder()))
+        .sorted(Comparator.comparing(AtivacaoBeneficioEntity::getFimEm)
+            .thenComparing(AtivacaoBeneficioEntity::getCriadoEm, Comparator.nullsLast(Comparator.naturalOrder()))
             .thenComparing(AtivacaoBeneficioEntity::getId))
-        .findFirst()
-        .orElse(null);
-    if (ativa != null) {
-      return ativa;
-    }
+        .findFirst().orElse(null);
+    if (ativa != null) return ativa;
     return candidatas.stream()
         .filter(this::aguardandoUso)
-        .sorted(Comparator
-            .comparing(
-                AtivacaoBeneficioEntity::getCriadoEm,
-                Comparator.nullsLast(Comparator.naturalOrder()))
-            .thenComparing(AtivacaoBeneficioEntity::getId))
-        .findFirst()
-        .orElse(null);
+        .sorted(Comparator.comparing(AtivacaoBeneficioEntity::getCriadoEm,
+            Comparator.nullsLast(Comparator.naturalOrder())).thenComparing(AtivacaoBeneficioEntity::getId))
+        .findFirst().orElse(null);
   }
 
   private String statusPublico(AtivacaoBeneficioEntity ativacao) {
@@ -185,15 +132,12 @@ public class MeuAnuncioStoryOfertaService {
 
   private boolean aguardandoUso(AtivacaoBeneficioEntity ativacao) {
     return ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO
-        && ativacao.getInicioEm() == null
-        && ativacao.getFimEm() == null;
+        && ativacao.getInicioEm() == null && ativacao.getFimEm() == null;
   }
 
   private boolean ativaDisponivel(AtivacaoBeneficioEntity ativacao, OffsetDateTime agora) {
     return ativacao.getStatus() == StatusAtivacaoBeneficio.ATIVA
-        && ativacao.getInicioEm() != null
-        && ativacao.getFimEm() != null
-        && !ativacao.getInicioEm().isAfter(agora)
-        && ativacao.getFimEm().isAfter(agora);
+        && ativacao.getInicioEm() != null && ativacao.getFimEm() != null
+        && !ativacao.getInicioEm().isAfter(agora) && ativacao.getFimEm().isAfter(agora);
   }
 }

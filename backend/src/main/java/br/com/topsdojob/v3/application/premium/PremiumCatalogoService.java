@@ -67,6 +67,7 @@ public class PremiumCatalogoService {
                         .collect(Collectors.groupingBy(BeneficioPremiumOpcaoEntity::getBeneficioId));
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         return beneficios.stream()
+                .filter(item -> !PremiumBeneficioCodigo.STORIES.equals(item.getCodigo()))
                 .filter(item -> !somenteAtivos || Boolean.TRUE.equals(item.getAtivo()))
                 .map(item -> new PremiumCatalogoDto(
                         item.getId(),

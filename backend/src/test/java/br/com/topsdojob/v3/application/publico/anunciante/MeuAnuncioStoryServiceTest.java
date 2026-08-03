@@ -191,7 +191,7 @@ class MeuAnuncioStoryServiceTest {
     return new MeuAnuncioStoryService(
         consultaService, storyConsultaService, anuncioRepository, storyRepository,
         midiaRepository, arquivoRepository, ativacaoRepository, beneficioService,
-        opcaoRepository, grupoRepository, auditoriaRepository, validator, fotoProcessor, properties, storageProvider,
+        grupoRepository, auditoriaRepository, validator, fotoProcessor, properties, storageProvider,
         cleanupAuditService, serviceClock);
   }
 
@@ -516,11 +516,11 @@ class MeuAnuncioStoryServiceTest {
         SLUG, "ANUNCIO", List.of(), "story-aguardando-publicacao", authentication, "req-aguardando");
 
     assertThat(response.inicioEm()).isEqualTo(AGORA);
-    assertThat(response.fimEm()).isEqualTo(AGORA.plusDays(7));
+    assertThat(response.fimEm()).isEqualTo(AGORA.plusHours(24));
     assertThat(aguardando.getStatus()).isEqualTo(StatusAtivacaoBeneficio.ATIVA);
     assertThat(aguardando.getInicioEm()).isEqualTo(AGORA);
-    assertThat(aguardando.getFimEm()).isEqualTo(AGORA.plusDays(7));
-    assertThat(grupoAguardando.getValidadeFimEm()).isEqualTo(AGORA.plusDays(7));
+    assertThat(aguardando.getFimEm()).isEqualTo(AGORA.plusHours(24));
+    assertThat(grupoAguardando.getValidadeFimEm()).isEqualTo(AGORA.plusHours(24));
   }
 
   @Test

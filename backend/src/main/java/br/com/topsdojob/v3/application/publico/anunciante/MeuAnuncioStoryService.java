@@ -21,14 +21,12 @@ import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
-import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumOpcaoEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
-import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
@@ -74,7 +72,6 @@ public class MeuAnuncioStoryService {
   private final ArquivoMidiaRepository arquivoRepository;
   private final AtivacaoBeneficioRepository ativacaoRepository;
   private final BeneficioAnuncioConsultaService beneficioConsultaService;
-  private final BeneficioPremiumOpcaoRepository opcaoRepository;
   private final GrupoAtivacaoBeneficioRepository grupoRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
   private final MidiaUploadValidator uploadValidator;
@@ -94,7 +91,6 @@ public class MeuAnuncioStoryService {
       ArquivoMidiaRepository arquivoRepository,
       AtivacaoBeneficioRepository ativacaoRepository,
       BeneficioAnuncioConsultaService beneficioConsultaService,
-      BeneficioPremiumOpcaoRepository opcaoRepository,
       GrupoAtivacaoBeneficioRepository grupoRepository,
       AuditoriaEventoRepository auditoriaRepository,
       MidiaUploadValidator uploadValidator,
@@ -105,7 +101,7 @@ public class MeuAnuncioStoryService {
     this(
         consultaService, storyConsultaService, anuncioRepository, storyRepository,
         midiaRepository, arquivoRepository, ativacaoRepository, beneficioConsultaService,
-        opcaoRepository, grupoRepository, auditoriaRepository, uploadValidator, fotoProcessor, storageProperties,
+        grupoRepository, auditoriaRepository, uploadValidator, fotoProcessor, storageProperties,
         storageProvider, cleanupAuditService, Clock.systemUTC());
   }
 
@@ -118,7 +114,6 @@ public class MeuAnuncioStoryService {
       ArquivoMidiaRepository arquivoRepository,
       AtivacaoBeneficioRepository ativacaoRepository,
       BeneficioAnuncioConsultaService beneficioConsultaService,
-      BeneficioPremiumOpcaoRepository opcaoRepository,
       GrupoAtivacaoBeneficioRepository grupoRepository,
       AuditoriaEventoRepository auditoriaRepository,
       MidiaUploadValidator uploadValidator,
@@ -135,7 +130,6 @@ public class MeuAnuncioStoryService {
     this.arquivoRepository = arquivoRepository;
     this.ativacaoRepository = ativacaoRepository;
     this.beneficioConsultaService = beneficioConsultaService;
-    this.opcaoRepository = opcaoRepository;
     this.grupoRepository = grupoRepository;
     this.auditoriaRepository = auditoriaRepository;
     this.uploadValidator = uploadValidator;
@@ -365,20 +359,16 @@ public class MeuAnuncioStoryService {
   }
 
   private Duration duracaoContratada(AtivacaoBeneficioEntity ativacao) {
-    if (ativacao.getOpcaoId() != null) {
-      BeneficioPremiumOpcaoEntity opcao = opcaoRepository.findById(ativacao.getOpcaoId())
-          .orElseThrow(() -> new ResponseStatusException(
-              HttpStatus.CONFLICT, "duracao do beneficio STORIES ausente"));
-      if (opcao.getDuracaoDias() == null || opcao.getDuracaoDias() <= 0) {
-        throw new ResponseStatusException(HttpStatus.CONFLICT, "duracao do beneficio STORIES invalida");
-      }
-      return Duration.ofDays(opcao.getDuracaoDias());
-    }
     if (ativacao.getInicioEm() != null && ativacao.getFimEm() != null) {
       Duration historica = Duration.between(ativacao.getInicioEm(), ativacao.getFimEm());
       if (!historica.isNegative() && !historica.isZero()) {
         return historica;
       }
+    }
+    if (ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO
+        && ativacao.getInicioEm() == null
+        && ativacao.getFimEm() == null) {
+      return Duration.ofHours(24);
     }
     throw new ResponseStatusException(HttpStatus.CONFLICT, "duracao do beneficio STORIES indisponivel");
   }

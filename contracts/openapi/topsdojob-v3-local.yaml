@@ -846,7 +846,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/CurrentUserAdSlug"
-      description: Deriva usuario e anuncio exclusivamente da sessao. Um direito de STORIES ainda nao consumido e retornado antes de consultar novas opcoes comerciais, de modo que alteracoes posteriores do catalogo nao invalidem uma aquisicao existente.
+      description: Deriva usuario e anuncio exclusivamente da sessao. Um direito de STORIES ainda nao consumido e retornado antes de consultar a configuracao comercial, de modo que alteracoes posteriores da oferta nao invalidem uma aquisicao existente.
       responses:
         "200":
           description: Estado comercial canonico do Story
@@ -858,6 +858,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MeuAnuncioStoryOferta"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/minha-conta/anuncios/{slug}/stories/ativacoes:
+    post:
+      summary: Adquire um direito de Story pela oferta comercial dedicada
+      operationId: activateCurrentUserAdStory
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/CurrentUserAdSlug"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      description: Debita o saldo somente quando o custo configurado for positivo. A compra cria um direito ainda sem vigencia; as 24 horas comecam apenas na publicacao efetiva do Story.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeuAnuncioStoryAtivacaoRequest"
+      responses:
+        "200":
+          description: Direito criado ou repeticao idempotente da mesma intencao
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeuAnuncioStoryAtivacao"
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -4099,6 +4132,47 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/admin/stories/configuracao:
+    get:
+      summary: Consulta a configuracao comercial dedicada de Stories
+      operationId: getAdminStoryConfiguration
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      responses:
+        "200":
+          description: Configuracao atual ou estado nao configurado, sempre com duracao fixa de 24 horas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStoryConfiguracao"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      summary: Salva disponibilidade e custo comercial de Stories
+      operationId: putAdminStoryConfiguration
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminStoryConfiguracaoRequest"
+      responses:
+        "200":
+          description: Configuracao salva sem alterar a duracao fixa de 24 horas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStoryConfiguracao"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/admin/premium/catalogo:
     get:
       summary: Lista catalogo Premium administrativo
@@ -4118,34 +4192,6 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-    post:
-      summary: Cadastra o beneficio Stories no catalogo Premium administrativo
-      operationId: postAdminPremiumCatalogo
-      security:
-        - AdminSessionCookie: []
-      parameters:
-        - $ref: "#/components/parameters/RequestId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminPremiumCatalogoCreateRequest"
-      responses:
-        "200":
-          description: beneficio Stories cadastrado sem valores comerciais implicitos
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PremiumCatalogo"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "409":
-          $ref: "#/components/responses/Conflict"
   /api/admin/premium/catalogo/{id}:
     put:
       summary: Atualiza descricao, ordem, status, custos e duracoes Premium
@@ -8479,12 +8525,18 @@ components:
     MeuAnuncioStoryOferta:
       type: object
       additionalProperties: false
-      required: [estado, saldoCreditos, storyAtivo, direitoDisponivel, beneficioCodigo, nome, descricao, opcoes]
+      required: [estado, configurada, ativo, duracaoHoras, custoCreditos, saldoAtual, saldoProjetado, deficit, storyAtivo, direitoDisponivel, versaoConfiguracao]
       properties:
         estado:
           type: string
-          enum: [STORY_ATIVO, DIREITO_DISPONIVEL, OPCOES_DISPONIVEIS, NOVAS_ATIVACOES_INDISPONIVEIS]
-        saldoCreditos: { type: [integer, "null"], minimum: 0 }
+          enum: [STORY_ATIVO, DIREITO_DISPONIVEL, OFERTA_DISPONIVEL, NOVAS_ATIVACOES_INDISPONIVEIS]
+        configurada: { type: [boolean, "null"] }
+        ativo: { type: [boolean, "null"] }
+        duracaoHoras: { type: integer, const: 24 }
+        custoCreditos: { type: [integer, "null"], minimum: 0, maximum: 1000000 }
+        saldoAtual: { type: [integer, "null"], minimum: 0 }
+        saldoProjetado: { type: [integer, "null"], minimum: 0 }
+        deficit: { type: [integer, "null"], minimum: 0 }
         storyAtivo:
           oneOf:
             - $ref: "#/components/schemas/MeuAnuncioStory"
@@ -8493,39 +8545,37 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MeuAnuncioStoryDireito"
             - type: "null"
-        beneficioCodigo:
-          type: [string, "null"]
-          enum: [STORIES, null]
-        nome: { type: [string, "null"] }
-        descricao: { type: [string, "null"] }
-        opcoes:
-          type: array
-          items: { $ref: "#/components/schemas/MeuAnuncioStoryOfertaOpcao" }
+        versaoConfiguracao: { type: [integer, "null"], format: int64, minimum: 0 }
     MeuAnuncioStoryDireito:
       type: object
       additionalProperties: false
-      required: [ativacaoId, status, duracaoDias, custoCreditosSnapshot, inicioEm, fimEm]
+      required: [ativacaoId, status, custoCreditosSnapshot, inicioEm, fimEm]
       properties:
         ativacaoId: { type: string, format: uuid }
         status:
           type: string
           enum: [DISPONIVEL_PARA_PUBLICAR, ATIVA]
-        duracaoDias: { type: [integer, "null"], minimum: 1 }
         custoCreditosSnapshot: { type: [integer, "null"], minimum: 0 }
         inicioEm: { type: [string, "null"], format: date-time }
         fimEm: { type: [string, "null"], format: date-time }
-    MeuAnuncioStoryOfertaOpcao:
+    MeuAnuncioStoryAtivacaoRequest:
       type: object
       additionalProperties: false
-      required: [opcaoId, duracaoDias, custoCreditos, saldoAtual, saldoAposCompra, creditosFaltantes, ordemExibicao]
+      required: [custoCreditosEsperado, versaoConfiguracao]
       properties:
-        opcaoId: { type: string, format: uuid }
-        duracaoDias: { type: integer, minimum: 1 }
+        custoCreditosEsperado: { type: integer, minimum: 0, maximum: 1000000 }
+        versaoConfiguracao: { type: integer, format: int64, minimum: 0 }
+    MeuAnuncioStoryAtivacao:
+      type: object
+      additionalProperties: false
+      required: [ativacaoId, custoCreditos, saldoAnterior, saldoAtual, duracaoHoras, idempotente]
+      properties:
+        ativacaoId: { type: string, format: uuid }
         custoCreditos: { type: integer, minimum: 0 }
+        saldoAnterior: { type: integer, minimum: 0 }
         saldoAtual: { type: integer, minimum: 0 }
-        saldoAposCompra: { type: integer, minimum: 0 }
-        creditosFaltantes: { type: integer, minimum: 0 }
-        ordemExibicao: { type: integer, minimum: 0 }
+        duracaoHoras: { type: integer, const: 24 }
+        idempotente: { type: boolean }
     MeuAnuncioBeneficio:
       type: object
       additionalProperties: false
@@ -13616,14 +13666,6 @@ components:
             properties:
               beneficioCodigo: { type: string }
               duracaoDias: { type: integer, minimum: 1 }
-              opcaoId:
-                type: string
-                format: uuid
-                description: Obrigatorio para STORIES; identifica a opcao administrativa explicitamente confirmada.
-              custoCreditosEsperado:
-                type: integer
-                minimum: 1
-                description: Obrigatorio para STORIES; impede debito silencioso quando a oferta muda antes da compra.
     MinhaCompraPremiumResultado:
       type: object
       additionalProperties: false
@@ -13812,21 +13854,25 @@ components:
         custoCreditos: { type: integer, minimum: 0 }
         ativo: { type: boolean }
         ordemExibicao: { type: integer, minimum: 0 }
-    AdminPremiumCatalogoCreateRequest:
+    AdminStoryConfiguracao:
       type: object
       additionalProperties: false
-      required: [codigo, nome, descricao, ativo, ordemExibicao, opcoes]
+      required: [configurada, ativo, custoCreditos, duracaoHoras, versao, atualizadoEm]
       properties:
-        codigo: { type: string, enum: [STORIES] }
-        nome: { type: string, minLength: 2, maxLength: 120 }
-        descricao: { type: string, minLength: 5, maxLength: 500 }
+        configurada: { type: boolean }
         ativo: { type: boolean }
-        ordemExibicao: { type: integer, minimum: 0 }
-        opcoes:
-          type: array
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/AdminPremiumCatalogoOpcaoRequest"
+        custoCreditos: { type: [integer, "null"], minimum: 0, maximum: 1000000 }
+        duracaoHoras: { type: integer, const: 24 }
+        versao: { type: [integer, "null"], format: int64, minimum: 0 }
+        atualizadoEm: { type: [string, "null"], format: date-time }
+    AdminStoryConfiguracaoRequest:
+      type: object
+      additionalProperties: false
+      required: [ativo, custoCreditos]
+      properties:
+        ativo: { type: boolean }
+        custoCreditos: { type: integer, minimum: 0, maximum: 1000000 }
+        versao: { type: [integer, "null"], format: int64, minimum: 0 }
     AdminPremiumCatalogoUpdateRequest:
       type: object
       additionalProperties: false

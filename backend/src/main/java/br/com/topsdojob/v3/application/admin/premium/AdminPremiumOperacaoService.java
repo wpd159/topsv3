@@ -131,10 +131,8 @@ public class AdminPremiumOperacaoService {
         if (repetidoAposLock.isPresent()) {
             return resultadoRepetido(repetidoAposLock.get(), anuncioId, request, observacao);
         }
-        BeneficioPremiumEntity beneficio = beneficioRepository.findById(request.beneficioId())
-                .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
-                .filter(item -> item.getEscopo() == EscopoBeneficioPremium.ANUNCIO)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
+
+        BeneficioPremiumEntity beneficio = beneficioAdministravel(request.beneficioId());
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         BeneficioPremiumOpcaoEntity opcao = opcaoRepository
                 .findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(
@@ -229,6 +227,10 @@ public class AdminPremiumOperacaoService {
             return resultadoLoteRepetido(repetidosAposLock, anuncioId, itens, observacao);
         }
 
+        Map<UUID, BeneficioPremiumEntity> beneficios = new LinkedHashMap<>();
+        for (AdminPremiumAtivarLoteItemRequest item : itens) {
+            beneficios.computeIfAbsent(item.beneficioId(), this::beneficioAdministravel);
+        }
         Set<UUID> ativos = beneficioConsultaService.consultarCalculados(anuncioId).stream()
                 .filter(item -> item.status() == PremiumBeneficioStatusCalculado.ATIVO
                         || item.status() == PremiumBeneficioStatusCalculado.VENCENDO
@@ -240,10 +242,8 @@ public class AdminPremiumOperacaoService {
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         List<AdminPremiumAtivacaoOperacaoDto> resultado = new java.util.ArrayList<>();
         for (AdminPremiumAtivarLoteItemRequest item : itens) {
-            BeneficioPremiumEntity beneficio = beneficioRepository.findById(item.beneficioId())
-                    .filter(catalogo -> Boolean.TRUE.equals(catalogo.getAtivo()))
-                    .filter(catalogo -> catalogo.getEscopo() == EscopoBeneficioPremium.ANUNCIO)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
+            BeneficioPremiumEntity beneficio = beneficios.get(item.beneficioId());
+
             if (ativos.contains(beneficio.getId())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "beneficio ja ativo no anuncio");
             }
@@ -308,9 +308,21 @@ public class AdminPremiumOperacaoService {
         return new AdminPremiumAtivacaoLoteDto(List.copyOf(resultado), false);
     }
 
+    private BeneficioPremiumEntity beneficioAdministravel(UUID beneficioId) {
+        BeneficioPremiumEntity beneficio = beneficioRepository.findById(beneficioId)
+                .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
+                .filter(item -> item.getEscopo() == EscopoBeneficioPremium.ANUNCIO)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
+        if (PremiumBeneficioCodigo.STORIES.equals(beneficio.getCodigo())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Stories utiliza configuracao e ativacao proprias");
+        }
+        return beneficio;
+    }
+
     private boolean aguardaUso(String codigo) {
-        return PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(codigo)
-                || PremiumBeneficioCodigo.STORIES.equals(codigo);
+        return PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(codigo);
     }
 
     @Transactional

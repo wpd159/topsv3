@@ -105,7 +105,8 @@ check('13. ausencia de beneficio carrega fluxo proprio de Stories', () => {
 
 check('14. fluxo de Stories nao redireciona ao wizard generico', () => {
   excludes(dialog, /\/monetizar|MonetizacaoWizard|fetchMonetizacaoWizardData/)
-  matches(dialog, /comprarBeneficios\(/)
+  excludes(dialog, /comprarBeneficios\(/)
+  matches(dialog, /ativarMeuAnuncioStory\(/)
 })
 
 check('15. direito disponivel preserva ANUNCIO e MIDIA_UPLOAD', () => {

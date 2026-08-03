@@ -214,111 +214,23 @@ class MinhaContaPremiumServiceTest {
     }
 
     @Test
-    void compraDeStoriesReservaPrazoAteAPublicacao() {
-        BeneficioPremiumEntity stories = beneficio("STORIES", "Stories");
-        BeneficioPremiumOpcaoEntity umDia = opcao(stories, 1, 5);
-        prepararItem(stories, umDia);
-        when(beneficios.findByIdIn(any())).thenReturn(List.of(stories));
-        when(opcoes.findAllById(any())).thenReturn(List.of(umDia));
-        when(anuncios.findAllById(any())).thenReturn(List.of(anuncio));
-
-        var resultado = service.comprar(
-                new MinhaCompraPremiumRequest(
-                        anuncio.getSlug(),
-                        List.of(new MinhaCompraPremiumItemRequest(
-                                "STORIES", 1, umDia.getId(), umDia.getCustoCreditos()))),
-                "qa-compra-story",
-                authentication,
-                "req-story");
-
-        ArgumentCaptor<AtivacaoBeneficioEntity> salva =
-                ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
-        verify(ativacoes).save(salva.capture());
-        assertThat(salva.getValue().getStatus())
-                .isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
-        assertThat(salva.getValue().getInicioEm()).isNull();
-        assertThat(salva.getValue().getFimEm()).isNull();
-        assertThat(resultado.ativacoes()).singleElement().satisfies(item -> {
-            assertThat(item.status()).isEqualTo("DISPONIVEL_PARA_PUBLICAR");
-            assertThat(item.motivoIneficacia()).isEqualTo("AGUARDANDO_PUBLICACAO_STORY");
-            assertThat(item.efeitoPublico()).isEqualTo("Publicacao de um Story vinculada ao anuncio");
-        });
-    }
-
-    @Test
-    void opcaoGratuitaDeStoriesAtivaSemMovimentoNoLedger() {
-        BeneficioPremiumEntity stories = beneficio("STORIES", "Stories");
-        BeneficioPremiumOpcaoEntity gratuita = opcao(stories, 1, 0);
-        prepararItem(stories, gratuita);
-        when(beneficios.findByIdIn(any())).thenReturn(List.of(stories));
-        when(opcoes.findAllById(any())).thenReturn(List.of(gratuita));
-        when(anuncios.findAllById(any())).thenReturn(List.of(anuncio));
-
-        var resultado = service.comprar(
-                new MinhaCompraPremiumRequest(
-                        anuncio.getSlug(),
-                        List.of(new MinhaCompraPremiumItemRequest(
-                                "STORIES", 1, gratuita.getId(), 0))),
-                "qa-story-gratuito",
-                authentication,
-                "req-story-gratuito");
-
-        assertThat(resultado.totalDebitado()).isZero();
-        assertThat(resultado.saldoAnterior()).isEqualTo(100);
-        assertThat(resultado.saldoPosterior()).isEqualTo(100);
-        assertThat(resultado.ativacoes()).singleElement().satisfies(item -> {
-            assertThat(item.beneficioCodigo()).isEqualTo("STORIES");
-            assertThat(item.custoCreditos()).isZero();
-            assertThat(item.status()).isEqualTo("DISPONIVEL_PARA_PUBLICAR");
-        });
-        verify(ledger, never()).registrar(
-                any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
-                any(), anyString(), any(), anyString(), anyString());
-    }
-
-    @Test
-    void alteracaoComercialDeStoriesExigeNovaConfirmacaoSemDebito() {
-        BeneficioPremiumEntity stories = beneficio("STORIES", "Stories");
-        BeneficioPremiumOpcaoEntity opcaoAtual = opcao(stories, 1, 8);
-        prepararItem(stories, opcaoAtual);
-
+    void compraDeStoriesPeloFluxoPremiumGenericoERecusadaSemPersistencia() {
         assertThatThrownBy(() -> service.comprar(
                 new MinhaCompraPremiumRequest(
                         anuncio.getSlug(),
-                        List.of(new MinhaCompraPremiumItemRequest(
-                                "STORIES", 1, opcaoAtual.getId(), 5))),
-                "qa-oferta-story-alterada",
+                        List.of(new MinhaCompraPremiumItemRequest("STORIES", 1))),
+                "qa-story-fluxo-generico",
                 authentication,
-                "req-oferta-alterada"))
-                .isInstanceOf(PremiumOfertaAtualizadaException.class);
+                "req-story-fluxo-generico"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST))
+                .hasMessageContaining("Stories utiliza o fluxo proprio de publicacao");
 
         verify(grupos, never()).save(any());
         verify(ativacoes, never()).save(any());
         verify(auditoria, never()).save(any());
     }
-
-    @Test
-    void opcaoDeStoriesDesativadaExigeNovaConfirmacaoSemDebito() {
-        BeneficioPremiumEntity stories = beneficio("STORIES", "Stories");
-        BeneficioPremiumOpcaoEntity opcaoDesativada = opcao(stories, 1, 5);
-        opcaoDesativada.atualizar(5, false, 1, OffsetDateTime.now(ZoneOffset.UTC));
-        prepararItem(stories, opcaoDesativada);
-
-        assertThatThrownBy(() -> service.comprar(
-                new MinhaCompraPremiumRequest(
-                        anuncio.getSlug(),
-                        List.of(new MinhaCompraPremiumItemRequest(
-                                "STORIES", 1, opcaoDesativada.getId(), 5))),
-                "qa-oferta-story-desativada",
-                authentication,
-                "req-oferta-desativada"))
-                .isInstanceOf(PremiumOfertaAtualizadaException.class);
-
-        verify(grupos, never()).save(any());
-        verify(ativacoes, never()).save(any());
-        verify(auditoria, never()).save(any());
-    }
-
     @Test
     void saldoInsuficienteNaoPersisteGrupoAtivacaoOuAuditoria() {
         BeneficioPremiumEntity topo = beneficio("ANUNCIO_TOPO", "Anuncio no topo");
@@ -403,74 +315,6 @@ class MinhaContaPremiumServiceTest {
         assertThat(resultado.totalDebitado()).isEqualTo(10);
         assertThat(resultado.saldoPosterior()).isEqualTo(90);
         verify(grupos, never()).save(any());
-        verify(ledger, never()).registrar(
-                any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
-                any(), anyString(), any(), anyString(), anyString());
-    }
-
-    @Test
-    void retryDeStoriesExigeOpcaoECustoDoPayloadOriginal() {
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        BeneficioPremiumEntity stories = beneficio("STORIES", "Stories");
-        BeneficioPremiumOpcaoEntity opcao = opcao(stories, 1, 5);
-        String chaveGrupo = "premium-compra:" + usuarioId + ":qa-retry-story-incompleto";
-        GrupoAtivacaoBeneficioEntity grupo = GrupoAtivacaoBeneficioEntity.criarCompraComCreditos(
-                UUID.randomUUID(), usuarioId, anuncio.getId(), agora, agora.plusDays(1), chaveGrupo, agora);
-        AtivacaoBeneficioEntity ativacao = AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
-                UUID.randomUUID(), stories.getId(), opcao.getId(), usuarioId, anuncio.getId(), grupo.getId(),
-                5, chaveGrupo + ":ativacao:0", agora);
-        when(grupos.findByIdempotencyKey(chaveGrupo)).thenReturn(Optional.of(grupo));
-        when(ativacoes.findByGrupoAtivacaoId(grupo.getId())).thenReturn(List.of(ativacao));
-        when(beneficios.findByIdIn(any())).thenReturn(List.of(stories));
-        when(opcoes.findAllById(any())).thenReturn(List.of(opcao));
-
-        assertThatThrownBy(() -> service.comprar(
-                new MinhaCompraPremiumRequest(
-                        anuncio.getSlug(),
-                        List.of(new MinhaCompraPremiumItemRequest("STORIES", 1))),
-                "qa-retry-story-incompleto",
-                authentication,
-                "req-retry-story-incompleto"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("chave de idempotencia reutilizada com compra diferente");
-
-        verify(movimentos, never()).findByReferenciaTipoAndReferenciaIdIn(anyString(), any());
-        verify(ledger, never()).registrar(
-                any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
-                any(), anyString(), any(), anyString(), anyString());
-    }
-
-    @Test
-    void retryDeStoryGratuitoRetornaResultadoSemInventarDebito() {
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        BeneficioPremiumEntity stories = beneficio("STORIES", "Stories");
-        BeneficioPremiumOpcaoEntity opcao = opcao(stories, 1, 0);
-        String chaveGrupo = "premium-compra:" + usuarioId + ":qa-retry-story-gratuito";
-        GrupoAtivacaoBeneficioEntity grupo = GrupoAtivacaoBeneficioEntity.criarCompraComCreditos(
-                UUID.randomUUID(), usuarioId, anuncio.getId(), agora, agora.plusDays(1), chaveGrupo, agora);
-        AtivacaoBeneficioEntity ativacao = AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
-                UUID.randomUUID(), stories.getId(), opcao.getId(), usuarioId, anuncio.getId(), grupo.getId(),
-                0, chaveGrupo + ":ativacao:0", agora);
-        when(grupos.findByIdempotencyKey(chaveGrupo)).thenReturn(Optional.of(grupo));
-        when(ativacoes.findByGrupoAtivacaoId(grupo.getId())).thenReturn(List.of(ativacao));
-        when(beneficios.findByIdIn(any())).thenReturn(List.of(stories));
-        when(opcoes.findAllById(any())).thenReturn(List.of(opcao));
-        when(anuncios.findAllById(any())).thenReturn(List.of(anuncio));
-
-        var resultado = service.comprar(
-                new MinhaCompraPremiumRequest(
-                        anuncio.getSlug(),
-                        List.of(new MinhaCompraPremiumItemRequest(
-                                "STORIES", 1, opcao.getId(), 0))),
-                "qa-retry-story-gratuito",
-                authentication,
-                "req-retry-story-gratuito");
-
-        assertThat(resultado.idempotente()).isTrue();
-        assertThat(resultado.totalDebitado()).isZero();
-        assertThat(resultado.saldoAnterior()).isEqualTo(100);
-        assertThat(resultado.saldoPosterior()).isEqualTo(100);
-        verify(movimentos, never()).findByReferenciaTipoAndReferenciaIdIn(anyString(), any());
         verify(ledger, never()).registrar(
                 any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
                 any(), anyString(), any(), anyString(), anyString());

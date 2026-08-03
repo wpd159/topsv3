@@ -104,6 +104,19 @@ class V048Postgres17IntegrationTest {
             assertThat(jdbc.queryForObject(
                     "SELECT count(*) FROM flyway_schema_history WHERE version::integer = 48 AND success",
                     Long.class)).isEqualTo(1L);
+            assertThat(jdbc.queryForObject(
+                    "SELECT count(*) FROM flyway_schema_history WHERE version::integer = 49 AND success",
+                    Long.class)).isEqualTo(1L);
+            assertThat(jdbc.queryForObject(
+                    "SELECT count(*) FROM story_configuracao_comercial",
+                    Long.class)).isZero();
+            assertThat(jdbc.queryForObject("""
+                    SELECT count(*)
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'story_configuracao_comercial'
+                      AND column_name ILIKE '%duracao%'
+                    """, Long.class)).isZero();
             assertThat(jdbc.queryForObject("""
                     SELECT count(*)
                     FROM story_anuncio

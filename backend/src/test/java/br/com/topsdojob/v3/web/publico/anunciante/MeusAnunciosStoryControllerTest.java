@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryAtivacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryOfertaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
@@ -32,6 +33,7 @@ class MeusAnunciosStoryControllerTest {
 
   private MeuAnuncioStoryService storyService;
   private MeuAnuncioStoryOfertaService storyOfertaService;
+  private MeuAnuncioStoryAtivacaoService storyAtivacaoService;
   private MeusAnunciosController controller;
   private Authentication authentication;
 
@@ -39,6 +41,7 @@ class MeusAnunciosStoryControllerTest {
   void setUp() {
     storyService = mock(MeuAnuncioStoryService.class);
     storyOfertaService = mock(MeuAnuncioStoryOfertaService.class);
+    storyAtivacaoService = mock(MeuAnuncioStoryAtivacaoService.class);
     authentication = mock(Authentication.class);
     controller = new MeusAnunciosController(
         mock(MeusAnunciosConsultaService.class),
@@ -46,7 +49,8 @@ class MeusAnunciosStoryControllerTest {
         mock(MeuAnuncioCicloVidaService.class),
         mock(MinhasMidiasService.class),
         storyService,
-        storyOfertaService);
+        storyOfertaService,
+        storyAtivacaoService);
   }
 
   @Test
@@ -98,7 +102,8 @@ class MeusAnunciosStoryControllerTest {
   @Test
   void ofertaUsaSlugEAutenticacaoDaSessao() {
     MeuAnuncioStoryOfertaDto esperado = new MeuAnuncioStoryOfertaDto(
-        "NOVAS_ATIVACOES_INDISPONIVEIS", 0, null, null, "STORIES", null, null, List.of());
+        "NOVAS_ATIVACOES_INDISPONIVEIS", false, false, 24, null,
+        null, null, null, null, null, null);
     when(storyOfertaService.consultar("anuncio-qa", authentication)).thenReturn(esperado);
 
     var response = controller.consultarOfertaStory("anuncio-qa", authentication);

@@ -63,34 +63,34 @@ export type MeuAnuncioStory = {
   estadoMidia: 'DISPONIVEL' | 'INDISPONIVEL' | null
 }
 
-export type MeuAnuncioStoryOfertaOpcao = {
-  opcaoId: string
-  duracaoDias: number
-  custoCreditos: number
-  saldoAtual: number
-  saldoAposCompra: number
-  creditosFaltantes: number
-  ordemExibicao: number
-}
-
 export type MeuAnuncioStoryOferta = {
-  estado: 'STORY_ATIVO' | 'DIREITO_DISPONIVEL' | 'OPCOES_DISPONIVEIS' | 'NOVAS_ATIVACOES_INDISPONIVEIS'
-  saldoCreditos: number | null
+  estado: 'STORY_ATIVO' | 'DIREITO_DISPONIVEL' | 'OFERTA_DISPONIVEL' | 'NOVAS_ATIVACOES_INDISPONIVEIS'
+  configurada: boolean | null
+  ativo: boolean | null
+  duracaoHoras: 24
+  custoCreditos: number | null
+  saldoAtual: number | null
+  saldoProjetado: number | null
+  deficit: number | null
   storyAtivo: MeuAnuncioStory | null
   direitoDisponivel: {
     ativacaoId: string
     status: 'DISPONIVEL_PARA_PUBLICAR' | 'ATIVA'
-    duracaoDias: number | null
     custoCreditosSnapshot: number | null
     inicioEm: string | null
     fimEm: string | null
   } | null
-  beneficioCodigo: 'STORIES' | null
-  nome: string | null
-  descricao: string | null
-  opcoes: MeuAnuncioStoryOfertaOpcao[]
+  versaoConfiguracao: number | null
 }
 
+export type MeuAnuncioStoryAtivacao = {
+  ativacaoId: string
+  custoCreditos: number
+  saldoAnterior: number
+  saldoPosterior: number
+  duracaoHoras: 24
+  idempotente: boolean
+}
 const EMPTY_BENEFICIOS_PREMIUM: readonly MeuAnuncioBeneficio[] = Object.freeze([])
 
 export type MinhaMidiaGestao = {
@@ -426,34 +426,48 @@ export async function consultarMeuAnuncioStoryOferta(slug: string) {
   const payload = await request<MeuAnuncioStoryOferta>(
     `/minha-conta/anuncios/${encodeURIComponent(slug)}/stories/oferta`
   )
-  if (
-    !payload ||
-    !['STORY_ATIVO', 'DIREITO_DISPONIVEL', 'OPCOES_DISPONIVEIS', 'NOVAS_ATIVACOES_INDISPONIVEIS']
-      .includes(payload.estado) ||
-    ((payload.estado === 'STORY_ATIVO' || payload.estado === 'DIREITO_DISPONIVEL')
-      ? payload.saldoCreditos !== null
-      : !Number.isInteger(payload.saldoCreditos) || (payload.saldoCreditos ?? -1) < 0) ||
-    !Array.isArray(payload.opcoes)
-  ) {
-    throw new MeusAnunciosApiError('O servico retornou uma oferta de Story incompativel.', 502)
+  const states = ['STORY_ATIVO', 'DIREITO_DISPONIVEL', 'OFERTA_DISPONIVEL', 'NOVAS_ATIVACOES_INDISPONIVEIS']
+  if (!payload || !states.includes(payload.estado) || payload.duracaoHoras !== 24) {
+    throw new MeusAnunciosApiError('O serviço retornou uma oferta de Story incompatível.', 502)
   }
+  if (payload.estado === 'STORY_ATIVO') parseStoryAtivo(payload.storyAtivo)
   if (payload.estado === 'DIREITO_DISPONIVEL') {
     const direito = payload.direitoDisponivel
-    if (
-      !direito ||
-      typeof direito.ativacaoId !== 'string' || !direito.ativacaoId ||
-      !['DISPONIVEL_PARA_PUBLICAR', 'ATIVA'].includes(direito.status) ||
-      !inteiroOpcionalValido(direito.duracaoDias) ||
-      !inteiroOpcionalValido(direito.custoCreditosSnapshot) ||
-      !dataOpcionalValida(direito.inicioEm) ||
-      !dataOpcionalValida(direito.fimEm)
-    ) {
-      throw new MeusAnunciosApiError('O servico retornou um direito de Story incompativel.', 502)
+    if (!direito
+        || typeof direito.ativacaoId !== 'string' || !direito.ativacaoId
+        || !['DISPONIVEL_PARA_PUBLICAR', 'ATIVA'].includes(direito.status)
+        || !inteiroOpcionalValido(direito.custoCreditosSnapshot)
+        || !dataOpcionalValida(direito.inicioEm)
+        || !dataOpcionalValida(direito.fimEm)) {
+      throw new MeusAnunciosApiError('O serviço retornou um direito de Story incompatível.', 502)
+    }
+  }
+  if (payload.estado === 'OFERTA_DISPONIVEL') {
+    const valores = [payload.custoCreditos, payload.saldoAtual, payload.saldoProjetado, payload.deficit]
+    if (payload.configurada !== true || payload.ativo !== true
+        || valores.some((value) => !Number.isInteger(value) || (value ?? -1) < 0)
+        || !Number.isInteger(payload.versaoConfiguracao) || (payload.versaoConfiguracao ?? -1) < 0) {
+      throw new MeusAnunciosApiError('O serviço retornou uma oferta de Story incompatível.', 502)
     }
   }
   return payload
 }
 
+export async function ativarMeuAnuncioStory(
+  slug: string,
+  custoCreditosEsperado: number,
+  versaoConfiguracao: number,
+  idempotencyKey: string
+) {
+  return request<MeuAnuncioStoryAtivacao>(
+    `/minha-conta/anuncios/${encodeURIComponent(slug)}/stories/ativacoes`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify({ custoCreditosEsperado, versaoConfiguracao }),
+    }
+  )
+}
 export async function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtualizacao) {
   const resposta = await request<unknown>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`, {
     method: 'PATCH',

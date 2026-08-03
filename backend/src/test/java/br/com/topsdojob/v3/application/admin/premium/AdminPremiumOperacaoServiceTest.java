@@ -187,58 +187,76 @@ class AdminPremiumOperacaoServiceTest {
         verifyNoInteractions(movimentoRepository);
     }
 
-    @Test
-    void concessaoAdministrativaDeStoriesReservaPrazoAteAPublicacao() {
+@Test
+    void ativacaoAdministrativaGenericaRejeitaStories() {
         UUID anuncioId = UUID.randomUUID();
-        UUID usuarioId = UUID.randomUUID();
         UUID beneficioId = UUID.randomUUID();
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        AnuncioEntity anuncio = AnuncioEntity.criarSolicitacaoLocal(
-                anuncioId,
-                usuarioId,
-                "stories-admin",
-                "Stories administrativos",
-                "Descricao valida para concessao administrativa",
-                "MASSAGENS",
-                null,
-                null,
-                agora.minusDays(2));
         BeneficioPremiumEntity beneficio = BeneficioPremiumEntity.criarFixtureHomologacao(
                 beneficioId,
                 "STORIES",
                 "Stories",
-                "Publicacao de Story",
+                "Identidade tecnica de Stories",
                 EscopoBeneficioPremium.ANUNCIO,
                 false,
                 true,
                 agora.minusDays(1));
-        BeneficioPremiumOpcaoEntity opcao = BeneficioPremiumOpcaoEntity.criar(
-                UUID.randomUUID(), beneficioId, 7, 20, true, 0, agora.minusDays(1));
-        when(grupoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
-        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
         when(beneficioRepository.findById(beneficioId)).thenReturn(Optional.of(beneficio));
-        when(opcaoRepository.findFirstByBeneficioIdAndDuracaoDiasOrderByVersaoRegraDesc(beneficioId, 7))
-                .thenReturn(Optional.of(opcao));
-        when(consultaService.consultarCalculados(anuncioId)).thenReturn(List.of());
+        when(grupoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(anuncioRepository.findByIdForModeration(anuncioId))
+                .thenReturn(Optional.of(anuncioElegivel(anuncioId)));
 
-        var response = service.ativarManual(
+        assertThatThrownBy(() -> service.ativarManual(
                 anuncioId,
                 new AdminPremiumAtivarRequest(beneficioId, 7, null),
-                "operacao-stories-espera",
+                "operacao-stories-generica",
                 admin(),
-                "req-stories-espera");
+                "req-stories-generica"))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
 
-        ArgumentCaptor<AtivacaoBeneficioEntity> salva =
-                ArgumentCaptor.forClass(AtivacaoBeneficioEntity.class);
-        verify(ativacaoRepository).save(salva.capture());
-        assertThat(response.status()).isEqualTo("AGUARDANDO_MODERACAO");
-        assertThat(salva.getValue().getStatus())
-                .isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
-        assertThat(salva.getValue().getInicioEm()).isNull();
-        assertThat(salva.getValue().getFimEm()).isNull();
-        verifyNoInteractions(movimentoRepository);
+        verifyNoInteractions(opcaoRepository, movimentoRepository);
+        verify(grupoRepository, never()).save(any());
+        verify(ativacaoRepository, never()).save(any());
     }
 
+    @Test
+    void ativacaoAdministrativaGenericaEmLoteRejeitaStories() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID beneficioId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        BeneficioPremiumEntity beneficio = BeneficioPremiumEntity.criarFixtureHomologacao(
+                beneficioId,
+                "STORIES",
+                "Stories",
+                "Identidade tecnica de Stories",
+                EscopoBeneficioPremium.ANUNCIO,
+                false,
+                true,
+                agora.minusDays(1));
+        when(beneficioRepository.findById(beneficioId)).thenReturn(Optional.of(beneficio));
+        when(grupoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(anuncioRepository.findByIdForModeration(anuncioId))
+                .thenReturn(Optional.of(anuncioElegivel(anuncioId)));
+        AdminPremiumAtivarLoteRequest request = new AdminPremiumAtivarLoteRequest(
+                List.of(new AdminPremiumAtivarLoteItemRequest(beneficioId, 7)),
+                null);
+
+        assertThatThrownBy(() -> service.ativarManualLote(
+                anuncioId,
+                request,
+                "operacao-lote-stories-generica",
+                admin(),
+                "req-lote-stories-generica"))
+                .isInstanceOfSatisfying(
+                        ResponseStatusException.class,
+                        exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+
+        verifyNoInteractions(opcaoRepository, movimentoRepository);
+        verify(grupoRepository, never()).save(any());
+        verify(ativacaoRepository, never()).save(any());
+    }
     @Test
     void ativaBeneficioSemObservacaoEPersisteNullSemFabricarTexto() {
         UUID anuncioId = UUID.randomUUID();
@@ -562,6 +580,18 @@ class AdminPremiumOperacaoServiceTest {
         verifyNoInteractions(movimentoRepository);
     }
 
+    private AnuncioEntity anuncioElegivel(UUID anuncioId) {
+        return AnuncioEntity.criarSolicitacaoLocal(
+                anuncioId,
+                UUID.randomUUID(),
+                "anuncio-story-bloqueio-generico",
+                "Anuncio para validar bloqueio generico",
+                "Descricao valida para o teste de bloqueio generico",
+                "MASSAGENS",
+                null,
+                null,
+                OffsetDateTime.now(ZoneOffset.UTC).minusDays(1));
+    }
     private AdminUserPrincipal admin() {
         return new AdminUserPrincipal(
                 UUID.randomUUID(),

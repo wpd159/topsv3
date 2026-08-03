@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoS
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MinhasMidiasService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryAtivacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryOfertaService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAtualizacaoRequestDto;
@@ -12,6 +13,8 @@ import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiaLimitesDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioMidiasResponseDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryAtivacaoDto;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryAtivacaoRequest;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryOfertaDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
@@ -49,6 +52,7 @@ public class MeusAnunciosController {
     private final MinhasMidiasService midiasService;
     private final MeuAnuncioStoryService storyService;
     private final MeuAnuncioStoryOfertaService storyOfertaService;
+    private final MeuAnuncioStoryAtivacaoService storyAtivacaoService;
 
     public MeusAnunciosController(
             MeusAnunciosConsultaService consultaService,
@@ -56,13 +60,15 @@ public class MeusAnunciosController {
             MeuAnuncioCicloVidaService cicloVidaService,
             MinhasMidiasService midiasService,
             MeuAnuncioStoryService storyService,
-            MeuAnuncioStoryOfertaService storyOfertaService) {
+            MeuAnuncioStoryOfertaService storyOfertaService,
+            MeuAnuncioStoryAtivacaoService storyAtivacaoService) {
         this.consultaService = consultaService;
         this.atualizacaoService = atualizacaoService;
         this.cicloVidaService = cicloVidaService;
         this.midiasService = midiasService;
         this.storyService = storyService;
         this.storyOfertaService = storyOfertaService;
+        this.storyAtivacaoService = storyAtivacaoService;
     }
 
     @GetMapping
@@ -180,6 +186,19 @@ public class MeusAnunciosController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(storyOfertaService.consultar(slug, authentication));
+    }
+
+    @PostMapping("/{slug}/stories/ativacoes")
+    public ResponseEntity<MeuAnuncioStoryAtivacaoDto> ativarStory(
+            @PathVariable String slug,
+            @RequestBody MeuAnuncioStoryAtivacaoRequest body,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            Authentication authentication,
+            HttpServletRequest request) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(storyAtivacaoService.ativar(
+                        slug, body, idempotencyKey, authentication, RequestIdContext.current(request)));
     }
 
     private void validarContratoMultipartStory(HttpServletRequest request) {

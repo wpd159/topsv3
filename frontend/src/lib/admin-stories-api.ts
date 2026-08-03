@@ -1,3 +1,5 @@
+import { adminApiUrl } from '@/lib/api-contract'
+
 export type AdminStorySelection = {
   id: number
   ativa: boolean
@@ -29,6 +31,21 @@ export type AdminStoryCandidatePage = {
   totalElements: number
   totalPages: number
   last: boolean
+}
+
+export type AdminStoryConfiguracao = {
+  configurada: boolean
+  ativo: boolean
+  custoCreditos: number | null
+  duracaoHoras: 24
+  versao: number | null
+  atualizadoEm: string | null
+}
+
+export type AdminStoryConfiguracaoWrite = {
+  ativo: boolean
+  custoCreditos: number
+  versao: number | null
 }
 
 function adminUrl(path: string) {
@@ -66,6 +83,7 @@ async function ensureAntiForgeryValue() {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method || 'GET').toUpperCase()
   const headers = new Headers(init.headers)
+  headers.set('Accept', 'application/json')
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const value = await ensureAntiForgeryValue()
     if (value) headers.set(antiForgeryHeaderName(), value)
@@ -103,4 +121,15 @@ export function activateAdminStorySelection(anuncioId: string, idempotencyKey = 
 export function deactivateAdminStorySelection(anuncioId: string) {
   return request<AdminStorySelection>(`/selecao/${encodeURIComponent(anuncioId)}`, { method: 'DELETE' })
 }
-import { adminApiUrl } from '@/lib/api-contract'
+
+export function fetchAdminStoryConfiguracao() {
+  return request<AdminStoryConfiguracao>('/configuracao')
+}
+
+export function saveAdminStoryConfiguracao(payload: AdminStoryConfiguracaoWrite) {
+  return request<AdminStoryConfiguracao>('/configuracao', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+}

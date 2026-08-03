@@ -1,57 +1,66 @@
 import assert from 'node:assert/strict'
-import { readFile, readdir } from 'node:fs/promises'
+import { access, readFile, readdir } from 'node:fs/promises'
 
 async function source(path) {
   return readFile(new URL(path, import.meta.url), 'utf8')
 }
 
 const [
-  redirectPage,
   adminPage,
-  adminApi,
-  adminService,
-  adminController,
-  beneficioEntity,
-  offerService,
+  storyCard,
+  storyApi,
+  storyController,
   storyService,
+  storyRequest,
+  storyDto,
   storyEntity,
-  mediaEntity,
-  entryState,
-  meusAnunciosApi,
-  ageGateProperties,
+  storyRepository,
+  premiumCatalogService,
+  adminPremiumCatalogService,
+  adminPremiumOperationService,
+  beneficioPremiumRepository,
+  adminPremiumController,
+  adminCreditsApi,
+  genericWizardStep,
+  migration,
   openapi,
 ] = await Promise.all([
-  source('../src/app/(painel-admin)/admin/beneficios-premium/page.tsx'),
   source('../src/app/(painel-admin)/admin/creditos/page.tsx'),
-  source('../src/lib/admin-creditos-operacionais-api.ts'),
+  source('../src/app/(painel-admin)/admin/creditos/admin-story-configuracao-card.tsx'),
+  source('../src/lib/admin-stories-api.ts'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/web/admin/stories/AdminStoryConfiguracaoController.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/application/admin/stories/AdminStoryConfiguracaoService.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/application/admin/stories/dto/AdminStoryConfiguracaoRequest.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/application/admin/stories/dto/AdminStoryConfiguracaoDto.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/persistence/entity/midia/StoryConfiguracaoComercialEntity.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/persistence/repository/StoryConfiguracaoComercialRepository.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/application/premium/PremiumCatalogoService.java'),
   source('../../backend/src/main/java/br/com/topsdojob/v3/application/admin/premium/AdminPremiumCatalogoService.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/application/admin/premium/AdminPremiumOperacaoService.java'),
+  source('../../backend/src/main/java/br/com/topsdojob/v3/persistence/repository/BeneficioPremiumRepository.java'),
   source('../../backend/src/main/java/br/com/topsdojob/v3/web/admin/premium/AdminPremiumController.java'),
-  source('../../backend/src/main/java/br/com/topsdojob/v3/persistence/entity/premium/BeneficioPremiumEntity.java'),
-  source('../../backend/src/main/java/br/com/topsdojob/v3/application/publico/anunciante/MeuAnuncioStoryOfertaService.java'),
-  source('../../backend/src/main/java/br/com/topsdojob/v3/application/publico/anunciante/MeuAnuncioStoryService.java'),
-  source('../../backend/src/main/java/br/com/topsdojob/v3/persistence/entity/midia/StoryAnuncioEntity.java'),
-  source('../../backend/src/main/java/br/com/topsdojob/v3/persistence/entity/midia/AnuncioMidiaEntity.java'),
-  source('../src/components/stories/story-entry-state.ts'),
-  source('../src/lib/meus-anuncios-api.ts'),
-  source('../../backend/src/main/java/br/com/topsdojob/v3/application/publico/compliance/ComplianceAgeGateProperties.java'),
+  source('../src/lib/admin-creditos-operacionais-api.ts'),
+  source('../src/features/monetizacao-wizard/components/monetizacao-step-anuncio.tsx'),
+  source('../../backend/src/main/resources/db/migration/V049__stories_configuracao_comercial.sql'),
   source('../../contracts/openapi/topsdojob-v3-local.yaml'),
 ])
 
-const migrations = await readdir(new URL(
-  '../../backend/src/main/resources/db/migration/',
+const migrations = await readdir(new URL('../../backend/src/main/resources/db/migration/', import.meta.url))
+const obsoleteOfferOptionExists = await access(new URL(
+  '../../backend/src/main/java/br/com/topsdojob/v3/application/publico/anunciante/dto/MeuAnuncioStoryOfertaOpcaoDto.java',
   import.meta.url,
-))
-const storyDraft = adminPage.slice(
-  adminPage.indexOf('function storyDraft'),
-  adminPage.indexOf('function catalogoComStory'),
+)).then(() => true, () => false)
+const configPath = openapi.slice(
+  openapi.indexOf('/api/admin/stories/configuracao:'),
+  openapi.indexOf('/api/admin/premium/catalogo:'),
 )
-const optionDraft = adminPage.slice(
-  adminPage.indexOf('function novaOpcao'),
-  adminPage.indexOf('function inteiroFormulario'),
+const genericCatalogPath = openapi.slice(
+  openapi.indexOf('/api/admin/premium/catalogo:'),
+  openapi.indexOf('/api/admin/premium/catalogo/{id}:'),
 )
-const updateSchema = openapi.slice(
-  openapi.indexOf('AdminPremiumCatalogoOpcaoRequest:'),
-  openapi.indexOf('AdminPlanoCredito:'),
+const configRequestSchema = openapi.slice(
+  openapi.indexOf('AdminStoryConfiguracaoRequest:'),
+  openapi.indexOf('AdminPremiumCatalogoUpdateRequest:'),
 )
 
 let checks = 0
@@ -60,133 +69,221 @@ function check(name, callback) {
     callback()
     checks += 1
   } catch (error) {
-    error.message = name + ': ' + error.message
+    error.message = `${name}: ${error.message}`
     throw error
   }
 }
 function matches(value, pattern) { assert.match(value, pattern) }
 function excludes(value, pattern) { assert.doesNotMatch(value, pattern) }
 
-check('1. rota administrativa converge para a fonte unica', () => {
-  matches(redirectPage, /redirect\('\/admin\/creditos#beneficios-premium'\)/)
-  matches(adminPage, /id="beneficios-premium"/)
+check('1. pagina administrativa possui quatro dominios separados', () => {
+  matches(adminPage, /TabsTrigger value="stories">Stories/)
+  matches(adminPage, /Pacotes e benef.cios/)
+  matches(adminPage, /Saldos e ajustes/)
+  matches(adminPage, /Ativa..es e hist.rico/)
 })
 
-check('2. Stories ausente gera somente identidade sem valor comercial', () => {
-  matches(storyDraft, /codigo: 'STORIES'/)
-  matches(storyDraft, /opcoes: \[\]/)
-  excludes(storyDraft, /duracaoDias|custoCreditos/)
+check('2. Stories usa componente administrativo proprio', () => {
+  matches(adminPage, /<AdminStoryConfiguracaoCard \/>/)
+  matches(adminPage, /Stories n.o faz parte deste cat.logo/)
 })
 
-check('3. nova opcao inicia integralmente em branco', () => {
-  matches(optionDraft, /duracaoDias: ''/)
-  matches(optionDraft, /custoCreditos: ''/)
-  matches(optionDraft, /ordemExibicao: ''/)
-  excludes(optionDraft, /duracaoDias:\s*\d|custoCreditos:\s*\d/)
+check('3. card explica os dois modos comerciais', () => {
+  matches(storyCard, /Permite promover um an.ncio ou publicar uma m.dia exclusiva nos Stories/)
 })
 
-check('4. catalogo permite configurar duracao custo ordem e disponibilidade', () => {
-  matches(adminPage, /Duracao \(dias\)/)
-  matches(adminPage, /Custo \(creditos\)/)
-  matches(adminPage, /Adicionar opcao/)
-  matches(adminPage, /checked=\{opcao\.ativo\}/)
+check('4. admin edita somente status e custo', () => {
+  matches(storyCard, /Status comercial ativo/)
+  matches(storyCard, /Custo por Story/)
+  matches(storyCard, /checked=\{ativo\}/)
+  matches(storyCard, /value=\{custo\}/)
 })
 
-check('5. adapter usa o mesmo recurso canonico para criar e atualizar', () => {
-  matches(adminApi, /criarCatalogo:[\s\S]*'\/premium\/catalogo'[\s\S]*method: 'POST'/)
-  matches(adminApi, /atualizarCatalogo:[\s\S]*premium\/catalogo\/\$\{id\}[\s\S]*method: 'PUT'/)
+check('5. duracao e fixa e somente leitura', () => {
+  matches(storyCard, /Dura..o[\s\S]*24 horas - fixa/)
+  excludes(storyCard, /name=["']duracao|setDuracao|duracaoDias/)
 })
 
-check('6. controller preserva ADMIN Premium RBAC e CSRF global', () => {
-  matches(adminController, /@PostMapping\("\/catalogo"\)/)
-  matches(adminController, /hasRole\('ADMIN'\) and hasAuthority\('PREMIUM_GERENCIAR'\)/)
+check('6. custo vazio difere de custo zero', () => {
+  matches(storyCard, /if \(!value\.trim\(\)\) return null/)
+  matches(storyCard, /Number\.isInteger\(parsed\) && parsed >= 0/)
 })
 
-check('7. service restringe criacao ao codigo canonico Stories', () => {
-  matches(adminService, /if \(!STORIES\.equals\(codigo\)\)/)
-  matches(adminService, /EscopoBeneficioPremium\.ANUNCIO/)
-  matches(beneficioEntity, /criarCatalogo/)
+check('7. alteracao nao salva fica visivel', () => {
+  matches(storyCard, /const dirty = useMemo/)
+  matches(storyCard, /Altera..es n.o salvas/)
 })
 
-check('8. duracao e dinamica sem lista comercial fixa', () => {
-  matches(adminService, /inteiroPositivo\(opcao\.duracaoDias\(\)/)
-  excludes(adminService, /DURACOES_PERMITIDAS|Set\.of\(1,\s*7,\s*14,\s*30\)/)
-  matches(updateSchema, /duracaoDias: \{ type: integer, minimum: 1, maximum: 1000000 \}/)
-  excludes(updateSchema, /enum: \[1, 7, 14, 30\]/)
+check('8. desativacao exige confirmacao especifica', () => {
+  matches(storyCard, /window\.confirm/)
+  matches(storyCard, /Novas ativa..es de Stories ficar.o indispon.veis/)
+  matches(storyCard, /Direitos j. adquiridos continuar.o utiliz.veis/)
 })
 
-check('9. opcao omitida e desativada sem exclusao', () => {
-  matches(adminService, /!recebidas\.containsKey\(duracao\)[\s\S]*false/)
-  excludes(adminService, /delete|remove/)
+check('9. duplo clique e bloqueado de modo sincrono', () => {
+  matches(storyCard, /const saveLock = useRef\(false\)/)
+  matches(storyCard, /if \(saveLock\.current \|\| !dirty\) return/)
+  matches(storyCard, /saveLock\.current = true/)
+  matches(storyCard, /saveLock\.current = false/)
 })
 
-check('10. retry de criacao nao duplica beneficio', () => {
-  matches(adminService, /findByCodigo\(codigo\)\.isPresent\(\)/)
-  matches(adminService, /HttpStatus\.CONFLICT/)
+check('10. loading sucesso e erro sao acessiveis', () => {
+  matches(storyCard, /role="status"/)
+  matches(storyCard, /role="alert"/)
+  matches(storyCard, /errorRef\.current\?\.focus\(\)/)
+  matches(storyCard, /aria-busy=\{saving\}/)
 })
 
-check('11. direito adquirido antecede consulta ao catalogo ativo', () => {
-  matches(offerService, /direito != null[\s\S]*catalogoService\.catalogoAtivo\(\)/)
+check('11. layout administrativo e responsivo', () => {
+  matches(storyCard, /grid gap-4 sm:grid-cols-/)
+  matches(storyCard, /flex flex-wrap/)
+  excludes(storyCard, /min-w-\[[4-9][0-9]{2}px\]|w-\[[4-9][0-9]{2}px\]/)
 })
 
-check('12. catalogo ausente ou inativo fecha somente novas ativacoes', () => {
-  matches(offerService, /NOVAS_ATIVACOES_INDISPONIVEIS/)
-  matches(offerService, /catalogoService\.catalogoAtivo\(\)/)
+check('12. adapter usa API propria GET e PUT', () => {
+  matches(storyApi, /fetchAdminStoryConfiguracao[\s\S]*'\/configuracao'/)
+  matches(storyApi, /saveAdminStoryConfiguracao[\s\S]*method: 'PUT'/)
 })
 
-check('13. estado publico nao comunica moderacao humana de Story', () => {
-  matches(offerService, /"DISPONIVEL_PARA_PUBLICAR"/)
-  matches(entryState, /new Set\(\['ATIVO', 'DISPONIVEL_PARA_PUBLICAR'\]\)/)
-  matches(meusAnunciosApi, /\['DISPONIVEL_PARA_PUBLICAR', 'ATIVA'\]/)
+check('13. adapter administrativo preserva sessao CSRF e no-store', () => {
+  matches(storyApi, /credentials: 'include'/)
+  matches(storyApi, /cache: 'no-store'/)
+  matches(storyApi, /antiForgeryHeaderName/)
 })
 
-check('14. publicacao direta cria Story publicado', () => {
-  matches(storyService, /StoryAnuncioEntity\.criarAutogestao/)
-  matches(storyEntity, /entity\.status = StatusStoryAnuncio\.PUBLICADO/)
-  excludes(storyService, /AdminModeracao|ModeracaoAcaoService|remeterRevisao/)
+check('14. controller pertence ao dominio Stories', () => {
+  matches(storyController, /@RequestMapping\("\/api\/admin\/stories\/configuracao"\)/)
+  matches(storyController, /@GetMapping/)
+  matches(storyController, /@PutMapping/)
 })
 
-check('15. upload de Story e publicavel e restrito por definicao', () => {
-  const factory = mediaEntity.slice(
-    mediaEntity.indexOf('criarStoryUploadValidado'),
-    mediaEntity.indexOf('criarFixtureHomologacao'),
-  )
-  matches(factory, /StatusAnuncioMidia\.PUBLICAVEL/)
-  matches(factory, /VisibilidadeMidia\.RESTRITA_18/)
+check('15. controller exige ADMIN e PREMIUM_GERENCIAR', () => {
+  matches(storyController, /hasRole\('ADMIN'\) and hasAuthority\('PREMIUM_GERENCIAR'\)/)
+  matches(storyController, /@AuthenticationPrincipal AdminUserPrincipal/)
 })
 
-check('16. age gate global permanece em sete dias', () => {
-  matches(ageGateProperties, /private int globalTtlDays = 7;/)
-  matches(ageGateProperties, /Duration\.ofDays\(globalTtlDays\)/)
+check('16. request administrativo nao aceita duracao ou codigo arbitrario', () => {
+  matches(storyRequest, /Boolean ativo/)
+  matches(storyRequest, /Integer custoCreditos/)
+  matches(storyRequest, /Long versao/)
+  excludes(storyRequest, /duracao|dias|opcaoId|codigoBeneficio|usuarioId/i)
 })
 
-check('17. OpenAPI possui um unico contrato de criacao Stories', () => {
-  matches(openapi, /postAdminPremiumCatalogo/)
-  matches(openapi, /codigo: \{ type: string, enum: \[STORIES\] \}/)
-  matches(openapi, /enum: \[DISPONIVEL_PARA_PUBLICAR, ATIVA\]/)
+check('17. resposta fixa 24 horas no dominio', () => {
+  matches(storyService, /public static final int DURACAO_HORAS = 24/)
+  matches(storyDto, /int duracaoHoras/)
 })
 
-check('18. nenhuma migration nova foi criada', () => {
-  assert.equal(migrations.some((name) => /^V049__/.test(name)), false)
-  assert.equal(migrations.some((name) => /^V048__stories_autogestao_modos_conteudo\.sql$/.test(name)), true)
+check('18. ausencia de configuracao nao vira oferta gratuita', () => {
+  matches(storyService, /false, false, null, DURACAO_HORAS, null, null/)
 })
 
-check('19. concorrencia administrativa retorna conflito e serializa atualizacao', () => {
-  matches(adminService, /saveAndFlush\(beneficio\)/)
-  matches(adminService, /catch \(DataIntegrityViolationException exception\)/)
-  matches(adminService, /findByIdForUpdate\(beneficioId\)/)
+check('19. custo negativo e acima do limite sao rejeitados', () => {
+  matches(storyService, /request\.custoCreditos\(\) < 0/)
+  matches(storyService, /request\.custoCreditos\(\) > 1_000_000/)
 })
 
-check('20. formulario bloqueia duplo clique e anuncia erro e loading', () => {
-  matches(adminPage, /catalogoSaveLock\.current/)
-  matches(adminPage, /role="alert"/)
-  matches(adminPage, /aria-busy=\{catalogoSavingId === item\.id\}/)
+check('20. custo zero explicito permanece permitido', () => {
+  excludes(storyService, /custoCreditos\(\) <= 0/)
+  matches(storyCard, /min=\{0\}/)
 })
 
-check('21. alteracao de disponibilidade exige confirmacao', () => {
-  matches(adminPage, /disponibilidadeCatalogoAlterada\(item\)[\s\S]*window\.confirm/)
+check('21. atualizacao usa lock e versao otimista', () => {
+  matches(storyService, /configuracaoRepository\.findForUpdate\(\)/)
+  matches(storyService, /Objects\.equals\(configuracao\.getVersao\(\), request\.versao\(\)\)/)
+  matches(storyRepository, /@Lock\(LockModeType\.PESSIMISTIC_WRITE\)/)
 })
 
-assert.equal(checks, 21)
-console.log('STORY_CATALOG_ADMIN_CHECKS=' + checks)
+check('22. alteracao administrativa e auditada', () => {
+  matches(storyService, /STORY_CONFIGURACAO_ATUALIZAR/)
+  matches(storyService, /requestId/)
+  matches(storyService, /administrador\.usuarioId\(\)/)
+})
+
+check('23. identidade Premium e apenas tecnica', () => {
+  matches(storyService, /Identidade tecnica para ledger e ativacoes de Stories/)
+  matches(storyService, /inserirCatalogoSeAusente/)
+  matches(storyService, /"ANUNCIO"/)
+  excludes(storyService, /BeneficioPremiumOpcaoEntity|duracaoDias/)
+})
+
+check('24. entidade dedicada nao persiste duracao', () => {
+  matches(storyEntity, /StoryConfiguracaoComercialEntity/)
+  matches(storyEntity, /custoCreditos/)
+  matches(storyEntity, /atualizadoPor/)
+  excludes(storyEntity, /duracao|dias/i)
+})
+
+check('25. migration e estrutural e sem seed comercial', () => {
+  matches(migration, /CREATE TABLE story_configuracao_comercial/)
+  matches(migration, /CHECK \(id = 1\)/)
+  matches(migration, /CHECK \(custo_creditos >= 0\)/)
+  excludes(migration, /\bINSERT\b|duracao_(?:horas|dias)|preco_/i)
+})
+
+check('26. V049 foi adicionada sem alterar a identidade V048', () => {
+  assert.equal(migrations.includes('V049__stories_configuracao_comercial.sql'), true)
+  assert.equal(migrations.includes('V048__stories_autogestao_modos_conteudo.sql'), true)
+})
+
+check('27. catalogo Premium generico filtra Stories', () => {
+  matches(premiumCatalogService, /filter\(item -> !PremiumBeneficioCodigo\.STORIES\.equals\(item\.getCodigo\(\)\)\)/)
+})
+
+check('28. wizard generico ignora Stories', () => {
+  matches(genericWizardStep, /if \(feature\.codigo === 'STORIES'\) continue/)
+})
+
+check('29. controller Premium generico nao cria catalogo arbitrario', () => {
+  excludes(adminPremiumController, /@PostMapping\("\/catalogo"\)/)
+})
+
+check('30. adapter Premium generico nao cria catalogo arbitrario', () => {
+  excludes(adminCreditsApi, /criarCatalogo/)
+  excludes(adminCreditsApi, /request<AdminPremiumCatalogo>\(\s*['"]\/premium\/catalogo['"][\s\S]{0,160}method:\s*'POST'/)
+})
+
+check('31. DTO de multiplas opcoes foi removido', () => {
+  assert.equal(obsoleteOfferOptionExists, false)
+})
+
+check('32. OpenAPI documenta GET e PUT proprios', () => {
+  matches(configPath, /get:/)
+  matches(configPath, /put:/)
+  matches(configPath, /AdminStoryConfiguracaoRequest/)
+})
+
+check('33. request OpenAPI nao aceita duracao', () => {
+  matches(configRequestSchema, /required: \[ativo, custoCreditos\]/)
+  excludes(configRequestSchema, /duracao|dias|opcaoId|codigoBeneficio|usuarioId/i)
+})
+
+check('34. resposta OpenAPI fixa 24 horas', () => {
+  matches(openapi, /AdminStoryConfiguracao:[\s\S]*duracaoHoras: \{ type: integer, const: 24 \}/)
+})
+
+check('35. OpenAPI nao oferece POST no catalogo Premium generico', () => {
+  matches(genericCatalogPath, /get:/)
+  excludes(genericCatalogPath, /post:/)
+})
+
+check('36. identidade tecnica usa insercao atomica idempotente', () => {
+  matches(storyService, /inserirCatalogoSeAusente/)
+  matches(beneficioPremiumRepository, /ON CONFLICT DO NOTHING/)
+  excludes(storyService, /beneficioRepository\.save(?:AndFlush)?\(/)
+})
+
+check('37. catalogo Premium generico rejeita Stories', () => {
+  matches(adminPremiumCatalogService, /PremiumBeneficioCodigo\.STORIES/)
+  matches(adminPremiumCatalogService, /HttpStatus\.CONFLICT/)
+})
+
+check('38. ativacao Premium generica simples e em lote rejeita Stories', () => {
+  matches(adminPremiumOperationService, /beneficioAdministravel/)
+  matches(adminPremiumOperationService, /PremiumBeneficioCodigo\.STORIES/)
+  matches(adminPremiumOperationService, /Stories utiliza configuracao e ativacao proprias/)
+})
+
+assert.equal(checks, 38)
+console.log(`STORY_CATALOG_ADMIN_CHECKS=${checks}`)
 console.log('STORY_CATALOG_ADMIN_RESULT=OK')

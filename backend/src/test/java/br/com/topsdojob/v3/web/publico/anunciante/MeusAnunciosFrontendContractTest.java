@@ -151,10 +151,10 @@ class MeusAnunciosFrontendContractTest {
                 .doesNotContain("fetch(");
         assertThat(storyDialog)
                 .contains("from '@/lib/meus-anuncios-api'")
-                .contains("from '@/features/monetizacao-wizard/api'")
-                .contains("comprarBeneficios")
+                .contains("ativarMeuAnuncioStory")
                 .contains("publicarMeuAnuncioStory")
-                .contains("newPremiumPurchaseIdempotencyKey")
+                .doesNotContain("from '@/features/monetizacao-wizard/api'")
+                .doesNotContain("comprarBeneficios")
                 .doesNotContain("fetch(")
                 .doesNotContain("XMLHttpRequest")
                 .doesNotContain("'/api/")

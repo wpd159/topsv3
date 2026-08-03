@@ -6,7 +6,6 @@ import java.util.UUID;
 public record MeuAnuncioStoryDireitoDto(
     UUID ativacaoId,
     String status,
-    Integer duracaoDias,
     Integer custoCreditosSnapshot,
     OffsetDateTime inicioEm,
     OffsetDateTime fimEm) {

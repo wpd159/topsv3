@@ -178,8 +178,7 @@ public class MinhaContaPremiumService {
         for (int indice = 0; indice < itens.size(); indice++) {
             ItemCompra item = itens.get(indice);
             boolean aguardaUso = PremiumBeneficioCodigo.FOTOS_EXTRA_5.equals(
-                    item.beneficio().getCodigo())
-                    || PremiumBeneficioCodigo.STORIES.equals(item.beneficio().getCodigo());
+                    item.beneficio().getCodigo());
             AtivacaoBeneficioEntity novaAtivacao = aguardaUso
                     ? AtivacaoBeneficioEntity.criarCompraAguardandoModeracao(
                             UUID.randomUUID(),
@@ -250,9 +249,11 @@ public class MinhaContaPremiumService {
             String codigo = request == null || request.beneficioCodigo() == null
                     ? ""
                     : request.beneficioCodigo().trim().toUpperCase();
+            if (PremiumBeneficioCodigo.STORIES.equals(codigo)) {
+                throw badRequest("Stories utiliza o fluxo proprio de publicacao");
+            }
             Integer duracaoDias = request == null ? null : request.duracaoDias();
-            UUID opcaoId = request == null ? null : request.opcaoId();
-            Integer custoCreditosEsperado = request == null ? null : request.custoCreditosEsperado();
+
             if (!codigo.matches("[A-Z0-9_]{3,80}")
                     || !PremiumBeneficioCodigo.TODOS.contains(codigo)
                     || !codigos.add(codigo)
@@ -260,7 +261,7 @@ public class MinhaContaPremiumService {
                     || duracaoDias <= 0) {
                 throw badRequest("beneficio da compra invalido ou duplicado");
             }
-            itens.add(new ItemSolicitado(codigo, duracaoDias, opcaoId, custoCreditosEsperado));
+            itens.add(new ItemSolicitado(codigo, duracaoDias));
         }
         return itens;
     }
@@ -271,9 +272,6 @@ public class MinhaContaPremiumService {
             BeneficioPremiumEntity beneficio = beneficioRepository.findByCodigo(request.codigo())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
             if (!Boolean.TRUE.equals(beneficio.getAtivo())) {
-                if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())) {
-                    throw new PremiumOfertaAtualizadaException();
-                }
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado");
             }
             BeneficioPremiumOpcaoEntity opcao = opcaoRepository
@@ -282,26 +280,11 @@ public class MinhaContaPremiumService {
                             request.duracaoDias())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada"));
             if (!opcao.vigente(agora)) {
-                if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())) {
-                    throw new PremiumOfertaAtualizadaException();
-                }
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "duracao nao encontrada");
             }
             Integer custoCreditos = opcao.getCustoCreditos();
-            if (custoCreditos == null
-                    || custoCreditos < 0
-                    || (custoCreditos == 0 && !PremiumBeneficioCodigo.STORIES.equals(request.codigo()))) {
-                if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())) {
-                    throw new PremiumOfertaAtualizadaException();
-                }
+            if (custoCreditos == null || custoCreditos <= 0) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "catalogo sem custo operacional valido");
-            }
-            if (PremiumBeneficioCodigo.STORIES.equals(request.codigo())
-                    && (request.opcaoId() == null
-                        || request.custoCreditosEsperado() == null
-                        || !Objects.equals(request.opcaoId(), opcao.getId())
-                        || !Objects.equals(request.custoCreditosEsperado(), opcao.getCustoCreditos()))) {
-                throw new PremiumOfertaAtualizadaException();
             }
             itens.add(new ItemCompra(beneficio, opcao));
         }
@@ -347,16 +330,7 @@ public class MinhaContaPremiumService {
                 throw idempotenciaDivergente();
             }
             ItemSolicitado recebido = solicitadosPorCodigo.get(beneficio.getCodigo());
-            boolean stories = PremiumBeneficioCodigo.STORIES.equals(beneficio.getCodigo());
-            if (recebido == null
-                    || (stories
-                        && (recebido.opcaoId() == null || recebido.custoCreditosEsperado() == null))
-                    || (recebido.opcaoId() != null
-                        && !Objects.equals(recebido.opcaoId(), ativacao.getOpcaoId()))
-                    || (recebido.custoCreditosEsperado() != null
-                        && !Objects.equals(
-                            recebido.custoCreditosEsperado(),
-                            ativacao.getCustoCreditosSnapshot()))) {
+            if (recebido == null) {
                 throw idempotenciaDivergente();
             }
         }
@@ -605,8 +579,6 @@ public class MinhaContaPremiumService {
 
     private record ItemSolicitado(
             String codigo,
-            int duracaoDias,
-            UUID opcaoId,
-            Integer custoCreditosEsperado) {
+            int duracaoDias) {
     }
 }

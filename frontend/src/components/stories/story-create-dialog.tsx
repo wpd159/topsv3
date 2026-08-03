@@ -22,12 +22,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { formatStoryDate, getStoryEntryState } from '@/components/stories/story-entry-state'
+
 import {
-  comprarBeneficios,
-  newPremiumPurchaseIdempotencyKey,
-  PremiumApiError,
-} from '@/features/monetizacao-wizard/api'
-import {
+  ativarMeuAnuncioStory,
   consultarLimitesMinhasMidias,
   consultarMeuAnuncioStoryOferta,
   MeusAnunciosApiError,
@@ -35,7 +32,6 @@ import {
   type MeuAnuncio,
   type MeuAnuncioStory,
   type MeuAnuncioStoryOferta,
-  type MeuAnuncioStoryOfertaOpcao,
   type MinhasMidiasLimites,
 } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
@@ -83,9 +79,7 @@ function storyErrorMessage(error: unknown) {
 }
 
 function requestIdSuffix(error: unknown) {
-  const requestId = error instanceof MeusAnunciosApiError || error instanceof PremiumApiError
-    ? error.requestId
-    : null
+  const requestId = error instanceof MeusAnunciosApiError ? error.requestId : null
   return requestId ? ` Código de atendimento: ${requestId}.` : ''
 }
 
@@ -108,7 +102,6 @@ export function StoryCreateDialog({
   const [preview, setPreview] = useState<string | null>(null)
   const [limits, setLimits] = useState<MinhasMidiasLimites | null>(null)
   const [offer, setOffer] = useState<MeuAnuncioStoryOferta | null>(null)
-  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
   const [loadingOffer, setLoadingOffer] = useState(false)
   const [purchasing, setPurchasing] = useState(false)
   const [publishing, setPublishing] = useState(false)
@@ -120,7 +113,6 @@ export function StoryCreateDialog({
 
   const entry = getStoryEntryState(anuncio)
   const activeStory = result ?? offer?.storyAtivo ?? anuncio.storyAtivo
-  const selectedOption = offer?.opcoes.find((item) => item.opcaoId === selectedOptionId) ?? null
   const busy = loadingOffer || purchasing || publishing
 
   const loadOffer = useCallback(async () => {
@@ -134,15 +126,11 @@ export function StoryCreateDialog({
       const next = await consultarMeuAnuncioStoryOferta(slug)
       if (offerRequestSequenceRef.current !== sequence) return null
       setOffer(next)
-      setSelectedOptionId((current) => {
-        if (next.opcoes.length === 1) return next.opcoes[0].opcaoId
-        return next.opcoes.some((item) => item.opcaoId === current) ? current : null
-      })
       return next
     } catch (cause) {
       if (offerRequestSequenceRef.current !== sequence) return null
       setOffer(null)
-      setError(`Não foi possível carregar as opções de Stories.${requestIdSuffix(cause)}`)
+      setError(`Não foi possível carregar a oferta de Stories.${requestIdSuffix(cause)}`)
       return null
     } finally {
       if (offerRequestSequenceRef.current === sequence) {
@@ -161,7 +149,6 @@ export function StoryCreateDialog({
       setFile(null)
       setLimits(null)
       setOffer(null)
-      setSelectedOptionId(null)
       setLoadingOffer(false)
       setPurchasing(false)
       setPublishing(false)
@@ -178,7 +165,6 @@ export function StoryCreateDialog({
     setMode(null)
     setFile(null)
     setOffer(null)
-    setSelectedOptionId(null)
     setProgress(0)
     setError(null)
     setResult(null)
@@ -273,34 +259,30 @@ export function StoryCreateDialog({
     }
   }
 
-  async function activateAndPublish(option: MeuAnuncioStoryOfertaOpcao) {
-    if (option.creditosFaltantes > 0) return
-    const key = purchaseIdempotencyKeyRef.current ?? newPremiumPurchaseIdempotencyKey()
+  async function activateAndPublish() {
+    if (offer?.estado !== 'OFERTA_DISPONIVEL'
+        || offer.deficit !== 0
+        || offer.custoCreditos == null
+        || offer.versaoConfiguracao == null) return
+    const key = purchaseIdempotencyKeyRef.current ?? crypto.randomUUID()
     purchaseIdempotencyKeyRef.current = key
     setPurchasing(true)
     setError(null)
     try {
-      const purchase = await comprarBeneficios(
+      await ativarMeuAnuncioStory(
         anuncio.slug,
-        [{
-          beneficioCodigo: 'STORIES',
-          duracaoDias: option.duracaoDias,
-          opcaoId: option.opcaoId,
-          custoCreditosEsperado: option.custoCreditos,
-        }],
+        offer.custoCreditos,
+        offer.versaoConfiguracao,
         key
       )
-      if (!purchase.ativacoes.some((activation) => activation.beneficioCodigo === 'STORIES')) {
-        throw new Error('A ativação de Stories não foi confirmada pelo servidor.')
-      }
       setPurchaseCompleted(true)
       setPurchasing(false)
       await publishStory(true)
     } catch (cause) {
-      if (cause instanceof PremiumApiError && cause.code === 'PREMIUM_OFERTA_ATUALIZADA') {
+      if (cause instanceof MeusAnunciosApiError && cause.status === 409) {
         purchaseIdempotencyKeyRef.current = null
         await loadOffer()
-        setError(`As condições desta opção foram atualizadas. Confira o novo valor antes de continuar.${requestIdSuffix(cause)}`)
+        setError(`A condição de Stories mudou. Confira disponibilidade, custo e saldo antes de continuar.${requestIdSuffix(cause)}`)
       } else {
         setError(`${cause instanceof Error && cause.message.trim()
           ? cause.message
@@ -310,7 +292,6 @@ export function StoryCreateDialog({
       setPurchasing(false)
     }
   }
-
   function advanceToReview() {
     if (!mode) return
     if (mode === 'MIDIA_UPLOAD' && !file) {
@@ -490,33 +471,22 @@ export function StoryCreateDialog({
                 </div>
               ) : null}
 
-              {!loadingOffer && !purchaseCompleted && offer?.estado === 'OPCOES_DISPONIVEIS' ? (
+              {!loadingOffer && !purchaseCompleted && offer?.estado === 'OFERTA_DISPONIVEL' ? (
                 <>
                   <div className="rounded-lg border border-pink-200 bg-pink-50 p-4">
-                    <div className="flex items-center gap-2 font-semibold"><CircleDollarSign className="h-5 w-5 text-[#FC1EAD]" aria-hidden="true" />{offer.nome || 'Stories'}</div>
-                    {offer.descricao ? <p className="mt-1 text-sm text-slate-600">{offer.descricao}</p> : null}
+                    <div className="flex items-center gap-2 font-semibold"><CircleDollarSign className="h-5 w-5 text-[#FC1EAD]" aria-hidden="true" />Story por 24 horas</div>
+                    <p className="mt-1 text-sm text-slate-600">A publicação começa imediatamente após a confirmação técnica.</p>
                   </div>
-                  <fieldset className="space-y-2">
-                    <legend className="text-sm font-semibold">Duração e créditos</legend>
-                    {offer.opcoes.map((option) => (
-                      <label key={option.opcaoId} className={cn('flex cursor-pointer items-center gap-3 rounded-lg border p-3 focus-within:ring-2 focus-within:ring-[#FC1EAD]', selectedOptionId === option.opcaoId ? 'border-[#FC1EAD] bg-pink-50' : 'border-slate-200')}>
-                        <input type="radio" name="story-offer" checked={selectedOptionId === option.opcaoId} onChange={() => { setSelectedOptionId(option.opcaoId); setError(null); purchaseIdempotencyKeyRef.current = null }} disabled={busy} className="accent-[#FC1EAD]" />
-                        <span className="min-w-0 flex-1 text-sm"><strong>{option.duracaoDias} dias</strong> · {pluralizeCredits(option.custoCreditos)}</span>
-                      </label>
-                    ))}
-                  </fieldset>
-                  {selectedOption ? (
-                    <dl className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
-                      <div><dt className="inline font-medium">Custo: </dt><dd className="inline">{pluralizeCredits(selectedOption.custoCreditos)}</dd></div>
-                      <div><dt className="inline font-medium">Seu saldo: </dt><dd className="inline">{pluralizeCredits(selectedOption.saldoAtual)}</dd></div>
-                      {selectedOption.creditosFaltantes === 0
-                        ? <div><dt className="inline font-medium">Saldo após a compra: </dt><dd className="inline">{pluralizeCredits(selectedOption.saldoAposCompra)}</dd></div>
-                        : <div className="text-amber-900"><dt className="inline font-medium">Faltam: </dt><dd className="inline">{pluralizeCredits(selectedOption.creditosFaltantes)}</dd></div>}
-                    </dl>
-                  ) : <p className="text-sm text-amber-900">Escolha uma opção para continuar.</p>}
-                  {selectedOption && selectedOption.creditosFaltantes > 0 ? (
+                  <dl className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+                    <div><dt className="inline font-medium">Custo: </dt><dd className="inline">{pluralizeCredits(offer.custoCreditos ?? 0)}</dd></div>
+                    <div><dt className="inline font-medium">Seu saldo: </dt><dd className="inline">{pluralizeCredits(offer.saldoAtual ?? 0)}</dd></div>
+                    {offer.deficit === 0
+                      ? <div><dt className="inline font-medium">Saldo após a ativação: </dt><dd className="inline">{pluralizeCredits(offer.saldoProjetado ?? 0)}</dd></div>
+                      : <div className="text-amber-900"><dt className="inline font-medium">Faltam: </dt><dd className="inline">{pluralizeCredits(offer.deficit ?? 0)}</dd></div>}
+                  </dl>
+                  {(offer.deficit ?? 0) > 0 ? (
                     <div className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                      <p>Você precisa de {pluralizeCredits(selectedOption.custoCreditos)}. Seu saldo atual é {pluralizeCredits(selectedOption.saldoAtual)}.</p>
+                      <p>Seu saldo não é suficiente para esta ativação.</p>
                       {awaitingCredits ? <p>Após comprar os créditos, volte para esta página.</p> : null}
                       <div className="grid gap-2 sm:grid-cols-2">
                         <Button asChild><a href="/creditos" target="_blank" rel="noopener noreferrer" onClick={() => setAwaitingCredits(true)}>Comprar créditos</a></Button>
@@ -526,7 +496,6 @@ export function StoryCreateDialog({
                   ) : null}
                 </>
               ) : null}
-
               {!loadingOffer && !purchaseCompleted && offer?.estado === 'NOVAS_ATIVACOES_INDISPONIVEIS' ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" role="status">Stories está temporariamente indisponível para novas ativações.</p>
               ) : null}
@@ -544,8 +513,8 @@ export function StoryCreateDialog({
                 <Button type="button" variant="outline" onClick={() => { setError(null); setStep('REVISAR') }} disabled={busy}>Voltar</Button>
                 {purchaseCompleted || offer?.estado === 'DIREITO_DISPONIVEL' ? (
                   <Button type="button" onClick={() => void publishStory(purchaseCompleted)} disabled={publishing}>Publicar Story</Button>
-                ) : selectedOption && selectedOption.creditosFaltantes === 0 ? (
-                  <Button type="button" onClick={() => void activateAndPublish(selectedOption)} disabled={busy}>{purchasing ? 'Ativando...' : publishing ? 'Publicando...' : selectedOption.custoCreditos === 0 ? 'Ativar gratuitamente e publicar' : `Ativar por ${pluralizeCredits(selectedOption.custoCreditos)} e publicar`}</Button>
+                ) : offer?.estado === 'OFERTA_DISPONIVEL' && offer.deficit === 0 ? (
+                  <Button type="button" onClick={() => void activateAndPublish()} disabled={busy}>{purchasing ? 'Ativando...' : publishing ? 'Publicando...' : offer.custoCreditos === 0 ? 'Ativar gratuitamente e publicar' : `Ativar por ${pluralizeCredits(offer.custoCreditos ?? 0)} e publicar`}</Button>
                 ) : !offer && !loadingOffer ? (
                   <Button type="button" onClick={() => void loadOffer()}>Tentar novamente</Button>
                 ) : null}

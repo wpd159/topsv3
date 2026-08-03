@@ -13,7 +13,6 @@ import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivacaoDto
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarLoteRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumAtivarRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCancelarRequest;
-import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCatalogoCreateRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumCatalogoUpdateRequest;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumConsistenciaResumoDto;
 import br.com.topsdojob.v3.application.admin.premium.dto.AdminPremiumVencendoResumoDto;
@@ -90,18 +89,6 @@ public class AdminPremiumController {
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('ANUNCIO_LER')")
     public List<PremiumCatalogoDto> catalogo() {
         return catalogoService.catalogoAdministrativo();
-    }
-
-    @PostMapping("/catalogo")
-    @PreAuthorize("hasRole('ADMIN') and hasAuthority('PREMIUM_GERENCIAR')")
-    public PremiumCatalogoDto criarCatalogo(
-            @RequestBody AdminPremiumCatalogoCreateRequest body,
-            @AuthenticationPrincipal AdminUserPrincipal administrador,
-            HttpServletRequest request) {
-        return catalogoAdminService.criarBeneficio(
-                body,
-                administrador,
-                RequestIdContext.current(request));
     }
 
     @PutMapping("/catalogo/{id}")

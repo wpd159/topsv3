@@ -66,9 +66,6 @@ export type AdminPremiumCatalogoWrite = {
   ordemExibicao: number
   opcoes: AdminPremiumOpcaoWrite[]
 }
-export type AdminPremiumCatalogoCreate = AdminPremiumCatalogoWrite & {
-  codigo: 'STORIES'
-}
 
 export type AdminPlanoCredito = {
   id: string
@@ -198,14 +195,7 @@ export const AdminCreditosApi = {
     }
   ),
   catalogo: () => request<AdminPremiumCatalogo[]>('/premium/catalogo'),
-  criarCatalogo: (item: AdminPremiumCatalogoCreate) => request<AdminPremiumCatalogo>(
-    '/premium/catalogo',
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item),
-    }
-  ),
+
   atualizarCatalogo: (id: string, item: AdminPremiumCatalogoWrite) => request<AdminPremiumCatalogo>(
     `/premium/catalogo/${id}`,
     {

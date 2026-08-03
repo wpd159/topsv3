@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioAtualizacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioCicloVidaService;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryAtivacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryOfertaService;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
@@ -55,6 +56,9 @@ class MeusAnunciosCicloVidaCsrfTest {
 
     @MockBean
     private MeuAnuncioStoryOfertaService storyOfertaService;
+
+    @MockBean
+    private MeuAnuncioStoryAtivacaoService storyAtivacaoService;
 
     @Test
     void mutacoesSemCsrfSaoRecusadas() throws Exception {
