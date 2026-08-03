@@ -318,7 +318,7 @@ check('42. Story aceita somente MP4 web compativel e nao anuncia MOV', () => {
 
 check('43. botao permanece visivel e estado utiliza elegibilidade canonica', () => {
   matches(entryState, /anuncio\.status !== 'PUBLICADO' \|\| anuncio\.statusModeracao !== 'APROVADO'/)
-  matches(entryState, /new Set\(\['ATIVO', 'AGUARDANDO_MODERACAO'\]\)/)
+  matches(entryState, /new Set\(\['ATIVO', 'DISPONIVEL_PARA_PUBLICAR'\]\)/)
   excludes(entryState, /'PENDENTE'\]/)
   matches(card, /disabled=\{storyEntry\.disabled\}/)
   excludes(card, /aria-disabled=\{storyEntry\.disabled\}/)

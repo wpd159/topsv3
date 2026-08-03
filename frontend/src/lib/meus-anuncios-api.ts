@@ -43,7 +43,7 @@ export type MeuAnuncioReprovacao = {
 export type MeuAnuncioBeneficio = {
   codigo: string
   nome: string
-  status: 'AGUARDANDO_MODERACAO' | 'ATIVO' | 'EXPIRADO' | 'PENDENTE' | 'INATIVO' | 'ERRO'
+  status: 'DISPONIVEL_PARA_PUBLICAR' | 'AGUARDANDO_MODERACAO' | 'ATIVO' | 'EXPIRADO' | 'PENDENTE' | 'INATIVO' | 'ERRO'
   inicioEm: string | null
   fimEm: string | null
   duracaoDias: number | null
@@ -79,7 +79,7 @@ export type MeuAnuncioStoryOferta = {
   storyAtivo: MeuAnuncioStory | null
   direitoDisponivel: {
     ativacaoId: string
-    status: string
+    status: 'DISPONIVEL_PARA_PUBLICAR' | 'ATIVA'
     duracaoDias: number | null
     custoCreditosSnapshot: number | null
     inicioEm: string | null
@@ -317,7 +317,7 @@ function parseBeneficiosPremium(payload: unknown): MeuAnuncioBeneficio[] {
       origem: raw.origem ?? null,
     }
     const statusValidos = new Set([
-      'AGUARDANDO_MODERACAO', 'ATIVO', 'EXPIRADO', 'PENDENTE', 'INATIVO', 'ERRO',
+      'DISPONIVEL_PARA_PUBLICAR', 'AGUARDANDO_MODERACAO', 'ATIVO', 'EXPIRADO', 'PENDENTE', 'INATIVO', 'ERRO',
     ])
     if (
       typeof normalizado.codigo !== 'string' || !normalizado.codigo.trim() ||
@@ -442,7 +442,7 @@ export async function consultarMeuAnuncioStoryOferta(slug: string) {
     if (
       !direito ||
       typeof direito.ativacaoId !== 'string' || !direito.ativacaoId ||
-      !['AGUARDANDO_MODERACAO', 'ATIVA'].includes(direito.status) ||
+      !['DISPONIVEL_PARA_PUBLICAR', 'ATIVA'].includes(direito.status) ||
       !inteiroOpcionalValido(direito.duracaoDias) ||
       !inteiroOpcionalValido(direito.custoCreditosSnapshot) ||
       !dataOpcionalValida(direito.inicioEm) ||

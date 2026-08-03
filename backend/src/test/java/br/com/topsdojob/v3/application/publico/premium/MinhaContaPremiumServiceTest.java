@@ -239,7 +239,8 @@ class MinhaContaPremiumServiceTest {
         assertThat(salva.getValue().getInicioEm()).isNull();
         assertThat(salva.getValue().getFimEm()).isNull();
         assertThat(resultado.ativacoes()).singleElement().satisfies(item -> {
-            assertThat(item.status()).isEqualTo("AGUARDANDO_MODERACAO");
+            assertThat(item.status()).isEqualTo("DISPONIVEL_PARA_PUBLICAR");
+            assertThat(item.motivoIneficacia()).isEqualTo("AGUARDANDO_PUBLICACAO_STORY");
             assertThat(item.efeitoPublico()).isEqualTo("Publicacao de um Story vinculada ao anuncio");
         });
     }
@@ -268,7 +269,7 @@ class MinhaContaPremiumServiceTest {
         assertThat(resultado.ativacoes()).singleElement().satisfies(item -> {
             assertThat(item.beneficioCodigo()).isEqualTo("STORIES");
             assertThat(item.custoCreditos()).isZero();
-            assertThat(item.status()).isEqualTo("AGUARDANDO_MODERACAO");
+            assertThat(item.status()).isEqualTo("DISPONIVEL_PARA_PUBLICAR");
         });
         verify(ledger, never()).registrar(
                 any(), any(), any(), anyInt(), anyInt(), any(), anyString(),

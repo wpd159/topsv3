@@ -39,7 +39,10 @@ check('3. ANUNCIO antecede oferta', () => matches(dialog, /value="ANUNCIO"[\s\S]
 check('4. MIDIA_UPLOAD antecede oferta', () => matches(dialog, /value="MIDIA_UPLOAD"[\s\S]*setStep\('CONFIGURAR_CONTEUDO'\)/))
 check('5. revisao antecede oferta', () => matches(dialog, /step === 'REVISAR'[\s\S]*setStep\('VERIFICAR_DIREITO_E_OFERTA'\); void loadOffer\(\)/))
 check('6. direito pula compra', () => matches(dialog, /offer\?\.estado === 'DIREITO_DISPONIVEL'[\s\S]*Publicar Story/))
-check('7. AGUARDANDO_MODERACAO e aceito', () => matches(backendOffer, /StatusAtivacaoBeneficio\.AGUARDANDO_MODERACAO/))
+check('7. direito interno e apresentado sem moderacao humana', () => {
+  matches(backendOffer, /StatusAtivacaoBeneficio\.AGUARDANDO_MODERACAO/)
+  matches(backendOffer, /"DISPONIVEL_PARA_PUBLICAR"/)
+})
 check('8. ativacao consumida e excluida', () => matches(backendOffer, /!consumidas\.contains\(item\.getId\(\)\)/))
 check('9. Story ativo abre gerenciamento', () => matches(dialog, /activeStory[\s\S]*Gerenciar Story/))
 check('10. catalogo carrega somente na etapa final', () => matches(dialog, /setStep\('VERIFICAR_DIREITO_E_OFERTA'\); void loadOffer\(\)/))

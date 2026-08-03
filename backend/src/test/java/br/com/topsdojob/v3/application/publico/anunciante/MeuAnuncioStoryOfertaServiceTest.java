@@ -95,7 +95,7 @@ class MeuAnuncioStoryOfertaServiceTest {
     var resultado = service.consultar("qa-story", authentication);
 
     assertThat(resultado.estado()).isEqualTo("DIREITO_DISPONIVEL");
-    assertThat(resultado.direitoDisponivel().status()).isEqualTo("AGUARDANDO_MODERACAO");
+    assertThat(resultado.direitoDisponivel().status()).isEqualTo("DISPONIVEL_PARA_PUBLICAR");
     assertThat(resultado.direitoDisponivel().duracaoDias()).isEqualTo(1);
     assertThat(resultado.saldoCreditos()).isNull();
     verify(ledger, never()).consultarSaldo(any());

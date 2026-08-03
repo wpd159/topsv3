@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +13,7 @@ import {
   type AdminCreditoUsuario,
   type AdminPremiumAtivacao,
   type AdminPremiumCatalogo,
+  type AdminPremiumCatalogoWrite,
 } from '@/lib/admin-creditos-operacionais-api'
 
 const ROTULOS: Record<string, string> = {
@@ -30,6 +32,7 @@ const ROTULOS: Record<string, string> = {
   CREDITO_ADMIN_AJUSTAR: 'Ajuste administrativo de creditos',
   CREDITO_ADMIN_ESTORNAR: 'Estorno administrativo de creditos',
   PREMIUM_CATALOGO_ATUALIZAR: 'Catalogo Premium atualizado',
+  PREMIUM_CATALOGO_CRIAR: 'Catalogo Premium criado',
   PREMIUM_ATIVACAO_CANCELAR: 'Ativacao Premium cancelada',
   MOVIMENTO_CREDITO: 'Movimento de creditos',
   BENEFICIO_PREMIUM: 'Beneficio Premium',
@@ -40,6 +43,124 @@ function rotuloOperacional(valor: string | null | undefined) {
   if (!valor) return '-'
   return ROTULOS[valor] ?? valor.toLowerCase().replaceAll('_', ' ').replace(/^./, (letra) => letra.toUpperCase())
 }
+const STORY_DRAFT_ID = 'catalogo-stories-novo'
+
+type CatalogoOpcaoForm = {
+  id: string
+  persistida: boolean
+  duracaoDias: string
+  custoCreditos: string
+  ativo: boolean
+  ativoOriginal: boolean
+  ordemExibicao: string
+}
+
+type CatalogoForm = {
+  id: string
+  codigo: string
+  nome: string
+  descricao: string
+  ativo: boolean
+  ativoOriginal: boolean
+  ordemExibicao: string
+  opcoes: CatalogoOpcaoForm[]
+}
+
+function catalogoForm(item: AdminPremiumCatalogo): CatalogoForm {
+  return {
+    ...item,
+    ativoOriginal: item.ativo,
+    ordemExibicao: String(item.ordemExibicao),
+    opcoes: item.opcoes.map((opcao) => ({
+      ...opcao,
+      persistida: true,
+      duracaoDias: String(opcao.duracaoDias),
+      custoCreditos: String(opcao.custoCreditos),
+      ativoOriginal: opcao.ativo,
+      ordemExibicao: String(opcao.ordemExibicao),
+    })),
+  }
+}
+
+function storyDraft(): CatalogoForm {
+  return {
+    id: STORY_DRAFT_ID,
+    codigo: 'STORIES',
+    nome: 'Stories',
+    descricao: '',
+    ativo: false,
+    ativoOriginal: false,
+    ordemExibicao: '',
+    opcoes: [],
+  }
+}
+
+function catalogoComStory(items: AdminPremiumCatalogo[]) {
+  const formularios = items.map(catalogoForm)
+  return formularios.some((item) => item.codigo === 'STORIES')
+    ? formularios
+    : [...formularios, storyDraft()]
+}
+
+function novaOpcao(): CatalogoOpcaoForm {
+  const sufixo = typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}`
+  return {
+    id: `nova-opcao-${sufixo}`,
+    persistida: false,
+    duracaoDias: '',
+    custoCreditos: '',
+    ativo: false,
+    ativoOriginal: false,
+    ordemExibicao: '',
+  }
+}
+
+function inteiroFormulario(value: string, minimo: number, label: string) {
+  if (!value.trim()) throw new Error(`${label} deve ser informado.`)
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < minimo) {
+    throw new Error(`${label} deve ser um numero inteiro maior ou igual a ${minimo}.`)
+  }
+  return parsed
+}
+
+function catalogoWrite(item: CatalogoForm): AdminPremiumCatalogoWrite {
+  const nome = item.nome.trim()
+  const descricao = item.descricao.trim()
+  if (nome.length < 2) throw new Error('Informe um nome com ao menos dois caracteres.')
+  if (descricao.length < 5) throw new Error('Informe uma descricao com ao menos cinco caracteres.')
+  if (item.opcoes.length === 0) throw new Error('Cadastre ao menos uma opcao comercial.')
+
+  const duracoes = new Set<number>()
+  const opcoes = item.opcoes.map((opcao, index) => {
+    const duracaoDias = inteiroFormulario(opcao.duracaoDias, 1, `Duracao da opcao ${index + 1}`)
+    if (duracoes.has(duracaoDias)) {
+      throw new Error(`Existe mais de uma opcao com ${duracaoDias} dias.`)
+    }
+    duracoes.add(duracaoDias)
+    return {
+      duracaoDias,
+      custoCreditos: inteiroFormulario(opcao.custoCreditos, 0, `Custo da opcao ${index + 1}`),
+      ativo: opcao.ativo,
+      ordemExibicao: inteiroFormulario(opcao.ordemExibicao, 0, `Ordem da opcao ${index + 1}`),
+    }
+  })
+
+  return {
+    nome,
+    descricao,
+    ativo: item.ativo,
+    ordemExibicao: inteiroFormulario(item.ordemExibicao, 0, 'Ordem do beneficio'),
+    opcoes,
+  }
+}
+
+function disponibilidadeCatalogoAlterada(item: CatalogoForm) {
+  return item.ativo !== item.ativoOriginal
+    || item.opcoes.some((opcao) => opcao.ativo !== opcao.ativoOriginal)
+}
 
 export default function AdminCreditosPage() {
   const [query, setQuery] = useState('')
@@ -47,12 +168,16 @@ export default function AdminCreditosPage() {
   const [usuario, setUsuario] = useState<AdminCreditoUsuario | null>(null)
   const [movimentos, setMovimentos] = useState<AdminCreditoMovimento[]>([])
   const [ativacoes, setAtivacoes] = useState<AdminPremiumAtivacao[]>([])
-  const [catalogo, setCatalogo] = useState<AdminPremiumCatalogo[]>([])
+  const [catalogo, setCatalogo] = useState<CatalogoForm[]>([])
   const [auditoria, setAuditoria] = useState<AdminAuditoriaFinanceira[]>([])
   const [direcao, setDirecao] = useState<'CREDITO' | 'DEBITO'>('CREDITO')
   const [quantidade, setQuantidade] = useState('')
   const [motivo, setMotivo] = useState('')
   const [busy, setBusy] = useState(false)
+  const [catalogoSavingId, setCatalogoSavingId] = useState<string | null>(null)
+  const [catalogoErros, setCatalogoErros] = useState<Record<string, string>>({})
+  const catalogoSaveLock = useRef(false)
+  const catalogoErrorRefs = useRef<Record<string, HTMLParagraphElement | null>>({})
 
   const carregarAdministracao = async () => {
     try {
@@ -60,7 +185,7 @@ export default function AdminCreditosPage() {
         AdminCreditosApi.catalogo(),
         AdminCreditosApi.auditoria(),
       ])
-      setCatalogo(catalogoData)
+      setCatalogo(catalogoComStory(catalogoData))
       setAuditoria(auditoriaData)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Falha ao carregar administracao financeira.')
@@ -154,22 +279,81 @@ export default function AdminCreditosPage() {
     }
   }
 
-  const salvarCatalogo = async (item: AdminPremiumCatalogo) => {
+  const limparErroCatalogo = (id: string) => {
+    setCatalogoErros((current) => {
+      if (!current[id]) return current
+      const next = { ...current }
+      delete next[id]
+      return next
+    })
+  }
+
+  const atualizarCatalogoForm = (id: string, patch: Partial<CatalogoForm>) => {
+    limparErroCatalogo(id)
+    setCatalogo((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry))
+  }
+
+  const atualizarOpcao = (
+    itemId: string,
+    opcaoId: string,
+    patch: Partial<CatalogoOpcaoForm>,
+  ) => {
+    limparErroCatalogo(itemId)
+    setCatalogo((current) => current.map((entry) => entry.id === itemId
+      ? {
+        ...entry,
+        opcoes: entry.opcoes.map((opcao) => opcao.id === opcaoId ? { ...opcao, ...patch } : opcao),
+      }
+      : entry))
+  }
+
+  const adicionarOpcao = (itemId: string) => {
+    limparErroCatalogo(itemId)
+    setCatalogo((current) => current.map((entry) => entry.id === itemId
+      ? { ...entry, opcoes: [...entry.opcoes, novaOpcao()] }
+      : entry))
+  }
+
+  const removerOpcaoNova = (itemId: string, opcaoId: string) => {
+    limparErroCatalogo(itemId)
+    setCatalogo((current) => current.map((entry) => entry.id === itemId
+      ? { ...entry, opcoes: entry.opcoes.filter((opcao) => opcao.id !== opcaoId || opcao.persistida) }
+      : entry))
+  }
+
+  const salvarCatalogo = async (item: CatalogoForm) => {
+    if (catalogoSaveLock.current) return
+    catalogoSaveLock.current = true
+    limparErroCatalogo(item.id)
     try {
+      const payload = catalogoWrite(item)
+      if (
+        disponibilidadeCatalogoAlterada(item)
+        && !window.confirm('Confirmar a alteracao de disponibilidade deste beneficio e de suas opcoes?')
+      ) {
+        return
+      }
       setBusy(true)
-      const atualizado = await AdminCreditosApi.atualizarCatalogo(item)
-      setCatalogo((current) => current.map((entry) => entry.id === item.id ? atualizado : entry))
-      toast.success('Beneficio atualizado.')
+      setCatalogoSavingId(item.id)
+      const atualizado = item.id === STORY_DRAFT_ID
+        ? await AdminCreditosApi.criarCatalogo({ codigo: 'STORIES', ...payload })
+        : await AdminCreditosApi.atualizarCatalogo(item.id, payload)
+      setCatalogo((current) => current.map((entry) =>
+        entry.id === item.id ? catalogoForm(atualizado) : entry))
+      toast.success(item.id === STORY_DRAFT_ID ? 'Beneficio criado.' : 'Beneficio atualizado.')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Falha ao atualizar beneficio.')
+      const message = error instanceof Error ? error.message : 'Falha ao salvar beneficio.'
+      setCatalogoErros((current) => ({ ...current, [item.id]: message }))
+      toast.error(message)
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => catalogoErrorRefs.current[item.id]?.focus())
+      }
     } finally {
+      catalogoSaveLock.current = false
+      setCatalogoSavingId(null)
       setBusy(false)
     }
   }
-
-  const duracoesDisponiveis = Array.from(new Set(
-    catalogo.flatMap((item) => item.opcoes.map((opcao) => opcao.duracaoDias))
-  )).sort((a, b) => a - b)
 
   return (
     <section className="space-y-8 pb-12">
@@ -242,27 +426,134 @@ export default function AdminCreditosPage() {
         className="scroll-mt-6 rounded-lg border border-gray-200 bg-white p-5"
       >
         <h2 className="text-base font-semibold text-gray-900">Catalogo de beneficios</h2>
-        <p className="mt-1 text-sm text-gray-500">
-          Custos e duracoes {duracoesDisponiveis.length ? duracoesDisponiveis.join(', ') : 'disponiveis'} dias sao definidos pelo backend.
-        </p>
+        <p className="mt-1 text-sm text-gray-500">Custos, duracoes e disponibilidade sao configurados aqui e aplicados pelo backend, sem valores implicitos.</p>
         <div className="mt-5 grid gap-4 lg:grid-cols-2">
           {catalogo.map((item) => (
             <div key={item.id} className="rounded-md border border-gray-200 p-4">
-              <div className="grid gap-3 sm:grid-cols-[1fr_90px_90px]">
-                <Input value={item.nome} onChange={(event) => setCatalogo((current) => current.map((entry) => entry.id === item.id ? { ...entry, nome: event.target.value } : entry))} />
-                <label className="text-xs text-gray-500">Ordem<Input type="number" min={0} value={item.ordemExibicao} onChange={(event) => setCatalogo((current) => current.map((entry) => entry.id === item.id ? { ...entry, ordemExibicao: Number(event.target.value) } : entry))} /></label>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={item.ativo} onChange={(event) => setCatalogo((current) => current.map((entry) => entry.id === item.id ? { ...entry, ativo: event.target.checked } : entry))} />Ativo</label>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase text-gray-500">{item.codigo}</p>
+                {item.id === STORY_DRAFT_ID ? (
+                  <span className="text-xs font-medium text-amber-700">Ainda nao cadastrado</span>
+                ) : null}
               </div>
-              <textarea value={item.descricao} onChange={(event) => setCatalogo((current) => current.map((entry) => entry.id === item.id ? { ...entry, descricao: event.target.value } : entry))} className="mt-3 min-h-20 w-full rounded-md border border-gray-200 p-3 text-sm" />
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {item.opcoes.map((opcao) => (
-                  <div key={opcao.id} className="space-y-2 rounded-md border border-gray-100 p-2">
-                    <label className="text-xs text-gray-500">{opcao.duracaoDias} dias<Input type="number" min={0} value={opcao.custoCreditos} onChange={(event) => setCatalogo((current) => current.map((entry) => entry.id === item.id ? { ...entry, opcoes: entry.opcoes.map((value) => value.id === opcao.id ? { ...value, custoCreditos: Number(event.target.value) } : value) } : entry))} /></label>
-                    <label className="flex items-center gap-2 text-xs text-gray-600"><input type="checkbox" checked={opcao.ativo} onChange={(event) => setCatalogo((current) => current.map((entry) => entry.id === item.id ? { ...entry, opcoes: entry.opcoes.map((value) => value.id === opcao.id ? { ...value, ativo: event.target.checked } : value) } : entry))} />Disponivel</label>
+              <div className="grid gap-3 sm:grid-cols-[1fr_90px_90px]">
+                <Input
+                  aria-label={`Nome do beneficio ${item.codigo}`}
+                  value={item.nome}
+                  onChange={(event) => atualizarCatalogoForm(item.id, { nome: event.target.value })}
+                />
+                <label className="text-xs text-gray-500">
+                  Ordem
+                  <Input
+                    type="number"
+                    min={0}
+                    value={item.ordemExibicao}
+                    onChange={(event) => atualizarCatalogoForm(item.id, { ordemExibicao: event.target.value })}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={item.ativo}
+                    onChange={(event) => atualizarCatalogoForm(item.id, { ativo: event.target.checked })}
+                  />
+                  Ativo
+                </label>
+              </div>
+              <textarea
+                aria-label={`Descricao do beneficio ${item.codigo}`}
+                value={item.descricao}
+                onChange={(event) => atualizarCatalogoForm(item.id, { descricao: event.target.value })}
+                className="mt-3 min-h-20 w-full rounded-md border border-gray-200 p-3 text-sm"
+              />
+              <div className="mt-4">
+                {item.opcoes.map((opcao, index) => (
+                  <div key={opcao.id} className="grid gap-2 border-t border-gray-100 py-3 sm:grid-cols-[1fr_1fr_90px_auto] sm:items-end">
+                    <label className="text-xs text-gray-500">
+                      Duracao (dias)
+                      <Input
+                        type="number"
+                        min={1}
+                        disabled={item.codigo !== 'STORIES'}
+                        value={opcao.duracaoDias}
+                        onChange={(event) => atualizarOpcao(item.id, opcao.id, { duracaoDias: event.target.value })}
+                      />
+                    </label>
+                    <label className="text-xs text-gray-500">
+                      Custo (creditos)
+                      <Input
+                        type="number"
+                        min={0}
+                        value={opcao.custoCreditos}
+                        onChange={(event) => atualizarOpcao(item.id, opcao.id, { custoCreditos: event.target.value })}
+                      />
+                    </label>
+                    <label className="text-xs text-gray-500">
+                      Ordem
+                      <Input
+                        type="number"
+                        min={0}
+                        value={opcao.ordemExibicao}
+                        onChange={(event) => atualizarOpcao(item.id, opcao.id, { ordemExibicao: event.target.value })}
+                      />
+                    </label>
+                    <div className="flex min-h-10 items-center justify-between gap-2 sm:justify-end">
+                      <label className="flex items-center gap-2 text-xs text-gray-600">
+                        <input
+                          type="checkbox"
+                          checked={opcao.ativo}
+                          onChange={(event) => atualizarOpcao(item.id, opcao.id, { ativo: event.target.checked })}
+                        />
+                        Disponivel
+                      </label>
+                      {!opcao.persistida ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          title={`Remover opcao ${index + 1}`}
+                          aria-label={`Remover opcao ${index + 1}`}
+                          onClick={() => removerOpcaoNova(item.id, opcao.id)}
+                        >
+                          <Trash2 className="size-4 text-red-600" aria-hidden="true" />
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
+                {item.opcoes.length === 0 ? (
+                  <p className="border-t border-gray-100 py-4 text-sm text-gray-500">Nenhuma opcao comercial cadastrada.</p>
+                ) : null}
               </div>
-              <Button className="mt-4" disabled={busy} onClick={() => void salvarCatalogo(item)}>Salvar beneficio</Button>
+              {catalogoErros[item.id] ? (
+                <p
+                  id={`catalogo-error-${item.id}`}
+                  ref={(element) => { catalogoErrorRefs.current[item.id] = element }}
+                  role="alert"
+                  tabIndex={-1}
+                  className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+                >
+                  {catalogoErros[item.id]}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                {item.codigo === 'STORIES' ? (
+                  <Button type="button" variant="outline" onClick={() => adicionarOpcao(item.id)}>
+                    <Plus className="mr-2 size-4" aria-hidden="true" />
+                    Adicionar opcao
+                  </Button>
+                ) : <span />}
+                <Button
+                  aria-busy={catalogoSavingId === item.id}
+                  aria-describedby={catalogoErros[item.id] ? `catalogo-error-${item.id}` : undefined}
+                  disabled={busy}
+                  onClick={() => void salvarCatalogo(item)}
+                >
+                  {catalogoSavingId === item.id
+                    ? 'Salvando...'
+                    : item.id === STORY_DRAFT_ID ? 'Criar beneficio' : 'Salvar beneficio'}
+                </Button>
+              </div>
             </div>
           ))}
         </div>

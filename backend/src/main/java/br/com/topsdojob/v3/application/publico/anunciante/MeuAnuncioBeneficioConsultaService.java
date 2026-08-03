@@ -134,9 +134,12 @@ public class MeuAnuncioBeneficioConsultaService {
             OffsetDateTime agora) {
         boolean aguardando = item.ativacao().getStatus()
                 == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO;
-        String status = aguardando
-                ? "AGUARDANDO_MODERACAO"
-                : switch (item.status()) {
+        boolean storyAguardando = aguardando && STORIES.equals(item.beneficio().getCodigo());
+        String status = storyAguardando
+                ? "DISPONIVEL_PARA_PUBLICAR"
+                : aguardando
+                        ? "AGUARDANDO_MODERACAO"
+                        : switch (item.status()) {
                     case ATIVO, VENCENDO -> "ATIVO";
                     case EXPIRADO -> "EXPIRADO";
                     case PENDENTE -> "PENDENTE";

@@ -53,6 +53,23 @@ export type AdminPremiumCatalogo = {
   ordemExibicao: number
   opcoes: AdminPremiumOpcao[]
 }
+export type AdminPremiumOpcaoWrite = {
+  duracaoDias: number
+  custoCreditos: number
+  ativo: boolean
+  ordemExibicao: number
+}
+export type AdminPremiumCatalogoWrite = {
+  nome: string
+  descricao: string
+  ativo: boolean
+  ordemExibicao: number
+  opcoes: AdminPremiumOpcaoWrite[]
+}
+export type AdminPremiumCatalogoCreate = AdminPremiumCatalogoWrite & {
+  codigo: 'STORIES'
+}
+
 export type AdminPlanoCredito = {
   id: string
   codigo: string
@@ -181,23 +198,20 @@ export const AdminCreditosApi = {
     }
   ),
   catalogo: () => request<AdminPremiumCatalogo[]>('/premium/catalogo'),
-  atualizarCatalogo: (item: AdminPremiumCatalogo) => request<AdminPremiumCatalogo>(
-    `/premium/catalogo/${item.id}`,
+  criarCatalogo: (item: AdminPremiumCatalogoCreate) => request<AdminPremiumCatalogo>(
+    '/premium/catalogo',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    }
+  ),
+  atualizarCatalogo: (id: string, item: AdminPremiumCatalogoWrite) => request<AdminPremiumCatalogo>(
+    `/premium/catalogo/${id}`,
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nome: item.nome,
-        descricao: item.descricao,
-        ativo: item.ativo,
-        ordemExibicao: item.ordemExibicao,
-        opcoes: item.opcoes.map((opcao) => ({
-          duracaoDias: opcao.duracaoDias,
-          custoCreditos: opcao.custoCreditos,
-          ativo: opcao.ativo,
-          ordemExibicao: opcao.ordemExibicao,
-        })),
-      }),
+      body: JSON.stringify(item),
     }
   ),
   pacotes: (busca = '', status: 'TODOS' | 'ATIVOS' | 'INATIVOS' = 'TODOS') =>

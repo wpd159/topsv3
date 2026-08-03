@@ -14,7 +14,7 @@ assert.deepEqual(apresentarBeneficioPremium({ status: 'AGUARDANDO_MODERACAO' }),
 })
 
 assert.deepEqual(apresentarBeneficioPremium({
-  status: 'AGUARDANDO_MODERACAO',
+  status: 'DISPONIVEL_PARA_PUBLICAR',
   motivoEspera: 'AGUARDANDO_PUBLICACAO_STORY',
 }), {
   situacao: 'Disponível para publicar Story',

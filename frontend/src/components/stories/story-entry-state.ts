@@ -30,7 +30,7 @@ export type StoryEntryState =
       reason: string
     }
 
-const STORY_USABLE_STATUSES = new Set(['ATIVO', 'AGUARDANDO_MODERACAO'])
+const STORY_USABLE_STATUSES = new Set(['ATIVO', 'DISPONIVEL_PARA_PUBLICAR'])
 
 export function formatStoryDate(value: string) {
   const date = new Date(value)

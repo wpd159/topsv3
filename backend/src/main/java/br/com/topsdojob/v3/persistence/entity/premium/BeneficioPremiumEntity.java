@@ -102,6 +102,30 @@ public class BeneficioPremiumEntity {
     this.atualizadoEm = atualizadoEm;
   }
 
+  public static BeneficioPremiumEntity criarCatalogo(
+      UUID id,
+      String codigo,
+      String nome,
+      String descricao,
+      EscopoBeneficioPremium escopo,
+      boolean afetaRanking,
+      boolean ativo,
+      int ordemExibicao,
+      OffsetDateTime criadoEm) {
+    BeneficioPremiumEntity entity = new BeneficioPremiumEntity();
+    entity.id = id;
+    entity.codigo = codigo;
+    entity.nome = nome;
+    entity.descricao = descricao;
+    entity.escopo = escopo;
+    entity.afetaRanking = afetaRanking;
+    entity.ativo = ativo;
+    entity.ordemExibicao = ordemExibicao;
+    entity.criadoEm = criadoEm;
+    entity.atualizadoEm = criadoEm;
+    return entity;
+  }
+
   public static BeneficioPremiumEntity criarFixtureHomologacao(
       UUID id,
       String codigo,

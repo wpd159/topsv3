@@ -14,6 +14,13 @@ export function formatarDataBeneficio(value) {
 }
 
 export function apresentarBeneficioPremium(beneficio) {
+  if (beneficio.status === 'DISPONIVEL_PARA_PUBLICAR') {
+    return apresentarBeneficioPremium({
+      ...beneficio,
+      status: 'AGUARDANDO_MODERACAO',
+      motivoEspera: 'AGUARDANDO_PUBLICACAO_STORY',
+    })
+  }
   if (beneficio.status === 'AGUARDANDO_MODERACAO') {
     if (beneficio.motivoEspera === 'AGUARDANDO_PUBLICACAO_STORY') {
       return {

@@ -78,7 +78,7 @@ public class MeuAnuncioStoryOfertaService {
           null,
           new MeuAnuncioStoryDireitoDto(
               direito.getId(),
-              direito.getStatus().name(),
+              statusPublico(direito),
               duracao,
               direito.getCustoCreditosSnapshot(),
               direito.getInicioEm(),
@@ -177,6 +177,10 @@ public class MeuAnuncioStoryOfertaService {
             .thenComparing(AtivacaoBeneficioEntity::getId))
         .findFirst()
         .orElse(null);
+  }
+
+  private String statusPublico(AtivacaoBeneficioEntity ativacao) {
+    return aguardandoUso(ativacao) ? "DISPONIVEL_PARA_PUBLICAR" : ativacao.getStatus().name();
   }
 
   private boolean aguardandoUso(AtivacaoBeneficioEntity ativacao) {

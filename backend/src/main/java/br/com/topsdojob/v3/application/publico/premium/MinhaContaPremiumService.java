@@ -482,9 +482,10 @@ public class MinhaContaPremiumService {
                     BeneficioPremiumEntity beneficio = beneficios.get(item.getBeneficioId());
                     BeneficioPremiumOpcaoEntity opcao = opcoes.get(item.getOpcaoId());
                     AnuncioEntity anuncio = anuncios.get(item.getAnuncioId());
-                    String status = statusCalculado.getOrDefault(
+                    String statusInterno = statusCalculado.getOrDefault(
                             item.getId(),
                             item.getStatus() == null ? null : item.getStatus().name());
+                    String status = statusPublico(item, beneficio, statusInterno);
                     return new MinhaAtivacaoPremiumDto(
                             item.getId(),
                             item.getAnuncioId(),
@@ -498,7 +499,8 @@ public class MinhaContaPremiumService {
                             item.getInicioEm(),
                             item.getFimEm(),
                             beneficio == null ? null : efeitoPublico(beneficio.getCodigo()),
-                            motivoIneficacia(anuncio, item, status));
+                            motivoIneficacia(anuncio, item, status,
+                                    beneficio == null ? null : beneficio.getCodigo()));
                 })
                 .toList();
     }
@@ -547,15 +549,28 @@ public class MinhaContaPremiumService {
         };
     }
 
+    private String statusPublico(
+            AtivacaoBeneficioEntity ativacao,
+            BeneficioPremiumEntity beneficio,
+            String status) {
+        return beneficio != null
+                && PremiumBeneficioCodigo.STORIES.equals(beneficio.getCodigo())
+                && ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO
+                ? "DISPONIVEL_PARA_PUBLICAR" : status;
+    }
+
     private String motivoIneficacia(
             AnuncioEntity anuncio,
             AtivacaoBeneficioEntity ativacao,
-            String status) {
+            String status,
+            String beneficioCodigo) {
         if (anuncio == null) {
             return "ANUNCIO_NAO_ENCONTRADO";
         }
         if (ativacao.getStatus() == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO) {
-            return "AGUARDANDO_APROVACAO_MODERACAO";
+            return PremiumBeneficioCodigo.STORIES.equals(beneficioCodigo)
+                    ? "AGUARDANDO_PUBLICACAO_STORY"
+                    : "AGUARDANDO_APROVACAO_MODERACAO";
         }
         if (!"ATIVO".equals(status) && !"ATIVA".equals(status) && !"VENCENDO".equals(status)) {
             return "ATIVACAO_NAO_VIGENTE";

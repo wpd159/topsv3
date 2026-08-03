@@ -136,7 +136,7 @@ class MeuAnuncioBeneficioConsultaServiceTest {
 
         MeuAnuncioBeneficioDto dto = unico();
 
-        assertThat(dto.status()).isEqualTo("AGUARDANDO_MODERACAO");
+        assertThat(dto.status()).isEqualTo("DISPONIVEL_PARA_PUBLICAR");
         assertThat(dto.inicioEm()).isNull();
         assertThat(dto.fimEm()).isNull();
         assertThat(dto.motivoEspera()).isEqualTo("AGUARDANDO_PUBLICACAO_STORY");
