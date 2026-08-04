@@ -239,6 +239,17 @@ check('38. seletor devolve foco ao cancelar sem roubar foco da continuacao', () 
   matches(selector, /continuingRef\.current = true[\s\S]*onSelect\(selected\)/)
 })
 
-assert.equal(checks, 38)
+check('39. card distingue Story com falha de midia', () => {
+  matches(card, /const storyMediaError = anuncio\.storyAtivo\?\.modoConteudo === 'MIDIA_UPLOAD'/)
+  matches(card, /role=\{storyMediaError \? 'alert' : 'status'\}/)
+  matches(card, /Story com falha na m\\u00eddia/)
+})
+
+check('40. card e dialogo nao serializam referencia privada', () => {
+  matches(dialog, /activeStoryMediaError/)
+  excludes(card + dialog, /objectKey|chaveObjeto|bucket|urlPrivada|signedUrl/)
+})
+
+assert.equal(checks, 40)
 console.log(`STORY_ENTRY_POINTS_CHECKS=${checks}`)
 console.log('STORY_ENTRY_POINTS_RESULT=OK')

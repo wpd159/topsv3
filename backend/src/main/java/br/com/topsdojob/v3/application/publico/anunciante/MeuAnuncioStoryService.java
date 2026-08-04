@@ -280,7 +280,7 @@ public class MeuAnuncioStoryService {
           foto.processadoEm(),
           foto.sha256Origem());
     }
-    arquivoRepository.saveAndFlush(arquivo);
+    ArquivoMidiaEntity arquivoPersistido = arquivoRepository.saveAndFlush(arquivo);
 
     ObjectWriteResult resultado;
     try {
@@ -293,7 +293,9 @@ public class MeuAnuncioStoryService {
           storage, key, anuncio.getId(), storyId, arquivoId, vinculoId, usuarioId, requestId);
     }
     verificarObjeto(storage, key, bytes, mime, largura, altura, foto != null);
-    arquivo.aplicarDecisao(br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia.VALIDADO);
+    arquivoPersistido.aplicarDecisao(
+        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia.VALIDADO);
+    arquivoRepository.saveAndFlush(arquivoPersistido);
 
     int ordem = midiaRepository.findByAnuncioId(anuncio.getId()).stream()
         .filter(item -> item.getFinalidade()

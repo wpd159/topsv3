@@ -106,6 +106,9 @@ export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryOpen }: MeuAnuncio
   const storyUnavailableId = useId()
   const status = anuncioStatus(anuncio.status)
   const storyEntry = getStoryEntryState(anuncio)
+  const storyMediaError = anuncio.storyAtivo?.modoConteudo === 'MIDIA_UPLOAD'
+    && anuncio.storyAtivo.estadoMidia === 'INDISPONIVEL'
+
   const capaPublica = !anuncio.capa?.restrita
     ? meuAnuncioUrlPublicaSegura(anuncio.capa?.urlPublica)
     : null
@@ -187,8 +190,13 @@ export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryOpen }: MeuAnuncio
               <SparklesIcon className="h-4 w-4 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
               Stories
             </h3>
-            <div className="mt-2 rounded-lg border border-pink-200 bg-pink-50 p-3 text-xs text-slate-700">
-              <p className="font-semibold text-slate-900">Story ativo</p>
+            <div
+              className={cn('mt-2 rounded-lg border p-3 text-xs text-slate-700', storyMediaError ? 'border-amber-300 bg-amber-50' : 'border-pink-200 bg-pink-50')}
+              role={storyMediaError ? 'alert' : 'status'}
+            >
+              <p className="font-semibold text-slate-900">
+                {storyMediaError ? 'Story com falha na m\u00eddia' : 'Story ativo'}
+              </p>
               <p className="mt-1">Modo: {anuncio.storyAtivo.modoConteudo === 'ANUNCIO' ? 'Divulgar meu anúncio' : 'Mídia enviada'}</p>
               <p className="mt-1">Ativo até {formatStoryDate(anuncio.storyAtivo.fimEm)}</p>
               {anuncio.storyAtivo.modoConteudo === 'MIDIA_UPLOAD' && anuncio.storyAtivo.estadoMidia === 'INDISPONIVEL' ? (

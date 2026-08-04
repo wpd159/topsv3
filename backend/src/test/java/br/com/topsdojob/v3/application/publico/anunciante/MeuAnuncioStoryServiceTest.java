@@ -19,6 +19,14 @@ import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProces
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoProcessada;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.MidiaUploadValidator.MidiaValidada;
+import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.application.publico.service.IdadeAnunciantePublicaService;
+import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
+import br.com.topsdojob.v3.application.publico.service.StoryAnuncioApresentacaoService;
+import br.com.topsdojob.v3.application.publico.service.StoryFeedPublicoService;
+import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
@@ -41,12 +49,15 @@ import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumOpcaoRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
@@ -71,6 +82,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -82,7 +94,9 @@ class MeuAnuncioStoryServiceTest {
 
   private static final UUID USUARIO_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
   private static final UUID ANUNCIO_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
+  private static final UUID ANUNCIO_B_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
   private static final String SLUG = "anuncio-story-teste";
+  private static final String SLUG_B = "anuncio-story-teste-b";
   private static final OffsetDateTime AGORA = OffsetDateTime.parse("2026-08-01T12:00:00Z");
   private static final OffsetDateTime FIM = AGORA.plusHours(24);
 
@@ -111,12 +125,13 @@ class MeuAnuncioStoryServiceTest {
   private final Map<UUID, ArquivoMidiaEntity> arquivos = new LinkedHashMap<>();
   private MeuAnuncioStoryService service;
   private AnuncioEntity anuncio;
+  private UsuarioEntity usuario;
   private AtivacaoBeneficioEntity ativacao;
   private GrupoAtivacaoBeneficioEntity grupo;
 
   @BeforeEach
   void setUp() {
-    UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
+    usuario = UsuarioEntity.criarCadastroPublico(
         USUARIO_ID, "QA Story", "qa-story@example.invalid", "+5562999999999",
         java.time.LocalDate.of(1990, 1, 1), AGORA.minusYears(1));
     usuario.confirmarEmail(AGORA.minusYears(1));
@@ -140,7 +155,12 @@ class MeuAnuncioStoryServiceTest {
     when(consultaService.usuarioAutenticado(authentication)).thenReturn(usuario);
     when(consultaService.slugSeguro(SLUG)).thenReturn(SLUG);
     when(anuncioRepository.findBySlugForLifecycle(SLUG)).thenReturn(Optional.of(anuncio));
-    when(storyRepository.findByAnuncioIdForUpdate(ANUNCIO_ID)).thenAnswer(ignored -> List.copyOf(stories));
+    when(storyRepository.findByAnuncioIdForUpdate(any())).thenAnswer(invocation -> {
+      UUID anuncioId = invocation.getArgument(0);
+      return stories.stream()
+          .filter(story -> anuncioId.equals(story.getAnuncioId()))
+          .toList();
+    });
     when(storyRepository.findByAnuncioIdAndCriadoPorAndIdempotencyKey(any(), any(), any()))
         .thenReturn(Optional.empty());
     when(storyRepository.save(any())).thenAnswer(invocation -> {
@@ -169,11 +189,15 @@ class MeuAnuncioStoryServiceTest {
     when(storage.get(eq(StorageArea.PRIVATE_MEDIA), any())).thenAnswer(invocation -> objetos.get(invocation.getArgument(1)));
     when(arquivoRepository.saveAndFlush(any())).thenAnswer(invocation -> {
       ArquivoMidiaEntity arquivo = invocation.getArgument(0);
-      arquivos.put(arquivo.getId(), arquivo);
-      return arquivo;
+      return persistirComoJpa(arquivo);
     });
     when(arquivoRepository.findById(any())).thenAnswer(invocation -> Optional.ofNullable(arquivos.get(invocation.getArgument(0))));
-    when(midiaRepository.findByAnuncioId(ANUNCIO_ID)).thenAnswer(ignored -> List.copyOf(midias));
+    when(midiaRepository.findByAnuncioId(any())).thenAnswer(invocation -> {
+      UUID anuncioId = invocation.getArgument(0);
+      return midias.stream()
+          .filter(midia -> anuncioId.equals(midia.getAnuncioId()))
+          .toList();
+    });
     when(midiaRepository.save(any())).thenAnswer(invocation -> {
       AnuncioMidiaEntity midia = invocation.getArgument(0);
       midias.add(midia);
@@ -218,6 +242,120 @@ class MeuAnuncioStoryServiceTest {
   }
 
   @Test
+  void mesmoUsuarioMantemStoriesAtivosEmDoisAnunciosEFeedRetornaAmbos() {
+    AnuncioEntity anuncioB = anuncio(
+        ANUNCIO_B_ID, SLUG_B, StatusAnuncio.PUBLICADO, USUARIO_ID);
+    UUID grupoBId = UUID.randomUUID();
+    AtivacaoBeneficioEntity ativacaoB = AtivacaoBeneficioEntity.criarFixtureHomologacao(
+        UUID.randomUUID(), UUID.randomUUID(), USUARIO_ID, ANUNCIO_B_ID, grupoBId,
+        OrigemBeneficio.CREDITO, AGORA.minusHours(1), FIM.minusHours(1),
+        StatusAtivacaoBeneficio.ATIVA, 5, BigDecimal.ZERO,
+        "beneficio-story-b", AGORA.minusHours(1));
+    GrupoAtivacaoBeneficioEntity grupoB = GrupoAtivacaoBeneficioEntity.criarFixtureHomologacao(
+        grupoBId, TipoGrupoAtivacaoBeneficio.PACOTE, OrigemBeneficio.CREDITO,
+        USUARIO_ID, ANUNCIO_B_ID, AGORA.minusHours(1), FIM.minusHours(1),
+        StatusGrupoAtivacaoBeneficio.ATIVO, "grupo-story-b", AGORA.minusHours(1));
+
+    when(consultaService.slugSeguro(SLUG_B)).thenReturn(SLUG_B);
+    when(anuncioRepository.findBySlugForLifecycle(SLUG_B)).thenReturn(Optional.of(anuncioB));
+    when(ativacaoRepository.findVigentesByCodigoForUpdate(
+        eq(ANUNCIO_B_ID), eq(USUARIO_ID), eq(STORIES),
+        eq(StatusAtivacaoBeneficio.ATIVA), any())).thenReturn(List.of(ativacaoB));
+    when(ativacaoRepository.findAguardandoUsoByCodigoForUpdate(
+        eq(ANUNCIO_B_ID), eq(USUARIO_ID), eq(STORIES),
+        eq(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO))).thenReturn(List.of());
+    when(beneficioService.calcular(eq(List.of(ativacaoB)), any()))
+        .thenReturn(List.of(calculado(ativacaoB, beneficio(ativacaoB))));
+    when(grupoRepository.findByIdForUpdate(grupoBId)).thenReturn(Optional.of(grupoB));
+
+    MeuAnuncioStoryDto respostaA = service.publicar(
+        SLUG, "ANUNCIO", List.of(), "story-chave-compartilhada",
+        authentication, "req-story-a");
+    StoryAnuncioEntity storyA = stories.get(0);
+    UUID storyAId = storyA.getId();
+    OffsetDateTime storyAInicio = storyA.getInicioEm();
+    OffsetDateTime storyAFim = storyA.getFimEm();
+
+    assertThatThrownBy(() -> service.publicar(
+        SLUG, "ANUNCIO", List.of(), "story-segundo-no-mesmo-anuncio",
+        authentication, "req-story-a-duplicado"))
+        .isInstanceOf(StoryJaAtivoException.class);
+
+    MeuAnuncioStoryDto respostaB = service.publicar(
+        SLUG_B, "ANUNCIO", List.of(), "story-chave-compartilhada",
+        authentication, "req-story-b");
+    StoryAnuncioEntity storyB = stories.stream()
+        .filter(item -> ANUNCIO_B_ID.equals(item.getAnuncioId()))
+        .findFirst()
+        .orElseThrow();
+
+    assertThat(stories).hasSize(2);
+    assertThat(respostaA.anuncioId()).isEqualTo(ANUNCIO_ID);
+    assertThat(respostaB.anuncioId()).isEqualTo(ANUNCIO_B_ID);
+    assertThat(storyA.getId()).isEqualTo(storyAId);
+    assertThat(storyA.getModoConteudoEfetivo()).isEqualTo(ModoConteudoStory.ANUNCIO);
+    assertThat(storyA.getInicioEm()).isEqualTo(storyAInicio);
+    assertThat(storyA.getFimEm()).isEqualTo(storyAFim);
+    assertThat(storyA.getAnuncioMidiaId()).isNull();
+    assertThat(storyA.getStatus()).isEqualTo(StatusStoryAnuncio.PUBLICADO);
+    assertThat(storyB.getStatus()).isEqualTo(StatusStoryAnuncio.PUBLICADO);
+    assertThat(storyB.getInicioEm()).isEqualTo(AGORA);
+    assertThat(storyB.getFimEm()).isEqualTo(FIM.minusHours(1));
+    assertThat(storyA.getIdempotencyKey()).isEqualTo(storyB.getIdempotencyKey());
+    assertThat(storyA.getId()).isNotEqualTo(storyB.getId());
+    assertThat(storyA.getAtivacaoBeneficioId()).isEqualTo(ativacao.getId());
+    assertThat(storyB.getAtivacaoBeneficioId()).isEqualTo(ativacaoB.getId());
+
+    StorySelecaoAdministrativaRepository selecoes =
+        mock(StorySelecaoAdministrativaRepository.class);
+    UsuarioRepository usuarios = mock(UsuarioRepository.class);
+    StoryMidiaElegibilidadeService elegibilidade =
+        mock(StoryMidiaElegibilidadeService.class);
+    ComplianceVisitorAccessService acesso = mock(ComplianceVisitorAccessService.class);
+    IdadeAnunciantePublicaService idades = mock(IdadeAnunciantePublicaService.class);
+    PremiumPublicoMapper premium = mock(PremiumPublicoMapper.class);
+    MidiaPublicaUrlService urls = mock(MidiaPublicaUrlService.class);
+    StoryAnuncioApresentacaoService apresentacao =
+        mock(StoryAnuncioApresentacaoService.class);
+    StoryFeedPublicoService feedService = new StoryFeedPublicoService(
+        selecoes, storyRepository, midiaRepository, arquivoRepository,
+        anuncioRepository, usuarios, elegibilidade, acesso, idades,
+        premium, urls, apresentacao);
+
+    when(selecoes.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
+    OffsetDateTime feedAgora = OffsetDateTime.now(ZoneOffset.UTC);
+    StoryAnuncioEntity feedStoryA = StoryAnuncioEntity.criarAutogestao(
+        storyA.getId(), ANUNCIO_ID, null, ModoConteudoStory.ANUNCIO, storyA.getAtivacaoBeneficioId(),
+        storyA.getIdempotencyKey(), storyA.getRequestFingerprint(), feedAgora.minusMinutes(1),
+        feedAgora.plusHours(1), USUARIO_ID);
+    StoryAnuncioEntity feedStoryB = StoryAnuncioEntity.criarAutogestao(
+        storyB.getId(), ANUNCIO_B_ID, null, ModoConteudoStory.ANUNCIO, storyB.getAtivacaoBeneficioId(),
+        storyB.getIdempotencyKey(), storyB.getRequestFingerprint(), feedAgora.minusMinutes(1),
+        feedAgora.plusHours(1), USUARIO_ID);
+    when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(
+        StatusStoryAnuncio.PUBLICADO)).thenReturn(List.of(feedStoryA, feedStoryB));
+    when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio, anuncioB));
+    when(usuarios.findAllById(any())).thenReturn(List.of(usuario));
+    when(elegibilidade.listarPorAnuncios(any())).thenReturn(Map.of());
+    when(premium.flagsPorAnuncios(any())).thenReturn(Map.of());
+    when(premium.flags(any())).thenReturn(PremiumPublicoFlagsDto.vazio());
+    when(idades.resolverPorAnuncios(any(), any())).thenReturn(Map.of());
+
+    var feed = feedService.listar(new MockHttpServletRequest());
+
+    assertThat(feed).singleElement().satisfies(bundle ->
+        assertThat(bundle.itens())
+            .extracting(item -> item.storyId())
+            .containsExactly(storyA.getId().toString(), storyB.getId().toString()));
+    verify(ativacaoRepository).findVigentesByCodigoForUpdate(
+        eq(ANUNCIO_ID), eq(USUARIO_ID), eq(STORIES),
+        eq(StatusAtivacaoBeneficio.ATIVA), any());
+    verify(ativacaoRepository).findVigentesByCodigoForUpdate(
+        eq(ANUNCIO_B_ID), eq(USUARIO_ID), eq(STORIES),
+        eq(StatusAtivacaoBeneficio.ATIVA), any());
+  }
+
+  @Test
   void modoMidiaUploadProcessaFotoPrivadaEExclusivaSemEntrarNaGaleria() {
     MultipartFile multipart = new MockMultipartFile("arquivo", "foto.jpg", "image/jpeg", new byte[] {1, 2, 3});
     when(validator.validarStory(multipart)).thenReturn(validada(false));
@@ -235,6 +373,9 @@ class MeuAnuncioStoryServiceTest {
       assertThat(midia.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
       assertThat(midia.getVisibilidadeMidia()).isEqualTo(VisibilidadeMidia.RESTRITA_18);
     });
+    assertThat(arquivos.values()).singleElement().satisfies(arquivo ->
+        assertThat(arquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO));
+    verify(arquivoRepository, times(2)).saveAndFlush(any());
     assertThat(arquivos).hasSize(1);
     assertThat(objetos).hasSize(1);
     assertThat(stories).singleElement().satisfies(story ->
@@ -451,6 +592,54 @@ class MeuAnuncioStoryServiceTest {
   }
 
   @Test
+  void falhaDeProcessamentoNaoPublicaNemIniciaVigencia() {
+    MultipartFile multipart = new MockMultipartFile(
+        "arquivo", "foto.jpg", "image/jpeg", new byte[] {1, 2, 3});
+    when(validator.validarStory(multipart)).thenReturn(validada(false));
+    when(fotoProcessor.processar(any())).thenThrow(new IllegalStateException("processamento falhou"));
+
+    assertThatThrownBy(() -> service.publicar(
+        SLUG, "MIDIA_UPLOAD", List.of(multipart), "processamento-falhou", authentication, "req"))
+        .isInstanceOf(IllegalStateException.class);
+    verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+    verify(storyRepository, never()).save(any());
+    assertThat(midias).isEmpty();
+    assertThat(arquivos).isEmpty();
+  }
+
+  @Test
+  void falhaAoPersistirArquivoValidadoExecutaCleanupENaoPublica() {
+    MultipartFile multipart = new MockMultipartFile(
+        "arquivo", "foto.jpg", "image/jpeg", new byte[] {1, 2, 3});
+    when(validator.validarStory(multipart)).thenReturn(validada(false));
+    when(fotoProcessor.processar(any())).thenReturn(processada());
+    org.mockito.Mockito.doAnswer(invocation ->
+        persistirComoJpa((ArquivoMidiaEntity) invocation.getArgument(0)))
+        .doThrow(new IllegalStateException("persistencia indisponivel"))
+        .when(arquivoRepository).saveAndFlush(any());
+
+    TransactionSynchronizationManager.initSynchronization();
+    try {
+      assertThatThrownBy(() -> service.publicar(
+          SLUG, "MIDIA_UPLOAD", List.of(multipart), "persistencia-falhou", authentication, "req"))
+          .isInstanceOf(IllegalStateException.class);
+      TransactionSynchronizationUtils.triggerAfterCompletion(
+          TransactionSynchronization.STATUS_ROLLED_BACK);
+    } finally {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
+
+    verify(cleanupAuditService).limparSeOrfao(
+        eq(storage), any(), eq(ANUNCIO_ID), any(), any(), any());
+    verify(storyRepository, never()).save(any());
+    assertThat(midias).isEmpty();
+    assertThat(stories).isEmpty();
+    assertThat(ativacao.getStatus()).isEqualTo(StatusAtivacaoBeneficio.ATIVA);
+    assertThat(ativacao.getInicioEm()).isEqualTo(AGORA.minusHours(1));
+    assertThat(ativacao.getFimEm()).isEqualTo(FIM.minusHours(1));
+  }
+
+  @Test
   void uploadQueUltrapassaFimDaAtivacaoNaoReiniciaNemProlongaVigencia() {
     Clock progressivo = mock(Clock.class);
     when(progressivo.getZone()).thenReturn(ZoneOffset.UTC);
@@ -571,9 +760,45 @@ class MeuAnuncioStoryServiceTest {
     verify(cleanupAuditService).registrar(any(), eq(USUARIO_ID), eq("req-cleanup"));
   }
 
+  private ArquivoMidiaEntity persistirComoJpa(ArquivoMidiaEntity arquivo) {
+    ArquivoMidiaEntity existente = arquivos.get(arquivo.getId());
+    if (existente != null) {
+      arquivos.put(arquivo.getId(), arquivo);
+      return arquivo;
+    }
+
+    ArquivoMidiaEntity gerenciado = ArquivoMidiaEntity.criarUploadPendente(
+        arquivo.getId(),
+        arquivo.getStorageProvider(),
+        arquivo.getBucket(),
+        arquivo.getChaveObjeto(),
+        arquivo.getNomeOriginal(),
+        arquivo.getMimeType(),
+        arquivo.getTamanhoBytes(),
+        arquivo.getLargura(),
+        arquivo.getAltura(),
+        arquivo.getDuracaoMs(),
+        arquivo.getSha256(),
+        arquivo.getCriadoEm());
+    if (arquivo.getPipelineVersao() != null) {
+      gerenciado.registrarProcessamento(
+          arquivo.getPipelineVersao(),
+          arquivo.getMarcaDaguaVersao(),
+          arquivo.getProcessadoEm(),
+          arquivo.getSha256Origem());
+    }
+    arquivos.put(gerenciado.getId(), gerenciado);
+    return gerenciado;
+  }
+
   private AnuncioEntity anuncio(StatusAnuncio status, UUID usuarioId) {
+    return anuncio(ANUNCIO_ID, SLUG, status, usuarioId);
+  }
+
+  private AnuncioEntity anuncio(
+      UUID anuncioId, String slug, StatusAnuncio status, UUID usuarioId) {
     return AnuncioEntity.criarFixtureHomologacao(
-        ANUNCIO_ID, usuarioId, SLUG, "Anuncio QA", "Descricao publica",
+        anuncioId, usuarioId, slug, "Anuncio QA", "Descricao publica",
         status, StatusModeracaoAnuncio.APROVADO, AGORA.minusDays(1));
   }
 
@@ -618,7 +843,7 @@ class MeuAnuncioStoryServiceTest {
     String tipo = midia == null ? null : arquivos.get(midia.getArquivoMidiaId()).getMimeType().startsWith("video/")
         ? "VIDEO" : "FOTO";
     return new MeuAnuncioStoryDto(
-        story.getId(), ANUNCIO_ID, story.getModoConteudoEfetivo().name(), tipo,
+        story.getId(), story.getAnuncioId(), story.getModoConteudoEfetivo().name(), tipo,
         story.getStatus().name(), story.getInicioEm(), story.getFimEm(),
         midia == null ? null : "DISPONIVEL");
   }

@@ -325,6 +325,23 @@ check('43. botao permanece visivel e estado utiliza elegibilidade canonica', () 
   matches(card, /storyEntry\.buttonLabel/)
 })
 
-assert.equal(checks, 43)
+check('44. gerenciamento sinaliza falha real da midia com alerta', () => {
+  matches(dialog, /const activeStoryMediaError = activeStory\?\.modoConteudo === 'MIDIA_UPLOAD'[\s\S]*estadoMidia === 'INDISPONIVEL'/)
+  matches(dialog, /role=\{activeStoryMediaError \? 'alert' : 'status'\}/)
+  matches(dialog, /CircleAlert[\s\S]*Falha na publica\\u00e7\\u00e3o da m\\u00eddia/)
+})
+
+check('45. gerenciamento preserva o estado disponivel para upload valido', () => {
+  matches(dialog, /activeStoryMediaError \? \([\s\S]*\) : \([\s\S]*estadoMidia === 'INDISPONIVEL' \? 'Indispon.vel' : 'Dispon.vel'/)
+  matches(dialog, /formatStoryDate\(activeStory\.inicioEm\)[\s\S]*formatStoryDate\(activeStory\.fimEm\)/)
+})
+
+check('46. estado owner nao expoe referencia interna e segue responsivo', () => {
+  matches(dialog, /w-\[calc\(100vw-1rem\)\][\s\S]*overflow-hidden/)
+  matches(dialog, /min-h-0 overflow-y-auto/)
+  excludes(dialog, /objectKey|chaveObjeto|bucket|urlPrivada|signedUrl/)
+})
+
+assert.equal(checks, 46)
 console.log(`STORY_CREATE_MODES_CHECKS=${checks}`)
 console.log('STORY_CREATE_MODES_RESULT=OK')

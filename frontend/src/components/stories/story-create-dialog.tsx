@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CircleCheck,
+  CircleAlert,
   CircleDollarSign,
   FileImage,
   Megaphone,
@@ -113,6 +114,9 @@ export function StoryCreateDialog({
 
   const entry = getStoryEntryState(anuncio)
   const activeStory = result ?? offer?.storyAtivo ?? anuncio.storyAtivo
+  const activeStoryMediaError = activeStory?.modoConteudo === 'MIDIA_UPLOAD'
+    && activeStory.estadoMidia === 'INDISPONIVEL'
+
   const busy = loadingOffer || purchasing || publishing
 
   const loadOffer = useCallback(async () => {
@@ -346,7 +350,23 @@ export function StoryCreateDialog({
           </DialogHeader>
 
           {activeStory ? (
-            <div className="mt-5 space-y-4" role="status">
+            <div className="mt-5 space-y-4" role={activeStoryMediaError ? 'alert' : 'status'}>
+              {activeStoryMediaError ? (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <CircleAlert className="h-5 w-5" aria-hidden="true" />
+                    {'Falha na publica\u00e7\u00e3o da m\u00eddia'}
+                  </div>
+                  <dl className="mt-3 grid gap-2 text-sm">
+                    <div><dt className="inline font-medium">Modo: </dt><dd className="inline">{'M\u00eddia enviada'}</dd></div>
+                    <div><dt className="inline font-medium">Status registrado: </dt><dd className="inline">{activeStory.status}</dd></div>
+                    <div><dt className="inline font-medium">In\u00edcio: </dt><dd className="inline">{formatStoryDate(activeStory.inicioEm)}</dd></div>
+                    <div><dt className="inline font-medium">Expira em: </dt><dd className="inline">{formatStoryDate(activeStory.fimEm)}</dd></div>
+                    <div><dt className="inline font-medium">M\u00eddia: </dt><dd className="inline">{'Falha na publica\u00e7\u00e3o'}</dd></div>
+                  </dl>
+                  <p className="mt-3 text-sm">{'A m\u00eddia n\u00e3o ficou utiliz\u00e1vel. Aguarde o encerramento deste Story para publicar novamente.'}</p>
+                </div>
+              ) : (
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
                 <div className="flex items-center gap-2 font-semibold">
                   <CircleCheck className="h-5 w-5" aria-hidden="true" />
@@ -362,6 +382,7 @@ export function StoryCreateDialog({
                   ) : null}
                 </dl>
               </div>
+              )}
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button asChild variant="outline"><Link href={`/anuncios/${encodeURIComponent(anuncio.slug)}`}>Ver anúncio</Link></Button>
                 <Button type="button" onClick={() => onOpenChange(false)}>Concluir</Button>
