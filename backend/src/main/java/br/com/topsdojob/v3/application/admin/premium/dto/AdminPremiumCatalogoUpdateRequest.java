@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.admin.premium.dto;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 public record AdminPremiumCatalogoUpdateRequest(
@@ -7,5 +8,6 @@ public record AdminPremiumCatalogoUpdateRequest(
         String descricao,
         Boolean ativo,
         Integer ordemExibicao,
+        OffsetDateTime atualizadoEm,
         List<AdminPremiumOpcaoUpdateRequest> opcoes) {
 }

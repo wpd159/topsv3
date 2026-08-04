@@ -76,20 +76,21 @@ function check(name, callback) {
 function matches(value, pattern) { assert.match(value, pattern) }
 function excludes(value, pattern) { assert.doesNotMatch(value, pattern) }
 
-check('1. pagina administrativa possui quatro dominios separados', () => {
-  matches(adminPage, /TabsTrigger value="stories">Stories/)
-  matches(adminPage, /Pacotes e benef.cios/)
-  matches(adminPage, /Saldos e ajustes/)
-  matches(adminPage, /Ativa..es e hist.rico/)
+check('1. pagina administrativa possui cinco dominios separados', () => {
+  matches(adminPage, /value="stories">Stories/)
+  matches(adminPage, /value="beneficios">Benef.cios Premium/)
+  matches(adminPage, /value="pacotes">Pacotes de cr.ditos/)
+  matches(adminPage, /value="saldos">Saldos e ajustes/)
+  matches(adminPage, /value="ativacoes">Ativa..es e hist.rico/)
 })
 
 check('2. Stories usa componente administrativo proprio', () => {
   matches(adminPage, /<AdminStoryConfiguracaoCard \/>/)
-  matches(adminPage, /Stories n.o faz parte deste cat.logo/)
+  matches(adminPage, /AdminPremiumCatalogo/)
 })
 
 check('3. card explica os dois modos comerciais', () => {
-  matches(storyCard, /Permite promover um an.ncio ou publicar uma m.dia exclusiva nos Stories/)
+  matches(storyCard, /Permite promover um an.ncio ou publicar uma m.dia exclusiva por 24 horas/)
 })
 
 check('4. admin edita somente status e custo', () => {
@@ -100,7 +101,7 @@ check('4. admin edita somente status e custo', () => {
 })
 
 check('5. duracao e fixa e somente leitura', () => {
-  matches(storyCard, /Dura..o[\s\S]*24 horas - fixa/)
+  matches(storyCard, /Dura..o[\s\S]*24 horas . fixa/)
   excludes(storyCard, /name=["']duracao|setDuracao|duracaoDias/)
 })
 
@@ -117,7 +118,7 @@ check('7. alteracao nao salva fica visivel', () => {
 check('8. desativacao exige confirmacao especifica', () => {
   matches(storyCard, /window\.confirm/)
   matches(storyCard, /Novas ativa..es de Stories ficar.o indispon.veis/)
-  matches(storyCard, /Direitos j. adquiridos continuar.o utiliz.veis/)
+  matches(storyCard, /Direitos j. adquiridos e Stories ativos ser.o preservados/)
 })
 
 check('9. duplo clique e bloqueado de modo sincrono', () => {

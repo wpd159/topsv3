@@ -231,7 +231,7 @@ public class AdminDashboardAnalyticsService {
                         "DESPROPORCAO_PREMIUM",
                         "Possível desproporção entre Premium e base comercial",
                         "Há muitos anúncios publicados sem benefício vigente em relação às ativações atuais.",
-                        "/admin/beneficios-premium"));
+                        "/admin/creditos?aba=beneficios"));
             }
         }
         return List.copyOf(itens);
@@ -247,7 +247,7 @@ public class AdminDashboardAnalyticsService {
                     "SEM_PREMIUM",
                     semPremium + " anúncio" + (semPremium == 1 ? "" : "s") + " sem Premium vigente",
                     "Base publicada elegível para análise comercial, sem ativação automática.",
-                    "/admin/beneficios-premium"));
+                    "/admin/creditos?aba=beneficios"));
         }
         long vencendo = repository.countBeneficiosVencendo(
                 agora,
@@ -259,7 +259,7 @@ public class AdminDashboardAnalyticsService {
                     "Janela canônica de "
                             + PremiumExpiracaoPolicyService.JANELA_VENCENDO_DIAS
                             + " dias para renovação.",
-                    "/admin/beneficios-premium"));
+                    "/admin/creditos?aba=beneficios"));
         }
         long altoTrafegoSemPremium = base.stream()
                 .filter(item -> item.visualizacoes() != null

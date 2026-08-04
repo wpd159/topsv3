@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, Power, PowerOff, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -82,16 +82,23 @@ export function PlanoCreditoManager() {
   const [form, setForm] = useState<PlanoForm>(FORM_VAZIO)
   const [salvando, setSalvando] = useState(false)
   const [alterandoStatusId, setAlterandoStatusId] = useState<string | null>(null)
+  const cargaSeq = useRef(0)
+  const saveLock = useRef(false)
+  const statusLock = useRef(false)
 
   const carregar = useCallback(async () => {
+    const seq = ++cargaSeq.current
     setLoading(true)
     setErro(null)
     try {
-      setPlanos(await AdminCreditosApi.pacotes(busca.trim(), status))
+      const resultado = await AdminCreditosApi.pacotes(busca.trim(), status)
+      if (seq === cargaSeq.current) setPlanos(resultado)
     } catch (error) {
-      setErro(error instanceof Error ? error.message : 'Nao foi possivel carregar os planos.')
+      if (seq === cargaSeq.current) {
+        setErro(error instanceof Error ? error.message : 'Nao foi possivel carregar os planos.')
+      }
     } finally {
-      setLoading(false)
+      if (seq === cargaSeq.current) setLoading(false)
     }
   }, [busca, status])
 
@@ -157,9 +164,10 @@ export function PlanoCreditoManager() {
   }
 
   const salvar = async () => {
-    if (salvando) return
+    if (saveLock.current || salvando) return
     const validado = validarForm()
     if (!validado) return
+    saveLock.current = true
     setSalvando(true)
     try {
       if (editandoId) {
@@ -191,15 +199,17 @@ export function PlanoCreditoManager() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Nao foi possivel salvar o plano.')
     } finally {
+      saveLock.current = false
       setSalvando(false)
     }
   }
 
   const alterarStatus = async (plano: AdminPlanoCredito) => {
-    if (alterandoStatusId) return
+    if (statusLock.current || alterandoStatusId) return
     if (plano.ativo && !window.confirm(
       'Desativar este plano? Ele deixara de aparecer para novas compras, mas o historico sera preservado.',
     )) return
+    statusLock.current = true
     setAlterandoStatusId(plano.id)
     try {
       const atualizado = plano.ativo
@@ -212,6 +222,7 @@ export function PlanoCreditoManager() {
       toast.error(error instanceof Error ? error.message : 'Nao foi possivel alterar o status.')
       await carregar()
     } finally {
+      statusLock.current = false
       setAlterandoStatusId(null)
     }
   }
@@ -220,14 +231,14 @@ export function PlanoCreditoManager() {
     <section className="rounded-lg border border-gray-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Planos e creditos</h2>
+          <h2 className="text-base font-semibold text-gray-900">Pacotes de créditos</h2>
           <p className="mt-1 text-sm text-gray-500">
             Catalogo para novas compras. Pagamentos anteriores mantem preco e creditos originais.
           </p>
         </div>
         <Button onClick={abrirCriacao}>
           <Plus className="mr-2 size-4" aria-hidden="true" />
-          Novo plano
+          Novo pacote
         </Button>
       </div>
 
@@ -282,11 +293,11 @@ export function PlanoCreditoManager() {
       ) : null}
 
       {!erro && loading ? (
-        <p className="py-10 text-center text-sm text-gray-500">Carregando planos...</p>
+        <p className="py-10 text-center text-sm text-gray-500" role="status">Carregando pacotes de créditos...</p>
       ) : null}
 
       {!erro && !loading && planos.length === 0 ? (
-        <p className="py-10 text-center text-sm text-gray-500">Nenhum plano encontrado.</p>
+        <p className="py-10 text-center text-sm text-gray-500">Nenhum pacote de créditos cadastrado.</p>
       ) : null}
 
       {!erro && !loading && planos.length > 0 ? (
@@ -398,7 +409,7 @@ export function PlanoCreditoManager() {
       <Dialog open={dialogOpen} onOpenChange={(open) => !salvando && setDialogOpen(open)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editandoId ? 'Editar plano' : 'Novo plano'}</DialogTitle>
+            <DialogTitle>{editandoId ? 'Editar plano' : 'Novo pacote'}</DialogTitle>
             <DialogDescription>
               O catalogo e atualizado imediatamente, sem recalcular pagamentos existentes.
             </DialogDescription>

@@ -1,6 +1,6 @@
 'use client'
 
-import { adminApiUrl } from '@/lib/api-contract'
+import { ApiContractError, adminApiUrl, apiErrorFromResponse } from '@/lib/api-contract'
 
 export type AdminCreditoUsuario = { id: string; nome: string; email: string; saldo: number }
 export type AdminCreditoSaldo = {
@@ -51,6 +51,7 @@ export type AdminPremiumCatalogo = {
   descricao: string
   ativo: boolean
   ordemExibicao: number
+  atualizadoEm: string
   opcoes: AdminPremiumOpcao[]
 }
 export type AdminPremiumOpcaoWrite = {
@@ -64,6 +65,7 @@ export type AdminPremiumCatalogoWrite = {
   descricao: string
   ativo: boolean
   ordemExibicao: number
+  atualizadoEm: string
   opcoes: AdminPremiumOpcaoWrite[]
 }
 
@@ -151,21 +153,28 @@ async function request<T>(path: string, init: RequestInit = {}) {
     credentials: 'include',
     cache: 'no-store',
   })
+  const contractError = response.ok ? null : await apiErrorFromResponse(response.clone())
   const raw = await response.text()
-  if (!response.ok) {
-    let message = `Falha na operacao (HTTP ${response.status}).`
+  if (!response.ok && contractError) {
+    let message = contractError.message
     try {
       const body = JSON.parse(raw) as { message?: string }
       if (body.message) message = body.message
     } catch {
-      // O status HTTP permanece visivel quando a resposta nao e JSON.
+      // O erro contratual preserva status e requestId quando a resposta nao e JSON.
     }
-    throw new Error(message)
+    throw new ApiContractError(
+      message,
+      contractError.kind,
+      contractError.status,
+      contractError.retryable,
+      contractError.requestId,
+    )
   }
   return raw ? JSON.parse(raw) as T : (null as T)
 }
 
-function operationKey(prefix: string) {
+export function adminOperationKey(prefix: string) {
   const id = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}`
   return `${prefix}-${id}`
 }
@@ -179,18 +188,22 @@ export const AdminCreditosApi = {
     direcao: 'CREDITO' | 'DEBITO',
     quantidade: number,
     motivo: string,
-    idempotencyKey = operationKey('ajuste'),
+    idempotencyKey = adminOperationKey('ajuste'),
   ) =>
     request<AdminCreditoOperacao>(`/creditos/usuarios/${id}/ajustes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({ direcao, quantidade, motivo }),
     }),
-  estornar: (movimentoId: string, motivo: string) => request<AdminCreditoOperacao>(
+  estornar: (
+    movimentoId: string,
+    motivo: string,
+    idempotencyKey = adminOperationKey('estorno'),
+  ) => request<AdminCreditoOperacao>(
     `/creditos/movimentos/${movimentoId}/estornos`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey('estorno') },
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({ motivo }),
     }
   ),
@@ -242,9 +255,13 @@ export const AdminCreditosApi = {
     }
   ),
   ativacoes: (usuarioId: string) => request<AdminPremiumAtivacao[]>(`/premium/ativacoes?usuarioId=${usuarioId}`),
-  cancelarAtivacao: (id: string, motivo: string) => request(`/premium/ativacoes/${id}/cancelar`, {
+  cancelarAtivacao: (
+    id: string,
+    motivo: string,
+    idempotencyKey = adminOperationKey('cancelamento'),
+  ) => request(`/premium/ativacoes/${id}/cancelar`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operationKey('cancelamento') },
+    headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ motivo }),
   }),
   auditoria: () => request<AdminAuditoriaFinanceira[]>('/creditos/auditoria?limit=50'),

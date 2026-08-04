@@ -255,7 +255,7 @@ export default function GerenciarAnunciosTable({ busca = "", status = "TODOS" }:
                 size="sm"
                 variant="outline"
                 className="flex-1 border-amber-200 text-xs text-amber-700 hover:bg-amber-50"
-                onClick={() => router.push(`/admin/beneficios-premium?anuncioId=${anuncio.id}`)}
+                onClick={() => router.push(`/admin/creditos?aba=beneficios&anuncioId=${anuncio.id}`)}
               >
                 Benefícios
                 <SparklesIcon className="ml-1 h-4 w-4" />
@@ -321,7 +321,7 @@ export default function GerenciarAnunciosTable({ busca = "", status = "TODOS" }:
                     variant="ghost"
                     className="ml-2 rounded-md border border-amber-200 p-2 text-amber-700 transition-all hover:bg-amber-50"
                     title="Gerenciar benefícios"
-                    onClick={() => router.push(`/admin/beneficios-premium?anuncioId=${anuncio.id}`)}
+                    onClick={() => router.push(`/admin/creditos?aba=beneficios&anuncioId=${anuncio.id}`)}
                   >
                     <SparklesIcon className="h-4 w-4" />
                   </Button>

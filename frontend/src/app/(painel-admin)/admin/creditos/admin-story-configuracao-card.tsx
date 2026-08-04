@@ -70,7 +70,7 @@ export function AdminStoryConfiguracaoCard() {
       return
     }
     if (configuracao?.ativo && !ativo && !window.confirm(
-      'Novas ativações de Stories ficarão indisponíveis. Direitos já adquiridos continuarão utilizáveis.'
+      'Novas ativações de Stories ficarão indisponíveis. Direitos já adquiridos e Stories ativos serão preservados.'
     )) return
     saveLock.current = true
     setSaving(true)
@@ -107,13 +107,19 @@ export function AdminStoryConfiguracaoCard() {
         <div>
           <h2 id="story-config-title" className="text-base font-semibold text-gray-900">Stories</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Permite promover um anúncio ou publicar uma mídia exclusiva nos Stories.
+            Permite promover um anúncio ou publicar uma mídia exclusiva por 24 horas.
           </p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}`}>
           {ativo ? 'Novas ativações disponíveis' : 'Novas ativações indisponíveis'}
         </span>
       </div>
+
+      {!configuracao?.configurada ? (
+        <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+          Stories ainda não foi configurado.
+        </p>
+      ) : null}
 
       <div className="mt-5 grid gap-4 sm:grid-cols-[180px_220px_minmax(0,1fr)] sm:items-end">
         <label className="flex min-h-10 items-center gap-2 text-sm font-medium text-gray-800">
@@ -145,7 +151,7 @@ export function AdminStoryConfiguracaoCard() {
         </label>
         <div className="min-w-0 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
           <p className="text-xs font-medium text-gray-500">Duração</p>
-          <p className="mt-1 text-sm font-semibold text-gray-900">24 horas - fixa</p>
+          <p className="mt-1 text-sm font-semibold text-gray-900">24 horas — fixa</p>
         </div>
       </div>
 

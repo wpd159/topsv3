@@ -4227,6 +4227,8 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
   /api/admin/premium/ativacoes:
     get:
       summary: Lista ativacoes Premium de um usuario
@@ -13560,14 +13562,14 @@ components:
       required: [id, duracaoDias, custoCreditos, ativo, ordemExibicao]
       properties:
         id: { type: string, format: uuid }
-        duracaoDias: { type: integer, enum: [1, 7, 14, 30] }
+        duracaoDias: { type: integer, minimum: 1 }
         custoCreditos: { type: integer, minimum: 0 }
         ativo: { type: boolean }
         ordemExibicao: { type: integer, minimum: 0 }
     PremiumCatalogo:
       type: object
       additionalProperties: false
-      required: [id, codigo, nome, descricao, escopo, afetaRanking, ativo, ordemExibicao, opcoes]
+      required: [id, codigo, nome, descricao, escopo, afetaRanking, ativo, ordemExibicao, atualizadoEm, opcoes]
       properties:
         id: { type: string, format: uuid }
         codigo: { type: string }
@@ -13577,6 +13579,7 @@ components:
         afetaRanking: { type: boolean }
         ativo: { type: boolean }
         ordemExibicao: { type: integer, minimum: 0 }
+        atualizadoEm: { type: string, format: date-time }
         opcoes:
           type: array
           items:
@@ -13850,7 +13853,7 @@ components:
       additionalProperties: false
       required: [duracaoDias, custoCreditos, ativo, ordemExibicao]
       properties:
-        duracaoDias: { type: integer, minimum: 1, maximum: 1000000 }
+        duracaoDias: { type: integer, enum: [1, 7, 14, 30] }
         custoCreditos: { type: integer, minimum: 0 }
         ativo: { type: boolean }
         ordemExibicao: { type: integer, minimum: 0 }
@@ -13876,12 +13879,13 @@ components:
     AdminPremiumCatalogoUpdateRequest:
       type: object
       additionalProperties: false
-      required: [nome, descricao, ativo, ordemExibicao, opcoes]
+      required: [nome, descricao, ativo, ordemExibicao, atualizadoEm, opcoes]
       properties:
         nome: { type: string, minLength: 2, maxLength: 120 }
         descricao: { type: string, minLength: 5, maxLength: 500 }
         ativo: { type: boolean }
         ordemExibicao: { type: integer, minimum: 0 }
+        atualizadoEm: { type: string, format: date-time }
         opcoes:
           type: array
           minItems: 1

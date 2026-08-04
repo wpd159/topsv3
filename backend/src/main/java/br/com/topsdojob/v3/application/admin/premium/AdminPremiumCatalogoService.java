@@ -12,6 +12,7 @@ import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,12 +54,22 @@ public class AdminPremiumCatalogoService {
         if (request == null) {
             throw badRequest("catalogo obrigatorio");
         }
-        var beneficio = beneficioRepository.findById(beneficioId)
+        var beneficio = beneficioRepository.findByIdForUpdate(beneficioId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "beneficio nao encontrado"));
         if (PremiumBeneficioCodigo.STORIES.equals(beneficio.getCodigo())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Stories utiliza configuracao comercial propria");
+        }
+        if (request.atualizadoEm() == null) {
+            throw badRequest("ultima atualizacao obrigatoria");
+        }
+        OffsetDateTime marcadorAtual = normalizarMarcador(beneficio.getAtualizadoEm());
+        OffsetDateTime marcadorRecebido = normalizarMarcador(request.atualizadoEm());
+        if (marcadorAtual == null || !marcadorAtual.toInstant().equals(marcadorRecebido.toInstant())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "catalogo alterado por outra sessao administrativa");
         }
         String nome = texto(request.nome(), 2, 120, "nome invalido");
         String descricao = texto(request.descricao(), 5, 500, "descricao invalida");
@@ -80,7 +91,10 @@ public class AdminPremiumCatalogoService {
                 throw badRequest("status da duracao obrigatorio");
             }
         }
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+        if (!agora.isAfter(marcadorAtual)) {
+            agora = marcadorAtual.plusNanos(1_000);
+        }
         Map<String, Object> antes = Map.of(
                 "nome", beneficio.getNome(),
                 "ativo", Boolean.TRUE.equals(beneficio.getAtivo()),
@@ -135,6 +149,12 @@ public class AdminPremiumCatalogoService {
         if (administrador == null || !administrador.isEnabled()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao administrativa obrigatoria");
         }
+    }
+
+    private OffsetDateTime normalizarMarcador(OffsetDateTime value) {
+        return value == null
+                ? null
+                : value.withOffsetSameInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
     }
 
     private String texto(String value, int min, int max, String error) {

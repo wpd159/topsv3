@@ -78,6 +78,7 @@ public class PremiumCatalogoService {
                         Boolean.TRUE.equals(item.getAfetaRanking()),
                         Boolean.TRUE.equals(item.getAtivo()),
                         valor(item.getOrdemExibicao()),
+                        item.getAtualizadoEm(),
                         opcoesAtuais(porBeneficio.getOrDefault(item.getId(), List.of()), agora, somenteAtivos)))
                 .toList();
     }

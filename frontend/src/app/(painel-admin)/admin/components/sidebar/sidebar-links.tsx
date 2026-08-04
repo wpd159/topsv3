@@ -3,7 +3,6 @@ import {
   BanknotesIcon,
   ChartPieIcon,
   ClipboardDocumentCheckIcon,
-  ClipboardDocumentListIcon,
   DocumentDuplicateIcon,
   DocumentTextIcon,
   ExclamationTriangleIcon,
@@ -79,15 +78,9 @@ export const sidebarLinks: SidebarLink[] = [
     section: 'Monetização',
   },
   {
-    label: 'Planos e créditos',
-    icon: <ClipboardDocumentListIcon className="h-5 w-5" />,
-    href: '/admin/creditos',
-    section: 'Monetização',
-  },
-  {
-    label: 'Benefícios premium',
+    label: 'Monetização',
     icon: <SparklesIcon className="h-5 w-5" />,
-    href: '/admin/creditos#beneficios-premium',
+    href: '/admin/creditos',
     section: 'Monetização',
   },
   {
