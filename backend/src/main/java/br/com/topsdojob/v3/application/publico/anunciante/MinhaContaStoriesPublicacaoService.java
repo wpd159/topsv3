@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -62,6 +63,7 @@ public class MinhaContaStoriesPublicacaoService {
   private final StoryUploadCleanupAuditService cleanupAuditService;
   private final Clock clock;
 
+  @Autowired
   public MinhaContaStoriesPublicacaoService(
       MeusAnunciosConsultaService usuarioService,
       MeuAnuncioStoryConsultaService consultaService,

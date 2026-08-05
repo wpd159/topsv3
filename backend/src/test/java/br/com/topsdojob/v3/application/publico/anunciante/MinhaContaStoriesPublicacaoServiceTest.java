@@ -46,6 +46,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.Authentication;
@@ -140,6 +141,28 @@ class MinhaContaStoriesPublicacaoServiceTest {
         storageProvider,
         cleanupAuditService,
         Clock.fixed(AGORA.toInstant(), ZoneOffset.UTC));
+  }
+
+  @Test
+  void springSelecionaOConstrutorDeProducao() {
+    try (var context = new AnnotationConfigApplicationContext()) {
+      context.registerBean(MeusAnunciosConsultaService.class, () -> usuarioService);
+      context.registerBean(MeuAnuncioStoryConsultaService.class, () -> consultaService);
+      context.registerBean(MinhaContaStoriesDireitoService.class, () -> direitoService);
+      context.registerBean(AnuncioRepository.class, () -> anuncioRepository);
+      context.registerBean(StoryAnuncioRepository.class, () -> storyRepository);
+      context.registerBean(ArquivoMidiaRepository.class, () -> arquivoRepository);
+      context.registerBean(AuditoriaEventoRepository.class, () -> auditoriaRepository);
+      context.registerBean(MidiaUploadValidator.class, () -> validator);
+      context.registerBean(FotoUploadProcessor.class, () -> fotoProcessor);
+      context.registerBean(R2StorageProperties.class, this::properties);
+      context.registerBean(StoryUploadCleanupAuditService.class, () -> cleanupAuditService);
+      context.registerBean(MinhaContaStoriesPublicacaoService.class);
+
+      context.refresh();
+
+      assertThat(context.getBean(MinhaContaStoriesPublicacaoService.class)).isNotNull();
+    }
   }
 
   @Test
