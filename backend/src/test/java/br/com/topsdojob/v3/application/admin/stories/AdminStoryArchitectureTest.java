@@ -12,13 +12,13 @@ class AdminStoryArchitectureTest {
     void administracaoNaoDependeDeStoryPagoCreditoOuPremium() throws Exception {
         String admin = Files.readString(Path.of(
                 "src", "main", "java", "br", "com", "topsdojob", "v3",
-                "application", "admin", "stories", "AdminStorySelecaoService.java"));
+                "application", "admin", "stories", "AdminStoriesGestaoService.java"));
         String feed = Files.readString(Path.of(
                 "src", "main", "java", "br", "com", "topsdojob", "v3",
                 "application", "publico", "service", "StoryFeedPublicoService.java"));
 
         assertThat(admin)
-                .doesNotContain("StoryAnuncioRepository")
+                .contains("StoryAnuncioRepository")
                 .doesNotContain("Credito")
                 .doesNotContain("Premium")
                 .doesNotContain("Beneficio");

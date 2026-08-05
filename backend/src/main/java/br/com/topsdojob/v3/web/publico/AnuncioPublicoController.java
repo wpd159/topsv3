@@ -4,14 +4,15 @@ import br.com.topsdojob.v3.application.publico.dto.AnuncioDetalhePublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.CliqueWhatsappPublicoResponseDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
-import br.com.topsdojob.v3.application.publico.dto.ListaStoriesPublicosDto;
+import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosUsuarioPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaRequestDto;
 import br.com.topsdojob.v3.application.publico.dto.RegistrarVisualizacaoPublicaResponseDto;
 import br.com.topsdojob.v3.application.publico.service.AnuncioPublicoConsultaService;
 import br.com.topsdojob.v3.application.publico.service.ListagemPublicaConsultaService;
 import br.com.topsdojob.v3.application.publico.service.MetricaPublicaService;
-import br.com.topsdojob.v3.application.publico.service.StoryPublicoService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,17 +29,14 @@ public class AnuncioPublicoController {
     private final AnuncioPublicoConsultaService consultaService;
     private final ListagemPublicaConsultaService listagemService;
     private final MetricaPublicaService metricaService;
-    private final StoryPublicoService storyService;
 
     public AnuncioPublicoController(
             AnuncioPublicoConsultaService consultaService,
             ListagemPublicaConsultaService listagemService,
-            MetricaPublicaService metricaService,
-            StoryPublicoService storyService) {
+            MetricaPublicaService metricaService) {
         this.consultaService = consultaService;
         this.listagemService = listagemService;
         this.metricaService = metricaService;
-        this.storyService = storyService;
     }
 
     @GetMapping
@@ -51,14 +49,24 @@ public class AnuncioPublicoController {
         return listagemService.listar(categoria, busca, pagina, tamanho, ordemSeed);
     }
 
+    @GetMapping("/usuario/{username}")
+    public ResponseEntity<ListaAnunciosUsuarioPublicaDto> listarPorUsuario(
+            @PathVariable String username,
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "20") int tamanho,
+            @RequestParam(required = false) String ordemSeed) {
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(listagemService.porUsuario(
+                        username,
+                        pagina,
+                        tamanho,
+                        ordemSeed));
+    }
+
     @GetMapping("/{slug}")
     public AnuncioDetalhePublicoDto buscarPorSlug(@PathVariable String slug, HttpServletRequest request) {
         return consultaService.buscarPorSlug(slug, request);
-    }
-
-    @GetMapping("/{slug}/stories")
-    public ListaStoriesPublicosDto listarStories(@PathVariable String slug, HttpServletRequest request) {
-        return storyService.listar(slug, request);
     }
 
     @PostMapping("/{slug}/visualizacao")

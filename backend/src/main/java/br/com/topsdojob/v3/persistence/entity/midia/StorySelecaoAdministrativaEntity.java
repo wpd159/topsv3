@@ -97,44 +97,6 @@ public class StorySelecaoAdministrativaEntity {
         return versao;
     }
 
-    public static StorySelecaoAdministrativaEntity nova(OffsetDateTime agora) {
-        StorySelecaoAdministrativaEntity entity = new StorySelecaoAdministrativaEntity();
-        entity.ativa = false;
-        entity.criadoEm = agora;
-        entity.atualizadoEm = agora;
-        return entity;
-    }
-
-    public static StorySelecaoAdministrativaEntity nova(
-            UUID anuncioId,
-            UUID atorId,
-            OffsetDateTime agora,
-            OffsetDateTime expiraEm,
-            String idempotencyKey) {
-        StorySelecaoAdministrativaEntity entity = nova(agora);
-        entity.ativar(anuncioId, atorId, agora, expiraEm, idempotencyKey);
-        return entity;
-    }
-
-    public void ativar(UUID anuncioId, UUID atorId, OffsetDateTime agora) {
-        ativar(anuncioId, atorId, agora, agora.plus(DURACAO_PADRAO), null);
-    }
-
-    public void ativar(
-            UUID anuncioId,
-            UUID atorId,
-            OffsetDateTime agora,
-            OffsetDateTime expiraEm,
-            String idempotencyKey) {
-        this.anuncioId = anuncioId;
-        this.ativa = true;
-        this.ativadoPor = atorId;
-        this.ativadoEm = agora;
-        this.expiraEm = expiraEm;
-        this.idempotencyKey = idempotencyKey;
-        this.atualizadoEm = agora;
-    }
-
     public void desativar(OffsetDateTime agora) {
         this.ativa = false;
         this.atualizadoEm = agora;

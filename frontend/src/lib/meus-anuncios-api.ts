@@ -63,34 +63,6 @@ export type MeuAnuncioStory = {
   estadoMidia: 'DISPONIVEL' | 'INDISPONIVEL' | null
 }
 
-export type MeuAnuncioStoryOferta = {
-  estado: 'STORY_ATIVO' | 'DIREITO_DISPONIVEL' | 'OFERTA_DISPONIVEL' | 'NOVAS_ATIVACOES_INDISPONIVEIS'
-  configurada: boolean | null
-  ativo: boolean | null
-  duracaoHoras: 24
-  custoCreditos: number | null
-  saldoAtual: number | null
-  saldoProjetado: number | null
-  deficit: number | null
-  storyAtivo: MeuAnuncioStory | null
-  direitoDisponivel: {
-    ativacaoId: string
-    status: 'DISPONIVEL_PARA_PUBLICAR' | 'ATIVA'
-    custoCreditosSnapshot: number | null
-    inicioEm: string | null
-    fimEm: string | null
-  } | null
-  versaoConfiguracao: number | null
-}
-
-export type MeuAnuncioStoryAtivacao = {
-  ativacaoId: string
-  custoCreditos: number
-  saldoAnterior: number
-  saldoPosterior: number
-  duracaoHoras: 24
-  idempotente: boolean
-}
 const EMPTY_BENEFICIOS_PREMIUM: readonly MeuAnuncioBeneficio[] = Object.freeze([])
 
 export type MinhaMidiaGestao = {
@@ -422,52 +394,6 @@ export async function buscarMeuAnuncio(slug: string) {
   return mapMeuAnuncio(await request<unknown>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`))
 }
 
-export async function consultarMeuAnuncioStoryOferta(slug: string) {
-  const payload = await request<MeuAnuncioStoryOferta>(
-    `/minha-conta/anuncios/${encodeURIComponent(slug)}/stories/oferta`
-  )
-  const states = ['STORY_ATIVO', 'DIREITO_DISPONIVEL', 'OFERTA_DISPONIVEL', 'NOVAS_ATIVACOES_INDISPONIVEIS']
-  if (!payload || !states.includes(payload.estado) || payload.duracaoHoras !== 24) {
-    throw new MeusAnunciosApiError('O serviço retornou uma oferta de Story incompatível.', 502)
-  }
-  if (payload.estado === 'STORY_ATIVO') parseStoryAtivo(payload.storyAtivo)
-  if (payload.estado === 'DIREITO_DISPONIVEL') {
-    const direito = payload.direitoDisponivel
-    if (!direito
-        || typeof direito.ativacaoId !== 'string' || !direito.ativacaoId
-        || !['DISPONIVEL_PARA_PUBLICAR', 'ATIVA'].includes(direito.status)
-        || !inteiroOpcionalValido(direito.custoCreditosSnapshot)
-        || !dataOpcionalValida(direito.inicioEm)
-        || !dataOpcionalValida(direito.fimEm)) {
-      throw new MeusAnunciosApiError('O serviço retornou um direito de Story incompatível.', 502)
-    }
-  }
-  if (payload.estado === 'OFERTA_DISPONIVEL') {
-    const valores = [payload.custoCreditos, payload.saldoAtual, payload.saldoProjetado, payload.deficit]
-    if (payload.configurada !== true || payload.ativo !== true
-        || valores.some((value) => !Number.isInteger(value) || (value ?? -1) < 0)
-        || !Number.isInteger(payload.versaoConfiguracao) || (payload.versaoConfiguracao ?? -1) < 0) {
-      throw new MeusAnunciosApiError('O serviço retornou uma oferta de Story incompatível.', 502)
-    }
-  }
-  return payload
-}
-
-export async function ativarMeuAnuncioStory(
-  slug: string,
-  custoCreditosEsperado: number,
-  versaoConfiguracao: number,
-  idempotencyKey: string
-) {
-  return request<MeuAnuncioStoryAtivacao>(
-    `/minha-conta/anuncios/${encodeURIComponent(slug)}/stories/ativacoes`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({ custoCreditosEsperado, versaoConfiguracao }),
-    }
-  )
-}
 export async function atualizarMeuAnuncio(slug: string, payload: MeuAnuncioAtualizacao) {
   const resposta = await request<unknown>(`/minha-conta/anuncios/${encodeURIComponent(slug)}`, {
     method: 'PATCH',
@@ -639,67 +565,4 @@ export function removerMinhaMidia(slug: string, midiaId: string) {
     `/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/${encodeURIComponent(midiaId)}`,
     { method: 'DELETE' }
   )
-}
-
-export async function publicarMeuAnuncioStory(
-  slug: string,
-  modoConteudo: 'ANUNCIO' | 'MIDIA_UPLOAD',
-  arquivo: File | null,
-  idempotencyKey: string,
-  onProgress?: (percentual: number) => void
-) {
-  const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
-  return new Promise<MeuAnuncioStory>((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', publicApiUrl(`/minha-conta/anuncios/${encodeURIComponent(slug)}/stories`))
-    xhr.withCredentials = true
-    xhr.setRequestHeader('Accept', 'application/json')
-    xhr.setRequestHeader('Idempotency-Key', idempotencyKey)
-    if (csrfValue) xhr.setRequestHeader(csrfHeaderName(), csrfValue)
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)))
-      }
-    }
-    xhr.onerror = () => reject(new MeusAnunciosApiError('Não foi possível publicar o Story.', 0))
-    xhr.onload = () => {
-      let body: unknown = null
-      try {
-        body = xhr.responseText ? JSON.parse(xhr.responseText) : null
-      } catch {
-        body = null
-      }
-      if (xhr.status < 200 || xhr.status >= 300) {
-        const errorBody = body && typeof body === 'object'
-          ? body as Record<string, unknown>
-          : null
-        const message = errorBody && typeof errorBody.message === 'string' && errorBody.message.trim()
-          ? errorBody.message
-          : `Não foi possível publicar o Story (HTTP ${xhr.status}).`
-        const code = errorBody && typeof errorBody.code === 'string' && errorBody.code.trim()
-          ? errorBody.code
-          : null
-        reject(new MeusAnunciosApiError(
-          message,
-          xhr.status,
-          code,
-          xhr.getResponseHeader('X-Request-Id')
-        ))
-        return
-      }
-      try {
-        const story = parseStoryAtivo(body)
-        if (!story) throw new Error('Resposta vazia')
-        onProgress?.(100)
-        resolve(story)
-      } catch {
-        reject(new MeusAnunciosApiError('O serviço retornou um Story em formato incompatível.', 502))
-      }
-    }
-    const form = new FormData()
-    form.append('modoConteudo', modoConteudo)
-    if (arquivo) form.append('arquivo', arquivo)
-    onProgress?.(0)
-    xhr.send(form)
-  })
 }

@@ -18,15 +18,23 @@ import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,11 +47,14 @@ class ComplianceProtectedMediaServiceTest {
 
   private static final String PRIVATE_BUCKET = "midias-privadas";
   private static final String PRIVATE_PREFIX = "hml/preprod/midias-pendentes/";
+  private static final String DOCUMENT_PREFIX = PRIVATE_PREFIX + "documentos/";
 
   private ComplianceVisitorAccessService accessService;
   private AnuncioMidiaRepository midiaRepository;
   private ArquivoMidiaRepository arquivoRepository;
   private AnuncioRepository anuncioRepository;
+  private StoryAnuncioRepository storyRepository;
+  private UsuarioRepository usuarioRepository;
   private ObjectStorage storage;
   private HttpServletRequest request;
   private ComplianceProtectedMediaService service;
@@ -54,6 +65,8 @@ class ComplianceProtectedMediaServiceTest {
     midiaRepository = mock(AnuncioMidiaRepository.class);
     arquivoRepository = mock(ArquivoMidiaRepository.class);
     anuncioRepository = mock(AnuncioRepository.class);
+    storyRepository = mock(StoryAnuncioRepository.class);
+    usuarioRepository = mock(UsuarioRepository.class);
     storage = mock(ObjectStorage.class);
     request = mock(HttpServletRequest.class);
     @SuppressWarnings("unchecked")
@@ -63,11 +76,14 @@ class ComplianceProtectedMediaServiceTest {
     R2StorageProperties properties = new R2StorageProperties();
     properties.setPrivateMediaBucket(PRIVATE_BUCKET);
     properties.setPrivateMediaPrefix(PRIVATE_PREFIX);
+    properties.setDocumentPrefix(DOCUMENT_PREFIX);
     service = new ComplianceProtectedMediaService(
         accessService,
         midiaRepository,
         arquivoRepository,
         anuncioRepository,
+        storyRepository,
+        usuarioRepository,
         storageProvider,
         properties);
   }
@@ -154,6 +170,99 @@ class ComplianceProtectedMediaServiceTest {
     verify(storage, never()).get(
         org.mockito.ArgumentMatchers.any(),
         org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  void entregaStoryDiretoSomenteQuandoObjetoPertenceAoStoryEProprietario() {
+    UUID storyId = UUID.randomUUID();
+    UUID arquivoId = UUID.randomUUID();
+    UUID proprietarioId = UUID.randomUUID();
+    String key = PRIVATE_PREFIX + "stories/contas/" + proprietarioId + "/"
+        + storyId + "/" + arquivoId + "/story.jpg";
+    byte[] bytes = "story-protegido".getBytes(StandardCharsets.UTF_8);
+    StoryAnuncioEntity story = storyDireto(storyId, arquivoId, proprietarioId);
+    when(accessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
+    when(storyRepository.findByIdAndStatus(storyId, StatusStoryAnuncio.PUBLICADO))
+        .thenReturn(Optional.of(story));
+    when(usuarioRepository.findById(proprietarioId)).thenReturn(Optional.of(usuarioAtivo()));
+    when(arquivoRepository.findById(arquivoId))
+        .thenReturn(Optional.of(arquivo(arquivoId, key, PRIVATE_BUCKET)));
+    when(storage.get(StorageArea.PRIVATE_MEDIA, key))
+        .thenReturn(new StoredObject(bytes, "image/jpeg"));
+
+    var result = service.carregarStory(storyId, request);
+
+    assertThat(result.bytes()).isEqualTo(bytes);
+    assertThat(result.mimeType()).isEqualTo("image/jpeg");
+  }
+
+  @Test
+  void rejeitaStoryDiretoApontandoParaArquivoDeOutroStory() {
+    UUID storyId = UUID.randomUUID();
+    UUID arquivoId = UUID.randomUUID();
+    UUID proprietarioId = UUID.randomUUID();
+    String keyAlheia = PRIVATE_PREFIX + "stories/contas/" + UUID.randomUUID() + "/"
+        + UUID.randomUUID() + "/" + arquivoId + "/story.jpg";
+    StoryAnuncioEntity story = storyDireto(storyId, arquivoId, proprietarioId);
+    when(accessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
+    when(storyRepository.findByIdAndStatus(storyId, StatusStoryAnuncio.PUBLICADO))
+        .thenReturn(Optional.of(story));
+    when(usuarioRepository.findById(proprietarioId)).thenReturn(Optional.of(usuarioAtivo()));
+    when(arquivoRepository.findById(arquivoId))
+        .thenReturn(Optional.of(arquivo(arquivoId, keyAlheia, PRIVATE_BUCKET)));
+
+    assertThatThrownBy(() -> service.carregarStory(storyId, request))
+        .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+
+    verify(storage, never()).get(
+        org.mockito.ArgumentMatchers.any(),
+        org.mockito.ArgumentMatchers.anyString());
+  }
+
+  @Test
+  void rejeitaStoryDiretoApontandoParaDocumentoPrivado() {
+    UUID storyId = UUID.randomUUID();
+    UUID arquivoId = UUID.randomUUID();
+    UUID proprietarioId = UUID.randomUUID();
+    String documentKey = DOCUMENT_PREFIX + proprietarioId + "/documento.jpg";
+    StoryAnuncioEntity story = storyDireto(storyId, arquivoId, proprietarioId);
+    when(accessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
+    when(storyRepository.findByIdAndStatus(storyId, StatusStoryAnuncio.PUBLICADO))
+        .thenReturn(Optional.of(story));
+    when(usuarioRepository.findById(proprietarioId)).thenReturn(Optional.of(usuarioAtivo()));
+    when(arquivoRepository.findById(arquivoId))
+        .thenReturn(Optional.of(arquivo(arquivoId, documentKey, PRIVATE_BUCKET)));
+
+    assertThatThrownBy(() -> service.carregarStory(storyId, request))
+        .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND));
+
+    verify(storage, never()).get(
+        org.mockito.ArgumentMatchers.any(),
+        org.mockito.ArgumentMatchers.anyString());
+  }
+
+  private StoryAnuncioEntity storyDireto(
+      UUID storyId,
+      UUID arquivoId,
+      UUID proprietarioId) {
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    return StoryAnuncioEntity.criarMidiaUpload(
+        storyId,
+        arquivoId,
+        UUID.randomUUID(),
+        "story-protegido-" + storyId,
+        "a".repeat(64),
+        agora.minusMinutes(1),
+        agora.plusHours(1),
+        proprietarioId);
+  }
+
+  private UsuarioEntity usuarioAtivo() {
+    UsuarioEntity usuario = entity(UsuarioEntity.class);
+    set(usuario, "status", StatusUsuario.ATIVO);
+    return usuario;
   }
 
   private AnuncioMidiaEntity midia(

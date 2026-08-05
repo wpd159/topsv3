@@ -1,6 +1,10 @@
 package br.com.topsdojob.v3.application.publico.anunciante.dto;
 
-public record MeuAnuncioStoryOfertaDto(
+import java.util.UUID;
+
+public record MinhaContaStoryOfertaDto(
+    String modoConteudo,
+    UUID anuncioId,
     String estado,
     Boolean configurada,
     Boolean ativo,
@@ -9,7 +13,7 @@ public record MeuAnuncioStoryOfertaDto(
     Integer saldoAtual,
     Integer saldoProjetado,
     Integer deficit,
-    MeuAnuncioStoryDto storyAtivo,
-    MeuAnuncioStoryDireitoDto direitoDisponivel,
+    MinhaContaStoryDto storyAtivo,
+    MinhaContaStoryDireitoDto direitoDisponivel,
     Long versaoConfiguracao) {
 }

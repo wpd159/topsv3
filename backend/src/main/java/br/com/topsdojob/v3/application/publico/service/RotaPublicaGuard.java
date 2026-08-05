@@ -16,6 +16,14 @@ final class RotaPublicaGuard {
         return normalized;
     }
 
+    static String username(String value) {
+        String normalized = required(value, "username").toLowerCase(java.util.Locale.ROOT);
+        if (!normalized.matches("[0-9a-f]{32}")) {
+            throw badRequest("username invalido");
+        }
+        return normalized;
+    }
+
     static String uf(String value) {
         String normalized = required(value, "uf").toUpperCase();
         if (!normalized.matches("[A-Z]{2}")) {

@@ -20,8 +20,9 @@ const detail = source('features/admin-anuncios/admin-anuncio-moderacao.tsx')
 const documents = source('features/admin-anuncios/admin-anuncio-documentos.tsx')
 const premium = source('features/admin-anuncios/admin-anuncio-premium.tsx')
 const premiumQuick = source('features/admin-anuncios/admin-anuncio-premium-rapido.tsx')
-const story = source('features/admin-anuncios/admin-anuncio-story.tsx')
 const storiesPage = source('app/(painel-admin)/admin/stories/page.tsx')
+const adminStories = source('components/stories/admin-stories-management.tsx')
+const adminStoriesApi = source('lib/admin-story-management-api.ts')
 const edit = source('features/admin-anuncios/admin-anuncio-edit-form.tsx')
 const editPage = source('app/(painel-admin)/admin/anuncios/[id]/editar/page.tsx')
 const api = source('features/admin-anuncios/api.ts')
@@ -53,7 +54,6 @@ for (const contract of [
   '`/anuncios/${encodeURIComponent(id)}/documentos`',
   '`/premium/anuncios/${encodeURIComponent(id)}/beneficios`',
   '`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes/lote`',
-  "request<AdminStorySelection[]>('/stories/selecao')",
   '`/midias/${encodeURIComponent(id)}/preview`',
   '`/anuncios/${encodeURIComponent(id)}/aprovar`',
   '`/moderacao/revisoes/${encodeURIComponent(reviewId)}/decidir`',
@@ -262,12 +262,12 @@ assert.ok(detailHeader.includes("Excluir an\\u00fancio"), 'Excluir anuncio deve 
 assert.ok(api.includes('JSON.stringify({ motivo: motivo.trim() })'), 'Adapter deve enviar somente o motivo sanitizado da remocao.')
 assert.ok(removalAdapter.includes("method: 'POST'") && !removalAdapter.includes("method: 'DELETE'"), 'Remocao administrativa deve usar a mutacao logica, nunca DELETE.')
 
-assert.ok(story.includes('Colocar nos Stories') && story.includes('Remover dos Stories'), 'A acao de Story administrativo deve existir.')
-assert.ok(story.includes('selection?.expiraEm') && story.includes('Restrita 18+'), 'Story deve mostrar expiracao e classificacao restrita.')
-assert.ok(story.includes('disabled={busy}'), 'Story deve bloquear duplo clique.')
-assert.ok(story.includes('activationKey.current || crypto.randomUUID()') && story.includes('activateAdminStory(anuncioId, key)'), 'Retry no detalhe deve reutilizar a Idempotency-Key da mesma intencao.')
-assert.ok(storiesPage.includes('activationKeys.current.get(candidate.anuncioId) || crypto.randomUUID()'), 'Retry na gestao de Stories deve reutilizar a Idempotency-Key por anuncio.')
-assert.ok(storiesPage.includes('Anúncios exibidos agora') && storiesPage.includes('Expira em {formatDate(selection.expiraEm)}'), 'A lista cumulativa deve exibir cada vigencia de 24 horas.')
+assert.ok(!detail.includes('AdminAnuncioStory') && !api.includes('/stories/selecao'), 'O detalhe de anuncio nao pode manter um fluxo administrativo paralelo de Stories.')
+assert.ok(storiesPage.includes('AdminStoriesManagement'), 'A rota administrativa de Stories deve usar a gestao canonica.')
+assert.ok(adminStoriesApi.includes('`/gestao?${query.toString()}`'), 'A gestao administrativa deve consultar o contrato canonico de Stories.')
+assert.ok(adminStoriesApi.includes('`/${encodeURIComponent(storyId)}/remover`'), 'A remocao administrativa deve usar o contrato canonico por Story.')
+assert.ok(adminStories.includes("story.modoConteudo === 'ANUNCIO' ? 'Anúncio' : 'Mídia enviada'"), 'A gestao deve distinguir os dois modos canonicos de conteudo.')
+assert.ok(adminStories.includes('disabled={removing}') && adminStories.includes('Remover Story'), 'A remocao administrativa deve impedir duplo clique.')
 
 assert.ok(editPage.includes('AdminAnuncioEditForm') && !editPage.includes('moderation-v2'), 'A edicao deve usar contrato administrativo V3 proprio.')
 assert.ok(edit.includes('updateAdminAd') && edit.includes("session?.papeis.includes('ADMIN')"), 'Somente ADMIN deve editar pelo adapter canonico.')

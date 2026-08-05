@@ -28,7 +28,7 @@ public record MeuAnuncioDto(
         VisualizacoesCanonicasDto visualizacoes,
         MeuAnuncioReprovacaoDto reprovacao,
         List<MeuAnuncioBeneficioDto> beneficiosPremium,
-        MeuAnuncioStoryDto storyAtivo) {
+        MinhaContaStoryDto storyAtivo) {
 
     public MeuAnuncioDto(
             UUID id,

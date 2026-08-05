@@ -86,6 +86,14 @@ public final class PersistenceEnums {
     ANUNCIO, MIDIA_UPLOAD
   }
 
+  public enum OrigemEncerramentoStory {
+    USUARIO, ADMIN
+  }
+
+  public enum MotivoRemocaoStoryAdmin {
+    VIOLACAO_REGRAS, DENUNCIA_PROCEDENTE, DETERMINACAO_JURIDICA, ERRO_TECNICO, OUTRO
+  }
+
   public enum TipoDocumentoUsuario {
     IDENTIDADE, VERIFICACAO_IDADE, COMPROVANTE, OUTRO
   }

@@ -299,6 +299,22 @@ public class AtivacaoBeneficioEntity {
     this.status = StatusAtivacaoBeneficio.ATIVA;
   }
 
+  public boolean restaurarAposFalhaTecnicaDaConta() {
+    if (revogadaEm != null || status == StatusAtivacaoBeneficio.REVOGADA) {
+      throw new IllegalStateException("ativacao revogada nao pode ser restaurada");
+    }
+    this.anuncioId = null;
+    if (status == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO
+        && inicioEm == null
+        && fimEm == null) {
+      return false;
+    }
+    this.inicioEm = null;
+    this.fimEm = null;
+    this.status = StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO;
+    return true;
+  }
+
   public void revogar(String motivo, OffsetDateTime agora) {
     this.status = StatusAtivacaoBeneficio.REVOGADA;
     this.revogadaEm = agora;

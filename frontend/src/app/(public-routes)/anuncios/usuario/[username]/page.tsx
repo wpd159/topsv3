@@ -7,15 +7,11 @@ export async function generateMetadata({
 }: {
   params: Promise<{ username: string }>
 }): Promise<Metadata> {
-  const { username: rawUsername } = await params
-  const login = decodeURIComponent(rawUsername || "").trim()
-  const title = login
-    ? `Anúncios de @${login} | Tops do Job`
-    : "Anúncios do usuário | Tops do Job"
+  await params
 
   return {
-    title,
-    description: "Listagem de anúncios ativos deste perfil na plataforma Tops do Job.",
+    title: "Anúncios da anunciante | Tops do Job",
+    description: "Listagem dos anúncios públicos disponíveis desta anunciante no Tops do Job.",
     robots: buildPublicRobotsMetadata(false),
   }
 }
@@ -26,7 +22,7 @@ export default async function AnunciosUsuarioPage({
   params: Promise<{ username: string }>
 }) {
   const { username: rawUsername } = await params
-  const username = rawUsername ? decodeURIComponent(rawUsername) : ""
+  const usuarioPublicoId = rawUsername ? decodeURIComponent(rawUsername) : ""
 
-  return <AnunciosUsuarioClient username={username} />
+  return <AnunciosUsuarioClient usuarioPublicoId={usuarioPublicoId} />
 }

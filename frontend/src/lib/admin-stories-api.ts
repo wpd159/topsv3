@@ -1,38 +1,5 @@
 import { adminApiUrl } from '@/lib/api-contract'
 
-export type AdminStorySelection = {
-  id: number
-  ativa: boolean
-  anuncioId: string | null
-  anuncioSlug: string | null
-  anuncioTitulo: string | null
-  fotosAprovadas: number
-  videosAprovados: number
-  ativadoEm: string | null
-  expiraEm: string | null
-  classificacao: 'RESTRITA_18'
-  ativadoPorId: string | null
-  ativadoPorEmail: string | null
-}
-
-export type AdminStoryCandidate = {
-  anuncioId: string
-  slug: string
-  titulo: string
-  fotosAprovadas: number
-  videosAprovados: number
-  selecionado: boolean
-}
-
-export type AdminStoryCandidatePage = {
-  itens: AdminStoryCandidate[]
-  page: number
-  size: number
-  totalElements: number
-  totalPages: number
-  last: boolean
-}
-
 export type AdminStoryConfiguracao = {
   configurada: boolean
   ativo: boolean
@@ -60,66 +27,45 @@ function antiForgeryHeaderName() {
   return ['X', 'XSRF', 'TOKEN'].join('-')
 }
 
-function readAntiForgeryValue() {
+function readCookie(name: string) {
   if (typeof document === 'undefined') return null
-  const name = antiForgeryCookieName()
-  const entry = document.cookie
-    .split('; ')
-    .find((cookie) => cookie.startsWith(`${name}${String.fromCharCode(61)}`))
-  return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
+  const prefix = `${name}${String.fromCharCode(61)}`
+  const pair = document.cookie.split('; ').find((item) => item.startsWith(prefix))
+  return pair ? decodeURIComponent(pair.slice(prefix.length)) : null
 }
 
 async function ensureAntiForgeryValue() {
-  let value = readAntiForgeryValue()
+  let value = readCookie(antiForgeryCookieName())
   if (value) return value
   await fetch(adminApiUrl('/auth/me'), {
+    method: 'GET',
     credentials: 'include',
     cache: 'no-store',
   })
-  value = readAntiForgeryValue()
+  value = readCookie(antiForgeryCookieName())
   return value
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}) {
   const method = (init.method || 'GET').toUpperCase()
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-    const value = await ensureAntiForgeryValue()
-    if (value) headers.set(antiForgeryHeaderName(), value)
+    const csrf = await ensureAntiForgeryValue()
+    if (csrf) headers.set(antiForgeryHeaderName(), csrf)
   }
   const response = await fetch(adminUrl(path), {
     ...init,
+    method,
     headers,
     credentials: 'include',
     cache: 'no-store',
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null
+    const body = await response.json().catch(() => null) as { message?: string } | null
     throw new Error(body?.message || `Não foi possível concluir a operação (${response.status}).`)
   }
-  return (await response.json()) as T
-}
-
-export function fetchAdminStorySelection() {
-  return request<AdminStorySelection[]>('/selecao')
-}
-
-export function fetchAdminStoryCandidates(termo = '') {
-  const query = new URLSearchParams({ page: '0', size: '50' })
-  if (termo.trim()) query.set('termo', termo.trim())
-  return request<AdminStoryCandidatePage>(`/candidatos?${query.toString()}`)
-}
-
-export function activateAdminStorySelection(anuncioId: string, idempotencyKey = crypto.randomUUID()) {
-  return request<AdminStorySelection>(`/selecao/${encodeURIComponent(anuncioId)}`, {
-    method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
-}
-
-export function deactivateAdminStorySelection(anuncioId: string) {
-  return request<AdminStorySelection>(`/selecao/${encodeURIComponent(anuncioId)}`, { method: 'DELETE' })
+  return await response.json() as T
 }
 
 export function fetchAdminStoryConfiguracao() {

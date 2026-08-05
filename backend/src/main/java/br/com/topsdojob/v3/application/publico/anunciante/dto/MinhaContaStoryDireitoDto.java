@@ -3,13 +3,10 @@ package br.com.topsdojob.v3.application.publico.anunciante.dto;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-public record MeuAnuncioStoryDto(
-    UUID storyId,
-    UUID anuncioId,
-    String modoConteudo,
-    String tipoMidia,
+public record MinhaContaStoryDireitoDto(
+    UUID ativacaoId,
     String status,
+    Integer custoCreditosSnapshot,
     OffsetDateTime inicioEm,
-    OffsetDateTime fimEm,
-    String estadoMidia) {
+    OffsetDateTime fimEm) {
 }

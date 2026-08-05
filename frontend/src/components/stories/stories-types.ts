@@ -38,7 +38,7 @@ export type StoryViewerItem = {
 }
 
 export type StoryBundle = {
-  usuarioId: string | number
+  bundleKey: string
   usuarioUsername?: string | null
   displayUsername?: string | null
   idade?: number | null

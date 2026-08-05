@@ -226,21 +226,6 @@ export type AdminPremiumCatalogItem = {
   opcoes: AdminPremiumCatalogOption[]
 }
 
-export type AdminStorySelection = {
-  id: number
-  ativa: boolean
-  anuncioId?: string | null
-  anuncioSlug?: string | null
-  anuncioTitulo?: string | null
-  fotosAprovadas: number
-  videosAprovados: number
-  ativadoEm?: string | null
-  expiraEm?: string | null
-  classificacao: 'RESTRITA_18'
-  ativadoPorId?: string | null
-  ativadoPorEmail?: string | null
-}
-
 export type AdminAdUpdate = {
   titulo: string
   descricao: string

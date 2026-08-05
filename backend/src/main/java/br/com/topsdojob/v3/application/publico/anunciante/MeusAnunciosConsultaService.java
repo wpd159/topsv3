@@ -184,7 +184,7 @@ public class MeusAnunciosConsultaService {
         Map<UUID, VisualizacoesCanonicasDto> visualizacoes = visualizacaoService.calcularEmLote(anuncioIds);
         Map<UUID, List<br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioBeneficioDto>>
                 beneficiosPremium = beneficioConsultaService.consultarEmLote(anuncioIds);
-        Map<UUID, br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDto>
+        Map<UUID, br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDto>
                 storiesAtivos = storyConsultaService.consultarAtivos(anuncioIds);
         Map<UUID, MeuAnuncioReprovacaoDto> reprovacoes = decisaoModeracaoRepository
                 .findReprovacoesByAnuncioIdIn(anuncioIds).stream()

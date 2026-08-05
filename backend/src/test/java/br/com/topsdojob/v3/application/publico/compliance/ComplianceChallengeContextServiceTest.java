@@ -37,6 +37,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 class ComplianceChallengeContextServiceTest {
 
+  private static final UUID USUARIO_ID = UUID.randomUUID();
+
   private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
   private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
   private final StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
@@ -55,6 +57,7 @@ class ComplianceChallengeContextServiceTest {
         storyAdminRepository,
         usuarioRepository);
     UsuarioEntity usuario = mock(UsuarioEntity.class);
+    when(usuario.getId()).thenReturn(USUARIO_ID);
     when(usuario.getStatus()).thenReturn(StatusUsuario.ATIVO);
     when(usuarioRepository.findById(org.mockito.ArgumentMatchers.any()))
         .thenReturn(Optional.of(usuario));
@@ -98,11 +101,9 @@ class ComplianceChallengeContextServiceTest {
     UUID anuncioId = UUID.randomUUID();
     UUID storyId = UUID.randomUUID();
     UUID usuarioId = UUID.randomUUID();
-    StoryAnuncioEntity story = StoryAnuncioEntity.criarAutogestao(
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarAnuncio(
         storyId,
         anuncioId,
-        null,
-        ModoConteudoStory.ANUNCIO,
         UUID.randomUUID(),
         "story-anuncio-contexto",
         "a".repeat(64),
@@ -162,6 +163,8 @@ class ComplianceChallengeContextServiceTest {
         .thenReturn(Optional.of(story));
     when(midiaRepository.findById(midiaId))
         .thenReturn(Optional.of(midiaStory(midiaId, anuncioReal, agora)));
+    when(anuncioRepository.findById(anuncioReal))
+        .thenReturn(Optional.of(anuncioPublicado(anuncioReal, agora)));
 
     assertStatus(
         () -> service.validar(
@@ -217,11 +220,9 @@ class ComplianceChallengeContextServiceTest {
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     UUID anuncioId = UUID.randomUUID();
     UUID storyId = UUID.randomUUID();
-    StoryAnuncioEntity story = StoryAnuncioEntity.criarAutogestao(
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarAnuncio(
         storyId,
         anuncioId,
-        null,
-        ModoConteudoStory.ANUNCIO,
         UUID.randomUUID(),
         "story-proprietario-inativo",
         "b".repeat(64),
@@ -258,7 +259,7 @@ class ComplianceChallengeContextServiceTest {
   private AnuncioEntity anuncioPublicado(UUID anuncioId, OffsetDateTime agora) {
     return AnuncioEntity.criarFixtureHomologacao(
         anuncioId,
-        UUID.randomUUID(),
+        USUARIO_ID,
         "anuncio-" + anuncioId,
         "Anuncio",
         "Descricao",

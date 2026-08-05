@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.persistence.entity.midia;
 
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemEncerramentoStory;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -23,6 +24,9 @@ public class StoryAnuncioEntity {
 
   @Column(name = "anuncio_midia_id")
   private UUID anuncioMidiaId;
+
+  @Column(name = "arquivo_midia_id")
+  private UUID arquivoMidiaId;
 
   @Column(name = "anuncio_id")
   private UUID anuncioId;
@@ -62,12 +66,35 @@ public class StoryAnuncioEntity {
   @Column(name = "atualizado_em")
   private OffsetDateTime atualizadoEm;
 
+  @Column(name = "encerrado_em")
+  private OffsetDateTime encerradoEm;
+
+  @Column(name = "encerrado_por")
+  private UUID encerradoPor;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "origem_encerramento")
+  private OrigemEncerramentoStory origemEncerramento;
+
+  @Column(name = "motivo_encerramento")
+  private String motivoEncerramento;
+
+  @Column(name = "descricao_encerramento")
+  private String descricaoEncerramento;
+
+  @Column(name = "direito_preservado")
+  private boolean direitoPreservado;
+
   public UUID getId() {
     return id;
   }
 
   public UUID getAnuncioMidiaId() {
     return anuncioMidiaId;
+  }
+
+  public UUID getArquivoMidiaId() {
+    return arquivoMidiaId;
   }
 
   public UUID getAnuncioId() {
@@ -122,6 +149,30 @@ public class StoryAnuncioEntity {
     return atualizadoEm;
   }
 
+  public OffsetDateTime getEncerradoEm() {
+    return encerradoEm;
+  }
+
+  public UUID getEncerradoPor() {
+    return encerradoPor;
+  }
+
+  public OrigemEncerramentoStory getOrigemEncerramento() {
+    return origemEncerramento;
+  }
+
+  public String getMotivoEncerramento() {
+    return motivoEncerramento;
+  }
+
+  public String getDescricaoEncerramento() {
+    return descricaoEncerramento;
+  }
+
+  public boolean isDireitoPreservado() {
+    return direitoPreservado;
+  }
+
   public boolean suspenderPorBloqueio(OffsetDateTime agora) {
     if (status == StatusStoryAnuncio.EXPIRADO || status == StatusStoryAnuncio.REMOVIDO) {
       return false;
@@ -142,31 +193,28 @@ public class StoryAnuncioEntity {
     return true;
   }
 
-  public static StoryAnuncioEntity criarAutogestao(
+  public static StoryAnuncioEntity criarAnuncio(
       UUID id,
       UUID anuncioId,
-      UUID anuncioMidiaId,
-      ModoConteudoStory modoConteudo,
       UUID ativacaoBeneficioId,
       String idempotencyKey,
       String requestFingerprint,
       OffsetDateTime inicioEm,
       OffsetDateTime fimEm,
       UUID criadoPor) {
-    if (id == null || anuncioId == null || modoConteudo == null
+    if (id == null || anuncioId == null
         || ativacaoBeneficioId == null || criadoPor == null
         || idempotencyKey == null || idempotencyKey.isBlank()
         || requestFingerprint == null || !requestFingerprint.matches("[0-9a-f]{64}")
-        || inicioEm == null || fimEm == null || !fimEm.isAfter(inicioEm)
-        || (modoConteudo == ModoConteudoStory.ANUNCIO && anuncioMidiaId != null)
-        || (modoConteudo == ModoConteudoStory.MIDIA_UPLOAD && anuncioMidiaId == null)) {
-      throw new IllegalArgumentException("Dados do Story de autogestao invalidos");
+        || inicioEm == null || fimEm == null || !fimEm.isAfter(inicioEm)) {
+      throw new IllegalArgumentException("Dados do Story de anuncio invalidos");
     }
     StoryAnuncioEntity entity = new StoryAnuncioEntity();
     entity.id = id;
     entity.anuncioId = anuncioId;
-    entity.anuncioMidiaId = anuncioMidiaId;
-    entity.modoConteudo = modoConteudo;
+    entity.anuncioMidiaId = null;
+    entity.arquivoMidiaId = null;
+    entity.modoConteudo = ModoConteudoStory.ANUNCIO;
     entity.ativacaoBeneficioId = ativacaoBeneficioId;
     entity.idempotencyKey = idempotencyKey;
     entity.requestFingerprint = requestFingerprint;
@@ -177,7 +225,67 @@ public class StoryAnuncioEntity {
     entity.criadoPor = criadoPor;
     entity.criadoEm = inicioEm;
     entity.atualizadoEm = inicioEm;
+    entity.direitoPreservado = false;
     return entity;
+  }
+
+  public static StoryAnuncioEntity criarMidiaUpload(
+      UUID id,
+      UUID arquivoMidiaId,
+      UUID ativacaoBeneficioId,
+      String idempotencyKey,
+      String requestFingerprint,
+      OffsetDateTime inicioEm,
+      OffsetDateTime fimEm,
+      UUID criadoPor) {
+    if (id == null || arquivoMidiaId == null || ativacaoBeneficioId == null || criadoPor == null
+        || idempotencyKey == null || idempotencyKey.isBlank()
+        || requestFingerprint == null || !requestFingerprint.matches("[0-9a-f]{64}")
+        || inicioEm == null || fimEm == null || !fimEm.isAfter(inicioEm)) {
+      throw new IllegalArgumentException("Dados do Story de midia invalidos");
+    }
+    StoryAnuncioEntity entity = new StoryAnuncioEntity();
+    entity.id = id;
+    entity.anuncioId = null;
+    entity.anuncioMidiaId = null;
+    entity.arquivoMidiaId = arquivoMidiaId;
+    entity.modoConteudo = ModoConteudoStory.MIDIA_UPLOAD;
+    entity.ativacaoBeneficioId = ativacaoBeneficioId;
+    entity.idempotencyKey = idempotencyKey;
+    entity.requestFingerprint = requestFingerprint;
+    entity.status = StatusStoryAnuncio.PUBLICADO;
+    entity.inicioEm = inicioEm;
+    entity.fimEm = fimEm;
+    entity.ordem = 0;
+    entity.criadoPor = criadoPor;
+    entity.criadoEm = inicioEm;
+    entity.atualizadoEm = inicioEm;
+    entity.direitoPreservado = false;
+    return entity;
+  }
+
+  public boolean encerrar(
+      UUID atorId,
+      OrigemEncerramentoStory origem,
+      String motivo,
+      String descricao,
+      boolean preservarDireito,
+      OffsetDateTime agora) {
+    if (status == StatusStoryAnuncio.REMOVIDO && encerradoEm != null) {
+      return false;
+    }
+    if (atorId == null || origem == null || agora == null) {
+      throw new IllegalArgumentException("Encerramento do Story invalido");
+    }
+    status = StatusStoryAnuncio.REMOVIDO;
+    encerradoEm = agora;
+    encerradoPor = atorId;
+    origemEncerramento = origem;
+    motivoEncerramento = motivo;
+    descricaoEncerramento = descricao;
+    direitoPreservado = preservarDireito;
+    atualizadoEm = agora;
+    return true;
   }
 
   public static StoryAnuncioEntity criarFixtureHomologacao(

@@ -156,11 +156,9 @@ class AdminAnuncioJuridicoServiceTest {
         StatusModeracaoAnuncio.PENDENTE);
     when(anuncioRepository.findByUsuarioIdForLegalBlock(fixture.usuario().getId()))
         .thenReturn(List.of(fixture.anuncio(), outro, pendente));
-    StoryAnuncioEntity story = StoryAnuncioEntity.criarAutogestao(
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarAnuncio(
         UUID.randomUUID(),
         outro.getId(),
-        null,
-        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory.ANUNCIO,
         UUID.randomUUID(),
         "story-direto-bloqueio",
         "a".repeat(64),
@@ -168,8 +166,13 @@ class AdminAnuncioJuridicoServiceTest {
         OffsetDateTime.now().plusHours(23),
         fixture.usuario().getId());
     when(storyRepository.findByAnuncioIdsForUpdate(any(Set.class))).thenReturn(List.of(story));
-    StorySelecaoAdministrativaEntity storyAdmin = StorySelecaoAdministrativaEntity.nova(OffsetDateTime.now());
-    storyAdmin.ativar(outro.getId(), admin().usuarioId(), OffsetDateTime.now());
+    StorySelecaoAdministrativaEntity storyAdmin = entity(StorySelecaoAdministrativaEntity.class);
+    OffsetDateTime agora = OffsetDateTime.now();
+    set(storyAdmin, "anuncioId", outro.getId());
+    set(storyAdmin, "ativa", true);
+    set(storyAdmin, "ativadoPor", admin().usuarioId());
+    set(storyAdmin, "ativadoEm", agora);
+    set(storyAdmin, "expiraEm", agora.plusHours(24));
     when(storyAdminRepository.bloquearAtivasDosAnuncios(any())).thenReturn(List.of(storyAdmin));
 
     var resultado = service.bloquearAnuncioEUsuario(

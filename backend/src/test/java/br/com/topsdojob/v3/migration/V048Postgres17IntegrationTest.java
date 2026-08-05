@@ -38,6 +38,13 @@ class V048Postgres17IntegrationTest {
     private static final UUID ARQUIVO_STORY_B3 = UUID.fromString("30000000-0000-4000-8000-000000000006");
     private static final UUID ARQUIVO_STORY_E1 = UUID.fromString("30000000-0000-4000-8000-000000000007");
     private static final UUID ARQUIVO_STORY_E2 = UUID.fromString("30000000-0000-4000-8000-000000000008");
+    private static final UUID ARQUIVO_DIRETO_1 = UUID.fromString("30000000-0000-4000-8000-000000000009");
+    private static final UUID ARQUIVO_DIRETO_2 = UUID.fromString("30000000-0000-4000-8000-000000000010");
+    private static final UUID ARQUIVO_DIRETO_3 = UUID.fromString("30000000-0000-4000-8000-000000000011");
+    private static final UUID ARQUIVO_DIRETO_4 = UUID.fromString("30000000-0000-4000-8000-000000000012");
+    private static final UUID ARQUIVO_DIRETO_5 = UUID.fromString("30000000-0000-4000-8000-000000000013");
+    private static final UUID ARQUIVO_DIRETO_6 = UUID.fromString("30000000-0000-4000-8000-000000000014");
+    private static final UUID ARQUIVO_DIRETO_7 = UUID.fromString("30000000-0000-4000-8000-000000000015");
     private static final UUID MIDIA_HISTORICA = UUID.fromString("40000000-0000-4000-8000-000000000001");
     private static final UUID MIDIA_STORY = UUID.fromString("40000000-0000-4000-8000-000000000002");
     private static final UUID MIDIA_STORY_C1 = UUID.fromString("40000000-0000-4000-8000-000000000003");
@@ -65,6 +72,13 @@ class V048Postgres17IntegrationTest {
     private static final UUID ATIVACAO_B4 = UUID.fromString("70000000-0000-4000-8000-000000000015");
     private static final UUID ATIVACAO_E2 = UUID.fromString("70000000-0000-4000-8000-000000000016");
     private static final UUID ATIVACAO_E3 = UUID.fromString("70000000-0000-4000-8000-000000000017");
+    private static final UUID ATIVACAO_DIRETA_1 = UUID.fromString("70000000-0000-4000-8000-000000000018");
+    private static final UUID ATIVACAO_DIRETA_2 = UUID.fromString("70000000-0000-4000-8000-000000000019");
+    private static final UUID ATIVACAO_DIRETA_3 = UUID.fromString("70000000-0000-4000-8000-000000000020");
+    private static final UUID ATIVACAO_DIRETA_4 = UUID.fromString("70000000-0000-4000-8000-000000000021");
+    private static final UUID ATIVACAO_DIRETA_5 = UUID.fromString("70000000-0000-4000-8000-000000000022");
+    private static final UUID ATIVACAO_DIRETA_6 = UUID.fromString("70000000-0000-4000-8000-000000000023");
+    private static final UUID ATIVACAO_DIRETA_7 = UUID.fromString("70000000-0000-4000-8000-000000000024");
     private static final UUID STORY_E = UUID.fromString("50000000-0000-4000-8000-000000000002");
 
     @Test
@@ -107,6 +121,12 @@ class V048Postgres17IntegrationTest {
             assertThat(jdbc.queryForObject(
                     "SELECT count(*) FROM flyway_schema_history WHERE version::integer = 49 AND success",
                     Long.class)).isEqualTo(1L);
+            assertThat(jdbc.queryForObject(
+                    "SELECT count(*) FROM flyway_schema_history WHERE version::integer = 50 AND success",
+                    Long.class)).isEqualTo(1L);
+            assertThat(jdbc.queryForObject(
+                    "SELECT count(*) FROM flyway_schema_history WHERE version IS NOT NULL AND success",
+                    Long.class)).isEqualTo(50L);
             assertThat(jdbc.queryForObject(
                     "SELECT count(*) FROM story_configuracao_comercial",
                     Long.class)).isZero();
@@ -167,52 +187,49 @@ class V048Postgres17IntegrationTest {
 
             assertCleanupEsperaRetryCommitado(dataSource);
 
-            jdbc.update("UPDATE story_anuncio SET status = 'EXPIRADO' WHERE anuncio_id = ?", ANUNCIO_C);
             assertThat(concurrently(
-                    () -> insertStory(
-                            dataSource, ANUNCIO_C, MIDIA_STORY_C1, "MIDIA_UPLOAD",
-                            ATIVACAO_C3, OWNER_B, "story-c-midia-1"),
-                    () -> insertStory(
-                            dataSource, ANUNCIO_C, MIDIA_STORY_C2, "MIDIA_UPLOAD",
-                            ATIVACAO_C4, OWNER_B, "story-c-midia-2")))
-                    .containsExactlyInAnyOrder(true, false);
+                    () -> insertStoryDireto(
+                            dataSource, ARQUIVO_DIRETO_1, ATIVACAO_DIRETA_1,
+                            OWNER_B, "story-direto-1", "1".repeat(64)),
+                    () -> insertStoryDireto(
+                            dataSource, ARQUIVO_DIRETO_2, ATIVACAO_DIRETA_2,
+                            OWNER_B, "story-direto-2", "2".repeat(64))))
+                    .containsExactly(true, true);
 
             jdbc.update("UPDATE story_anuncio SET status = 'EXPIRADO' WHERE anuncio_id = ?", ANUNCIO_D);
             assertThat(concurrently(
                     () -> insertStory(
                             dataSource, ANUNCIO_D, null, "ANUNCIO",
                             ATIVACAO_D2, OWNER_B, "story-d-anuncio"),
-                    () -> insertStory(
-                            dataSource, ANUNCIO_D, MIDIA_STORY_D1, "MIDIA_UPLOAD",
-                            ATIVACAO_D3, OWNER_B, "story-d-midia")))
-                    .containsExactlyInAnyOrder(true, false);
+                    () -> insertStoryDireto(
+                            dataSource, ARQUIVO_DIRETO_3, ATIVACAO_DIRETA_3,
+                            OWNER_B, "story-d-midia", "3".repeat(64))))
+                    .containsExactly(true, true);
 
-            jdbc.update("UPDATE story_anuncio SET status = 'EXPIRADO' WHERE anuncio_id = ?", ANUNCIO_B);
             assertThat(concurrently(
-                    () -> insertStory(
-                            dataSource, ANUNCIO_B, MIDIA_STORY_B3, "MIDIA_UPLOAD",
-                            ATIVACAO_B3, OWNER_A, "retry-concorrente"),
-                    () -> insertStory(
-                            dataSource, ANUNCIO_B, MIDIA_STORY_B3, "MIDIA_UPLOAD",
-                            ATIVACAO_B4, OWNER_A, "retry-concorrente")))
+                    () -> insertStoryDireto(
+                            dataSource, ARQUIVO_DIRETO_4, ATIVACAO_DIRETA_4,
+                            OWNER_A, "retry-concorrente", "4".repeat(64)),
+                    () -> insertStoryDireto(
+                            dataSource, ARQUIVO_DIRETO_5, ATIVACAO_DIRETA_5,
+                            OWNER_A, "retry-concorrente", "4".repeat(64))))
                     .containsExactlyInAnyOrder(true, false);
             assertThat(jdbc.queryForObject(
-                    "SELECT count(*) FROM story_anuncio WHERE anuncio_id = ? AND idempotency_key = ?",
-                    Long.class, ANUNCIO_B, "retry-concorrente"))
+                    "SELECT count(*) FROM story_anuncio WHERE anuncio_id IS NULL AND idempotency_key = ?",
+                    Long.class, "retry-concorrente"))
                     .isEqualTo(1L);
 
-            jdbc.update("UPDATE story_anuncio SET status = 'EXPIRADO' WHERE anuncio_id = ?", ANUNCIO_E);
             assertThat(concurrently(
-                    () -> insertStoryWithFingerprint(
-                            dataSource, ANUNCIO_E, MIDIA_STORY_E1, "MIDIA_UPLOAD",
-                            ATIVACAO_E2, OWNER_B, "chave-arquivo-divergente", "e".repeat(64)),
-                    () -> insertStoryWithFingerprint(
-                            dataSource, ANUNCIO_E, MIDIA_STORY_E2, "MIDIA_UPLOAD",
-                            ATIVACAO_E3, OWNER_B, "chave-arquivo-divergente", "f".repeat(64))))
+                    () -> insertStoryDireto(
+                            dataSource, ARQUIVO_DIRETO_6, ATIVACAO_DIRETA_6,
+                            OWNER_B, "chave-arquivo-divergente", "e".repeat(64)),
+                    () -> insertStoryDireto(
+                            dataSource, ARQUIVO_DIRETO_7, ATIVACAO_DIRETA_7,
+                            OWNER_B, "chave-arquivo-divergente", "f".repeat(64))))
                     .containsExactlyInAnyOrder(true, false);
             assertThat(jdbc.queryForObject(
-                    "SELECT count(*) FROM story_anuncio WHERE anuncio_id = ? AND idempotency_key = ?",
-                    Long.class, ANUNCIO_E, "chave-arquivo-divergente"))
+                    "SELECT count(*) FROM story_anuncio WHERE anuncio_id IS NULL AND idempotency_key = ?",
+                    Long.class, "chave-arquivo-divergente"))
                     .isEqualTo(1L);
 
             assertThat(insertStory(
@@ -264,6 +281,17 @@ class V048Postgres17IntegrationTest {
         insertStoryMidia(jdbc, ARQUIVO_STORY_B3, MIDIA_STORY_B3, ANUNCIO_B, "story-b-3.jpg", "f", 1);
         insertStoryMidia(jdbc, ARQUIVO_STORY_E1, MIDIA_STORY_E1, ANUNCIO_E, "story-e-1.jpg", "1", 0);
         insertStoryMidia(jdbc, ARQUIVO_STORY_E2, MIDIA_STORY_E2, ANUNCIO_E, "story-e-2.jpg", "2", 1);
+        List<UUID> arquivosDiretos = List.of(
+                ARQUIVO_DIRETO_1, ARQUIVO_DIRETO_2, ARQUIVO_DIRETO_3,
+                ARQUIVO_DIRETO_4, ARQUIVO_DIRETO_5, ARQUIVO_DIRETO_6,
+                ARQUIVO_DIRETO_7);
+        for (int index = 0; index < arquivosDiretos.size(); index++) {
+            insertArquivoDireto(
+                    jdbc,
+                    arquivosDiretos.get(index),
+                    "story-direto-" + (index + 1) + ".jpg",
+                    Integer.toHexString(index + 3));
+        }
         jdbc.update("""
                 INSERT INTO story_anuncio (
                   id, anuncio_midia_id, status, inicio_em, fim_em, ordem,
@@ -302,6 +330,13 @@ class V048Postgres17IntegrationTest {
         insertAtivacao(jdbc, ATIVACAO_B4, ANUNCIO_B, OWNER_A);
         insertAtivacao(jdbc, ATIVACAO_E2, ANUNCIO_E, OWNER_B);
         insertAtivacao(jdbc, ATIVACAO_E3, ANUNCIO_E, OWNER_B);
+        insertAtivacao(jdbc, ATIVACAO_DIRETA_1, null, OWNER_B);
+        insertAtivacao(jdbc, ATIVACAO_DIRETA_2, null, OWNER_B);
+        insertAtivacao(jdbc, ATIVACAO_DIRETA_3, null, OWNER_B);
+        insertAtivacao(jdbc, ATIVACAO_DIRETA_4, null, OWNER_A);
+        insertAtivacao(jdbc, ATIVACAO_DIRETA_5, null, OWNER_A);
+        insertAtivacao(jdbc, ATIVACAO_DIRETA_6, null, OWNER_B);
+        insertAtivacao(jdbc, ATIVACAO_DIRETA_7, null, OWNER_B);
     }
 
     private static void assertCleanupEsperaRetryCommitado(
@@ -417,6 +452,19 @@ class V048Postgres17IntegrationTest {
                 """, midiaId, anuncioId, arquivoId, ordem);
     }
 
+    private static void insertArquivoDireto(
+            JdbcTemplate jdbc,
+            UUID arquivoId,
+            String objectKey,
+            String hashDigit) {
+        jdbc.update("""
+                INSERT INTO arquivo_midia (
+                  id, storage_provider, bucket, chave_objeto, mime_type, tamanho_bytes,
+                  largura, altura, sha256, status_arquivo, criado_em
+                ) VALUES (?, 'R2', 'privado', ?, 'image/jpeg', 10, 720, 1280, ?, 'VALIDADO', now())
+                """, arquivoId, objectKey, hashDigit.repeat(64));
+    }
+
     private static void insertAtivacao(
             JdbcTemplate jdbc,
             UUID id,
@@ -461,6 +509,23 @@ class V048Postgres17IntegrationTest {
                 ) VALUES (?, ?, 'PUBLICADO', now(), now() + interval '24 hours', 0,
                           ?, now(), now(), ?, ?, ?, ?, ?)
                 """, UUID.randomUUID(), midiaId, ownerId, anuncioId, modo, ativacaoId, key, fingerprint);
+    }
+
+    private static boolean insertStoryDireto(
+            DriverManagerDataSource dataSource,
+            UUID arquivoId,
+            UUID ativacaoId,
+            UUID ownerId,
+            String key,
+            String fingerprint) throws Exception {
+        return insertIgnoringConstraint(dataSource, """
+                INSERT INTO story_anuncio (
+                  id, anuncio_midia_id, arquivo_midia_id, status, inicio_em, fim_em, ordem,
+                  criado_por, criado_em, atualizado_em, anuncio_id, modo_conteudo,
+                  ativacao_beneficio_id, idempotency_key, request_fingerprint
+                ) VALUES (?, NULL, ?, 'PUBLICADO', now(), now() + interval '24 hours', 0,
+                          ?, now(), now(), NULL, 'MIDIA_UPLOAD', ?, ?, ?)
+                """, UUID.randomUUID(), arquivoId, ownerId, ativacaoId, key, fingerprint);
     }
 
     private static boolean insertIgnoringConstraint(

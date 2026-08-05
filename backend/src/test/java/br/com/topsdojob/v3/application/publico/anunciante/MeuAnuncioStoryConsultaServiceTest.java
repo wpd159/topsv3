@@ -1,19 +1,17 @@
 package br.com.topsdojob.v3.application.publico.anunciante;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
-import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioStoryDto;
-import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDto;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -30,10 +28,7 @@ class MeuAnuncioStoryConsultaServiceTest {
   private static final UUID ANUNCIO_ID = UUID.fromString("11111111-1111-4111-8111-111111111111");
   private static final UUID ANUNCIO_B_ID = UUID.fromString("55555555-5555-4555-8555-555555555555");
   private static final UUID USUARIO_ID = UUID.fromString("22222222-2222-4222-8222-222222222222");
-  private static final UUID MIDIA_ID = UUID.fromString("33333333-3333-4333-8333-333333333333");
-  private static final UUID MIDIA_B_ID = UUID.fromString("66666666-6666-4666-8666-666666666666");
   private static final UUID ARQUIVO_ID = UUID.fromString("44444444-4444-4444-8444-444444444444");
-  private static final UUID ARQUIVO_B_ID = UUID.fromString("77777777-7777-4777-8777-777777777777");
 
   private final StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
   private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
@@ -50,42 +45,40 @@ class MeuAnuncioStoryConsultaServiceTest {
   }
 
   @Test
-  void midiaUploadValidadoEhDisponivelSemReferenciaInternaNoDto() {
-    StoryAnuncioEntity story = story(MIDIA_ID, ModoConteudoStory.MIDIA_UPLOAD, AGORA.plusHours(24));
-    AnuncioMidiaEntity midia = AnuncioMidiaEntity.criarStoryUploadValidado(
-        MIDIA_ID, ANUNCIO_ID, ARQUIVO_ID, 0, AGORA.minusMinutes(1));
+  void midiaUploadDiretaValidadaEhDisponivelSemReferenciaInternaNoDto() {
+    StoryAnuncioEntity story = storyMidia(ARQUIVO_ID, AGORA.plusHours(24));
     ArquivoMidiaEntity arquivo = arquivo(StatusArquivoMidia.VALIDADO);
-    when(midiaRepository.findById(MIDIA_ID)).thenReturn(Optional.of(midia));
     when(arquivoRepository.findById(ARQUIVO_ID)).thenReturn(Optional.of(arquivo));
 
-    MeuAnuncioStoryDto dto = service.consultar(story);
+    MinhaContaStoryDto dto = service.consultar(story);
 
     assertThat(dto.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
     assertThat(dto.tipoMidia()).isEqualTo("FOTO");
     assertThat(dto.estadoMidia()).isEqualTo("DISPONIVEL");
+    assertThat(dto.anuncioId()).isNull();
+    assertThat(story.getAnuncioMidiaId()).isNull();
     assertThat(dto.getClass().getRecordComponents())
         .extracting(java.lang.reflect.RecordComponent::getName)
         .doesNotContain("objectKey", "chaveObjeto", "bucket", "urlPrivada");
+    verifyNoInteractions(midiaRepository);
   }
 
   @Test
-  void midiaUploadPendenteEhIndisponivelMesmoComReferenciaPresente() {
-    StoryAnuncioEntity story = story(MIDIA_ID, ModoConteudoStory.MIDIA_UPLOAD, AGORA.plusHours(24));
-    AnuncioMidiaEntity midia = AnuncioMidiaEntity.criarStoryUploadValidado(
-        MIDIA_ID, ANUNCIO_ID, ARQUIVO_ID, 0, AGORA.minusMinutes(1));
-    when(midiaRepository.findById(MIDIA_ID)).thenReturn(Optional.of(midia));
+  void midiaUploadDiretaPendenteEhIndisponivel() {
+    StoryAnuncioEntity story = storyMidia(ARQUIVO_ID, AGORA.plusHours(24));
     when(arquivoRepository.findById(ARQUIVO_ID))
         .thenReturn(Optional.of(arquivo(StatusArquivoMidia.PENDENTE)));
 
-    MeuAnuncioStoryDto dto = service.consultar(story);
+    MinhaContaStoryDto dto = service.consultar(story);
 
     assertThat(dto.estadoMidia()).isEqualTo("INDISPONIVEL");
+    verifyNoInteractions(midiaRepository);
   }
 
   @Test
   void modoAnuncioNaoExigeMidiaExclusiva() {
-    MeuAnuncioStoryDto dto = service.consultar(
-        story(null, ModoConteudoStory.ANUNCIO, AGORA.plusHours(24)));
+    MinhaContaStoryDto dto = service.consultar(
+        storyAnuncio(ANUNCIO_ID, AGORA.plusHours(24)));
 
     assertThat(dto.modoConteudo()).isEqualTo("ANUNCIO");
     assertThat(dto.tipoMidia()).isNull();
@@ -95,7 +88,7 @@ class MeuAnuncioStoryConsultaServiceTest {
 
   @Test
   void storyExpiradoNaoEhConfundidoComFalhaDeMidiaAtiva() {
-    StoryAnuncioEntity expirado = story(MIDIA_ID, ModoConteudoStory.MIDIA_UPLOAD, AGORA.minusSeconds(1));
+    StoryAnuncioEntity expirado = storyMidia(ARQUIVO_ID, AGORA.minusSeconds(1));
     when(storyRepository.findByAnuncioIds(List.of(ANUNCIO_ID))).thenReturn(List.of(expirado));
 
     assertThat(service.consultarAtivos(List.of(ANUNCIO_ID))).isEmpty();
@@ -103,22 +96,12 @@ class MeuAnuncioStoryConsultaServiceTest {
   }
 
   @Test
-  void mesmoUsuarioMantemStoryAtivoEmCadaAnuncioNaConsulta() {
-    StoryAnuncioEntity storyA = story(
-        ANUNCIO_ID, MIDIA_ID, ModoConteudoStory.MIDIA_UPLOAD, AGORA.plusHours(24));
-    StoryAnuncioEntity storyB = story(
-        ANUNCIO_B_ID, MIDIA_B_ID, ModoConteudoStory.MIDIA_UPLOAD, AGORA.plusHours(24));
-    AnuncioMidiaEntity midiaA = AnuncioMidiaEntity.criarStoryUploadValidado(
-        MIDIA_ID, ANUNCIO_ID, ARQUIVO_ID, 0, AGORA.minusMinutes(1));
-    AnuncioMidiaEntity midiaB = AnuncioMidiaEntity.criarStoryUploadValidado(
-        MIDIA_B_ID, ANUNCIO_B_ID, ARQUIVO_B_ID, 0, AGORA.minusMinutes(1));
+  void mesmoUsuarioMantemStoryAnuncioAtivoEmCadaAnuncioNaConsulta() {
+    StoryAnuncioEntity storyA = storyAnuncio(ANUNCIO_ID, AGORA.plusHours(24));
+    StoryAnuncioEntity storyB = storyAnuncio(ANUNCIO_B_ID, AGORA.plusHours(24));
 
     when(storyRepository.findByAnuncioIds(List.of(ANUNCIO_ID, ANUNCIO_B_ID)))
         .thenReturn(List.of(storyA, storyB));
-    when(midiaRepository.findByIdIn(any())).thenReturn(List.of(midiaA, midiaB));
-    when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(
-        arquivo(ARQUIVO_ID, StatusArquivoMidia.VALIDADO),
-        arquivo(ARQUIVO_B_ID, StatusArquivoMidia.VALIDADO)));
 
     var ativos = service.consultarAtivos(List.of(ANUNCIO_ID, ANUNCIO_B_ID));
 
@@ -126,33 +109,42 @@ class MeuAnuncioStoryConsultaServiceTest {
     assertThat(ativos.get(ANUNCIO_ID).storyId()).isEqualTo(storyA.getId());
     assertThat(ativos.get(ANUNCIO_B_ID).storyId()).isEqualTo(storyB.getId());
     assertThat(ativos.values())
-        .extracting(MeuAnuncioStoryDto::estadoMidia)
-        .containsOnly("DISPONIVEL");
+        .extracting(MinhaContaStoryDto::estadoMidia)
+        .containsOnlyNulls();
+    verify(midiaRepository).findByIdIn(List.of());
+    verify(arquivoRepository).findByIdIn(List.of());
   }
 
-  private StoryAnuncioEntity story(
-      UUID midiaId,
-      ModoConteudoStory modo,
-      OffsetDateTime fimEm) {
-    return story(ANUNCIO_ID, midiaId, modo, fimEm);
+  private StoryAnuncioEntity storyAnuncio(UUID anuncioId, OffsetDateTime fimEm) {
+    return StoryAnuncioEntity.criarAnuncio(
+        UUID.randomUUID(),
+        anuncioId,
+        UUID.randomUUID(),
+        "story-anuncio-dto-" + anuncioId,
+        "a".repeat(64),
+        AGORA.minusMinutes(1),
+        fimEm,
+        USUARIO_ID);
   }
 
-  private StoryAnuncioEntity story(
-      UUID anuncioId,
-      UUID midiaId,
-      ModoConteudoStory modo,
-      OffsetDateTime fimEm) {
-    return StoryAnuncioEntity.criarAutogestao(
-        UUID.randomUUID(), anuncioId, midiaId, modo, UUID.randomUUID(),
-        "story-owner-dto", "a".repeat(64), AGORA.minusMinutes(1), fimEm, USUARIO_ID);
+  private StoryAnuncioEntity storyMidia(UUID arquivoId, OffsetDateTime fimEm) {
+    return StoryAnuncioEntity.criarMidiaUpload(
+        UUID.randomUUID(),
+        arquivoId,
+        UUID.randomUUID(),
+        "story-midia-dto-" + arquivoId,
+        "b".repeat(64),
+        AGORA.minusMinutes(1),
+        fimEm,
+        USUARIO_ID);
   }
 
   private ArquivoMidiaEntity arquivo(StatusArquivoMidia status) {
-    return arquivo(ARQUIVO_ID, status);
-  }
-
-  private ArquivoMidiaEntity arquivo(UUID arquivoId, StatusArquivoMidia status) {
     return ArquivoMidiaEntity.criarFixtureHomologacao(
-        arquivoId, "stories/arquivo-sintetico.jpg", "image/jpeg", status, AGORA.minusMinutes(2));
+        ARQUIVO_ID,
+        "stories/arquivo-sintetico.jpg",
+        "image/jpeg",
+        status,
+        AGORA.minusMinutes(2));
   }
 }

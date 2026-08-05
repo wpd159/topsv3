@@ -88,7 +88,7 @@ class SecurityConfigHardeningTest {
                 .contains("/api/admin/anuncios/*/aprovar")
                 .contains("/api/admin/anuncios/*/remeter-revisao")
                 .contains("/api/admin/anuncios/*/midias")
-                .contains("/api/admin/stories/selecao/*")
+                .contains("/api/admin/stories/*/remover")
                 .contains("/api/admin/midias")
                 .contains("/api/admin/moderacao/revisoes")
                 .contains("/api/admin/moderacao/revisoes/*/decidir")

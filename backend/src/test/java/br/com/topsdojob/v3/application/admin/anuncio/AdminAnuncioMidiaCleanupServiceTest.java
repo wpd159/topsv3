@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.application.admin.anuncio;
 
+import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.entity;
+import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -116,11 +118,9 @@ class AdminAnuncioMidiaCleanupServiceTest {
         0,
         uuid(3),
         agora.minusHours(1));
-    StoryAnuncioEntity storyDireto = StoryAnuncioEntity.criarAutogestao(
+    StoryAnuncioEntity storyDireto = StoryAnuncioEntity.criarAnuncio(
         uuid(302),
         anuncioId,
-        null,
-        ModoConteudoStory.ANUNCIO,
         uuid(303),
         "cleanup-story-direto",
         "d".repeat(64),
@@ -129,8 +129,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
         uuid(3));
     when(storyRepository.findByAnuncioIdForUpdate(anuncioId))
         .thenReturn(List.of(story, storyDireto));
-    StorySelecaoAdministrativaEntity selecao = StorySelecaoAdministrativaEntity.nova(agora.minusDays(1));
-    selecao.ativar(anuncioId, uuid(3), agora.minusHours(1));
+    StorySelecaoAdministrativaEntity selecao = selecaoHistorica(anuncioId, agora.minusHours(1));
     when(storyAdminRepository.bloquearAtivasDoAnuncio(anuncioId)).thenReturn(List.of(selecao));
 
     colocar(StorageArea.PUBLIC_MEDIA, PUBLIC_PREFIX + "anuncios/a/foto-v1.jpg");
@@ -228,9 +227,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
         agora.minusHours(1));
     when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(alvo.getId())))
         .thenReturn(List.of(story));
-    StorySelecaoAdministrativaEntity selecao = StorySelecaoAdministrativaEntity.nova(
-        agora.minusDays(1));
-    selecao.ativar(anuncioId, uuid(3), agora.minusHours(1));
+    StorySelecaoAdministrativaEntity selecao = selecaoHistorica(anuncioId, agora.minusHours(1));
     when(storyAdminRepository.bloquearAtivasDoAnuncio(anuncioId)).thenReturn(List.of(selecao));
 
     colocar(StorageArea.PRIVATE_MEDIA, alvoArquivo.getChaveObjeto());
@@ -399,6 +396,18 @@ class AdminAnuncioMidiaCleanupServiceTest {
 
   private static UUID uuid(int suffix) {
     return UUID.fromString("00000000-0000-0000-0000-%012d".formatted(suffix));
+  }
+
+  private StorySelecaoAdministrativaEntity selecaoHistorica(
+      UUID anuncioId,
+      OffsetDateTime ativadoEm) {
+    StorySelecaoAdministrativaEntity selecao = entity(StorySelecaoAdministrativaEntity.class);
+    set(selecao, "anuncioId", anuncioId);
+    set(selecao, "ativa", true);
+    set(selecao, "ativadoPor", uuid(3));
+    set(selecao, "ativadoEm", ativadoEm);
+    set(selecao, "expiraEm", ativadoEm.plusHours(24));
+    return selecao;
   }
 
   private static R2StorageProperties properties() {

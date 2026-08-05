@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioCardPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
+import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosUsuarioPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.PaginacaoPublicaDto;
@@ -118,6 +119,41 @@ public class ListagemPublicaConsultaService {
                 itens,
                 PaginacaoPublicaDto.from(paginaAnuncios, seed),
                 categoria == null ? null : categoria.name());
+    }
+
+    @Transactional(readOnly = true)
+    public ListaAnunciosUsuarioPublicaDto porUsuario(
+            String username,
+            int pagina,
+            int tamanho,
+            String ordemSeed) {
+        String usernameSeguro = RotaPublicaGuard.username(username);
+        Pageable pageable = pageable(pagina, tamanho);
+        long seed = ordemSeedService.resolver(ordemSeed);
+        AnuncioRepository.UsuarioPublicoProjection usuario = anuncioRepository
+                .findUsuarioPublicoPorUsername(usernameSeguro)
+                .orElseThrow(() -> notFound("anunciante nao encontrada"));
+        Page<AnuncioEntity> anuncios = anuncioRepository.findPublicosPorUsuarioOrdenados(
+                usuario.getUsuarioId(),
+                agora(),
+                seed,
+                pageable);
+        List<AnuncioLocalizacaoEntity> localizacoes = anuncios.isEmpty()
+                ? List.of()
+                : localizacaoRepository.findByAnuncioIdIn(anuncios.stream()
+                        .map(AnuncioEntity::getId)
+                        .toList());
+        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio =
+                premiumMapper.flagsPorAnuncios(anuncios.getContent());
+        List<AnuncioCardPublicoDto> itens = mapearCardsCategoria(
+                anuncios.getContent(),
+                localizacoes,
+                premiumPorAnuncio);
+        return new ListaAnunciosUsuarioPublicaDto(
+                usernameSeguro,
+                usuario.getDisplayUsername(),
+                itens,
+                PaginacaoPublicaDto.from(anuncios, seed));
     }
 
     @Transactional(readOnly = true)

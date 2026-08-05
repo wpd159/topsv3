@@ -16,7 +16,6 @@ import br.com.topsdojob.v3.application.publico.service.AnuncioPublicoConsultaSer
 import br.com.topsdojob.v3.application.publico.service.ListagemPublicaConsultaService;
 import br.com.topsdojob.v3.application.publico.service.MetricaPublicaService;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
-import br.com.topsdojob.v3.application.publico.service.StoryPublicoService;
 import br.com.topsdojob.v3.security.config.AdminSecurityErrorWriter;
 import br.com.topsdojob.v3.security.config.SecurityConfig;
 import org.junit.jupiter.api.Test;
@@ -46,9 +45,6 @@ class MetricaPublicaCsrfContractTest {
 
     @MockBean
     private MetricaPublicaService metricaService;
-
-    @MockBean
-    private StoryPublicoService storyService;
 
     @Test
     void metricasSaoRecusadasSemCsrf() throws Exception {

@@ -9,7 +9,6 @@ import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
-import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.AtivacaoBeneficioEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
 import br.com.topsdojob.v3.persistence.entity.premium.GrupoAtivacaoBeneficioEntity;
@@ -29,7 +28,6 @@ import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.PapelUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
-import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBeneficioPremium;
@@ -94,14 +92,12 @@ public class StoriesFixtureService {
     private static final UUID MIDIA_PENDENTE_ID = uuid("f1000000-0000-4000-8000-000000000304");
     private static final UUID MIDIA_FOTO_B_ID = uuid("f1000000-0000-4000-8000-000000000305");
     private static final UUID MIDIA_INELEGIVEL_ID = uuid("f1000000-0000-4000-8000-000000000306");
-    private static final UUID MIDIA_STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000307");
     private static final UUID MIDIA_FOTO_A_2_ID = uuid("f1000000-0000-4000-8000-000000000308");
     private static final UUID MIDIA_FOTO_A_3_ID = uuid("f1000000-0000-4000-8000-000000000309");
     private static final UUID MIDIA_RESTRITA_A_ID = uuid("f1000000-0000-4000-8000-000000000310");
     private static final UUID MIDIA_FOTO_B_2_ID = uuid("f1000000-0000-4000-8000-000000000311");
     private static final UUID MIDIA_FOTO_B_3_ID = uuid("f1000000-0000-4000-8000-000000000312");
     private static final UUID MIDIA_FOTO_B_4_ID = uuid("f1000000-0000-4000-8000-000000000313");
-    private static final UUID STORY_USUARIO_ID = uuid("f1000000-0000-4000-8000-000000000401");
     private static final UUID BENEFICIO_OCULTAR_IDADE_ID = uuid("f3000000-0000-4000-8000-000000000001");
     private static final UUID BENEFICIO_FOTOS_EXTRA_5_ID = uuid("f3000000-0000-4000-8000-000000000002");
     private static final UUID BENEFICIO_ANUNCIO_TOPO_ID = uuid("f3000000-0000-4000-8000-000000000003");
@@ -136,7 +132,6 @@ public class StoriesFixtureService {
     private final AnuncioLocalizacaoRepository localizacaoRepository;
     private final ArquivoMidiaRepository arquivoRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
-    private final StoryAnuncioRepository storyRepository;
     private final BeneficioPremiumRepository beneficioRepository;
     private final GrupoAtivacaoBeneficioRepository grupoBeneficioRepository;
     private final AtivacaoBeneficioRepository ativacaoBeneficioRepository;
@@ -155,7 +150,6 @@ public class StoriesFixtureService {
             AnuncioLocalizacaoRepository localizacaoRepository,
             ArquivoMidiaRepository arquivoRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
-            StoryAnuncioRepository storyRepository,
             BeneficioPremiumRepository beneficioRepository,
             GrupoAtivacaoBeneficioRepository grupoBeneficioRepository,
             AtivacaoBeneficioRepository ativacaoBeneficioRepository,
@@ -172,7 +166,6 @@ public class StoriesFixtureService {
         this.localizacaoRepository = localizacaoRepository;
         this.arquivoRepository = arquivoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
-        this.storyRepository = storyRepository;
         this.beneficioRepository = beneficioRepository;
         this.grupoBeneficioRepository = grupoBeneficioRepository;
         this.ativacaoBeneficioRepository = ativacaoBeneficioRepository;
@@ -226,31 +219,9 @@ public class StoriesFixtureService {
                 midia(MIDIA_FOTO_B_2_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_2_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 1, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
                 midia(MIDIA_FOTO_B_3_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_3_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 2, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
                 midia(MIDIA_FOTO_B_4_ID, ANUNCIO_B_ID, ARQUIVO_FOTO_B_4_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.GALERIA, 3, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
-                midia(MIDIA_INELEGIVEL_ID, ANUNCIO_INELEGIVEL_ID, ARQUIVO_INELEGIVEL_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora),
-                AnuncioMidiaEntity.criarFixtureHomologacao(
-                        MIDIA_STORY_USUARIO_ID,
-                        ANUNCIO_A_ID,
-                        ARQUIVO_COMPARTILHADO_ID,
-                        TipoAnuncioMidia.STORY,
-                        FinalidadeAnuncioMidia.STORY,
-                        0,
-                        StatusAnuncioMidia.PUBLICAVEL,
-                        VisibilidadeMidia.RESTRITA_18,
-                        agora));
+                midia(MIDIA_INELEGIVEL_ID, ANUNCIO_INELEGIVEL_ID, ARQUIVO_INELEGIVEL_ID, TipoAnuncioMidia.FOTO, FinalidadeAnuncioMidia.CAPA, 0, StatusAnuncioMidia.PUBLICAVEL, VisibilidadeMidia.LIVRE, agora));
         int vinculosCriados = sincronizarVinculos(vinculos, agora);
 
-        boolean storyCriado = false;
-        if (!storyRepository.existsById(STORY_USUARIO_ID)) {
-            storyRepository.save(StoryAnuncioEntity.criarFixtureHomologacao(
-                    STORY_USUARIO_ID,
-                    MIDIA_STORY_USUARIO_ID,
-                    agora.minusHours(1),
-                    agora.plusDays(7),
-                    0,
-                    usuario.getId(),
-                    agora));
-            storyCriado = true;
-        }
         return new FixtureResult(
                 categoriasCriadas,
                 localidadesCriadas,
@@ -259,7 +230,7 @@ public class StoriesFixtureService {
                 arquivosCriados,
                 vinculosCriados,
                 beneficiosCriados,
-                storyCriado);
+                false);
     }
 
     @Transactional

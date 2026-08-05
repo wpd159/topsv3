@@ -114,9 +114,9 @@ class StoriesFixtureServiceTest {
         assertThat(result.localizacoesCriadas()).isEqualTo(3);
         assertThat(result.anunciosCriados()).isEqualTo(3);
         assertThat(result.arquivosCriados()).isEqualTo(12);
-        assertThat(result.vinculosCriados()).isEqualTo(13);
+        assertThat(result.vinculosCriados()).isEqualTo(12);
         assertThat(result.beneficiosCriados()).isEqualTo(23);
-        assertThat(result.storyCriado()).isTrue();
+        assertThat(result.storyCriado()).isFalse();
         verify(anuncioRepository, times(3)).save(any(AnuncioEntity.class));
         verify(estadoRepository).save(any());
         verify(cidadeRepository).save(any());
@@ -124,8 +124,8 @@ class StoriesFixtureServiceTest {
         verify(bairroRepository).save(any());
         verify(localizacaoRepository, times(3)).save(any(AnuncioLocalizacaoEntity.class));
         verify(arquivoRepository, times(12)).save(any(ArquivoMidiaEntity.class));
-        verify(anuncioMidiaRepository, times(13)).save(any(AnuncioMidiaEntity.class));
-        verify(storyRepository).save(any(StoryAnuncioEntity.class));
+        verify(anuncioMidiaRepository, times(12)).save(any(AnuncioMidiaEntity.class));
+        verify(storyRepository, never()).save(any(StoryAnuncioEntity.class));
         verify(beneficioRepository, times(6)).save(any(BeneficioPremiumEntity.class));
         verify(grupoBeneficioRepository, times(7)).save(any(GrupoAtivacaoBeneficioEntity.class));
         verify(ativacaoBeneficioRepository, times(10)).save(any(AtivacaoBeneficioEntity.class));
@@ -237,7 +237,7 @@ class StoriesFixtureServiceTest {
                 .hasSize(1);
 
         ArgumentCaptor<AnuncioMidiaEntity> midiaCaptor = ArgumentCaptor.forClass(AnuncioMidiaEntity.class);
-        verify(anuncioMidiaRepository, times(13)).save(midiaCaptor.capture());
+        verify(anuncioMidiaRepository, times(12)).save(midiaCaptor.capture());
         assertThat(midiaCaptor.getAllValues())
                 .filteredOn(item -> item.getTipo() == TipoAnuncioMidia.VIDEO
                         && item.getStatus() == StatusAnuncioMidia.PUBLICAVEL)
@@ -250,15 +250,8 @@ class StoriesFixtureServiceTest {
                         && item.getStatus() == StatusAnuncioMidia.PUBLICAVEL
                         && item.getVisibilidadeMidia() == br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.LIVRE)
                 .hasSize(9);
-        UUID arquivoCompartilhado = midiaCaptor.getAllValues().stream()
-                .filter(item -> item.getTipo() == TipoAnuncioMidia.STORY)
-                .findFirst()
-                .orElseThrow()
-                .getArquivoMidiaId();
         assertThat(midiaCaptor.getAllValues())
-                .filteredOn(item -> arquivoCompartilhado.equals(item.getArquivoMidiaId()))
-                .extracting(AnuncioMidiaEntity::getTipo)
-                .containsExactlyInAnyOrder(TipoAnuncioMidia.FOTO, TipoAnuncioMidia.STORY);
+                .noneMatch(item -> item.getTipo() == TipoAnuncioMidia.STORY);
 
         assertThat(Arrays.stream(StoriesFixtureService.class.getDeclaredFields())
                 .map(Field::getType)
@@ -349,7 +342,7 @@ class StoriesFixtureServiceTest {
         service("homologacao").provisionar();
 
         ArgumentCaptor<AnuncioMidiaEntity> captor = ArgumentCaptor.forClass(AnuncioMidiaEntity.class);
-        verify(anuncioMidiaRepository, times(13)).save(captor.capture());
+        verify(anuncioMidiaRepository, times(12)).save(captor.capture());
         AnuncioMidiaEntity reconciliada = captor.getAllValues().stream()
                 .filter(item -> midiaCanonicaOrdemDoisId.equals(item.getId()))
                 .findFirst()
@@ -516,7 +509,6 @@ class StoriesFixtureServiceTest {
                 localizacaoRepository,
                 arquivoRepository,
                 anuncioMidiaRepository,
-                storyRepository,
                 beneficioRepository,
                 grupoBeneficioRepository,
                 ativacaoBeneficioRepository,

@@ -203,7 +203,7 @@ export function StoriesBar() {
             )
 
             return (
-              <div key={`${String(bundle.usuarioId)}:${String(primeiro?.storyId ?? index)}`} className="shrink-0 flex flex-col items-center gap-2">
+              <div key={`${bundle.bundleKey}:${String(primeiro?.storyId ?? index)}`} className="shrink-0 flex flex-col items-center gap-2">
                 <div className="relative">
                   <button
                     onClick={() => openBundleAt(index)}

@@ -221,11 +221,11 @@ class StoryFeedPublicoServiceTest {
 
         assertThat(response).hasSize(2);
         var adminBundle = response.stream()
-                .filter(item -> item.usuarioId().startsWith("administrativo:"))
+                .filter(item -> item.bundleKey().startsWith("administrativo:"))
                 .findFirst()
                 .orElseThrow();
         var paidBundle = response.stream()
-                .filter(item -> !item.usuarioId().startsWith("administrativo:"))
+                .filter(item -> !item.bundleKey().startsWith("administrativo:"))
                 .findFirst()
                 .orElseThrow();
         assertThat(adminBundle.itens()).hasSize(1);
@@ -279,16 +279,17 @@ class StoryFeedPublicoServiceTest {
         var feed = service.listar(request);
         var viewer = service.buscar(story.getId().toString(), request);
 
+        String endpointProtegido = "/api/public/compliance/visitor/media/stories/" + story.getId();
         assertThat(feed).singleElement().satisfies(bundle -> {
-                assertThat(bundle.avatarUrl()).contains("restritas-borradas");
+                assertThat(bundle.avatarUrl()).isEqualTo(endpointProtegido);
                 assertThat(bundle.itens()).singleElement().satisfies(item -> {
                     assertThat(item.previewState()).isEqualTo("AVAILABLE");
-                    assertThat(item.previewUrl()).contains("restritas-borradas");
+                    assertThat(item.previewUrl()).isEqualTo(endpointProtegido);
                 });
         });
         assertThat(viewer.viewerState()).isEqualTo("LIBERADO");
         assertThat(viewer.midiaUrl())
-                .isEqualTo("/api/public/compliance/visitor/media/" + vinculo.getId())
+                .isEqualTo(endpointProtegido)
                 .doesNotContain("X-Amz-");
     }
 
@@ -362,6 +363,68 @@ class StoryFeedPublicoServiceTest {
     }
 
     @Test
+    void midiaUploadDiretaUsaIdentificadorPublicoOpacoSemAnuncio() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY)).thenReturn(true);
+        UUID usuarioId = UUID.randomUUID();
+        UUID arquivoId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now();
+        StoryAnuncioEntity story = StoryAnuncioEntity.criarMidiaUpload(
+                UUID.randomUUID(),
+                arquivoId,
+                UUID.randomUUID(),
+                "story-direto-token",
+                "a".repeat(64),
+                agora.minusHours(1),
+                agora.plusHours(23),
+                usuarioId);
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId, "image/jpeg");
+        UsuarioEntity usuario = usuarioAtivo(usuarioId);
+        set(usuario, "nome", "qa_publica");
+
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of(story));
+        when(midiaRepository.findByIdIn(any())).thenReturn(List.of());
+        when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
+        when(anuncioRepository.findAllById(any())).thenReturn(List.of());
+        org.mockito.Mockito.doReturn(List.of(usuario)).when(usuarioRepository).findAllById(any());
+        when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(story));
+        when(arquivoRepository.findById(arquivoId)).thenReturn(Optional.of(arquivo));
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuario));
+
+        var feed = service.listar(request);
+        var viewer = service.buscar(story.getId().toString(), request);
+
+        assertThat(feed).singleElement().satisfies(bundle -> {
+            assertThat(bundle.usuarioUsername())
+                    .matches("[0-9a-f]{32}")
+                    .doesNotContain(usuarioId.toString());
+            assertThat(bundle.displayUsername()).isEqualTo("qa_publica");
+            assertThat(bundle.profileNavigable()).isTrue();
+            assertThat(bundle.itens()).singleElement().satisfies(item -> {
+                assertThat(item.anuncioId()).isNull();
+                assertThat(item.anuncioSlug()).isNull();
+                assertThat(item.usuarioUsername()).isEqualTo(bundle.usuarioUsername());
+                assertThat(item.displayUsername()).isEqualTo("qa_publica");
+                assertThat(item.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
+                assertThat(item.previewUrl())
+                        .isEqualTo("/api/public/compliance/visitor/media/stories/" + story.getId());
+            });
+        });
+        assertThat(viewer.anuncioId()).isNull();
+        assertThat(viewer.anuncioSlug()).isNull();
+        assertThat(viewer.usuarioUsername()).matches("[0-9a-f]{32}");
+        assertThat(viewer.displayUsername()).isEqualTo("qa_publica");
+        assertThat(viewer.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
+        assertThat(viewer.midiaUrl())
+                .isEqualTo("/api/public/compliance/visitor/media/stories/" + story.getId());
+    }
+
+    @Test
     void proprietarioInativoNaoApareceNoFeedNemNoViewer() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         UUID anuncioId = UUID.randomUUID();
@@ -390,7 +453,12 @@ class StoryFeedPublicoServiceTest {
     private StorySelecaoAdministrativaEntity selecao(UUID anuncioId) {
         StorySelecaoAdministrativaEntity selecao = entity(StorySelecaoAdministrativaEntity.class);
         set(selecao, "id", 1L);
-        selecao.ativar(anuncioId, UUID.randomUUID(), OffsetDateTime.now());
+        OffsetDateTime agora = OffsetDateTime.now();
+        set(selecao, "anuncioId", anuncioId);
+        set(selecao, "ativa", true);
+        set(selecao, "ativadoPor", UUID.randomUUID());
+        set(selecao, "ativadoEm", agora);
+        set(selecao, "expiraEm", agora.plusHours(24));
         return selecao;
     }
 

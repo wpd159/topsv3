@@ -26,7 +26,17 @@ public class ComplianceProtectedMediaController {
   public ResponseEntity<byte[]> carregar(
       @PathVariable UUID midiaId,
       HttpServletRequest request) {
-    var result = service.carregar(midiaId, request);
+    return resposta(service.carregar(midiaId, request));
+  }
+
+  @GetMapping("/stories/{storyId}")
+  public ResponseEntity<byte[]> carregarStory(
+      @PathVariable UUID storyId,
+      HttpServletRequest request) {
+    return resposta(service.carregarStory(storyId, request));
+  }
+
+  private ResponseEntity<byte[]> resposta(ComplianceProtectedMediaService.Conteudo result) {
     return ResponseEntity.ok()
         .cacheControl(CacheControl.noStore())
         .header(HttpHeaders.PRAGMA, "no-cache")

@@ -220,7 +220,7 @@ const canonicalSubstitutes = {
   'app/(painel-admin)/admin/usuarios/[id]/page.tsx': 'AdminUsuarioDetail',
   'app/(painel-admin)/admin/anuncios/[id]/page.tsx': 'AdminAnuncioModeracao',
   'features/moderation-v2/components/anuncio-staff-edit-form.tsx': 'AdminAnuncioDadosInlineEditor',
-  'app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section.tsx': 'fetchAdminStorySelection',
+  'components/stories/admin-stories-management.tsx': 'fetchAdminStories',
   'app/(painel-admin)/admin/components/financeiro/financeiro-table.tsx': 'listarAdminPagamentos',
 }
 

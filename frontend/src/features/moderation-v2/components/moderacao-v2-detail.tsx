@@ -34,7 +34,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { revalidarCacheCatalogoPublico } from '@/app/(painel-admin)/admin/anuncios/actions'
-import AdminAnuncioStoriesSection from '@/app/(painel-admin)/admin/components/anuncios/admin-anuncio-stories-section'
 import FotosAnuncioSection from '@/app/(painel-admin)/admin/components/fotos-anuncio-section'
 import { useAuth } from '@/context/AuthContext'
 import { enviarIndexNowNoCliente, montarUrlsIndexNowAnuncio } from '@/lib/seo/indexnow-client'
@@ -1118,12 +1117,6 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: string | number })
         {isAdmin && !removedLogical && !revision && !anuncio.pendingRevision ? (
           <FotosAnuncioSection anuncioId={anuncioId} fotos={anuncio.fotosUrl ?? []} onUpdated={() => void load()} />
         ) : null}
-
-        {isStaffModeration && (
-          <section id="sec-stories" className="scroll-mt-24">
-            <AdminAnuncioStoriesSection anuncioId={anuncioId} apiScope="staff" />
-          </section>
-        )}
 
         <section id="sec-resumo" className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm scroll-mt-24">
           <h2 className="text-base font-semibold text-gray-900">Resumo do anúncio</h2>

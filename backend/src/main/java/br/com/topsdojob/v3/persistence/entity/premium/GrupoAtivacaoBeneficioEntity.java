@@ -205,6 +205,11 @@ public class GrupoAtivacaoBeneficioEntity {
     atualizadoEm = agora;
   }
 
+  public void desvincularAnuncioAposFalhaTecnica(OffsetDateTime agora) {
+    this.anuncioId = null;
+    this.atualizadoEm = agora;
+  }
+
   public boolean sincronizarFixtureHomologacao(
       TipoGrupoAtivacaoBeneficio tipo,
       OrigemBeneficio origem,

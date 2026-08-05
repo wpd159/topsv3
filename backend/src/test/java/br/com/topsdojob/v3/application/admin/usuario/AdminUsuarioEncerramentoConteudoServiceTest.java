@@ -59,11 +59,9 @@ class AdminUsuarioEncerramentoConteudoServiceTest {
         StatusAnuncio.PUBLICADO,
         StatusModeracaoAnuncio.APROVADO,
         agora.minusDays(1));
-    StoryAnuncioEntity story = StoryAnuncioEntity.criarAutogestao(
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarAnuncio(
         UUID.randomUUID(),
         anuncioId,
-        null,
-        ModoConteudoStory.ANUNCIO,
         UUID.randomUUID(),
         "encerramento-story-direto",
         "e".repeat(64),

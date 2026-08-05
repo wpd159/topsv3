@@ -261,12 +261,16 @@ export function StoryViewerDialog({
       ? viewerItem.usuarioUsername.trim()
       : loginBundle
   const anuncioSlugViewer = (viewerItem?.anuncioSlug ?? currentFeedItem?.anuncioSlug ?? "").trim()
-  const perfilNavegavel = Boolean(
-    (viewerItem?.profileNavigable && loginViewer) || (currentBundle?.profileNavigable && loginBundle)
+  const conteudoLiberado = canNavigateFromStory(viewerItem, mediaReady, verificationOpen)
+  const destinoPerfil = Boolean(
+    viewerItem?.modoConteudo === "MIDIA_UPLOAD"
+      && viewerItem?.profileNavigable
+      && loginViewer,
   )
-  const anuncioNavegavel = Boolean(anuncioSlugViewer)
-  const podeNavegarAnuncio = anuncioNavegavel
-    && canNavigateFromStory(viewerItem, mediaReady, verificationOpen)
+  const podeNavegarPerfil = destinoPerfil && conteudoLiberado
+  const podeNavegarAnuncio = Boolean(anuncioSlugViewer) && conteudoLiberado
+  const podeNavegarDestino = podeNavegarPerfil || podeNavegarAnuncio
+  const rotuloDestino = podeNavegarPerfil ? "Ver anunciante" : "Ver anúncio"
   const rotuloPerfil =
     viewerItem?.profileNavigable && viewerItem?.displayUsername
       ? `@${viewerItem.displayUsername}`
@@ -283,6 +287,25 @@ export function StoryViewerDialog({
     }
     onOpenChange(false)
     router.push(`/anuncios/${encodeURIComponent(anuncioSlugViewer)}`)
+  }
+
+  function irParaAnuncianteDoStory() {
+    if (!loginViewer || !podeNavegarPerfil) {
+      console.warn("[stories] perfil indisponível enquanto a mídia não estiver liberada.")
+      return
+    }
+    onOpenChange(false)
+    router.push(`/anuncios/usuario/${encodeURIComponent(loginViewer)}`)
+  }
+
+  function irParaDestinoDoStory() {
+    if (podeNavegarPerfil) {
+      irParaAnuncianteDoStory()
+      return
+    }
+    if (podeNavegarAnuncio) {
+      irParaAnuncioDoStory()
+    }
   }
 
   async function refreshViewerAndFeed() {
@@ -502,12 +525,12 @@ export function StoryViewerDialog({
             </div>
 
             <div className="mt-3 flex items-center justify-between gap-2">
-              {perfilNavegavel && podeNavegarAnuncio ? (
+              {podeNavegarDestino ? (
                 <button
                   type="button"
-                  onClick={irParaAnuncioDoStory}
+                  onClick={irParaDestinoDoStory}
                   className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-                  aria-label={`Ver anuncio de ${rotuloPerfilComIdade}`}
+                  aria-label={`${rotuloDestino} ${rotuloPerfilComIdade}`}
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10">
                     {currentBundle?.avatarUrl ? (
@@ -541,13 +564,13 @@ export function StoryViewerDialog({
               )}
 
               <div className="flex shrink-0 items-center gap-2">
-                {podeNavegarAnuncio ? (
+                {podeNavegarDestino ? (
                   <button
                     type="button"
-                    onClick={irParaAnuncioDoStory}
+                    onClick={irParaDestinoDoStory}
                     className="rounded-full bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/20"
                   >
-                    Ver anuncio
+                    {rotuloDestino}
                   </button>
                 ) : null}
 

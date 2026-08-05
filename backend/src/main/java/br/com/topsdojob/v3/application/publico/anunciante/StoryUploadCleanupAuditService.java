@@ -47,10 +47,12 @@ public class StoryUploadCleanupAuditService {
       UUID storyId,
       UUID arquivoId,
       UUID vinculoId) {
-    anuncioRepository.findByIdForModeration(anuncioId);
+    if (anuncioId != null) {
+      anuncioRepository.findByIdForModeration(anuncioId);
+    }
     if (storyRepository.existsById(storyId)
         || arquivoRepository.existsById(arquivoId)
-        || midiaRepository.existsById(vinculoId)) {
+        || vinculoId != null && midiaRepository.existsById(vinculoId)) {
       return;
     }
     storage.delete(StorageArea.PRIVATE_MEDIA, key);

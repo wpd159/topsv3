@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.persistence.repository;
 
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import jakarta.persistence.LockModeType;
 import java.time.OffsetDateTime;
@@ -8,6 +9,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -42,10 +45,33 @@ public interface StoryAnuncioRepository extends JpaRepository<StoryAnuncioEntity
 
     Optional<StoryAnuncioEntity> findByIdAndStatus(UUID id, StatusStoryAnuncio status);
 
-    Optional<StoryAnuncioEntity> findByAnuncioIdAndCriadoPorAndIdempotencyKey(
-        UUID anuncioId,
+    Optional<StoryAnuncioEntity> findByCriadoPorAndModoConteudoAndAnuncioIdAndIdempotencyKey(
         UUID criadoPor,
+        ModoConteudoStory modoConteudo,
+        UUID anuncioId,
         String idempotencyKey);
+
+    Optional<StoryAnuncioEntity>
+        findByCriadoPorAndModoConteudoAndAnuncioIdIsNullAndIdempotencyKey(
+        UUID criadoPor,
+        ModoConteudoStory modoConteudo,
+        String idempotencyKey);
+
+    Page<StoryAnuncioEntity> findByCriadoPorOrderByCriadoEmDescIdDesc(
+        UUID criadoPor,
+        Pageable pageable);
+
+    Page<StoryAnuncioEntity> findAllByOrderByCriadoEmDescIdDesc(Pageable pageable);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select story from StoryAnuncioEntity story where story.id = :id")
+    Optional<StoryAnuncioEntity> findByIdForUpdate(@Param("id") UUID id);
+
+    long countByArquivoMidiaId(UUID arquivoMidiaId);
+
+    long countByAnuncioMidiaId(UUID anuncioMidiaId);
+
+    boolean existsByAtivacaoBeneficioIdAndDireitoPreservadoFalse(UUID ativacaoBeneficioId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""

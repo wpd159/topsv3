@@ -195,7 +195,7 @@ export function MeuAnuncioCard({ anuncio, onCicloVida, onStoryOpen }: MeuAnuncio
               role={storyMediaError ? 'alert' : 'status'}
             >
               <p className="font-semibold text-slate-900">
-                {storyMediaError ? 'Story com falha na m\u00eddia' : 'Story ativo'}
+                {storyMediaError ? 'Story com falha na mídia' : 'Story ativo'}
               </p>
               <p className="mt-1">Modo: {anuncio.storyAtivo.modoConteudo === 'ANUNCIO' ? 'Divulgar meu anúncio' : 'Mídia enviada'}</p>
               <p className="mt-1">Ativo até {formatStoryDate(anuncio.storyAtivo.fimEm)}</p>

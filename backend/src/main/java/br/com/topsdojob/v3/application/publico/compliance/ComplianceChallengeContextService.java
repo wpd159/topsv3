@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.publico.compliance;
 
 import br.com.topsdojob.v3.application.publico.compliance.dto.VisitorChallengeRequestDto;
 import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteudoVisitante;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
@@ -9,21 +10,23 @@ import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEn
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
-import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,21 +38,40 @@ public class ComplianceChallengeContextService {
 
   private final AnuncioRepository anuncioRepository;
   private final AnuncioMidiaRepository midiaRepository;
+  private final ArquivoMidiaRepository arquivoRepository;
   private final StoryAnuncioRepository storyRepository;
   private final StorySelecaoAdministrativaRepository storyAdminRepository;
   private final UsuarioRepository usuarioRepository;
 
+  @Autowired
   public ComplianceChallengeContextService(
       AnuncioRepository anuncioRepository,
       AnuncioMidiaRepository midiaRepository,
+      ArquivoMidiaRepository arquivoRepository,
       StoryAnuncioRepository storyRepository,
       StorySelecaoAdministrativaRepository storyAdminRepository,
       UsuarioRepository usuarioRepository) {
     this.anuncioRepository = anuncioRepository;
     this.midiaRepository = midiaRepository;
+    this.arquivoRepository = arquivoRepository;
     this.storyRepository = storyRepository;
     this.storyAdminRepository = storyAdminRepository;
     this.usuarioRepository = usuarioRepository;
+  }
+
+  ComplianceChallengeContextService(
+      AnuncioRepository anuncioRepository,
+      AnuncioMidiaRepository midiaRepository,
+      StoryAnuncioRepository storyRepository,
+      StorySelecaoAdministrativaRepository storyAdminRepository,
+      UsuarioRepository usuarioRepository) {
+    this(
+        anuncioRepository,
+        midiaRepository,
+        null,
+        storyRepository,
+        storyAdminRepository,
+        usuarioRepository);
   }
 
   public Contexto validar(
@@ -79,11 +101,16 @@ public class ComplianceChallengeContextService {
       anuncioId = midia.getAnuncioId();
     }
     String story = null;
+    boolean storyIndependente = false;
     if (escopo == EscopoConteudoVisitante.STORY) {
       StoryContext storyContext = validarStory(request.storyId(), anuncioId);
       anuncioId = storyContext.anuncioId();
       midiaId = storyContext.midiaId();
       story = storyContext.referencia();
+      storyIndependente = storyContext.independente();
+    }
+    if (storyIndependente) {
+      return new Contexto(null, null, story, sanitizarRota(request.route()));
     }
     if (anuncioId == null) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncio protegido obrigatorio");
@@ -113,21 +140,37 @@ public class ComplianceChallengeContextService {
     UUID id = uuidStory(storyId);
     StoryAnuncioEntity story = storyRepository
         .findByIdAndStatus(id, StatusStoryAnuncio.PUBLICADO)
+        .filter(item -> item.getEncerradoEm() == null)
         .filter(item -> janelaValida(item, agora))
         .orElseThrow(this::storyNaoEncontrado);
-    if (story.getModoConteudo() == ModoConteudoStory.ANUNCIO) {
+    if (story.getModoConteudoEfetivo() == ModoConteudoStory.ANUNCIO) {
       UUID anuncioId = story.getAnuncioId();
       if (anuncioId == null) {
         throw storyNaoEncontrado();
       }
       validarMesmoAnuncio(anuncioInformado, anuncioId);
-      return new StoryContext(anuncioId, null, id.toString());
+      return new StoryContext(anuncioId, null, id.toString(), false);
+    }
+    UsuarioEntity proprietario = usuarioRepository.findById(story.getCriadoPor())
+        .filter(this::usuarioAtivo)
+        .orElseThrow(this::storyNaoEncontrado);
+    if (story.getArquivoMidiaId() != null) {
+      if (anuncioInformado != null || arquivoRepository == null) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Story nao pertence a anuncio");
+      }
+      arquivoRepository.findById(story.getArquivoMidiaId())
+          .filter(item -> item.getStatusArquivo() == StatusArquivoMidia.VALIDADO)
+          .orElseThrow(this::storyNaoEncontrado);
+      return new StoryContext(null, null, id.toString(), true);
     }
     AnuncioMidiaEntity midia = midiaRepository.findById(story.getAnuncioMidiaId())
         .filter(this::storyUsuarioElegivel)
         .orElseThrow(this::storyNaoEncontrado);
-    validarMesmoAnuncio(anuncioInformado, midia.getAnuncioId());
-    return new StoryContext(midia.getAnuncioId(), midia.getId(), id.toString());
+    AnuncioEntity anuncio = anuncioRepository.findById(midia.getAnuncioId())
+        .filter(item -> item.getUsuarioId().equals(proprietario.getId()))
+        .orElseThrow(this::storyNaoEncontrado);
+    validarMesmoAnuncio(anuncioInformado, anuncio.getId());
+    return new StoryContext(anuncio.getId(), midia.getId(), id.toString(), false);
   }
 
   private StoryContext validarStoryAdministrativo(
@@ -148,7 +191,8 @@ public class ComplianceChallengeContextService {
     return new StoryContext(
         selecao.getAnuncioId(),
         midia.getId(),
-        PREFIXO_STORY_ADMIN + midia.getId());
+        PREFIXO_STORY_ADMIN + midia.getId(),
+        false);
   }
 
   private void validarMesmoAnuncio(UUID anuncioInformado, UUID anuncioReal) {
@@ -238,6 +282,7 @@ public class ComplianceChallengeContextService {
   private record StoryContext(
       UUID anuncioId,
       UUID midiaId,
-      String referencia) {
+      String referencia,
+      boolean independente) {
   }
 }

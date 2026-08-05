@@ -139,8 +139,8 @@ export function orderStoryBundles(bundles, state) {
     })
     .sort((left, right) => {
       if (Boolean(left.visto) !== Boolean(right.visto)) return left.visto ? 1 : -1
-      const leftKey = `${left.usuarioId}:${left.itens.map(storyIdentity).join(',')}`
-      const rightKey = `${right.usuarioId}:${right.itens.map(storyIdentity).join(',')}`
+      const leftKey = `${left.bundleKey}:${left.itens.map(storyIdentity).join(',')}`
+      const rightKey = `${right.bundleKey}:${right.itens.map(storyIdentity).join(',')}`
       return hash(`${seed}:bundle:${leftKey}`) - hash(`${seed}:bundle:${rightKey}`)
     })
 }

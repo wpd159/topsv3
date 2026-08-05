@@ -27,7 +27,6 @@ import type {
   AdminPhotoBatchResponse,
   AdminPremiumBenefit,
   AdminPremiumCatalogItem,
-  AdminStorySelection,
 } from './types'
 import type { AdminAdQueueContext } from './queue-context'
 import { adminAdQueueFilters } from './queue-context'
@@ -272,21 +271,6 @@ export function cancelAdminPremium(activationId: string, motivo: string, idempot
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ motivo }),
   })
-}
-
-export function getAdminStorySelection() {
-  return request<AdminStorySelection[]>('/stories/selecao')
-}
-
-export function activateAdminStory(anuncioId: string, idempotencyKey = crypto.randomUUID()) {
-  return request<AdminStorySelection>(`/stories/selecao/${encodeURIComponent(anuncioId)}`, {
-    method: 'POST',
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
-}
-
-export function deactivateAdminStory(anuncioId: string) {
-  return request<AdminStorySelection>(`/stories/selecao/${encodeURIComponent(anuncioId)}`, { method: 'DELETE' })
 }
 
 export function getAdminMediaPreview(id: string) {

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.List;
 
 public record StoryFeedBundleDto(
-        String usuarioId,
+        String bundleKey,
         String usuarioUsername,
         String displayUsername,
         @JsonInclude(JsonInclude.Include.NON_NULL) Integer idade,

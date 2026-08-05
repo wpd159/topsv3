@@ -36,7 +36,6 @@ import { ApiContractError, normalizeApiError } from '@/lib/api-contract'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
-import { AdminAnuncioStory } from './admin-anuncio-story'
 import {
   approveAdminAd,
   blockAdminAd,
@@ -1069,8 +1068,6 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           <p className="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-500">Última ação: {ad.metricas.ultimaAcaoAdministrativa ? `${formatEnum(ad.metricas.ultimaAcaoAdministrativa.decisao || ad.metricas.ultimaAcaoAdministrativa.acao)} · ${formatDate(ad.metricas.ultimaAcaoAdministrativa.criadoEm)}` : 'nenhuma ação registrada'}</p>
         </div>
       </section>
-
-      <AdminAnuncioStory anuncioId={ad.id} canManage={isAdmin} />
 
       <Tabs defaultValue="dados" className="space-y-4">
         <div className="overflow-x-auto"><TabsList className="w-max min-w-full justify-start rounded-md"><TabsTrigger value="dados">Dados e decisão</TabsTrigger><TabsTrigger value="midias">Mídias ({media.length})</TabsTrigger><TabsTrigger value="documentos">Documentos</TabsTrigger><TabsTrigger value="premium">Premium</TabsTrigger><TabsTrigger value="historico">Histórico</TabsTrigger></TabsList></div>

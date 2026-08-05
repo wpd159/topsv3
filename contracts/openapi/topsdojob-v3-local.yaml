@@ -786,24 +786,43 @@ paths:
         "409": { $ref: "#/components/responses/Conflict" }
         "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
-  /api/public/minha-conta/anuncios/{slug}/stories:
-    post:
-      summary: Publica um Story de autogestao para o anuncio do usuario autenticado
-      operationId: publishCurrentUserAdStory
+  /api/public/minha-conta/stories:
+    get:
+      summary: Lista os Stories da conta autenticada
+      operationId: getCurrentUserStories
       security:
         - PublicSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/RequestId"
-        - $ref: "#/components/parameters/CurrentUserAdSlug"
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            minLength: 1
-            maxLength: 160
-            pattern: "^[A-Za-z0-9._:-]+$"
-      description: O modo ANUNCIO usa somente a apresentacao publica canonica e rejeita arquivo. MIDIA_UPLOAD exige exatamente uma nova foto ou video exclusivo do Story. O proprietario vem exclusivamente da sessao; URL, object key, bucket, usuarioId e mediaId nao sao aceitos.
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      description: Retorna Stories com e sem anuncio, inclusive falhas tecnicas e encerramentos recentes, sem carregar original, URL privada, bucket ou object key.
+      responses:
+        "200":
+          description: Pagina de Stories pertencentes exclusivamente a sessao
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeusStoriesPagina"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      summary: Publica um Story da conta nos modos ANUNCIO ou MIDIA_UPLOAD
+      operationId: publishCurrentUserStory
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      description: Exige sessao e CSRF. ANUNCIO recebe anuncioId e nenhum arquivo. MIDIA_UPLOAD recebe exatamente uma nova foto ou video e exige anuncioId nulo. O proprietario e sempre derivado da sessao. Nao aceita usuarioId, URL, bucket, object key ou midia existente e nao insere o arquivo na galeria.
       requestBody:
         required: true
         content:
@@ -816,81 +835,119 @@ paths:
                 modoConteudo:
                   type: string
                   enum: [ANUNCIO, MIDIA_UPLOAD]
+                anuncioId:
+                  type: string
+                  format: uuid
+                  description: Obrigatorio somente em ANUNCIO e proibido em MIDIA_UPLOAD.
                 arquivo:
                   type: string
                   format: binary
-                  description: Obrigatorio somente em MIDIA_UPLOAD; uma unica foto JPG/JPEG/PNG/WebP ou video MP4 com H.264 e audio AAC-LC opcional, validado pelo pipeline canonico.
+                  description: Obrigatorio somente em MIDIA_UPLOAD. Uma unica foto JPG/JPEG/PNG/WebP ou video MP4 processado pelo pipeline canonico e classificado RESTRITA_18.
       responses:
         "200":
           description: Story publicado ou repeticao idempotente da mesma intencao
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MeuAnuncioStory"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "401": { $ref: "#/components/responses/Unauthorized" }
-        "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "409": { $ref: "#/components/responses/Conflict" }
-        "413": { description: Arquivo acima do limite canonico }
-        "415": { description: Assinatura, extensao ou MIME nao suportados }
-        "422": { $ref: "#/components/responses/UnprocessableEntity" }
-        "500": { $ref: "#/components/responses/InternalError" }
-        "503": { description: Storage temporariamente indisponivel; nenhum Story e confirmado }
-  /api/public/minha-conta/anuncios/{slug}/stories/oferta:
-    get:
-      summary: Consulta direito adquirido, oferta administrativa e saldo para publicar Story
-      operationId: getCurrentUserAdStoryOffer
-      security:
-        - PublicSessionCookie: []
-      parameters:
-        - $ref: "#/components/parameters/RequestId"
-        - $ref: "#/components/parameters/CurrentUserAdSlug"
-      description: Deriva usuario e anuncio exclusivamente da sessao. Um direito de STORIES ainda nao consumido e retornado antes de consultar a configuracao comercial, de modo que alteracoes posteriores da oferta nao invalidem uma aquisicao existente.
-      responses:
-        "200":
-          description: Estado comercial canonico do Story
           headers:
             Cache-Control:
-              description: Impede armazenamento compartilhado de saldo e oferta da conta autenticada
               schema: { type: string, const: no-store }
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MeuAnuncioStoryOferta"
+                $ref: "#/components/schemas/MinhaContaStory"
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
         "500": { $ref: "#/components/responses/InternalError" }
-  /api/public/minha-conta/anuncios/{slug}/stories/ativacoes:
-    post:
-      summary: Adquire um direito de Story pela oferta comercial dedicada
-      operationId: activateCurrentUserAdStory
+        "503": { description: Storage temporariamente indisponivel; nenhum Story e confirmado }
+  /api/public/minha-conta/stories/oferta:
+    get:
+      summary: Consulta Story ativo, direito disponivel ou oferta para um modo
+      operationId: getCurrentUserStoryOffer
       security:
         - PublicSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/RequestId"
-        - $ref: "#/components/parameters/CurrentUserAdSlug"
+        - name: modoConteudo
+          in: query
+          required: true
+          schema: { type: string, enum: [ANUNCIO, MIDIA_UPLOAD] }
+        - name: anuncioId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Obrigatorio somente em ANUNCIO e proibido em MIDIA_UPLOAD.
+      description: Um direito ainda nao consumido e compativel com o modo e o anuncio precede a oferta comercial. A duracao permanece fixa em 24 horas.
+      responses:
+        "200":
+          description: Estado comercial dedicado da conta
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhaContaStoryOferta"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/minha-conta/stories/ativacoes:
+    post:
+      summary: Adquire um direito de Story compativel com o modo solicitado
+      operationId: activateCurrentUserStory
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
         - $ref: "#/components/parameters/IdempotencyKey"
-      description: Debita o saldo somente quando o custo configurado for positivo. A compra cria um direito ainda sem vigencia; as 24 horas comecam apenas na publicacao efetiva do Story.
+      description: Exige sessao e CSRF e debita no maximo uma vez. ANUNCIO exige anuncioId pertencente a conta; MIDIA_UPLOAD exige anuncioId nulo. A compra cria direito sem vigencia; as 24 horas comecam somente na publicacao.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/MeuAnuncioStoryAtivacaoRequest"
+              $ref: "#/components/schemas/MinhaContaStoryAtivacaoRequest"
       responses:
         "200":
-          description: Direito criado ou repeticao idempotente da mesma intencao
+          description: Direito da conta criado ou repeticao idempotente da mesma intencao
           headers:
             Cache-Control:
               schema: { type: string, const: no-store }
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MeuAnuncioStoryAtivacao"
+                $ref: "#/components/schemas/MinhaContaStoryAtivacao"
         "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/public/minha-conta/stories/{storyId}:
+    delete:
+      summary: Encerra logicamente um Story da propria conta
+      operationId: deleteCurrentUserStory
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: storyId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      description: Exige sessao, CSRF e ownership. Retira imediatamente do feed e bloqueia a resolucao da midia. A repeticao e idempotente. Exclusao voluntaria nao devolve credito; falha tecnica e reconhecida somente pelo backend e preserva o direito. O cleanup fisico e posterior, auditado e nao faz parte da promessa desta resposta.
+      responses:
+        "200":
+          description: Estado final do encerramento logico
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryEncerramento"
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1167,6 +1224,34 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/public/anuncios/usuario/{username}:
+    get:
+      summary: Lista somente os anuncios publicos de uma anunciante
+      operationId: getPublicAnunciosByUsername
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: username
+          in: path
+          required: true
+          schema: { type: string, pattern: "^[0-9a-f]{32}$" }
+          description: Token publico opaco e unico da conta; nao corresponde ao usuarioId.
+        - $ref: "#/components/parameters/Pagina"
+        - $ref: "#/components/parameters/Tamanho"
+        - $ref: "#/components/parameters/OrdemSeed"
+      description: O token publico identifica exatamente uma conta ativa. A filtragem ocorre no backend e inclui somente anuncios PUBLICADO/APROVADO aptos a exposicao. Nao registra visualizacao ao renderizar a lista e nao expoe usuarioId ou dados pessoais.
+      responses:
+        "200":
+          description: Lista paginada, inclusive vazia quando nao houver anuncio publico
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListaAnunciosUsuarioPublica"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /api/public/anuncios/{slug}:
     get:
       summary: Detalhe publico minimo de anuncio por slug
@@ -1308,35 +1393,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/StoryViewerPublico"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalError"
-  /api/public/anuncios/{slug}/stories:
-    get:
-      summary: Lista stories publicos conforme autorizacao reforcada
-      description: Stories sao sempre RESTRITA_18. Sem token reforcado vigente retorna metadados sem URL de midia e politica negada; com token valido o backend resolve o original pelo fluxo protegido. Nenhuma resposta expoe storage key, bucket ou hash.
-      operationId: getPublicAnuncioStories
-      parameters:
-        - $ref: "#/components/parameters/RequestId"
-        - name: slug
-          in: path
-          required: true
-          schema:
-            type: string
-            pattern: "^[a-z0-9][a-z0-9-]{1,120}$"
-      responses:
-        "200":
-          description: politica de stories avaliada
-          headers:
-            X-Request-Id:
-              $ref: "#/components/headers/RequestId"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListaStoriesPublicos"
-        "400":
-          $ref: "#/components/responses/BadRequest"
         "404":
           $ref: "#/components/responses/NotFound"
         "500":
@@ -1584,6 +1640,31 @@ paths:
           $ref: "#/components/responses/NotFound"
         "503":
           description: storage privado indisponivel
+  /api/public/compliance/visitor/media/stories/{storyId}:
+    get:
+      summary: Entrega a midia restrita de um Story independente
+      operationId: getPublicComplianceProtectedStoryMedia
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: storyId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      description: Exige confirmacao etaria reforcada vigente de sete dias e Story MIDIA_UPLOAD ativo. Retorna bytes privados com no-store; Story encerrado, vencido ou com falha nao e resolvido. Nenhuma URL assinada, bucket ou object key e exposta.
+      responses:
+        "200":
+          description: Bytes da midia protegida com MIME canonico do arquivo
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+            X-Content-Type-Options:
+              schema: { type: string, const: nosniff }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "503": { description: Storage privado indisponivel }
   /api/admin/compliance/verificacoes-etarias:
     get:
       summary: Lista verificacoes etarias minimizadas para auditoria
@@ -4132,6 +4213,69 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/admin/stories/gestao:
+    get:
+      summary: Lista Stories para gestao administrativa
+      operationId: getAdminStories
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Exclusivo de ADMIN. Retorna estados sanitizados e paginados, sem original, URL privada, bucket ou object key.
+      responses:
+        "200":
+          description: Pagina administrativa de Stories
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStoriesPagina"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/admin/stories/{storyId}/remover:
+    post:
+      summary: Remove logicamente um Story com motivo administrativo
+      operationId: removeAdminStory
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: storyId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      description: Exclusivo de ADMIN e protegido por CSRF. Motivo e obrigatorio; OUTRO exige descricao. ERRO_TECNICO preserva o direito somente quando a falha for comprovada pelo backend. A repeticao nao duplica transicao ou auditoria e nenhuma compensacao financeira e criada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminStoryRemocaoRequest"
+      responses:
+        "200":
+          description: Estado final da remocao logica
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryEncerramento"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /api/admin/stories/configuracao:
     get:
       summary: Consulta a configuracao comercial dedicada de Stories
@@ -5105,106 +5249,6 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "500":
           $ref: "#/components/responses/InternalError"
-  /api/admin/stories/selecao:
-    get:
-      summary: Consulta as selecoes administrativas ativas de Stories
-      security:
-        - AdminSessionCookie: []
-      responses:
-        "200":
-          description: selecoes vigentes, cumulativas e independentes por anuncio
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/AdminStorySelecao"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-  /api/admin/stories/selecao/{anuncioId}:
-    post:
-      summary: Acrescenta atomicamente um anuncio aos Stories administrativos
-      description: Nao substitui selecoes vigentes, nao cria Story pago, nao consome credito e nao copia midia. Exige anuncio publico, aprovado e com foto ou video publicavel; a selecao e RESTRITA_18 e expira exatamente em 24 horas.
-      security:
-        - AdminSessionCookie: []
-      parameters:
-        - name: anuncioId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - $ref: "#/components/parameters/IdempotencyKey"
-      responses:
-        "200":
-          description: selecao acrescentada ou repeticao idempotente
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminStorySelecao"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "422":
-          description: anuncio inelegivel ou sem midia aprovada
-    delete:
-      summary: Desativa somente a selecao administrativa do anuncio informado
-      security:
-        - AdminSessionCookie: []
-      parameters:
-        - name: anuncioId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        "200":
-          description: selecao desativada e auditada sem alterar as demais
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminStorySelecao"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-  /api/admin/stories/candidatos:
-    get:
-      summary: Lista anuncios candidatos aos Stories administrativos
-      security:
-        - AdminSessionCookie: []
-      parameters:
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 0
-        - name: size
-          in: query
-          schema:
-            type: integer
-            default: 20
-        - name: termo
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: pagina de anuncios publicos e aprovados
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AdminStoryCandidatosPagina"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
   /api/admin/midias/{id}:
     get:
       summary: Detalhe administrativo sanitizado de midia
@@ -8501,34 +8545,49 @@ components:
         storyAtivo:
           description: Story de autogestao vigente do anuncio; nulo quando nao existe Story ativo.
           oneOf:
-            - $ref: "#/components/schemas/MeuAnuncioStory"
+            - $ref: "#/components/schemas/MinhaContaStory"
             - type: "null"
-    MeuAnuncioStory:
+    MinhaContaStory:
       type: object
       additionalProperties: false
       required: [storyId, anuncioId, modoConteudo, tipoMidia, status, inicioEm, fimEm, estadoMidia]
       properties:
         storyId: { type: string, format: uuid }
-        anuncioId: { type: string, format: uuid }
+        anuncioId:
+          type: [string, "null"]
+          format: uuid
+          description: Obrigatorio somente em ANUNCIO e sempre nulo em MIDIA_UPLOAD.
         modoConteudo:
           type: string
           enum: [ANUNCIO, MIDIA_UPLOAD]
         tipoMidia:
           type: [string, "null"]
           enum: [FOTO, VIDEO, null]
+          description: Nulo no modo ANUNCIO; FOTO ou VIDEO no MIDIA_UPLOAD.
         status:
           type: string
           enum: [RASCUNHO, PENDENTE, PUBLICADO, EXPIRADO, REMOVIDO]
         inicioEm: { type: string, format: date-time }
-        fimEm: { type: string, format: date-time }
+        fimEm:
+          type: string
+          format: date-time
+          description: Exatamente 24 horas apos inicioEm para uma publicacao valida.
         estadoMidia:
           type: [string, "null"]
           enum: [DISPONIVEL, INDISPONIVEL, null]
-    MeuAnuncioStoryOferta:
+          description: Nulo em ANUNCIO. Nunca inclui URL, bucket, object key ou identificador privado.
+    MinhaContaStoryOferta:
       type: object
       additionalProperties: false
-      required: [estado, configurada, ativo, duracaoHoras, custoCreditos, saldoAtual, saldoProjetado, deficit, storyAtivo, direitoDisponivel, versaoConfiguracao]
+      required: [modoConteudo, anuncioId, estado, configurada, ativo, duracaoHoras, custoCreditos, saldoAtual, saldoProjetado, deficit, storyAtivo, direitoDisponivel, versaoConfiguracao]
       properties:
+        modoConteudo:
+          type: string
+          enum: [ANUNCIO, MIDIA_UPLOAD]
+        anuncioId:
+          type: [string, "null"]
+          format: uuid
+          description: Obrigatorio semanticamente em ANUNCIO e sempre nulo em MIDIA_UPLOAD.
         estado:
           type: string
           enum: [STORY_ATIVO, DIREITO_DISPONIVEL, OFERTA_DISPONIVEL, NOVAS_ATIVACOES_INDISPONIVEIS]
@@ -8541,14 +8600,14 @@ components:
         deficit: { type: [integer, "null"], minimum: 0 }
         storyAtivo:
           oneOf:
-            - $ref: "#/components/schemas/MeuAnuncioStory"
+            - $ref: "#/components/schemas/MinhaContaStory"
             - type: "null"
         direitoDisponivel:
           oneOf:
-            - $ref: "#/components/schemas/MeuAnuncioStoryDireito"
+            - $ref: "#/components/schemas/MinhaContaStoryDireito"
             - type: "null"
         versaoConfiguracao: { type: [integer, "null"], format: int64, minimum: 0 }
-    MeuAnuncioStoryDireito:
+    MinhaContaStoryDireito:
       type: object
       additionalProperties: false
       required: [ativacaoId, status, custoCreditosSnapshot, inicioEm, fimEm]
@@ -8560,24 +8619,133 @@ components:
         custoCreditosSnapshot: { type: [integer, "null"], minimum: 0 }
         inicioEm: { type: [string, "null"], format: date-time }
         fimEm: { type: [string, "null"], format: date-time }
-    MeuAnuncioStoryAtivacaoRequest:
+    MinhaContaStoryAtivacaoRequest:
       type: object
       additionalProperties: false
-      required: [custoCreditosEsperado, versaoConfiguracao]
+      required: [modoConteudo, custoCreditosEsperado, versaoConfiguracao]
       properties:
+        modoConteudo:
+          type: string
+          enum: [ANUNCIO, MIDIA_UPLOAD]
+        anuncioId:
+          type: [string, "null"]
+          format: uuid
+          description: Obrigatorio semanticamente em ANUNCIO e sempre nulo em MIDIA_UPLOAD.
         custoCreditosEsperado: { type: integer, minimum: 0, maximum: 1000000 }
         versaoConfiguracao: { type: integer, format: int64, minimum: 0 }
-    MeuAnuncioStoryAtivacao:
+    MinhaContaStoryAtivacao:
       type: object
       additionalProperties: false
-      required: [ativacaoId, custoCreditos, saldoAnterior, saldoAtual, duracaoHoras, idempotente]
+      required: [ativacaoId, modoConteudo, anuncioId, custoCreditos, saldoAnterior, saldoAtual, duracaoHoras, idempotente]
       properties:
+        modoConteudo:
+          type: string
+          enum: [ANUNCIO, MIDIA_UPLOAD]
+        anuncioId:
+          type: [string, "null"]
+          format: uuid
+          description: Preenchido somente em ANUNCIO.
         ativacaoId: { type: string, format: uuid }
         custoCreditos: { type: integer, minimum: 0 }
         saldoAnterior: { type: integer, minimum: 0 }
         saldoAtual: { type: integer, minimum: 0 }
         duracaoHoras: { type: integer, const: 24 }
         idempotente: { type: boolean }
+    MeuStoryGerenciado:
+      type: object
+      additionalProperties: false
+      required: [id, modoConteudo, status, publicadoEm, expiraEm, anuncioSlug, anuncioTitulo, estadoMidia, falhaTecnica, podeExcluir, podeDescartar, encerradoEm, direitoPreservado]
+      properties:
+        id: { type: string, format: uuid }
+        modoConteudo: { type: string, enum: [ANUNCIO, MIDIA_UPLOAD] }
+        status: { type: string, enum: [RASCUNHO, PENDENTE, PUBLICADO, EXPIRADO, REMOVIDO] }
+        publicadoEm: { type: [string, "null"], format: date-time }
+        expiraEm: { type: [string, "null"], format: date-time }
+        anuncioSlug:
+          type: [string, "null"]
+          description: Preenchido somente no modo ANUNCIO.
+        anuncioTitulo:
+          type: [string, "null"]
+          description: Preenchido somente no modo ANUNCIO.
+        estadoMidia: { type: string, enum: [NAO_APLICAVEL, DISPONIVEL, FALHA_PUBLICACAO] }
+        falhaTecnica: { type: boolean }
+        podeExcluir: { type: boolean }
+        podeDescartar: { type: boolean }
+        encerradoEm: { type: [string, "null"], format: date-time }
+        direitoPreservado: { type: boolean }
+    MeusStoriesPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, pagina, tamanho, totalElementos, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/MeuStoryGerenciado" }
+        pagina: { type: integer, minimum: 0 }
+        tamanho: { type: integer, minimum: 1, maximum: 50 }
+        totalElementos: { type: integer, format: int64, minimum: 0 }
+        totalPaginas: { type: integer, minimum: 0 }
+    StoryEncerramento:
+      type: object
+      additionalProperties: false
+      required: [id, status, encerradoEm, origem, motivo, direitoPreservado, repetido]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, const: REMOVIDO }
+        encerradoEm: { type: string, format: date-time }
+        origem: { type: string, enum: [USUARIO, ADMIN] }
+        motivo:
+          type: string
+          enum: [EXCLUSAO_VOLUNTARIA, FALHA_TECNICA, VIOLACAO_REGRAS, DENUNCIA_PROCEDENTE, DETERMINACAO_JURIDICA, ERRO_TECNICO, OUTRO]
+        direitoPreservado:
+          type: boolean
+          description: Verdadeiro somente para falha tecnica comprovada pelo backend; nao representa credito ou estorno.
+        repetido: { type: boolean }
+    AdminStoryGerenciado:
+      type: object
+      additionalProperties: false
+      required: [id, usuarioUsername, modoConteudo, status, publicadoEm, expiraEm, anuncioSlug, anuncioTitulo, estadoMidia, falhaTecnica, encerradoEm, origemEncerramento, motivoEncerramento, direitoPreservado]
+      properties:
+        id: { type: string, format: uuid }
+        usuarioUsername: { type: [string, "null"] }
+        modoConteudo: { type: string, enum: [ANUNCIO, MIDIA_UPLOAD] }
+        status: { type: string, enum: [RASCUNHO, PENDENTE, PUBLICADO, EXPIRADO, REMOVIDO] }
+        publicadoEm: { type: [string, "null"], format: date-time }
+        expiraEm: { type: [string, "null"], format: date-time }
+        anuncioSlug: { type: [string, "null"] }
+        anuncioTitulo: { type: [string, "null"] }
+        estadoMidia: { type: string, enum: [NAO_APLICAVEL, DISPONIVEL, FALHA_PUBLICACAO] }
+        falhaTecnica: { type: boolean }
+        encerradoEm: { type: [string, "null"], format: date-time }
+        origemEncerramento: { type: [string, "null"], enum: [USUARIO, ADMIN, null] }
+        motivoEncerramento:
+          type: [string, "null"]
+          enum: [EXCLUSAO_VOLUNTARIA, FALHA_TECNICA, VIOLACAO_REGRAS, DENUNCIA_PROCEDENTE, DETERMINACAO_JURIDICA, ERRO_TECNICO, OUTRO, null]
+        direitoPreservado: { type: boolean }
+    AdminStoriesPagina:
+      type: object
+      additionalProperties: false
+      required: [itens, pagina, tamanho, totalElementos, totalPaginas]
+      properties:
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/AdminStoryGerenciado" }
+        pagina: { type: integer, minimum: 0 }
+        tamanho: { type: integer, minimum: 1, maximum: 100 }
+        totalElementos: { type: integer, format: int64, minimum: 0 }
+        totalPaginas: { type: integer, minimum: 0 }
+    AdminStoryRemocaoRequest:
+      type: object
+      additionalProperties: false
+      required: [motivo]
+      properties:
+        motivo:
+          type: string
+          enum: [VIOLACAO_REGRAS, DENUNCIA_PROCEDENTE, DETERMINACAO_JURIDICA, ERRO_TECNICO, OUTRO]
+        descricao:
+          type: [string, "null"]
+          maxLength: 500
+          description: Obrigatoria somente para OUTRO; HTML, scripts e caracteres de controle sao rejeitados.
     MeuAnuncioBeneficio:
       type: object
       additionalProperties: false
@@ -12536,293 +12704,100 @@ components:
     StoryFeedItem:
       type: object
       additionalProperties: false
-      required: [storyId, anuncioId, anuncioSlug, profileNavigable, previewState, modoConteudo, tipo]
+      required: [storyId, anuncioId, anuncioSlug, usuarioUsername, displayUsername, profileNavigable, previewState, previewUrl, modoConteudo, tipo, expiraEm]
       properties:
-        storyId:
-          type: string
+        storyId: { type: string }
         anuncioId:
-          type: string
+          type: [string, "null"]
           format: uuid
+          description: Nulo em MIDIA_UPLOAD; nunca usado pelo CTA da anunciante.
         anuncioSlug:
-          type: string
+          type: [string, "null"]
+          description: Nulo em MIDIA_UPLOAD.
         usuarioUsername:
           type: [string, "null"]
-        displayUsername:
-          type: [string, "null"]
+          description: Identificador publico canonico usado pelo CTA Ver anunciante.
+        displayUsername: { type: [string, "null"] }
         idade:
           type: integer
           minimum: 18
-          description: Omitida integralmente quando o beneficio OCULTAR_IDADE estiver ativo e vigente.
-        profileNavigable:
-          type: boolean
-        previewState:
-          type: string
-          enum: [AVAILABLE, IDADE_NAO_CONFIRMADA, UNAVAILABLE]
+          description: Omitida integralmente quando OCULTAR_IDADE estiver ativo e vigente.
+        profileNavigable: { type: boolean }
+        previewState: { type: string, enum: [AVAILABLE, IDADE_NAO_CONFIRMADA, UNAVAILABLE] }
         previewUrl:
           type: [string, "null"]
-          description: Nulo em IDADE_NAO_CONFIRMADA e UNAVAILABLE. Em AVAILABLE pode conter somente preview compativel com a autorizacao vigente; nunca contem URL privada ou assinada.
+          description: Obrigatoriamente nula antes do age gate e quando indisponivel. Nunca contem URL privada ou assinada.
         modoConteudo:
           type: [string, "null"]
           enum: [ANUNCIO, MIDIA_UPLOAD, null]
-          description: Nulo apenas para selecoes administrativas historicas.
-        tipo:
-          type: string
-          enum: [ANUNCIO, IMAGE, VIDEO]
-        expiraEm:
-          type: [string, "null"]
-          format: date-time
+        tipo: { type: string, enum: [ANUNCIO, IMAGE, VIDEO] }
+        expiraEm: { type: [string, "null"], format: date-time }
     StoryFeedBundle:
       type: object
       additionalProperties: false
-      required: [usuarioId, profileNavigable, visto, itens]
+      required: [bundleKey, usuarioUsername, displayUsername, profileNavigable, avatarUrl, visto, itens]
       properties:
-        usuarioId:
+        bundleKey:
           type: string
-        usuarioUsername:
-          type: [string, "null"]
-        displayUsername:
-          type: [string, "null"]
+          description: Chave opaca do bundle; nao representa nem expoe usuarioId interno.
+        usuarioUsername: { type: [string, "null"] }
+        displayUsername: { type: [string, "null"] }
         idade:
           type: integer
           minimum: 18
-          description: Omitida integralmente quando o beneficio OCULTAR_IDADE estiver ativo e vigente.
-        profileNavigable:
-          type: boolean
+          description: Omitida integralmente quando OCULTAR_IDADE estiver ativo e vigente.
+        profileNavigable: { type: boolean }
         avatarUrl:
           type: [string, "null"]
-          description: Derivada do primeiro item autorizado; obrigatoriamente nula enquanto o bundle estiver em IDADE_NAO_CONFIRMADA.
-        visto:
-          type: boolean
+          description: Derivada do primeiro item autorizado e obrigatoriamente nula antes do age gate.
+        visto: { type: boolean }
         itens:
           type: array
-          items:
-            $ref: "#/components/schemas/StoryFeedItem"
+          items: { $ref: "#/components/schemas/StoryFeedItem" }
     StoryViewerPublico:
       type: object
       additionalProperties: false
-      required: [storyId, anuncioId, anuncioSlug, profileNavigable, viewerState, modoConteudo, tipo]
+      required: [storyId, anuncioId, anuncioSlug, usuarioUsername, displayUsername, profileNavigable, viewerState, midiaUrl, modoConteudo, tipo, expiraEm, blockedReason]
       properties:
-        storyId:
-          type: string
+        storyId: { type: string }
         anuncioId:
-          type: string
+          type: [string, "null"]
           format: uuid
+          description: Nulo em MIDIA_UPLOAD.
         anuncioSlug:
-          type: string
-        usuarioUsername:
           type: [string, "null"]
-        displayUsername:
-          type: [string, "null"]
+          description: Nulo em MIDIA_UPLOAD; o CTA usa usuarioUsername.
+        usuarioUsername: { type: [string, "null"] }
+        displayUsername: { type: [string, "null"] }
         idade:
           type: integer
           minimum: 18
-          description: Omitida integralmente quando o beneficio OCULTAR_IDADE estiver ativo e vigente.
-        profileNavigable:
-          type: boolean
-        viewerState:
-          type: string
-          enum: [LIBERADO, IDADE_NAO_CONFIRMADA, INDISPONIVEL, ERRO_DADOS]
+          description: Omitida integralmente quando OCULTAR_IDADE estiver ativo e vigente.
+        profileNavigable: { type: boolean }
+        viewerState: { type: string, enum: [LIBERADO, IDADE_NAO_CONFIRMADA, INDISPONIVEL, ERRO_DADOS] }
         midiaUrl:
           type: [string, "null"]
-          description: Obrigatoriamente nulo em IDADE_NAO_CONFIRMADA e INDISPONIVEL. Em LIBERADO aponta para a superficie publica permitida ou para o endpoint protegido, nunca para URL privada ou assinada.
+          description: Nula antes do age gate e quando indisponivel. Em MIDIA_UPLOAD liberado aponta somente ao endpoint protegido do Story.
         modoConteudo:
           type: [string, "null"]
           enum: [ANUNCIO, MIDIA_UPLOAD, null]
-        tipo:
-          type: string
-          enum: [ANUNCIO, IMAGE, VIDEO]
-        expiraEm:
-          type: [string, "null"]
-          format: date-time
-        blockedReason:
-          type: [string, "null"]
+        tipo: { type: string, enum: [ANUNCIO, IMAGE, VIDEO] }
+        expiraEm: { type: [string, "null"], format: date-time }
+        blockedReason: { type: [string, "null"] }
         cidade:
           type: [string, "null"]
-          description: Presente somente no modo ANUNCIO depois da autorizacao do age gate.
+          description: Presente somente em ANUNCIO depois do age gate.
         uf:
           type: [string, "null"]
-          description: Presente somente no modo ANUNCIO depois da autorizacao do age gate.
+          description: Presente somente em ANUNCIO depois do age gate.
         preco:
           type: [number, "null"]
           format: double
-          description: Preco publico do anuncio, somente depois da autorizacao.
+          description: Presente somente em ANUNCIO depois do age gate.
         resumo:
           type: [string, "null"]
           maxLength: 220
-          description: Resumo publico sanitizado, somente depois da autorizacao.
-    AdminStorySelecao:
-      type: object
-      additionalProperties: false
-      required: [id, ativa, fotosAprovadas, videosAprovados, classificacao]
-      properties:
-        id:
-          type: integer
-          format: int64
-        ativa:
-          type: boolean
-        anuncioId:
-          type: [string, "null"]
-          format: uuid
-        anuncioSlug:
-          type: [string, "null"]
-        anuncioTitulo:
-          type: [string, "null"]
-        fotosAprovadas:
-          type: integer
-        videosAprovados:
-          type: integer
-        ativadoEm:
-          type: [string, "null"]
-          format: date-time
-        expiraEm:
-          type: [string, "null"]
-          format: date-time
-          description: Exatamente 24 horas apos ativadoEm enquanto a selecao estiver ativa.
-        classificacao:
-          type: string
-          const: RESTRITA_18
-        ativadoPorId:
-          type: [string, "null"]
-          format: uuid
-        ativadoPorEmail:
-          type: [string, "null"]
-    AdminStoryCandidato:
-      type: object
-      additionalProperties: false
-      required: [anuncioId, slug, titulo, fotosAprovadas, videosAprovados, selecionado]
-      properties:
-        anuncioId:
-          type: string
-          format: uuid
-        slug:
-          type: string
-        titulo:
-          type: string
-        fotosAprovadas:
-          type: integer
-        videosAprovados:
-          type: integer
-        selecionado:
-          type: boolean
-    AdminStoryCandidatosPagina:
-      type: object
-      additionalProperties: false
-      required: [itens, page, size, totalElements, totalPages, last]
-      properties:
-        itens:
-          type: array
-          items:
-            $ref: "#/components/schemas/AdminStoryCandidato"
-        page:
-          type: integer
-        size:
-          type: integer
-        totalElements:
-          type: integer
-        totalPages:
-          type: integer
-        last:
-          type: boolean
-    PoliticaStoryPublico:
-      type: object
-      additionalProperties: false
-      required:
-        - autorizado
-        - motivoPublico
-      properties:
-        autorizado:
-          type: boolean
-        motivoPublico:
-          type: string
-        pendencia:
-          type:
-            - string
-            - "null"
-    StoryPublico:
-      type: object
-      additionalProperties: false
-      required:
-        - storyId
-        - modoConteudo
-        - visibilidadeMidia
-        - urlPublica
-        - pendenciaMidia
-      properties:
-        storyId:
-          type: [string, "null"]
-          format: uuid
-        modoConteudo:
-          type: [string, "null"]
-          enum: [ANUNCIO, MIDIA_UPLOAD, null]
-        ordem:
-          type:
-            - integer
-            - "null"
-        tipo:
-          type:
-            - string
-            - "null"
-        finalidade:
-          type:
-            - string
-            - "null"
-        visibilidadeMidia:
-          description: Nula no modo ANUNCIO, que nao possui arquivo de midia.
-          oneOf:
-            - $ref: "#/components/schemas/VisibilidadeMidia"
-            - type: "null"
-        urlPublica:
-          type:
-            - string
-            - "null"
-          description: Nula antes da confirmacao etaria. Depois da confirmacao pode apontar somente para o endpoint publico protegido da midia do Story; nunca contem bucket, chaveObjeto, provider ou hash.
-        largura:
-          type:
-            - integer
-            - "null"
-        altura:
-          type:
-            - integer
-            - "null"
-        duracaoMs:
-          type:
-            - integer
-            - "null"
-        mimeType:
-          type:
-            - string
-            - "null"
-        pendenciaMidia:
-          type:
-            - string
-            - "null"
-        titulo: { type: [string, "null"] }
-        cidade: { type: [string, "null"] }
-        uf: { type: [string, "null"] }
-        preco: { type: [number, "null"], format: double }
-        resumo: { type: [string, "null"], maxLength: 220 }
-    ListaStoriesPublicos:
-      type: object
-      additionalProperties: false
-      required:
-        - slug
-        - idadeConfirmada
-        - autorizado
-        - stories
-        - politica
-      properties:
-        slug:
-          type: string
-        idadeConfirmada:
-          type: boolean
-        autorizado:
-          type: boolean
-        stories:
-          type: array
-          items:
-            $ref: "#/components/schemas/StoryPublico"
-        politica:
-          $ref: "#/components/schemas/PoliticaStoryPublico"
+          description: Presente somente em ANUNCIO depois do age gate.
     AnuncioDetalhePublico:
       type: object
       additionalProperties: false
@@ -13292,6 +13267,22 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CategoriaAnuncioCodigo"
             - type: "null"
+    ListaAnunciosUsuarioPublica:
+      type: object
+      additionalProperties: false
+      required: [username, displayUsername, itens, paginacao]
+      properties:
+        username:
+          type: string
+          description: Identificador publico canonico; nunca usuarioId, e-mail, telefone ou nome civil.
+        displayUsername:
+          type: [string, "null"]
+          description: Nome publico da conta, separado do token usado para isolamento da consulta.
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/AnuncioCardPublico" }
+        paginacao:
+          $ref: "#/components/schemas/PaginacaoPublica"
     LocalizacaoPublica:
       type: object
       additionalProperties: false

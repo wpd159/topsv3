@@ -187,6 +187,13 @@ export type PublicCategoryList = {
   categoria: string | null
 }
 
+export type PublicUserCatalogList = {
+  username: string
+  displayUsername: string | null
+  itens: PublicCatalogCard[]
+  paginacao: PublicCatalogPagination
+}
+
 type RawLocation = {
   uf: string
   estado: string
@@ -254,6 +261,13 @@ type RawCategoryList = {
   itens: RawCard[]
   paginacao: PublicCatalogPagination
   categoria?: string | null
+}
+
+type RawUserList = {
+  username: string
+  displayUsername?: string | null
+  itens: RawCard[]
+  paginacao: PublicCatalogPagination
 }
 
 type RawCityAggregate = {
@@ -477,6 +491,26 @@ export async function listarAnunciosPublicos(
     itens: raw.itens.map(mapCard),
     paginacao: raw.paginacao,
     categoria: raw.categoria ?? null,
+  }
+}
+
+export async function listarAnunciosPublicosPorUsuario(
+  username: string,
+  pagina = 0,
+  tamanho = 20,
+  ordemSeed?: string,
+): Promise<PublicUserCatalogList> {
+  const query = new URLSearchParams({ pagina: String(pagina), tamanho: String(tamanho) })
+  if (ordemSeed !== undefined) query.set('ordemSeed', ordemSeed)
+  const raw = await requestJson<RawUserList>(
+    `/anuncios/usuario/${encodeURIComponent(username.trim())}?${query.toString()}`,
+    dynamic,
+  )
+  return {
+    username: raw.username,
+    displayUsername: raw.displayUsername ?? null,
+    itens: raw.itens.map(mapCard),
+    paginacao: raw.paginacao,
   }
 }
 
