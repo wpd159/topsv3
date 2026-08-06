@@ -73,6 +73,9 @@ public interface StoryAnuncioRepository extends JpaRepository<StoryAnuncioEntity
 
     boolean existsByAtivacaoBeneficioIdAndDireitoPreservadoFalse(UUID ativacaoBeneficioId);
 
+    boolean existsByAtivacaoBeneficioIdAndDireitoPreservadoTrueAndEncerradoEmIsNotNull(
+        UUID ativacaoBeneficioId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
         select distinct story

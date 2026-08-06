@@ -237,9 +237,8 @@ public class MinhaContaStoriesDireitoService {
     UUID anuncioId = anuncio == null ? null : anuncio.getId();
     if (!Objects.equals(usuarioId, ativacao.getUsuarioId())
         || !Objects.equals(usuarioId, grupo.getUsuarioId())
-        || !Objects.equals(anuncioId, ativacao.getAnuncioId())
-        || !Objects.equals(anuncioId, grupo.getAnuncioId())
-        || ativacao.getOrigem() != grupo.getOrigem()) {
+        || ativacao.getOrigem() != grupo.getOrigem()
+        || !vinculoCompativel(modo, anuncioId, ativacao, grupo)) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "direito de Story inconsistente");
     }
     if (storyRepository.existsByAtivacaoBeneficioIdAndDireitoPreservadoFalse(ativacao.getId())) {
@@ -319,10 +318,12 @@ public class MinhaContaStoriesDireitoService {
     UUID anuncioId = anuncio == null ? null : anuncio.getId();
     List<AtivacaoBeneficioEntity> candidatas = (modo == ModoConteudoStory.ANUNCIO
         ? ativacaoRepository.findByAnuncioId(anuncioId)
-        : ativacaoRepository.findByUsuarioIdAndAnuncioIdIsNull(usuarioId)).stream()
+        : ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(usuarioId)).stream()
         .filter(item -> Objects.equals(item.getUsuarioId(), usuarioId))
         .filter(item -> Objects.equals(item.getBeneficioId(), beneficio.getId()))
         .filter(item -> item.getRevogadaEm() == null)
+        .filter(item -> modo != ModoConteudoStory.MIDIA_UPLOAD
+            || direitoMidiaUploadCompativel(item))
         .filter(item -> !storyRepository
             .existsByAtivacaoBeneficioIdAndDireitoPreservadoFalse(item.getId()))
         .toList();
@@ -347,6 +348,32 @@ public class MinhaContaStoriesDireitoService {
             .thenComparing(AtivacaoBeneficioEntity::getId))
         .findFirst()
         .orElse(null);
+  }
+
+  private boolean direitoMidiaUploadCompativel(AtivacaoBeneficioEntity ativacao) {
+    return ativacao.getAnuncioId() == null
+        || storyRepository
+            .existsByAtivacaoBeneficioIdAndDireitoPreservadoTrueAndEncerradoEmIsNotNull(
+                ativacao.getId());
+  }
+
+  private boolean vinculoCompativel(
+      ModoConteudoStory modo,
+      UUID anuncioId,
+      AtivacaoBeneficioEntity ativacao,
+      GrupoAtivacaoBeneficioEntity grupo) {
+    if (modo == ModoConteudoStory.ANUNCIO) {
+      return Objects.equals(anuncioId, ativacao.getAnuncioId())
+          && Objects.equals(anuncioId, grupo.getAnuncioId());
+    }
+    if (ativacao.getAnuncioId() == null && grupo.getAnuncioId() == null) {
+      return true;
+    }
+    return ativacao.getAnuncioId() != null
+        && Objects.equals(ativacao.getAnuncioId(), grupo.getAnuncioId())
+        && storyRepository
+            .existsByAtivacaoBeneficioIdAndDireitoPreservadoTrueAndEncerradoEmIsNotNull(
+                ativacao.getId());
   }
 
   private AnuncioEntity anuncio(

@@ -93,7 +93,7 @@ class MinhaContaStoriesDireitoServiceTest {
     when(grupoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(ativacaoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(ativacaoRepository.findByAnuncioId(ANUNCIO_ID)).thenReturn(List.of());
-    when(ativacaoRepository.findByUsuarioIdAndAnuncioIdIsNull(USUARIO_ID)).thenReturn(List.of());
+    when(ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID)).thenReturn(List.of());
     when(storyRepository.findByAnuncioIdForUpdate(ANUNCIO_ID)).thenReturn(List.of());
 
     service = new MinhaContaStoriesDireitoService(
@@ -157,7 +157,7 @@ class MinhaContaStoriesDireitoServiceTest {
   @Test
   void ofertaDeMidiaUploadUsaDireitoDaContaMesmoSemAnuncio() {
     AtivacaoBeneficioEntity direito = direito(null, USUARIO_ID);
-    when(ativacaoRepository.findByUsuarioIdAndAnuncioIdIsNull(USUARIO_ID))
+    when(ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID))
         .thenReturn(List.of(direito));
 
     var oferta = service.consultar("MIDIA_UPLOAD", null, authentication);
@@ -174,7 +174,7 @@ class MinhaContaStoriesDireitoServiceTest {
     GrupoAtivacaoBeneficioEntity grupoConta = grupo(null, USUARIO_ID);
     UUID grupoContaId = grupoConta.getId();
     when(direitoConta.getGrupoAtivacaoId()).thenReturn(grupoContaId);
-    when(ativacaoRepository.findByUsuarioIdAndAnuncioIdIsNull(USUARIO_ID))
+    when(ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID))
         .thenReturn(List.of(direitoConta));
     when(grupoRepository.findByIdForUpdate(grupoConta.getId())).thenReturn(Optional.of(grupoConta));
 
@@ -185,7 +185,7 @@ class MinhaContaStoriesDireitoServiceTest {
     assertThat(reservado.grupo()).isSameAs(grupoConta);
 
     AtivacaoBeneficioEntity alheio = direito(null, UUID.randomUUID());
-    when(ativacaoRepository.findByUsuarioIdAndAnuncioIdIsNull(USUARIO_ID))
+    when(ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID))
         .thenReturn(List.of(alheio));
     assertStatus(
         () -> service.reservarParaPublicacao(
@@ -193,6 +193,28 @@ class MinhaContaStoriesDireitoServiceTest {
         HttpStatus.CONFLICT);
   }
 
+  @Test
+  void direitoHistoricoPreservadoPodeSerReutilizadoSemRomperVinculoDoAnuncio() {
+    AtivacaoBeneficioEntity direitoHistorico = direito(ANUNCIO_ID, USUARIO_ID);
+    GrupoAtivacaoBeneficioEntity grupoHistorico = grupo(ANUNCIO_ID, USUARIO_ID);
+    UUID grupoId = grupoHistorico.getId();
+    when(direitoHistorico.getGrupoAtivacaoId()).thenReturn(grupoId);
+    when(ativacaoRepository.findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID))
+        .thenReturn(List.of(direitoHistorico));
+    when(storyRepository
+        .existsByAtivacaoBeneficioIdAndDireitoPreservadoTrueAndEncerradoEmIsNotNull(
+            direitoHistorico.getId()))
+        .thenReturn(true);
+    when(grupoRepository.findByIdForUpdate(grupoId)).thenReturn(Optional.of(grupoHistorico));
+
+    var reservado = service.reservarParaPublicacao(
+        ModoConteudoStory.MIDIA_UPLOAD, null, USUARIO_ID, AGORA);
+
+    assertThat(reservado.ativacao()).isSameAs(direitoHistorico);
+    assertThat(reservado.grupo()).isSameAs(grupoHistorico);
+    assertThat(reservado.ativacao().getAnuncioId()).isEqualTo(ANUNCIO_ID);
+    assertThat(reservado.grupo().getAnuncioId()).isEqualTo(ANUNCIO_ID);
+  }
   @Test
   void direitoDeAnuncioNaoPodeSerConsumidoPorOutroEscopo() {
     AtivacaoBeneficioEntity direitoAnuncio = direito(ANUNCIO_ID, USUARIO_ID);
@@ -208,7 +230,7 @@ class MinhaContaStoriesDireitoServiceTest {
 
     assertThat(reservado.ativacao()).isSameAs(direitoAnuncio);
     verify(ativacaoRepository).findByAnuncioId(ANUNCIO_ID);
-    verify(ativacaoRepository, never()).findByUsuarioIdAndAnuncioIdIsNull(USUARIO_ID);
+    verify(ativacaoRepository, never()).findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID);
   }
 
   @Test

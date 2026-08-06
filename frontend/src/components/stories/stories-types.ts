@@ -6,6 +6,7 @@ export type StoryItem = {
   storyId: string | number
   anuncioId?: string | number | null
   anuncioSlug?: string | null
+  anuncioTitulo?: string | null
   usuarioUsername?: string | null
   displayUsername?: string | null
   idade?: number | null
@@ -17,16 +18,29 @@ export type StoryItem = {
   expiraEm?: unknown
 }
 
+export type StoryViewerMedia = {
+  id?: string | null
+  tipo: "FOTO" | "VIDEO"
+  ordem?: number | null
+  autorizada: true
+  urlPublica: string
+  largura?: number | null
+  altura?: number | null
+  mimeType?: string | null
+}
+
 export type StoryViewerItem = {
   storyId: string | number
   anuncioId?: string | number | null
   anuncioSlug?: string | null
+  anuncioTitulo?: string | null
   usuarioUsername?: string | null
   displayUsername?: string | null
   idade?: number | null
   profileNavigable?: boolean | null
   viewerState: StoryViewerState
   midiaUrl?: string | null
+  midias?: StoryViewerMedia[]
   modoConteudo?: StoryContentMode | null
   tipo: "ANUNCIO" | "IMAGE" | "VIDEO"
   expiraEm?: unknown

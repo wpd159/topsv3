@@ -9,6 +9,7 @@ import {
   LifebuoyIcon,
   MegaphoneIcon,
   PhotoIcon,
+  PlayCircleIcon,
   RectangleStackIcon,
   ShieldCheckIcon,
   SparklesIcon,
@@ -49,6 +50,12 @@ export const sidebarLinks: SidebarLink[] = [
     label: 'Anúncios',
     icon: <RectangleStackIcon className="h-5 w-5" />,
     href: '/admin/anuncios',
+    section: 'Operação',
+  },
+  {
+    label: 'Gestão de Stories',
+    icon: <PlayCircleIcon className="h-5 w-5" />,
+    href: '/admin/stories',
     section: 'Operação',
   },
   {

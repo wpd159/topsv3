@@ -53,6 +53,7 @@ export type MeuStoryGerenciado = {
   id: string
   modoConteudo: StoryMode
   status: string
+  estadoGerenciamento: 'ENCERRADO_USUARIO' | 'REMOVIDO_ADMIN' | 'DESCARTADO_FALHA_TECNICA' | 'ENCERRADO' | 'EXPIRADO' | 'FALHA_TECNICA' | 'ATIVO' | 'OUTRO'
   publicadoEm: string | null
   expiraEm: string | null
   anuncioSlug: string | null

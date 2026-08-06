@@ -7,6 +7,7 @@ public record StoryFeedItemDto(
         String storyId,
         String anuncioId,
         String anuncioSlug,
+        String anuncioTitulo,
         String usuarioUsername,
         String displayUsername,
         @JsonInclude(JsonInclude.Include.NON_NULL) Integer idade,
@@ -30,7 +31,7 @@ public record StoryFeedItemDto(
             String tipo,
             OffsetDateTime expiraEm) {
         this(
-                storyId, anuncioId, anuncioSlug, usuarioUsername, displayUsername,
+                storyId, anuncioId, anuncioSlug, null, usuarioUsername, displayUsername,
                 idade, profileNavigable, previewState, previewUrl, null, tipo, expiraEm);
     }
 }

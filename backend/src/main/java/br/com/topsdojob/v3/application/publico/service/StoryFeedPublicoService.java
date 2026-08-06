@@ -2,7 +2,9 @@ package br.com.topsdojob.v3.application.publico.service;
 
 import br.com.topsdojob.v3.application.publico.dto.StoryFeedBundleDto;
 import br.com.topsdojob.v3.application.publico.dto.StoryFeedItemDto;
+import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.StoryViewerPublicoDto;
+import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
@@ -32,13 +34,9 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import jakarta.servlet.http.HttpServletRequest;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -69,6 +67,7 @@ public class StoryFeedPublicoService {
     private final IdadeAnunciantePublicaService idadeAnuncianteService;
     private final PremiumPublicoMapper premiumMapper;
     private final MidiaPublicaUrlService urlService;
+    private final MidiaPublicaMapper midiaMapper;
     private final StoryAnuncioApresentacaoService apresentacaoService;
 
     @Autowired
@@ -84,6 +83,7 @@ public class StoryFeedPublicoService {
             IdadeAnunciantePublicaService idadeAnuncianteService,
             PremiumPublicoMapper premiumMapper,
             MidiaPublicaUrlService urlService,
+            MidiaPublicaMapper midiaMapper,
             StoryAnuncioApresentacaoService apresentacaoService) {
         this.selecaoRepository = selecaoRepository;
         this.storyRepository = storyRepository;
@@ -96,6 +96,7 @@ public class StoryFeedPublicoService {
         this.idadeAnuncianteService = idadeAnuncianteService;
         this.premiumMapper = premiumMapper;
         this.urlService = urlService;
+        this.midiaMapper = midiaMapper;
         this.apresentacaoService = apresentacaoService;
     }
 
@@ -115,7 +116,7 @@ public class StoryFeedPublicoService {
                 selecaoRepository, storyRepository, anuncioMidiaRepository,
                 arquivoMidiaRepository, anuncioRepository, usuarioRepository,
                 elegibilidadeService, visitorAccessService, idadeAnuncianteService,
-                premiumMapper, urlService, null);
+                premiumMapper, urlService, new MidiaPublicaMapper(urlService), null);
     }
 
     @Transactional(readOnly = true)
@@ -303,32 +304,24 @@ public class StoryFeedPublicoService {
             List<UsuarioStory> stories,
             boolean idadeConfirmada,
             Map<UUID, IdadeAnunciantePublicaService.Resultado> idades) {
-        Map<UUID, List<UsuarioStory>> porUsuario = new LinkedHashMap<>();
-        stories.forEach(item -> porUsuario.computeIfAbsent(item.usuario().getId(), ignored -> new ArrayList<>()).add(item));
-        return porUsuario.entrySet().stream().map(entry -> {
-            List<UsuarioStory> itens = entry.getValue();
-            UsuarioEntity usuario = itens.get(0).usuario();
-            String username = identidadePublica(usuario);
-            String displayUsername = nomeExibicao(usuario);
-            List<StoryFeedItemDto> feed = itens.stream()
-                    .map(item -> itemUsuario(
-                            item.story(),
-                            item.vinculo(),
-                            item.arquivo(),
-                            item.anuncio(),
-                            item.usuario(),
-                            idadeConfirmada,
-                            item.anuncio() == null ? null : idades.get(item.anuncio().getId())))
-                    .toList();
+        return stories.stream().map(item -> {
+            StoryFeedItemDto feed = itemUsuario(
+                    item.story(),
+                    item.vinculo(),
+                    item.arquivo(),
+                    item.anuncio(),
+                    item.usuario(),
+                    idadeConfirmada,
+                    item.anuncio() == null ? null : idades.get(item.anuncio().getId()));
             return new StoryFeedBundleDto(
-                    "story-owner:" + feed.get(0).storyId(),
-                    idadeConfirmada ? username : null,
-                    displayUsername,
-                    feed.get(0).idade(),
-                    idadeConfirmada && username != null,
-                    feed.get(0).previewUrl(),
+                    feed.storyId(),
+                    feed.usuarioUsername(),
+                    usernamePublico(item.usuario()),
+                    feed.idade(),
+                    feed.profileNavigable(),
+                    feed.previewUrl(),
                     false,
-                    feed);
+                    List.of(feed));
         }).toList();
     }
 
@@ -345,12 +338,14 @@ public class StoryFeedPublicoService {
                 PREFIXO_ADMIN + item.vinculo().getId(),
                 idadeConfirmada ? anuncio.getId().toString() : null,
                 idadeConfirmada ? anuncio.getSlug() : null,
+                idadeConfirmada ? anuncio.getTitulo() : null,
                 null,
                 idadeConfirmada ? anuncio.getTitulo() : null,
                 idadeConfirmada && idade != null ? idade.idade() : null,
                 idadeConfirmada,
                 previewState(idadeConfirmada, url),
                 url,
+                null,
                 tipoPublico(item.vinculo(), item.arquivo()),
                 expiraEm);
     }
@@ -363,15 +358,17 @@ public class StoryFeedPublicoService {
             UsuarioEntity usuario,
             boolean idadeConfirmada,
             IdadeAnunciantePublicaService.Resultado idade) {
+        String username = usernamePublico(usuario);
         if (story.getModoConteudo() == ModoConteudoStory.ANUNCIO) {
             return new StoryFeedItemDto(
                     story.getId().toString(),
                     idadeConfirmada ? anuncio.getId().toString() : null,
                     idadeConfirmada ? anuncio.getSlug() : null,
-                    null,
                     idadeConfirmada ? anuncio.getTitulo() : null,
+                    idadeConfirmada ? username : null,
+                    idadeConfirmada ? username : null,
                     idadeConfirmada && idade != null ? idade.idade() : null,
-                    idadeConfirmada,
+                    idadeConfirmada && username != null,
                     idadeConfirmada ? "AVAILABLE" : IDADE_NAO_CONFIRMADA,
                     null,
                     ModoConteudoStory.ANUNCIO.name(),
@@ -381,14 +378,13 @@ public class StoryFeedPublicoService {
         String url = idadeConfirmada
                 ? storyMediaUrl(story)
                 : null;
-        String username = identidadePublica(usuario);
-        String displayUsername = nomeExibicao(usuario);
         return new StoryFeedItemDto(
                 story.getId().toString(),
                 null,
                 null,
+                null,
                 idadeConfirmada ? username : null,
-                displayUsername,
+                username,
                 null,
                 idadeConfirmada && username != null,
                 previewState(idadeConfirmada, url),
@@ -428,11 +424,14 @@ public class StoryFeedPublicoService {
                 .orElseThrow(this::naoEncontrado);
         if (story.getModoConteudo() == ModoConteudoStory.ANUNCIO) {
             AnuncioEntity anuncio = anuncioRepository.findById(story.getAnuncioId())
-                    .filter(this::anuncioComProprietarioAtivo)
+                    .filter(this::anuncioPublicavel)
                     .filter(item -> story.getCriadoPor() == null
                             || story.getCriadoPor().equals(item.getUsuarioId()))
                     .orElseThrow(this::naoEncontrado);
-            return viewerAnuncio(story, anuncio, request);
+            UsuarioEntity usuario = usuarioRepository.findById(anuncio.getUsuarioId())
+                    .filter(this::usuarioAtivo)
+                    .orElseThrow(this::naoEncontrado);
+            return viewerAnuncio(story, anuncio, usuario, request);
         }
         if (story.getArquivoMidiaId() != null) {
             UsuarioEntity usuario = usuarioRepository.findById(story.getCriadoPor())
@@ -466,8 +465,7 @@ public class StoryFeedPublicoService {
         boolean idadeConfirmada = visitorAccessService.autorizado(
                 request,
                 EscopoConteudoVisitante.STORY);
-        String username = identidadePublica(usuario);
-        String displayUsername = nomeExibicao(usuario);
+        String username = usernamePublico(usuario);
         String url = idadeConfirmada ? storyMediaUrl(story) : null;
         String state = !idadeConfirmada
                 ? IDADE_NAO_CONFIRMADA
@@ -476,12 +474,14 @@ public class StoryFeedPublicoService {
                 story.getId().toString(),
                 null,
                 null,
+                null,
                 idadeConfirmada ? username : null,
-                displayUsername,
+                username,
                 null,
                 idadeConfirmada && username != null,
                 state,
                 url,
+                List.of(),
                 ModoConteudoStory.MIDIA_UPLOAD.name(),
                 tipoPublico(arquivo),
                 story.getFimEm(),
@@ -510,12 +510,14 @@ public class StoryFeedPublicoService {
                 storyId,
                 idadeConfirmada ? anuncio.getId().toString() : null,
                 idadeConfirmada ? anuncio.getSlug() : null,
+                idadeConfirmada ? anuncio.getTitulo() : null,
                 null,
                 idadeConfirmada ? anuncio.getTitulo() : null,
                 idadeConfirmada ? idade.idade() : null,
                 idadeConfirmada,
                 state,
                 url,
+                List.of(),
                 ModoConteudoStory.MIDIA_UPLOAD.name(),
                 tipoPublico(vinculo, arquivo),
                 expiraEm,
@@ -529,6 +531,7 @@ public class StoryFeedPublicoService {
     private StoryViewerPublicoDto viewerAnuncio(
             StoryAnuncioEntity story,
             AnuncioEntity anuncio,
+            UsuarioEntity usuario,
             HttpServletRequest request) {
         boolean idadeConfirmada = visitorAccessService.autorizado(
                 request,
@@ -538,16 +541,20 @@ public class StoryFeedPublicoService {
                 && apresentacaoService != null
                 ? apresentacaoService.apresentar(anuncio)
                 : null;
+        String username = usernamePublico(usuario);
+        List<MidiaPublicaDto> midias = midiasPublicaveisDoAnuncio(anuncio, idadeConfirmada);
         return new StoryViewerPublicoDto(
                 story.getId().toString(),
                 idadeConfirmada ? anuncio.getId().toString() : null,
                 idadeConfirmada ? anuncio.getSlug() : null,
-                null,
                 idadeConfirmada ? anuncio.getTitulo() : null,
+                idadeConfirmada ? username : null,
+                idadeConfirmada ? username : null,
                 idadeConfirmada ? idade.idade() : null,
-                idadeConfirmada,
+                idadeConfirmada && username != null,
                 idadeConfirmada ? "LIBERADO" : IDADE_NAO_CONFIRMADA,
                 null,
+                midias,
                 ModoConteudoStory.ANUNCIO.name(),
                 "ANUNCIO",
                 story.getFimEm(),
@@ -556,6 +563,36 @@ public class StoryFeedPublicoService {
                 apresentacao == null ? null : apresentacao.uf(),
                 apresentacao == null ? null : apresentacao.preco(),
                 apresentacao == null ? null : apresentacao.resumo());
+    }
+
+    private List<MidiaPublicaDto> midiasPublicaveisDoAnuncio(
+            AnuncioEntity anuncio,
+            boolean idadeConfirmada) {
+        if (!idadeConfirmada || midiaMapper == null) {
+            return List.of();
+        }
+        List<MidiaElegivel> elegiveis = elegibilidadeService.listar(anuncio.getId()).stream()
+                .filter(item -> item != null && item.vinculo() != null && item.arquivo() != null)
+                .filter(item -> java.util.Objects.equals(
+                        item.vinculo().getAnuncioId(),
+                        anuncio.getId()))
+                .toList();
+        if (elegiveis.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, ArquivoMidiaEntity> arquivos = elegiveis.stream()
+                .map(MidiaElegivel::arquivo)
+                .collect(Collectors.toMap(
+                        ArquivoMidiaEntity::getId,
+                        Function.identity(),
+                        (existente, ignored) -> existente));
+        return midiaMapper.publicas(
+                        elegiveis.stream().map(MidiaElegivel::vinculo).toList(),
+                        arquivos,
+                        true).stream()
+                .filter(MidiaPublicaDto::autorizada)
+                .filter(item -> item.urlPublica() != null && !item.urlPublica().isBlank())
+                .toList();
     }
 
     private boolean arquivoPossuiStoryPago(UUID arquivoMidiaId) {
@@ -737,23 +774,12 @@ public class StoryFeedPublicoService {
         return new ResponseStatusException(HttpStatus.NOT_FOUND, "story nao encontrado");
     }
 
-    private String identidadePublica(UsuarioEntity usuario) {
-        if (usuario == null || usuario.getId() == null) {
-            return null;
-        }
-        try {
-            byte[] namespace = ("topsv3-public-user-v1:" + usuario.getId())
-                    .getBytes(StandardCharsets.UTF_8);
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("MD5").digest(namespace));
-        } catch (Exception exception) {
-            throw new IllegalStateException("identificador publico indisponivel", exception);
-        }
+    private String usernamePublico(UsuarioEntity usuario) {
+        return usernamePublico(usuario == null ? null : usuario.getNome());
     }
 
-    private String nomeExibicao(UsuarioEntity usuario) {
-        String nome = usuario == null ? null : usuario.getNome();
-        return nome == null || nome.isBlank() ? null : nome.trim();
+    private String usernamePublico(String username) {
+        return username == null || username.isBlank() ? null : username.trim();
     }
 
     private UUID proprietarioId(StoryAnuncioEntity story, AnuncioEntity anuncio) {

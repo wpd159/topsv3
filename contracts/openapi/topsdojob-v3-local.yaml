@@ -937,7 +937,7 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
-      description: Exige sessao, CSRF e ownership. Retira imediatamente do feed e bloqueia a resolucao da midia. A repeticao e idempotente. Exclusao voluntaria nao devolve credito; falha tecnica e reconhecida somente pelo backend e preserva o direito. O cleanup fisico e posterior, auditado e nao faz parte da promessa desta resposta.
+      description: Exige sessao, CSRF e ownership. Retira imediatamente do feed e bloqueia a resolucao da midia. A repeticao e idempotente. Exclusao voluntaria nao devolve credito; falha tecnica e reconhecida somente pelo backend e preserva o direito. A resposta confirma o encerramento logico; o cleanup fisico ocorre depois do commit e eventual falha auditada nao converte o sucesso em HTTP 500.
       responses:
         "200":
           description: Estado final do encerramento logico
@@ -1452,7 +1452,7 @@ paths:
   /api/public/compliance/visitor/challenge:
     post:
       summary: Cria challenge contextual de verificacao reforcada
-      description: Exige aceite global e CSRF. O challenge e opaco, antirreplay, idempotente, limitado por sessao e vinculado ao contexto protegido sanitizado. O contexto, inclusive storyId, orienta politica e auditoria, mas nao cria autorizacao individual por Story.
+      description: Exige aceite global e CSRF. O challenge e opaco, antirreplay, idempotente, limitado por sessao e vinculado ao contexto protegido sanitizado. Em STORY, o cliente envia somente storyId; o backend deriva anuncio, arquivo e proprietario. ANUNCIO exige anuncioId no dominio derivado e MIDIA_UPLOAD mantem anuncioId nulo.
       operationId: postPublicComplianceVisitorChallenge
       parameters:
         - $ref: "#/components/parameters/RequestId"
@@ -8654,11 +8654,15 @@ components:
     MeuStoryGerenciado:
       type: object
       additionalProperties: false
-      required: [id, modoConteudo, status, publicadoEm, expiraEm, anuncioSlug, anuncioTitulo, estadoMidia, falhaTecnica, podeExcluir, podeDescartar, encerradoEm, direitoPreservado]
+      required: [id, modoConteudo, status, estadoGerenciamento, publicadoEm, expiraEm, anuncioSlug, anuncioTitulo, estadoMidia, falhaTecnica, podeExcluir, podeDescartar, encerradoEm, direitoPreservado]
       properties:
         id: { type: string, format: uuid }
         modoConteudo: { type: string, enum: [ANUNCIO, MIDIA_UPLOAD] }
         status: { type: string, enum: [RASCUNHO, PENDENTE, PUBLICADO, EXPIRADO, REMOVIDO] }
+        estadoGerenciamento:
+          type: string
+          enum: [ENCERRADO_USUARIO, REMOVIDO_ADMIN, DESCARTADO_FALHA_TECNICA, ENCERRADO, EXPIRADO, FALHA_TECNICA, ATIVO, OUTRO]
+          description: Estado de apresentacao calculado com precedencia do encerramento sobre a disponibilidade posterior da midia.
         publicadoEm: { type: [string, "null"], format: date-time }
         expiraEm: { type: [string, "null"], format: date-time }
         anuncioSlug:
@@ -8667,7 +8671,7 @@ components:
         anuncioTitulo:
           type: [string, "null"]
           description: Preenchido somente no modo ANUNCIO.
-        estadoMidia: { type: string, enum: [NAO_APLICAVEL, DISPONIVEL, FALHA_PUBLICACAO] }
+        estadoMidia: { type: string, enum: [NAO_APLICAVEL, DISPONIVEL, INDISPONIVEL, FALHA_PUBLICACAO, REMOVIDA] }
         falhaTecnica: { type: boolean }
         podeExcluir: { type: boolean }
         podeDescartar: { type: boolean }
@@ -12361,7 +12365,7 @@ components:
     VisitorChallengeRequest:
       type: object
       additionalProperties: false
-      required: [level, scope, anuncioId, idempotencyKey]
+      required: [level, scope, idempotencyKey]
       properties:
         level:
           type: string
@@ -12372,13 +12376,15 @@ components:
         anuncioId:
           type: string
           format: uuid
+          description: Obrigatorio fora de STORY quando o contexto protegido for um anuncio; proibido em STORY porque o backend o deriva de storyId.
         midiaId:
           type: [string, "null"]
           format: uuid
+          description: Proibido em STORY; a midia e derivada pelo backend.
         storyId:
           type: [string, "null"]
           maxLength: 120
-          description: Contexto sanitizado para politica e auditoria do challenge; nao vincula o token geral ao Story.
+          description: Autoridade unica do contexto STORY. Obrigatorio em STORY, inclusive para MIDIA_UPLOAD sem anuncioId; nao vincula o token geral ao Story.
         route:
           type: [string, "null"]
           maxLength: 255
@@ -12704,7 +12710,7 @@ components:
     StoryFeedItem:
       type: object
       additionalProperties: false
-      required: [storyId, anuncioId, anuncioSlug, usuarioUsername, displayUsername, profileNavigable, previewState, previewUrl, modoConteudo, tipo, expiraEm]
+      required: [storyId, anuncioId, anuncioSlug, anuncioTitulo, usuarioUsername, displayUsername, profileNavigable, previewState, previewUrl, modoConteudo, tipo, expiraEm]
       properties:
         storyId: { type: string }
         anuncioId:
@@ -12714,10 +12720,15 @@ components:
         anuncioSlug:
           type: [string, "null"]
           description: Nulo em MIDIA_UPLOAD.
+        anuncioTitulo:
+          type: [string, "null"]
+          description: Titulo do anuncio, separado da identidade publica e presente somente em ANUNCIO depois do age gate.
         usuarioUsername:
           type: [string, "null"]
-          description: Identificador publico canonico usado pelo CTA Ver anunciante.
-        displayUsername: { type: [string, "null"] }
+          description: Username publico canonico da conta usado pelo CTA Ver anunciante; nunca contem token tecnico.
+        displayUsername:
+          type: [string, "null"]
+          description: Username publico amigavel nos Stories persistidos da conta; selecoes administrativas podem usar rotulo contextual sem prefixo @.
         idade:
           type: integer
           minimum: 18
@@ -12739,7 +12750,7 @@ components:
       properties:
         bundleKey:
           type: string
-          description: Chave opaca do bundle; nao representa nem expoe usuarioId interno.
+          description: StoryId para Story persistido; cada Story ocupa um bundle independente. Selecao administrativa usa chave administrativa propria.
         usuarioUsername: { type: [string, "null"] }
         displayUsername: { type: [string, "null"] }
         idade:
@@ -12757,7 +12768,7 @@ components:
     StoryViewerPublico:
       type: object
       additionalProperties: false
-      required: [storyId, anuncioId, anuncioSlug, usuarioUsername, displayUsername, profileNavigable, viewerState, midiaUrl, modoConteudo, tipo, expiraEm, blockedReason]
+      required: [storyId, anuncioId, anuncioSlug, anuncioTitulo, usuarioUsername, displayUsername, profileNavigable, viewerState, midiaUrl, midias, modoConteudo, tipo, expiraEm, blockedReason]
       properties:
         storyId: { type: string }
         anuncioId:
@@ -12767,8 +12778,15 @@ components:
         anuncioSlug:
           type: [string, "null"]
           description: Nulo em MIDIA_UPLOAD; o CTA usa usuarioUsername.
-        usuarioUsername: { type: [string, "null"] }
-        displayUsername: { type: [string, "null"] }
+        anuncioTitulo:
+          type: [string, "null"]
+          description: Titulo do anuncio, separado do username e presente somente em ANUNCIO depois do age gate.
+        usuarioUsername:
+          type: [string, "null"]
+          description: Username publico canonico da conta; nunca contem token tecnico.
+        displayUsername:
+          type: [string, "null"]
+          description: Username publico amigavel nos Stories persistidos da conta; selecoes administrativas podem usar rotulo contextual sem prefixo @.
         idade:
           type: integer
           minimum: 18
@@ -12778,6 +12796,10 @@ components:
         midiaUrl:
           type: [string, "null"]
           description: Nula antes do age gate e quando indisponivel. Em MIDIA_UPLOAD liberado aponta somente ao endpoint protegido do Story.
+        midias:
+          type: array
+          description: Vazia antes do age gate. Em ANUNCIO liberado contem somente as midias publicaveis do proprio anuncio, na ordem canonica da galeria e sem chaves privadas.
+          items: { $ref: "#/components/schemas/MidiaPublica" }
         modoConteudo:
           type: [string, "null"]
           enum: [ANUNCIO, MIDIA_UPLOAD, null]

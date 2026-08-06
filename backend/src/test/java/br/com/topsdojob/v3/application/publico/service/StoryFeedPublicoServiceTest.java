@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
+import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService.MidiaElegivel;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
@@ -63,6 +64,7 @@ class StoryFeedPublicoServiceTest {
             mock(IdadeAnunciantePublicaService.class);
     private final PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
     private final MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
+    private final MidiaPublicaMapper midiaMapper = new MidiaPublicaMapper(urlService);
     private final StoryAnuncioApresentacaoService apresentacaoService =
             mock(StoryAnuncioApresentacaoService.class);
     private StoryFeedPublicoService service;
@@ -81,6 +83,7 @@ class StoryFeedPublicoServiceTest {
                 idadeAnuncianteService,
                 premiumMapper,
                 urlService,
+                midiaMapper,
                 apresentacaoService);
         when(premiumMapper.flagsPorAnuncios(any())).thenReturn(Map.of());
         when(premiumMapper.flags(any())).thenReturn(PremiumPublicoFlagsDto.vazio());
@@ -136,24 +139,54 @@ class StoryFeedPublicoServiceTest {
         });
         assertThat(viewer.viewerState()).isEqualTo("IDADE_NAO_CONFIRMADA");
         assertThat(viewer.midiaUrl()).isNull();
+        assertThat(viewer.midias()).isEmpty();
         assertThat(viewer.displayUsername()).isNull();
         assertThat(viewer.cidade()).isNull();
         verify(apresentacaoService, never()).apresentar(any());
+        verify(elegibilidadeService, never()).listar(any());
         verify(urlService, never()).resolver(any(), any());
         verify(urlService, never()).resolverPreviewRestrita(any());
     }
 
     @Test
-    void storyAnuncioDepoisDoGateLiberaApresentacaoSemSelecionarMidia() {
+    void storyAnuncioDepoisDoGateRetornaGaleriaPublicavelNaOrdemCanonica() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         UUID anuncioId = UUID.randomUUID();
+        UUID outroAnuncioId = UUID.randomUUID();
         UUID usuarioId = UUID.randomUUID();
         AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "story-anuncio-liberado");
         StoryAnuncioEntity story = storyAnuncio(anuncioId, 0);
+        MidiaElegivel ordemDois = midiaElegivel(anuncioId, UUID.randomUUID(), 2);
+        MidiaElegivel ordemZero = midiaElegivel(anuncioId, UUID.randomUUID(), 0);
+        set(ordemZero.vinculo(), "tipo", TipoAnuncioMidia.VIDEO);
+        set(ordemZero.arquivo(), "mimeType", "video/mp4");
+        MidiaElegivel ordemUm = midiaElegivel(anuncioId, UUID.randomUUID(), 1);
+        MidiaElegivel pendente = midiaElegivel(anuncioId, UUID.randomUUID(), 3);
+        set(pendente.vinculo(), "status", StatusAnuncioMidia.PENDENTE);
+        MidiaElegivel rejeitada = midiaElegivel(anuncioId, UUID.randomUUID(), 4);
+        set(rejeitada.vinculo(), "status", StatusAnuncioMidia.REJEITADA);
+        MidiaElegivel removida = midiaElegivel(anuncioId, UUID.randomUUID(), 5);
+        set(removida.vinculo(), "status", StatusAnuncioMidia.REMOVIDA);
+        MidiaElegivel arquivoPendente = midiaElegivel(anuncioId, UUID.randomUUID(), 6);
+        set(arquivoPendente.arquivo(), "statusArquivo", StatusArquivoMidia.PENDENTE);
+        MidiaElegivel deOutroAnuncio = midiaElegivel(outroAnuncioId, UUID.randomUUID(), 0);
+
         when(visitorAccessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
         when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
                 .thenReturn(Optional.of(story));
         when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        UsuarioEntity usuario = usuarioAtivo(usuarioId);
+        set(usuario, "nome", "qa_publica");
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuario));
+        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of(
+                ordemDois, rejeitada, ordemZero, deOutroAnuncio, ordemUm,
+                pendente, removida, arquivoPendente));
+        when(urlService.resolver(ordemZero.vinculo(), ordemZero.arquivo())).thenReturn(
+                new ResultadoUrlPublica("/api/public/compliance/visitor/media/" + ordemZero.vinculo().getId(), null));
+        when(urlService.resolver(ordemUm.vinculo(), ordemUm.arquivo())).thenReturn(
+                new ResultadoUrlPublica("/api/public/compliance/visitor/media/" + ordemUm.vinculo().getId(), null));
+        when(urlService.resolver(ordemDois.vinculo(), ordemDois.arquivo())).thenReturn(
+                new ResultadoUrlPublica("/api/public/compliance/visitor/media/" + ordemDois.vinculo().getId(), null));
         when(apresentacaoService.apresentar(anuncio)).thenReturn(
                 new StoryAnuncioApresentacaoService.Apresentacao(
                         anuncio.getTitulo(), "Cidade QA", "GO", java.math.BigDecimal.valueOf(150), "Resumo seguro"));
@@ -164,11 +197,54 @@ class StoryFeedPublicoServiceTest {
         assertThat(viewer.modoConteudo()).isEqualTo("ANUNCIO");
         assertThat(viewer.tipo()).isEqualTo("ANUNCIO");
         assertThat(viewer.midiaUrl()).isNull();
-        assertThat(viewer.displayUsername()).isEqualTo(anuncio.getTitulo());
+        assertThat(viewer.midias())
+                .extracting(item -> item.ordem())
+                .containsExactly(0, 1, 2);
+        assertThat(viewer.midias())
+                .extracting(item -> item.id())
+                .containsExactly(
+                        ordemZero.vinculo().getId(),
+                        ordemUm.vinculo().getId(),
+                        ordemDois.vinculo().getId());
+        assertThat(viewer.midias())
+                .extracting(item -> item.urlPublica())
+                .allSatisfy(url -> assertThat(url)
+                        .startsWith("/api/public/compliance/visitor/media/")
+                        .doesNotContain("X-Amz-"));
+        assertThat(viewer.usuarioUsername()).isEqualTo("qa_publica");
+        assertThat(viewer.displayUsername()).isEqualTo("qa_publica");
+        assertThat(viewer.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
         assertThat(viewer.cidade()).isEqualTo("Cidade QA");
         assertThat(viewer.uf()).isEqualTo("GO");
         assertThat(viewer.resumo()).isEqualTo("Resumo seguro");
+        verify(elegibilidadeService).listar(anuncioId);
         verify(midiaRepository, never()).findById(any());
+    }
+
+    @Test
+    void storyAnuncioSemMidiaPublicavelMantemFallbackTextualLiberado() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "story-anuncio-fallback");
+        StoryAnuncioEntity story = storyAnuncio(anuncioId, 0);
+        when(visitorAccessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
+        when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(story));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuarioAtivo(usuarioId)));
+        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of());
+        when(apresentacaoService.apresentar(anuncio)).thenReturn(
+                new StoryAnuncioApresentacaoService.Apresentacao(
+                        anuncio.getTitulo(), "Cidade QA", "GO", java.math.BigDecimal.TEN, "Resumo seguro"));
+
+        var viewer = service.buscar(story.getId().toString(), request);
+
+        assertThat(viewer.viewerState()).isEqualTo("LIBERADO");
+        assertThat(viewer.midias()).isEmpty();
+        assertThat(viewer.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
+        assertThat(viewer.resumo()).isEqualTo("Resumo seguro");
+        verify(elegibilidadeService).listar(anuncioId);
         verify(urlService, never()).resolver(any(), any());
     }
 
@@ -363,7 +439,7 @@ class StoryFeedPublicoServiceTest {
     }
 
     @Test
-    void midiaUploadDiretaUsaIdentificadorPublicoOpacoSemAnuncio() {
+    void midiaUploadDiretaUsaUsernamePublicoCanonicoSemAnuncio() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         when(visitorAccessService.autorizado(
                 request,
@@ -400,15 +476,15 @@ class StoryFeedPublicoServiceTest {
         var viewer = service.buscar(story.getId().toString(), request);
 
         assertThat(feed).singleElement().satisfies(bundle -> {
-            assertThat(bundle.usuarioUsername())
-                    .matches("[0-9a-f]{32}")
-                    .doesNotContain(usuarioId.toString());
+            assertThat(bundle.bundleKey()).isEqualTo(story.getId().toString());
+            assertThat(bundle.usuarioUsername()).isEqualTo("qa_publica");
             assertThat(bundle.displayUsername()).isEqualTo("qa_publica");
             assertThat(bundle.profileNavigable()).isTrue();
             assertThat(bundle.itens()).singleElement().satisfies(item -> {
                 assertThat(item.anuncioId()).isNull();
                 assertThat(item.anuncioSlug()).isNull();
-                assertThat(item.usuarioUsername()).isEqualTo(bundle.usuarioUsername());
+                assertThat(item.anuncioTitulo()).isNull();
+                assertThat(item.usuarioUsername()).isEqualTo("qa_publica");
                 assertThat(item.displayUsername()).isEqualTo("qa_publica");
                 assertThat(item.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
                 assertThat(item.previewUrl())
@@ -417,11 +493,96 @@ class StoryFeedPublicoServiceTest {
         });
         assertThat(viewer.anuncioId()).isNull();
         assertThat(viewer.anuncioSlug()).isNull();
-        assertThat(viewer.usuarioUsername()).matches("[0-9a-f]{32}");
+        assertThat(viewer.anuncioTitulo()).isNull();
+        assertThat(viewer.usuarioUsername()).isEqualTo("qa_publica");
         assertThat(viewer.displayUsername()).isEqualTo("qa_publica");
         assertThat(viewer.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
         assertThat(viewer.midiaUrl())
                 .isEqualTo("/api/public/compliance/visitor/media/stories/" + story.getId());
+    }
+
+    @Test
+    void doisStoriesDaMesmaContaGeramItensIndependentesComMesmoUsernamePublico() {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        when(visitorAccessService.autorizado(
+                request,
+                EscopoConteudoVisitante.STORY)).thenReturn(true);
+        UUID usuarioId = UUID.randomUUID();
+        UUID anuncioId = UUID.randomUUID();
+        UUID arquivoId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.now();
+        StoryAnuncioEntity storyAnuncio = storyAnuncio(anuncioId, 0);
+        StoryAnuncioEntity storyMidia = StoryAnuncioEntity.criarMidiaUpload(
+                UUID.randomUUID(),
+                arquivoId,
+                UUID.randomUUID(),
+                "story-independente",
+                "b".repeat(64),
+                agora.minusHours(1),
+                agora.plusHours(23),
+                usuarioId);
+        AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "anuncio-wesley");
+        ArquivoMidiaEntity arquivo = arquivo(arquivoId, "image/jpeg");
+        UsuarioEntity usuario = usuarioAtivo(usuarioId);
+        set(usuario, "nome", "wesley");
+        var idade = new IdadeAnunciantePublicaService.Resultado("wesley", 30, false);
+
+        when(selecaoRepository.findByAtivaTrueOrderByAtivadoEmAscIdAsc()).thenReturn(List.of());
+        when(storyRepository.findByStatusOrderByOrdemAscCriadoEmAscIdAsc(StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(List.of(storyAnuncio, storyMidia));
+        when(midiaRepository.findByIdIn(any())).thenReturn(List.of());
+        when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
+        when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
+        org.mockito.Mockito.doReturn(List.of(usuario)).when(usuarioRepository).findAllById(any());
+        when(idadeAnuncianteService.resolverPorAnuncios(any(), any()))
+                .thenReturn(Map.of(anuncioId, idade));
+        when(storyRepository.findByIdAndStatus(storyAnuncio.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(storyAnuncio));
+        when(storyRepository.findByIdAndStatus(storyMidia.getId(), StatusStoryAnuncio.PUBLICADO))
+                .thenReturn(Optional.of(storyMidia));
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(arquivoRepository.findById(arquivoId)).thenReturn(Optional.of(arquivo));
+        when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuario));
+        when(apresentacaoService.apresentar(anuncio)).thenReturn(
+                new StoryAnuncioApresentacaoService.Apresentacao(
+                        anuncio.getTitulo(), "Cidade QA", "GO", java.math.BigDecimal.TEN, "Resumo"));
+
+        var feed = service.listar(request);
+        var viewerAnuncio = service.buscar(storyAnuncio.getId().toString(), request);
+        var viewerMidia = service.buscar(storyMidia.getId().toString(), request);
+
+        assertThat(feed).hasSize(2);
+        assertThat(feed).extracting(bundle -> bundle.bundleKey())
+                .containsExactly(storyAnuncio.getId().toString(), storyMidia.getId().toString());
+        assertThat(feed).allSatisfy(bundle -> {
+            assertThat(bundle.usuarioUsername()).isEqualTo("wesley");
+            assertThat(bundle.displayUsername()).isEqualTo("wesley");
+            assertThat(bundle.itens()).hasSize(1);
+            assertThat(bundle.bundleKey()).isEqualTo(bundle.itens().get(0).storyId());
+        });
+        var itemAnuncio = feed.get(0).itens().get(0);
+        var itemMidia = feed.get(1).itens().get(0);
+        assertThat(itemAnuncio.modoConteudo()).isEqualTo("ANUNCIO");
+        assertThat(itemAnuncio.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
+        assertThat(itemAnuncio.displayUsername()).isEqualTo("wesley");
+        assertThat(itemMidia.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
+        assertThat(itemMidia.anuncioTitulo()).isNull();
+        assertThat(itemMidia.displayUsername()).isEqualTo("wesley");
+        assertThat(itemAnuncio.storyId()).isNotEqualTo(itemMidia.storyId());
+        assertThat(viewerAnuncio.usuarioUsername()).isEqualTo("wesley");
+        assertThat(viewerAnuncio.displayUsername()).isEqualTo("wesley");
+        assertThat(viewerAnuncio.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
+        assertThat(viewerMidia.usuarioUsername()).isEqualTo("wesley");
+        assertThat(viewerMidia.displayUsername()).isEqualTo("wesley");
+        assertThat(viewerMidia.anuncioTitulo()).isNull();
+        assertThat(List.of(
+                itemAnuncio.usuarioUsername(),
+                itemAnuncio.displayUsername(),
+                itemMidia.usuarioUsername(),
+                itemMidia.displayUsername(),
+                viewerAnuncio.usuarioUsername(),
+                viewerMidia.usuarioUsername()))
+                .allSatisfy(value -> assertThat(value).doesNotMatch("[0-9a-f]{32}"));
     }
 
     @Test
@@ -480,6 +641,7 @@ class StoryFeedPublicoServiceTest {
         set(vinculo, "arquivoMidiaId", arquivoId);
         set(vinculo, "tipo", TipoAnuncioMidia.FOTO);
         set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
+        set(vinculo, "visibilidadeMidia", VisibilidadeMidia.RESTRITA_18);
         set(vinculo, "ordem", ordem);
         return new MidiaElegivel(vinculo, arquivo(arquivoId, "image/jpeg"));
     }

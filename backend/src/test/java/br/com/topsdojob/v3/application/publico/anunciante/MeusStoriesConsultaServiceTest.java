@@ -15,6 +15,7 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemEncerramentoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -109,17 +110,92 @@ class MeusStoriesConsultaServiceTest {
   }
 
   @Test
+  void storyExcluidoPeloUsuarioPermaneceEncerradoMesmoSemArquivo() {
+    UUID arquivoId = UUID.randomUUID();
+    StoryAnuncioEntity encerrado = direta(arquivoId, AGORA.plusHours(23), "story-encerrado");
+    encerrado.encerrar(
+        USUARIO_ID,
+        OrigemEncerramentoStory.USUARIO,
+        "EXCLUSAO_VOLUNTARIA",
+        null,
+        false,
+        AGORA.minusMinutes(1));
+    when(midiaRepository.findByIdIn(any())).thenReturn(List.of());
+    when(arquivoRepository.findByIdIn(any())).thenReturn(List.of());
+    when(anuncioRepository.findAllById(any())).thenReturn(List.of());
+
+    MeuStoryGerenciadoDto resposta = service.mapear(List.of(encerrado)).get(0);
+
+    assertThat(resposta.status()).isEqualTo("REMOVIDO");
+    assertThat(resposta.estadoGerenciamento()).isEqualTo("ENCERRADO_USUARIO");
+    assertThat(resposta.estadoMidia()).isEqualTo("REMOVIDA");
+    assertThat(resposta.falhaTecnica()).isFalse();
+    assertThat(resposta.podeExcluir()).isFalse();
+    assertThat(resposta.podeDescartar()).isFalse();
+  }
+
+  @Test
+  void storyDescartadoPorFalhaNaoOfereceNovoDescarte() {
+    UUID arquivoId = UUID.randomUUID();
+    StoryAnuncioEntity descartado = direta(arquivoId, AGORA.plusHours(23), "story-descartado");
+    descartado.encerrar(
+        USUARIO_ID,
+        OrigemEncerramentoStory.USUARIO,
+        "FALHA_TECNICA",
+        null,
+        true,
+        AGORA.minusMinutes(1));
+    when(midiaRepository.findByIdIn(any())).thenReturn(List.of());
+    when(arquivoRepository.findByIdIn(any())).thenReturn(List.of());
+    when(anuncioRepository.findAllById(any())).thenReturn(List.of());
+
+    MeuStoryGerenciadoDto resposta = service.mapear(List.of(descartado)).get(0);
+
+    assertThat(resposta.estadoGerenciamento()).isEqualTo("DESCARTADO_FALHA_TECNICA");
+    assertThat(resposta.estadoMidia()).isEqualTo("REMOVIDA");
+    assertThat(resposta.direitoPreservado()).isTrue();
+    assertThat(resposta.falhaTecnica()).isFalse();
+    assertThat(resposta.podeDescartar()).isFalse();
+  }
+
+  @Test
+  void storyRemovidoPeloAdminNaoViraFalhaTecnica() {
+    UUID arquivoId = UUID.randomUUID();
+    StoryAnuncioEntity removido = direta(arquivoId, AGORA.plusHours(23), "story-admin");
+    removido.encerrar(
+        UUID.randomUUID(),
+        OrigemEncerramentoStory.ADMIN,
+        "VIOLACAO_REGRAS",
+        null,
+        false,
+        AGORA.minusMinutes(1));
+    when(midiaRepository.findByIdIn(any())).thenReturn(List.of());
+    when(arquivoRepository.findByIdIn(any())).thenReturn(List.of());
+    when(anuncioRepository.findAllById(any())).thenReturn(List.of());
+
+    MeuStoryGerenciadoDto resposta = service.mapear(List.of(removido)).get(0);
+
+    assertThat(resposta.estadoGerenciamento()).isEqualTo("REMOVIDO_ADMIN");
+    assertThat(resposta.estadoMidia()).isEqualTo("REMOVIDA");
+    assertThat(resposta.falhaTecnica()).isFalse();
+    assertThat(resposta.podeDescartar()).isFalse();
+  }
+
+  @Test
   void vigenciaEncerradaEhExibidaComoExpiradaSemAlterarRegistro() {
     UUID arquivoId = UUID.randomUUID();
     StoryAnuncioEntity expirado = direta(arquivoId, AGORA.minusSeconds(1), "story-expirado");
     when(midiaRepository.findByIdIn(any())).thenReturn(List.of());
-    when(arquivoRepository.findByIdIn(any()))
-        .thenReturn(List.of(arquivo(arquivoId, StatusArquivoMidia.VALIDADO)));
+    when(arquivoRepository.findByIdIn(any())).thenReturn(List.of());
     when(anuncioRepository.findAllById(any())).thenReturn(List.of());
 
     MeuStoryGerenciadoDto resposta = service.mapear(List.of(expirado)).get(0);
 
     assertThat(resposta.status()).isEqualTo("EXPIRADO");
+    assertThat(resposta.estadoGerenciamento()).isEqualTo("EXPIRADO");
+    assertThat(resposta.estadoMidia()).isEqualTo("INDISPONIVEL");
+    assertThat(resposta.falhaTecnica()).isFalse();
+    assertThat(resposta.podeDescartar()).isFalse();
     assertThat(expirado.getStatus().name()).isEqualTo("PUBLICADO");
   }
 

@@ -146,16 +146,20 @@ export function VisitorVerificationModal({
       if (!global.accepted) {
         throw new Error("Aceite o aviso geral antes de acessar o conteudo protegido.")
       }
-      if (!context?.anuncioId) {
+      const storyContext = scope === "STORY"
+      if (storyContext && !context?.storyId) {
+        throw new Error("O contexto protegido do Story nao esta disponivel.")
+      }
+      if (!storyContext && !context?.anuncioId) {
         throw new Error("O contexto protegido do anuncio nao esta disponivel.")
       }
       const created = await createVisitorChallenge({
         level,
         scope,
-        anuncioId: String(context.anuncioId),
-        midiaId: context.midiaId || undefined,
-        storyId: context.storyId || undefined,
-        route: context.route || "/",
+        anuncioId: storyContext ? undefined : String(context?.anuncioId),
+        midiaId: storyContext ? undefined : context?.midiaId || undefined,
+        storyId: storyContext ? context?.storyId : undefined,
+        route: context?.route || "/",
         idempotencyKey: challengeKey,
       })
       if (!active) return

@@ -103,7 +103,12 @@ public class ComplianceChallengeContextService {
     String story = null;
     boolean storyIndependente = false;
     if (escopo == EscopoConteudoVisitante.STORY) {
-      StoryContext storyContext = validarStory(request.storyId(), anuncioId);
+      if (anuncioId != null || midiaId != null) {
+        throw new ResponseStatusException(
+            HttpStatus.BAD_REQUEST,
+            "challenge de Story aceita somente storyId");
+      }
+      StoryContext storyContext = validarStory(request.storyId(), null);
       anuncioId = storyContext.anuncioId();
       midiaId = storyContext.midiaId();
       story = storyContext.referencia();

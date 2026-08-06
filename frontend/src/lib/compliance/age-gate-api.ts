@@ -36,7 +36,7 @@ export type VisitorChallenge = {
 export type VisitorChallengeInput = {
   level: 'LIGHT' | 'REINFORCED' | 'STRONG'
   scope: 'MIDIA_RESTRITA' | 'WHATSAPP' | 'STORY' | 'CONTEUDO_EXPLICITO'
-  anuncioId: string
+  anuncioId?: string
   midiaId?: string
   storyId?: string
   route?: string

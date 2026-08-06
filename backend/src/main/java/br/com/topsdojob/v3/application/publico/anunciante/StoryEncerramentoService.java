@@ -23,6 +23,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -34,6 +36,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class StoryEncerramentoService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(StoryEncerramentoService.class);
 
   private final MeusAnunciosConsultaService usuarioService;
   private final StoryAnuncioRepository storyRepository;
@@ -146,15 +150,18 @@ public class StoryEncerramentoService {
       String descricao,
       boolean preservarDireito,
       String requestId) {
+    String requestSeguro = requestIdSeguro(requestId);
+    LOGGER.info("story_encerramento_iniciado requestId={}", requestSeguro);
     boolean jaEncerrado = story.getEncerradoEm() != null;
     if (jaEncerrado) {
+      LOGGER.info("story_encerramento_idempotente requestId={}", requestSeguro);
       agendarCleanup(story, atorId, requestId);
       return resposta(story, true);
     }
     OffsetDateTime agora = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
     String antes = snapshot(story);
     if (preservarDireito) {
-      restaurarDireitoDaConta(story, agora);
+      restaurarDireitoDaConta(story, agora, requestId);
     }
     if (!story.encerrar(atorId, origem, motivo, descricao, preservarDireito, agora)) {
       return resposta(story, true);
@@ -178,7 +185,10 @@ public class StoryEncerramentoService {
     return resposta(story, false);
   }
 
-  private void restaurarDireitoDaConta(StoryAnuncioEntity story, OffsetDateTime agora) {
+  private void restaurarDireitoDaConta(
+      StoryAnuncioEntity story,
+      OffsetDateTime agora,
+      String requestId) {
     if (story.getModoConteudoEfetivo() != ModoConteudoStory.MIDIA_UPLOAD
         || story.getAtivacaoBeneficioId() == null) {
       throw new ResponseStatusException(
@@ -207,16 +217,43 @@ public class StoryEncerramentoService {
           HttpStatus.CONFLICT,
           "direito tecnico nao pode ser isolado com seguranca");
     }
+
+    UUID anuncioAtivacao = ativacao.getAnuncioId();
+    UUID anuncioGrupo = grupo.getAnuncioId();
+    boolean vinculoHistorico = anuncioAtivacao != null || anuncioGrupo != null;
+    if (vinculoHistorico) {
+      boolean storyHistoricoAtual = story.getArquivoMidiaId() == null
+          && story.getAnuncioMidiaId() != null
+          && Objects.equals(story.getAnuncioId(), anuncioAtivacao);
+      boolean direitoHistoricoPreservado = storyRepository
+          .existsByAtivacaoBeneficioIdAndDireitoPreservadoTrueAndEncerradoEmIsNotNull(
+              ativacao.getId());
+      if (anuncioAtivacao == null
+          || !Objects.equals(anuncioAtivacao, anuncioGrupo)
+          || !storyHistoricoAtual && !direitoHistoricoPreservado) {
+        throw new ResponseStatusException(
+            HttpStatus.CONFLICT,
+            "vinculo historico do direito de Story inconsistente");
+      }
+    }
+
     try {
-      ativacao.restaurarAposFalhaTecnicaDaConta();
+      if (vinculoHistorico) {
+        ativacao.restaurarAposFalhaTecnicaPreservandoVinculoHistorico();
+      } else {
+        ativacao.restaurarAposFalhaTecnicaDaConta();
+      }
     } catch (IllegalStateException exception) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT,
           "direito tecnico revogado nao pode ser restaurado");
     }
-    grupo.desvincularAnuncioAposFalhaTecnica(agora);
+    if (!vinculoHistorico) {
+      grupo.desvincularAnuncioAposFalhaTecnica(agora);
+      grupoRepository.save(grupo);
+    }
     ativacaoRepository.save(ativacao);
-    grupoRepository.save(grupo);
+    LOGGER.info("story_direito_preservado requestId={}", requestIdSeguro(requestId));
   }
 
   private void agendarCleanup(
@@ -226,17 +263,45 @@ public class StoryEncerramentoService {
     if (story.getModoConteudoEfetivo() != ModoConteudoStory.MIDIA_UPLOAD) {
       return;
     }
-    Runnable cleanup = () -> cleanupService.limpar(story.getId(), atorId, requestId);
+    Runnable cleanup = () -> executarCleanupSeguro(story.getId(), atorId, requestId);
     if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+      LOGGER.info(
+          "story_encerramento_confirmado requestId={}",
+          requestIdSeguro(requestId));
       cleanup.run();
       return;
     }
     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
       @Override
       public void afterCommit() {
+        LOGGER.info(
+            "story_encerramento_confirmado requestId={}",
+            requestIdSeguro(requestId));
         cleanup.run();
       }
     });
+  }
+
+  private void executarCleanupSeguro(UUID storyId, UUID atorId, String requestId) {
+    String requestSeguro = requestIdSeguro(requestId);
+    LOGGER.info("story_cleanup_iniciado requestId={}", requestSeguro);
+    try {
+      StoryMidiaCleanupService.Resultado resultado =
+          cleanupService.limpar(storyId, atorId, requestId);
+      if (resultado == StoryMidiaCleanupService.Resultado.FALHOU) {
+        LOGGER.warn("story_cleanup_falhou requestId={} resultado=FALHOU", requestSeguro);
+      } else {
+        LOGGER.info(
+            "story_cleanup_concluido requestId={} resultado={}",
+            requestSeguro,
+            resultado == null ? "SEM_RESULTADO" : resultado.name());
+      }
+    } catch (RuntimeException exception) {
+      LOGGER.error(
+          "story_cleanup_falhou requestId={} tipo={}",
+          requestSeguro,
+          exception.getClass().getSimpleName());
+    }
   }
 
   private StoryAnuncioEntity story(UUID storyId) {
@@ -311,5 +376,13 @@ public class StoryEncerramentoService {
           HttpStatus.INTERNAL_SERVER_ERROR,
           "falha ao registrar auditoria do Story");
     }
+  }
+
+  private String requestIdSeguro(String requestId) {
+    if (requestId == null
+        || !requestId.matches("[A-Za-z0-9._:-]{1,128}")) {
+      return "ausente";
+    }
+    return requestId;
   }
 }

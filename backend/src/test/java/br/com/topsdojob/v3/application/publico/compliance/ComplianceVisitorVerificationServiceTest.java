@@ -34,6 +34,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -206,6 +207,33 @@ class ComplianceVisitorVerificationServiceTest {
   }
 
   @Test
+  void challengeDeStoryIndependenteEhPersistidoSemContextoDeAnuncio() {
+    ComplianceVisitorChallengeEntity contextChallenge = activeChallenge();
+    Fixture fixture = fixture(contextChallenge);
+    String storyId = UUID.randomUUID().toString();
+    when(fixture.contextService.validar(any(), any())).thenReturn(
+        new Contexto(null, null, storyId, "/stories"));
+    VisitorChallengeRequestDto request = new VisitorChallengeRequestDto(
+        "REINFORCED",
+        "STORY",
+        null,
+        null,
+        storyId,
+        "/stories",
+        "challenge-story-independente");
+
+    var result = fixture.service.iniciar(request, new MockHttpServletRequest());
+
+    ArgumentCaptor<ComplianceVisitorChallengeEntity> captor =
+        ArgumentCaptor.forClass(ComplianceVisitorChallengeEntity.class);
+    verify(fixture.repository).save(captor.capture());
+    assertThat(result.response().scope()).isEqualTo("STORY");
+    assertThat(captor.getValue().getAnuncioId()).isNull();
+    assertThat(captor.getValue().getAnuncioMidiaId()).isNull();
+    assertThat(captor.getValue().getStoryReferencia()).isEqualTo(storyId);
+  }
+
+  @Test
   void challengeExigeIdempotenciaERepeteSemCriarOutroRegistro() {
     ComplianceVisitorChallengeEntity contextChallenge = activeChallenge();
     Fixture fixture = fixture(contextChallenge);
@@ -332,6 +360,7 @@ class ComplianceVisitorVerificationServiceTest {
     return new Fixture(
         service,
         repository,
+        contextService,
         riskService,
         accessService,
         hashService,
@@ -418,6 +447,7 @@ class ComplianceVisitorVerificationServiceTest {
   private record Fixture(
       ComplianceVisitorVerificationService service,
       ComplianceVisitorChallengeRepository repository,
+      ComplianceChallengeContextService contextService,
       ComplianceVisitorRiskService riskService,
       ComplianceVisitorAccessService accessService,
       MetricaPublicaHashService hashService,

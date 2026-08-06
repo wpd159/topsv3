@@ -11,6 +11,7 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemEncerramentoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
@@ -141,37 +142,74 @@ public class MeusStoriesConsultaService {
         ? story.getArquivoMidiaId()
         : vinculo == null ? null : vinculo.getArquivoMidiaId();
     ArquivoMidiaEntity arquivo = arquivoId == null ? null : arquivos.get(arquivoId);
-    boolean falhaTecnica = modo == ModoConteudoStory.MIDIA_UPLOAD
+    boolean encerrado = story.getStatus() == StatusStoryAnuncio.REMOVIDO
+        || story.getEncerradoEm() != null;
+    boolean expirado = !encerrado
+        && (story.getStatus() == StatusStoryAnuncio.EXPIRADO
+            || story.getStatus() == StatusStoryAnuncio.PUBLICADO
+                && story.getFimEm() != null
+                && !story.getFimEm().isAfter(agora));
+    boolean midiaInvalida = modo == ModoConteudoStory.MIDIA_UPLOAD
         && (vinculo != null && vinculo.getStatus() != StatusAnuncioMidia.PUBLICAVEL
             || arquivo == null
             || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO);
-    boolean encerrado = story.getStatus() == StatusStoryAnuncio.REMOVIDO
-        || story.getEncerradoEm() != null;
-    String status = story.getStatus() == StatusStoryAnuncio.PUBLICADO
-            && story.getFimEm() != null
-            && !story.getFimEm().isAfter(agora)
-        ? StatusStoryAnuncio.EXPIRADO.name()
-        : story.getStatus().name();
+    boolean falhaTecnica = !encerrado && !expirado && midiaInvalida;
+    String estadoGerenciamento =
+        estadoGerenciamento(story, encerrado, expirado, falhaTecnica);
+    String status = expirado ? StatusStoryAnuncio.EXPIRADO.name() : story.getStatus().name();
     AnuncioEntity anuncio = modo == ModoConteudoStory.ANUNCIO
         ? anuncios.get(story.getAnuncioId())
         : null;
     String estadoMidia = modo == ModoConteudoStory.ANUNCIO
         ? "NAO_APLICAVEL"
-        : falhaTecnica ? "FALHA_PUBLICACAO" : "DISPONIVEL";
+        : encerrado ? "REMOVIDA"
+            : falhaTecnica ? "FALHA_PUBLICACAO"
+                : midiaInvalida ? "INDISPONIVEL" : "DISPONIVEL";
     return new MeuStoryGerenciadoDto(
         story.getId(),
         modo.name(),
         status,
+        estadoGerenciamento,
         story.getInicioEm(),
         story.getFimEm(),
         anuncio == null ? null : anuncio.getSlug(),
         anuncio == null ? null : anuncio.getTitulo(),
         estadoMidia,
         falhaTecnica,
-        !encerrado && !falhaTecnica,
+        !encerrado && !falhaTecnica && !expirado,
         !encerrado && falhaTecnica,
         story.getEncerradoEm(),
         story.isDireitoPreservado());
+  }
+
+  private String estadoGerenciamento(
+      StoryAnuncioEntity story,
+      boolean encerrado,
+      boolean expirado,
+      boolean falhaTecnica) {
+    boolean descarteTecnico = story.isDireitoPreservado()
+        || "FALHA_TECNICA".equals(story.getMotivoEncerramento());
+    if (encerrado
+        && story.getOrigemEncerramento() == OrigemEncerramentoStory.USUARIO
+        && !descarteTecnico) {
+      return "ENCERRADO_USUARIO";
+    }
+    if (encerrado && story.getOrigemEncerramento() == OrigemEncerramentoStory.ADMIN) {
+      return "REMOVIDO_ADMIN";
+    }
+    if (encerrado && descarteTecnico) {
+      return "DESCARTADO_FALHA_TECNICA";
+    }
+    if (encerrado) {
+      return "ENCERRADO";
+    }
+    if (expirado) {
+      return "EXPIRADO";
+    }
+    if (falhaTecnica) {
+      return "FALHA_TECNICA";
+    }
+    return story.getStatus() == StatusStoryAnuncio.PUBLICADO ? "ATIVO" : "OUTRO";
   }
 
   private int paginaSegura(int pagina) {

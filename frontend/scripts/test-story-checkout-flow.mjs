@@ -67,7 +67,9 @@ check('6. storage usa ownership da conta e finalidade Story', () => {
 check('7. direitos respeitam conta, modo e anuncio', () => {
   matches(rightsService, /MIDIA_UPLOAD nao aceita anuncioId/)
   matches(rightsService, /ANUNCIO exige anuncioId/)
-  matches(rightsService, /findByUsuarioIdAndAnuncioIdIsNull\(usuarioId\)/)
+  matches(rightsService, /findByUsuarioIdOrderByCriadoEmDesc\(usuarioId\)/)
+  matches(rightsService, /direitoMidiaUploadCompativel/)
+  matches(rightsService, /existsByAtivacaoBeneficioIdAndDireitoPreservadoTrueAndEncerradoEmIsNotNull/)
   matches(rightsService, /findByAnuncioId\(anuncioId\)/)
 })
 

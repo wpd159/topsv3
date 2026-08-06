@@ -300,14 +300,31 @@ public class AtivacaoBeneficioEntity {
   }
 
   public boolean restaurarAposFalhaTecnicaDaConta() {
+    return restaurarAposFalhaTecnica(true);
+  }
+
+  public boolean restaurarAposFalhaTecnicaPreservandoVinculoHistorico() {
+    return restaurarAposFalhaTecnica(false);
+  }
+
+  private boolean restaurarAposFalhaTecnica(boolean desvincularAnuncio) {
     if (revogadaEm != null || status == StatusAtivacaoBeneficio.REVOGADA) {
       throw new IllegalStateException("ativacao revogada nao pode ser restaurada");
     }
-    this.anuncioId = null;
+    boolean alterado = status != StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO
+        || inicioEm != null
+        || fimEm != null
+        || desvincularAnuncio && anuncioId != null;
+    if (!alterado) {
+      return false;
+    }
+    if (desvincularAnuncio) {
+      this.anuncioId = null;
+    }
     if (status == StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO
         && inicioEm == null
         && fimEm == null) {
-      return false;
+      return true;
     }
     this.inicioEm = null;
     this.fimEm = null;

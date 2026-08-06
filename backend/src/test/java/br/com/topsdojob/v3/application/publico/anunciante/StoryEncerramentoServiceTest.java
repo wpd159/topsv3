@@ -37,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 class StoryEncerramentoServiceTest {
@@ -158,14 +159,92 @@ class StoryEncerramentoServiceTest {
 
     StoryEncerramentoDto resposta = service.encerrarProprio(
         story.getId(), authentication, "request-falha");
+    StoryEncerramentoDto repetida = service.encerrarProprio(
+        story.getId(), authentication, "request-falha-retry");
 
     assertThat(resposta.direitoPreservado()).isTrue();
     assertThat(resposta.motivo()).isEqualTo("FALHA_TECNICA");
+    assertThat(repetida.repetido()).isTrue();
+    assertThat(repetida.direitoPreservado()).isTrue();
     assertThat(ativacao.getStatus()).isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
     assertThat(ativacao.getInicioEm()).isNull();
     assertThat(ativacao.getFimEm()).isNull();
     verify(ativacaoRepository).save(ativacao);
     verify(grupoRepository).save(grupo);
+  }
+
+  @Test
+  void direitoHistoricoEhRestauradoSemDesvincularAnuncioDaAtivacao() {
+    UUID anuncioHistoricoId = UUID.randomUUID();
+    UUID ativacaoId = UUID.randomUUID();
+    UUID grupoId = UUID.randomUUID();
+    story = StoryAnuncioEntity.criarFixtureHomologacao(
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        AGORA.minusHours(1),
+        AGORA.plusHours(23),
+        0,
+        USUARIO_ID,
+        AGORA.minusHours(1));
+    ReflectionTestUtils.setField(story, "ativacaoBeneficioId", ativacaoId);
+    ReflectionTestUtils.setField(story, "anuncioId", anuncioHistoricoId);
+    when(storyRepository.findByIdForUpdate(story.getId())).thenReturn(Optional.of(story));
+    AtivacaoBeneficioEntity ativacao = AtivacaoBeneficioEntity.criarFixtureHomologacao(
+        ativacaoId,
+        UUID.randomUUID(),
+        USUARIO_ID,
+        anuncioHistoricoId,
+        grupoId,
+        OrigemBeneficio.CREDITO,
+        AGORA.minusHours(1),
+        AGORA.plusHours(23),
+        StatusAtivacaoBeneficio.ATIVA,
+        5,
+        BigDecimal.ZERO,
+        "direito-historico",
+        AGORA.minusHours(1));
+    GrupoAtivacaoBeneficioEntity grupo = GrupoAtivacaoBeneficioEntity.criarFixtureHomologacao(
+        grupoId,
+        TipoGrupoAtivacaoBeneficio.PACOTE,
+        OrigemBeneficio.CREDITO,
+        USUARIO_ID,
+        anuncioHistoricoId,
+        AGORA.minusHours(1),
+        AGORA.plusHours(23),
+        StatusGrupoAtivacaoBeneficio.ATIVO,
+        "grupo-historico",
+        AGORA.minusHours(1));
+    when(falhaTecnicaService.comprovada(story)).thenReturn(true);
+    when(ativacaoRepository.findByIdForUpdate(ativacaoId)).thenReturn(Optional.of(ativacao));
+    when(grupoRepository.findByIdForUpdate(grupoId)).thenReturn(Optional.of(grupo));
+    when(ativacaoRepository.findByGrupoAtivacaoId(grupoId)).thenReturn(List.of(ativacao));
+
+    StoryEncerramentoDto resposta = service.encerrarProprio(
+        story.getId(), authentication, "request-falha-historica");
+
+    assertThat(resposta.direitoPreservado()).isTrue();
+    assertThat(ativacao.getStatus()).isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
+    assertThat(ativacao.getAnuncioId()).isEqualTo(anuncioHistoricoId);
+    assertThat(grupo.getAnuncioId()).isEqualTo(anuncioHistoricoId);
+    verify(ativacaoRepository).save(ativacao);
+    verify(grupoRepository, never()).save(grupo);
+  }
+
+  @Test
+  void falhaDoCleanupDepoisDoEncerramentoNaoConverteSucessoEmErro() {
+    when(falhaTecnicaService.comprovada(story)).thenReturn(false);
+    when(cleanupService.limpar(any(), any(), any()))
+        .thenThrow(new IllegalStateException("storage indisponivel"));
+
+    StoryEncerramentoDto resposta = service.encerrarProprio(
+        story.getId(), authentication, "request-cleanup-falhou");
+
+    assertThat(resposta.repetido()).isFalse();
+    assertThat(resposta.status()).isEqualTo(StatusStoryAnuncio.REMOVIDO.name());
+    assertThat(story.getEncerradoEm()).isEqualTo(AGORA);
+    verify(storyRepository).save(story);
+    verify(auditoriaRepository).save(any());
+    verify(cleanupService).limpar(story.getId(), USUARIO_ID, "request-cleanup-falhou");
   }
 
   @Test

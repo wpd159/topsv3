@@ -7,6 +7,7 @@ public record MeuStoryGerenciadoDto(
     UUID id,
     String modoConteudo,
     String status,
+    String estadoGerenciamento,
     OffsetDateTime publicadoEm,
     OffsetDateTime expiraEm,
     String anuncioSlug,

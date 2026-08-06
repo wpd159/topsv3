@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const sourceRoot = path.resolve(scriptDirectory, '../src')
+const adminRouteRoot = path.resolve(sourceRoot, 'app/(painel-admin)/admin')
 
 function source(relativePath) {
   return readFileSync(path.resolve(sourceRoot, relativePath), 'utf8')
@@ -36,6 +37,8 @@ const searchableSelect = source('features/anuncio-wizard/components/searchable-s
 const wizardUtils = source('features/anuncio-wizard/wizard-utils.ts')
 const publicCatalogApi = source('lib/public-catalog-api.ts')
 const publicCatalogActions = source('app/(painel-admin)/admin/anuncios/actions.ts')
+const creditsPage = source('app/(painel-admin)/admin/creditos/page.tsx')
+const monetizationNavigation = source('lib/admin-monetizacao-navigation.ts')
 
 assert.ok(listPage.includes('AdminAnunciosList'), 'A rota administrativa deve usar a fila V3.')
 assert.ok(detailPage.includes('AdminAnuncioModeracao'), 'O detalhe deve usar a moderacao V3.')
@@ -44,7 +47,27 @@ assert.ok(legacyListPage.includes("redirect('/admin/anuncios')"), 'A rota antiga
 assert.ok(legacyDetailPage.includes('`/admin/anuncios/${encodeURIComponent(anuncioId)}`'), 'O detalhe antigo deve redirecionar para o detalhe canonico.')
 assert.ok(sidebar.includes("href: '/admin/anuncios'"), 'A sidebar deve abrir a area canonica.')
 assert.ok(!sidebar.includes("href: '/admin/moderacao-v2'"), 'A sidebar nao pode abrir a V2.')
-assert.ok(!sidebar.includes("href: '/admin/stories'") && !sidebar.includes('Stories administrativos'), 'A sidebar nao deve exibir o atalho de Stories administrativos.')
+const sidebarEntries = [...sidebar.matchAll(/label:\s*'([^']+)'[\s\S]*?href:\s*'([^']+)'[\s\S]*?section:\s*'([^']+)'/g)]
+  .map((match) => ({ label: match[1], href: match[2], section: match[3] }))
+const storySidebarEntries = sidebarEntries.filter((item) => item.label === 'Gestão de Stories' || item.href.includes('/admin/stories'))
+assert.equal(storySidebarEntries.length, 1, 'A sidebar deve possuir exatamente uma entrada administrativa de Stories.')
+assert.deepEqual(storySidebarEntries[0], {
+  label: 'Gestão de Stories',
+  href: '/admin/stories',
+  section: 'Operação',
+})
+const operationEntries = sidebarEntries.filter((item) => item.section === 'Operação')
+const storyOperationIndex = operationEntries.findIndex((item) => item.href === '/admin/stories')
+assert.equal(operationEntries[storyOperationIndex - 1]?.label, 'Anúncios', 'Gestão de Stories deve ficar depois de Anúncios.')
+assert.equal(operationEntries[storyOperationIndex + 1]?.label, 'Usuários', 'Gestão de Stories deve ficar antes de Usuários.')
+assert.ok(!existsSync(path.resolve(adminRouteRoot, 'stories/selecao')), 'A rota /admin/stories/selecao não pode existir.')
+assert.ok(!existsSync(path.resolve(adminRouteRoot, 'stories-v2')), 'A rota /admin/stories-v2 não pode existir.')
+const storyRouteDirectories = readdirSync(adminRouteRoot, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && entry.name.toLowerCase().includes('stories'))
+  .map((entry) => entry.name)
+assert.deepEqual(storyRouteDirectories, ['stories'], 'Não pode existir rota administrativa paralela de Stories.')
+assert.ok(monetizationNavigation.includes("'stories'"), 'A navegação comercial deve manter a aba Stories.')
+assert.ok(creditsPage.includes('adminMonetizacaoAba(searchParams)') && creditsPage.includes('adminMonetizacaoQuery(searchParams, value)'), 'A configuração comercial deve permanecer em /admin/creditos?aba=stories.')
 
 for (const contract of [
   "request(`/anuncios?${query.toString()}`)",

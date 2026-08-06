@@ -34,12 +34,50 @@ function formatDate(value: string | null) {
 }
 
 function statusLabel(story: MeuStoryGerenciado) {
-  if (story.falhaTecnica) return 'Falha na publicação da mídia'
-  if (story.encerradoEm) return story.status === 'EXPIRADO' ? 'Expirado' : 'Encerrado'
-  if (story.status === 'PUBLICADO') return 'Ativo'
-  return story.status.replaceAll('_', ' ').toLocaleLowerCase('pt-BR')
+  switch (story.estadoGerenciamento) {
+    case 'ENCERRADO_USUARIO':
+      return 'Excluído por você'
+    case 'REMOVIDO_ADMIN':
+      return 'Removido'
+    case 'DESCARTADO_FALHA_TECNICA':
+      return 'Encerrado após falha técnica'
+    case 'ENCERRADO':
+      return 'Encerrado'
+    case 'EXPIRADO':
+      return 'Expirado'
+    case 'FALHA_TECNICA':
+      return 'Falha na publicação da mídia'
+    case 'ATIVO':
+      return 'Ativo'
+    default:
+      return story.status.replaceAll('_', ' ').toLocaleLowerCase('pt-BR')
+  }
 }
 
+function mediaLabel(story: MeuStoryGerenciado) {
+  switch (story.estadoMidia) {
+    case 'REMOVIDA':
+      return 'Removida'
+    case 'FALHA_PUBLICACAO':
+      return 'Falha na publicação'
+    case 'INDISPONIVEL':
+      return 'Indisponível'
+    case 'DISPONIVEL':
+      return 'Disponível'
+    default:
+      return 'Não aplicável'
+  }
+}
+
+function encerramentoConfirmado(story: MeuStoryGerenciado) {
+  return [
+    'ENCERRADO_USUARIO',
+    'REMOVIDO_ADMIN',
+    'DESCARTADO_FALHA_TECNICA',
+    'ENCERRADO',
+    'EXPIRADO',
+  ].includes(story.estadoGerenciamento)
+}
 function errorMessage(error: unknown) {
   if (error instanceof MeusAnunciosApiError) {
     const suffix = error.requestId ? ` Código de atendimento: ${error.requestId}.` : ''
@@ -55,6 +93,7 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<MeuStoryGerenciado | null>(null)
   const [ending, setEnding] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
 
   const load = useCallback(async (targetPage = page) => {
     setLoading(true)
@@ -78,10 +117,13 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
 
   async function confirmEnd() {
     if (!selected || ending) return
+    const storyId = selected.id
+    const descartando = selected.podeDescartar
     setEnding(true)
+    setActionError(null)
     try {
-      const result = await encerrarMeuStory(selected.id)
-      toast.success(selected.podeDescartar
+      const result = await encerrarMeuStory(storyId)
+      toast.success(descartando
         ? 'Story com falha descartado. O direito permanece disponível para uma nova tentativa.'
         : result.repetido ? 'O Story já estava encerrado.' : 'Story excluído.')
       setSelected(null)
@@ -89,12 +131,32 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
       await load(targetPage)
       onChanged?.()
     } catch (cause) {
-      toast.error(errorMessage(cause))
+      const message = errorMessage(cause)
+      let reconciliado: MeuStoryGerenciado | null = null
+      try {
+        const next = await listarMeusStories(page, 12)
+        setData(next)
+        setPage(next.pagina)
+        reconciliado = next.itens.find((item) => item.id === storyId) ?? null
+      } catch {
+        // A falha original e seu requestId permanecem como fonte do erro.
+      }
+      if (reconciliado && encerramentoConfirmado(reconciliado)) {
+        toast.success(
+          reconciliado.estadoGerenciamento === 'DESCARTADO_FALHA_TECNICA'
+            ? 'Story encerrado após falha técnica.'
+            : 'Story encerrado.',
+        )
+        setSelected(null)
+        onChanged?.()
+      } else {
+        setActionError(message)
+        toast.error(message)
+      }
     } finally {
       setEnding(false)
     }
   }
-
   return (
     <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="meus-stories-title">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -132,7 +194,7 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
                       <p className="mt-1 break-words font-semibold text-slate-950">{story.anuncioTitulo ?? 'Story independente'}</p>
                     </div>
                   </div>
-                  <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${story.falhaTecnica ? 'bg-amber-100 text-amber-900' : story.encerradoEm ? 'bg-slate-100 text-slate-700' : 'bg-emerald-100 text-emerald-800'}`}>
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-semibold ${story.estadoGerenciamento === 'FALHA_TECNICA' ? 'bg-amber-100 text-amber-900' : encerramentoConfirmado(story) ? 'bg-slate-100 text-slate-700' : 'bg-emerald-100 text-emerald-800'}`}>
                     {statusLabel(story)}
                   </span>
                 </div>
@@ -140,7 +202,7 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
                 <dl className="mt-4 grid gap-1.5 text-sm text-slate-600">
                   <div><dt className="inline font-medium text-slate-800">Início: </dt><dd className="inline">{formatDate(story.publicadoEm)}</dd></div>
                   <div><dt className="inline font-medium text-slate-800">Expira em: </dt><dd className="inline">{formatDate(story.expiraEm)}</dd></div>
-                  <div><dt className="inline font-medium text-slate-800">Mídia: </dt><dd className="inline">{story.falhaTecnica ? 'Falha na publicação' : story.estadoMidia ?? 'Não aplicável'}</dd></div>
+                  <div><dt className="inline font-medium text-slate-800">Mídia: </dt><dd className="inline">{mediaLabel(story)}</dd></div>
                 </dl>
 
                 {story.falhaTecnica ? (
@@ -155,7 +217,7 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
                     <Button asChild variant="outline" size="sm"><Link href={`/meus-anuncios/${encodeURIComponent(story.anuncioSlug)}`}>Gerenciar anúncio</Link></Button>
                   ) : null}
                   {story.podeExcluir || story.podeDescartar ? (
-                    <Button type="button" variant="outline" size="sm" className="border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => setSelected(story)}>
+                    <Button type="button" variant="outline" size="sm" className="border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => { setActionError(null); setSelected(story) }}>
                       <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                       {story.podeDescartar ? 'Descartar Story com falha' : 'Excluir Story'}
                     </Button>
@@ -175,7 +237,12 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
         </>
       )}
 
-      <Dialog open={Boolean(selected)} onOpenChange={(next) => { if (!next && !ending) setSelected(null) }}>
+      <Dialog open={Boolean(selected)} onOpenChange={(next) => {
+        if (!next && !ending) {
+          setActionError(null)
+          setSelected(null)
+        }
+      }}>
         <DialogContent className="w-[calc(100vw-1rem)] sm:max-w-md">
           <DialogHeader className="pr-8 text-left">
             <DialogTitle>{selected?.podeDescartar ? 'Descartar Story com falha?' : 'Excluir este Story?'}</DialogTitle>
@@ -185,6 +252,12 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
                 : 'Ele será retirado imediatamente do feed. O tempo restante e os créditos utilizados não serão devolvidos automaticamente.'}
             </DialogDescription>
           </DialogHeader>
+          {actionError ? (
+            <p className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" role="alert">
+              {actionError}
+            </p>
+          ) : null}
+          {ending ? <p className="sr-only" role="status">Processando encerramento do Story.</p> : null}
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             <Button type="button" variant="outline" disabled={ending} onClick={() => setSelected(null)}>Cancelar</Button>
             <Button type="button" disabled={ending} className="bg-rose-700 text-white hover:bg-rose-800" onClick={() => void confirmEnd()}>

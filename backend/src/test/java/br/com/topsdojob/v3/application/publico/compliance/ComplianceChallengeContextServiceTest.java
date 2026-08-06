@@ -10,18 +10,21 @@ import br.com.topsdojob.v3.domain.compliance.ComplianceVisitorTypes.EscopoConteu
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
+
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
@@ -41,6 +44,7 @@ class ComplianceChallengeContextServiceTest {
 
   private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
   private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
+  private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
   private final StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
   private final StorySelecaoAdministrativaRepository storyAdminRepository =
       mock(StorySelecaoAdministrativaRepository.class);
@@ -53,6 +57,7 @@ class ComplianceChallengeContextServiceTest {
     service = new ComplianceChallengeContextService(
         anuncioRepository,
         midiaRepository,
+        arquivoRepository,
         storyRepository,
         storyAdminRepository,
         usuarioRepository);
@@ -87,7 +92,7 @@ class ComplianceChallengeContextServiceTest {
     when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
 
     ComplianceChallengeContextService.Contexto contexto = service.validar(
-        request(anuncioId, storyId.toString()),
+        request(storyId.toString()),
         EscopoConteudoVisitante.STORY);
 
     assertThat(contexto.anuncioId()).isEqualTo(anuncioId);
@@ -118,7 +123,7 @@ class ComplianceChallengeContextServiceTest {
         .thenReturn(Optional.of(anuncioPublicado(anuncioId, agora)));
 
     ComplianceChallengeContextService.Contexto contexto = service.validar(
-        request(anuncioId, storyId.toString()),
+        request(storyId.toString()),
         EscopoConteudoVisitante.STORY);
 
     assertThat(contexto.anuncioId()).isEqualTo(anuncioId);
@@ -137,42 +142,58 @@ class ComplianceChallengeContextServiceTest {
 
     assertStatus(
         () -> service.validar(
-            request(anuncioId, storyId.toString()),
+            request(storyId.toString()),
             EscopoConteudoVisitante.STORY),
         HttpStatus.NOT_FOUND);
   }
 
   @Test
-  void recusaStoryVinculadoAOutroAnuncio() {
-    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+  void recusaContextoDeAnuncioOuMidiaInjetadoPeloCliente() {
     UUID anuncioInformado = UUID.randomUUID();
-    UUID anuncioReal = UUID.randomUUID();
-    UUID midiaId = UUID.randomUUID();
+    UUID midiaInformada = UUID.randomUUID();
     UUID storyId = UUID.randomUUID();
-    StoryAnuncioEntity story = StoryAnuncioEntity.criarFixtureHomologacao(
+
+    assertStatus(
+        () -> service.validar(
+            request(anuncioInformado, midiaInformada, storyId.toString()),
+            EscopoConteudoVisitante.STORY),
+        HttpStatus.BAD_REQUEST);
+  }
+
+  @Test
+  void aceitaStoryMidiaUploadSemAnuncioEDerivaArquivoEProprietario() {
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    UUID arquivoId = UUID.randomUUID();
+    UUID storyId = UUID.randomUUID();
+    StoryAnuncioEntity story = StoryAnuncioEntity.criarMidiaUpload(
         storyId,
-        midiaId,
+        arquivoId,
+        UUID.randomUUID(),
+        "story-independente",
+        "c".repeat(64),
         agora.minusMinutes(1),
         agora.plusHours(1),
-        1,
-        UUID.randomUUID(),
-        agora.minusMinutes(1));
+        USUARIO_ID);
+    ArquivoMidiaEntity arquivo = ArquivoMidiaEntity.criarFixtureHomologacao(
+        arquivoId,
+        "privado/story-independente.mp4",
+        "video/mp4",
+        StatusArquivoMidia.VALIDADO,
+        agora.minusMinutes(2));
     when(storyRepository.findByIdAndStatus(
         storyId,
         br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio.PUBLICADO))
         .thenReturn(Optional.of(story));
-    when(midiaRepository.findById(midiaId))
-        .thenReturn(Optional.of(midiaStory(midiaId, anuncioReal, agora)));
-    when(anuncioRepository.findById(anuncioReal))
-        .thenReturn(Optional.of(anuncioPublicado(anuncioReal, agora)));
+    when(arquivoRepository.findById(arquivoId)).thenReturn(Optional.of(arquivo));
 
-    assertStatus(
-        () -> service.validar(
-            request(anuncioInformado, storyId.toString()),
-            EscopoConteudoVisitante.STORY),
-        HttpStatus.CONFLICT);
+    ComplianceChallengeContextService.Contexto contexto = service.validar(
+        request(storyId.toString()),
+        EscopoConteudoVisitante.STORY);
+
+    assertThat(contexto.anuncioId()).isNull();
+    assertThat(contexto.midiaId()).isNull();
+    assertThat(contexto.storyReferencia()).isEqualTo(storyId.toString());
   }
-
   @Test
   void aceitaStoryAdministrativoSomenteQuandoSelecaoEstaAtiva() {
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
@@ -199,7 +220,7 @@ class ComplianceChallengeContextServiceTest {
         .thenReturn(Optional.of(anuncioPublicado(anuncioId, agora)));
 
     ComplianceChallengeContextService.Contexto contexto = service.validar(
-        request(anuncioId, "administrativo:" + midiaId),
+        request("administrativo:" + midiaId),
         EscopoConteudoVisitante.STORY);
 
     assertThat(contexto.midiaId()).isEqualTo(midiaId);
@@ -210,7 +231,7 @@ class ComplianceChallengeContextServiceTest {
   void recusaReferenciaDeStoryFabricada() {
     assertStatus(
         () -> service.validar(
-            request(UUID.randomUUID(), "story-inexistente"),
+            request("story-inexistente"),
             EscopoConteudoVisitante.STORY),
         HttpStatus.BAD_REQUEST);
   }
@@ -241,16 +262,20 @@ class ComplianceChallengeContextServiceTest {
         .thenReturn(Optional.of(usuario));
 
     assertStatus(
-        () -> service.validar(request(anuncioId, storyId.toString()), EscopoConteudoVisitante.STORY),
+        () -> service.validar(request(storyId.toString()), EscopoConteudoVisitante.STORY),
         HttpStatus.NOT_FOUND);
   }
 
-  private VisitorChallengeRequestDto request(UUID anuncioId, String storyId) {
+  private VisitorChallengeRequestDto request(String storyId) {
+    return request(null, null, storyId);
+  }
+
+  private VisitorChallengeRequestDto request(UUID anuncioId, UUID midiaId, String storyId) {
     return new VisitorChallengeRequestDto(
         "REINFORCED",
         "STORY",
         anuncioId,
-        null,
+        midiaId,
         storyId,
         "/stories",
         "story-context-test");

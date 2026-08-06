@@ -75,9 +75,17 @@ assert.equal(navigation.activeAdminSidebarHref(hrefs, '/admin/creditos', ''), '/
 const menuEntries = [...sidebarSource.matchAll(/label:\s*'([^']+)'[\s\S]*?href:\s*'([^']+)'[\s\S]*?section:\s*'([^']+)'/g)]
   .map((match) => ({ label: match[1], href: match[2], section: match[3] }))
 
-assert.equal(menuEntries.length, 21, 'O menu administrativo deve manter os 21 itens canônicos após a unificação.')
-assert.equal(new Set(menuEntries.map((item) => item.href)).size, 21, 'Os destinos do menu devem ser únicos.')
-assert.ok(!sidebarSource.includes('/admin/stories'), 'Stories administrativos não pode voltar ao menu.')
+assert.equal(menuEntries.length, 22, 'O menu administrativo deve manter os 22 itens canônicos.')
+assert.equal(new Set(menuEntries.map((item) => item.href)).size, 22, 'Os destinos do menu devem ser únicos.')
+assert.deepEqual(
+  menuEntries.filter((item) => item.section === 'Operação').slice(0, 5).map((item) => item.label),
+  ['Anúncios', 'Gestão de Stories', 'Usuários', 'Tickets', 'Denúncias'],
+)
+assert.deepEqual(menuEntries.find((item) => item.label === 'Gestão de Stories'), {
+  label: 'Gestão de Stories',
+  href: '/admin/stories',
+  section: 'Operação',
+})
 assert.ok(!sidebarSource.includes('/admin/indicacoes'), 'Indicações não pode voltar ao menu.')
 assert.equal(menuEntries.filter((item) => item.label === 'Monetização').length, 1)
 assert.deepEqual(menuEntries.find((item) => item.label === 'Monetização'), {
@@ -90,9 +98,9 @@ assert.ok(!menuEntries.some((item) => item.label === 'Benefícios premium'))
 
 const adminMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'ADMIN')
 const moderatorMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'MODERADOR')
-assert.equal(adminMenu.length, 21)
+assert.equal(adminMenu.length, 22)
 assert.equal(moderatorMenu.length, 16)
-for (const restricted of ['/admin/financeiro', '/admin/creditos', '/admin/termos-footer', '/admin/blog', '/admin/staff']) {
+for (const restricted of ['/admin/financeiro', '/admin/creditos', '/admin/termos-footer', '/admin/blog', '/admin/staff', '/admin/stories']) {
   assert.ok(!moderatorMenu.some((item) => item.href === restricted))
 }
 assert.equal(sidebarUtils.canAccessRoute('/admin/anuncios', 'MODERADOR'), true)

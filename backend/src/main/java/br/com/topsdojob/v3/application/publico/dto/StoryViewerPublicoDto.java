@@ -3,17 +3,20 @@ package br.com.topsdojob.v3.application.publico.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.OffsetDateTime;
 import java.math.BigDecimal;
+import java.util.List;
 
 public record StoryViewerPublicoDto(
         String storyId,
         String anuncioId,
         String anuncioSlug,
+        String anuncioTitulo,
         String usuarioUsername,
         String displayUsername,
         @JsonInclude(JsonInclude.Include.NON_NULL) Integer idade,
         boolean profileNavigable,
         String viewerState,
         String midiaUrl,
+        List<MidiaPublicaDto> midias,
         String modoConteudo,
         String tipo,
         OffsetDateTime expiraEm,
@@ -22,6 +25,10 @@ public record StoryViewerPublicoDto(
         @JsonInclude(JsonInclude.Include.NON_NULL) String uf,
         @JsonInclude(JsonInclude.Include.NON_NULL) BigDecimal preco,
         @JsonInclude(JsonInclude.Include.NON_NULL) String resumo) {
+
+    public StoryViewerPublicoDto {
+        midias = midias == null ? List.of() : List.copyOf(midias);
+    }
 
     public StoryViewerPublicoDto(
             String storyId,
@@ -37,8 +44,8 @@ public record StoryViewerPublicoDto(
             OffsetDateTime expiraEm,
             String blockedReason) {
         this(
-                storyId, anuncioId, anuncioSlug, usuarioUsername, displayUsername,
-                idade, profileNavigable, viewerState, midiaUrl, null, tipo, expiraEm,
+                storyId, anuncioId, anuncioSlug, null, usuarioUsername, displayUsername,
+                idade, profileNavigable, viewerState, midiaUrl, List.of(), null, tipo, expiraEm,
                 blockedReason, null, null, null, null);
     }
 }

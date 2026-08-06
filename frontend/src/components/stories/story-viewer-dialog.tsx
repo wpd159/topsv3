@@ -86,6 +86,7 @@ export function StoryViewerDialog({
   const router = useRouter()
   const [bundleIndex, setBundleIndex] = useState(0)
   const [itemIndex, setItemIndex] = useState(0)
+  const [anuncioMidiaIndex, setAnuncioMidiaIndex] = useState(0)
   const [videoProg, setVideoProg] = useState(0)
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [viewerItem, setViewerItem] = useState<StoryViewerItem | null>(null)
@@ -102,6 +103,7 @@ export function StoryViewerDialog({
     if (!open) return
     setBundleIndex(Math.max(0, Math.min(initialBundleIndex, bundles.length - 1)))
     setItemIndex(0)
+    setAnuncioMidiaIndex(0)
     setVideoProg(0)
     setViewerItem(null)
     setViewerError(null)
@@ -112,6 +114,14 @@ export function StoryViewerDialog({
 
   const currentBundle = bundles[bundleIndex]
   const currentFeedItem = currentBundle?.itens?.[itemIndex]
+  const anuncioMidias = useMemo(
+    () => viewerItem?.modoConteudo === "ANUNCIO" ? viewerItem.midias ?? [] : [],
+    [viewerItem],
+  )
+  const anuncioMidiaAtual = anuncioMidias[anuncioMidiaIndex] ?? anuncioMidias[0] ?? null
+  const tipoMidiaAtual = viewerItem?.modoConteudo === "ANUNCIO"
+    ? anuncioMidiaAtual?.tipo
+    : viewerItem?.tipo
 
   useEffect(() => {
     if (!open || !currentFeedItem?.storyId) {
@@ -125,6 +135,7 @@ export function StoryViewerDialog({
     setViewerLoading(true)
     setViewerError(null)
     setViewerItem(null)
+    setAnuncioMidiaIndex(0)
     setMediaError(false)
 
     void fetch(publicApiUrl(`/stories/${currentFeedItem.storyId}`), {
@@ -157,11 +168,18 @@ export function StoryViewerDialog({
   }, [currentFeedItem?.storyId, open, reloadTick])
 
   useEffect(() => {
+    setAnuncioMidiaIndex(0)
     setVideoProg(0)
     setMediaError(false)
     setMediaReady(false)
     viewedStoryRef.current = null
   }, [bundleIndex, itemIndex, reloadTick])
+
+  useEffect(() => {
+    setVideoProg(0)
+    setMediaError(false)
+    setMediaReady(false)
+  }, [anuncioMidiaIndex])
 
   const markCurrentStoryVisible = useCallback(() => {
     if (!currentFeedItem || viewerItem?.viewerState !== "LIBERADO") return
@@ -174,7 +192,7 @@ export function StoryViewerDialog({
   }, [currentFeedItem, onStoryCurrent, viewerItem])
 
   useEffect(() => {
-    if (!open || viewerItem?.viewerState !== "LIBERADO" || viewerItem.modoConteudo !== "ANUNCIO") return
+    if (!open || viewerItem?.viewerState !== "LIBERADO" || viewerItem.modoConteudo !== "ANUNCIO" || anuncioMidias.length > 0) return
     const node = anuncioStoryRef.current
     if (!node || typeof IntersectionObserver === "undefined") return
     const observer = new IntersectionObserver((entries) => {
@@ -184,7 +202,7 @@ export function StoryViewerDialog({
     }, { threshold: [0.6] })
     observer.observe(node)
     return () => observer.disconnect()
-  }, [markCurrentStoryVisible, open, viewerItem?.modoConteudo, viewerItem?.storyId, viewerItem?.viewerState])
+  }, [anuncioMidias.length, markCurrentStoryVisible, open, viewerItem?.modoConteudo, viewerItem?.storyId, viewerItem?.viewerState])
 
   const nextStory = useCallback(() => {
     const bundle = bundles[bundleIndex]
@@ -223,34 +241,60 @@ export function StoryViewerDialog({
       setItemIndex(Math.max(0, (previous?.itens?.length || 1) - 1))
     }
   }, [bundleIndex, bundles, itemIndex])
+  const nextVisibleContent = useCallback(() => {
+    if (
+      viewerItem?.modoConteudo === "ANUNCIO"
+      && anuncioMidias.length > 0
+      && anuncioMidiaIndex < anuncioMidias.length - 1
+    ) {
+      setAnuncioMidiaIndex((current) => current + 1)
+      return
+    }
+    nextStory()
+  }, [anuncioMidiaIndex, anuncioMidias.length, nextStory, viewerItem?.modoConteudo])
+
+  const prevVisibleContent = useCallback(() => {
+    if (viewerItem?.modoConteudo === "ANUNCIO" && anuncioMidias.length > 0 && anuncioMidiaIndex > 0) {
+      setAnuncioMidiaIndex((current) => current - 1)
+      return
+    }
+    prevStory()
+  }, [anuncioMidiaIndex, anuncioMidias.length, prevStory, viewerItem?.modoConteudo])
 
   useEffect(() => {
     if (!open) return
     if (verificationOpen || !mediaReady) return
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "ArrowRight") nextStory()
-      if (e.key === "ArrowLeft") prevStory()
+      if (e.key === "ArrowRight") nextVisibleContent()
+      if (e.key === "ArrowLeft") prevVisibleContent()
     }
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [mediaReady, nextStory, open, prevStory, verificationOpen])
+  }, [mediaReady, nextVisibleContent, open, prevVisibleContent, verificationOpen])
 
   useEffect(() => {
-    if (!open) return
-    if (verificationOpen) return
-    if (!mediaReady) return
-    if (!viewerItem) return
-    if (viewerLoading) return
-    if (viewerError) return
-    if (viewerItem.viewerState !== "LIBERADO") return
-    if (viewerItem.tipo === "VIDEO") return
+    if (!open || verificationOpen || !mediaReady || !viewerItem) return
+    if (viewerLoading || viewerError || viewerItem.viewerState !== "LIBERADO") return
+    if (tipoMidiaAtual === "VIDEO") return
+    if (viewerItem.modoConteudo === "ANUNCIO" && anuncioMidias.length > 0 && !anuncioMidiaAtual?.urlPublica) return
     if (viewerItem.modoConteudo !== "ANUNCIO" && !viewerItem.midiaUrl) return
 
-    const t = setTimeout(() => nextStory(), IMAGE_MS)
-    return () => clearTimeout(t)
-  }, [mediaReady, nextStory, open, verificationOpen, viewerError, viewerItem, viewerLoading])
+    const timer = setTimeout(() => nextVisibleContent(), IMAGE_MS)
+    return () => clearTimeout(timer)
+  }, [
+    anuncioMidiaAtual?.urlPublica,
+    anuncioMidias.length,
+    mediaReady,
+    nextVisibleContent,
+    open,
+    tipoMidiaAtual,
+    verificationOpen,
+    viewerError,
+    viewerItem,
+    viewerLoading,
+  ])
 
   const progressBars = useMemo(() => currentBundle?.itens || [], [currentBundle])
 
@@ -271,10 +315,7 @@ export function StoryViewerDialog({
   const podeNavegarAnuncio = Boolean(anuncioSlugViewer) && conteudoLiberado
   const podeNavegarDestino = podeNavegarPerfil || podeNavegarAnuncio
   const rotuloDestino = podeNavegarPerfil ? "Ver anunciante" : "Ver anúncio"
-  const rotuloPerfil =
-    viewerItem?.profileNavigable && viewerItem?.displayUsername
-      ? `@${viewerItem.displayUsername}`
-      : rotuloBundle
+  const rotuloPerfil = loginViewer ? `@${loginViewer}` : rotuloBundle
   const rotuloPerfilComIdade = rotuloPublicoComIdade(
     rotuloPerfil,
     viewerItem?.idade ?? currentFeedItem?.idade ?? currentBundle?.idade,
@@ -320,6 +361,11 @@ export function StoryViewerDialog({
     bundles.length > 0 &&
     bundleIndex === bundles.length - 1 &&
     itemIndex === (currentBundle?.itens?.length || 1) - 1
+  const possuiMidiaAnterior = viewerItem?.modoConteudo === "ANUNCIO" && anuncioMidiaIndex > 0
+  const possuiProximaMidia = viewerItem?.modoConteudo === "ANUNCIO"
+    && anuncioMidiaIndex < anuncioMidias.length - 1
+  const isFirstVisibleContent = isFirst && !possuiMidiaAnterior
+  const isLastVisibleContent = isLast && !possuiProximaMidia
   const viewerInteracoesTravadas = verificationOpen
   const viewerNavegacaoTravada = !canNavigateFromStory(viewerItem, mediaReady, verificationOpen)
 
@@ -399,35 +445,124 @@ export function StoryViewerDialog({
       const preco = viewerItem.preco == null
         ? null
         : Number(viewerItem.preco).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+
+      if (!anuncioMidiaAtual) {
+        return (
+          <article
+            ref={anuncioStoryRef}
+            className="relative z-20 flex min-h-[100svh] w-full max-w-xl flex-col justify-center bg-slate-950 px-8 py-28 text-white sm:px-12"
+            onClick={(event) => event.stopPropagation()}
+            aria-label="Apresentação textual do anúncio no Story"
+          >
+            <div className="h-1 w-16 rounded-full bg-[#FC1EAD]" aria-hidden="true" />
+            <p className="mt-6 text-xs font-semibold uppercase text-pink-300">Anúncio em destaque</p>
+            <h2 className="mt-3 break-words text-3xl font-bold leading-tight sm:text-4xl">
+              {viewerItem.anuncioTitulo || "Anúncio"}
+            </h2>
+            {viewerItem.idade != null ? <p className="mt-2 text-lg text-white/85">{viewerItem.idade} anos</p> : null}
+            {local ? (
+              <p className="mt-5 flex items-center gap-2 text-sm text-white/80">
+                <MapPinIcon className="h-5 w-5 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
+                {local}
+              </p>
+            ) : null}
+            {preco ? <p className="mt-4 text-2xl font-bold text-pink-300">{preco}</p> : null}
+            {viewerItem.resumo ? <p className="mt-5 max-w-prose text-sm leading-6 text-white/75">{viewerItem.resumo}</p> : null}
+            <Button
+              type="button"
+              onClick={irParaAnuncioDoStory}
+              disabled={!podeNavegarAnuncio}
+              className="mt-8 min-h-12 w-full bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
+            >
+              Ver anúncio
+            </Button>
+          </article>
+        )
+      }
+
+      if (mediaError) {
+        return (
+          <StoryStateCard
+            title="Não foi possível carregar a mídia do anúncio"
+            description="A mídia permanece bloqueada. Tente carregar novamente."
+            primaryAction={{ label: "Tentar novamente", onClick: () => setReloadTick((prev) => prev + 1) }}
+          />
+        )
+      }
+
+      const mediaKey = `${viewerItem.storyId}:${anuncioMidiaAtual.id ?? anuncioMidiaIndex}:${anuncioMidiaAtual.urlPublica}`
       return (
         <article
-          ref={anuncioStoryRef}
-          className="relative z-20 flex min-h-[100svh] w-full max-w-xl flex-col justify-center bg-slate-950 px-8 py-28 text-white sm:px-12"
-          onClick={(event) => event.stopPropagation()}
-          aria-label="Apresentação do anúncio no Story"
+          className="relative h-[100svh] w-full max-w-[100vw] overflow-hidden bg-black text-white"
+          aria-label="Galeria de mídias do anúncio no Story"
         >
-          <div className="h-1 w-16 rounded-full bg-[#FC1EAD]" aria-hidden="true" />
-          <p className="mt-6 text-xs font-semibold uppercase text-pink-300">Anúncio em destaque</p>
-          <h2 className="mt-3 break-words text-3xl font-bold leading-tight sm:text-4xl">
-            {viewerItem.displayUsername || "Anúncio"}
-          </h2>
-          {viewerItem.idade != null ? <p className="mt-2 text-lg text-white/85">{viewerItem.idade} anos</p> : null}
-          {local ? (
-            <p className="mt-5 flex items-center gap-2 text-sm text-white/80">
-              <MapPinIcon className="h-5 w-5 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
-              {local}
-            </p>
-          ) : null}
-          {preco ? <p className="mt-4 text-2xl font-bold text-pink-300">{preco}</p> : null}
-          {viewerItem.resumo ? <p className="mt-5 max-w-prose text-sm leading-6 text-white/75">{viewerItem.resumo}</p> : null}
-          <Button
-            type="button"
-            onClick={irParaAnuncioDoStory}
-            disabled={!podeNavegarAnuncio}
-            className="mt-8 min-h-12 w-full bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
-          >
-            Ver anúncio
-          </Button>
+          {anuncioMidiaAtual.tipo === "VIDEO" ? (
+            <video
+              key={mediaKey}
+              ref={videoRef}
+              src={anuncioMidiaAtual.urlPublica}
+              className="h-full w-full object-contain"
+              autoPlay
+              muted
+              playsInline
+              preload="metadata"
+              controls={false}
+              onLoadedData={(event) => {
+                void event.currentTarget.play().catch(() => {})
+              }}
+              onPlaying={markCurrentStoryVisible}
+              onEnded={nextVisibleContent}
+              onError={() => setMediaError(true)}
+              onTimeUpdate={(event) => {
+                const element = event.currentTarget
+                if (!element.duration || Number.isNaN(element.duration)) return
+                setVideoProg(Math.min(1, element.currentTime / element.duration))
+              }}
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={mediaKey}
+              src={anuncioMidiaAtual.urlPublica}
+              alt={viewerItem.anuncioTitulo ? `Mídia de ${viewerItem.anuncioTitulo}` : ""}
+              className="h-full w-full object-contain"
+              onLoad={markCurrentStoryVisible}
+              onError={() => setMediaError(true)}
+            />
+          )}
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black via-black/80 to-transparent px-5 pb-7 pt-24 sm:px-10">
+            <div className="mx-auto w-full max-w-xl">
+              {anuncioMidias.length > 1 ? (
+                <p className="text-xs font-semibold text-white/75" aria-live="polite">
+                  Mídia {anuncioMidiaIndex + 1} de {anuncioMidias.length}
+                </p>
+              ) : null}
+              <h2 className="mt-2 break-words text-xl font-bold leading-tight sm:text-2xl">
+                {viewerItem.anuncioTitulo || "Anúncio"}
+              </h2>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/80">
+                {local ? (
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <MapPinIcon className="h-4 w-4 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
+                    <span className="break-words">{local}</span>
+                  </span>
+                ) : null}
+                {preco ? <span className="font-semibold text-pink-300">{preco}</span> : null}
+              </div>
+              {viewerItem.resumo ? (
+                <p className="mt-2 line-clamp-2 break-words text-sm leading-5 text-white/75">{viewerItem.resumo}</p>
+              ) : null}
+              <Button
+                type="button"
+                onClick={irParaAnuncioDoStory}
+                disabled={!podeNavegarAnuncio}
+                className="pointer-events-auto mt-4 min-h-11 w-full bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
+              >
+                Ver anúncio
+              </Button>
+            </div>
+          </div>
         </article>
       )
     }
@@ -458,7 +593,7 @@ export function StoryViewerDialog({
             void e.currentTarget.play().catch(() => {})
           }}
           onPlaying={markCurrentStoryVisible}
-          onEnded={nextStory}
+          onEnded={nextVisibleContent}
           onError={() => setMediaError(true)}
           onTimeUpdate={(e) => {
             const el = e.currentTarget
@@ -502,11 +637,11 @@ export function StoryViewerDialog({
 
                 if (isDone) {
                   width = "100%"
-                } else if (isActive && viewerItem?.tipo === "VIDEO" && viewerItem?.viewerState === "LIBERADO") {
+                } else if (isActive && tipoMidiaAtual === "VIDEO" && viewerItem?.viewerState === "LIBERADO") {
                   width = `${Math.round(videoProg * 100)}%`
                 } else if (
                   isActive &&
-                  (viewerItem?.tipo === "IMAGE" || viewerItem?.modoConteudo === "ANUNCIO") &&
+                  (tipoMidiaAtual === "IMAGE" || tipoMidiaAtual === "FOTO" || viewerItem?.modoConteudo === "ANUNCIO") &&
                   viewerItem?.viewerState === "LIBERADO" &&
                   (viewerItem?.modoConteudo === "ANUNCIO" || viewerItem?.midiaUrl)
                 ) {
@@ -516,6 +651,9 @@ export function StoryViewerDialog({
                 return (
                   <div key={String(item.storyId)} className="h-1 flex-1 overflow-hidden rounded bg-white/20">
                     <div
+                      key={isActive && viewerItem?.modoConteudo === "ANUNCIO"
+                        ? `${item.storyId}:${anuncioMidiaIndex}`
+                        : String(item.storyId)}
                       className={["h-full bg-white", animate ? "story-progress-fill" : ""].join(" ")}
                       style={{ width, animationDuration: `${IMAGE_MS}ms` }}
                     />
@@ -587,13 +725,13 @@ export function StoryViewerDialog({
 
           <button
             type="button"
-            onClick={prevStory}
-            disabled={isFirst || viewerNavegacaoTravada}
+            onClick={prevVisibleContent}
+            disabled={isFirstVisibleContent || viewerNavegacaoTravada}
             aria-label="Anterior"
             className={[
               "absolute left-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
-              isFirst || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
+              isFirstVisibleContent || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
             ].join(" ")}
           >
             <ChevronLeftIcon className="h-6 w-6 text-white" />
@@ -601,13 +739,13 @@ export function StoryViewerDialog({
 
           <button
             type="button"
-            onClick={nextStory}
-            disabled={isLast || viewerNavegacaoTravada}
+            onClick={nextVisibleContent}
+            disabled={isLastVisibleContent || viewerNavegacaoTravada}
             aria-label="Proximo"
             className={[
               "absolute right-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
-              isLast || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
+              isLastVisibleContent || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
             ].join(" ")}
           >
             <ChevronRightIcon className="h-6 w-6 text-white" />
@@ -615,14 +753,14 @@ export function StoryViewerDialog({
 
           <button
             className="absolute left-0 top-0 h-full w-1/3 z-10"
-            onClick={prevStory}
+            onClick={prevVisibleContent}
             aria-label="Anterior (area)"
             type="button"
             disabled={viewerNavegacaoTravada}
           />
           <button
             className="absolute right-0 top-0 h-full w-1/3 z-10"
-            onClick={nextStory}
+            onClick={nextVisibleContent}
             aria-label="Proximo (area)"
             type="button"
             disabled={viewerNavegacaoTravada}
@@ -636,7 +774,6 @@ export function StoryViewerDialog({
           level="REINFORCED"
           scope="STORY"
           context={{
-            anuncioId: viewerItem?.anuncioId ?? undefined,
             route: viewerItem?.anuncioSlug ? `/anuncios/${viewerItem.anuncioSlug}` : "/stories",
             storyId: String(viewerItem?.storyId ?? currentFeedItem?.storyId ?? ""),
           }}
