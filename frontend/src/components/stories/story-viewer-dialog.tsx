@@ -356,19 +356,13 @@ export function StoryViewerDialog({
     setReloadTick((prev) => prev + 1)
   }
 
-  const isFirst = bundleIndex === 0 && itemIndex === 0
-  const isLast =
-    bundles.length > 0 &&
-    bundleIndex === bundles.length - 1 &&
-    itemIndex === (currentBundle?.itens?.length || 1) - 1
+  const possuiStoryAnterior = Boolean(currentBundle) && (itemIndex > 0 || bundleIndex > 0)
   const possuiProximoStory = Boolean(currentBundle) && (
     itemIndex + 1 < (currentBundle?.itens?.length ?? 0) || bundleIndex + 1 < bundles.length
   )
   const possuiMidiaAnterior = viewerItem?.modoConteudo === "ANUNCIO" && anuncioMidiaIndex > 0
   const possuiProximaMidia = viewerItem?.modoConteudo === "ANUNCIO"
     && anuncioMidiaIndex < anuncioMidias.length - 1
-  const isFirstVisibleContent = isFirst && !possuiMidiaAnterior
-  const isLastVisibleContent = isLast && !possuiProximaMidia
   const viewerInteracoesTravadas = verificationOpen
   const viewerNavegacaoTravada = !canNavigateFromStory(viewerItem, mediaReady, verificationOpen)
 
@@ -707,6 +701,18 @@ export function StoryViewerDialog({
               )}
 
               <div className="flex shrink-0 items-center gap-2">
+                {possuiStoryAnterior ? (
+                  <button
+                    type="button"
+                    onClick={prevStory}
+                    disabled={viewerInteracoesTravadas}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FC1EAD]/20 text-white ring-1 ring-[#FC1EAD]/60 transition hover:bg-[#FC1EAD]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Story anterior"
+                    title="Story anterior"
+                  >
+                    <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                ) : null}
                 {possuiProximoStory ? (
                   <button
                     type="button"
@@ -743,13 +749,13 @@ export function StoryViewerDialog({
 
           <button
             type="button"
-            onClick={prevVisibleContent}
-            disabled={isFirstVisibleContent || viewerNavegacaoTravada}
-            aria-label={possuiMidiaAnterior ? "Mídia anterior" : "Story anterior"}
+            onClick={() => setAnuncioMidiaIndex((current) => Math.max(0, current - 1))}
+            disabled={!possuiMidiaAnterior || viewerNavegacaoTravada}
+            aria-label="Mídia anterior"
             className={[
               "absolute left-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
-              isFirstVisibleContent || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
+              !possuiMidiaAnterior || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
             ].join(" ")}
           >
             <ChevronLeftIcon className="h-6 w-6 text-white" />
@@ -757,13 +763,13 @@ export function StoryViewerDialog({
 
           <button
             type="button"
-            onClick={nextVisibleContent}
-            disabled={isLastVisibleContent || viewerNavegacaoTravada}
-            aria-label={possuiProximaMidia ? "Próxima mídia" : "Próximo Story"}
+            onClick={() => setAnuncioMidiaIndex((current) => Math.min(anuncioMidias.length - 1, current + 1))}
+            disabled={!possuiProximaMidia || viewerNavegacaoTravada}
+            aria-label="Próxima mídia"
             className={[
               "absolute right-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
-              isLastVisibleContent || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
+              !possuiProximaMidia || viewerNavegacaoTravada ? "opacity-40 cursor-not-allowed" : "opacity-100",
             ].join(" ")}
           >
             <ChevronRightIcon className="h-6 w-6 text-white" />
@@ -771,17 +777,17 @@ export function StoryViewerDialog({
 
           <button
             className="absolute left-0 top-0 h-full w-1/3 z-10"
-            onClick={prevVisibleContent}
-            aria-label={possuiMidiaAnterior ? "Mídia anterior (área)" : "Story anterior (área)"}
+            onClick={() => setAnuncioMidiaIndex((current) => Math.max(0, current - 1))}
+            aria-label="Mídia anterior (área)"
             type="button"
-            disabled={viewerNavegacaoTravada}
+            disabled={!possuiMidiaAnterior || viewerNavegacaoTravada}
           />
           <button
             className="absolute right-0 top-0 h-full w-1/3 z-10"
-            onClick={nextVisibleContent}
-            aria-label={possuiProximaMidia ? "Próxima mídia (área)" : "Próximo Story (área)"}
+            onClick={() => setAnuncioMidiaIndex((current) => Math.min(anuncioMidias.length - 1, current + 1))}
+            aria-label="Próxima mídia (área)"
             type="button"
-            disabled={viewerNavegacaoTravada}
+            disabled={!possuiProximaMidia || viewerNavegacaoTravada}
           />
 
           <div className="flex min-h-0 flex-1 w-full items-stretch justify-center overflow-hidden">{renderViewerBody()}</div>

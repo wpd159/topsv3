@@ -41,4 +41,21 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().message()).isEqualTo(
                 "Verificacao expirada. Inicie novamente.");
     }
+
+    @Test
+    void midiaStoryIncompativelPreservaMensagemSegura() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST",
+                "/api/public/minha-conta/stories");
+        String mensagem = "Vídeo incompatível. Use MP4 com vídeo H.264 e áudio AAC-LC.";
+
+        var response = new GlobalExceptionHandler().handleResponseStatus(
+                new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, mensagem),
+                request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(415);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo(ApiErrorCode.UNSUPPORTED_MEDIA_TYPE);
+        assertThat(response.getBody().message()).isEqualTo(mensagem);
+    }
 }

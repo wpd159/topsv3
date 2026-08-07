@@ -50,7 +50,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleResponseStatus(
             ResponseStatusException exception,
             HttpServletRequest request) {
-        return build(fromStatus(exception.getStatusCode().value()), request);
+        ApiErrorCode code = fromStatus(exception.getStatusCode().value());
+        if (code == ApiErrorCode.UNSUPPORTED_MEDIA_TYPE
+                && exception.getReason() != null
+                && !exception.getReason().isBlank()) {
+            return build(code, exception.getReason(), request);
+        }
+        return build(code, request);
     }
 
     @ExceptionHandler(StoryJaAtivoException.class)
@@ -94,12 +100,19 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ApiErrorResponse> build(ApiErrorCode code, HttpServletRequest request) {
+        return build(code, code.defaultMessage(), request);
+    }
+
+    private ResponseEntity<ApiErrorResponse> build(
+            ApiErrorCode code,
+            String message,
+            HttpServletRequest request) {
         ApiErrorResponse response = new ApiErrorResponse(
                 Instant.now(),
                 code.status().value(),
                 code.status().getReasonPhrase(),
                 code,
-                code.defaultMessage(),
+                message,
                 request.getRequestURI(),
                 RequestIdContext.current(request));
         return ResponseEntity.status(code.status()).body(response);

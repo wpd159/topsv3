@@ -80,8 +80,18 @@ check('9. listagem publica usa username e estado vazio', () => {
   matches(publicList, /Nenhum anúncio encontrado\./)
 })
 
-check('10. Meus Stories preserva independentes e multiplicidade', () => {
-  matches(management, /data\.itens\.map/)
+check('10. Meus Stories inicia recolhido e renderiza cards somente expandido', () => {
+  matches(management, /const \[expanded, setExpanded\] = useState\(false\)/)
+  matches(management, /resumoCompacto\(data, loading, error\)/)
+  matches(management, /aria-expanded=\{expanded\}/)
+  matches(management, /aria-controls="meus-stories-conteudo"/)
+  matches(management, /id="meus-stories-conteudo" hidden=\{!expanded\}/)
+  matches(management, /Ver meus Stories/)
+  matches(management, /Ocultar meus Stories/)
+  const expansionGuard = management.indexOf('{expanded ? (loading && !data ? (')
+  const cards = management.indexOf('data.itens.map')
+  assert.ok(expansionGuard >= 0 && cards > expansionGuard)
+  excludes(management, /localStorage|sessionStorage|document\.cookie/)
   matches(management, /Story independente/)
   matches(management, /Mídia:/)
 })
@@ -132,6 +142,14 @@ check('18. impressao de cards nao registra visualizacao', () => {
   excludes(publicList, /registrarVisualizacao|visualizacoes\/registrar|POST[^\n]*visualiza/i)
 })
 
-assert.equal(checks, 18)
+check('19. video de Story usa apenas validacao tecnica e mensagem especifica', () => {
+  matches(dialog, /function selectedStoryFileError\(file: File\)/)
+  matches(dialog, /Vídeos MOV não são compatíveis com Stories/)
+  matches(dialog, /error\.status === 415[\s\S]*error\.message/)
+  matches(dialog, /disabled=\{!file \|\| Boolean\(error\)\}/)
+  excludes(dialog + api, /VIDEO_1|FOTOS_EXTRA_5/)
+})
+
+assert.equal(checks, 19)
 console.log(`STORY_CREATE_MODES_CHECKS=${checks}`)
 console.log('STORY_CREATE_MODES_RESULT=OK')

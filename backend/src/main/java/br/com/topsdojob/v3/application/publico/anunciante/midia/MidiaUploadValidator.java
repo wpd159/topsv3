@@ -43,7 +43,14 @@ public class MidiaUploadValidator {
     }
 
     public MidiaValidada validarStory(MultipartFile multipart) {
-        return validar(multipart, true);
+        try {
+            return validar(multipart, true);
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode().value() == HttpStatus.UNSUPPORTED_MEDIA_TYPE.value()) {
+                throw formatoStoryInvalido(multipart);
+            }
+            throw exception;
+        }
     }
 
     private MidiaValidada validar(MultipartFile multipart, boolean compatibilidadeWebObrigatoria) {
@@ -485,6 +492,26 @@ public class MidiaUploadValidator {
     private String ascii(byte[] bytes, int offset, int length) {
         if (offset < 0 || length < 0 || offset + length > bytes.length) return "";
         return new String(bytes, offset, length, java.nio.charset.StandardCharsets.US_ASCII);
+    }
+
+    private ResponseStatusException formatoStoryInvalido(MultipartFile multipart) {
+        String extensao = multipart == null ? "" : extensao(multipart.getOriginalFilename());
+        String mime = multipart == null || multipart.getContentType() == null
+                ? ""
+                : multipart.getContentType().trim().toLowerCase(Locale.ROOT);
+        if ("mov".equals(extensao) || "video/quicktime".equals(mime)) {
+            return new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Vídeos MOV não são compatíveis com Stories. Envie MP4 com vídeo H.264 e áudio AAC-LC.");
+        }
+        if ("mp4".equals(extensao) || mime.startsWith("video/")) {
+            return new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Vídeo incompatível. Use MP4 com vídeo H.264 e áudio AAC-LC.");
+        }
+        return new ResponseStatusException(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "Use foto JPG, PNG ou WebP, ou vídeo MP4 com codec H.264.");
     }
 
     private ResponseStatusException formatoInvalido() {

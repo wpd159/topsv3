@@ -35,6 +35,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
@@ -48,6 +50,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class MinhaContaStoriesPublicacaoService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(MinhaContaStoriesPublicacaoService.class);
 
   private final MeusAnunciosConsultaService usuarioService;
   private final MeuAnuncioStoryConsultaService consultaService;
@@ -228,7 +232,20 @@ public class MinhaContaStoriesPublicacaoService {
       String chave,
       OffsetDateTime agora,
       String requestId) {
-    MidiaValidada validada = uploadValidator.validarStory(multipart);
+    MidiaValidada validada;
+    try {
+      validada = uploadValidator.validarStory(multipart);
+    } catch (ResponseStatusException exception) {
+      if (exception.getStatusCode().value() == HttpStatus.UNSUPPORTED_MEDIA_TYPE.value()) {
+        LOGGER.warn(
+            "story_media_rejected requestId={} validation=unsupported_media mime={} extension={} sizeBytes={}",
+            requestId,
+            mimeSeguro(multipart),
+            extensaoSegura(multipart),
+            multipart == null ? 0 : multipart.getSize());
+      }
+      throw exception;
+    }
     FotoProcessada foto = validada.video() ? null : fotoProcessor.processar(validada);
     byte[] bytes = foto == null ? validada.bytes() : foto.bytes();
     String mime = foto == null ? validada.mimeType() : foto.mimeType();
@@ -442,6 +459,24 @@ public class MinhaContaStoriesPublicacaoService {
         ("story-canonico-v1:" + tipo + ":" + usuarioId + ":" + modo.name()
             + ":" + (anuncioId == null ? "conta" : anuncioId) + ":" + chave)
             .getBytes(StandardCharsets.UTF_8));
+  }
+
+  private String mimeSeguro(MultipartFile multipart) {
+    String value = multipart == null || multipart.getContentType() == null
+        ? ""
+        : multipart.getContentType().trim().toLowerCase(Locale.ROOT);
+    return value.matches("[a-z0-9][a-z0-9.+-]{0,63}/[a-z0-9][a-z0-9.+-]{0,63}")
+        ? value
+        : "nao_informado";
+  }
+
+  private String extensaoSegura(MultipartFile multipart) {
+    String nome = multipart == null || multipart.getOriginalFilename() == null
+        ? ""
+        : multipart.getOriginalFilename().trim().toLowerCase(Locale.ROOT);
+    int separador = nome.lastIndexOf('.');
+    String value = separador < 0 || separador == nome.length() - 1 ? "" : nome.substring(separador + 1);
+    return value.matches("[a-z0-9]{1,10}") ? value : "nao_informada";
   }
 
   private OffsetDateTime agoraUtc() {

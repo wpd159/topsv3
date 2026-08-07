@@ -24,13 +24,30 @@ assert.match(viewerSource, /const \[anuncioMidiaIndex, setAnuncioMidiaIndex\] = 
 assert.match(viewerSource, /const anuncioMidias = useMemo/)
 assert.match(viewerSource, /setAnuncioMidiaIndex\(\(current\) => current \+ 1\)/)
 assert.match(viewerSource, /setAnuncioMidiaIndex\(\(current\) => current - 1\)/)
+assert.match(viewerSource, /const possuiStoryAnterior = Boolean\(currentBundle\)/)
+const previousStoryControl = viewerSource.match(
+  /\{possuiStoryAnterior \? \([\s\S]*?aria-label="Story anterior"[\s\S]*?\) : null\}/,
+)?.[0]
+assert.ok(previousStoryControl, 'Deve existir um controle explícito para o Story anterior.')
+assert.match(previousStoryControl, /onClick=\{prevStory\}/)
+assert.doesNotMatch(previousStoryControl, /prevVisibleContent|markCurrentStoryVisible|onStoryCurrent/)
 assert.match(viewerSource, /const possuiProximoStory = Boolean\(currentBundle\)/)
 const nextStoryControl = viewerSource.match(
   /\{possuiProximoStory \? \([\s\S]*?aria-label="Próximo Story"[\s\S]*?\) : null\}/,
 )?.[0]
 assert.ok(nextStoryControl, 'Deve existir um controle explícito para o próximo Story.')
 assert.match(nextStoryControl, /onClick=\{nextStory\}/)
-assert.doesNotMatch(nextStoryControl, /nextVisibleContent/)
+assert.doesNotMatch(nextStoryControl, /nextVisibleContent|markCurrentStoryVisible|onStoryCurrent/)
+const previousMediaControl = viewerSource.match(
+  /<button\s+type="button"\s+onClick=\{\(\) => setAnuncioMidiaIndex\(\(current\) => Math\.max\(0, current - 1\)\)\}[\s\S]*?aria-label="Mídia anterior"[\s\S]*?<\/button>/,
+)?.[0]
+const nextMediaControl = viewerSource.match(
+  /<button\s+type="button"\s+onClick=\{\(\) => setAnuncioMidiaIndex\(\(current\) => Math\.min\(anuncioMidias\.length - 1, current \+ 1\)\)\}[\s\S]*?aria-label="Próxima mídia"[\s\S]*?<\/button>/,
+)?.[0]
+assert.ok(previousMediaControl, 'A seta anterior deve navegar somente nas mídias do Story atual.')
+assert.ok(nextMediaControl, 'A seta seguinte deve navegar somente nas mídias do Story atual.')
+assert.doesNotMatch(previousMediaControl, /prevStory|prevVisibleContent/)
+assert.doesNotMatch(nextMediaControl, /nextStory|nextVisibleContent/)
 assert.match(
   viewerSource,
   /const nextVisibleContent = useCallback\([\s\S]*setAnuncioMidiaIndex\(\(current\) => current \+ 1\)[\s\S]*nextStory\(\)/,

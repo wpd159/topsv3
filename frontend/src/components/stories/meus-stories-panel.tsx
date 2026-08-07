@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useCallback, useEffect, useState } from 'react'
-import { AlertTriangle, Megaphone, RefreshCw, Trash2, Upload } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronUp, Megaphone, RefreshCw, Trash2, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -78,6 +78,25 @@ function encerramentoConfirmado(story: MeuStoryGerenciado) {
     'EXPIRADO',
   ].includes(story.estadoGerenciamento)
 }
+
+function resumoCompacto(data: MeusStoriesPagina | null, loading: boolean, error: string | null) {
+  if (loading && !data) return 'Carregando resumo...'
+  if (error && !data) return 'Resumo temporariamente indisponível'
+  if (!data || data.totalElementos === 0) return 'Nenhum Story recente'
+
+  const ativos = data.itens.filter((story) => story.estadoGerenciamento === 'ATIVO').length
+  const encerrados = data.itens.filter(encerramentoConfirmado).length
+  const outros = Math.max(0, data.itens.length - ativos - encerrados)
+  const partes = [
+    ativos > 0 ? `${ativos} ${ativos === 1 ? 'ativo' : 'ativos'}` : null,
+    encerrados > 0 ? `${encerrados} ${encerrados === 1 ? 'encerrado' : 'encerrados'}` : null,
+    outros > 0 ? `${outros} ${outros === 1 ? 'outro' : 'outros'}` : null,
+  ].filter((parte): parte is string => Boolean(parte))
+
+  if (data.totalPaginas > 1) partes.push(`${data.totalElementos} no total`)
+  return partes.join(' · ') || `${data.totalElementos} Stories recentes`
+}
+
 function errorMessage(error: unknown) {
   if (error instanceof MeusAnunciosApiError) {
     const suffix = error.requestId ? ` Código de atendimento: ${error.requestId}.` : ''
@@ -87,6 +106,7 @@ function errorMessage(error: unknown) {
 }
 
 export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
+  const [expanded, setExpanded] = useState(false)
   const [page, setPage] = useState(0)
   const [data, setData] = useState<MeusStoriesPagina | null>(null)
   const [loading, setLoading] = useState(true)
@@ -159,18 +179,39 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
   }
   return (
     <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="meus-stories-title">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h2 id="meus-stories-title" className="text-lg font-bold text-slate-950">Meus Stories</h2>
-          <p className="mt-1 text-sm text-slate-600">Acompanhe Stories de anúncios e mídias publicadas diretamente pela sua conta.</p>
+          <p className="mt-1 break-words text-sm text-slate-600" aria-live="polite">
+            {expanded
+              ? 'Acompanhe Stories de anúncios e mídias publicadas diretamente pela sua conta.'
+              : resumoCompacto(data, loading, error)}
+          </p>
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => void load(page)} disabled={loading}>
-          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-          Atualizar
-        </Button>
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+          {expanded ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => void load(page)} disabled={loading}>
+              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+              Atualizar
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-w-0 flex-1 sm:flex-none"
+            aria-expanded={expanded}
+            aria-controls="meus-stories-conteudo"
+            onClick={() => setExpanded((current) => !current)}
+          >
+            {expanded ? <ChevronUp className="mr-2 h-4 w-4" aria-hidden="true" /> : <ChevronDown className="mr-2 h-4 w-4" aria-hidden="true" />}
+            {expanded ? 'Ocultar meus Stories' : 'Ver meus Stories'}
+          </Button>
+        </div>
       </div>
 
-      {loading && !data ? (
+      <div id="meus-stories-conteudo" hidden={!expanded}>
+        {expanded ? (loading && !data ? (
         <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-600" role="status">Carregando seus Stories...</p>
       ) : error ? (
         <div className="mt-5 rounded-lg border border-rose-200 bg-rose-50 p-4" role="alert">
@@ -235,7 +276,8 @@ export function MeusStoriesPanel({ refreshVersion, onChanged }: Props) {
             </nav>
           ) : null}
         </>
-      )}
+        )) : null}
+      </div>
 
       <Dialog open={Boolean(selected)} onOpenChange={(next) => {
         if (!next && !ending) {

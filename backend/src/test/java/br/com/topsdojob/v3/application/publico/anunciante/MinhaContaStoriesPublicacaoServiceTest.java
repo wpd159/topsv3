@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -180,6 +181,55 @@ class MinhaContaStoriesPublicacaoServiceTest {
       assertThat(story.getCriadoPor()).isEqualTo(USUARIO_ID);
     });
     verify(anuncioRepository, never()).findByIdForModeration(any());
+  }
+
+  @Test
+  void contaSemAnuncioPublicaFotoSemBeneficioDeGaleria() throws Exception {
+    MockMultipartFile foto = new MockMultipartFile(
+        "arquivo", "story.png", "image/png", new byte[] {1, 2, 3, 4});
+    MidiaValidada validada = new MidiaValidada(
+        foto.getBytes(), false, "image/png", "png", foto.getOriginalFilename(),
+        720, 1280, null, sha256(foto.getBytes()));
+    FotoUploadProcessor.FotoProcessada processada = new FotoUploadProcessor.FotoProcessada(
+        foto.getBytes(), "image/png", "png", 720, 1280,
+        sha256(foto.getBytes()), sha256(foto.getBytes()), 1, "story-v1", AGORA);
+    when(validator.validarStory(foto)).thenReturn(validada);
+    when(fotoProcessor.processar(validada)).thenReturn(processada);
+
+    MinhaContaStoryDto resposta = service.publicar(
+        "MIDIA_UPLOAD", null, List.of(foto), "foto-1", authentication, "req-foto");
+
+    assertThat(resposta.anuncioId()).isNull();
+    assertThat(stories).singleElement().satisfies(story -> {
+      assertThat(story.getAnuncioId()).isNull();
+      assertThat(story.getAnuncioMidiaId()).isNull();
+      assertThat(story.getArquivoMidiaId()).isNotNull();
+    });
+    verify(anuncioRepository, never()).findByIdForModeration(any());
+  }
+
+  @Test
+  void midiaInvalidaPreservaDireitoSemVigenciaStorageOuPersistencia() {
+    MockMultipartFile arquivo = video("invalido.mp4");
+    when(validator.validarStory(arquivo)).thenThrow(new ResponseStatusException(
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        "Vídeo incompatível. Use MP4 com vídeo H.264 e áudio AAC-LC."));
+
+    assertStatus(() -> service.publicar(
+        "MIDIA_UPLOAD", null, List.of(arquivo), "invalido-1", authentication, "story-test-a"),
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    assertStatus(() -> service.publicar(
+        "MIDIA_UPLOAD", null, List.of(arquivo), "invalido-2", authentication, "story-test-b"),
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+
+    verify(direitoService, times(2)).reservarParaPublicacao(
+        eq(ModoConteudoStory.MIDIA_UPLOAD), eq(null), eq(USUARIO_ID), any());
+    verify(direitoService, never()).iniciarVigencia(any(), any());
+    verify(storage, never()).putIfAbsent(any(), any(), any(), any());
+    verify(arquivoRepository, never()).saveAndFlush(any());
+    verify(storyRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
+    assertThat(stories).isEmpty();
   }
 
   @Test

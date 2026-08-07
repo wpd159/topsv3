@@ -53,13 +53,16 @@ class MidiaUploadValidatorTest {
 
         assertStoryStatus(validator, new MockMultipartFile(
                 "arquivo", "video.mov", "video/quicktime", mp4Compativel(false)),
-                HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "MOV");
         assertStoryStatus(validator, new MockMultipartFile(
                 "arquivo", "video.mp4", "video/mp4", mp4ComCodec("hvc1", false)),
-                HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "H.264");
         assertStoryStatus(validator, new MockMultipartFile(
                 "arquivo", "video.mp4", "video/mp4", mp4ComAudio(false)),
-                HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                "AAC-LC");
     }
 
     @Test
@@ -103,10 +106,14 @@ class MidiaUploadValidatorTest {
     private void assertStoryStatus(
             MidiaUploadValidator validator,
             MockMultipartFile arquivo,
-            HttpStatus status) {
+            HttpStatus status,
+            String mensagem) {
         assertThatThrownBy(() -> validator.validarStory(arquivo))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
-                        exception -> assertThat(exception.getStatusCode()).isEqualTo(status));
+                        exception -> {
+                            assertThat(exception.getStatusCode()).isEqualTo(status);
+                            assertThat(exception.getReason()).contains(mensagem);
+                        });
     }
 
     private byte[] png(int width, int height) throws IOException {

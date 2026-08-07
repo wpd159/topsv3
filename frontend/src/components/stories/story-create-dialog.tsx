@@ -36,6 +36,16 @@ type Props = {
 
 const ACCEPTED_MEDIA = '.jpg,.jpeg,.png,.webp,.mp4,image/jpeg,image/png,image/webp,video/mp4'
 
+function selectedStoryFileError(file: File) {
+  const extension = file.name.trim().toLowerCase().split('.').pop() ?? ''
+  const isVideo = file.type.startsWith('video/') || extension === 'mp4' || extension === 'mov'
+  if (!isVideo) return null
+  if (extension !== 'mp4' || file.type.toLowerCase() === 'video/quicktime') {
+    return 'Vídeos MOV não são compatíveis com Stories. Converta o arquivo para MP4 com vídeo H.264 e áudio AAC-LC.'
+  }
+  return null
+}
+
 function pluralizeCredits(value: number) {
   return `${value} ${value === 1 ? 'crédito' : 'créditos'}`
 }
@@ -52,7 +62,7 @@ function storyErrorMessage(error: unknown) {
   if (error.status === 403) return 'Você não tem permissão para publicar este Story.'
   if (error.status === 409) return error.message || 'O estado do anúncio ou do direito mudou.'
   if (error.status === 413) return 'O arquivo ultrapassa o limite permitido.'
-  if (error.status === 415) return 'Use uma foto JPG, PNG ou WebP, ou um vídeo MP4 compatível.'
+  if (error.status === 415) return error.message || 'Use uma foto JPG, PNG ou WebP, ou um vídeo MP4 compatível.'
   if (error.status === 422) return error.message || 'A mídia não pôde ser processada.'
   return error.message || 'Não foi possível publicar o Story. Tente novamente.'
 }
@@ -187,6 +197,7 @@ export function StoryCreateDialog({
   function selectFile(next: File | null) {
     setFile(next)
     resetIntent()
+    setError(next ? selectedStoryFileError(next) : null)
   }
 
   async function publishStory(activatedNow = activationCompleted) {
@@ -211,7 +222,7 @@ export function StoryCreateDialog({
       toast.success(mode === 'ANUNCIO' ? 'Seu anúncio foi publicado nos Stories.' : 'Seu Story foi publicado.')
     } catch (cause) {
       setError(activatedNow
-        ? `Seu direito de Story foi ativado, mas a publicação não foi concluída. Tente novamente. Nenhuma nova cobrança será feita.${requestIdSuffix(cause)}`
+        ? `Seu direito de Story foi ativado, mas a publicação não foi concluída. ${storyErrorMessage(cause)} Nenhuma nova cobrança será feita.${requestIdSuffix(cause)}`
         : `${storyErrorMessage(cause)}${requestIdSuffix(cause)}`)
     } finally {
       setPublishing(false)
@@ -345,7 +356,7 @@ export function StoryCreateDialog({
               {error ? <p className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" role="alert">{error}</p> : null}
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button type="button" variant="outline" onClick={() => { setMode(null); setFile(null); setStep('ESCOLHER_MODO') }}>Voltar</Button>
-                <Button type="button" disabled={!file} onClick={() => { setError(null); setStep('REVISAR') }}>Revisar Story</Button>
+                <Button type="button" disabled={!file || Boolean(error)} onClick={() => { setError(null); setStep('REVISAR') }}>Revisar Story</Button>
               </div>
             </div>
           ) : step === 'REVISAR' ? (
