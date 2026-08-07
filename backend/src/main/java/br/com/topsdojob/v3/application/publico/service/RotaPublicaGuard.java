@@ -18,7 +18,9 @@ final class RotaPublicaGuard {
 
     static String username(String value) {
         String normalized = required(value, "username").toLowerCase(java.util.Locale.ROOT);
-        if (!normalized.matches("[0-9a-f]{32}")) {
+        if (normalized.length() < 3
+                || normalized.length() > 120
+                || normalized.chars().anyMatch(Character::isISOControl)) {
             throw badRequest("username invalido");
         }
         return normalized;

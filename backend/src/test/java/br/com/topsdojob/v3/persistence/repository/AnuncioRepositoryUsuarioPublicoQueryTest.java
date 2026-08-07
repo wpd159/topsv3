@@ -46,7 +46,8 @@ class AnuncioRepositoryUsuarioPublicoQueryTest {
         .contains("u.excluido_em is null")
         .contains("dba.status_publicacao = 'PUBLICAVEL'")
         .contains("dba.tem_midia_valida = true")
-        .doesNotContain("lower(u.nome)")
+        .contains("from anuncio_bloqueio_juridico bloqueio")
+        .contains("bloqueio.anuncio_desbloqueado_em is null")
         .doesNotContain("email_normalizado")
         .doesNotContain("telefone_normalizado")
         .doesNotContain("cpf_normalizado")
@@ -54,16 +55,18 @@ class AnuncioRepositoryUsuarioPublicoQueryTest {
   }
 
   @Test
-  void resolveTokenOpacoParaUmaUnicaContaAtivaSemExporDadosPessoais() throws Exception {
+  void resolveUsernamePublicoCanonicoParaUmaUnicaContaAtivaSemExporDadosPessoais() throws Exception {
     Method method = AnuncioRepository.class.getMethod(
         "findUsuarioPublicoPorUsername",
         String.class);
     String query = method.getAnnotation(Query.class).value();
 
     assertThat(query)
-        .contains("md5('topsv3-public-user-v1:' || u.id::text) = :username")
+        .contains("lower(btrim(u.nome)) = :username")
         .contains("u.status = 'ATIVO'")
         .contains("u.tipo_conta = 'ANUNCIANTE'")
+        .doesNotContain("md5(")
+        .doesNotContain("topsv3-public-user-v1")
         .doesNotContain("email_normalizado")
         .doesNotContain("telefone_normalizado")
         .doesNotContain("cpf_normalizado")

@@ -210,7 +210,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     @Query(value = """
             select u.id as "usuarioId", u.nome as "displayUsername"
             from usuario u
-            where md5('topsv3-public-user-v1:' || u.id::text) = :username
+            where lower(btrim(u.nome)) = :username
               and u.status = 'ATIVO'
               and u.tipo_conta = 'ANUNCIANTE'
               and u.desativado_em is null
@@ -242,6 +242,12 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         where dba.anuncio_id = a.id
                           and dba.status_publicacao = 'PUBLICAVEL'
                           and dba.tem_midia_valida = true
+                      )
+                      and not exists (
+                        select 1
+                        from anuncio_bloqueio_juridico bloqueio
+                        where bloqueio.anuncio_id = a.id
+                          and bloqueio.anuncio_desbloqueado_em is null
                       )
                     order by
                       case when exists (
@@ -286,6 +292,12 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         where dba.anuncio_id = a.id
                           and dba.status_publicacao = 'PUBLICAVEL'
                           and dba.tem_midia_valida = true
+                      )
+                      and not exists (
+                        select 1
+                        from anuncio_bloqueio_juridico bloqueio
+                        where bloqueio.anuncio_id = a.id
+                          and bloqueio.anuncio_desbloqueado_em is null
                       )
                     """,
             nativeQuery = true)

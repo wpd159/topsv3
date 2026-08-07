@@ -45,6 +45,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidi
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -242,6 +243,75 @@ class AnuncioPublicoConsultaServiceTest {
     }
 
     @Test
+    void storyReavaliaLimiteAtualDeFotosEVideoSemSnapshot() {
+        UUID anuncioId = UUID.randomUUID();
+        AnuncioEntity anuncio = anuncio(anuncioId, UUID.randomUUID(), "story-limites", "Story limites");
+        List<AnuncioMidiaEntity> vinculos = new ArrayList<>();
+        List<ArquivoMidiaEntity> arquivos = new ArrayList<>();
+        for (int ordem = 0; ordem < 11; ordem++) {
+            UUID arquivoId = UUID.randomUUID();
+            vinculos.add(vinculo(anuncioId, arquivoId, TipoAnuncioMidia.FOTO, ordem, StatusAnuncioMidia.PUBLICAVEL));
+            arquivos.add(arquivo(arquivoId, "image/jpeg"));
+        }
+        UUID videoArquivoId = UUID.randomUUID();
+        vinculos.add(vinculo(anuncioId, videoArquivoId, TipoAnuncioMidia.VIDEO, 20, StatusAnuncioMidia.PUBLICAVEL));
+        arquivos.add(arquivo(videoArquivoId, "video/mp4"));
+        UUID pendenteArquivoId = UUID.randomUUID();
+        vinculos.add(vinculo(anuncioId, pendenteArquivoId, TipoAnuncioMidia.FOTO, 21, StatusAnuncioMidia.PENDENTE));
+        arquivos.add(arquivo(pendenteArquivoId, "image/jpeg"));
+
+        AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
+        ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+        MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
+        PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
+        when(midiaRepository.findByAnuncioId(anuncioId)).thenReturn(vinculos);
+        when(arquivoRepository.findByIdIn(any())).thenReturn(arquivos);
+        when(urlService.resolver(any(), any())).thenAnswer(invocation -> {
+            AnuncioMidiaEntity vinculo = invocation.getArgument(0);
+            return new MidiaPublicaUrlService.ResultadoUrlPublica(
+                    "/api/public/compliance/visitor/media/" + vinculo.getId(), null);
+        });
+        PremiumPublicoFlagsDto comExtrasEVideo = new PremiumPublicoFlagsDto(
+                false, false, true, false, true, false,
+                true, false, true, false, List.of("Fotos extras", "Video"));
+        when(premiumMapper.flags(anuncio))
+                .thenReturn(comExtrasEVideo)
+                .thenReturn(PremiumPublicoFlagsDto.vazio());
+        AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
+                mock(AnuncioRepository.class),
+                mock(AnuncioLocalizacaoRepository.class),
+                midiaRepository,
+                arquivoRepository,
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
+                new MidiaPublicaMapper(urlService),
+                new MidiaPublicaSeguraPolicy(),
+                mock(SeoPublicoConsultaService.class),
+                mock(ComplianceVisitorAccessService.class),
+                premiumMapper,
+                mock(EstadoRepository.class),
+                mock(CidadeRepository.class),
+                mock(BairroRepository.class),
+                mock(PoliticaContatoPublicoService.class),
+                mock(AnuncioSeoIndexabilidadePolicy.class),
+                mock(IdadeAnunciantePublicaService.class),
+                mock(VisualizacaoTotalCanonicaService.class));
+
+        var comExtras = service.midiasParaStory(anuncio, true);
+        var semExtras = service.midiasParaStory(anuncio, true);
+
+        assertThat(comExtras).filteredOn(item -> "FOTO".equals(item.tipo())).hasSize(10);
+        assertThat(comExtras).filteredOn(item -> "VIDEO".equals(item.tipo())).hasSize(1);
+        assertThat(comExtras).extracting(item -> item.ordem()).isSorted();
+        assertThat(semExtras).filteredOn(item -> "FOTO".equals(item.tipo())).hasSize(4);
+        assertThat(semExtras).noneMatch(item -> "VIDEO".equals(item.tipo()));
+        assertThat(semExtras).allSatisfy(item -> {
+            assertThat(item.autorizada()).isTrue();
+            assertThat(item.urlPublica()).startsWith("/api/public/compliance/visitor/media/");
+            assertThat(item.toString()).doesNotContain("objectKey").doesNotContain("X-Amz-");
+        });
+    }
+
+    @Test
     void relacionadosUsamLocalSemCompletarEFallbackSomenteQuandoLocalVazio() {
         UUID anuncioAtualId = UUID.randomUUID();
         UUID usuarioAtualId = UUID.randomUUID();
@@ -391,6 +461,32 @@ class AnuncioPublicoConsultaServiceTest {
         set(anuncio, "locaisAtendimento", Set.of());
         set(anuncio, "servicos", Set.of());
         return anuncio;
+    }
+
+    private AnuncioMidiaEntity vinculo(
+            UUID anuncioId,
+            UUID arquivoId,
+            TipoAnuncioMidia tipo,
+            int ordem,
+            StatusAnuncioMidia status) {
+        AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
+        set(vinculo, "id", UUID.randomUUID());
+        set(vinculo, "anuncioId", anuncioId);
+        set(vinculo, "arquivoMidiaId", arquivoId);
+        set(vinculo, "tipo", tipo);
+        set(vinculo, "finalidade", FinalidadeAnuncioMidia.GALERIA);
+        set(vinculo, "ordem", ordem);
+        set(vinculo, "status", status);
+        set(vinculo, "visibilidadeMidia", VisibilidadeMidia.LIVRE);
+        return vinculo;
+    }
+
+    private ArquivoMidiaEntity arquivo(UUID id, String mimeType) {
+        ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
+        set(arquivo, "id", id);
+        set(arquivo, "statusArquivo", StatusArquivoMidia.VALIDADO);
+        set(arquivo, "mimeType", mimeType);
+        return arquivo;
     }
 
     private AnuncioLocalizacaoEntity localizacao(UUID anuncioId, UUID estadoId, UUID cidadeId) {

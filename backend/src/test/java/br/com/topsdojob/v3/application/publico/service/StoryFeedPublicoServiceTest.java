@@ -5,13 +5,14 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.compliance.ComplianceVisitorAccessService;
-import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
+import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService;
 import br.com.topsdojob.v3.application.stories.StoryMidiaElegibilidadeService.MidiaElegivel;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
@@ -44,6 +45,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -64,7 +66,8 @@ class StoryFeedPublicoServiceTest {
             mock(IdadeAnunciantePublicaService.class);
     private final PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
     private final MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
-    private final MidiaPublicaMapper midiaMapper = new MidiaPublicaMapper(urlService);
+    private final AnuncioPublicoConsultaService anuncioConsultaService =
+            mock(AnuncioPublicoConsultaService.class);
     private final StoryAnuncioApresentacaoService apresentacaoService =
             mock(StoryAnuncioApresentacaoService.class);
     private StoryFeedPublicoService service;
@@ -83,11 +86,13 @@ class StoryFeedPublicoServiceTest {
                 idadeAnuncianteService,
                 premiumMapper,
                 urlService,
-                midiaMapper,
+                anuncioConsultaService,
                 apresentacaoService);
         when(premiumMapper.flagsPorAnuncios(any())).thenReturn(Map.of());
         when(premiumMapper.flags(any())).thenReturn(PremiumPublicoFlagsDto.vazio());
+        when(premiumMapper.usuariosComIdadeOcultaNosStories(any())).thenReturn(Set.of());
         when(idadeAnuncianteService.resolverPorAnuncios(any(), any())).thenReturn(Map.of());
+        when(idadeAnuncianteService.resolverPorUsuarios(any(), any())).thenReturn(Map.of());
         when(idadeAnuncianteService.resolver(any(), org.mockito.ArgumentMatchers.anyBoolean()))
                 .thenReturn(new IdadeAnunciantePublicaService.Resultado("Perfil", null, false));
         when(elegibilidadeService.listarPorAnuncios(any())).thenReturn(Map.of());
@@ -143,6 +148,7 @@ class StoryFeedPublicoServiceTest {
         assertThat(viewer.displayUsername()).isNull();
         assertThat(viewer.cidade()).isNull();
         verify(apresentacaoService, never()).apresentar(any());
+        verify(anuncioConsultaService, never()).midiasParaStory(any(), anyBoolean());
         verify(elegibilidadeService, never()).listar(any());
         verify(urlService, never()).resolver(any(), any());
         verify(urlService, never()).resolverPreviewRestrita(any());
@@ -152,24 +158,12 @@ class StoryFeedPublicoServiceTest {
     void storyAnuncioDepoisDoGateRetornaGaleriaPublicavelNaOrdemCanonica() {
         MockHttpServletRequest request = new MockHttpServletRequest();
         UUID anuncioId = UUID.randomUUID();
-        UUID outroAnuncioId = UUID.randomUUID();
         UUID usuarioId = UUID.randomUUID();
         AnuncioEntity anuncio = anuncio(anuncioId, usuarioId, "story-anuncio-liberado");
         StoryAnuncioEntity story = storyAnuncio(anuncioId, 0);
-        MidiaElegivel ordemDois = midiaElegivel(anuncioId, UUID.randomUUID(), 2);
-        MidiaElegivel ordemZero = midiaElegivel(anuncioId, UUID.randomUUID(), 0);
-        set(ordemZero.vinculo(), "tipo", TipoAnuncioMidia.VIDEO);
-        set(ordemZero.arquivo(), "mimeType", "video/mp4");
-        MidiaElegivel ordemUm = midiaElegivel(anuncioId, UUID.randomUUID(), 1);
-        MidiaElegivel pendente = midiaElegivel(anuncioId, UUID.randomUUID(), 3);
-        set(pendente.vinculo(), "status", StatusAnuncioMidia.PENDENTE);
-        MidiaElegivel rejeitada = midiaElegivel(anuncioId, UUID.randomUUID(), 4);
-        set(rejeitada.vinculo(), "status", StatusAnuncioMidia.REJEITADA);
-        MidiaElegivel removida = midiaElegivel(anuncioId, UUID.randomUUID(), 5);
-        set(removida.vinculo(), "status", StatusAnuncioMidia.REMOVIDA);
-        MidiaElegivel arquivoPendente = midiaElegivel(anuncioId, UUID.randomUUID(), 6);
-        set(arquivoPendente.arquivo(), "statusArquivo", StatusArquivoMidia.PENDENTE);
-        MidiaElegivel deOutroAnuncio = midiaElegivel(outroAnuncioId, UUID.randomUUID(), 0);
+        UUID ordemZeroId = UUID.randomUUID();
+        UUID ordemUmId = UUID.randomUUID();
+        UUID ordemDoisId = UUID.randomUUID();
 
         when(visitorAccessService.autorizado(request, EscopoConteudoVisitante.STORY)).thenReturn(true);
         when(storyRepository.findByIdAndStatus(story.getId(), StatusStoryAnuncio.PUBLICADO))
@@ -178,15 +172,10 @@ class StoryFeedPublicoServiceTest {
         UsuarioEntity usuario = usuarioAtivo(usuarioId);
         set(usuario, "nome", "qa_publica");
         when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuario));
-        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of(
-                ordemDois, rejeitada, ordemZero, deOutroAnuncio, ordemUm,
-                pendente, removida, arquivoPendente));
-        when(urlService.resolver(ordemZero.vinculo(), ordemZero.arquivo())).thenReturn(
-                new ResultadoUrlPublica("/api/public/compliance/visitor/media/" + ordemZero.vinculo().getId(), null));
-        when(urlService.resolver(ordemUm.vinculo(), ordemUm.arquivo())).thenReturn(
-                new ResultadoUrlPublica("/api/public/compliance/visitor/media/" + ordemUm.vinculo().getId(), null));
-        when(urlService.resolver(ordemDois.vinculo(), ordemDois.arquivo())).thenReturn(
-                new ResultadoUrlPublica("/api/public/compliance/visitor/media/" + ordemDois.vinculo().getId(), null));
+        when(anuncioConsultaService.midiasParaStory(anuncio, true)).thenReturn(List.of(
+                midiaPublica(ordemZeroId, "VIDEO", 0),
+                midiaPublica(ordemUmId, "FOTO", 1),
+                midiaPublica(ordemDoisId, "FOTO", 2)));
         when(apresentacaoService.apresentar(anuncio)).thenReturn(
                 new StoryAnuncioApresentacaoService.Apresentacao(
                         anuncio.getTitulo(), "Cidade QA", "GO", java.math.BigDecimal.valueOf(150), "Resumo seguro"));
@@ -203,21 +192,22 @@ class StoryFeedPublicoServiceTest {
         assertThat(viewer.midias())
                 .extracting(item -> item.id())
                 .containsExactly(
-                        ordemZero.vinculo().getId(),
-                        ordemUm.vinculo().getId(),
-                        ordemDois.vinculo().getId());
+                        ordemZeroId,
+                        ordemUmId,
+                        ordemDoisId);
         assertThat(viewer.midias())
                 .extracting(item -> item.urlPublica())
                 .allSatisfy(url -> assertThat(url)
                         .startsWith("/api/public/compliance/visitor/media/")
-                        .doesNotContain("X-Amz-"));
+                         .doesNotContain("X-Amz-"));
         assertThat(viewer.usuarioUsername()).isEqualTo("qa_publica");
         assertThat(viewer.displayUsername()).isEqualTo("qa_publica");
         assertThat(viewer.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
         assertThat(viewer.cidade()).isEqualTo("Cidade QA");
         assertThat(viewer.uf()).isEqualTo("GO");
         assertThat(viewer.resumo()).isEqualTo("Resumo seguro");
-        verify(elegibilidadeService).listar(anuncioId);
+        verify(anuncioConsultaService).midiasParaStory(anuncio, true);
+        verify(elegibilidadeService, never()).listar(anuncioId);
         verify(midiaRepository, never()).findById(any());
     }
 
@@ -233,7 +223,7 @@ class StoryFeedPublicoServiceTest {
                 .thenReturn(Optional.of(story));
         when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
         when(usuarioRepository.findById(usuarioId)).thenReturn(Optional.of(usuarioAtivo(usuarioId)));
-        when(elegibilidadeService.listar(anuncioId)).thenReturn(List.of());
+        when(anuncioConsultaService.midiasParaStory(anuncio, true)).thenReturn(List.of());
         when(apresentacaoService.apresentar(anuncio)).thenReturn(
                 new StoryAnuncioApresentacaoService.Apresentacao(
                         anuncio.getTitulo(), "Cidade QA", "GO", java.math.BigDecimal.TEN, "Resumo seguro"));
@@ -244,7 +234,8 @@ class StoryFeedPublicoServiceTest {
         assertThat(viewer.midias()).isEmpty();
         assertThat(viewer.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
         assertThat(viewer.resumo()).isEqualTo("Resumo seguro");
-        verify(elegibilidadeService).listar(anuncioId);
+        verify(anuncioConsultaService).midiasParaStory(anuncio, true);
+        verify(elegibilidadeService, never()).listar(anuncioId);
         verify(urlService, never()).resolver(any(), any());
     }
 
@@ -534,8 +525,8 @@ class StoryFeedPublicoServiceTest {
         when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
         when(anuncioRepository.findAllById(any())).thenReturn(List.of(anuncio));
         org.mockito.Mockito.doReturn(List.of(usuario)).when(usuarioRepository).findAllById(any());
-        when(idadeAnuncianteService.resolverPorAnuncios(any(), any()))
-                .thenReturn(Map.of(anuncioId, idade));
+        when(idadeAnuncianteService.resolverPorUsuarios(any(), any()))
+                .thenReturn(Map.of(usuarioId, idade));
         when(storyRepository.findByIdAndStatus(storyAnuncio.getId(), StatusStoryAnuncio.PUBLICADO))
                 .thenReturn(Optional.of(storyAnuncio));
         when(storyRepository.findByIdAndStatus(storyMidia.getId(), StatusStoryAnuncio.PUBLICADO))
@@ -557,6 +548,7 @@ class StoryFeedPublicoServiceTest {
         assertThat(feed).allSatisfy(bundle -> {
             assertThat(bundle.usuarioUsername()).isEqualTo("wesley");
             assertThat(bundle.displayUsername()).isEqualTo("wesley");
+            assertThat(bundle.idade()).isEqualTo(30);
             assertThat(bundle.itens()).hasSize(1);
             assertThat(bundle.bundleKey()).isEqualTo(bundle.itens().get(0).storyId());
         });
@@ -565,16 +557,20 @@ class StoryFeedPublicoServiceTest {
         assertThat(itemAnuncio.modoConteudo()).isEqualTo("ANUNCIO");
         assertThat(itemAnuncio.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
         assertThat(itemAnuncio.displayUsername()).isEqualTo("wesley");
+        assertThat(itemAnuncio.idade()).isEqualTo(30);
         assertThat(itemMidia.modoConteudo()).isEqualTo("MIDIA_UPLOAD");
         assertThat(itemMidia.anuncioTitulo()).isNull();
         assertThat(itemMidia.displayUsername()).isEqualTo("wesley");
+        assertThat(itemMidia.idade()).isEqualTo(30);
         assertThat(itemAnuncio.storyId()).isNotEqualTo(itemMidia.storyId());
         assertThat(viewerAnuncio.usuarioUsername()).isEqualTo("wesley");
         assertThat(viewerAnuncio.displayUsername()).isEqualTo("wesley");
         assertThat(viewerAnuncio.anuncioTitulo()).isEqualTo(anuncio.getTitulo());
+        assertThat(viewerAnuncio.idade()).isEqualTo(30);
         assertThat(viewerMidia.usuarioUsername()).isEqualTo("wesley");
         assertThat(viewerMidia.displayUsername()).isEqualTo("wesley");
         assertThat(viewerMidia.anuncioTitulo()).isNull();
+        assertThat(viewerMidia.idade()).isEqualTo(30);
         assertThat(List.of(
                 itemAnuncio.usuarioUsername(),
                 itemAnuncio.displayUsername(),
@@ -609,6 +605,22 @@ class StoryFeedPublicoServiceTest {
         assertThatThrownBy(() -> service.buscar(story.getId().toString(), request))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("404");
+    }
+
+    private MidiaPublicaDto midiaPublica(UUID id, String tipo, int ordem) {
+        return new MidiaPublicaDto(
+                id,
+                tipo,
+                "GALERIA",
+                ordem,
+                "RESTRITA_18",
+                true,
+                "/api/public/compliance/visitor/media/" + id,
+                null,
+                null,
+                720,
+                1280,
+                "VIDEO".equals(tipo) ? "video/mp4" : "image/jpeg");
     }
 
     private StorySelecaoAdministrativaEntity selecao(UUID anuncioId) {

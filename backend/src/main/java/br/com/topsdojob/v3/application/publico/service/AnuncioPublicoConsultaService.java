@@ -254,6 +254,15 @@ public class AnuncioPublicoConsultaService {
         return midias(anuncioId, false, premium);
     }
 
+    List<MidiaPublicaDto> midiasParaStory(
+            AnuncioEntity anuncio,
+            boolean idadeConfirmada) {
+        if (!idadeConfirmada || anuncio == null || anuncio.getId() == null) {
+            return List.of();
+        }
+        return midias(anuncio.getId(), true, premiumMapper.flags(anuncio));
+    }
+
     Map<UUID, List<MidiaPublicaDto>> midiasPorAnuncios(
             List<UUID> anuncioIds,
             Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {

@@ -19,6 +19,8 @@ public interface AtivacaoBeneficioRepository extends JpaRepository<AtivacaoBenef
 
     List<AtivacaoBeneficioEntity> findByAnuncioIdIn(Collection<UUID> anuncioIds);
 
+    List<AtivacaoBeneficioEntity> findByUsuarioIdIn(Collection<UUID> usuarioIds);
+
     List<AtivacaoBeneficioEntity> findByGrupoAtivacaoIdIn(Collection<UUID> grupoAtivacaoIds);
 
     List<AtivacaoBeneficioEntity> findByFimEmBetween(OffsetDateTime inicio, OffsetDateTime fim);

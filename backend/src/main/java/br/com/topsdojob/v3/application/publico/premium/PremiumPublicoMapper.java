@@ -59,6 +59,19 @@ public class PremiumPublicoMapper {
                 (primeiro, ignorado) -> primeiro));
     }
 
+    @Transactional(readOnly = true)
+    public Set<UUID> usuariosComIdadeOcultaNosStories(Collection<UUID> usuarioIds) {
+        if (usuarioIds == null || usuarioIds.isEmpty()) {
+            return Set.of();
+        }
+        return beneficioService.consultarCalculadosPorUsuario(usuarioIds).entrySet().stream()
+                .filter(entry -> entry.getValue().stream()
+                        .anyMatch(item -> publicavel(item)
+                                && OCULTAR_IDADE.equals(item.beneficio().getCodigo())))
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
     private PremiumPublicoFlagsDto flags(List<PremiumBeneficioCalculado> todos) {
         List<PremiumBeneficioCalculado> calculados = todos.stream()
                 .filter(this::publicavel)

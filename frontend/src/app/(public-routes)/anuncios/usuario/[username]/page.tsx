@@ -22,7 +22,7 @@ export default async function AnunciosUsuarioPage({
   params: Promise<{ username: string }>
 }) {
   const { username: rawUsername } = await params
-  const usuarioPublicoId = rawUsername ? decodeURIComponent(rawUsername) : ""
+  const publicUsername = rawUsername ? decodeURIComponent(rawUsername) : ""
 
-  return <AnunciosUsuarioClient usuarioPublicoId={usuarioPublicoId} />
+  return <AnunciosUsuarioClient publicUsername={publicUsername} />
 }

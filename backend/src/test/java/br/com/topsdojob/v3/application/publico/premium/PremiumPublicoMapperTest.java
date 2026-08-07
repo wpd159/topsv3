@@ -20,6 +20,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -100,6 +102,29 @@ class PremiumPublicoMapperTest {
                 calculado(OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO, OrigemBeneficio.COMPRA)));
 
         assertThat(mapper.flags(anuncio).idadeOculta()).isFalse();
+    }
+
+    @Test
+    void storiesOcultamIdadePorContaSomenteComAtivacaoVigente() {
+        UUID usuarioAtivo = UUID.randomUUID();
+        UUID usuarioVencendo = UUID.randomUUID();
+        UUID usuarioExpirado = UUID.randomUUID();
+        UUID usuarioRevogado = UUID.randomUUID();
+        when(beneficioService.consultarCalculadosPorUsuario(
+                Set.of(usuarioAtivo, usuarioVencendo, usuarioExpirado, usuarioRevogado)))
+                .thenReturn(Map.of(
+                        usuarioAtivo, List.of(calculado(
+                                OCULTAR_IDADE, PremiumBeneficioStatusCalculado.ATIVO)),
+                        usuarioVencendo, List.of(calculado(
+                                OCULTAR_IDADE, PremiumBeneficioStatusCalculado.VENCENDO)),
+                        usuarioExpirado, List.of(calculado(
+                                OCULTAR_IDADE, PremiumBeneficioStatusCalculado.EXPIRADO)),
+                        usuarioRevogado, List.of(calculado(
+                                OCULTAR_IDADE, PremiumBeneficioStatusCalculado.INATIVO))));
+
+        assertThat(mapper.usuariosComIdadeOcultaNosStories(
+                Set.of(usuarioAtivo, usuarioVencendo, usuarioExpirado, usuarioRevogado)))
+                .containsExactlyInAnyOrder(usuarioAtivo, usuarioVencendo);
     }
 
     private PremiumBeneficioCalculado calculado(String codigo, PremiumBeneficioStatusCalculado status) {

@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import java.util.Collection;
 import java.util.Map;
+import java.util.Set;
 import java.time.LocalDate;
 import java.time.Period;
 import java.time.ZoneOffset;
@@ -60,6 +61,23 @@ public class IdadeAnunciantePublicaService {
                 && premiumPorAnuncio.getOrDefault(anuncio.getId(), PremiumPublicoFlagsDto.vazio()).idadeOculta(),
             hoje),
         (primeiro, ignorado) -> primeiro));
+  }
+
+  public Map<UUID, Resultado> resolverPorUsuarios(
+      Collection<UsuarioEntity> usuarios,
+      Set<UUID> usuariosComIdadeOculta) {
+    if (usuarios == null || usuarios.isEmpty()) {
+      return Map.of();
+    }
+    Set<UUID> ocultos = usuariosComIdadeOculta == null ? Set.of() : usuariosComIdadeOculta;
+    LocalDate hoje = LocalDate.now(ZoneOffset.UTC);
+    return usuarios.stream()
+        .filter(java.util.Objects::nonNull)
+        .filter(usuario -> usuario.getId() != null)
+        .collect(Collectors.toMap(
+            UsuarioEntity::getId,
+            usuario -> resultado(usuario, ocultos.contains(usuario.getId()), hoje),
+            (primeiro, ignorado) -> primeiro));
   }
 
   private Resultado resultado(UsuarioEntity usuario, boolean idadeOculta, LocalDate hoje) {

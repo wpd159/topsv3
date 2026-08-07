@@ -69,6 +69,19 @@ public class BeneficioAnuncioConsultaService {
     }
 
     @Transactional(readOnly = true)
+    public Map<UUID, List<PremiumBeneficioCalculado>> consultarCalculadosPorUsuario(
+            Collection<UUID> usuarioIds) {
+        if (usuarioIds == null || usuarioIds.isEmpty()) {
+            return Map.of();
+        }
+        return calcular(
+                ativacaoRepository.findByUsuarioIdIn(usuarioIds),
+                OffsetDateTime.now(ZoneOffset.UTC)).stream()
+                .filter(item -> item.ativacao() != null && item.ativacao().getUsuarioId() != null)
+                .collect(Collectors.groupingBy(item -> item.ativacao().getUsuarioId()));
+    }
+
+    @Transactional(readOnly = true)
     public List<PremiumBeneficioCalculado> calcular(Collection<AtivacaoBeneficioEntity> ativacoes, OffsetDateTime agora) {
         if (ativacoes == null || ativacoes.isEmpty()) {
             return List.of();

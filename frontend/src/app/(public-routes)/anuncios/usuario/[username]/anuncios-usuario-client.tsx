@@ -13,8 +13,8 @@ import {
 
 const ITENS_POR_PAGINA = 20
 
-export default function AnunciosUsuarioClient({ usuarioPublicoId }: { usuarioPublicoId: string }) {
-  const profileToken = usuarioPublicoId.trim()
+export default function AnunciosUsuarioClient({ publicUsername }: { publicUsername: string }) {
+  const username = publicUsername.trim()
   const [displayUsername, setDisplayUsername] = useState('')
   const [anuncios, setAnuncios] = useState<PublicCatalogCard[]>([])
   const [loading, setLoading] = useState(true)
@@ -30,7 +30,7 @@ export default function AnunciosUsuarioClient({ usuarioPublicoId }: { usuarioPub
     let ativo = true
 
     setDisplayUsername('')
-    if (!profileToken) {
+    if (!username) {
       setAnuncios([])
       setError(null)
       setLoading(false)
@@ -41,7 +41,7 @@ export default function AnunciosUsuarioClient({ usuarioPublicoId }: { usuarioPub
 
     setLoading(true)
     setError(null)
-    void listarAnunciosPublicosPorUsuario(profileToken, 0, ITENS_POR_PAGINA)
+    void listarAnunciosPublicosPorUsuario(username, 0, ITENS_POR_PAGINA)
       .then((data) => {
         if (!ativo || consulta !== consultaRef.current) return
         setAnuncios(data.itens)
@@ -65,16 +65,16 @@ export default function AnunciosUsuarioClient({ usuarioPublicoId }: { usuarioPub
     return () => {
       ativo = false
     }
-  }, [profileToken, reloadMarker])
+  }, [username, reloadMarker])
 
   const carregarMais = useCallback(async () => {
-    if (!profileToken || loading || proximaPagina == null || ordemSeed == null) return
+    if (!username || loading || proximaPagina == null || ordemSeed == null) return
     const consulta = consultaRef.current
     setLoading(true)
     setError(null)
     try {
       const data = await listarAnunciosPublicosPorUsuario(
-        profileToken,
+        username,
         proximaPagina,
         ITENS_POR_PAGINA,
         ordemSeed,
@@ -97,7 +97,7 @@ export default function AnunciosUsuarioClient({ usuarioPublicoId }: { usuarioPub
     } finally {
       if (consulta === consultaRef.current) setLoading(false)
     }
-  }, [loading, ordemSeed, profileToken, proximaPagina])
+  }, [loading, ordemSeed, proximaPagina, username])
 
   return (
     <main className="mx-auto w-full max-w-7xl space-y-7 px-4 py-8 sm:px-6 lg:px-8">

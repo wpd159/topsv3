@@ -95,6 +95,26 @@ class IdadeAnunciantePublicaServiceTest {
     verify(repository).findAllById(List.of(usuarioVisivelId, usuarioOcultoId));
   }
 
+  @Test
+  void resolveIdentidadeDeStoriesPorContaSemNovaConsultaDeUsuario() {
+    UUID usuarioVisivelId = UUID.randomUUID();
+    UUID usuarioOcultoId = UUID.randomUUID();
+    UsuarioRepository repository = mock(UsuarioRepository.class);
+    UsuarioEntity visivel = usuario(usuarioVisivelId, LocalDate.of(1990, 1, 1));
+    UsuarioEntity oculto = usuario(usuarioOcultoId, LocalDate.of(1992, 2, 2));
+
+    Map<UUID, IdadeAnunciantePublicaService.Resultado> resultado =
+        new IdadeAnunciantePublicaService(repository).resolverPorUsuarios(
+            List.of(visivel, oculto),
+            java.util.Set.of(usuarioOcultoId));
+
+    assertThat(resultado.get(usuarioVisivelId).idade()).isNotNull();
+    assertThat(resultado.get(usuarioVisivelId).idadeOculta()).isFalse();
+    assertThat(resultado.get(usuarioOcultoId).idade()).isNull();
+    assertThat(resultado.get(usuarioOcultoId).idadeOculta()).isTrue();
+    org.mockito.Mockito.verifyNoInteractions(repository);
+  }
+
   private UsuarioEntity usuario(UUID id, LocalDate nascimento) {
     UsuarioEntity usuario = org.mockito.Mockito.mock(UsuarioEntity.class);
     when(usuario.getId()).thenReturn(id);
