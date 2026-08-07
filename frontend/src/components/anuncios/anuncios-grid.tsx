@@ -13,11 +13,13 @@ import { AnuncioCard } from "./anuncio-card"
 interface AnunciosGridProps {
   categoria: string
   busca?: string
+  anunciante?: string
   currentPage?: number
   initialData?: PublicCategoryList | null
   initialRequest?: {
     categoria: string
     busca: string
+    anunciante: string
     currentPage: number
   }
 }
@@ -28,6 +30,7 @@ const LIMITE_PAGINAS_AUTOMATICAS = 3
 export default function AnunciosGrid({
   categoria,
   busca = "",
+  anunciante = "",
   currentPage = 1,
   initialData = null,
   initialRequest,
@@ -36,6 +39,7 @@ export default function AnunciosGrid({
     initialData !== null &&
     initialRequest?.categoria === categoria &&
     initialRequest.busca === busca &&
+    initialRequest.anunciante === anunciante &&
     initialRequest.currentPage === currentPage
   const [anuncios, setAnuncios] = useState<PublicCatalogCard[]>(
     initialMatches ? initialData.itens : []
@@ -63,7 +67,7 @@ export default function AnunciosGrid({
     consultaAtualRef.current = consulta
 
     const fetchAnuncios = async () => {
-      const requestKey = `${categoria}\u0000${busca}\u0000${currentPage}`
+      const requestKey = `${categoria}\u0000${busca}\u0000${anunciante}\u0000${currentPage}`
       if (
         initialMatches &&
         initialRequestConsumedRef.current !== requestKey
@@ -95,6 +99,8 @@ export default function AnunciosGrid({
           busca,
           paginaInicial,
           ITENS_POR_PAGINA,
+          undefined,
+          anunciante,
         )
         if (!ativa || consulta !== consultaAtualRef.current) return
         setAnuncios(data.itens)
@@ -120,6 +126,7 @@ export default function AnunciosGrid({
   }, [
     busca,
     categoria,
+    anunciante,
     currentPage,
     initialData,
     initialMatches,
@@ -138,6 +145,7 @@ export default function AnunciosGrid({
         proximaPagina,
         ITENS_POR_PAGINA,
         ordemSeed,
+        anunciante,
       )
       if (consulta !== consultaAtualRef.current) return
       if (data.paginacao.ordemSeed !== ordemSeed) {
@@ -160,7 +168,7 @@ export default function AnunciosGrid({
     } finally {
       if (consulta === consultaAtualRef.current) setLoading(false)
     }
-  }, [busca, categoria, loading, ordemSeed, proximaPagina])
+  }, [anunciante, busca, categoria, loading, ordemSeed, proximaPagina])
 
   const podeCarregarAutomaticamente =
     !error && !loading && proximaPagina != null && paginasCarregadas < LIMITE_PAGINAS_AUTOMATICAS

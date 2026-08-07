@@ -14,7 +14,7 @@ const [dialog, page, api, management, admin, adminApi, viewer, accessPolicy, pub
   source('../src/lib/admin-story-management-api.ts'),
   source('../src/components/stories/story-viewer-dialog.tsx'),
   source('../src/components/stories/story-access-policy.js'),
-  source('../src/app/(public-routes)/anuncios/usuario/[username]/anuncios-usuario-client.tsx'),
+  source('../src/components/anuncios/anuncios-grid.tsx'),
   source('../src/lib/public-catalog-api.ts'),
   source('../src/components/stories/stories-types.ts'),
 ])
@@ -59,8 +59,8 @@ check('5. upload nao envia identificadores internos', () => {
 
 check('6. viewer usa identidade publica', () => {
   matches(viewer, /rotuloDestino = podeNavegarPerfil \? "Ver anunciante" : "Ver anúncio"/)
-  matches(viewer, /router\.push\(`\/anuncios\/usuario\/\$\{encodeURIComponent\(loginViewer\)\}`\)/)
-  excludes(viewer, /\/anuncios\/usuario\/\$\{[^}]*usuarioId/)
+  matches(viewer, /router\.push\(`\/anuncios\?anunciante=\$\{encodeURIComponent\(loginViewer\)\}`\)/)
+  excludes(viewer, /\/anuncios\/usuario\/|anunciante=\$\{[^}]*usuarioId/)
 })
 
 check('7. CTA fica fail closed antes do gate', () => {
@@ -76,8 +76,8 @@ check('8. CTA libera somente depois da midia pronta', () => {
 })
 
 check('9. listagem publica usa username e estado vazio', () => {
-  matches(publicApi, /\/anuncios\/usuario\/\$\{encodeURIComponent\(username\.trim\(\)\)\}/)
-  matches(publicList, /Nenhum anúncio público disponível no momento\./)
+  matches(publicApi, /query\.set\('anunciante', anunciante\.trim\(\)\)/)
+  matches(publicList, /Nenhum anúncio encontrado\./)
 })
 
 check('10. Meus Stories preserva independentes e multiplicidade', () => {

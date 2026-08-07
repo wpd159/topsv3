@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [serviceSource, viewerSource, policySource, typesSource, barSource, openapiSource] = await Promise.all([
+const [serviceSource, anuncioServiceSource, viewerSource, policySource, typesSource, barSource, openapiSource] = await Promise.all([
   readFile(new URL('../../backend/src/main/java/br/com/topsdojob/v3/application/publico/service/StoryFeedPublicoService.java', import.meta.url), 'utf8'),
+  readFile(new URL('../../backend/src/main/java/br/com/topsdojob/v3/application/publico/service/AnuncioPublicoConsultaService.java', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/stories/story-viewer-dialog.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/stories/story-access-policy.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/stories/stories-types.ts', import.meta.url), 'utf8'),
@@ -11,11 +12,11 @@ const [serviceSource, viewerSource, policySource, typesSource, barSource, openap
 ])
 
 assert.match(serviceSource, /midiasPublicaveisDoAnuncio\(anuncio, idadeConfirmada\)/)
-assert.match(serviceSource, /if \(!idadeConfirmada \|\| midiaMapper == null\)[\s\S]*return List\.of\(\)/)
-assert.match(serviceSource, /elegibilidadeService\.listar\(anuncio\.getId\(\)\)/)
-assert.match(serviceSource, /item\.vinculo\(\)\.getAnuncioId\(\)[\s\S]*anuncio\.getId\(\)/)
-assert.match(serviceSource, /midiaMapper\.publicas\([\s\S]*true\)/)
+assert.match(serviceSource, /if \(!idadeConfirmada \|\| anuncioConsultaService == null\)[\s\S]*return List\.of\(\)/)
+assert.match(serviceSource, /anuncioConsultaService\.midiasParaStory\(anuncio, true\)/)
 assert.match(serviceSource, /filter\(item -> item\.urlPublica\(\) != null/)
+assert.match(anuncioServiceSource, /if \(!idadeConfirmada \|\| anuncio == null \|\| anuncio\.getId\(\) == null\)[\s\S]*return List\.of\(\)/)
+assert.match(anuncioServiceSource, /return midias\(anuncio\.getId\(\), true, premiumMapper\.flags\(anuncio\)\)/)
 assert.match(typesSource, /midias\?: StoryViewerMedia\[\]/)
 assert.match(openapiSource, /StoryViewerPublico:[\s\S]*required: \[[^\n]*midias/)
 assert.match(openapiSource, /midias:[\s\S]*type: array[\s\S]*MidiaPublica/)
@@ -23,6 +24,18 @@ assert.match(viewerSource, /const \[anuncioMidiaIndex, setAnuncioMidiaIndex\] = 
 assert.match(viewerSource, /const anuncioMidias = useMemo/)
 assert.match(viewerSource, /setAnuncioMidiaIndex\(\(current\) => current \+ 1\)/)
 assert.match(viewerSource, /setAnuncioMidiaIndex\(\(current\) => current - 1\)/)
+assert.match(viewerSource, /const possuiProximoStory = Boolean\(currentBundle\)/)
+const nextStoryControl = viewerSource.match(
+  /\{possuiProximoStory \? \([\s\S]*?aria-label="Próximo Story"[\s\S]*?\) : null\}/,
+)?.[0]
+assert.ok(nextStoryControl, 'Deve existir um controle explícito para o próximo Story.')
+assert.match(nextStoryControl, /onClick=\{nextStory\}/)
+assert.doesNotMatch(nextStoryControl, /nextVisibleContent/)
+assert.match(
+  viewerSource,
+  /const nextVisibleContent = useCallback\([\s\S]*setAnuncioMidiaIndex\(\(current\) => current \+ 1\)[\s\S]*nextStory\(\)/,
+)
+assert.match(viewerSource, /const identity = String\(currentFeedItem\.storyId\)/)
 assert.match(viewerSource, /anuncioMidiaAtual\.tipo === "VIDEO"/)
 assert.match(viewerSource, /src=\{anuncioMidiaAtual\.urlPublica\}/)
 assert.match(viewerSource, /onLoad=\{markCurrentStoryVisible\}/)
@@ -31,7 +44,15 @@ assert.match(viewerSource, /Mídia \{anuncioMidiaIndex \+ 1\} de \{anuncioMidias
 assert.match(viewerSource, /\{viewerItem\.anuncioTitulo \|\| "Anúncio"\}/)
 assert.match(viewerSource, />\s*Ver anúncio\s*</)
 assert.match(viewerSource, /if \(!anuncioMidiaAtual\)[\s\S]*Apresentação textual do anúncio no Story/)
-assert.match(viewerSource, /h-\[100svh\] w-full max-w-\[100vw\] overflow-hidden/)
+assert.match(viewerSource, /DialogContent className="flex h-\[100dvh\] max-h-\[100dvh\][^"]*overflow-hidden/)
+assert.match(viewerSource, /"relative flex h-full min-h-0 w-full flex-col overflow-hidden"/)
+assert.match(viewerSource, /className="relative z-30 shrink-0/)
+assert.match(viewerSource, /className="flex min-h-0 flex-1 w-full items-stretch justify-center overflow-hidden"/)
+assert.match(viewerSource, /object-contain object-top/)
+assert.match(viewerSource, /pb-4 pt-12/)
+assert.match(viewerSource, /pointer-events-auto mt-3 min-h-10/)
+assert.equal((viewerSource.match(/overflow-y-auto/g) ?? []).length, 1)
+assert.doesNotMatch(viewerSource, /h-\[100svh\]/)
 assert.doesNotMatch(viewerSource, /srcSet|srcset/)
 assert.doesNotMatch(viewerSource, /objectKey|chaveObjeto/)
 assert.doesNotMatch(barSource, /anuncioMidias|midias\.map/)

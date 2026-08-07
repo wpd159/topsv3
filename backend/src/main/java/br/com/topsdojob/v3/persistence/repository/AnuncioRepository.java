@@ -223,97 +223,10 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             value = """
                     select a.*
                     from anuncio a
-                    join usuario u on u.id = a.usuario_id
-                    where a.usuario_id = :usuarioId
-                      and a.status = 'PUBLICADO'
-                      and a.status_moderacao = 'APROVADO'
-                      and a.publicado_em is not null
-                      and a.removido_em is null
-                      and a.slug is not null
-                      and btrim(a.slug) <> ''
-                      and a.slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'
-                      and u.status = 'ATIVO'
-                      and u.tipo_conta = 'ANUNCIANTE'
-                      and u.desativado_em is null
-                      and u.excluido_em is null
-                      and exists (
-                        select 1
-                        from documento_busca_anuncio dba
-                        where dba.anuncio_id = a.id
-                          and dba.status_publicacao = 'PUBLICAVEL'
-                          and dba.tem_midia_valida = true
-                      )
-                      and not exists (
-                        select 1
-                        from anuncio_bloqueio_juridico bloqueio
-                        where bloqueio.anuncio_id = a.id
-                          and bloqueio.anuncio_desbloqueado_em is null
-                      )
-                    order by
-                      case when exists (
-                        select 1
-                        from ativacao_beneficio ab
-                        join beneficio_premium bp on bp.id = ab.beneficio_id
-                        join grupo_ativacao_beneficio gb on gb.id = ab.grupo_ativacao_id
-                        where ab.anuncio_id = a.id
-                          and bp.codigo = 'ANUNCIO_TOPO'
-                          and bp.ativo = true
-                          and bp.afeta_ranking = true
-                          and ab.status = 'ATIVA'
-                          and ab.revogada_em is null
-                          and ab.inicio_em <= :agora
-                          and ab.fim_em > :agora
-                          and gb.status = 'ATIVO'
-                          and gb.validade_inicio_em <= :agora
-                          and gb.validade_fim_em > :agora
-                      ) then 0 else 1 end,
-                      hashtextextended(a.id::text, :seed),
-                      a.id
-                    """,
-            countQuery = """
-                    select count(*)
-                    from anuncio a
-                    join usuario u on u.id = a.usuario_id
-                    where a.usuario_id = :usuarioId
-                      and a.status = 'PUBLICADO'
-                      and a.status_moderacao = 'APROVADO'
-                      and a.publicado_em is not null
-                      and a.removido_em is null
-                      and a.slug is not null
-                      and btrim(a.slug) <> ''
-                      and a.slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'
-                      and u.status = 'ATIVO'
-                      and u.tipo_conta = 'ANUNCIANTE'
-                      and u.desativado_em is null
-                      and u.excluido_em is null
-                      and exists (
-                        select 1
-                        from documento_busca_anuncio dba
-                        where dba.anuncio_id = a.id
-                          and dba.status_publicacao = 'PUBLICAVEL'
-                          and dba.tem_midia_valida = true
-                      )
-                      and not exists (
-                        select 1
-                        from anuncio_bloqueio_juridico bloqueio
-                        where bloqueio.anuncio_id = a.id
-                          and bloqueio.anuncio_desbloqueado_em is null
-                      )
-                    """,
-            nativeQuery = true)
-    Page<AnuncioEntity> findPublicosPorUsuarioOrdenados(
-            @Param("usuarioId") UUID usuarioId,
-            @Param("agora") OffsetDateTime agora,
-            @Param("seed") long seed,
-            Pageable pageable);
-
-    @Query(
-            value = """
-                    select a.*
-                    from anuncio a
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and (:usuarioId is null or a.usuario_id = :usuarioId)
                       and (
                         :categoria is null
                         or (
@@ -361,6 +274,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and (:usuarioId is null or a.usuario_id = :usuarioId)
                       and (
                         :categoria is null
                         or (
@@ -386,6 +300,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     Page<AnuncioEntity> findPublicosOrdenados(
             @Param("categoria") String categoria,
             @Param("busca") String busca,
+            @Param("usuarioId") UUID usuarioId,
             @Param("agora") OffsetDateTime agora,
             @Param("seed") long seed,
             Pageable pageable);

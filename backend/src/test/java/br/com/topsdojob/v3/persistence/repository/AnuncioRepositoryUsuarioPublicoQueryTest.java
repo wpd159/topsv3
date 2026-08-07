@@ -12,17 +12,19 @@ import org.springframework.data.jpa.repository.Query;
 class AnuncioRepositoryUsuarioPublicoQueryTest {
 
   @Test
-  void filtraNoBackendSomenteAnunciosPublicosDoUsuarioResolvido() throws Exception {
+  void consultaCanonicaAceitaFiltroOpcionalDoUsuarioSemPoliticaParalela() throws Exception {
     Method method = AnuncioRepository.class.getMethod(
-        "findPublicosPorUsuarioOrdenados",
+        "findPublicosOrdenados",
+        String.class,
+        String.class,
         UUID.class,
         OffsetDateTime.class,
         long.class,
         Pageable.class);
     Query annotation = method.getAnnotation(Query.class);
 
-    assertQueryPublica(annotation.value());
-    assertQueryPublica(annotation.countQuery());
+    assertFiltroCanonicoDoUsuario(annotation.value());
+    assertFiltroCanonicoDoUsuario(annotation.countQuery());
     assertThat(annotation.value())
         .contains("hashtextextended(a.id::text, :seed)")
         .contains("bp.codigo = 'ANUNCIO_TOPO'")
@@ -30,24 +32,22 @@ class AnuncioRepositoryUsuarioPublicoQueryTest {
     assertThat(annotation.countQuery())
         .doesNotContain("hashtextextended")
         .doesNotContain("order by");
+    assertThat(AnuncioRepository.class.getDeclaredMethods())
+        .extracting(Method::getName)
+        .doesNotContain("findPublicosPorUsuarioOrdenados");
   }
 
-  private void assertQueryPublica(String query) {
+  private void assertFiltroCanonicoDoUsuario(String query) {
     assertThat(query)
-        .contains("join usuario u on u.id = a.usuario_id")
-        .contains("a.usuario_id = :usuarioId")
+        .contains(":usuarioId is null or a.usuario_id = :usuarioId")
         .contains("a.status = 'PUBLICADO'")
         .contains("a.status_moderacao = 'APROVADO'")
-        .contains("a.publicado_em is not null")
         .contains("a.removido_em is null")
-        .contains("u.status = 'ATIVO'")
-        .contains("u.tipo_conta = 'ANUNCIANTE'")
-        .contains("u.desativado_em is null")
-        .contains("u.excluido_em is null")
-        .contains("dba.status_publicacao = 'PUBLICAVEL'")
-        .contains("dba.tem_midia_valida = true")
-        .contains("from anuncio_bloqueio_juridico bloqueio")
-        .contains("bloqueio.anuncio_desbloqueado_em is null")
+        .contains(":categoria is null")
+        .contains(":busca is null")
+        .doesNotContain("documento_busca_anuncio")
+        .doesNotContain("anuncio_bloqueio_juridico")
+        .doesNotContain("join usuario u")
         .doesNotContain("email_normalizado")
         .doesNotContain("telefone_normalizado")
         .doesNotContain("cpf_normalizado")

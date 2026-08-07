@@ -5,7 +5,6 @@ import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.dto.AnuncioCardPublicoDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosCategoriaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosPublicaDto;
-import br.com.topsdojob.v3.application.publico.dto.ListaAnunciosUsuarioPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.PaginacaoPublicaDto;
@@ -91,17 +90,20 @@ public class ListagemPublicaConsultaService {
     public ListaAnunciosCategoriaPublicaDto listar(
             String categoriaCodigo,
             String busca,
+            String anunciante,
             int pagina,
             int tamanho,
             String ordemSeed) {
         Pageable pageable = pageable(pagina, tamanho);
         CategoriaAnuncio categoria = categoria(categoriaCodigo);
         String termoBusca = termoBusca(busca);
+        UUID usuarioId = usuarioId(anunciante);
         long seed = ordemSeedService.resolver(ordemSeed);
 
         Page<AnuncioEntity> paginaAnuncios = anuncioRepository.findPublicosOrdenados(
                 categoria == null ? null : categoria.name(),
                 termoBusca,
+                usuarioId,
                 agora(),
                 seed,
                 pageable);
@@ -119,41 +121,6 @@ public class ListagemPublicaConsultaService {
                 itens,
                 PaginacaoPublicaDto.from(paginaAnuncios, seed),
                 categoria == null ? null : categoria.name());
-    }
-
-    @Transactional(readOnly = true)
-    public ListaAnunciosUsuarioPublicaDto porUsuario(
-            String username,
-            int pagina,
-            int tamanho,
-            String ordemSeed) {
-        String usernameSeguro = RotaPublicaGuard.username(username);
-        Pageable pageable = pageable(pagina, tamanho);
-        long seed = ordemSeedService.resolver(ordemSeed);
-        AnuncioRepository.UsuarioPublicoProjection usuario = anuncioRepository
-                .findUsuarioPublicoPorUsername(usernameSeguro)
-                .orElseThrow(() -> notFound("anunciante nao encontrada"));
-        Page<AnuncioEntity> anuncios = anuncioRepository.findPublicosPorUsuarioOrdenados(
-                usuario.getUsuarioId(),
-                agora(),
-                seed,
-                pageable);
-        List<AnuncioLocalizacaoEntity> localizacoes = anuncios.isEmpty()
-                ? List.of()
-                : localizacaoRepository.findByAnuncioIdIn(anuncios.stream()
-                        .map(AnuncioEntity::getId)
-                        .toList());
-        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio =
-                premiumMapper.flagsPorAnuncios(anuncios.getContent());
-        List<AnuncioCardPublicoDto> itens = mapearCardsCategoria(
-                anuncios.getContent(),
-                localizacoes,
-                premiumPorAnuncio);
-        return new ListaAnunciosUsuarioPublicaDto(
-                usernameSeguro,
-                usuario.getDisplayUsername(),
-                itens,
-                PaginacaoPublicaDto.from(anuncios, seed));
     }
 
     @Transactional(readOnly = true)
@@ -401,6 +368,16 @@ public class ListagemPublicaConsultaService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "busca deve ter no maximo 80 caracteres");
         }
         return normalizarBusca(termo);
+    }
+
+    private UUID usuarioId(String anunciante) {
+        if (anunciante == null || anunciante.isBlank()) {
+            return null;
+        }
+        String username = RotaPublicaGuard.username(anunciante);
+        return anuncioRepository.findUsuarioPublicoPorUsername(username)
+                .map(AnuncioRepository.UsuarioPublicoProjection::getUsuarioId)
+                .orElseThrow(() -> notFound("anunciante nao encontrada"));
     }
 
     private String normalizarBusca(String valor) {

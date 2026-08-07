@@ -154,11 +154,6 @@ const preservedSurfaces = {
   'app/(public-routes)/anuncios/[slug]/componentes/avisos-administracao.tsx': [
     'Aviso anterior', 'Proximo aviso', 'Ir para aviso 1',
   ],
-  'app/(public-routes)/anuncios/usuario/[username]/anuncios-usuario-client.tsx': [
-    'Foto anterior', 'Proxima foto', 'Ver anuncio', 'Chat', 'WhatsApp',
-    'Adicionar aos favoritos', 'Confirmar maioridade', 'Aviso de seguranca', 'Cancelar',
-    'Continuar', 'Voltar', 'Politica de Verificacao Etaria', 'Fechar',
-  ],
   'app/(public-routes)/faq/page.tsx': [
     'Buscar', 'Falar com suporte', 'Limpar busca', 'Abrir ticket', 'LoginModal',
   ],

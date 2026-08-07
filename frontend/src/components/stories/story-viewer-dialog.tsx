@@ -44,7 +44,7 @@ function StoryStateCard({
   primaryAction?: { label: string; onClick: () => void }
 }) {
   return (
-    <div className="relative flex h-[100svh] w-full max-w-[100vw] items-center justify-center overflow-hidden bg-gradient-to-br from-gray-950 via-black to-gray-900 px-6">
+    <div className="relative flex h-full min-h-0 w-full max-w-[100vw] items-center justify-center overflow-hidden bg-gradient-to-br from-gray-950 via-black to-gray-900 px-6">
       <div
         className="relative z-20 w-full max-w-sm rounded-3xl border border-white/10 bg-white/5 p-6 text-white shadow-2xl backdrop-blur-sm"
         onClick={(event) => {
@@ -336,7 +336,7 @@ export function StoryViewerDialog({
       return
     }
     onOpenChange(false)
-    router.push(`/anuncios/usuario/${encodeURIComponent(loginViewer)}`)
+    router.push(`/anuncios?anunciante=${encodeURIComponent(loginViewer)}`)
   }
 
   function irParaDestinoDoStory() {
@@ -361,6 +361,9 @@ export function StoryViewerDialog({
     bundles.length > 0 &&
     bundleIndex === bundles.length - 1 &&
     itemIndex === (currentBundle?.itens?.length || 1) - 1
+  const possuiProximoStory = Boolean(currentBundle) && (
+    itemIndex + 1 < (currentBundle?.itens?.length ?? 0) || bundleIndex + 1 < bundles.length
+  )
   const possuiMidiaAnterior = viewerItem?.modoConteudo === "ANUNCIO" && anuncioMidiaIndex > 0
   const possuiProximaMidia = viewerItem?.modoConteudo === "ANUNCIO"
     && anuncioMidiaIndex < anuncioMidias.length - 1
@@ -372,7 +375,7 @@ export function StoryViewerDialog({
   function renderViewerBody() {
     if (!currentFeedItem) {
       return (
-        <div className="flex h-[100svh] w-full items-center justify-center text-white/70">
+        <div className="flex h-full min-h-0 w-full items-center justify-center text-white/70">
           Sem story
         </div>
       )
@@ -380,7 +383,7 @@ export function StoryViewerDialog({
 
     if (viewerLoading) {
       return (
-        <div className="flex h-[100svh] w-full items-center justify-center">
+        <div className="flex h-full min-h-0 w-full items-center justify-center">
           <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-5 text-sm text-white/80">
             Carregando story...
           </div>
@@ -450,29 +453,31 @@ export function StoryViewerDialog({
         return (
           <article
             ref={anuncioStoryRef}
-            className="relative z-20 flex min-h-[100svh] w-full max-w-xl flex-col justify-center bg-slate-950 px-8 py-28 text-white sm:px-12"
+            className="relative z-20 flex h-full min-h-0 w-full max-w-xl flex-col overflow-hidden bg-slate-950 px-6 pb-5 pt-6 text-white sm:px-10"
             onClick={(event) => event.stopPropagation()}
             aria-label="Apresentação textual do anúncio no Story"
           >
-            <div className="h-1 w-16 rounded-full bg-[#FC1EAD]" aria-hidden="true" />
-            <p className="mt-6 text-xs font-semibold uppercase text-pink-300">Anúncio em destaque</p>
-            <h2 className="mt-3 break-words text-3xl font-bold leading-tight sm:text-4xl">
-              {viewerItem.anuncioTitulo || "Anúncio"}
-            </h2>
-            {viewerItem.idade != null ? <p className="mt-2 text-lg text-white/85">{viewerItem.idade} anos</p> : null}
-            {local ? (
-              <p className="mt-5 flex items-center gap-2 text-sm text-white/80">
-                <MapPinIcon className="h-5 w-5 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
-                {local}
-              </p>
-            ) : null}
-            {preco ? <p className="mt-4 text-2xl font-bold text-pink-300">{preco}</p> : null}
-            {viewerItem.resumo ? <p className="mt-5 max-w-prose text-sm leading-6 text-white/75">{viewerItem.resumo}</p> : null}
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              <div className="h-1 w-16 rounded-full bg-[#FC1EAD]" aria-hidden="true" />
+              <p className="mt-4 text-xs font-semibold uppercase text-pink-300">Anúncio em destaque</p>
+              <h2 className="mt-2 break-words text-2xl font-bold leading-tight sm:text-3xl">
+                {viewerItem.anuncioTitulo || "Anúncio"}
+              </h2>
+              {viewerItem.idade != null ? <p className="mt-2 text-base text-white/85">{viewerItem.idade} anos</p> : null}
+              {local ? (
+                <p className="mt-3 flex items-center gap-2 text-sm text-white/80">
+                  <MapPinIcon className="h-5 w-5 shrink-0 text-[#FC1EAD]" aria-hidden="true" />
+                  {local}
+                </p>
+              ) : null}
+              {preco ? <p className="mt-3 text-xl font-bold text-pink-300">{preco}</p> : null}
+              {viewerItem.resumo ? <p className="mt-3 max-w-prose text-sm leading-5 text-white/75">{viewerItem.resumo}</p> : null}
+            </div>
             <Button
               type="button"
               onClick={irParaAnuncioDoStory}
               disabled={!podeNavegarAnuncio}
-              className="mt-8 min-h-12 w-full bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
+              className="mt-4 min-h-11 w-full shrink-0 bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
             >
               Ver anúncio
             </Button>
@@ -493,7 +498,7 @@ export function StoryViewerDialog({
       const mediaKey = `${viewerItem.storyId}:${anuncioMidiaAtual.id ?? anuncioMidiaIndex}:${anuncioMidiaAtual.urlPublica}`
       return (
         <article
-          className="relative h-[100svh] w-full max-w-[100vw] overflow-hidden bg-black text-white"
+          className="relative h-full min-h-0 w-full max-w-[100vw] overflow-hidden bg-black text-white"
           aria-label="Galeria de mídias do anúncio no Story"
         >
           {anuncioMidiaAtual.tipo === "VIDEO" ? (
@@ -501,7 +506,7 @@ export function StoryViewerDialog({
               key={mediaKey}
               ref={videoRef}
               src={anuncioMidiaAtual.urlPublica}
-              className="h-full w-full object-contain"
+              className="h-full w-full object-contain object-top"
               autoPlay
               muted
               playsInline
@@ -525,20 +530,20 @@ export function StoryViewerDialog({
               key={mediaKey}
               src={anuncioMidiaAtual.urlPublica}
               alt={viewerItem.anuncioTitulo ? `Mídia de ${viewerItem.anuncioTitulo}` : ""}
-              className="h-full w-full object-contain"
+              className="h-full w-full object-contain object-top"
               onLoad={markCurrentStoryVisible}
               onError={() => setMediaError(true)}
             />
           )}
 
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black via-black/80 to-transparent px-5 pb-7 pt-24 sm:px-10">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black via-black/80 to-transparent px-4 pb-4 pt-12 sm:px-8">
             <div className="mx-auto w-full max-w-xl">
               {anuncioMidias.length > 1 ? (
                 <p className="text-xs font-semibold text-white/75" aria-live="polite">
                   Mídia {anuncioMidiaIndex + 1} de {anuncioMidias.length}
                 </p>
               ) : null}
-              <h2 className="mt-2 break-words text-xl font-bold leading-tight sm:text-2xl">
+              <h2 className="mt-1 line-clamp-2 break-words text-lg font-bold leading-tight sm:text-xl">
                 {viewerItem.anuncioTitulo || "Anúncio"}
               </h2>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/80">
@@ -557,7 +562,7 @@ export function StoryViewerDialog({
                 type="button"
                 onClick={irParaAnuncioDoStory}
                 disabled={!podeNavegarAnuncio}
-                className="pointer-events-auto mt-4 min-h-11 w-full bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
+                className="pointer-events-auto mt-3 min-h-10 w-full bg-[#FC1EAD] text-white hover:bg-[#e01a9a]"
               >
                 Ver anúncio
               </Button>
@@ -583,7 +588,7 @@ export function StoryViewerDialog({
           key={`${viewerItem.storyId}:${viewerItem.midiaUrl}`}
           ref={videoRef}
           src={viewerItem.midiaUrl}
-          className="h-[100svh] w-full max-w-[100vw] bg-black object-contain"
+          className="h-full min-h-0 w-full max-w-[100vw] bg-black object-contain object-top"
           autoPlay
           muted
           playsInline
@@ -610,7 +615,7 @@ export function StoryViewerDialog({
         key={`${viewerItem.storyId}:${viewerItem.midiaUrl}`}
         src={viewerItem.midiaUrl}
         alt=""
-        className="h-[100svh] w-full max-w-[100vw] object-contain"
+        className="h-full min-h-0 w-full max-w-[100vw] object-contain object-top"
         onLoad={markCurrentStoryVisible}
         onError={() => setMediaError(true)}
       />
@@ -619,14 +624,14 @@ export function StoryViewerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={!verificationOpen}>
-      <DialogContent className="max-w-none w-screen h-[100svh] p-0 border-0 bg-black">
+      <DialogContent className="flex h-[100dvh] max-h-[100dvh] w-screen max-w-none flex-col overflow-hidden rounded-none border-0 bg-black p-0">
         <DialogTitle className="sr-only">Visualizar Story</DialogTitle>
 
         <div
-          className={["relative w-full h-full", viewerInteracoesTravadas ? "pointer-events-none" : ""].join(" ")}
+          className={["relative flex h-full min-h-0 w-full flex-col overflow-hidden", viewerInteracoesTravadas ? "pointer-events-none" : ""].join(" ")}
           aria-hidden={viewerInteracoesTravadas}
         >
-          <div className="absolute top-0 left-0 right-0 z-30 p-4">
+          <div className="relative z-30 shrink-0 bg-gradient-to-b from-black via-black/85 to-black/60 px-3 pb-2 pt-3 sm:px-4">
             <div className="flex gap-1">
               {progressBars.map((item, idx) => {
                 const isDone = idx < itemIndex
@@ -702,6 +707,19 @@ export function StoryViewerDialog({
               )}
 
               <div className="flex shrink-0 items-center gap-2">
+                {possuiProximoStory ? (
+                  <button
+                    type="button"
+                    onClick={nextStory}
+                    disabled={viewerInteracoesTravadas}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FC1EAD]/20 text-white ring-1 ring-[#FC1EAD]/60 transition hover:bg-[#FC1EAD]/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 disabled:cursor-not-allowed disabled:opacity-40"
+                    aria-label="Próximo Story"
+                    title="Próximo Story"
+                  >
+                    <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+                  </button>
+                ) : null}
+
                 {podeNavegarDestino ? (
                   <button
                     type="button"
@@ -727,7 +745,7 @@ export function StoryViewerDialog({
             type="button"
             onClick={prevVisibleContent}
             disabled={isFirstVisibleContent || viewerNavegacaoTravada}
-            aria-label="Anterior"
+            aria-label={possuiMidiaAnterior ? "Mídia anterior" : "Story anterior"}
             className={[
               "absolute left-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
@@ -741,7 +759,7 @@ export function StoryViewerDialog({
             type="button"
             onClick={nextVisibleContent}
             disabled={isLastVisibleContent || viewerNavegacaoTravada}
-            aria-label="Proximo"
+            aria-label={possuiProximaMidia ? "Próxima mídia" : "Próximo Story"}
             className={[
               "absolute right-3 top-1/2 -translate-y-1/2 z-30 h-11 w-11 rounded-full",
               "bg-white/10 hover:bg-white/20 flex items-center justify-center transition",
@@ -754,19 +772,19 @@ export function StoryViewerDialog({
           <button
             className="absolute left-0 top-0 h-full w-1/3 z-10"
             onClick={prevVisibleContent}
-            aria-label="Anterior (area)"
+            aria-label={possuiMidiaAnterior ? "Mídia anterior (área)" : "Story anterior (área)"}
             type="button"
             disabled={viewerNavegacaoTravada}
           />
           <button
             className="absolute right-0 top-0 h-full w-1/3 z-10"
             onClick={nextVisibleContent}
-            aria-label="Proximo (area)"
+            aria-label={possuiProximaMidia ? "Próxima mídia (área)" : "Próximo Story (área)"}
             type="button"
             disabled={viewerNavegacaoTravada}
           />
 
-          <div className="flex h-full w-full items-center justify-center">{renderViewerBody()}</div>
+          <div className="flex min-h-0 flex-1 w-full items-stretch justify-center overflow-hidden">{renderViewerBody()}</div>
         </div>
 
         <VisitorVerificationModal

@@ -1210,6 +1210,14 @@ paths:
           schema:
             type: string
             maxLength: 80
+        - name: anunciante
+          in: query
+          required: false
+          description: Username publico canonico da conta; combinado com os demais filtros do catalogo.
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 120
         - $ref: "#/components/parameters/Pagina"
         - $ref: "#/components/parameters/Tamanho"
         - $ref: "#/components/parameters/OrdemSeed"
@@ -1222,36 +1230,10 @@ paths:
                 $ref: "#/components/schemas/ListaAnunciosCategoriaPublica"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalError"
-  /api/public/anuncios/usuario/{username}:
-    get:
-      summary: Lista somente os anuncios publicos de uma anunciante
-      operationId: getPublicAnunciosByUsername
-      parameters:
-        - $ref: "#/components/parameters/RequestId"
-        - name: username
-          in: path
-          required: true
-          schema: { type: string, pattern: "^[0-9a-f]{32}$" }
-          description: Token publico opaco e unico da conta; nao corresponde ao usuarioId.
-        - $ref: "#/components/parameters/Pagina"
-        - $ref: "#/components/parameters/Tamanho"
-        - $ref: "#/components/parameters/OrdemSeed"
-      description: O token publico identifica exatamente uma conta ativa. A filtragem ocorre no backend e inclui somente anuncios PUBLICADO/APROVADO aptos a exposicao. Nao registra visualizacao ao renderizar a lista e nao expoe usuarioId ou dados pessoais.
-      responses:
-        "200":
-          description: Lista paginada, inclusive vazia quando nao houver anuncio publico
-          headers:
-            Cache-Control:
-              schema: { type: string, const: no-store }
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListaAnunciosUsuarioPublica"
-        "400": { $ref: "#/components/responses/BadRequest" }
-        "404": { $ref: "#/components/responses/NotFound" }
-        "500": { $ref: "#/components/responses/InternalError" }
   /api/public/anuncios/{slug}:
     get:
       summary: Detalhe publico minimo de anuncio por slug
@@ -13289,22 +13271,6 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CategoriaAnuncioCodigo"
             - type: "null"
-    ListaAnunciosUsuarioPublica:
-      type: object
-      additionalProperties: false
-      required: [username, displayUsername, itens, paginacao]
-      properties:
-        username:
-          type: string
-          description: Identificador publico canonico; nunca usuarioId, e-mail, telefone ou nome civil.
-        displayUsername:
-          type: [string, "null"]
-          description: Nome publico da conta, separado do token usado para isolamento da consulta.
-        itens:
-          type: array
-          items: { $ref: "#/components/schemas/AnuncioCardPublico" }
-        paginacao:
-          $ref: "#/components/schemas/PaginacaoPublica"
     LocalizacaoPublica:
       type: object
       additionalProperties: false

@@ -322,6 +322,7 @@ class ListagemPublicaConsultaServiceTest {
         when(anuncioRepository.findPublicosOrdenados(
                 eq("VENDA_DE_CONTEUDO"),
                 eq(null),
+                eq(null),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 eq(PageRequest.of(0, 20))))
@@ -352,7 +353,8 @@ class ListagemPublicaConsultaServiceTest {
                 visualizacoesCanonicas(),
                 mock(IdadeAnunciantePublicaService.class));
 
-        ListaAnunciosCategoriaPublicaDto resposta = service.listar("VENDA_DE_CONTEUDO", null, 0, 20, null);
+        ListaAnunciosCategoriaPublicaDto resposta =
+                service.listar("VENDA_DE_CONTEUDO", null, null, 0, 20, null);
 
         assertThat(resposta.categoria()).isEqualTo("VENDA_DE_CONTEUDO");
         assertThat(resposta.itens()).singleElement().satisfies(item -> {
@@ -372,6 +374,7 @@ class ListagemPublicaConsultaServiceTest {
 
         when(ordemSeedService.resolver(seedSegura)).thenReturn(seed);
         when(anuncioRepository.findPublicosOrdenados(
+                eq(null),
                 eq(null),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(),
@@ -395,13 +398,15 @@ class ListagemPublicaConsultaServiceTest {
                 visualizacoesCanonicas(),
                 mock(IdadeAnunciantePublicaService.class));
 
-        ListaAnunciosCategoriaPublicaDto resposta = service.listar(null, null, 1, 20, seedSegura);
+        ListaAnunciosCategoriaPublicaDto resposta =
+                service.listar(null, null, null, 1, 20, seedSegura);
 
         assertThat(resposta.paginacao().ordemSeed()).isEqualTo(seedSegura);
         assertThat(resposta.paginacao().pagina()).isEqualTo(1);
         assertThat(resposta.paginacao().totalItens()).isEqualTo(21);
         verify(ordemSeedService).resolver(seedSegura);
         verify(anuncioRepository).findPublicosOrdenados(
+                eq(null),
                 eq(null),
                 eq(null),
                 org.mockito.ArgumentMatchers.any(),
@@ -426,7 +431,7 @@ class ListagemPublicaConsultaServiceTest {
                 visualizacoesCanonicas(),
                 mock(IdadeAnunciantePublicaService.class));
 
-        assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, 0, 20, null))
+        assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, null, 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
     }

@@ -14,6 +14,7 @@ class AnuncioRepositorySeoPublicoQueryTest {
                 "findPublicosOrdenados",
                 String.class,
                 String.class,
+                java.util.UUID.class,
                 java.time.OffsetDateTime.class,
                 long.class,
                 org.springframework.data.domain.Pageable.class);
@@ -37,6 +38,7 @@ class AnuncioRepositorySeoPublicoQueryTest {
                 .contains("a.categoria = :categoria")
                 .contains("a.atendimento_exclusivamente_virtual = false")
                 .contains(":busca is null")
+                .contains(":usuarioId is null or a.usuario_id = :usuarioId")
                 .doesNotContain("join anuncio_servicos")
                 .doesNotContain("hashtextextended")
                 .doesNotContain("order by");

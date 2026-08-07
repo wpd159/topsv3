@@ -8,6 +8,7 @@ type AnunciosSearchParams = {
   page?: string
   busca?: string
   categoria?: string
+  anunciante?: string
   estadoId?: string
   cidadeId?: string
   bairroId?: string
@@ -28,6 +29,7 @@ export async function generateMetadata({
   const page = parsePositivePage(searchParams.page)
   const busca = (searchParams.busca || "").trim()
   const categoria = (searchParams.categoria || "").trim()
+  const anunciante = (searchParams.anunciante || "").trim()
   const possuiFiltrosLocais = Boolean(
     searchParams.estadoId || searchParams.cidadeId || searchParams.bairroId
   )
@@ -36,6 +38,7 @@ export async function generateMetadata({
   if (page > 1) url.searchParams.set("page", String(page))
   if (busca) url.searchParams.set("busca", busca)
   if (categoria && categoria !== "TODOS") url.searchParams.set("categoria", categoria)
+  if (anunciante) url.searchParams.set("anunciante", anunciante)
   if (searchParams.estadoId) url.searchParams.set("estadoId", searchParams.estadoId)
   if (searchParams.cidadeId) url.searchParams.set("cidadeId", searchParams.cidadeId)
   if (searchParams.bairroId) url.searchParams.set("bairroId", searchParams.bairroId)
@@ -59,7 +62,8 @@ export async function generateMetadata({
       : "Explore anúncios de acompanhantes e encontre perfis publicados em diferentes cidades do Brasil."
 
   const description = page > 1 ? `${descriptionBase} Página ${page}.` : descriptionBase
-  const indexavel = !busca && !possuiFiltrosLocais && (!categoria || categoria === "TODOS")
+  const indexavel =
+    !busca && !anunciante && !possuiFiltrosLocais && (!categoria || categoria === "TODOS")
 
   return {
     title,
@@ -88,10 +92,18 @@ export default async function AnunciosPage({
   const currentPage = parsePositivePage(searchParams.page)
   const categoria = (searchParams.categoria || "TODOS").trim() || "TODOS"
   const busca = (searchParams.busca || "").trim()
+  const anunciante = (searchParams.anunciante || "").trim()
   let initialData: PublicCategoryList | null = null
 
   try {
-    initialData = await listarAnunciosPublicos(categoria, busca, currentPage - 1, 16)
+    initialData = await listarAnunciosPublicos(
+      categoria,
+      busca,
+      currentPage - 1,
+      16,
+      undefined,
+      anunciante,
+    )
   } catch {
     // O grid cliente repete a consulta e preserva o estado de erro com opcao de nova tentativa.
   }
@@ -99,7 +111,7 @@ export default async function AnunciosPage({
   return (
     <AnunciosPageClient
       initialData={initialData}
-      initialRequest={{ categoria, busca, currentPage }}
+      initialRequest={{ categoria, busca, anunciante, currentPage }}
     />
   )
 }
