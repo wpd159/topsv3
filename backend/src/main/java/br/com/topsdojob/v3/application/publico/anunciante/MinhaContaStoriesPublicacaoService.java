@@ -14,15 +14,20 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
+import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -58,6 +63,7 @@ public class MinhaContaStoriesPublicacaoService {
   private final MinhaContaStoriesDireitoService direitoService;
   private final AnuncioRepository anuncioRepository;
   private final StoryAnuncioRepository storyRepository;
+  private final UsuarioRepository usuarioRepository;
   private final ArquivoMidiaRepository arquivoRepository;
   private final AuditoriaEventoRepository auditoriaRepository;
   private final MidiaUploadValidator uploadValidator;
@@ -74,6 +80,7 @@ public class MinhaContaStoriesPublicacaoService {
       MinhaContaStoriesDireitoService direitoService,
       AnuncioRepository anuncioRepository,
       StoryAnuncioRepository storyRepository,
+      UsuarioRepository usuarioRepository,
       ArquivoMidiaRepository arquivoRepository,
       AuditoriaEventoRepository auditoriaRepository,
       MidiaUploadValidator uploadValidator,
@@ -87,6 +94,7 @@ public class MinhaContaStoriesPublicacaoService {
         direitoService,
         anuncioRepository,
         storyRepository,
+        usuarioRepository,
         arquivoRepository,
         auditoriaRepository,
         uploadValidator,
@@ -103,6 +111,7 @@ public class MinhaContaStoriesPublicacaoService {
       MinhaContaStoriesDireitoService direitoService,
       AnuncioRepository anuncioRepository,
       StoryAnuncioRepository storyRepository,
+      UsuarioRepository usuarioRepository,
       ArquivoMidiaRepository arquivoRepository,
       AuditoriaEventoRepository auditoriaRepository,
       MidiaUploadValidator uploadValidator,
@@ -116,6 +125,7 @@ public class MinhaContaStoriesPublicacaoService {
     this.direitoService = direitoService;
     this.anuncioRepository = anuncioRepository;
     this.storyRepository = storyRepository;
+    this.usuarioRepository = usuarioRepository;
     this.arquivoRepository = arquivoRepository;
     this.auditoriaRepository = auditoriaRepository;
     this.uploadValidator = uploadValidator;
@@ -135,6 +145,58 @@ public class MinhaContaStoriesPublicacaoService {
       Authentication authentication,
       String requestId) {
     UUID usuarioId = usuarioService.usuarioAutenticado(authentication).getId();
+    return publicarCanonico(
+        modoConteudo,
+        anuncioId,
+        arquivos,
+        idempotencyKey,
+        usuarioId,
+        null,
+        null,
+        false,
+        requestId);
+  }
+
+  @Transactional
+  public MinhaContaStoryDto publicarAdministrativamente(
+      UUID anuncioId,
+      String idempotencyKey,
+      AdminUserPrincipal administrador,
+      String requestId) {
+    validarAdministrador(administrador);
+    if (anuncioId == null) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncioId obrigatorio");
+    }
+    AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
+    validarAnuncioPublicavel(anuncio);
+    UsuarioEntity proprietario = usuarioRepository.findByIdForUpdate(anuncio.getUsuarioId())
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente"));
+    if (proprietario.getStatus() != StatusUsuario.ATIVO) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario nao esta ativo");
+    }
+    return publicarCanonico(
+        ModoConteudoStory.ANUNCIO.name(),
+        anuncioId,
+        null,
+        idempotencyKey,
+        proprietario.getId(),
+        anuncio,
+        administrador.usuarioId(),
+        true,
+        requestId);
+  }
+
+  private MinhaContaStoryDto publicarCanonico(
+      String modoConteudo,
+      UUID anuncioId,
+      List<MultipartFile> arquivos,
+      String idempotencyKey,
+      UUID usuarioId,
+      AnuncioEntity anuncioBloqueado,
+      UUID atorAdministrativo,
+      boolean retornarAtivoExistente,
+      String requestId) {
     ModoConteudoStory modo = modo(modoConteudo);
     validarContrato(modo, anuncioId, arquivos);
     MultipartFile arquivo = modo == ModoConteudoStory.MIDIA_UPLOAD ? arquivos.get(0) : null;
@@ -155,7 +217,7 @@ public class MinhaContaStoriesPublicacaoService {
 
     OffsetDateTime agora = agoraUtc();
     AnuncioEntity anuncio = modo == ModoConteudoStory.ANUNCIO
-        ? anuncioParaPublicacao(anuncioId, usuarioId)
+        ? (anuncioBloqueado == null ? anuncioParaPublicacao(anuncioId, usuarioId) : anuncioBloqueado)
         : null;
     if (anuncio != null) {
       List<StoryAnuncioEntity> existentes = storyRepository.findByAnuncioIdForUpdate(anuncioId);
@@ -165,12 +227,22 @@ public class MinhaContaStoriesPublicacaoService {
       if (expirou) {
         storyRepository.flush();
       }
-      if (existentes.stream().anyMatch(item -> ativoDoAnuncio(item, agora))) {
+      StoryAnuncioEntity ativo = existentes.stream()
+          .filter(item -> ativoDoAnuncio(item, agora))
+          .findFirst()
+          .orElse(null);
+      if (ativo != null && retornarAtivoExistente) {
+        return consultaService.consultar(ativo);
+      }
+      if (ativo != null) {
         throw new StoryJaAtivoException();
       }
     }
 
-    var direito = direitoService.reservarParaPublicacao(modo, anuncio, usuarioId, agora);
+    var direito = atorAdministrativo == null
+        ? direitoService.reservarParaPublicacao(modo, anuncio, usuarioId, agora)
+        : direitoService.criarDireitoAdministrativoParaPublicacao(
+            anuncio, atorAdministrativo, chave, agora);
     UUID storyId = uuidDeterministico("story", usuarioId, modo, anuncioId, chave);
     UUID arquivoId = modo == ModoConteudoStory.MIDIA_UPLOAD
         ? processarMidia(storyId, arquivo, usuarioId, chave, agora, requestId)
@@ -197,16 +269,29 @@ public class MinhaContaStoriesPublicacaoService {
             fimEm,
             usuarioId);
     storyRepository.save(story);
-    auditoriaRepository.save(AuditoriaEventoEntity.registrarSistema(
-        uuidDeterministico("auditoria", usuarioId, modo, anuncioId, chave),
-        usuarioId,
-        "STORY_PUBLICADO",
-        "STORY_ANUNCIO",
-        storyId,
-        null,
-        "{\"modoConteudo\":\"" + modo.name() + "\",\"status\":\"PUBLICADO\"}",
-        requestId,
-        publicadoEm));
+    String depoisJson = "{\"modoConteudo\":\"" + modo.name()
+        + "\",\"status\":\"PUBLICADO\"}";
+    auditoriaRepository.save(atorAdministrativo == null
+        ? AuditoriaEventoEntity.registrarSistema(
+            uuidDeterministico("auditoria", usuarioId, modo, anuncioId, chave),
+            usuarioId,
+            "STORY_PUBLICADO",
+            "STORY_ANUNCIO",
+            storyId,
+            null,
+            depoisJson,
+            requestId,
+            publicadoEm)
+        : AuditoriaEventoEntity.registrar(
+            uuidDeterministico("auditoria-admin", usuarioId, modo, anuncioId, chave),
+            atorAdministrativo,
+            "STORY_PUBLICADO_ADMINISTRATIVAMENTE",
+            "STORY_ANUNCIO",
+            storyId,
+            null,
+            depoisJson,
+            requestId,
+            publicadoEm));
     storyRepository.flush();
     return consultaService.consultar(story);
   }
@@ -217,12 +302,27 @@ public class MinhaContaStoriesPublicacaoService {
     if (!usuarioId.equals(anuncio.getUsuarioId())) {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "anuncio pertence a outra conta");
     }
+    validarAnuncioPublicavel(anuncio);
+    return anuncio;
+  }
+
+  private void validarAnuncioPublicavel(AnuncioEntity anuncio) {
     if (anuncio.getRemovidoEm() != null
         || anuncio.getStatus() != StatusAnuncio.PUBLICADO
         || anuncio.getStatusModeracao() != StatusModeracaoAnuncio.APROVADO) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio nao esta publicavel para Story");
     }
-    return anuncio;
+    if (anuncio.getUsuarioId() == null) {
+      throw new ResponseStatusException(HttpStatus.CONFLICT, "proprietario ausente");
+    }
+  }
+
+  private void validarAdministrador(AdminUserPrincipal administrador) {
+    if (administrador == null
+        || !administrador.isEnabled()
+        || !administrador.papeis().contains(PapelUsuario.ADMIN)) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "administrador nao autorizado");
+    }
   }
 
   private UUID processarMidia(

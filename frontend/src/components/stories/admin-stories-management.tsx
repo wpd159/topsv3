@@ -1,9 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { ShieldAlert, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Search, ShieldAlert, Trash2 } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -19,6 +21,8 @@ import {
   type AdminStoryGerenciado,
   type AdminStoryRemocaoMotivo,
 } from '@/lib/admin-story-management-api'
+import { listAdminUsers } from '@/features/admin-usuarios/api'
+import type { AdminUserSummary } from '@/features/admin-usuarios/types'
 
 const MOTIVOS: Array<{ value: AdminStoryRemocaoMotivo; label: string }> = [
   { value: 'VIOLACAO_REGRAS', label: 'Violação das regras' },
@@ -39,36 +43,169 @@ function storyStatus(story: AdminStoryGerenciado) {
   if (story.encerradoEm) return 'Encerrado'
   return story.status === 'PUBLICADO' ? 'Ativo' : story.status.replaceAll('_', ' ')
 }
+const USER_LOOKUP_FILTERS = {
+  status: 'TODOS',
+  kyc: 'TODOS',
+  grupo: 'TODOS',
+  ordenacao: 'RECENTES',
+  page: 0,
+  size: 10,
+} as const
+
+function userLabel(user: AdminUserSummary) {
+  return user.nome?.trim() || user.email?.trim() || user.id
+}
+
+function userDescription(user: AdminUserSummary) {
+  return [user.email, user.id].filter(Boolean).join(' | ')
+}
+
 
 export function AdminStoriesManagement() {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const filters = useMemo(() => ({
+    usuarioId: searchParams.get('usuarioId')?.trim() || '',
+    busca: searchParams.get('busca')?.trim() || '',
+    page: Math.max(Number(searchParams.get('pagina') || '0') || 0, 0),
+    size: 20,
+  }), [searchParams])
   const [data, setData] = useState<AdminStoriesPagina | null>(null)
-  const [page, setPage] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<AdminStoryGerenciado | null>(null)
   const [reason, setReason] = useState<AdminStoryRemocaoMotivo>('VIOLACAO_REGRAS')
   const [description, setDescription] = useState('')
   const [removing, setRemoving] = useState(false)
+  const [reload, setReload] = useState(0)
+  const [searchDraft, setSearchDraft] = useState(filters.busca)
+  const [selectedUserId, setSelectedUserId] = useState(filters.usuarioId)
+  const [selectedUser, setSelectedUser] = useState<AdminUserSummary | null>(null)
+  const [userDraft, setUserDraft] = useState('')
+  const [userSuggestions, setUserSuggestions] = useState<AdminUserSummary[]>([])
+  const [userLoading, setUserLoading] = useState(false)
+  const [userError, setUserError] = useState<string | null>(null)
 
-  const load = useCallback(async (targetPage = page) => {
+  const updateQuery = useCallback((updates: Record<string, string | number | null>) => {
+    const next = new URLSearchParams(searchParams.toString())
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null || value === '') next.delete(key)
+      else next.set(key, String(value))
+    })
+    router.push(next.size ? `${pathname}?${next.toString()}` : pathname)
+  }, [pathname, router, searchParams])
+
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const next = await fetchAdminStories(targetPage, 20)
-      setData(next)
-      setPage(next.pagina)
+      setData(await fetchAdminStories(filters))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível carregar a gestão de Stories.')
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [filters])
 
   useEffect(() => {
-    void load(0)
-    // A carga inicial usa a primeira página de forma intencional.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    void load()
+  }, [load, reload])
+
+  useEffect(() => {
+    setSearchDraft(filters.busca)
+    setSelectedUserId(filters.usuarioId)
+    if (!filters.usuarioId) {
+      setSelectedUser(null)
+      setUserDraft('')
+    }
+  }, [filters.busca, filters.usuarioId])
+
+  useEffect(() => {
+    let active = true
+    if (!filters.usuarioId) return
+    listAdminUsers({ ...USER_LOOKUP_FILTERS, termo: filters.usuarioId })
+      .then((result) => {
+        if (!active) return
+        const user = result.itens.find((item) => item.id === filters.usuarioId) ?? result.itens[0] ?? null
+        setSelectedUser(user)
+        setUserDraft(user ? userLabel(user) : filters.usuarioId)
+      })
+      .catch(() => {
+        if (active) setUserDraft(filters.usuarioId)
+      })
+    return () => {
+      active = false
+    }
+  }, [filters.usuarioId])
+
+  useEffect(() => {
+    const term = userDraft.trim()
+    if (selectedUser && term === userLabel(selectedUser)) {
+      setUserSuggestions([])
+      setUserError(null)
+      return
+    }
+    if (term.length < 2) {
+      setUserSuggestions([])
+      setUserError(null)
+      return
+    }
+    let active = true
+    const timer = globalThis.setTimeout(() => {
+      setUserLoading(true)
+      setUserError(null)
+      listAdminUsers({ ...USER_LOOKUP_FILTERS, termo: term })
+        .then((result) => {
+          if (active) setUserSuggestions(result.itens)
+        })
+        .catch(() => {
+          if (active) {
+            setUserSuggestions([])
+            setUserError('Não foi possível localizar usuários.')
+          }
+        })
+        .finally(() => {
+          if (active) setUserLoading(false)
+        })
+    }, 250)
+    return () => {
+      active = false
+      globalThis.clearTimeout(timer)
+    }
+  }, [selectedUser, userDraft])
+  function applyFilters(event: React.FormEvent) {
+    event.preventDefault()
+    updateQuery({
+      usuarioId: selectedUserId || null,
+      busca: searchDraft.trim() || null,
+      pagina: 0,
+    })
+  }
+
+  function clearFilters() {
+    setSearchDraft('')
+    setSelectedUserId('')
+    setSelectedUser(null)
+    setUserDraft('')
+    setUserSuggestions([])
+    router.push(pathname)
+  }
+
+  function selectUser(user: AdminUserSummary) {
+    setSelectedUser(user)
+    setSelectedUserId(user.id)
+    setUserDraft(userLabel(user))
+    setUserSuggestions([])
+    setUserError(null)
+  }
+
+  function changeUserDraft(value: string) {
+    setUserDraft(value)
+    setSelectedUser(null)
+    setSelectedUserId('')
+  }
+
 
   function openRemoval(story: AdminStoryGerenciado) {
     setSelected(story)
@@ -88,8 +225,11 @@ export function AdminStoriesManagement() {
       const result = await removeAdminStory(selected.id, reason, description.trim() || null)
       toast.success(result.repetido ? 'O Story já estava removido.' : 'Story removido do feed.')
       setSelected(null)
-      const targetPage = data && data.itens.length === 1 && page > 0 ? page - 1 : page
-      await load(targetPage)
+      const targetPage = data && data.itens.length === 1 && filters.page > 0
+        ? filters.page - 1
+        : filters.page
+      if (targetPage !== filters.page) updateQuery({ pagina: targetPage })
+      else setReload((value) => value + 1)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível remover o Story.')
     } finally {
@@ -108,12 +248,60 @@ export function AdminStoriesManagement() {
             </div>
             <p className="mt-1 text-sm text-gray-600">Consulte publicações da conta e remova somente com motivo administrativo.</p>
           </div>
-          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void load(page)}>Atualizar</Button>
         </div>
+
+        <form onSubmit={applyFilters} className="mt-4 grid min-w-0 gap-3 border-t border-gray-200 pt-4 xl:grid-cols-[minmax(220px,1fr)_minmax(260px,1.2fr)_auto] xl:items-end">
+          <label className="min-w-0">
+            <span className="mb-1 block text-xs font-semibold text-gray-700">Buscar</span>
+            <span className="relative block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+              <Input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Story, anúncio ou ID" className="w-full pl-9" />
+            </span>
+          </label>
+          <div className="relative min-w-0">
+            <label htmlFor="admin-story-user-filter" className="mb-1 block text-xs font-semibold text-gray-700">Usuário</label>
+            <Input
+              id="admin-story-user-filter"
+              value={userDraft}
+              onChange={(event) => changeUserDraft(event.target.value)}
+              placeholder="Username, nome, e-mail ou ID"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="admin-story-user-options"
+              aria-expanded={userSuggestions.length > 0}
+              className="w-full"
+            />
+            {userLoading ? <p className="mt-1 text-xs text-gray-500" role="status">Localizando usuários...</p> : null}
+            {userError ? <p className="mt-1 text-xs text-red-700" role="alert">{userError}</p> : null}
+            {userSuggestions.length > 0 ? (
+              <div id="admin-story-user-options" role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-gray-200 bg-white p-1 shadow-lg">
+                {userSuggestions.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    role="option"
+                    aria-selected={selectedUserId === user.id}
+                    className="block w-full rounded px-3 py-2 text-left hover:bg-pink-50 focus:bg-pink-50 focus:outline-none"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectUser(user)}
+                  >
+                    <span className="block truncate text-sm font-medium text-gray-900">{userLabel(user)}</span>
+                    <span className="block truncate text-xs text-gray-500">{userDescription(user)}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:flex">
+            <Button type="submit" disabled={loading}>Aplicar</Button>
+            <Button type="button" variant="outline" disabled={loading} onClick={clearFilters}>Limpar</Button>
+            <Button type="button" variant="outline" className="col-span-2 sm:col-span-1" disabled={loading} onClick={() => setReload((value) => value + 1)}>Atualizar</Button>
+          </div>
+        </form>
 
         {loading && !data ? <p className="mt-5 text-sm text-gray-500" role="status">Carregando Stories...</p> : null}
         {error && !selected ? <p className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert">{error}</p> : null}
-        {!loading && !error && (!data || data.itens.length === 0) ? <p className="mt-5 text-sm text-gray-500">Nenhum Story recente encontrado.</p> : null}
+        {!loading && !error && (!data || data.itens.length === 0) ? <p className="mt-5 text-sm text-gray-500">Nenhum Story encontrado para os filtros informados.</p> : null}
 
         {data && data.itens.length > 0 ? (
           <div className="mt-5 overflow-x-auto">
@@ -155,9 +343,9 @@ export function AdminStoriesManagement() {
 
         {data && data.totalPaginas > 1 ? (
           <nav className="mt-5 flex items-center justify-between gap-3" aria-label="Paginação administrativa de Stories">
-            <Button type="button" variant="outline" size="sm" disabled={loading || page === 0} onClick={() => void load(page - 1)}>Anterior</Button>
-            <span className="text-sm text-gray-600">Página {page + 1} de {data.totalPaginas}</span>
-            <Button type="button" variant="outline" size="sm" disabled={loading || page + 1 >= data.totalPaginas} onClick={() => void load(page + 1)}>Próxima</Button>
+            <Button type="button" variant="outline" size="sm" disabled={loading || filters.page === 0} onClick={() => updateQuery({ pagina: filters.page - 1 })}>Anterior</Button>
+            <span className="text-sm text-gray-600">Página {filters.page + 1} de {data.totalPaginas}</span>
+            <Button type="button" variant="outline" size="sm" disabled={loading || filters.page + 1 >= data.totalPaginas} onClick={() => updateQuery({ pagina: filters.page + 1 })}>Próxima</Button>
           </nav>
         ) : null}
       </section>

@@ -13,6 +13,7 @@ import br.com.topsdojob.v3.application.admin.readonly.dto.AdminModeracaoHistoric
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPremiumFilaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminRevisaoAbertaDto;
+import br.com.topsdojob.v3.application.admin.readonly.dto.AdminStoryAnuncioAcaoDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.documento.AdminKycService;
 import br.com.topsdojob.v3.application.admin.documento.dto.AdminKycEnvioDto;
@@ -20,6 +21,8 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryConsultaService;
+import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryDto;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -40,10 +43,13 @@ import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJuridico;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -93,6 +99,7 @@ public class AdminAnuncioDetalhadoConsultaService {
     private final BeneficioAnuncioConsultaService beneficioService;
     private final MidiaPublicaUrlService midiaPublicaUrlService;
     private final AdminKycService kycService;
+    private final MeuAnuncioStoryConsultaService storyConsultaService;
     private final ObjectMapper objectMapper;
 
     public AdminAnuncioDetalhadoConsultaService(
@@ -112,6 +119,7 @@ public class AdminAnuncioDetalhadoConsultaService {
             BeneficioAnuncioConsultaService beneficioService,
             MidiaPublicaUrlService midiaPublicaUrlService,
             AdminKycService kycService,
+            MeuAnuncioStoryConsultaService storyConsultaService,
             ObjectMapper objectMapper) {
         this.anuncioRepository = anuncioRepository;
         this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
@@ -129,6 +137,7 @@ public class AdminAnuncioDetalhadoConsultaService {
         this.beneficioService = beneficioService;
         this.midiaPublicaUrlService = midiaPublicaUrlService;
         this.kycService = kycService;
+        this.storyConsultaService = storyConsultaService;
         this.objectMapper = objectMapper;
     }
 
@@ -166,6 +175,7 @@ public class AdminAnuncioDetalhadoConsultaService {
         Map<UUID, UsuarioEntity> anunciantes = carregarAnunciantes(result.getContent());
         Map<UUID, RevisaoAnuncioEntity> revisoesAbertas = carregarRevisoesAbertas(result.getContent());
         List<UUID> anuncioIds = result.getContent().stream().map(AnuncioEntity::getId).toList();
+        Map<UUID, MinhaContaStoryDto> storiesAtivos = storyConsultaService.consultarAtivos(anuncioIds);
         Map<UUID, Long> midias = contarMidias(anuncioIds);
         Map<UUID, Long> revisoes = contarRevisoes(anuncioIds);
         Map<UUID, Boolean> documentosPendentes = documentosPendentes(result.getContent());
@@ -189,6 +199,7 @@ public class AdminAnuncioDetalhadoConsultaService {
                                 beneficiosFila(beneficios.getOrDefault(anuncio.getId(), List.of())),
                                 visualizacoes.get(anuncio.getId()),
                                 cliques.getOrDefault(anuncio.getId(), 0L),
+                                storyAcao(anuncio, anunciantes.get(anuncio.getUsuarioId()), storiesAtivos.get(anuncio.getId())),
                                 comercialLimitado))
                         .toList(),
                 result.getNumber(),
@@ -323,6 +334,7 @@ public class AdminAnuncioDetalhadoConsultaService {
             List<AdminPremiumFilaItemDto> beneficiosPremium,
             VisualizacoesCanonicasDto visualizacoes,
             long cliques,
+            AdminStoryAnuncioAcaoDto storyAcao,
             boolean comercialLimitado) {
         return new AdminAnuncioListaItemDto(
                 anuncio.getId(),
@@ -345,7 +357,35 @@ public class AdminAnuncioDetalhadoConsultaService {
                 visualizacoes,
                 cliques,
                 anunciante(anunciante),
+                storyAcao,
                 revisaoAberta(revisaoAberta));
+    }
+
+    private AdminStoryAnuncioAcaoDto storyAcao(
+            AnuncioEntity anuncio,
+            UsuarioEntity anunciante,
+            MinhaContaStoryDto storyAtivo) {
+        if (storyAtivo != null) {
+            return new AdminStoryAnuncioAcaoDto(
+                    "ATIVO", storyAtivo.storyId(), storyAtivo.fimEm(), null);
+        }
+        if (anuncio.getRemovidoEm() != null || anuncio.getStatus() == StatusAnuncio.REMOVIDO) {
+            return new AdminStoryAnuncioAcaoDto(
+                    "INELEGIVEL", null, null, "Anuncio removido");
+        }
+        if (anuncio.getStatus() != StatusAnuncio.PUBLICADO) {
+            return new AdminStoryAnuncioAcaoDto(
+                    "INELEGIVEL", null, null, "Somente anuncios publicados podem entrar nos Stories");
+        }
+        if (anuncio.getStatusModeracao() != StatusModeracaoAnuncio.APROVADO) {
+            return new AdminStoryAnuncioAcaoDto(
+                    "INELEGIVEL", null, null, "A moderacao do anuncio ainda nao foi aprovada");
+        }
+        if (anunciante == null || anunciante.getStatus() != StatusUsuario.ATIVO) {
+            return new AdminStoryAnuncioAcaoDto(
+                    "INELEGIVEL", null, null, "A conta da anunciante nao esta ativa");
+        }
+        return new AdminStoryAnuncioAcaoDto("ELEGIVEL", null, null, null);
     }
 
     private Map<UUID, UsuarioEntity> carregarAnunciantes(Collection<AnuncioEntity> anuncios) {

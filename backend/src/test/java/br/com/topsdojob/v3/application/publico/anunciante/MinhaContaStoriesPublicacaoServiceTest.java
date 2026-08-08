@@ -29,9 +29,13 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
+import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
+import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -56,10 +60,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 class MinhaContaStoriesPublicacaoServiceTest {
 
+  private static final UUID ADMIN_ID = UUID.fromString("10000000-0000-4000-8000-000000000099");
   private static final UUID USUARIO_ID = UUID.fromString("10000000-0000-4000-8000-000000000001");
   private static final UUID ANUNCIO_A = UUID.fromString("20000000-0000-4000-8000-000000000001");
   private static final UUID ANUNCIO_B = UUID.fromString("20000000-0000-4000-8000-000000000002");
   private static final OffsetDateTime AGORA = OffsetDateTime.parse("2026-08-04T18:00:00Z");
+  private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
 
   private final MeusAnunciosConsultaService usuarioService = mock(MeusAnunciosConsultaService.class);
   private final MeuAnuncioStoryConsultaService consultaService = mock(MeuAnuncioStoryConsultaService.class);
@@ -83,6 +89,8 @@ class MinhaContaStoriesPublicacaoServiceTest {
   void setUp() throws Exception {
     UsuarioEntity usuario = mock(UsuarioEntity.class);
     when(usuario.getId()).thenReturn(USUARIO_ID);
+    when(usuario.getStatus()).thenReturn(StatusUsuario.ATIVO);
+    when(usuarioRepository.findByIdForUpdate(USUARIO_ID)).thenReturn(Optional.of(usuario));
     when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuario);
     when(storyRepository.findByCriadoPorAndModoConteudoAndAnuncioIdAndIdempotencyKey(
         any(), any(), any(), any()))
@@ -100,7 +108,9 @@ class MinhaContaStoriesPublicacaoServiceTest {
             .filter(story -> story.getAnuncioId() == null)
             .filter(story -> invocation.getArgument(2).equals(story.getIdempotencyKey()))
             .findFirst());
-    when(storyRepository.findByAnuncioIdForUpdate(any())).thenReturn(List.of());
+    when(storyRepository.findByAnuncioIdForUpdate(any())).thenAnswer(invocation -> stories.stream()
+        .filter(story -> invocation.getArgument(0).equals(story.getAnuncioId()))
+        .toList());
     when(storyRepository.save(any())).thenAnswer(invocation -> {
       StoryAnuncioEntity story = invocation.getArgument(0);
       stories.add(story);
@@ -116,6 +126,8 @@ class MinhaContaStoriesPublicacaoServiceTest {
         .thenReturn(direito);
     when(direitoService.iniciarVigencia(eq(direito), any()))
         .thenAnswer(invocation -> ((OffsetDateTime) invocation.getArgument(1)).plusHours(24));
+    when(direitoService.criarDireitoAdministrativoParaPublicacao(any(), eq(ADMIN_ID), any(), any()))
+        .thenReturn(direito);
 
     when(storageProvider.getIfAvailable()).thenReturn(storage);
     when(storage.putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), any()))
@@ -134,6 +146,7 @@ class MinhaContaStoriesPublicacaoServiceTest {
         direitoService,
         anuncioRepository,
         storyRepository,
+        usuarioRepository,
         arquivoRepository,
         auditoriaRepository,
         validator,
@@ -159,6 +172,7 @@ class MinhaContaStoriesPublicacaoServiceTest {
       context.registerBean(R2StorageProperties.class, this::properties);
       context.registerBean(StoryUploadCleanupAuditService.class, () -> cleanupAuditService);
       context.registerBean(MinhaContaStoriesPublicacaoService.class);
+      context.registerBean(UsuarioRepository.class, () -> usuarioRepository);
 
       context.refresh();
 
@@ -230,6 +244,48 @@ class MinhaContaStoriesPublicacaoServiceTest {
     verify(storyRepository, never()).save(any());
     verify(auditoriaRepository, never()).save(any());
     assertThat(stories).isEmpty();
+  }
+
+  @Test
+  void adminPublicaPor24HorasSemDuplicarStoryDireitoOuAuditoria() {
+    AnuncioEntity anuncio = anuncio(ANUNCIO_A);
+    when(anuncioRepository.findByIdForModeration(ANUNCIO_A)).thenReturn(Optional.of(anuncio));
+    AdminUserPrincipal admin = admin();
+
+    MinhaContaStoryDto primeira = service.publicarAdministrativamente(
+        ANUNCIO_A, "admin-story-1", admin, "req-admin-1");
+    MinhaContaStoryDto retry = service.publicarAdministrativamente(
+        ANUNCIO_A, "admin-story-1", admin, "req-admin-2");
+    MinhaContaStoryDto ativo = service.publicarAdministrativamente(
+        ANUNCIO_A, "admin-story-2", admin, "req-admin-3");
+
+    assertThat(primeira.modoConteudo()).isEqualTo("ANUNCIO");
+    assertThat(primeira.fimEm()).isEqualTo(primeira.inicioEm().plusHours(24));
+    assertThat(retry.storyId()).isEqualTo(primeira.storyId());
+    assertThat(ativo.storyId()).isEqualTo(primeira.storyId());
+    assertThat(stories).singleElement().satisfies(story -> {
+      assertThat(story.getAnuncioId()).isEqualTo(ANUNCIO_A);
+      assertThat(story.getArquivoMidiaId()).isNull();
+      assertThat(story.getAnuncioMidiaId()).isNull();
+    });
+    verify(direitoService).criarDireitoAdministrativoParaPublicacao(
+        eq(anuncio), eq(ADMIN_ID), any(), any());
+    verify(direitoService, never()).reservarParaPublicacao(any(), any(), any(), any());
+    verify(auditoriaRepository).save(any());
+  }
+
+  @Test
+  void adminNaoPublicaAnuncioInelegivel() {
+    AnuncioEntity anuncio = anuncio(ANUNCIO_A);
+    when(anuncio.getStatus()).thenReturn(StatusAnuncio.PAUSADO);
+    when(anuncioRepository.findByIdForModeration(ANUNCIO_A)).thenReturn(Optional.of(anuncio));
+
+    assertStatus(() -> service.publicarAdministrativamente(
+        ANUNCIO_A, "admin-story-invalido", admin(), "req-admin"), HttpStatus.CONFLICT);
+
+    verify(direitoService, never()).criarDireitoAdministrativoParaPublicacao(
+        any(), any(), any(), any());
+    verify(storyRepository, never()).save(any());
   }
 
   @Test
@@ -374,6 +430,14 @@ class MinhaContaStoriesPublicacaoServiceTest {
     when(anuncio.getStatusModeracao()).thenReturn(StatusModeracaoAnuncio.APROVADO);
     when(anuncio.getRemovidoEm()).thenReturn(null);
     return anuncio;
+  }
+
+  private AdminUserPrincipal admin() {
+    AdminUserPrincipal admin = mock(AdminUserPrincipal.class);
+    when(admin.isEnabled()).thenReturn(true);
+    when(admin.usuarioId()).thenReturn(ADMIN_ID);
+    when(admin.papeis()).thenReturn(List.of(PapelUsuario.ADMIN));
+    return admin;
   }
 
   private MockMultipartFile video(String nome) {

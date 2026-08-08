@@ -22,6 +22,7 @@ import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryConfiguracaoComercialRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
@@ -243,6 +244,88 @@ public class MinhaContaStoriesDireitoService {
     }
     if (storyRepository.existsByAtivacaoBeneficioIdAndDireitoPreservadoFalse(ativacao.getId())) {
       throw new ResponseStatusException(HttpStatus.CONFLICT, "direito de Story ja consumido");
+    }
+    return new DireitoPublicacao(ativacao, grupo);
+  }
+
+  public DireitoPublicacao criarDireitoAdministrativoParaPublicacao(
+      AnuncioEntity anuncio,
+      UUID administradorId,
+      String chavePublicacao,
+      OffsetDateTime agora) {
+    if (anuncio == null
+        || anuncio.getId() == null
+        || anuncio.getUsuarioId() == null
+        || administradorId == null
+        || chavePublicacao == null
+        || agora == null) {
+      throw new ResponseStatusException(
+          HttpStatus.BAD_REQUEST, "contexto administrativo de Story invalido");
+    }
+    var beneficio = beneficioRepository.findByCodigo(STORIES)
+        .orElseThrow(() -> new ResponseStatusException(
+            HttpStatus.CONFLICT, "identidade tecnica de Stories ausente"));
+    String chaveGrupo = "story-admin-direito:" + chavePublicacao;
+    String chaveAtivacao = chaveGrupo + ":ativacao";
+    GrupoAtivacaoBeneficioEntity repetido = grupoRepository
+        .findByIdempotencyKey(chaveGrupo)
+        .orElse(null);
+    if (repetido != null) {
+      return direitoAdministrativoRepetido(
+          repetido,
+          beneficio.getId(),
+          anuncio,
+          administradorId,
+          chaveAtivacao);
+    }
+    GrupoAtivacaoBeneficioEntity grupo = grupoRepository.save(
+        GrupoAtivacaoBeneficioEntity.criarAdministrativa(
+            UUID.randomUUID(),
+            anuncio.getUsuarioId(),
+            anuncio.getId(),
+            administradorId,
+            agora,
+            agora.plusHours(DURACAO_HORAS),
+            chaveGrupo,
+            "Publicacao administrativa de Story",
+            agora));
+    AtivacaoBeneficioEntity ativacao = ativacaoRepository.save(
+        AtivacaoBeneficioEntity.criarAdministrativaAguardandoModeracao(
+            UUID.randomUUID(),
+            beneficio.getId(),
+            null,
+            anuncio.getUsuarioId(),
+            anuncio.getId(),
+            grupo.getId(),
+            administradorId,
+            chaveAtivacao,
+            agora));
+    return new DireitoPublicacao(ativacao, grupo);
+  }
+
+  private DireitoPublicacao direitoAdministrativoRepetido(
+      GrupoAtivacaoBeneficioEntity grupo,
+      UUID beneficioId,
+      AnuncioEntity anuncio,
+      UUID administradorId,
+      String chaveAtivacao) {
+    List<AtivacaoBeneficioEntity> ativacoes = ativacaoRepository.findByGrupoAtivacaoId(grupo.getId());
+    if (grupo.getOrigem() != OrigemBeneficio.ADMIN
+        || !Objects.equals(grupo.getUsuarioId(), anuncio.getUsuarioId())
+        || !Objects.equals(grupo.getAnuncioId(), anuncio.getId())
+        || !Objects.equals(grupo.getAtorUsuarioId(), administradorId)
+        || ativacoes.size() != 1) {
+      throw idempotenciaDivergente();
+    }
+    AtivacaoBeneficioEntity ativacao = ativacoes.get(0);
+    if (ativacao.getOrigem() != OrigemBeneficio.ADMIN
+        || !Objects.equals(ativacao.getBeneficioId(), beneficioId)
+        || !Objects.equals(ativacao.getUsuarioId(), anuncio.getUsuarioId())
+        || !Objects.equals(ativacao.getAnuncioId(), anuncio.getId())
+        || !Objects.equals(ativacao.getAtorUsuarioId(), administradorId)
+        || !Objects.equals(ativacao.getCustoCreditosSnapshot(), 0)
+        || !Objects.equals(ativacao.getIdempotencyKey(), chaveAtivacao)) {
+      throw idempotenciaDivergente();
     }
     return new DireitoPublicacao(ativacao, grupo);
   }

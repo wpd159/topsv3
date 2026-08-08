@@ -27,6 +27,7 @@ import type {
   AdminPhotoBatchResponse,
   AdminPremiumBenefit,
   AdminPremiumCatalogItem,
+  AdminStoryPublication,
 } from './types'
 import type { AdminAdQueueContext } from './queue-context'
 import { adminAdQueueFilters } from './queue-context'
@@ -270,6 +271,14 @@ export function cancelAdminPremium(activationId: string, motivo: string, idempot
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify({ motivo }),
+  })
+}
+
+export function publishAdminStory(anuncioId: string, idempotencyKey: string) {
+  return request<AdminStoryPublication>('/stories', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ anuncioId }),
   })
 }
 

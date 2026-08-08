@@ -63,6 +63,44 @@ public interface StoryAnuncioRepository extends JpaRepository<StoryAnuncioEntity
 
     Page<StoryAnuncioEntity> findAllByOrderByCriadoEmDescIdDesc(Pageable pageable);
 
+    @Query(
+        value = """
+            select distinct story.*
+            from story_anuncio story
+            left join anuncio_midia midia on midia.id = story.anuncio_midia_id
+            left join anuncio anuncio on anuncio.id = coalesce(story.anuncio_id, midia.anuncio_id)
+            left join usuario usuario on usuario.id = story.criado_por
+            where (:usuarioId is null or story.criado_por = :usuarioId)
+              and (
+                :busca is null
+                or lower(coalesce(anuncio.titulo, '')) like concat('%', :busca, '%')
+                or lower(coalesce(story.modo_conteudo, 'MIDIA_UPLOAD')) like concat('%', :busca, '%')
+                or lower(cast(story.id as text)) like concat('%', :busca, '%')
+                or lower(coalesce(usuario.nome, '')) like concat('%', :busca, '%')
+              )
+            order by story.criado_em desc, story.id desc
+            """,
+        countQuery = """
+            select count(distinct story.id)
+            from story_anuncio story
+            left join anuncio_midia midia on midia.id = story.anuncio_midia_id
+            left join anuncio anuncio on anuncio.id = coalesce(story.anuncio_id, midia.anuncio_id)
+            left join usuario usuario on usuario.id = story.criado_por
+            where (:usuarioId is null or story.criado_por = :usuarioId)
+              and (
+                :busca is null
+                or lower(coalesce(anuncio.titulo, '')) like concat('%', :busca, '%')
+                or lower(coalesce(story.modo_conteudo, 'MIDIA_UPLOAD')) like concat('%', :busca, '%')
+                or lower(cast(story.id as text)) like concat('%', :busca, '%')
+                or lower(coalesce(usuario.nome, '')) like concat('%', :busca, '%')
+              )
+            """,
+        nativeQuery = true)
+    Page<StoryAnuncioEntity> findGestaoAdministrativa(
+        @Param("usuarioId") UUID usuarioId,
+        @Param("busca") String busca,
+        Pageable pageable);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select story from StoryAnuncioEntity story where story.id = :id")
     Optional<StoryAnuncioEntity> findByIdForUpdate(@Param("id") UUID id);

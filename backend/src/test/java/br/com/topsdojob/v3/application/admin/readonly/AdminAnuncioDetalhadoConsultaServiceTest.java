@@ -19,6 +19,7 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalcu
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalizacaoSanitizadaDto;
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
+import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryConsultaService;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
@@ -84,6 +85,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
     private final BeneficioAnuncioConsultaService beneficioService = mock(BeneficioAnuncioConsultaService.class);
     private final MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
     private final AdminKycService kycService = mock(AdminKycService.class);
+    private final MeuAnuncioStoryConsultaService storyConsultaService = mock(MeuAnuncioStoryConsultaService.class);
     private final AdminAnuncioDetalhadoConsultaService service = new AdminAnuncioDetalhadoConsultaService(
             anuncioRepository,
             bloqueioRepository,
@@ -101,6 +103,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
             beneficioService,
             urlService,
             kycService,
+            storyConsultaService,
             new ObjectMapper());
     private UUID anuncioId;
     private AnuncioEntity anuncio;
@@ -155,6 +158,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
                 org.mockito.ArgumentMatchers.eq(usuarioId),
                 org.mockito.ArgumentMatchers.<List<StatusDocumentoUsuario>>any())).thenReturn(0L);
         when(beneficioService.consultarCalculadosPorAnuncio(any())).thenReturn(Map.of());
+        when(storyConsultaService.consultarAtivos(any())).thenReturn(Map.of());
     }
 
     @Test
@@ -248,6 +252,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         assertThat(item.beneficiosPremiumVigentes()).containsExactly("Anuncio no topo");
         assertThat(item.visualizacoes().total()).isEqualTo(12);
         assertThat(item.cliquesWhatsapp()).isEqualTo(3);
+        assertThat(item.storyAcao().estado()).isEqualTo("INELEGIVEL");
         assertThat(item.anunciante().nomeCivil()).isEqualTo("Nome Civil Completo");
         assertThat(item.anunciante().email()).isEqualTo("pessoa@example.invalid");
         assertThat(item.anunciante().whatsapp()).isEqualTo("+5562888888888");

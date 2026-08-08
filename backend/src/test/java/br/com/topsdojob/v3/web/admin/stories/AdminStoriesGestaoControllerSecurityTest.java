@@ -1,5 +1,7 @@
 package br.com.topsdojob.v3.web.admin.stories;
 
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -54,6 +56,59 @@ class AdminStoriesGestaoControllerSecurityTest {
         .andExpect(status().isForbidden());
     mockMvc.perform(get("/api/admin/stories/gestao"))
         .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void consultaEncaminhaUsuarioBuscaEPaginacao() throws Exception {
+    UUID usuarioId = UUID.randomUUID();
+
+    mockMvc.perform(get("/api/admin/stories/gestao")
+            .param("usuarioId", usuarioId.toString())
+            .param("busca", "anuncio de teste")
+            .param("page", "2")
+            .param("size", "15")
+            .with(authentication(tokenFor(PapelUsuario.ADMIN))))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"));
+
+    verify(gestaoService).listar(eq(usuarioId), eq("anuncio de teste"), eq(2), eq(15));
+  }
+
+  @Test
+  void publicacaoExigeAdminCsrfEIdempotencyKey() throws Exception {
+    UUID anuncioId = UUID.randomUUID();
+    String payload = "{\"anuncioId\":\"" + anuncioId + "\"}";
+
+    mockMvc.perform(post("/api/admin/stories")
+            .with(authentication(tokenFor(PapelUsuario.ADMIN)))
+            .with(csrf())
+            .header("Idempotency-Key", "admin-story-controller-01")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(payload))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Cache-Control", "no-store"));
+
+    mockMvc.perform(post("/api/admin/stories")
+            .with(authentication(tokenFor(PapelUsuario.ADMIN)))
+            .header("Idempotency-Key", "admin-story-controller-02")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(payload))
+        .andExpect(status().isForbidden());
+
+    mockMvc.perform(post("/api/admin/stories")
+            .with(authentication(tokenFor(PapelUsuario.MODERADOR)))
+            .with(csrf())
+            .header("Idempotency-Key", "admin-story-controller-03")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(payload))
+        .andExpect(status().isForbidden());
+
+    mockMvc.perform(post("/api/admin/stories")
+            .with(authentication(tokenFor(PapelUsuario.ADMIN)))
+            .with(csrf())
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(payload))
+        .andExpect(status().isBadRequest());
   }
 
   @Test

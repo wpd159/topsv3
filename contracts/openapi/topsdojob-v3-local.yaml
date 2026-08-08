@@ -4195,6 +4195,44 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+  /api/admin/stories:
+    post:
+      summary: Publica administrativamente um anuncio nos Stories
+      operationId: publishAdminStory
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      description: Exclusivo de ADMIN e protegido por CSRF. Delega ao writer canonico de Story ANUNCIO, publica por 24 horas com origem administrativa, sem debitar creditos, criar movimento de ledger ou pagamento.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminStoryPublicacaoRequest"
+      responses:
+        "200":
+          description: Story publicado ou resultado idempotente ja existente
+          headers:
+            Cache-Control:
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MinhaContaStory"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/stories/gestao:
     get:
       summary: Lista Stories para gestao administrativa
@@ -4203,6 +4241,16 @@ paths:
         - AdminSessionCookie: []
       parameters:
         - $ref: "#/components/parameters/RequestId"
+        - name: usuarioId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+          description: Restringe o resultado aos Stories da conta selecionada.
+        - name: busca
+          in: query
+          required: false
+          schema: { type: string, maxLength: 120 }
+          description: Busca server-side por titulo do anuncio, modo, ID do Story ou username publico.
         - name: page
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
@@ -8708,6 +8756,14 @@ components:
           type: [string, "null"]
           enum: [EXCLUSAO_VOLUNTARIA, FALHA_TECNICA, VIOLACAO_REGRAS, DENUNCIA_PROCEDENTE, DETERMINACAO_JURIDICA, ERRO_TECNICO, OUTRO, null]
         direitoPreservado: { type: boolean }
+    AdminStoryPublicacaoRequest:
+      type: object
+      additionalProperties: false
+      required: [anuncioId]
+      properties:
+        anuncioId:
+          type: string
+          format: uuid
     AdminStoriesPagina:
       type: object
       additionalProperties: false
@@ -9867,10 +9923,28 @@ components:
           anyOf:
             - $ref: "#/components/schemas/AdminAnuncianteResumo"
             - type: "null"
+        storyAcao:
+          $ref: "#/components/schemas/AdminStoryAnuncioAcao"
         revisaoAberta:
           anyOf:
             - $ref: "#/components/schemas/AdminRevisaoAberta"
             - type: "null"
+    AdminStoryAnuncioAcao:
+      type: object
+      additionalProperties: false
+      required: [estado]
+      properties:
+        estado:
+          type: string
+          enum: [ELEGIVEL, ATIVO, INELEGIVEL]
+        storyId:
+          type: [string, "null"]
+          format: uuid
+        expiraEm:
+          type: [string, "null"]
+          format: date-time
+        motivo:
+          type: [string, "null"]
     AdminPremiumFilaItem:
       type: object
       additionalProperties: false

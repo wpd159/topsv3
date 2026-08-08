@@ -26,5 +26,6 @@ public record AdminAnuncioListaItemDto(
         VisualizacoesCanonicasDto visualizacoes,
         long cliquesWhatsapp,
         AdminAnuncianteResumoDto anunciante,
+        AdminStoryAnuncioAcaoDto storyAcao,
         AdminRevisaoAbertaDto revisaoAberta) {
 }

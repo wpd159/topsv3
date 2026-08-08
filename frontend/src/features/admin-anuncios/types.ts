@@ -54,6 +54,13 @@ export type AdminOpenReview = {
   criadoEm: string
 }
 
+export type AdminStoryAdAction = {
+  estado: 'ELEGIVEL' | 'ATIVO' | 'INELEGIVEL'
+  storyId?: string | null
+  expiraEm?: string | null
+  motivo?: string | null
+}
+
 export type AdminAdListItem = {
   id: string
   slug: string
@@ -75,6 +82,7 @@ export type AdminAdListItem = {
   visualizacoes: AdminCanonicalViews
   cliquesWhatsapp: number
   anunciante?: AdminAdvertiserSummary | null
+  storyAcao: AdminStoryAdAction
   revisaoAberta?: AdminOpenReview | null
 }
 
@@ -95,7 +103,7 @@ export type AdminAdMetrics = {
   ultimaAcaoAdministrativa?: AdminModerationHistoryItem | null
 }
 
-export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' | 'beneficiosPremiumVigentes' | 'visualizacoes' | 'cliquesWhatsapp'> & {
+export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' | 'beneficiosPremiumVigentes' | 'visualizacoes' | 'cliquesWhatsapp' | 'storyAcao'> & {
   descricaoResumo?: string | null
   descricao?: string | null
   categoria?: string | null
@@ -297,6 +305,17 @@ export type AdminModerationActionResponse = {
   requestId: string
   decididoEm: string
   mensagem: string
+}
+
+export type AdminStoryPublication = {
+  storyId: string
+  anuncioId: string
+  modoConteudo: 'ANUNCIO'
+  tipoMidia: null
+  status: string
+  inicioEm: string
+  fimEm: string
+  estadoMidia: null
 }
 
 export type AdminPhotoBatchDecision = {

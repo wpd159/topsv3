@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -53,6 +54,7 @@ class MinhaContaStoriesDireitoServiceTest {
   private static final UUID USUARIO_ID = UUID.fromString("51000000-0000-4000-8000-000000000001");
   private static final UUID ANUNCIO_ID = UUID.fromString("51000000-0000-4000-8000-000000000002");
   private static final UUID BENEFICIO_ID = UUID.fromString("51000000-0000-4000-8000-000000000003");
+  private static final UUID ADMIN_ID = UUID.fromString("51000000-0000-4000-8000-000000000004");
 
   private final MeusAnunciosConsultaService usuarioService = mock(MeusAnunciosConsultaService.class);
   private final MeuAnuncioStoryConsultaService consultaService = mock(MeuAnuncioStoryConsultaService.class);
@@ -231,6 +233,40 @@ class MinhaContaStoriesDireitoServiceTest {
     assertThat(reservado.ativacao()).isSameAs(direitoAnuncio);
     verify(ativacaoRepository).findByAnuncioId(ANUNCIO_ID);
     verify(ativacaoRepository, never()).findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID);
+  }
+
+  @Test
+  void direitoAdministrativoUsaOrigemAdminSemLedgerEPermaneceIdempotente() {
+    String chave = "admin-story-direito-01";
+
+    var primeiro = service.criarDireitoAdministrativoParaPublicacao(
+        anuncio, ADMIN_ID, chave, AGORA);
+
+    assertThat(primeiro.grupo().getOrigem()).isEqualTo(OrigemBeneficio.ADMIN);
+    assertThat(primeiro.grupo().getUsuarioId()).isEqualTo(USUARIO_ID);
+    assertThat(primeiro.grupo().getAnuncioId()).isEqualTo(ANUNCIO_ID);
+    assertThat(primeiro.grupo().getAtorUsuarioId()).isEqualTo(ADMIN_ID);
+    assertThat(primeiro.ativacao().getOrigem()).isEqualTo(OrigemBeneficio.ADMIN);
+    assertThat(primeiro.ativacao().getCustoCreditosSnapshot()).isZero();
+    assertThat(primeiro.ativacao().getStatus())
+        .isEqualTo(StatusAtivacaoBeneficio.AGUARDANDO_MODERACAO);
+
+    when(grupoRepository.findByIdempotencyKey("story-admin-direito:" + chave))
+        .thenReturn(Optional.of(primeiro.grupo()));
+    when(ativacaoRepository.findByGrupoAtivacaoId(primeiro.grupo().getId()))
+        .thenReturn(List.of(primeiro.ativacao()));
+
+    var repetido = service.criarDireitoAdministrativoParaPublicacao(
+        anuncio, ADMIN_ID, chave, AGORA.plusMinutes(1));
+
+    assertThat(repetido.grupo()).isSameAs(primeiro.grupo());
+    assertThat(repetido.ativacao()).isSameAs(primeiro.ativacao());
+    verify(grupoRepository, times(1)).save(any());
+    verify(ativacaoRepository, times(1)).save(any());
+    verify(ledgerService, never()).bloquearEConsultarSaldo(any());
+    verify(ledgerService, never()).registrar(
+        any(), any(), any(), anyInt(), anyInt(), any(), any(), any(), any(), any(), any(), any());
+    verify(movimentoRepository, never()).save(any());
   }
 
   @Test

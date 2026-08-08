@@ -25,6 +25,13 @@ export type AdminStoriesPagina = {
   totalPaginas: number
 }
 
+export type AdminStoryFilters = {
+  page?: number
+  size?: number
+  usuarioId?: string
+  busca?: string
+}
+
 export type AdminStoryRemocaoMotivo =
   | 'VIOLACAO_REGRAS'
   | 'DENUNCIA_PROCEDENTE'
@@ -88,8 +95,15 @@ async function request<T>(path: string, init: RequestInit = {}) {
   return await response.json() as T
 }
 
-export function fetchAdminStories(page = 0, size = 20) {
+export function fetchAdminStories({
+  page = 0,
+  size = 20,
+  usuarioId,
+  busca,
+}: AdminStoryFilters = {}) {
   const query = new URLSearchParams({ page: String(page), size: String(size) })
+  if (usuarioId?.trim()) query.set('usuarioId', usuarioId.trim())
+  if (busca?.trim()) query.set('busca', busca.trim())
   return request<AdminStoriesPagina>(`/gestao?${query.toString()}`)
 }
 

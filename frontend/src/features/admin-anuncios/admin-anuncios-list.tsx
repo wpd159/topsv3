@@ -2,8 +2,8 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ExternalLink, RefreshCw, Search, ShieldCheck } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Clapperboard, ExternalLink, RefreshCw, Search, ShieldCheck } from 'lucide-react'
 
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
@@ -15,7 +15,7 @@ import { maskPhoneBR } from '@/lib/phone-mask'
 import { SearchableSelect } from '@/features/anuncio-wizard/components/searchable-select'
 
 import { AdminAnuncioPremiumRapido } from './admin-anuncio-premium-rapido'
-import { listAdminAdFilterLocations, listAdminAds, listAdminPremiumCatalog, reactivateAdminAd } from './api'
+import { listAdminAdFilterLocations, listAdminAds, listAdminPremiumCatalog, publishAdminStory, reactivateAdminAd } from './api'
 import {
   ADMIN_AD_PAGE_SIZE_OPTIONS,
   ADMIN_AD_SORT_OPTIONS,
@@ -105,6 +105,53 @@ function Owner({ item, compact = false }: { item: AdminAdListItem; compact?: boo
     </div>
   )
 }
+function AdminStoryQuickAction({
+  item,
+  canManage,
+  busy,
+  onPublish,
+}: {
+  item: AdminAdListItem
+  canManage: boolean
+  busy: boolean
+  onPublish: (item: AdminAdListItem) => void
+}) {
+  const action = item.storyAcao
+  if (action.estado === 'ATIVO') {
+    return (
+      <div className="space-y-1">
+        <Button type="button" size="sm" variant="outline" className="w-full" disabled>
+          <Clapperboard className="mr-2 h-4 w-4" aria-hidden="true" />Story ativo
+        </Button>
+        {action.expiraEm ? <p className="text-xs text-zinc-500">Expira em {dateLabel(action.expiraEm)}</p> : null}
+      </div>
+    )
+  }
+
+  const enabled = canManage && action.estado === 'ELEGIVEL'
+  const reason = canManage
+    ? action.motivo || 'Este anúncio ainda não está elegível para Stories.'
+    : 'Somente ADMIN pode publicar Stories administrativamente.'
+
+  return (
+    <div className="space-y-1">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="w-full"
+        disabled={!enabled || busy}
+        title={!enabled ? reason : undefined}
+        onClick={() => onPublish(item)}
+      >
+        <Clapperboard className="mr-2 h-4 w-4" aria-hidden="true" />
+        {busy ? 'Adicionando...' : 'Adicionar aos Stories'}
+      </Button>
+      {!enabled ? <p className="text-xs text-zinc-500">{reason}</p> : null}
+    </div>
+  )
+}
+
 
 function uniqueBy<T>(items: T[], key: (item: T) => string) {
   return [...new Map(items.map((item) => [key(item), item])).values()]
@@ -119,6 +166,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
   const [catalog, setCatalog] = useState<AdminPremiumCatalogItem[]>([])
   const [canManagePremium, setCanManagePremium] = useState(false)
   const [canManageAds, setCanManageAds] = useState(false)
+  const [canManageStories, setCanManageStories] = useState(false)
   const [loading, setLoading] = useState(true)
   const [locationsLoading, setLocationsLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
@@ -129,6 +177,9 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
   const [reload, setReload] = useState(0)
   const [supportReload, setSupportReload] = useState(0)
   const [locationsReload, setLocationsReload] = useState(0)
+  const [busyStoryIds, setBusyStoryIds] = useState<Set<string>>(() => new Set())
+  const publishingStoryIds = useRef(new Set<string>())
+  const storyIdempotencyKeys = useRef(new Map<string, string>())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -144,16 +195,26 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
 
   const loadSupport = useCallback(async () => {
     setSupportError(null)
-    try {
-      const [catalogResponse, session] = await Promise.all([
-        listAdminPremiumCatalog(),
-        getAdminSession(),
-      ])
-      setCatalog(catalogResponse.filter((item) => item.escopo === 'ANUNCIO'))
+    const [catalogResult, sessionResult] = await Promise.allSettled([
+      listAdminPremiumCatalog(),
+      getAdminSession(),
+    ])
+    if (catalogResult.status === 'fulfilled') {
+      setCatalog(catalogResult.value.filter((item) => item.escopo === 'ANUNCIO'))
+    } else {
+      setCatalog([])
+      setSupportError(catalogResult.reason)
+    }
+    if (sessionResult.status === 'fulfilled') {
+      const session = sessionResult.value
       setCanManagePremium(Boolean(session?.papeis.includes('ADMIN') && session?.permissoes.includes('PREMIUM_GERENCIAR')))
       setCanManageAds(Boolean(session?.papeis.includes('ADMIN') && session?.permissoes.includes('ANUNCIO_MODERAR')))
-    } catch (reason) {
-      setSupportError(reason)
+      setCanManageStories(Boolean(session?.papeis.includes('ADMIN')))
+    } else {
+      setCanManagePremium(false)
+      setCanManageAds(false)
+      setCanManageStories(false)
+      setSupportError(sessionResult.reason)
     }
   }, [])
 
@@ -218,6 +279,41 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
       setBusyAdId(null)
     }
   }
+  async function addToStories(item: AdminAdListItem) {
+    if (!canManageStories || item.storyAcao.estado !== 'ELEGIVEL' || publishingStoryIds.current.has(item.id)) return
+    publishingStoryIds.current.add(item.id)
+    setBusyStoryIds((current) => new Set(current).add(item.id))
+    setActionError(null)
+    const idempotencyKey = storyIdempotencyKeys.current.get(item.id)
+      || `admin-story-${item.id}-${Date.now()}`
+    storyIdempotencyKeys.current.set(item.id, idempotencyKey)
+    try {
+      const story = await publishAdminStory(item.id, idempotencyKey)
+      setData((current) => current ? {
+        ...current,
+        itens: current.itens.map((row) => row.id === item.id ? {
+          ...row,
+          storyAcao: {
+            estado: 'ATIVO',
+            storyId: story.storyId,
+            expiraEm: story.fimEm,
+            motivo: null,
+          },
+        } : row),
+      } : current)
+      storyIdempotencyKeys.current.delete(item.id)
+    } catch (reason) {
+      setActionError(reason)
+    } finally {
+      publishingStoryIds.current.delete(item.id)
+      setBusyStoryIds((current) => {
+        const next = new Set(current)
+        next.delete(item.id)
+        return next
+      })
+    }
+  }
+
 
   const states = useMemo(() => uniqueBy(locations, (item) => item.uf), [locations])
   const cities = useMemo(() => context.uf
@@ -337,6 +433,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
                 <p className="mt-3 text-xs text-zinc-600">{locationLabel(item)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div><span className="block text-zinc-500">Visualizações</span><strong>{viewsLabel(item)}</strong></div><div><span className="block text-zinc-500">WhatsApp</span><strong>{item.cliquesWhatsapp}</strong></div><div><span className="block text-zinc-500">Criado</span><strong>{dateLabel(item.criadoEm)}</strong></div></div>
                 <div className="mt-3"><AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} /></div>
+                <div className="mt-2"><AdminStoryQuickAction item={item} canManage={canManageStories} busy={busyStoryIds.has(item.id)} onPublish={(row) => void addToStories(row)} /></div>
                 <div className="mt-4 grid gap-2">
                   {canReactivate(item) ? <Button type="button" variant="outline" disabled={Boolean(busyAdId)} onClick={() => void reactivate(item)}>{busyAdId === item.id ? 'Reativando...' : 'Reativar'}</Button> : null}
                   <Button asChild><Link href={adminAdQueueDetailHref(item.id, context)}>Abrir análise</Link></Button>
@@ -347,7 +444,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
 
           <div className="hidden overflow-x-auto border border-zinc-200 bg-white md:block">
             <table className="w-full min-w-[1320px] text-left text-sm">
-              <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-4 py-3">Anúncio</th><th className="px-4 py-3">Proprietário</th><th className="px-4 py-3">Localização</th><th className="px-4 py-3">Estado / moderação</th><th className="px-4 py-3">Premium</th><th className="px-4 py-3">Métricas</th><th className="px-4 py-3">Criação</th><th className="px-4 py-3 text-right">Ação</th></tr></thead>
+              <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-4 py-3">Anúncio</th><th className="px-4 py-3">Proprietário</th><th className="px-4 py-3">Localização</th><th className="px-4 py-3">Estado / moderação</th><th className="px-4 py-3">Premium / Stories</th><th className="px-4 py-3">Métricas</th><th className="px-4 py-3">Criação</th><th className="px-4 py-3 text-right">Ação</th></tr></thead>
               <tbody className="divide-y divide-zinc-100">
                 {items.map((item) => (
                   <tr key={item.id} className="hover:bg-zinc-50">
@@ -355,7 +452,10 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
                     <td className="px-4 py-3"><Owner item={item} /></td>
                     <td className="px-4 py-3 text-zinc-600">{locationLabel(item)}</td>
                     <td className="px-4 py-3"><StatusBadges item={item} /></td>
-                    <td className="px-4 py-3"><AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} /></td>
+                    <td className="px-4 py-3"><div className="min-w-[210px] space-y-2">
+                      <AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} />
+                      <AdminStoryQuickAction item={item} canManage={canManageStories} busy={busyStoryIds.has(item.id)} onPublish={(row) => void addToStories(row)} />
+                    </div></td>
                     <td className="px-4 py-3 text-xs text-zinc-700"><strong>{viewsLabel(item)}</strong> views<br /><span>{item.cliquesWhatsapp} cliques</span></td>
                     <td className="px-4 py-3 text-xs text-zinc-600">{dateLabel(item.criadoEm)}</td>
                     <td className="px-4 py-3 text-right"><div className="flex justify-end gap-2">{canReactivate(item) ? <Button type="button" size="sm" variant="outline" disabled={Boolean(busyAdId)} onClick={() => void reactivate(item)}>{busyAdId === item.id ? 'Reativando...' : 'Reativar'}</Button> : null}<Button asChild size="sm"><Link href={adminAdQueueDetailHref(item.id, context)}>Analisar</Link></Button></div></td>
