@@ -4,7 +4,9 @@ import br.com.topsdojob.v3.application.publico.pagamento.EfiWebhookService;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiWebhookResultadoDto;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,9 +24,9 @@ public class EfiWebhookController {
     }
 
     @PostMapping(
-            path = {"", "/pix"},
+            path = "/pix",
             consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_PLAIN_VALUE})
-    public EfiWebhookResultadoDto receber(
+    public ResponseEntity<EfiWebhookResultadoDto> receber(
             @RequestParam String hmac,
             @RequestBody String payload,
             HttpServletRequest request) {
@@ -32,10 +34,12 @@ public class EfiWebhookController {
         if (origem == null || origem.isBlank()) {
             origem = request.getRemoteAddr();
         }
-        return service.receber(
-                hmac,
-                payload,
-                origem,
-                RequestIdContext.current(request));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(service.receber(
+                        hmac,
+                        payload,
+                        origem,
+                        RequestIdContext.current(request)));
     }
 }

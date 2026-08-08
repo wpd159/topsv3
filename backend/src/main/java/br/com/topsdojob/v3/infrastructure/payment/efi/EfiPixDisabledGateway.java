@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.infrastructure.payment.efi;
 
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import java.math.BigDecimal;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -10,6 +11,11 @@ public class EfiPixDisabledGateway implements EfiPixGateway {
 
     @Override
     public CobrancaPix criarCobranca(String txid, BigDecimal valor, String descricao) {
+        throw indisponivel();
+    }
+
+    @Override
+    public AmbientePagamento ambiente() {
         throw indisponivel();
     }
 

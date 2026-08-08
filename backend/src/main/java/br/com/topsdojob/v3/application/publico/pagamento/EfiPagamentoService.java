@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.publico.auth.PublicAuthRateLimiter;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPagamentoHistoricoDto;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutDto;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutRequest;
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
@@ -92,10 +93,12 @@ public class EfiPagamentoService {
 
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         String txid = txid(usuarioId, chave);
+        AmbientePagamento ambiente = ambienteGatewayObrigatorio();
         PagamentoEntity pagamento = pagamentoRepository.saveAndFlush(PagamentoEntity.criarPixEfi(
                 UUID.randomUUID(),
                 usuarioId,
                 plano.getId(),
+                ambiente,
                 txid,
                 plano.getValor().setScale(2),
                 plano.getQuantidadeCreditos(),
@@ -145,6 +148,11 @@ public class EfiPagamentoService {
                 null,
                 br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
                 requestId);
+        if (resultado.erroResumido() != null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "pagamento requer conciliacao administrativa");
+        }
         return dto(resultado.pagamento(), resultado.cobranca(), resultado.idempotente());
     }
 
@@ -218,8 +226,25 @@ public class EfiPagamentoService {
         if (cobranca == null
                 || !pagamento.getTxid().equals(cobranca.txid())
                 || cobranca.valorOriginal() == null
-                || pagamento.getValor().compareTo(cobranca.valorOriginal()) != 0) {
+                || pagamento.getValor().compareTo(cobranca.valorOriginal()) != 0
+                || pagamento.getAmbiente() == null
+                || pagamento.getAmbiente() != ambienteGatewayObrigatorio()
+                || pagamento.getAmbiente() != cobranca.ambiente()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "cobranca Efi divergente");
+        }
+    }
+
+    private AmbientePagamento ambienteGatewayObrigatorio() {
+        try {
+            AmbientePagamento ambiente = gateway.ambiente();
+            if (ambiente == null) {
+                throw new ResponseStatusException(
+                        HttpStatus.SERVICE_UNAVAILABLE,
+                        "ambiente Efi indisponivel");
+            }
+            return ambiente;
+        } catch (EfiPixGatewayException exception) {
+            throw indisponivel(exception);
         }
     }
 

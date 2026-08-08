@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.infrastructure.payment.efi;
 
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
@@ -36,6 +37,7 @@ public class EfiPixHttpGateway implements EfiPixGateway {
 
     private final EfiPixProperties properties;
     private final ObjectMapper objectMapper;
+    private final AmbientePagamento ambiente;
     private final HttpClient httpClient;
     private volatile Token oauthState;
 
@@ -45,7 +47,7 @@ public class EfiPixHttpGateway implements EfiPixGateway {
             @Value("${app.env:nao_configurado}") String appEnv) {
         this.properties = properties;
         this.objectMapper = objectMapper;
-        validarConfiguracao(appEnv);
+        this.ambiente = validarConfiguracao(appEnv);
         this.httpClient = HttpClient.newBuilder()
                 .sslContext(criarSslContext())
                 .connectTimeout(Duration.ofSeconds(15))
@@ -76,6 +78,11 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         } catch (Exception exception) {
             throw new EfiPixGatewayException("falha ao criar cobranca Efi", false, exception);
         }
+    }
+
+    @Override
+    public AmbientePagamento ambiente() {
+        return ambiente;
     }
 
     @Override
@@ -127,6 +134,7 @@ public class EfiPixHttpGateway implements EfiPixGateway {
                 ? carregarQrCode(localizacaoId)
                 : new QrCode(null, null);
         return new CobrancaPix(
+                ambiente,
                 txid,
                 status,
                 localizacaoId,
@@ -264,16 +272,20 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         }
     }
 
-    private void validarConfiguracao(String appEnv) {
-        String ambiente = texto(properties.getEnvironment()).toLowerCase();
+    private AmbientePagamento validarConfiguracao(String appEnv) {
+        String ambienteConfigurado = texto(properties.getEnvironment()).toLowerCase();
         String aplicacao = texto(appEnv).toLowerCase();
         String baseUrl = texto(properties.getBaseUrl());
+        AmbientePagamento ambientePagamento;
         if ("producao".equals(aplicacao)) {
-            if (!"producao".equals(ambiente) || !PRODUCAO_URL.equals(baseUrl)) {
+            if (!"producao".equals(ambienteConfigurado) || !PRODUCAO_URL.equals(baseUrl)) {
                 throw configuracaoInvalida();
             }
-        } else if (!"homologacao".equals(ambiente) || !HOMOLOGACAO_URL.equals(baseUrl)) {
+            ambientePagamento = AmbientePagamento.PRODUCAO;
+        } else if (!"homologacao".equals(ambienteConfigurado) || !HOMOLOGACAO_URL.equals(baseUrl)) {
             throw configuracaoInvalida();
+        } else {
+            ambientePagamento = AmbientePagamento.SANDBOX;
         }
         if (vazio(properties.getClientId())
                 || vazio(properties.getClientSecret())
@@ -291,6 +303,7 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         if (!Files.isRegularFile(mtlsFile)) {
             throw configuracaoInvalida();
         }
+        return ambientePagamento;
     }
 
     private EfiPixGatewayException configuracaoInvalida() {

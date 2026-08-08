@@ -60,8 +60,6 @@ public class EfiWebhookService {
             EfiWebhookItemProcessor.Resultado resultado = processor.processar(
                     notificacao.eventoId(),
                     notificacao.txid(),
-                    notificacao.valor(),
-                    notificacao.horario(),
                     payloadHash,
                     ipHash,
                     requestId);
@@ -98,9 +96,9 @@ public class EfiWebhookService {
                 String eventoId = providerId.matches("[A-Za-z0-9]{20,64}")
                         ? providerId
                         : txid + "-" + payloadHash.substring(0, 16);
-                BigDecimal valor = decimalPositivo(item.path("valor").asText(""));
-                OffsetDateTime horario = horario(item.path("horario").asText(""));
-                result.add(new Notificacao(eventoId, txid, valor, horario));
+                decimalPositivo(item.path("valor").asText(""));
+                horario(item.path("horario").asText(""));
+                result.add(new Notificacao(eventoId, txid));
             }
             return result;
         } catch (ResponseStatusException exception) {
@@ -136,8 +134,6 @@ public class EfiWebhookService {
 
     private record Notificacao(
             String eventoId,
-            String txid,
-            BigDecimal valor,
-            OffsetDateTime horario) {
+            String txid) {
     }
 }

@@ -216,6 +216,7 @@ services:
         condition: service_started
     volumes:
       - ./nginx-preprod-local.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${EFI_WEBHOOK_ALLOWLIST_FILE:?defina EFI_WEBHOOK_ALLOWLIST_FILE em /opt/topsv3/secrets/preprod.env}:/etc/nginx/efi-webhook-allowlist.conf:ro
     ports:
       - "127.0.0.1:23000:23000"
     healthcheck:

@@ -1,100 +1,91 @@
 package br.com.topsdojob.v3.application.publico.pagamento;
 
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
-import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoWebhookEntity;
-import br.com.topsdojob.v3.persistence.repository.PagamentoWebhookRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ValidacaoWebhook;
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
-import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class EfiWebhookItemProcessor {
 
-    private final PagamentoWebhookRepository webhookRepository;
+    private final EfiWebhookRegistroService registroService;
     private final EfiPagamentoConciliacaoService conciliacaoService;
 
     public EfiWebhookItemProcessor(
-            PagamentoWebhookRepository webhookRepository,
+            EfiWebhookRegistroService registroService,
             EfiPagamentoConciliacaoService conciliacaoService) {
-        this.webhookRepository = webhookRepository;
+        this.registroService = registroService;
         this.conciliacaoService = conciliacaoService;
     }
 
-    @Transactional
     public Resultado registrarInvalido(String eventoId, String payloadHash, String origemIpHash) {
-        var existente = webhookRepository.findByProvedorAndEventoId(ProvedorPagamento.EFI, eventoId);
-        PagamentoWebhookEntity webhook = existente.orElseGet(() -> PagamentoWebhookEntity.receber(
-                        UUID.randomUUID(),
-                        eventoId,
-                        null,
-                        payloadHash,
-                        origemIpHash,
-                        ValidacaoWebhook.INVALIDO,
-                        OffsetDateTime.now(ZoneOffset.UTC)));
-        if (existente.isPresent()) {
-            webhook.registrarNovaTentativa();
-        }
-        webhook.concluir("REJEITADO", "ORIGEM_NAO_VALIDADA", OffsetDateTime.now(ZoneOffset.UTC));
-        webhookRepository.save(webhook);
+        EfiWebhookRegistroService.Registro registro = registrarComConflitoControlado(
+                eventoId,
+                null,
+                payloadHash,
+                origemIpHash,
+                ValidacaoWebhook.INVALIDO);
+        registroService.concluir(registro.webhookId(), "REJEITADO", "ORIGEM_NAO_VALIDADA");
         return Resultado.IGNORADO;
     }
 
-    @Transactional
     public Resultado processar(
             String eventoId,
             String txid,
-            BigDecimal valorRecebido,
-            OffsetDateTime recebidoEm,
             String payloadHash,
             String origemIpHash,
             String requestId) {
-        var existente = webhookRepository.findByProvedorAndEventoId(ProvedorPagamento.EFI, eventoId);
-        if (existente.isPresent() && "PROCESSADO".equals(existente.get().getResultado())) {
-            existente.get().registrarNovaTentativa();
-            webhookRepository.save(existente.get());
+        EfiWebhookRegistroService.Registro registro;
+        try {
+            registro = registrarComConflitoControlado(
+                    eventoId,
+                    txid,
+                    payloadHash,
+                    origemIpHash,
+                    ValidacaoWebhook.VALIDO);
+        } catch (ResponseStatusException exception) {
+            return Resultado.FALHA;
+        }
+        if (registro.processado()) {
             return Resultado.REPETIDO;
         }
-        PagamentoWebhookEntity webhook = existente.orElseGet(() -> PagamentoWebhookEntity.receber(
-                UUID.randomUUID(),
-                eventoId,
-                txid,
-                payloadHash,
-                origemIpHash,
-                ValidacaoWebhook.VALIDO,
-                OffsetDateTime.now(ZoneOffset.UTC)));
-        if (existente.isPresent()) {
-            webhook.registrarNovaTentativa();
-        }
         try {
-            conciliacaoService.conciliarWebhook(
+            EfiPagamentoConciliacaoService.ConciliacaoResultado conciliacao =
+                    conciliacaoService.conciliarWebhook(
                     txid,
                     eventoId,
                     payloadHash,
-                    valorRecebido,
-                    recebidoEm,
                     requestId);
-            webhook.concluir("PROCESSADO", null, OffsetDateTime.now(ZoneOffset.UTC));
-            webhookRepository.save(webhook);
+            if (conciliacao.erroResumido() != null) {
+                registroService.concluir(registro.webhookId(), "ERRO", conciliacao.erroResumido());
+                return Resultado.FALHA;
+            }
+            registroService.concluir(registro.webhookId(), "PROCESSADO", null);
             return Resultado.PROCESSADO;
         } catch (ResponseStatusException exception) {
             if (exception.getStatusCode().value() == 404) {
-                webhook.concluir("IGNORADO", "TXID_DESCONHECIDO", OffsetDateTime.now(ZoneOffset.UTC));
-                webhookRepository.save(webhook);
+                registroService.concluir(registro.webhookId(), "IGNORADO", "TXID_DESCONHECIDO");
                 return Resultado.IGNORADO;
             }
-            webhook.concluir("ERRO", "CONCILIACAO_REJEITADA", OffsetDateTime.now(ZoneOffset.UTC));
-            webhookRepository.save(webhook);
+            registroService.concluir(registro.webhookId(), "ERRO", "CONCILIACAO_REJEITADA");
             return Resultado.FALHA;
         } catch (EfiPixGatewayException exception) {
-            webhook.concluir("ERRO", "PROVEDOR_INDISPONIVEL", OffsetDateTime.now(ZoneOffset.UTC));
-            webhookRepository.save(webhook);
+            registroService.concluir(registro.webhookId(), "ERRO", "PROVEDOR_INDISPONIVEL");
             return Resultado.FALHA;
+        }
+    }
+
+    private EfiWebhookRegistroService.Registro registrarComConflitoControlado(
+            String eventoId,
+            String txid,
+            String payloadHash,
+            String origemIpHash,
+            ValidacaoWebhook validacao) {
+        try {
+            return registroService.registrar(eventoId, txid, payloadHash, origemIpHash, validacao);
+        } catch (DataIntegrityViolationException exception) {
+            return registroService.registrar(eventoId, txid, payloadHash, origemIpHash, validacao);
         }
     }
 

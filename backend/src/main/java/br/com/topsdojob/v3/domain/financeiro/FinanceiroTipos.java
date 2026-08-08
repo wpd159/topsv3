@@ -17,6 +17,11 @@ public final class FinanceiroTipos {
     DESCONHECIDO
   }
 
+  public enum AmbientePagamento {
+    SANDBOX,
+    PRODUCAO
+  }
+
   public enum StatusInternoPagamento {
     CRIADO,
     AGUARDANDO_PAGAMENTO,

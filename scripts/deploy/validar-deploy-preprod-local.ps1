@@ -148,11 +148,16 @@ Add-Check "compose bloqueia indexacao no build e runtime" (
   ($frontendCompose -match 'ARG SEARCH_INDEXING_MODE') -and
   ($frontendCompose -match 'ENV SEARCH_INDEXING_MODE=\$\$\{SEARCH_INDEXING_MODE\}')
 ) "preproducao nao pode ativar politica publica"
-Add-Check "gateway encaminha webhook Efi sem access log" (
-  ($gateway -match 'location ~ \^/api/public/webhooks/efi') -and
+Add-Check "gateway protege webhook Efi sem registrar HMAC" (
+  ($gateway -match 'location = /api/public/webhooks/efi/pix\s*\{') -and
   ($gateway -match 'access_log off;') -and
-  ($gateway -match 'proxy_pass http://backend:8080;')
-) "validacao HMAC ocorre no backend"
+  ($gateway -match 'error_log /dev/null crit;') -and
+  ($gateway -match 'include /etc/nginx/efi-webhook-allowlist\.conf;') -and
+  ($gateway -match 'proxy_pass http://backend:8080;') -and
+  (-not ($gateway -match '(?m)^\s*allow\s+\d{1,3}(?:\.\d{1,3}){3};')) -and
+  ($compose -match '\$\{EFI_WEBHOOK_ALLOWLIST_FILE:\?[^}]+\}:/etc/nginx/efi-webhook-allowlist\.conf:ro') -and
+  ($envExample -match 'EFI_WEBHOOK_ALLOWLIST_FILE=/opt/topsv3/secrets/efi/webhook-allowlist\.conf')
+) "rota exata, logs desativados e allowlist externa"
 Add-Check "gateway adiciona noindex" ($gateway -match 'X-Robots-Tag\s+"noindex') "cabecalho"
 Add-Check "gateway bloqueia robots" ($gateway -match 'Disallow: /') "robots"
 Add-Check "env example aponta somente para secrets externos" ($envExample -match '__PREENCHER_FORA_DO_GIT__') "sem segredo real"

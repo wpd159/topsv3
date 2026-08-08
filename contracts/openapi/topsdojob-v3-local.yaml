@@ -3850,7 +3850,7 @@ paths:
               description: Payload Efí processado em memoria; somente hashes e identificadores sao persistidos.
       responses:
         "200":
-          description: notificacoes conciliadas sem chamada externa bloqueante, repetidas ou ignoradas
+          description: notificacoes consultadas no provedor, conciliadas, repetidas ou ignoradas; resposta no-store
           content:
             application/json:
               schema:

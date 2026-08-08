@@ -1,8 +1,8 @@
 package br.com.topsdojob.v3.application.publico.pagamento;
 
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
-import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoConciliacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCred
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Locale;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -59,31 +60,7 @@ public class EfiPagamentoConciliacaoService {
             String payloadHash,
             OrigemConciliacaoPagamento origem,
             String requestId) {
-        PagamentoEntity pagamento = pagamentoRepository.findByTxidForUpdate(txid)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pagamento Efi nao encontrado"));
-        EfiPixGateway.CobrancaPix cobranca;
-        try {
-            cobranca = gateway.consultarCobranca(txid);
-        } catch (EfiPixGatewayException exception) {
-            throw exception;
-        }
-        validarIdentidade(pagamento, cobranca);
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        boolean idempotente = pagamento.getCreditadoEm() != null;
-
-        if ("CONCLUIDA".equalsIgnoreCase(cobranca.status())) {
-            idempotente = conciliarConfirmada(pagamento, cobranca, origem, requestId, agora, agora);
-        } else if ("ATIVA".equalsIgnoreCase(cobranca.status())) {
-            pagamento.atualizarStatusProvedor(StatusInternoPagamento.AGUARDANDO_PAGAMENTO, cobranca.status(), agora);
-        } else if ("EXPIRADA".equalsIgnoreCase(cobranca.status())) {
-            pagamento.atualizarStatusProvedor(StatusInternoPagamento.EXPIRADO, cobranca.status(), agora);
-        } else if (cobranca.status().toUpperCase().startsWith("REMOVIDA")) {
-            pagamento.atualizarStatusProvedor(StatusInternoPagamento.CANCELADO, cobranca.status(), agora);
-        } else {
-            pagamento.atualizarStatusProvedor(StatusInternoPagamento.ERRO, "STATUS_NAO_RECONHECIDO", agora);
-        }
-        registrarEvento(pagamento, eventoId, payloadHash, cobranca.status(), origem, agora);
-        return new ConciliacaoResultado(pagamento, cobranca, idempotente);
+        return conciliarConsultandoProvedor(txid, eventoId, payloadHash, origem, requestId);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -91,42 +68,53 @@ public class EfiPagamentoConciliacaoService {
             String txid,
             String eventoId,
             String payloadHash,
-            BigDecimal valorRecebido,
-            OffsetDateTime recebidoEm,
+            String requestId) {
+        return conciliarConsultandoProvedor(
+                txid,
+                eventoId,
+                payloadHash,
+                OrigemConciliacaoPagamento.WEBHOOK,
+                requestId);
+    }
+
+    private ConciliacaoResultado conciliarConsultandoProvedor(
+            String txid,
+            String eventoId,
+            String payloadHash,
+            OrigemConciliacaoPagamento origem,
             String requestId) {
         PagamentoEntity pagamento = pagamentoRepository.findByTxidForUpdate(txid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pagamento Efi nao encontrado"));
-        if (valorRecebido == null || valorRecebido.signum() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "valor Pix recebido invalido");
-        }
-        if (pagamento.getValor().compareTo(valorRecebido) != 0) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "valor Pix recebido divergente");
-        }
+        EfiPixGateway.CobrancaPix cobranca = gateway.consultarCobranca(txid);
+        validarIdentidade(pagamento, cobranca);
+
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        EfiPixGateway.CobrancaPix notificacao = new EfiPixGateway.CobrancaPix(
-                pagamento.getTxid(),
-                "CONCLUIDA",
-                pagamento.getIdentificadorProvedor(),
-                pagamento.getValor(),
-                valorRecebido,
-                pagamento.getExpiracaoEm(),
-                null,
-                null);
-        boolean idempotente = conciliarConfirmada(
-                pagamento,
-                notificacao,
-                OrigemConciliacaoPagamento.WEBHOOK,
-                requestId,
-                recebidoEm == null ? agora : recebidoEm,
-                agora);
-        registrarEvento(
-                pagamento,
-                eventoId,
-                payloadHash,
-                notificacao.status(),
-                OrigemConciliacaoPagamento.WEBHOOK,
-                agora);
-        return new ConciliacaoResultado(pagamento, notificacao, idempotente);
+        String erroAmbiente = erroAmbiente(pagamento, cobranca);
+        if (erroAmbiente != null) {
+            pagamento.atualizarStatusProvedor(StatusInternoPagamento.ERRO, erroAmbiente, agora);
+            registrarEvento(pagamento, eventoId, payloadHash, erroAmbiente, origem, agora);
+            return new ConciliacaoResultado(pagamento, cobranca, false, erroAmbiente);
+        }
+
+        boolean idempotente = pagamento.getCreditadoEm() != null;
+        String status = cobranca.status() == null
+                ? ""
+                : cobranca.status().trim().toUpperCase(Locale.ROOT);
+
+        if ("CONCLUIDA".equals(status)) {
+            idempotente = conciliarConfirmada(pagamento, cobranca, origem, requestId, agora, agora);
+        } else if ("ATIVA".equals(status)) {
+            pagamento.atualizarStatusProvedor(StatusInternoPagamento.AGUARDANDO_PAGAMENTO, status, agora);
+        } else if ("EXPIRADA".equals(status)) {
+            pagamento.atualizarStatusProvedor(StatusInternoPagamento.EXPIRADO, status, agora);
+        } else if (status.startsWith("REMOVIDA")) {
+            pagamento.atualizarStatusProvedor(StatusInternoPagamento.CANCELADO, status, agora);
+        } else {
+            status = "STATUS_NAO_RECONHECIDO";
+            pagamento.atualizarStatusProvedor(StatusInternoPagamento.ERRO, status, agora);
+        }
+        registrarEvento(pagamento, eventoId, payloadHash, status, origem, agora);
+        return new ConciliacaoResultado(pagamento, cobranca, idempotente, null);
     }
 
     private boolean conciliarConfirmada(
@@ -261,9 +249,26 @@ public class EfiPagamentoConciliacaoService {
         }
     }
 
+    private String erroAmbiente(
+            PagamentoEntity pagamento,
+            EfiPixGateway.CobrancaPix cobranca) {
+        if (pagamento.getAmbiente() == null) {
+            return "AMBIENTE_LEGADO_INDEFINIDO";
+        }
+        AmbientePagamento ambienteGateway = gateway.ambiente();
+        if (ambienteGateway == null
+                || cobranca.ambiente() == null
+                || pagamento.getAmbiente() != ambienteGateway
+                || pagamento.getAmbiente() != cobranca.ambiente()) {
+            return "AMBIENTE_DIVERGENTE";
+        }
+        return null;
+    }
+
     public record ConciliacaoResultado(
             PagamentoEntity pagamento,
             EfiPixGateway.CobrancaPix cobranca,
-            boolean idempotente) {
+            boolean idempotente,
+            String erroResumido) {
     }
 }
