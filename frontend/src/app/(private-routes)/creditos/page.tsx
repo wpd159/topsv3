@@ -1,7 +1,7 @@
 'use client'
 
 import Image from 'next/image'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -17,11 +17,21 @@ import { PainelShell } from '@/components/painel-anunciante/painel-shell'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { useAuth } from '@/context/AuthContext'
+import {
   conciliarCobrancaPix,
   consultarCobrancaPix,
   criarCobrancaPix,
   listarPagamentosPix,
   novaIdempotencyKey,
+  PixApiError,
   type CobrancaPix,
   type PagamentoPixHistorico,
   type PixStatus,
@@ -59,7 +69,68 @@ function formatDate(value: string | null) {
 function statusClass(status: PixStatus) {
   if (status === 'APROVADO') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
   if (status === 'PENDENTE') return 'border-amber-200 bg-amber-50 text-amber-800'
+  if (status === 'CANCELADO') return 'border-slate-200 bg-slate-50 text-slate-700'
   return 'border-red-200 bg-red-50 text-red-700'
+}
+
+type CheckoutErrorState = {
+  message: string
+  requestId: string | null
+}
+
+function checkoutErrorState(caught: unknown, fallback: string): CheckoutErrorState {
+  if (caught instanceof PixApiError) {
+    return { message: caught.message, requestId: caught.requestId }
+  }
+  return {
+    message: caught instanceof Error ? caught.message : fallback,
+    requestId: null,
+  }
+}
+
+function expiracaoValida(expiracaoEm: string | null, agora = Date.now()) {
+  if (!expiracaoEm) return true
+  const expiracao = new Date(expiracaoEm).getTime()
+  return Number.isFinite(expiracao) && expiracao > agora
+}
+
+function pagamentoPendenteValido(
+  pagamento: Pick<PagamentoPixHistorico, 'status' | 'expiracaoEm'>,
+  agora = Date.now()
+) {
+  return pagamento.status === 'PENDENTE' && expiracaoValida(pagamento.expiracaoEm, agora)
+}
+
+function checkoutDoHistorico(pagamento: PagamentoPixHistorico): CobrancaPix {
+  return {
+    ...pagamento,
+    pixCopiaECola: null,
+    imagemQrCode: null,
+    creditado: pagamento.status === 'APROVADO',
+    idempotente: true,
+  }
+}
+
+function statusExibido(
+  pagamento: Pick<CobrancaPix, 'status' | 'expiracaoEm'>,
+  agora: number
+): PixStatus {
+  if (pagamento.status === 'PENDENTE' && !expiracaoValida(pagamento.expiracaoEm, agora)) {
+    return 'EXPIRADO'
+  }
+  return pagamento.status
+}
+
+function formatCountdown(expiracaoEm: string | null, agora: number) {
+  if (!expiracaoEm) return 'Vencimento informado pelo provedor'
+  const restante = Math.max(0, new Date(expiracaoEm).getTime() - agora)
+  const totalSegundos = Math.floor(restante / 1_000)
+  const horas = Math.floor(totalSegundos / 3_600)
+  const minutos = Math.floor((totalSegundos % 3_600) / 60)
+  const segundos = totalSegundos % 60
+  return horas > 0
+    ? `${horas}h ${String(minutos).padStart(2, '0')}min ${String(segundos).padStart(2, '0')}s`
+    : `${String(minutos).padStart(2, '0')}min ${String(segundos).padStart(2, '0')}s`
 }
 
 function idempotencyStorageKey(planoId: string) {
@@ -80,19 +151,33 @@ function clearIdempotencyKey(planoId: string) {
 }
 
 export default function CreditosPage() {
+  const { usuario } = useAuth()
   const [monetizacao, setMonetizacao] = useState<MinhaMonetizacaoBackend | null>(null)
   const [pagamentos, setPagamentos] = useState<PagamentoPixHistorico[]>([])
   const [checkout, setCheckout] = useState<CobrancaPix | null>(null)
+  const [planoConfirmacao, setPlanoConfirmacao] = useState<PlanoCredito | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [statusBusy, setStatusBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [checkoutError, setCheckoutError] = useState<CheckoutErrorState | null>(null)
+  const [checkoutBloqueado, setCheckoutBloqueado] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [agora, setAgora] = useState(() => Date.now())
+  const createInFlightRef = useRef(false)
+  const pollingInFlightRef = useRef(false)
+  const manualInFlightRef = useRef(false)
+  const copiedTimerRef = useRef<number | null>(null)
+  const checkoutRef = useRef<HTMLElement | null>(null)
+  const returnFocusRef = useRef<HTMLButtonElement | null>(null)
+  const focusCheckoutAfterCloseRef = useRef(false)
+
+  const contaBloqueada = Boolean(usuario && usuario.status !== 'ATIVO') || checkoutBloqueado
 
   const carregar = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setCheckoutError(null)
     try {
       const [monetizacaoData, pagamentosData] = await Promise.all([
         fetchMinhaMonetizacao(),
@@ -100,8 +185,27 @@ export default function CreditosPage() {
       ])
       setMonetizacao(monetizacaoData)
       setPagamentos(pagamentosData)
+
+      const pendente = pagamentosData.find((pagamento) => pagamentoPendenteValido(pagamento))
+      if (!pendente) {
+        setCheckout(null)
+        return
+      }
+
+      setCheckout(checkoutDoHistorico(pendente))
+      try {
+        setCheckout(await consultarCobrancaPix(pendente.pagamentoId))
+      } catch (caught) {
+        setCheckoutError(
+          checkoutErrorState(caught, 'Não foi possível retomar o pagamento pendente.')
+        )
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Nao foi possivel carregar creditos e planos.')
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : 'Não foi possível carregar créditos e planos.'
+      )
     } finally {
       setLoading(false)
     }
@@ -119,12 +223,17 @@ export default function CreditosPage() {
   const pagamentosPendentes = useMemo(() => {
     const pendentes = new Map<string, PagamentoPixHistorico>()
     for (const pagamento of pagamentos) {
-      if (pagamento.status === 'PENDENTE' && !pendentes.has(pagamento.planoCreditoId)) {
+      if (pagamentoPendenteValido(pagamento, agora) && !pendentes.has(pagamento.planoCreditoId)) {
         pendentes.set(pagamento.planoCreditoId, pagamento)
       }
     }
     return pendentes
-  }, [pagamentos])
+  }, [agora, pagamentos])
+
+  const pagamentoPendenteAtivo = useMemo(
+    () => pagamentos.find((pagamento) => pagamentoPendenteValido(pagamento, agora)) ?? null,
+    [agora, pagamentos]
+  )
 
   const atualizarDadosDepoisDoPagamento = useCallback(async () => {
     const [monetizacaoData, pagamentosData] = await Promise.all([
@@ -137,76 +246,209 @@ export default function CreditosPage() {
 
   const aplicarCheckout = useCallback(
     async (next: CobrancaPix) => {
-      setCheckout((current) => ({
-        ...next,
-        pixCopiaECola: next.pixCopiaECola ?? current?.pixCopiaECola ?? null,
-        imagemQrCode: next.imagemQrCode ?? current?.imagemQrCode ?? null,
-      }))
+      setCheckout((current) =>
+        next.status === 'PENDENTE'
+          ? {
+              ...next,
+              pixCopiaECola: next.pixCopiaECola ?? current?.pixCopiaECola ?? null,
+              imagemQrCode: next.imagemQrCode ?? current?.imagemQrCode ?? null,
+            }
+          : { ...next, pixCopiaECola: null, imagemQrCode: null }
+      )
+      setCheckoutError(null)
       if (next.status !== 'PENDENTE') {
         clearIdempotencyKey(next.planoCreditoId)
-        await atualizarDadosDepoisDoPagamento()
+        try {
+          await atualizarDadosDepoisDoPagamento()
+        } catch (caught) {
+          setCheckoutError(
+            checkoutErrorState(
+              caught,
+              'O pagamento foi atualizado, mas não foi possível recarregar saldo e histórico.'
+            )
+          )
+        }
       }
     },
     [atualizarDadosDepoisDoPagamento]
   )
 
-  const criarOuRetomar = async (plano: PlanoCredito) => {
-    if (busy) return
+  const focarCheckout = useCallback(() => {
+    window.setTimeout(() => checkoutRef.current?.focus(), 0)
+  }, [])
+
+  const retomarPagamento = useCallback(
+    async (pagamento: PagamentoPixHistorico) => {
+      if (createInFlightRef.current) return
+      createInFlightRef.current = true
+      setBusy(true)
+      setCheckoutError(null)
+      setCheckout(checkoutDoHistorico(pagamento))
+      try {
+        await aplicarCheckout(await consultarCobrancaPix(pagamento.pagamentoId))
+        focarCheckout()
+      } catch (caught) {
+        setCheckoutError(
+          checkoutErrorState(caught, 'Não foi possível retomar o pagamento pendente.')
+        )
+      } finally {
+        createInFlightRef.current = false
+        setBusy(false)
+      }
+    },
+    [aplicarCheckout, focarCheckout]
+  )
+
+  const selecionarPlano = (plano: PlanoCredito, trigger: HTMLButtonElement) => {
+    if (contaBloqueada) {
+      setCheckoutError({
+        message: 'Sua conta precisa estar ativa para iniciar uma compra Pix.',
+        requestId: null,
+      })
+      return
+    }
+    const pendente = pagamentosPendentes.get(plano.id)
+    if (pendente) {
+      void retomarPagamento(pendente)
+      return
+    }
+    if (pagamentoPendenteAtivo) return
+    returnFocusRef.current = trigger
+    setCheckoutError(null)
+    setPlanoConfirmacao(plano)
+  }
+
+  const confirmarCobranca = async () => {
+    if (!planoConfirmacao || contaBloqueada || createInFlightRef.current) return
+    createInFlightRef.current = true
     setBusy(true)
     setCheckoutError(null)
     try {
-      const pendente = pagamentosPendentes.get(plano.id)
-      const next = pendente
-        ? await consultarCobrancaPix(pendente.pagamentoId)
-        : await criarCobrancaPix(plano.id, readOrCreateIdempotencyKey(plano.id))
+      const next = await criarCobrancaPix(
+        planoConfirmacao.id,
+        readOrCreateIdempotencyKey(planoConfirmacao.id)
+      )
       await aplicarCheckout(next)
+      focusCheckoutAfterCloseRef.current = true
+      setPlanoConfirmacao(null)
     } catch (caught) {
+      if (caught instanceof PixApiError && [401, 403].includes(caught.status)) {
+        setCheckoutBloqueado(true)
+      }
       setCheckoutError(
-        caught instanceof Error ? caught.message : 'Nao foi possivel iniciar a compra via Pix.'
+        checkoutErrorState(caught, 'Não foi possível iniciar a compra via Pix.')
       )
     } finally {
+      createInFlightRef.current = false
       setBusy(false)
     }
   }
 
-  const atualizarPagamento = useCallback(
-    async (silencioso = false) => {
-      if (!checkout || statusBusy || checkout.status !== 'PENDENTE') return
-      setStatusBusy(true)
-      if (!silencioso) setCheckoutError(null)
-      try {
-        await aplicarCheckout(await conciliarCobrancaPix(checkout.pagamentoId))
-      } catch (caught) {
-        if (!silencioso) {
-          setCheckoutError(
-            caught instanceof Error ? caught.message : 'Nao foi possivel atualizar o pagamento.'
-          )
-        }
-      } finally {
-        setStatusBusy(false)
-      }
-    },
-    [aplicarCheckout, checkout, statusBusy]
+  const consultarPagamento = useCallback(async () => {
+    if (
+      !checkout
+      || checkout.status !== 'PENDENTE'
+      || pollingInFlightRef.current
+      || manualInFlightRef.current
+    ) return
+    pollingInFlightRef.current = true
+    try {
+      await aplicarCheckout(await consultarCobrancaPix(checkout.pagamentoId))
+    } catch {
+      // O polling permanece silencioso; a verificacao manual apresenta o erro e o requestId.
+    } finally {
+      pollingInFlightRef.current = false
+    }
+  }, [aplicarCheckout, checkout])
+
+  const verificarPagamento = useCallback(async () => {
+    if (
+      !checkout
+      || checkout.status !== 'PENDENTE'
+      || manualInFlightRef.current
+      || pollingInFlightRef.current
+    ) return
+    manualInFlightRef.current = true
+    setStatusBusy(true)
+    setCheckoutError(null)
+    try {
+      await aplicarCheckout(await conciliarCobrancaPix(checkout.pagamentoId))
+    } catch (caught) {
+      setCheckoutError(
+        checkoutErrorState(caught, 'Não foi possível verificar o pagamento.')
+      )
+    } finally {
+      manualInFlightRef.current = false
+      setStatusBusy(false)
+    }
+  }, [aplicarCheckout, checkout])
+
+  const checkoutVencido = Boolean(
+    checkout
+      && checkout.status === 'PENDENTE'
+      && !expiracaoValida(checkout.expiracaoEm, agora)
   )
 
   useEffect(() => {
-    if (!checkout || checkout.status !== 'PENDENTE') return
-    const timer = window.setInterval(() => {
-      void atualizarPagamento(true)
-    }, 15_000)
+    if (!checkout || checkout.status !== 'PENDENTE' || !checkout.expiracaoEm) return
+    setAgora(Date.now())
+    const timer = window.setInterval(() => setAgora(Date.now()), 1_000)
     return () => window.clearInterval(timer)
-  }, [checkout, atualizarPagamento])
+  }, [checkout])
+
+  useEffect(() => {
+    if (!checkout || checkout.status !== 'PENDENTE' || checkoutVencido) return
+    let timer: number | null = null
+
+    const stopTimer = () => {
+      if (timer !== null) window.clearInterval(timer)
+      timer = null
+    }
+    const startTimer = () => {
+      stopTimer()
+      timer = window.setInterval(() => void consultarPagamento(), 15_000)
+    }
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stopTimer()
+        return
+      }
+      void consultarPagamento()
+      startTimer()
+    }
+
+    if (!document.hidden) startTimer()
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      stopTimer()
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [checkout, checkoutVencido, consultarPagamento])
+
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+    },
+    []
+  )
 
   const copiarPix = async () => {
     if (!checkout?.pixCopiaECola) return
     try {
       await navigator.clipboard.writeText(checkout.pixCopiaECola)
       setCopied(true)
-      window.setTimeout(() => setCopied(false), 2_000)
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 2_000)
     } catch {
-      setCheckoutError('Nao foi possivel copiar automaticamente. Selecione o codigo Pix.')
+      setCheckoutError({
+        message: 'Não foi possível copiar automaticamente. Selecione o código Pix.',
+        requestId: null,
+      })
     }
   }
+
+  const checkoutStatus = checkout ? statusExibido(checkout, agora) : null
+  const countdown = checkout ? formatCountdown(checkout.expiracaoEm, agora) : null
 
   return (
     <PainelShell
@@ -214,7 +456,11 @@ export default function CreditosPage() {
       description="Consulte seu saldo, escolha um pacote ativo e acompanhe suas compras Pix."
     >
       {loading ? (
-        <div className="flex min-h-64 items-center justify-center text-slate-600">
+        <div
+          className="flex min-h-64 items-center justify-center text-slate-600"
+          role="status"
+          aria-live="polite"
+        >
           <LoaderCircle className="mr-2 h-5 w-5 animate-spin" />
           Carregando créditos...
         </div>
@@ -265,6 +511,26 @@ export default function CreditosPage() {
             </div>
           </section>
 
+          {contaBloqueada ? (
+            <section className="rounded-md border border-red-200 bg-red-50 p-4" role="alert">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+                <div>
+                  <h2 className="font-semibold text-red-900">Compra de créditos indisponível</h2>
+                  <p className="mt-1 text-sm text-red-700">
+                    Sua conta precisa estar ativa para iniciar uma cobrança Pix.
+                  </p>
+                </div>
+              </div>
+            </section>
+          ) : pagamentoPendenteAtivo ? (
+            <section className="rounded-md border border-amber-200 bg-amber-50 p-4" role="status">
+              <p className="text-sm font-medium text-amber-900">
+                Existe uma cobrança Pix pendente. Retome esse pagamento antes de iniciar outro.
+              </p>
+            </section>
+          ) : null}
+
           <section aria-labelledby="pacotes-title">
             <div className="mb-4">
               <h2 id="pacotes-title" className="text-lg font-bold text-slate-950">
@@ -303,12 +569,21 @@ export default function CreditosPage() {
                         </p>
                       </div>
                       <Button
+                        type="button"
                         className="mt-auto w-full"
-                        disabled={busy}
-                        onClick={() => void criarOuRetomar(plano)}
+                        disabled={
+                          busy
+                          || contaBloqueada
+                          || Boolean(pagamentoPendenteAtivo && !pendente)
+                        }
+                        onClick={(event) => selecionarPlano(plano, event.currentTarget)}
                       >
                         {busy ? <LoaderCircle className="animate-spin" /> : <QrCode />}
-                        {pendente ? 'Retomar Pix' : 'Gerar cobrança Pix'}
+                        {pendente
+                          ? 'Retomar Pix'
+                          : pagamentoPendenteAtivo
+                            ? 'Finalize o Pix pendente'
+                            : 'Comprar com Pix'}
                       </Button>
                     </article>
                   )
@@ -323,11 +598,13 @@ export default function CreditosPage() {
 
           {checkout ? (
             <section
+              ref={checkoutRef}
+              tabIndex={-1}
               aria-labelledby="checkout-title"
-              className="rounded-md border border-slate-200 bg-white p-5 shadow-sm md:p-6"
+              className="scroll-mt-4 rounded-md border border-slate-200 bg-white p-4 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#C51683] sm:p-5 md:p-6"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <h2 id="checkout-title" className="text-lg font-bold text-slate-950">
                     {checkout.planoNome}
                   </h2>
@@ -336,43 +613,52 @@ export default function CreditosPage() {
                     {checkout.quantidadeCreditos.toLocaleString('pt-BR')} créditos
                   </p>
                 </div>
-                <Badge className={statusClass(checkout.status)} variant="outline">
-                  {statusLabel[checkout.status]}
-                </Badge>
+                {checkoutStatus ? (
+                  <Badge className={statusClass(checkoutStatus)} variant="outline">
+                    {statusLabel[checkoutStatus]}
+                  </Badge>
+                ) : null}
               </div>
 
               {checkoutError ? (
                 <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
-                  {checkoutError}
+                  <p>{checkoutError.message}</p>
+                  {checkoutError.requestId ? (
+                    <p className="mt-1 break-all text-xs">
+                      Código de atendimento: <code>{checkoutError.requestId}</code>
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
 
-              <div className="mt-5 grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
-                <div className="flex min-h-60 items-center justify-center rounded-md bg-slate-50 p-2">
-                  {checkout.imagemQrCode ? (
+              <div className="mt-5 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+                <div className="flex aspect-square w-full max-w-60 items-center justify-center justify-self-center rounded-md bg-slate-50 p-2 lg:justify-self-start">
+                  {checkoutStatus === 'PENDENTE' && checkout.imagemQrCode ? (
                     <Image
                       src={checkout.imagemQrCode}
                       alt="QR Code da cobrança Pix"
                       width={224}
                       height={224}
                       unoptimized
-                      className="h-56 w-56 object-contain"
+                      className="h-auto max-h-56 w-full max-w-56 object-contain"
                     />
-                  ) : checkout.status === 'PENDENTE' ? (
-                    <div className="text-center text-sm text-slate-500">
+                  ) : checkoutStatus === 'PENDENTE' ? (
+                    <div className="px-3 text-center text-sm text-slate-500">
                       <QrCode className="mx-auto mb-2 h-8 w-8" />
                       QR Code indisponível nesta consulta.
                     </div>
-                  ) : (
+                  ) : checkoutStatus === 'APROVADO' ? (
                     <CheckCircle2 className="h-12 w-12 text-emerald-600" />
+                  ) : (
+                    <AlertTriangle className="h-12 w-12 text-slate-500" />
                   )}
                 </div>
 
                 <div className="min-w-0 space-y-4">
                   <dl className="grid gap-3 sm:grid-cols-2">
-                    <div>
+                    <div className="min-w-0">
                       <dt className="text-xs font-semibold uppercase text-slate-500">Identificação</dt>
-                      <dd className="mt-1 text-sm font-medium text-slate-900">
+                      <dd className="mt-1 break-words text-sm font-medium text-slate-900">
                         {checkout.identificacaoSanitizada}
                       </dd>
                     </div>
@@ -384,8 +670,15 @@ export default function CreditosPage() {
                     </div>
                   </dl>
 
-                  {checkout.pixCopiaECola && checkout.status === 'PENDENTE' ? (
-                    <div>
+                  {checkoutStatus === 'PENDENTE' ? (
+                    <p className="flex items-center gap-2 text-sm font-medium text-slate-700" role="status" aria-live="polite">
+                      <Clock3 className="h-4 w-4 shrink-0" />
+                      {checkoutVencido ? 'Prazo encerrado; verifique o status.' : `Tempo restante: ${countdown}`}
+                    </p>
+                  ) : null}
+
+                  {checkout.pixCopiaECola && checkoutStatus === 'PENDENTE' ? (
+                    <div className="min-w-0">
                       <label htmlFor="pix-copy-paste" className="text-sm font-semibold text-slate-900">
                         Pix copia e cola
                       </label>
@@ -393,94 +686,113 @@ export default function CreditosPage() {
                         id="pix-copy-paste"
                         readOnly
                         value={checkout.pixCopiaECola}
-                        className="mt-2 min-h-24 w-full resize-none break-all rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700"
+                        className="mt-2 min-h-24 w-full min-w-0 max-w-full resize-none whitespace-pre-wrap break-all rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 [overflow-wrap:anywhere]"
                       />
-                      <Button className="mt-2" variant="outline" onClick={() => void copiarPix()}>
+                      <Button
+                        type="button"
+                        className="mt-2 w-full sm:w-auto"
+                        variant="outline"
+                        aria-describedby="pix-copy-status"
+                        onClick={() => void copiarPix()}
+                      >
                         <Copy />
-                        {copied ? 'Copiado' : 'Copiar código Pix'}
+                        Copiar código Pix
                       </Button>
+                      <span id="pix-copy-status" className="sr-only" role="status" aria-live="polite">
+                        {copied ? 'Código Pix copiado.' : ''}
+                      </span>
                     </div>
                   ) : null}
 
-                  {checkout.status === 'PENDENTE' ? (
+                  {checkoutStatus === 'PENDENTE' ? (
                     <Button
+                      type="button"
+                      className="w-full sm:w-auto"
                       variant="outline"
                       disabled={statusBusy}
-                      onClick={() => void atualizarPagamento(false)}
+                      onClick={() => void verificarPagamento()}
                     >
                       <RefreshCw className={statusBusy ? 'animate-spin' : ''} />
-                      Atualizar pagamento
+                      Verificar pagamento
                     </Button>
-                  ) : checkout.status === 'APROVADO' ? (
-                    <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
-                      <CheckCircle2 className="h-4 w-4" />
-                      Saldo creditado uma única vez no ledger.
+                  ) : checkoutStatus === 'APROVADO' ? (
+                    <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700" role="status">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      {checkout.quantidadeCreditos.toLocaleString('pt-BR')} créditos adicionados ao saldo.
                     </p>
-                  ) : null}
+                  ) : checkoutStatus === 'EXPIRADO' ? (
+                    <p className="text-sm text-slate-700" role="status">
+                      Esta cobrança expirou. Você pode escolher um pacote e gerar uma nova cobrança.
+                    </p>
+                  ) : checkoutStatus === 'CANCELADO' ? (
+                    <p className="text-sm text-slate-700" role="status">
+                      Esta cobrança foi cancelada e permanece somente no histórico.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-red-700" role="alert">
+                      A cobrança não foi concluída. Tente novamente quando o serviço estiver disponível.
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
           ) : checkoutError ? (
             <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700" role="alert">
-              {checkoutError}
+              <p>{checkoutError.message}</p>
+              {checkoutError.requestId ? (
+                <p className="mt-1 break-all text-xs">
+                  Código de atendimento: <code>{checkoutError.requestId}</code>
+                </p>
+              ) : null}
             </div>
           ) : null}
-
           <section aria-labelledby="pagamentos-title">
             <h2 id="pagamentos-title" className="text-lg font-bold text-slate-950">
               Histórico de compras Pix
             </h2>
             <div className="mt-4 space-y-3">
               {pagamentos.length ? (
-                pagamentos.map((pagamento) => (
-                  <article
-                    key={pagamento.pagamentoId}
-                    className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-slate-950">{pagamento.planoNome}</h3>
-                        <Badge className={statusClass(pagamento.status)} variant="outline">
-                          {statusLabel[pagamento.status]}
-                        </Badge>
+                pagamentos.map((pagamento) => {
+                  const visualStatus = statusExibido(pagamento, agora)
+                  const podeRetomar = pagamentoPendenteValido(pagamento, agora)
+                  return (
+                    <article
+                      key={pagamento.pagamentoId}
+                      className="grid gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-semibold text-slate-950">{pagamento.planoNome}</h3>
+                          <Badge className={statusClass(visualStatus)} variant="outline">
+                            {statusLabel[visualStatus]}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          {pagamento.quantidadeCreditos.toLocaleString('pt-BR')} créditos ·{' '}
+                          {money.format(pagamento.valor)}
+                        </p>
+                        <p className="mt-1 break-words text-xs text-slate-500">
+                          {pagamento.identificacaoSanitizada} · criado em {formatDate(pagamento.criadoEm)}
+                          {pagamento.confirmadoEm
+                            ? ` · confirmado em ${formatDate(pagamento.confirmadoEm)}`
+                            : ''}
+                        </p>
                       </div>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {pagamento.quantidadeCreditos.toLocaleString('pt-BR')} créditos ·{' '}
-                        {money.format(pagamento.valor)}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {pagamento.identificacaoSanitizada} · criado em {formatDate(pagamento.criadoEm)}
-                        {pagamento.confirmadoEm
-                          ? ` · confirmado em ${formatDate(pagamento.confirmadoEm)}`
-                          : ''}
-                      </p>
-                    </div>
-                    {pagamento.status === 'PENDENTE' ? (
-                      <Button
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() =>
-                          void criarOuRetomar(
-                            planos.find((plano) => plano.id === pagamento.planoCreditoId) ?? {
-                              id: pagamento.planoCreditoId,
-                              codigo: '',
-                              nome: pagamento.planoNome,
-                              descricao: '',
-                              quantidadeCreditos: pagamento.quantidadeCreditos,
-                              valor: pagamento.valor,
-                              moeda: 'BRL',
-                              ativo: true,
-                              ordemExibicao: 0,
-                            }
-                          )
-                        }
-                      >
-                        <Clock3 />
-                        Consultar
-                      </Button>
-                    ) : null}
-                  </article>
-                ))
+                      {podeRetomar ? (
+                        <Button
+                          type="button"
+                          className="w-full sm:w-auto"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => void retomarPagamento(pagamento)}
+                        >
+                          <Clock3 />
+                          Retomar Pix
+                        </Button>
+                      ) : null}
+                    </article>
+                  )
+                })
               ) : (
                 <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-sm text-slate-600">
                   Nenhuma compra Pix registrada.
@@ -521,6 +833,86 @@ export default function CreditosPage() {
           </section>
         </div>
       )}
+      <Dialog
+        open={Boolean(planoConfirmacao)}
+        onOpenChange={(open) => {
+          if (!open && !busy) setPlanoConfirmacao(null)
+        }}
+      >
+        <DialogContent
+          className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] overflow-y-auto sm:max-w-md"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            if (focusCheckoutAfterCloseRef.current) {
+              focusCheckoutAfterCloseRef.current = false
+              focarCheckout()
+              return
+            }
+            returnFocusRef.current?.focus()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Confirmar compra de créditos</DialogTitle>
+            <DialogDescription>
+              A cobrança pertence à sua carteira e não ativa anúncio, benefício ou Story.
+            </DialogDescription>
+          </DialogHeader>
+
+          {planoConfirmacao ? (
+            <dl className="grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+              <div className="min-w-0">
+                <dt className="text-xs font-semibold uppercase text-slate-500">Pacote</dt>
+                <dd className="mt-1 break-words font-semibold text-slate-950">
+                  {planoConfirmacao.nome}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase text-slate-500">Valor</dt>
+                <dd className="mt-1 font-semibold text-slate-950">
+                  {money.format(planoConfirmacao.valor)}
+                </dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="text-xs font-semibold uppercase text-slate-500">Créditos</dt>
+                <dd className="mt-1 font-semibold text-[#C51683]">
+                  {planoConfirmacao.quantidadeCreditos.toLocaleString('pt-BR')} créditos
+                </dd>
+              </div>
+            </dl>
+          ) : null}
+
+          {checkoutError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+              <p>{checkoutError.message}</p>
+              {checkoutError.requestId ? (
+                <p className="mt-1 break-all text-xs">
+                  Código de atendimento: <code>{checkoutError.requestId}</code>
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setPlanoConfirmacao(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={busy || contaBloqueada}
+              onClick={() => void confirmarCobranca()}
+            >
+              {busy ? <LoaderCircle className="animate-spin" /> : <QrCode />}
+              Confirmar e gerar Pix
+            </Button>
+          </DialogFooter>
+          {busy ? <p className="sr-only" role="status">Criando cobrança Pix.</p> : null}
+        </DialogContent>
+      </Dialog>
     </PainelShell>
   )
 }

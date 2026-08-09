@@ -35,6 +35,17 @@ export type PagamentoPixHistorico = {
   confirmadoEm: string | null
 }
 
+export class PixApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly requestId: string | null
+  ) {
+    super(message)
+    this.name = 'PixApiError'
+  }
+}
+
 const csrfCookieName = ['XSRF', 'TOKEN'].join('-')
 const csrfHeaderName = ['X', 'XSRF', 'TOKEN'].join('-')
 
@@ -59,7 +70,21 @@ async function csrfValue() {
 async function readJson<T>(response: Response, fallback: string): Promise<T> {
   const raw = await response.text()
   if (!response.ok) {
-    throw new Error(messageFromApiBody(raw, response.status, fallback))
+    let bodyRequestId: string | null = null
+    try {
+      const body = JSON.parse(raw) as { requestId?: unknown }
+      if (typeof body.requestId === 'string' && body.requestId.trim()) {
+        bodyRequestId = body.requestId.trim().slice(0, 120)
+      }
+    } catch {
+      // The sanitized response can be plain text.
+    }
+    const headerRequestId = response.headers.get('X-Request-Id')?.trim().slice(0, 120) || null
+    throw new PixApiError(
+      messageFromApiBody(raw, response.status, fallback),
+      response.status,
+      headerRequestId || bodyRequestId
+    )
   }
   if (!raw.trim()) throw new Error('Resposta vazia do servidor.')
   try {
