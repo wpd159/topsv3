@@ -90,7 +90,7 @@ async function readJson<T>(response: Response, fallback: string): Promise<T> {
   try {
     return JSON.parse(raw) as T
   } catch {
-    throw new Error('Resposta invalida do servidor.')
+    throw new Error('Resposta inválida do servidor.')
   }
 }
 
@@ -112,7 +112,7 @@ export async function listarPagamentosPix() {
   })
   return readJson<PagamentoPixHistorico[]>(
     response,
-    'Nao foi possivel carregar o historico Pix.'
+    'Não foi possível carregar o histórico Pix.'
   )
 }
 
@@ -124,7 +124,7 @@ export async function criarCobrancaPix(planoCreditoId: string, idempotencyKey: s
     headers: await mutationHeaders(idempotencyKey),
     body: JSON.stringify({ planoCreditoId }),
   })
-  return readJson<CobrancaPix>(response, 'Nao foi possivel criar a cobranca Pix.')
+  return readJson<CobrancaPix>(response, 'Não foi possível criar a cobrança Pix.')
 }
 
 export async function consultarCobrancaPix(pagamentoId: string) {
@@ -135,7 +135,7 @@ export async function consultarCobrancaPix(pagamentoId: string) {
       cache: 'no-store',
     }
   )
-  return readJson<CobrancaPix>(response, 'Nao foi possivel consultar a cobranca Pix.')
+  return readJson<CobrancaPix>(response, 'Não foi possível consultar a cobrança Pix.')
 }
 
 export async function conciliarCobrancaPix(pagamentoId: string) {
@@ -149,7 +149,7 @@ export async function conciliarCobrancaPix(pagamentoId: string) {
       body: '{}',
     }
   )
-  return readJson<CobrancaPix>(response, 'Nao foi possivel atualizar o pagamento Pix.')
+  return readJson<CobrancaPix>(response, 'Não foi possível atualizar o pagamento Pix.')
 }
 
 export function novaIdempotencyKey() {

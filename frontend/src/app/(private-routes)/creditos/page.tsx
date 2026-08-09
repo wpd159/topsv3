@@ -48,6 +48,10 @@ const money = new Intl.NumberFormat('pt-BR', {
   currency: 'BRL',
 })
 
+const PIX_CHECKOUT_DISPONIVEL = process.env.NEXT_PUBLIC_EFI_PIX_ENABLED === 'true'
+const PIX_INDISPONIVEL_MENSAGEM =
+  'Serviço Pix temporariamente indisponível. Tente novamente mais tarde.'
+
 const dateTime = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',
   timeStyle: 'short',
@@ -65,6 +69,13 @@ const statusLabel: Record<PixStatus, string> = {
 function formatDate(value: string | null) {
   if (!value) return '-'
   return dateTime.format(new Date(value))
+}
+
+function movimentoRotulo(motivo: string | null, natureza: string) {
+  const rotulo = motivo?.trim() || natureza.replaceAll('_', ' ')
+  return rotulo === 'Ativacao de Story por 24 horas'
+    ? 'Ativação de Story por 24 horas'
+    : rotulo
 }
 
 function statusClass(status: PixStatus) {
@@ -203,6 +214,11 @@ export default function CreditosPage() {
       setMonetizacao(monetizacaoData)
       setPagamentos(pagamentosData)
 
+      if (!PIX_CHECKOUT_DISPONIVEL) {
+        setCheckout(null)
+        return
+      }
+
       const pendente = pagamentosData.find((pagamento) => pagamentoPendenteValido(pagamento))
       if (!pendente) {
         setCheckout(null)
@@ -317,6 +333,7 @@ export default function CreditosPage() {
 
   const retomarPagamento = useCallback(
     async (pagamento: PagamentoPixHistorico) => {
+      if (!PIX_CHECKOUT_DISPONIVEL) return
       if (createInFlightRef.current) return
       createInFlightRef.current = true
       setBusy(true)
@@ -338,6 +355,7 @@ export default function CreditosPage() {
   )
 
   const selecionarPlano = (plano: PlanoCredito, trigger: HTMLButtonElement) => {
+    if (!PIX_CHECKOUT_DISPONIVEL) return
     if (contaBloqueada) {
       setCheckoutError({
         message: 'Sua conta precisa estar ativa para iniciar uma compra Pix.',
@@ -357,7 +375,12 @@ export default function CreditosPage() {
   }
 
   const confirmarCobranca = async () => {
-    if (!planoConfirmacao || contaBloqueada || createInFlightRef.current) return
+    if (
+      !PIX_CHECKOUT_DISPONIVEL
+      || !planoConfirmacao
+      || contaBloqueada
+      || createInFlightRef.current
+    ) return
     createInFlightRef.current = true
     setBusy(true)
     setCheckoutError(null)
@@ -534,7 +557,7 @@ export default function CreditosPage() {
               <Button
                 type="button"
                 className="mt-4 w-full sm:w-auto"
-                disabled={!planos.length}
+                disabled={!PIX_CHECKOUT_DISPONIVEL || !planos.length}
                 onClick={focarPacotes}
               >
                 <CreditCard />
@@ -563,7 +586,17 @@ export default function CreditosPage() {
             </div>
           </section>
 
-          {contaBloqueada ? (
+          {!PIX_CHECKOUT_DISPONIVEL ? (
+            <section
+              id="pix-indisponivel"
+              className="rounded-md border border-amber-200 bg-amber-50 p-4"
+              role="status"
+            >
+              <p className="text-sm font-medium text-amber-900">
+                {PIX_INDISPONIVEL_MENSAGEM}
+              </p>
+            </section>
+          ) : contaBloqueada ? (
             <section className="rounded-md border border-red-200 bg-red-50 p-4" role="alert">
               <div className="flex items-start gap-3">
                 <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
@@ -609,7 +642,11 @@ export default function CreditosPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <h3 className="font-bold text-slate-950">{plano.nome}</h3>
-                          <p className="mt-1 text-sm leading-5 text-slate-600">{plano.descricao}</p>
+                          {plano.descricao?.trim() ? (
+                            <p className="mt-1 text-sm leading-5 text-slate-600">
+                              {plano.descricao}
+                            </p>
+                          ) : null}
                         </div>
                         {pendente ? (
                           <Badge className={statusClass('PENDENTE')} variant="outline">
@@ -629,7 +666,8 @@ export default function CreditosPage() {
                         type="button"
                         className="mt-auto w-full"
                         disabled={
-                          busy
+                          !PIX_CHECKOUT_DISPONIVEL
+                          || busy
                           || contaBloqueada
                           || Boolean(pagamentoPendenteAtivo && !pendente)
                         }
@@ -819,7 +857,7 @@ export default function CreditosPage() {
           ) : null}
           <section aria-labelledby="pagamentos-title">
             <h2 id="pagamentos-title" className="text-lg font-bold text-slate-950">
-              Histórico de compras Pix
+              Histórico de compras via Pix
             </h2>
             <div className="mt-4 space-y-3">
               {pagamentos.length ? (
@@ -885,7 +923,7 @@ export default function CreditosPage() {
                   >
                     <div>
                       <p className="font-medium text-slate-900">
-                        {movimento.motivo || movimento.natureza.replaceAll('_', ' ')}
+                        {movimentoRotulo(movimento.motivo, movimento.natureza)}
                       </p>
                       <p className="text-xs text-slate-500">{formatDate(movimento.criadoEm)}</p>
                     </div>
@@ -974,7 +1012,7 @@ export default function CreditosPage() {
             </Button>
             <Button
               type="button"
-              disabled={busy || contaBloqueada}
+              disabled={!PIX_CHECKOUT_DISPONIVEL || busy || contaBloqueada}
               onClick={() => void confirmarCobranca()}
             >
               {busy ? <LoaderCircle className="animate-spin" /> : <QrCode />}

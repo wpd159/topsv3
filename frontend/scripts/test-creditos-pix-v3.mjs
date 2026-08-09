@@ -11,6 +11,15 @@ const files = {
     new URL('../src/app/(public-routes)/checkout/creditos/[planoId]/page.tsx', import.meta.url),
     'utf8'
   ),
+  frontendEnv: await readFile(new URL('../.env.local.example', import.meta.url), 'utf8'),
+  workflow: await readFile(
+    new URL('../../.github/workflows/deploy-preprod.yml', import.meta.url),
+    'utf8'
+  ),
+  preprodCompose: await readFile(
+    new URL('../../deploy/preprod/docker-compose.yml', import.meta.url),
+    'utf8'
+  ),
 }
 
 async function fileExists(url) {
@@ -29,30 +38,59 @@ assert.match(files.page, /plano\.valor/)
 assert.match(files.page, /plano\.quantidadeCreditos/)
 assert.doesNotMatch(files.page, /R\$\s*\d/)
 
+for (const label of [
+  'Comprar créditos',
+  'Pacotes disponíveis',
+  'Histórico de compras via Pix',
+  'Histórico de créditos',
+  'Ativação de Story por 24 horas',
+  'Pix copia e cola',
+  'Copiar código Pix',
+]) {
+  assert.match(files.page, new RegExp(label), `texto público ausente: ${label}`)
+}
+assert.doesNotMatch(files.page, /Gerar cobrança Pix|Pacote configurável para futura cobrança/)
+assert.doesNotMatch(files.api, /Nao foi possivel|Resposta invalida/)
+
 assert.equal(
   (files.page.match(/Comprar créditos/g) ?? []).length >= 2,
   true,
   'o botão geral e o CTA dos pacotes devem usar Comprar créditos'
 )
-assert.match(files.page, /disabled=\{!planos\.length\}/)
+assert.match(files.page, /disabled=\{!PIX_CHECKOUT_DISPONIVEL \|\| !planos\.length\}/)
 assert.match(files.page, /onClick=\{focarPacotes\}/)
 assert.match(files.page, /pacotesSectionRef/)
 assert.match(files.page, /scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/)
 assert.match(files.page, /section\.focus\(\{ preventScroll: true \}\)/)
 assert.match(files.page, /Nenhum pacote de créditos está disponível no momento/)
 assert.match(files.page, /setPlanoConfirmacao\(plano\)/)
+assert.match(files.page, /plano\.descricao\?\.trim\(\) \?/)
+
+const unavailableMessage =
+  'Serviço Pix temporariamente indisponível. Tente novamente mais tarde.'
+assert.equal(
+  (files.page.match(new RegExp(unavailableMessage, 'g')) ?? []).length,
+  1,
+  'a indisponibilidade Pix deve produzir uma única mensagem específica'
+)
+assert.match(
+  files.page,
+  /const PIX_CHECKOUT_DISPONIVEL = process\.env\.NEXT_PUBLIC_EFI_PIX_ENABLED === 'true'/
+)
+assert.match(files.page, /if \(!PIX_CHECKOUT_DISPONIVEL\) \{[\s\S]*?setCheckout\(null\)[\s\S]*?return/)
+assert.match(files.page, /const selecionarPlano[\s\S]*?if \(!PIX_CHECKOUT_DISPONIVEL\) return/)
 
 assert.match(files.page, /Confirmar compra de créditos/)
 assert.match(files.page, /confirmarCobranca/)
 assert.match(files.page, /createInFlightRef\.current/)
-assert.match(files.page, /if \(!planoConfirmacao \|\| contaBloqueada \|\| createInFlightRef\.current\) return/)
+assert.match(files.page, /const confirmarCobranca = async \(\) => \{[\s\S]*?!PIX_CHECKOUT_DISPONIVEL[\s\S]*?return[\s\S]*?criarCobrancaPix\(/)
 assert.match(files.api, /body: JSON\.stringify\(\{ planoCreditoId \}\)/)
 assert.doesNotMatch(files.api, /anuncioId|usuarioId|bonus:|txid/)
 assert.match(files.api, /Idempotency-Key/)
 assert.match(files.page, /readOrCreateIdempotencyKey\(planoConfirmacao\.id\)/)
 
 assert.match(files.page, /const contaBloqueada = Boolean\(usuario && usuario\.status !== 'ATIVO'\)/)
-assert.match(files.page, /disabled=\{busy \|\| contaBloqueada\}/)
+assert.match(files.page, /disabled=\{!PIX_CHECKOUT_DISPONIVEL \|\| busy \|\| contaBloqueada\}/)
 assert.match(files.page, /Sua conta precisa estar ativa/)
 assert.doesNotMatch(files.page, /Ir para meus anúncios|pelo menos um anúncio ativo/)
 
@@ -111,6 +149,18 @@ assert.equal(
   await fileExists(new URL('../src/components/modals/credito-bloqueio-modal.tsx', import.meta.url)),
   false,
   'o modal legado que exigia anuncio deve ser removido'
+)
+
+assert.match(files.frontendEnv, /NEXT_PUBLIC_EFI_PIX_ENABLED=false/)
+assert.match(files.workflow, /NEXT_PUBLIC_EFI_PIX_ENABLED: "false"/)
+assert.match(
+  files.preprodCompose,
+  /NEXT_PUBLIC_EFI_PIX_ENABLED: \$\{EFI_ENABLED:-false\}/
+)
+assert.match(files.preprodCompose, /ARG NEXT_PUBLIC_EFI_PIX_ENABLED/)
+assert.match(
+  files.preprodCompose,
+  /ENV NEXT_PUBLIC_EFI_PIX_ENABLED=\$\$\{NEXT_PUBLIC_EFI_PIX_ENABLED\}/
 )
 
 console.log('COMPRA_CREDITOS_PIX_V3_FRONTEND_OK')
