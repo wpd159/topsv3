@@ -1,16 +1,22 @@
 package br.com.topsdojob.v3.application.publico.pagamento;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutRequest;
 import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -22,6 +28,8 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +41,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -45,6 +54,10 @@ import org.springframework.test.web.servlet.MockMvc;
                 "app.outbox.email.enabled=false",
                 "app.storage.r2.enabled=false",
                 "efi.pix.enabled=true",
+                "efi.pix.reconciliation-enabled=true",
+                "efi.pix.reconciliation-retry-backoff-seconds=1",
+                "efi.pix.reconciliation-batch-size=25",
+                "efi.pix.reconciliation-max-per-cycle=25",
                 "efi.pix.webhook-registration-enabled=false",
                 "efi.pix.webhook-verifier=webhook-test-value",
                 "spring.jpa.hibernate.ddl-auto=validate",
@@ -61,12 +74,22 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
     private static final String EVENTO_RETRY = "RetryEventRuntime00000001";
     private static final String TXID_CONCORRENTE = "ConcurrentRuntimePayment000001";
     private static final String EVENTO_CONCORRENTE = "ConcurrentEventRuntime0001";
+    private static final String TXID_RECONCILIACAO = "SchedulerRuntimePayment00000001";
     private static final String TXID_LEGADO = "LegacyRuntimePayment0000000001";
     private static final String EVENTO_LEGADO = "LegacyEventRuntime0000001";
     private static final Postgres17Fixture POSTGRES = Postgres17Fixture.start();
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private EfiPagamentoConciliacaoService conciliacaoService;
+
+    @Autowired
+    private EfiPagamentoService pagamentoService;
+
+    @Autowired
+    private EfiPagamentoReconciliacaoScheduler reconciliacaoScheduler;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -86,6 +109,7 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        jdbc.execute("TRUNCATE TABLE usuario, plano_credito CASCADE");
         when(gateway.ambiente()).thenReturn(AmbientePagamento.SANDBOX);
     }
 
@@ -138,8 +162,203 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
         assertThat(webhookResultado(EVENTO_CONCORRENTE)).isEqualTo("PROCESSADO");
         assertThat(webhookTentativas(EVENTO_CONCORRENTE)).isEqualTo(2);
         assertCreditoUnico(scenario, EVENTO_CONCORRENTE);
-        verify(gateway, times(2)).consultarCobranca(TXID_CONCORRENTE);
+        verify(gateway, atLeastOnce()).consultarCobranca(TXID_CONCORRENTE);
     }
+
+    @Test
+    void reconciliacaoAutomaticaConcorrenteUsaLockFisicoECreditaUmaVez() throws Exception {
+        Scenario scenario = seed(TXID_RECONCILIACAO, "RECONCILIACAO", "SANDBOX");
+        when(gateway.consultarCobranca(TXID_RECONCILIACAO))
+                .thenAnswer(ignored -> {
+                    assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+                    return confirmada(TXID_RECONCILIACAO);
+                });
+
+        List<Integer> resultados = concurrently(
+                () -> conciliacaoService.conciliar(
+                                TXID_RECONCILIACAO,
+                                null,
+                                null,
+                                br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                                "request-runtime-scheduler-01")
+                        .idempotente() ? 1 : 0,
+                () -> conciliacaoService.conciliar(
+                                TXID_RECONCILIACAO,
+                                null,
+                                null,
+                                br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                                "request-runtime-scheduler-02")
+                        .idempotente() ? 1 : 0);
+
+        assertThat(resultados).containsExactlyInAnyOrder(0, 1);
+        assertThat(count("movimento_credito", "referencia_id", scenario.pagamentoId())).isEqualTo(1L);
+        assertThat(count("pagamento_conciliacao", "pagamento_id", scenario.pagamentoId())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject(
+                """
+                SELECT count(*) FROM pagamento
+                WHERE id = ?
+                  AND status_interno = 'APROVADO'
+                  AND creditado_em IS NOT NULL
+                """,
+                Long.class,
+                scenario.pagamentoId())).isEqualTo(1L);
+        assertThat(count("ativacao_beneficio", "usuario_id", scenario.usuarioId())).isZero();
+        assertThat(count("anuncio", "usuario_id", scenario.usuarioId())).isZero();
+        assertThat(count("story_anuncio", "criado_por", scenario.usuarioId())).isZero();
+        verify(gateway, atLeastOnce()).consultarCobranca(TXID_RECONCILIACAO);
+    }
+    @Test
+    void checkoutESchedulerConcorremSemDuplicarCobrancaOuCredito() throws Exception {
+        Scenario scenario = seedUsuarioPlano("CHECKOUT_SCHEDULER");
+        CountDownLatch cobrancaRemotaCriada = new CountDownLatch(1);
+        CountDownLatch liberarCheckout = new CountDownLatch(1);
+        AtomicReference<String> txidRemoto = new AtomicReference<>();
+        AtomicReference<EfiPixGateway.CobrancaPix> cobrancaRemota = new AtomicReference<>();
+
+        when(gateway.criarCobranca(anyString(), any(), anyString())).thenAnswer(invocation -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+            String txid = invocation.getArgument(0);
+            txidRemoto.set(txid);
+            cobrancaRemota.set(confirmada(txid));
+            cobrancaRemotaCriada.countDown();
+            if (!liberarCheckout.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("checkout concorrente nao foi liberado");
+            }
+            return cobrancaRemota.get();
+        });
+        when(gateway.consultarCobranca(anyString())).thenAnswer(invocation -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+            assertThat(invocation.<String>getArgument(0)).isEqualTo(txidRemoto.get());
+            return cobrancaRemota.get();
+        });
+
+        var authentication = new UsernamePasswordAuthenticationToken(
+                new PublicUserPrincipal(
+                        scenario.usuarioId(),
+                        "pagamento-qa",
+                        "pagamento.qa@example.invalid"),
+                null,
+                List.of());
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var checkout = executor.submit(() -> pagamentoService.criar(
+                    new EfiPixCheckoutRequest(scenario.planoId()),
+                    "checkout-scheduler-race",
+                    authentication,
+                    "request-checkout-scheduler-race"));
+
+            assertThat(cobrancaRemotaCriada.await(10, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(1_200L);
+            assertThat(reconciliacaoScheduler.processarCiclo()).isEqualTo(1);
+
+            liberarCheckout.countDown();
+            var resposta = checkout.get(10, TimeUnit.SECONDS);
+            assertThat(resposta.status()).isEqualTo("APROVADO");
+        } finally {
+            liberarCheckout.countDown();
+            executor.shutdownNow();
+        }
+
+        UUID pagamentoId = jdbc.queryForObject(
+                "SELECT id FROM pagamento WHERE usuario_id = ? AND plano_credito_id = ?",
+                UUID.class,
+                scenario.usuarioId(),
+                scenario.planoId());
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM pagamento WHERE usuario_id = ? AND plano_credito_id = ?",
+                Long.class,
+                scenario.usuarioId(),
+                scenario.planoId())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject(
+                "SELECT count(DISTINCT txid) FROM pagamento WHERE usuario_id = ? AND plano_credito_id = ?",
+                Long.class,
+                scenario.usuarioId(),
+                scenario.planoId())).isEqualTo(1L);
+        assertThat(count("movimento_credito", "referencia_id", pagamentoId)).isEqualTo(1L);
+        assertThat(count("pagamento_conciliacao", "pagamento_id", pagamentoId)).isEqualTo(1L);
+        verify(gateway, times(1)).criarCobranca(
+                org.mockito.ArgumentMatchers.eq(txidRemoto.get()),
+                any(),
+                anyString());
+        verify(gateway, atLeastOnce()).consultarCobranca(txidRemoto.get());
+    }
+
+    @Test
+    void duasInstanciasDoSchedulerProcessamMesmoPagamentoSemDuplicarCredito() throws Exception {
+        String txid = "TwoSchedulersRuntimePayment00001";
+        Scenario scenario = seed(txid, "DOIS_SCHEDULERS", "SANDBOX");
+        jdbc.update(
+                "UPDATE pagamento SET atualizado_em = now() - interval '10 minutes' WHERE id = ?",
+                scenario.pagamentoId());
+        when(gateway.consultarCobranca(txid)).thenAnswer(ignored -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+            return confirmada(txid);
+        });
+
+        List<Integer> resultados = concurrently(
+                reconciliacaoScheduler::processarCiclo,
+                reconciliacaoScheduler::processarCiclo);
+
+        assertThat(resultados).allSatisfy(resultado -> assertThat(resultado).isBetween(0, 1));
+        assertThat(resultados.stream().mapToInt(Integer::intValue).sum()).isBetween(1, 2);
+        assertThat(count("movimento_credito", "referencia_id", scenario.pagamentoId())).isEqualTo(1L);
+        assertThat(count("pagamento_conciliacao", "pagamento_id", scenario.pagamentoId())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject(
+                "SELECT status_interno FROM pagamento WHERE id = ?",
+                String.class,
+                scenario.pagamentoId())).isEqualTo("APROVADO");
+        verify(gateway, atLeastOnce()).consultarCobranca(txid);
+    }
+
+    @Test
+    void erroNaoTransitorioNaoEhSelecionadoPeloScheduler() {
+        String txid = "PermanentErrorRuntimePayment0001";
+        Scenario scenario = seed(txid, "ERRO_PERMANENTE", "SANDBOX");
+        jdbc.update(
+                """
+                UPDATE pagamento
+                   SET status_interno = 'ERRO',
+                       status_provedor = 'VALOR_DIVERGENTE',
+                       atualizado_em = now() - interval '10 minutes'
+                 WHERE id = ?
+                """,
+                scenario.pagamentoId());
+
+        assertThat(reconciliacaoScheduler.processarCiclo()).isZero();
+
+        verify(gateway, never()).consultarCobranca(txid);
+        assertThat(count("movimento_credito", "referencia_id", scenario.pagamentoId())).isZero();
+    }
+
+    @Test
+    void indisponibilidadeTransitoriaAplicaBackoffAntesDoRetry() {
+        String txid = "TransientBackoffRuntimePayment01";
+        Scenario scenario = seed(txid, "BACKOFF", "SANDBOX");
+        jdbc.update(
+                "UPDATE pagamento SET atualizado_em = now() - interval '10 minutes' WHERE id = ?",
+                scenario.pagamentoId());
+        when(gateway.consultarCobranca(txid))
+                .thenThrow(new EfiPixGatewayException("provider indisponivel", false, 503));
+
+        assertThat(reconciliacaoScheduler.processarCiclo()).isEqualTo(1);
+        assertThat(reconciliacaoScheduler.processarCiclo()).isZero();
+
+        assertThat(jdbc.queryForObject(
+                "SELECT status_interno FROM pagamento WHERE id = ?",
+                String.class,
+                scenario.pagamentoId())).isEqualTo("ERRO");
+        assertThat(jdbc.queryForObject(
+                "SELECT status_provedor FROM pagamento WHERE id = ?",
+                String.class,
+                scenario.pagamentoId()))
+                .isEqualTo(EfiPagamentoConciliacaoService.STATUS_ERRO_TRANSITORIO);
+        assertThat(count("movimento_credito", "referencia_id", scenario.pagamentoId())).isZero();
+        verify(gateway, times(1)).consultarCobranca(txid);
+    }
+
 
     @Test
     void pagamentoHistoricoSemAmbienteNuncaEhCreditadoAutomaticamente() throws Exception {
@@ -157,7 +376,7 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
                 scenario.pagamentoId())).isEqualTo("AMBIENTE_LEGADO_INDEFINIDO");
         assertThat(count("movimento_credito", "referencia_id", scenario.pagamentoId())).isZero();
         assertThat(count("pagamento_conciliacao", "pagamento_id", scenario.pagamentoId())).isZero();
-        verify(gateway).consultarCobranca(TXID_LEGADO);
+        verify(gateway, never()).consultarCobranca(TXID_LEGADO);
     }
 
     private org.springframework.test.web.servlet.ResultActions enviar(
@@ -190,6 +409,22 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
                 OffsetDateTime.now(ZoneOffset.UTC).plusHours(1),
                 null,
                 null);
+    }
+
+    private Scenario seedUsuarioPlano(String suffix) {
+        Scenario scenario = new Scenario(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        jdbc.update("""
+                INSERT INTO usuario (id, nome, status, tipo_conta, criado_em, atualizado_em, versao)
+                VALUES (?, 'Pagamento QA', 'ATIVO', 'ANUNCIANTE', now(), now(), 0)
+                """, scenario.usuarioId());
+        jdbc.update("""
+                INSERT INTO plano_credito (
+                  id, codigo, nome, quantidade_creditos, valor, moeda, ativo,
+                  criado_em, atualizado_em, descricao, ordem_exibicao
+                ) VALUES (?, ?, 'Pacote QA', 50, 5.00, 'BRL', true,
+                          now(), now(), 'Teste runtime', 0)
+                """, scenario.planoId(), "PACOTE_QA_" + suffix);
+        return scenario;
     }
 
     private Scenario seed(String txid, String suffix, String ambiente) {

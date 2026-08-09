@@ -243,7 +243,8 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new EfiPixGatewayException(
                     "operacao Efi rejeitada: " + operation + " (HTTP " + response.statusCode() + ")",
-                    false);
+                    false,
+                    response.statusCode());
         }
         try {
             return objectMapper.readTree(body);

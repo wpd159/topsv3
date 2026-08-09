@@ -38,8 +38,13 @@ public class EfiPagamentoController {
     public ResponseEntity<EfiPixCheckoutDto> criar(
             @RequestBody EfiPixCheckoutRequest body,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
-            Authentication authentication) {
-        return noStore(service.criar(body, idempotencyKey, authentication));
+            Authentication authentication,
+            HttpServletRequest request) {
+        return noStore(service.criar(
+                body,
+                idempotencyKey,
+                authentication,
+                RequestIdContext.current(request)));
     }
 
     @GetMapping("/{pagamentoId}")

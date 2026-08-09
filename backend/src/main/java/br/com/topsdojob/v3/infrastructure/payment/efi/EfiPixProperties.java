@@ -19,6 +19,11 @@ public class EfiPixProperties {
     private boolean webhookRegistrationEnabled;
     private boolean webhookSkipMtlsChecking;
     private int chargeExpirationSeconds = 3600;
+    private boolean reconciliationEnabled;
+    private long reconciliationIntervalMs = 60_000L;
+    private int reconciliationBatchSize = 25;
+    private int reconciliationMaxPerCycle = 100;
+    private long reconciliationRetryBackoffSeconds = 300L;
     private final Map<String, String> guardedValues = new HashMap<>();
 
     public boolean isEnabled() {
@@ -123,5 +128,45 @@ public class EfiPixProperties {
 
     public void setChargeExpirationSeconds(int chargeExpirationSeconds) {
         this.chargeExpirationSeconds = chargeExpirationSeconds;
+    }
+
+    public boolean isReconciliationEnabled() {
+        return reconciliationEnabled;
+    }
+
+    public void setReconciliationEnabled(boolean reconciliationEnabled) {
+        this.reconciliationEnabled = reconciliationEnabled;
+    }
+
+    public long getReconciliationIntervalMs() {
+        return reconciliationIntervalMs;
+    }
+
+    public void setReconciliationIntervalMs(long reconciliationIntervalMs) {
+        this.reconciliationIntervalMs = reconciliationIntervalMs;
+    }
+
+    public int getReconciliationBatchSize() {
+        return reconciliationBatchSize;
+    }
+
+    public void setReconciliationBatchSize(int reconciliationBatchSize) {
+        this.reconciliationBatchSize = reconciliationBatchSize;
+    }
+
+    public int getReconciliationMaxPerCycle() {
+        return reconciliationMaxPerCycle;
+    }
+
+    public void setReconciliationMaxPerCycle(int reconciliationMaxPerCycle) {
+        this.reconciliationMaxPerCycle = reconciliationMaxPerCycle;
+    }
+
+    public long getReconciliationRetryBackoffSeconds() {
+        return reconciliationRetryBackoffSeconds;
+    }
+
+    public void setReconciliationRetryBackoffSeconds(long reconciliationRetryBackoffSeconds) {
+        this.reconciliationRetryBackoffSeconds = reconciliationRetryBackoffSeconds;
     }
 }

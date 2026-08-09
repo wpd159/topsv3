@@ -31,6 +31,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 class EfiPagamentoServiceTest {
 
@@ -41,6 +43,8 @@ class EfiPagamentoServiceTest {
     private final EfiPixGateway gateway = mock(EfiPixGateway.class);
     private final EfiPagamentoConciliacaoService conciliacaoService = mock(EfiPagamentoConciliacaoService.class);
     private final PublicAuthRateLimiter rateLimiter = mock(PublicAuthRateLimiter.class);
+    private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final TransactionStatus transactionStatus = mock(TransactionStatus.class);
     private final EfiPagamentoService service = new EfiPagamentoService(
             usuarioService,
             usuarioRepository,
@@ -48,11 +52,13 @@ class EfiPagamentoServiceTest {
             pagamentoRepository,
             gateway,
             conciliacaoService,
-            rateLimiter);
+            rateLimiter,
+            transactionManager);
 
     @BeforeEach
     void setUp() {
         when(gateway.ambiente()).thenReturn(AmbientePagamento.SANDBOX);
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
     }
 
     @Test
@@ -73,7 +79,11 @@ class EfiPagamentoServiceTest {
         when(plano.getNome()).thenReturn("50 creditos");
         when(planoRepository.findById(planoId)).thenReturn(Optional.of(plano));
         when(pagamentoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
-        when(pagamentoRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(pagamentoRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            PagamentoEntity salvo = invocation.getArgument(0);
+            when(pagamentoRepository.findByTxidForUpdate(salvo.getTxid())).thenReturn(Optional.of(salvo));
+            return salvo;
+        });
         when(gateway.criarCobranca(any(), any(), any())).thenAnswer(invocation -> cobranca(
                 invocation.getArgument(0),
                 new BigDecimal("5.00")));
@@ -112,6 +122,7 @@ class EfiPagamentoServiceTest {
                 "efi-checkout:" + usuarioId + ":checkout-teste-0002",
                 OffsetDateTime.now(ZoneOffset.UTC));
         when(pagamentoRepository.findByIdempotencyKey(any())).thenReturn(Optional.of(existente));
+        when(pagamentoRepository.findByTxidForUpdate(existente.getTxid())).thenReturn(Optional.of(existente));
         when(gateway.consultarCobranca(existente.getTxid())).thenReturn(cobranca(existente.getTxid(), new BigDecimal("5.00")));
 
         var resultado = service.criar(
@@ -144,6 +155,7 @@ class EfiPagamentoServiceTest {
                 OffsetDateTime.now(ZoneOffset.UTC));
         when(pagamentoRepository.findByIdempotencyKey(any()))
                 .thenReturn(Optional.empty(), Optional.of(existente));
+        when(pagamentoRepository.findByTxidForUpdate(existente.getTxid())).thenReturn(Optional.of(existente));
         when(gateway.consultarCobranca(existente.getTxid()))
                 .thenReturn(cobranca(existente.getTxid(), new BigDecimal("5.00")));
 

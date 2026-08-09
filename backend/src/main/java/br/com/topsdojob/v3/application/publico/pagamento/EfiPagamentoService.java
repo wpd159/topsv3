@@ -14,6 +14,8 @@ import br.com.topsdojob.v3.persistence.entity.financeiro.PlanoCreditoEntity;
 import br.com.topsdojob.v3.persistence.repository.PagamentoRepository;
 import br.com.topsdojob.v3.persistence.repository.PlanoCreditoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -22,19 +24,27 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class EfiPagamentoService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(EfiPagamentoService.class);
 
     private final MeusAnunciosConsultaService usuarioService;
     private final UsuarioRepository usuarioRepository;
@@ -43,6 +53,7 @@ public class EfiPagamentoService {
     private final EfiPixGateway gateway;
     private final EfiPagamentoConciliacaoService conciliacaoService;
     private final PublicAuthRateLimiter rateLimiter;
+    private final TransactionTemplate transactions;
 
     public EfiPagamentoService(
             MeusAnunciosConsultaService usuarioService,
@@ -51,7 +62,8 @@ public class EfiPagamentoService {
             PagamentoRepository pagamentoRepository,
             EfiPixGateway gateway,
             EfiPagamentoConciliacaoService conciliacaoService,
-            PublicAuthRateLimiter rateLimiter) {
+            PublicAuthRateLimiter rateLimiter,
+            PlatformTransactionManager transactionManager) {
         this.usuarioService = usuarioService;
         this.usuarioRepository = usuarioRepository;
         this.planoRepository = planoRepository;
@@ -59,69 +71,52 @@ public class EfiPagamentoService {
         this.gateway = gateway;
         this.conciliacaoService = conciliacaoService;
         this.rateLimiter = rateLimiter;
+        this.transactions = new TransactionTemplate(transactionManager);
     }
 
-    @Transactional
     public EfiPixCheckoutDto criar(
             EfiPixCheckoutRequest request,
             String idempotencyKey,
             Authentication authentication) {
+        return criar(request, idempotencyKey, authentication, null);
+    }
+
+    public EfiPixCheckoutDto criar(
+            EfiPixCheckoutRequest request,
+            String idempotencyKey,
+            Authentication authentication,
+            String requestId) {
         UUID usuarioId = usuarioService.usuarioAutenticado(authentication).getId();
         rateLimiter.require("efi-pix-criar", usuarioId.toString(), 10, Duration.ofMinutes(5));
         if (request == null || request.planoCreditoId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "plano de credito obrigatorio");
         }
         String chave = chavePagamento(usuarioId, idempotencyKey);
-        var existente = pagamentoRepository.findByIdempotencyKey(chave);
-        if (existente.isPresent()) {
-            validarMesmoPlano(existente.get(), request.planoCreditoId());
-            return consultarExistente(existente.get(), true);
+        PagamentoEntity existente = pagamentoRepository.findByIdempotencyKey(chave).orElse(null);
+        if (existente != null) {
+            validarMesmoPlano(existente, request.planoCreditoId());
+            return processarRemoto(
+                    existente,
+                    nomePlano(existente.getPlanoCreditoId()),
+                    true,
+                    false,
+                    requestId);
         }
-        usuarioRepository.findByIdForUpdate(usuarioId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida"));
-        existente = pagamentoRepository.findByIdempotencyKey(chave);
-        if (existente.isPresent()) {
-            validarMesmoPlano(existente.get(), request.planoCreditoId());
-            return consultarExistente(existente.get(), true);
-        }
-        PlanoCreditoEntity plano = planoRepository.findById(request.planoCreditoId())
-                .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
-                .filter(item -> item.getValor() != null && item.getValor().signum() > 0)
-                .filter(item -> item.getQuantidadeCreditos() != null && item.getQuantidadeCreditos() > 0)
-                .filter(item -> "BRL".equals(item.getMoeda()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pacote de credito indisponivel"));
 
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-        String txid = txid(usuarioId, chave);
         AmbientePagamento ambiente = ambienteGatewayObrigatorio();
-        PagamentoEntity pagamento = pagamentoRepository.saveAndFlush(PagamentoEntity.criarPixEfi(
-                UUID.randomUUID(),
+        IntencaoPagamento intencao = Objects.requireNonNull(transactions.execute(ignored -> prepararIntencao(
                 usuarioId,
-                plano.getId(),
-                ambiente,
-                txid,
-                plano.getValor().setScale(2),
-                plano.getQuantidadeCreditos(),
+                request.planoCreditoId(),
                 chave,
-                agora));
-        try {
-            EfiPixGateway.CobrancaPix cobranca = gateway.criarCobranca(
-                    txid,
-                    pagamento.getValor(),
-                    "Compra de " + plano.getNome());
-            validarCobrancaDoPagamento(pagamento, cobranca);
-            pagamento.aguardarPagamento(
-                    cobranca.identificadorLocalizacao(),
-                    cobranca.status(),
-                    cobranca.expiracaoEm(),
-                    OffsetDateTime.now(ZoneOffset.UTC));
-            return dto(pagamento, cobranca, false);
-        } catch (EfiPixGatewayException exception) {
-            throw indisponivel(exception);
-        }
+                ambiente)));
+        return processarRemoto(
+                intencao.pagamento(),
+                intencao.planoNome(),
+                intencao.idempotente(),
+                !intencao.idempotente(),
+                requestId);
     }
 
-    @Transactional(readOnly = true)
     public EfiPixCheckoutDto consultar(UUID pagamentoId, Authentication authentication) {
         PagamentoEntity pagamento = pagamentoDoUsuario(pagamentoId, authentication);
         rateLimiter.require(
@@ -129,6 +124,9 @@ public class EfiPagamentoService {
                 pagamento.getUsuarioId().toString(),
                 30,
                 Duration.ofMinutes(5));
+        if (!podeRetentar(pagamento)) {
+            return dto(pagamento, null, true);
+        }
         return consultarGateway(pagamento, false);
     }
 
@@ -146,12 +144,10 @@ public class EfiPagamentoService {
                 pagamento.getTxid(),
                 null,
                 null,
-                br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
                 requestId);
         if (resultado.erroResumido() != null) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "pagamento requer conciliacao administrativa");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "pagamento requer conciliacao administrativa");
         }
         return dto(resultado.pagamento(), resultado.cobranca(), resultado.idempotente());
     }
@@ -190,23 +186,137 @@ public class EfiPagamentoService {
                 .toList();
     }
 
-    private EfiPixCheckoutDto consultarExistente(PagamentoEntity pagamento, boolean idempotente) {
-        if (pagamento.getCreditadoEm() != null
-                || pagamento.getStatusInterno()
-                == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento.CANCELADO
-                || pagamento.getStatusInterno()
-                == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento.EXPIRADO
-                || pagamento.getStatusInterno()
-                == br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento.ERRO) {
+    private IntencaoPagamento prepararIntencao(
+            UUID usuarioId,
+            UUID planoId,
+            String chave,
+            AmbientePagamento ambiente) {
+        usuarioRepository.findByIdForUpdate(usuarioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida"));
+        PagamentoEntity existente = pagamentoRepository.findByIdempotencyKey(chave).orElse(null);
+        if (existente != null) {
+            validarMesmoPlano(existente, planoId);
+            return new IntencaoPagamento(existente, nomePlano(existente.getPlanoCreditoId()), true);
+        }
+        PlanoCreditoEntity plano = planoRepository.findById(planoId)
+                .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
+                .filter(item -> item.getValor() != null && item.getValor().signum() > 0)
+                .filter(item -> item.getQuantidadeCreditos() != null && item.getQuantidadeCreditos() > 0)
+                .filter(item -> "BRL".equals(item.getMoeda()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pacote de credito indisponivel"));
+
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        PagamentoEntity pagamento = pagamentoRepository.saveAndFlush(PagamentoEntity.criarPixEfi(
+                UUID.randomUUID(),
+                usuarioId,
+                plano.getId(),
+                ambiente,
+                txid(usuarioId, chave),
+                plano.getValor().setScale(2),
+                plano.getQuantidadeCreditos(),
+                chave,
+                agora));
+        return new IntencaoPagamento(pagamento, plano.getNome(), false);
+    }
+
+    private EfiPixCheckoutDto processarRemoto(
+            PagamentoEntity pagamento,
+            String planoNome,
+            boolean idempotente,
+            boolean criarSemConsulta,
+            String requestId) {
+        if (!podeRetentar(pagamento)) {
             return dto(pagamento, null, idempotente);
         }
-        return consultarGateway(pagamento, idempotente);
+        AmbientePagamento ambienteGateway = ambienteGatewayObrigatorio();
+        if (pagamento.getAmbiente() == null || pagamento.getAmbiente() != ambienteGateway) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "ambiente Efi divergente");
+        }
+
+        EfiPixGateway.CobrancaPix cobranca;
+        try {
+            cobranca = localizarOuCriarCobranca(
+                    pagamento,
+                    planoNome,
+                    criarSemConsulta);
+        } catch (EfiPixGatewayException exception) {
+            if (!exception.isConfiguracao() && !exception.isCobrancaNaoEncontrada()) {
+                marcarFalhaTransitoriaSemMascararErro(pagamento, requestId);
+            }
+            throw indisponivel(exception);
+        }
+        validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
+        String status = statusNormalizado(cobranca.status());
+        if ("ATIVA".equals(status)) {
+            PagamentoEntity atualizado = pagamento.getStatusInterno() == StatusInternoPagamento.AGUARDANDO_PAGAMENTO
+                    ? pagamento
+                    : finalizarCobrancaAtiva(pagamento.getTxid(), cobranca, ambienteGateway);
+            return dto(atualizado, cobranca, idempotente);
+        }
+
+        EfiPagamentoConciliacaoService.ConciliacaoResultado resultado = conciliacaoService.aplicarCobrancaConsultada(
+                cobranca,
+                null,
+                null,
+                OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                requestId);
+        if (resultado.erroResumido() != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "pagamento requer conciliacao administrativa");
+        }
+        return dto(resultado.pagamento(), cobranca, idempotente);
+    }
+
+    private EfiPixGateway.CobrancaPix localizarOuCriarCobranca(
+            PagamentoEntity pagamento,
+            String planoNome,
+            boolean criarSemConsulta) {
+        if (criarSemConsulta) {
+            return gateway.criarCobranca(
+                    pagamento.getTxid(),
+                    pagamento.getValor(),
+                    "Compra de " + planoNomeSeguro(planoNome));
+        }
+        try {
+            return gateway.consultarCobranca(pagamento.getTxid());
+        } catch (EfiPixGatewayException exception) {
+            if (!exception.isCobrancaNaoEncontrada() || !podeCriarRemotamente(pagamento)) {
+                throw exception;
+            }
+            return gateway.criarCobranca(
+                    pagamento.getTxid(),
+                    pagamento.getValor(),
+                    "Compra de " + planoNomeSeguro(planoNome));
+        }
+    }
+
+    private PagamentoEntity finalizarCobrancaAtiva(
+            String txid,
+            EfiPixGateway.CobrancaPix cobranca,
+            AmbientePagamento ambienteGateway) {
+        return Objects.requireNonNull(transactions.execute(ignored -> {
+            PagamentoEntity atual = pagamentoRepository.findByTxidForUpdate(txid)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pagamento Efi nao encontrado"));
+            if (!podeRetentar(atual)) {
+                return atual;
+            }
+            validarCobrancaDoPagamento(atual, cobranca, ambienteGateway);
+            atual.aguardarPagamento(
+                    cobranca.identificadorLocalizacao(),
+                    "ATIVA",
+                    cobranca.expiracaoEm(),
+                    OffsetDateTime.now(ZoneOffset.UTC));
+            return atual;
+        }));
     }
 
     private EfiPixCheckoutDto consultarGateway(PagamentoEntity pagamento, boolean idempotente) {
+        AmbientePagamento ambienteGateway = ambienteGatewayObrigatorio();
+        if (pagamento.getAmbiente() == null || pagamento.getAmbiente() != ambienteGateway) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "ambiente Efi divergente");
+        }
         try {
             EfiPixGateway.CobrancaPix cobranca = gateway.consultarCobranca(pagamento.getTxid());
-            validarCobrancaDoPagamento(pagamento, cobranca);
+            validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
             return dto(pagamento, cobranca, idempotente);
         } catch (EfiPixGatewayException exception) {
             throw indisponivel(exception);
@@ -222,13 +332,17 @@ public class EfiPagamentoService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pagamento nao encontrado"));
     }
 
-    private void validarCobrancaDoPagamento(PagamentoEntity pagamento, EfiPixGateway.CobrancaPix cobranca) {
+    private void validarCobrancaDoPagamento(
+            PagamentoEntity pagamento,
+            EfiPixGateway.CobrancaPix cobranca,
+            AmbientePagamento ambienteGateway) {
         if (cobranca == null
                 || !pagamento.getTxid().equals(cobranca.txid())
                 || cobranca.valorOriginal() == null
                 || pagamento.getValor().compareTo(cobranca.valorOriginal()) != 0
                 || pagamento.getAmbiente() == null
-                || pagamento.getAmbiente() != ambienteGatewayObrigatorio()
+                || ambienteGateway == null
+                || pagamento.getAmbiente() != ambienteGateway
                 || pagamento.getAmbiente() != cobranca.ambiente()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "cobranca Efi divergente");
         }
@@ -238,9 +352,7 @@ public class EfiPagamentoService {
         try {
             AmbientePagamento ambiente = gateway.ambiente();
             if (ambiente == null) {
-                throw new ResponseStatusException(
-                        HttpStatus.SERVICE_UNAVAILABLE,
-                        "ambiente Efi indisponivel");
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "ambiente Efi indisponivel");
             }
             return ambiente;
         } catch (EfiPixGatewayException exception) {
@@ -276,9 +388,37 @@ public class EfiPagamentoService {
             case APROVADO -> "APROVADO";
             case EXPIRADO -> "EXPIRADO";
             case CANCELADO, ESTORNADO -> "CANCELADO";
-            case ERRO -> "FALHO";
-            case LEGADO -> "FALHO";
+            case ERRO, LEGADO -> "FALHO";
         };
+    }
+
+    private boolean podeRetentar(PagamentoEntity pagamento) {
+        if (pagamento == null || pagamento.getCreditadoEm() != null) {
+            return false;
+        }
+        return pagamento.getStatusInterno() == StatusInternoPagamento.CRIADO
+                || pagamento.getStatusInterno() == StatusInternoPagamento.AGUARDANDO_PAGAMENTO
+                || (pagamento.getStatusInterno() == StatusInternoPagamento.ERRO
+                && EfiPagamentoConciliacaoService.STATUS_ERRO_TRANSITORIO.equals(pagamento.getStatusProvedor()));
+    }
+
+    private boolean podeCriarRemotamente(PagamentoEntity pagamento) {
+        return pagamento.getIdentificadorProvedor() == null
+                && (pagamento.getStatusInterno() == StatusInternoPagamento.CRIADO
+                || (pagamento.getStatusInterno() == StatusInternoPagamento.ERRO
+                && EfiPagamentoConciliacaoService.STATUS_ERRO_TRANSITORIO.equals(pagamento.getStatusProvedor())));
+    }
+
+    private void marcarFalhaTransitoriaSemMascararErro(PagamentoEntity pagamento, String requestId) {
+        try {
+            conciliacaoService.registrarFalhaTransitoria(pagamento.getTxid(), requestId);
+        } catch (RuntimeException exception) {
+            LOGGER.warn(
+                    "efi_pagamento_falha_transitoria_nao_registrada pagamento={} requestId={} tipo={}",
+                    referenciaSegura(pagamento.getTxid()),
+                    requestIdSeguro(requestId),
+                    exception.getClass().getSimpleName());
+        }
     }
 
     private String identificacaoSanitizada(String txid) {
@@ -287,11 +427,33 @@ public class EfiPagamentoService {
         return "PIX **** " + sufixo;
     }
 
+    private String referenciaSegura(String txid) {
+        String valor = txid == null ? "" : txid.trim();
+        return "***" + valor.substring(Math.max(0, valor.length() - 4));
+    }
+
+    private String requestIdSeguro(String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            return "ausente";
+        }
+        String valor = requestId.trim();
+        return valor.substring(0, Math.min(valor.length(), 120));
+    }
+
+    private String nomePlano(UUID planoId) {
+        return planoRepository.findById(planoId)
+                .map(PlanoCreditoEntity::getNome)
+                .orElse("Pacote de creditos");
+    }
+
+    private String planoNomeSeguro(String nome) {
+        String valor = nome == null ? "Pacote de creditos" : nome.trim();
+        return valor.isBlank() ? "Pacote de creditos" : valor;
+    }
+
     private void validarMesmoPlano(PagamentoEntity pagamento, UUID planoId) {
         if (!pagamento.getPlanoCreditoId().equals(planoId)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Idempotency-Key reutilizada com outro pacote");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Idempotency-Key reutilizada com outro pacote");
         }
     }
 
@@ -313,8 +475,18 @@ public class EfiPagamentoService {
         }
     }
 
+    private String statusNormalizado(String status) {
+        return status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+    }
+
     private ResponseStatusException indisponivel(EfiPixGatewayException exception) {
         HttpStatus status = exception.isConfiguracao() ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY;
         return new ResponseStatusException(status, "integracao Efi indisponivel");
+    }
+
+    private record IntencaoPagamento(
+            PagamentoEntity pagamento,
+            String planoNome,
+            boolean idempotente) {
     }
 }
