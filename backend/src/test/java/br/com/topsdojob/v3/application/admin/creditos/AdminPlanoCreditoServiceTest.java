@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -136,8 +137,12 @@ class AdminPlanoCreditoServiceTest {
                         plano.getAtualizadoEm().minusSeconds(1)),
                 admin(),
                 "req-stale"))
-                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
-                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+                .isInstanceOfSatisfying(AdminPlanoCreditoException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getMessage()).isEqualTo(
+                            "Este pacote foi alterado por outro administrador. "
+                                    + "Os dados foram atualizados; revise e tente novamente.");
+                });
 
         verify(planos, never()).saveAndFlush(any());
     }
@@ -165,6 +170,87 @@ class AdminPlanoCreditoServiceTest {
         assertThat(resultado.ativo()).isTrue();
         assertThat(resultado.comprasConfirmadas()).isEqualTo(4);
         assertThat(resultado.valor()).isEqualByComparingTo("59.90");
+    }
+
+    @Test
+    void pacoteComPrecoZeroRetornaValidacaoEspecificaAntesDaConcorrencia() {
+        PlanoCreditoEntity plano = plano(
+                "PACOTE_ZERO",
+                false,
+                BigDecimal.ZERO,
+                OffsetDateTime.parse("2026-07-28T12:00:00Z"));
+        when(planos.findByIdForUpdate(plano.getId())).thenReturn(Optional.of(plano));
+
+        assertThatThrownBy(() -> service.ativar(
+                plano.getId(),
+                new StatusRequest(plano.getAtualizadoEm().minusSeconds(1)),
+                admin(),
+                "req-zero"))
+                .isInstanceOfSatisfying(AdminPlanoCreditoException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getMessage()).isEqualTo(
+                            "Defina um pre\u00e7o maior que zero antes de ativar este pacote.");
+                });
+
+        verify(planos, never()).saveAndFlush(any());
+        verify(auditoria, never()).auditar(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void pacoteValidoAtivaComMarcadorNormalizadoEPreservaHistorico() {
+        OffsetDateTime marcadorBanco = OffsetDateTime.parse("2026-07-28T12:00:00.123456789Z");
+        PlanoCreditoEntity plano = plano(
+                "PACOTE_QA_3990",
+                false,
+                new BigDecimal("39.90"),
+                marcadorBanco);
+        when(planos.findByIdForUpdate(plano.getId())).thenReturn(Optional.of(plano));
+        when(planos.saveAndFlush(plano)).thenReturn(plano);
+        when(consultas.comprasConfirmadas(List.of(plano.getId()))).thenReturn(Map.of(plano.getId(), 7L));
+
+        var resultado = service.ativar(
+                plano.getId(),
+                new StatusRequest(marcadorBanco.truncatedTo(ChronoUnit.MICROS)),
+                admin(),
+                "req-valid-3990");
+
+        assertThat(resultado.id()).isEqualTo(plano.getId());
+        assertThat(resultado.ativo()).isTrue();
+        assertThat(resultado.valor()).isEqualByComparingTo("39.90");
+        assertThat(resultado.comprasConfirmadas()).isEqualTo(7);
+        assertThat(resultado.atualizadoEm().getNano() % 1_000).isZero();
+        assertThat(resultado.atualizadoEm()).isAfter(marcadorBanco.truncatedTo(ChronoUnit.MICROS));
+        verify(planos).saveAndFlush(plano);
+        verify(planos, never()).deleteById(any());
+    }
+
+    @Test
+    void ativacaoComConflitoRealRetorna409ERetryComMarcadorAtualFunciona() {
+        PlanoCreditoEntity plano = plano("PACOTE_CONCORRENTE", false);
+        when(planos.findByIdForUpdate(plano.getId())).thenReturn(Optional.of(plano));
+        when(planos.saveAndFlush(plano)).thenReturn(plano);
+        when(consultas.comprasConfirmadas(List.of(plano.getId()))).thenReturn(Map.of());
+
+        assertThatThrownBy(() -> service.ativar(
+                plano.getId(),
+                new StatusRequest(plano.getAtualizadoEm().minusSeconds(1)),
+                admin(),
+                "req-status-stale"))
+                .isInstanceOfSatisfying(AdminPlanoCreditoException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(exception.getMessage()).isEqualTo(
+                            "Este pacote foi alterado por outro administrador. "
+                                    + "Os dados foram atualizados; revise e tente novamente.");
+                });
+
+        var resultado = service.ativar(
+                plano.getId(),
+                new StatusRequest(plano.getAtualizadoEm()),
+                admin(),
+                "req-status-retry");
+
+        assertThat(resultado.ativo()).isTrue();
+        verify(planos).saveAndFlush(plano);
     }
 
     @Test
@@ -229,6 +315,23 @@ class AdminPlanoCreditoServiceTest {
                 ativo,
                 10,
                 OffsetDateTime.parse("2026-07-28T12:00:00Z"));
+    }
+
+    private PlanoCreditoEntity plano(
+            String codigo,
+            boolean ativo,
+            BigDecimal valor,
+            OffsetDateTime atualizadoEm) {
+        return PlanoCreditoEntity.criar(
+                UUID.randomUUID(),
+                codigo,
+                codigo.replace('_', ' '),
+                "Plano de teste",
+                100,
+                valor,
+                ativo,
+                10,
+                atualizadoEm);
     }
 
     private AdminUserPrincipal admin() {

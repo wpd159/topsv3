@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.platform.error;
 
 import java.time.Instant;
 
+import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoException;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.application.publico.anunciante.StoryJaAtivoException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -44,6 +45,14 @@ public class GlobalExceptionHandler {
     })
     public ResponseEntity<ApiErrorResponse> handleValidation(Exception exception, HttpServletRequest request) {
         return build(ApiErrorCode.UNPROCESSABLE_ENTITY, request);
+    }
+
+    @ExceptionHandler(AdminPlanoCreditoException.class)
+    public ResponseEntity<ApiErrorResponse> handleAdminPlanoCredito(
+            AdminPlanoCreditoException exception,
+            HttpServletRequest request) {
+        ApiErrorCode code = fromStatus(exception.status().value());
+        return build(code, exception.getMessage(), request);
     }
 
     @ExceptionHandler(ResponseStatusException.class)

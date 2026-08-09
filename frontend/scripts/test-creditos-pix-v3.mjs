@@ -29,6 +29,19 @@ assert.match(files.page, /plano\.valor/)
 assert.match(files.page, /plano\.quantidadeCreditos/)
 assert.doesNotMatch(files.page, /R\$\s*\d/)
 
+assert.equal(
+  (files.page.match(/Comprar créditos/g) ?? []).length >= 2,
+  true,
+  'o botão geral e o CTA dos pacotes devem usar Comprar créditos'
+)
+assert.match(files.page, /disabled=\{!planos\.length\}/)
+assert.match(files.page, /onClick=\{focarPacotes\}/)
+assert.match(files.page, /pacotesSectionRef/)
+assert.match(files.page, /scrollIntoView\(\{ behavior: 'smooth', block: 'start' \}\)/)
+assert.match(files.page, /section\.focus\(\{ preventScroll: true \}\)/)
+assert.match(files.page, /Nenhum pacote de créditos está disponível no momento/)
+assert.match(files.page, /setPlanoConfirmacao\(plano\)/)
+
 assert.match(files.page, /Confirmar compra de créditos/)
 assert.match(files.page, /confirmarCobranca/)
 assert.match(files.page, /createInFlightRef\.current/)
@@ -50,6 +63,8 @@ assert.match(files.page, /Tempo restante:/)
 assert.match(files.page, /max-h-\[calc\(100dvh-1rem\)\]/)
 assert.match(files.page, /max-w-60/)
 assert.match(files.page, /\[overflow-wrap:anywhere\]/)
+assert.match(files.page, /Fechar checkout Pix e retomar depois/)
+assert.match(files.page, /setPagamentos\(\(current\) =>/)
 
 assert.match(files.page, /window\.setInterval\(\(\) => void consultarPagamento\(\), 15_000\)/)
 assert.match(files.page, /checkout\.status !== 'PENDENTE'/)

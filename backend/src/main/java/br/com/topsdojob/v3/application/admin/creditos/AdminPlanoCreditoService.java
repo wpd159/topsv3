@@ -12,6 +12,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -28,6 +29,10 @@ public class AdminPlanoCreditoService {
 
     private static final Pattern CODIGO = Pattern.compile("^[A-Z0-9_]{3,50}$");
     private static final BigDecimal VALOR_MAXIMO = new BigDecimal("9999999999.99");
+    private static final String PRECO_INVALIDO_ATIVACAO =
+            "Defina um pre\u00e7o maior que zero antes de ativar este pacote.";
+    private static final String CONFLITO_CONCORRENCIA =
+            "Este pacote foi alterado por outro administrador. Os dados foram atualizados; revise e tente novamente.";
 
     private final PlanoCreditoRepository planos;
     private final AdminPlanoCreditoConsultaRepository consultas;
@@ -86,7 +91,7 @@ public class AdminPlanoCreditoService {
                 request.quantidadeCreditos(),
                 request.valor(),
                 request.ordemExibicao());
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime agora = proximoMarcador(null);
         PlanoCreditoEntity plano = PlanoCreditoEntity.criar(
                 UUID.randomUUID(),
                 codigo,
@@ -138,7 +143,7 @@ public class AdminPlanoCreditoService {
                 dados.quantidadeCreditos(),
                 dados.valor(),
                 dados.ordemExibicao(),
-                OffsetDateTime.now(ZoneOffset.UTC));
+                proximoMarcador(plano.getAtualizadoEm()));
         planos.saveAndFlush(plano);
         auditoria.auditar(
                 administrador.usuarioId(),
@@ -180,15 +185,12 @@ public class AdminPlanoCreditoService {
         if (Boolean.TRUE.equals(plano.getAtivo()) == ativo) {
             return toDto(plano, comprasConfirmadas(id));
         }
-        validarVersao(plano, request == null ? null : request.atualizadoEm());
-        if (ativo && (plano.getQuantidadeCreditos() == null
-                || plano.getQuantidadeCreditos() <= 0
-                || plano.getValor() == null
-                || plano.getValor().signum() <= 0)) {
-            throw conflito("plano invalido nao pode ser ativado");
+        if (ativo) {
+            validarAtivacao(plano);
         }
+        validarVersao(plano, request == null ? null : request.atualizadoEm());
         Map<String, Object> antes = estado(plano);
-        plano.alterarAtivo(ativo, OffsetDateTime.now(ZoneOffset.UTC));
+        plano.alterarAtivo(ativo, proximoMarcador(plano.getAtualizadoEm()));
         planos.saveAndFlush(plano);
         auditoria.auditar(
                 administrador.usuarioId(),
@@ -260,11 +262,43 @@ public class AdminPlanoCreditoService {
         return value;
     }
 
-    private void validarVersao(PlanoCreditoEntity plano, OffsetDateTime versao) {
-        if (versao == null || plano.getAtualizadoEm() == null
-                || !plano.getAtualizadoEm().toInstant().equals(versao.toInstant())) {
-            throw conflito("plano foi alterado por outra operacao; atualize os dados e tente novamente");
+    private void validarAtivacao(PlanoCreditoEntity plano) {
+        if (plano.getValor() == null || plano.getValor().signum() <= 0) {
+            throw new AdminPlanoCreditoException(HttpStatus.BAD_REQUEST, PRECO_INVALIDO_ATIVACAO);
         }
+        codigo(plano.getCodigo());
+        validarDados(
+                plano.getNome(),
+                plano.getDescricao(),
+                plano.getQuantidadeCreditos(),
+                plano.getValor(),
+                plano.getOrdemExibicao());
+        if (!"BRL".equals(plano.getMoeda())) {
+            throw badRequest("moeda do pacote invalida");
+        }
+    }
+
+    private void validarVersao(PlanoCreditoEntity plano, OffsetDateTime versao) {
+        OffsetDateTime atual = normalizarMarcador(plano.getAtualizadoEm());
+        OffsetDateTime recebido = normalizarMarcador(versao);
+        if (atual == null || recebido == null || !atual.toInstant().equals(recebido.toInstant())) {
+            throw new AdminPlanoCreditoException(HttpStatus.CONFLICT, CONFLITO_CONCORRENCIA);
+        }
+    }
+
+    private OffsetDateTime proximoMarcador(OffsetDateTime anterior) {
+        OffsetDateTime marcadorAnterior = normalizarMarcador(anterior);
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
+        if (marcadorAnterior != null && !agora.isAfter(marcadorAnterior)) {
+            return marcadorAnterior.plusNanos(1_000);
+        }
+        return agora;
+    }
+
+    private OffsetDateTime normalizarMarcador(OffsetDateTime value) {
+        return value == null
+                ? null
+                : value.withOffsetSameInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
     }
 
     private void validarAdministrador(AdminUserPrincipal administrador) {

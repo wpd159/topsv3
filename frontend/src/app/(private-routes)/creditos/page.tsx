@@ -12,6 +12,7 @@ import {
   QrCode,
   RefreshCw,
   WalletCards,
+  X,
 } from 'lucide-react'
 import { PainelShell } from '@/components/painel-anunciante/painel-shell'
 import { Badge } from '@/components/ui/badge'
@@ -111,6 +112,21 @@ function checkoutDoHistorico(pagamento: PagamentoPixHistorico): CobrancaPix {
   }
 }
 
+function pagamentoDoCheckout(checkout: CobrancaPix): PagamentoPixHistorico {
+  return {
+    pagamentoId: checkout.pagamentoId,
+    planoCreditoId: checkout.planoCreditoId,
+    planoNome: checkout.planoNome,
+    quantidadeCreditos: checkout.quantidadeCreditos,
+    valor: checkout.valor,
+    criadoEm: checkout.criadoEm,
+    expiracaoEm: checkout.expiracaoEm,
+    status: checkout.status,
+    identificacaoSanitizada: checkout.identificacaoSanitizada,
+    confirmadoEm: checkout.confirmadoEm,
+  }
+}
+
 function statusExibido(
   pagamento: Pick<CobrancaPix, 'status' | 'expiracaoEm'>,
   agora: number
@@ -169,6 +185,7 @@ export default function CreditosPage() {
   const manualInFlightRef = useRef(false)
   const copiedTimerRef = useRef<number | null>(null)
   const checkoutRef = useRef<HTMLElement | null>(null)
+  const pacotesSectionRef = useRef<HTMLElement | null>(null)
   const returnFocusRef = useRef<HTMLButtonElement | null>(null)
   const focusCheckoutAfterCloseRef = useRef(false)
 
@@ -255,6 +272,14 @@ export default function CreditosPage() {
             }
           : { ...next, pixCopiaECola: null, imagemQrCode: null }
       )
+      setPagamentos((current) => {
+        const resumo = pagamentoDoCheckout(next)
+        return current.some((pagamento) => pagamento.pagamentoId === next.pagamentoId)
+          ? current.map((pagamento) =>
+              pagamento.pagamentoId === next.pagamentoId ? resumo : pagamento
+            )
+          : [resumo, ...current]
+      })
       setCheckoutError(null)
       if (next.status !== 'PENDENTE') {
         clearIdempotencyKey(next.planoCreditoId)
@@ -275,6 +300,19 @@ export default function CreditosPage() {
 
   const focarCheckout = useCallback(() => {
     window.setTimeout(() => checkoutRef.current?.focus(), 0)
+  }, [])
+
+  const focarPacotes = useCallback(() => {
+    const section = pacotesSectionRef.current
+    if (!section) return
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    window.setTimeout(() => section.focus({ preventScroll: true }), 0)
+  }, [])
+
+  const fecharCheckout = useCallback(() => {
+    setCheckout(null)
+    setCheckoutError(null)
+    window.setTimeout(() => pacotesSectionRef.current?.focus({ preventScroll: true }), 0)
   }, [])
 
   const retomarPagamento = useCallback(
@@ -493,6 +531,20 @@ export default function CreditosPage() {
                   </p>
                 </div>
               </div>
+              <Button
+                type="button"
+                className="mt-4 w-full sm:w-auto"
+                disabled={!planos.length}
+                onClick={focarPacotes}
+              >
+                <CreditCard />
+                Comprar créditos
+              </Button>
+              {!planos.length ? (
+                <p className="mt-2 text-sm text-slate-500">
+                  Nenhum pacote de créditos está disponível no momento
+                </p>
+              ) : null}
             </div>
             <div className="rounded-md border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-3">
@@ -531,7 +583,12 @@ export default function CreditosPage() {
             </section>
           ) : null}
 
-          <section aria-labelledby="pacotes-title">
+          <section
+            ref={pacotesSectionRef}
+            tabIndex={-1}
+            aria-labelledby="pacotes-title"
+            className="scroll-mt-4 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-[#C51683]"
+          >
             <div className="mb-4">
               <h2 id="pacotes-title" className="text-lg font-bold text-slate-950">
                 Pacotes disponíveis
@@ -583,7 +640,7 @@ export default function CreditosPage() {
                           ? 'Retomar Pix'
                           : pagamentoPendenteAtivo
                             ? 'Finalize o Pix pendente'
-                            : 'Comprar com Pix'}
+                            : 'Comprar créditos'}
                       </Button>
                     </article>
                   )
@@ -613,11 +670,25 @@ export default function CreditosPage() {
                     {checkout.quantidadeCreditos.toLocaleString('pt-BR')} créditos
                   </p>
                 </div>
-                {checkoutStatus ? (
-                  <Badge className={statusClass(checkoutStatus)} variant="outline">
-                    {statusLabel[checkoutStatus]}
-                  </Badge>
-                ) : null}
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {checkoutStatus ? (
+                    <Badge className={statusClass(checkoutStatus)} variant="outline">
+                      {statusLabel[checkoutStatus]}
+                    </Badge>
+                  ) : null}
+                  {checkout.status === 'PENDENTE' ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      aria-label="Fechar checkout Pix e retomar depois"
+                      onClick={fecharCheckout}
+                    >
+                      <X />
+                      Fechar
+                    </Button>
+                  ) : null}
+                </div>
               </div>
 
               {checkoutError ? (
