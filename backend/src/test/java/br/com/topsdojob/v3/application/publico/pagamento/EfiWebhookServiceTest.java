@@ -3,7 +3,7 @@ package br.com.topsdojob.v3.application.publico.pagamento;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.any;
+
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -29,8 +29,6 @@ class EfiWebhookServiceTest {
         when(processor.processar(
                 anyString(),
                 anyString(),
-                any(),
-                any(),
                 anyString(),
                 anyString(),
                 anyString()))
@@ -51,8 +49,6 @@ class EfiWebhookServiceTest {
         verify(processor).processar(
                 "E12345678901234567890",
                 "abcdef1234567890abcdef1234567890",
-                new java.math.BigDecimal("5.00"),
-                java.time.OffsetDateTime.parse("2026-07-28T20:00:00Z"),
                 hashService.hash(payload),
                 hashService.hash("127.0.0.1"),
                 "req-webhook");
@@ -63,8 +59,6 @@ class EfiWebhookServiceTest {
         when(processor.processar(
                 anyString(),
                 anyString(),
-                any(),
-                any(),
                 anyString(),
                 anyString(),
                 anyString()))
@@ -133,8 +127,6 @@ class EfiWebhookServiceTest {
         verify(processor, org.mockito.Mockito.never()).processar(
                 anyString(),
                 anyString(),
-                any(),
-                any(),
                 anyString(),
                 anyString(),
                 anyString());

@@ -14,6 +14,7 @@ import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaSer
 import br.com.topsdojob.v3.application.credito.CreditoLancamentoResultado;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
 import br.com.topsdojob.v3.application.premium.PremiumCatalogoService;
+import br.com.topsdojob.v3.application.premium.dto.PlanoCreditoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.premium.dto.MinhaCompraPremiumItemRequest;
 import br.com.topsdojob.v3.application.publico.premium.dto.MinhaCompraPremiumRequest;
@@ -39,6 +40,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -145,6 +147,33 @@ class MinhaContaPremiumServiceTest {
                             agora);
                     return new CreditoLancamentoResultado(movimento, false);
                 });
+    }
+
+    @Test
+    void contaSemAnuncioListaPacotesSemCriarProduto() {
+        PlanoCreditoDto pacote = new PlanoCreditoDto(
+                UUID.randomUUID(),
+                "PACOTE_QA",
+                "Pacote QA",
+                "Pacote sintetico",
+                50,
+                new BigDecimal("5.00"),
+                "BRL",
+                true,
+                1);
+        when(catalogo.pacotesAtivos()).thenReturn(List.of(pacote));
+        when(movimentos.findByUsuarioIdOrderByCriadoEmDesc(any(), any()))
+                .thenReturn(org.springframework.data.domain.Page.empty());
+        when(ativacoes.findByUsuarioIdOrderByCriadoEmDesc(usuarioId)).thenReturn(List.of());
+
+
+        var resultado = service.consultar(null, authentication);
+
+        assertThat(resultado.pacotesCredito()).containsExactly(pacote);
+        verify(meusAnuncios, never()).anuncioDoUsuario(anyString(), any());
+        verify(anuncios, never()).save(any());
+        verify(ativacoes, never()).save(any());
+        verify(grupos, never()).save(any());
     }
 
     @Test

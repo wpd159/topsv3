@@ -13,7 +13,9 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.credito.CreditoLancamentoResultado;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
+import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.persistence.entity.credito.MovimentoCreditoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
@@ -34,6 +36,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 class EfiPagamentoConciliacaoServiceTest {
 
@@ -43,27 +48,34 @@ class EfiPagamentoConciliacaoServiceTest {
     private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
     private final CreditoLedgerOperacaoService ledgerService = mock(CreditoLedgerOperacaoService.class);
     private final EfiPixGateway gateway = mock(EfiPixGateway.class);
+    private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final TransactionStatus transactionStatus = mock(TransactionStatus.class);
     private final EfiPagamentoConciliacaoService service = new EfiPagamentoConciliacaoService(
             pagamentoRepository,
             eventoRepository,
             conciliacaoRepository,
             auditoriaRepository,
             ledgerService,
-            gateway);
+            gateway,
+            transactionManager);
     private PagamentoEntity pagamento;
 
     @BeforeEach
     void setUp() {
+        when(gateway.ambiente()).thenReturn(AmbientePagamento.SANDBOX);
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
         pagamento = PagamentoEntity.criarPixEfi(
                 UUID.randomUUID(),
                 UUID.randomUUID(),
                 UUID.randomUUID(),
+                AmbientePagamento.SANDBOX,
                 "b".repeat(32),
                 new BigDecimal("5.00"),
                 50,
                 "checkout-conciliacao",
                 OffsetDateTime.now(ZoneOffset.UTC));
         pagamento.aguardarPagamento("123", "ATIVA", OffsetDateTime.now(ZoneOffset.UTC).plusHours(1), OffsetDateTime.now(ZoneOffset.UTC));
+        when(pagamentoRepository.findByTxid(pagamento.getTxid())).thenReturn(Optional.of(pagamento));
         when(pagamentoRepository.findByTxidForUpdate(pagamento.getTxid())).thenReturn(Optional.of(pagamento));
         when(conciliacaoRepository.findByPagamentoId(pagamento.getId())).thenReturn(Optional.empty());
         when(eventoRepository.findByProvedorAndProvedorEventoId(any(), anyString())).thenReturn(Optional.empty());
@@ -127,27 +139,24 @@ class EfiPagamentoConciliacaoServiceTest {
     }
 
     @Test
-    void webhookConfirmadoCreditaSemConsultaExternaAoProvedor() {
-        OffsetDateTime recebidoEm = OffsetDateTime.parse("2026-07-28T20:00:00Z");
+    void webhookConsultaProvedorAntesDeCreditar() {
+        when(gateway.consultarCobranca(pagamento.getTxid()))
+                .thenReturn(confirmada(new BigDecimal("5.00")));
 
         service.conciliarWebhook(
                 pagamento.getTxid(),
                 "E12345678901234567893",
                 "hash-4",
-                new BigDecimal("5.00"),
-                recebidoEm,
                 "req-4");
         service.conciliarWebhook(
                 pagamento.getTxid(),
                 "E12345678901234567894",
                 "hash-5",
-                new BigDecimal("5.00"),
-                recebidoEm,
                 "req-5");
 
         assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.APROVADO);
-        assertThat(pagamento.getAprovadoEm()).isEqualTo(recebidoEm);
-        verify(gateway, never()).consultarCobranca(anyString());
+        assertThat(pagamento.getAprovadoEm()).isNotNull();
+        verify(gateway, times(1)).consultarCobranca(pagamento.getTxid());
         verify(ledgerService, times(1)).registrar(
                 any(),
                 any(),
@@ -164,18 +173,19 @@ class EfiPagamentoConciliacaoServiceTest {
     }
 
     @Test
-    void webhookComValorDivergenteFalhaSemCredito() {
-        assertThatThrownBy(() -> service.conciliarWebhook(
+    void valorDivergenteNoProviderNaoGeraCredito() {
+        when(gateway.consultarCobranca(pagamento.getTxid()))
+                .thenReturn(confirmada(new BigDecimal("4.99")));
+
+        service.conciliarWebhook(
                 pagamento.getTxid(),
                 "E12345678901234567895",
                 "hash-6",
-                new BigDecimal("4.99"),
-                OffsetDateTime.parse("2026-07-28T20:00:00Z"),
-                "req-6"))
-                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
-                .hasMessageContaining("409 CONFLICT");
+                "req-6");
 
         assertThat(pagamento.getCreditadoEm()).isNull();
+        assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.ERRO);
+        verify(gateway).consultarCobranca(pagamento.getTxid());
         verify(ledgerService, never()).registrar(
                 any(),
                 any(),
@@ -191,19 +201,23 @@ class EfiPagamentoConciliacaoServiceTest {
                 anyString());
     }
 
-    @ParameterizedTest
-    @EnumSource(
-            value = StatusInternoPagamento.class,
-            names = {"EXPIRADO", "CANCELADO"})
-    void pagamentoTerminalNaoEhCreditadoPorCallbackTardio(StatusInternoPagamento status) {
-        pagamento.atualizarStatusProvedor(status, status.name(), OffsetDateTime.now(ZoneOffset.UTC));
+    @Test
+    void txidDivergenteNoProviderNaoGeraCredito() {
+        when(gateway.consultarCobranca(pagamento.getTxid())).thenReturn(new EfiPixGateway.CobrancaPix(
+                AmbientePagamento.SANDBOX,
+                "c".repeat(32),
+                "CONCLUIDA",
+                "123",
+                new BigDecimal("5.00"),
+                new BigDecimal("5.00"),
+                OffsetDateTime.now(ZoneOffset.UTC).plusHours(1),
+                null,
+                null));
 
         assertThatThrownBy(() -> service.conciliarWebhook(
                 pagamento.getTxid(),
                 "E12345678901234567896",
                 "hash-7",
-                new BigDecimal("5.00"),
-                OffsetDateTime.parse("2026-07-28T20:00:00Z"),
                 "req-7"))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("409 CONFLICT");
@@ -224,8 +238,166 @@ class EfiPagamentoConciliacaoServiceTest {
                 anyString());
     }
 
+    @Test
+    void gatewayIndisponivelNaoCredita() {
+        when(gateway.consultarCobranca(pagamento.getTxid()))
+                .thenThrow(new EfiPixGatewayException("falha transitoria", false));
+
+        assertThatThrownBy(() -> service.conciliarWebhook(
+                pagamento.getTxid(),
+                "E12345678901234567897",
+                "hash-8",
+                "req-8"))
+                .isInstanceOf(EfiPixGatewayException.class);
+
+        assertThat(pagamento.getCreditadoEm()).isNull();
+        assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.ERRO);
+        assertThat(pagamento.getStatusProvedor()).isEqualTo(EfiPagamentoConciliacaoService.STATUS_ERRO_TRANSITORIO);
+        verify(ledgerService, never()).registrar(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                anyString());
+    }
+
+    @Test
+    void pagamentoPendenteExpiradoPeloProviderViraExpirado() {
+        when(gateway.consultarCobranca(pagamento.getTxid())).thenReturn(new EfiPixGateway.CobrancaPix(
+                AmbientePagamento.SANDBOX,
+                pagamento.getTxid(),
+                "EXPIRADA",
+                "123",
+                new BigDecimal("5.00"),
+                BigDecimal.ZERO,
+                OffsetDateTime.now(ZoneOffset.UTC),
+                null,
+                null));
+
+        var resultado = service.conciliar(
+                pagamento.getTxid(),
+                null,
+                null,
+                OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                "request-expiracao-01");
+
+        assertThat(resultado.erroResumido()).isNull();
+        assertThat(resultado.pagamento().getStatusInterno()).isEqualTo(StatusInternoPagamento.EXPIRADO);
+        assertThat(resultado.pagamento().getCreditadoEm()).isNull();
+        verify(ledgerService, never()).registrar(
+                any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
+                any(), anyString(), any(), anyString(), anyString());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = StatusInternoPagamento.class,
+            names = {"EXPIRADO", "CANCELADO"})
+    void pagamentoTerminalNaoEhCreditadoPorCallbackTardio(StatusInternoPagamento status) {
+        pagamento.atualizarStatusProvedor(status, status.name(), OffsetDateTime.now(ZoneOffset.UTC));
+
+        var resultado = service.conciliarWebhook(
+                pagamento.getTxid(),
+                "E12345678901234567898",
+                "hash-9",
+                "req-9");
+
+        assertThat(resultado.idempotente()).isTrue();
+        assertThat(resultado.pagamento()).isSameAs(pagamento);
+        assertThat(pagamento.getCreditadoEm()).isNull();
+        verify(gateway, never()).consultarCobranca(pagamento.getTxid());
+        verify(ledgerService, never()).registrar(
+                any(),
+                any(),
+                any(),
+                anyInt(),
+                anyInt(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                any(),
+                anyString(),
+                anyString());
+    }
+
+    @Test
+    void ambienteAtualDivergenteNaoCredita() {
+        when(gateway.ambiente()).thenReturn(AmbientePagamento.PRODUCAO);
+        when(gateway.consultarCobranca(pagamento.getTxid()))
+                .thenReturn(confirmada(new BigDecimal("5.00")));
+
+        var resultado = service.conciliarWebhook(
+                pagamento.getTxid(),
+                "evento-ambiente-atual",
+                "hash-ambiente-atual",
+                "request-ambiente-atual");
+
+        assertThat(resultado.erroResumido()).isEqualTo("AMBIENTE_DIVERGENTE");
+        assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.ERRO);
+        assertThat(pagamento.getCreditadoEm()).isNull();
+        verify(gateway, never()).consultarCobranca(pagamento.getTxid());
+        verify(ledgerService, never()).registrar(
+                any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
+                any(), anyString(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void ambienteRetornadoPeloProviderDivergenteNaoCredita() {
+        when(gateway.consultarCobranca(pagamento.getTxid()))
+                .thenReturn(confirmada(new BigDecimal("5.00"), AmbientePagamento.PRODUCAO));
+
+        var resultado = service.conciliarWebhook(
+                pagamento.getTxid(),
+                "evento-ambiente-provider",
+                "hash-ambiente-provider",
+                "request-ambiente-provider");
+
+        assertThat(resultado.erroResumido()).isEqualTo("AMBIENTE_DIVERGENTE");
+        assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.ERRO);
+        assertThat(pagamento.getCreditadoEm()).isNull();
+        verify(ledgerService, never()).registrar(
+                any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
+                any(), anyString(), any(), anyString(), anyString());
+    }
+
+    @Test
+    void pagamentoHistoricoSemAmbienteExigeConciliacaoAdministrativa() {
+        ReflectionTestUtils.setField(pagamento, "ambiente", null);
+        when(gateway.consultarCobranca(pagamento.getTxid()))
+                .thenReturn(confirmada(new BigDecimal("5.00")));
+
+        var resultado = service.conciliarWebhook(
+                pagamento.getTxid(),
+                "evento-ambiente-legado",
+                "hash-ambiente-legado",
+                "request-ambiente-legado");
+
+        assertThat(resultado.erroResumido()).isEqualTo("AMBIENTE_LEGADO_INDEFINIDO");
+        assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.ERRO);
+        assertThat(pagamento.getCreditadoEm()).isNull();
+        verify(gateway, never()).consultarCobranca(pagamento.getTxid());
+        verify(ledgerService, never()).registrar(
+                any(), any(), any(), anyInt(), anyInt(), any(), anyString(),
+                any(), anyString(), any(), anyString(), anyString());
+    }
+
     private EfiPixGateway.CobrancaPix confirmada(BigDecimal valorRecebido) {
+        return confirmada(valorRecebido, AmbientePagamento.SANDBOX);
+    }
+
+    private EfiPixGateway.CobrancaPix confirmada(
+            BigDecimal valorRecebido,
+            AmbientePagamento ambiente) {
         return new EfiPixGateway.CobrancaPix(
+                ambiente,
                 pagamento.getTxid(),
                 "CONCLUIDA",
                 "123",

@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.infrastructure.payment.efi;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.OutputStream;
 import java.nio.file.Files;
@@ -46,6 +47,7 @@ class EfiPixHttpGatewayConfigurationTest {
         properties.setWebhookVerifier("segredo-webhook-12345678901234567890");
 
         EfiPixHttpGateway gateway = new EfiPixHttpGateway(properties, new ObjectMapper(), "homologacao");
+        assertThat(gateway.ambiente()).isEqualTo(AmbientePagamento.SANDBOX);
 
         assertThat(gateway.webhookCallbackUrl())
                 .isEqualTo(
@@ -59,7 +61,32 @@ class EfiPixHttpGatewayConfigurationTest {
     @Test
     void rejeitaWebhookForaDoContratoCanonico() throws Exception {
         EfiPixProperties properties = configuracaoValida();
+        properties.setWebhookRegistrationEnabled(true);
         properties.setWebhookBaseUrl("https://v3.esle.cloud/api/public/outro-webhook");
+
+        assertThatThrownBy(() -> new EfiPixHttpGateway(properties, new ObjectMapper(), "homologacao"))
+                .isInstanceOf(EfiPixGatewayException.class)
+                .hasMessageContaining("configuracao Efi incompleta ou insegura");
+    }
+
+    @Test
+    void permiteCheckoutSandboxSemConfigurarWebhook() throws Exception {
+        EfiPixProperties properties = configuracaoValida();
+        properties.setWebhookBaseUrl("");
+        properties.setWebhookVerifier("");
+        properties.setWebhookRegistrationEnabled(false);
+
+        EfiPixHttpGateway gateway = new EfiPixHttpGateway(properties, new ObjectMapper(), "homologacao");
+
+        assertThat(gateway.ambiente()).isEqualTo(AmbientePagamento.SANDBOX);
+    }
+
+    @Test
+    void exigeWebhookCompletoQuandoRegistroAutomaticoEstaHabilitado() throws Exception {
+        EfiPixProperties properties = configuracaoValida();
+        properties.setWebhookBaseUrl("");
+        properties.setWebhookVerifier("");
+        properties.setWebhookRegistrationEnabled(true);
 
         assertThatThrownBy(() -> new EfiPixHttpGateway(properties, new ObjectMapper(), "homologacao"))
                 .isInstanceOf(EfiPixGatewayException.class)

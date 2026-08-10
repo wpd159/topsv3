@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.persistence.entity.financeiro;
 
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.MetodoPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento;
@@ -11,6 +12,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -38,6 +40,10 @@ public class PagamentoEntity {
   @Enumerated(EnumType.STRING)
   @Column(name = "metodo")
   private MetodoPagamento metodo;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "ambiente")
+  private AmbientePagamento ambiente;
 
   @Column(name = "txid")
   private String txid;
@@ -103,6 +109,10 @@ public class PagamentoEntity {
     return metodo;
   }
 
+  public AmbientePagamento getAmbiente() {
+    return ambiente;
+  }
+
   public String getTxid() {
     return txid;
   }
@@ -163,6 +173,7 @@ public class PagamentoEntity {
       UUID id,
       UUID usuarioId,
       UUID planoCreditoId,
+      AmbientePagamento ambiente,
       String txid,
       BigDecimal valor,
       int quantidadeCreditos,
@@ -174,6 +185,7 @@ public class PagamentoEntity {
     entity.planoCreditoId = planoCreditoId;
     entity.provedor = ProvedorPagamento.EFI;
     entity.metodo = MetodoPagamento.PIX;
+    entity.ambiente = Objects.requireNonNull(ambiente, "ambiente de pagamento obrigatorio");
     entity.txid = txid;
     entity.valor = valor;
     entity.moeda = "BRL";

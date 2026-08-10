@@ -95,12 +95,17 @@ efi:
     client-secret: ${EFI_CLIENT_SECRET:}
     certificate-path: ${EFI_CERTIFICATE_PATH:}
     certificate-protection: ${EFI_CERTIFICATE_PROTECTION_VALUE:}
-    pix-key: ${EFI_PIX_KEY:}
+    pix-key: ${EFI_PIX_CHAVE:}
     webhook-base-url: ${EFI_WEBHOOK_BASE_URL:}
     webhook-verifier: ${EFI_WEBHOOK_VERIFIER_VALUE:}
     webhook-registration-enabled: ${EFI_WEBHOOK_REGISTRATION_ENABLED:false}
     webhook-skip-mtls-checking: ${EFI_WEBHOOK_SKIP_MTLS_CHECKING:false}
     charge-expiration-seconds: ${EFI_CHARGE_EXPIRATION_SECONDS:3600}
+    reconciliation-enabled: ${EFI_RECONCILIATION_ENABLED:false}
+    reconciliation-interval-ms: ${EFI_RECONCILIATION_INTERVAL_MS:60000}
+    reconciliation-batch-size: ${EFI_RECONCILIATION_BATCH_SIZE:25}
+    reconciliation-max-per-cycle: ${EFI_RECONCILIATION_MAX_PER_CYCLE:100}
+    reconciliation-retry-backoff-seconds: ${EFI_RECONCILIATION_RETRY_BACKOFF_SECONDS:300}
 
 management:
   endpoints:

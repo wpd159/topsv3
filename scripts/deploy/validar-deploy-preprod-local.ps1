@@ -31,6 +31,7 @@ function Read-RequiredFile {
 $workflow = Read-RequiredFile ".github/workflows/deploy-preprod.yml"
 $compose = Read-RequiredFile "deploy/preprod/docker-compose.yml"
 $envExample = Read-RequiredFile "deploy/preprod/preprod.env.example"
+$backendApplication = Read-RequiredFile "backend/src/main/resources/application.yml"
 $gateway = Read-RequiredFile "deploy/preprod/nginx-preprod-local.conf"
 $frontendCompose = [regex]::Match($compose, '(?ms)^  frontend:\s.*?(?=^  gateway:)').Value
 
@@ -132,12 +133,23 @@ $efiCredentialLine = $efiCredentialName + ': ${' + $efiCredentialName + ':-}'
 Add-Check "compose controla Efi por segredo externo" (
   ($compose -match 'EFI_ENABLED:\s+\$\{EFI_ENABLED:-false\}') -and
   ($compose -match 'EFI_BASE_URL:\s+https://pix-h\.api\.efipay\.com\.br') -and
+  ($backendApplication -match '(?ms)^efi:\s*\r?\n\s+pix:\s*\r?\n.*?^\s+pix-key:\s+\$\{EFI_PIX_CHAVE:\}') -and
+  (-not ($backendApplication -match 'EFI_PIX_KEY')) -and
+  ($compose -match 'EFI_PIX_CHAVE:\s+\$\{EFI_PIX_CHAVE:-\}') -and
+  (-not ($compose -match 'EFI_PIX_KEY')) -and
+  ($envExample -match 'EFI_PIX_CHAVE=__PREENCHER_FORA_DO_GIT__') -and
+  (-not ($envExample -match 'EFI_PIX_KEY')) -and
   ($compose.Contains($efiCredentialLine)) -and
   ($compose -match '/opt/topsv3/secrets/efi:/run/topsv3-efi:ro')
 ) "homologacao fail-closed e certificado fora do Git"
 Add-Check "compose exige URL publica R2" ($compose -match 'R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') "sem fallback"
 Add-Check "compose passa URL publica R2 ao build frontend" (($frontendCompose -match 'args:[\s\S]*R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') -and ($frontendCompose -match 'ARG R2_PUBLIC_BASE_URL') -and ($frontendCompose -match 'ENV R2_PUBLIC_BASE_URL=\$\$\{R2_PUBLIC_BASE_URL\}')) "remotePatterns usa a origem do ambiente no build"
 Add-Check "compose passa URL publica R2 ao runtime frontend" ($frontendCompose -match 'environment:\s+R2_PUBLIC_BASE_URL:\s+\$\{R2_PUBLIC_BASE_URL:\?') "remotePatterns usa a origem do ambiente no startup"
+Add-Check "compose propaga disponibilidade Pix ao build frontend" (
+  ($frontendCompose -match 'NEXT_PUBLIC_EFI_PIX_ENABLED:\s+\$\{EFI_ENABLED:-false\}') -and
+  ($frontendCompose -match 'ARG NEXT_PUBLIC_EFI_PIX_ENABLED') -and
+  ($frontendCompose -match 'ENV NEXT_PUBLIC_EFI_PIX_ENABLED=\$\$\{NEXT_PUBLIC_EFI_PIX_ENABLED\}')
+) "frontend acompanha o mesmo flag fail-closed do backend"
 Add-Check "compose inclui configuracao Next no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/next\.config\.ts ./next\.config\.ts') "next start preserva remotePatterns compilados"
 Add-Check "compose inclui politica de indexacao no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/src/lib/seo/search-indexing-policy\.ts ./src/lib/seo/search-indexing-policy\.ts') "next.config.ts resolve a fonte canonica no startup"
 Add-Check "compose desabilita fixtures" (($compose -match '--app\.fixture\.stories\.enabled=false') -and ($compose -match '--app\.fixture\.auth-smoke\.enabled=false')) "sem dados automaticos"
@@ -148,11 +160,16 @@ Add-Check "compose bloqueia indexacao no build e runtime" (
   ($frontendCompose -match 'ARG SEARCH_INDEXING_MODE') -and
   ($frontendCompose -match 'ENV SEARCH_INDEXING_MODE=\$\$\{SEARCH_INDEXING_MODE\}')
 ) "preproducao nao pode ativar politica publica"
-Add-Check "gateway encaminha webhook Efi sem access log" (
-  ($gateway -match 'location ~ \^/api/public/webhooks/efi') -and
+Add-Check "gateway protege webhook Efi sem registrar HMAC" (
+  ($gateway -match 'location = /api/public/webhooks/efi/pix\s*\{') -and
   ($gateway -match 'access_log off;') -and
-  ($gateway -match 'proxy_pass http://backend:8080;')
-) "validacao HMAC ocorre no backend"
+  ($gateway -match 'error_log /dev/null crit;') -and
+  ($gateway -match 'include /etc/nginx/efi-webhook-allowlist\.conf;') -and
+  ($gateway -match 'proxy_pass http://backend:8080;') -and
+  (-not ($gateway -match '(?m)^\s*allow\s+\d{1,3}(?:\.\d{1,3}){3};')) -and
+  ($compose -match '\$\{EFI_WEBHOOK_ALLOWLIST_FILE:\?[^}]+\}:/etc/nginx/efi-webhook-allowlist\.conf:ro') -and
+  ($envExample -match 'EFI_WEBHOOK_ALLOWLIST_FILE=/opt/topsv3/secrets/efi/webhook-allowlist\.conf')
+) "rota exata, logs desativados e allowlist externa"
 Add-Check "gateway adiciona noindex" ($gateway -match 'X-Robots-Tag\s+"noindex') "cabecalho"
 Add-Check "gateway bloqueia robots" ($gateway -match 'Disallow: /') "robots"
 Add-Check "env example aponta somente para secrets externos" ($envExample -match '__PREENCHER_FORA_DO_GIT__') "sem segredo real"

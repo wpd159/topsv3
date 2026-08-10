@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.publico.anunciante.MeusAnunciosConsultaService;
 import br.com.topsdojob.v3.application.publico.auth.PublicAuthRateLimiter;
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutRequest;
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
@@ -26,9 +27,12 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 class EfiPagamentoServiceTest {
 
@@ -39,6 +43,8 @@ class EfiPagamentoServiceTest {
     private final EfiPixGateway gateway = mock(EfiPixGateway.class);
     private final EfiPagamentoConciliacaoService conciliacaoService = mock(EfiPagamentoConciliacaoService.class);
     private final PublicAuthRateLimiter rateLimiter = mock(PublicAuthRateLimiter.class);
+    private final PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+    private final TransactionStatus transactionStatus = mock(TransactionStatus.class);
     private final EfiPagamentoService service = new EfiPagamentoService(
             usuarioService,
             usuarioRepository,
@@ -46,7 +52,14 @@ class EfiPagamentoServiceTest {
             pagamentoRepository,
             gateway,
             conciliacaoService,
-            rateLimiter);
+            rateLimiter,
+            transactionManager);
+
+    @BeforeEach
+    void setUp() {
+        when(gateway.ambiente()).thenReturn(AmbientePagamento.SANDBOX);
+        when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+    }
 
     @Test
     void criaCobrancaComTxidDeterministicoEContratoDoPacote() {
@@ -66,7 +79,11 @@ class EfiPagamentoServiceTest {
         when(plano.getNome()).thenReturn("50 creditos");
         when(planoRepository.findById(planoId)).thenReturn(Optional.of(plano));
         when(pagamentoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
-        when(pagamentoRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(pagamentoRepository.saveAndFlush(any())).thenAnswer(invocation -> {
+            PagamentoEntity salvo = invocation.getArgument(0);
+            when(pagamentoRepository.findByTxidForUpdate(salvo.getTxid())).thenReturn(Optional.of(salvo));
+            return salvo;
+        });
         when(gateway.criarCobranca(any(), any(), any())).thenAnswer(invocation -> cobranca(
                 invocation.getArgument(0),
                 new BigDecimal("5.00")));
@@ -79,6 +96,7 @@ class EfiPagamentoServiceTest {
         ArgumentCaptor<PagamentoEntity> captor = ArgumentCaptor.forClass(PagamentoEntity.class);
         verify(pagamentoRepository).saveAndFlush(captor.capture());
         assertThat(captor.getValue().getTxid()).matches("[a-f0-9]{32}");
+        assertThat(captor.getValue().getAmbiente()).isEqualTo(AmbientePagamento.SANDBOX);
         assertThat(resultado.identificacaoSanitizada()).endsWith(captor.getValue().getTxid().substring(24));
         assertThat(resultado.valor()).isEqualByComparingTo("5.00");
         assertThat(resultado.quantidadeCreditos()).isEqualTo(50);
@@ -97,12 +115,14 @@ class EfiPagamentoServiceTest {
                 UUID.randomUUID(),
                 usuarioId,
                 planoId,
+                AmbientePagamento.SANDBOX,
                 "a".repeat(32),
                 new BigDecimal("5.00"),
                 50,
                 "efi-checkout:" + usuarioId + ":checkout-teste-0002",
                 OffsetDateTime.now(ZoneOffset.UTC));
         when(pagamentoRepository.findByIdempotencyKey(any())).thenReturn(Optional.of(existente));
+        when(pagamentoRepository.findByTxidForUpdate(existente.getTxid())).thenReturn(Optional.of(existente));
         when(gateway.consultarCobranca(existente.getTxid())).thenReturn(cobranca(existente.getTxid(), new BigDecimal("5.00")));
 
         var resultado = service.criar(
@@ -127,6 +147,7 @@ class EfiPagamentoServiceTest {
                 UUID.randomUUID(),
                 usuarioId,
                 planoId,
+                AmbientePagamento.SANDBOX,
                 "c".repeat(32),
                 new BigDecimal("5.00"),
                 50,
@@ -134,6 +155,7 @@ class EfiPagamentoServiceTest {
                 OffsetDateTime.now(ZoneOffset.UTC));
         when(pagamentoRepository.findByIdempotencyKey(any()))
                 .thenReturn(Optional.empty(), Optional.of(existente));
+        when(pagamentoRepository.findByTxidForUpdate(existente.getTxid())).thenReturn(Optional.of(existente));
         when(gateway.consultarCobranca(existente.getTxid()))
                 .thenReturn(cobranca(existente.getTxid(), new BigDecimal("5.00")));
 
@@ -158,6 +180,7 @@ class EfiPagamentoServiceTest {
                 UUID.randomUUID(),
                 usuarioId,
                 UUID.randomUUID(),
+                AmbientePagamento.SANDBOX,
                 "d".repeat(32),
                 new BigDecimal("5.00"),
                 50,
@@ -187,6 +210,7 @@ class EfiPagamentoServiceTest {
                 UUID.randomUUID(),
                 usuarioId,
                 planoId,
+                AmbientePagamento.SANDBOX,
                 "1234567890abcdef1234567890abcdef",
                 new BigDecimal("8.75"),
                 90,
@@ -242,6 +266,33 @@ class EfiPagamentoServiceTest {
     }
 
     @Test
+    void pacoteComValorInvalidoNaoCriaCobranca() {
+        UUID usuarioId = UUID.randomUUID();
+        UUID planoId = UUID.randomUUID();
+        Authentication authentication = mock(Authentication.class);
+        UsuarioEntity usuario = mock(UsuarioEntity.class);
+        PlanoCreditoEntity plano = mock(PlanoCreditoEntity.class);
+        when(usuario.getId()).thenReturn(usuarioId);
+        when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuario);
+        when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+        when(pagamentoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(plano.getAtivo()).thenReturn(true);
+        when(plano.getValor()).thenReturn(BigDecimal.ZERO);
+        when(planoRepository.findById(planoId)).thenReturn(Optional.of(plano));
+
+        assertThatThrownBy(() -> service.criar(
+                new EfiPixCheckoutRequest(planoId),
+                "checkout-valor-invalido",
+                authentication))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("404 NOT_FOUND");
+
+        verify(gateway, never()).criarCobranca(any(), any(), any());
+        verify(pagamentoRepository, never()).saveAndFlush(any());
+    }
+
+
+    @Test
     void usuarioNaoConsultaPagamentoAlheio() {
         UUID usuarioId = UUID.randomUUID();
         UUID pagamentoId = UUID.randomUUID();
@@ -286,8 +337,28 @@ class EfiPagamentoServiceTest {
                 .hasMessageContaining("502 BAD_GATEWAY");
     }
 
+    @Test
+    void usuarioBloqueadoEhRecusadoAntesDoProviderEDaPersistencia() {
+        Authentication authentication = mock(Authentication.class);
+        when(usuarioService.usuarioAutenticado(authentication))
+                .thenThrow(new org.springframework.web.server.ResponseStatusException(
+                        org.springframework.http.HttpStatus.UNAUTHORIZED,
+                        "sessao publica invalida"));
+
+        assertThatThrownBy(() -> service.criar(
+                new EfiPixCheckoutRequest(UUID.randomUUID()),
+                "checkout-usuario-bloqueado",
+                authentication))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("401 UNAUTHORIZED");
+
+        verify(gateway, never()).criarCobranca(any(), any(), any());
+        verify(pagamentoRepository, never()).saveAndFlush(any());
+    }
+
     private EfiPixGateway.CobrancaPix cobranca(String txid, BigDecimal valor) {
         return new EfiPixGateway.CobrancaPix(
+                AmbientePagamento.SANDBOX,
                 txid,
                 "ATIVA",
                 "123",

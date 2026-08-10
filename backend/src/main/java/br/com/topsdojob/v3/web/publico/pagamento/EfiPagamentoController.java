@@ -8,6 +8,8 @@ import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
 import java.util.List;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -28,33 +30,42 @@ public class EfiPagamentoController {
     }
 
     @GetMapping
-    public List<EfiPagamentoHistoricoDto> historico(Authentication authentication) {
-        return service.historico(authentication);
+    public ResponseEntity<List<EfiPagamentoHistoricoDto>> historico(Authentication authentication) {
+        return noStore(service.historico(authentication));
     }
 
     @PostMapping("/pix")
-    public EfiPixCheckoutDto criar(
+    public ResponseEntity<EfiPixCheckoutDto> criar(
             @RequestBody EfiPixCheckoutRequest body,
             @RequestHeader("Idempotency-Key") String idempotencyKey,
-            Authentication authentication) {
-        return service.criar(body, idempotencyKey, authentication);
+            Authentication authentication,
+            HttpServletRequest request) {
+        return noStore(service.criar(
+                body,
+                idempotencyKey,
+                authentication,
+                RequestIdContext.current(request)));
     }
 
     @GetMapping("/{pagamentoId}")
-    public EfiPixCheckoutDto consultar(
+    public ResponseEntity<EfiPixCheckoutDto> consultar(
             @PathVariable UUID pagamentoId,
             Authentication authentication) {
-        return service.consultar(pagamentoId, authentication);
+        return noStore(service.consultar(pagamentoId, authentication));
     }
 
     @PostMapping("/{pagamentoId}/conciliar")
-    public EfiPixCheckoutDto conciliar(
+    public ResponseEntity<EfiPixCheckoutDto> conciliar(
             @PathVariable UUID pagamentoId,
             Authentication authentication,
             HttpServletRequest request) {
-        return service.conciliar(
+        return noStore(service.conciliar(
                 pagamentoId,
                 authentication,
-                RequestIdContext.current(request));
+                RequestIdContext.current(request)));
+    }
+
+    private <T> ResponseEntity<T> noStore(T body) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }
 }

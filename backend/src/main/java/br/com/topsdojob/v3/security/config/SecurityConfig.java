@@ -49,7 +49,6 @@ public class SecurityConfig {
                     } else {
                         csrf.csrfTokenRepository(csrfTokenRepository)
                                 .ignoringRequestMatchers(
-                                        "/api/public/webhooks/efi",
                                         "/api/public/webhooks/efi/pix")
                                 .csrfTokenRequestHandler(csrfTokenRequestHandler);
                     }

@@ -22,6 +22,7 @@ import {
   type AdminPlanoCreditoAtualizar,
   type AdminPlanoCreditoCriar,
 } from '@/lib/admin-creditos-operacionais-api'
+import { ApiContractError } from '@/lib/api-contract'
 
 type StatusFiltro = 'TODOS' | 'ATIVOS' | 'INATIVOS'
 type PlanoForm = {
@@ -48,6 +49,11 @@ const FORM_VAZIO: PlanoForm = {
   atualizadoEm: '',
 }
 
+const PRECO_INVALIDO_ATIVACAO =
+  'Defina um pre\u00e7o maior que zero antes de ativar este pacote.'
+const CONFLITO_CONCORRENCIA =
+  'Este pacote foi alterado por outro administrador. Os dados foram atualizados; revise e tente novamente.'
+
 const reais = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -69,6 +75,11 @@ function toForm(plano: AdminPlanoCredito): PlanoForm {
 
 function parseValor(value: string) {
   return Number(value.trim().replace(/\s/g, '').replace(',', '.'))
+}
+
+function motivoAtivacaoIndisponivel(plano: AdminPlanoCredito) {
+  return !plano.ativo && (!Number.isFinite(plano.valor) || plano.valor <= 0)
+    ? PRECO_INVALIDO_ATIVACAO : null
 }
 
 export function PlanoCreditoManager() {
@@ -205,6 +216,12 @@ export function PlanoCreditoManager() {
   }
 
   const alterarStatus = async (plano: AdminPlanoCredito) => {
+    const motivoIndisponivel = motivoAtivacaoIndisponivel(plano)
+    const statusToastId = `plano-credito-status-${plano.id}`
+    if (motivoIndisponivel) {
+      toast.error(motivoIndisponivel, { id: statusToastId })
+      return
+    }
     if (statusLock.current || alterandoStatusId) return
     if (plano.ativo && !window.confirm(
       'Desativar este plano? Ele deixara de aparecer para novas compras, mas o historico sera preservado.',
@@ -216,11 +233,29 @@ export function PlanoCreditoManager() {
         ? await AdminCreditosApi.desativarPacote(plano.id, plano.atualizadoEm)
         : await AdminCreditosApi.ativarPacote(plano.id, plano.atualizadoEm)
       setPlanos((atuais) => atuais.map((item) => item.id === plano.id ? atualizado : item))
-      toast.success(plano.ativo ? 'Plano desativado.' : 'Plano ativado no catalogo.')
-      await carregar()
+      toast.success(
+        plano.ativo ? 'Plano desativado.' : 'Plano ativado no catalogo.',
+        { id: statusToastId },
+      )
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Nao foi possivel alterar o status.')
-      await carregar()
+      if (error instanceof ApiContractError && error.status === 409) {
+        try {
+          const atualizado = await AdminCreditosApi.detalharPacote(plano.id)
+          setPlanos((atuais) => atuais.map((item) => item.id === plano.id ? atualizado : item))
+          toast.error(CONFLITO_CONCORRENCIA, { id: statusToastId })
+        } catch (recarregarError) {
+          toast.error(
+            recarregarError instanceof Error
+              ? recarregarError.message : 'Nao foi possivel atualizar o pacote.',
+            { id: statusToastId },
+          )
+        }
+      } else {
+        toast.error(
+          error instanceof Error ? error.message : 'Nao foi possivel alterar o status.',
+          { id: statusToastId },
+        )
+      }
     } finally {
       statusLock.current = false
       setAlterandoStatusId(null)
@@ -322,7 +357,14 @@ export function PlanoCreditoManager() {
                       <p className="truncate text-xs text-gray-500">{plano.codigo} · ordem {plano.ordemExibicao}</p>
                     </td>
                     <td className="px-3 py-3">{plano.quantidadeCreditos}</td>
-                    <td className="px-3 py-3">{reais.format(plano.valor)}</td>
+                    <td className="px-3 py-3">
+                      <span>{reais.format(plano.valor)}</span>
+                      {motivoAtivacaoIndisponivel(plano) ? (
+                        <p className="mt-1 max-w-56 break-words text-xs text-amber-700">
+                          {motivoAtivacaoIndisponivel(plano)}
+                        </p>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-3">{plano.comprasConfirmadas}</td>
                     <td className="px-3 py-3">
                       <Badge variant={plano.ativo ? 'default' : 'secondary'}>
@@ -344,9 +386,12 @@ export function PlanoCreditoManager() {
                         <Button
                           variant={plano.ativo ? 'destructive' : 'outline'}
                           size="icon"
-                          title={plano.ativo ? 'Desativar plano' : 'Ativar plano'}
-                          aria-label={`${plano.ativo ? 'Desativar' : 'Ativar'} ${plano.nome}`}
-                          disabled={alterandoStatusId !== null}
+                          title={motivoAtivacaoIndisponivel(plano)
+                            ?? (plano.ativo ? 'Desativar plano' : 'Ativar plano')}
+                          aria-label={motivoAtivacaoIndisponivel(plano)
+                            ?? `${plano.ativo ? 'Desativar' : 'Ativar'} ${plano.nome}`}
+                          disabled={alterandoStatusId !== null
+                            || motivoAtivacaoIndisponivel(plano) !== null}
                           onClick={() => void alterarStatus(plano)}
                         >
                           {plano.ativo
@@ -378,6 +423,11 @@ export function PlanoCreditoManager() {
                   <div><dt className="text-xs text-gray-500">Preco</dt><dd>{reais.format(plano.valor)}</dd></div>
                   <div><dt className="text-xs text-gray-500">Compras</dt><dd>{plano.comprasConfirmadas}</dd></div>
                 </dl>
+                {motivoAtivacaoIndisponivel(plano) ? (
+                  <p className="mt-2 break-words text-xs text-amber-700">
+                    {motivoAtivacaoIndisponivel(plano)}
+                  </p>
+                ) : null}
                 <div className="mt-3 flex gap-2">
                   <Button
                     className="flex-1"
@@ -391,7 +441,11 @@ export function PlanoCreditoManager() {
                   <Button
                     className="flex-1"
                     variant={plano.ativo ? 'destructive' : 'outline'}
-                    disabled={alterandoStatusId !== null}
+                    title={motivoAtivacaoIndisponivel(plano) ?? undefined}
+                    aria-label={motivoAtivacaoIndisponivel(plano)
+                      ?? `${plano.ativo ? 'Desativar' : 'Ativar'} ${plano.nome}`}
+                    disabled={alterandoStatusId !== null
+                      || motivoAtivacaoIndisponivel(plano) !== null}
                     onClick={() => void alterarStatus(plano)}
                   >
                     {plano.ativo
