@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.platform.error;
 import java.time.Instant;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoException;
+import br.com.topsdojob.v3.application.publico.pagamento.PagamentoPixException;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.application.publico.anunciante.StoryJaAtivoException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,6 +15,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -31,6 +33,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({
             HttpMessageNotReadableException.class,
+            MissingRequestHeaderException.class,
             MissingServletRequestParameterException.class,
             MethodArgumentTypeMismatchException.class,
             HttpRequestMethodNotSupportedException.class
@@ -53,6 +56,13 @@ public class GlobalExceptionHandler {
             HttpServletRequest request) {
         ApiErrorCode code = fromStatus(exception.status().value());
         return build(code, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PagamentoPixException.class)
+    public ResponseEntity<ApiErrorResponse> handlePagamentoPix(
+            PagamentoPixException exception,
+            HttpServletRequest request) {
+        return build(exception.code(), request);
     }
 
     @ExceptionHandler(ResponseStatusException.class)

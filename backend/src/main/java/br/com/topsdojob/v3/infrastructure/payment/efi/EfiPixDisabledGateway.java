@@ -25,6 +25,16 @@ public class EfiPixDisabledGateway implements EfiPixGateway {
     }
 
     @Override
+    public CobrancaPix consultarCobrancaSemQrCode(String txid) {
+        throw indisponivel();
+    }
+
+    @Override
+    public CobrancaPix cancelarCobranca(String txid) {
+        throw indisponivel();
+    }
+
+    @Override
     public void garantirWebhookConfigurado() {
         throw indisponivel();
     }

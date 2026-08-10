@@ -3732,7 +3732,7 @@ paths:
           $ref: "#/components/responses/Conflict"
   /api/public/minha-conta/pagamentos:
     get:
-      summary: Lista o historico Pix Efi do usuario autenticado
+      summary: Lista o historico Pix do usuario autenticado
       operationId: getMeusPagamentosPixEfi
       security:
         - PublicSessionCookie: []
@@ -3751,7 +3751,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/public/minha-conta/pagamentos/pix:
     post:
-      summary: Cria cobranca Pix Efí para um pacote ativo de creditos
+      summary: Cria cobranca Pix para um pacote ativo de creditos
       operationId: postMinhaCobrancaPixEfi
       security:
         - PublicSessionCookie: []
@@ -3780,7 +3780,7 @@ paths:
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/public/minha-conta/pagamentos/{pagamentoId}:
     get:
-      summary: Consulta a cobranca Pix Efí pertencente ao usuario autenticado
+      summary: Consulta a cobranca Pix pertencente ao usuario autenticado
       operationId: getMinhaCobrancaPixEfi
       security:
         - PublicSessionCookie: []
@@ -3792,7 +3792,7 @@ paths:
           schema: { type: string, format: uuid }
       responses:
         "200":
-          description: cobranca consultada diretamente na Efí sem payload bruto
+          description: cobranca consultada sem payload tecnico externo
           content:
             application/json:
               schema:
@@ -3805,7 +3805,7 @@ paths:
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/public/minha-conta/pagamentos/{pagamentoId}/conciliar:
     post:
-      summary: Reconsulta a Efí e concilia atomicamente um pagamento com o ledger
+      summary: Reconsulta a cobranca Pix e concilia atomicamente um pagamento com o ledger
       operationId: postMinhaConciliacaoPixEfi
       security:
         - PublicSessionCookie: []
@@ -3828,9 +3828,38 @@ paths:
         "429": { $ref: "#/components/responses/TooManyRequests" }
         "502": { $ref: "#/components/responses/BadGateway" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/public/minha-conta/pagamentos/{pagamentoId}/cancelar:
+    post:
+      summary: Cancela uma cobranca Pix pendente do usuario autenticado
+      description: Consulta o estado remoto e somente confirma o cancelamento local depois de uma resposta valida. Repeticoes com a mesma chave sao idempotentes.
+      operationId: postMinhaCobrancaPixCancelamento
+      security:
+        - PublicSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: pagamentoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: cobranca cancelada, expirada ou repeticao idempotente do mesmo resultado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EfiPixCheckout"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
   /api/public/webhooks/efi/pix:
     post:
-      summary: Recebe notificacao Pix Efí validada pelo HMAC exclusivo do ambiente
+      summary: Recebe notificacao Pix validada pelo HMAC exclusivo do ambiente
       operationId: postWebhookPixEfi
       security: []
       parameters:
@@ -3847,7 +3876,7 @@ paths:
             schema:
               type: object
               additionalProperties: true
-              description: Payload Efí processado em memoria; somente hashes e identificadores sao persistidos.
+              description: Payload de notificacao Pix processado em memoria; somente hashes e identificadores sao persistidos.
       responses:
         "200":
           description: notificacoes consultadas no provedor, conciliadas, repetidas ou ignoradas; resposta no-store
@@ -7515,13 +7544,13 @@ components:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
     BadGateway:
-      description: A Efí rejeitou ou nao respondeu a operacao; nenhum credito foi gerado.
+      description: Nao foi possivel concluir a operacao de pagamento agora; nenhum credito foi gerado.
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
     ServiceUnavailable:
-      description: Integracao Efí desabilitada ou configuracao segura incompleta.
+      description: Servico de pagamento temporariamente indisponivel ou configuracao segura incompleta.
       content:
         application/json:
           schema:
@@ -12276,7 +12305,7 @@ components:
           $ref: "#/components/schemas/ApiErrorCode"
         message:
           type: string
-          example: Erro interno inesperado.
+          example: Nao foi possivel concluir a operacao. Tente novamente.
         path:
           type: string
           example: /api/health
@@ -12294,6 +12323,14 @@ components:
         - UNPROCESSABLE_ENTITY
         - BAD_GATEWAY
         - SERVICE_UNAVAILABLE
+        - PIX_CRIACAO_INDISPONIVEL
+        - PIX_CONSULTA_INDISPONIVEL
+        - PIX_QR_CODE_INDISPONIVEL
+        - PIX_CANCELAMENTO_INDISPONIVEL
+        - PIX_COBRANCA_PENDENTE
+        - PIX_PAGAMENTO_CONFIRMADO
+        - PIX_CANCELAMENTO_NAO_PERMITIDO
+        - PIX_IDEMPOTENCIA_CONFLITANTE
         - INTERNAL_ERROR
     VisibilidadeMidia:
       type: string
@@ -13754,7 +13791,7 @@ components:
     EfiPixCheckout:
       type: object
       additionalProperties: false
-      required: [pagamentoId, planoCreditoId, planoNome, identificacaoSanitizada, status, valor, quantidadeCreditos, criadoEm, creditado, idempotente]
+      required: [pagamentoId, planoCreditoId, planoNome, identificacaoSanitizada, status, ambiente, cancelavel, valor, quantidadeCreditos, criadoEm, creditado, idempotente]
       properties:
         pagamentoId: { type: string, format: uuid }
         planoCreditoId: { type: string, format: uuid }
@@ -13763,6 +13800,10 @@ components:
         status:
           type: string
           enum: [PENDENTE, APROVADO, EXPIRADO, CANCELADO, FALHO]
+        ambiente:
+          type: string
+          enum: [HOMOLOGACAO, PRODUCAO, DESCONHECIDO]
+        cancelavel: { type: boolean }
         valor: { type: number, minimum: 0.01 }
         quantidadeCreditos: { type: integer, minimum: 1 }
         criadoEm: { type: string, format: date-time }
@@ -13775,7 +13816,7 @@ components:
     EfiPagamentoHistorico:
       type: object
       additionalProperties: false
-      required: [pagamentoId, planoCreditoId, planoNome, quantidadeCreditos, valor, criadoEm, status, identificacaoSanitizada]
+      required: [pagamentoId, planoCreditoId, planoNome, quantidadeCreditos, valor, criadoEm, status, ambiente, cancelavel, identificacaoSanitizada]
       properties:
         pagamentoId: { type: string, format: uuid }
         planoCreditoId: { type: string, format: uuid }
@@ -13787,6 +13828,10 @@ components:
         status:
           type: string
           enum: [PENDENTE, APROVADO, EXPIRADO, CANCELADO, FALHO]
+        ambiente:
+          type: string
+          enum: [HOMOLOGACAO, PRODUCAO, DESCONHECIDO]
+        cancelavel: { type: boolean }
         identificacaoSanitizada: { type: string }
         confirmadoEm: { type: [string, "null"], format: date-time }
     EfiWebhookResultado:

@@ -92,4 +92,30 @@ class EfiPagamentoControllerCsrfTest {
                         .content("{}"))
                 .andExpect(status().isForbidden());
     }
+
+    @Test
+    void cancelamentoSemCsrfRetorna403() throws Exception {
+        mockMvc.perform(post(
+                        "/api/public/minha-conta/pagamentos/00000000-0000-0000-0000-000000000001/cancelar")
+                        .header("Idempotency-Key", "cancelamento-controller-test"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void cancelamentoComCsrfExigeIdempotenciaERetornaNoStore() throws Exception {
+        mockMvc.perform(post(
+                        "/api/public/minha-conta/pagamentos/00000000-0000-0000-0000-000000000001/cancelar")
+                        .with(csrf())
+                        .header("Idempotency-Key", "cancelamento-controller-test"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", containsString("no-store")));
+    }
+
+    @Test
+    void cancelamentoSemIdempotencyKeyRetorna400() throws Exception {
+        mockMvc.perform(post(
+                        "/api/public/minha-conta/pagamentos/00000000-0000-0000-0000-000000000001/cancelar")
+                        .with(csrf()))
+                .andExpect(status().isBadRequest());
+    }
 }

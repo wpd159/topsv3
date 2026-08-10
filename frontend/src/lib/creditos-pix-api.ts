@@ -1,7 +1,6 @@
 'use client'
 
 import { publicApiUrl } from '@/lib/api-contract'
-import { messageFromApiBody } from '@/utils/read-api-error-response'
 
 export type PixStatus = 'PENDENTE' | 'APROVADO' | 'EXPIRADO' | 'CANCELADO' | 'FALHO'
 
@@ -11,6 +10,8 @@ export type CobrancaPix = {
   planoNome: string
   identificacaoSanitizada: string
   status: PixStatus
+  ambiente: 'HOMOLOGACAO' | 'PRODUCAO' | 'DESCONHECIDO'
+  cancelavel: boolean
   valor: number
   quantidadeCreditos: number
   criadoEm: string
@@ -31,6 +32,8 @@ export type PagamentoPixHistorico = {
   criadoEm: string
   expiracaoEm: string | null
   status: PixStatus
+  ambiente: 'HOMOLOGACAO' | 'PRODUCAO' | 'DESCONHECIDO'
+  cancelavel: boolean
   identificacaoSanitizada: string
   confirmadoEm: string | null
 }
@@ -39,7 +42,8 @@ export class PixApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
-    readonly requestId: string | null
+    readonly requestId: string | null,
+    readonly code: string | null
   ) {
     super(message)
     this.name = 'PixApiError'
@@ -71,19 +75,24 @@ async function readJson<T>(response: Response, fallback: string): Promise<T> {
   const raw = await response.text()
   if (!response.ok) {
     let bodyRequestId: string | null = null
+    let code: string | null = null
     try {
-      const body = JSON.parse(raw) as { requestId?: unknown }
+      const body = JSON.parse(raw) as { requestId?: unknown; code?: unknown }
       if (typeof body.requestId === 'string' && body.requestId.trim()) {
         bodyRequestId = body.requestId.trim().slice(0, 120)
       }
+      if (typeof body.code === 'string' && /^[A-Z0-9_]{1,80}$/.test(body.code)) {
+        code = body.code
+      }
     } catch {
-      // The sanitized response can be plain text.
+      // O corpo de erro nunca e exibido ao usuario.
     }
     const headerRequestId = response.headers.get('X-Request-Id')?.trim().slice(0, 120) || null
     throw new PixApiError(
-      messageFromApiBody(raw, response.status, fallback),
+      fallback,
       response.status,
-      headerRequestId || bodyRequestId
+      headerRequestId || bodyRequestId,
+      code
     )
   }
   if (!raw.trim()) throw new Error('Resposta vazia do servidor.')
@@ -124,7 +133,7 @@ export async function criarCobrancaPix(planoCreditoId: string, idempotencyKey: s
     headers: await mutationHeaders(idempotencyKey),
     body: JSON.stringify({ planoCreditoId }),
   })
-  return readJson<CobrancaPix>(response, 'Não foi possível criar a cobrança Pix.')
+  return readJson<CobrancaPix>(response, 'Não foi possível iniciar a cobrança Pix agora. Tente novamente.')
 }
 
 export async function consultarCobrancaPix(pagamentoId: string) {
@@ -135,7 +144,10 @@ export async function consultarCobrancaPix(pagamentoId: string) {
       cache: 'no-store',
     }
   )
-  return readJson<CobrancaPix>(response, 'Não foi possível consultar a cobrança Pix.')
+  return readJson<CobrancaPix>(
+    response,
+    'Não foi possível consultar o pagamento agora. A cobrança foi preservada e pode ser retomada com segurança.'
+  )
 }
 
 export async function conciliarCobrancaPix(pagamentoId: string) {
@@ -149,7 +161,29 @@ export async function conciliarCobrancaPix(pagamentoId: string) {
       body: '{}',
     }
   )
-  return readJson<CobrancaPix>(response, 'Não foi possível atualizar o pagamento Pix.')
+  return readJson<CobrancaPix>(
+    response,
+    'Não foi possível verificar o pagamento agora. Tente novamente.'
+  )
+}
+
+export async function cancelarCobrancaPix(
+  pagamentoId: string,
+  idempotencyKey: string
+) {
+  const response = await fetch(
+    publicApiUrl('/minha-conta/pagamentos/' + encodeURIComponent(pagamentoId) + '/cancelar'),
+    {
+      method: 'POST',
+      credentials: 'include',
+      cache: 'no-store',
+      headers: await mutationHeaders(idempotencyKey),
+    }
+  )
+  return readJson<CobrancaPix>(
+    response,
+    'Não foi possível cancelar a cobrança agora. Tente novamente.'
+  )
 }
 
 export function novaIdempotencyKey() {

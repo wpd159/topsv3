@@ -34,6 +34,12 @@ public interface PagamentoRepository extends JpaRepository<PagamentoEntity, UUID
 
   Optional<PagamentoEntity> findByIdAndUsuarioId(UUID id, UUID usuarioId);
 
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select pagamento from PagamentoEntity pagamento where pagamento.id = :id and pagamento.usuarioId = :usuarioId")
+  Optional<PagamentoEntity> findByIdAndUsuarioIdForUpdate(
+      @Param("id") UUID id,
+      @Param("usuarioId") UUID usuarioId);
+
   Optional<PagamentoEntity> findByTxid(String txid);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)

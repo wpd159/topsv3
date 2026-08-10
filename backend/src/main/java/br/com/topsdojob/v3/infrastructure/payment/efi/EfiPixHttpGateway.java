@@ -45,13 +45,23 @@ public class EfiPixHttpGateway implements EfiPixGateway {
             EfiPixProperties properties,
             ObjectMapper objectMapper,
             @Value("${app.env:nao_configurado}") String appEnv) {
+        this(properties, objectMapper, appEnv, null);
+    }
+
+    EfiPixHttpGateway(
+            EfiPixProperties properties,
+            ObjectMapper objectMapper,
+            String appEnv,
+            HttpClient httpClient) {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.ambiente = validarConfiguracao(appEnv);
-        this.httpClient = HttpClient.newBuilder()
-                .sslContext(criarSslContext())
-                .connectTimeout(Duration.ofSeconds(15))
-                .build();
+        this.httpClient = httpClient == null
+                ? HttpClient.newBuilder()
+                        .sslContext(criarSslContext())
+                        .connectTimeout(Duration.ofSeconds(15))
+                        .build()
+                : httpClient;
     }
 
     @Override
@@ -90,6 +100,27 @@ public class EfiPixHttpGateway implements EfiPixGateway {
         validarTxid(txid);
         JsonNode cobranca = enviarAutorizado("GET", "/v2/cob/" + txid, null);
         return mapearCobranca(cobranca, true);
+    }
+
+    @Override
+    public CobrancaPix consultarCobrancaSemQrCode(String txid) {
+        validarTxid(txid);
+        JsonNode cobranca = enviarAutorizado("GET", "/v2/cob/" + txid, null);
+        return mapearCobranca(cobranca, false);
+    }
+
+    @Override
+    public CobrancaPix cancelarCobranca(String txid) {
+        validarTxid(txid);
+        String payload = payloadCancelamento();
+        JsonNode cobranca = enviarAutorizado("PATCH", "/v2/cob/" + txid, payload);
+        return mapearCobranca(cobranca, false);
+    }
+
+    String payloadCancelamento() {
+        return objectMapper.createObjectNode()
+                .put("status", "REMOVIDA_PELO_USUARIO_RECEBEDOR")
+                .toString();
     }
 
     @Override
@@ -146,21 +177,28 @@ public class EfiPixHttpGateway implements EfiPixGateway {
     }
 
     private QrCode carregarQrCode(String localizacaoId) {
-        if (!localizacaoId.matches("[0-9]{1,20}")) {
-            throw new EfiPixGatewayException("identificador de QR Code Efi invalido", false);
+        try {
+            if (!localizacaoId.matches("[0-9]{1,20}")) {
+                throw new EfiPixGatewayException("identificador de QR Code Efi invalido", false);
+            }
+            JsonNode qr = enviarAutorizado("GET", "/v2/loc/" + localizacaoId + "/qrcode", null);
+            String copiaECola = qr.path("qrcode").asText(null);
+            String imagem = qr.path("imagemQrcode").asText(null);
+            if (copiaECola == null
+                    || copiaECola.isBlank()
+                    || copiaECola.length() > 2_048
+                    || imagem == null
+                    || imagem.length() > 1_500_000
+                    || !imagem.startsWith("data:image/png;base64,")) {
+                throw new EfiPixGatewayException("QR Code Efi invalido", false);
+            }
+            return new QrCode(copiaECola, imagem);
+        } catch (EfiPixGatewayException exception) {
+            if (exception.isQrCode()) {
+                throw exception;
+            }
+            throw EfiPixGatewayException.qrCode(exception);
         }
-        JsonNode qr = enviarAutorizado("GET", "/v2/loc/" + localizacaoId + "/qrcode", null);
-        String copiaECola = qr.path("qrcode").asText(null);
-        String imagem = qr.path("imagemQrcode").asText(null);
-        if (copiaECola == null
-                || copiaECola.isBlank()
-                || copiaECola.length() > 2_048
-                || imagem == null
-                || imagem.length() > 1_500_000
-                || !imagem.startsWith("data:image/png;base64,")) {
-            throw new EfiPixGatewayException("QR Code Efi invalido", false);
-        }
-        return new QrCode(copiaECola, imagem);
     }
 
     private JsonNode enviarAutorizado(String method, String path, String body) {

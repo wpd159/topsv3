@@ -3,6 +3,8 @@ package br.com.topsdojob.v3.platform.error;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoException;
+import br.com.topsdojob.v3.application.publico.pagamento.PagamentoPixException;
+import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -58,6 +60,50 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().code()).isEqualTo(ApiErrorCode.UNSUPPORTED_MEDIA_TYPE);
         assertThat(response.getBody().message()).isEqualTo(mensagem);
+    }
+
+    @Test
+    void erroPixSerializaSomenteCodigoEMensagemNeutros() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST",
+                "/api/public/minha-conta/pagamentos/1/cancelar");
+
+        var response = new GlobalExceptionHandler().handlePagamentoPix(
+                new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_INDISPONIVEL),
+                request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(502);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code())
+                .isEqualTo(ApiErrorCode.PIX_CANCELAMENTO_INDISPONIVEL);
+        assertThat(response.getBody().message())
+                .isEqualTo("Não foi possível cancelar a cobrança agora. Tente novamente.")
+                .doesNotContainIgnoringCase("gateway")
+                .doesNotContainIgnoringCase("oauth")
+                .doesNotContainIgnoringCase("certificado");
+    }
+
+    @Test
+    void excecaoTecnicaInesperadaNaoSerializaDetalheExternoOuStack() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST",
+                "/api/public/minha-conta/pagamentos/1/cancelar");
+
+        var response = new GlobalExceptionHandler().handleUnexpected(
+                new EfiPixGatewayException(
+                        "host externo oauth tls certificado e corpo privado",
+                        false,
+                        503),
+                request);
+
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo(ApiErrorCode.INTERNAL_ERROR);
+        assertThat(response.getBody().message())
+                .isEqualTo("Não foi possível concluir a operação. Tente novamente.")
+                .doesNotContainIgnoringCase("oauth")
+                .doesNotContainIgnoringCase("tls")
+                .doesNotContainIgnoringCase("certificado");
+        assertThat(response.getBody().toString()).doesNotContain("stack");
     }
 
     @Test

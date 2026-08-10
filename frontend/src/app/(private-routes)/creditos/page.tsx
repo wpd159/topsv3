@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
+  Ban,
   CheckCircle2,
   Clock3,
   Copy,
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui/dialog'
 import { useAuth } from '@/context/AuthContext'
 import {
+  cancelarCobrancaPix,
   conciliarCobrancaPix,
   consultarCobrancaPix,
   criarCobrancaPix,
@@ -90,30 +92,34 @@ type CheckoutErrorState = {
   requestId: string | null
 }
 
+const pixErrorMessages: Record<string, string> = {
+  PIX_CRIACAO_INDISPONIVEL:
+    'Não foi possível iniciar a cobrança Pix agora. Tente novamente.',
+  PIX_CONSULTA_INDISPONIVEL:
+    'Não foi possível consultar o pagamento agora. A cobrança foi preservada e pode ser retomada com segurança.',
+  PIX_QR_CODE_INDISPONIVEL:
+    'Não foi possível carregar o QR Code agora. Tente novamente.',
+  PIX_CANCELAMENTO_INDISPONIVEL:
+    'Não foi possível cancelar a cobrança agora. Tente novamente.',
+  PIX_COBRANCA_PENDENTE:
+    'Existe uma cobrança Pix pendente. Retome ou cancele essa cobrança antes de iniciar outra.',
+  PIX_PAGAMENTO_CONFIRMADO:
+    'Este pagamento já foi confirmado e não pode ser cancelado.',
+  PIX_CANCELAMENTO_NAO_PERMITIDO:
+    'Esta cobrança não pode ser cancelada.',
+  PIX_IDEMPOTENCIA_CONFLITANTE:
+    'Não foi possível repetir esta operação com segurança.',
+}
+
 function checkoutErrorState(caught: unknown, fallback: string): CheckoutErrorState {
   if (caught instanceof PixApiError) {
-    if (caught.status === 502) {
-      return {
-        message: 'A Efí não respondeu à operação Pix agora. A cobrança foi preservada e pode ser retomada com segurança.',
-        requestId: caught.requestId,
-      }
+    return {
+      message: (caught.code && pixErrorMessages[caught.code]) || fallback,
+      requestId: caught.requestId,
     }
-    if (caught.status === 503) {
-      return {
-        message: 'A integração Pix está indisponível neste ambiente. Nenhuma nova cobrança foi confirmada.',
-        requestId: caught.requestId,
-      }
-    }
-    if (caught.status === 409) {
-      return {
-        message: 'Existe uma cobrança Pix pendente para outro pacote. Retome ou aguarde a expiração antes de iniciar outra compra.',
-        requestId: caught.requestId,
-      }
-    }
-    return { message: caught.message, requestId: caught.requestId }
   }
   return {
-    message: caught instanceof Error ? caught.message : fallback,
+    message: fallback,
     requestId: null,
   }
 }
@@ -151,6 +157,8 @@ function pagamentoDoCheckout(checkout: CobrancaPix): PagamentoPixHistorico {
     criadoEm: checkout.criadoEm,
     expiracaoEm: checkout.expiracaoEm,
     status: checkout.status,
+    ambiente: checkout.ambiente,
+    cancelavel: checkout.cancelavel,
     identificacaoSanitizada: checkout.identificacaoSanitizada,
     confirmadoEm: checkout.confirmadoEm,
   }
@@ -167,7 +175,7 @@ function statusExibido(
 }
 
 function formatCountdown(expiracaoEm: string | null, agora: number) {
-  if (!expiracaoEm) return 'Vencimento informado pelo provedor'
+  if (!expiracaoEm) return 'Vencimento não informado'
   const restante = Math.max(0, new Date(expiracaoEm).getTime() - agora)
   const totalSegundos = Math.floor(restante / 1_000)
   const horas = Math.floor(totalSegundos / 3_600)
@@ -201,9 +209,11 @@ export default function CreditosPage() {
   const [pagamentos, setPagamentos] = useState<PagamentoPixHistorico[]>([])
   const [checkout, setCheckout] = useState<CobrancaPix | null>(null)
   const [planoConfirmacao, setPlanoConfirmacao] = useState<PlanoCredito | null>(null)
+  const [cancelamentoConfirmacao, setCancelamentoConfirmacao] = useState<CobrancaPix | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [statusBusy, setStatusBusy] = useState(false)
+  const [cancelamentoBusy, setCancelamentoBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutError, setCheckoutError] = useState<CheckoutErrorState | null>(null)
   const [checkoutBloqueado, setCheckoutBloqueado] = useState(false)
@@ -212,6 +222,8 @@ export default function CreditosPage() {
   const createInFlightRef = useRef(false)
   const pollingInFlightRef = useRef(false)
   const manualInFlightRef = useRef(false)
+  const cancelamentoInFlightRef = useRef(false)
+  const cancelamentoKeyRef = useRef<{ pagamentoId: string; key: string } | null>(null)
   const copiedTimerRef = useRef<number | null>(null)
   const checkoutRef = useRef<HTMLElement | null>(null)
   const pacotesSectionRef = useRef<HTMLElement | null>(null)
@@ -429,6 +441,7 @@ export default function CreditosPage() {
       || checkout.status !== 'PENDENTE'
       || pollingInFlightRef.current
       || manualInFlightRef.current
+      || cancelamentoInFlightRef.current
     ) return
     pollingInFlightRef.current = true
     try {
@@ -446,6 +459,7 @@ export default function CreditosPage() {
       || checkout.status !== 'PENDENTE'
       || manualInFlightRef.current
       || pollingInFlightRef.current
+      || cancelamentoInFlightRef.current
     ) return
     manualInFlightRef.current = true
     setStatusBusy(true)
@@ -461,6 +475,61 @@ export default function CreditosPage() {
       setStatusBusy(false)
     }
   }, [aplicarCheckout, checkout])
+
+  const abrirCancelamento = useCallback((cobranca: CobrancaPix) => {
+    if (!cobranca.cancelavel || cobranca.status !== 'PENDENTE') return
+    setCheckoutError(null)
+    setCancelamentoConfirmacao(cobranca)
+  }, [])
+
+  const confirmarCancelamento = useCallback(async () => {
+    const cobranca = cancelamentoConfirmacao
+    if (!cobranca || cancelamentoInFlightRef.current) return
+
+    cancelamentoInFlightRef.current = true
+    setCancelamentoBusy(true)
+    setCheckoutError(null)
+    const currentKey = cancelamentoKeyRef.current
+    const idempotencyKey = currentKey?.pagamentoId === cobranca.pagamentoId
+      ? currentKey.key
+      : novaIdempotencyKey()
+    cancelamentoKeyRef.current = {
+      pagamentoId: cobranca.pagamentoId,
+      key: idempotencyKey,
+    }
+
+    try {
+      const next = await cancelarCobrancaPix(cobranca.pagamentoId, idempotencyKey)
+      await aplicarCheckout(next)
+      cancelamentoKeyRef.current = null
+      setCancelamentoConfirmacao(null)
+      setCheckout(null)
+      focarPacotes()
+    } catch (caught) {
+      const errorState = checkoutErrorState(
+        caught,
+        'Não foi possível cancelar a cobrança agora. Tente novamente.'
+      )
+      setCancelamentoConfirmacao(null)
+      setCheckoutError(errorState)
+      if (caught instanceof PixApiError && caught.code === 'PIX_PAGAMENTO_CONFIRMADO') {
+        try {
+          await atualizarDadosDepoisDoPagamento()
+          setCheckout(null)
+        } catch {
+          // O erro original permanece visível com seu código de atendimento.
+        }
+      }
+    } finally {
+      cancelamentoInFlightRef.current = false
+      setCancelamentoBusy(false)
+    }
+  }, [
+    aplicarCheckout,
+    atualizarDadosDepoisDoPagamento,
+    cancelamentoConfirmacao,
+    focarPacotes,
+  ])
 
   const checkoutVencido = Boolean(
     checkout
@@ -520,7 +589,7 @@ export default function CreditosPage() {
       copiedTimerRef.current = window.setTimeout(() => setCopied(false), 2_000)
     } catch {
       setCheckoutError({
-        message: 'Não foi possível copiar automaticamente. Selecione o código Pix.',
+        message: 'Não foi possível copiar o código Pix. Tente novamente.',
         requestId: null,
       })
     }
@@ -732,11 +801,24 @@ export default function CreditosPage() {
                       {statusLabel[checkoutStatus]}
                     </Badge>
                   ) : null}
+                  {checkout.status === 'PENDENTE' && checkout.cancelavel ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={cancelamentoBusy}
+                      onClick={() => abrirCancelamento(checkout)}
+                    >
+                      <Ban />
+                      Cancelar cobrança
+                    </Button>
+                  ) : null}
                   {checkout.status === 'PENDENTE' ? (
                     <Button
                       type="button"
                       size="sm"
                       variant="ghost"
+                      disabled={cancelamentoBusy}
                       aria-label="Fechar checkout Pix e retomar depois"
                       onClick={fecharCheckout}
                     >
@@ -746,6 +828,12 @@ export default function CreditosPage() {
                   ) : null}
                 </div>
               </div>
+
+              {checkout.ambiente === 'HOMOLOGACAO' ? (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+                  Ambiente de homologação. Esta cobrança é destinada somente a testes e não deve ser paga pelo aplicativo bancário.
+                </div>
+              ) : null}
 
               {checkoutError ? (
                 <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
@@ -805,16 +893,10 @@ export default function CreditosPage() {
                   ) : null}
 
                   {checkout.pixCopiaECola && checkoutStatus === 'PENDENTE' ? (
-                    <div className="min-w-0">
-                      <label htmlFor="pix-copy-paste" className="text-sm font-semibold text-slate-900">
-                        Pix copia e cola
-                      </label>
-                      <textarea
-                        id="pix-copy-paste"
-                        readOnly
-                        value={checkout.pixCopiaECola}
-                        className="mt-2 min-h-24 w-full min-w-0 max-w-full resize-none whitespace-pre-wrap break-all rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700 [overflow-wrap:anywhere]"
-                      />
+                    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-sm font-semibold text-slate-900">
+                        Código Pix disponível
+                      </p>
                       <Button
                         type="button"
                         className="mt-2 w-full sm:w-auto"
@@ -825,9 +907,14 @@ export default function CreditosPage() {
                         <Copy />
                         Copiar código Pix
                       </Button>
-                      <span id="pix-copy-status" className="sr-only" role="status" aria-live="polite">
-                        {copied ? 'Código Pix copiado.' : ''}
-                      </span>
+                      <p
+                        id="pix-copy-status"
+                        className="mt-2 min-h-5 text-sm text-emerald-700"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        {copied ? 'Código Pix copiado' : ''}
+                      </p>
                     </div>
                   ) : null}
 
@@ -1038,6 +1125,43 @@ export default function CreditosPage() {
             </Button>
           </DialogFooter>
           {busy ? <p className="sr-only" role="status">Criando cobrança Pix.</p> : null}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(cancelamentoConfirmacao)}
+        onOpenChange={(open) => {
+          if (!open && !cancelamentoBusy) setCancelamentoConfirmacao(null)
+        }}
+      >
+        <DialogContent className="w-[calc(100vw-1rem)] sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar cobrança Pix?</DialogTitle>
+            <DialogDescription>
+              O QR Code e o código Pix deixarão de ser válidos. Nenhum crédito será adicionado.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={cancelamentoBusy}
+              onClick={() => setCancelamentoConfirmacao(null)}
+            >
+              Manter cobrança
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={cancelamentoBusy}
+              onClick={() => void confirmarCancelamento()}
+            >
+              {cancelamentoBusy ? <LoaderCircle className="animate-spin" /> : <Ban />}
+              Cancelar cobrança
+            </Button>
+          </DialogFooter>
+          {cancelamentoBusy ? (
+            <p className="sr-only" role="status">Cancelando cobrança Pix.</p>
+          ) : null}
         </DialogContent>
       </Dialog>
     </PainelShell>

@@ -10,6 +10,8 @@ public record EfiPixCheckoutDto(
         String planoNome,
         String identificacaoSanitizada,
         String status,
+        String ambiente,
+        boolean cancelavel,
         BigDecimal valor,
         int quantidadeCreditos,
         OffsetDateTime criadoEm,

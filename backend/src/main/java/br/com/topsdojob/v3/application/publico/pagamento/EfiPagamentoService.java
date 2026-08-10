@@ -9,13 +9,18 @@ import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutReque
 import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
+import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
+import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PlanoCreditoEntity;
+import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
+import br.com.topsdojob.v3.persistence.repository.PagamentoEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.PagamentoRepository;
 import br.com.topsdojob.v3.persistence.repository.PlanoCreditoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento;
+import br.com.topsdojob.v3.platform.error.ApiErrorCode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -50,6 +55,8 @@ public class EfiPagamentoService {
     private final UsuarioRepository usuarioRepository;
     private final PlanoCreditoRepository planoRepository;
     private final PagamentoRepository pagamentoRepository;
+    private final PagamentoEventoRepository pagamentoEventoRepository;
+    private final AuditoriaEventoRepository auditoriaRepository;
     private final EfiPixGateway gateway;
     private final EfiPagamentoConciliacaoService conciliacaoService;
     private final PublicAuthRateLimiter rateLimiter;
@@ -60,6 +67,8 @@ public class EfiPagamentoService {
             UsuarioRepository usuarioRepository,
             PlanoCreditoRepository planoRepository,
             PagamentoRepository pagamentoRepository,
+            PagamentoEventoRepository pagamentoEventoRepository,
+            AuditoriaEventoRepository auditoriaRepository,
             EfiPixGateway gateway,
             EfiPagamentoConciliacaoService conciliacaoService,
             PublicAuthRateLimiter rateLimiter,
@@ -68,6 +77,8 @@ public class EfiPagamentoService {
         this.usuarioRepository = usuarioRepository;
         this.planoRepository = planoRepository;
         this.pagamentoRepository = pagamentoRepository;
+        this.pagamentoEventoRepository = pagamentoEventoRepository;
+        this.auditoriaRepository = auditoriaRepository;
         this.gateway = gateway;
         this.conciliacaoService = conciliacaoService;
         this.rateLimiter = rateLimiter;
@@ -100,10 +111,11 @@ public class EfiPagamentoService {
                     nomePlano(existente.getPlanoCreditoId()),
                     true,
                     false,
-                    requestId);
+                    requestId,
+                    ApiErrorCode.PIX_CRIACAO_INDISPONIVEL);
         }
 
-        AmbientePagamento ambiente = ambienteGatewayObrigatorio();
+        AmbientePagamento ambiente = ambienteGatewayObrigatorio(ApiErrorCode.PIX_CRIACAO_INDISPONIVEL);
         IntencaoPagamento intencao = Objects.requireNonNull(transactions.execute(ignored -> prepararIntencao(
                 usuarioId,
                 request.planoCreditoId(),
@@ -114,7 +126,8 @@ public class EfiPagamentoService {
                 intencao.planoNome(),
                 intencao.idempotente(),
                 !intencao.idempotente(),
-                requestId);
+                requestId,
+                ApiErrorCode.PIX_CRIACAO_INDISPONIVEL);
     }
 
     public EfiPixCheckoutDto consultar(UUID pagamentoId, Authentication authentication) {
@@ -159,10 +172,45 @@ public class EfiPagamentoService {
                         nomePlano(pagamento.getPlanoCreditoId()),
                         true,
                         true,
-                        requestId);
+                        requestId,
+                        ApiErrorCode.PIX_CONSULTA_INDISPONIVEL);
             }
-            throw indisponivel(exception);
+            throw indisponivel(exception, ApiErrorCode.PIX_CONSULTA_INDISPONIVEL);
         }
+    }
+
+    public EfiPixCheckoutDto cancelar(
+            UUID pagamentoId,
+            String idempotencyKey,
+            Authentication authentication,
+            String requestId) {
+        UUID usuarioId = usuarioService.usuarioAutenticado(authentication).getId();
+        rateLimiter.require("pix-cancelar", usuarioId.toString(), 10, Duration.ofMinutes(5));
+        String chave = CreditoLedgerOperacaoService.chaveObrigatoria(idempotencyKey);
+        String eventoId = "pix-cancelamento:" + hashSha256(usuarioId + ":" + chave);
+        String payloadHash = hashSha256(String.valueOf(pagamentoId));
+
+        CancelamentoResultado resultado;
+        try {
+            resultado = Objects.requireNonNull(transactions.execute(ignored -> cancelarComLock(
+                    pagamentoId,
+                    usuarioId,
+                    eventoId,
+                    payloadHash,
+                    requestId)));
+        } catch (EfiPixGatewayException exception) {
+            LOGGER.warn(
+                    "pix_cancelamento_indisponivel pagamento={} requestId={} httpStatus={} tipo={}",
+                    referenciaSegura(pagamentoId),
+                    requestIdSeguro(requestId),
+                    exception.getHttpStatus() == null ? "SEM_RESPOSTA" : exception.getHttpStatus(),
+                    exception.getClass().getSimpleName());
+            throw new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_INDISPONIVEL);
+        }
+        if (resultado.pagamentoConfirmado()) {
+            throw new PagamentoPixException(ApiErrorCode.PIX_PAGAMENTO_CONFIRMADO);
+        }
+        return dto(resultado.pagamento(), resultado.cobranca(), resultado.idempotente());
     }
 
     @Transactional(readOnly = true)
@@ -193,6 +241,8 @@ public class EfiPagamentoService {
                             pagamento.getCriadoEm(),
                             pagamento.getExpiracaoEm(),
                             statusPublico(pagamento),
+                            ambientePublico(pagamento),
+                            cancelavel(pagamento),
                             identificacaoSanitizada(pagamento.getTxid()),
                             pagamento.getAprovadoEm());
                 })
@@ -215,9 +265,7 @@ public class EfiPagamentoService {
         PagamentoEntity reutilizavel = cobrancaReutilizavel(usuarioId, ambiente, agora);
         if (reutilizavel != null) {
             if (!reutilizavel.getPlanoCreditoId().equals(planoId)) {
-                throw new ResponseStatusException(
-                        HttpStatus.CONFLICT,
-                        "existe cobranca Pix pendente para outro pacote");
+                throw new PagamentoPixException(ApiErrorCode.PIX_COBRANCA_PENDENTE);
             }
             return new IntencaoPagamento(
                     reutilizavel,
@@ -249,13 +297,14 @@ public class EfiPagamentoService {
             String planoNome,
             boolean idempotente,
             boolean criarSemConsulta,
-            String requestId) {
+            String requestId,
+            ApiErrorCode codigoIndisponibilidade) {
         if (!podeRetentar(pagamento)) {
             return dto(pagamento, null, idempotente);
         }
-        AmbientePagamento ambienteGateway = ambienteGatewayObrigatorio();
+        AmbientePagamento ambienteGateway = ambienteGatewayObrigatorio(codigoIndisponibilidade);
         if (pagamento.getAmbiente() == null || pagamento.getAmbiente() != ambienteGateway) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "ambiente Efi divergente");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "ambiente de pagamento divergente");
         }
 
         EfiPixGateway.CobrancaPix cobranca;
@@ -269,7 +318,7 @@ public class EfiPagamentoService {
             if (!exception.isConfiguracao() && !exception.isCobrancaNaoEncontrada()) {
                 marcarFalhaTransitoriaSemMascararErro(pagamento, requestId);
             }
-            throw indisponivel(exception);
+            throw indisponivel(exception, codigoIndisponibilidade);
         }
         validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
         String status = statusNormalizado(cobranca.status());
@@ -335,17 +384,127 @@ public class EfiPagamentoService {
         }));
     }
 
+    private CancelamentoResultado cancelarComLock(
+            UUID pagamentoId,
+            UUID usuarioId,
+            String eventoId,
+            String payloadHash,
+            String requestId) {
+        usuarioRepository.findByIdForUpdate(usuarioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "sessao publica invalida"));
+        PagamentoEntity pagamento = pagamentoRepository.findByIdAndUsuarioIdForUpdate(pagamentoId, usuarioId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pagamento nao encontrado"));
+
+        PagamentoEventoEntity eventoExistente = pagamentoEventoRepository
+                .findByProvedorAndProvedorEventoId(
+                        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento.EFI,
+                        eventoId)
+                .orElse(null);
+        if (eventoExistente != null) {
+            if (!pagamentoId.equals(eventoExistente.getPagamentoId())
+                    || !Objects.equals(payloadHash, eventoExistente.getPayloadHash())) {
+                throw new PagamentoPixException(ApiErrorCode.PIX_IDEMPOTENCIA_CONFLITANTE);
+            }
+            if (pagamento.getCreditadoEm() != null
+                    || pagamento.getStatusInterno() == StatusInternoPagamento.APROVADO) {
+                return new CancelamentoResultado(pagamento, null, true, true);
+            }
+            if (pagamento.getStatusInterno() == StatusInternoPagamento.CANCELADO
+                    || pagamento.getStatusInterno() == StatusInternoPagamento.EXPIRADO) {
+                return new CancelamentoResultado(pagamento, null, true, false);
+            }
+            throw new PagamentoPixException(ApiErrorCode.INTERNAL_ERROR);
+        }
+
+        if (pagamento.getCreditadoEm() != null
+                || pagamento.getStatusInterno() == StatusInternoPagamento.APROVADO) {
+            return new CancelamentoResultado(pagamento, null, true, true);
+        }
+        if (pagamento.getStatusInterno() == StatusInternoPagamento.CANCELADO
+                || pagamento.getStatusInterno() == StatusInternoPagamento.EXPIRADO) {
+            return new CancelamentoResultado(pagamento, null, true, false);
+        }
+        if (!podeRetentar(pagamento)) {
+            throw new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_NAO_PERMITIDO);
+        }
+
+        AmbientePagamento ambienteGateway =
+                ambienteGatewayObrigatorio(ApiErrorCode.PIX_CANCELAMENTO_INDISPONIVEL);
+        EfiPixGateway.CobrancaPix cobranca =
+                gateway.consultarCobrancaSemQrCode(pagamento.getTxid());
+        validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
+
+        String statusAnterior = pagamento.getStatusInterno().name();
+        String statusRemoto = statusNormalizado(cobranca.status());
+        if ("CONCLUIDA".equals(statusRemoto)) {
+            EfiPagamentoConciliacaoService.ConciliacaoResultado conciliado =
+                    conciliacaoService.aplicarCobrancaConsultada(
+                            cobranca,
+                            eventoId,
+                            payloadHash,
+                            OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                            requestId);
+            if (conciliado.erroResumido() != null) {
+                throw new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_NAO_PERMITIDO);
+            }
+            return new CancelamentoResultado(
+                    conciliado.pagamento(),
+                    conciliado.cobranca(),
+                    conciliado.idempotente(),
+                    true);
+        }
+
+        if ("ATIVA".equals(statusRemoto)) {
+            cobranca = gateway.cancelarCobranca(pagamento.getTxid());
+            validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
+            statusRemoto = statusNormalizado(cobranca.status());
+        }
+        if (!"EXPIRADA".equals(statusRemoto) && !statusRemoto.startsWith("REMOVIDA")) {
+            throw new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_NAO_PERMITIDO);
+        }
+
+        EfiPagamentoConciliacaoService.ConciliacaoResultado sincronizado =
+                conciliacaoService.aplicarCobrancaConsultada(
+                        cobranca,
+                        eventoId,
+                        payloadHash,
+                        OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                        requestId);
+        if (sincronizado.erroResumido() != null
+                || (sincronizado.pagamento().getStatusInterno() != StatusInternoPagamento.CANCELADO
+                && sincronizado.pagamento().getStatusInterno() != StatusInternoPagamento.EXPIRADO)) {
+            throw new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_INDISPONIVEL);
+        }
+
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        auditoriaRepository.save(AuditoriaEventoEntity.registrarSistema(
+                UUID.randomUUID(),
+                usuarioId,
+                "PAGAMENTO_PIX_CANCELADO",
+                "PAGAMENTO",
+                pagamentoId,
+                "{\"status\":\"" + statusAnterior + "\"}",
+                "{\"status\":\"" + sincronizado.pagamento().getStatusInterno().name() + "\"}",
+                requestId,
+                agora));
+        return new CancelamentoResultado(
+                sincronizado.pagamento(),
+                sincronizado.cobranca(),
+                sincronizado.idempotente(),
+                false);
+    }
+
     private EfiPixCheckoutDto consultarGateway(PagamentoEntity pagamento, boolean idempotente) {
-        AmbientePagamento ambienteGateway = ambienteGatewayObrigatorio();
+        AmbientePagamento ambienteGateway = ambienteGatewayObrigatorio(ApiErrorCode.PIX_CONSULTA_INDISPONIVEL);
         if (pagamento.getAmbiente() == null || pagamento.getAmbiente() != ambienteGateway) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "ambiente Efi divergente");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "ambiente de pagamento divergente");
         }
         try {
             EfiPixGateway.CobrancaPix cobranca = gateway.consultarCobranca(pagamento.getTxid());
             validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
             return dto(pagamento, cobranca, idempotente);
         } catch (EfiPixGatewayException exception) {
-            throw indisponivel(exception);
+            throw indisponivel(exception, ApiErrorCode.PIX_CONSULTA_INDISPONIVEL);
         }
     }
 
@@ -370,19 +529,19 @@ public class EfiPagamentoService {
                 || ambienteGateway == null
                 || pagamento.getAmbiente() != ambienteGateway
                 || pagamento.getAmbiente() != cobranca.ambiente()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "cobranca Efi divergente");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "cobranca Pix divergente");
         }
     }
 
-    private AmbientePagamento ambienteGatewayObrigatorio() {
+    private AmbientePagamento ambienteGatewayObrigatorio(ApiErrorCode codigoIndisponibilidade) {
         try {
             AmbientePagamento ambiente = gateway.ambiente();
             if (ambiente == null) {
-                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "ambiente Efi indisponivel");
+                throw new PagamentoPixException(codigoIndisponibilidade);
             }
             return ambiente;
         } catch (EfiPixGatewayException exception) {
-            throw indisponivel(exception);
+            throw indisponivel(exception, codigoIndisponibilidade);
         }
     }
 
@@ -397,6 +556,8 @@ public class EfiPagamentoService {
                 plano == null ? "Pacote de creditos" : plano.getNome(),
                 identificacaoSanitizada(pagamento.getTxid()),
                 statusPublico(pagamento),
+                ambientePublico(pagamento),
+                cancelavel(pagamento),
                 pagamento.getValor(),
                 pagamento.getQuantidadeCreditos(),
                 pagamento.getCriadoEm(),
@@ -418,6 +579,23 @@ public class EfiPagamentoService {
                     pagamento.getStatusProvedor()) ? "PENDENTE" : "FALHO";
             case LEGADO -> "FALHO";
         };
+    }
+
+    private String ambientePublico(PagamentoEntity pagamento) {
+        if (pagamento.getAmbiente() == AmbientePagamento.SANDBOX) {
+            return "HOMOLOGACAO";
+        }
+        if (pagamento.getAmbiente() == AmbientePagamento.PRODUCAO) {
+            return "PRODUCAO";
+        }
+        return "DESCONHECIDO";
+    }
+
+    private boolean cancelavel(PagamentoEntity pagamento) {
+        return pagamento != null
+                && pagamento.getTxid() != null
+                && !pagamento.getTxid().isBlank()
+                && podeRetentar(pagamento);
     }
 
     private PagamentoEntity cobrancaReutilizavel(
@@ -492,6 +670,10 @@ public class EfiPagamentoService {
         return "***" + valor.substring(Math.max(0, valor.length() - 4));
     }
 
+    private String referenciaSegura(UUID pagamentoId) {
+        return pagamentoId == null ? "ausente" : "***" + hashSha256(pagamentoId.toString()).substring(0, 8);
+    }
+
     private String requestIdSeguro(String requestId) {
         if (requestId == null || requestId.isBlank()) {
             return "ausente";
@@ -539,9 +721,29 @@ public class EfiPagamentoService {
         return status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
     }
 
-    private ResponseStatusException indisponivel(EfiPixGatewayException exception) {
-        HttpStatus status = exception.isConfiguracao() ? HttpStatus.SERVICE_UNAVAILABLE : HttpStatus.BAD_GATEWAY;
-        return new ResponseStatusException(status, "integracao Efi indisponivel");
+    private String hashSha256(String valor) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(valor.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 indisponivel", exception);
+        }
+    }
+
+    private PagamentoPixException indisponivel(
+            EfiPixGatewayException exception,
+            ApiErrorCode codigoIndisponibilidade) {
+        ApiErrorCode codigo = exception.isQrCode()
+                ? ApiErrorCode.PIX_QR_CODE_INDISPONIVEL
+                : codigoIndisponibilidade;
+        return new PagamentoPixException(codigo);
+    }
+
+    private record CancelamentoResultado(
+            PagamentoEntity pagamento,
+            EfiPixGateway.CobrancaPix cobranca,
+            boolean idempotente,
+            boolean pagamentoConfirmado) {
     }
 
     private record IntencaoPagamento(

@@ -271,7 +271,7 @@ public class EfiPagamentoConciliacaoService {
                 pagamento.getId(),
                 "efi-pagamento:" + pagamento.getId(),
                 null,
-                "Confirmacao Pix Efi conciliada",
+                "Confirmacao Pix conciliada",
                 requestId);
         registrarConciliacao(
                 pagamento,
@@ -286,7 +286,7 @@ public class EfiPagamentoConciliacaoService {
         auditoriaRepository.save(AuditoriaEventoEntity.registrarWebhook(
                 UUID.randomUUID(),
                 null,
-                "PAGAMENTO_EFI_CONCILIADO",
+                "PAGAMENTO_PIX_CONCILIADO",
                 "PAGAMENTO",
                 pagamento.getId(),
                 "{\"status\":\"AGUARDANDO_PAGAMENTO\"}",

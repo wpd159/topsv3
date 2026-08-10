@@ -12,6 +12,10 @@ public interface EfiPixGateway {
 
     CobrancaPix consultarCobranca(String txid);
 
+    CobrancaPix consultarCobrancaSemQrCode(String txid);
+
+    CobrancaPix cancelarCobranca(String txid);
+
     void garantirWebhookConfigurado();
 
     record CobrancaPix(

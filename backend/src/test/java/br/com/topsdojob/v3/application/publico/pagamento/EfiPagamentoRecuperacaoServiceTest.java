@@ -21,10 +21,13 @@ import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PlanoCreditoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
+import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
+import br.com.topsdojob.v3.persistence.repository.PagamentoEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.PagamentoRepository;
 import br.com.topsdojob.v3.persistence.repository.PlanoCreditoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento;
+import br.com.topsdojob.v3.platform.error.ApiErrorCode;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -42,7 +45,6 @@ import org.mockito.InOrder;
 import org.springframework.security.core.Authentication;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 class EfiPagamentoRecuperacaoServiceTest {
 
@@ -50,6 +52,8 @@ class EfiPagamentoRecuperacaoServiceTest {
     private final UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
     private final PlanoCreditoRepository planoRepository = mock(PlanoCreditoRepository.class);
     private final PagamentoRepository pagamentoRepository = mock(PagamentoRepository.class);
+    private final PagamentoEventoRepository pagamentoEventoRepository = mock(PagamentoEventoRepository.class);
+    private final AuditoriaEventoRepository auditoriaRepository = mock(AuditoriaEventoRepository.class);
     private final EfiPixGateway gateway = mock(EfiPixGateway.class);
     private final EfiPagamentoConciliacaoService conciliacaoService = mock(EfiPagamentoConciliacaoService.class);
     private final PublicAuthRateLimiter rateLimiter = mock(PublicAuthRateLimiter.class);
@@ -60,6 +64,8 @@ class EfiPagamentoRecuperacaoServiceTest {
             usuarioRepository,
             planoRepository,
             pagamentoRepository,
+            pagamentoEventoRepository,
+            auditoriaRepository,
             gateway,
             conciliacaoService,
             rateLimiter,
@@ -242,8 +248,10 @@ class EfiPagamentoRecuperacaoServiceTest {
                 "checkout-falha-transitoria",
                 authentication,
                 "request-recuperacao-03"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("502 BAD_GATEWAY");
+                .isInstanceOf(PagamentoPixException.class)
+                .hasMessage("Não foi possível iniciar a cobrança Pix agora. Tente novamente.")
+                .satisfies(erro -> assertThat(((PagamentoPixException) erro).code())
+                        .isEqualTo(ApiErrorCode.PIX_CRIACAO_INDISPONIVEL));
 
         verify(gateway, never()).criarCobranca(anyString(), any(), anyString());
         verify(conciliacaoService).registrarFalhaTransitoria(

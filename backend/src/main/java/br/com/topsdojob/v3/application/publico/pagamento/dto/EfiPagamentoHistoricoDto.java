@@ -13,6 +13,8 @@ public record EfiPagamentoHistoricoDto(
         OffsetDateTime criadoEm,
         OffsetDateTime expiracaoEm,
         String status,
+        String ambiente,
+        boolean cancelavel,
         String identificacaoSanitizada,
         OffsetDateTime confirmadoEm) {
 }

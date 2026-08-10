@@ -65,6 +65,19 @@ public class EfiPagamentoController {
                 RequestIdContext.current(request)));
     }
 
+    @PostMapping("/{pagamentoId}/cancelar")
+    public ResponseEntity<EfiPixCheckoutDto> cancelar(
+            @PathVariable UUID pagamentoId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            Authentication authentication,
+            HttpServletRequest request) {
+        return noStore(service.cancelar(
+                pagamentoId,
+                idempotencyKey,
+                authentication,
+                RequestIdContext.current(request)));
+    }
+
     private <T> ResponseEntity<T> noStore(T body) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(body);
     }
