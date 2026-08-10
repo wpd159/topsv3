@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
+import br.com.topsdojob.v3.platform.health.HealthController;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.OutputStream;
 import java.net.http.HttpClient;
@@ -17,14 +18,43 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.mock.web.MockHttpServletRequest;
 
 class EfiPixHttpGatewayConfigurationTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void contextoSpringSelecionaConstrutorDeRuntimeComEfiHabilitada() throws Exception {
+        EfiPixProperties properties = configuracaoValida();
+
+        try (var context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment()
+                    .getPropertySources()
+                    .addFirst(new MapPropertySource(
+                            "efi-runtime-test",
+                            Map.of("app.env", "homologacao", "efi.pix.enabled", "true")));
+            context.registerBean(EfiPixProperties.class, () -> properties);
+            context.registerBean(ObjectMapper.class, () -> new ObjectMapper());
+            context.register(EfiPixHttpGateway.class);
+            context.register(HealthController.class);
+
+            context.refresh();
+
+            assertThat(context.getBean(EfiPixGateway.class))
+                    .isInstanceOf(EfiPixHttpGateway.class);
+            var health = context.getBean(HealthController.class)
+                    .health(new MockHttpServletRequest("GET", "/api/health"));
+            assertThat(health.status()).isEqualTo("UP");
+        }
+    }
 
     @Test
     void impedeEndpointDeProducaoForaDoAmbienteDeProducao() {

@@ -23,6 +23,7 @@ import java.util.Map;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManagerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -41,6 +42,7 @@ public class EfiPixHttpGateway implements EfiPixGateway {
     private final HttpClient httpClient;
     private volatile Token oauthState;
 
+    @Autowired
     public EfiPixHttpGateway(
             EfiPixProperties properties,
             ObjectMapper objectMapper,
