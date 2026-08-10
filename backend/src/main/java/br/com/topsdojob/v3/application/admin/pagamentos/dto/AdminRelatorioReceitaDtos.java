@@ -52,9 +52,11 @@ public final class AdminRelatorioReceitaDtos {
 
     public record Transacao(
             UUID id,
+            UUID usuarioId,
             OffsetDateTime data,
             String usuarioNome,
-            String usuarioEmailMascarado,
+            String usuarioEmail,
+            String usuarioWhatsapp,
             String tipo,
             String produto,
             BigDecimal valor,

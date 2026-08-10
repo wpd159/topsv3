@@ -140,16 +140,29 @@ public class EfiPagamentoService {
                 pagamento.getUsuarioId().toString(),
                 30,
                 Duration.ofMinutes(5));
-        EfiPagamentoConciliacaoService.ConciliacaoResultado resultado = conciliacaoService.conciliar(
-                pagamento.getTxid(),
-                null,
-                null,
-                OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
-                requestId);
-        if (resultado.erroResumido() != null) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "pagamento requer conciliacao administrativa");
+        try {
+            EfiPagamentoConciliacaoService.ConciliacaoResultado resultado = conciliacaoService.conciliar(
+                    pagamento.getTxid(),
+                    null,
+                    null,
+                    OrigemConciliacaoPagamento.CONSULTA_PROVEDOR,
+                    requestId);
+            if (resultado.erroResumido() != null) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "pagamento requer conciliacao administrativa");
+            }
+            return dto(resultado.pagamento(), resultado.cobranca(), resultado.idempotente());
+        } catch (EfiPixGatewayException exception) {
+            registrarIndisponibilidade(pagamento, requestId, "conciliacao", exception);
+            if (exception.isCobrancaNaoEncontrada() && podeCriarRemotamente(pagamento)) {
+                return processarRemoto(
+                        pagamento,
+                        nomePlano(pagamento.getPlanoCreditoId()),
+                        true,
+                        true,
+                        requestId);
+            }
+            throw indisponivel(exception);
         }
-        return dto(resultado.pagamento(), resultado.cobranca(), resultado.idempotente());
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +211,19 @@ public class EfiPagamentoService {
             validarMesmoPlano(existente, planoId);
             return new IntencaoPagamento(existente, nomePlano(existente.getPlanoCreditoId()), true);
         }
+        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+        PagamentoEntity reutilizavel = cobrancaReutilizavel(usuarioId, ambiente, agora);
+        if (reutilizavel != null) {
+            if (!reutilizavel.getPlanoCreditoId().equals(planoId)) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "existe cobranca Pix pendente para outro pacote");
+            }
+            return new IntencaoPagamento(
+                    reutilizavel,
+                    nomePlano(reutilizavel.getPlanoCreditoId()),
+                    true);
+        }
         PlanoCreditoEntity plano = planoRepository.findById(planoId)
                 .filter(item -> Boolean.TRUE.equals(item.getAtivo()))
                 .filter(item -> item.getValor() != null && item.getValor().signum() > 0)
@@ -205,7 +231,6 @@ public class EfiPagamentoService {
                 .filter(item -> "BRL".equals(item.getMoeda()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "pacote de credito indisponivel"));
 
-        OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         PagamentoEntity pagamento = pagamentoRepository.saveAndFlush(PagamentoEntity.criarPixEfi(
                 UUID.randomUUID(),
                 usuarioId,
@@ -240,6 +265,7 @@ public class EfiPagamentoService {
                     planoNome,
                     criarSemConsulta);
         } catch (EfiPixGatewayException exception) {
+            registrarIndisponibilidade(pagamento, requestId, "checkout", exception);
             if (!exception.isConfiguracao() && !exception.isCobrancaNaoEncontrada()) {
                 marcarFalhaTransitoriaSemMascararErro(pagamento, requestId);
             }
@@ -388,8 +414,27 @@ public class EfiPagamentoService {
             case APROVADO -> "APROVADO";
             case EXPIRADO -> "EXPIRADO";
             case CANCELADO, ESTORNADO -> "CANCELADO";
-            case ERRO, LEGADO -> "FALHO";
+            case ERRO -> EfiPagamentoConciliacaoService.STATUS_ERRO_TRANSITORIO.equals(
+                    pagamento.getStatusProvedor()) ? "PENDENTE" : "FALHO";
+            case LEGADO -> "FALHO";
         };
+    }
+
+    private PagamentoEntity cobrancaReutilizavel(
+            UUID usuarioId,
+            AmbientePagamento ambiente,
+            OffsetDateTime agora) {
+        return pagamentoRepository.findByUsuarioIdAndProvedorAndMetodoOrderByCriadoEmDesc(
+                        usuarioId,
+                        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento.EFI,
+                        br.com.topsdojob.v3.persistence.shared.PersistenceEnums.MetodoPagamento.PIX,
+                        PageRequest.of(0, 50)).stream()
+                .filter(pagamento -> pagamento.getAmbiente() == ambiente)
+                .filter(this::podeRetentar)
+                .filter(pagamento -> pagamento.getExpiracaoEm() == null
+                        || pagamento.getExpiracaoEm().isAfter(agora))
+                .findFirst()
+                .orElse(null);
     }
 
     private boolean podeRetentar(PagamentoEntity pagamento) {
@@ -419,6 +464,21 @@ public class EfiPagamentoService {
                     requestIdSeguro(requestId),
                     exception.getClass().getSimpleName());
         }
+    }
+
+    private void registrarIndisponibilidade(
+            PagamentoEntity pagamento,
+            String requestId,
+            String etapa,
+            EfiPixGatewayException exception) {
+        LOGGER.warn(
+                "efi_pagamento_indisponivel pagamento={} requestId={} etapa={} httpStatus={} configuracao={} tipo={}",
+                referenciaSegura(pagamento.getTxid()),
+                requestIdSeguro(requestId),
+                etapa,
+                exception.getHttpStatus() == null ? "SEM_RESPOSTA" : exception.getHttpStatus(),
+                exception.isConfiguracao(),
+                exception.getClass().getSimpleName());
     }
 
     private String identificacaoSanitizada(String txid) {

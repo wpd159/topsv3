@@ -72,13 +72,16 @@ class AdminRelatorioReceitaServiceTest {
     }
 
     @Test
-    void transacaoMascaraIdentificadorEEmailSemExporEvidenciaBruta() {
+    void transacaoExibeContatoAdministrativoEProtegeIdentificadorExterno() {
         UUID id = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        UUID usuarioId = UUID.fromString("20000000-0000-0000-0000-000000000001");
         var row = new AdminRelatorioReceitaJdbcRepository.TransacaoRow(
                 id,
+                usuarioId,
                 OffsetDateTime.parse("2026-07-27T14:00:00Z"),
                 "Conta QA",
                 "qa.financeiro@example.invalid",
+                "+5562999999999",
                 "PACOTE_10",
                 "Pacote 10",
                 new BigDecimal("75.00"),
@@ -96,7 +99,9 @@ class AdminRelatorioReceitaServiceTest {
                 "MAIS_RECENTES", 0, 20);
 
         assertThat(pagina.itens()).singleElement().satisfies(item -> {
-            assertThat(item.usuarioEmailMascarado()).isEqualTo("qa***@example.invalid");
+            assertThat(item.usuarioId()).isEqualTo(usuarioId);
+            assertThat(item.usuarioEmail()).isEqualTo("qa.financeiro@example.invalid");
+            assertThat(item.usuarioWhatsapp()).isEqualTo("+5562999999999");
             assertThat(item.identificadorExternoMascarado()).isEqualTo("***1234");
             assertThat(item.status()).isEqualTo("CONFIRMADO");
             assertThat(item.receitaConfirmada()).isTrue();

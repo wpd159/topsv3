@@ -163,12 +163,14 @@ public class AdminRelatorioReceitaJdbcRepository {
         List<TransacaoRow> itens = jdbc.query("""
                         SELECT
                           p.id,
+                          u.id AS usuario_id,
                           """
                                 + DATA_REFERENCIA
                                 + """
                            AS data_referencia,
                           u.nome AS usuario_nome,
                           u.email_normalizado AS usuario_email,
+                          u.telefone_normalizado AS usuario_whatsapp,
                           coalesce(pc.codigo, 'SEM_PACOTE') AS produto_codigo,
                           coalesce(pc.nome, 'Pagamento sem pacote vinculado') AS produto_nome,
                           p.valor,
@@ -187,9 +189,11 @@ public class AdminRelatorioReceitaJdbcRepository {
                         parametros,
                         (rs, row) -> new TransacaoRow(
                                 rs.getObject("id", UUID.class),
+                                rs.getObject("usuario_id", UUID.class),
                                 rs.getObject("data_referencia", OffsetDateTime.class),
                                 rs.getString("usuario_nome"),
                                 rs.getString("usuario_email"),
+                                rs.getString("usuario_whatsapp"),
                                 rs.getString("produto_codigo"),
                                 rs.getString("produto_nome"),
                                 rs.getBigDecimal("valor"),
@@ -297,9 +301,11 @@ public class AdminRelatorioReceitaJdbcRepository {
 
     public record TransacaoRow(
             UUID id,
+            UUID usuarioId,
             OffsetDateTime data,
             String usuarioNome,
             String usuarioEmail,
+            String usuarioWhatsapp,
             String produtoCodigo,
             String produtoNome,
             BigDecimal valor,

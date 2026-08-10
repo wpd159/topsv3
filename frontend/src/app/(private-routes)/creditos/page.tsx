@@ -92,6 +92,24 @@ type CheckoutErrorState = {
 
 function checkoutErrorState(caught: unknown, fallback: string): CheckoutErrorState {
   if (caught instanceof PixApiError) {
+    if (caught.status === 502) {
+      return {
+        message: 'A Efí não respondeu à operação Pix agora. A cobrança foi preservada e pode ser retomada com segurança.',
+        requestId: caught.requestId,
+      }
+    }
+    if (caught.status === 503) {
+      return {
+        message: 'A integração Pix está indisponível neste ambiente. Nenhuma nova cobrança foi confirmada.',
+        requestId: caught.requestId,
+      }
+    }
+    if (caught.status === 409) {
+      return {
+        message: 'Existe uma cobrança Pix pendente para outro pacote. Retome ou aguarde a expiração antes de iniciar outra compra.',
+        requestId: caught.requestId,
+      }
+    }
     return { message: caught.message, requestId: caught.requestId }
   }
   return {
@@ -340,7 +358,7 @@ export default function CreditosPage() {
       setCheckoutError(null)
       setCheckout(checkoutDoHistorico(pagamento))
       try {
-        await aplicarCheckout(await consultarCobrancaPix(pagamento.pagamentoId))
+        await aplicarCheckout(await conciliarCobrancaPix(pagamento.pagamentoId))
         focarCheckout()
       } catch (caught) {
         setCheckoutError(
@@ -414,7 +432,7 @@ export default function CreditosPage() {
     ) return
     pollingInFlightRef.current = true
     try {
-      await aplicarCheckout(await consultarCobrancaPix(checkout.pagamentoId))
+      await aplicarCheckout(await conciliarCobrancaPix(checkout.pagamentoId))
     } catch {
       // O polling permanece silencioso; a verificacao manual apresenta o erro e o requestId.
     } finally {

@@ -1,10 +1,13 @@
 'use client'
 
+import Link from 'next/link'
+
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import type { AdminRelatorioReceitaPagina } from '@/lib/admin-pagamentos-api'
+import { buildWhatsAppUrl, formatarTelefoneExibicao } from '../admin-usuarios-utils'
 
 function shortId(value: string) {
   return value ? `${value.slice(0, 8)}...` : '—'
@@ -43,7 +46,7 @@ export default function FinanceiroTabela({ pagina, loading, error, onRetry, onPa
         </div>
       ) : (
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="min-w-[78rem]">
             <TableHeader>
               <TableRow>
                 <TableHead>ID</TableHead>
@@ -62,10 +65,33 @@ export default function FinanceiroTabela({ pagina, loading, error, onRetry, onPa
                 <TableRow><TableCell colSpan={9} className="py-8 text-center text-zinc-500">Carregando pagamentos...</TableCell></TableRow>
               ) : !pagina?.itens.length ? (
                 <TableRow><TableCell colSpan={9} className="py-8 text-center text-zinc-500">Nenhuma transação encontrada para os filtros.</TableCell></TableRow>
-              ) : pagina.itens.map((item) => (
-                <TableRow key={item.id}>
+              ) : pagina.itens.map((item) => {
+                const whatsappUrl = buildWhatsAppUrl(item.usuarioWhatsapp)
+                return <TableRow key={item.id}>
                   <TableCell title={item.id}>{shortId(item.id)}</TableCell>
-                  <TableCell><span className="block font-medium text-zinc-950">{item.usuarioNome}</span><span className="text-xs text-zinc-500">{item.usuarioEmailMascarado ?? '—'}</span></TableCell>
+                  <TableCell className="min-w-64">
+                    <Link
+                      href={`/admin/usuarios/${encodeURIComponent(item.usuarioId)}`}
+                      className="block font-medium text-zinc-950 underline-offset-2 hover:text-[#C51683] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C51683]"
+                    >
+                      {item.usuarioNome}
+                    </Link>
+                    <span className="block break-all text-xs text-zinc-500">
+                      {item.usuarioEmail ?? 'E-mail não informado'}
+                    </span>
+                    {whatsappUrl ? (
+                      <a
+                        href={whatsappUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-1 block w-fit text-xs font-medium text-emerald-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"
+                      >
+                        WhatsApp: {formatarTelefoneExibicao(item.usuarioWhatsapp)}
+                      </a>
+                    ) : (
+                      <span className="mt-1 block text-xs text-zinc-400">WhatsApp não informado</span>
+                    )}
+                  </TableCell>
                   <TableCell><span className="block">{item.tipo === 'REGISTRO_LEGADO' ? 'Registro legado' : 'Compra de créditos'}</span><span className="text-xs text-zinc-500">{item.produto}</span></TableCell>
                   <TableCell>{item.metodo}</TableCell>
                   <TableCell>{item.creditos?.toLocaleString('pt-BR') ?? '—'}</TableCell>
@@ -74,7 +100,7 @@ export default function FinanceiroTabela({ pagina, loading, error, onRetry, onPa
                   <TableCell className={item.receitaConfirmada ? 'font-semibold text-emerald-700' : 'text-zinc-600'}>{moeda.format(item.valor)}</TableCell>
                   <TableCell>{item.data ? new Date(item.data).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—'}</TableCell>
                 </TableRow>
-              ))}
+              })}
             </TableBody>
           </Table>
         </div>

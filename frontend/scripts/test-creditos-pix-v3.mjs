@@ -110,9 +110,18 @@ assert.match(files.page, /window\.clearInterval\(timer\)/)
 assert.match(files.page, /document\.hidden/)
 assert.match(files.page, /visibilitychange/)
 assert.match(files.page, /void consultarPagamento\(\)[\s\S]*startTimer\(\)/)
-assert.match(files.page, /consultarCobrancaPix\(checkout\.pagamentoId\)/)
-assert.match(files.page, /conciliarCobrancaPix\(checkout\.pagamentoId\)/)
-assert.doesNotMatch(files.page, /setInterval[\s\S]{0,180}conciliarCobrancaPix/)
+assert.match(
+  files.page,
+  /const consultarPagamento[\s\S]*?conciliarCobrancaPix\(checkout\.pagamentoId\)/
+)
+assert.match(
+  files.page,
+  /const retomarPagamento[\s\S]*?conciliarCobrancaPix\(pagamento\.pagamentoId\)/
+)
+assert.match(
+  files.page,
+  /const verificarPagamento[\s\S]*?conciliarCobrancaPix\(checkout\.pagamentoId\)/
+)
 
 assert.match(files.page, /pagamentosData\.find\(\(pagamento\) => pagamentoPendenteValido\(pagamento\)\)/)
 assert.match(files.page, /setCheckout\(checkoutDoHistorico\(pendente\)\)/)
@@ -136,6 +145,12 @@ assert.match(files.api, /cache: 'no-store'/)
 assert.match(files.api, /export class PixApiError/)
 assert.match(files.api, /X-Request-Id/)
 assert.match(files.page, /Código de atendimento:/)
+assert.match(files.page, /caught\.status === 502/)
+assert.match(files.page, /A Efí não respondeu à operação Pix agora/)
+assert.match(files.page, /A cobrança foi preservada e pode ser retomada com segurança/)
+assert.match(files.page, /caught\.status === 503/)
+assert.match(files.page, /caught\.status === 409/)
+assert.match(files.page, /Existe uma cobrança Pix pendente para outro pacote/)
 
 assert.match(files.page, /role="status"/)
 assert.match(files.page, /role="alert"/)

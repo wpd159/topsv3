@@ -21,6 +21,7 @@ import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.PagamentoRepository;
 import br.com.topsdojob.v3.persistence.repository.PlanoCreditoRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -59,6 +60,8 @@ class EfiPagamentoServiceTest {
     void setUp() {
         when(gateway.ambiente()).thenReturn(AmbientePagamento.SANDBOX);
         when(transactionManager.getTransaction(any())).thenReturn(transactionStatus);
+        when(pagamentoRepository.findByUsuarioIdAndProvedorAndMetodoOrderByCriadoEmDesc(
+                any(), any(), any(), any())).thenReturn(List.of());
     }
 
     @Test
@@ -198,6 +201,131 @@ class EfiPagamentoServiceTest {
     }
 
     @Test
+    void novaChaveReutilizaCobrancaPendenteDoMesmoPlano() {
+        UUID usuarioId = UUID.randomUUID();
+        UUID planoId = UUID.randomUUID();
+        Authentication authentication = mock(Authentication.class);
+        UsuarioEntity usuario = mock(UsuarioEntity.class);
+        PlanoCreditoEntity plano = mock(PlanoCreditoEntity.class);
+        PagamentoEntity existente = pagamentoPendente(usuarioId, planoId, "e".repeat(32));
+        when(usuario.getId()).thenReturn(usuarioId);
+        when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuario);
+        when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+        when(pagamentoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(pagamentoRepository.findByUsuarioIdAndProvedorAndMetodoOrderByCriadoEmDesc(
+                eq(usuarioId), any(), any(), any())).thenReturn(List.of(existente));
+        when(plano.getNome()).thenReturn("Pacote pendente");
+        when(planoRepository.findById(planoId)).thenReturn(Optional.of(plano));
+        when(gateway.consultarCobranca(existente.getTxid()))
+                .thenReturn(cobranca(existente.getTxid(), existente.getValor()));
+
+        var resultado = service.criar(
+                new EfiPixCheckoutRequest(planoId),
+                "nova-chave-mesmo-plano",
+                authentication);
+
+        assertThat(resultado.pagamentoId()).isEqualTo(existente.getId());
+        assertThat(resultado.idempotente()).isTrue();
+        verify(pagamentoRepository, never()).saveAndFlush(any());
+        verify(gateway, never()).criarCobranca(any(), any(), any());
+    }
+
+    @Test
+    void novaChaveNaoCriaOutroPlanoEnquantoExisteCobrancaPendente() {
+        UUID usuarioId = UUID.randomUUID();
+        UUID planoPendenteId = UUID.randomUUID();
+        Authentication authentication = mock(Authentication.class);
+        UsuarioEntity usuario = mock(UsuarioEntity.class);
+        PagamentoEntity existente = pagamentoPendente(usuarioId, planoPendenteId, "f".repeat(32));
+        when(usuario.getId()).thenReturn(usuarioId);
+        when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuario);
+        when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+        when(pagamentoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
+        when(pagamentoRepository.findByUsuarioIdAndProvedorAndMetodoOrderByCriadoEmDesc(
+                eq(usuarioId), any(), any(), any())).thenReturn(List.of(existente));
+
+        assertThatThrownBy(() -> service.criar(
+                new EfiPixCheckoutRequest(UUID.randomUUID()),
+                "nova-chave-outro-plano",
+                authentication))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("409 CONFLICT");
+
+        verify(pagamentoRepository, never()).saveAndFlush(any());
+        verify(gateway, never()).consultarCobranca(any());
+        verify(gateway, never()).criarCobranca(any(), any(), any());
+    }
+
+    @Test
+    void conciliacaoIndisponivelRetornaBadGatewaySanitizado() {
+        UUID usuarioId = UUID.randomUUID();
+        UUID planoId = UUID.randomUUID();
+        Authentication authentication = mock(Authentication.class);
+        UsuarioEntity usuario = mock(UsuarioEntity.class);
+        PagamentoEntity pagamento = pagamentoPendente(usuarioId, planoId, "1".repeat(32));
+        when(usuario.getId()).thenReturn(usuarioId);
+        when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuario);
+        when(pagamentoRepository.findByIdAndUsuarioId(pagamento.getId(), usuarioId))
+                .thenReturn(Optional.of(pagamento));
+        when(conciliacaoService.conciliar(any(), any(), any(), any(), any()))
+                .thenThrow(new EfiPixGatewayException("indisponibilidade sintetica", false, 503));
+
+        assertThatThrownBy(() -> service.conciliar(
+                pagamento.getId(),
+                authentication,
+                "req-pix-conciliacao-indisponivel"))
+                .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                .hasMessageContaining("502 BAD_GATEWAY");
+
+        verify(gateway, never()).criarCobranca(any(), any(), any());
+    }
+
+    @Test
+    void conciliacao404RecuperaMesmaIntencaoSemNovoPagamento() {
+        UUID usuarioId = UUID.randomUUID();
+        UUID planoId = UUID.randomUUID();
+        Authentication authentication = mock(Authentication.class);
+        UsuarioEntity usuario = mock(UsuarioEntity.class);
+        PlanoCreditoEntity plano = mock(PlanoCreditoEntity.class);
+        PagamentoEntity pagamento = PagamentoEntity.criarPixEfi(
+                UUID.randomUUID(),
+                usuarioId,
+                planoId,
+                AmbientePagamento.SANDBOX,
+                "2".repeat(32),
+                new BigDecimal("5.00"),
+                50,
+                "efi-checkout:" + usuarioId + ":recuperacao",
+                OffsetDateTime.now(ZoneOffset.UTC));
+        pagamento.atualizarStatusProvedor(
+                StatusInternoPagamento.ERRO,
+                EfiPagamentoConciliacaoService.STATUS_ERRO_TRANSITORIO,
+                OffsetDateTime.now(ZoneOffset.UTC));
+        when(usuario.getId()).thenReturn(usuarioId);
+        when(usuarioService.usuarioAutenticado(authentication)).thenReturn(usuario);
+        when(pagamentoRepository.findByIdAndUsuarioId(pagamento.getId(), usuarioId))
+                .thenReturn(Optional.of(pagamento));
+        when(pagamentoRepository.findByTxidForUpdate(pagamento.getTxid()))
+                .thenReturn(Optional.of(pagamento));
+        when(plano.getNome()).thenReturn("Pacote recuperado");
+        when(planoRepository.findById(planoId)).thenReturn(Optional.of(plano));
+        when(conciliacaoService.conciliar(any(), any(), any(), any(), any()))
+                .thenThrow(new EfiPixGatewayException("ausente sintetico", false, 404));
+        when(gateway.criarCobranca(eq(pagamento.getTxid()), any(), any()))
+                .thenReturn(cobranca(pagamento.getTxid(), pagamento.getValor()));
+
+        var resultado = service.conciliar(
+                pagamento.getId(),
+                authentication,
+                "req-pix-conciliacao-recuperacao");
+
+        assertThat(resultado.pagamentoId()).isEqualTo(pagamento.getId());
+        assertThat(resultado.status()).isEqualTo("PENDENTE");
+        assertThat(resultado.idempotente()).isTrue();
+        verify(pagamentoRepository, never()).saveAndFlush(any());
+        verify(gateway).criarCobranca(eq(pagamento.getTxid()), any(), any());
+    }
+    @Test
     void historicoRetornaPlanoSnapshotFinanceiroEIdentificacaoSanitizada() {
         UUID usuarioId = UUID.randomUUID();
         UUID planoId = UUID.randomUUID();
@@ -216,10 +344,9 @@ class EfiPagamentoServiceTest {
                 90,
                 "checkout-historico",
                 OffsetDateTime.parse("2026-07-28T18:00:00Z"));
-        pagamento.aguardarPagamento(
-                "123",
-                "ATIVA",
-                OffsetDateTime.parse("2026-07-28T19:00:00Z"),
+        pagamento.atualizarStatusProvedor(
+                StatusInternoPagamento.ERRO,
+                EfiPagamentoConciliacaoService.STATUS_ERRO_TRANSITORIO,
                 OffsetDateTime.parse("2026-07-28T18:00:01Z"));
         when(pagamentoRepository.findByUsuarioIdAndProvedorAndMetodoOrderByCriadoEmDesc(
                 eq(usuarioId),
@@ -356,6 +483,24 @@ class EfiPagamentoServiceTest {
         verify(pagamentoRepository, never()).saveAndFlush(any());
     }
 
+    private PagamentoEntity pagamentoPendente(UUID usuarioId, UUID planoId, String txid) {
+        PagamentoEntity pagamento = PagamentoEntity.criarPixEfi(
+                UUID.randomUUID(),
+                usuarioId,
+                planoId,
+                AmbientePagamento.SANDBOX,
+                txid,
+                new BigDecimal("5.00"),
+                50,
+                "efi-checkout:" + usuarioId + ":pendente",
+                OffsetDateTime.now(ZoneOffset.UTC));
+        pagamento.aguardarPagamento(
+                "localizacao-sintetica",
+                "ATIVA",
+                OffsetDateTime.now(ZoneOffset.UTC).plusHours(1),
+                OffsetDateTime.now(ZoneOffset.UTC));
+        return pagamento;
+    }
     private EfiPixGateway.CobrancaPix cobranca(String txid, BigDecimal valor) {
         return new EfiPixGateway.CobrancaPix(
                 AmbientePagamento.SANDBOX,

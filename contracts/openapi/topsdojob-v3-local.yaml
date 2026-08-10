@@ -10798,6 +10798,7 @@ components:
       additionalProperties: false
       required:
         - id
+        - usuarioId
         - data
         - usuarioNome
         - tipo
@@ -10812,15 +10813,24 @@ components:
         id:
           type: string
           format: uuid
+        usuarioId:
+          type: string
+          format: uuid
         data:
           type: string
           format: date-time
         usuarioNome:
           type: string
-        usuarioEmailMascarado:
+        usuarioEmail:
           type:
             - string
             - "null"
+          format: email
+        usuarioWhatsapp:
+          type:
+            - string
+            - "null"
+          pattern: '^\+[1-9][0-9]{7,14}$'
         tipo:
           type: string
           enum: [COMPRA_DE_CREDITOS, REGISTRO_LEGADO]

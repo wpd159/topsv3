@@ -34,4 +34,8 @@ public class EfiPixGatewayException extends RuntimeException {
     public boolean isCobrancaNaoEncontrada() {
         return Integer.valueOf(404).equals(httpStatus);
     }
+
+    public Integer getHttpStatus() {
+        return httpStatus;
+    }
 }

@@ -74,7 +74,14 @@ class AdminRelatorioReceitaPostgres17IntegrationTest {
                     .satisfies(item -> assertThat(item.receitaConfirmada()).isEqualByComparingTo("150.00"));
             assertThat(repository.distribuicaoPorProduto(filtro)).singleElement()
                     .satisfies(item -> assertThat(item.creditosVendidos()).isEqualTo(15));
-            assertThat(repository.transacoes(filtro, 0, 20, "MAIS_RECENTES").total()).isEqualTo(7);
+            var transacoes = repository.transacoes(filtro, 0, 20, "MAIS_RECENTES");
+            assertThat(transacoes.total()).isEqualTo(7);
+            assertThat(transacoes.itens()).allSatisfy(item -> {
+                assertThat(item.usuarioId()).isEqualTo(
+                        UUID.fromString("10000000-0000-0000-0000-000000000001"));
+                assertThat(item.usuarioEmail()).isEqualTo("qa.financeiro@example.invalid");
+                assertThat(item.usuarioWhatsapp()).isEqualTo("+5562999999999");
+            });
 
             var somenteConfirmados = repository.metricas(
                     filtro(RelatorioReceitaFiltro.Status.CONFIRMADO));
@@ -111,10 +118,12 @@ class AdminRelatorioReceitaPostgres17IntegrationTest {
     private static void seed(JdbcTemplate jdbc) {
         jdbc.update("""
                 INSERT INTO usuario (
-                  id, nome, email_normalizado, status, tipo_conta, criado_em, atualizado_em, versao
+                  id, nome, email_normalizado, telefone_normalizado,
+                  status, tipo_conta, criado_em, atualizado_em, versao
                 ) VALUES (
                   '10000000-0000-0000-0000-000000000001',
-                  'QA Financeiro', 'qa.financeiro@example.invalid', 'ATIVO', 'ANUNCIANTE',
+                  'QA Financeiro', 'qa.financeiro@example.invalid', '+5562999999999',
+                  'ATIVO', 'ANUNCIANTE',
                   '2026-07-01T10:00:00Z', '2026-07-01T10:00:00Z', 0
                 )
                 """);

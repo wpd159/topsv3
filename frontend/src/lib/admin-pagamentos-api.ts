@@ -90,9 +90,11 @@ export type AdminRelatorioReceitaResumo = {
 
 export type AdminReceitaTransacao = {
   id: string
+  usuarioId: string
   data: string
   usuarioNome: string
-  usuarioEmailMascarado: string | null
+  usuarioEmail: string | null
+  usuarioWhatsapp: string | null
   tipo: 'COMPRA_DE_CREDITOS' | 'REGISTRO_LEGADO'
   produto: string
   valor: number

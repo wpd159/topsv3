@@ -118,9 +118,11 @@ public class AdminRelatorioReceitaService {
         List<Transacao> itens = resultado.itens().stream()
                 .map(item -> new Transacao(
                         item.id(),
+                        item.usuarioId(),
                         item.data(),
                         texto(item.usuarioNome(), "Usuario"),
-                        sanitizer.mascararEmail(item.usuarioEmail()),
+                        item.usuarioEmail(),
+                        item.usuarioWhatsapp(),
                         "LEGADO".equals(item.status()) ? "REGISTRO_LEGADO" : "COMPRA_DE_CREDITOS",
                         item.produtoNome(),
                         item.valor(),
