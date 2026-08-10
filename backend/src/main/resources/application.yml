@@ -95,7 +95,7 @@ efi:
     client-secret: ${EFI_CLIENT_SECRET:}
     certificate-path: ${EFI_CERTIFICATE_PATH:}
     certificate-protection: ${EFI_CERTIFICATE_PROTECTION_VALUE:}
-    pix-key: ${EFI_PIX_KEY:}
+    pix-key: ${EFI_PIX_CHAVE:}
     webhook-base-url: ${EFI_WEBHOOK_BASE_URL:}
     webhook-verifier: ${EFI_WEBHOOK_VERIFIER_VALUE:}
     webhook-registration-enabled: ${EFI_WEBHOOK_REGISTRATION_ENABLED:false}

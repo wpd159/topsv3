@@ -292,10 +292,7 @@ public class EfiPixHttpGateway implements EfiPixGateway {
                 || vazio(properties.getClientSecret())
                 || vazio(properties.getCertificatePath())
                 || vazio(properties.getPixKey())
-                || vazio(properties.getWebhookBaseUrl())
-                || vazio(properties.getWebhookVerifier())
-                || !webhookBaseUrlValida(properties.getWebhookBaseUrl())
-                || properties.getWebhookVerifier().length() < 32
+                || webhookConfiguracaoInvalida()
                 || properties.getChargeExpirationSeconds() < 60
                 || properties.getChargeExpirationSeconds() > 86400) {
             throw configuracaoInvalida();
@@ -305,6 +302,16 @@ public class EfiPixHttpGateway implements EfiPixGateway {
             throw configuracaoInvalida();
         }
         return ambientePagamento;
+    }
+
+    private boolean webhookConfiguracaoInvalida() {
+        if (!properties.isWebhookRegistrationEnabled()) {
+            return false;
+        }
+        return vazio(properties.getWebhookBaseUrl())
+                || vazio(properties.getWebhookVerifier())
+                || !webhookBaseUrlValida(properties.getWebhookBaseUrl())
+                || properties.getWebhookVerifier().length() < 32;
     }
 
     private EfiPixGatewayException configuracaoInvalida() {

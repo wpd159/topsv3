@@ -31,6 +31,7 @@ function Read-RequiredFile {
 $workflow = Read-RequiredFile ".github/workflows/deploy-preprod.yml"
 $compose = Read-RequiredFile "deploy/preprod/docker-compose.yml"
 $envExample = Read-RequiredFile "deploy/preprod/preprod.env.example"
+$backendApplication = Read-RequiredFile "backend/src/main/resources/application.yml"
 $gateway = Read-RequiredFile "deploy/preprod/nginx-preprod-local.conf"
 $frontendCompose = [regex]::Match($compose, '(?ms)^  frontend:\s.*?(?=^  gateway:)').Value
 
@@ -132,6 +133,12 @@ $efiCredentialLine = $efiCredentialName + ': ${' + $efiCredentialName + ':-}'
 Add-Check "compose controla Efi por segredo externo" (
   ($compose -match 'EFI_ENABLED:\s+\$\{EFI_ENABLED:-false\}') -and
   ($compose -match 'EFI_BASE_URL:\s+https://pix-h\.api\.efipay\.com\.br') -and
+  ($backendApplication -match '(?ms)^efi:\s*\r?\n\s+pix:\s*\r?\n.*?^\s+pix-key:\s+\$\{EFI_PIX_CHAVE:\}') -and
+  (-not ($backendApplication -match 'EFI_PIX_KEY')) -and
+  ($compose -match 'EFI_PIX_CHAVE:\s+\$\{EFI_PIX_CHAVE:-\}') -and
+  (-not ($compose -match 'EFI_PIX_KEY')) -and
+  ($envExample -match 'EFI_PIX_CHAVE=__PREENCHER_FORA_DO_GIT__') -and
+  (-not ($envExample -match 'EFI_PIX_KEY')) -and
   ($compose.Contains($efiCredentialLine)) -and
   ($compose -match '/opt/topsv3/secrets/efi:/run/topsv3-efi:ro')
 ) "homologacao fail-closed e certificado fora do Git"
