@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { JSX } from 'react'
 import {
   FireIcon,
@@ -46,15 +45,14 @@ export default async function CategoriasSection() {
       {categorias.length > 0 && (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-6 lg:grid-cols-5">
           {categorias.map((categoria, index) => (
-            <Link
+            <div
               key={categoria.identificador}
-              href={categoria.destino}
               className={`block md:col-span-2 lg:col-span-1 lg:col-start-auto ${
                 categorias.length === 5 && index === 3 ? 'md:col-start-2' : ''
               }`}
             >
               <CategoriaCard {...categoria} />
-            </Link>
+            </div>
           ))}
         </div>
       )}

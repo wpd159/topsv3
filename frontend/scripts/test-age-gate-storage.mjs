@@ -24,6 +24,10 @@ const sensitiveImage = fs.readFileSync(
   path.join(root, 'src/components/compliance/sensitive-image.tsx'),
   'utf8',
 )
+const grid = fs.readFileSync(
+  path.join(root, 'src/components/anuncios/anuncios-grid.tsx'),
+  'utf8',
+)
 const sidebar = fs.readFileSync(
   path.join(root, 'src/app/(public-routes)/anuncios/[slug]/componentes/sidebar.tsx'),
   'utf8',
@@ -65,9 +69,21 @@ assert.match(api, /credentials: 'include'/)
 assert.match(api, /response\.status === 410/)
 assert.match(access, /getVisitorStatus/)
 assert.match(access, /CACHE_TTL_MS/)
+assert.match(access, /let statusGeneration = 0/)
+assert.match(access, /if \(pendingRequest\) return pendingRequest/)
+assert.match(access, /requestGeneration !== statusGeneration/)
+assert.match(access, /cacheStatus \?\? \{ verified: false \}/)
+assert.match(access, /statusGeneration \+= 1/)
 assert.doesNotMatch(`${api}\n${access}`, /localStorage|sessionStorage/)
 assert.doesNotMatch(`${api}\n${access}\n${verification}`, /\/idade\/confirmar|\/idade\/status/)
 assert.match(sensitiveImage, /\/compliance\/visitor\/media\//)
+assert.match(sensitiveImage, /void obterStatusVisitante\(\)/)
+assert.doesNotMatch(sensitiveImage, /obterStatusVisitante\(true\)/)
+assert.match(sensitiveImage, /loadingProtectedMedia/)
+assert.match(sensitiveImage, /role="status"/)
+assert.match(sensitiveImage, /Carregando conteúdo protegido/)
+assert.match(sensitiveImage, /onLoad=\{\(\) =>/)
+assert.doesNotMatch(grid, /onAccessUpdated=/)
 assert.match(sidebar, /scope="WHATSAPP"/)
 assert.doesNotMatch(sensitiveImage, /urlAssinada|chaveObjeto|private.*url/i)
 

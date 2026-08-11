@@ -249,7 +249,6 @@ export default function AnunciosGrid({
             comLocal={anuncio.comLocal}
             fazAnal={anuncio.fazAnal}
             mediaPriority={index === 0}
-            onAccessUpdated={() => setReloadMarker((prev) => prev + 1)}
           />
         ))}
       </div>

@@ -51,12 +51,13 @@ export function SensitiveImage({
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [erro, setErro] = useState(false)
   const [sessionAuthorized, setSessionAuthorized] = useState(midia.autorizada)
+  const [loadedProtectedSource, setLoadedProtectedSource] = useState<string | null>(null)
 
   useEffect(() => {
     if (midia.visibilidadeMidia !== "RESTRITA_18") return
     let active = true
     const refresh = () => {
-      void obterStatusVisitante(true)
+      void obterStatusVisitante()
         .then((status) => {
           if (!active) return
           setSessionAuthorized(Boolean(
@@ -90,6 +91,11 @@ export function SensitiveImage({
   const otimizarImagemPublica =
     (midia.visibilidadeMidia === "LIVRE" || fonteEhPreviewPublica) &&
     Boolean(fonte && (fonte.startsWith("/") || /^https?:\/\//i.test(fonte)))
+  const loadingProtectedMedia =
+    midia.visibilidadeMidia === "RESTRITA_18" &&
+    autorizada &&
+    Boolean(fonte) &&
+    loadedProtectedSource !== fonte
 
   const propsImagem = fill
     ? { fill: true as const, sizes: sizes ?? "(max-width: 768px) 100vw, 50vw" }
@@ -107,9 +113,15 @@ export function SensitiveImage({
             unoptimized={!otimizarImagemPublica}
             className={cn("object-cover object-center transition duration-300", className)}
             onClick={protegida ? undefined : onImageClick}
+            onLoad={() => {
+              if (midia.visibilidadeMidia === "RESTRITA_18") {
+                setLoadedProtectedSource(fonte)
+              }
+            }}
             onError={() => {
               if (midia.visibilidadeMidia === "RESTRITA_18") {
                 setSessionAuthorized(false)
+                setLoadedProtectedSource(null)
               }
               setErro(true)
               onError?.()
@@ -129,6 +141,18 @@ export function SensitiveImage({
             </div>
           </div>
         )}
+
+        {loadingProtectedMedia ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-zinc-950 text-white"
+          >
+            <span className="rounded-full bg-black/55 px-4 py-2 text-sm font-medium">
+              Carregando conteúdo protegido...
+            </span>
+          </div>
+        ) : null}
 
         {protegida ? (
           <div
@@ -181,6 +205,7 @@ export function SensitiveImage({
         }}
         onOpenChange={setVerificationOpen}
         onVerified={() => {
+          setLoadedProtectedSource(null)
           setSessionAuthorized(true)
           setErro(false)
           setVerificationOpen(false)
