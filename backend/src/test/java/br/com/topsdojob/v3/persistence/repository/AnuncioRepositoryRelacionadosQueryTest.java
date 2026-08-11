@@ -32,8 +32,6 @@ class AnuncioRepositoryRelacionadosQueryTest {
                 .contains("l.cidade_id <> :cidadeId")
                 .contains("a.status = 'PUBLICADO'")
                 .contains("a.status_moderacao = 'APROVADO'")
-                .contains("dba.status_publicacao = 'PUBLICAVEL'")
-                .contains("dba.tem_midia_valida = true")
                 .contains("u.status = 'ATIVO'")
                 .contains("u.desativado_em is null")
                 .contains("u.excluido_em is null")
@@ -62,7 +60,10 @@ class AnuncioRepositoryRelacionadosQueryTest {
                 .doesNotContain("ab.origem = 'COMPRA'")
                 .doesNotContain("ab.origem = 'CREDITO'")
                 .doesNotContain("ab.origem = 'ADMIN'")
-                .doesNotContain("ab.origem = 'CAMPANHA'");
+                .doesNotContain("ab.origem = 'CAMPANHA'")
+                .doesNotContain("documento_busca_anuncio")
+                .doesNotContain("status_publicacao")
+                .doesNotContain("tem_midia_valida");
 
         assertThat(ordenacao)
                 .contains("beneficio_topo.codigo = 'ANUNCIO_TOPO'")

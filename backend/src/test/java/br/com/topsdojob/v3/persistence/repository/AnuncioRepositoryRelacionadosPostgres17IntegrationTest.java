@@ -163,6 +163,54 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
                         semMidia);
         assertThat(fallback).extracting(item -> item.getId()).containsExactly(outraCidade);
     }
+
+    @Test
+    void refleteAtivacaoRecenteSemCacheEExcluiBeneficioExpirado() {
+        UUID atualId = candidato(
+                "atual-sem-cache",
+                "ACOMPANHANTE_FEMININA",
+                CIDADE_LOCAL,
+                "ATIVO",
+                "PUBLICADO",
+                true);
+        UUID administracao = candidato(
+                "admin-recente",
+                "ACOMPANHANTE_FEMININA",
+                CIDADE_LOCAL,
+                "ATIVO",
+                "PUBLICADO",
+                true);
+
+        var antes = repository.findRelacionadosComBeneficioVigente(
+                atualId,
+                "ACOMPANHANTE_FEMININA",
+                CIDADE_LOCAL,
+                true,
+                AGORA,
+                PageRequest.of(0, 6));
+        assertThat(antes).isEmpty();
+
+        ativar(administracao, "ADMIN", false);
+
+        var imediatamente = repository.findRelacionadosComBeneficioVigente(
+                atualId,
+                "ACOMPANHANTE_FEMININA",
+                CIDADE_LOCAL,
+                true,
+                AGORA,
+                PageRequest.of(0, 6));
+        var depoisExpiracao = repository.findRelacionadosComBeneficioVigente(
+                atualId,
+                "ACOMPANHANTE_FEMININA",
+                CIDADE_LOCAL,
+                true,
+                AGORA.plusDays(2),
+                PageRequest.of(0, 6));
+
+        assertThat(imediatamente).extracting(item -> item.getId()).containsExactly(administracao);
+        assertThat(depoisExpiracao).isEmpty();
+    }
+
     @Test
     void limitaNoBancoEOrdenaDeFormaDeterministica() {
         UUID atualId = UUID.randomUUID();
@@ -227,8 +275,8 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
                 insert into documento_busca_anuncio (
                   anuncio_id, texto_busca, estado_id, cidade_id, categoria, preco,
                   status_publicacao, tem_midia_valida, atualizado_em
-                ) values (?, ?, ?, ?, ?, 100, 'PUBLICAVEL', ?, now())
-                """, anuncioId, slug, ESTADO_GO, cidadeId, categoria, comMidia);
+                ) values (?, ?, ?, ?, ?, 100, 'NAO_PUBLICAVEL', false, now())
+                """, anuncioId, slug, ESTADO_GO, cidadeId, categoria);
         if (comMidia) {
             UUID arquivoId = UUID.randomUUID();
             jdbc.update("""

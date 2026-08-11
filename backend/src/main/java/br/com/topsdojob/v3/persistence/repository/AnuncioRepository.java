@@ -364,7 +364,6 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             from anuncio a
             join anuncio_localizacao l on l.anuncio_id = a.id
             join usuario u on u.id = a.usuario_id
-            join documento_busca_anuncio dba on dba.anuncio_id = a.id
             where a.id <> :anuncioAtualId
               and a.categoria = :categoria
               and a.status = 'PUBLICADO'
@@ -378,8 +377,6 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
               and u.tipo_conta = 'ANUNCIANTE'
               and u.desativado_em is null
               and u.excluido_em is null
-              and dba.status_publicacao = 'PUBLICAVEL'
-              and dba.tem_midia_valida = true
               and (
                 (:mesmaCidade = true and l.cidade_id = :cidadeId)
                 or (:mesmaCidade = false and l.cidade_id <> :cidadeId)

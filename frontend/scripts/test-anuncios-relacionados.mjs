@@ -43,6 +43,7 @@ const relatedSchema = openapi.slice(relatedSchemaStart, relatedSchemaEnd)
 assert.doesNotMatch(page, /listarPublicosPorCidade/)
 assert.match(page, /<AnuncioDetalhesPageClient initialData=\{initialData\}/)
 assert.match(api, /relacionados: Array\.isArray\(raw\.relacionados\)/)
+assert.match(api, /obterAnuncioPublicoPorSlug[\s\S]*?cache: 'no-store'/)
 assert.match(detail, /initialData\?\.relacionados \?\? \[\]/)
 assert.match(detail, /<MainContent anuncio=\{anuncio\} relacionados=\{relacionados\}/)
 
@@ -64,6 +65,7 @@ assert.doesNotMatch(
   relatedEligibility,
   /movimento_credito|preco_snapshot|custo_creditos_snapshot|bp\.codigo in|ab\.origem = '(?:COMPRA|CREDITO|CORTESIA|CAMPANHA|ADMIN|IMPORTACAO)'/,
 )
+assert.doesNotMatch(relatedEligibility, /documento_busca_anuncio|dba\.status_publicacao|dba\.tem_midia_valida/)
 assert.match(relatedSchema, /maxItems: 6/)
 assert.match(relatedSchema, /independentemente da origem da ativacao/)
 assert.match(relatedSchema, /fallback integral/)
@@ -82,6 +84,7 @@ assert.match(related, /fontePublicaSegura/)
 assert.match(related, /overflow-x-auto/)
 assert.match(related, /sm:grid/)
 assert.match(related, /w-\[190px\]/)
+assert.doesNotMatch(related, /(?:className="|\s)hidden(?:\s|")|\b(?:sm|md|lg|xl):hidden\b/)
 assert.doesNotMatch(related, /useEffect|Math\.random|Chat|WhatsApp|Favorit|evento_visualizacao|registrarVisualizacao/)
 assert.doesNotMatch(related, /origem|COMPRA|CREDITO|Premium|Em destaque|Com local|Faz anal/)
 
