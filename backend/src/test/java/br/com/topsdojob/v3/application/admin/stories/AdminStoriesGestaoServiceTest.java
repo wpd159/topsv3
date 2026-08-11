@@ -21,6 +21,14 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.actuate.autoconfigure.health.HealthContributorAutoConfiguration;
+import org.springframework.boot.actuate.autoconfigure.health.HealthEndpointAutoConfiguration;
+import org.springframework.boot.actuate.health.HealthEndpoint;
+import org.springframework.boot.actuate.health.Status;
+import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 
@@ -38,6 +46,29 @@ class AdminStoriesGestaoServiceTest {
       mock(MinhaContaStoriesPublicacaoService.class);
   private final AdminStoriesGestaoService service = new AdminStoriesGestaoService(
       storyRepository, usuarioRepository, consultaService, publicacaoService);
+
+  @Test
+  void contextoHomologacaoCriaBeanRealEHealthFicaUp() {
+    new ApplicationContextRunner()
+        .withConfiguration(AutoConfigurations.of(
+            HealthContributorAutoConfiguration.class,
+            HealthEndpointAutoConfiguration.class))
+        .withPropertyValues(
+            "spring.profiles.active=homologacao",
+            "app.env=preproducao")
+        .withBean(StoryAnuncioRepository.class, () -> storyRepository)
+        .withBean(UsuarioRepository.class, () -> usuarioRepository)
+        .withBean(MeusStoriesConsultaService.class, () -> consultaService)
+        .withBean(MinhaContaStoriesPublicacaoService.class, () -> publicacaoService)
+        .withUserConfiguration(ContextoHomologacao.class)
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).hasSingleBean(AdminStoriesGestaoService.class);
+          assertThat(context.getEnvironment().matchesProfiles("homologacao")).isTrue();
+          assertThat(context.getBean(HealthEndpoint.class).health().getStatus())
+              .isEqualTo(Status.UP);
+        });
+  }
 
   @Test
   void combinaUsuarioBuscaEPaginacaoComCargaDeUsuariosEmLote() {
@@ -167,5 +198,10 @@ class AdminStoriesGestaoServiceTest {
         AGORA.plusHours(1),
         null, null, "DISPONIVEL", false,
         podeExcluir, false, encerradoEm, false);
+  }
+
+  @Configuration(proxyBeanMethods = false)
+  @Import(AdminStoriesGestaoService.class)
+  static class ContextoHomologacao {
   }
 }

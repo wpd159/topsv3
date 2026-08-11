@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -35,6 +36,7 @@ public class AdminStoriesGestaoService {
   private final MinhaContaStoriesPublicacaoService publicacaoService;
   private final Clock clock;
 
+  @Autowired
   public AdminStoriesGestaoService(
       StoryAnuncioRepository storyRepository,
       UsuarioRepository usuarioRepository,
