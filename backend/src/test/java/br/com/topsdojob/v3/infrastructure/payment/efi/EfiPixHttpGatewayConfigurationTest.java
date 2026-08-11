@@ -172,6 +172,45 @@ class EfiPixHttpGatewayConfigurationTest {
         assertThat(cancelRequest.method()).isEqualTo("PATCH");
         assertThat(cancelRequest.uri().getPath())
                 .isEqualTo("/v2/cob/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6");
+        assertThat(cancelRequest.headers().firstValue("Content-Type"))
+                .hasValue("application/json");
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void preservaSomenteCodigoSanitizadoDaRejeicao() throws Exception {
+        EfiPixProperties properties = configuracaoValida();
+        HttpClient httpClient = mock(HttpClient.class);
+        HttpResponse<String> tokenResponse = mock(HttpResponse.class);
+        HttpResponse<String> cancelResponse = mock(HttpResponse.class);
+        when(tokenResponse.statusCode()).thenReturn(200);
+        when(tokenResponse.body()).thenReturn("""
+                {"access_token":"EXEMPLO_NAO_REAL","expires_in":300}
+                """.trim());
+        when(cancelResponse.statusCode()).thenReturn(400);
+        when(cancelResponse.body()).thenReturn("""
+                {
+                  "nome":"status_cobranca_invalido",
+                  "mensagem":"detalhe externo que nao deve ser propagado"
+                }
+                """);
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(tokenResponse, cancelResponse);
+        EfiPixHttpGateway gateway =
+                new EfiPixHttpGateway(properties, new ObjectMapper(), "homologacao", httpClient);
+
+        assertThatThrownBy(() -> gateway.cancelarCobranca(
+                "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"))
+                .isInstanceOfSatisfying(
+                        EfiPixGatewayException.class,
+                        exception -> {
+                            assertThat(exception.getHttpStatus()).isEqualTo(400);
+                            assertThat(exception.getProviderCode())
+                                    .isEqualTo("status_cobranca_invalido");
+                            assertThat(exception.isStatusCobrancaInvalido()).isTrue();
+                            assertThat(exception.getMessage())
+                                    .doesNotContain("detalhe externo");
+                        });
     }
 
     private EfiPixProperties configuracaoValida() throws Exception {

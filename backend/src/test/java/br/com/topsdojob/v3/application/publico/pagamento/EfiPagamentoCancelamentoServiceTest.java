@@ -229,6 +229,113 @@ class EfiPagamentoCancelamentoServiceTest {
     }
 
     @Test
+    void rejeicaoPorEstadoRelidaComoRemovidaSincronizaCancelamento() {
+        PagamentoEntity pagamento = pagamentoPendente();
+        prepararOwnership(pagamento);
+        EfiPixGateway.CobrancaPix ativa = cobranca(pagamento, "ATIVA", BigDecimal.ZERO);
+        EfiPixGateway.CobrancaPix removida =
+                cobranca(pagamento, "REMOVIDA_PELO_USUARIO_RECEBEDOR", BigDecimal.ZERO);
+        when(gateway.consultarCobrancaSemQrCode(pagamento.getTxid()))
+                .thenReturn(ativa, removida);
+        when(gateway.cancelarCobranca(pagamento.getTxid()))
+                .thenThrow(new EfiPixGatewayException(
+                        "rejeicao externa sanitizada",
+                        false,
+                        400));
+        sincronizarComo(pagamento, StatusInternoPagamento.CANCELADO);
+
+        var resultado = service.cancelar(
+                pagamento.getId(),
+                "cancelamento-race-removida",
+                authentication,
+                "req-cancelamento-race-removida");
+
+        assertThat(resultado.status()).isEqualTo("CANCELADO");
+        assertThat(resultado.cancelavel()).isFalse();
+        verify(gateway, times(2)).consultarCobrancaSemQrCode(pagamento.getTxid());
+        verify(gateway).cancelarCobranca(pagamento.getTxid());
+        verify(conciliacaoService).aplicarCobrancaConsultada(
+                any(), any(), any(), any(), any());
+        verify(auditoriaRepository).save(any());
+    }
+
+    @Test
+    void rejeicaoPorEstadoAindaAtivoPreservaPendente() {
+        PagamentoEntity pagamento = pagamentoPendente();
+        prepararOwnership(pagamento);
+        EfiPixGateway.CobrancaPix ativa = cobranca(pagamento, "ATIVA", BigDecimal.ZERO);
+        when(gateway.consultarCobrancaSemQrCode(pagamento.getTxid()))
+                .thenReturn(ativa, ativa);
+        when(gateway.cancelarCobranca(pagamento.getTxid()))
+                .thenThrow(new EfiPixGatewayException(
+                        "rejeicao externa sanitizada",
+                        false,
+                        400,
+                        "erro_aplicacao"));
+
+        assertThatThrownBy(() -> service.cancelar(
+                pagamento.getId(),
+                "cancelamento-race-ativa",
+                authentication,
+                "req-cancelamento-race-ativa"))
+                .isInstanceOfSatisfying(
+                        PagamentoPixException.class,
+                        exception -> assertThat(exception.code())
+                                .isEqualTo(ApiErrorCode.PIX_CANCELAMENTO_INDISPONIVEL));
+
+        assertThat(pagamento.getStatusInterno())
+                .isEqualTo(StatusInternoPagamento.AGUARDANDO_PAGAMENTO);
+        verify(gateway, times(2)).consultarCobrancaSemQrCode(pagamento.getTxid());
+        verify(conciliacaoService, never()).aplicarCobrancaConsultada(
+                any(), any(), any(), any(), any());
+        verify(auditoriaRepository, never()).save(any());
+    }
+
+    @Test
+    void rejeicaoPorEstadoRelidaComoConcluidaConciliaSemCancelar() {
+        PagamentoEntity pagamento = pagamentoPendente();
+        prepararOwnership(pagamento);
+        EfiPixGateway.CobrancaPix ativa = cobranca(pagamento, "ATIVA", BigDecimal.ZERO);
+        EfiPixGateway.CobrancaPix concluida =
+                cobranca(pagamento, "CONCLUIDA", pagamento.getValor());
+        when(gateway.consultarCobrancaSemQrCode(pagamento.getTxid()))
+                .thenReturn(ativa, concluida);
+        when(gateway.cancelarCobranca(pagamento.getTxid()))
+                .thenThrow(new EfiPixGatewayException(
+                        "rejeicao externa sanitizada",
+                        false,
+                        400,
+                        "status_cobranca_invalido"));
+        when(conciliacaoService.aplicarCobrancaConsultada(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    pagamento.marcarAprovadoECreditado(
+                            OffsetDateTime.now(ZoneOffset.UTC),
+                            OffsetDateTime.now(ZoneOffset.UTC));
+                    return new EfiPagamentoConciliacaoService.ConciliacaoResultado(
+                            pagamento,
+                            invocation.getArgument(0),
+                            false,
+                            null);
+                });
+
+        assertThatThrownBy(() -> service.cancelar(
+                pagamento.getId(),
+                "cancelamento-race-concluida",
+                authentication,
+                "req-cancelamento-race-concluida"))
+                .isInstanceOfSatisfying(
+                        PagamentoPixException.class,
+                        exception -> assertThat(exception.code())
+                                .isEqualTo(ApiErrorCode.PIX_PAGAMENTO_CONFIRMADO));
+
+        assertThat(pagamento.getStatusInterno()).isEqualTo(StatusInternoPagamento.APROVADO);
+        verify(gateway, times(2)).consultarCobrancaSemQrCode(pagamento.getTxid());
+        verify(conciliacaoService).aplicarCobrancaConsultada(
+                any(), any(), any(), any(), any());
+        verify(auditoriaRepository, never()).save(any());
+    }
+
+    @Test
     void repeticaoDepoisDoCancelamentoNaoRepeteEfeito() {
         PagamentoEntity pagamento = pagamentoPendente();
         prepararOwnership(pagamento);

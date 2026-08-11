@@ -4,29 +4,41 @@ public class EfiPixGatewayException extends RuntimeException {
 
     private final boolean configuracao;
     private final Integer httpStatus;
+    private final String providerCode;
     private final boolean qrCode;
 
     public EfiPixGatewayException(String message, boolean configuracao) {
-        this(message, configuracao, null, false, null);
+        this(message, configuracao, null, null, false, null);
     }
 
     public EfiPixGatewayException(String message, boolean configuracao, Throwable cause) {
-        this(message, configuracao, null, false, cause);
+        this(message, configuracao, null, null, false, cause);
     }
 
     public EfiPixGatewayException(String message, boolean configuracao, int httpStatus) {
-        this(message, configuracao, httpStatus, false, null);
+        this(message, configuracao, httpStatus, null, false, null);
+    }
+
+    public EfiPixGatewayException(
+            String message,
+            boolean configuracao,
+            int httpStatus,
+            String providerCode) {
+        this(message, configuracao, httpStatus, providerCode, false, null);
     }
 
     private EfiPixGatewayException(
             String message,
             boolean configuracao,
             Integer httpStatus,
+            String providerCode,
             boolean qrCode,
             Throwable cause) {
         super(message, cause);
         this.configuracao = configuracao;
         this.httpStatus = httpStatus;
+        this.providerCode = providerCode != null && providerCode.matches("[a-z0-9_]{1,80}")
+                ? providerCode : null;
         this.qrCode = qrCode;
     }
 
@@ -42,6 +54,14 @@ public class EfiPixGatewayException extends RuntimeException {
         return httpStatus;
     }
 
+    public String getProviderCode() {
+        return providerCode;
+    }
+
+    public boolean isStatusCobrancaInvalido() {
+        return "status_cobranca_invalido".equals(providerCode);
+    }
+
     public boolean isQrCode() {
         return qrCode;
     }
@@ -51,6 +71,7 @@ public class EfiPixGatewayException extends RuntimeException {
                 "falha ao carregar QR Code Pix",
                 false,
                 cause.getHttpStatus(),
+                cause.getProviderCode(),
                 true,
                 cause);
     }

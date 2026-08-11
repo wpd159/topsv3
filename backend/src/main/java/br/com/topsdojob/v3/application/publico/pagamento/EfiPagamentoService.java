@@ -200,10 +200,11 @@ public class EfiPagamentoService {
                     requestId)));
         } catch (EfiPixGatewayException exception) {
             LOGGER.warn(
-                    "pix_cancelamento_indisponivel pagamento={} requestId={} httpStatus={} tipo={}",
+                    "pix_cancelamento_indisponivel pagamento={} requestId={} httpStatus={} codigo={} tipo={}",
                     referenciaSegura(pagamentoId),
                     requestIdSeguro(requestId),
                     exception.getHttpStatus() == null ? "SEM_RESPOSTA" : exception.getHttpStatus(),
+                    exception.getProviderCode() == null ? "NAO_INFORMADO" : exception.getProviderCode(),
                     exception.getClass().getSimpleName());
             throw new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_INDISPONIVEL);
         }
@@ -436,6 +437,23 @@ public class EfiPagamentoService {
 
         String statusAnterior = pagamento.getStatusInterno().name();
         String statusRemoto = statusNormalizado(cobranca.status());
+        if ("ATIVA".equals(statusRemoto)) {
+            try {
+                cobranca = gateway.cancelarCobranca(pagamento.getTxid());
+            } catch (EfiPixGatewayException exception) {
+                if (!Integer.valueOf(400).equals(exception.getHttpStatus())) {
+                    throw exception;
+                }
+                cobranca = gateway.consultarCobrancaSemQrCode(pagamento.getTxid());
+                validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
+                statusRemoto = statusNormalizado(cobranca.status());
+                if ("ATIVA".equals(statusRemoto)) {
+                    throw exception;
+                }
+            }
+            validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
+            statusRemoto = statusNormalizado(cobranca.status());
+        }
         if ("CONCLUIDA".equals(statusRemoto)) {
             EfiPagamentoConciliacaoService.ConciliacaoResultado conciliado =
                     conciliacaoService.aplicarCobrancaConsultada(
@@ -452,12 +470,6 @@ public class EfiPagamentoService {
                     conciliado.cobranca(),
                     conciliado.idempotente(),
                     true);
-        }
-
-        if ("ATIVA".equals(statusRemoto)) {
-            cobranca = gateway.cancelarCobranca(pagamento.getTxid());
-            validarCobrancaDoPagamento(pagamento, cobranca, ambienteGateway);
-            statusRemoto = statusNormalizado(cobranca.status());
         }
         if (!"EXPIRADA".equals(statusRemoto) && !statusRemoto.startsWith("REMOVIDA")) {
             throw new PagamentoPixException(ApiErrorCode.PIX_CANCELAMENTO_NAO_PERMITIDO);

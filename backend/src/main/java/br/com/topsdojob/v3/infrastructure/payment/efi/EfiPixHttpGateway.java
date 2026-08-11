@@ -284,12 +284,26 @@ public class EfiPixHttpGateway implements EfiPixGateway {
             throw new EfiPixGatewayException(
                     "operacao Efi rejeitada: " + operation + " (HTTP " + response.statusCode() + ")",
                     false,
-                    response.statusCode());
+                    response.statusCode(),
+                    codigoErroSanitizado(body));
         }
         try {
             return objectMapper.readTree(body);
         } catch (IOException exception) {
             throw new EfiPixGatewayException("resposta Efi invalida", false, exception);
+        }
+    }
+
+    private String codigoErroSanitizado(String body) {
+        try {
+            JsonNode erro = objectMapper.readTree(body);
+            if (erro == null) {
+                return null;
+            }
+            String codigo = erro.path("nome").asText("");
+            return codigo.matches("[a-z0-9_]{1,80}") ? codigo : null;
+        } catch (IOException exception) {
+            return null;
         }
     }
 
