@@ -165,7 +165,7 @@ public class AnuncioPublicoConsultaService {
         }
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         var limite = PageRequest.of(0, 6);
-        List<AnuncioEntity> candidatos = anuncioRepository.findRelacionadosPagos(
+        List<AnuncioEntity> candidatos = anuncioRepository.findRelacionadosComBeneficioVigente(
                 anuncioAtual.getId(),
                 anuncioAtual.getCategoria(),
                 localizacaoAtual.getCidadeId(),
@@ -173,7 +173,7 @@ public class AnuncioPublicoConsultaService {
                 agora,
                 limite);
         if (candidatos.isEmpty()) {
-            candidatos = anuncioRepository.findRelacionadosPagos(
+            candidatos = anuncioRepository.findRelacionadosComBeneficioVigente(
                     anuncioAtual.getId(),
                     anuncioAtual.getCategoria(),
                     localizacaoAtual.getCidadeId(),

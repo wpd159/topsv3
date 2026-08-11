@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
@@ -335,6 +336,8 @@ class AnuncioPublicoConsultaServiceTest {
 
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
         AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
+        AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
+        ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
         EstadoRepository estadoRepository = mock(EstadoRepository.class);
         CidadeRepository cidadeRepository = mock(CidadeRepository.class);
         PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
@@ -350,7 +353,7 @@ class AnuncioPublicoConsultaServiceTest {
         when(idadeService.resolver(usuarioAtualId, false))
                 .thenReturn(new IdadeAnunciantePublicaService.Resultado("Atual", 30, false));
         when(visualizacaoService.calcular(anuncioAtualId)).thenReturn(VisualizacoesCanonicasDto.total(0));
-        when(anuncioRepository.findRelacionadosPagos(
+        when(anuncioRepository.findRelacionadosComBeneficioVigente(
                 eq(anuncioAtualId), eq("ACOMPANHANTE_FEMININA"), eq(cidadeAtualId), eq(true),
                 any(OffsetDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of(local));
@@ -365,8 +368,8 @@ class AnuncioPublicoConsultaServiceTest {
         AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
                 anuncioRepository,
                 localizacaoRepository,
-                mock(AnuncioMidiaRepository.class),
-                mock(ArquivoMidiaRepository.class),
+                midiaRepository,
+                arquivoRepository,
                 new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()),
                 new MidiaPublicaMapper(new MidiaPublicaUrlService()),
                 new MidiaPublicaSeguraPolicy(),
@@ -384,13 +387,22 @@ class AnuncioPublicoConsultaServiceTest {
         var detalheLocal = service.buscarPorSlug("atual");
 
         assertThat(detalheLocal.relacionados()).extracting(item -> item.id()).containsExactly(localId);
-        verify(anuncioRepository, never()).findRelacionadosPagos(
+        verify(localizacaoRepository).findByAnuncioIdIn(List.of(localId));
+        verify(cidadeRepository).findAllById(List.of(cidadeAtualId));
+        verify(estadoRepository).findAllById(List.of(estadoId));
+        verify(premiumMapper).flagsPorAnuncios(List.of(local));
+        verify(midiaRepository).findByAnuncioIdIn(List.of(localId));
+        verify(arquivoRepository, times(2)).findByIdIn(List.of());
+        verify(idadeService).resolverPorAnuncios(eq(List.of(local)), any());
+        verify(localizacaoRepository, never()).findByAnuncioId(localId);
+        verify(visualizacaoService, never()).calcular(localId);
+        verify(anuncioRepository, never()).findRelacionadosComBeneficioVigente(
                 eq(anuncioAtualId), eq("ACOMPANHANTE_FEMININA"), eq(cidadeAtualId), eq(false),
                 any(OffsetDateTime.class), any(Pageable.class));
 
-        clearInvocations(anuncioRepository, localizacaoRepository, cidadeRepository, estadoRepository,
-                premiumMapper, idadeService);
-        when(anuncioRepository.findRelacionadosPagos(
+        clearInvocations(anuncioRepository, localizacaoRepository, midiaRepository, arquivoRepository,
+                cidadeRepository, estadoRepository, premiumMapper, idadeService, visualizacaoService);
+        when(anuncioRepository.findRelacionadosComBeneficioVigente(
                 eq(anuncioAtualId), eq("ACOMPANHANTE_FEMININA"), eq(cidadeAtualId), eq(true),
                 any(OffsetDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of(local, localDois));
@@ -410,17 +422,17 @@ class AnuncioPublicoConsultaServiceTest {
         assertThat(detalheDoisLocais.relacionados())
                 .extracting(item -> item.id())
                 .containsExactly(localId, localDoisId);
-        verify(anuncioRepository, never()).findRelacionadosPagos(
+        verify(anuncioRepository, never()).findRelacionadosComBeneficioVigente(
                 eq(anuncioAtualId), eq("ACOMPANHANTE_FEMININA"), eq(cidadeAtualId), eq(false),
                 any(OffsetDateTime.class), any(Pageable.class));
 
         clearInvocations(anuncioRepository, localizacaoRepository, cidadeRepository, estadoRepository,
                 premiumMapper, idadeService);
-        when(anuncioRepository.findRelacionadosPagos(
+        when(anuncioRepository.findRelacionadosComBeneficioVigente(
                 eq(anuncioAtualId), eq("ACOMPANHANTE_FEMININA"), eq(cidadeAtualId), eq(true),
                 any(OffsetDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of());
-        when(anuncioRepository.findRelacionadosPagos(
+        when(anuncioRepository.findRelacionadosComBeneficioVigente(
                 eq(anuncioAtualId), eq("ACOMPANHANTE_FEMININA"), eq(cidadeAtualId), eq(false),
                 any(OffsetDateTime.class), any(Pageable.class)))
                 .thenReturn(List.of(fallback));
@@ -444,7 +456,7 @@ class AnuncioPublicoConsultaServiceTest {
             assertThat(item.id()).isEqualTo(fallbackId);
             assertThat(item.cidadeNome()).isEqualTo("Anapolis");
         });
-        verify(anuncioRepository).findRelacionadosPagos(
+        verify(anuncioRepository).findRelacionadosComBeneficioVigente(
                 eq(anuncioAtualId), eq("ACOMPANHANTE_FEMININA"), eq(cidadeAtualId), eq(false),
                 any(OffsetDateTime.class), any(Pageable.class));
     }

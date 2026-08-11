@@ -13057,7 +13057,7 @@ components:
         relacionados:
           type: array
           maxItems: 6
-          description: Anuncios pagos e vigentes da mesma categoria. Usa a cidade exata quando houver candidato local e outras cidades apenas como fallback integral.
+          description: Anuncios com beneficio vigente vinculado, independentemente da origem da ativacao, e da mesma categoria. Usa a cidade exata quando houver candidato local e outras cidades apenas como fallback integral.
           items:
             $ref: "#/components/schemas/AnuncioRelacionadoPublico"
     AnuncioRelacionadoPublico:

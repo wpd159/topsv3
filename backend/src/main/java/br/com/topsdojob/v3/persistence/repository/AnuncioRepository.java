@@ -413,10 +413,6 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                   and ab.origem = gb.origem
                   and bp.ativo = true
                   and bp.escopo = 'ANUNCIO'
-                  and bp.codigo in (
-                    'OCULTAR_IDADE', 'FOTOS_EXTRA_5', 'ANUNCIO_TOPO',
-                    'WHATSAPP_CARD', 'CARROSSEL_FOTOS', 'VIDEO_1'
-                  )
                   and ab.status = 'ATIVA'
                   and ab.revogada_em is null
                   and ab.inicio_em <= :agora
@@ -424,24 +420,6 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                   and gb.status = 'ATIVO'
                   and gb.validade_inicio_em <= :agora
                   and gb.validade_fim_em > :agora
-                  and (
-                    (ab.origem = 'COMPRA' and coalesce(ab.preco_snapshot, 0) > 0)
-                    or (
-                      ab.origem = 'CREDITO'
-                      and ab.custo_creditos_snapshot > 0
-                      and exists (
-                        select 1
-                        from movimento_credito mc
-                        where mc.usuario_id = ab.usuario_id
-                          and mc.tipo = 'SAIDA'
-                          and mc.direcao = 'DEBITO'
-                          and mc.origem = 'BENEFICIO'
-                          and mc.referencia_tipo = 'ATIVACAO_BENEFICIO'
-                          and mc.referencia_id = ab.id
-                          and mc.quantidade = ab.custo_creditos_snapshot
-                      )
-                    )
-                  )
               )
             order by
               case when exists (
@@ -464,7 +442,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
               a.publicado_em desc,
               a.id
             """, nativeQuery = true)
-    List<AnuncioEntity> findRelacionadosPagos(
+    List<AnuncioEntity> findRelacionadosComBeneficioVigente(
             @Param("anuncioAtualId") UUID anuncioAtualId,
             @Param("categoria") String categoria,
             @Param("cidadeId") UUID cidadeId,

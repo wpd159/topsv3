@@ -12,9 +12,9 @@ import org.springframework.data.jpa.repository.Query;
 class AnuncioRepositoryRelacionadosQueryTest {
 
     @Test
-    void consultaRelacionadosAplicaContratoPublicoComercialNoBanco() throws Exception {
+    void consultaRelacionadosAplicaBeneficioVigenteSemOrigemOuPagamentoNoBanco() throws Exception {
         Method method = AnuncioRepository.class.getMethod(
-                "findRelacionadosPagos",
+                "findRelacionadosComBeneficioVigente",
                 UUID.class,
                 String.class,
                 UUID.class,
@@ -22,8 +22,10 @@ class AnuncioRepositoryRelacionadosQueryTest {
                 OffsetDateTime.class,
                 Pageable.class);
         String query = method.getAnnotation(Query.class).value();
+        String elegibilidade = query.substring(0, query.indexOf("order by"));
+        String ordenacao = query.substring(query.indexOf("order by"));
 
-        assertThat(query)
+        assertThat(elegibilidade)
                 .contains("a.id <> :anuncioAtualId")
                 .contains("a.categoria = :categoria")
                 .contains("l.cidade_id = :cidadeId")
@@ -39,29 +41,32 @@ class AnuncioRepositoryRelacionadosQueryTest {
                 .contains("am.status = 'PUBLICAVEL'")
                 .contains("am.visibilidade_midia is not null")
                 .contains("arquivo.status_arquivo = 'VALIDADO'")
+                .contains("ab.anuncio_id = a.id")
+                .contains("ab.usuario_id = a.usuario_id")
+                .contains("gb.anuncio_id = a.id")
+                .contains("gb.usuario_id = a.usuario_id")
+                .contains("ab.origem = gb.origem")
+                .contains("bp.ativo = true")
+                .contains("bp.escopo = 'ANUNCIO'")
                 .contains("ab.status = 'ATIVA'")
                 .contains("ab.revogada_em is null")
                 .contains("ab.inicio_em <= :agora")
                 .contains("ab.fim_em > :agora")
                 .contains("gb.status = 'ATIVO'")
+                .contains("gb.validade_inicio_em <= :agora")
                 .contains("gb.validade_fim_em > :agora")
-                .contains("ab.origem = 'COMPRA'")
-                .contains("coalesce(ab.preco_snapshot, 0) > 0")
-                .contains("ab.origem = 'CREDITO'")
-                .contains("mc.tipo = 'SAIDA'")
-                .contains("mc.direcao = 'DEBITO'")
-                .contains("mc.origem = 'BENEFICIO'")
-                .contains("mc.referencia_tipo = 'ATIVACAO_BENEFICIO'")
-                .contains("mc.referencia_id = ab.id")
-                .contains("bp.codigo in")
-                .contains("'ANUNCIO_TOPO'")
+                .doesNotContain("bp.codigo in")
+                .doesNotContain("movimento_credito")
+                .doesNotContain("preco_snapshot")
+                .doesNotContain("custo_creditos_snapshot")
+                .doesNotContain("ab.origem = 'COMPRA'")
+                .doesNotContain("ab.origem = 'CREDITO'")
+                .doesNotContain("ab.origem = 'ADMIN'")
+                .doesNotContain("ab.origem = 'CAMPANHA'");
+
+        assertThat(ordenacao)
+                .contains("beneficio_topo.codigo = 'ANUNCIO_TOPO'")
                 .contains("a.publicado_em desc")
-                .contains("a.id")
-                .doesNotContain("findAll")
-                .doesNotContain("Math.random")
-                .doesNotContain("CORTESIA'")
-                .doesNotContain("CAMPANHA'")
-                .doesNotContain("ADMIN'")
-                .doesNotContain("IMPORTACAO'");
+                .contains("a.id");
     }
 }

@@ -36,7 +36,8 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
     private static final UUID ESTADO_GO = UUID.fromString("10000000-0000-4000-8000-000000000001");
     private static final UUID CIDADE_LOCAL = UUID.fromString("20000000-0000-4000-8000-000000000001");
     private static final UUID CIDADE_HOMONIMA = UUID.fromString("20000000-0000-4000-8000-000000000002");
-    private static final UUID BENEFICIO = UUID.fromString("f3000000-0000-4000-8000-000000000003");
+    private static final UUID BENEFICIO_TOPO = UUID.fromString("f3000000-0000-4000-8000-000000000003");
+    private static final UUID BENEFICIO_FUTURO = UUID.fromString("f3ff0000-0000-4000-8000-000000000001");
 
     @Autowired
     private AnuncioRepository repository;
@@ -60,9 +61,11 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
                 insert into beneficio_premium (
                   id, codigo, nome, descricao, escopo, afeta_ranking, ativo,
                   ordem_exibicao, criado_em, atualizado_em
-                ) values (?, 'ANUNCIO_TOPO', 'Topo QA', 'Beneficio QA', 'ANUNCIO', true, true, 1, now(), now())
+                ) values
+                  (?, 'ANUNCIO_TOPO', 'Topo QA', 'Beneficio QA', 'ANUNCIO', true, true, 1, now(), now()),
+                  (?, 'BENEFICIO_FUTURO_QA', 'Futuro QA', 'Beneficio futuro QA', 'ANUNCIO', false, true, 2, now(), now())
                 on conflict (codigo) do update set atualizado_em = excluded.atualizado_em
-                """, BENEFICIO);
+                """, BENEFICIO_TOPO, BENEFICIO_FUTURO);
     }
 
     @AfterAll
@@ -71,47 +74,95 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
     }
 
     @Test
-    void selecionaSomenteCompraOuCreditoComDebitoNaCidadeExata() {
-        UUID atualId = UUID.randomUUID();
+    void selecionaTodoBeneficioVigenteIndependentementeDaOrigemOuPagamento() {
+        UUID atualId = candidato("anuncio-atual", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
         UUID compraLocal = candidato("compra-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
         UUID creditoLocal = candidato("credito-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
         UUID creditoSemDebito = candidato("credito-sem-debito", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
         UUID cortesia = candidato("cortesia-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID administracao = candidato("admin-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID importacao = candidato("importacao-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID beneficioFuturo = candidato("beneficio-futuro", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID expirado = candidato("expirado-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID revogado = candidato("revogado-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID cancelado = candidato("cancelado-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
         UUID outraCategoria = candidato("outra-categoria", "ACOMPANHANTE_MASCULINO", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
         UUID pausado = candidato("pausado-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PAUSADO", true);
+        UUID reprovado = candidato("reprovado-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID removido = candidato("removido-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
+        UUID bloqueado = candidato("bloqueado-local", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", true);
         UUID usuarioInativo = candidato("usuario-inativo", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "DESATIVADO", "PUBLICADO", true);
         UUID semMidia = candidato("sem-midia", "ACOMPANHANTE_FEMININA", CIDADE_LOCAL, "ATIVO", "PUBLICADO", false);
         UUID outraCidade = candidato("outra-cidade", "ACOMPANHANTE_FEMININA", CIDADE_HOMONIMA, "ATIVO", "PUBLICADO", true);
+
+        ativar(atualId, "IMPORTACAO", false);
         ativar(compraLocal, "COMPRA", true);
         ativar(creditoLocal, "CREDITO", true);
         ativar(creditoSemDebito, "CREDITO", false);
         ativar(cortesia, "CORTESIA", false);
+        ativar(administracao, "ADMIN", false);
+        ativar(importacao, "IMPORTACAO", false);
+        ativar(beneficioFuturo, BENEFICIO_FUTURO, "CAMPANHA", false);
+        UUID ativacaoExpirada = ativar(expirado, "IMPORTACAO", false);
+        UUID ativacaoRevogada = ativar(revogado, "ADMIN", false);
+        UUID ativacaoCancelada = ativar(cancelado, "CORTESIA", false);
         ativar(outraCategoria, "COMPRA", true);
         ativar(pausado, "COMPRA", true);
+        ativar(reprovado, "CAMPANHA", false);
+        ativar(removido, "IMPORTACAO", false);
+        ativar(bloqueado, "ADMIN", false);
         ativar(usuarioInativo, "COMPRA", true);
         ativar(semMidia, "COMPRA", true);
         ativar(outraCidade, "COMPRA", true);
 
-        var locais = repository.findRelacionadosPagos(
+        jdbc.update("update ativacao_beneficio set status = 'EXPIRADA' where id = ?", ativacaoExpirada);
+        jdbc.update(
+                "update ativacao_beneficio set status = 'REVOGADA', revogada_em = ? where id = ?",
+                AGORA,
+                ativacaoRevogada);
+        jdbc.update("update ativacao_beneficio set status = 'CANCELADA' where id = ?", ativacaoCancelada);
+        jdbc.update("update anuncio set status_moderacao = 'REJEITADO' where id = ?", reprovado);
+        jdbc.update("update anuncio set status = 'REMOVIDO', removido_em = ? where id = ?", AGORA, removido);
+        bloquearJuridicamente(bloqueado);
+
+        var locais = repository.findRelacionadosComBeneficioVigente(
                 atualId,
                 "ACOMPANHANTE_FEMININA",
                 CIDADE_LOCAL,
                 true,
                 AGORA,
-                PageRequest.of(0, 6));
-        var fallback = repository.findRelacionadosPagos(
+                PageRequest.of(0, 100));
+        var fallback = repository.findRelacionadosComBeneficioVigente(
                 atualId,
                 "ACOMPANHANTE_FEMININA",
                 CIDADE_LOCAL,
                 false,
                 AGORA,
-                PageRequest.of(0, 6));
+                PageRequest.of(0, 100));
 
         assertThat(locais).extracting(item -> item.getId())
-                .containsExactlyInAnyOrder(compraLocal, creditoLocal);
+                .containsExactlyInAnyOrder(
+                        compraLocal,
+                        creditoLocal,
+                        creditoSemDebito,
+                        cortesia,
+                        administracao,
+                        importacao,
+                        beneficioFuturo)
+                .doesNotContain(
+                        atualId,
+                        expirado,
+                        revogado,
+                        cancelado,
+                        outraCategoria,
+                        pausado,
+                        reprovado,
+                        removido,
+                        bloqueado,
+                        usuarioInativo,
+                        semMidia);
         assertThat(fallback).extracting(item -> item.getId()).containsExactly(outraCidade);
     }
-
     @Test
     void limitaNoBancoEOrdenaDeFormaDeterministica() {
         UUID atualId = UUID.randomUUID();
@@ -126,14 +177,14 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
             ativar(anuncioId, "COMPRA", true);
         }
 
-        var primeira = repository.findRelacionadosPagos(
+        var primeira = repository.findRelacionadosComBeneficioVigente(
                 atualId,
                 "ACOMPANHANTE_FEMININA",
                 CIDADE_LOCAL,
                 true,
                 AGORA,
                 PageRequest.of(0, 6));
-        var segunda = repository.findRelacionadosPagos(
+        var segunda = repository.findRelacionadosComBeneficioVigente(
                 atualId,
                 "ACOMPANHANTE_FEMININA",
                 CIDADE_LOCAL,
@@ -196,7 +247,11 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
         return anuncioId;
     }
 
-    private void ativar(UUID anuncioId, String origem, boolean registrarDebito) {
+    private UUID ativar(UUID anuncioId, String origem, boolean registrarDebito) {
+        return ativar(anuncioId, BENEFICIO_TOPO, origem, registrarDebito);
+    }
+
+    private UUID ativar(UUID anuncioId, UUID beneficioId, String origem, boolean registrarDebito) {
         UUID usuarioId = jdbc.queryForObject(
                 "select usuario_id from anuncio where id = ?",
                 UUID.class,
@@ -215,7 +270,7 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
                   id, beneficio_id, usuario_id, anuncio_id, grupo_ativacao_id, origem,
                   inicio_em, fim_em, status, custo_creditos_snapshot, preco_snapshot, criado_em
                 ) values (?, ?, ?, ?, ?, ?, ?, ?, 'ATIVA', ?, ?, now())
-                """, ativacaoId, BENEFICIO, usuarioId, anuncioId, grupoId, origem,
+                """, ativacaoId, beneficioId, usuarioId, anuncioId, grupoId, origem,
                 AGORA.minusHours(1), AGORA.plusDays(1), custo,
                 "COMPRA".equals(origem) ? 10 : null);
         if (registrarDebito && "CREDITO".equals(origem)) {
@@ -227,6 +282,21 @@ class AnuncioRepositoryRelacionadosPostgres17IntegrationTest {
                       'ATIVACAO_BENEFICIO', ?, now())
                     """, UUID.randomUUID(), usuarioId, custo, ativacaoId);
         }
+        return ativacaoId;
+    }
+
+    private void bloquearJuridicamente(UUID anuncioId) {
+        UUID usuarioId = jdbc.queryForObject(
+                "select usuario_id from anuncio where id = ?",
+                UUID.class,
+                anuncioId);
+        jdbc.update("""
+                insert into anuncio_bloqueio_juridico (
+                  id, anuncio_id, usuario_id, escopo, categoria, motivo, bloqueado_por_id,
+                  bloqueado_em, bloqueio_request_id, versao
+                ) values (?, ?, ?, 'ANUNCIO', 'OUTRA_INTERVENCAO',
+                  'Bloqueio juridico QA', ?, ?, 'req-relacionados-qa', 0)
+                """, UUID.randomUUID(), anuncioId, usuarioId, usuarioId, AGORA);
     }
 
     static final class PostgresInitializer
