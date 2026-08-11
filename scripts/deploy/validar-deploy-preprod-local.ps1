@@ -34,6 +34,10 @@ $envExample = Read-RequiredFile "deploy/preprod/preprod.env.example"
 $backendApplication = Read-RequiredFile "backend/src/main/resources/application.yml"
 $gateway = Read-RequiredFile "deploy/preprod/nginx-preprod-local.conf"
 $frontendCompose = [regex]::Match($compose, '(?ms)^  frontend:\s.*?(?=^  gateway:)').Value
+$sshValidationStep = [regex]::Match(
+  $workflow,
+  '(?ms)^\s+- name: Validate pinned SSH host key\s.*?(?=^\s+- name: Validate remote preproduction prerequisites)'
+).Value
 
 foreach ($secret in @("PREPROD_HOST", "PREPROD_USER", "PREPROD_SSH_PORT", "PREPROD_SSH_PRIVATE_KEY", "PREPROD_SSH_HOST_KEY")) {
   Add-Check "workflow referencia secret $secret" ($workflow -match [regex]::Escape("secrets.$secret")) "secret obrigatorio"
@@ -121,12 +125,22 @@ Add-Check "workflow valida cliente SSH e KEX da VPS" (
   ($workflow -match 'sntrup761x25519-sha512@openssh\.com')
 ) "sem habilitar algoritmo legado"
 Add-Check "workflow testa SSH fail-closed antes do upload" (
-  ($workflow -match 'name: Validate pinned SSH host key') -and
-  ($workflow -match 'BatchMode=yes') -and
-  ($workflow -match 'ConnectTimeout=15') -and
-  ($workflow -match 'ssh "\$\{SSH_OPTS\[@\]\}" "\$\{SSH_TARGET\}" true') -and
+  (-not [string]::IsNullOrWhiteSpace($sshValidationStep)) -and
+  ($sshValidationStep -match 'BatchMode=yes') -and
+  ($sshValidationStep -match 'StrictHostKeyChecking=yes') -and
+  ($sshValidationStep -match 'UserKnownHostsFile="\$\{HOME\}/\.ssh/known_hosts"') -and
+  ($sshValidationStep -match 'HostKeyAlias="\[\$\{PREPROD_HOST\}\]:\$\{PREPROD_SSH_PORT\}"') -and
+  ($sshValidationStep -match '-p "\$\{PREPROD_SSH_PORT\}"') -and
+  ($sshValidationStep -match 'ConnectTimeout=15') -and
+  ($sshValidationStep -match 'ssh "\$\{SSH_OPTS\[@\]\}" "\$\{SSH_TARGET\}" true') -and
   ($workflow.IndexOf('name: Validate pinned SSH host key') -lt $workflow.IndexOf('name: Upload immutable release'))
 ) "conexao autenticada somente leitura e sem prompt"
+Add-Check "workflow limita retry da validacao SSH" (
+  ($sshValidationStep -match 'SSH_RETRY_BACKOFF=\(2 4 8 16\)') -and
+  ($sshValidationStep -match 'for attempt in 1 2 3 4 5; do') -and
+  ($sshValidationStep -match 'if \[ "\$\{attempt\}" -eq 5 \]; then') -and
+  ($sshValidationStep -match 'sleep "\$\{delay\}"')
+) "cinco tentativas com backoff 2, 4, 8 e 16 segundos"
 
 Add-Check "compose usa PostgreSQL 17" ($compose -match 'postgres:17\.10-alpine') "banco importado"
 Add-Check "compose usa projeto preprod" ($compose -match 'name:\s+topsv3-preprod') "isolamento Compose"
