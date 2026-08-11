@@ -1,6 +1,9 @@
+'use client'
+
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { MapPinIcon } from '@heroicons/react/24/solid'
+import { ChevronLeftIcon, ChevronRightIcon, MapPinIcon } from '@heroicons/react/24/solid'
 import {
   fontePublicaSegura,
   selecionarCapaPublicaSegura,
@@ -17,14 +20,60 @@ const moeda = new Intl.NumberFormat('pt-BR', {
 })
 
 export function AnunciosRelacionados({ anuncios }: AnunciosRelacionadosProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+
+  const updateScrollControls = useCallback(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const maxScrollLeft = container.scrollWidth - container.clientWidth
+    setCanScrollLeft(container.scrollLeft > 2)
+    setCanScrollRight(maxScrollLeft - container.scrollLeft > 2)
+  }, [])
+
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const frame = window.requestAnimationFrame(updateScrollControls)
+    const resizeObserver = new ResizeObserver(updateScrollControls)
+    resizeObserver.observe(container)
+    if (container.firstElementChild) resizeObserver.observe(container.firstElementChild)
+    window.addEventListener('resize', updateScrollControls)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', updateScrollControls)
+    }
+  }, [anuncios.length, updateScrollControls])
+
+  const scrollCards = (direction: -1 | 1) => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const card = container.querySelector<HTMLElement>('[data-related-ad-card]')
+    container.scrollBy({
+      left: direction * ((card?.offsetWidth ?? 190) + 12),
+      behavior: 'smooth',
+    })
+  }
+
   if (anuncios.length === 0) return null
 
   return (
     <section data-related-ads className="space-y-4 border-t border-gray-200 pt-7">
       <h2 className="text-xl font-bold text-gray-900">Você também pode gostar:</h2>
 
-      <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
-        <div className="flex min-w-max gap-3 sm:grid sm:min-w-0 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="relative">
+        <div
+          ref={scrollContainerRef}
+          onScroll={updateScrollControls}
+          className="-mx-4 scroll-smooth overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0"
+        >
+          <div className="flex min-w-max gap-3 sm:grid sm:min-w-0 sm:grid-cols-2 xl:grid-cols-3">
           {anuncios.map((anuncio) => {
             const href = `/anuncios/${encodeURIComponent(anuncio.slug)}`
             const capa = selecionarCapaPublicaSegura(anuncio.midias)
@@ -79,7 +128,30 @@ export function AnunciosRelacionados({ anuncios }: AnunciosRelacionadosProps) {
               </article>
             )
           })}
+          </div>
         </div>
+
+        {canScrollLeft ? (
+          <button
+            type="button"
+            aria-label="Ver cards anteriores"
+            onClick={() => scrollCards(-1)}
+            className="absolute left-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 sm:hidden"
+          >
+            <ChevronLeftIcon className="h-5 w-5" aria-hidden="true" />
+          </button>
+        ) : null}
+
+        {canScrollRight ? (
+          <button
+            type="button"
+            aria-label="Ver mais cards"
+            onClick={() => scrollCards(1)}
+            className="absolute right-1 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 sm:hidden"
+          >
+            <ChevronRightIcon className="h-5 w-5" aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
     </section>
   )
