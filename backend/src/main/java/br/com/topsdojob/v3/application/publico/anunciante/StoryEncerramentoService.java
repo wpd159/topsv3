@@ -13,6 +13,7 @@ import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.MotivoRemocaoStoryAdmin;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemEncerramentoStory;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -126,7 +127,18 @@ public class StoryEncerramentoService {
     MotivoRemocaoStoryAdmin motivo = motivoAdmin(request);
     String descricao = descricaoSegura(request == null ? null : request.descricao(), motivo);
     StoryAnuncioEntity story = story(storyId);
+    if (remocaoAdministrativaJaConcluida(story)) {
+      LOGGER.info("story_encerramento_idempotente requestId={}", requestIdSeguro(requestId));
+      return resposta(story, true);
+    }
+    if (story.getEncerradoEm() != null || story.getStatus() == StatusStoryAnuncio.REMOVIDO) {
+      throw storyNaoRemovivel();
+    }
+    OffsetDateTime agora = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
     boolean falhaTecnica = falhaTecnicaService.comprovada(story);
+    if (!story.estaPublicamenteAtivo(agora) || falhaTecnica) {
+      throw storyNaoRemovivel();
+    }
     if (motivo == MotivoRemocaoStoryAdmin.ERRO_TECNICO && !falhaTecnica) {
       throw new ResponseStatusException(
           HttpStatus.CONFLICT,
@@ -140,6 +152,18 @@ public class StoryEncerramentoService {
         descricao,
         motivo == MotivoRemocaoStoryAdmin.ERRO_TECNICO,
         requestId);
+  }
+
+  private boolean remocaoAdministrativaJaConcluida(StoryAnuncioEntity story) {
+    return story.getStatus() == StatusStoryAnuncio.REMOVIDO
+        && story.getEncerradoEm() != null
+        && story.getOrigemEncerramento() == OrigemEncerramentoStory.ADMIN;
+  }
+
+  private ResponseStatusException storyNaoRemovivel() {
+    return new ResponseStatusException(
+        HttpStatus.CONFLICT,
+        "Story nao esta mais ativo para remocao administrativa");
   }
 
   private StoryEncerramentoDto encerrar(

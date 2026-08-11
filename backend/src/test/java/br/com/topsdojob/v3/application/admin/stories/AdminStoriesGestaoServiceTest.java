@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.admin.stories;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -60,6 +61,7 @@ class AdminStoriesGestaoServiceTest {
         false);
     when(story.getId()).thenReturn(STORY_ID);
     when(story.getCriadoPor()).thenReturn(USUARIO_ID);
+    when(story.estaPublicamenteAtivo(any(OffsetDateTime.class))).thenReturn(true);
     when(storyRepository.findGestaoAdministrativa(
         USUARIO_ID, "anuncio de teste", pagina))
         .thenReturn(new PageImpl<>(List.of(story), pagina, 31));
@@ -79,11 +81,51 @@ class AdminStoriesGestaoServiceTest {
       assertThat(item.id()).isEqualTo(STORY_ID);
       assertThat(item.usuarioUsername()).isEqualTo("wesley");
       assertThat(item.anuncioTitulo()).isEqualTo("Anuncio de teste");
+      assertThat(item.statusAdministrativo()).isEqualTo("ATIVO");
+      assertThat(item.ativo()).isTrue();
+      assertThat(item.removivel()).isTrue();
     });
     verify(storyRepository).findGestaoAdministrativa(
         USUARIO_ID, "anuncio de teste", pagina);
     verify(consultaService).mapear(List.of(story));
     verify(usuarioRepository, times(1)).findAllById(List.of(USUARIO_ID));
+  }
+  @Test
+  void estadosTerminaisSaoHistoricoENaoSaoRemoviveis() {
+    StoryAnuncioEntity expirada = mock(StoryAnuncioEntity.class);
+    StoryAnuncioEntity encerrada = mock(StoryAnuncioEntity.class);
+    StoryAnuncioEntity removida = mock(StoryAnuncioEntity.class);
+    UUID expiradaId = UUID.fromString("61000000-0000-4000-8000-000000000011");
+    UUID encerradaId = UUID.fromString("61000000-0000-4000-8000-000000000012");
+    UUID removidaId = UUID.fromString("61000000-0000-4000-8000-000000000013");
+    List<StoryAnuncioEntity> stories = List.of(expirada, encerrada, removida);
+    when(expirada.getId()).thenReturn(expiradaId);
+    when(encerrada.getId()).thenReturn(encerradaId);
+    when(removida.getId()).thenReturn(removidaId);
+    for (StoryAnuncioEntity item : stories) {
+      when(item.getCriadoPor()).thenReturn(USUARIO_ID);
+      when(item.estaPublicamenteAtivo(any(OffsetDateTime.class))).thenReturn(false);
+    }
+    PageRequest pagina = PageRequest.of(0, 20);
+    when(storyRepository.findGestaoAdministrativa(null, null, pagina))
+        .thenReturn(new PageImpl<>(stories, pagina, stories.size()));
+    when(consultaService.mapear(stories)).thenReturn(List.of(
+        estado(expiradaId, "EXPIRADO", "EXPIRADO", false, null),
+        estado(encerradaId, "REMOVIDO", "ENCERRADO_USUARIO", false, AGORA),
+        estado(removidaId, "REMOVIDO", "REMOVIDO_ADMIN", false, AGORA)));
+    UsuarioEntity usuario = mock(UsuarioEntity.class);
+    when(usuario.getId()).thenReturn(USUARIO_ID);
+    when(usuarioRepository.findAllById(List.of(USUARIO_ID))).thenReturn(List.of(usuario));
+
+    var resultado = service.listar(null, null, 0, 20);
+
+    assertThat(resultado.itens())
+        .extracting(item -> item.statusAdministrativo())
+        .containsExactly("EXPIRADO", "ENCERRADO_USUARIO", "REMOVIDO_ADMIN");
+    assertThat(resultado.itens()).allSatisfy(item -> {
+      assertThat(item.ativo()).isFalse();
+      assertThat(item.removivel()).isFalse();
+    });
   }
 
   @Test
@@ -108,5 +150,22 @@ class AdminStoriesGestaoServiceTest {
     assertThat(resultado).isSameAs(esperado);
     verify(publicacaoService).publicarAdministrativamente(
         eq(ANUNCIO_ID), eq("admin-story-service-01"), eq(admin), eq("req-admin-story"));
+  }
+
+  private MeuStoryGerenciadoDto estado(
+      UUID id,
+      String status,
+      String estadoGerenciamento,
+      boolean podeExcluir,
+      OffsetDateTime encerradoEm) {
+    return new MeuStoryGerenciadoDto(
+        id,
+        "MIDIA_UPLOAD",
+        status,
+        estadoGerenciamento,
+        AGORA.minusHours(1),
+        AGORA.plusHours(1),
+        null, null, "DISPONIVEL", false,
+        podeExcluir, false, encerradoEm, false);
   }
 }

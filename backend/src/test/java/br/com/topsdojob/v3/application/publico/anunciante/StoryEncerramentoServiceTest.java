@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.GrupoAtivacaoBeneficioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemBeneficio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemEncerramentoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusGrupoAtivacaoBeneficio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
@@ -281,6 +282,89 @@ class StoryEncerramentoServiceTest {
     assertThat(removida.motivo()).isEqualTo("VIOLACAO_REGRAS");
     assertThat(repetida.repetido()).isTrue();
     verify(auditoriaRepository).save(any());
+    verify(cleanupService).limpar(story.getId(), ADMIN_ID, "request-admin");
+  }
+  @Test
+  void adminRecusaStatusExpiradoSemAuditoriaOuCleanup() {
+    ReflectionTestUtils.setField(story, "fimEm", AGORA);
+    assertThat(story.expirarSeVencido(AGORA)).isTrue();
+
+    assertStatus(
+        () -> service.removerComoAdmin(
+            story.getId(),
+            new AdminStoryRemocaoRequest("VIOLACAO_REGRAS", null),
+            admin,
+            "request-admin-expirado"),
+        HttpStatus.CONFLICT);
+
+    verify(storyRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
+    verify(cleanupService, never()).limpar(any(), any(), any());
+  }
+
+  @Test
+  void adminRecusaEncerradoPelaUsuarioSemNovaTransicao() {
+    story.encerrar(
+        USUARIO_ID,
+        OrigemEncerramentoStory.USUARIO,
+        "EXCLUSAO_VOLUNTARIA",
+        null,
+        false,
+        AGORA.minusMinutes(1));
+
+    assertStatus(
+        () -> service.removerComoAdmin(
+            story.getId(),
+            new AdminStoryRemocaoRequest("VIOLACAO_REGRAS", null),
+            admin,
+            "request-admin-encerrado"),
+        HttpStatus.CONFLICT);
+
+    verify(storyRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
+    verify(cleanupService, never()).limpar(any(), any(), any());
+  }
+
+  @Test
+  void retryDaRemocaoAdministrativaConcluidaEhIdempotenteSemNovoCleanup() {
+    story.encerrar(
+        ADMIN_ID,
+        OrigemEncerramentoStory.ADMIN,
+        "VIOLACAO_REGRAS",
+        null,
+        false,
+        AGORA.minusMinutes(1));
+
+    StoryEncerramentoDto resposta = service.removerComoAdmin(
+        story.getId(),
+        new AdminStoryRemocaoRequest("VIOLACAO_REGRAS", null),
+        admin,
+        "request-admin-ja-removido");
+
+    assertThat(resposta.repetido()).isTrue();
+    assertThat(resposta.origem()).isEqualTo("ADMIN");
+    verify(storyRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
+    verify(cleanupService, never()).limpar(any(), any(), any());
+  }
+
+  @Test
+  void expiracaoEntreListaECliqueRetornaConflitoControladoSemTransicao() {
+    ReflectionTestUtils.setField(story, "fimEm", AGORA);
+    assertThat(story.getStatus()).isEqualTo(StatusStoryAnuncio.PUBLICADO);
+    when(falhaTecnicaService.comprovada(story)).thenReturn(false);
+
+    assertStatus(
+        () -> service.removerComoAdmin(
+            story.getId(),
+            new AdminStoryRemocaoRequest("VIOLACAO_REGRAS", null),
+            admin,
+            "request-admin-expirou-no-clique"),
+        HttpStatus.CONFLICT);
+
+    verify(storyRepository, never()).save(any());
+    verify(auditoriaRepository, never()).save(any());
+    verify(cleanupService, never()).limpar(any(), any(), any());
   }
 
   private StoryAnuncioEntity story(UUID usuarioId, UUID ativacaoId) {

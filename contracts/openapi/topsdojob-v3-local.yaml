@@ -4312,7 +4312,7 @@ paths:
           in: path
           required: true
           schema: { type: string, format: uuid }
-      description: Exclusivo de ADMIN e protegido por CSRF. Motivo e obrigatorio; OUTRO exige descricao. ERRO_TECNICO preserva o direito somente quando a falha for comprovada pelo backend. A repeticao nao duplica transicao ou auditoria e nenhuma compensacao financeira e criada.
+      description: Exclusivo de ADMIN e protegido por CSRF. Somente Story publicamente ativo e removivel aceita nova transicao. Motivo e obrigatorio; OUTRO exige descricao. Estado terminal ou vigencia encerrada retorna conflito controlado sem nova auditoria ou cleanup. Retry da remocao administrativa concluida e idempotente.
       requestBody:
         required: true
         content:
@@ -8767,12 +8767,20 @@ components:
     AdminStoryGerenciado:
       type: object
       additionalProperties: false
-      required: [id, usuarioUsername, modoConteudo, status, publicadoEm, expiraEm, anuncioSlug, anuncioTitulo, estadoMidia, falhaTecnica, encerradoEm, origemEncerramento, motivoEncerramento, direitoPreservado]
+      required: [id, usuarioUsername, modoConteudo, status, statusAdministrativo, ativo, removivel, publicadoEm, expiraEm, anuncioSlug, anuncioTitulo, estadoMidia, falhaTecnica, encerradoEm, origemEncerramento, motivoEncerramento, direitoPreservado]
       properties:
         id: { type: string, format: uuid }
         usuarioUsername: { type: [string, "null"] }
         modoConteudo: { type: string, enum: [ANUNCIO, MIDIA_UPLOAD] }
         status: { type: string, enum: [RASCUNHO, PENDENTE, PUBLICADO, EXPIRADO, REMOVIDO] }
+        statusAdministrativo:
+          type: string
+          enum: [ATIVO, FALHA_TECNICA, EXPIRADO, ENCERRADO_USUARIO, REMOVIDO_ADMIN, DESCARTADO_FALHA_TECNICA, ENCERRADO, OUTRO]
+        ativo:
+          type: boolean
+          description: Verdadeiro somente durante a vigencia publica efetiva do Story.
+        removivel:
+          type: boolean
         publicadoEm: { type: [string, "null"], format: date-time }
         expiraEm: { type: [string, "null"], format: date-time }
         anuncioSlug: { type: [string, "null"] }

@@ -11,6 +11,9 @@ import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
+import java.time.Clock;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -30,16 +33,32 @@ public class AdminStoriesGestaoService {
   private final UsuarioRepository usuarioRepository;
   private final MeusStoriesConsultaService consultaService;
   private final MinhaContaStoriesPublicacaoService publicacaoService;
+  private final Clock clock;
 
   public AdminStoriesGestaoService(
       StoryAnuncioRepository storyRepository,
       UsuarioRepository usuarioRepository,
       MeusStoriesConsultaService consultaService,
       MinhaContaStoriesPublicacaoService publicacaoService) {
+    this(
+        storyRepository,
+        usuarioRepository,
+        consultaService,
+        publicacaoService,
+        Clock.systemUTC());
+  }
+
+  AdminStoriesGestaoService(
+      StoryAnuncioRepository storyRepository,
+      UsuarioRepository usuarioRepository,
+      MeusStoriesConsultaService consultaService,
+      MinhaContaStoriesPublicacaoService publicacaoService,
+      Clock clock) {
     this.storyRepository = storyRepository;
     this.usuarioRepository = usuarioRepository;
     this.consultaService = consultaService;
     this.publicacaoService = publicacaoService;
+    this.clock = clock;
   }
 
   @Transactional(readOnly = true)
@@ -61,8 +80,13 @@ public class AdminStoriesGestaoService {
             .distinct()
             .toList()).stream()
         .collect(Collectors.toMap(UsuarioEntity::getId, Function.identity()));
+    OffsetDateTime agora = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
     List<AdminStoryGerenciadoDto> itens = stories.getContent().stream()
-        .map(story -> mapear(story, estadoPorId.get(story.getId()), usuarios.get(story.getCriadoPor())))
+        .map(story -> mapear(
+            story,
+            estadoPorId.get(story.getId()),
+            usuarios.get(story.getCriadoPor()),
+            agora))
         .toList();
     return new AdminStoriesPaginaDto(
         itens,
@@ -96,12 +120,21 @@ public class AdminStoriesGestaoService {
   private AdminStoryGerenciadoDto mapear(
       StoryAnuncioEntity story,
       MeuStoryGerenciadoDto estado,
-      UsuarioEntity usuario) {
+      UsuarioEntity usuario,
+      OffsetDateTime agora) {
+    boolean ativo = story.estaPublicamenteAtivo(agora)
+        && estado != null
+        && "ATIVO".equals(estado.estadoGerenciamento())
+        && estado.podeExcluir()
+        && !estado.falhaTecnica();
     return new AdminStoryGerenciadoDto(
         story.getId(),
         usuario == null ? null : usuario.getNome(),
         estado.modoConteudo(),
         estado.status(),
+        estado.estadoGerenciamento(),
+        ativo,
+        ativo,
         estado.publicadoEm(),
         estado.expiraEm(),
         estado.anuncioSlug(),

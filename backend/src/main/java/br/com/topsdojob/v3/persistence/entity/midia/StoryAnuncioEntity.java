@@ -173,6 +173,14 @@ public class StoryAnuncioEntity {
     return direitoPreservado;
   }
 
+  public boolean estaPublicamenteAtivo(OffsetDateTime agora) {
+    return agora != null
+        && status == StatusStoryAnuncio.PUBLICADO
+        && encerradoEm == null
+        && (inicioEm == null || !inicioEm.isAfter(agora))
+        && (fimEm == null || fimEm.isAfter(agora));
+  }
+
   public boolean suspenderPorBloqueio(OffsetDateTime agora) {
     if (status == StatusStoryAnuncio.EXPIRADO || status == StatusStoryAnuncio.REMOVIDO) {
       return false;

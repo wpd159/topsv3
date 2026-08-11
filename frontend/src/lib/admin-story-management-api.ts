@@ -5,6 +5,9 @@ export type AdminStoryGerenciado = {
   usuarioUsername: string | null
   modoConteudo: 'ANUNCIO' | 'MIDIA_UPLOAD'
   status: string
+  statusAdministrativo: string
+  ativo: boolean
+  removivel: boolean
   publicadoEm: string | null
   expiraEm: string | null
   anuncioSlug: string | null
@@ -49,6 +52,17 @@ export type AdminStoryRemocao = {
   repetido: boolean
 }
 
+export class AdminStoryManagementError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly requestId: string | null
+  ) {
+    super(message)
+    this.name = 'AdminStoryManagementError'
+  }
+}
+
 function csrfCookieName() {
   return ['XSRF', 'TOKEN'].join('-')
 }
@@ -90,7 +104,11 @@ async function request<T>(path: string, init: RequestInit = {}) {
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { message?: string } | null
     const requestId = response.headers.get('X-Request-Id')
-    throw new Error(`${body?.message || `Não foi possível concluir a operação (${response.status}).`}${requestId ? ` Código de atendimento: ${requestId}.` : ''}`)
+    throw new AdminStoryManagementError(
+      `${body?.message || `Não foi possível concluir a operação (${response.status}).`}${requestId ? ` Código de atendimento: ${requestId}.` : ''}`,
+      response.status,
+      requestId
+    )
   }
   return await response.json() as T
 }

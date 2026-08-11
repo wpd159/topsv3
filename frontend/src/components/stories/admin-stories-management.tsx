@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  AdminStoryManagementError,
   fetchAdminStories,
   removeAdminStory,
   type AdminStoriesPagina,
@@ -39,9 +40,9 @@ function formatDate(value: string | null) {
 }
 
 function storyStatus(story: AdminStoryGerenciado) {
-  if (story.falhaTecnica) return 'Falha técnica'
-  if (story.encerradoEm) return 'Encerrado'
-  return story.status === 'PUBLICADO' ? 'Ativo' : story.status.replaceAll('_', ' ')
+  if (story.statusAdministrativo === 'ATIVO') return 'Ativo'
+  if (story.statusAdministrativo === 'FALHA_TECNICA') return 'Falha técnica'
+  return story.statusAdministrativo.replaceAll('_', ' ')
 }
 const USER_LOOKUP_FILTERS = {
   status: 'TODOS',
@@ -208,6 +209,7 @@ export function AdminStoriesManagement() {
 
 
   function openRemoval(story: AdminStoryGerenciado) {
+    if (!story.removivel) return
     setSelected(story)
     setReason(story.falhaTecnica ? 'ERRO_TECNICO' : 'VIOLACAO_REGRAS')
     setDescription('')
@@ -231,6 +233,23 @@ export function AdminStoriesManagement() {
       if (targetPage !== filters.page) updateQuery({ pagina: targetPage })
       else setReload((value) => value + 1)
     } catch (cause) {
+      if (cause instanceof AdminStoryManagementError && cause.status === 409) {
+        try {
+          const refreshed = await fetchAdminStories(filters)
+          const currentStory = refreshed.itens.find((item) => item.id === selected.id)
+          if (currentStory) {
+            setData((current) => current ? {
+              ...current,
+              itens: current.itens.map((item) => item.id === currentStory.id ? currentStory : item),
+            } : current)
+            setSelected(null)
+            toast.info('O Story não está mais ativo. O histórico foi atualizado.')
+            return
+          }
+        } catch {
+          // Mantem a resposta controlada original quando a reconciliacao nao puder ser concluida.
+        }
+      }
       setError(cause instanceof Error ? cause.message : 'Não foi possível remover o Story.')
     } finally {
       setRemoving(false)
@@ -324,11 +343,11 @@ export function AdminStoriesManagement() {
                       <p className="max-w-52 truncate text-xs text-gray-500">{story.anuncioTitulo ?? 'Story independente'}</p>
                     </td>
                     <td className="px-2 py-3 text-gray-700">{story.usuarioUsername ? `@${story.usuarioUsername}` : 'Identidade pública indisponível'}</td>
-                    <td className="px-2 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${story.falhaTecnica ? 'bg-amber-100 text-amber-900' : story.encerradoEm ? 'bg-gray-100 text-gray-700' : 'bg-emerald-100 text-emerald-800'}`}>{storyStatus(story)}</span></td>
+                    <td className="px-2 py-3"><span className={`rounded-full px-2 py-1 text-xs font-semibold ${story.falhaTecnica ? 'bg-amber-100 text-amber-900' : story.ativo ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-700'}`}>{storyStatus(story)}</span></td>
                     <td className="px-2 py-3 text-gray-600">{formatDate(story.publicadoEm)}</td>
                     <td className="px-2 py-3 text-gray-600">{formatDate(story.expiraEm)}</td>
                     <td className="px-2 py-3 text-right">
-                      {!story.encerradoEm ? (
+                      {story.removivel ? (
                         <Button type="button" size="sm" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" disabled={removing} onClick={() => openRemoval(story)}>
                           <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />Remover Story
                         </Button>
