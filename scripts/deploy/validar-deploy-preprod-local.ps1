@@ -35,7 +35,7 @@ $backendApplication = Read-RequiredFile "backend/src/main/resources/application.
 $gateway = Read-RequiredFile "deploy/preprod/nginx-preprod-local.conf"
 $frontendCompose = [regex]::Match($compose, '(?ms)^  frontend:\s.*?(?=^  gateway:)').Value
 
-foreach ($secret in @("PREPROD_HOST", "PREPROD_USER", "PREPROD_SSH_PORT", "PREPROD_SSH_PRIVATE_KEY")) {
+foreach ($secret in @("PREPROD_HOST", "PREPROD_USER", "PREPROD_SSH_PORT", "PREPROD_SSH_PRIVATE_KEY", "PREPROD_SSH_HOST_KEY")) {
   Add-Check "workflow referencia secret $secret" ($workflow -match [regex]::Escape("secrets.$secret")) "secret obrigatorio"
 }
 
@@ -105,6 +105,28 @@ Add-Check "workflow valida Mailpit no release" (
 Add-Check "workflow verifica noindex" ($workflow -match 'X-Robots-Tag:.*noindex') "preproducao nao indexavel"
 Add-Check "workflow verifica robots" ($workflow -match 'Disallow: /') "robots bloqueado"
 Add-Check "workflow verifica dominio sem instalar Nginx" (($workflow -match 'https://v3\.esle\.cloud') -and -not ($workflow -match 'nginx -s reload|systemctl.*nginx|sites-available')) "upstream externo preservado"
+Add-Check "workflow nao descobre host key automaticamente" (-not ($workflow -match 'ssh-keyscan')) "host key Ed25519 fixada no Environment preprod"
+Add-Check "workflow nao aceita host key nova automaticamente" (-not ($workflow -match 'accept-new')) "sem TOFU"
+Add-Check "workflow nao desabilita verificacao de host key" (-not ($workflow -match 'StrictHostKeyChecking=no')) "fail-closed"
+Add-Check "workflow exige verificacao estrita de host key" ($workflow -match 'StrictHostKeyChecking=yes') "host key fixada"
+Add-Check "workflow fixa arquivo known_hosts" ($workflow -match 'UserKnownHostsFile="\$\{HOME\}/\.ssh/known_hosts"') "arquivo conhecido explicito"
+Add-Check "workflow cria known_hosts com host porta e chave fixada" (
+  ($workflow -match [regex]::Escape("printf '[%s]:%s %s\n'")) -and
+  ($workflow -match 'PREPROD_SSH_HOST_KEY') -and
+  ($workflow -match 'ssh-keygen -F "\[\$\{PREPROD_HOST\}\]:\$\{PREPROD_SSH_PORT\}"')
+) "entrada Ed25519 previamente verificada"
+Add-Check "workflow valida cliente SSH e KEX da VPS" (
+  ($workflow -match '(?m)^\s+ssh -V\s*$') -and
+  ($workflow -match 'ssh -Q kex') -and
+  ($workflow -match 'sntrup761x25519-sha512@openssh\.com')
+) "sem habilitar algoritmo legado"
+Add-Check "workflow testa SSH fail-closed antes do upload" (
+  ($workflow -match 'name: Validate pinned SSH host key') -and
+  ($workflow -match 'BatchMode=yes') -and
+  ($workflow -match 'ConnectTimeout=15') -and
+  ($workflow -match 'ssh "\$\{SSH_OPTS\[@\]\}" "\$\{SSH_TARGET\}" true') -and
+  ($workflow.IndexOf('name: Validate pinned SSH host key') -lt $workflow.IndexOf('name: Upload immutable release'))
+) "conexao autenticada somente leitura e sem prompt"
 
 Add-Check "compose usa PostgreSQL 17" ($compose -match 'postgres:17\.10-alpine') "banco importado"
 Add-Check "compose usa projeto preprod" ($compose -match 'name:\s+topsv3-preprod') "isolamento Compose"

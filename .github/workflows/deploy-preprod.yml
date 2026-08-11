@@ -70,6 +70,7 @@ jobs:
           PREPROD_USER: ${{ secrets.PREPROD_USER }}
           PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
           PREPROD_SSH_PRIVATE_KEY: ${{ secrets.PREPROD_SSH_PRIVATE_KEY }}
+          PREPROD_SSH_HOST_KEY: ${{ secrets.PREPROD_SSH_HOST_KEY }}
         run: |
           set -euo pipefail
           test -n "${PREPROD_HOST}"
@@ -77,6 +78,7 @@ jobs:
           test "${PREPROD_SSH_PORT}" -ge 1
           test "${PREPROD_SSH_PORT}" -le 65535
           test -n "${PREPROD_SSH_PRIVATE_KEY}"
+          test -n "${PREPROD_SSH_HOST_KEY}"
 
       - name: Configure SSH
         shell: bash
@@ -84,25 +86,42 @@ jobs:
           PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
           PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
           PREPROD_SSH_PRIVATE_KEY: ${{ secrets.PREPROD_SSH_PRIVATE_KEY }}
+          PREPROD_SSH_HOST_KEY: ${{ secrets.PREPROD_SSH_HOST_KEY }}
         run: |
           set -euo pipefail
+          test -n "${PREPROD_HOST}"
+          test -n "${PREPROD_SSH_PORT}"
+          test -n "${PREPROD_SSH_HOST_KEY}"
+          if [[ ! "${PREPROD_SSH_HOST_KEY}" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}$ ]]; then
+            echo "ERRO: chave publica SSH da preproducao invalida." >&2
+            exit 1
+          fi
           install -m 700 -d "${HOME}/.ssh"
           printf '%s\n' "${PREPROD_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/topsv3_preprod"
           chmod 600 "${HOME}/.ssh/topsv3_preprod"
-          known_hosts_scan="$(mktemp)"
-          trap 'rm -f "${known_hosts_scan}"' EXIT
-          for attempt in 1 2 3; do
-            if ssh-keyscan -T 10 -p "${PREPROD_SSH_PORT}" "${PREPROD_HOST}" > "${known_hosts_scan}" 2>/dev/null \
-              && test -s "${known_hosts_scan}"; then
-              cat "${known_hosts_scan}" >> "${HOME}/.ssh/known_hosts"
-              break
-            fi
-            if [ "${attempt}" -eq 3 ]; then
-              echo "ERRO: ssh-keyscan nao obteve a chave da VPS apos 3 tentativas." >&2
-              exit 1
-            fi
-            sleep $((attempt * 2))
-          done
+          printf '[%s]:%s %s\n' "${PREPROD_HOST}" "${PREPROD_SSH_PORT}" "${PREPROD_SSH_HOST_KEY}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+          ssh-keygen -F "[${PREPROD_HOST}]:${PREPROD_SSH_PORT}" -f "${HOME}/.ssh/known_hosts" >/dev/null
+          ssh -V
+          runner_kex="$(ssh -Q kex)"
+          if ! grep -Fxq 'sntrup761x25519-sha512@openssh.com' <<< "${runner_kex}"; then
+            echo "ERRO: cliente SSH do runner nao suporta o KEX exigido pela VPS." >&2
+            printf '%s\n' "${runner_kex}" >&2
+            exit 1
+          fi
+          unset runner_kex
+
+      - name: Validate pinned SSH host key
+        shell: bash
+        env:
+          PREPROD_HOST: ${{ secrets.PREPROD_HOST }}
+          PREPROD_USER: ${{ secrets.PREPROD_USER }}
+          PREPROD_SSH_PORT: ${{ secrets.PREPROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PREPROD_HOST}]:${PREPROD_SSH_PORT}" -o ConnectTimeout=15)
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true
 
       - name: Validate remote preproduction prerequisites
         shell: bash
@@ -113,7 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PREPROD_HOST}]:${PREPROD_SSH_PORT}")
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s' <<'REMOTE'
           set -euo pipefail
           test "$(id -un)" = "topsv3"
@@ -142,8 +161,8 @@ jobs:
         run: |
           set -euo pipefail
           SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
-          SCP_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -P "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PREPROD_HOST}]:${PREPROD_SSH_PORT}")
+          SCP_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -P "${PREPROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PREPROD_HOST}]:${PREPROD_SSH_PORT}")
           ARCHIVE="${RUNNER_TEMP}/topsv3-${GITHUB_SHA}.tar.gz"
           tar \
             --exclude='./.git' \
@@ -210,7 +229,7 @@ jobs:
         run: |
           set -euo pipefail
           SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PREPROD_HOST}]:${PREPROD_SSH_PORT}")
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
           set -euo pipefail
           release_sha="$1"
@@ -250,7 +269,7 @@ jobs:
         run: |
           set -euo pipefail
           SSH_TARGET="${PREPROD_USER}@${PREPROD_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o StrictHostKeyChecking=yes)
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_preprod" -p "${PREPROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PREPROD_HOST}]:${PREPROD_SSH_PORT}")
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
           set -euo pipefail
           release_sha="$1"
