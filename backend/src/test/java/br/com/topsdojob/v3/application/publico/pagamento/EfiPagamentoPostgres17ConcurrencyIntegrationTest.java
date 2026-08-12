@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.publico.pagamento;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
@@ -9,6 +10,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.com.topsdojob.v3.application.publico.pagamento.dto.EfiPixCheckoutRequest;
@@ -16,6 +19,12 @@ import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGateway;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
+import br.com.topsdojob.v3.persistence.repository.MovimentoCreditoRepository;
+import br.com.topsdojob.v3.persistence.repository.PagamentoEventoRepository;
+import br.com.topsdojob.v3.persistence.repository.PagamentoRepository;
+import br.com.topsdojob.v3.persistence.repository.PagamentoWebhookRepository;
+import br.com.topsdojob.v3.persistence.repository.SaldoCreditoUsuarioRepository;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +33,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -77,6 +87,10 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
     private static final String TXID_RECONCILIACAO = "SchedulerRuntimePayment00000001";
     private static final String TXID_LEGADO = "LegacyRuntimePayment0000000001";
     private static final String EVENTO_LEGADO = "LegacyEventRuntime0000001";
+    private static final String TXID_HMAC_AUSENTE = "MissingHmacPayment00000000001";
+    private static final String EVENTO_HMAC_AUSENTE = "MissingHmacEvent000000001";
+    private static final String TXID_HMAC_INVALIDO = "InvalidHmacPayment00000000001";
+    private static final String EVENTO_HMAC_INVALIDO = "InvalidHmacEvent000000001";
     private static final Postgres17Fixture POSTGRES = Postgres17Fixture.start();
 
     @Autowired
@@ -93,6 +107,24 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private AuditoriaEventoRepository auditoriaRepository;
+
+    @Autowired
+    private PagamentoWebhookRepository webhookRepository;
+
+    @Autowired
+    private PagamentoEventoRepository eventoRepository;
+
+    @Autowired
+    private MovimentoCreditoRepository movimentoRepository;
+
+    @Autowired
+    private PagamentoRepository pagamentoRepository;
+
+    @Autowired
+    private SaldoCreditoUsuarioRepository saldoRepository;
 
     @MockBean
     private EfiPixGateway gateway;
@@ -116,6 +148,26 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
     @AfterAll
     static void closePostgres() {
         POSTGRES.close();
+    }
+
+    @Test
+    void hmacAusenteEhRejeitadoSemPersistenciaOuEfeitoFinanceiro() throws Exception {
+        assertAutenticacaoRecusadaSemPersistencia(
+                null,
+                TXID_HMAC_AUSENTE,
+                EVENTO_HMAC_AUSENTE,
+                "request-runtime-missing-hmac-01",
+                "HMAC_AUSENTE");
+    }
+
+    @Test
+    void hmacInvalidoEhRejeitadoSemPersistenciaOuEfeitoFinanceiro() throws Exception {
+        assertAutenticacaoRecusadaSemPersistencia(
+                "invalid-webhook-test-value",
+                TXID_HMAC_INVALIDO,
+                EVENTO_HMAC_INVALIDO,
+                "request-runtime-invalid-hmac-01",
+                "HMAC_INVALIDO");
     }
 
     @Test
@@ -383,12 +435,62 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
             String txid,
             String eventoId,
             String requestId) throws Exception {
-        return mockMvc.perform(post("/api/public/webhooks/efi/pix")
-                .queryParam("hmac", WEBHOOK_VERIFIER)
+        return enviarComHmac(WEBHOOK_VERIFIER, txid, eventoId, requestId);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions enviarComHmac(
+            String hmac,
+            String txid,
+            String eventoId,
+            String requestId) throws Exception {
+        var request = post("/api/public/webhooks/efi/pix")
                 .header("X-Real-IP", "127.0.0.1")
                 .header("X-Request-Id", requestId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(payload(txid, eventoId)));
+                .content(payload(txid, eventoId));
+        if (hmac != null) {
+            request.queryParam("hmac", hmac);
+        }
+        return mockMvc.perform(request);
+    }
+
+    private void assertAutenticacaoRecusadaSemPersistencia(
+            String hmac,
+            String txid,
+            String eventoId,
+            String requestId,
+            String suffix) throws Exception {
+        Scenario scenario = seed(txid, suffix, "SANDBOX");
+        FinancialSnapshot before = snapshot(scenario);
+
+        var response = enviarComHmac(hmac, txid, eventoId, requestId)
+                .andExpect(status().isForbidden())
+                .andExpect(header().string("Cache-Control", containsString("no-store")))
+                .andExpect(header().string("X-Request-Id", requestId))
+                .andReturn();
+
+        assertThat(snapshot(scenario)).isEqualTo(before);
+        verify(gateway, never()).consultarCobranca(anyString());
+        jsonPath("$.message")
+                .value("Não foi possível validar a notificação.")
+                .match(response);
+        jsonPath("$.requestId").value(requestId).match(response);
+    }
+
+    private FinancialSnapshot snapshot(Scenario scenario) {
+        var pagamento = pagamentoRepository.findById(scenario.pagamentoId()).orElseThrow();
+        Optional<Integer> saldo = saldoRepository.findById(scenario.usuarioId())
+                .map(item -> item.getSaldoAtual());
+        return new FinancialSnapshot(
+                auditoriaRepository.count(),
+                webhookRepository.count(),
+                eventoRepository.count(),
+                movimentoRepository.count(),
+                pagamento.getStatusInterno().name(),
+                pagamento.getStatusProvedor(),
+                pagamento.getCreditadoEm(),
+                pagamento.getAtualizadoEm(),
+                saldo);
     }
 
     private String payload(String txid, String eventoId) {
@@ -557,6 +659,18 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
     }
 
     private record Scenario(UUID usuarioId, UUID planoId, UUID pagamentoId) {
+    }
+
+    private record FinancialSnapshot(
+            long auditorias,
+            long webhooks,
+            long eventos,
+            long movimentos,
+            String statusInterno,
+            String statusProvedor,
+            OffsetDateTime creditadoEm,
+            OffsetDateTime atualizadoEm,
+            Optional<Integer> saldo) {
     }
 
     private static final class Postgres17Fixture implements AutoCloseable {

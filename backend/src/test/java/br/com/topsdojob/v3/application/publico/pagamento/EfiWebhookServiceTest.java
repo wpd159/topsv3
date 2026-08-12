@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixProperties;
@@ -79,16 +80,23 @@ class EfiWebhookServiceTest {
     }
 
     @Test
-    void segredoInvalidoRetorna403ERegistraSomenteHashes() {
+    void segredoAusenteRetorna403SemPersistencia() {
+        String payload = "{\"pix\":[]}";
+
+        assertThatThrownBy(() -> service.receber(null, payload, "127.0.0.1", "req-webhook"))
+                .isInstanceOf(EfiWebhookAutenticacaoException.class)
+                .hasMessage("N\u00e3o foi poss\u00edvel validar a notifica\u00e7\u00e3o.");
+        verifyNoInteractions(processor);
+    }
+
+    @Test
+    void segredoInvalidoRetorna403SemPersistencia() {
         String payload = "{\"pix\":[]}";
 
         assertThatThrownBy(() -> service.receber("invalido", payload, "127.0.0.1", "req-webhook"))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("403 FORBIDDEN");
-        verify(processor).registrarInvalido(
-                "invalido-" + hashService.hash(payload).substring(0, 32),
-                hashService.hash(payload),
-                hashService.hash("127.0.0.1"));
+                .isInstanceOf(EfiWebhookAutenticacaoException.class)
+                .hasMessage("N\u00e3o foi poss\u00edvel validar a notifica\u00e7\u00e3o.");
+        verifyNoInteractions(processor);
     }
 
     @Test

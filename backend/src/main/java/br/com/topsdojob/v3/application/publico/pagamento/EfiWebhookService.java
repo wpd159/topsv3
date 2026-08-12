@@ -43,14 +43,13 @@ public class EfiWebhookService {
         if (raw.length() > MAX_PAYLOAD_CHARS) {
             throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "webhook acima do limite");
         }
-        String payloadHash = hashService.hash(raw);
-        String ipHash = hashService.hash(origemIp);
         if (!properties.isEnabled()
                 || !hashService.segredoConfere(properties.getWebhookVerifier(), hmac)) {
-            processor.registrarInvalido("invalido-" + payloadHash.substring(0, 32), payloadHash, ipHash);
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "origem do webhook nao validada");
+            throw new EfiWebhookAutenticacaoException();
         }
 
+        String payloadHash = hashService.hash(raw);
+        String ipHash = hashService.hash(origemIp);
         List<Notificacao> notificacoes = notificacoes(raw, payloadHash);
         int processados = 0;
         int repetidos = 0;

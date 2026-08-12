@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.platform.error;
 import java.time.Instant;
 
 import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoException;
+import br.com.topsdojob.v3.application.publico.pagamento.EfiWebhookAutenticacaoException;
 import br.com.topsdojob.v3.application.publico.pagamento.PagamentoPixException;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.application.publico.anunciante.StoryJaAtivoException;
@@ -63,6 +64,12 @@ public class GlobalExceptionHandler {
             PagamentoPixException exception,
             HttpServletRequest request) {
         return build(exception.code(), request);
+    }
+    @ExceptionHandler(EfiWebhookAutenticacaoException.class)
+    public ResponseEntity<ApiErrorResponse> handleEfiWebhookAutenticacao(
+            EfiWebhookAutenticacaoException exception,
+            HttpServletRequest request) {
+        return build(ApiErrorCode.FORBIDDEN, exception.getMessage(), request);
     }
 
     @ExceptionHandler(ResponseStatusException.class)

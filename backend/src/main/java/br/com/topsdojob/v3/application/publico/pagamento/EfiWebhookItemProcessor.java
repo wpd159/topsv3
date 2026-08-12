@@ -19,16 +19,6 @@ public class EfiWebhookItemProcessor {
         this.conciliacaoService = conciliacaoService;
     }
 
-    public Resultado registrarInvalido(String eventoId, String payloadHash, String origemIpHash) {
-        EfiWebhookRegistroService.Registro registro = registrarComConflitoControlado(
-                eventoId,
-                null,
-                payloadHash,
-                origemIpHash,
-                ValidacaoWebhook.INVALIDO);
-        registroService.concluir(registro.webhookId(), "REJEITADO", "ORIGEM_NAO_VALIDADA");
-        return Resultado.IGNORADO;
-    }
 
     public Resultado processar(
             String eventoId,

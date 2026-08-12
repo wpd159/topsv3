@@ -27,7 +27,7 @@ public class EfiWebhookController {
             path = "/pix",
             consumes = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_PLAIN_VALUE})
     public ResponseEntity<EfiWebhookResultadoDto> receber(
-            @RequestParam String hmac,
+            @RequestParam(required = false) String hmac,
             @RequestBody String payload,
             HttpServletRequest request) {
         String origem = request.getHeader("X-Real-IP");
