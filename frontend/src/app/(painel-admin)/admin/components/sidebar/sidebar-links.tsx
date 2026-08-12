@@ -97,18 +97,6 @@ export const sidebarLinks: SidebarLink[] = [
     section: 'Moderação e Segurança',
   },
   {
-    label: 'Auditoria administrativa',
-    icon: <DocumentTextIcon className="h-5 w-5" />,
-    href: '/admin/compliance#admin-logs',
-    section: 'Moderação e Segurança',
-  },
-  {
-    label: 'Aceites jurídicos',
-    icon: <DocumentTextIcon className="h-5 w-5" />,
-    href: '/admin/compliance#legal-acceptances',
-    section: 'Moderação e Segurança',
-  },
-  {
     label: 'Logs visitantes',
     icon: <DocumentTextIcon className="h-5 w-5" />,
     href: '/admin/compliance#visitor-logs',
@@ -156,12 +144,6 @@ export const sidebarLinks: SidebarLink[] = [
     href: '/admin/sugestoes',
     section: 'Conteúdo e Comunicação',
     notificationKey: 'sugestoes',
-  },
-  {
-    label: 'Configurações de compliance',
-    icon: <AdjustmentsHorizontalIcon className="h-5 w-5" />,
-    href: '/admin/compliance#settings',
-    section: 'Configurações',
   },
   {
     label: 'Gerenciar staff',

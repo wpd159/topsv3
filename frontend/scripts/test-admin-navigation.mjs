@@ -67,16 +67,16 @@ assert.equal(
 assert.equal(monetizacaoNavigation.anuncioIdLegadoSeguro(anuncioId), anuncioId)
 assert.equal(monetizacaoNavigation.anuncioIdLegadoSeguro([anuncioId, anuncioId]), null)
 assert.equal(monetizacaoNavigation.anuncioIdLegadoSeguro('https://example.com'), null)
-const hrefs = ['/admin/dashboard', '/admin/creditos', '/admin/compliance', '/admin/compliance#admin-logs', '/admin/compliance#legal-acceptances']
-assert.equal(navigation.activeAdminSidebarHref(hrefs, '/admin/compliance', '#legal-acceptances'), '/admin/compliance#legal-acceptances')
+const hrefs = ['/admin/dashboard', '/admin/creditos', '/admin/compliance', '/admin/compliance#visitor-logs', '/admin/compliance#visitor-document-fallback']
+assert.equal(navigation.activeAdminSidebarHref(hrefs, '/admin/compliance', '#visitor-logs'), '/admin/compliance#visitor-logs')
 assert.equal(navigation.activeAdminSidebarHref(hrefs, '/admin/compliance', '#unknown'), '/admin/compliance')
 assert.equal(navigation.activeAdminSidebarHref(hrefs, '/admin/creditos', ''), '/admin/creditos')
 
 const menuEntries = [...sidebarSource.matchAll(/label:\s*'([^']+)'[\s\S]*?href:\s*'([^']+)'[\s\S]*?section:\s*'([^']+)'/g)]
   .map((match) => ({ label: match[1], href: match[2], section: match[3] }))
 
-assert.equal(menuEntries.length, 22, 'O menu administrativo deve manter os 22 itens canônicos.')
-assert.equal(new Set(menuEntries.map((item) => item.href)).size, 22, 'Os destinos do menu devem ser únicos.')
+assert.equal(menuEntries.length, 19, 'O menu administrativo deve manter os 19 itens canônicos.')
+assert.equal(new Set(menuEntries.map((item) => item.href)).size, 19, 'Os destinos do menu devem ser únicos.')
 assert.deepEqual(
   menuEntries.filter((item) => item.section === 'Operação').slice(0, 5).map((item) => item.label),
   ['Anúncios', 'Gestão de Stories', 'Usuários', 'Tickets', 'Denúncias'],
@@ -98,13 +98,14 @@ assert.ok(!menuEntries.some((item) => item.label === 'Benefícios premium'))
 
 const adminMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'ADMIN')
 const moderatorMenu = sidebarUtils.filterSidebarLinksByRole(menuEntries, 'MODERADOR')
-assert.equal(adminMenu.length, 22)
-assert.equal(moderatorMenu.length, 16)
-for (const restricted of ['/admin/financeiro', '/admin/creditos', '/admin/termos-footer', '/admin/blog', '/admin/staff', '/admin/stories']) {
+assert.equal(adminMenu.length, 19)
+assert.equal(moderatorMenu.length, 10)
+for (const restricted of ['/admin/financeiro', '/admin/creditos', '/admin/termos-footer', '/admin/blog', '/admin/staff', '/admin/stories', '/admin/compliance']) {
   assert.ok(!moderatorMenu.some((item) => item.href === restricted))
 }
 assert.equal(sidebarUtils.canAccessRoute('/admin/anuncios', 'MODERADOR'), true)
-assert.equal(sidebarUtils.canAccessRoute('/admin/compliance#visitor-logs', 'MODERADOR'), true)
+assert.ok(!moderatorMenu.some((item) => item.href.startsWith('/admin/compliance')))
+assert.equal(sidebarUtils.canAccessRoute('/admin/compliance#visitor-logs', 'MODERADOR'), false)
 assert.equal(sidebarUtils.canAccessRoute('/admin/creditos?aba=beneficios', 'MODERADOR'), false)
 assert.equal(sidebarUtils.canAccessRoute('/admin/beneficios-premium', 'MODERADOR'), false)
 assert.equal(sidebarUtils.canAccessRoute('/admin/stories', 'MODERADOR'), false)

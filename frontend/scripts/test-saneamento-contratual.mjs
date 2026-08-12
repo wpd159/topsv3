@@ -119,10 +119,10 @@ const preservedSurfaces = {
     'SEO description', 'Sitemap priority', 'Change frequency',
   ],
   'app/(painel-admin)/admin/compliance/page.tsx': [
-    'Auditoria administrativa', 'Exportar CSV', 'Aceites juridicos', 'Logs visitantes',
+    'Compliance', 'Monitoramento', 'Evidencias e governanca', 'Logs visitantes',
     'Documentos visitantes', 'Visualizar documento', 'Aprovar', 'Rejeitar',
-    'Motivo da decisao', 'Historico da decisao', 'Risco por sessao', 'Eventos criticos',
-    'Score', 'Falhas', 'Ultimo motivo', 'Salvar configuracoes',
+    'Motivo da decisao', 'Historico da decisao', 'Risco por sessao',
+    'Score', 'Falhas', 'Ultimo motivo', 'Abrir', 'Voltar ao hub',
   ],
   'components/chat/sidebar-chat.tsx': ['Nova conversa', 'Digite o username', 'Buscar conversa', 'Iniciar conversa'],
   'components/chat/chat.tsx': ['Ver anuncios', 'Digite uma mensagem', 'Enviar mensagem'],

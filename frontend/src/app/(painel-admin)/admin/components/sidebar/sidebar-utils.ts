@@ -9,6 +9,7 @@ const MODERATOR_RESTRICTED_ROUTES = [
   '/admin/termos-footer',
   '/admin/blog',
   '/admin/stories',
+  '/admin/compliance',
 ]
 
 function normalizedRoute(route: string) {
