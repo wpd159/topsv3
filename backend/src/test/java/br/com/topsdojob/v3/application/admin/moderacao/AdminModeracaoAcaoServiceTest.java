@@ -16,6 +16,7 @@ import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.documento.DocumentoUsuarioEntity;
+import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -34,8 +35,10 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.lang.reflect.Constructor;
@@ -96,6 +99,7 @@ class AdminModeracaoAcaoServiceTest {
     void anuncioPendenteNaoEhPublicadoSemKycAprovado() {
         UUID anuncioId = UUID.randomUUID();
         UUID usuarioId = UUID.randomUUID();
+        UUID revisaoId = UUID.randomUUID();
         UUID envioId = UUID.randomUUID();
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         ReflectionTestUtils.setField(anuncio, "id", anuncioId);
@@ -112,6 +116,13 @@ class AdminModeracaoAcaoServiceTest {
                 envioId,
                 br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ParteDocumentoUsuario.FRENTE,
                 OffsetDateTime.parse("2026-08-01T12:00:00Z"));
+        RevisaoAnuncioEntity revisao = RevisaoAnuncioEntity.abrir(
+                revisaoId,
+                anuncioId,
+                TipoRevisaoAnuncio.CRIACAO,
+                "{}",
+                UUID.randomUUID(),
+                OffsetDateTime.parse("2026-08-01T12:00:00Z"));
 
         when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
         when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
@@ -122,6 +133,10 @@ class AdminModeracaoAcaoServiceTest {
         when(documentoRepository
                 .findByEnvioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByParteAsc(envioId))
                 .thenReturn(List.of(documento));
+        when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
+                anuncioId,
+                List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
+                .thenReturn(Optional.of(revisao));
 
         assertThatThrownBy(() -> service.aprovarEPublicarAnuncio(anuncioId, principal(), "req-kyc-pendente"))
                 .isInstanceOf(ResponseStatusException.class)

@@ -172,8 +172,6 @@ public class AdminModeracaoAcaoService {
                     "estado do anuncio impede aprovacao e publicacao");
         }
 
-        validarKycAprovado(anuncio.getUsuarioId());
-
         RevisaoAnuncioEntity revisao = revisaoRepository
                 .findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
                         anuncioId,
@@ -225,9 +223,6 @@ public class AdminModeracaoAcaoService {
         if (!revisao.getAnuncioId().equals(anuncio.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao nao pertence ao anuncio informado");
         }
-        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
-            validarKycAprovado(anuncio.getUsuarioId());
-        }
         return decidirRevisaoCarregada(revisao, anuncio, decisao, motivo, actor, requestId);
     }
 
@@ -262,6 +257,9 @@ public class AdminModeracaoAcaoService {
                     decisao == AdminDecisaoModeracaoAcao.APROVAR
                             ? "estado do anuncio impede aprovacao e publicacao"
                             : "estado do anuncio impede reprovacao");
+        }
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+            validarKycAprovado(anuncio.getUsuarioId());
         }
         OffsetDateTime agora = agora();
         String antes = snapshotRevisao(revisao, anuncio, null, null);

@@ -17,6 +17,7 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEnt
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.OutboxEventoEntity;
+import br.com.topsdojob.v3.persistence.entity.documento.DocumentoUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.moderacao.RevisaoAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
@@ -30,7 +31,9 @@ import br.com.topsdojob.v3.persistence.repository.OutboxEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ParteDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoRevisaoAnuncio;
@@ -87,7 +90,7 @@ class AdminModeracaoAnuncioServiceTest {
 
     @Test
     void aprovaEPublicaAnuncioSemAlterarMidiasERegistraAtorRequestId() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixtureComKycValidado();
 
         var response = decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null);
 
@@ -110,7 +113,7 @@ class AdminModeracaoAnuncioServiceTest {
 
     @Test
     void operacaoUnicaAprovaRevisaoAbertaEPublicaNaMesmaChamada() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixtureComKycValidado();
         when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
                 fixture.anuncio().getId(),
                 List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
@@ -132,7 +135,7 @@ class AdminModeracaoAnuncioServiceTest {
 
     @Test
     void operacaoUnicaCriaEFinalizaRevisaoSemEstadoIntermediarioExterno() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixtureComKycValidado();
         when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
                 fixture.anuncio().getId(),
                 List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
@@ -156,7 +159,7 @@ class AdminModeracaoAnuncioServiceTest {
 
     @Test
     void retryDaOperacaoUnicaNaoDuplicaRevisaoDecisaoOuAuditoria() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixtureComKycValidado();
         when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
                 fixture.anuncio().getId(),
                 List.of(StatusRevisaoAnuncio.ABERTA, StatusRevisaoAnuncio.EM_ANALISE)))
@@ -175,6 +178,9 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(retry.mensagem()).contains("ja estava aprovado e publicado");
         verify(decisaoRepository, times(1)).save(any());
         verify(auditoriaRepository, times(1)).save(any());
+        verify(documentoRepository, times(1))
+                .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(
+                        fixture.usuario().getId());
     }
 
     @Test
@@ -255,7 +261,7 @@ class AdminModeracaoAnuncioServiceTest {
 
     @Test
     void aprovacaoRepetidaEhIdempotenteSemNovaDecisaoOuAuditoria() {
-        Fixture fixture = fixture();
+        Fixture fixture = fixtureComKycValidado();
         var primeira = decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null);
         OffsetDateTime primeiraPublicacao = fixture.anuncio().getUltimaPublicacaoEm();
 
@@ -268,6 +274,36 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(fixture.anuncio().getUltimaPublicacaoEm()).isEqualTo(primeiraPublicacao);
         verify(decisaoRepository, times(1)).save(any());
         verify(auditoriaRepository, times(1)).save(any());
+        verify(documentoRepository, times(1))
+                .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(
+                        fixture.usuario().getId());
+    }
+
+    @Test
+    void anuncioElegivelSemEnvioDocumentalRetornaConflitoKyc() {
+        Fixture fixture = fixture();
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("KYC ainda nao foi enviada");
+
+        verify(decisaoRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
+    }
+
+    @Test
+    void documentoKycReprovadoNaoPermiteNovaAprovacao() {
+        Fixture fixture = fixture();
+        configurarKyc(fixture, StatusDocumentoUsuario.REJEITADO);
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("KYC ainda nao foi aprovada");
+
+        verify(decisaoRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test
@@ -308,6 +344,7 @@ class AdminModeracaoAnuncioServiceTest {
                 .hasMessageContaining("estado do anuncio impede");
 
         verify(decisaoRepository, never()).save(any());
+        verifyNoInteractions(documentoRepository);
         verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
     }
 
@@ -322,6 +359,7 @@ class AdminModeracaoAnuncioServiceTest {
                 .hasMessageContaining("estado do anuncio impede");
 
         verify(decisaoRepository, never()).save(any());
+        verifyNoInteractions(documentoRepository);
         verifyNoInteractions(midiaRepository, arquivoRepository, storageService);
     }
 
@@ -369,6 +407,7 @@ class AdminModeracaoAnuncioServiceTest {
                 .hasMessageContaining("estado do anuncio");
 
         verify(decisaoRepository, never()).save(any());
+        verifyNoInteractions(documentoRepository);
     }
 
     @Test
@@ -391,6 +430,7 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(response.auditoriaRegistrada()).isTrue();
         assertThat(response.mensagem()).contains("publicado agora");
         verify(decisaoRepository, never()).save(any());
+        verifyNoInteractions(documentoRepository);
         ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
         verify(auditoriaRepository).save(audit.capture());
         assertThat(audit.getValue().getAcao())
@@ -442,6 +482,36 @@ class AdminModeracaoAnuncioServiceTest {
                 new AdminDecidirRevisaoRequestDto(decisao, motivo, null, null),
                 fixture.actor(),
                 "req-moderacao-anuncio");
+    }
+
+    private Fixture fixtureComKycValidado() {
+        Fixture fixture = fixture();
+        configurarKyc(fixture, StatusDocumentoUsuario.VALIDADO);
+        return fixture;
+    }
+
+    private void configurarKyc(Fixture fixture, StatusDocumentoUsuario status) {
+        UUID envioId = UUID.randomUUID();
+        OffsetDateTime agora = OffsetDateTime.parse("2026-07-22T12:01:00Z");
+        DocumentoUsuarioEntity documento = DocumentoUsuarioEntity.criarPendente(
+                UUID.randomUUID(),
+                fixture.usuario().getId(),
+                UUID.randomUUID(),
+                envioId,
+                ParteDocumentoUsuario.FRENTE,
+                agora.minusMinutes(1));
+        documento.aplicarDecisao(
+                status,
+                fixture.actor().usuarioId(),
+                status == StatusDocumentoUsuario.REJEITADO ? "documento rejeitado no teste" : null,
+                agora);
+        when(documentoRepository
+                .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(
+                        fixture.usuario().getId()))
+                .thenReturn(List.of(documento));
+        when(documentoRepository
+                .findByEnvioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByParteAsc(envioId))
+                .thenReturn(List.of(documento));
     }
 
     private Fixture fixture() {
