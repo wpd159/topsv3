@@ -112,6 +112,8 @@ assert.equal(sidebarUtils.canAccessRoute('/admin/stories', 'MODERADOR'), false)
 assert.equal(sidebarUtils.canAccessRoute('/admin/dashboard', 'USUARIO'), false)
 
 assert.ok(!login.includes('/admin/stories'))
+assert.match(login, /src="\/logo-finallllll\.webp"/)
+assert.doesNotMatch(login, /src="\/logo\.webp"/)
 assert.match(login, /resolveAdminPostLoginSearch/)
 assert.equal((login.match(/router\.replace\(postLoginDestination\(\)\)/g) || []).length, 2)
 assert.match(adminRoot, /redirect\(ADMIN_DASHBOARD_PATH\)/)

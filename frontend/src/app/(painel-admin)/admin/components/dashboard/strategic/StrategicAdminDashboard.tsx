@@ -328,6 +328,10 @@ export function StrategicAdminDashboard() {
         </div>
       ) : null}
 
+      {!sessionError && session ? (
+        <AdminDashboardAnalytics session={session} refreshKey={refreshKey} mode="performance" />
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((item) => (
           <Metric key={item.id} item={item} state={sources[item.source]} />
@@ -341,7 +345,7 @@ export function StrategicAdminDashboard() {
       ) : null}
 
       {!sessionError && session ? (
-        <AdminDashboardAnalytics session={session} refreshKey={refreshKey} />
+        <AdminDashboardAnalytics session={session} refreshKey={refreshKey} mode="analytics" />
       ) : null}
     </section>
   )

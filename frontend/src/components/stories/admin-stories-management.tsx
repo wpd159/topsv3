@@ -323,7 +323,7 @@ export function AdminStoriesManagement() {
         {!loading && !error && (!data || data.itens.length === 0) ? <p className="mt-5 text-sm text-gray-500">Nenhum Story encontrado para os filtros informados.</p> : null}
 
         {data && data.itens.length > 0 ? (
-          <div className="mt-5 overflow-x-auto">
+          <div className="mt-5 overflow-x-auto [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10 [&_thead]:bg-white" role="region" aria-label="Tabela de Stories" tabIndex={0}>
             <table className="min-w-[760px] w-full text-left text-sm">
               <thead className="border-b border-gray-200 text-xs uppercase text-gray-500">
                 <tr>

@@ -55,7 +55,7 @@ export default function AdminLoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-[#151619] px-4 py-10">
       <section className="w-full max-w-md rounded-lg border border-white/10 bg-white p-6 shadow-xl sm:p-8">
         <div className="flex justify-center">
-          <Image src="/logo.webp" alt="Tops do Job" width={190} height={64} priority className="h-auto w-44" />
+          <Image src="/logo-finallllll.webp" alt="Tops do Job" width={190} height={64} priority className="h-auto w-44" />
         </div>
         <h1 className="mt-6 text-center text-2xl font-bold text-gray-950">Área administrativa</h1>
         <p className="mt-2 text-center text-sm text-gray-600">Entre com uma conta autorizada para continuar.</p>

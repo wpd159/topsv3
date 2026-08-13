@@ -442,7 +442,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
             ))}
           </div>
 
-          <div className="hidden overflow-x-auto border border-zinc-200 bg-white md:block">
+          <div className="hidden overflow-x-auto border border-zinc-200 bg-white md:block [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10" role="region" aria-label="Tabela de anuncios" tabIndex={0}>
             <table className="w-full min-w-[1320px] text-left text-sm">
               <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase text-zinc-500"><tr><th className="px-4 py-3">Anúncio</th><th className="px-4 py-3">Proprietário</th><th className="px-4 py-3">Localização</th><th className="px-4 py-3">Estado / moderação</th><th className="px-4 py-3">Premium / Stories</th><th className="px-4 py-3">Métricas</th><th className="px-4 py-3">Criação</th><th className="px-4 py-3 text-right">Ação</th></tr></thead>
               <tbody className="divide-y divide-zinc-100">
@@ -452,7 +452,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
                     <td className="px-4 py-3"><Owner item={item} /></td>
                     <td className="px-4 py-3 text-zinc-600">{locationLabel(item)}</td>
                     <td className="px-4 py-3"><StatusBadges item={item} /></td>
-                    <td className="px-4 py-3"><div className="min-w-[210px] space-y-2">
+                    <td className="px-4 py-3"><div className="min-w-[280px] space-y-3">
                       <AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} />
                       <AdminStoryQuickAction item={item} canManage={canManageStories} busy={busyStoryIds.has(item.id)} onPublish={(row) => void addToStories(row)} />
                     </div></td>

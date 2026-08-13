@@ -45,9 +45,9 @@ export default function FinanceiroTabela({ pagina, loading, error, onRetry, onPa
           <ContractState error={error} onRetry={onRetry} />
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" role="region" aria-label="Tabela de transacoes financeiras" tabIndex={0}>
           <Table className="min-w-[78rem]">
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-white">
               <TableRow>
                 <TableHead>ID</TableHead>
                 <TableHead>Usuário</TableHead>

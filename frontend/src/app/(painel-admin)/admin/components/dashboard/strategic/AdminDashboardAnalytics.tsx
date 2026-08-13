@@ -27,9 +27,11 @@ function errorMessage(error: unknown) {
 export function AdminDashboardAnalytics({
   session,
   refreshKey,
+  mode,
 }: {
   session: AdminSession
   refreshKey: number
+  mode: 'performance' | 'analytics'
 }) {
   const [period, setPeriod] = useState<Period>(30)
   const [daily, setDaily] = useState<AdminDashboardDailyPerformance | null>(null)
@@ -45,7 +47,7 @@ export function AdminDashboardAnalytics({
   const isAdmin = session.papeis.includes('ADMIN')
 
   useEffect(() => {
-    if (!canRead) return
+    if (!canRead || mode !== 'performance') return
     const controller = new AbortController()
     setDailyLoading(true)
     setDailyError(null)
@@ -58,10 +60,10 @@ export function AdminDashboardAnalytics({
         if (!controller.signal.aborted) setDailyLoading(false)
       })
     return () => controller.abort()
-  }, [canRead, period, refreshKey, dailyRetry])
+  }, [canRead, mode, period, refreshKey, dailyRetry])
 
   useEffect(() => {
-    if (!canRead) return
+    if (!canRead || mode !== 'analytics') return
     const controller = new AbortController()
     setAnalysesLoading(true)
     setAnalysesError(null)
@@ -74,27 +76,39 @@ export function AdminDashboardAnalytics({
         if (!controller.signal.aborted) setAnalysesLoading(false)
       })
     return () => controller.abort()
-  }, [canRead, refreshKey, analysesRetry])
+  }, [canRead, mode, refreshKey, analysesRetry])
 
   if (!canRead) return null
+
+  if (mode === 'performance') {
+    return (
+      <div className="space-y-4">
+        <header>
+          <h2 className="text-xl font-bold text-zinc-950">Desempenho</h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            M&eacute;tricas internas agregadas, sem eventos do GA4.
+          </p>
+        </header>
+        <StrategicPerformanceChart
+          data={daily}
+          loading={dailyLoading}
+          period={period}
+          onPeriodChange={setPeriod}
+          error={dailyError}
+          onRetry={() => setDailyRetry((value) => value + 1)}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8 border-t border-zinc-200 pt-8">
       <header>
-        <h2 className="text-xl font-bold text-zinc-950">Desempenho e rankings</h2>
+        <h2 className="text-xl font-bold text-zinc-950">Rankings e an&aacute;lises</h2>
         <p className="mt-1 text-sm text-zinc-600">
           Métricas internas agregadas, sem eventos do GA4.
         </p>
       </header>
-
-      <StrategicPerformanceChart
-        data={daily}
-        loading={dailyLoading}
-        period={period}
-        onPeriodChange={setPeriod}
-        error={dailyError}
-        onRetry={() => setDailyRetry((value) => value + 1)}
-      />
 
       <TopWhatsappHojeCard refreshKey={refreshKey} />
 

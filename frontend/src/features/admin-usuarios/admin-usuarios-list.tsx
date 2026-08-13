@@ -291,9 +291,9 @@ export function AdminUsuariosList() {
 
       {pageData?.itens.length ? (
         <>
-          <div className="hidden overflow-x-auto border-y border-zinc-200 md:block">
+          <div className="hidden overflow-x-auto border-y border-zinc-200 md:block" role="region" aria-label="Tabela de usuarios" tabIndex={0}>
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 z-10 bg-white">
                 <TableRow>
                   <TableHead>Usuário</TableHead>
                   <TableHead>Local</TableHead>

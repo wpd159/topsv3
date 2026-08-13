@@ -383,6 +383,7 @@ export function BarraLocalizacao() {
   }, [selectedCidade?.nome, selectedEstado?.nome])
 
   const limparTudo = () => {
+    setMobileRefinadoresOpen(false)
     setOpenEstado(false)
     setOpenCidade(false)
     setOpenBairro(false)
@@ -402,8 +403,8 @@ export function BarraLocalizacao() {
     })
   }
 
-  const refinadoresAtivos =
-    Boolean(selectedEstado) || Boolean(selectedCidade) || Boolean(selectedBairro)
+  const refinadoresAtivosCount = [selectedEstado, selectedCidade, selectedBairro].filter(Boolean).length
+  const refinadoresAtivos = refinadoresAtivosCount > 0
 
   return (
     <div className="w-full rounded-[26px] border border-pink-100 bg-white p-3 shadow-[0_0_20px_rgba(252,30,173,0.09)] sm:p-4 lg:p-5">
@@ -465,7 +466,7 @@ export function BarraLocalizacao() {
             Filtros
             {refinadoresAtivos ? (
               <span className="rounded-full bg-pink-100 px-2 py-0.5 text-[10px] font-semibold text-pink-700">
-                ativos
+                {refinadoresAtivosCount}
               </span>
             ) : null}
           </span>
@@ -477,6 +478,23 @@ export function BarraLocalizacao() {
             aria-hidden
           />
         </Button>
+
+        {refinadoresAtivos && !mobileRefinadoresOpen ? (
+          <div className="flex min-w-0 items-center justify-between gap-3 rounded-2xl bg-gray-50 px-3 py-2 md:hidden">
+            <p className="min-w-0 truncate text-xs text-gray-700" aria-label="Resumo dos filtros ativos">
+              {[selectedEstado?.uf, selectedCidade?.nome, selectedBairro?.nome]
+                .filter(Boolean)
+                .join(' \u00b7 ')}
+            </p>
+            <button
+              type="button"
+              className="shrink-0 text-xs font-semibold text-pink-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500"
+              onClick={limparTudo}
+            >
+              Limpar filtros
+            </button>
+          </div>
+        ) : null}
 
         <div
           id="barra-localizacao-refinadores"

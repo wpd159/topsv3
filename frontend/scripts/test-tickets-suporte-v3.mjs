@@ -33,6 +33,11 @@ for (const file of [userPage, adminPage, adminDetail, adminChat, floatingButton,
   assert.ok(!file.includes('type="file"'), 'Anexos nao foram comprovados na producao.')
 }
 
+assert.ok(floatingButton.includes('MutationObserver'), 'O atalho flutuante deve acompanhar a abertura de modais.')
+assert.ok(floatingButton.includes('[data-slot="dialog-content"][data-state="open"]'), 'Dialogos abertos devem ocultar o atalho flutuante.')
+assert.ok(floatingButton.includes('!open && !modalOpen'), 'O atalho nao pode sobrepor o proprio painel nem outros modais.')
+assert.ok(floatingButton.includes('safe-area-inset-bottom'), 'O posicionamento mobile deve respeitar a safe area.')
+
 for (const label of ['Abrir ticket', 'Meus tickets', 'Abertos', 'Encerrados', 'Enviar resposta']) {
   assert.ok(userPage.includes(label), `Fluxo do usuario ausente: ${label}.`)
 }

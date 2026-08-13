@@ -62,10 +62,21 @@ assert.match(api, /\/dashboard\/analises/)
 assert.match(api, /credentials: 'include'/)
 assert.match(api, /cache: 'no-store'/)
 assert.match(dashboard, /<AdminDashboardAnalytics/)
+const cardsIndex = dashboard.indexOf('cards.map')
+const performanceIndex = dashboard.indexOf('mode="performance"')
+const analyticsIndex = dashboard.indexOf('mode="analytics"')
 assert.ok(
-  dashboard.indexOf('<AdminDashboardAnalytics') > dashboard.indexOf('cards.map'),
-  'Os blocos analíticos devem aparecer depois dos cards existentes.',
+  performanceIndex > -1 && performanceIndex < cardsIndex,
+  'O grafico de desempenho deve aparecer antes dos cards de indicadores.',
 )
+assert.ok(
+  analyticsIndex > cardsIndex,
+  'Rankings e analises devem permanecer depois dos cards de indicadores.',
+)
+assert.equal((dashboard.match(/<AdminDashboardAnalytics/g) ?? []).length, 2)
+assert.match(analytics, /mode: 'performance' \| 'analytics'/)
+assert.match(analytics, /mode !== 'performance'/)
+assert.match(analytics, /mode !== 'analytics'/)
 assert.match(analytics, /dailyError/)
 assert.match(analytics, /analysesError/)
 assert.match(analytics, /papeis\.includes\('ADMIN'\)/)

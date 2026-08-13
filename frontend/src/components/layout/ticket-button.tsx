@@ -24,6 +24,7 @@ export default function AbrirTicketButton() {
   const pathname = usePathname()
   const { usuario } = useAuth()
   const [open, setOpen] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
   const [problema, setProblema] = useState<MotivoUI | ''>('')
   const [assunto, setAssunto] = useState('')
   const [descricao, setDescricao] = useState('')
@@ -55,6 +56,21 @@ export default function AbrirTicketButton() {
     return () => window.removeEventListener('open-suporte-ticket', handler as EventListener)
   }, [])
 
+  useEffect(() => {
+    const syncModalState = () => {
+      setModalOpen(Boolean(document.querySelector('[data-slot="dialog-content"][data-state="open"]')))
+    }
+    syncModalState()
+    const observer = new MutationObserver(syncModalState)
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    })
+    return () => observer.disconnect()
+  }, [])
+
   // não renderiza em rotas internas
   if (!usuario || pathname.startsWith('/admin') || pathname.startsWith('/chat')) return null
 
@@ -73,10 +89,10 @@ export default function AbrirTicketButton() {
 
   return (
     <>
-      {!hideFab && (
+      {!hideFab && !open && !modalOpen && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-4 right-6 z-50 bg-[#FC1EAD] hover:bg-[#e01a9a] text-white font-semibold rounded-full w-14 h-14 flex items-center justify-center shadow-lg transition-all hover:scale-105"
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+5rem)] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[#FC1EAD] font-semibold text-white shadow-lg transition-all hover:scale-105 hover:bg-[#e01a9a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C51683] focus-visible:ring-offset-2 sm:bottom-4 sm:right-6"
           aria-label="Abrir suporte"
         >
           <ChatBubbleLeftRightIcon className="w-7 h-7" />

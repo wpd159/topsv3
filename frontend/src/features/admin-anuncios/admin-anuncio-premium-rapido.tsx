@@ -128,7 +128,7 @@ export function AdminAnuncioPremiumRapido({
   if (catalog.length === 0) return <span className="text-xs text-zinc-500">Catálogo vazio</span>
 
   return (
-    <div className="flex max-w-[280px] flex-wrap gap-1.5">
+    <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
       {catalog.map((item) => {
         const latest = latestByCode.get(item.codigo)
         const isActive = active(latest)
@@ -140,14 +140,14 @@ export function AdminAnuncioPremiumRapido({
             size="sm"
             variant="outline"
             disabled={!canManage || busy || isPending || (!isActive && (!item.ativo || options.length === 0))}
-            className={`h-7 max-w-full px-2 text-[11px] ${isActive ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : isPending ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-zinc-200 bg-white text-zinc-700'}`}
+            className={`h-10 w-full justify-start px-2 text-left text-[11px] ${isActive ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : isPending ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-zinc-200 bg-white text-zinc-700'}`}
             title={canManage ? `${item.nome}: ${isActive ? 'ativo' : isPending ? 'pendente' : 'inativo'}` : `${item.nome}: somente leitura`}
           >
             <Sparkles className="mr-1 h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="truncate">{item.nome}</span>
+            <span className="line-clamp-2 leading-tight">{item.nome}</span>
           </Button>
         )
-        if (!canManage || isPending) return <span key={item.id}>{trigger}</span>
+        if (!canManage || isPending) return <span className="block w-full" key={item.id}>{trigger}</span>
         return (
           <Popover key={item.id} open={openCode === item.codigo} onOpenChange={(value) => open(item, value)}>
             <PopoverTrigger asChild>{trigger}</PopoverTrigger>
