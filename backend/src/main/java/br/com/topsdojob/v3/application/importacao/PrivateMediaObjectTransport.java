@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
+import br.com.topsdojob.v3.importacao.midia.GeradorChaveDestinoMidiaMigracao;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
@@ -45,11 +46,13 @@ public final class PrivateMediaObjectTransport {
       }
 
       String checksum = sha256(content);
-      String destinationKey = candidate.destinationPrefix()
-          + "importacao/anuncios/" + candidate.sourceAdId()
-          + "/midias/" + candidate.logicalMediaHash()
-          + "/" + candidate.variant().manifestValue()
-          + "/" + checksum + "." + detected.extension();
+      String destinationKey = GeradorChaveDestinoMidiaMigracao.caminhoAnuncio(
+          candidate.destinationPrefix(),
+          Long.toString(candidate.sourceAdId()),
+          candidate.logicalMediaHash(),
+          candidate.variant().manifestValue(),
+          checksum,
+          detected.extension());
 
       if (destination.exists(StorageArea.PRIVATE_MEDIA, destinationKey)) {
         return validateDestination(
