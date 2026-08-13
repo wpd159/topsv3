@@ -171,6 +171,27 @@ class AdminKycServiceTest {
   }
 
   @Test
+  void retryDaDecisaoKycNaoDuplicaAuditoria() {
+    var request = new AdminKycDecisaoRequestDto(
+        AdminDecisaoModeracaoAcao.APROVAR,
+        null);
+
+    service.decidir(
+        envioId,
+        request,
+        admin,
+        "req-approve-retry");
+
+    assertThatThrownBy(() -> service.decidir(
+        envioId,
+        request,
+        admin,
+        "req-approve-retry"))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+    verify(auditoriaRepository).save(any());
+  }
+  @Test
   void rejeitaComMotivoObrigatorio() {
     var rejeitado = service.decidir(
         envioId,

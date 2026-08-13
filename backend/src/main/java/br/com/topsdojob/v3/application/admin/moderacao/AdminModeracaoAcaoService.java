@@ -31,6 +31,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.EscopoBloqueioJur
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDocumentoUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusOutbox;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusRevisaoAnuncio;
@@ -171,6 +172,8 @@ public class AdminModeracaoAcaoService {
                     "estado do anuncio impede aprovacao e publicacao");
         }
 
+        validarKycAprovado(anuncio.getUsuarioId());
+
         RevisaoAnuncioEntity revisao = revisaoRepository
                 .findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(
                         anuncioId,
@@ -221,6 +224,9 @@ public class AdminModeracaoAcaoService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
         if (!revisao.getAnuncioId().equals(anuncio.getId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "revisao nao pertence ao anuncio informado");
+        }
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+            validarKycAprovado(anuncio.getUsuarioId());
         }
         return decidirRevisaoCarregada(revisao, anuncio, decisao, motivo, actor, requestId);
     }
@@ -692,6 +698,28 @@ public class AdminModeracaoAcaoService {
                             : "bloqueio juridico impede reprovacao");
         }
         return new ContextoPublicacao(anuncio, usuario);
+    }
+
+    private void validarKycAprovado(UUID usuarioId) {
+        var documentos = documentoUsuarioRepository
+                .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(usuarioId);
+        if (documentos.isEmpty() || documentos.get(0).getEnvioId() == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "documentacao KYC ainda nao foi enviada");
+        }
+
+        var envioAtual = documentoUsuarioRepository
+                .findByEnvioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByParteAsc(
+                        documentos.get(0).getEnvioId());
+        boolean aprovado = !envioAtual.isEmpty()
+                && envioAtual.stream()
+                        .allMatch(documento -> documento.getStatus() == StatusDocumentoUsuario.VALIDADO);
+        if (!aprovado) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "documentacao KYC ainda nao foi aprovada");
+        }
     }
 
     private AdminAcaoModeracaoResponseDto repetirOuRegularizarAprovacao(

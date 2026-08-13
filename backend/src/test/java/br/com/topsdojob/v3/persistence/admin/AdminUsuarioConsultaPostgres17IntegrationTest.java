@@ -126,7 +126,7 @@ class AdminUsuarioConsultaPostgres17IntegrationTest {
                     "RECENTES",
                     PageRequest.of(0, 20));
             assertThat(byName).singleElement().satisfies(user ->
-                    assertThat(user.nomeCivil()).isEqualTo("QA Aprovado"));
+                    assertThat(user.nomeCivil()).isEqualTo("QA Aprov\u00e1do"));
 
             var suspended = repository.listar(
                     null,

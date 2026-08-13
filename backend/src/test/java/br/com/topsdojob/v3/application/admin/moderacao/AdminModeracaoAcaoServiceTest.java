@@ -15,8 +15,10 @@ import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModerac
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
+import br.com.topsdojob.v3.persistence.entity.documento.DocumentoUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioBloqueioJuridicoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
@@ -31,6 +33,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -86,6 +90,48 @@ class AdminModeracaoAcaoServiceTest {
                 fotosExtrasService,
                 "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
+    @Test
+    void anuncioPendenteNaoEhPublicadoSemKycAprovado() {
+        UUID anuncioId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        UUID envioId = UUID.randomUUID();
+        AnuncioEntity anuncio = entity(AnuncioEntity.class);
+        ReflectionTestUtils.setField(anuncio, "id", anuncioId);
+        ReflectionTestUtils.setField(anuncio, "usuarioId", usuarioId);
+        ReflectionTestUtils.setField(anuncio, "status", StatusAnuncio.PENDENTE_REVISAO);
+        ReflectionTestUtils.setField(anuncio, "statusModeracao", StatusModeracaoAnuncio.PENDENTE);
+        UsuarioEntity usuario = entity(UsuarioEntity.class);
+        ReflectionTestUtils.setField(usuario, "id", usuarioId);
+        ReflectionTestUtils.setField(usuario, "status", StatusUsuario.ATIVO);
+        DocumentoUsuarioEntity documento = DocumentoUsuarioEntity.criarPendente(
+                UUID.randomUUID(),
+                usuarioId,
+                UUID.randomUUID(),
+                envioId,
+                br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ParteDocumentoUsuario.FRENTE,
+                OffsetDateTime.parse("2026-08-01T12:00:00Z"));
+
+        when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+        when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(documentoRepository
+                .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(usuarioId))
+                .thenReturn(List.of(documento));
+        when(documentoRepository
+                .findByEnvioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByParteAsc(envioId))
+                .thenReturn(List.of(documento));
+
+        assertThatThrownBy(() -> service.aprovarEPublicarAnuncio(anuncioId, principal(), "req-kyc-pendente"))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("KYC ainda nao foi aprovada");
+
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
+        verify(revisaoRepository, never()).save(any());
+        verify(decisaoRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test
