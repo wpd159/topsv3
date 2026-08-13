@@ -5,6 +5,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -62,6 +63,7 @@ class AdminStaffControllerSecurityTest {
     UUID id = UUID.randomUUID();
     when(service.criar(any(), any(), any())).thenReturn(detalhe(id));
     when(service.atualizar(any(), any(), any(), any())).thenReturn(detalhe(id));
+    when(service.remover(any(), any(), any())).thenReturn(detalhe(id));
 
     mockMvc.perform(post("/api/admin/staff")
             .with(authentication(token(PapelUsuario.ADMIN, true)))
@@ -79,6 +81,17 @@ class AdminStaffControllerSecurityTest {
             .with(csrf())
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"nome\":\"QA Staff\",\"papel\":\"ADMIN\",\"ativo\":true,\"versao\":0}"))
+        .andExpect(status().isForbidden());
+    mockMvc.perform(delete("/api/admin/staff/{id}", id)
+            .with(authentication(token(PapelUsuario.ADMIN, true)))
+            .with(csrf()))
+        .andExpect(status().isOk());
+    mockMvc.perform(delete("/api/admin/staff/{id}", id)
+            .with(authentication(token(PapelUsuario.ADMIN, true))))
+        .andExpect(status().isForbidden());
+    mockMvc.perform(delete("/api/admin/staff/{id}", id)
+            .with(authentication(token(PapelUsuario.MODERADOR, true)))
+            .with(csrf()))
         .andExpect(status().isForbidden());
   }
 

@@ -15,6 +15,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -70,6 +71,14 @@ public class AdminStaffController {
       @AuthenticationPrincipal AdminUserPrincipal ator,
       HttpServletRequest request) {
     return semCache(service.atualizar(id, body, ator, RequestIdContext.current(request)));
+  }
+
+  @DeleteMapping("/{id}")
+  public ResponseEntity<Detalhe> remover(
+      @PathVariable UUID id,
+      @AuthenticationPrincipal AdminUserPrincipal ator,
+      HttpServletRequest request) {
+    return semCache(service.remover(id, ator, RequestIdContext.current(request)));
   }
 
   private <T> ResponseEntity<T> semCache(T body) {

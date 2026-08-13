@@ -10,10 +10,12 @@ import { ContractState } from '@/components/feedback/contract-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useAuth } from '@/context/AuthContext'
 import { getAdminStaffIndicators, listAdminStaff } from '@/features/admin-staff/api'
 import type { AdminStaffIndicators, AdminStaffPage } from '@/features/admin-staff/types'
 
 export default function AdminStaffPage() {
+  const { usuario } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -109,11 +111,18 @@ export default function AdminStaffPage() {
       </form>
 
       {error ? <ContractState error={error} onRetry={() => setReload((value) => value + 1)} /> : null}
-      {loading && !data ? <p className="py-16 text-center text-sm text-zinc-500">Carregando staff...</p> : null}
+      {loading && !data ? <p className="py-16 text-center text-sm text-zinc-600" role="status">Carregando staff...</p> : null}
       {!loading && !error && data?.itens.length === 0 ? (
         <div className="py-16 text-center"><UserCog className="mx-auto h-8 w-8 text-zinc-400" /><p className="mt-3 font-medium">Nenhum staff encontrado</p></div>
       ) : null}
-      {data?.itens.length ? <GerenciarStaffTable itens={data.itens} retorno={searchParams.toString()} /> : null}
+      {data?.itens.length ? (
+        <GerenciarStaffTable
+          itens={data.itens}
+          retorno={searchParams.toString()}
+          canDelete={usuario?.cargo === 'ADMIN'}
+          onRemoved={() => setReload((value) => value + 1)}
+        />
+      ) : null}
 
       {data && data.totalPaginas > 1 ? (
         <div className="flex items-center justify-between gap-3">

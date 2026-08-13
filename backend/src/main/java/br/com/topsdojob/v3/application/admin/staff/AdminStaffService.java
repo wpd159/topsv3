@@ -234,6 +234,52 @@ public class AdminStaffService {
     return detalhar(id);
   }
 
+  @Transactional
+  public Detalhe remover(UUID id, AdminUserPrincipal ator, String requestId) {
+    validarAtor(ator);
+    validarRequestId(requestId);
+    if (id.equals(ator.usuarioId())) {
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT,
+          "nao e permitido excluir o proprio acesso administrativo");
+    }
+    if (auditorias.existsByAcaoAndRecursoIdAndRequestId("STAFF_REMOVER", id, requestId)) {
+      return detalhar(id);
+    }
+
+    UsuarioEntity staff = usuarios.findByIdForUpdate(id)
+        .filter(usuario -> usuario.getTipoConta() == TipoContaUsuario.STAFF)
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "staff nao encontrado"));
+    PapelUsuario papel = papelAtual(id);
+    boolean ativo = "ATIVO".equals(staff.getStatus().name());
+    if (!ativo) {
+      return detalhar(id);
+    }
+    if (papel == PapelUsuario.ADMIN
+        && consulta.bloquearAdministradoresAtivos().size() <= 1) {
+      throw new ResponseStatusException(
+          HttpStatus.CONFLICT,
+          "o ultimo administrador ativo nao pode ser excluido");
+    }
+
+    OffsetDateTime agora = agora();
+    String antes = estadoJson(papel, true);
+    staff.atualizarStaff(staff.getNome(), false, agora);
+    usuarios.saveAndFlush(staff);
+    auditorias.save(AuditoriaEventoEntity.registrar(
+        UUID.randomUUID(),
+        ator.usuarioId(),
+        "STAFF_REMOVER",
+        RECURSO,
+        id,
+        antes,
+        estadoJson(papel, false),
+        requestId,
+        agora));
+    invalidarSessoesAposCommit(id);
+    return detalhar(id);
+  }
+
   private void invalidarSessoesAposCommit(UUID usuarioId) {
     if (!TransactionSynchronizationManager.isSynchronizationActive()) {
       sessions.invalidateAll(usuarioId);

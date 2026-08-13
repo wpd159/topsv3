@@ -15,6 +15,7 @@ import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Detalhe;
 import br.com.topsdojob.v3.application.admin.staff.AdminStaffDtos.Resumo;
 import br.com.topsdojob.v3.application.publico.auth.PublicSessionRegistry;
 import br.com.topsdojob.v3.application.operacional.outbox.OutboxEmailPayloadFactory;
+import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.CredencialUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.PapelUsuarioEntity;
 import br.com.topsdojob.v3.persistence.entity.usuario.UsuarioEntity;
@@ -139,6 +140,77 @@ class AdminStaffServiceTest {
         "req-deactivate");
 
     verify(sessions).invalidateAll(id);
+    verify(usuarios, never()).deleteById(any());
+  }
+
+  @Test
+  void removeStaffLogicamentePreservandoContaPapelEAuditoria() {
+    UUID id = UUID.randomUUID();
+    UsuarioEntity staff = UsuarioEntity.criarStaff(id, "Moderador QA", "moderador@example.invalid", true, agora());
+    when(usuarios.findByIdForUpdate(id)).thenReturn(Optional.of(staff));
+    when(papeis.findByUsuarioId(id)).thenReturn(List.of(
+        PapelUsuarioEntity.criarStaff(id, PapelUsuario.MODERADOR, admin().usuarioId(), agora())));
+    when(usuarios.saveAndFlush(staff)).thenReturn(staff);
+    when(consulta.detalhar(id)).thenReturn(Optional.of(resumo(id, "MODERADOR", false)));
+    when(consulta.permissoes(id)).thenReturn(List.of());
+    when(consulta.historico(id)).thenReturn(List.of());
+
+    Detalhe detalhe = service.remover(id, admin(), "req-staff-remove");
+
+    assertThat(detalhe.staff().ativo()).isFalse();
+    ArgumentCaptor<AuditoriaEventoEntity> auditoria = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+    verify(auditorias).save(auditoria.capture());
+    assertThat(auditoria.getValue().getAcao()).isEqualTo("STAFF_REMOVER");
+    verify(sessions).invalidateAll(id);
+    verify(usuarios, never()).deleteById(any());
+    verify(papeis, never()).deleteByUsuarioId(id);
+  }
+
+  @Test
+  void remocaoProtegeUltimoAdministradorAtivo() {
+    UUID id = UUID.randomUUID();
+    UsuarioEntity staff = UsuarioEntity.criarStaff(id, "Admin unico", "admin@example.invalid", true, agora());
+    when(usuarios.findByIdForUpdate(id)).thenReturn(Optional.of(staff));
+    when(papeis.findByUsuarioId(id)).thenReturn(List.of(
+        PapelUsuarioEntity.criarStaff(id, PapelUsuario.ADMIN, admin().usuarioId(), agora())));
+    when(consulta.bloquearAdministradoresAtivos()).thenReturn(List.of(id));
+
+    assertThatThrownBy(() -> service.remover(id, admin(), "req-remove-last-admin"))
+        .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+
+    verify(usuarios, never()).saveAndFlush(any());
+    verify(auditorias, never()).save(any());
+  }
+
+  @Test
+  void remocaoImpedeExcluirOProprioAcesso() {
+    UUID id = admin().usuarioId();
+
+    assertThatThrownBy(() -> service.remover(id, admin(), "req-remove-self"))
+        .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+
+    verify(usuarios, never()).findByIdForUpdate(any());
+    verify(auditorias, never()).save(any());
+  }
+
+  @Test
+  void retryDeStaffJaInativoNaoDuplicaAuditoriaOuInvalidacao() {
+    UUID id = UUID.randomUUID();
+    UsuarioEntity staff = UsuarioEntity.criarStaff(id, "Moderador QA", "moderador@example.invalid", false, agora());
+    when(usuarios.findByIdForUpdate(id)).thenReturn(Optional.of(staff));
+    when(papeis.findByUsuarioId(id)).thenReturn(List.of(
+        PapelUsuarioEntity.criarStaff(id, PapelUsuario.MODERADOR, admin().usuarioId(), agora())));
+    when(consulta.detalhar(id)).thenReturn(Optional.of(resumo(id, "MODERADOR", false)));
+    when(consulta.permissoes(id)).thenReturn(List.of());
+    when(consulta.historico(id)).thenReturn(List.of());
+
+    Detalhe detalhe = service.remover(id, admin(), "req-remove-retry");
+
+    assertThat(detalhe.staff().ativo()).isFalse();
+    verify(auditorias, never()).save(any());
+    verify(sessions, never()).invalidateAll(id);
     verify(usuarios, never()).deleteById(any());
   }
 

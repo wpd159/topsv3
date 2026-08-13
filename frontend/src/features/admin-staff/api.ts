@@ -82,3 +82,9 @@ export function updateAdminStaff(id: string, payload: AdminStaffUpdate) {
     body: JSON.stringify(payload),
   })
 }
+
+export function deleteAdminStaff(id: string) {
+  return request<AdminStaffDetail>(`/staff/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}

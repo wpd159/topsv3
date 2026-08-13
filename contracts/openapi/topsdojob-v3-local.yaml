@@ -7242,6 +7242,33 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
         "500": { $ref: "#/components/responses/InternalError" }
+    delete:
+      summary: Exclui logicamente uma conta de staff ativa
+      description: Desativa o acesso, invalida sessoes e preserva conta, papel e auditoria. Protege o proprio acesso e o ultimo ADMIN ativo.
+      operationId: deleteAdminStaff
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: staffId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Staff inativo ou retry idempotente reconciliado
+          headers:
+            Cache-Control:
+              schema: { type: string, example: no-store }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminStaffDetalhe" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
   /api/public/wizard-progress/sync:
     post:
       summary: Sincroniza o progresso operacional do wizard de anuncio
