@@ -3,6 +3,8 @@ package br.com.topsdojob.v3.importacao.model;
 public enum TipoEntidadeImportacao {
     USUARIO,
     ANUNCIO,
+    REVISAO_ANUNCIO,
+    REVISAO_FILHO,
     LOCALIDADE,
     MIDIA,
     STORY,
