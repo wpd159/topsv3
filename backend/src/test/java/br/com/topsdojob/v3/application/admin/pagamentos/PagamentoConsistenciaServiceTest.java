@@ -8,6 +8,7 @@ import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoConciliacaoEnt
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEventoEntity;
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoWebhookEntity;
+import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.MetodoPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento;
@@ -133,6 +134,39 @@ class PagamentoConsistenciaServiceTest {
                 .doesNotContain("valor");
     }
 
+    @Test
+    void historicoAprovadoPreservaEvidenciaSemExigirConciliacaoOperacional() {
+        UUID usuarioId = UUID.fromString("00000000-0000-4000-8000-000000000112");
+        PagamentoEntity historico = pagamento(
+                "00000000-0000-4000-8000-000000000727",
+                usuarioId,
+                ProvedorPagamento.EFI,
+                MetodoPagamento.PIX,
+                StatusInternoPagamento.APROVADO,
+                "HISTORICO_APPROVED",
+                null,
+                "historico-sanitizado");
+        ReflectionTestUtils.setField(historico, "ambiente", null);
+        ReflectionTestUtils.setField(
+                historico, "creditadoEm", OffsetDateTime.parse("2026-07-01T10:00:00Z"));
+
+        AdminPagamentoConsistenciaResumoDto resumo = service.consultar(
+                List.of(historico),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                OffsetDateTime.parse("2026-07-02T22:00:00Z"));
+
+        assertThat(historico.historicoNaoOperacional()).isTrue();
+        assertThat(resumo.itens())
+                .extracting("codigo")
+                .doesNotContain(
+                        PagamentoConsistenciaCodigo.PAGAMENTO_APROVADO_SEM_CREDITO.name(),
+                        PagamentoConsistenciaCodigo.PAGAMENTO_EFI_NAO_CONFIRMADO.name(),
+                        PagamentoConsistenciaCodigo.STATUS_PAGAMENTO_INCONSISTENTE.name());
+    }
+
     private PagamentoEntity pagamento(
             String id,
             UUID usuarioId,
@@ -151,6 +185,9 @@ class PagamentoConsistenciaServiceTest {
         ReflectionTestUtils.setField(pagamento, "statusProvedor", statusProvedor);
         ReflectionTestUtils.setField(pagamento, "txid", txid);
         ReflectionTestUtils.setField(pagamento, "identificadorProvedor", identificadorProvedor);
+        if (provedor == ProvedorPagamento.EFI) {
+            ReflectionTestUtils.setField(pagamento, "ambiente", AmbientePagamento.SANDBOX);
+        }
         return pagamento;
     }
 

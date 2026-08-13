@@ -231,4 +231,21 @@ public class PagamentoEntity {
     this.atualizadoEm = creditadoEm;
   }
 
+  public boolean historicoNaoOperacional() {
+    if (provedor == null || metodo == null || statusInterno == null) {
+      return false;
+    }
+    boolean terminal = statusInterno == StatusInternoPagamento.APROVADO
+        || statusInterno == StatusInternoPagamento.CANCELADO
+        || statusInterno == StatusInternoPagamento.EXPIRADO
+        || statusInterno == StatusInternoPagamento.ESTORNADO
+        || statusInterno == StatusInternoPagamento.LEGADO;
+    if (!terminal) {
+      return false;
+    }
+    return provedor == ProvedorPagamento.EFI
+        ? ambiente == null && metodo == MetodoPagamento.PIX
+        : metodo == MetodoPagamento.LEGADO;
+  }
+
 }

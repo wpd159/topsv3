@@ -16,6 +16,8 @@ class AdminRelatorioReceitaJdbcRepositoryContractTest {
 
         assertThat(source)
                 .contains("p.status_interno = 'APROVADO'")
+                .contains("p.provedor = 'EFI'")
+                .contains("p.ambiente IS NOT NULL")
                 .contains("sum(p.valor)")
                 .contains("JOIN usuario")
                 .contains("LEFT JOIN plano_credito")

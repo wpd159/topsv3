@@ -109,10 +109,14 @@ public class AdminRelatorioReceitaJdbcRepository {
                         SELECT
                           count(*) FILTER (
                             WHERE p.status_interno = 'APROVADO'
+                              AND p.provedor = 'EFI'
+                              AND p.ambiente IS NOT NULL
                               AND (c.id IS NULL OR c.status <> 'CONCILIADO')
                           ) AS sem_conciliacao,
                           count(*) FILTER (
                             WHERE p.status_interno = 'APROVADO'
+                              AND p.provedor = 'EFI'
+                              AND p.ambiente IS NOT NULL
                               AND c.id IS NOT NULL
                               AND (
                                 c.status = 'DIVERGENTE'
@@ -122,6 +126,8 @@ public class AdminRelatorioReceitaJdbcRepository {
                           ) AS divergentes,
                           count(*) FILTER (
                             WHERE p.status_interno = 'APROVADO'
+                              AND p.provedor = 'EFI'
+                              AND p.ambiente IS NOT NULL
                               AND c.status = 'CONCILIADO'
                               AND c.movimento_credito_id IS NULL
                           ) AS sem_movimento

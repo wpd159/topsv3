@@ -147,16 +147,17 @@ public class PagamentoConsistenciaService {
         if (classificado == ProvedorPagamento.MERCADO_PAGO_LEGADO) {
             adicionar(itens, pagamento, null, PagamentoConsistenciaCodigo.PAGAMENTO_MERCADO_PAGO_LEGADO, "INFO", agora);
         }
-        if (pagamento.getStatusInterno() == StatusInternoPagamento.APROVADO
+        boolean historicoNaoOperacional = pagamento.historicoNaoOperacional();
+        if (!historicoNaoOperacional && pagamento.getStatusInterno() == StatusInternoPagamento.APROVADO
                 && !pagamentosComMovimento.contains(pagamento.getId())
                 && !pagamentosConciliados.contains(pagamento.getId())) {
             adicionar(itens, pagamento, null, PagamentoConsistenciaCodigo.PAGAMENTO_APROVADO_SEM_CREDITO, "ALERTA", agora);
         }
-        if (classificado == ProvedorPagamento.EFI
+        if (!historicoNaoOperacional && classificado == ProvedorPagamento.EFI
                 && pagamento.getStatusInterno() != StatusInternoPagamento.APROVADO) {
             adicionar(itens, pagamento, null, PagamentoConsistenciaCodigo.PAGAMENTO_EFI_NAO_CONFIRMADO, "ALERTA", agora);
         }
-        if (statusInconsistente(pagamento, conciliacoes)) {
+        if (!historicoNaoOperacional && statusInconsistente(pagamento, conciliacoes)) {
             adicionar(itens, pagamento, null, PagamentoConsistenciaCodigo.STATUS_PAGAMENTO_INCONSISTENTE, "ALERTA", agora);
         }
         if (eventos.stream().anyMatch(item -> sanitizer.presente(item.getPayloadHash()))

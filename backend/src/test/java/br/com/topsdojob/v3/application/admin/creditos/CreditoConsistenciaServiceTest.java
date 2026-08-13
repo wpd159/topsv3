@@ -9,6 +9,8 @@ import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoConciliacaoEnt
 import br.com.topsdojob.v3.persistence.entity.financeiro.PagamentoEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DirecaoMovimentoCredito;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemMovimentoCredito;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.MetodoPagamento;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoMovimentoCredito;
 import java.time.OffsetDateTime;
@@ -133,6 +135,29 @@ class CreditoConsistenciaServiceTest {
         assertThat(resumo.itens()).isEmpty();
     }
 
+    @Test
+    void pagamentoHistoricoAprovadoSemLedgerNaoGeraFalsoAlerta() {
+        UUID usuarioId = UUID.fromString("00000000-0000-4000-8000-000000000111");
+        PagamentoEntity historico = pagamento(
+                UUID.fromString("00000000-0000-4000-8000-000000000211"),
+                usuarioId,
+                StatusInternoPagamento.APROVADO);
+        ReflectionTestUtils.setField(historico, "provedor", ProvedorPagamento.EFI);
+        ReflectionTestUtils.setField(historico, "metodo", MetodoPagamento.PIX);
+        ReflectionTestUtils.setField(historico, "ambiente", null);
+
+        AdminCreditoConsistenciaResumoDto resumo = service.consultar(
+                List.of(),
+                List.of(),
+                List.of(historico),
+                List.of(),
+                OffsetDateTime.parse("2026-07-02T21:00:00Z"));
+
+        assertThat(historico.historicoNaoOperacional()).isTrue();
+        assertThat(resumo.itens())
+                .extracting("codigo")
+                .doesNotContain(CreditoConsistenciaCodigo.PAGAMENTO_APROVADO_SEM_CREDITO.name());
+    }
     private MovimentoCreditoEntity movimento(
             String id,
             UUID usuarioId,

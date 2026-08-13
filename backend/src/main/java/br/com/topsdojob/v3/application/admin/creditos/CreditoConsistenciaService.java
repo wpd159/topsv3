@@ -204,6 +204,7 @@ public class CreditoConsistenciaService {
                 .toList();
         pagamentos.stream()
                 .filter(item -> item.getStatusInterno() == StatusInternoPagamento.APROVADO)
+                .filter(item -> !item.historicoNaoOperacional())
                 .filter(item -> !pagamentosComMovimento.contains(item.getId()))
                 .filter(item -> !pagamentosConciliados.contains(item.getId()))
                 .forEach(pagamento -> itens.add(new AdminCreditoConsistenciaItemDto(
