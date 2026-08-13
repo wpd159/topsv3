@@ -87,7 +87,23 @@ public enum CodigoPendenciaImportacao {
     PLANO_CREDITO_SEM_DEPENDENCIA_PAGAMENTO(SeveridadePendenciaImportacao.BLOQUEANTE),
     PLANO_SEO_URL_SEM_DEPENDENCIA_ANUNCIO_LOCALIDADE(SeveridadePendenciaImportacao.BLOQUEANTE),
     PLANO_SEM_RELATORIO_DRY_RUN(SeveridadePendenciaImportacao.BLOQUEANTE),
-    PLANO_SEM_BLOQUEIO_PENDENCIA_CRITICA(SeveridadePendenciaImportacao.BLOQUEANTE);
+    PLANO_SEM_BLOQUEIO_PENDENCIA_CRITICA(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CONFIG_COMERCIAL_CODIGO_DESCONHECIDO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CONFIG_COMERCIAL_ESCOPO_INCOMPATIVEL(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CONFIG_COMERCIAL_CODIGO_DUPLICADO(SeveridadePendenciaImportacao.ERRO),
+    CONFIG_COMERCIAL_PRODUTO_SEM_OPCAO_VALIDA(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CONFIG_COMERCIAL_BENEFICIO_ORFAO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CONFIG_COMERCIAL_DURACAO_INCOMPATIVEL(SeveridadePendenciaImportacao.ERRO),
+    CONFIG_COMERCIAL_VALOR_INVALIDO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CONFIG_COMERCIAL_CREDITOS_INVALIDOS(SeveridadePendenciaImportacao.BLOQUEANTE),
+    CONFIG_COMERCIAL_ORDEM_INVALIDA(SeveridadePendenciaImportacao.ERRO),
+    PACOTE_COMERCIAL_CODIGO_DESCONHECIDO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_COMERCIAL_DUPLICADO(SeveridadePendenciaImportacao.ERRO),
+    PACOTE_COMERCIAL_PRECO_INVALIDO(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_COMERCIAL_QUANTIDADE_INVALIDA(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_COMERCIAL_MOEDA_INVALIDA(SeveridadePendenciaImportacao.BLOQUEANTE),
+    PACOTE_COMERCIAL_VALIDADE_NAO_SUPORTADA(SeveridadePendenciaImportacao.BLOQUEANTE),
+    STORY_CONFIGURACAO_INCOMPATIVEL(SeveridadePendenciaImportacao.BLOQUEANTE);
 
     private final SeveridadePendenciaImportacao severidadePadrao;
 
