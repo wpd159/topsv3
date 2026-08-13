@@ -4,6 +4,8 @@ import br.com.topsdojob.v3.application.publico.dto.PoliticaContatoPublicoDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -32,7 +34,13 @@ public class PoliticaContatoPublicoService {
             return null;
         }
         String digits = anuncio.getWhatsappNormalizado().replace("+", "");
-        return "https://wa.me/" + digits;
+        String titulo = anuncio.getTitulo() == null ? "" : anuncio.getTitulo().trim();
+        String referencia = titulo.isBlank() ? "seu an\u00fancio" : "o an\u00fancio " + titulo;
+        String mensagem = "Ol\u00e1, vi "
+                + referencia
+                + " no Tops do Job e quero mais informa\u00e7\u00f5es!";
+        String texto = URLEncoder.encode(mensagem, StandardCharsets.UTF_8).replace("+", "%20");
+        return "https://wa.me/" + digits + "?text=" + texto;
     }
 
     private boolean whatsappValido(String value) {

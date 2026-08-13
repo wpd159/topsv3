@@ -108,7 +108,8 @@ class MetricaPublicaServiceTest {
         ArgumentCaptor<CliqueWhatsappEntity> captor = ArgumentCaptor.forClass(CliqueWhatsappEntity.class);
         verify(persistenceService).registrarClique(captor.capture());
         assertThat(response.disponivel()).isTrue();
-        assertThat(response.whatsappUrl()).isEqualTo("https://wa.me/5500000000000");
+        assertThat(response.whatsappUrl()).startsWith("https://wa.me/5500000000000?text=");
+        assertThat(response.whatsappUrl()).contains("Anuncio%20local", "Tops%20do%20Job");
         assertThat(captor.getValue().getPermitido()).isTrue();
         assertThat(response.toString()).doesNotContain("whatsapp_normalizado");
     }
@@ -155,7 +156,8 @@ class MetricaPublicaServiceTest {
 
         assertThat(response.registrado()).isFalse();
         assertThat(response.disponivel()).isTrue();
-        assertThat(response.whatsappUrl()).isEqualTo("https://wa.me/5500000000000");
+        assertThat(response.whatsappUrl()).startsWith("https://wa.me/5500000000000?text=");
+        assertThat(response.whatsappUrl()).contains("Anuncio%20local", "Tops%20do%20Job");
         assertThat(response.status()).isEqualTo("METRICA_INDISPONIVEL");
     }
 
@@ -222,6 +224,7 @@ class MetricaPublicaServiceTest {
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         set(anuncio, "id", id);
         set(anuncio, "slug", "anuncio-local");
+        set(anuncio, "titulo", "Anuncio local");
         set(anuncio, "status", StatusAnuncio.PUBLICADO);
         set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
         set(anuncio, "whatsappNormalizado", whatsapp);
