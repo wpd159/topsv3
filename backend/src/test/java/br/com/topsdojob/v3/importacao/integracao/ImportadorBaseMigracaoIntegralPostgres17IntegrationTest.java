@@ -3,12 +3,14 @@ package br.com.topsdojob.v3.importacao.integracao;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.CredencialLegada;
+import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.ClassificacaoUsuarioStaging;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.DocumentoKycLegado;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.LocalidadeLegada;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.OrfaoLegado;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.TipoLocalidade;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.TipoOrfao;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.UsuarioLegado;
+import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.UsuarioStagingLegado;
 import br.com.topsdojob.v3.importacao.midia.ManifestoMidiaFaseCinco;
 import br.com.topsdojob.v3.importacao.midia.ManifestoMidiaFaseCinco.Decisao;
 import br.com.topsdojob.v3.importacao.midia.ManifestoMidiaFaseCinco.Destino;
@@ -124,6 +126,14 @@ class ImportadorBaseMigracaoIntegralPostgres17IntegrationTest {
       assertThat(jdbc.queryForObject(
           "SELECT count(*) FROM importacao_pendencia WHERE codigo = 'SUPORTE_ORFAO'",
           Long.class)).isZero();
+      assertThat(jdbc.queryForObject(
+          "SELECT count(*) FROM importacao_mapeamento "
+              + "WHERE tabela_origem = 'usuarios_staging' AND status = 'MAPEADO'",
+          Long.class)).isEqualTo(1);
+      assertThat(jdbc.queryForObject(
+          "SELECT count(*) FROM importacao_pendencia "
+              + "WHERE codigo = 'USUARIO_STAGING_SEM_CORRESPONDENCIA'",
+          Long.class)).isEqualTo(1);
       assertThat(contar(jdbc, "movimento_credito")).isZero();
       assertThat(contar(jdbc, "pagamento")).isZero();
       assertThat(importador.reconciliar(snapshot, EXECUCAO).aprovada()).isTrue();
@@ -199,6 +209,21 @@ class ImportadorBaseMigracaoIntegralPostgres17IntegrationTest {
                 "VALIDADO", AGORA.minusDays(4)),
             documento("doc-cruzado-b", "envio-cruzado-b", "usuario-b", "midia-cruzada",
                 "VALIDADO", AGORA.minusDays(3))),
+        List.of(
+            new UsuarioStagingLegado(
+                "staging-canonico",
+                ClassificacaoUsuarioStaging.CORRESPONDENCIA_CANONICA,
+                "usuario-a",
+                "c".repeat(64),
+                "CORRESPONDENCIA_EXATA_INEQUIVOCA",
+                AGORA),
+            new UsuarioStagingLegado(
+                "staging-isolado",
+                ClassificacaoUsuarioStaging.STAGING_ONLY,
+                null,
+                "d".repeat(64),
+                "SEM_CORRESPONDENCIA_CANONICA_EXATA",
+                AGORA)),
         List.of(
             new OrfaoLegado(TipoOrfao.CARTEIRA, "carteira-orfa", 1, 2_100),
             new OrfaoLegado(TipoOrfao.HISTORICO_CREDITO, "historicos-orfaos", 3, 0),

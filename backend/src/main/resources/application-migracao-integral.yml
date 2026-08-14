@@ -15,9 +15,31 @@ app:
   migracao:
     integral:
       enabled: false
+      operacao:
       pacote:
+      diretorio-manifestos:
+      manifesto-fase-cinco:
+      origem-id:
+      snapshot-sha256:
+      capturado-em:
+      execucao-id:
       modo:
       tamanho-lote: 500
+      retomar: false
+      confirmar-apply: false
+      storage:
+        fonte:
+          endpoint:
+          access-key:
+          signing-value:
+          public-media-bucket:
+          private-media-bucket:
+          document-bucket:
+          public-base-url:
+        destino:
+          public-media-bucket:
+          private-media-bucket:
+          document-bucket:
 
 efi:
   pix:

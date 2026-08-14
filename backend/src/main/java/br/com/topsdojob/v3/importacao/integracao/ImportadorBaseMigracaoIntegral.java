@@ -11,6 +11,7 @@ import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.Sn
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.TipoLocalidade;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.TipoOrfao;
 import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.UsuarioLegado;
+import br.com.topsdojob.v3.importacao.integracao.SnapshotBaseMigracaoIntegral.UsuarioStagingLegado;
 import br.com.topsdojob.v3.importacao.midia.ManifestoMidiaFaseCinco;
 import br.com.topsdojob.v3.importacao.midia.ManifestoMidiaFaseCinco.Item;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -154,13 +155,16 @@ public final class ImportadorBaseMigracaoIntegral {
       for (OrfaoLegado orfao : snapshot.orfaos()) {
         registrarOrfao(snapshot, execucaoId, orfao);
       }
+      long stagingQuarentena = registrarUsuariosStaging(snapshot, execucaoId);
       return new ResultadoLote(
           consolidacao.historicosConsolidados().size()
               + consolidacao.quarentena().size()
-              + snapshot.orfaos().size(),
+              + snapshot.orfaos().size()
+              + snapshot.usuariosStaging().size(),
           0,
           consolidacao.quarentena().size()
-              + snapshot.orfaos().stream().filter(item -> item.tipo() != TipoOrfao.SUPORTE).count(),
+              + snapshot.orfaos().stream().filter(item -> item.tipo() != TipoOrfao.SUPORTE).count()
+              + stagingQuarentena,
           0,
           0);
     });
@@ -695,6 +699,59 @@ public final class ImportadorBaseMigracaoIntegral {
         "Registro orfao preservado sem efeito financeiro; quantidade="
             + orfao.quantidade() + "; valorAgregado=" + orfao.valorAgregado(),
         snapshot.capturadoEm());
+  }
+
+  private long registrarUsuariosStaging(Snapshot snapshot, UUID execucaoId) {
+    long quarentenas = 0;
+    for (UsuarioStagingLegado staging : snapshot.usuariosStaging()) {
+      UUID usuarioId = staging.usuarioCanonicoOrigemId() == null
+          ? null
+          : destinoMapeado(execucaoId, "usuarios", staging.usuarioCanonicoOrigemId());
+      boolean referenciaSegura = usuarioId != null
+          && switch (staging.classificacao()) {
+            case CORRESPONDENCIA_CANONICA, DUPLICADO -> true;
+            case STAGING_ONLY, AMBIGUO, SEM_IDENTIDADE -> false;
+          };
+      if (referenciaSegura) {
+        mapear(
+            execucaoId,
+            "usuarios_staging",
+            staging.idOrigem(),
+            staging.fingerprintIdentidade(),
+            "USUARIO_STAGING_REFERENCIA",
+            usuarioId,
+            "MAPEADO",
+            snapshot.capturadoEm());
+        continue;
+      }
+
+      String codigo = switch (staging.classificacao()) {
+        case CORRESPONDENCIA_CANONICA -> "USUARIO_STAGING_DESTINO_AUSENTE";
+        case STAGING_ONLY -> "USUARIO_STAGING_SEM_CORRESPONDENCIA";
+        case AMBIGUO -> "USUARIO_STAGING_AMBIGUO";
+        case DUPLICADO -> "USUARIO_STAGING_DUPLICADO_SEM_CANONICO";
+        case SEM_IDENTIDADE -> "USUARIO_STAGING_SEM_IDENTIDADE";
+      };
+      mapear(
+          execucaoId,
+          "usuarios_staging",
+          staging.idOrigem(),
+          staging.fingerprintIdentidade(),
+          "USUARIO_STAGING",
+          null,
+          "DIVERGENTE",
+          snapshot.capturadoEm());
+      pendencia(
+          execucaoId,
+          codigo,
+          "ALTA",
+          "USUARIO_STAGING",
+          staging.idOrigem(),
+          "Registro de staging classificado sem criar conta ou compartilhar identidade",
+          snapshot.capturadoEm());
+      quarentenas++;
+    }
+    return quarentenas;
   }
 
   private boolean quarentenaLocalidade(

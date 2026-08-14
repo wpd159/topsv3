@@ -9,6 +9,8 @@ import br.com.topsdojob.v3.importacao.anuncio.ImportadorAnunciosFaseUm;
 import br.com.topsdojob.v3.importacao.comercial.ImportadorConfiguracaoComercialFaseTres;
 import br.com.topsdojob.v3.importacao.conteudoseo.ImportadorConteudoSeoFaseDois;
 import br.com.topsdojob.v3.importacao.financeiro.ImportadorFinanceiroFaseQuatro;
+import br.com.topsdojob.v3.importacao.midia.FonteMidiaMigracao;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -84,6 +86,7 @@ class OrquestradorMigracaoIntegralArchitectureTest {
         .withPropertyValues(
             "spring.profiles.active=" + PROFILE,
             ENABLED + "=true",
+            "app.migracao.integral.operacao=EXECUTAR",
             "app.migracao.integral.storage.fonte.endpoint=http://127.0.0.1:19000",
             "app.migracao.integral.storage.fonte.access-key=local-test-access",
             "app.migracao.integral.storage.fonte.signing-value=local-test-signing",
@@ -101,6 +104,7 @@ class OrquestradorMigracaoIntegralArchitectureTest {
           assertThat(context).hasSingleBean(OrquestradorMigracaoIntegral.class);
           assertThat(context).hasSingleBean(ExecutorImportadoresCanonicos.class);
           assertThat(context).hasSingleBean(MigracaoIntegralRunner.class);
+          assertThat(context).hasSingleBean(ProdutorPacoteMigracaoIntegral.class);
           assertThat(context).hasSingleBean(MigracaoIntegralStorageConfiguration.class);
           assertThat(context).hasSingleBean(ArmazenamentosMigracaoIntegral.class);
           assertThat(context).hasSingleBean(MigracaoIntegralProperties.class);
@@ -115,10 +119,64 @@ class OrquestradorMigracaoIntegralArchitectureTest {
   }
 
   @Test
+  void operacaoProduzirPacoteNaoCriaClienteDeStorage() {
+    contextRunner
+        .withPropertyValues(
+            "spring.profiles.active=" + PROFILE,
+            ENABLED + "=true",
+            "app.migracao.integral.operacao=PRODUZIR_PACOTE")
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).hasSingleBean(MigracaoIntegralRunner.class);
+          assertThat(context).hasSingleBean(ProdutorPacoteMigracaoIntegral.class);
+          assertThat(context).doesNotHaveBean(ArmazenamentosMigracaoIntegral.class);
+          assertThat(context).doesNotHaveBean(ObjectStorage.class);
+          verifyNoInteractions(
+              context.getBean(DataSource.class),
+              context.getBean(ImportadorAnunciosFaseUm.class),
+              context.getBean(ImportadorConteudoSeoFaseDois.class),
+              context.getBean(ImportadorConfiguracaoComercialFaseTres.class),
+              context.getBean(ImportadorFinanceiroFaseQuatro.class));
+        });
+  }
+
+  @Test
+  void operacaoProduzirManifestoCriaSomenteFonteReadOnlyEBeansCanonicos() {
+    contextRunner
+        .withPropertyValues(
+            "spring.profiles.active=" + PROFILE,
+            ENABLED + "=true",
+            "app.migracao.integral.operacao=PRODUZIR_MANIFESTO",
+            "app.migracao.integral.storage.fonte.endpoint=http://127.0.0.1:19000",
+            "app.migracao.integral.storage.fonte.access-key=local-test-access",
+            "app.migracao.integral.storage.fonte.signing-value=local-test-signing",
+            "app.migracao.integral.storage.fonte.public-media-bucket=public-source",
+            "app.migracao.integral.storage.fonte.private-media-bucket=private-source",
+            "app.migracao.integral.storage.fonte.document-bucket=document-source",
+            "app.migracao.integral.storage.fonte.public-base-url=https://media.example.test",
+            "app.migracao.integral.storage.destino.public-media-bucket=public-target",
+            "app.migracao.integral.storage.destino.private-media-bucket=private-target",
+            "app.migracao.integral.storage.destino.document-bucket=document-target")
+        .run(context -> {
+          assertThat(context).hasNotFailed();
+          assertThat(context).hasSingleBean(ProdutorManifestoMidiaFaseCinco.class);
+          assertThat(context).hasSingleBean(RepositorioCandidatosMidiaLegada.class);
+          assertThat(context).hasSingleBean(FonteMidiaMigracao.class);
+          assertThat(context).doesNotHaveBean(ArmazenamentosMigracaoIntegral.class);
+          assertThat(context).doesNotHaveBean(ObjectStorage.class);
+          verifyNoInteractions(context.getBean(DataSource.class));
+        });
+  }
+
+  @Test
   void todosOsBeansExclusivosExigemMesmoProfileEEnabledTrue() {
     assertCondicoesFailClosed(OrquestradorMigracaoIntegral.class);
     assertCondicoesFailClosed(ExecutorImportadoresCanonicos.class);
+    assertCondicoesFailClosed(MigracaoIntegralApplication.class);
     assertCondicoesFailClosed(MigracaoIntegralRunner.class);
+    assertCondicoesFailClosed(ProdutorPacoteMigracaoIntegral.class);
+    assertCondicoesFailClosed(ProdutorManifestoMidiaFaseCinco.class);
+    assertCondicoesFailClosed(RepositorioCandidatosMidiaLegada.class);
     assertCondicoesFailClosed(MigracaoIntegralStorageConfiguration.class);
   }
 
@@ -153,28 +211,44 @@ class OrquestradorMigracaoIntegralArchitectureTest {
     String comandoOperacional = Files.readString(Path.of(
         "..", "scripts", "local", "importacao", "executar-migracao-integral.ps1"));
     assertThat(comandoOperacional)
+        .contains("spring-boot.run.main-class=br.com.topsdojob.v3.importacao.integracao."
+            + "MigracaoIntegralApplication")
         .contains("spring-boot.run.profiles=migracao-integral")
         .contains("spring.task.scheduling.enabled=false")
         .contains("app.outbox.email.enabled=false")
         .contains("app.storage.r2.enabled=false")
         .contains("efi.pix.enabled=false")
         .contains("app.migracao.integral.enabled=true")
+        .contains("app.migracao.integral.operacao=")
         .contains("app.migracao.integral.pacote=")
+        .contains("app.migracao.integral.diretorio-manifestos=")
+        .contains("aceita somente snapshot restaurado em PostgreSQL de loopback")
+        .contains("spring.flyway.enabled=false")
+        .contains("spring.jpa.hibernate.ddl-auto=none")
+        .contains("APPLY exige -ConfirmarApply explicitamente")
         .doesNotContain("dryrun-producao-v3-saneado.sql")
         .doesNotContain("psql");
   }
 
   @Test
-  void propriedadesExigemHabilitacaoPacoteModoELoteExplicitos() {
+  void propriedadesExigemHabilitacaoOperacaoPacoteManifestosModoELoteEConfirmacao() {
     MigracaoIntegralProperties properties = new MigracaoIntegralProperties();
     assertThatThrownBy(properties::validar)
         .isInstanceOf(IllegalStateException.class)
         .hasMessageContaining("habilitada");
 
     properties.setEnabled(true);
+    properties.setOperacao(OperacaoMigracaoIntegral.EXECUTAR);
     properties.setPacote(Path.of("pacote.json"));
+    properties.setDiretorioManifestos(Path.of("manifestos"));
+    properties.setOrigemId("TOPSDOJOB_LEGADO");
     properties.setModo(ModoMigracaoIntegral.APPLY);
     properties.setTamanhoLote(500);
+    assertThatThrownBy(properties::validar)
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("confirmacao");
+
+    properties.setConfirmarApply(true);
     properties.validar();
   }
 
@@ -183,6 +257,9 @@ class OrquestradorMigracaoIntegralArchitectureTest {
     assertThat(context).doesNotHaveBean(OrquestradorMigracaoIntegral.class);
     assertThat(context).doesNotHaveBean(ExecutorImportadoresCanonicos.class);
     assertThat(context).doesNotHaveBean(MigracaoIntegralRunner.class);
+    assertThat(context).doesNotHaveBean(ProdutorPacoteMigracaoIntegral.class);
+    assertThat(context).doesNotHaveBean(ProdutorManifestoMidiaFaseCinco.class);
+    assertThat(context).doesNotHaveBean(RepositorioCandidatosMidiaLegada.class);
     assertThat(context).doesNotHaveBean(MigracaoIntegralStorageConfiguration.class);
     assertThat(context).doesNotHaveBean(ArmazenamentosMigracaoIntegral.class);
     assertThat(context).doesNotHaveBean(MigracaoIntegralProperties.class);
@@ -216,6 +293,9 @@ class OrquestradorMigracaoIntegralArchitectureTest {
       OrquestradorMigracaoIntegral.class,
       ExecutorImportadoresCanonicos.class,
       MigracaoIntegralRunner.class,
+      ProdutorPacoteMigracaoIntegral.class,
+      ProdutorManifestoMidiaFaseCinco.class,
+      RepositorioCandidatosMidiaLegada.class,
       MigracaoIntegralStorageConfiguration.class
   })
   static class ContextoMigracao {

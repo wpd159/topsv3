@@ -1,16 +1,15 @@
 package br.com.topsdojob.v3.importacao.integracao;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
+import br.com.topsdojob.v3.importacao.integracao.MigracaoIntegralStorageConfiguration.DestinoProperties;
+import java.util.Map;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Profile;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -23,21 +22,30 @@ import org.springframework.stereotype.Component;
 @EnableConfigurationProperties(MigracaoIntegralProperties.class)
 public class MigracaoIntegralRunner implements ApplicationRunner {
 
-  private final OrquestradorMigracaoIntegral orquestrador;
+  private final ObjectProvider<OrquestradorMigracaoIntegral> orquestrador;
+  private final ProdutorPacoteMigracaoIntegral produtor;
+  private final ObjectProvider<ProdutorManifestoMidiaFaseCinco> produtorManifesto;
   private final MigracaoIntegralProperties properties;
-  private final ObjectMapper mapper;
+  private final ValidadorPacoteMigracaoIntegral validador;
+  private final RepositorioPacoteMigracaoIntegral repositorio;
   private final Environment environment;
   private final ConfigurableApplicationContext applicationContext;
 
   public MigracaoIntegralRunner(
-      OrquestradorMigracaoIntegral orquestrador,
+      ObjectProvider<OrquestradorMigracaoIntegral> orquestrador,
+      ProdutorPacoteMigracaoIntegral produtor,
+      ObjectProvider<ProdutorManifestoMidiaFaseCinco> produtorManifesto,
       MigracaoIntegralProperties properties,
       ObjectMapper mapper,
+      DestinoProperties destinoProperties,
       Environment environment,
       ConfigurableApplicationContext applicationContext) {
     this.orquestrador = orquestrador;
+    this.produtor = produtor;
+    this.produtorManifesto = produtorManifesto;
     this.properties = properties;
-    this.mapper = mapper;
+    this.validador = new ValidadorPacoteMigracaoIntegral(mapper, destinoProperties.r2());
+    this.repositorio = new RepositorioPacoteMigracaoIntegral(mapper);
     this.environment = environment;
     this.applicationContext = applicationContext;
   }
@@ -47,27 +55,92 @@ public class MigracaoIntegralRunner implements ApplicationRunner {
     try {
       properties.validar();
       validarExecucaoIsolada();
-      PacoteMigracaoIntegral pacote = carregarPacote(properties.getPacote());
-      OrquestradorMigracaoIntegral.Relatorio relatorio = orquestrador.executar(
-          pacote,
-          properties.getModo(),
-          properties.getTamanhoLote());
-      imprimirRelatorioSanitizado(relatorio);
+      switch (properties.getOperacao()) {
+        case PRODUZIR_MANIFESTO -> produzirManifesto();
+        case VALIDAR_MANIFESTO -> validarManifesto();
+        case PRODUZIR_PACOTE -> produzirPacote();
+        case VALIDAR_PACOTE -> validarPacote();
+        case EXECUTAR -> executar();
+      }
     } finally {
       applicationContext.close();
     }
   }
 
-  private PacoteMigracaoIntegral carregarPacote(Path pacote) {
-    Path normalizado = pacote.toAbsolutePath().normalize();
-    if (!Files.isRegularFile(normalizado, LinkOption.NOFOLLOW_LINKS)) {
-      throw new IllegalStateException("pacote da migracao integral nao e um arquivo regular");
+  private void produzirManifesto() {
+    ProdutorManifestoMidiaFaseCinco produtorDisponivel = produtorManifesto.getIfAvailable();
+    if (produtorDisponivel == null) {
+      throw new IllegalStateException("produtor canonico do manifesto nao esta disponivel");
     }
-    try {
-      return mapper.readValue(normalizado.toFile(), PacoteMigracaoIntegral.class);
-    } catch (IOException exception) {
-      throw new IllegalStateException("pacote da migracao integral nao pode ser lido", exception);
+    var resultado = produtorDisponivel.produzir(new ProdutorManifestoMidiaFaseCinco.Parametros(
+        properties.getOrigemId(),
+        properties.getSnapshotSha256(),
+        properties.getExecucaoId(),
+        properties.getCapturadoEm(),
+        properties.getManifestoFaseCinco()));
+    System.out.println("MIGRACAO_INTEGRAL_MANIFESTO_STATUS=" + resultado.estado());
+    System.out.println("MIGRACAO_INTEGRAL_MANIFESTO_FINGERPRINT=" + resultado.fingerprint());
+    imprimirContagens("MIGRACAO_INTEGRAL_MANIFESTO_CONTAGEM", resultado.contagens());
+    imprimirContagens("MIGRACAO_INTEGRAL_R2_READ_ONLY", resultado.storage());
+  }
+
+  private ArquivoManifestoMidiaFaseCinco validarManifesto() {
+    RepositorioManifestoMidiaFaseCinco repositorioManifesto =
+        new RepositorioManifestoMidiaFaseCinco(
+            applicationContext.getBean(ObjectMapper.class));
+    ArquivoManifestoMidiaFaseCinco arquivo = repositorioManifesto.carregar(
+        properties.getManifestoFaseCinco());
+    new ValidadorManifestoMidiaFaseCinco(
+        applicationContext.getBean(ObjectMapper.class),
+        applicationContext.getBean(DestinoProperties.class).r2())
+        .validar(arquivo, properties.getOrigemId(), properties.getSnapshotSha256());
+    System.out.println("MIGRACAO_INTEGRAL_MANIFESTO_VALIDO=true");
+    System.out.println("MIGRACAO_INTEGRAL_MANIFESTO_FINGERPRINT=" + arquivo.fingerprint());
+    return arquivo;
+  }
+
+  private void produzirPacote() {
+    var resultado = produtor.produzir(new ProdutorPacoteMigracaoIntegral.Parametros(
+        properties.getExecucaoId(),
+        properties.getOrigemId(),
+        properties.getSnapshotSha256(),
+        properties.getCapturadoEm(),
+        properties.getDiretorioManifestos(),
+        properties.getManifestoFaseCinco(),
+        properties.getPacote()));
+    System.out.println("MIGRACAO_INTEGRAL_PACOTE_STATUS=" + resultado.estado());
+    System.out.println("MIGRACAO_INTEGRAL_PACOTE_FINGERPRINT=" + resultado.fingerprint());
+    imprimirContagens("MIGRACAO_INTEGRAL_PACOTE_CONTAGEM", resultado.contagens());
+    imprimirContagens("MIGRACAO_INTEGRAL_STAGING", resultado.usuariosStaging());
+  }
+
+  private ArquivoPacoteMigracaoIntegral validarPacote() {
+    ArquivoPacoteMigracaoIntegral arquivo = repositorio.carregar(properties.getPacote());
+    validador.validar(
+        arquivo,
+        properties.getOrigemId(),
+        properties.getDiretorioManifestos());
+    System.out.println("MIGRACAO_INTEGRAL_PACOTE_VALIDO=true");
+    System.out.println("MIGRACAO_INTEGRAL_PACOTE_FINGERPRINT=" + arquivo.fingerprint());
+    return arquivo;
+  }
+
+  private void executar() {
+    ArquivoPacoteMigracaoIntegral arquivo = validarPacote();
+    if (properties.getExecucaoId() != null
+        && !properties.getExecucaoId().equals(arquivo.pacote().pacoteId())) {
+      throw new IllegalStateException("identificador de execucao diverge do pacote");
     }
+    OrquestradorMigracaoIntegral orquestradorDisponivel = orquestrador.getIfAvailable();
+    if (orquestradorDisponivel == null) {
+      throw new IllegalStateException("orquestrador canonico nao esta disponivel");
+    }
+    OrquestradorMigracaoIntegral.Relatorio relatorio = orquestradorDisponivel.executar(
+        arquivo.pacote(),
+        properties.getModo(),
+        properties.getTamanhoLote(),
+        properties.isRetomar());
+    imprimirRelatorioSanitizado(relatorio);
   }
 
   private void validarExecucaoIsolada() {
@@ -103,5 +176,11 @@ public class MigracaoIntegralRunner implements ApplicationRunner {
             + resumo.p50().toMillis() + ":"
             + resumo.p95().toMillis() + ":"
             + resumo.maximo().toMillis()));
+  }
+
+  private void imprimirContagens(String prefixo, Map<String, Long> contagens) {
+    contagens.entrySet().stream()
+        .sorted(Map.Entry.comparingByKey())
+        .forEach(item -> System.out.println(prefixo + "=" + item.getKey() + ":" + item.getValue()));
   }
 }

@@ -2,9 +2,11 @@ package br.com.topsdojob.v3.importacao.integracao;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 
 public final class SnapshotBaseMigracaoIntegral {
@@ -19,6 +21,7 @@ public final class SnapshotBaseMigracaoIntegral {
       List<UsuarioLegado> usuarios,
       List<CredencialLegada> credenciais,
       List<DocumentoKycLegado> documentosKyc,
+      List<UsuarioStagingLegado> usuariosStaging,
       List<OrfaoLegado> orfaos,
       List<FavoritoLegado> favoritos,
       List<MetricaAnuncioLegada> metricas) {
@@ -32,9 +35,33 @@ public final class SnapshotBaseMigracaoIntegral {
       usuarios = copia(usuarios);
       credenciais = copia(credenciais);
       documentosKyc = copia(documentosKyc);
+      usuariosStaging = copia(usuariosStaging);
       orfaos = copia(orfaos);
       favoritos = copia(favoritos);
       metricas = copia(metricas);
+    }
+
+    public Snapshot(
+        String snapshotId,
+        OffsetDateTime capturadoEm,
+        List<LocalidadeLegada> localidades,
+        List<UsuarioLegado> usuarios,
+        List<CredencialLegada> credenciais,
+        List<DocumentoKycLegado> documentosKyc,
+        List<OrfaoLegado> orfaos,
+        List<FavoritoLegado> favoritos,
+        List<MetricaAnuncioLegada> metricas) {
+      this(
+          snapshotId,
+          capturadoEm,
+          localidades,
+          usuarios,
+          credenciais,
+          documentosKyc,
+          List.of(),
+          orfaos,
+          favoritos,
+          metricas);
     }
   }
 
@@ -104,7 +131,7 @@ public final class SnapshotBaseMigracaoIntegral {
       if (criadoEm == null || atualizadoEm == null) {
         throw new IllegalArgumentException("datas do usuario devem ser informadas");
       }
-      papeis = Set.copyOf(papeis == null ? Set.of() : papeis);
+      papeis = Collections.unmodifiableSet(new TreeSet<>(papeis == null ? Set.of() : papeis));
     }
   }
 
@@ -154,6 +181,42 @@ public final class SnapshotBaseMigracaoIntegral {
         throw new IllegalArgumentException("datas do documento KYC devem ser informadas");
       }
       motivoSanitizado = opcional(motivoSanitizado);
+    }
+  }
+
+  public enum ClassificacaoUsuarioStaging {
+    CORRESPONDENCIA_CANONICA,
+    STAGING_ONLY,
+    AMBIGUO,
+    DUPLICADO,
+    SEM_IDENTIDADE
+  }
+
+  public record UsuarioStagingLegado(
+      String idOrigem,
+      ClassificacaoUsuarioStaging classificacao,
+      String usuarioCanonicoOrigemId,
+      String fingerprintIdentidade,
+      String motivo,
+      OffsetDateTime capturadoEm) {
+
+    public UsuarioStagingLegado {
+      idOrigem = obrigatorio(idOrigem, "usuarioStaging.idOrigem");
+      if (classificacao == null) {
+        throw new IllegalArgumentException("usuarioStaging.classificacao deve ser informada");
+      }
+      usuarioCanonicoOrigemId = opcional(usuarioCanonicoOrigemId);
+      fingerprintIdentidade = obrigatorio(
+          fingerprintIdentidade, "usuarioStaging.fingerprintIdentidade");
+      motivo = obrigatorio(motivo, "usuarioStaging.motivo");
+      if (capturadoEm == null) {
+        throw new IllegalArgumentException("usuarioStaging.capturadoEm deve ser informado");
+      }
+      if (classificacao == ClassificacaoUsuarioStaging.CORRESPONDENCIA_CANONICA
+          && usuarioCanonicoOrigemId == null) {
+        throw new IllegalArgumentException(
+            "correspondencia canonica exige usuarioCanonicoOrigemId");
+      }
     }
   }
 

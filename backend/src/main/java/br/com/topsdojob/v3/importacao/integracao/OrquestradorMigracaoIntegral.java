@@ -15,6 +15,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ import org.springframework.transaction.support.TransactionTemplate;
     prefix = "app.migracao.integral",
     name = "enabled",
     havingValue = "true")
+@ConditionalOnExpression("'${app.migracao.integral.operacao:}' == 'EXECUTAR'")
 public class OrquestradorMigracaoIntegral {
 
   private static final String SISTEMA_ORIGEM = "TOPSDOJOB_MIGRACAO_INTEGRAL";
@@ -63,6 +65,14 @@ public class OrquestradorMigracaoIntegral {
   }
 
   public Relatorio executar(PacoteMigracaoIntegral pacote, ModoMigracaoIntegral modo, int lote) {
+    return executar(pacote, modo, lote, null);
+  }
+
+  public Relatorio executar(
+      PacoteMigracaoIntegral pacote,
+      ModoMigracaoIntegral modo,
+      int lote,
+      Boolean retomadaEsperada) {
     Objects.requireNonNull(pacote, "pacote obrigatorio");
     Objects.requireNonNull(modo, "modo obrigatorio");
     if (lote < 1 || lote > 10_000) {
@@ -70,12 +80,12 @@ public class OrquestradorMigracaoIntegral {
     }
     if (modo == ModoMigracaoIntegral.DRY_RUN) {
       return transacao.execute(status -> {
-        Relatorio relatorio = executarInterno(pacote, modo, lote);
+        Relatorio relatorio = executarInterno(pacote, modo, lote, retomadaEsperada);
         status.setRollbackOnly();
         return relatorio;
       });
     }
-    return executarInterno(pacote, modo, lote);
+    return executarInterno(pacote, modo, lote, retomadaEsperada);
   }
 
   public static List<FaseMigracaoIntegral> ordemCanonica() {
@@ -85,11 +95,18 @@ public class OrquestradorMigracaoIntegral {
   private Relatorio executarInterno(
       PacoteMigracaoIntegral pacote,
       ModoMigracaoIntegral modo,
-      int lote) {
+      int lote,
+      Boolean retomadaEsperada) {
     UUID execucaoId = IdsMigracaoIntegral.uuid("execucao-migracao-integral", pacote.pacoteId());
     String fingerprintPacote = fingerprintPacote(pacote);
     EstadoExecucao existente = buscar(execucaoId);
     boolean retomada = existente != null;
+    if (retomadaEsperada != null && retomada != retomadaEsperada) {
+      throw new IllegalStateException(
+          retomadaEsperada
+              ? "retomada solicitada para execucao inexistente"
+              : "destino pertence a execucao existente; retomada deve ser explicita");
+    }
     if (retomada && !fingerprintPacote.equals(existente.fingerprintPacote())) {
       throw new IllegalStateException("pacote diverge da execucao de migracao existente");
     }

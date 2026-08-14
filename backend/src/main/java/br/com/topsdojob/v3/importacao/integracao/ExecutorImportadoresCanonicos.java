@@ -39,6 +39,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -52,6 +53,7 @@ import org.springframework.transaction.support.TransactionTemplate;
     prefix = "app.migracao.integral",
     name = "enabled",
     havingValue = "true")
+@ConditionalOnExpression("'${app.migracao.integral.operacao:}' == 'EXECUTAR'")
 public class ExecutorImportadoresCanonicos implements ExecutorFasesMigracaoIntegral {
 
   private final JdbcTemplate jdbc;
@@ -217,7 +219,7 @@ public class ExecutorImportadoresCanonicos implements ExecutorFasesMigracaoInteg
         throw new IllegalStateException("destino de objetos nao esta vazio");
       }
     }
-    RelatorioExecucao execucao = motor(armazenamentos, contexto).executar(
+    RelatorioExecucao execucao = motor(armazenamentos, contexto, manifesto).executar(
         contexto.execucaoId(),
         manifesto,
         contexto.modo() == ModoMigracaoIntegral.DRY_RUN);
@@ -312,7 +314,7 @@ public class ExecutorImportadoresCanonicos implements ExecutorFasesMigracaoInteg
     }
     ManifestoMidiaFaseCinco manifesto = consolidacao(contexto).manifestoSeguro();
     ArmazenamentosMigracaoIntegral armazenamentos = armazenamentos();
-    RelatorioExecucao execucao = motor(armazenamentos, contexto).executar(
+    RelatorioExecucao execucao = motor(armazenamentos, contexto, manifesto).executar(
         contexto.execucaoId(),
         manifesto,
         contexto.modo() == ModoMigracaoIntegral.DRY_RUN);
@@ -481,13 +483,14 @@ public class ExecutorImportadoresCanonicos implements ExecutorFasesMigracaoInteg
 
   private MotorCopiaMidiaFaseCinco motor(
       ArmazenamentosMigracaoIntegral armazenamentos,
-      Contexto contexto) {
+      Contexto contexto,
+      ManifestoMidiaFaseCinco manifesto) {
     CheckpointMidiaMigracaoJdbc checkpoint = new CheckpointMidiaMigracaoJdbc(
         jdbc,
         new TransactionTemplate(transactionManager),
         mapper);
     return new MotorCopiaMidiaFaseCinco(
-        armazenamentos.fonte(),
+        new FonteMidiaRestritaAoManifesto(armazenamentos.fonte(), manifesto),
         armazenamentos.destino(),
         checkpoint,
         new MotorCopiaMidiaFaseCinco.Config(
