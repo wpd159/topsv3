@@ -8,10 +8,13 @@ import br.com.topsdojob.v3.application.publico.pagamento.PagamentoPixException;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.application.publico.anunciante.StoryJaAtivoException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.persistence.OptimisticLockException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
@@ -108,6 +111,19 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler({
+            ObjectOptimisticLockingFailureException.class,
+            OptimisticLockException.class
+    })
+    public ResponseEntity<ApiErrorResponse> handleOptimisticLock(
+            Exception exception,
+            HttpServletRequest request) {
+        return build(
+                ApiErrorCode.CONFLICT,
+                "O anúncio foi alterado por outra operação. Atualize os dados e tente novamente.",
+                request);
+    }
+
+    @ExceptionHandler({
             NoHandlerFoundException.class,
             NoResourceFoundException.class
     })
@@ -141,7 +157,9 @@ public class GlobalExceptionHandler {
                 message,
                 request.getRequestURI(),
                 RequestIdContext.current(request));
-        return ResponseEntity.status(code.status()).body(response);
+        return ResponseEntity.status(code.status())
+                .cacheControl(CacheControl.noStore())
+                .body(response);
     }
 
     private ApiErrorCode fromStatus(int statusCode) {

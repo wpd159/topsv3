@@ -7,6 +7,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.DefaultCsrfToken;
 
 class SecurityConfigHardeningTest {
@@ -114,5 +116,24 @@ class SecurityConfigHardeningTest {
         String resolved = config.csrfTokenRequestHandler().resolveCsrfTokenValue(request, csrfContract);
 
         assertThat(resolved).isEqualTo(requestValue);
+    }
+
+    @Test
+    void cookieXsrfExplicitaSecureSameSiteLaxEPathRaiz() {
+        SecurityConfig config = new SecurityConfig("homologacao", mock(AdminSecurityErrorWriter.class));
+        CookieCsrfTokenRepository repository = (CookieCsrfTokenRepository) config.csrfTokenRepository(true);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        repository.saveToken(
+                new DefaultCsrfToken("X-XSRF-TOKEN", "_csrf", "csrf-sintetico-local"),
+                new MockHttpServletRequest(),
+                response);
+
+        var cookie = response.getCookie("XSRF-TOKEN");
+        assertThat(cookie).isNotNull();
+        assertThat(cookie.getPath()).isEqualTo("/");
+        assertThat(cookie.getSecure()).isTrue();
+        assertThat(cookie.getAttribute("SameSite")).isEqualTo("Lax");
+        assertThat(cookie.isHttpOnly()).isFalse();
     }
 }

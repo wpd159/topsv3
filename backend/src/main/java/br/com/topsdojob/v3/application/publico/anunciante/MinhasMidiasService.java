@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -55,6 +56,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class MinhasMidiasService {
 
     private final MeusAnunciosConsultaService consultaService;
+    private final AnuncioRepository anuncioRepository;
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final RevisaoAnuncioRepository revisaoRepository;
@@ -67,6 +69,7 @@ public class MinhasMidiasService {
 
     public MinhasMidiasService(
             MeusAnunciosConsultaService consultaService,
+            AnuncioRepository anuncioRepository,
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
             RevisaoAnuncioRepository revisaoRepository,
@@ -77,6 +80,7 @@ public class MinhasMidiasService {
             R2StorageProperties storageProperties,
             ObjectProvider<ObjectStorage> storageProvider) {
         this.consultaService = consultaService;
+        this.anuncioRepository = anuncioRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.revisaoRepository = revisaoRepository;
@@ -299,7 +303,14 @@ public class MinhasMidiasService {
     }
 
     private AnuncioEntity anuncioMutavel(String slug, Authentication authentication) {
-        AnuncioEntity anuncio = consultaService.anuncioDoUsuario(slug, authentication);
+        AnuncioEntity consultado = consultaService.anuncioDoUsuario(slug, authentication);
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(consultado.getId())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "anuncio nao encontrado"));
+        if (!Objects.equals(consultado.getUsuarioId(), anuncio.getUsuarioId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "anuncio pertence a outro usuario");
+        }
         if (revisaoRepository.existsByAnuncioIdAndStatusIn(
                 anuncio.getId(), List.of(StatusRevisaoAnuncio.EM_ANALISE))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "anuncio possui revisao em analise");

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -27,6 +28,7 @@ import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.RevisaoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
@@ -57,6 +59,7 @@ class MinhasMidiasServiceTest {
     private static final String SLUG = "anuncio-proprio";
 
     private final MeusAnunciosConsultaService consultaService = mock(MeusAnunciosConsultaService.class);
+    private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
     private final AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
     private final ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     private final RevisaoAnuncioRepository revisaoRepository = mock(RevisaoAnuncioRepository.class);
@@ -72,7 +75,7 @@ class MinhasMidiasServiceTest {
     private final Authentication authentication = mock(Authentication.class);
     private final R2StorageProperties storageProperties = storageProperties();
     private final MinhasMidiasService service = new MinhasMidiasService(
-            consultaService, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
+            consultaService, anuncioRepository, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
             validator, fotoProcessor, new MidiaUploadProperties(), storageProperties, storageProvider);
 
     @BeforeEach
@@ -81,6 +84,7 @@ class MinhasMidiasServiceTest {
                 ANUNCIO_ID, UUID.randomUUID(), SLUG, "Perfil de teste", "Descricao publica de teste",
                 StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, OffsetDateTime.now(ZoneOffset.UTC));
         when(consultaService.anuncioDoUsuario(SLUG, authentication)).thenReturn(anuncio);
+        when(anuncioRepository.findByIdForModeration(ANUNCIO_ID)).thenReturn(java.util.Optional.of(anuncio));
         when(revisaoRepository.existsByAnuncioIdAndStatusIn(eq(ANUNCIO_ID), anyList())).thenReturn(false);
         when(limiteService.resolver(ANUNCIO_ID))
                 .thenReturn(new LimiteMidiasAnuncioService.Resultado(4, 0, false, false));
@@ -144,6 +148,19 @@ class MinhasMidiasServiceTest {
         verify(storage).putIfAbsent(
                 eq(StorageArea.PRIVATE_MEDIA), eq(persistido.getChaveObjeto()), any(), eq("image/jpeg"));
         assertThat(response.toString()).doesNotContain("privadas").doesNotContain("hml/midias-pendentes");
+    }
+
+    @Test
+    void bloqueiaLinhaDoAnuncioAntesDeCalcularOrdemEEscreverNoStorage() {
+        MultipartFile multipart = mock(MultipartFile.class);
+        when(validator.validar(multipart)).thenReturn(validada(false));
+
+        service.enviar(SLUG, multipart, "foto-lock", authentication);
+
+        var ordem = inOrder(anuncioRepository, midiaRepository, storage);
+        ordem.verify(anuncioRepository).findByIdForModeration(ANUNCIO_ID);
+        ordem.verify(midiaRepository).findByAnuncioId(ANUNCIO_ID);
+        ordem.verify(storage).putIfAbsent(eq(StorageArea.PRIVATE_MEDIA), any(), any(), any());
     }
 
     @Test

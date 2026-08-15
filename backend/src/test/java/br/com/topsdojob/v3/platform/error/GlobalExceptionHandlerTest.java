@@ -5,9 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import br.com.topsdojob.v3.application.admin.creditos.AdminPlanoCreditoException;
 import br.com.topsdojob.v3.application.publico.pagamento.PagamentoPixException;
 import br.com.topsdojob.v3.infrastructure.payment.efi.EfiPixGatewayException;
+import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.server.ResponseStatusException;
@@ -139,5 +141,25 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().code()).isEqualTo(ApiErrorCode.CONFLICT);
         assertThat(response.getBody().message()).isEqualTo(mensagem);
+    }
+
+    @Test
+    void conflitoOtimistaDoAnuncioRetorna409ComRequestIdENoStore() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "PATCH",
+                "/api/public/minha-conta/anuncios/anuncio-qa");
+        request.setAttribute(RequestIdContext.ATTRIBUTE_NAME, "request-ad-conflict-01");
+
+        var response = new GlobalExceptionHandler().handleOptimisticLock(
+                new ObjectOptimisticLockingFailureException("AnuncioEntity", "anuncio-qa"),
+                request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getHeaders().getCacheControl()).contains("no-store");
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo(ApiErrorCode.CONFLICT);
+        assertThat(response.getBody().message())
+                .isEqualTo("O anúncio foi alterado por outra operação. Atualize os dados e tente novamente.");
+        assertThat(response.getBody().requestId()).isEqualTo("request-ad-conflict-01");
     }
 }

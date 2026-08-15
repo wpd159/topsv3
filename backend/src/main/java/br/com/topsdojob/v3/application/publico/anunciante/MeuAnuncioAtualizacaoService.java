@@ -114,7 +114,7 @@ public class MeuAnuncioAtualizacaoService {
                 validado.atendimentoExclusivamenteVirtual(),
                 validado.linkConteudo(),
                 agora);
-        anuncioRepository.save(anuncio);
+        anuncioRepository.saveAndFlush(anuncio);
 
         AnuncioLocalizacaoEntity localizacao = localizacaoRepository.findByAnuncioId(anuncio.getId()).orElse(null);
         if (localizacao == null) {

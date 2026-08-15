@@ -159,8 +159,14 @@ public class SecurityConfig {
     }
 
     @Bean
-    public CsrfTokenRepository csrfTokenRepository() {
-        return CookieCsrfTokenRepository.withHttpOnlyFalse();
+    public CsrfTokenRepository csrfTokenRepository(
+            @Value("${server.servlet.session.cookie.secure:true}") boolean secure) {
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookieCustomizer(cookie -> cookie
+                .secure(secure)
+                .sameSite("Lax")
+                .path("/"));
+        return repository;
     }
 
     public boolean csrfDisabledOnlyInLocal() {

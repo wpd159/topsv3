@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -338,6 +339,91 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
     }
 
     @Test
+    void homologacaoAteDezConfirmaPeloGatewayECreditaExatamenteUmaVez() {
+        BigDecimal valor = new BigDecimal("9.99");
+        Scenario scenario = seedUsuarioPlano("HML_AUTO_999", valor);
+        AtomicReference<String> txid = new AtomicReference<>();
+        when(gateway.criarCobranca(anyString(), any(), anyString())).thenAnswer(invocation -> {
+            String atual = invocation.getArgument(0);
+            txid.set(atual);
+            return cobrancaSandbox(atual, "CONCLUIDA", valor, valor);
+        });
+
+        var authentication = authentication(scenario);
+        var primeira = pagamentoService.criar(
+                new EfiPixCheckoutRequest(scenario.planoId()),
+                "checkout-hml-auto-999",
+                authentication,
+                "request-hml-auto-999-01");
+        var repetida = pagamentoService.criar(
+                new EfiPixCheckoutRequest(scenario.planoId()),
+                "checkout-hml-auto-999",
+                authentication,
+                "request-hml-auto-999-02");
+
+        UUID pagamentoId = pagamentoId(scenario);
+        assertThat(primeira.status()).isEqualTo("APROVADO");
+        assertThat(primeira.idempotente()).isFalse();
+        assertThat(repetida.status()).isEqualTo("APROVADO");
+        assertThat(repetida.idempotente()).isTrue();
+        assertThat(count("movimento_credito", "referencia_id", pagamentoId)).isEqualTo(1L);
+        assertThat(jdbc.queryForMap("""
+                SELECT quantidade, saldo_antes, saldo_depois
+                FROM movimento_credito
+                WHERE referencia_id = ?
+                """, pagamentoId))
+                .containsEntry("quantidade", 50)
+                .containsEntry("saldo_antes", 0)
+                .containsEntry("saldo_depois", 50);
+        verify(gateway, times(1)).criarCobranca(eq(txid.get()), eq(valor), anyString());
+        verify(gateway, never()).consultarCobranca(txid.get());
+    }
+
+    @Test
+    void homologacaoAcimaDeDezPermaneceAtivaSemCreditoERetryReutilizaPagamento() {
+        BigDecimal valor = new BigDecimal("15.00");
+        Scenario scenario = seedUsuarioPlano("HML_ATIVA_1500", valor);
+        AtomicReference<String> txid = new AtomicReference<>();
+        when(gateway.criarCobranca(anyString(), any(), anyString())).thenAnswer(invocation -> {
+            String atual = invocation.getArgument(0);
+            txid.set(atual);
+            return cobrancaSandbox(atual, "ATIVA", valor, BigDecimal.ZERO);
+        });
+        when(gateway.consultarCobranca(anyString())).thenAnswer(invocation ->
+                cobrancaSandbox(invocation.getArgument(0), "ATIVA", valor, BigDecimal.ZERO));
+
+        var authentication = authentication(scenario);
+        var primeira = pagamentoService.criar(
+                new EfiPixCheckoutRequest(scenario.planoId()),
+                "checkout-hml-ativa-1500",
+                authentication,
+                "request-hml-ativa-1500-01");
+        var repetida = pagamentoService.criar(
+                new EfiPixCheckoutRequest(scenario.planoId()),
+                "checkout-hml-ativa-1500",
+                authentication,
+                "request-hml-ativa-1500-02");
+
+        UUID pagamentoId = pagamentoId(scenario);
+        assertThat(primeira.pagamentoId()).isEqualTo(repetida.pagamentoId()).isEqualTo(pagamentoId);
+        assertThat(primeira.status()).isEqualTo("PENDENTE");
+        assertThat(repetida.status()).isEqualTo("PENDENTE");
+        assertThat(repetida.idempotente()).isTrue();
+        assertThat(count("movimento_credito", "referencia_id", pagamentoId)).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM saldo_credito_usuario WHERE usuario_id = ?",
+                Long.class,
+                scenario.usuarioId())).isZero();
+        assertThat(jdbc.queryForObject(
+                "SELECT count(*) FROM pagamento WHERE usuario_id = ? AND plano_credito_id = ?",
+                Long.class,
+                scenario.usuarioId(),
+                scenario.planoId())).isEqualTo(1L);
+        verify(gateway, times(1)).criarCobranca(eq(txid.get()), eq(valor), anyString());
+        verify(gateway, times(1)).consultarCobranca(txid.get());
+    }
+
+    @Test
     void duasInstanciasDoSchedulerProcessamMesmoPagamentoSemDuplicarCredito() throws Exception {
         String txid = "TwoSchedulersRuntimePayment00001";
         Scenario scenario = seed(txid, "DOIS_SCHEDULERS", "SANDBOX");
@@ -513,7 +599,46 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
                 null);
     }
 
+    private EfiPixGateway.CobrancaPix cobrancaSandbox(
+            String txid,
+            String status,
+            BigDecimal valorOriginal,
+            BigDecimal valorRecebido) {
+        return new EfiPixGateway.CobrancaPix(
+                AmbientePagamento.SANDBOX,
+                txid,
+                status,
+                "loc-" + txid,
+                valorOriginal,
+                valorRecebido,
+                OffsetDateTime.now(ZoneOffset.UTC).plusHours(1),
+                "pix-sintetico",
+                "data:image/svg+xml;base64,c2ludGV0aWNv");
+    }
+
+    private UsernamePasswordAuthenticationToken authentication(Scenario scenario) {
+        return new UsernamePasswordAuthenticationToken(
+                new PublicUserPrincipal(
+                        scenario.usuarioId(),
+                        "pagamento-qa",
+                        "pagamento.qa@example.invalid"),
+                null,
+                List.of());
+    }
+
+    private UUID pagamentoId(Scenario scenario) {
+        return jdbc.queryForObject(
+                "SELECT id FROM pagamento WHERE usuario_id = ? AND plano_credito_id = ?",
+                UUID.class,
+                scenario.usuarioId(),
+                scenario.planoId());
+    }
+
     private Scenario seedUsuarioPlano(String suffix) {
+        return seedUsuarioPlano(suffix, new BigDecimal("5.00"));
+    }
+
+    private Scenario seedUsuarioPlano(String suffix, BigDecimal valor) {
         Scenario scenario = new Scenario(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
         jdbc.update("""
                 INSERT INTO usuario (id, nome, status, tipo_conta, criado_em, atualizado_em, versao)
@@ -523,9 +648,9 @@ class EfiPagamentoPostgres17ConcurrencyIntegrationTest {
                 INSERT INTO plano_credito (
                   id, codigo, nome, quantidade_creditos, valor, moeda, ativo,
                   criado_em, atualizado_em, descricao, ordem_exibicao
-                ) VALUES (?, ?, 'Pacote QA', 50, 5.00, 'BRL', true,
+                ) VALUES (?, ?, 'Pacote QA', 50, ?, 'BRL', true,
                           now(), now(), 'Teste runtime', 0)
-                """, scenario.planoId(), "PACOTE_QA_" + suffix);
+                """, scenario.planoId(), "PACOTE_QA_" + suffix, valor);
         return scenario;
     }
 
