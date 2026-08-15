@@ -39,7 +39,7 @@ export default async function CategoriasSection() {
   }))
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-16">
+    <section className="w-full py-16">
       <h2 className="mb-10 text-center text-3xl font-bold">Categorias em destaque</h2>
 
       {categorias.length > 0 && (
