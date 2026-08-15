@@ -1,0 +1,10 @@
+node_modules
+.next
+.env
+.env.*
+scripts
+coverage
+tsconfig.tsbuildinfo
+npm-debug.log*
+*.log
+*.md

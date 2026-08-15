@@ -33,6 +33,8 @@ $compose = Read-RequiredFile "deploy/preprod/docker-compose.yml"
 $envExample = Read-RequiredFile "deploy/preprod/preprod.env.example"
 $backendApplication = Read-RequiredFile "backend/src/main/resources/application.yml"
 $gateway = Read-RequiredFile "deploy/preprod/nginx-preprod-local.conf"
+$frontendDockerignore = Read-RequiredFile "frontend/.dockerignore"
+$frontendNextConfig = Read-RequiredFile "frontend/next.config.ts"
 $frontendCompose = [regex]::Match($compose, '(?ms)^  frontend:\s.*?(?=^  gateway:)').Value
 $sshValidationStep = [regex]::Match(
   $workflow,
@@ -186,8 +188,31 @@ Add-Check "compose propaga disponibilidade Pix ao build frontend" (
   ($frontendCompose -match 'ARG NEXT_PUBLIC_EFI_PIX_ENABLED') -and
   ($frontendCompose -match 'ENV NEXT_PUBLIC_EFI_PIX_ENABLED=\$\$\{NEXT_PUBLIC_EFI_PIX_ENABLED\}')
 ) "frontend acompanha o mesmo flag fail-closed do backend"
-Add-Check "compose inclui configuracao Next no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/next\.config\.ts ./next\.config\.ts') "next start preserva remotePatterns compilados"
-Add-Check "compose inclui politica de indexacao no runtime frontend" ($frontendCompose -match 'COPY --from=build /app/src/lib/seo/search-indexing-policy\.ts ./src/lib/seo/search-indexing-policy\.ts') "next.config.ts resolve a fonte canonica no startup"
+Add-Check "Next gera artefato standalone" ($frontendNextConfig -match 'output:\s*["'']standalone["'']') "runtime autocontido"
+Add-Check "compose copia somente artefatos standalone" (
+  ($frontendCompose -match 'COPY --from=build --chown=node:node /app/\.next/standalone ./') -and
+  ($frontendCompose -match 'COPY --from=build --chown=node:node /app/\.next/static ./\.next/static') -and
+  ($frontendCompose -match 'COPY --from=build --chown=node:node /app/public ./public')
+) "public, servidor e assets estaticos"
+Add-Check "compose nao copia dependencias ou fontes integrais ao runtime" (
+  (-not ($frontendCompose -match 'COPY --from=build /app/node_modules ./node_modules')) -and
+  (-not ($frontendCompose -match 'COPY --from=build /app/src')) -and
+  (-not ($frontendCompose -match 'COPY --from=build /app/package-lock\.json')) -and
+  (-not ($frontendCompose -match 'COPY --from=build /app/next\.config'))
+) "sem devDependencies, fontes ou ferramentas de build"
+Add-Check "compose executa frontend como usuario sem privilegios" (
+  ($frontendCompose -match '(?m)^\s+USER node\s*$') -and
+  ($frontendCompose -match 'CMD \["node", "server\.js"\]')
+) "servidor standalone sem npm"
+Add-Check "compose remove npm e npx do runtime" (
+  ($frontendCompose -match '/usr/local/lib/node_modules/npm') -and
+  ($frontendCompose -match '/usr/local/bin/npm') -and
+  ($frontendCompose -match '/usr/local/bin/npx')
+) "gerenciador de pacotes ausente da imagem final"
+Add-Check "compose remove TypeScript rastreado do runtime" ($frontendCompose -match 'rm -rf node_modules/typescript') "compilador nao necessario ao servidor standalone"
+foreach ($ignored in @("node_modules", ".next", ".env", "scripts", "tsconfig.tsbuildinfo")) {
+  Add-Check "contexto frontend ignora $ignored" ($frontendDockerignore -match "(?m)^$([regex]::Escape($ignored))$") "contexto Docker minimo"
+}
 Add-Check "compose desabilita fixtures" (($compose -match '--app\.fixture\.stories\.enabled=false') -and ($compose -match '--app\.fixture\.auth-smoke\.enabled=false')) "sem dados automaticos"
 Add-Check "compose desabilita Analytics" ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+["'']?false["'']?') "sem analytics"
 Add-Check "workflow bloqueia indexacao da preproducao" ($workflow -match 'SEARCH_INDEXING_MODE:\s+blocked') "configuracao canonica fail-closed"

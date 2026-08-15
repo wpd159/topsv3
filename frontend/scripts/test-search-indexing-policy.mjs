@@ -186,9 +186,14 @@ for (const nginxSource of [preprodNginxSource, hmlNginxSource]) {
 assert.match(workflowSource, /SEARCH_INDEXING_MODE:\s*blocked/)
 assert.match(workflowSource, /X-Robots-Tag:.*noindex/)
 assert.match(workflowSource, /Disallow: \//)
+assert.match(nextConfigSource, /output:\s*["']standalone["']/)
 assert.match(
   preprodComposeSource,
-  /COPY --from=build \/app\/src\/lib\/seo\/search-indexing-policy\.ts \.\/src\/lib\/seo\/search-indexing-policy\.ts/,
+  /COPY --from=build --chown=node:node \/app\/\.next\/standalone \.\//,
+)
+assert.doesNotMatch(
+  preprodComposeSource,
+  /COPY --from=build \/app\/src\/lib\/seo\/search-indexing-policy\.ts/,
 )
 
 console.log("SEARCH_INDEXING_POLICY_RESULT=OK")
