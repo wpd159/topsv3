@@ -161,7 +161,7 @@ html, body { --removed-body-scroll-bar-size: 0px !important; }
   image-rendering: pixelated;
 }
 
-/* Painel sobre imagem bloqueada (~90% da área, 5% de margem). Usado em SensitiveImage. */
+/* O fundo opaco preserva o bloqueio sem criar uma camada de backdrop que possa ficar stale. */
 .compliance-restricted-overlay {
   position: absolute;
   inset: 5%;
@@ -174,7 +174,5 @@ html, body { --removed-body-scroll-bar-size: 0px !important; }
   background: linear-gradient(180deg, rgb(0 0 0 / 0.86), rgb(0 0 0 / 0.78));
   padding: 1rem;
   text-align: center;
-  -webkit-backdrop-filter: blur(4px);
-  backdrop-filter: blur(4px);
   cursor: pointer;
 }

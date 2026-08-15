@@ -24,6 +24,10 @@ const sensitiveImage = fs.readFileSync(
   path.join(root, 'src/components/compliance/sensitive-image.tsx'),
   'utf8',
 )
+const globalStyles = fs.readFileSync(
+  path.join(root, 'src/app/globals.css'),
+  'utf8',
+)
 const grid = fs.readFileSync(
   path.join(root, 'src/components/anuncios/anuncios-grid.tsx'),
   'utf8',
@@ -86,5 +90,16 @@ assert.match(sensitiveImage, /onLoad=\{\(\) =>/)
 assert.doesNotMatch(grid, /onAccessUpdated=/)
 assert.match(sidebar, /scope="WHATSAPP"/)
 assert.doesNotMatch(sensitiveImage, /urlAssinada|chaveObjeto|private.*url/i)
+
+const restrictedOverlayRule = globalStyles.match(
+  /\.compliance-restricted-overlay\s*\{([\s\S]*?)\}/,
+)?.[1]
+assert.ok(restrictedOverlayRule, 'O overlay de conteudo restrito deve continuar definido.')
+assert.match(restrictedOverlayRule, /background:/)
+assert.doesNotMatch(
+  restrictedOverlayRule,
+  /backdrop-filter/i,
+  'O overlay nao pode criar uma camada de backdrop que fique stale apos o desbloqueio.',
+)
 
 console.log('OK_AGE_GATE_BACKEND_FONTE_UNICA')
