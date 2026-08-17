@@ -10,21 +10,20 @@ export function HeaderSkeleton() {
       </div>
 
       {/* Links principais */}
-      <div className="hidden md:flex items-center gap-8">
-        <Skeleton className="w-20 h-5 rounded-md" />
+      <div className="hidden lg:flex items-center gap-8">
         <Skeleton className="w-20 h-5 rounded-md" />
         <Skeleton className="w-20 h-5 rounded-md" />
       </div>
 
       {/* Botões principais */}
-      <div className="hidden md:flex items-center gap-4">
-        <Skeleton className="w-28 h-10 rounded-md" />
+      <div className="hidden lg:flex items-center gap-4">
+        <Skeleton className="w-20 h-10 rounded-md" />
         <Skeleton className="w-28 h-10 rounded-md" />
         <Skeleton className="w-44 h-10 rounded-md" />
       </div>
 
       {/* Menu mobile */}
-      <div className="md:hidden">
+      <div className="lg:hidden">
         <Skeleton className="w-10 h-10 rounded-md" />
       </div>
     </header>

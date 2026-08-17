@@ -129,6 +129,19 @@ assert.ok(!localPhotoSelection.includes("'EXCLUIR'") && detail.includes("choice 
 assert.ok(detail.includes("choice === 'RESTRITA_18' ? previous?.observacao ?? '' : ''"), 'Trocar para LIVRE deve limpar observacao residual.')
 assert.ok(detail.includes("decision.classificacao === 'RESTRITA_18'") && detail.includes('decision.observacao.trim() || undefined'), 'Somente RESTRITA_18 pode enviar observacao individual.')
 assert.ok(detail.includes("filter((item) => item.resultado === 'FALHA')") && detail.includes('failedIds.has(mediaId)'), 'Falha parcial deve preservar somente itens que exigem retry.')
+assert.ok(detail.includes('applyConfirmedPhotoBatch(response)') && detail.includes('void load()'), 'O lote deve refletir o 2xx localmente antes da reconciliacao secundaria.')
+assert.ok(detail.includes('applyConfirmedMediaResponse(intent.media.id, response)'), 'A classificacao individual deve refletir somente a resposta confirmada pelo servidor.')
+assert.ok(detail.includes('status: response.status') && detail.includes('response.visibilidadeMidia ?? item.visibilidadeMidia'), 'O estado local deve usar status e classificacao retornados pela mutation.')
+const confirmedMediaFlow = detail.slice(
+  detail.indexOf("} else if (intent.kind === 'MEDIA')"),
+  detail.indexOf('} else {', detail.indexOf("} else if (intent.kind === 'MEDIA')")),
+)
+assert.ok(!confirmedMediaFlow.includes('await load()'), 'O loading da classificacao nao pode aguardar o refetch secundario.')
+const confirmedReclassificationFlow = detail.slice(
+  detail.indexOf('} else {', detail.indexOf("} else if (intent.kind === 'MEDIA')")),
+  detail.indexOf('\n      await load()', detail.indexOf("} else if (intent.kind === 'MEDIA')")),
+)
+assert.ok(!confirmedReclassificationFlow.includes('await load()'), 'O loading da reclassificacao nao pode aguardar o refetch secundario.')
 assert.ok(detail.includes('else delete next[intent.media.id]'), 'Falha deve restaurar o estado persistido da classificacao, sem simular sucesso.')
 assert.ok(detail.includes("normalized.kind === 'CONFLICT'") && detail.includes('O estado da mídia mudou.'), 'Conflito real deve atualizar o detalhe e explicar a mudanca de estado.')
 assert.ok(detail.includes('preserveSelection.mode') && detail.includes('selectionStillApplies'), 'A selecao deve ser preservada somente enquanto a decisao continuar aplicavel.')

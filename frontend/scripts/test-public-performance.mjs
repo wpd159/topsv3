@@ -8,6 +8,7 @@ function source(relativePath) {
 const hero = source("src/components/layout/hero.tsx")
 const publicHeader = source("src/components/layout/header.tsx")
 const authenticatedHeader = source("src/components/layout/header-logado.tsx")
+const headerSkeleton = source("src/components/layout/header-skeleton.tsx")
 const footer = source("src/components/layout/footer.tsx")
 const sensitiveImage = source("src/components/compliance/sensitive-image.tsx")
 const card = source("src/components/anuncios/anuncio-card.tsx")
@@ -37,6 +38,10 @@ for (const header of [publicHeader, authenticatedHeader]) {
   assert.doesNotMatch(header, /fetchPriority=/)
   assert.match(header, /loading="lazy"/)
 }
+assert.match(headerSkeleton, /hidden lg:flex items-center gap-8/)
+assert.match(headerSkeleton, /hidden lg:flex items-center gap-4/)
+assert.match(headerSkeleton, /className="lg:hidden"/)
+assert.doesNotMatch(headerSkeleton, /hidden md:flex/)
 assert.match(footer, /loading="lazy"/)
 
 assert.match(sensitiveImage, /midia\.visibilidadeMidia === "LIVRE"/)

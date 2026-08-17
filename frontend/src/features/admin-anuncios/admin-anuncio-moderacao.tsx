@@ -62,6 +62,7 @@ import type {
   AdminLegalBlockCategory,
   AdminMediaItem,
   AdminMediaPreview,
+  AdminModerationActionResponse,
   AdminModerationHistoryItem,
   AdminPhotoBatchResponse,
 } from './types'
@@ -684,6 +685,51 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     })
   }
 
+  function applyConfirmedMediaResponse(
+    mediaId: string,
+    response: AdminModerationActionResponse,
+  ) {
+    setMedia((current) => current.map((item) => item.id === mediaId
+      ? {
+          ...item,
+          status: response.status,
+          visibilidadeMidia: response.visibilidadeMidia ?? item.visibilidadeMidia,
+          atualizadoEm: response.decididoEm,
+        }
+      : item))
+    if (response.visibilidadeMidia) {
+      setVisibility((current) => ({
+        ...current,
+        [mediaId]: response.visibilidadeMidia as 'LIVRE' | 'RESTRITA_18',
+      }))
+    }
+  }
+
+  function applyConfirmedPhotoBatch(response: AdminPhotoBatchResponse) {
+    const confirmed = new Map(
+      response.resultados
+        .filter((item) => item.resultado !== 'FALHA')
+        .map((item) => [item.mediaId, item]),
+    )
+    setMedia((current) => current.map((item) => {
+      const result = confirmed.get(item.id)
+      if (!result) return item
+      return {
+        ...item,
+        status: result.status ?? item.status,
+        visibilidadeMidia: result.classificacao ?? item.visibilidadeMidia,
+        atualizadoEm: response.processadoEm,
+      }
+    }))
+    setVisibility((current) => {
+      const next = { ...current }
+      confirmed.forEach((result, mediaId) => {
+        if (result.classificacao) next[mediaId] = result.classificacao
+      })
+      return next
+    })
+  }
+
   async function confirmPhotoBatch() {
     if (
       photoBatchLock.current
@@ -709,7 +755,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         }),
       )
       setPhotoBatchResult(response)
-      await load()
+      applyConfirmedPhotoBatch(response)
       const failedIds = new Set(
         response.resultados
           .filter((item) => item.resultado === 'FALHA')
@@ -719,6 +765,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         Object.entries(current).filter(([mediaId]) => failedIds.has(mediaId)),
       ))
       setPhotoBatchOpen(false)
+      void load()
     } catch (reason) {
       setPhotoBatchError(reason)
     } finally {
@@ -788,7 +835,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           && intent.visibility === 'RESTRITA_18'
           ? reason
           : undefined
-        await decideAdminMedia(
+        const response = await decideAdminMedia(
           ad.id,
           intent.media.id,
           intent.action,
@@ -796,8 +843,16 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           motivo,
           observacao,
         )
+        applyConfirmedMediaResponse(intent.media.id, response)
+        setIntent(null)
+        void load()
+        return
       } else {
-        await reclassifyAdminMedia(intent.media.id, intent.visibility, reason)
+        const response = await reclassifyAdminMedia(intent.media.id, intent.visibility, reason)
+        applyConfirmedMediaResponse(intent.media.id, response)
+        setIntent(null)
+        void load()
+        return
       }
       await load()
       setIntent(null)
