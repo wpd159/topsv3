@@ -11,6 +11,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.admin.stories.AdminStoryConfiguracaoService;
 import br.com.topsdojob.v3.application.credito.CreditoLancamentoResultado;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryAtivacaoRequest;
@@ -64,6 +65,8 @@ class MinhaContaStoriesDireitoServiceTest {
   private final StoryConfiguracaoComercialRepository configuracaoRepository =
       mock(StoryConfiguracaoComercialRepository.class);
   private final BeneficioPremiumRepository beneficioRepository = mock(BeneficioPremiumRepository.class);
+  private final AdminStoryConfiguracaoService storyConfiguracaoService =
+      mock(AdminStoryConfiguracaoService.class);
   private final GrupoAtivacaoBeneficioRepository grupoRepository =
       mock(GrupoAtivacaoBeneficioRepository.class);
   private final AtivacaoBeneficioRepository ativacaoRepository =
@@ -90,6 +93,7 @@ class MinhaContaStoriesDireitoServiceTest {
     when(beneficio.getId()).thenReturn(BENEFICIO_ID);
     when(beneficio.getCodigo()).thenReturn(STORIES);
     when(beneficioRepository.findByCodigo(STORIES)).thenReturn(Optional.of(beneficio));
+    when(storyConfiguracaoService.garantirIdentidadeTecnica(any())).thenReturn(beneficio);
     when(consultaService.consultarAtivos(any())).thenReturn(Map.of());
     when(grupoRepository.findByIdempotencyKey(any())).thenReturn(Optional.empty());
     when(grupoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
@@ -106,6 +110,7 @@ class MinhaContaStoriesDireitoServiceTest {
         movimentoRepository,
         configuracaoRepository,
         beneficioRepository,
+        storyConfiguracaoService,
         grupoRepository,
         ativacaoRepository,
         storyRepository,
@@ -263,6 +268,7 @@ class MinhaContaStoriesDireitoServiceTest {
     assertThat(repetido.ativacao()).isSameAs(primeiro.ativacao());
     verify(grupoRepository, times(1)).save(any());
     verify(ativacaoRepository, times(1)).save(any());
+    verify(storyConfiguracaoService, times(2)).garantirIdentidadeTecnica(any());
     verify(ledgerService, never()).bloquearEConsultarSaldo(any());
     verify(ledgerService, never()).registrar(
         any(), any(), any(), anyInt(), anyInt(), any(), any(), any(), any(), any(), any(), any());

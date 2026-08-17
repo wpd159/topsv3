@@ -15,21 +15,58 @@ import {
   listAdminPremiumBenefits,
 } from './api'
 import type {
+  AdminPremiumActivationOperation,
   AdminPremiumBenefit,
   AdminPremiumCatalogItem,
   AdminQueuePremiumBenefit,
 } from './types'
 
+const FOTOS_EXTRA_CODE = 'FOTOS_EXTRA_5'
+
 function operationKey() {
   return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function active(item?: AdminQueuePremiumBenefit) {
-  return Boolean(item && ['ATIVO', 'VENCENDO'].includes(item.status))
+export function premiumBenefitGranted(item?: AdminQueuePremiumBenefit) {
+  return Boolean(item && (
+    ['ATIVO', 'VENCENDO'].includes(item.status)
+    || (item.codigo === FOTOS_EXTRA_CODE && item.status === 'PENDENTE')
+  ))
 }
 
 function pending(item?: AdminQueuePremiumBenefit) {
-  return item?.status === 'PENDENTE'
+  return item?.status === 'PENDENTE' && item.codigo !== FOTOS_EXTRA_CODE
+}
+
+function operationStatus(status: string) {
+  if (status === 'AGUARDANDO_MODERACAO') return 'PENDENTE'
+  if (status === 'ATIVA') return 'ATIVO'
+  return status
+}
+
+export function confirmedPremiumBenefit(
+  catalogItem: AdminPremiumCatalogItem,
+  operation: AdminPremiumActivationOperation,
+): AdminQueuePremiumBenefit {
+  return {
+    ativacaoId: operation.id,
+    codigo: catalogItem.codigo,
+    nome: catalogItem.nome,
+    status: operationStatus(operation.status),
+    inicioEm: null,
+    fimEm: operation.fimEm,
+  }
+}
+
+export function mergeConfirmedPremiumBenefit(
+  items: AdminQueuePremiumBenefit[],
+  confirmed: AdminQueuePremiumBenefit,
+) {
+  const refreshed = items.find((item) => item.ativacaoId === confirmed.ativacaoId)
+  return [
+    ...items.filter((item) => item.ativacaoId !== confirmed.ativacaoId),
+    refreshed ?? confirmed,
+  ]
 }
 
 export function queuePremiumBenefits(items: AdminPremiumBenefit[]): AdminQueuePremiumBenefit[] {
@@ -51,12 +88,14 @@ export function AdminAnuncioPremiumRapido({
   benefits,
   canManage,
   onChanged,
+  onOperationStart,
 }: {
   anuncioId: string
   catalog: AdminPremiumCatalogItem[]
   benefits: AdminQueuePremiumBenefit[]
   canManage: boolean
   onChanged: (items: AdminQueuePremiumBenefit[]) => void
+  onOperationStart: () => void
 }) {
   const [openCode, setOpenCode] = useState<string | null>(null)
   const [duration, setDuration] = useState('')
@@ -64,6 +103,7 @@ export function AdminAnuncioPremiumRapido({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const idempotencyKey = useRef<string | null>(null)
+  const refreshGeneration = useRef(0)
 
   const latestByCode = useMemo(() => {
     const result = new Map<string, AdminQueuePremiumBenefit>()
@@ -81,8 +121,10 @@ export function AdminAnuncioPremiumRapido({
     setDuration(first ? String(first.duracaoDias) : '')
   }
 
-  async function refreshRow() {
-    onChanged(queuePremiumBenefits(await listAdminPremiumBenefits(anuncioId)))
+  async function refreshRow(confirmed?: AdminQueuePremiumBenefit, generation = refreshGeneration.current) {
+    const refreshed = queuePremiumBenefits(await listAdminPremiumBenefits(anuncioId))
+    if (generation !== refreshGeneration.current) return
+    onChanged(confirmed ? mergeConfirmedPremiumBenefit(refreshed, confirmed) : refreshed)
   }
 
   async function activate(item: AdminPremiumCatalogItem) {
@@ -90,14 +132,25 @@ export function AdminAnuncioPremiumRapido({
     if (busy || !Number.isInteger(days) || days < 1) return
     setBusy(true)
     setError(null)
+    const isPhotoCapacity = item.codigo === FOTOS_EXTRA_CODE
+    if (isPhotoCapacity) onOperationStart()
     const key = idempotencyKey.current ?? operationKey()
     idempotencyKey.current = key
+    const generation = ++refreshGeneration.current
     try {
-      await activateAdminPremiumBatch(anuncioId, {
+      const result = await activateAdminPremiumBatch(anuncioId, {
         beneficios: [{ beneficioId: item.id, duracaoDias: days }],
         observacao: observation.trim() || null,
       }, key)
-      await refreshRow()
+      if (isPhotoCapacity) {
+        const operation = result.ativacoes.find((activation) => activation.beneficioId === item.id)
+        if (!operation) throw new Error('Resposta da ativacao de fotos sem o beneficio confirmado.')
+        const confirmed = confirmedPremiumBenefit(item, operation)
+        onChanged(mergeConfirmedPremiumBenefit(benefits, confirmed))
+        void refreshRow(confirmed, generation).catch(() => undefined)
+      } else {
+        await refreshRow(undefined, generation)
+      }
       idempotencyKey.current = null
       setOpenCode(null)
     } catch (reason) {
@@ -113,9 +166,10 @@ export function AdminAnuncioPremiumRapido({
     setError(null)
     const key = idempotencyKey.current ?? operationKey()
     idempotencyKey.current = key
+    const generation = ++refreshGeneration.current
     try {
       await cancelAdminPremium(item.ativacaoId, observation.trim(), key)
-      await refreshRow()
+      await refreshRow(undefined, generation)
       idempotencyKey.current = null
       setOpenCode(null)
     } catch (reason) {
@@ -131,7 +185,7 @@ export function AdminAnuncioPremiumRapido({
     <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
       {catalog.map((item) => {
         const latest = latestByCode.get(item.codigo)
-        const isActive = active(latest)
+        const isActive = premiumBenefitGranted(latest)
         const isPending = pending(latest)
         const options = item.opcoes.filter((option) => option.ativo)
         const trigger = (

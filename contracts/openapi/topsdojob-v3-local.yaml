@@ -3006,6 +3006,53 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/anuncios/{id}/proprietario:
+    patch:
+      summary: Corrige nome civil e CPF do proprietario canonico do anuncio
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. O backend deriva o usuario pelo anuncio, reutiliza validacao, unicidade e auditoria cadastral canonicas e nao altera KYC, documentos ou o anuncio.
+      operationId: patchAdminAnuncioProprietario
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAnuncioProprietarioAtualizacaoRequest"
+      responses:
+        "200":
+          description: Proprietario atualizado com dados normalizados e auditoria sanitizada
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+            Cache-Control:
+              schema:
+                type: string
+              description: Sempre no-store.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsuarioDetalhe"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}/reativar:
     post:
       summary: Reativa administrativamente um anuncio pausado e aprovado
@@ -12135,6 +12182,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AdminUsuarioHistorico"
+    AdminAnuncioProprietarioAtualizacaoRequest:
+      type: object
+      additionalProperties: false
+      required: [nome, cpf]
+      properties:
+        nome:
+          type: string
+          minLength: 3
+          maxLength: 180
+        cpf:
+          type: string
+          pattern: "^[0-9]{11}$"
     AdminUsuarioAtualizacaoRequest:
       type: object
       additionalProperties: false

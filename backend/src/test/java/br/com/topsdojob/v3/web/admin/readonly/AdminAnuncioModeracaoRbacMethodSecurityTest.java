@@ -6,7 +6,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioAtualizacaoService;
+import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioProprietarioAtualizacaoService;
 import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioAtualizacaoRequest;
+import br.com.topsdojob.v3.application.admin.anuncio.dto.AdminAnuncioProprietarioAtualizacaoRequest;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioDetalhadoConsultaService;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioOrdenacao;
 import br.com.topsdojob.v3.application.admin.readonly.AdminAnuncioSituacao;
@@ -43,6 +45,9 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
 
     @Autowired
     private AdminAnuncioAtualizacaoService atualizacaoService;
+
+    @Autowired
+    private AdminAnuncioProprietarioAtualizacaoService proprietarioAtualizacaoService;
 
     @AfterEach
     void limparContexto() {
@@ -171,6 +176,27 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
     }
 
     @Test
+    void somenteAdminComAnuncioModerarEditaNomeECpfDoProprietario() {
+        UUID id = UUID.randomUUID();
+        AdminAnuncioProprietarioAtualizacaoRequest body =
+                new AdminAnuncioProprietarioAtualizacaoRequest("Pessoa QA", "52998224725");
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        autenticar("ROLE_ADMIN", "ANUNCIO_MODERAR");
+
+        atualizacaoController.atualizarProprietario(id, body, null, request);
+
+        verify(proprietarioAtualizacaoService).atualizar(
+                org.mockito.ArgumentMatchers.eq(id),
+                org.mockito.ArgumentMatchers.eq(body),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.anyString());
+
+        autenticar("ROLE_MODERADOR", "ANUNCIO_MODERAR");
+        assertThatThrownBy(() -> atualizacaoController.atualizarProprietario(id, body, null, request))
+                .isInstanceOf(AuthorizationDeniedException.class);
+    }
+
+    @Test
     void documentosExigemPapelAdministrativoEPermissaoDocumental() {
         UUID id = UUID.randomUUID();
         autenticar("ROLE_MODERADOR", "DOCUMENTO_REVISAR");
@@ -204,14 +230,22 @@ class AdminAnuncioModeracaoRbacMethodSecurityTest {
         }
 
         @Bean
+        AdminAnuncioProprietarioAtualizacaoService proprietarioAtualizacaoService() {
+            return mock(AdminAnuncioProprietarioAtualizacaoService.class);
+        }
+
+        @Bean
         AdminAnuncioDetalhadoController controller(AdminAnuncioDetalhadoConsultaService service) {
             return new AdminAnuncioDetalhadoController(service);
         }
 
         @Bean
         AdminAnuncioAtualizacaoController atualizacaoController(
-                AdminAnuncioAtualizacaoService atualizacaoService) {
-            return new AdminAnuncioAtualizacaoController(atualizacaoService);
+                AdminAnuncioAtualizacaoService atualizacaoService,
+                AdminAnuncioProprietarioAtualizacaoService proprietarioAtualizacaoService) {
+            return new AdminAnuncioAtualizacaoController(
+                    atualizacaoService,
+                    proprietarioAtualizacaoService);
         }
     }
 }

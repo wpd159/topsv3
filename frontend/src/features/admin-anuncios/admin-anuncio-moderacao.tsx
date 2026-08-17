@@ -27,16 +27,20 @@ import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { cpfDigits, isValidCpf, maskCpf } from '@/lib/cpf-mask'
 import { maskPhoneBR } from '@/lib/phone-mask'
 import { ApiContractError, normalizeApiError } from '@/lib/api-contract'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
 import {
+  AdminAdOwnerFormError,
   approveAdminAd,
   blockAdminAd,
   blockAdminAdAndUser,
@@ -54,6 +58,7 @@ import {
   submitAdminReview,
   unblockAdminAd,
   unblockAdminUser,
+  updateAdminAdOwner,
 } from './api'
 import { adminAdQueueDetailHref, adminAdQueueListHref, parseAdminAdQueueContext } from './queue-context'
 import type {
@@ -488,6 +493,83 @@ function PhotoBatchDialog({
   )
 }
 
+function OwnerEditDialog({
+  open,
+  busy,
+  error,
+  fieldErrors,
+  nome,
+  cpf,
+  onNameChange,
+  onCpfChange,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  busy: boolean
+  error: unknown
+  fieldErrors: Record<string, string>
+  nome: string
+  cpf: string
+  onNameChange: (value: string) => void
+  onCpfChange: (value: string) => void
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !busy) onClose() }}>
+      <DialogContent className="rounded-md">
+        <form onSubmit={(event) => { event.preventDefault(); onConfirm() }} className="space-y-5">
+          <DialogHeader>
+            <DialogTitle>Editar dados do usuário</DialogTitle>
+            <DialogDescription>
+              Corrija somente os dados cadastrais usados na conferência documental.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="admin-owner-name">Nome</Label>
+              <Input
+                id="admin-owner-name"
+                value={nome}
+                onChange={(event) => onNameChange(event.target.value)}
+                maxLength={180}
+                disabled={busy}
+                aria-invalid={Boolean(fieldErrors.nome)}
+                aria-describedby={fieldErrors.nome ? 'admin-owner-name-error' : undefined}
+              />
+              {fieldErrors.nome ? <p id="admin-owner-name-error" className="text-xs font-medium text-red-700">{fieldErrors.nome}</p> : null}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="admin-owner-cpf">CPF</Label>
+              <Input
+                id="admin-owner-cpf"
+                value={cpf}
+                onChange={(event) => onCpfChange(maskCpf(event.target.value))}
+                inputMode="numeric"
+                maxLength={14}
+                autoComplete="off"
+                disabled={busy}
+                aria-invalid={Boolean(fieldErrors.cpf)}
+                aria-describedby={fieldErrors.cpf ? 'admin-owner-cpf-error' : undefined}
+              />
+              {fieldErrors.cpf ? <p id="admin-owner-cpf-error" className="text-xs font-medium text-red-700">{fieldErrors.cpf}</p> : null}
+            </div>
+          </div>
+          {error && !fieldErrors.nome && !fieldErrors.cpf ? <ContractState error={error} compact /> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancelar</Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Pencil className="mr-2 h-4 w-4" />}
+              {busy ? 'Salvando...' : 'Salvar dados'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function PhotoDeleteDialog({
   media,
   busy,
@@ -562,6 +644,13 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const [navigation, setNavigation] = useState<AdminAdQueueNavigation | null>(null)
   const [navigationError, setNavigationError] = useState<unknown>(null)
   const [decisionOutcome, setDecisionOutcome] = useState<'APPROVED' | 'REPROVED' | 'OTHER' | null>(null)
+  const [ownerEditOpen, setOwnerEditOpen] = useState(false)
+  const [ownerEditName, setOwnerEditName] = useState('')
+  const [ownerEditCpf, setOwnerEditCpf] = useState('')
+  const [ownerEditBusy, setOwnerEditBusy] = useState(false)
+  const [ownerEditError, setOwnerEditError] = useState<unknown>(null)
+  const [ownerEditFieldErrors, setOwnerEditFieldErrors] = useState<Record<string, string>>({})
+  const ownerEditLock = useRef(false)
 
   const load = useCallback(async (preserveSelection?: {
     mediaId: string
@@ -683,6 +772,67 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       if (!decision || decision.classificacao !== 'RESTRITA_18') return current
       return { ...current, [mediaId]: { ...decision, observacao } }
     })
+  }
+
+  function openOwnerEdit() {
+    if (!ad?.anunciante) return
+    setOwnerEditName(ad.anunciante.nomeCivil || ad.anunciante.nome || '')
+    setOwnerEditCpf(maskCpf(ad.anunciante.cpf || ''))
+    setOwnerEditError(null)
+    setOwnerEditFieldErrors({})
+    setOwnerEditOpen(true)
+  }
+
+  function closeOwnerEdit() {
+    if (ownerEditBusy) return
+    setOwnerEditOpen(false)
+    setOwnerEditError(null)
+    setOwnerEditFieldErrors({})
+  }
+
+  async function confirmOwnerEdit() {
+    if (ownerEditLock.current || !ad?.anunciante) return
+    const nome = ownerEditName.trim().replace(/\s+/g, ' ')
+    const cpf = cpfDigits(ownerEditCpf)
+    const errors: Record<string, string> = {}
+    if (nome.length < 3) errors.nome = 'Informe o nome do usuário.'
+    if (!isValidCpf(cpf)) errors.cpf = 'Informe um CPF válido.'
+    if (Object.keys(errors).length > 0) {
+      setOwnerEditFieldErrors(errors)
+      return
+    }
+
+    ownerEditLock.current = true
+    setOwnerEditBusy(true)
+    setOwnerEditError(null)
+    setOwnerEditFieldErrors({})
+    try {
+      const updated = await updateAdminAdOwner(ad.id, { nome, cpf })
+      setAd((current) => current?.anunciante
+        ? {
+            ...current,
+            anunciante: {
+              ...current.anunciante,
+              nomeCivil: updated.nomeCivil ?? nome,
+              cpf: updated.cpf,
+            },
+          }
+        : current)
+      setOwnerEditOpen(false)
+    } catch (reason) {
+      if (reason instanceof AdminAdOwnerFormError) {
+        const fieldErrors = { ...reason.fieldErrors }
+        if (fieldErrors.nomeCivil) {
+          fieldErrors.nome = fieldErrors.nomeCivil
+          delete fieldErrors.nomeCivil
+        }
+        setOwnerEditFieldErrors(fieldErrors)
+      }
+      setOwnerEditError(reason)
+    } finally {
+      ownerEditLock.current = false
+      setOwnerEditBusy(false)
+    }
   }
 
   function applyConfirmedMediaResponse(
@@ -1103,7 +1253,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
 
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="rounded-md border border-zinc-200 bg-white p-4">
-          <h2 className="text-sm font-semibold text-zinc-950">Proprietário</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold text-zinc-950">Proprietário</h2>
+            {isAdmin && canModerateAd && ad.anunciante ? (
+              <Button type="button" size="sm" variant="outline" onClick={openOwnerEdit}>
+                <Pencil className="h-4 w-4" />Editar dados do usuário
+              </Button>
+            ) : null}
+          </div>
           <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
             <div><span className="block text-xs text-zinc-500">Nome completo</span><strong>{ad.anunciante?.nomeCivil || ad.anunciante?.nome || 'Não informado'}</strong></div>
             <div><span className="block text-xs text-zinc-500">Conta</span><strong>{formatEnum(ad.anunciante?.status)}</strong></div>
@@ -1330,6 +1487,34 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       </Tabs>
 
       <DecisionDialog intent={intent} busy={busy} error={actionError} onClose={() => { setIntent(null); setActionError(null) }} onConfirm={(reason) => void confirmDecision(reason)} />
+      <OwnerEditDialog
+        open={ownerEditOpen}
+        busy={ownerEditBusy}
+        error={ownerEditError}
+        fieldErrors={ownerEditFieldErrors}
+        nome={ownerEditName}
+        cpf={ownerEditCpf}
+        onNameChange={(value) => {
+          setOwnerEditName(value)
+          setOwnerEditError(null)
+          setOwnerEditFieldErrors((current) => {
+            const next = { ...current }
+            delete next.nome
+            return next
+          })
+        }}
+        onCpfChange={(value) => {
+          setOwnerEditCpf(value)
+          setOwnerEditError(null)
+          setOwnerEditFieldErrors((current) => {
+            const next = { ...current }
+            delete next.cpf
+            return next
+          })
+        }}
+        onClose={closeOwnerEdit}
+        onConfirm={() => void confirmOwnerEdit()}
+      />
       <PhotoBatchDialog
         open={photoBatchOpen}
         busy={photoBatchBusy}

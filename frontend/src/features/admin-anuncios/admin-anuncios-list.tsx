@@ -14,7 +14,7 @@ import { getAdminSession } from '@/lib/admin-auth-api'
 import { maskPhoneBR } from '@/lib/phone-mask'
 import { SearchableSelect } from '@/features/anuncio-wizard/components/searchable-select'
 
-import { AdminAnuncioPremiumRapido } from './admin-anuncio-premium-rapido'
+import { AdminAnuncioPremiumRapido, premiumBenefitGranted } from './admin-anuncio-premium-rapido'
 import { listAdminAdFilterLocations, listAdminAds, listAdminPremiumCatalog, publishAdminStory, reactivateAdminAd } from './api'
 import {
   ADMIN_AD_PAGE_SIZE_OPTIONS,
@@ -253,7 +253,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
         ...item,
         beneficiosPremium: benefits,
         beneficiosPremiumVigentes: benefits
-          .filter((benefit) => ['ATIVO', 'VENCENDO'].includes(benefit.status))
+          .filter((benefit) => premiumBenefitGranted(benefit))
           .map((benefit) => benefit.nome),
       } : item),
     } : current)
@@ -432,7 +432,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
                 <div className="mt-3"><StatusBadges item={item} /></div>
                 <p className="mt-3 text-xs text-zinc-600">{locationLabel(item)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><div><span className="block text-zinc-500">Visualizações</span><strong>{viewsLabel(item)}</strong></div><div><span className="block text-zinc-500">WhatsApp</span><strong>{item.cliquesWhatsapp}</strong></div><div><span className="block text-zinc-500">Criado</span><strong>{dateLabel(item.criadoEm)}</strong></div></div>
-                <div className="mt-3"><AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} /></div>
+                <div className="mt-3"><AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} onOperationStart={() => setActionError(null)} /></div>
                 <div className="mt-2"><AdminStoryQuickAction item={item} canManage={canManageStories} busy={busyStoryIds.has(item.id)} onPublish={(row) => void addToStories(row)} /></div>
                 <div className="mt-4 grid gap-2">
                   {canReactivate(item) ? <Button type="button" variant="outline" disabled={Boolean(busyAdId)} onClick={() => void reactivate(item)}>{busyAdId === item.id ? 'Reativando...' : 'Reativar'}</Button> : null}
@@ -453,7 +453,7 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
                     <td className="px-4 py-3 text-zinc-600">{locationLabel(item)}</td>
                     <td className="px-4 py-3"><StatusBadges item={item} /></td>
                     <td className="px-4 py-3"><div className="min-w-[280px] space-y-3">
-                      <AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} />
+                      <AdminAnuncioPremiumRapido anuncioId={item.id} catalog={catalog} benefits={item.beneficiosPremium} canManage={canManagePremium} onChanged={(benefits) => updateRowPremium(item.id, benefits)} onOperationStart={() => setActionError(null)} />
                       <AdminStoryQuickAction item={item} canManage={canManageStories} busy={busyStoryIds.has(item.id)} onPublish={(row) => void addToStories(row)} />
                     </div></td>
                     <td className="px-4 py-3 text-xs text-zinc-700"><strong>{viewsLabel(item)}</strong> views<br /><span>{item.cliquesWhatsapp} cliques</span></td>

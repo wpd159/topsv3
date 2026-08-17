@@ -83,6 +83,18 @@ class AdminStoryConfiguracaoServiceTest {
   }
 
   @Test
+  void identidadeTecnicaPodeSerProvisionadaSemSalvarConfiguracaoComercial() {
+    var resultado = service.garantirIdentidadeTecnica(
+        OffsetDateTime.parse("2026-08-17T17:00:00Z"));
+
+    assertThat(resultado).isNotNull();
+    verify(beneficios).inserirCatalogoSeAusente(
+        any(), eq("STORIES"), eq("Stories"), any(), eq("ANUNCIO"),
+        eq(false), eq(true), eq(0), any());
+    verify(configuracoes, never()).saveAndFlush(any());
+  }
+
+  @Test
   void adminAtualizaSomenteStatusECustoComVersaoEsperada() {
     StoryConfiguracaoComercialEntity existente = StoryConfiguracaoComercialEntity.criar(
         true, 4, admin.usuarioId(), OffsetDateTime.parse("2026-08-02T12:00:00Z"));

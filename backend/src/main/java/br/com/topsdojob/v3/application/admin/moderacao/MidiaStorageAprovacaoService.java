@@ -75,13 +75,9 @@ public class MidiaStorageAprovacaoService {
         StoredObject object = storage.get(StorageArea.PRIVATE_MEDIA, privateObjectPath);
         ObjectWriteResult writeResult = storage.putIfAbsent(
                 StorageArea.PUBLIC_MEDIA, publicObjectPath, object.content(), object.contentType());
-        StoredObject publicObject = storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath);
-        if (!sha256(object.content()).equals(sha256(publicObject.content()))
-                || !mime(object.contentType()).equals(mime(publicObject.contentType()))) {
-            if (writeResult == ObjectWriteResult.CREATED) {
-                storage.delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
-            }
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "objeto publico diverge da midia processada");
+        if (writeResult == ObjectWriteResult.ALREADY_EXISTS) {
+            StoredObject publicObject = storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+            validarCopia(object, publicObject, "objeto publico diverge da midia processada", () -> { });
         }
         arquivo.moverNoStorage(properties.getPublicMediaBucket(), publicObjectPath);
         reconciliarDepoisDaTransacao(

@@ -60,10 +60,34 @@ class MidiaRestritaDerivacaoServiceTest {
         .endsWith(".jpg")
         .doesNotContain("origem");
     assertThat(storage.putIfAbsentCalls).isEqualTo(2);
+    assertThat(storage.publicGetCalls).isEqualTo(1);
     assertThat(storage.count(StorageArea.PUBLIC_MEDIA)).isEqualTo(1);
     assertThat(preview.previewUrl()).contains("/restritas-borradas/v1/");
     assertThat(preview.previewUrl()).doesNotContain(sourceKey);
     assertThat(storage.exists(StorageArea.PRIVATE_MEDIA, sourceKey)).isTrue();
+  }
+
+  @Test
+  void derivacaoExistenteDivergenteFalhaFechadoSemSobrescrever() throws Exception {
+    MemoryStorage storage = new MemoryStorage();
+    R2StorageProperties properties = properties();
+    byte[] source = jpeg();
+    String sourceKey = properties.getPrivateMediaPrefix() + "origem.jpg";
+    storage.put(StorageArea.PRIVATE_MEDIA, sourceKey, source, "image/jpeg");
+    ArquivoMidiaEntity arquivo = arquivo(
+        UUID.randomUUID(),
+        properties.getPrivateMediaBucket(),
+        sourceKey,
+        sha256(source));
+    MidiaRestritaDerivacaoService service = service(storage, properties);
+    String previewKey = service.chavePublica(arquivo);
+    byte[] divergent = new byte[] {9, 8, 7};
+    storage.put(StorageArea.PUBLIC_MEDIA, previewKey, divergent, "image/jpeg");
+
+    assertThatThrownBy(() -> service.garantir(arquivo))
+        .isInstanceOf(ResponseStatusException.class)
+        .hasMessageContaining("divergente");
+    assertThat(storage.get(StorageArea.PUBLIC_MEDIA, previewKey).content()).isEqualTo(divergent);
   }
 
   @Test
@@ -149,6 +173,7 @@ class MidiaRestritaDerivacaoServiceTest {
     private final Map<StorageArea, Map<String, StoredObject>> objects =
         new EnumMap<>(StorageArea.class);
     private int putIfAbsentCalls;
+    private int publicGetCalls;
 
     private MemoryStorage() {
       for (StorageArea area : StorageArea.values()) {
@@ -186,6 +211,7 @@ class MidiaRestritaDerivacaoServiceTest {
 
     @Override
     public StoredObject get(StorageArea area, String key) {
+      if (area == StorageArea.PUBLIC_MEDIA) publicGetCalls++;
       return objects.get(area).get(key);
     }
 

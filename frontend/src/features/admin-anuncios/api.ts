@@ -13,6 +13,8 @@ import type {
   AdminAdListItem,
   AdminAdQueueNavigation,
   AdminAdRemovalResponse,
+  AdminAdOwnerUpdate,
+  AdminAdOwnerUpdateResponse,
   AdminAdUpdate,
   AdminFilterLocation,
   AdminKycSubmission,
@@ -26,6 +28,7 @@ import type {
   AdminPhotoBatchDecision,
   AdminPhotoBatchResponse,
   AdminPremiumBenefit,
+  AdminPremiumActivationBatch,
   AdminPremiumCatalogItem,
   AdminStoryPublication,
 } from './types'
@@ -38,6 +41,20 @@ function csrfCookieName() {
 
 function csrfHeaderName() {
   return ['X', 'XSRF', 'TOKEN'].join('-')
+}
+
+export class AdminAdOwnerFormError extends ApiContractError {
+  readonly fieldErrors: Record<string, string>
+
+  constructor(message: string, status: number, errors: Array<{ campo?: string; mensagem?: string }>) {
+    super(message, status === 409 ? 'CONFLICT' : 'INVALID_REQUEST', status)
+    this.name = 'AdminAdOwnerFormError'
+    this.fieldErrors = Object.fromEntries(
+      errors
+        .filter((item) => item.campo && item.mensagem)
+        .map((item) => [String(item.campo), String(item.mensagem)]),
+    )
+  }
 }
 
 function readCsrfValue() {
@@ -75,6 +92,25 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
+async function adminAdOwnerErrorFromResponse(response: Response) {
+  try {
+    const body = await response.clone().json() as {
+      mensagem?: string
+      erros?: Array<{ campo?: string; mensagem?: string }>
+    }
+    if (Array.isArray(body.erros) && body.erros.length > 0) {
+      return new AdminAdOwnerFormError(
+        body.mensagem || 'Revise os dados informados.',
+        response.status,
+        body.erros,
+      )
+    }
+  } catch {
+    // A resposta generica abaixo preserva o contrato quando nao houver erro de campo.
+  }
+  return apiErrorFromResponse(response)
+}
+
 function pagePayload<T>(payload: unknown): AdminPage<T> {
   if (!payload || typeof payload !== 'object') {
     throw new ApiContractError('O servico retornou uma pagina incompativel.', 'TECHNICAL_FAILURE', 502, true)
@@ -83,7 +119,7 @@ function pagePayload<T>(payload: unknown): AdminPage<T> {
   return { ...page, itens: requireArrayPayload<T>(page.itens) } as AdminPage<T>
 }
 
-async function request<T>(path: string, init: RequestInit = {}) {
+async function request<T>(path: string, init: RequestInit = {}, parseOwnerFormError = false) {
   const method = (init.method || 'GET').toUpperCase()
   const headers = new Headers(init.headers)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
@@ -97,6 +133,9 @@ async function request<T>(path: string, init: RequestInit = {}) {
       credentials: 'include',
       cache: 'no-store',
     })
+    if (!response.ok && parseOwnerFormError) {
+      throw await adminAdOwnerErrorFromResponse(response)
+    }
     return await readJson<T>(response)
   } catch (error) {
     throw normalizeApiError(error)
@@ -125,6 +164,13 @@ export function updateAdminAd(id: string, payload: AdminAdUpdate) {
     method: 'PUT',
     body: JSON.stringify(payload),
   })
+}
+
+export function updateAdminAdOwner(id: string, payload: AdminAdOwnerUpdate) {
+  return request<AdminAdOwnerUpdateResponse>(`/anuncios/${encodeURIComponent(id)}/proprietario`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }, true)
 }
 
 export function reactivateAdminAd(id: string) {
@@ -259,7 +305,7 @@ export function activateAdminPremiumBatch(
   payload: { beneficios: Array<{ beneficioId: string; duracaoDias: number }>; observacao?: string | null },
   idempotencyKey: string,
 ) {
-  return request(`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes/lote`, {
+  return request<AdminPremiumActivationBatch>(`/premium/anuncios/${encodeURIComponent(anuncioId)}/ativacoes/lote`, {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(payload),

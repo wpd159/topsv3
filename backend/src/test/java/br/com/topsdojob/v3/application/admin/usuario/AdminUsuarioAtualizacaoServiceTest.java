@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -89,6 +90,34 @@ class AdminUsuarioAtualizacaoServiceTest {
     assertThat(usuario.getNome()).isEqualTo("QA");
     assertThat(usuario.getEmailNormalizado()).isEqualTo("qa-" + usuarioId + "@example.invalid");
     assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+5562999998888");
+  }
+
+  @Test
+  void corrigeNomeCivilECpfSemAlterarDemaisDadosDaConta() {
+    UUID usuarioId = UUID.randomUUID();
+    UsuarioEntity usuario = usuario(usuarioId, "+556233334444");
+    AdminUserPrincipal ator = mock(AdminUserPrincipal.class);
+    when(ator.usuarioId()).thenReturn(UUID.randomUUID());
+    when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+    when(usuarioRepository.findByCpfNormalizado("52998224725")).thenReturn(Optional.empty());
+    when(consultaService.detalhar(usuarioId, ator)).thenReturn(mock(AdminUsuarioDetalheDto.class));
+    AdminUsuarioAtualizacaoRequestDto request = request(usuario);
+    request.setNomeCivil("Nome Civil Corrigido");
+    request.setCpf("529.982.247-25");
+
+    service.atualizar(usuarioId, request, ator, "req-owner-data");
+
+    assertThat(usuario.getNomeCivil()).isEqualTo("Nome Civil Corrigido");
+    assertThat(usuario.getCpfNormalizado()).isEqualTo("52998224725");
+    assertThat(usuario.getNome()).isEqualTo("QA");
+    assertThat(usuario.getEmailNormalizado()).isEqualTo("qa-" + usuarioId + "@example.invalid");
+    assertThat(usuario.getTelefoneNormalizado()).isEqualTo("+556233334444");
+    assertThat(usuario.getDataNascimento()).isEqualTo(LocalDate.of(1990, 1, 1));
+    ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
+    verify(auditoriaRepository).save(audit.capture());
+    assertThat(audit.getValue().getDepoisJson())
+        .contains("nomeCivil", "cpf")
+        .doesNotContain("Nome Civil Corrigido", "52998224725");
   }
 
   @Test
@@ -177,9 +206,32 @@ class AdminUsuarioAtualizacaoServiceTest {
           assertThat(exception.status()).isEqualTo(HttpStatus.CONFLICT);
           assertThat(exception.erros()).singleElement().satisfies(error ->
               assertThat(error.campo()).isEqualTo("cpf"));
+          assertThat(exception.getMessage()).isEqualTo("CPF já vinculado a outro usuário.");
         });
 
     verify(usuarioRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  void corridaDeUnicidadeDoCpfMantemConflitoEspecifico() {
+    UUID usuarioId = UUID.randomUUID();
+    UsuarioEntity usuario = usuario(usuarioId, "+556233334444");
+    AdminUserPrincipal ator = mock(AdminUserPrincipal.class);
+    when(usuarioRepository.findByIdForUpdate(usuarioId)).thenReturn(Optional.of(usuario));
+    when(usuarioRepository.findByCpfNormalizado("52998224725")).thenReturn(Optional.empty());
+    doThrow(new org.springframework.dao.DataIntegrityViolationException("conflito sintetico"))
+        .when(usuarioRepository).saveAndFlush(usuario);
+    AdminUsuarioAtualizacaoRequestDto request = request(usuario);
+    request.setCpf("529.982.247-25");
+
+    assertThatThrownBy(() -> service.atualizar(usuarioId, request, ator, "req-cpf-race"))
+        .isInstanceOfSatisfying(AdminUsuarioAtualizacaoException.class, exception -> {
+          assertThat(exception.status()).isEqualTo(HttpStatus.CONFLICT);
+          assertThat(exception.getMessage()).isEqualTo("CPF já vinculado a outro usuário.");
+          assertThat(exception.erros()).singleElement().satisfies(error ->
+              assertThat(error.campo()).isEqualTo("cpf"));
+        });
+    verify(auditoriaRepository, never()).save(any());
   }
 
   private void assertInvalid(

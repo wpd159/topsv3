@@ -72,6 +72,7 @@ assert.ok(creditsPage.includes('adminMonetizacaoAba(searchParams)') && creditsPa
 for (const contract of [
   "request(`/anuncios?${query.toString()}`)",
   "request<AdminAdDetail>(`/anuncios/${encodeURIComponent(id)}`)",
+  '`/anuncios/${encodeURIComponent(id)}/proprietario`',
   '`/anuncios/${encodeURIComponent(id)}/midias?page=0&size=50`',
   '`/anuncios/${encodeURIComponent(id)}/historico-moderacao`',
   '`/anuncios/${encodeURIComponent(id)}/documentos`',
@@ -130,6 +131,27 @@ assert.ok(detail.includes("choice === 'RESTRITA_18' ? previous?.observacao ?? ''
 assert.ok(detail.includes("decision.classificacao === 'RESTRITA_18'") && detail.includes('decision.observacao.trim() || undefined'), 'Somente RESTRITA_18 pode enviar observacao individual.')
 assert.ok(detail.includes("filter((item) => item.resultado === 'FALHA')") && detail.includes('failedIds.has(mediaId)'), 'Falha parcial deve preservar somente itens que exigem retry.')
 assert.ok(detail.includes('applyConfirmedPhotoBatch(response)') && detail.includes('void load()'), 'O lote deve refletir o 2xx localmente antes da reconciliacao secundaria.')
+assert.ok(detail.includes('Editar dados do usuário') && detail.includes('<OwnerEditDialog'), 'O detalhe deve oferecer a correcao cadastral no contexto do proprietario.')
+assert.ok(detail.includes('isAdmin && canModerateAd && ad.anunciante'), 'A acao cadastral deve permanecer invisivel para MODERADOR.')
+assert.ok(detail.includes('updateAdminAdOwner(ad.id, { nome, cpf })'), 'Nome e CPF devem ser enviados pela operacao vinculada ao anuncio.')
+assert.ok(detail.includes('nomeCivil: updated.nomeCivil ?? nome') && detail.includes('cpf: updated.cpf'), 'A resposta confirmada deve atualizar Proprietario e Dados para conferencia sem reload.')
+assert.ok(detail.includes('isValidCpf(cpf)') && detail.includes('maskCpf(ad.anunciante.cpf'), 'A interface deve reutilizar mascara e validacao de CPF existentes.')
+const ownerDialog = detail.slice(
+  detail.indexOf('function OwnerEditDialog'),
+  detail.indexOf('function PhotoDeleteDialog'),
+)
+assert.ok(ownerDialog.includes('>Nome</Label>') && ownerDialog.includes('>CPF</Label>'), 'O modal deve exibir somente Nome e CPF.')
+for (const forbiddenOwnerField of ['E-mail', 'Telefone', 'Senha', 'Data de nascimento', 'Status', 'KYC', 'Role']) {
+  assert.ok(!ownerDialog.includes(`>${forbiddenOwnerField}</Label>`), `Campo indevido no modal do proprietario: ${forbiddenOwnerField}`)
+}
+const ownerUpdateAdapter = api.slice(
+  api.indexOf('export function updateAdminAdOwner'),
+  api.indexOf('export function reactivateAdminAd'),
+)
+assert.ok(ownerUpdateAdapter.includes("method: 'PATCH'") && ownerUpdateAdapter.includes('JSON.stringify(payload)'), 'A correcao cadastral deve usar PATCH com CSRF.')
+assert.ok(!ownerUpdateAdapter.includes('usuarioId'), 'O cliente nao pode escolher o usuario atualizado.')
+assert.ok(api.includes('AdminAdOwnerFormError') && api.includes('body.mensagem'), 'Conflitos cadastrais devem preservar a mensagem e os erros de campo do backend.')
+assert.ok(!detail.includes('CPF já vinculado a outro usuário.'), 'A mensagem de conflito nao pode ser fabricada no componente.')
 assert.ok(detail.includes('applyConfirmedMediaResponse(intent.media.id, response)'), 'A classificacao individual deve refletir somente a resposta confirmada pelo servidor.')
 assert.ok(detail.includes('status: response.status') && detail.includes('response.visibilidadeMidia ?? item.visibilidadeMidia'), 'O estado local deve usar status e classificacao retornados pela mutation.')
 const confirmedMediaFlow = detail.slice(
@@ -208,6 +230,13 @@ assert.ok(premiumQuick.includes('h-10 w-full') && premiumQuick.includes('line-cl
 assert.ok(list.includes('min-w-[280px]'), 'A coluna Premium/Stories deve reservar espaco suficiente no desktop.')
 assert.ok(premiumQuick.includes("item?.status === 'PENDENTE'") && premiumQuick.includes('border-amber-300'), 'Ativacao pendente deve permanecer distinta de beneficio ativo.')
 assert.ok(premiumQuick.includes('idempotencyKey.current ?? operationKey()'), 'Retry do Premium rapido deve reutilizar Idempotency-Key.')
+assert.ok(api.includes('request<AdminPremiumActivationBatch>'), 'A mutacao Premium deve tipar a confirmacao devolvida pelo servidor.')
+assert.ok(premiumQuick.includes("item.codigo === FOTOS_EXTRA_CODE && item.status === 'PENDENTE'"), 'Fotos extras aguardando a quinta aprovacao devem aparecer como capacidade concedida.')
+assert.ok(premiumQuick.includes('onChanged(mergeConfirmedPremiumBenefit(benefits, confirmed))'), 'Fotos extras devem atualizar a linha assim que o POST confirmar a ativacao.')
+assert.ok(premiumQuick.includes('void refreshRow(confirmed, generation).catch'), 'O refetch de fotos deve ocorrer em segundo plano sem reabrir erro apos sucesso.')
+assert.ok(list.includes('premiumBenefitGranted(benefit)') && list.includes('onOperationStart={() => setActionError(null)}'), 'A fila deve limpar conflito residual e preservar a capacidade confirmada no resumo.')
+assert.ok(list.includes('publishingStoryIds.current.has(item.id)') && list.includes('storyIdempotencyKeys.current.get(item.id)'), 'Stories deve bloquear duplo clique e reutilizar a chave idempotente.')
+assert.ok(list.includes("estado: 'ATIVO'") && list.includes('storyId: story.storyId'), 'Stories deve atualizar a linha imediatamente a partir da mutacao confirmada.')
 assert.ok(!premiumQuick.match(/duracaoDias\s*:\s*(1|7|14|30)/), 'Premium rapido nao pode hardcodar duracoes.')
 
 for (const ownerField of ['nomeCivil', '.email', '.cpf', '.whatsapp', '.status']) {

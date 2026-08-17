@@ -114,6 +114,15 @@ public class AdminUsuarioAtualizacaoService {
     try {
       usuarioRepository.saveAndFlush(usuario);
     } catch (DataIntegrityViolationException exception) {
+      if (camposAlterados.contains("cpf")
+          && !camposAlterados.contains("email")
+          && !camposAlterados.contains("telefone")) {
+        throw erro(
+            "cpf",
+            "CPF_JA_CADASTRADO",
+            "CPF já vinculado a outro usuário.",
+            HttpStatus.CONFLICT);
+      }
       throw erro(
           "dados",
           "DADOS_DUPLICADOS",
@@ -152,7 +161,7 @@ public class AdminUsuarioAtualizacaoService {
             throw erro(
                 "cpf",
                 "CPF_JA_CADASTRADO",
-                "O CPF informado ja esta cadastrado.",
+                "CPF já vinculado a outro usuário.",
                 HttpStatus.CONFLICT);
           });
     }

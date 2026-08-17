@@ -21,6 +21,7 @@ class NovaModeracaoV3ContratoTest {
                 .contains("/api/admin/anuncios/filtros/localidades:")
                 .contains("/api/admin/anuncios/{id}/aprovar:")
                 .contains("/api/admin/anuncios/{id}/midias/decisoes:")
+                .contains("/api/admin/anuncios/{id}/proprietario:")
                 .contains("/api/admin/midias/{id}/preview:")
                 .contains("/api/admin/midias/{id}/reclassificar:")
                 .contains("AdminModeracaoHistoricoItem:")
@@ -28,12 +29,36 @@ class NovaModeracaoV3ContratoTest {
                 .contains("AdminReclassificarMidiaRequest:")
                 .contains("AdminDecidirFotosLoteRequest:")
                 .contains("AdminDecidirFotosLoteResponse:")
+                .contains("AdminAnuncioProprietarioAtualizacaoRequest:")
                 .contains("mesma transacao, a decisao administrativa em PUBLICADO/APROVADO")
                 .contains("APROVAR leva o anuncio diretamente a PUBLICADO/APROVADO")
                 .contains("notificacao idempotente MODERACAO_REPROVADA")
                 .contains("Story retorna 409 e nao participa da moderacao")
                 .contains("video aprovado permanece RESTRITA_18")
                 .doesNotContain("/api/admin/moderacao-v2");
+    }
+
+    @Test
+    void correcaoDoProprietarioEhVinculadaAoAnuncioERestritaANomeECpf() throws Exception {
+        String source = Files.readString(OPENAPI, StandardCharsets.UTF_8);
+        String endpoint = source.substring(
+                source.indexOf("/api/admin/anuncios/{id}/proprietario:"),
+                source.indexOf("/api/admin/anuncios/{id}/reativar:"));
+        String schema = source.substring(
+                source.indexOf("    AdminAnuncioProprietarioAtualizacaoRequest:"),
+                source.indexOf("    AdminUsuarioAtualizacaoRequest:"));
+
+        assertThat(endpoint)
+                .contains("Operacao exclusiva de ADMIN")
+                .contains("nao altera KYC, documentos ou o anuncio")
+                .contains("AdminAnuncioProprietarioAtualizacaoRequest")
+                .doesNotContain("usuarioId");
+        assertThat(schema)
+                .contains("required: [nome, cpf]")
+                .contains("additionalProperties: false")
+                .doesNotContain("email:")
+                .doesNotContain("telefone:")
+                .doesNotContain("usuarioId:");
     }
 
     @Test

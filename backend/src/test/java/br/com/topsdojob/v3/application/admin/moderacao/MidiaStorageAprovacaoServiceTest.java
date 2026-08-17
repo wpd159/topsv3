@@ -70,7 +70,63 @@ class MidiaStorageAprovacaoServiceTest {
         assertThat(arquivo.getChaveObjeto()).isEqualTo("hml/midias-aprovadas/anuncios/a/foto.jpg");
         verify(storage).putIfAbsent(
                 StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto(), new byte[] {1, 2, 3}, "image/jpeg");
+        verify(storage, never()).get(
+                StorageArea.PUBLIC_MEDIA, "hml/midias-aprovadas/anuncios/a/foto.jpg");
         verify(storage).delete(StorageArea.PRIVATE_MEDIA, "hml/midias-pendentes/anuncios/a/foto.jpg");
+    }
+
+    @Test
+    void retryValidaObjetoPublicoExistenteAntesDeReutilizar() {
+        String privateObjectPath = "hml/midias-pendentes/anuncios/a/foto.jpg";
+        String publicObjectPath = "hml/midias-aprovadas/anuncios/a/foto.jpg";
+        ArquivoMidiaEntity arquivo = arquivoPrivado(privateObjectPath);
+        StoredObject object = new StoredObject(new byte[] {1, 2, 3}, "image/jpeg");
+        when(storage.get(StorageArea.PRIVATE_MEDIA, privateObjectPath)).thenReturn(object);
+        when(storage.putIfAbsent(
+                StorageArea.PUBLIC_MEDIA, publicObjectPath, object.content(), object.contentType()))
+                .thenReturn(ObjectWriteResult.ALREADY_EXISTS);
+        when(storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath)).thenReturn(object);
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.prepararAprovacao(arquivo, VisibilidadeMidia.LIVRE);
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(storage).get(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+        verify(storage).delete(StorageArea.PRIVATE_MEDIA, privateObjectPath);
+        verify(storage, never()).delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+    }
+
+    @Test
+    void retryComObjetoPublicoDivergenteFalhaSemApagarObjetoExistente() {
+        String privateObjectPath = "hml/midias-pendentes/anuncios/a/foto.jpg";
+        String publicObjectPath = "hml/midias-aprovadas/anuncios/a/foto.jpg";
+        ArquivoMidiaEntity arquivo = arquivoPrivado(privateObjectPath);
+        StoredObject privateObject = new StoredObject(new byte[] {1, 2, 3}, "image/jpeg");
+        when(storage.get(StorageArea.PRIVATE_MEDIA, privateObjectPath)).thenReturn(privateObject);
+        when(storage.putIfAbsent(
+                StorageArea.PUBLIC_MEDIA,
+                publicObjectPath,
+                privateObject.content(),
+                privateObject.contentType())).thenReturn(ObjectWriteResult.ALREADY_EXISTS);
+        when(storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath))
+                .thenReturn(new StoredObject(new byte[] {9, 9, 9}, "image/jpeg"));
+
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            assertThatThrownBy(() -> service.prepararAprovacao(arquivo, VisibilidadeMidia.LIVRE))
+                    .isInstanceOfSatisfying(ResponseStatusException.class,
+                            exception -> assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.CONFLICT));
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(storage, never()).delete(StorageArea.PUBLIC_MEDIA, publicObjectPath);
+        verify(storage, never()).delete(StorageArea.PRIVATE_MEDIA, privateObjectPath);
     }
 
     @Test

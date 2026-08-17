@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 import static br.com.topsdojob.v3.application.admin.stories.AdminStoryConfiguracaoService.DURACAO_HORAS;
 import static br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo.STORIES;
 
+import br.com.topsdojob.v3.application.admin.stories.AdminStoryConfiguracaoService;
 import br.com.topsdojob.v3.application.credito.CreditoLedgerOperacaoService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryAtivacaoDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MinhaContaStoryAtivacaoRequest;
@@ -52,6 +53,7 @@ public class MinhaContaStoriesDireitoService {
   private final MovimentoCreditoRepository movimentoRepository;
   private final StoryConfiguracaoComercialRepository configuracaoRepository;
   private final BeneficioPremiumRepository beneficioRepository;
+  private final AdminStoryConfiguracaoService storyConfiguracaoService;
   private final GrupoAtivacaoBeneficioRepository grupoRepository;
   private final AtivacaoBeneficioRepository ativacaoRepository;
   private final StoryAnuncioRepository storyRepository;
@@ -65,6 +67,7 @@ public class MinhaContaStoriesDireitoService {
       MovimentoCreditoRepository movimentoRepository,
       StoryConfiguracaoComercialRepository configuracaoRepository,
       BeneficioPremiumRepository beneficioRepository,
+      AdminStoryConfiguracaoService storyConfiguracaoService,
       GrupoAtivacaoBeneficioRepository grupoRepository,
       AtivacaoBeneficioRepository ativacaoRepository,
       StoryAnuncioRepository storyRepository,
@@ -76,6 +79,7 @@ public class MinhaContaStoriesDireitoService {
     this.movimentoRepository = movimentoRepository;
     this.configuracaoRepository = configuracaoRepository;
     this.beneficioRepository = beneficioRepository;
+    this.storyConfiguracaoService = storyConfiguracaoService;
     this.grupoRepository = grupoRepository;
     this.ativacaoRepository = ativacaoRepository;
     this.storyRepository = storyRepository;
@@ -262,9 +266,7 @@ public class MinhaContaStoriesDireitoService {
       throw new ResponseStatusException(
           HttpStatus.BAD_REQUEST, "contexto administrativo de Story invalido");
     }
-    var beneficio = beneficioRepository.findByCodigo(STORIES)
-        .orElseThrow(() -> new ResponseStatusException(
-            HttpStatus.CONFLICT, "identidade tecnica de Stories ausente"));
+    var beneficio = storyConfiguracaoService.garantirIdentidadeTecnica(agora);
     String chaveGrupo = "story-admin-direito:" + chavePublicacao;
     String chaveAtivacao = chaveGrupo + ":ativacao";
     GrupoAtivacaoBeneficioEntity repetido = grupoRepository

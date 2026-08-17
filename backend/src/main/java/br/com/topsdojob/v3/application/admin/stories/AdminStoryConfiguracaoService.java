@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.admin.creditos.AdminCreditoOperacaoServic
 import br.com.topsdojob.v3.application.admin.stories.dto.AdminStoryConfiguracaoDto;
 import br.com.topsdojob.v3.application.admin.stories.dto.AdminStoryConfiguracaoRequest;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryConfiguracaoComercialEntity;
+import br.com.topsdojob.v3.persistence.entity.premium.BeneficioPremiumEntity;
 import br.com.topsdojob.v3.persistence.repository.BeneficioPremiumRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryConfiguracaoComercialRepository;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -109,9 +111,11 @@ public class AdminStoryConfiguracaoService {
     return toDto(configuracao);
   }
 
-  private void garantirIdentidadeTecnica(OffsetDateTime agora) {
-    if (beneficioRepository.findByCodigo(STORIES).isPresent()) {
-      return;
+  @Transactional(propagation = Propagation.MANDATORY)
+  public BeneficioPremiumEntity garantirIdentidadeTecnica(OffsetDateTime agora) {
+    var existente = beneficioRepository.findByCodigo(STORIES);
+    if (existente.isPresent()) {
+      return existente.get();
     }
     beneficioRepository.inserirCatalogoSeAusente(
         STORIES_BENEFICIO_ID,
@@ -123,9 +127,8 @@ public class AdminStoryConfiguracaoService {
         true,
         0,
         agora);
-    if (beneficioRepository.findByCodigo(STORIES).isEmpty()) {
-      throw new IllegalStateException("identidade tecnica de Stories indisponivel");
-    }
+    return beneficioRepository.findByCodigo(STORIES)
+        .orElseThrow(() -> new IllegalStateException("identidade tecnica de Stories indisponivel"));
   }
 
   private AdminStoryConfiguracaoDto toDto(StoryConfiguracaoComercialEntity entity) {

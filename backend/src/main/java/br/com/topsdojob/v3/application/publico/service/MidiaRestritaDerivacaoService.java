@@ -87,13 +87,12 @@ public class MidiaRestritaDerivacaoService {
         key,
         derivada.bytes(),
         derivada.mimeType());
-    StoredObject persisted = storage.get(StorageArea.PUBLIC_MEDIA, key);
-    if (!derivada.sha256().equals(sha256(persisted.content()))
-        || !derivada.mimeType().equals(mime(null, persisted.contentType()))) {
-      if (writeResult == ObjectWriteResult.CREATED) {
-        storage.delete(StorageArea.PUBLIC_MEDIA, key);
+    if (writeResult == ObjectWriteResult.ALREADY_EXISTS) {
+      StoredObject persisted = storage.get(StorageArea.PUBLIC_MEDIA, key);
+      if (!derivada.sha256().equals(sha256(persisted.content()))
+          || !derivada.mimeType().equals(mime(null, persisted.contentType()))) {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "derivacao publica restrita divergente");
       }
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "derivacao publica restrita divergente");
     }
 
     previewsConfirmados.add(key);

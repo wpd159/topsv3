@@ -42,6 +42,18 @@ export type AdminAdvertiserDetail = {
   status?: string | null
 }
 
+export type AdminAdOwnerUpdate = {
+  nome: string
+  cpf: string
+}
+
+export type AdminAdOwnerUpdateResponse = {
+  id: string
+  nome?: string | null
+  nomeCivil?: string | null
+  cpf?: string | null
+}
+
 export type AdminCanonicalViews = {
   total: number | null
   situacao: 'DISPONIVEL' | 'ZERO_LEGITIMO' | 'HISTORICO_PENDENTE'
@@ -212,6 +224,22 @@ export type AdminPremiumBenefit = {
   codigosConsistencia: string[]
   inconsistente: boolean
   somenteLeitura: boolean
+}
+
+export type AdminPremiumActivationOperation = {
+  id: string
+  usuarioId: string
+  anuncioId: string
+  beneficioId: string
+  status: string
+  creditosEstornados: number
+  fimEm?: string | null
+  idempotente: boolean
+}
+
+export type AdminPremiumActivationBatch = {
+  ativacoes: AdminPremiumActivationOperation[]
+  idempotente: boolean
 }
 
 export type AdminPremiumCatalogOption = {
