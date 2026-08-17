@@ -311,7 +311,15 @@ export function AdminUsuariosList() {
                       <p className="font-semibold text-zinc-900">{user.nome || 'Sem nome'}</p>
                       <p className="max-w-72 truncate text-sm text-zinc-600">{user.email || 'Não informado'}</p>
                       <p className="text-xs text-zinc-500">
-                        {user.cpfMascarado || 'CPF não informado'} · {user.telefone ? maskPhoneBR(user.telefone) : 'Sem telefone'}
+                        {user.cpfMascarado || 'CPF não informado'} ·{' '}
+                        {user.telefone ? (
+                          <a
+                            href={`tel:${user.telefone}`}
+                            className="underline decoration-zinc-300 underline-offset-2 hover:text-zinc-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
+                          >
+                            {maskPhoneBR(user.telefone)}
+                          </a>
+                        ) : 'Sem telefone'}
                       </p>
                     </TableCell>
                     <TableCell>{user.cidadePrincipal && user.ufPrincipal ? `${user.cidadePrincipal}/${user.ufPrincipal}` : '—'}</TableCell>

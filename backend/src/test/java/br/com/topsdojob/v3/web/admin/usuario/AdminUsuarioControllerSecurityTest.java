@@ -59,7 +59,7 @@ class AdminUsuarioControllerSecurityTest {
     void adminEModeradorComAnuncioLerAcessamListaEDetalhe() throws Exception {
         UUID id = UUID.randomUUID();
         when(service.listar(
-                any(), any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class)))
+                any(), any(), any(), any(), any(), any(), any(), any(Integer.class), any(Integer.class), any()))
                 .thenReturn(new AdminPaginaDto<>(List.of(), 0, 20, 0, 0, true));
         when(service.detalhar(any(), any())).thenReturn(detalhe(id));
 

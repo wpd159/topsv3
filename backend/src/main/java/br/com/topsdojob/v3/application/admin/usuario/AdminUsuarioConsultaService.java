@@ -75,7 +75,8 @@ public class AdminUsuarioConsultaService {
             String cidade,
             String ordenacao,
             int page,
-            int size) {
+            int size,
+            AdminUserPrincipal ator) {
         String termoSeguro = textoOpcional(termo, 120);
         String statusSeguro = status(status);
         String kycSeguro = kyc(kyc);
@@ -85,6 +86,7 @@ public class AdminUsuarioConsultaService {
         String ordenacaoSegura = ordenacao(ordenacao);
         int paginaSegura = Math.max(page, 0);
         int tamanhoSeguro = Math.max(1, Math.min(size, 100));
+        boolean admin = ator != null && ator.papeis().contains(PapelUsuario.ADMIN);
         String digitos = digitos(termoSeguro);
         String cpfSufixo = cpfSufixo(termoSeguro);
         var resultado = consultaRepository.listar(
@@ -99,7 +101,7 @@ public class AdminUsuarioConsultaService {
                 ordenacaoSegura,
                 PageRequest.of(paginaSegura, tamanhoSeguro));
         return new AdminPaginaDto<>(
-                resultado.getContent().stream().map(this::resumo).toList(),
+                resultado.getContent().stream().map(row -> resumo(row, admin)).toList(),
                 resultado.getNumber(),
                 resultado.getSize(),
                 resultado.getTotalElements(),
@@ -180,13 +182,13 @@ public class AdminUsuarioConsultaService {
                         .toList());
     }
 
-    private AdminUsuarioResumoDto resumo(UsuarioRow row) {
+    private AdminUsuarioResumoDto resumo(UsuarioRow row, boolean admin) {
         return new AdminUsuarioResumoDto(
                 row.id(),
                 nome(row),
                 row.email(),
                 row.telefone(),
-                mascararCpf(row.cpf()),
+                admin ? formatarCpf(row.cpf()) : mascararCpf(row.cpf()),
                 row.status(),
                 row.kycStatus(),
                 row.totalAnuncios(),
@@ -320,6 +322,15 @@ public class AdminUsuarioConsultaService {
 
     private String mascararCpf(String cpf) {
         return cpf == null || cpf.length() != 11 ? null : "***.***.***-" + cpf.substring(9);
+    }
+
+    private String formatarCpf(String cpf) {
+        return cpf == null || cpf.length() != 11
+                ? null
+                : cpf.substring(0, 3) + "."
+                        + cpf.substring(3, 6) + "."
+                        + cpf.substring(6, 9) + "-"
+                        + cpf.substring(9);
     }
 
     private ResponseStatusException invalido(String mensagem) {

@@ -96,7 +96,7 @@ class AdminUsuarioConsultaServiceTest {
     }
 
     @Test
-    void listaMascaraCpfEAplicaBuscaFiltrosOrdenacaoEPaginacao() {
+    void adminListaCpfIntegralFormatadoEAplicaBuscaFiltrosOrdenacaoEPaginacao() {
         UsuarioRow row = new UsuarioRow(
                 usuarioId,
                 "Nome publico",
@@ -135,11 +135,12 @@ class AdminUsuarioConsultaServiceTest {
                 "goiania",
                 "ANTIGOS",
                 0,
-                20);
+                20,
+                principal(PapelUsuario.ADMIN));
 
         assertThat(result.itens()).singleElement().satisfies(item -> {
             assertThat(item.nome()).isEqualTo("Nome Civil QA");
-            assertThat(item.cpfMascarado()).isEqualTo("***.***.***-09");
+            assertThat(item.cpfMascarado()).isEqualTo("123.456.789-09");
             assertThat(item.totalAnuncios()).isEqualTo(2);
             assertThat(item.podeExcluir()).isTrue();
             assertThat(item.ufPrincipal()).isEqualTo("GO");
@@ -156,6 +157,44 @@ class AdminUsuarioConsultaServiceTest {
                 eq("goiania"),
                 eq("ANTIGOS"),
                 any());
+    }
+
+    @Test
+    void moderadorContinuaRecebendoCpfMascaradoNaLista() {
+        UsuarioRow row = new UsuarioRow(
+                usuarioId,
+                "Nome publico",
+                "Nome Civil QA",
+                "qa@example.invalid",
+                "+5562999999999",
+                "12345678909",
+                "ATIVO",
+                "ANUNCIANTE",
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"),
+                OffsetDateTime.parse("2026-07-27T10:00:00Z"),
+                "APROVADO",
+                2,
+                false,
+                "GO",
+                "Goiânia");
+        when(consultaRepository.listar(
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(new PageImpl<>(List.of(row)));
+
+        var result = service.listar(
+                null,
+                "TODOS",
+                "TODOS",
+                "TODOS",
+                null,
+                null,
+                "RECENTES",
+                0,
+                20,
+                principal(PapelUsuario.MODERADOR));
+
+        assertThat(result.itens()).singleElement().satisfies(item ->
+                assertThat(item.cpfMascarado()).isEqualTo("***.***.***-09"));
     }
 
     @Test

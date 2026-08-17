@@ -62,7 +62,8 @@ public class AdminUsuarioController {
             @RequestParam(required = false) String cidade,
             @RequestParam(defaultValue = "RECENTES") String ordenacao,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal AdminUserPrincipal ator) {
         return semCache(service.listar(
                 termo,
                 status,
@@ -72,7 +73,8 @@ public class AdminUsuarioController {
                 cidade,
                 ordenacao,
                 page,
-                size));
+                size,
+                ator));
     }
 
     @GetMapping("/indicadores")

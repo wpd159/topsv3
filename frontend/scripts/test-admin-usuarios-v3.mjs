@@ -73,6 +73,10 @@ assert.ok(list.includes('retorno='), 'O detalhe deve preservar busca e pagina no
 assert.ok(list.includes('user.podeExcluir'), 'A lista deve oferecer uma unica exclusao para toda conta comum ativa.')
 assert.ok(list.includes("value: 'EXCLUIDOS'") && list.includes("label: 'Excluídos'"), 'A lista deve oferecer o filtro de contas excluidas.')
 assert.ok(list.includes("user.status !== 'EXCLUIDO'"), 'Conta excluida nao pode receber credito ou nova mutacao.')
+assert.ok(list.includes("user.cpfMascarado || 'CPF não informado'"), 'CPF ausente deve manter o estado nao informado.')
+assert.ok(list.includes('href={`tel:${user.telefone}`}'), 'Telefone administrativo deve usar o link telefonico canonico.')
+assert.ok(list.includes('{user.telefone ? ('), 'Telefone ausente nao pode renderizar um link vazio.')
+assert.ok(list.includes('{maskPhoneBR(user.telefone)}'), 'O numero visivel deve permanecer formatado.')
 
 for (const section of [
   'Identificação',
