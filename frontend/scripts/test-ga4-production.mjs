@@ -74,15 +74,20 @@ assert.match(
 )
 assert.equal(
   (productionCompose.match(
-    /NEXT_PUBLIC_ANALYTICS_ENABLED:\s+\$\{NEXT_PUBLIC_ANALYTICS_ENABLED:-true\}/g
+    /NEXT_PUBLIC_ANALYTICS_ENABLED:\s+"true"/g
   ) ?? []).length,
   2,
-  'Build e runtime do Compose devem herdar GA4 habilitado em producao.'
+  'Build e runtime do Compose devem fixar GA4 habilitado em producao.'
 )
 assert.match(productionCompose, /ENV NEXT_PUBLIC_ANALYTICS_ENABLED=true/)
 assert.doesNotMatch(
   productionCompose,
   /NEXT_PUBLIC_ANALYTICS_ENABLED[^\r\n]*false/
+)
+assert.doesNotMatch(
+  productionCompose,
+  /NEXT_PUBLIC_ANALYTICS_ENABLED:\s+\$\{/,
+  'A configuracao canonica de producao nao pode ser desabilitada por env legado.'
 )
 
 for (const requiredOrigin of [

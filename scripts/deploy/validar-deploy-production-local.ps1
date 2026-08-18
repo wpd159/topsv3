@@ -212,9 +212,10 @@ Add-Check "compose usa frontend standalone sem privilegio" (
   ($compose -match '(?m)^\s+USER node\s*$')
 )
 Add-Check "compose habilita GA4 no build e runtime de producao" (
-  ([regex]::Matches($compose, 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+\$\{NEXT_PUBLIC_ANALYTICS_ENABLED:-true\}').Count -eq 2) -and
+  ([regex]::Matches($compose, 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+"true"').Count -eq 2) -and
   ($compose -match 'ENV NEXT_PUBLIC_ANALYTICS_ENABLED=true') -and
-  (-not ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED[^\r\n]*false'))
+  (-not ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED[^\r\n]*false')) -and
+  (-not ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+\$\{'))
 )
 Add-Check "layout monta uma unica integracao consent-aware" (
   ([regex]::Matches($rootLayout, '<ConsentAwareAnalytics\s*/>').Count -eq 1) -and
