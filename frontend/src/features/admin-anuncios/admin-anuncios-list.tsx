@@ -101,9 +101,11 @@ function StatusBadges({ item }: { item: AdminAdListItem }) {
 function Owner({ item, compact = false }: { item: AdminAdListItem; compact?: boolean }) {
   const owner = item.anunciante
   const digits = owner?.whatsapp?.replace(/\D/g, '')
+  const suspended = owner?.status === 'SUSPENSO'
   return (
     <div className={compact ? 'mt-2 text-xs' : 'min-w-[210px] text-xs text-zinc-600'}>
       <p className="font-semibold text-zinc-900">{owner?.nomeCivil || owner?.nome || 'Nome não informado'}</p>
+      {suspended ? <Badge variant="outline" className="mt-1 border-amber-300 bg-amber-50 text-amber-900">Proprietário suspenso</Badge> : null}
       <p className="mt-1 break-all">{owner?.email || 'E-mail não informado'}</p>
       {digits ? (
         <a href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" className="mt-1 inline-flex items-center gap-1 font-medium text-pink-700 hover:underline">

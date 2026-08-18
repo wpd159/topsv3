@@ -136,6 +136,7 @@ function MediaPreview({ media }: { media: AdminMediaItem }) {
   const [preview, setPreview] = useState<AdminMediaPreview | null>(null)
   const [error, setError] = useState<unknown>(null)
   const [reload, setReload] = useState(0)
+  const frameAspectClass = media.tipo === 'FOTO' ? 'aspect-video' : 'aspect-[16/7]'
 
   useEffect(() => {
     let active = true
@@ -146,12 +147,12 @@ function MediaPreview({ media }: { media: AdminMediaItem }) {
     return () => { active = false }
   }, [media.id, reload])
 
-  if (error) return <div className="flex aspect-[16/7] items-center justify-center bg-zinc-100 p-3 text-center"><div><FileWarning className="mx-auto h-6 w-6 text-zinc-500" /><p className="mt-2 text-xs text-zinc-600">Prévia indisponível.</p><Button type="button" size="sm" variant="ghost" onClick={() => setReload((value) => value + 1)}>Tentar novamente</Button></div></div>
-  if (!preview) return <div className="flex aspect-[16/7] items-center justify-center bg-zinc-100"><Loader2 className="h-5 w-5 animate-spin text-zinc-500" aria-label="Carregando prévia" /></div>
-  if (media.tipo === 'VIDEO') return <video src={preview.url} controls preload="metadata" className="aspect-[16/7] w-full bg-black object-contain" />
+  if (error) return <div data-admin-media-preview className={`flex ${frameAspectClass} items-center justify-center bg-zinc-100 p-3 text-center`}><div><FileWarning className="mx-auto h-6 w-6 text-zinc-500" /><p className="mt-2 text-xs text-zinc-600">Prévia indisponível.</p><Button type="button" size="sm" variant="ghost" onClick={() => setReload((value) => value + 1)}>Tentar novamente</Button></div></div>
+  if (!preview) return <div data-admin-media-preview className={`flex ${frameAspectClass} items-center justify-center bg-zinc-100`}><Loader2 className="h-5 w-5 animate-spin text-zinc-500" aria-label="Carregando prévia" /></div>
+  if (media.tipo === 'VIDEO') return <video data-admin-media-preview src={preview.url} controls preload="metadata" className="aspect-[16/7] w-full bg-black object-contain" />
   // A URL temporaria protegida nao deve passar pelo cache compartilhado do Next Image.
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={preview.url} alt="Mídia em análise" className="aspect-[16/7] w-full bg-zinc-100 object-contain" loading="lazy" />
+  return <img data-admin-media-preview src={preview.url} alt="Mídia em análise" className="aspect-video w-full bg-zinc-100 object-contain" loading="lazy" />
 }
 
 function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
@@ -362,19 +363,22 @@ function MediaVisibilitySelector({
   onChange: (value: 'LIVRE' | 'RESTRITA_18') => void
 }) {
   return (
-    <fieldset className="mt-4" disabled={disabled}>
-      <legend className="text-xs font-semibold text-zinc-700">Classificação individual</legend>
-      <div className="mt-2 grid grid-cols-2 gap-2">
-        {(['LIVRE', 'RESTRITA_18'] as const).map((option) => {
-          const id = `visibility-${mediaId}-${option}`
-          const checked = value === option
-          return (
-            <label key={option} htmlFor={id} className={`flex min-h-10 cursor-pointer items-center gap-2 border px-3 py-2 text-sm font-medium ${checked ? 'border-pink-500 bg-pink-50 text-pink-900' : 'border-zinc-200 bg-white text-zinc-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}>
-              <input id={id} type="radio" name={`visibility-${mediaId}`} checked={checked} onChange={() => onChange(option)} className="h-4 w-4 accent-pink-600" />
-              {option}
-            </label>
-          )
-        })}
+    <fieldset className="mt-3" disabled={disabled}>
+      <legend className="sr-only">Classificação individual</legend>
+      <div className="flex flex-wrap items-center gap-2">
+        <span aria-hidden="true" className="text-xs font-semibold text-zinc-700">Classificação:</span>
+        <div className="grid min-w-[13rem] flex-1 grid-cols-2 gap-2">
+          {(['LIVRE', 'RESTRITA_18'] as const).map((option) => {
+            const id = `visibility-${mediaId}-${option}`
+            const checked = value === option
+            return (
+              <label key={option} htmlFor={id} className={`flex min-h-9 cursor-pointer items-center gap-2 border px-2.5 py-1.5 text-xs font-medium sm:text-sm ${checked ? 'border-pink-500 bg-pink-50 text-pink-900' : 'border-zinc-200 bg-white text-zinc-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}>
+                <input id={id} type="radio" name={`visibility-${mediaId}`} checked={checked} onChange={() => onChange(option)} className="h-4 w-4 shrink-0 accent-pink-600 focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2" />
+                {option}
+              </label>
+            )
+          })}
+        </div>
       </div>
     </fieldset>
   )
@@ -400,42 +404,45 @@ function PendingPhotoDecisionSelector({
   ] as const
 
   return (
-    <fieldset className="mt-4" disabled={disabled}>
-      <legend className="text-xs font-semibold text-zinc-700">Decisão individual</legend>
-      <div className="mt-2 grid gap-2">
-        {options.map((option) => {
-          const id = `photo-decision-${mediaId}-${option.value}`
-          const checked = selected === option.value
-          const selectedClass = option.destructive
-            ? 'border-red-600 bg-red-50 text-red-900'
-            : 'border-pink-500 bg-pink-50 text-pink-900'
-          return (
-            <label
-              key={option.value}
-              htmlFor={id}
-              className={`flex min-h-10 cursor-pointer items-center gap-2 border px-3 py-2 text-sm font-medium ${checked ? selectedClass : 'border-zinc-200 bg-white text-zinc-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
-            >
-              <input
-                id={id}
-                type="radio"
-                name={`photo-decision-${mediaId}`}
-                checked={checked}
-                onChange={() => onChange(option.value)}
-                className={`h-4 w-4 ${option.destructive ? 'accent-red-700' : 'accent-pink-600'}`}
-              />
-              {option.label}
-            </label>
-          )
-        })}
+    <fieldset data-admin-photo-decision className="mt-3" disabled={disabled}>
+      <legend className="sr-only">Decisão individual da foto</legend>
+      <div className="flex flex-wrap items-center gap-2">
+        <span aria-hidden="true" className="text-xs font-semibold text-zinc-700">Decisão:</span>
+        <div className="grid min-w-[13rem] flex-1 grid-cols-2 gap-2">
+          {options.map((option) => {
+            const id = `photo-decision-${mediaId}-${option.value}`
+            const checked = selected === option.value
+            const selectedClass = option.destructive
+              ? 'border-red-600 bg-red-50 text-red-900'
+              : 'border-pink-500 bg-pink-50 text-pink-900'
+            return (
+              <label
+                key={option.value}
+                htmlFor={id}
+                className={`flex min-h-9 cursor-pointer items-center gap-2 border px-2.5 py-1.5 text-xs font-medium sm:text-sm ${checked ? selectedClass : 'border-zinc-200 bg-white text-zinc-700'} ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+              >
+                <input
+                  id={id}
+                  type="radio"
+                  name={`photo-decision-${mediaId}`}
+                  checked={checked}
+                  onChange={() => onChange(option.value)}
+                  className={`h-4 w-4 shrink-0 focus-visible:ring-2 focus-visible:ring-pink-500 focus-visible:ring-offset-2 ${option.destructive ? 'accent-red-700' : 'accent-pink-600'}`}
+                />
+                {option.label}
+              </label>
+            )
+          })}
+        </div>
       </div>
       {selected === 'RESTRITA_18' ? (
-        <label className="mt-3 block">
-          <span className="mb-2 block text-xs font-semibold text-zinc-700">Observações</span>
+        <label className="mt-2 block">
+          <span className="mb-1 block text-xs font-semibold text-zinc-700">Observações</span>
           <Textarea
             value={value?.observacao ?? ''}
             onChange={(event) => onObservationChange(event.target.value)}
             maxLength={240}
-            rows={3}
+            rows={2}
             disabled={disabled}
             placeholder="Observação individual desta foto"
           />
@@ -1134,10 +1141,13 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   )
   const legalBlock = ad.bloqueioJuridico
   const removed = ad.status === 'REMOVIDO'
+  const ownerEligibleForModeration = ad.anunciante?.status === 'ATIVO' && !legalBlock?.usuarioBloqueado
+  const ownerSuspended = ad.anunciante?.status === 'SUSPENSO' || Boolean(legalBlock?.usuarioBloqueado)
   const canDecideAdReview = canModerateAd && !removed && ad.status !== 'BLOQUEADO'
   const legacyApprovalWithoutPublication = ad.status === 'APROVADO'
     && ad.statusModeracao === 'APROVADO'
   const canApproveAd = canDecideAdReview
+    && ownerEligibleForModeration
     && (legacyApprovalWithoutPublication || (
       ad.statusModeracao === 'PENDENTE'
       && (ad.status === 'PENDENTE_REVISAO' || reviewOpen)
@@ -1145,8 +1155,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
   const canReproveAd = canDecideAdReview
     && ad.statusModeracao === 'PENDENTE'
     && (ad.status === 'PENDENTE_REVISAO' || reviewOpen)
-    && ad.anunciante?.status === 'ATIVO'
-    && !ad.bloqueioJuridico?.usuarioBloqueado
+    && ownerEligibleForModeration
   const canReactivate = canManageLegalStatus
     && ad.status === 'PAUSADO'
     && ad.statusModeracao === 'APROVADO'
@@ -1237,6 +1246,17 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           </div>
         </div>
       </header>
+
+      {!ownerEligibleForModeration ? (
+        <div role="status" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">{ownerSuspended ? 'Proprietário suspenso' : 'Proprietário não elegível'}</p>
+          <p className="mt-1">
+            {ownerSuspended
+              ? 'Este anúncio não pode ser aprovado enquanto o proprietário estiver suspenso.'
+              : 'Este anúncio não pode ser aprovado porque o proprietário não está ativo.'}
+          </p>
+        </div>
+      ) : null}
 
       {hasQueueContext ? (
         <nav aria-label="Navegação da fila" className="flex flex-col gap-3 border-b border-zinc-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1390,18 +1410,18 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                   const deletablePhoto = item.tipo === 'FOTO' && item.status !== 'REMOVIDA'
                   const selectedVisibility = item.tipo === 'VIDEO' ? 'RESTRITA_18' : visibility[item.id]
                   return (
-                    <article key={item.id} className="overflow-hidden rounded-md border border-zinc-200 bg-white">
+                    <article key={item.id} data-admin-media-card data-media-kind={item.tipo} className="overflow-hidden rounded-md border border-zinc-200 bg-white">
                       <MediaPreview media={item} />
                       <div className="p-3">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex items-center gap-2 font-semibold">{item.tipo === 'VIDEO' ? <Video className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}{formatEnum(item.tipo)} #{mediaOrdinal[item.id]}</div>
                           <Badge variant="outline" className={moderationTone(item.status)}>{item.status}</Badge>
                         </div>
-                        <dl className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs text-zinc-600">
-                          <div><dt>Dimensões</dt><dd className="font-medium text-zinc-900">{item.largura && item.altura ? `${item.largura} × ${item.altura}` : '—'}</dd></div>
-                          <div><dt>MIME</dt><dd className="break-all font-medium text-zinc-900">{item.mimeType || '—'}</dd></div>
-                          <div><dt>Arquivo</dt><dd className="font-medium text-zinc-900">{item.statusArquivo || '—'}</dd></div>
-                          <div><dt>Classificação</dt><dd className="font-medium text-zinc-900">{item.visibilidadeMidia || '—'}</dd></div>
+                        <dl data-admin-media-metadata className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] leading-4 text-zinc-600">
+                          <div className="flex min-w-0 items-baseline gap-1"><dt className="shrink-0">Dimensões:</dt><dd className="font-medium text-zinc-900">{item.largura && item.altura ? `${item.largura} × ${item.altura}` : '—'}</dd></div>
+                          <div className="flex min-w-0 items-baseline gap-1"><dt className="shrink-0">MIME:</dt><dd className="break-all font-medium text-zinc-900">{item.mimeType || '—'}</dd></div>
+                          <div className="flex min-w-0 items-baseline gap-1"><dt className="shrink-0">Arquivo:</dt><dd className="font-medium text-zinc-900">{item.statusArquivo || '—'}</dd></div>
+                          <div className="flex min-w-0 items-baseline gap-1"><dt className="shrink-0">Classificação:</dt><dd className="font-medium text-zinc-900">{item.visibilidadeMidia || '—'}</dd></div>
                         </dl>
                         {pendingPhoto ? (
                           <PendingPhotoDecisionSelector

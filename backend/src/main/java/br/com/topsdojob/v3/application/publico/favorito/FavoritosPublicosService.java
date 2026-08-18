@@ -26,8 +26,6 @@ import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.repository.FavoritoAnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.LocalAtendimentoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -100,10 +98,7 @@ public class FavoritosPublicosService {
 
         List<UUID> ids = favoritos.stream().map(FavoritoAnuncioEntity::getAnuncioId).toList();
         Map<UUID, AnuncioEntity> anuncios = anuncioRepository
-                .findByIdInAndStatusAndStatusModeracaoAndPublicadoEmIsNotNullAndRemovidoEmIsNull(
-                        ids,
-                        StatusAnuncio.PUBLICADO,
-                        StatusModeracaoAnuncio.APROVADO)
+                .findPublicosPublicadosComProprietarioAtivoPorIds(ids)
                 .stream()
                 .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity()));
         if (anuncios.isEmpty()) {
@@ -124,10 +119,7 @@ public class FavoritosPublicosService {
     public FavoritoEstadoDto incluir(String slug, Authentication authentication) {
         UUID usuarioId = usuarioService.usuarioAutenticado(authentication).getId();
         AnuncioEntity anuncio = anuncioRepository
-                .findBySlugAndStatusAndStatusModeracaoAndPublicadoEmIsNotNullAndRemovidoEmIsNull(
-                        slugSeguro(slug),
-                        StatusAnuncio.PUBLICADO,
-                        StatusModeracaoAnuncio.APROVADO)
+                .findPublicoPublicadoComProprietarioAtivoPorSlug(slugSeguro(slug))
                 .orElseThrow(this::notFound);
         try {
             gravacaoService.incluirSeAusente(usuarioId, anuncio.getId(), OffsetDateTime.now());

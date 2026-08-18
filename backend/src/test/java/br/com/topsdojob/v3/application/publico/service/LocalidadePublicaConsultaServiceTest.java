@@ -132,9 +132,8 @@ class LocalidadePublicaConsultaServiceTest {
         BairroRepository bairroRepository = mock(BairroRepository.class);
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
         AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
-        when(anuncioRepository.findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO)).thenReturn(List.of(anuncio, anuncioExclusivo));
+        when(anuncioRepository.findPublicosComProprietarioAtivo())
+                .thenReturn(List.of(anuncio, anuncioExclusivo));
         when(localizacaoRepository.findByAnuncioIdIn(any()))
                 .thenReturn(List.of(localizacao, localizacaoExclusiva));
         when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));

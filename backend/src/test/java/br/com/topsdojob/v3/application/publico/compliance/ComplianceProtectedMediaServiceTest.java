@@ -113,7 +113,8 @@ class ComplianceProtectedMediaServiceTest {
         .thenReturn(true);
     when(midiaRepository.findById(midiaId))
         .thenReturn(Optional.of(midia(midiaId, anuncioId, arquivoId, VisibilidadeMidia.RESTRITA_18)));
-    when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio(anuncioId)));
+    when(anuncioRepository.findPublicoComProprietarioAtivoPorId(anuncioId))
+        .thenReturn(Optional.of(anuncio(anuncioId)));
     when(arquivoRepository.findById(arquivoId))
         .thenReturn(Optional.of(arquivo(arquivoId, key, PRIVATE_BUCKET)));
     when(storage.get(StorageArea.PRIVATE_MEDIA, key))
@@ -156,7 +157,8 @@ class ComplianceProtectedMediaServiceTest {
             anuncioId,
             arquivoId,
             VisibilidadeMidia.RESTRITA_18)));
-    when(anuncioRepository.findById(anuncioId)).thenReturn(Optional.of(anuncio(anuncioId)));
+    when(anuncioRepository.findPublicoComProprietarioAtivoPorId(anuncioId))
+        .thenReturn(Optional.of(anuncio(anuncioId)));
     when(arquivoRepository.findById(arquivoId))
         .thenReturn(Optional.of(arquivo(
             arquivoId,

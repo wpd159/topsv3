@@ -18,10 +18,8 @@ import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.UsuarioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusUsuario;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
@@ -99,8 +97,7 @@ public class ComplianceProtectedMediaService {
         .orElseThrow(() -> new ResponseStatusException(
             HttpStatus.NOT_FOUND,
             "midia protegida nao encontrada"));
-    anuncioRepository.findById(midia.getAnuncioId())
-        .filter(this::anuncioPublicavel)
+    anuncioRepository.findPublicoComProprietarioAtivoPorId(midia.getAnuncioId())
         .orElseThrow(() -> new ResponseStatusException(
             HttpStatus.NOT_FOUND,
             "midia protegida nao encontrada"));
@@ -196,12 +193,6 @@ public class ComplianceProtectedMediaService {
     return story.getEncerradoEm() == null
         && (story.getInicioEm() == null || !story.getInicioEm().isAfter(agora))
         && (story.getFimEm() == null || story.getFimEm().isAfter(agora));
-  }
-
-  private boolean anuncioPublicavel(AnuncioEntity anuncio) {
-    return anuncio.getRemovidoEm() == null
-        && anuncio.getStatus() == StatusAnuncio.PUBLICADO
-        && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO;
   }
 
   private boolean usuarioAtivo(UsuarioEntity usuario) {

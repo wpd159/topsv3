@@ -39,10 +39,7 @@ class MetricaPublicaServiceTest {
         AnuncioEntity anuncio = anuncioLivre(anuncioId, null);
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
         MetricaPublicaPersistenceService persistenceService = mock(MetricaPublicaPersistenceService.class);
-        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                eq("anuncio-local"),
-                eq(StatusAnuncio.PUBLICADO),
-                eq(StatusModeracaoAnuncio.APROVADO)))
+        when(anuncioRepository.findPublicoComProprietarioAtivoPorSlug(eq("anuncio-local")))
                 .thenReturn(Optional.of(anuncio));
         when(persistenceService.registrarVisualizacao(any(EventoVisualizacaoEntity.class))).thenReturn(true);
 
@@ -79,10 +76,7 @@ class MetricaPublicaServiceTest {
         AnuncioEntity anuncio = anuncioLivre(anuncioId, "+5500000000000");
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
         MetricaPublicaPersistenceService persistenceService = mock(MetricaPublicaPersistenceService.class);
-        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                eq("anuncio-local"),
-                eq(StatusAnuncio.PUBLICADO),
-                eq(StatusModeracaoAnuncio.APROVADO)))
+        when(anuncioRepository.findPublicoComProprietarioAtivoPorSlug(eq("anuncio-local")))
                 .thenReturn(Optional.of(anuncio));
         when(persistenceService.registrarClique(any(CliqueWhatsappEntity.class))).thenReturn(true);
         ComplianceVisitorAccessService visitorAccessService =
@@ -212,10 +206,7 @@ class MetricaPublicaServiceTest {
 
     private AnuncioRepository anuncioRepository(AnuncioEntity anuncio) {
         AnuncioRepository repository = mock(AnuncioRepository.class);
-        when(repository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                eq("anuncio-local"),
-                eq(StatusAnuncio.PUBLICADO),
-                eq(StatusModeracaoAnuncio.APROVADO)))
+        when(repository.findPublicoComProprietarioAtivoPorSlug(eq("anuncio-local")))
                 .thenReturn(Optional.of(anuncio));
         return repository;
     }

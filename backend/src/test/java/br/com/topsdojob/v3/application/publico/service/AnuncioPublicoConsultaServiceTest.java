@@ -94,8 +94,7 @@ class AnuncioPublicoConsultaServiceTest {
         AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
         EstadoRepository estadoRepository = mock(EstadoRepository.class);
         CidadeRepository cidadeRepository = mock(CidadeRepository.class);
-        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                "slug-publico", StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO))
+        when(anuncioRepository.findPublicoComProprietarioAtivoPorSlug("slug-publico"))
                 .thenReturn(Optional.of(anuncio));
         when(localizacaoRepository.findByAnuncioId(anuncioId)).thenReturn(Optional.of(localizacao));
         when(estadoRepository.findById(estadoId)).thenReturn(Optional.of(estado));
@@ -154,10 +153,7 @@ class AnuncioPublicoConsultaServiceTest {
     @Test
     void retorna404ParaAnuncioInexistente() {
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
-        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                "slug-local",
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO))
+        when(anuncioRepository.findPublicoComProprietarioAtivoPorSlug("slug-local"))
                 .thenReturn(Optional.empty());
 
         AnuncioPublicoConsultaService service = new AnuncioPublicoConsultaService(
@@ -343,8 +339,7 @@ class AnuncioPublicoConsultaServiceTest {
         PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
         IdadeAnunciantePublicaService idadeService = mock(IdadeAnunciantePublicaService.class);
         VisualizacaoTotalCanonicaService visualizacaoService = mock(VisualizacaoTotalCanonicaService.class);
-        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                "atual", StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO))
+        when(anuncioRepository.findPublicoComProprietarioAtivoPorSlug("atual"))
                 .thenReturn(Optional.of(atual));
         when(localizacaoRepository.findByAnuncioId(anuncioAtualId)).thenReturn(Optional.of(localizacaoAtual));
         when(estadoRepository.findById(estadoId)).thenReturn(Optional.of(estado));

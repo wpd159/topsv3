@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Method;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
@@ -25,6 +26,8 @@ class AnuncioRepositoryUsuarioPublicoQueryTest {
 
     assertFiltroCanonicoDoUsuario(annotation.value());
     assertFiltroCanonicoDoUsuario(annotation.countQuery());
+    assertProprietarioPublicoAtivo(annotation.value());
+    assertProprietarioPublicoAtivo(annotation.countQuery());
     assertThat(annotation.value())
         .contains("hashtextextended(a.id::text, :seed)")
         .contains("bp.codigo = 'ANUNCIO_TOPO'")
@@ -47,7 +50,37 @@ class AnuncioRepositoryUsuarioPublicoQueryTest {
         .contains(":busca is null")
         .doesNotContain("documento_busca_anuncio")
         .doesNotContain("anuncio_bloqueio_juridico")
-        .doesNotContain("join usuario u")
+        .doesNotContain("email_normalizado")
+        .doesNotContain("telefone_normalizado")
+        .doesNotContain("cpf_normalizado")
+        .doesNotContain("nome_civil");
+  }
+
+  @Test
+  void consultasDiretasPublicasExigemProprietarioAtivoSemSelecionarDadosPessoais() throws Exception {
+    Method[] methods = {
+        AnuncioRepository.class.getMethod("findPublicoComProprietarioAtivoPorId", UUID.class),
+        AnuncioRepository.class.getMethod("findPublicoComProprietarioAtivoPorSlug", String.class),
+        AnuncioRepository.class.getMethod(
+            "findPublicoPublicadoComProprietarioAtivoPorSlug", String.class),
+        AnuncioRepository.class.getMethod("findPublicosComProprietarioAtivo"),
+        AnuncioRepository.class.getMethod("findPublicosComProprietarioAtivoPorIds", Collection.class),
+        AnuncioRepository.class.getMethod(
+            "findPublicosPublicadosComProprietarioAtivoPorIds", Collection.class)
+    };
+
+    for (Method method : methods) {
+      assertProprietarioPublicoAtivo(method.getAnnotation(Query.class).value());
+    }
+  }
+
+  private void assertProprietarioPublicoAtivo(String query) {
+    assertThat(query)
+        .contains("join usuario u on u.id = a.usuario_id")
+        .contains("u.status = 'ATIVO'")
+        .contains("u.tipo_conta = 'ANUNCIANTE'")
+        .contains("u.desativado_em is null")
+        .contains("u.excluido_em is null")
         .doesNotContain("email_normalizado")
         .doesNotContain("telefone_normalizado")
         .doesNotContain("cpf_normalizado")

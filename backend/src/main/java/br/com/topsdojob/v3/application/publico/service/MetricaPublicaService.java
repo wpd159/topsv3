@@ -12,8 +12,6 @@ import br.com.topsdojob.v3.persistence.entity.metrica.CliqueWhatsappEntity;
 import br.com.topsdojob.v3.persistence.entity.metrica.EventoVisualizacaoEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.DispositivoMetrica;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
@@ -153,10 +151,7 @@ public class MetricaPublicaService {
 
     private AnuncioEntity buscarAnuncioPublico(String slug) {
         return anuncioRepository
-                .findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                        slug,
-                        StatusAnuncio.PUBLICADO,
-                        StatusModeracaoAnuncio.APROVADO)
+                .findPublicoComProprietarioAtivoPorSlug(slug)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
     }
 

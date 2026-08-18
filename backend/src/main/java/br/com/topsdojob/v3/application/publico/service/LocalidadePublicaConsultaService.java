@@ -16,8 +16,6 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import java.text.Collator;
 import java.time.OffsetDateTime;
@@ -159,10 +157,7 @@ public class LocalidadePublicaConsultaService {
         List<UUID> ids = localizacoes.stream().map(AnuncioLocalizacaoEntity::getAnuncioId).distinct().toList();
         List<AnuncioEntity> anuncios = ids.isEmpty()
                 ? List.of()
-                : anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                        ids,
-                        StatusAnuncio.PUBLICADO,
-                        StatusModeracaoAnuncio.APROVADO).stream()
+                : anuncioRepository.findPublicosComProprietarioAtivoPorIds(ids).stream()
                         .filter(anuncio -> !anuncio.isAtendimentoExclusivamenteVirtual())
                         .toList();
         if (anuncios.isEmpty()) {
@@ -238,9 +233,7 @@ public class LocalidadePublicaConsultaService {
     }
 
     private List<AnuncioEntity> anunciosPublicos() {
-        return anuncioRepository.findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO).stream()
+        return anuncioRepository.findPublicosComProprietarioAtivo().stream()
                 .filter(anuncio -> !anuncio.isAtendimentoExclusivamenteVirtual())
                 .toList();
     }

@@ -33,7 +33,7 @@ public class AdminModeracaoResumoConsultaService {
         return new AdminResumoModeracaoDto(
                 revisaoRepository.countByStatus(StatusRevisaoAnuncio.ABERTA),
                 revisaoRepository.countByStatus(StatusRevisaoAnuncio.EM_ANALISE),
-                anuncioRepository.countByStatusModeracaoAndRemovidoEmIsNull(StatusModeracaoAnuncio.PENDENTE),
+                anuncioRepository.countPendentesModeracaoComProprietarioAtivo(),
                 anuncioRepository.countByStatusModeracaoAndRemovidoEmIsNull(StatusModeracaoAnuncio.REJEITADO),
                 documentosPendentes);
     }

@@ -92,8 +92,7 @@ class FavoritosPublicosServiceTest {
     @Test
     void incluirEIdempotenteEPertenceAoUsuarioDaSessao() {
         AnuncioEntity anuncio = anuncio(ANUNCIO_ID, "perfil-publico", StatusAnuncio.PUBLICADO);
-        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndPublicadoEmIsNotNullAndRemovidoEmIsNull(
-                "perfil-publico", StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO))
+        when(anuncioRepository.findPublicoPublicadoComProprietarioAtivoPorSlug("perfil-publico"))
                 .thenReturn(Optional.of(anuncio));
 
         assertThat(service.incluir("perfil-publico", authentication).favorito()).isTrue();
@@ -118,8 +117,7 @@ class FavoritosPublicosServiceTest {
 
     @Test
     void anuncioInexistenteOuNaoPublicoNaoPodeSerIncluido() {
-        when(anuncioRepository.findBySlugAndStatusAndStatusModeracaoAndPublicadoEmIsNotNullAndRemovidoEmIsNull(
-                "perfil-inativo", StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO))
+        when(anuncioRepository.findPublicoPublicadoComProprietarioAtivoPorSlug("perfil-inativo"))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.incluir("perfil-inativo", authentication))
@@ -133,9 +131,7 @@ class FavoritosPublicosServiceTest {
         FavoritoAnuncioEntity favoritoInativo = favorito(INATIVO_ID, AGORA.minusMinutes(1));
         when(favoritoRepository.findByUsuarioIdOrderByCriadoEmDesc(USUARIO_ID))
                 .thenReturn(List.of(favoritoPublico, favoritoInativo));
-        when(anuncioRepository.findByIdInAndStatusAndStatusModeracaoAndPublicadoEmIsNotNullAndRemovidoEmIsNull(
-                anyList(), org.mockito.ArgumentMatchers.eq(StatusAnuncio.PUBLICADO),
-                org.mockito.ArgumentMatchers.eq(StatusModeracaoAnuncio.APROVADO)))
+        when(anuncioRepository.findPublicosPublicadosComProprietarioAtivoPorIds(anyList()))
                 .thenReturn(List.of(anuncio(ANUNCIO_ID, "perfil-publico", StatusAnuncio.PUBLICADO)));
         stubCargaEmLoteVazia();
 

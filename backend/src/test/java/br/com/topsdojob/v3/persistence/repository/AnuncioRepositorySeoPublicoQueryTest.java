@@ -31,6 +31,8 @@ class AnuncioRepositorySeoPublicoQueryTest {
         Query localidadeQuery = localidade.getAnnotation(Query.class);
         assertQueryCanonica(categoriaQuery.value());
         assertQueryCanonica(localidadeQuery.value());
+        assertProprietarioAtivo(categoriaQuery.countQuery());
+        assertProprietarioAtivo(localidadeQuery.countQuery());
         assertThat(categoriaQuery.countQuery())
                 .contains(":categoria = 'VENDA_DE_CONTEUDO'")
                 .contains("from anuncio_servicos av")
@@ -70,5 +72,15 @@ class AnuncioRepositorySeoPublicoQueryTest {
                 .doesNotContain("WHATSAPP_CARD")
                 .doesNotContain("a.publicado_em desc")
                 .doesNotContain("order by a.id");
+        assertProprietarioAtivo(query);
+    }
+
+    private void assertProprietarioAtivo(String query) {
+        assertThat(query)
+                .contains("join usuario u on u.id = a.usuario_id")
+                .contains("u.status = 'ATIVO'")
+                .contains("u.tipo_conta = 'ANUNCIANTE'")
+                .contains("u.desativado_em is null")
+                .contains("u.excluido_em is null");
     }
 }

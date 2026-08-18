@@ -21,7 +21,7 @@ public class AdminAnuncioResumoConsultaService {
     @Transactional(readOnly = true)
     public AdminResumoAnunciosDto consultar() {
         long publicados = anuncioRepository.countByStatusAndRemovidoEmIsNull(StatusAnuncio.PUBLICADO);
-        long pendentes = anuncioRepository.countByStatusAndRemovidoEmIsNull(StatusAnuncio.PENDENTE_REVISAO);
+        long pendentes = anuncioRepository.countPendentesModeracaoComProprietarioAtivo();
         long pausados = anuncioRepository.countByStatusAndRemovidoEmIsNull(StatusAnuncio.PAUSADO);
         long contato = anuncioRepository.countByWhatsappNormalizadoIsNotNullAndRemovidoEmIsNull();
         long ativos = anuncioRepository.countByStatusInAndRemovidoEmIsNull(List.of(
@@ -40,7 +40,9 @@ public class AdminAnuncioResumoConsultaService {
                         .map(status -> new AdminContadorDto(
                                 status.name(),
                                 status.name(),
-                                anuncioRepository.countByStatusAndRemovidoEmIsNull(status)))
+                                status == StatusAnuncio.PENDENTE_REVISAO
+                                        ? pendentes
+                                        : anuncioRepository.countByStatusAndRemovidoEmIsNull(status)))
                         .toList());
     }
 }

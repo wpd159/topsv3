@@ -238,6 +238,12 @@ class AdminAnuncioJuridicoServiceTest {
   }
 
   @Test
+  void desbloqueioPreservaAnunciosPendentesERejeitados() {
+    assertDesbloqueioPreservaStatus(StatusAnuncio.PENDENTE_REVISAO, StatusModeracaoAnuncio.PENDENTE);
+    assertDesbloqueioPreservaStatus(StatusAnuncio.REJEITADO, StatusModeracaoAnuncio.REJEITADO);
+  }
+
+  @Test
   void bloqueioRepetidoRetorna409EAlvoInexistenteRetorna404() {
     Fixture fixture = fixture(StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO, StatusUsuario.ATIVO);
     when(bloqueioRepository.findAtivoPorAnuncioForUpdate(fixture.anuncio().getId()))
@@ -297,6 +303,32 @@ class AdminAnuncioJuridicoServiceTest {
     when(bloqueioRepository.findAtivoPorUsuarioForUpdate(
         usuarioId, EscopoBloqueioJuridico.ANUNCIO_E_USUARIO)).thenReturn(Optional.empty());
     return new Fixture(anuncio, usuario);
+  }
+
+  private void assertDesbloqueioPreservaStatus(
+      StatusAnuncio status,
+      StatusModeracaoAnuncio moderacao) {
+    Fixture fixture = fixture(status, moderacao, StatusUsuario.SUSPENSO);
+    AnuncioBloqueioJuridicoEntity bloqueio = bloqueioAtivo(
+        fixture,
+        EscopoBloqueioJuridico.ANUNCIO_E_USUARIO,
+        StatusUsuario.ATIVO);
+    bloqueio.desbloquearAnuncio(
+        admin().usuarioId(),
+        "req-anuncio-ja-desbloqueado-" + status,
+        OffsetDateTime.now());
+    when(bloqueioRepository.findAtivoPorUsuarioForUpdate(
+        fixture.usuario().getId(), EscopoBloqueioJuridico.ANUNCIO_E_USUARIO))
+        .thenReturn(Optional.of(bloqueio));
+
+    service.desbloquearUsuario(
+        fixture.anuncio().getId(),
+        new AdminDesbloqueioJuridicoRequest(null),
+        admin(),
+        "req-preserva-" + status);
+
+    assertThat(fixture.usuario().getStatus()).isEqualTo(StatusUsuario.ATIVO);
+    assertThat(fixture.anuncio().getStatus()).isEqualTo(status);
   }
 
   private AnuncioEntity anuncio(

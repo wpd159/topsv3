@@ -678,11 +678,12 @@ public class AdminModeracaoAcaoService {
                         "anuncio da revisao nao encontrado"));
         if (!usuario.getId().equals(anuncio.getUsuarioId())
                 || usuario.getStatus() != StatusUsuario.ATIVO
-                || usuario.getDesativadoEm() != null) {
+                || usuario.getDesativadoEm() != null
+                || usuario.getExcluidoEm() != null) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     decisao == AdminDecisaoModeracaoAcao.APROVAR
-                            ? "estado do proprietario impede aprovacao e publicacao"
+                            ? "O proprietario esta suspenso. Desbloqueie o usuario antes de aprovar o anuncio."
                             : "estado do proprietario impede reprovacao");
         }
         if (bloqueioJuridicoRepository.findAtivoPorAnuncioForUpdate(anuncio.getId()).isPresent()

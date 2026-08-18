@@ -18,8 +18,6 @@ import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.Comparator;
@@ -68,9 +66,7 @@ public class SitemapPublicoConsultaService {
 
     @Transactional(readOnly = true)
     public List<SitemapAnuncioPublicoDto> listarAnunciosIndexaveis() {
-        List<AnuncioEntity> anuncios = anuncioRepository.findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                StatusAnuncio.PUBLICADO,
-                StatusModeracaoAnuncio.APROVADO);
+        List<AnuncioEntity> anuncios = anuncioRepository.findPublicosComProprietarioAtivo();
         if (anuncios.isEmpty()) {
             return List.of();
         }

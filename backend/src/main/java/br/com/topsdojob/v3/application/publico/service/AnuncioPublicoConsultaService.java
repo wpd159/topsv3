@@ -26,8 +26,6 @@ import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Map;
@@ -117,10 +115,7 @@ public class AnuncioPublicoConsultaService {
     private AnuncioDetalhePublicoDto buscarPorSlug(String slug, boolean idadeConfirmada) {
         String slugSeguro = RotaPublicaGuard.slug(slug, "slug");
         AnuncioEntity anuncio = anuncioRepository
-                .findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                        slugSeguro,
-                        StatusAnuncio.PUBLICADO,
-                        StatusModeracaoAnuncio.APROVADO)
+                .findPublicoComProprietarioAtivoPorSlug(slugSeguro)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));
 
         AnuncioLocalizacaoEntity localizacaoEntity = localizacaoRepository.findByAnuncioId(anuncio.getId())

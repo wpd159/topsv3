@@ -28,6 +28,20 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
 
     long countByStatusModeracaoAndRemovidoEmIsNull(StatusModeracaoAnuncio statusModeracao);
 
+    @Query(value = """
+            select count(*)
+            from anuncio a
+            join usuario u on u.id = a.usuario_id
+            where a.removido_em is null
+              and a.status = 'PENDENTE_REVISAO'
+              and a.status_moderacao = 'PENDENTE'
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+            """, nativeQuery = true)
+    long countPendentesModeracaoComProprietarioAtivo();
+
     long countByWhatsappNormalizadoIsNotNullAndRemovidoEmIsNull();
 
     List<AnuncioEntity> findByUsuarioIdAndRemovidoEmIsNull(UUID usuarioId);
@@ -71,6 +85,7 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             value = """
                     select a.*
                     from anuncio a
+                    left join usuario u on u.id = a.usuario_id
                     left join agregado_visualizacao_inicial vi on vi.anuncio_id = a.id
                     left join (
                       select e.anuncio_id, count(*) as total_eventos
@@ -98,7 +113,11 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                         :situacao = 'TODOS'
                         or (:situacao = 'PENDENTES_MODERACAO'
                             and a.status = 'PENDENTE_REVISAO'
-                            and a.status_moderacao = 'PENDENTE')
+                            and a.status_moderacao = 'PENDENTE'
+                            and u.status = 'ATIVO'
+                            and u.tipo_conta = 'ANUNCIANTE'
+                            and u.desativado_em is null
+                            and u.excluido_em is null)
                         or (:situacao = 'APROVADOS'
                             and a.status_moderacao = 'APROVADO'
                             and a.status <> 'BLOQUEADO')
@@ -141,12 +160,17 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             countQuery = """
                     select count(*)
                     from anuncio a
+                    left join usuario u on u.id = a.usuario_id
                     where a.removido_em is null
                       and (
                         :situacao = 'TODOS'
                         or (:situacao = 'PENDENTES_MODERACAO'
                             and a.status = 'PENDENTE_REVISAO'
-                            and a.status_moderacao = 'PENDENTE')
+                            and a.status_moderacao = 'PENDENTE'
+                            and u.status = 'ATIVO'
+                            and u.tipo_conta = 'ANUNCIANTE'
+                            and u.desativado_em is null
+                            and u.excluido_em is null)
                         or (:situacao = 'APROVADOS'
                             and a.status_moderacao = 'APROVADO'
                             and a.status <> 'BLOQUEADO')
@@ -171,6 +195,97 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             @Param("termo") String termo,
             @Param("ordenacao") String ordenacao,
             Pageable pageable);
+
+    @Query(value = """
+            select a.*
+            from anuncio a
+            join usuario u on u.id = a.usuario_id
+            where a.id = :id
+              and a.status = 'PUBLICADO'
+              and a.status_moderacao = 'APROVADO'
+              and a.removido_em is null
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+            """, nativeQuery = true)
+    Optional<AnuncioEntity> findPublicoComProprietarioAtivoPorId(@Param("id") UUID id);
+
+    @Query(value = """
+            select a.*
+            from anuncio a
+            join usuario u on u.id = a.usuario_id
+            where a.slug = :slug
+              and a.status = 'PUBLICADO'
+              and a.status_moderacao = 'APROVADO'
+              and a.removido_em is null
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+            """, nativeQuery = true)
+    Optional<AnuncioEntity> findPublicoComProprietarioAtivoPorSlug(@Param("slug") String slug);
+
+    @Query(value = """
+            select a.*
+            from anuncio a
+            join usuario u on u.id = a.usuario_id
+            where a.slug = :slug
+              and a.status = 'PUBLICADO'
+              and a.status_moderacao = 'APROVADO'
+              and a.publicado_em is not null
+              and a.removido_em is null
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+            """, nativeQuery = true)
+    Optional<AnuncioEntity> findPublicoPublicadoComProprietarioAtivoPorSlug(@Param("slug") String slug);
+
+    @Query(value = """
+            select a.*
+            from anuncio a
+            join usuario u on u.id = a.usuario_id
+            where a.status = 'PUBLICADO'
+              and a.status_moderacao = 'APROVADO'
+              and a.removido_em is null
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+            """, nativeQuery = true)
+    List<AnuncioEntity> findPublicosComProprietarioAtivo();
+
+    @Query(value = """
+            select a.*
+            from anuncio a
+            join usuario u on u.id = a.usuario_id
+            where a.id in (:ids)
+              and a.status = 'PUBLICADO'
+              and a.status_moderacao = 'APROVADO'
+              and a.removido_em is null
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+            """, nativeQuery = true)
+    List<AnuncioEntity> findPublicosComProprietarioAtivoPorIds(@Param("ids") Collection<UUID> ids);
+
+    @Query(value = """
+            select a.*
+            from anuncio a
+            join usuario u on u.id = a.usuario_id
+            where a.id in (:ids)
+              and a.status = 'PUBLICADO'
+              and a.status_moderacao = 'APROVADO'
+              and a.publicado_em is not null
+              and a.removido_em is null
+              and u.status = 'ATIVO'
+              and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null
+              and u.excluido_em is null
+            """, nativeQuery = true)
+    List<AnuncioEntity> findPublicosPublicadosComProprietarioAtivoPorIds(@Param("ids") Collection<UUID> ids);
 
     Optional<AnuncioEntity> findBySlugAndStatusAndStatusModeracaoAndRemovidoEmIsNull(
             String slug,
@@ -223,9 +338,14 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             value = """
                     select a.*
                     from anuncio a
+                    join usuario u on u.id = a.usuario_id
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and u.status = 'ATIVO'
+                      and u.tipo_conta = 'ANUNCIANTE'
+                      and u.desativado_em is null
+                      and u.excluido_em is null
                       and (:usuarioId is null or a.usuario_id = :usuarioId)
                       and (
                         :categoria is null
@@ -271,9 +391,14 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             countQuery = """
                     select count(*)
                     from anuncio a
+                    join usuario u on u.id = a.usuario_id
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and u.status = 'ATIVO'
+                      and u.tipo_conta = 'ANUNCIANTE'
+                      and u.desativado_em is null
+                      and u.excluido_em is null
                       and (:usuarioId is null or a.usuario_id = :usuarioId)
                       and (
                         :categoria is null
@@ -309,10 +434,15 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             value = """
                     select a.*
                     from anuncio a
+                    join usuario u on u.id = a.usuario_id
                     join anuncio_localizacao l on l.anuncio_id = a.id
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and u.status = 'ATIVO'
+                      and u.tipo_conta = 'ANUNCIANTE'
+                      and u.desativado_em is null
+                      and u.excluido_em is null
                       and a.atendimento_exclusivamente_virtual = false
                       and l.estado_id = :estadoId
                       and (:cidadeId is null or l.cidade_id = :cidadeId)
@@ -341,10 +471,15 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             countQuery = """
                     select count(*)
                     from anuncio a
+                    join usuario u on u.id = a.usuario_id
                     join anuncio_localizacao l on l.anuncio_id = a.id
                     where a.status = 'PUBLICADO'
                       and a.status_moderacao = 'APROVADO'
                       and a.removido_em is null
+                      and u.status = 'ATIVO'
+                      and u.tipo_conta = 'ANUNCIANTE'
+                      and u.desativado_em is null
+                      and u.excluido_em is null
                       and a.atendimento_exclusivamente_virtual = false
                       and l.estado_id = :estadoId
                       and (:cidadeId is null or l.cidade_id = :cidadeId)

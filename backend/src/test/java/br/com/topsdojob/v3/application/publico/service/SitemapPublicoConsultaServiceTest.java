@@ -101,8 +101,7 @@ class SitemapPublicoConsultaServiceTest {
         BairroRepository bairroRepository = mock(BairroRepository.class);
         MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
 
-        when(anuncioRepository.findByStatusAndStatusModeracaoAndRemovidoEmIsNull(
-                StatusAnuncio.PUBLICADO, StatusModeracaoAnuncio.APROVADO)).thenReturn(List.of(anuncio));
+        when(anuncioRepository.findPublicosComProprietarioAtivo()).thenReturn(List.of(anuncio));
         when(localizacaoRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(List.of(localizacao));
         when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
         when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));

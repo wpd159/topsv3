@@ -364,18 +364,20 @@ class AdminModeracaoAnuncioServiceTest {
     }
 
     @Test
-    void usuarioBloqueadoImpedeAprovacaoEPublicacao() {
+    void telaAntigaNaoAprovaDepoisQueUsuarioFoiSuspenso() {
         Fixture fixture = fixture();
         fixture.usuario().bloquearJuridicamente(OffsetDateTime.parse("2026-07-22T12:05:00Z"));
 
         assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("409")
-                .hasMessageContaining("estado do proprietario");
+                .hasMessageContaining("proprietario esta suspenso");
 
         assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
         assertThat(fixture.revisao().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
         verify(decisaoRepository, never()).save(any());
+        verify(anuncioRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test
