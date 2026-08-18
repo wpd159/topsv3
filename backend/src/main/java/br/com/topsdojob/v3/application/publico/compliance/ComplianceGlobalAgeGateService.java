@@ -9,6 +9,7 @@ import br.com.topsdojob.v3.domain.metrica.MetricaTipos.ResultadoVerificacaoEtari
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
@@ -35,10 +36,15 @@ public class ComplianceGlobalAgeGateService {
 
   public AgeGateGlobalStatusDto status(HttpServletRequest request) {
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
-    var aceiteAssinado = signedCookieService.validar(
-        sessionService.cookie(request, ComplianceSignedCookieService.GLOBAL_COOKIE),
-        TipoTokenAssinado.GLOBAL,
-        agora);
+    var aceiteAssinado = sessionService
+        .cookies(request, ComplianceSignedCookieService.GLOBAL_COOKIE)
+        .stream()
+        .map(value -> signedCookieService.validar(
+            value,
+            TipoTokenAssinado.GLOBAL,
+            agora))
+        .flatMap(Optional::stream)
+        .findFirst();
     return aceiteAssinado
         .map(value -> new AgeGateGlobalStatusDto(
             true,

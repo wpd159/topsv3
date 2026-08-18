@@ -7,6 +7,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
@@ -66,14 +67,19 @@ public class ComplianceVisitorSessionService {
   }
 
   public String cookie(HttpServletRequest request, String name) {
+    return cookies(request, name).stream()
+        .findFirst()
+        .orElse(null);
+  }
+
+  public List<String> cookies(HttpServletRequest request, String name) {
     if (request == null || request.getCookies() == null) {
-      return null;
+      return List.of();
     }
     return Arrays.stream(request.getCookies())
         .filter(item -> name.equals(item.getName()))
         .map(Cookie::getValue)
-        .findFirst()
-        .orElse(null);
+        .toList();
   }
 
   public record SessionContext(
