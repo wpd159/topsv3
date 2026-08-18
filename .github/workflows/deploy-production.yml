@@ -1,0 +1,350 @@
+name: Deploy Producao Tops do Job V3
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: topsv3-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-production:
+    name: Testes e deploy da producao
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Run full backend Maven gate
+        working-directory: backend
+        shell: bash
+        run: mvn --batch-mode --no-transfer-progress verify
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.1"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Run frontend dependency, lint and build gates
+        working-directory: frontend
+        shell: bash
+        env:
+          NEXT_PUBLIC_SITE_URL: https://topsdojob.com
+          NEXT_PUBLIC_API_URL: https://topsdojob.com/api/public
+          NEXT_PUBLIC_ANALYTICS_ENABLED: "false"
+          NEXT_PUBLIC_FORCE_HTTPS: "true"
+          NEXT_PUBLIC_EFI_PIX_ENABLED: "true"
+          SEARCH_INDEXING_MODE: public
+        run: |
+          set -euo pipefail
+          npm ci
+          npm audit --omit=dev --audit-level=high
+          npm audit --audit-level=high
+          npm run test:sharp-security
+          npm run lint
+          npm run build
+
+      - name: Validate production deployment contract
+        shell: pwsh
+        run: ./scripts/deploy/validar-deploy-production-local.ps1
+
+      - name: Validate required secrets
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          PRODUCTION_SSH_IDENTITY: ${{ secrets.PRODUCTION_SSH_IDENTITY }}
+          PRODUCTION_SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${PRODUCTION_HOST}"
+          test "${PRODUCTION_USER}" = "topsdojob"
+          test "${PRODUCTION_SSH_PORT}" -ge 1
+          test "${PRODUCTION_SSH_PORT}" -le 65535
+          test -n "${PRODUCTION_SSH_IDENTITY}"
+          test -n "${PRODUCTION_SSH_HOST_KEY}"
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          PRODUCTION_SSH_IDENTITY: ${{ secrets.PRODUCTION_SSH_IDENTITY }}
+          PRODUCTION_SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${PRODUCTION_SSH_HOST_KEY}" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}$ ]]; then
+            echo "ERRO: chave publica SSH da producao invalida." >&2
+            exit 1
+          fi
+          install -m 700 -d "${HOME}/.ssh"
+          printf '%s\n' "${PRODUCTION_SSH_IDENTITY}" > "${HOME}/.ssh/topsv3_production"
+          chmod 600 "${HOME}/.ssh/topsv3_production"
+          printf '[%s]:%s %s\n' "${PRODUCTION_HOST}" "${PRODUCTION_SSH_PORT}" "${PRODUCTION_SSH_HOST_KEY}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+          ssh-keygen -F "[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}" -f "${HOME}/.ssh/known_hosts" >/dev/null
+          ssh -V
+          ssh -Q kex | grep -Fxq 'sntrup761x25519-sha512@openssh.com'
+
+      - name: Validate pinned SSH host key
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}" -o ConnectTimeout=15)
+          SSH_RETRY_BACKOFF=(2 4 8 16)
+          for attempt in 1 2 3 4 5; do
+            if ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true; then
+              break
+            fi
+            if [ "${attempt}" -eq 5 ]; then
+              echo "ERRO: conexao SSH da producao indisponivel apos 5 tentativas." >&2
+              exit 1
+            fi
+            delay="${SSH_RETRY_BACKOFF[$((attempt - 1))]}"
+            echo "AVISO: tentativa SSH ${attempt} falhou; nova tentativa em ${delay}s." >&2
+            sleep "${delay}"
+          done
+
+      - name: Validate remote production prerequisites
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test "$(id -un)" = "topsdojob"
+          test -r /opt/topsv3/secrets/production.env
+          test -r /opt/topsv3/secrets/application-production.yml
+          test -r /opt/topsv3/secrets/nginx-production-local.conf
+          test -r /opt/topsv3/secrets/efi-webhook-allowlist.conf
+          test -d /opt/topsv3/secrets/efi
+          test -L /opt/topsv3/production/current
+          test -w /opt/topsv3/production/incoming
+          test -w /opt/topsv3/production/releases
+          command -v docker >/dev/null
+          docker compose version >/dev/null
+          docker inspect topsv3-production-postgres >/dev/null
+          test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
+          test "$(docker inspect topsv3-production-postgres --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "topsv3-production"
+          docker volume inspect topsv3-production-postgres-data >/dev/null
+          sudo -n nginx -t >/dev/null
+          REMOTE
+
+      - name: Upload immutable release
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          SCP_OPTS=(-i "${HOME}/.ssh/topsv3_production" -P "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          ARCHIVE="${RUNNER_TEMP}/topsv3-${GITHUB_SHA}.tar.gz"
+          tar \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./frontend/node_modules' \
+            --exclude='./frontend/.next' \
+            --exclude='./backend/target' \
+            --exclude='./target' \
+            --exclude='./storage-local' \
+            --exclude='./backups' \
+            --exclude='./logs' \
+            --exclude='./topsv3-auditoria-local' \
+            --exclude='./logs-brutos-nao-versionar' \
+            --exclude='./*.dump' \
+            --exclude='**/*.dump' \
+            --exclude='./*.backup' \
+            --exclude='**/*.backup' \
+            --exclude='./*.bak' \
+            --exclude='./*.zip' \
+            --exclude='./*.log' \
+            --exclude='**/*.log' \
+            --exclude='./.env' \
+            --exclude='./*/.env' \
+            --exclude='**/.env' \
+            --exclude='./*.pem' \
+            --exclude='**/*.pem' \
+            --exclude='./*.key' \
+            --exclude='**/*.key' \
+            --exclude='./*.crt' \
+            --exclude='**/*.crt' \
+            --exclude='./*.p12' \
+            --exclude='**/*.p12' \
+            -czf "${ARCHIVE}" .
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'mkdir -p /opt/topsv3/production/incoming /opt/topsv3/production/releases'
+          scp "${SCP_OPTS[@]}" "${ARCHIVE}" "${SSH_TARGET}:/opt/topsv3/production/incoming/${GITHUB_SHA}.tar.gz"
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
+          set -euo pipefail
+          release_sha="$1"
+          release_root=/opt/topsv3/production/releases
+          release_dir="${release_root}/${release_sha}"
+          incoming="/opt/topsv3/production/incoming/${release_sha}.tar.gz"
+          temporary="${release_root}/.${release_sha}.incoming"
+          if [ -e "${release_dir}" ]; then
+            test -f "${release_dir}/.release-sha"
+            test "$(cat "${release_dir}/.release-sha")" = "${release_sha}"
+            rm -f "${incoming}"
+            exit 0
+          fi
+          rm -rf -- "${temporary}"
+          install -d -m 0750 "${temporary}"
+          tar -xzf "${incoming}" -C "${temporary}"
+          printf '%s\n' "${release_sha}" > "${temporary}/.release-sha"
+          chmod -R a-w "${temporary}"
+          mv -- "${temporary}" "${release_dir}"
+          rm -f "${incoming}"
+          REMOTE
+
+      - name: Build and activate production release
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
+          set -euo pipefail
+          release_sha="$1"
+          deploy_root=/opt/topsv3/production
+          release_dir="${deploy_root}/releases/${release_sha}"
+          compose_file="${release_dir}/deploy/production/docker-compose.yml"
+          env_file=/opt/topsv3/secrets/production.env
+          previous_release="$(readlink -f "${deploy_root}/current")"
+          postgres_id_before="$(docker inspect topsv3-production-postgres --format '{{.Id}}')"
+          postgres_volume_before="$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
+          db="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')"
+          user="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')"
+          count_sql="select 'anuncio', count(*) from anuncio union all select 'arquivo_midia', count(*) from arquivo_midia union all select 'ativacao_beneficio', count(*) from ativacao_beneficio union all select 'credencial_usuario', count(*) from credencial_usuario union all select 'documento_usuario', count(*) from documento_usuario union all select 'movimento_credito', count(*) from movimento_credito union all select 'usuario', count(*) from usuario order by 1"
+          counts_before="$(docker exec topsv3-production-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
+          export TOPSV3_RELEASE_SHA="${release_sha}"
+          compose=(docker compose --env-file "${env_file}" -f "${compose_file}" -p topsv3-production)
+          switched=0
+
+          rollback_application() {
+            trap - ERR
+            if [ "${switched}" -ne 1 ] || [ ! -d "${previous_release}" ]; then
+              return
+            fi
+            rollback_link="${deploy_root}/.rollback-${release_sha}"
+            rm -f "${rollback_link}"
+            ln -s "releases/$(basename "${previous_release}")" "${rollback_link}"
+            mv -Tf "${rollback_link}" "${deploy_root}/current"
+            if [ -f "${previous_release}/deploy/production/docker-compose.yml" ]; then
+              previous_sha="$(cat "${previous_release}/.release-sha")"
+              TOPSV3_RELEASE_SHA="${previous_sha}" docker compose --env-file "${env_file}" -f "${previous_release}/deploy/production/docker-compose.yml" -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
+            else
+              TOPSV3_RELEASE_DIR="${previous_release}" docker compose --env-file "${env_file}" -f /opt/topsv3/secrets/docker-compose.production.yml -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
+            fi
+          }
+          on_error() {
+            rc=$?
+            rollback_application || true
+            exit "${rc}"
+          }
+          trap on_error ERR
+
+          "${compose[@]}" config --quiet
+          "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null
+          "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
+          "${compose[@]}" build backend frontend
+          current_link="${deploy_root}/.current-${release_sha}"
+          rm -f "${current_link}"
+          ln -s "releases/${release_sha}" "${current_link}"
+          mv -Tf "${current_link}" "${deploy_root}/current"
+          switched=1
+          "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
+
+          healthy=0
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 5
+          done
+          test "${healthy}" -eq 1
+          test "$(docker inspect topsv3-production-postgres --format '{{.Id}}')" = "${postgres_id_before}"
+          test "$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
+          counts_after="$(docker exec topsv3-production-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
+          test "${counts_after}" = "${counts_before}"
+          test "$(readlink -f "${deploy_root}/current")" = "${release_dir}"
+          trap - ERR
+          REMOTE
+
+      - name: Smoke production internally without data writes
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
+          set -euo pipefail
+          release_sha="$1"
+          release_dir="/opt/topsv3/production/releases/${release_sha}"
+          test "$(readlink -f /opt/topsv3/production/current)" = "${release_dir}"
+          test "$(cat /opt/topsv3/production/current/.release-sha)" = "${release_sha}"
+          for service in backend frontend gateway; do
+            config_files="$(docker inspect "topsv3-production-${service}" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
+            case "${config_files}" in
+              *"/releases/${release_sha}/deploy/production/docker-compose.yml"*) ;;
+              *) echo "ERRO: ${service} nao usa o release ${release_sha}." >&2; exit 1 ;;
+            esac
+            test "$(docker inspect "topsv3-production-${service}" --format '{{.State.Running}}')" = "true"
+          done
+          test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
+          curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"'
+          curl -fsS http://127.0.0.1:23000/ >/dev/null
+          curl -fsS http://127.0.0.1:23000/anuncios >/dev/null
+          frontend_env="$(docker inspect topsv3-production-frontend --format '{{range .Config.Env}}{{println .}}{{end}}')"
+          grep -qx 'NEXT_PUBLIC_SITE_URL=https://topsdojob.com' <<< "${frontend_env}"
+          grep -qx 'SEARCH_INDEXING_MODE=public' <<< "${frontend_env}"
+          backend_env="$(docker inspect topsv3-production-backend --format '{{range .Config.Env}}{{println .}}{{end}}')"
+          grep -qx 'SPRING_PROFILES_ACTIVE=production' <<< "${backend_env}"
+          grep -qx 'APP_ENV=producao' <<< "${backend_env}"
+          if printf '%s\n%s\n' "${backend_env}" "${frontend_env}" | grep -Eqi 'v3\.esle\.cloud|mailpit|homologacao|sandbox'; then
+            echo 'ERRO: configuracao de homologacao encontrada no runtime de producao.' >&2
+            exit 1
+          fi
+          logs="$(docker logs topsv3-production-backend 2>&1)"
+          if printf '%s' "${logs}" | grep -Eqi 'IMPORTACAO_.*(INICIO|EXECUTADA)|fixture.*(INICIO|EXECUTADA|enabled=true)'; then
+            echo 'ERRO: marcador de importador ou fixture encontrado na producao.' >&2
+            exit 1
+          fi
+          REMOTE

@@ -5,6 +5,10 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - .github/workflows/deploy-production.yml
+      - deploy/production/**
+      - scripts/deploy/validar-deploy-production-local.ps1
 
 concurrency:
   group: topsv3-preprod
