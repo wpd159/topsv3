@@ -21,6 +21,8 @@ $compose = Read-RepoFile "deploy/production/docker-compose.yml"
 $databaseGate = Read-RepoFile "scripts/deploy/validar-gate-banco-production.sh"
 $databaseGateSnapshot = Read-RepoFile "scripts/deploy/capturar-snapshot-gate-banco-production.sql"
 $databaseGateTests = Read-RepoFile "scripts/deploy/testar-gate-banco-production.sh"
+$rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
+$analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
 $checks = [Collections.Generic.List[object]]::new()
 
 function Add-Check {
@@ -107,6 +109,13 @@ Add-Check "workflow limita retries SSH" (
 )
 Add-Check "workflow rejeita residuos de homologacao no runtime" (
   $workflow -match "grep -Eqi 'v3\\.esle\\.cloud\|mailpit\|homologacao\|sandbox'"
+)
+Add-Check "workflow compila frontend com GA4 habilitado" (
+  ($workflow -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+"true"') -and
+  ($workflow.Contains("node scripts/test-ga4-production.mjs"))
+)
+Add-Check "workflow valida GA4 habilitado no runtime" (
+  $workflow.Contains("grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true'")
 )
 
 foreach ($required in @(
@@ -201,6 +210,24 @@ Add-Check "compose preserva webhook mTLS" ($compose -match 'EFI_WEBHOOK_SKIP_MTL
 Add-Check "compose usa frontend standalone sem privilegio" (
   ($compose -match 'COPY --from=build --chown=node:node /app/\.next/standalone ./') -and
   ($compose -match '(?m)^\s+USER node\s*$')
+)
+Add-Check "compose habilita GA4 no build e runtime de producao" (
+  ([regex]::Matches($compose, 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+\$\{NEXT_PUBLIC_ANALYTICS_ENABLED:-true\}').Count -eq 2) -and
+  ($compose -match 'ENV NEXT_PUBLIC_ANALYTICS_ENABLED=true') -and
+  (-not ($compose -match 'NEXT_PUBLIC_ANALYTICS_ENABLED[^\r\n]*false'))
+)
+Add-Check "layout monta uma unica integracao consent-aware" (
+  ([regex]::Matches($rootLayout, '<ConsentAwareAnalytics\s*/>').Count -eq 1) -and
+  (-not $rootLayout.Contains("googletagmanager.com/gtag/js")) -and
+  (-not ($rootLayout -match "gtag\('config'"))
+)
+Add-Check "componente GA4 respeita ambiente e consentimento" (
+  ($analyticsComponent.Contains("NEXT_PUBLIC_ANALYTICS_ENABLED")) -and
+  ($analyticsComponent.Contains("cookie_consent")) -and
+  ($analyticsComponent.Contains("tops:cookie-consent-updated")) -and
+  ([regex]::Matches($analyticsComponent, 'googletagmanager\.com/gtag/js').Count -eq 1) -and
+  ([regex]::Matches($analyticsComponent, "gtag\('config'").Count -eq 1) -and
+  (-not $analyticsComponent.Contains("@vercel/analytics"))
 )
 
 $failed = @($checks | Where-Object { -not $_.Ok })

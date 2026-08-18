@@ -149,7 +149,7 @@ services:
       args:
         NEXT_PUBLIC_SITE_URL: https://topsdojob.com
         NEXT_PUBLIC_API_URL: https://topsdojob.com/api/public
-        NEXT_PUBLIC_ANALYTICS_ENABLED: ${NEXT_PUBLIC_ANALYTICS_ENABLED:-false}
+        NEXT_PUBLIC_ANALYTICS_ENABLED: ${NEXT_PUBLIC_ANALYTICS_ENABLED:-true}
         NEXT_PUBLIC_FORCE_HTTPS: "true"
         NEXT_PUBLIC_EFI_PIX_ENABLED: ${EFI_ENABLED:-true}
         SEARCH_INDEXING_MODE: public
@@ -187,7 +187,7 @@ services:
         ENV HOSTNAME=0.0.0.0
         ENV NEXT_PUBLIC_SITE_URL=https://topsdojob.com
         ENV NEXT_PUBLIC_API_URL=https://topsdojob.com/api/public
-        ENV NEXT_PUBLIC_ANALYTICS_ENABLED=false
+        ENV NEXT_PUBLIC_ANALYTICS_ENABLED=true
         ENV NEXT_PUBLIC_FORCE_HTTPS=true
         ENV NEXT_PUBLIC_EFI_PIX_ENABLED=true
         ENV SEARCH_INDEXING_MODE=public
@@ -205,7 +205,7 @@ services:
     environment:
       NEXT_PUBLIC_SITE_URL: https://topsdojob.com
       NEXT_PUBLIC_API_URL: https://topsdojob.com/api/public
-      NEXT_PUBLIC_ANALYTICS_ENABLED: ${NEXT_PUBLIC_ANALYTICS_ENABLED:-false}
+      NEXT_PUBLIC_ANALYTICS_ENABLED: ${NEXT_PUBLIC_ANALYTICS_ENABLED:-true}
       NEXT_PUBLIC_FORCE_HTTPS: "true"
       NEXT_PUBLIC_EFI_PIX_ENABLED: ${EFI_ENABLED:-true}
       SEARCH_INDEXING_MODE: public

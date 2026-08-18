@@ -1,9 +1,9 @@
 // src/app/layout.tsx
 
 import type { Metadata } from "next"
-import Script from "next/script"
 import "./globals.css"
 
+import { ConsentAwareAnalytics } from "@/components/analytics/consent-aware-analytics"
 import { AuthProvider } from "@/context/AuthContext"
 import { FavoritosProvider } from "@/context/FavoritosContext"
 import { Toaster } from "sonner"
@@ -15,7 +15,6 @@ import { resolveSearchIndexingPolicy } from "@/lib/seo/search-indexing-policy"
 
 const publicSiteBaseUrl = getPublicSiteBaseUrl()
 const searchIndexingPolicy = resolveSearchIndexingPolicy()
-const analyticsEnabled = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== "false"
 const unavailableSiteContent = SITE_CONTENT_KEYS.map(getUnavailableSiteContent)
 
 export const metadata: Metadata = {
@@ -63,23 +62,6 @@ export default function RootLayout({
     <html lang="pt-BR">
       <head>
         <meta charSet="utf-8" />
-        {analyticsEnabled ? (
-          <>
-            <Script
-              src="https://www.googletagmanager.com/gtag/js?id=G-E0CNBH6WPM"
-              strategy="afterInteractive"
-            />
-            <Script id="ga4-init" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                window.gtag = gtag;
-                gtag('js', new Date());
-                gtag('config', 'G-E0CNBH6WPM');
-              `}
-            </Script>
-          </>
-        ) : null}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
@@ -97,6 +79,7 @@ export default function RootLayout({
             </SiteContentProvider>
           </FavoritosProvider>
         </AuthProvider>
+        <ConsentAwareAnalytics />
       </body>
     </html>
   )

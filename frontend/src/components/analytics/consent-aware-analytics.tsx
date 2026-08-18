@@ -1,8 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import Script from 'next/script'
-import { Analytics } from '@vercel/analytics/react'
+import { useEffect, useState } from 'react'
 
 type ConsentState = {
   analytics?: boolean
@@ -11,9 +9,12 @@ type ConsentState = {
 const CONSENT_COOKIE = 'cookie_consent'
 const CONSENT_EVENT = 'tops:cookie-consent-updated'
 const GA_MEASUREMENT_ID = 'G-E0CNBH6WPM'
+const GA4_CONFIGURED = process.env.NEXT_PUBLIC_ANALYTICS_ENABLED !== 'false'
+const GA_SCRIPT_ID = 'google-analytics-loader'
 
 declare global {
   interface Window {
+    dataLayer?: IArguments[]
     gtag?: (...args: unknown[]) => void
   }
 }
@@ -42,6 +43,8 @@ export function ConsentAwareAnalytics() {
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false)
 
   useEffect(() => {
+    if (!GA4_CONFIGURED) return
+
     const syncConsent = () => {
       setAnalyticsEnabled(analyticsEnabledFromCookie())
     }
@@ -57,49 +60,50 @@ export function ConsentAwareAnalytics() {
   }, [])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.gtag !== 'function') return
+    if (!GA4_CONFIGURED || typeof window === 'undefined') return
 
-    window.gtag('consent', 'update', {
-      analytics_storage: analyticsEnabled ? 'granted' : 'denied',
-      ad_storage: 'denied',
-      ad_user_data: 'denied',
-      ad_personalization: 'denied',
-    })
-  }, [analyticsEnabled])
+    if (!analyticsEnabled) {
+      window.gtag?.('consent', 'update', {
+        analytics_storage: 'denied',
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+      })
+      return
+    }
 
-  const gaBootstrap = useMemo(
-    () => `
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){window.dataLayer.push(arguments);}
-      window.gtag = gtag;
-      gtag('js', new Date());
-      gtag('consent', 'default', {
+    if (typeof window.gtag !== 'function') {
+      window.dataLayer = window.dataLayer ?? []
+      window.gtag = function gtag() {
+        window.dataLayer?.push(arguments)
+      }
+      window.gtag('js', new Date())
+      window.gtag('consent', 'default', {
         analytics_storage: 'granted',
         ad_storage: 'denied',
         ad_user_data: 'denied',
-        ad_personalization: 'denied'
-      });
-      gtag('config', '${GA_MEASUREMENT_ID}', {
+        ad_personalization: 'denied',
+      })
+      window.gtag('config', GA_MEASUREMENT_ID, {
         page_path: window.location.pathname,
-      });
-    `,
-    []
-  )
+      })
+    } else {
+      window.gtag('consent', 'update', {
+        analytics_storage: 'granted',
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+      })
+    }
 
-  if (!analyticsEnabled) {
-    return null
-  }
+    if (!document.getElementById(GA_SCRIPT_ID)) {
+      const script = document.createElement('script')
+      script.id = GA_SCRIPT_ID
+      script.async = true
+      script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`
+      document.head.appendChild(script)
+    }
+  }, [analyticsEnabled])
 
-  return (
-    <>
-      <Script
-        src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-        strategy="afterInteractive"
-      />
-      <Script id="google-analytics" strategy="afterInteractive">
-        {gaBootstrap}
-      </Script>
-      <Analytics />
-    </>
-  )
+  return null
 }
