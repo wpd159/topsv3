@@ -21,6 +21,7 @@ function rejectText(source, forbidden, label) {
 
 const publicPage = read('src/app/(public-routes)/faq/page.tsx')
 const homePage = read('src/app/(public-routes)/page.tsx')
+const footer = read('src/components/layout/footer.tsx')
 const adminPage = read('src/app/(painel-admin)/admin/faqs/page.tsx')
 const publicApi = read('src/lib/faq-public-api.ts')
 const adminApi = read('src/lib/admin-faq-api.ts')
@@ -45,6 +46,12 @@ requireText(homePage, '"@type": "FAQPage"', 'JSON-LD FAQPage na Home')
 requireText(homePage, 'mainEntity: faqs.map', 'JSON-LD corresponde ao conteudo visivel da Home')
 requireText(homePage, 'min-w-0', 'accordion responsivo sem overflow')
 rejectText(homePage, 'const faqItems', 'FAQ paralela hardcoded ausente na Home')
+
+requireText(footer, 'Perguntas Frequentes', 'link explicito da FAQ no rodape')
+requireText(footer, 'href="/faq"', 'destino canonico da FAQ no rodape')
+if (footer.indexOf('Perguntas Frequentes') < footer.indexOf('Blog')) {
+  throw new Error('link da FAQ deve aparecer abaixo de Blog no rodape')
+}
 
 for (const action of [
   'Nova FAQ',

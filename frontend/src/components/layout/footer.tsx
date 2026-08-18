@@ -181,6 +181,11 @@ export default function Footer() {
                   Blog
                 </Link>
               </li>
+              <li>
+                <Link href="/faq" className="transition hover:text-pink-500">
+                  Perguntas Frequentes
+                </Link>
+              </li>
             </ul>
           </div>
 

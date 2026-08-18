@@ -111,6 +111,10 @@ assert.ok(
   nationalPageSource.includes('.filter((cidade) => isCidadeIndexavelLocal(cidade))'),
   'national links must use the same local indexability threshold as the sitemap',
 )
+assert.ok(
+  !nationalPageSource.includes('{cidade.totalAnunciosAtivos} anúncios publicados'),
+  'city cards must not expose published ad counts',
+)
 for (const heading of [
   'Cobertura nacional atual',
   'Como encontrar acompanhantes por cidade',

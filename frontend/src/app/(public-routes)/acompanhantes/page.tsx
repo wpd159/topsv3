@@ -102,9 +102,6 @@ export default async function AcompanhantesIndexPage() {
                 <span className="block">
                   {labelAcompanhantesCidade(cidade.cidadeNome)} - {cidade.estadoUf}
                 </span>
-                <span className="mt-1 block text-xs text-pink-600">
-                  {cidade.totalAnunciosAtivos} anúncios publicados
-                </span>
               </Link>
             ))}
           </div>
