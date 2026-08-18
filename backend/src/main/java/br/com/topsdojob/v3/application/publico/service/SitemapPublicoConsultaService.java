@@ -1,9 +1,14 @@
 package br.com.topsdojob.v3.application.publico.service;
 
+import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_BASE;
+import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_COM_EXTRA;
+
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SitemapAnuncioPublicoDto;
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
+import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
@@ -41,6 +46,7 @@ public class SitemapPublicoConsultaService {
     private final CidadeRepository cidadeRepository;
     private final BairroRepository bairroRepository;
     private final MidiaPublicaMapper midiaMapper;
+    private final PremiumPublicoMapper premiumMapper;
     private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
 
     public SitemapPublicoConsultaService(
@@ -52,6 +58,7 @@ public class SitemapPublicoConsultaService {
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
             MidiaPublicaMapper midiaMapper,
+            PremiumPublicoMapper premiumMapper,
             AnuncioSeoIndexabilidadePolicy indexabilidadePolicy) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
@@ -61,6 +68,7 @@ public class SitemapPublicoConsultaService {
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
         this.midiaMapper = midiaMapper;
+        this.premiumMapper = premiumMapper;
         this.indexabilidadePolicy = indexabilidadePolicy;
     }
 
@@ -91,9 +99,18 @@ public class SitemapPublicoConsultaService {
         Map<UUID, ArquivoMidiaEntity> arquivos = porId(
                 arquivoMidiaRepository.findByIdIn(ids(vinculos, AnuncioMidiaEntity::getArquivoMidiaId)),
                 ArquivoMidiaEntity::getId);
+        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(anuncios);
 
         return anuncios.stream()
-                .map(anuncio -> entrada(anuncio, localizacoes, estados, cidades, bairros, vinculosPorAnuncio, arquivos))
+                .map(anuncio -> entrada(
+                        anuncio,
+                        localizacoes,
+                        estados,
+                        cidades,
+                        bairros,
+                        vinculosPorAnuncio,
+                        arquivos,
+                        premiumPorAnuncio))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(SitemapAnuncioPublicoDto::slug))
                 .toList();
@@ -106,7 +123,8 @@ public class SitemapPublicoConsultaService {
             Map<UUID, CidadeEntity> cidades,
             Map<UUID, BairroEntity> bairros,
             Map<UUID, List<AnuncioMidiaEntity>> vinculosPorAnuncio,
-            Map<UUID, ArquivoMidiaEntity> arquivos) {
+            Map<UUID, ArquivoMidiaEntity> arquivos,
+            Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
         AnuncioLocalizacaoEntity localizacaoEntity = localizacoes.get(anuncio.getId());
         LocalizacaoPublicaDto localizacao = localizacao(localizacaoEntity, estados, cidades, bairros);
         if (localizacao == null) {
@@ -114,7 +132,15 @@ public class SitemapPublicoConsultaService {
         }
 
         List<AnuncioMidiaEntity> vinculos = vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of());
-        List<MidiaPublicaDto> midias = midiaMapper.publicas(vinculos, arquivos, false);
+        PremiumPublicoFlagsDto premium = premiumPorAnuncio.getOrDefault(
+                anuncio.getId(), PremiumPublicoFlagsDto.vazio());
+        int maxFotos = premium.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE;
+        List<MidiaPublicaDto> midias = midiaMapper.publicas(
+                vinculos,
+                arquivos,
+                false,
+                maxFotos,
+                premium.videoAtivo());
         boolean indexavel = indexabilidadePolicy.indexavel(anuncio, localizacao, midias);
         if (!indexavel) {
             return null;
