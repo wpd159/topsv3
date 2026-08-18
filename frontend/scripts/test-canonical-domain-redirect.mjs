@@ -30,7 +30,11 @@ function execute(url) {
   return middleware(new NextRequest(url))
 }
 
-for (const secondaryHost of ['topsdojob.com.br', 'www.topsdojob.com.br']) {
+for (const secondaryHost of [
+  'www.topsdojob.com',
+  'topsdojob.com.br',
+  'www.topsdojob.com.br',
+]) {
   assert.equal(
     unstable_doesMiddlewareMatch({
       config,
@@ -79,6 +83,10 @@ const configuredHosts = config.matcher
   .flatMap((entry) => entry.has ?? [])
   .filter((condition) => condition.type === 'host')
   .map((condition) => condition.value)
-assert.deepEqual(configuredHosts, ['topsdojob.com.br', 'www.topsdojob.com.br'])
+assert.deepEqual(configuredHosts, [
+  'www.topsdojob.com',
+  'topsdojob.com.br',
+  'www.topsdojob.com.br',
+])
 
 console.log('CANONICAL_DOMAIN_REDIRECT_RESULT=OK')

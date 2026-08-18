@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 const SESSION_COOKIE_NAME = 'JSESSIONID'
 const CANONICAL_ORIGIN = 'https://topsdojob.com'
-const SECONDARY_HOSTS = new Set(['topsdojob.com.br', 'www.topsdojob.com.br'])
+const SECONDARY_HOSTS = new Set([
+  'www.topsdojob.com',
+  'topsdojob.com.br',
+  'www.topsdojob.com.br',
+])
 const PROTECTED_PATH_PREFIXES = [
   '/admin',
   '/anunciar',
@@ -63,6 +67,10 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    {
+      source: '/:path*',
+      has: [{ type: 'host', value: 'www.topsdojob.com' }],
+    },
     {
       source: '/:path*',
       has: [{ type: 'host', value: 'topsdojob.com.br' }],
