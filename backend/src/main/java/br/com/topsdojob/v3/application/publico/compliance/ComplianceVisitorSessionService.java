@@ -8,6 +8,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
@@ -30,8 +31,19 @@ public class ComplianceVisitorSessionService {
 
   public SessionContext obterOuCriar(HttpServletRequest request) {
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC).withNano(0);
-    String existente = cookie(request, ComplianceSignedCookieService.SESSION_COOKIE);
-    var validado = signedCookieService.validar(existente, TipoTokenAssinado.SESSION, agora);
+    String existente = null;
+    Optional<ComplianceSignedCookieService.TokenAssinado> validado = Optional.empty();
+    for (String candidato : cookies(request, ComplianceSignedCookieService.SESSION_COOKIE)) {
+      var validacaoCandidata = signedCookieService.validar(
+          candidato,
+          TipoTokenAssinado.SESSION,
+          agora);
+      if (validacaoCandidata.isPresent()) {
+        existente = candidato;
+        validado = validacaoCandidata;
+        break;
+      }
+    }
     UUID sessionId = validado.map(item -> item.id()).orElseGet(UUID::randomUUID);
     OffsetDateTime emitidoEm = validado.map(item -> item.emitidoEm()).orElse(agora);
     OffsetDateTime expiraEm = validado
