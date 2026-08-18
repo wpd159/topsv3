@@ -75,6 +75,8 @@ public interface AnuncioMidiaRepository
 
     List<AnuncioMidiaEntity> findByArquivoMidiaId(UUID arquivoMidiaId);
 
+    List<AnuncioMidiaEntity> findByArquivoMidiaIdIn(Collection<UUID> arquivoMidiaIds);
+
     @Query("""
             select midia
             from AnuncioMidiaEntity midia

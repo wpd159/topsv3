@@ -228,6 +228,7 @@ public class AdminModeracaoFotosLoteService {
                     item.decisao() == AdminDecisaoFotoLoteAcao.EXCLUIR
                             ? "REMOVIDA"
                             : "PUBLICAVEL",
+                    null,
                     null);
         }
         try {
@@ -245,6 +246,7 @@ public class AdminModeracaoFotosLoteService {
                     item.classificacao() == null ? null : item.classificacao().name(),
                     "FALHA",
                     null,
+                    codigo,
                     mensagemSanitizada(codigo));
         }
     }

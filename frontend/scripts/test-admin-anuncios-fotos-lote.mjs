@@ -26,6 +26,10 @@ const batch = detail.slice(
   detail.indexOf('async function confirmPhotoBatch'),
   detail.indexOf('async function confirmDecision'),
 )
+const photoDelete = detail.slice(
+  detail.indexOf('async function confirmPhotoDelete'),
+  detail.indexOf('async function confirmDecision'),
+)
 const mediaTab = detail.slice(
   detail.indexOf('<TabsContent value="midias">'),
   detail.indexOf('<TabsContent value="documentos">'),
@@ -41,12 +45,18 @@ assert.ok(detail.includes('deletablePhoto'))
 assert.ok(detail.includes("item.status !== 'REMOVIDA'"))
 assert.ok(detail.includes('Excluir foto'))
 assert.ok(detail.includes("decisao: 'EXCLUIR'"))
-assert.ok(detail.includes('await revalidarCacheCatalogoPublico()'))
 assert.ok(detail.includes('photoDeleteLock.current'))
 assert.ok(detail.includes("result.resultado === 'FALHA'"))
 assert.ok(detail.includes('new ApiContractError('))
 assert.ok(detail.includes("'CONFLICT'"))
 assert.ok(!detail.includes("throw new Error(result?.motivo || 'A limpeza da foto não foi concluída.')"))
+assert.ok(detail.includes('também estiver vinculado a um documento KYC ou a outro registro'))
+assert.ok(detail.includes('Somente arquivos exclusivos e sem outras referências'))
+assert.ok(photoDelete.includes('setMedia((current) =>'))
+assert.ok(photoDelete.includes('.filter((item) => item.id !== photoDeleteTarget.id)'))
+assert.ok(photoDelete.includes('void Promise.allSettled(['))
+assert.ok(photoDelete.includes('revalidarCacheCatalogoPublico()'))
+assert.ok(photoDelete.includes('load()'))
 assert.ok(detail.includes('aspect-[16/7]'))
 assert.ok(detail.includes('object-contain'))
 assert.ok(!mediaTab.includes('Rejeitar foto'))
@@ -63,10 +73,13 @@ assert.ok(mediaTab.includes("item.tipo === 'VIDEO'"))
 assert.ok(mediaTab.includes('Sempre RESTRITA_18'))
 assert.ok(mediaTab.includes("title: 'Rejeitar vídeo'"))
 
-assert.ok(api.includes('export function decideAdminPhotosBatch'))
+assert.ok(api.includes('export async function decideAdminPhotosBatch'))
 assert.ok(api.includes('body: JSON.stringify({ fotos })'))
+assert.ok(api.includes('if (!response.ok && respostaValida)'))
+assert.ok(api.includes("falha?.motivo || 'A operação não pôde ser concluída no estado atual.'"))
 assert.ok(types.includes("decisao: 'APROVAR' | 'EXCLUIR'"))
 assert.ok(types.includes("resultado: 'APROVADA' | 'EXCLUIDA' | 'JA_PROCESSADA' | 'FALHA'"))
+assert.ok(types.includes('codigo: string | null'))
 assert.match(contractState, /normalized\.kind === 'NETWORK_FAILURE'/)
 assert.match(contractState, /normalized\.kind === 'CONFLICT'/)
 assert.match(contractState, /Operacao nao concluida/)

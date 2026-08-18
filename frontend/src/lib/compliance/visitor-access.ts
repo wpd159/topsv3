@@ -68,6 +68,11 @@ export async function obterStatusVisitante(force = false): Promise<StatusVisitan
   return refreshStatus()
 }
 
+export function recarregarStatusVisitante(): Promise<StatusVisitante> {
+  limparCacheStatusVisitante()
+  return refreshStatus()
+}
+
 export function limparCacheStatusVisitante() {
   statusGeneration += 1
   cacheStatus = null

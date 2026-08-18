@@ -5134,10 +5134,16 @@ paths:
               $ref: "#/components/schemas/AdminDecidirFotosLoteRequest"
       responses:
         "200":
-          description: Resultado completo ou parcial do lote, sem sucesso global falso
+          description: Lote concluido sem falhas
           headers:
             X-Request-Id:
               $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDecidirFotosLoteResponse"
+        "207":
+          description: Lote parcialmente concluido, com falhas funcionais individualizadas
           content:
             application/json:
               schema:
@@ -5151,9 +5157,21 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: Todas as decisoes falharam por conflito com o estado atual
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AdminDecidirFotosLoteResponse"
+                  - $ref: "#/components/schemas/ApiErrorResponse"
         "503":
           description: Falha operacional sanitizada durante a limpeza de uma foto
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AdminDecidirFotosLoteResponse"
+                  - $ref: "#/components/schemas/ApiErrorResponse"
   /api/admin/documentos:
     get:
       summary: Lista envios documentais aguardando revisao
@@ -11963,7 +11981,7 @@ components:
     AdminResultadoFotoLoteItem:
       type: object
       additionalProperties: false
-      required: [mediaId, decisao, classificacao, resultado, status, motivo]
+      required: [mediaId, decisao, classificacao, resultado, status, codigo, motivo]
       properties:
         mediaId:
           type: string
@@ -11979,6 +11997,9 @@ components:
           enum: [APROVADA, EXCLUIDA, JA_PROCESSADA, FALHA]
         status:
           type: [string, "null"]
+        codigo:
+          type: [string, "null"]
+          description: Codigo funcional sanitizado quando resultado for FALHA.
         motivo:
           type: [string, "null"]
           description: Mensagem sanitizada, presente somente quando a foto exige retry.

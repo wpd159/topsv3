@@ -21,6 +21,7 @@ import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRevisaoRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
@@ -43,9 +44,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 class AdminAnuncioMidiaCleanupServiceTest {
 
@@ -57,6 +61,8 @@ class AdminAnuncioMidiaCleanupServiceTest {
       mock(AnuncioMidiaRepository.class);
   private final ArquivoMidiaRepository arquivoMidiaRepository =
       mock(ArquivoMidiaRepository.class);
+  private final AnuncioMidiaRevisaoRepository revisaoRepository =
+      mock(AnuncioMidiaRevisaoRepository.class);
   private final DocumentoUsuarioRepository documentoUsuarioRepository =
       mock(DocumentoUsuarioRepository.class);
   private final StoryAnuncioRepository storyRepository = mock(StoryAnuncioRepository.class);
@@ -66,6 +72,15 @@ class AdminAnuncioMidiaCleanupServiceTest {
   @SuppressWarnings("unchecked")
   private final ObjectProvider<ObjectStorage> storageProvider = mock(ObjectProvider.class);
   private final R2StorageProperties properties = properties();
+  private final AdminAnuncioMidiaPosCommitCleanupService posCommitCleanupService =
+      new AdminAnuncioMidiaPosCommitCleanupService(
+          anuncioMidiaRepository,
+          arquivoMidiaRepository,
+          documentoUsuarioRepository,
+          revisaoRepository,
+          storyRepository,
+          storageProvider,
+          properties);
   private final AdminAnuncioMidiaCleanupService service = new AdminAnuncioMidiaCleanupService(
       anuncioMidiaRepository,
       arquivoMidiaRepository,
@@ -73,12 +88,21 @@ class AdminAnuncioMidiaCleanupServiceTest {
       storyRepository,
       storyAdminRepository,
       storageProvider,
-      properties);
+      properties,
+      posCommitCleanupService);
 
   @BeforeEach
   void setUp() {
+    TransactionSynchronizationManager.initSynchronization();
     when(storageProvider.getIfAvailable()).thenReturn(storage);
     when(storyAdminRepository.bloquearAtivasDoAnuncio(any())).thenReturn(List.of());
+  }
+
+  @AfterEach
+  void tearDown() {
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.clearSynchronization();
+    }
   }
 
   @Test
@@ -178,7 +202,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
   }
 
   @Test
-  void excluiFotoAprovadaSelecionadaEPreservaOutraMidiaKycEStoryAdministrativo() {
+  void desvinculaFotoExclusivaNormalizaOrdemELimpaStorageSomenteDepoisDoCommit() {
     UUID anuncioId = uuid(30);
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     ArquivoMidiaEntity alvoArquivo = arquivo(
@@ -196,7 +220,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
         anuncioId,
         alvoArquivo.getId(),
         TipoAnuncioMidia.FOTO,
-        FinalidadeAnuncioMidia.GALERIA,
+        FinalidadeAnuncioMidia.CAPA,
         0,
         StatusAnuncioMidia.PUBLICAVEL,
         VisibilidadeMidia.LIVRE,
@@ -217,16 +241,8 @@ class AdminAnuncioMidiaCleanupServiceTest {
         .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(alvoArquivo.getId()))
         .thenReturn(false);
 
-    StoryAnuncioEntity story = StoryAnuncioEntity.criarFixtureHomologacao(
-        uuid(330),
-        alvo.getId(),
-        agora.minusHours(1),
-        agora.plusHours(23),
-        0,
-        uuid(3),
-        agora.minusHours(1));
     when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(alvo.getId())))
-        .thenReturn(List.of(story));
+        .thenReturn(List.of());
     StorySelecaoAdministrativaEntity selecao = selecaoHistorica(anuncioId, agora.minusHours(1));
     when(storyAdminRepository.bloquearAtivasDoAnuncio(anuncioId)).thenReturn(List.of(selecao));
 
@@ -238,16 +254,24 @@ class AdminAnuncioMidiaCleanupServiceTest {
     var resultado = service.limparMidia(anuncioId, alvo.getId(), agora);
 
     assertThat(resultado.midiasRemovidas()).isEqualTo(1);
-    assertThat(resultado.objetosExcluidos()).isEqualTo(1);
-    assertThat(resultado.objetosJaAusentes()).isEqualTo(1);
-    assertThat(resultado.storiesEncerrados()).isEqualTo(1);
+    assertThat(resultado.objetosExcluidos()).isZero();
+    assertThat(resultado.objetosJaAusentes()).isZero();
+    assertThat(resultado.objetosCleanupAgendados()).isEqualTo(2);
+    assertThat(resultado.storiesEncerrados()).isZero();
     assertThat(resultado.storyAdministrativoEncerrado()).isFalse();
     assertThat(alvo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
-    assertThat(alvoArquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.REMOVIDO);
+    assertThat(alvoArquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
     assertThat(outra.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+    assertThat(outra.getOrdem()).isZero();
     assertThat(outraArquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
-    assertThat(story.getStatus()).isEqualTo(StatusStoryAnuncio.EXPIRADO);
     assertThat(selecao.isAtiva()).isTrue();
+    assertThat(storage.exists(
+        StorageArea.PRIVATE_MEDIA,
+        alvoArquivo.getChaveObjeto())).isTrue();
+
+    concluirCommit();
+
+    assertThat(alvoArquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.REMOVIDO);
     assertThat(storage.exists(
         StorageArea.PRIVATE_MEDIA,
         alvoArquivo.getChaveObjeto())).isFalse();
@@ -339,6 +363,123 @@ class AdminAnuncioMidiaCleanupServiceTest {
     assertThat(storage.exists(StorageArea.PRIVATE_DOCUMENT, documento.getChaveObjeto())).isTrue();
   }
 
+  @Test
+  void fotoCanonicaCompartilhadaComKycEhDesvinculadaSemCleanupFisico() {
+    UUID anuncioId = uuid(40);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity arquivo = arquivo(
+        uuid(140),
+        "privadas",
+        PRIVATE_PREFIX + "anuncios/kyc-safe/foto.jpg",
+        "image/jpeg");
+    AnuncioMidiaEntity vinculo = vinculo(
+        uuid(240), anuncioId, arquivo.getId(), TipoAnuncioMidia.FOTO, 0);
+    when(anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId))
+        .thenReturn(List.of(vinculo));
+    when(arquivoMidiaRepository.findByIdInForUpdate(List.of(arquivo.getId())))
+        .thenReturn(List.of(arquivo));
+    when(documentoUsuarioRepository
+        .existsByArquivoMidiaIdInAndRemovidoEmIsNullAndExpurgadoEmIsNull(any()))
+        .thenReturn(true);
+    when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(vinculo.getId())))
+        .thenReturn(List.of());
+    colocar(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto());
+
+    var resultado = service.limparMidia(anuncioId, vinculo.getId(), agora);
+
+    assertThat(resultado.midiasRemovidas()).isEqualTo(1);
+    assertThat(resultado.objetosCompartilhadosPreservados()).isEqualTo(1);
+    assertThat(resultado.objetosCleanupAgendados()).isZero();
+    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
+    assertThat(arquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+    assertThat(storage.exists(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto())).isTrue();
+    assertThat(TransactionSynchronizationManager.getSynchronizations()).isEmpty();
+  }
+
+  @Test
+  void fotoCompartilhadaComRevisaoPreservaArquivoEHistorico() {
+    UUID anuncioId = uuid(41);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity arquivo = arquivo(
+        uuid(141),
+        "publicas",
+        PUBLIC_PREFIX + "anuncios/revisao/foto.jpg",
+        "image/jpeg");
+    AnuncioMidiaEntity vinculo = vinculo(
+        uuid(241), anuncioId, arquivo.getId(), TipoAnuncioMidia.FOTO, 0);
+    when(anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId))
+        .thenReturn(List.of(vinculo));
+    when(arquivoMidiaRepository.findByIdInForUpdate(List.of(arquivo.getId())))
+        .thenReturn(List.of(arquivo));
+    when(revisaoRepository.existsByArquivoMidiaIdIn(any())).thenReturn(true);
+    when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(vinculo.getId())))
+        .thenReturn(List.of());
+    colocar(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto());
+
+    var resultado = service.limparMidia(anuncioId, vinculo.getId(), agora);
+
+    assertThat(resultado.objetosCompartilhadosPreservados()).isEqualTo(1);
+    assertThat(resultado.objetosCleanupAgendados()).isZero();
+    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
+    assertThat(arquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+    assertThat(storage.exists(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto())).isTrue();
+  }
+
+  @Test
+  void falhaDoCleanupPosCommitNaoReverteDesvinculacaoNemQuebraReferencia() {
+    UUID anuncioId = uuid(42);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity arquivo = arquivo(
+        uuid(142),
+        "privadas",
+        PRIVATE_PREFIX + "anuncios/pos-commit/foto.jpg",
+        "image/jpeg");
+    AnuncioMidiaEntity vinculo = vinculo(
+        uuid(242), anuncioId, arquivo.getId(), TipoAnuncioMidia.FOTO, 0);
+    when(anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId))
+        .thenReturn(List.of(vinculo));
+    when(arquivoMidiaRepository.findByIdInForUpdate(List.of(arquivo.getId())))
+        .thenReturn(List.of(arquivo));
+    when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(vinculo.getId())))
+        .thenReturn(List.of());
+    colocar(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto());
+    storage.falharUmaVez(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto());
+
+    var resultado = service.limparMidia(anuncioId, vinculo.getId(), agora);
+    concluirCommit();
+
+    assertThat(resultado.midiasRemovidas()).isEqualTo(1);
+    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
+    assertThat(arquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+    assertThat(storage.exists(StorageArea.PRIVATE_MEDIA, arquivo.getChaveObjeto())).isTrue();
+  }
+
+  @Test
+  void retryConcorrenteDaMesmaFotoNaoAgendaCleanupNovamente() {
+    UUID anuncioId = uuid(43);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity arquivo = arquivo(
+        uuid(143),
+        "publicas",
+        PUBLIC_PREFIX + "anuncios/retry-stale/foto.jpg",
+        "image/jpeg");
+    AnuncioMidiaEntity vinculo = vinculo(
+        uuid(243), anuncioId, arquivo.getId(), TipoAnuncioMidia.FOTO, 0);
+    when(anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId))
+        .thenReturn(List.of(vinculo));
+    when(arquivoMidiaRepository.findByIdInForUpdate(List.of(arquivo.getId())))
+        .thenReturn(List.of(arquivo));
+    when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(vinculo.getId())))
+        .thenReturn(List.of());
+
+    var primeira = service.limparMidia(anuncioId, vinculo.getId(), agora);
+    var retry = service.limparMidia(anuncioId, vinculo.getId(), agora.plusSeconds(1));
+
+    assertThat(primeira.jaProcessado()).isFalse();
+    assertThat(retry.jaProcessado()).isTrue();
+    assertThat(TransactionSynchronizationManager.getSynchronizations()).hasSize(1);
+  }
+
   private void prepararRepositorios(
       UUID anuncioId,
       List<ArquivoMidiaEntity> arquivos,
@@ -401,6 +542,15 @@ class AdminAnuncioMidiaCleanupServiceTest {
 
   private void colocar(StorageArea area, String key) {
     storage.put(area, key, new byte[] {1, 2, 3}, "application/octet-stream");
+  }
+
+  private void concluirCommit() {
+    List<TransactionSynchronization> synchronizations =
+        List.copyOf(TransactionSynchronizationManager.getSynchronizations());
+    synchronizations.forEach(TransactionSynchronization::afterCommit);
+    synchronizations.forEach(item -> item.afterCompletion(TransactionSynchronization.STATUS_COMMITTED));
+    TransactionSynchronizationManager.clearSynchronization();
+    TransactionSynchronizationManager.initSynchronization();
   }
 
   private static UUID uuid(int suffix) {

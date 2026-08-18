@@ -54,6 +54,7 @@ public class AdminModeracaoFotosLoteAuditoriaService {
             resumo.put("classificacao", item.classificacao());
             resumo.put("resultado", item.resultado());
             resumo.put("status", item.status());
+            resumo.put("codigo", item.codigo());
             resumo.put("motivoSanitizado", item.motivo());
             return resumo;
         }).toList());

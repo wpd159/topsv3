@@ -359,6 +359,7 @@ export type AdminPhotoBatchItemResult = {
   classificacao?: 'LIVRE' | 'RESTRITA_18' | null
   resultado: 'APROVADA' | 'EXCLUIDA' | 'JA_PROCESSADA' | 'FALHA'
   status?: string | null
+  codigo: string | null
   motivo?: string | null
 }
 

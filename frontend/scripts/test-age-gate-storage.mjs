@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const modal = fs.readFileSync(
@@ -39,8 +40,10 @@ const sidebar = fs.readFileSync(
 
 assert.doesNotMatch(modal, /getGlobalAgeGateStatus/)
 assert.match(modal, /acceptGlobalAgeGate/)
-assert.match(modal, /obterStatusVisitante\(true\)/)
+assert.match(modal, /recarregarStatusVisitante\(\)/)
 assert.match(modal, /notificarMudancaVerificacao\(visitorStatus\)/)
+assert.match(modal, /Nao foi possivel confirmar o aceite\. Tente novamente\./)
+assert.doesNotMatch(modal, /estado canonico/i)
 assert.match(modal, /SafeInstitutionalText/)
 assert.match(modal, />\s*Sair\s*</)
 assert.match(modal, /Aceitar/)
@@ -83,6 +86,10 @@ assert.match(access, /if \(pendingRequest\) return pendingRequest/)
 assert.match(access, /requestGeneration !== statusGeneration/)
 assert.match(access, /cacheStatus \?\? \{ verified: false \}/)
 assert.match(access, /statusGeneration \+= 1/)
+assert.match(
+  access,
+  /export function recarregarStatusVisitante\(\): Promise<StatusVisitante> \{\s*limparCacheStatusVisitante\(\)\s*return refreshStatus\(\)\s*\}/,
+)
 assert.doesNotMatch(`${api}\n${access}`, /localStorage|sessionStorage/)
 assert.doesNotMatch(`${api}\n${access}\n${verification}`, /\/idade\/confirmar|\/idade\/status/)
 assert.match(sensitiveImage, /\/compliance\/visitor\/media\//)
@@ -106,5 +113,37 @@ assert.doesNotMatch(
   /backdrop-filter/i,
   'O overlay nao pode criar uma camada de backdrop que fique stale apos o desbloqueio.',
 )
+
+const instrumentedAccess = access.replace(
+  /import \{\s*getVisitorStatus,\s*type VisitorAccessStatus,\s*\} from '@\/lib\/compliance\/age-gate-api'/,
+  'const getVisitorStatus = () => globalThis.__ageGateStatusRequest()\ntype VisitorAccessStatus = any',
+)
+const compiledAccess = ts.transpileModule(instrumentedAccess, {
+  compilerOptions: {
+    module: ts.ModuleKind.ESNext,
+    target: ts.ScriptTarget.ES2022,
+  },
+}).outputText
+const pendingStatusRequests = []
+globalThis.__ageGateStatusRequest = () => new Promise((resolve) => {
+  pendingStatusRequests.push(resolve)
+})
+const accessModule = await import(
+  `data:text/javascript;base64,${Buffer.from(compiledAccess).toString('base64')}`
+)
+const staleRequest = accessModule.obterStatusVisitante(true)
+const canonicalRequest = accessModule.recarregarStatusVisitante()
+assert.equal(
+  pendingStatusRequests.length,
+  2,
+  'A confirmacao pos-aceite deve iniciar uma consulta nova, sem reutilizar a request stale.',
+)
+pendingStatusRequests[0]({ globalAccepted: false, verified: false })
+pendingStatusRequests[1]({ globalAccepted: true, verified: false })
+await staleRequest
+assert.equal((await canonicalRequest).globalAccepted, true)
+assert.equal((await accessModule.obterStatusVisitante()).globalAccepted, true)
+assert.equal(pendingStatusRequests.length, 2)
+delete globalThis.__ageGateStatusRequest
 
 console.log('OK_AGE_GATE_BACKEND_FONTE_UNICA')

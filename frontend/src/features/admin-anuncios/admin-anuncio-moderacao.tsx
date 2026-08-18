@@ -589,11 +589,11 @@ function PhotoDeleteDialog({
         <DialogHeader>
           <DialogTitle>Excluir foto</DialogTitle>
           <DialogDescription>
-            Esta exclusão é definitiva. A foto, suas prévias, miniaturas e derivados exclusivos serão removidos do armazenamento.
+            Esta foto será removida do anúncio. Se o arquivo também estiver vinculado a um documento KYC ou a outro registro, ele permanecerá preservado.
           </DialogDescription>
         </DialogHeader>
         <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
-          As demais mídias, documentos KYC e o histórico administrativo permanecerão preservados.
+          Somente arquivos exclusivos e sem outras referências poderão ser removidos do armazenamento.
         </p>
         {error ? <ContractState error={error} compact /> : null}
         <DialogFooter>
@@ -943,9 +943,27 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           false,
         )
       }
-      await revalidarCacheCatalogoPublico()
-      await load()
+      setMedia((current) => {
+        return current
+          .filter((item) => item.id !== photoDeleteTarget.id)
+          .sort((left, right) => (left.ordem ?? Number.MAX_SAFE_INTEGER) - (right.ordem ?? Number.MAX_SAFE_INTEGER))
+          .map((item, ordem) => ({ ...item, ordem }))
+      })
+      setVisibility((current) => {
+        const next = { ...current }
+        delete next[photoDeleteTarget.id]
+        return next
+      })
+      setPhotoDecisions((current) => {
+        const next = { ...current }
+        delete next[photoDeleteTarget.id]
+        return next
+      })
       setPhotoDeleteTarget(null)
+      void Promise.allSettled([
+        revalidarCacheCatalogoPublico(),
+        load(),
+      ])
     } catch (reason) {
       setPhotoDeleteError(reason)
     } finally {

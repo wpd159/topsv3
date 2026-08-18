@@ -21,12 +21,15 @@ import { acceptGlobalAgeGate } from '@/lib/compliance/age-gate-api'
 import {
   notificarMudancaVerificacao,
   obterStatusVisitante,
+  recarregarStatusVisitante,
 } from '@/lib/compliance/visitor-access'
 
 type AgeGateModalProps = {
   termsHref?: string
   denyRedirect?: string
 }
+
+const AGE_GATE_CONFIRMATION_ERROR = 'Nao foi possivel confirmar o aceite. Tente novamente.'
 
 export function AgeGateModal({
   termsHref = '/termos-de-uso',
@@ -62,17 +65,15 @@ export function AgeGateModal({
     setError(null)
     try {
       const status = await acceptGlobalAgeGate(pathname || '/')
-      if (!status.accepted) throw new Error('Aceite global nao confirmado.')
-      const visitorStatus = await obterStatusVisitante(true)
+      if (!status.accepted) throw new Error(AGE_GATE_CONFIRMATION_ERROR)
+      const visitorStatus = await recarregarStatusVisitante()
       if (!visitorStatus.globalAccepted) {
-        throw new Error('Aceite global nao confirmado pelo estado canonico.')
+        throw new Error(AGE_GATE_CONFIRMATION_ERROR)
       }
       setOpen(false)
       notificarMudancaVerificacao(visitorStatus)
-    } catch (nextError) {
-      setError(nextError instanceof Error
-        ? nextError.message
-        : 'Nao foi possivel registrar o aceite.')
+    } catch {
+      setError(AGE_GATE_CONFIRMATION_ERROR)
     } finally {
       setSubmitting(false)
     }

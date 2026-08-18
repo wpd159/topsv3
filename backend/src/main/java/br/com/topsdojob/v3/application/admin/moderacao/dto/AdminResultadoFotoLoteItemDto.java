@@ -8,5 +8,6 @@ public record AdminResultadoFotoLoteItemDto(
         String classificacao,
         String resultado,
         String status,
+        String codigo,
         String motivo) {
 }

@@ -73,6 +73,7 @@ class AdminModeracaoFotosLoteServiceTest {
         assertThat(resposta.concluido()).isFalse();
         assertThat(resposta.resultados()).last().satisfies(item -> {
             assertThat(item.resultado()).isEqualTo("FALHA");
+            assertThat(item.codigo()).isEqualTo("FALHA_OPERACIONAL_R2");
             assertThat(item.motivo()).contains("armazenamento").contains("Tente novamente");
         });
         verify(auditoria).registrarFalha(
@@ -247,6 +248,7 @@ class AdminModeracaoFotosLoteServiceTest {
                 item.classificacao() == null ? null : item.classificacao().name(),
                 resultado,
                 status,
+                null,
                 null);
     }
 

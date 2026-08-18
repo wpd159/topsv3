@@ -18,6 +18,9 @@ public interface DocumentoUsuarioRepository extends JpaRepository<DocumentoUsuar
 
     boolean existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(UUID arquivoMidiaId);
 
+    boolean existsByArquivoMidiaIdInAndRemovidoEmIsNullAndExpurgadoEmIsNull(
+            Collection<UUID> arquivoMidiaIds);
+
     List<DocumentoUsuarioEntity> findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(
             UUID usuarioId);
 

@@ -25,12 +25,20 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class AdminAnuncioMidiaCleanupService {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(AdminAnuncioMidiaCleanupService.class);
 
   private final AnuncioMidiaRepository anuncioMidiaRepository;
   private final ArquivoMidiaRepository arquivoMidiaRepository;
@@ -39,6 +47,7 @@ public class AdminAnuncioMidiaCleanupService {
   private final StorySelecaoAdministrativaRepository storyAdminRepository;
   private final ObjectProvider<ObjectStorage> storageProvider;
   private final R2StorageProperties storageProperties;
+  private final AdminAnuncioMidiaPosCommitCleanupService posCommitCleanupService;
 
   public AdminAnuncioMidiaCleanupService(
       AnuncioMidiaRepository anuncioMidiaRepository,
@@ -47,7 +56,8 @@ public class AdminAnuncioMidiaCleanupService {
       StoryAnuncioRepository storyRepository,
       StorySelecaoAdministrativaRepository storyAdminRepository,
       ObjectProvider<ObjectStorage> storageProvider,
-      R2StorageProperties storageProperties) {
+      R2StorageProperties storageProperties,
+      AdminAnuncioMidiaPosCommitCleanupService posCommitCleanupService) {
     this.anuncioMidiaRepository = anuncioMidiaRepository;
     this.arquivoMidiaRepository = arquivoMidiaRepository;
     this.documentoUsuarioRepository = documentoUsuarioRepository;
@@ -55,6 +65,7 @@ public class AdminAnuncioMidiaCleanupService {
     this.storyAdminRepository = storyAdminRepository;
     this.storageProvider = storageProvider;
     this.storageProperties = storageProperties;
+    this.posCommitCleanupService = posCommitCleanupService;
   }
 
   public Resultado limpar(UUID anuncioId, OffsetDateTime agora) {
@@ -62,6 +73,7 @@ public class AdminAnuncioMidiaCleanupService {
     return limparVinculos(anuncioId, vinculos, agora, true);
   }
 
+  @Transactional(propagation = Propagation.MANDATORY)
   public Resultado limparMidia(UUID anuncioId, UUID midiaId, OffsetDateTime agora) {
     List<AnuncioMidiaEntity> vinculosDoAnuncio =
         anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId);
@@ -75,11 +87,95 @@ public class AdminAnuncioMidiaCleanupService {
     if (alvo.getArquivoMidiaId() == null) {
       throw conflito("ARQUIVO_DE_MIDIA_AUSENTE");
     }
+    if (alvo.getStatus() == StatusAnuncioMidia.REMOVIDA) {
+      return Resultado.resultadoJaProcessado();
+    }
 
-    List<AnuncioMidiaEntity> vinculosDaFoto = vinculosDoAnuncio.stream()
-        .filter(item -> alvo.getArquivoMidiaId().equals(item.getArquivoMidiaId()))
+    List<UUID> vinculoIds = List.of(alvo.getId());
+    var preparacao = posCommitCleanupService.preparar(
+        List.of(alvo.getArquivoMidiaId()), vinculoIds);
+    if (preparacao.cleanupNecessario()
+        && !TransactionSynchronizationManager.isSynchronizationActive()) {
+      throw new CleanupException(
+          HttpStatus.INTERNAL_SERVER_ERROR,
+          "TRANSACAO_CLEANUP_INDISPONIVEL",
+          null);
+    }
+
+    alvo.removerLogicamente(agora);
+    anuncioMidiaRepository.saveAndFlush(alvo);
+    normalizarOrdem(vinculosDoAnuncio, agora);
+
+    StoryResult storyResult = encerrarStories(anuncioId, vinculoIds, agora, false);
+    if (preparacao.cleanupNecessario()) {
+      agendarCleanupPosCommit(preparacao.arquivoIds(), vinculoIds);
+    }
+    return new Resultado(
+        1,
+        0,
+        0,
+        preparacao.compartilhadoOuProtegido() ? preparacao.arquivoIds().size() : 0,
+        storyResult.encerrados(),
+        false,
+        preparacao.cleanupNecessario() ? preparacao.objetosCandidatos() : 0,
+        false);
+  }
+
+  private void normalizarOrdem(
+      List<AnuncioMidiaEntity> vinculosDoAnuncio,
+      OffsetDateTime agora) {
+    List<AnuncioMidiaEntity> ativos = vinculosDoAnuncio.stream()
+        .filter(item -> item.getStatus() != StatusAnuncioMidia.REMOVIDA)
+        .filter(item -> item.getTipo() != TipoAnuncioMidia.STORY)
+        .sorted(Comparator
+            .comparing(AnuncioMidiaEntity::getOrdem, Comparator.nullsLast(Integer::compareTo))
+            .thenComparing(AnuncioMidiaEntity::getCriadoEm, Comparator.nullsLast(Comparator.naturalOrder()))
+            .thenComparing(AnuncioMidiaEntity::getId))
         .toList();
-    return limparVinculos(anuncioId, vinculosDaFoto, agora, false);
+    boolean precisaNormalizar = java.util.stream.IntStream.range(0, ativos.size())
+        .anyMatch(index -> !Objects.equals(ativos.get(index).getOrdem(), index));
+    if (!precisaNormalizar) {
+      return;
+    }
+
+    int deslocamento = ativos.stream()
+        .map(AnuncioMidiaEntity::getOrdem)
+        .filter(Objects::nonNull)
+        .max(Integer::compareTo)
+        .orElse(0) + ativos.size() + 100;
+    for (int index = 0; index < ativos.size(); index++) {
+      ativos.get(index).reordenar(deslocamento + index, agora);
+    }
+    anuncioMidiaRepository.saveAllAndFlush(ativos);
+    for (int index = 0; index < ativos.size(); index++) {
+      ativos.get(index).reordenar(index, agora);
+    }
+    anuncioMidiaRepository.saveAll(ativos);
+  }
+
+  private void agendarCleanupPosCommit(
+      Set<UUID> arquivoIds,
+      List<UUID> vinculoIds) {
+    Set<UUID> arquivosSnapshot = Set.copyOf(arquivoIds);
+    List<UUID> vinculosSnapshot = List.copyOf(vinculoIds);
+    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+      @Override
+      public void afterCommit() {
+        try {
+          posCommitCleanupService.limparSeContinuarOrfao(
+              arquivosSnapshot, vinculosSnapshot);
+        } catch (AdminAnuncioMidiaPosCommitCleanupService.CleanupPosCommitException exception) {
+          LOGGER.warn(
+              "Cleanup pos-commit da foto ficou pendente: codigo={}, arquivos={}",
+              exception.codigo(),
+              arquivosSnapshot.size());
+        } catch (RuntimeException exception) {
+          LOGGER.warn(
+              "Cleanup pos-commit da foto ficou pendente: codigo=FALHA_TECNICA, arquivos={}",
+              arquivosSnapshot.size());
+        }
+      }
+    });
   }
 
   private Resultado limparVinculos(
@@ -282,7 +378,31 @@ public class AdminAnuncioMidiaCleanupService {
       int objetosJaAusentes,
       int objetosCompartilhadosPreservados,
       int storiesEncerrados,
-      boolean storyAdministrativoEncerrado) {
+      boolean storyAdministrativoEncerrado,
+      int objetosCleanupAgendados,
+      boolean jaProcessado) {
+
+    public Resultado(
+        int midiasRemovidas,
+        int objetosExcluidos,
+        int objetosJaAusentes,
+        int objetosCompartilhadosPreservados,
+        int storiesEncerrados,
+        boolean storyAdministrativoEncerrado) {
+      this(
+          midiasRemovidas,
+          objetosExcluidos,
+          objetosJaAusentes,
+          objetosCompartilhadosPreservados,
+          storiesEncerrados,
+          storyAdministrativoEncerrado,
+          0,
+          false);
+    }
+
+    private static Resultado resultadoJaProcessado() {
+      return new Resultado(0, 0, 0, 0, 0, false, 0, true);
+    }
   }
 
   public static final class CleanupException extends RuntimeException {

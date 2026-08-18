@@ -39,6 +39,7 @@ class AdminModeracaoFotosLoteAuditoriaServiceTest {
                         null,
                         "FALHA",
                         null,
+                        "FALHA_OPERACIONAL_R2",
                         "Nao foi possivel remover a foto do armazenamento. Tente novamente.")),
                 0,
                 0,

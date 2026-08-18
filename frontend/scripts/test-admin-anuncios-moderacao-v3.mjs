@@ -110,10 +110,19 @@ assert.ok(detail.includes('Sempre RESTRITA_18'), 'A interface deve informar a cl
 assert.ok(detail.includes('PendingPhotoDecisionSelector'), 'Foto pendente deve preservar a classificacao local.')
 assert.ok(detail.includes('MediaVisibilitySelector') && detail.includes("['LIVRE', 'RESTRITA_18']"), 'Foto finalizada deve preservar a reclassificacao individual.')
 assert.ok(detail.includes('reclassifyAdminMedia') && detail.includes("kind: 'RECLASSIFY'"), 'Foto finalizada deve usar a operacao canonica propria de reclassificacao.')
-assert.ok(detail.includes('deletablePhoto') && detail.includes("item.status !== 'REMOVIDA'"), 'Toda foto existente deve preservar a exclusao fisica.')
+assert.ok(detail.includes('deletablePhoto') && detail.includes("item.status !== 'REMOVIDA'"), 'Toda foto existente deve preservar a desvinculacao administrativa.')
 assert.ok(detail.includes('PhotoDeleteDialog') && detail.includes('Excluir foto'), 'A exclusao deve exigir confirmacao propria e independente da classificacao.')
 assert.ok(detail.includes("decisao: 'EXCLUIR'") && detail.includes('decideAdminPhotosBatch'), 'A exclusao individual deve reutilizar o contrato canonico do lote.')
 assert.ok(detail.includes('photoDeleteLock.current') && detail.includes("result.resultado === 'FALHA'"), 'A exclusao deve bloquear duplo clique e nao simular sucesso em falha.')
+const photoDeleteFlow = detail.slice(
+  detail.indexOf('async function confirmPhotoDelete'),
+  detail.indexOf('async function confirmDecision'),
+)
+assert.ok(detail.includes('também estiver vinculado a um documento KYC ou a outro registro'), 'O modal deve informar a preservacao de referencias legitimas.')
+assert.ok(photoDeleteFlow.includes('setMedia((current) =>') && photoDeleteFlow.includes('.filter((item) => item.id !== photoDeleteTarget.id)'), 'O card confirmado deve sair imediatamente da lista local.')
+assert.ok(photoDeleteFlow.includes('void Promise.allSettled([') && photoDeleteFlow.includes('revalidarCacheCatalogoPublico()') && photoDeleteFlow.includes('load()'), 'Cache e detalhe devem reconciliar em segundo plano.')
+assert.ok(api.includes('if (!response.ok && respostaValida)') && api.includes('falha?.motivo'), 'Falha funcional HTTP deve preservar a mensagem sanitizada do backend.')
+assert.ok(types.includes('codigo: string | null'), 'O contrato deve transportar o codigo funcional sanitizado.')
 assert.ok(detail.includes('aspect-[16/7]') && detail.includes('object-contain'), 'A previa deve ser compacta sem cortar a midia.')
 assert.ok(detail.includes("title: 'Aplicar e aprovar vídeo'") && detail.includes('Aplicar classificação'), 'Video e foto finalizada devem preservar suas operacoes fora do lote.')
 assert.ok(!detail.includes('Rejeitar foto'), 'Foto pendente nao pode manter a rejeicao logica anterior.')

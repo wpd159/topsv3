@@ -70,6 +70,7 @@ public class AdminModeracaoFotosLoteItemService {
                     item.classificacao().name(),
                     "APROVADA",
                     resposta.status(),
+                    null,
                     null);
         }
 
@@ -86,6 +87,16 @@ public class AdminModeracaoFotosLoteItemService {
 
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
         var limpeza = midiaCleanupService.limparMidia(anuncioId, item.mediaId(), agora);
+        if (limpeza.jaProcessado()) {
+            return new AdminResultadoFotoLoteItemDto(
+                    item.mediaId(),
+                    item.decisao().name(),
+                    null,
+                    "JA_PROCESSADA",
+                    "REMOVIDA",
+                    null,
+                    null);
+        }
         Map<String, Object> depois = new LinkedHashMap<>();
         depois.put("anuncioId", anuncioId);
         depois.put("decisao", "EXCLUIR");
@@ -94,6 +105,7 @@ public class AdminModeracaoFotosLoteItemService {
         depois.put("objetosR2Excluidos", limpeza.objetosExcluidos());
         depois.put("objetosR2JaAusentes", limpeza.objetosJaAusentes());
         depois.put("objetosCompartilhadosPreservados", limpeza.objetosCompartilhadosPreservados());
+        depois.put("objetosCleanupPosCommit", limpeza.objetosCleanupAgendados());
         depois.put("storiesEncerrados", limpeza.storiesEncerrados());
         depois.put("storageOculto", true);
         auditoriaRepository.save(AuditoriaEventoEntity.registrar(
@@ -112,6 +124,7 @@ public class AdminModeracaoFotosLoteItemService {
                 null,
                 "EXCLUIDA",
                 "REMOVIDA",
+                null,
                 null);
     }
 

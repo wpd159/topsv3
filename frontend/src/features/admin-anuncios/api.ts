@@ -379,17 +379,58 @@ export function decideAdminMedia(
   })
 }
 
-export function decideAdminPhotosBatch(
+export async function decideAdminPhotosBatch(
   anuncioId: string,
   fotos: AdminPhotoBatchDecision[],
 ) {
-  return request<AdminPhotoBatchResponse>(
-    `/anuncios/${encodeURIComponent(anuncioId)}/midias/decisoes`,
-    {
+  try {
+    const response = await fetch(adminApiUrl(
+      `/anuncios/${encodeURIComponent(anuncioId)}/midias/decisoes`,
+    ), {
       method: 'POST',
+      headers: await csrfHeaders(),
       body: JSON.stringify({ fotos }),
-    },
-  )
+      credentials: 'include',
+      cache: 'no-store',
+    })
+    let payload: Partial<AdminPhotoBatchResponse>
+    try {
+      payload = corrigirEstruturaTexto(await response.clone().json()) as Partial<AdminPhotoBatchResponse>
+    } catch {
+      if (!response.ok) throw await apiErrorFromResponse(response)
+      throw new ApiContractError(
+        'O serviço retornou uma resposta incompatível.',
+        'TECHNICAL_FAILURE',
+        502,
+        true,
+      )
+    }
+    const respostaValida = Array.isArray(payload.resultados)
+      && typeof payload.concluido === 'boolean'
+      && typeof payload.requestId === 'string'
+    if (response.ok && respostaValida) {
+      return payload as AdminPhotoBatchResponse
+    }
+    if (!response.ok && respostaValida) {
+      const falha = payload.resultados?.find((item) => item.resultado === 'FALHA')
+      throw new ApiContractError(
+        falha?.motivo || 'A operação não pôde ser concluída no estado atual.',
+        response.status === 409 ? 'CONFLICT' : response.status >= 500 ? 'TECHNICAL_FAILURE' : 'INVALID_REQUEST',
+        response.status,
+        response.status >= 500,
+        payload.requestId || response.headers.get('X-Request-Id'),
+      )
+    }
+    if (!response.ok) throw await apiErrorFromResponse(response)
+    throw new ApiContractError(
+      'O serviço retornou uma resposta incompatível.',
+      'TECHNICAL_FAILURE',
+      502,
+      true,
+    )
+  } catch (error) {
+    throw normalizeApiError(error)
+  }
 }
 
 export function reclassifyAdminMedia(

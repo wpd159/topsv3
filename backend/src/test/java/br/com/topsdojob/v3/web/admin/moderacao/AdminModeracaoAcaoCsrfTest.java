@@ -2,15 +2,22 @@ package br.com.topsdojob.v3.web.admin.moderacao;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoAcaoService;
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLoteService;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteResponseDto;
+import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminResultadoFotoLoteItemDto;
 import br.com.topsdojob.v3.security.config.AdminSecurityErrorWriter;
 import br.com.topsdojob.v3.security.config.SecurityConfig;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -92,6 +99,40 @@ class AdminModeracaoAcaoCsrfTest {
                 .andExpect(status().isOk());
 
         verify(fotosLoteService).decidir(any(), any(), any(), any());
+    }
+
+    @Test
+    void falhaFuncionalUnicaNaoFicaOcultaEmHttp200() throws Exception {
+        UUID mediaId = UUID.randomUUID();
+        when(fotosLoteService.decidir(any(), any(), any(), any())).thenReturn(
+                new AdminDecidirFotosLoteResponseDto(
+                        UUID.randomUUID(),
+                        List.of(new AdminResultadoFotoLoteItemDto(
+                                mediaId,
+                                "EXCLUIR",
+                                null,
+                                "FALHA",
+                                null,
+                                "CONFLITO_DE_ESTADO",
+                                "O estado da foto mudou. Atualize os dados e tente novamente.")),
+                        0,
+                        0,
+                        0,
+                        1,
+                        false,
+                        "request-conflito",
+                        OffsetDateTime.now(ZoneOffset.UTC)));
+
+        mockMvc.perform(post("/api/admin/anuncios/{id}/midias/decisoes", UUID.randomUUID())
+                        .with(user("admin").authorities(
+                                new SimpleGrantedAuthority("ROLE_ADMIN"),
+                                new SimpleGrantedAuthority("MIDIA_REVISAR")))
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"fotos\":[{\"mediaId\":\"" + mediaId
+                                + "\",\"decisao\":\"EXCLUIR\"}]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.resultados[0].codigo").value("CONFLITO_DE_ESTADO"));
     }
 
     @Test

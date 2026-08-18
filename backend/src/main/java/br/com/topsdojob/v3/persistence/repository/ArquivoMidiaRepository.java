@@ -30,4 +30,17 @@ public interface ArquivoMidiaRepository
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select arquivo from ArquivoMidiaEntity arquivo where arquivo.id = :id")
     java.util.Optional<ArquivoMidiaEntity> findByIdForUpdate(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select arquivo
+            from ArquivoMidiaEntity arquivo
+            where arquivo.storageProvider = :storageProvider
+              and arquivo.bucket = :bucket
+              and arquivo.chaveObjeto = :chaveObjeto
+            """)
+    java.util.Optional<ArquivoMidiaEntity> findByStorageIdentityForUpdate(
+            @Param("storageProvider") String storageProvider,
+            @Param("bucket") String bucket,
+            @Param("chaveObjeto") String chaveObjeto);
 }

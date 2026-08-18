@@ -107,7 +107,11 @@ public interface StoryAnuncioRepository extends JpaRepository<StoryAnuncioEntity
 
     long countByArquivoMidiaId(UUID arquivoMidiaId);
 
+    boolean existsByArquivoMidiaIdIn(Collection<UUID> arquivoMidiaIds);
+
     long countByAnuncioMidiaId(UUID anuncioMidiaId);
+
+    boolean existsByAnuncioMidiaIdIn(Collection<UUID> anuncioMidiaIds);
 
     boolean existsByAtivacaoBeneficioIdAndDireitoPreservadoFalse(UUID ativacaoBeneficioId);
 

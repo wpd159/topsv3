@@ -13,6 +13,9 @@ import br.com.topsdojob.v3.platform.request.RequestIdContext;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
+import java.util.Set;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -64,16 +67,49 @@ public class AdminModeracaoAcaoController {
 
     @PostMapping("/api/admin/anuncios/{id}/midias/decisoes")
     @PreAuthorize("hasAnyRole('ADMIN','MODERADOR') and hasAuthority('MIDIA_REVISAR')")
-    public AdminDecidirFotosLoteResponseDto decidirFotosEmLote(
+    public ResponseEntity<AdminDecidirFotosLoteResponseDto> decidirFotosEmLote(
             @PathVariable UUID id,
             @RequestBody AdminDecidirFotosLoteRequestDto request,
             @AuthenticationPrincipal AdminUserPrincipal actor,
             HttpServletRequest httpRequest) {
-        return fotosLoteService.decidir(
+        var response = fotosLoteService.decidir(
                 id,
                 request,
                 actor,
                 RequestIdContext.current(httpRequest));
+        return ResponseEntity.status(statusFotosLote(response)).body(response);
+    }
+
+    private HttpStatus statusFotosLote(AdminDecidirFotosLoteResponseDto response) {
+        if (response == null || response.falhas() == 0) {
+            return HttpStatus.OK;
+        }
+        int sucessos = response.aprovadas() + response.excluidas() + response.jaProcessadas();
+        if (sucessos > 0) {
+            return HttpStatus.MULTI_STATUS;
+        }
+        Set<String> codigos = response.resultados().stream()
+                .map(item -> item.codigo())
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        if (codigos.stream().anyMatch(Set.of(
+                "FALHA_TECNICA",
+                "TRANSACAO_CLEANUP_INDISPONIVEL")::contains)) {
+            return HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        if (codigos.stream().anyMatch(Set.of(
+                "FALHA_OPERACIONAL_R2",
+                "OBJETO_PERMANECE_NO_R2",
+                "STORAGE_INDISPONIVEL")::contains)) {
+            return HttpStatus.SERVICE_UNAVAILABLE;
+        }
+        if (codigos.contains("MIDIA_NAO_ENCONTRADA")) {
+            return HttpStatus.NOT_FOUND;
+        }
+        if (codigos.contains("FALHA_DE_VALIDACAO")) {
+            return HttpStatus.BAD_REQUEST;
+        }
+        return HttpStatus.CONFLICT;
     }
 
     @PostMapping("/api/admin/midias/{id}/reclassificar")
