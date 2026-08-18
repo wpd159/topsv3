@@ -63,6 +63,10 @@ jobs:
         shell: pwsh
         run: ./scripts/deploy/validar-deploy-production-local.ps1
 
+      - name: Test production database safety gate
+        shell: bash
+        run: bash ./scripts/deploy/testar-gate-banco-production.sh
+
       - name: Validate required secrets
         shell: bash
         env:
@@ -246,11 +250,28 @@ jobs:
           postgres_volume_before="$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
           db="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')"
           user="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')"
-          count_sql="select 'anuncio', count(*) from anuncio union all select 'arquivo_midia', count(*) from arquivo_midia union all select 'ativacao_beneficio', count(*) from ativacao_beneficio union all select 'credencial_usuario', count(*) from credencial_usuario union all select 'documento_usuario', count(*) from documento_usuario union all select 'movimento_credito', count(*) from movimento_credito union all select 'usuario', count(*) from usuario order by 1"
-          counts_before="$(docker exec topsv3-production-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
+          snapshot_sql="${release_dir}/scripts/deploy/capturar-snapshot-gate-banco-production.sql"
+          database_gate="${release_dir}/scripts/deploy/validar-gate-banco-production.sh"
+          snapshot_dir="$(mktemp -d)"
+          snapshot_before="${snapshot_dir}/before.snapshot"
+          snapshot_after="${snapshot_dir}/after.snapshot"
           export TOPSV3_RELEASE_SHA="${release_sha}"
           compose=(docker compose --env-file "${env_file}" -f "${compose_file}" -p topsv3-production)
           switched=0
+
+          cleanup_database_gate() {
+            rm -rf -- "${snapshot_dir}"
+          }
+
+          capture_database_snapshot() {
+            destination="$1"
+            health_state="$2"
+            docker exec -i topsv3-production-postgres psql \
+              -v ON_ERROR_STOP=1 -U "${user}" -d "${db}" -At -F '|' \
+              < "${snapshot_sql}" > "${destination}"
+            printf 'META|health|%s\n' "${health_state}" >> "${destination}"
+            LC_ALL=C sort -o "${destination}" "${destination}"
+          }
 
           rollback_application() {
             trap - ERR
@@ -270,12 +291,20 @@ jobs:
           }
           on_error() {
             rc=$?
+            cleanup_database_gate || true
             rollback_application || true
             exit "${rc}"
           }
           trap on_error ERR
 
           "${compose[@]}" config --quiet
+          baseline_health=DOWN
+          if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
+            && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
+            baseline_health=UP
+          fi
+          capture_database_snapshot "${snapshot_before}" "${baseline_health}"
+          bash "${database_gate}" "${snapshot_before}" "${snapshot_before}" 051
           "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null
           "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
           "${compose[@]}" build backend frontend
@@ -298,9 +327,10 @@ jobs:
           test "${healthy}" -eq 1
           test "$(docker inspect topsv3-production-postgres --format '{{.Id}}')" = "${postgres_id_before}"
           test "$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
-          counts_after="$(docker exec topsv3-production-postgres psql -U "${user}" -d "${db}" -At -F '|' -c "${count_sql}")"
-          test "${counts_after}" = "${counts_before}"
+          capture_database_snapshot "${snapshot_after}" UP
+          bash "${database_gate}" "${snapshot_before}" "${snapshot_after}" 051
           test "$(readlink -f "${deploy_root}/current")" = "${release_dir}"
+          cleanup_database_gate
           trap - ERR
           REMOTE
 

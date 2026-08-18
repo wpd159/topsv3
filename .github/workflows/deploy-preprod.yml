@@ -8,7 +8,10 @@ on:
     paths-ignore:
       - .github/workflows/deploy-production.yml
       - deploy/production/**
+      - scripts/deploy/capturar-snapshot-gate-banco-production.sql
+      - scripts/deploy/testar-gate-banco-production.sh
       - scripts/deploy/validar-deploy-production-local.ps1
+      - scripts/deploy/validar-gate-banco-production.sh
 
 concurrency:
   group: topsv3-preprod

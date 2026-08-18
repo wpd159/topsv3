@@ -18,6 +18,9 @@ function Read-RepoFile {
 
 $workflow = Read-RepoFile ".github/workflows/deploy-production.yml"
 $compose = Read-RepoFile "deploy/production/docker-compose.yml"
+$databaseGate = Read-RepoFile "scripts/deploy/validar-gate-banco-production.sh"
+$databaseGateSnapshot = Read-RepoFile "scripts/deploy/capturar-snapshot-gate-banco-production.sql"
+$databaseGateTests = Read-RepoFile "scripts/deploy/testar-gate-banco-production.sh"
 $checks = [Collections.Generic.List[object]]::new()
 
 function Add-Check {
@@ -39,8 +42,9 @@ foreach ($required in @(
     "flyway migrate </dev/null",
     "flyway validate </dev/null",
     "rollback_application",
-    "counts_after",
-    "counts_before"
+    "snapshot_after",
+    "snapshot_before",
+    "validar-gate-banco-production.sh"
   )) {
   Add-Check "workflow contem $required" ($workflow.Contains($required))
 }
@@ -80,6 +84,19 @@ Add-Check "workflow preserva PostgreSQL" (
   ($workflow -match 'postgres_volume_before') -and
   ($workflow -match 'up -d --no-deps --force-recreate backend frontend gateway')
 )
+Add-Check "workflow testa gate de banco antes do deploy" (
+  ($workflow.Contains("Test production database safety gate")) -and
+  ($workflow.IndexOf("Test production database safety gate") -lt $workflow.IndexOf("Validate pinned SSH host key"))
+)
+Add-Check "workflow nao exige igualdade absoluta de contagens mutaveis" (
+  -not ($workflow -match 'test\s+"\$\{counts_after\}"\s+=\s+"\$\{counts_before\}"')
+)
+Add-Check "workflow preserva health e rollback no novo gate" (
+  ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_before\}"') -and
+  ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
+  ($workflow -match 'bash\s+"\$\{database_gate\}"') -and
+  ($workflow -match 'test\s+"\$\{healthy\}"\s+-eq\s+1')
+)
 Add-Check "workflow valida host key antes do upload" (
   $workflow.IndexOf('name: Validate pinned SSH host key') -lt
   $workflow.IndexOf('name: Upload immutable release')
@@ -91,6 +108,50 @@ Add-Check "workflow limita retries SSH" (
 Add-Check "workflow rejeita residuos de homologacao no runtime" (
   $workflow -match "grep -Eqi 'v3\\.esle\\.cloud\|mailpit\|homologacao\|sandbox'"
 )
+
+foreach ($required in @(
+    "MASS_LOSS_MINIMUM_ROWS=50",
+    "MASS_LOSS_PERCENT=20",
+    "database_identity",
+    "flyway_version",
+    "movimento_credito",
+    "ledger canonico perdeu movimentos",
+    "ATIVIDADE_LEGITIMA_OBSERVADA",
+    "DATABASE_SAFETY_GATE=PASS"
+  )) {
+  Add-Check "gate de banco contem $required" ($databaseGate.Contains($required))
+}
+
+foreach ($required in @(
+    "tabelas_criticas_ausentes",
+    "constraints_nao_validadas",
+    "anuncio_sem_usuario",
+    "documento_sem_arquivo",
+    "movimento_saldo_incoerente",
+    "movimento_idempotencia_duplicada",
+    "saldo_credito_negativo",
+    "eventos_metricas_estimados"
+  )) {
+  Add-Check "snapshot de banco contem $required" ($databaseGateSnapshot.Contains($required))
+}
+
+foreach ($required in @(
+    "crescimento_legitimo",
+    "mudanca_status_anuncio",
+    "crescimento_metricas",
+    "reducao_operacional_pequena",
+    "truncamento",
+    "perda_macica",
+    "tabela_critica_ausente",
+    "flyway_inesperado",
+    "health_indisponivel",
+    "database_trocado",
+    "relacionamento_orfao",
+    "reducao_ledger",
+    "DATABASE_SAFETY_GATE_TESTS=PASS"
+  )) {
+  Add-Check "testes do gate contem $required" ($databaseGateTests.Contains($required))
+}
 
 foreach ($required in @(
     "name: topsv3-production",
