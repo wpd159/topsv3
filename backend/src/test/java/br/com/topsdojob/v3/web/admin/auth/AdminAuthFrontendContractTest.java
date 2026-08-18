@@ -28,6 +28,7 @@ class AdminAuthFrontendContractTest {
                 .contains("request<AdminSession>('/login'")
                 .contains("request<AdminSession>('/me')")
                 .contains("request<{ autenticado: boolean; status: string }>('/logout'")
+                .contains("request<AdminAccountAction>('/password'")
                 .contains("credentials: 'include'")
                 .contains("if (!['GET', 'HEAD', 'OPTIONS'].includes(method))")
                 .contains("const antiForgeryValue = await ensureAntiForgeryValue()")
@@ -50,7 +51,9 @@ class AdminAuthFrontendContractTest {
                 .contains("@RequestMapping(\"/api/admin/auth\")")
                 .contains("@PostMapping(\"/login\")")
                 .contains("@GetMapping(\"/me\")")
-                .contains("@PostMapping(\"/logout\")");
+                .contains("@PostMapping(\"/logout\")")
+                .contains("@PostMapping(\"/password\")")
+                .contains("segurancaService.alterarSenhaAdministrativa(");
         assertThat(loginPage)
                 .contains("const session = await loginAdmin(login.trim(), credential)")
                 .contains("await refresh()")
@@ -58,6 +61,8 @@ class AdminAuthFrontendContractTest {
                 .contains("router.replace(postLoginDestination())")
                 .contains("router.refresh()")
                 .contains("await logoutAdmin()")
+                .contains("Esqueci minha senha")
+                .contains("<RecuperarSenhaModal")
                 .doesNotContain("router.replace('/admin/stories')")
                 .doesNotContain("fetch(");
     }
@@ -94,5 +99,50 @@ class AdminAuthFrontendContractTest {
         assertThat(security)
                 .contains(".requestMatchers(HttpMethod.GET, \"/api/admin/auth/me\").permitAll()")
                 .contains(".requestMatchers(\"/api/admin/**\").authenticated()");
+    }
+
+    @Test
+    void alteracaoERecuperacaoDeSenhaReutilizamContratosCanonicos() throws Exception {
+        String adapter = Files.readString(FRONTEND.resolve(Path.of("lib", "admin-auth-api.ts")));
+        String dialog = Files.readString(FRONTEND.resolve(Path.of(
+                "features", "admin-auth", "admin-change-password-dialog.tsx")));
+        String footer = Files.readString(FRONTEND.resolve(Path.of(
+                "app", "(painel-admin)", "admin", "components", "sidebar",
+                "sidebar-user-footer.tsx")));
+        String recovery = Files.readString(FRONTEND.resolve(Path.of(
+                "components", "modals", "recuperar-senha-modal.tsx")));
+        String openApi = Files.readString(Path.of(
+                "..", "contracts", "openapi", "topsdojob-v3-local.yaml"));
+
+        assertThat(footer)
+                .contains("Alterar senha")
+                .contains("<AdminChangePasswordDialog")
+                .contains("onOpenChange={setPasswordDialogOpen}");
+        assertThat(dialog)
+                .contains("Senha atual")
+                .contains("Nova senha")
+                .contains("Confirmar nova senha")
+                .contains("autoComplete=\"current-password\"")
+                .contains("<PasswordRequirements")
+                .contains("await changeAdminPassword(")
+                .contains("Senha alterada com sucesso.")
+                .contains("window.location.assign('/admin/login')")
+                .doesNotContain("usuarioId");
+        assertThat(adapter)
+                .contains("type AdminCredentialField")
+                .contains("export type ChangeAdminPasswordPayload")
+                .contains("'senhaAtual'")
+                .contains("'novaSenha'")
+                .contains("'confirmarSenha'")
+                .contains("Object.fromEntries")
+                .contains("changeAdminPassword(");
+        assertThat(recovery)
+                .contains("requestPublicPasswordReset")
+                .contains("validatePublicResetCode")
+                .contains("resetPublicCredential")
+                .contains("Se houver uma conta elegível, enviaremos as instruções.");
+        assertThat(openApi)
+                .contains("/api/admin/auth/" + "pass" + "word:")
+                .contains("$ref: \"#/components/schemas/MinhaContaAlterarSenhaRequest\"");
     }
 }

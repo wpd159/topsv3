@@ -43,3 +43,21 @@ export function fontePublicaSegura(midia: MidiaPublica): string | null {
 export function midiaExigeConfirmacaoIdade(midia: MidiaPublica): boolean {
   return midia.visibilidadeMidia === "RESTRITA_18" && !midia.autorizada
 }
+
+const PUBLIC_R2_HOSTNAME = /^pub-[0-9a-f]{32}\.r2\.dev$/i
+
+export function imagemPublicaR2(source?: string | null): boolean {
+  if (!source) return false
+  try {
+    const url = new URL(source)
+    return url.protocol === "https:"
+      && PUBLIC_R2_HOSTNAME.test(url.hostname)
+      && !url.username
+      && !url.password
+      && !url.port
+      && !url.search
+      && !url.hash
+  } catch {
+    return false
+  }
+}

@@ -30,7 +30,10 @@ assert.match(
 assert.doesNotMatch(media, /filter:\s*blur|blur\(/i)
 assert.doesNotMatch(sensitiveImage, /filter:\s*blur|blur\(/i)
 assert.match(sensitiveImage, /fonteEhPreviewPublica/)
-assert.match(sensitiveImage, /unoptimized=\{!otimizarImagemPublica\}/)
+assert.match(
+  sensitiveImage,
+  /unoptimized=\{!otimizarImagemPublica \|\| imagemPublicaR2\(fonte\)\}/,
+)
 
 assert.match(card, /const nomeComIdade = idade != null/)
 assert.match(card, /Foto de perfil de \$\{nomeExibido\}/)

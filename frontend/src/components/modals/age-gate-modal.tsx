@@ -16,11 +16,12 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline'
 import { useSiteContent } from '@/components/site-content/site-content-provider'
+import { SafeInstitutionalText } from '@/components/site-content/safe-site-content-body'
+import { acceptGlobalAgeGate } from '@/lib/compliance/age-gate-api'
 import {
-  acceptGlobalAgeGate,
-  getGlobalAgeGateStatus,
-} from '@/lib/compliance/age-gate-api'
-import { notificarMudancaVerificacao } from '@/lib/compliance/visitor-access'
+  notificarMudancaVerificacao,
+  obterStatusVisitante,
+} from '@/lib/compliance/visitor-access'
 
 type AgeGateModalProps = {
   termsHref?: string
@@ -44,9 +45,9 @@ export function AgeGateModal({
     }
 
     let active = true
-    void getGlobalAgeGateStatus()
+    void obterStatusVisitante(true)
       .then((status) => {
-        if (active) setOpen(!status.accepted)
+        if (active) setOpen(!status.globalAccepted)
       })
       .catch(() => {
         if (active) setOpen(true)
@@ -62,8 +63,12 @@ export function AgeGateModal({
     try {
       const status = await acceptGlobalAgeGate(pathname || '/')
       if (!status.accepted) throw new Error('Aceite global nao confirmado.')
+      const visitorStatus = await obterStatusVisitante(true)
+      if (!visitorStatus.globalAccepted) {
+        throw new Error('Aceite global nao confirmado pelo estado canonico.')
+      }
       setOpen(false)
-      notificarMudancaVerificacao()
+      notificarMudancaVerificacao(visitorStatus)
     } catch (nextError) {
       setError(nextError instanceof Error
         ? nextError.message
@@ -81,8 +86,10 @@ export function AgeGateModal({
               <ExclamationTriangleIcon className="h-7 w-7 text-[#FC1EAD]" />
             </div>
             <DialogTitle className="text-xl font-bold">{legalNotice.titulo}</DialogTitle>
-            <DialogDescription className="whitespace-pre-line text-justify text-gray-600">
-              {legalNotice.corpo}
+            <DialogDescription asChild>
+              <div className="whitespace-pre-line text-justify text-gray-600">
+                <SafeInstitutionalText content={legalNotice.corpo} />
+              </div>
             </DialogDescription>
           </DialogHeader>
 

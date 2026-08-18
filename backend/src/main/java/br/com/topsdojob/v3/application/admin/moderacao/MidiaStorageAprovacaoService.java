@@ -17,9 +17,13 @@ import org.springframework.web.server.ResponseStatusException;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Service
 public class MidiaStorageAprovacaoService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(MidiaStorageAprovacaoService.class);
 
     private final ObjectProvider<ObjectStorage> storageProvider;
     private final R2StorageProperties properties;
@@ -69,16 +73,27 @@ public class MidiaStorageAprovacaoService {
         if (storage == null || !properties.isEnabled()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "storage de midia indisponivel");
         }
+        long inicio = System.nanoTime();
         String privateObjectPath = arquivo.getChaveObjeto();
         String relativePath = privateObjectPath.substring(properties.getPrivateMediaPrefix().length());
         String publicObjectPath = properties.getPublicMediaPrefix() + relativePath;
         StoredObject object = storage.get(StorageArea.PRIVATE_MEDIA, privateObjectPath);
+        long fimLeitura = System.nanoTime();
         ObjectWriteResult writeResult = storage.putIfAbsent(
                 StorageArea.PUBLIC_MEDIA, publicObjectPath, object.content(), object.contentType());
+        long fimEscrita = System.nanoTime();
         if (writeResult == ObjectWriteResult.ALREADY_EXISTS) {
             StoredObject publicObject = storage.get(StorageArea.PUBLIC_MEDIA, publicObjectPath);
             validarCopia(object, publicObject, "objeto publico diverge da midia processada", () -> { });
         }
+        long fimValidacao = System.nanoTime();
+        LOGGER.info(
+                "Promocao de midia livre concluida: leituraR2Ms={}, escritaR2Ms={}, validacaoR2Ms={}, totalMs={}, resultado={}",
+                millis(inicio, fimLeitura),
+                millis(fimLeitura, fimEscrita),
+                millis(fimEscrita, fimValidacao),
+                millis(inicio, fimValidacao),
+                writeResult);
         arquivo.moverNoStorage(properties.getPublicMediaBucket(), publicObjectPath);
         reconciliarDepoisDaTransacao(
                 storage, privateObjectPath, publicObjectPath, writeResult == ObjectWriteResult.CREATED);
@@ -219,5 +234,9 @@ public class MidiaStorageAprovacaoService {
 
     private String mime(String value) {
         return value == null ? "application/octet-stream" : value.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+    }
+
+    private long millis(long inicio, long fim) {
+        return Math.max(0L, (fim - inicio) / 1_000_000L);
     }
 }

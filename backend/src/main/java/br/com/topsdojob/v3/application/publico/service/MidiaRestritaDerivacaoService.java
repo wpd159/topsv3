@@ -74,19 +74,23 @@ public class MidiaRestritaDerivacaoService {
       throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "storage de midia indisponivel");
     }
 
+    long inicio = System.nanoTime();
     String key = chavePublica(arquivo);
     StorageArea sourceArea = areaOrigem(arquivo);
     StoredObject source = storage.get(sourceArea, arquivo.getChaveObjeto());
+    long fimLeitura = System.nanoTime();
     validarOrigem(arquivo, source);
     FotoRestritaDerivada derivada = processor.gerarDerivacaoRestrita(
         source.content(),
         mime(arquivo.getMimeType(), source.contentType()));
+    long fimDerivacao = System.nanoTime();
 
     ObjectWriteResult writeResult = storage.putIfAbsent(
         StorageArea.PUBLIC_MEDIA,
         key,
         derivada.bytes(),
         derivada.mimeType());
+    long fimEscrita = System.nanoTime();
     if (writeResult == ObjectWriteResult.ALREADY_EXISTS) {
       StoredObject persisted = storage.get(StorageArea.PUBLIC_MEDIA, key);
       if (!derivada.sha256().equals(sha256(persisted.content()))
@@ -94,9 +98,18 @@ public class MidiaRestritaDerivacaoService {
         throw new ResponseStatusException(HttpStatus.CONFLICT, "derivacao publica restrita divergente");
       }
     }
+    long fimValidacao = System.nanoTime();
 
     previewsConfirmados.add(key);
     compensarRollback(storage, key, writeResult == ObjectWriteResult.CREATED);
+    LOGGER.info(
+        "Derivacao restrita concluida: leituraR2Ms={}, derivacaoMs={}, escritaR2Ms={}, validacaoR2Ms={}, totalMs={}, resultado={}",
+        millis(inicio, fimLeitura),
+        millis(fimLeitura, fimDerivacao),
+        millis(fimDerivacao, fimEscrita),
+        millis(fimEscrita, fimValidacao),
+        millis(inicio, fimValidacao),
+        writeResult);
     return new ResultadoGeracao(
         writeResult == ObjectWriteResult.CREATED,
         key,
@@ -209,6 +222,10 @@ public class MidiaRestritaDerivacaoService {
     } catch (Exception exception) {
       throw new IllegalStateException("SHA-256 indisponivel", exception);
     }
+  }
+
+  private long millis(long inicio, long fim) {
+    return Math.max(0L, (fim - inicio) / 1_000_000L);
   }
 
   public record ResultadoPreview(String previewUrl, String pendencia) {

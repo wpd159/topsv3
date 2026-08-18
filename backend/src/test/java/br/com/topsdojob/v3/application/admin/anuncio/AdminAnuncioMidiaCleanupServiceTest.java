@@ -298,8 +298,9 @@ class AdminAnuncioMidiaCleanupServiceTest {
   }
 
   @Test
-  void arquivoDocumentalVinculadoBloqueiaSemTocarNoR2() {
+  void arquivoDocumentalVinculadoRemoveSomenteOVinculoDoAnuncio() {
     UUID anuncioId = uuid(20);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     ArquivoMidiaEntity documento = arquivo(
         uuid(120),
         "documentos",
@@ -317,17 +318,25 @@ class AdminAnuncioMidiaCleanupServiceTest {
     when(documentoUsuarioRepository
         .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(documento.getId()))
         .thenReturn(true);
+    when(storyRepository.findByAnuncioMidiaIdInForUpdate(List.of(vinculo.getId())))
+        .thenReturn(List.of());
     colocar(StorageArea.PRIVATE_DOCUMENT, documento.getChaveObjeto());
 
-    assertThatThrownBy(() -> service.limpar(anuncioId, OffsetDateTime.now(ZoneOffset.UTC)))
-        .isInstanceOfSatisfying(
-            AdminAnuncioMidiaCleanupService.CleanupException.class,
-            error -> {
-              assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
-              assertThat(error.codigo()).isEqualTo("ARQUIVO_DOCUMENTAL_VINCULADO");
-            });
+    var resultado = service.limparMidia(anuncioId, vinculo.getId(), agora);
+
+    assertThat(resultado.midiasRemovidas()).isEqualTo(1);
+    assertThat(resultado.objetosExcluidos()).isZero();
+    assertThat(resultado.objetosJaAusentes()).isZero();
+    assertThat(resultado.objetosCompartilhadosPreservados()).isEqualTo(1);
     assertThat(storage.exists(StorageArea.PRIVATE_DOCUMENT, documento.getChaveObjeto())).isTrue();
-    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
+    assertThat(documento.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+    verify(arquivoMidiaRepository, never()).saveAll(any());
+
+    var retry = service.limparMidia(anuncioId, vinculo.getId(), agora.plusSeconds(1));
+    assertThat(retry.midiasRemovidas()).isZero();
+    assertThat(retry.objetosExcluidos()).isZero();
+    assertThat(storage.exists(StorageArea.PRIVATE_DOCUMENT, documento.getChaveObjeto())).isTrue();
   }
 
   private void prepararRepositorios(

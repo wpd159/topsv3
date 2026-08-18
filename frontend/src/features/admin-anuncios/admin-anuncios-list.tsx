@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { getAdminSession } from '@/lib/admin-auth-api'
 import { maskPhoneBR } from '@/lib/phone-mask'
+import { imagemPublicaR2 } from '@/lib/media/public-media'
 import { SearchableSelect } from '@/features/anuncio-wizard/components/searchable-select'
 
 import { AdminAnuncioPremiumRapido, premiumBenefitGranted } from './admin-anuncio-premium-rapido'
@@ -71,7 +72,14 @@ function Thumbnail({ item }: { item: AdminAdListItem }) {
   return (
     <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-md bg-zinc-100">
       {item.miniaturaUrl ? (
-        <Image src={item.miniaturaUrl} alt="" fill sizes="56px" className="object-cover" />
+        <Image
+          src={item.miniaturaUrl}
+          alt=""
+          fill
+          sizes="56px"
+          unoptimized={imagemPublicaR2(item.miniaturaUrl)}
+          className="object-cover"
+        />
       ) : (
         <div className="flex h-full items-center justify-center text-center text-[10px] font-semibold text-zinc-400">Sem foto</div>
       )}

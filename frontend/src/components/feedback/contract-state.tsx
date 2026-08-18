@@ -15,7 +15,17 @@ type ContractStateProps = {
 export function ContractState({ error, onRetry, compact = false }: ContractStateProps) {
   const normalized = normalizeApiError(error)
   const pending = normalized instanceof BackendContractPendingError
-  const title = pending ? 'Integracao pendente' : 'Nao foi possivel carregar'
+  const title = pending
+    ? 'Integracao pendente'
+    : normalized.kind === 'NETWORK_FAILURE'
+      ? 'Nao foi possivel conectar'
+      : normalized.kind === 'CONFLICT'
+        ? 'Operacao nao concluida'
+        : normalized.kind === 'INVALID_REQUEST'
+          ? 'Revise a solicitacao'
+          : normalized.kind === 'ACCESS_DENIED' || normalized.kind === 'SESSION_REQUIRED'
+            ? 'Acesso nao autorizado'
+            : 'Nao foi possivel carregar'
 
   return (
     <div

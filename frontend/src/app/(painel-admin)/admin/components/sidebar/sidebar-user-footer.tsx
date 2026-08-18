@@ -1,7 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { KeyRound } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { AdminChangePasswordDialog } from '@/features/admin-auth/admin-change-password-dialog'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -11,12 +14,12 @@ import {
 import {
   Avatar,
   AvatarFallback,
-  AvatarImage,
 } from '@/components/ui/avatar'
 
 export function SidebarUserFooter() {
   const router = useRouter()
   const { usuario, logout } = useAuth()
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
 
   const handleRedirect = () => router.push('/')
   const handleLogout = async () => {
@@ -36,52 +39,65 @@ export function SidebarUserFooter() {
       .toUpperCase() || 'US'
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <div className="px-4 -ml-4 pb-4 text-xs text-white/70 cursor-pointer w-full">
-          <div className="flex items-center gap-2">
-            <Avatar className="w-10 h-10 rounded-full">
-              <AvatarFallback className="text-black font-bold">
-                {iniciais}
-              </AvatarFallback>
-            </Avatar>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <div className="px-4 -ml-4 pb-4 text-xs text-white/70 cursor-pointer w-full">
+            <div className="flex items-center gap-2">
+              <Avatar className="w-10 h-10 rounded-full">
+                <AvatarFallback className="text-black font-bold">
+                  {iniciais}
+                </AvatarFallback>
+              </Avatar>
 
-            <div className="flex flex-col leading-tight">
-              {/* Nome completo */}
-              <span className="font-semibold text-white truncate max-w-[150px]">
-                {username}
-              </span>
+              <div className="flex flex-col leading-tight">
+                {/* Nome completo */}
+                <span className="font-semibold text-white truncate max-w-[150px]">
+                  {username}
+                </span>
 
-              {/* Username */}
-              <span
-                className="text-white/60 truncate max-w-[150px]"
-                title={email}
-              >
-                {email}
-              </span>
+                {/* Username */}
+                <span
+                  className="text-white/60 truncate max-w-[150px]"
+                  title={email}
+                >
+                  {email}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      </DropdownMenuTrigger>
+        </DropdownMenuTrigger>
 
-      <DropdownMenuContent
-        align="start"
-        sideOffset={4}
-        className="w-48 bg-white shadow-md border rounded-md"
-      >
-        <DropdownMenuItem
-          onClick={handleRedirect}
-          className="text-sm cursor-pointer hover:bg-muted font-medium px-3 py-2"
+        <DropdownMenuContent
+          align="start"
+          sideOffset={4}
+          className="w-48 bg-white shadow-md border rounded-md"
         >
-          Voltar para o site
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => void handleLogout()}
-          className="text-sm cursor-pointer hover:bg-muted font-medium px-3 py-2"
-        >
-          Sair
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuItem
+            onClick={handleRedirect}
+            className="text-sm cursor-pointer hover:bg-muted font-medium px-3 py-2"
+          >
+            Voltar para o site
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => setPasswordDialogOpen(true)}
+            className="text-sm cursor-pointer hover:bg-muted font-medium px-3 py-2"
+          >
+            <KeyRound className="h-4 w-4" aria-hidden="true" />
+            Alterar senha
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => void handleLogout()}
+            className="text-sm cursor-pointer hover:bg-muted font-medium px-3 py-2"
+          >
+            Sair
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <AdminChangePasswordDialog
+        open={passwordDialogOpen}
+        onOpenChange={setPasswordDialogOpen}
+      />
+    </>
   )
 }

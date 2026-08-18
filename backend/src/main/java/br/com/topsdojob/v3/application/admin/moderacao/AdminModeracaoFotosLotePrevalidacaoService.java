@@ -123,7 +123,11 @@ public class AdminModeracaoFotosLotePrevalidacaoService {
         List<ItemValidado> validados = itens.stream()
                 .map(item -> validarItem(item, midias.get(item.mediaId()), arquivos))
                 .toList();
-        return new Prevalidacao(anuncioId, validados);
+        long fotosPublicaveisAntes = anuncioMidiaRepository.countByAnuncioIdAndTipoAndStatus(
+                anuncioId,
+                TipoAnuncioMidia.FOTO,
+                StatusAnuncioMidia.PUBLICAVEL);
+        return new Prevalidacao(anuncioId, validados, fotosPublicaveisAntes);
     }
 
     private ItemValidado validarItem(
@@ -134,13 +138,6 @@ public class AdminModeracaoFotosLotePrevalidacaoService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "decisao da foto obrigatoria");
         }
         ArquivoMidiaEntity arquivo = arquivos.get(midia.getArquivoMidiaId());
-        if (documentoUsuarioRepository
-                .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivo.getId())) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "arquivo documental nao pode participar da moderacao de fotos");
-        }
-
         if (item.decisao() == AdminDecisaoFotoLoteAcao.EXCLUIR) {
             if (item.classificacao() != null || hasText(item.observacao())) {
                 throw new ResponseStatusException(
@@ -156,6 +153,13 @@ public class AdminModeracaoFotosLotePrevalidacaoService {
                         true);
             }
             return new ItemValidado(midia.getId(), item.decisao(), null, null, false);
+        }
+
+        if (documentoUsuarioRepository
+                .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivo.getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "arquivo documental nao pode participar da moderacao de fotos");
         }
 
         VisibilidadeMidia classificacao = item.classificacao();
@@ -212,7 +216,10 @@ public class AdminModeracaoFotosLotePrevalidacaoService {
         return value != null && !value.isBlank();
     }
 
-    public record Prevalidacao(UUID anuncioId, List<ItemValidado> itens) {
+    public record Prevalidacao(
+            UUID anuncioId,
+            List<ItemValidado> itens,
+            long fotosPublicaveisAntes) {
     }
 
     public record ItemValidado(

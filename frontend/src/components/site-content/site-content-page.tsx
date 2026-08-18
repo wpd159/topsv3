@@ -27,6 +27,7 @@ export async function SiteContentPage({
         content={content.corpo}
         centered={centered}
         unavailable={content.unavailable}
+        institutionalLinks={contentKey === 'quem-somos'}
       />
     </section>
   )

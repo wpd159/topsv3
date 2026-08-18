@@ -936,7 +936,12 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       }])
       const result = response.resultados.find((item) => item.mediaId === photoDeleteTarget.id)
       if (!result || result.resultado === 'FALHA') {
-        throw new Error(result?.motivo || 'A limpeza da foto não foi concluída.')
+        throw new ApiContractError(
+          result?.motivo || 'A limpeza da foto não foi concluída.',
+          'CONFLICT',
+          409,
+          false,
+        )
       }
       await revalidarCacheCatalogoPublico()
       await load()

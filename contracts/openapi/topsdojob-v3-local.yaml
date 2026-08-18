@@ -2077,6 +2077,39 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "500":
           $ref: "#/components/responses/InternalError"
+  /api/admin/auth/password:
+    post:
+      summary: Alteracao da propria senha administrativa
+      description: Altera somente a credencial do principal ADMIN ou MODERADOR autenticado, reutilizando a politica, o encoder, a revogacao de tokens e a invalidacao de sessoes canonicas. O payload nao aceita identificador de usuario.
+      operationId: postAdminAuthPassword
+      security:
+        - AdminSessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/RequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MinhaContaAlterarSenhaRequest"
+      responses:
+        "200":
+          description: Senha alterada, tokens ativos consumidos e sessoes invalidadas
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/RequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicAccountAction"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
   /api/admin/auth/logout:
     post:
       summary: Logout administrativo local

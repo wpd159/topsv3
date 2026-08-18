@@ -10,6 +10,7 @@ import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.TokenSegurancaRepository;
+import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -59,20 +60,40 @@ public class MinhaContaSegurancaService {
             MinhaContaAlterarSenhaRequestDto request,
             Authentication authentication,
             String requestId) {
-        UUID usuarioId = usuarioId(authentication);
+        return alterarSenhaDoUsuario(
+                request,
+                usuarioId(authentication),
+                requestId);
+    }
+
+    @Transactional
+    public PublicAccountActionDto alterarSenhaAdministrativa(
+            MinhaContaAlterarSenhaRequestDto request,
+            Authentication authentication,
+            String requestId) {
+        return alterarSenhaDoUsuario(
+                request,
+                usuarioIdAdministrativo(authentication),
+                requestId);
+    }
+
+    private PublicAccountActionDto alterarSenhaDoUsuario(
+            MinhaContaAlterarSenhaRequestDto request,
+            UUID usuarioId,
+            String requestId) {
         rateLimiter.require(
                 "minha-conta-senha",
                 usuarioId.toString(),
                 10,
                 Duration.ofMinutes(15));
         if (request == null) {
-            throw badRequest("Preencha os dados obrigatórios.");
+            throw passwordBadRequest("Preencha os dados obrigatórios.");
         }
         var credencial = credenciais.findByUsuarioIdForUpdate(usuarioId)
-                .orElseThrow(() -> unauthorized("A senha atual está incorreta."));
+                .orElseThrow(this::senhaAtualIncorreta);
         if (request.senhaAtual() == null
                 || !encoder.matches(request.senhaAtual(), credencial.getSenhaHash())) {
-            throw unauthorized("A senha atual está incorreta.");
+            throw senhaAtualIncorreta();
         }
         try {
             PublicPasswordPolicy.validate(request.novaSenha(), request.confirmarSenha());
@@ -80,12 +101,12 @@ public class MinhaContaSegurancaService {
             if (exception.getMessage() != null
                     && exception.getMessage().toLowerCase(java.util.Locale.ROOT)
                     .contains("requisitos de seguran")) {
-                throw badRequest("A nova senha não atende aos requisitos de segurança.");
+                throw passwordBadRequest("A nova senha não atende aos requisitos de segurança.");
             }
             throw exception;
         }
         if (encoder.matches(request.novaSenha(), credencial.getSenhaHash())) {
-            throw badRequest("A nova senha deve ser diferente da senha atual.");
+            throw passwordBadRequest("A nova senha deve ser diferente da senha atual.");
         }
 
         OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
@@ -150,6 +171,15 @@ public class MinhaContaSegurancaService {
         return principal.usuarioId();
     }
 
+    private UUID usuarioIdAdministrativo(Authentication authentication) {
+        if (authentication == null
+                || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal() instanceof AdminUserPrincipal principal)) {
+            throw unauthorized("Sessão administrativa autenticada obrigatória.");
+        }
+        return principal.usuarioId();
+    }
+
     private void invalidarSessoesAposCommit(UUID usuarioId) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             sessions.invalidateAll(usuarioId);
@@ -169,5 +199,13 @@ public class MinhaContaSegurancaService {
 
     private ResponseStatusException unauthorized(String message) {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, message);
+    }
+
+    private PublicAuthException senhaAtualIncorreta() {
+        return new PublicAuthException(HttpStatus.UNAUTHORIZED, "Senha atual incorreta.");
+    }
+
+    private PublicAuthException passwordBadRequest(String message) {
+        return new PublicAuthException(HttpStatus.BAD_REQUEST, message);
     }
 }

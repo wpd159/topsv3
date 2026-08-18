@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { ChevronLeftIcon, ChevronRightIcon, MapPinIcon } from '@heroicons/react/24/solid'
 import {
   fontePublicaSegura,
+  imagemPublicaR2,
   selecionarCapaPublicaSegura,
 } from '@/lib/media/public-media'
 import type { PublicRelatedAd } from '@/lib/public-catalog-api'
@@ -93,6 +94,7 @@ export function AnunciosRelacionados({ anuncios }: AnunciosRelacionadosProps) {
                         alt={`Foto de ${anuncio.titulo}`}
                         fill
                         sizes="(max-width: 639px) 190px, (max-width: 1279px) 33vw, 260px"
+                        unoptimized={imagemPublicaR2(fonte)}
                         className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
                       />
                     ) : (

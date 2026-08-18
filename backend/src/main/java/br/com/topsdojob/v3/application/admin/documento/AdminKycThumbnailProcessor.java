@@ -1,8 +1,12 @@
 package br.com.topsdojob.v3.application.admin.documento;
 
+import com.drew.imaging.ImageMetadataReader;
+import com.drew.metadata.Metadata;
+import com.drew.metadata.exif.ExifIFD0Directory;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -65,12 +69,14 @@ public class AdminKycThumbnailProcessor {
       throw new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo do documento indisponivel");
     }
     try {
-      BufferedImage source = "application/pdf".equalsIgnoreCase(mimeType)
+      boolean pdf = "application/pdf".equalsIgnoreCase(mimeType);
+      BufferedImage decoded = pdf
           ? primeiraPagina(bytes)
           : ImageIO.read(new ByteArrayInputStream(bytes));
-      if (source == null) {
+      if (decoded == null) {
         throw formatoInvalido();
       }
+      BufferedImage source = pdf ? decoded : orientar(decoded, orientacaoExif(bytes));
       BufferedImage resized = redimensionar(source);
       byte[] thumbnail = escreverJpeg(resized);
       return new Thumbnail(thumbnail, "image/jpeg", "\"" + sha256(thumbnail) + "\"");
@@ -79,6 +85,53 @@ public class AdminKycThumbnailProcessor {
     } catch (IOException | RuntimeException exception) {
       throw formatoInvalido();
     }
+  }
+
+  private int orientacaoExif(byte[] bytes) {
+    try (ByteArrayInputStream input = new ByteArrayInputStream(bytes)) {
+      Metadata metadata = ImageMetadataReader.readMetadata(input);
+      ExifIFD0Directory directory = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
+      if (directory == null || !directory.containsTag(ExifIFD0Directory.TAG_ORIENTATION)) {
+        return 1;
+      }
+      int orientation = directory.getInt(ExifIFD0Directory.TAG_ORIENTATION);
+      return orientation >= 1 && orientation <= 8 ? orientation : 1;
+    } catch (Exception ignored) {
+      return 1;
+    }
+  }
+
+  private BufferedImage orientar(BufferedImage source, int orientation) {
+    if (orientation == 1) {
+      return source;
+    }
+    int width = source.getWidth();
+    int height = source.getHeight();
+    boolean swap = orientation >= 5;
+    BufferedImage target = new BufferedImage(
+        swap ? height : width,
+        swap ? width : height,
+        source.getColorModel().hasAlpha() ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+    AffineTransform transform = switch (orientation) {
+      case 2 -> new AffineTransform(-1, 0, 0, 1, width, 0);
+      case 3 -> new AffineTransform(-1, 0, 0, -1, width, height);
+      case 4 -> new AffineTransform(1, 0, 0, -1, 0, height);
+      case 5 -> new AffineTransform(0, 1, 1, 0, 0, 0);
+      case 6 -> new AffineTransform(0, 1, -1, 0, height, 0);
+      case 7 -> new AffineTransform(0, -1, -1, 0, height, width);
+      case 8 -> new AffineTransform(0, -1, 1, 0, 0, width);
+      default -> new AffineTransform();
+    };
+    Graphics2D graphics = target.createGraphics();
+    try {
+      graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+      graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+      graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+      graphics.drawImage(source, transform, null);
+    } finally {
+      graphics.dispose();
+    }
+    return target;
   }
 
   private BufferedImage primeiraPagina(byte[] bytes) throws IOException {

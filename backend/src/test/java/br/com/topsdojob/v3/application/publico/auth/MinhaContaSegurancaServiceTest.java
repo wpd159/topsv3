@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.usuario.AdminUsuarioExclusaoService;
 import br.com.topsdojob.v3.application.admin.usuario.dto.AdminUsuarioExclusaoResultadoDto;
+import br.com.topsdojob.v3.application.admin.auth.dto.AdminPermissionDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.MinhaContaAlterarSenhaRequestDto;
 import br.com.topsdojob.v3.application.publico.auth.dto.MinhaContaExcluirRequestDto;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -19,6 +20,8 @@ import br.com.topsdojob.v3.persistence.entity.usuario.TokenSegurancaEntity;
 import br.com.topsdojob.v3.persistence.repository.AuditoriaEventoRepository;
 import br.com.topsdojob.v3.persistence.repository.CredencialUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.TokenSegurancaRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
+import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import br.com.topsdojob.v3.security.publico.PublicUserPrincipal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -30,6 +33,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.server.ResponseStatusException;
@@ -109,10 +113,58 @@ class MinhaContaSegurancaServiceTest {
                 new MinhaContaAlterarSenhaRequestDto("Errada@123", "Nova@456A", "Nova@456A"),
                 authentication(),
                 "request-password-wrong"))
-                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
-                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
-                    assertThat(exception.getReason()).isEqualTo("A senha atual está incorreta.");
+                .isInstanceOfSatisfying(PublicAuthException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                    assertThat(exception.getMessage()).isEqualTo("Senha atual incorreta.");
                 });
+        assertThat(credencial.getSenhaHash()).isEqualTo("hash-atual");
+        verify(auditorias, never()).save(any());
+        verify(sessions, never()).invalidateAll(any());
+    }
+
+    @Test
+    void adminAlteraSomenteAPropriaSenhaEPreservaPapelEPermissoes() {
+        CredencialUsuarioEntity credencial = credencial();
+        Authentication admin = adminAuthentication();
+        when(credenciais.findByUsuarioIdForUpdate(USUARIO_ID)).thenReturn(Optional.of(credencial));
+        when(tokens.findTodosAtivosForUpdate(USUARIO_ID)).thenReturn(List.of());
+        when(encoder.matches("Atual@123", "hash-atual")).thenReturn(true);
+        when(encoder.matches("Nova@456A", "hash-atual")).thenReturn(false);
+        when(encoder.encode("Nova@456A")).thenReturn("hash-admin-novo");
+
+        var response = service.alterarSenhaAdministrativa(
+                new MinhaContaAlterarSenhaRequestDto("Atual@123", "Nova@456A", "Nova@456A"),
+                admin,
+                "request-admin-password-4501");
+
+        assertThat(response.message())
+                .isEqualTo("Sua senha foi alterada com sucesso. Entre novamente.");
+        assertThat(credencial.getSenhaHash()).isEqualTo("hash-admin-novo");
+        assertThat(admin.getAuthorities())
+                .extracting("authority")
+                .containsExactly("ROLE_ADMIN", "ADMIN_CONFIGURAR");
+        verify(credenciais).findByUsuarioIdForUpdate(USUARIO_ID);
+        verify(sessions).invalidateAll(USUARIO_ID);
+    }
+
+    @Test
+    void adminComSenhaAtualIncorretaNaoAlteraHashNemAudita() {
+        CredencialUsuarioEntity credencial = credencial();
+        when(credenciais.findByUsuarioIdForUpdate(USUARIO_ID)).thenReturn(Optional.of(credencial));
+        when(encoder.matches("Incorreta@1", "hash-atual")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.alterarSenhaAdministrativa(
+                new MinhaContaAlterarSenhaRequestDto(
+                        "Incorreta@1",
+                        "Nova@456A",
+                        "Nova@456A"),
+                adminAuthentication(),
+                "request-admin-password-wrong"))
+                .isInstanceOfSatisfying(PublicAuthException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                    assertThat(exception.getMessage()).isEqualTo("Senha atual incorreta.");
+                });
+
         assertThat(credencial.getSenhaHash()).isEqualTo("hash-atual");
         verify(auditorias, never()).save(any());
         verify(sessions, never()).invalidateAll(any());
@@ -208,5 +260,25 @@ class MinhaContaSegurancaServiceTest {
                         "qa@example.invalid"),
                 null,
                 List.of());
+    }
+
+    private Authentication adminAuthentication() {
+        AdminUserPrincipal principal = new AdminUserPrincipal(
+                USUARIO_ID,
+                "Admin Sintético",
+                "admin@example.invalid",
+                "hash-atual",
+                List.of(PapelUsuario.ADMIN),
+                List.of(new AdminPermissionDto(
+                        "ADMIN_CONFIGURAR",
+                        "Permissão sintética")),
+                List.of(
+                        new SimpleGrantedAuthority("ROLE_ADMIN"),
+                        new SimpleGrantedAuthority("ADMIN_CONFIGURAR")),
+                true);
+        return new UsernamePasswordAuthenticationToken(
+                principal,
+                null,
+                principal.getAuthorities());
     }
 }

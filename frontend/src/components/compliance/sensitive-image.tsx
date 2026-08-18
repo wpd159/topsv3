@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import {
   fontePublicaSegura,
+  imagemPublicaR2,
   type MidiaPublica,
 } from "@/lib/media/public-media"
 import { cn } from "@/lib/utils"
@@ -110,7 +111,7 @@ export function SensitiveImage({
             src={fonte}
             alt={alt}
             priority={priority}
-            unoptimized={!otimizarImagemPublica}
+            unoptimized={!otimizarImagemPublica || imagemPublicaR2(fonte)}
             className={cn("object-cover object-center transition duration-300", className)}
             onClick={protegida ? undefined : onImageClick}
             onLoad={() => {

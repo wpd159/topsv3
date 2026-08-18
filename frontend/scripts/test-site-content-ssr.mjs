@@ -52,7 +52,15 @@ assert.match(source.page, /SafeSiteContentBody/)
 assert.doesNotMatch(source.renderer, /dangerouslySetInnerHTML/)
 assert.match(source.renderer, /parsed\.protocol === 'http:' \|\| parsed\.protocol === 'https:'/)
 assert.match(source.renderer, /href\.startsWith\('\/'\)/)
+assert.match(source.renderer, /Política de Verificação Etária/)
+assert.match(source.renderer, /\/politicas\/verificacao-etaria/)
+assert.match(source.renderer, /Termos de Uso/)
+assert.match(source.renderer, /\/termos-de-uso/)
+assert.match(source.renderer, /parsed\.origin !== CANONICAL_ORIGIN/)
+assert.match(source.renderer, /parsed\.search/)
+assert.match(source.renderer, /parsed\.hash/)
 assert.doesNotMatch(source.renderer, /iframe|<script/)
+assert.match(source.page, /institutionalLinks=\{contentKey === 'quem-somos'\}/)
 
 assert.match(source.publicLayout, /await resolveAllPublicSiteContent\(\)/)
 assert.match(source.publicLayout, /<SiteContentProvider entries=\{siteContent\}>/)
@@ -62,6 +70,7 @@ for (const clientSource of [source.footer, source.ageGate, source.whatsapp]) {
 }
 assert.match(source.footer, /useSiteContent\('footer-resumo-institucional'\)/)
 assert.match(source.ageGate, /useSiteContent\('popup-login'\)/)
+assert.match(source.ageGate, /SafeInstitutionalText/)
 assert.match(source.whatsapp, /content = getUnavailableSiteContent\('texto-whatsapp'\)/)
 
 assert.doesNotMatch(source.cookies, /['"]use client['"]/)

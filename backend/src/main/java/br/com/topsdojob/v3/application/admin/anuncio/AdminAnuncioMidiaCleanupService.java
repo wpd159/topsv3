@@ -109,14 +109,13 @@ public class AdminAnuncioMidiaCleanupService {
     Set<UUID> arquivosExclusivos = new LinkedHashSet<>();
     Set<ObjetoStorage> objetos = new LinkedHashSet<>();
     for (ArquivoMidiaEntity arquivo : arquivos.values()) {
-      if (documentoUsuarioRepository
-          .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivo.getId())) {
-        throw conflito("ARQUIVO_DOCUMENTAL_VINCULADO");
-      }
-      boolean compartilhado = anuncioMidiaRepository.findByArquivoMidiaId(arquivo.getId()).stream()
+      boolean compartilhadoComDocumento = documentoUsuarioRepository
+          .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivo.getId());
+      boolean compartilhadoComOutroAnuncio = anuncioMidiaRepository
+          .findByArquivoMidiaId(arquivo.getId()).stream()
           .anyMatch(item -> !anuncioId.equals(item.getAnuncioId())
               && item.getStatus() != StatusAnuncioMidia.REMOVIDA);
-      if (compartilhado) {
+      if (compartilhadoComDocumento || compartilhadoComOutroAnuncio) {
         arquivosCompartilhados.add(arquivo.getId());
       } else {
         arquivosExclusivos.add(arquivo.getId());

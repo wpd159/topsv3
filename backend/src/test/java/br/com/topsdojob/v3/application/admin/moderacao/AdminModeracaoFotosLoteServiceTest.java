@@ -18,6 +18,12 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.PapelUsuario;
 import br.com.topsdojob.v3.security.admin.AdminUserPrincipal;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -32,7 +38,7 @@ class AdminModeracaoFotosLoteServiceTest {
     private final AdminModeracaoFotosLoteAuditoriaService auditoria =
             mock(AdminModeracaoFotosLoteAuditoriaService.class);
     private final AdminModeracaoFotosLoteService service =
-            new AdminModeracaoFotosLoteService(prevalidacao, itemService, auditoria);
+            new AdminModeracaoFotosLoteService(prevalidacao, itemService, auditoria, Runnable::run);
     private final UUID anuncioId = UUID.randomUUID();
     private final AdminUserPrincipal ator = principal();
 
@@ -45,7 +51,7 @@ class AdminModeracaoFotosLoteServiceTest {
                 false);
         ItemValidado excluir = item(AdminDecisaoFotoLoteAcao.EXCLUIR, null, false);
         when(prevalidacao.validar(any(), any(), any()))
-                .thenReturn(new Prevalidacao(anuncioId, List.of(livre, restrita, excluir)));
+                .thenReturn(new Prevalidacao(anuncioId, List.of(livre, restrita, excluir), 0L));
         when(itemService.executar(anuncioId, livre, ator, "request-lote"))
                 .thenReturn(resultado(livre, "APROVADA", "PUBLICAVEL"));
         when(itemService.executar(anuncioId, restrita, ator, "request-lote"))
@@ -82,7 +88,7 @@ class AdminModeracaoFotosLoteServiceTest {
         ItemValidado livre = item(AdminDecisaoFotoLoteAcao.APROVAR, VisibilidadeMidia.LIVRE, true);
         ItemValidado excluir = item(AdminDecisaoFotoLoteAcao.EXCLUIR, null, true);
         when(prevalidacao.validar(any(), any(), any()))
-                .thenReturn(new Prevalidacao(anuncioId, List.of(livre, excluir)));
+                .thenReturn(new Prevalidacao(anuncioId, List.of(livre, excluir), 2L));
 
         var resposta = service.decidir(
                 anuncioId,
@@ -109,6 +115,114 @@ class AdminModeracaoFotosLoteServiceTest {
                 .hasMessageContaining("identificador");
 
         verify(prevalidacao, never()).validar(any(), any(), any());
+    }
+
+    @Test
+    void aprovacoesIndependentesUsamConcorrenciaLimitadaEPreservamOrdem() throws Exception {
+        List<ItemValidado> itens = List.of(
+                item(AdminDecisaoFotoLoteAcao.APROVAR, VisibilidadeMidia.LIVRE, false),
+                item(AdminDecisaoFotoLoteAcao.APROVAR, VisibilidadeMidia.RESTRITA_18, false),
+                item(AdminDecisaoFotoLoteAcao.APROVAR, VisibilidadeMidia.LIVRE, false));
+        when(prevalidacao.validar(any(), any(), any()))
+                .thenReturn(new Prevalidacao(anuncioId, itens, 1L));
+
+        AtomicInteger ativos = new AtomicInteger();
+        AtomicInteger maximo = new AtomicInteger();
+        CountDownLatch iniciados = new CountDownLatch(itens.size());
+        CountDownLatch liberar = new CountDownLatch(1);
+        when(itemService.executar(any(), any(), any(), any())).thenAnswer(invocation -> {
+            ItemValidado item = invocation.getArgument(1);
+            int atuais = ativos.incrementAndGet();
+            maximo.accumulateAndGet(atuais, Math::max);
+            iniciados.countDown();
+            if (iniciados.getCount() == 0) {
+                liberar.countDown();
+            }
+            try {
+                if (!liberar.await(2, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("onda de moderacao nao iniciou em paralelo");
+                }
+                return resultado(item, "APROVADA", "PUBLICAVEL");
+            } finally {
+                ativos.decrementAndGet();
+            }
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        try {
+            var concorrente = new AdminModeracaoFotosLoteService(
+                    prevalidacao,
+                    itemService,
+                    auditoria,
+                    executor::execute);
+            var resposta = concorrente.decidir(
+                    anuncioId,
+                    new AdminDecidirFotosLoteRequestDto(List.of()),
+                    ator,
+                    "request-concorrente");
+
+            assertThat(maximo).hasValue(3);
+            assertThat(resposta.resultados())
+                    .extracting(AdminResultadoFotoLoteItemDto::mediaId)
+                    .containsExactlyElementsOf(itens.stream().map(ItemValidado::mediaId).toList());
+            assertThat(resposta.aprovadas()).isEqualTo(3);
+            assertThat(resposta.falhas()).isZero();
+        } finally {
+            executor.shutdownNow();
+            executor.awaitTermination(2, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void quintaFotoConcluiAntesDaOndaQueDependeDoBeneficioPremium() throws Exception {
+        ItemValidado quinta = item(
+                AdminDecisaoFotoLoteAcao.APROVAR,
+                VisibilidadeMidia.LIVRE,
+                false);
+        ItemValidado sexta = item(
+                AdminDecisaoFotoLoteAcao.APROVAR,
+                VisibilidadeMidia.RESTRITA_18,
+                false);
+        ItemValidado setima = item(
+                AdminDecisaoFotoLoteAcao.APROVAR,
+                VisibilidadeMidia.LIVRE,
+                false);
+        List<ItemValidado> itens = List.of(quinta, sexta, setima);
+        when(prevalidacao.validar(any(), any(), any()))
+                .thenReturn(new Prevalidacao(anuncioId, itens, 4L));
+        AtomicBoolean quintaConcluida = new AtomicBoolean();
+        when(itemService.executar(any(), any(), any(), any())).thenAnswer(invocation -> {
+            ItemValidado item = invocation.getArgument(1);
+            if (item.mediaId().equals(quinta.mediaId())) {
+                quintaConcluida.set(true);
+            } else if (!quintaConcluida.get()) {
+                throw new IllegalStateException("foto extra iniciou antes da ativacao Premium");
+            }
+            return resultado(item, "APROVADA", "PUBLICAVEL");
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        try {
+            var concorrente = new AdminModeracaoFotosLoteService(
+                    prevalidacao,
+                    itemService,
+                    auditoria,
+                    executor::execute);
+            var resposta = concorrente.decidir(
+                    anuncioId,
+                    new AdminDecidirFotosLoteRequestDto(List.of()),
+                    ator,
+                    "request-premium");
+
+            assertThat(quintaConcluida).isTrue();
+            assertThat(resposta.aprovadas()).isEqualTo(3);
+            assertThat(resposta.resultados())
+                    .extracting(AdminResultadoFotoLoteItemDto::mediaId)
+                    .containsExactlyElementsOf(itens.stream().map(ItemValidado::mediaId).toList());
+        } finally {
+            executor.shutdownNow();
+            executor.awaitTermination(2, TimeUnit.SECONDS);
+        }
     }
 
     private ItemValidado item(

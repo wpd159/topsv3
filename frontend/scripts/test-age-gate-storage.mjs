@@ -37,8 +37,11 @@ const sidebar = fs.readFileSync(
   'utf8',
 )
 
-assert.match(modal, /getGlobalAgeGateStatus/)
+assert.doesNotMatch(modal, /getGlobalAgeGateStatus/)
 assert.match(modal, /acceptGlobalAgeGate/)
+assert.match(modal, /obterStatusVisitante\(true\)/)
+assert.match(modal, /notificarMudancaVerificacao\(visitorStatus\)/)
+assert.match(modal, /SafeInstitutionalText/)
 assert.match(modal, />\s*Sair\s*</)
 assert.match(modal, /Aceitar/)
 assert.doesNotMatch(modal, /VisitorVerificationModal/)
@@ -55,6 +58,8 @@ assert.match(verification, /DOCUMENT_APPROVED/)
 assert.match(verification, /12 \* 1024 \* 1024/)
 assert.match(verification, /max-h-\[92vh\]/)
 assert.match(verification, /overflow-y-auto/)
+assert.match(verification, /obterStatusVisitante\(true\)/)
+assert.doesNotMatch(verification, /getGlobalAgeGateStatus/)
 
 for (const endpoint of [
   '/compliance/age-gate/accept',

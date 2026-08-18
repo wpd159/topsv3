@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   createVisitorChallenge,
-  getGlobalAgeGateStatus,
   getVisitorStatus,
   newIdempotencyKey,
   submitVisitorDocument,
@@ -24,6 +23,7 @@ import {
 } from "@/lib/compliance/age-gate-api"
 import {
   notificarMudancaVerificacao,
+  obterStatusVisitante,
   type StatusVisitante,
 } from "@/lib/compliance/visitor-access"
 
@@ -142,8 +142,8 @@ export function VisitorVerificationModal({
       ?? newIdempotencyKey("visitor-challenge")
     challengeKeyRef.current = challengeKey
     void (async () => {
-      const global = await getGlobalAgeGateStatus()
-      if (!global.accepted) {
+      const global = await obterStatusVisitante(true)
+      if (!global.globalAccepted) {
         throw new Error("Aceite o aviso geral antes de acessar o conteudo protegido.")
       }
       const storyContext = scope === "STORY"

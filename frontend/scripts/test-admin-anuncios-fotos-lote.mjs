@@ -13,6 +13,10 @@ function source(file) {
 const detail = source('admin-anuncio-moderacao.tsx')
 const api = source('api.ts')
 const types = source('types.ts')
+const contractState = readFileSync(
+  path.resolve(scriptDirectory, '../src/components/feedback/contract-state.tsx'),
+  'utf8',
+)
 
 const selection = detail.slice(
   detail.indexOf('function selectPhotoDecision'),
@@ -40,6 +44,9 @@ assert.ok(detail.includes("decisao: 'EXCLUIR'"))
 assert.ok(detail.includes('await revalidarCacheCatalogoPublico()'))
 assert.ok(detail.includes('photoDeleteLock.current'))
 assert.ok(detail.includes("result.resultado === 'FALHA'"))
+assert.ok(detail.includes('new ApiContractError('))
+assert.ok(detail.includes("'CONFLICT'"))
+assert.ok(!detail.includes("throw new Error(result?.motivo || 'A limpeza da foto não foi concluída.')"))
 assert.ok(detail.includes('aspect-[16/7]'))
 assert.ok(detail.includes('object-contain'))
 assert.ok(!mediaTab.includes('Rejeitar foto'))
@@ -60,5 +67,8 @@ assert.ok(api.includes('export function decideAdminPhotosBatch'))
 assert.ok(api.includes('body: JSON.stringify({ fotos })'))
 assert.ok(types.includes("decisao: 'APROVAR' | 'EXCLUIR'"))
 assert.ok(types.includes("resultado: 'APROVADA' | 'EXCLUIDA' | 'JA_PROCESSADA' | 'FALHA'"))
+assert.match(contractState, /normalized\.kind === 'NETWORK_FAILURE'/)
+assert.match(contractState, /normalized\.kind === 'CONFLICT'/)
+assert.match(contractState, /Operacao nao concluida/)
 
 console.log('Moderacao em lote de fotos: contrato frontend aprovado.')

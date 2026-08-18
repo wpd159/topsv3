@@ -2,6 +2,18 @@ import Link from 'next/link'
 import type { ReactNode } from 'react'
 
 const MARKDOWN_LINK = /\[([^\]]+)\]\(([^)]+)\)/g
+const CANONICAL_ORIGIN = 'https://topsdojob.com'
+const INSTITUTIONAL_LINKS = [
+  { label: 'Política de Verificação Etária', href: '/politicas/verificacao-etaria' },
+  { label: 'Termos de Uso', href: '/termos-de-uso' },
+] as const
+const INSTITUTIONAL_LABELS = INSTITUTIONAL_LINKS
+  .map(({ label }) => label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join('|')
+const INSTITUTIONAL_LINK = new RegExp(
+  `\\[(${INSTITUTIONAL_LABELS})\\]\\(([^)]+)\\)|(${INSTITUTIONAL_LABELS})`,
+  'g',
+)
 
 function safeHref(value: string): string | null {
   const href = value.trim()
@@ -60,6 +72,64 @@ function inlineNodes(text: string, keyPrefix: string): ReactNode[] {
     nodes.push(text.slice(cursor))
   }
   return nodes
+}
+
+function institutionalHref(label: string, candidate?: string): string | null {
+  const institutional = INSTITUTIONAL_LINKS.find((item) => item.label === label)
+  if (!institutional) return null
+  if (!candidate) return institutional.href
+
+  try {
+    const parsed = new URL(candidate.trim(), CANONICAL_ORIGIN)
+    if (
+      parsed.origin !== CANONICAL_ORIGIN ||
+      parsed.pathname !== institutional.href ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    ) {
+      return null
+    }
+    return institutional.href
+  } catch {
+    return null
+  }
+}
+
+function institutionalInlineNodes(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  let cursor = 0
+  let index = 0
+
+  for (const match of text.matchAll(INSTITUTIONAL_LINK)) {
+    const start = match.index ?? 0
+    if (start > cursor) nodes.push(text.slice(cursor, start))
+
+    const label = match[1] ?? match[3]
+    const href = institutionalHref(label, match[2])
+    if (!href) {
+      nodes.push(match[0])
+    } else {
+      nodes.push(
+        <Link
+          key={`${keyPrefix}-institutional-${index++}`}
+          href={href}
+          className="text-[#d91891] underline underline-offset-2"
+        >
+          {label}
+        </Link>,
+      )
+    }
+    cursor = start + match[0].length
+  }
+
+  if (cursor < text.length) nodes.push(text.slice(cursor))
+  return nodes
+}
+
+export function SafeInstitutionalText({ content }: { content: string }) {
+  return <>{institutionalInlineNodes(content, 'institutional-text')}</>
 }
 
 type Block =
@@ -132,12 +202,15 @@ export function SafeSiteContentBody({
   content,
   centered = false,
   unavailable = false,
+  institutionalLinks = false,
 }: {
   content: string
   centered?: boolean
   unavailable?: boolean
+  institutionalLinks?: boolean
 }) {
   const blocks = parseBlocks(content)
+  const renderInline = institutionalLinks ? institutionalInlineNodes : inlineNodes
 
   return (
     <article
@@ -152,7 +225,7 @@ export function SafeSiteContentBody({
           const Heading = `h${block.level}` as 'h2' | 'h3' | 'h4'
           return (
             <Heading key={key} className="pt-3 text-xl font-semibold text-gray-900">
-              {inlineNodes(block.text, key)}
+              {renderInline(block.text, key)}
             </Heading>
           )
         }
@@ -166,12 +239,12 @@ export function SafeSiteContentBody({
               }`}
             >
               {block.items.map((item, itemIndex) => (
-                <li key={`${key}-${itemIndex}`}>{inlineNodes(item, `${key}-${itemIndex}`)}</li>
+                <li key={`${key}-${itemIndex}`}>{renderInline(item, `${key}-${itemIndex}`)}</li>
               ))}
             </List>
           )
         }
-        return <p key={key}>{inlineNodes(block.text, key)}</p>
+        return <p key={key}>{renderInline(block.text, key)}</p>
       })}
     </article>
   )

@@ -144,6 +144,38 @@ class AdminModeracaoFotosLotePrevalidacaoServiceTest {
     }
 
     @Test
+    void documentoCompartilhadoPermiteUnlinkMasContinuaForaDaAprovacao() {
+        Fixture foto = fixture(StatusAnuncioMidia.PENDENTE, StatusArquivoMidia.VALIDADO);
+        preparar(foto);
+        when(documentoRepository
+                .existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(
+                        foto.arquivo().getId()))
+                .thenReturn(true);
+
+        var exclusao = service.validar(
+                anuncioId,
+                new AdminDecidirFotosLoteRequestDto(List.of(
+                        item(foto.midiaId(), AdminDecisaoFotoLoteAcao.EXCLUIR, null, null))),
+                ator);
+
+        assertThat(exclusao.itens()).singleElement()
+                .satisfies(item -> assertThat(item.decisao())
+                        .isEqualTo(AdminDecisaoFotoLoteAcao.EXCLUIR));
+        assertThatThrownBy(() -> service.validar(
+                anuncioId,
+                new AdminDecidirFotosLoteRequestDto(List.of(
+                        item(
+                                foto.midiaId(),
+                                AdminDecisaoFotoLoteAcao.APROVAR,
+                                VisibilidadeMidia.LIVRE,
+                                null))),
+                ator))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("documental");
+    }
+
+    @Test
     void retryDeExclusaoReconheceFotoJaRemovida() {
         Fixture foto = fixture(StatusAnuncioMidia.REMOVIDA, StatusArquivoMidia.REMOVIDO);
         preparar(foto);

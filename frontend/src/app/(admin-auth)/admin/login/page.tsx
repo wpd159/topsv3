@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { EyeIcon, EyeSlashIcon, LockClosedIcon, UserIcon } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { RecuperarSenhaModal } from '@/components/modals/recuperar-senha-modal'
 import { useAuth } from '@/context/AuthContext'
 import { loginAdmin, logoutAdmin } from '@/lib/admin-auth-api'
 import { resolveAdminPostLoginSearch } from '@/lib/admin-navigation'
@@ -22,6 +23,7 @@ export default function AdminLoginPage() {
   const [login, setLogin] = useState('')
   const [credential, setCredential] = useState('')
   const [showCredential, setShowCredential] = useState(false)
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -101,6 +103,16 @@ export default function AdminLoginPage() {
             </span>
           </label>
 
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="text-sm font-medium text-[#D70C8C] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FC1EAD] focus-visible:ring-offset-2"
+              onClick={() => setForgotPasswordOpen(true)}
+            >
+              Esqueci minha senha
+            </button>
+          </div>
+
           {error ? <p role="alert" className="text-sm text-red-700">{error}</p> : null}
 
           <Button type="submit" className="h-11 w-full rounded-md" disabled={submitting}>
@@ -108,6 +120,10 @@ export default function AdminLoginPage() {
           </Button>
         </form>
       </section>
+      <RecuperarSenhaModal
+        open={forgotPasswordOpen}
+        onOpenChange={setForgotPasswordOpen}
+      />
     </main>
   )
 }

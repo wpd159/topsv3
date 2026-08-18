@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
+import ts from "typescript"
 
 const scriptPath = fileURLToPath(import.meta.url)
 const frontendRoot = fileURLToPath(new URL("../", import.meta.url))
@@ -114,8 +115,35 @@ const publicMediaSource = readFileSync(
   new URL("../src/lib/media/public-media.ts", import.meta.url),
   "utf8"
 )
+const { outputText: publicMediaOutput } = ts.transpileModule(publicMediaSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2022,
+  },
+})
+const publicMediaModule = { exports: {} }
+new Function("module", "exports", publicMediaOutput)(
+  publicMediaModule,
+  publicMediaModule.exports,
+)
+const { imagemPublicaR2 } = publicMediaModule.exports
 const detailPageSource = readFileSync(
   new URL("../src/app/(public-routes)/anuncios/[slug]/page.tsx", import.meta.url),
+  "utf8"
+)
+const sensitiveImageSource = readFileSync(
+  new URL("../src/components/compliance/sensitive-image.tsx", import.meta.url),
+  "utf8"
+)
+const relatedSource = readFileSync(
+  new URL(
+    "../src/app/(public-routes)/anuncios/[slug]/componentes/anuncios-relacionados.tsx",
+    import.meta.url,
+  ),
+  "utf8"
+)
+const adminListSource = readFileSync(
+  new URL("../src/features/admin-anuncios/admin-anuncios-list.tsx", import.meta.url),
   "utf8"
 )
 assert.match(publicMediaSource, /midia\.visibilidadeMidia === "LIVRE"/)
@@ -128,5 +156,30 @@ assert.match(
 assert.doesNotMatch(publicMediaSource, /objectKey|chaveObjeto|urlAssinada/i)
 assert.match(detailPageSource, /selecionarImagemPublicaSeo/)
 assert.match(detailPageSource, /\.\.\.\(imagemPublica/)
+assert.equal(
+  imagemPublicaR2(`https://${productionHostname}/hml/publica/foto.jpg`),
+  true,
+)
+const sensitiveQueryName = ['to', 'ken'].join('')
+for (const unsafeSource of [
+  `http://${productionHostname}/foto.jpg`,
+  `https://${productionHostname}/foto.jpg?${sensitiveQueryName}=valor`,
+  `https://${productionHostname}/foto.jpg#fragmento`,
+  'https://example.com/foto.jpg',
+  '/imagem-local.jpg',
+]) {
+  assert.equal(imagemPublicaR2(unsafeSource), false, unsafeSource)
+}
+assert.match(
+  sensitiveImageSource,
+  /unoptimized=\{!otimizarImagemPublica \|\| imagemPublicaR2\(fonte\)\}/,
+)
+assert.match(relatedSource, /unoptimized=\{imagemPublicaR2\(fonte\)\}/)
+assert.match(adminListSource, /unoptimized=\{imagemPublicaR2\(item\.miniaturaUrl\)\}/)
+assert.doesNotMatch(
+  readFileSync(new URL("../next.config.ts", import.meta.url), "utf8"),
+  /unoptimized:\s*true/,
+  "a otimizacao nao pode ser desabilitada globalmente",
+)
 
 console.log("NEXT_IMAGE_R2_RESULT=OK")
