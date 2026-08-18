@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
   createVisitorChallenge,
-  getVisitorStatus,
   newIdempotencyKey,
   submitVisitorDocument,
   verifyVisitor,
@@ -24,6 +23,7 @@ import {
 import {
   notificarMudancaVerificacao,
   obterStatusVisitante,
+  recarregarStatusVisitante,
   type StatusVisitante,
 } from "@/lib/compliance/visitor-access"
 
@@ -291,7 +291,7 @@ export function VisitorVerificationModal({
     setSubmitting(true)
     setError(null)
     try {
-      const status = await getVisitorStatus()
+      const status = await recarregarStatusVisitante()
       if (status.state === "DOCUMENT_APPROVED") {
         setStep("identity")
         setMessage("Documento aprovado. Confirme novamente para emitir o acesso.")

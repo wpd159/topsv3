@@ -17,11 +17,9 @@ import {
 } from '@heroicons/react/24/outline'
 import { useSiteContent } from '@/components/site-content/site-content-provider'
 import { SafeInstitutionalText } from '@/components/site-content/safe-site-content-body'
-import { acceptGlobalAgeGate } from '@/lib/compliance/age-gate-api'
 import {
-  notificarMudancaVerificacao,
+  confirmarAceiteGlobal,
   obterStatusVisitante,
-  recarregarStatusVisitante,
 } from '@/lib/compliance/visitor-access'
 
 type AgeGateModalProps = {
@@ -64,14 +62,8 @@ export function AgeGateModal({
     setSubmitting(true)
     setError(null)
     try {
-      const status = await acceptGlobalAgeGate(pathname || '/')
-      if (!status.accepted) throw new Error(AGE_GATE_CONFIRMATION_ERROR)
-      const visitorStatus = await recarregarStatusVisitante()
-      if (!visitorStatus.globalAccepted) {
-        throw new Error(AGE_GATE_CONFIRMATION_ERROR)
-      }
+      await confirmarAceiteGlobal(pathname || '/')
       setOpen(false)
-      notificarMudancaVerificacao(visitorStatus)
     } catch {
       setError(AGE_GATE_CONFIRMATION_ERROR)
     } finally {

@@ -39,9 +39,8 @@ const sidebar = fs.readFileSync(
 )
 
 assert.doesNotMatch(modal, /getGlobalAgeGateStatus/)
-assert.match(modal, /acceptGlobalAgeGate/)
-assert.match(modal, /recarregarStatusVisitante\(\)/)
-assert.match(modal, /notificarMudancaVerificacao\(visitorStatus\)/)
+assert.match(modal, /confirmarAceiteGlobal\(pathname \|\| '\/'\)/)
+assert.doesNotMatch(modal, /acceptGlobalAgeGate|recarregarStatusVisitante|notificarMudancaVerificacao/)
 assert.match(modal, /Nao foi possivel confirmar o aceite\. Tente novamente\./)
 assert.doesNotMatch(modal, /estado canonico/i)
 assert.match(modal, /SafeInstitutionalText/)
@@ -62,6 +61,8 @@ assert.match(verification, /12 \* 1024 \* 1024/)
 assert.match(verification, /max-h-\[92vh\]/)
 assert.match(verification, /overflow-y-auto/)
 assert.match(verification, /obterStatusVisitante\(true\)/)
+assert.match(verification, /recarregarStatusVisitante\(\)/)
+assert.doesNotMatch(verification, /getVisitorStatus/)
 assert.doesNotMatch(verification, /getGlobalAgeGateStatus/)
 
 for (const endpoint of [
@@ -79,12 +80,15 @@ for (const endpoint of [
 assert.match(api, /XSRF/)
 assert.match(api, /credentials: 'include'/)
 assert.match(api, /response\.status === 410/)
+assert.match(access, /acceptGlobalAgeGate/)
 assert.match(access, /getVisitorStatus/)
 assert.match(access, /CACHE_TTL_MS/)
 assert.match(access, /let statusGeneration = 0/)
-assert.match(access, /if \(pendingRequest\) return pendingRequest/)
+assert.match(access, /if \(pendingRequest\) return pendingRequest\.promise/)
 assert.match(access, /requestGeneration !== statusGeneration/)
-assert.match(access, /cacheStatus \?\? \{ verified: false \}/)
+assert.match(access, /authoritativeStatusAfter\(requestGeneration\)/)
+assert.match(access, /latestRequest\.generation > requestGeneration/)
+assert.match(access, /AGE_GATE_ACCEPTANCE_NOT_CONFIRMED/)
 assert.match(access, /statusGeneration \+= 1/)
 assert.match(
   access,
@@ -115,8 +119,12 @@ assert.doesNotMatch(
 )
 
 const instrumentedAccess = access.replace(
-  /import \{\s*getVisitorStatus,\s*type VisitorAccessStatus,\s*\} from '@\/lib\/compliance\/age-gate-api'/,
-  'const getVisitorStatus = () => globalThis.__ageGateStatusRequest()\ntype VisitorAccessStatus = any',
+  /import \{[\s\S]*?\} from '@\/lib\/compliance\/age-gate-api'/,
+  [
+    'const acceptGlobalAgeGate = (originPath) => globalThis.__ageGateAcceptRequest(originPath)',
+    'const getVisitorStatus = () => globalThis.__ageGateStatusRequest()',
+    'type VisitorAccessStatus = any',
+  ].join('\n'),
 )
 const compiledAccess = ts.transpileModule(instrumentedAccess, {
   compilerOptions: {
@@ -124,26 +132,98 @@ const compiledAccess = ts.transpileModule(instrumentedAccess, {
     target: ts.ScriptTarget.ES2022,
   },
 }).outputText
-const pendingStatusRequests = []
-globalThis.__ageGateStatusRequest = () => new Promise((resolve) => {
-  pendingStatusRequests.push(resolve)
+let pendingStatusRequests = []
+let pendingAcceptRequests = []
+let moduleSequence = 0
+
+function resetRequests() {
+  pendingStatusRequests = []
+  pendingAcceptRequests = []
+}
+
+globalThis.__ageGateStatusRequest = () => new Promise((resolve, reject) => {
+  pendingStatusRequests.push({ resolve, reject })
 })
-const accessModule = await import(
-  `data:text/javascript;base64,${Buffer.from(compiledAccess).toString('base64')}`
-)
-const staleRequest = accessModule.obterStatusVisitante(true)
-const canonicalRequest = accessModule.recarregarStatusVisitante()
-assert.equal(
-  pendingStatusRequests.length,
-  2,
-  'A confirmacao pos-aceite deve iniciar uma consulta nova, sem reutilizar a request stale.',
-)
-pendingStatusRequests[0]({ globalAccepted: false, verified: false })
-pendingStatusRequests[1]({ globalAccepted: true, verified: false })
-await staleRequest
-assert.equal((await canonicalRequest).globalAccepted, true)
-assert.equal((await accessModule.obterStatusVisitante()).globalAccepted, true)
+globalThis.__ageGateAcceptRequest = () => new Promise((resolve, reject) => {
+  pendingAcceptRequests.push({ resolve, reject })
+})
+
+function visitorStatus(globalAccepted) {
+  return {
+    globalAccepted,
+    verified: false,
+    explicitVerified: false,
+    state: globalAccepted ? 'GLOBAL_ACEITO' : 'GLOBAL_NAO_ACEITO',
+  }
+}
+
+async function loadAccessModule() {
+  moduleSequence += 1
+  return import(
+    `data:text/javascript;base64,${Buffer.from(compiledAccess).toString('base64')}#${moduleSequence}`
+  )
+}
+
+// A: a leitura antiga termina depois da nova e deve receber a decisao vigente.
+resetRequests()
+const accessA = await loadAccessModule()
+const staleAfterNew = accessA.obterStatusVisitante(true)
+const newBeforeStale = accessA.recarregarStatusVisitante()
 assert.equal(pendingStatusRequests.length, 2)
+pendingStatusRequests[1].resolve(visitorStatus(true))
+assert.equal((await newBeforeStale).globalAccepted, true)
+pendingStatusRequests[0].resolve(visitorStatus(false))
+assert.equal((await staleAfterNew).globalAccepted, true)
+assert.equal((await accessA.obterStatusVisitante()).globalAccepted, true)
+
+// B: consumidores simultaneos compartilham uma unica consulta canonica.
+resetRequests()
+const accessB = await loadAccessModule()
+const simultaneousOne = accessB.obterStatusVisitante(true)
+const simultaneousTwo = accessB.obterStatusVisitante(true)
+assert.equal(pendingStatusRequests.length, 1)
+pendingStatusRequests[0].resolve(visitorStatus(true))
+assert.equal((await simultaneousOne).globalAccepted, true)
+assert.equal((await simultaneousTwo).globalAccepted, true)
+
+// C: o POST invalida a leitura pendente; a resposta antiga aguarda a revisao nova.
+resetRequests()
+const accessC = await loadAccessModule()
+const pendingBeforeMutation = accessC.obterStatusVisitante(true)
+const confirmation = accessC.confirmarAceiteGlobal('/')
+assert.equal(pendingAcceptRequests.length, 1)
+pendingAcceptRequests[0].resolve({ accepted: true, state: 'GLOBAL_ACEITO' })
+await Promise.resolve()
+assert.equal(pendingStatusRequests.length, 2)
+pendingStatusRequests[0].resolve(visitorStatus(false))
+pendingStatusRequests[1].resolve(visitorStatus(true))
+assert.equal((await pendingBeforeMutation).globalAccepted, true)
+assert.equal((await confirmation).globalAccepted, true)
+
+// D: refetch automatico posterior nao regride o aceite confirmado.
+const automaticRefetch = accessC.recarregarStatusVisitante()
+assert.equal(pendingStatusRequests.length, 3)
+pendingStatusRequests[2].resolve(visitorStatus(true))
+assert.equal((await automaticRefetch).globalAccepted, true)
+assert.equal((await accessC.obterStatusVisitante()).globalAccepted, true)
+
+// E: uma nova instancia, equivalente a reload/navegacao, reconhece o cookie no servidor.
+resetRequests()
+const accessE = await loadAccessModule()
+const afterReload = accessE.obterStatusVisitante(true)
+pendingStatusRequests[0].resolve(visitorStatus(true))
+assert.equal((await afterReload).globalAccepted, true)
+
+// Uma confirmacao que nao reaparece no estado canonico continua fail-closed.
+resetRequests()
+const accessFailClosed = await loadAccessModule()
+const rejectedConfirmation = accessFailClosed.confirmarAceiteGlobal('/')
+pendingAcceptRequests[0].resolve({ accepted: true, state: 'GLOBAL_ACEITO' })
+await Promise.resolve()
+pendingStatusRequests[0].resolve(visitorStatus(false))
+await assert.rejects(rejectedConfirmation, /AGE_GATE_ACCEPTANCE_NOT_CONFIRMED/)
+
 delete globalThis.__ageGateStatusRequest
+delete globalThis.__ageGateAcceptRequest
 
 console.log('OK_AGE_GATE_BACKEND_FONTE_UNICA')

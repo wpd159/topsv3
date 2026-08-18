@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  acceptGlobalAgeGate,
   getVisitorStatus,
   type VisitorAccessStatus,
 } from '@/lib/compliance/age-gate-api'
@@ -22,7 +23,10 @@ export type StatusVisitante = {
 
 let cacheStatus: StatusVisitante | null = null
 let cacheExpiresAt = 0
-let pendingRequest: Promise<StatusVisitante> | null = null
+let pendingRequest: {
+  generation: number
+  promise: Promise<StatusVisitante>
+} | null = null
 let statusGeneration = 0
 
 const CACHE_TTL_MS = 30_000
@@ -45,26 +49,53 @@ function mapStatus(status: VisitorAccessStatus): StatusVisitante {
   }
 }
 
+function failClosedStatus(): StatusVisitante {
+  return {
+    globalAccepted: false,
+    verified: false,
+  }
+}
+
+function authoritativeStatusAfter(
+  requestGeneration: number,
+): Promise<StatusVisitante> {
+  const latestRequest = pendingRequest
+  if (latestRequest && latestRequest.generation > requestGeneration) {
+    return latestRequest.promise
+  }
+  return Promise.resolve(cacheStatus ?? failClosedStatus())
+}
+
 function refreshStatus() {
   const requestGeneration = statusGeneration
   const request = getVisitorStatus()
     .then((status) => {
       const mapped = mapStatus(status)
-      if (requestGeneration !== statusGeneration) return cacheStatus ?? { verified: false }
+      if (requestGeneration !== statusGeneration) {
+        return authoritativeStatusAfter(requestGeneration)
+      }
       cacheStatus = mapped
       cacheExpiresAt = Date.now() + CACHE_TTL_MS
       return mapped
+    }, (error: unknown) => {
+      if (requestGeneration !== statusGeneration) {
+        return authoritativeStatusAfter(requestGeneration)
+      }
+      throw error
     })
     .finally(() => {
-      if (pendingRequest === request) pendingRequest = null
+      if (pendingRequest?.promise === request) pendingRequest = null
     })
-  pendingRequest = request
+  pendingRequest = {
+    generation: requestGeneration,
+    promise: request,
+  }
   return request
 }
 
 export async function obterStatusVisitante(force = false): Promise<StatusVisitante> {
   if (!force && cacheStatus && cacheExpiresAt > Date.now()) return cacheStatus
-  if (pendingRequest) return pendingRequest
+  if (pendingRequest) return pendingRequest.promise
   return refreshStatus()
 }
 
@@ -80,6 +111,42 @@ export function limparCacheStatusVisitante() {
   pendingRequest = null
 }
 
+export async function confirmarAceiteGlobal(
+  originPath: string,
+): Promise<StatusVisitante> {
+  const accepted = await acceptGlobalAgeGate(originPath)
+  if (!accepted.accepted) {
+    throw new Error('AGE_GATE_ACCEPTANCE_NOT_CONFIRMED')
+  }
+
+  statusGeneration += 1
+  pendingRequest = null
+  cacheStatus = {
+    ...(cacheStatus ?? failClosedStatus()),
+    globalAccepted: true,
+    state: accepted.state,
+  }
+  cacheExpiresAt = Date.now() + CACHE_TTL_MS
+
+  try {
+    const confirmed = await refreshStatus()
+    if (!confirmed.globalAccepted) {
+      throw new Error('AGE_GATE_ACCEPTANCE_NOT_CONFIRMED')
+    }
+    dispatchStatusChanged()
+    return confirmed
+  } catch (error) {
+    limparCacheStatusVisitante()
+    throw error
+  }
+}
+
+function dispatchStatusChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(AGE_VERIFICATION_CHANGED_EVENT))
+  }
+}
+
 export function notificarMudancaVerificacao(status?: StatusVisitante) {
   statusGeneration += 1
   pendingRequest = null
@@ -90,7 +157,5 @@ export function notificarMudancaVerificacao(status?: StatusVisitante) {
     cacheStatus = null
     cacheExpiresAt = 0
   }
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(AGE_VERIFICATION_CHANGED_EVENT))
-  }
+  dispatchStatusChanged()
 }
