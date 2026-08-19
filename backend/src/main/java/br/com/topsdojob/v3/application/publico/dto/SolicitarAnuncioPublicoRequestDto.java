@@ -7,6 +7,7 @@ public record SolicitarAnuncioPublicoRequestDto(
         String uf,
         String cidade,
         String bairro,
+        String enderecoResumido,
         String titulo,
         String descricao,
         BigDecimal preco,

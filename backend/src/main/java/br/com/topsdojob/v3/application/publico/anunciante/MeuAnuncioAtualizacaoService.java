@@ -119,10 +119,12 @@ public class MeuAnuncioAtualizacaoService {
         AnuncioLocalizacaoEntity localizacao = localizacaoRepository.findByAnuncioId(anuncio.getId()).orElse(null);
         if (localizacao == null) {
             localizacao = AnuncioLocalizacaoEntity.criarEdicaoProprietario(
-                    anuncio.getId(), estado.getId(), cidade.getId(), bairro == null ? null : bairro.getId(), agora);
+                    anuncio.getId(), estado.getId(), cidade.getId(), bairro == null ? null : bairro.getId(),
+                    validado.enderecoResumido(), agora);
         } else {
-            localizacao.atualizarLocalidade(
-                    estado.getId(), cidade.getId(), bairro == null ? null : bairro.getId(), agora);
+            localizacao.atualizarLocalidadeProprietario(
+                    estado.getId(), cidade.getId(), bairro == null ? null : bairro.getId(),
+                    validado.enderecoResumido(), agora);
         }
         localizacaoRepository.save(localizacao);
 
@@ -130,7 +132,7 @@ public class MeuAnuncioAtualizacaoService {
         if (documento == null) {
             documento = DocumentoBuscaAnuncioEntity.criarSolicitacaoLocal(
                     anuncio.getId(),
-                    validator.textoBusca(validado),
+                    validator.textoBusca(validado, validado.enderecoResumido()),
                     estado.getId(),
                     cidade.getId(),
                     bairro == null ? null : bairro.getId(),
@@ -139,7 +141,7 @@ public class MeuAnuncioAtualizacaoService {
                     agora);
         } else {
             documento.atualizarAposEdicao(
-                    validator.textoBusca(validado),
+                    validator.textoBusca(validado, validado.enderecoResumido()),
                     estado.getId(),
                     cidade.getId(),
                     bairro == null ? null : bairro.getId(),
@@ -183,6 +185,7 @@ public class MeuAnuncioAtualizacaoService {
         payload.put("uf", estado.getUf());
         payload.put("cidade", cidade.getSlug());
         payload.put("bairro", bairro == null ? null : bairro.getSlug());
+        payload.put("enderecoResumidoInformado", request.enderecoResumido() != null);
         payload.put("locaisAtendimento", request.locaisAtendimento().stream().map(Enum::name).sorted().toList());
         payload.put("servicos", request.servicos().stream().map(Enum::name).sorted().toList());
         payload.put("atendimentoExclusivamenteVirtual", request.atendimentoExclusivamenteVirtual());

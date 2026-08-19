@@ -159,6 +159,7 @@ export async function submitWizardAnuncio(state: WizardFormState) {
       uf: state.estadoUf,
       cidade: state.cidadeNome,
       bairro: state.bairroNome.trim() || null,
+      enderecoResumido: state.pontoReferenciaTexto.trim() || null,
       titulo: state.titulo.trim(),
       descricao,
       preco: Number(precoParaNumero(state.preco)),

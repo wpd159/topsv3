@@ -266,6 +266,7 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
                     "GO",
                     "Cidade QA",
                     null,
+                    null,
                     Set.of(),
                     Set.of(),
                     false,

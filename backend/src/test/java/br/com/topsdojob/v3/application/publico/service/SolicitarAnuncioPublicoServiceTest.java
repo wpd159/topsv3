@@ -120,6 +120,7 @@ class SolicitarAnuncioPublicoServiceTest {
         assertThat(anuncio.getValue().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.PENDENTE);
         assertThat(anuncio.getValue().getPublicadoEm()).isNull();
         assertThat(localizacao.getValue().getEstadoId()).isEqualTo(estadoId);
+        assertThat(localizacao.getValue().getEnderecoResumido()).isNull();
         assertThat(documentoBusca.getValue().getStatusPublicacao()).isEqualTo(StatusPublicacaoBusca.NAO_PUBLICAVEL);
         assertThat(documentoBusca.getValue().getTemMidiaValida()).isFalse();
         assertThat(revisao.getValue().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
@@ -128,6 +129,43 @@ class SolicitarAnuncioPublicoServiceTest {
                 .contains("\"pagamentoCriado\":false")
                 .doesNotContain("+5562999999999")
                 .doesNotContain("example.invalid");
+    }
+
+    @Test
+    void complementoPublicoRealEhPersistidoSemMarcadorTecnico() {
+        mockLocalidadeValida();
+        ObjectNode payload = validPayload();
+        payload.put("enderecoResumido", "  Proximo   a recepcao  ");
+
+        service.solicitar(payload, authentication);
+
+        ArgumentCaptor<AnuncioLocalizacaoEntity> localizacao =
+                ArgumentCaptor.forClass(AnuncioLocalizacaoEntity.class);
+        ArgumentCaptor<DocumentoBuscaAnuncioEntity> documentoBusca =
+                ArgumentCaptor.forClass(DocumentoBuscaAnuncioEntity.class);
+        verify(localizacaoRepository).save(localizacao.capture());
+        verify(documentoBuscaRepository).save(documentoBusca.capture());
+        assertThat(localizacao.getValue().getEnderecoResumido()).isEqualTo("Proximo a recepcao");
+        assertThat(documentoBusca.getValue().getTextoBusca()).contains("proximo a recepcao");
+    }
+
+    @Test
+    void complementoMaiorQueLimiteEhRejeitadoSemPersistir() {
+        ObjectNode payload = validPayload();
+        payload.put("enderecoResumido", "x".repeat(121));
+
+        assertValidationCode(payload, "TAMANHO_INVALIDO");
+    }
+
+    @Test
+    void complementoComHtmlOuJavascriptEhRejeitadoSemPersistir() {
+        ObjectNode payload = validPayload();
+        payload.put("enderecoResumido", "<script>alert('x')</script> Recepcao");
+
+        assertValidationCode(payload, "CONTEUDO_NAO_PERMITIDO");
+
+        payload.put("enderecoResumido", "javascript:alert('x')");
+        assertValidationCode(payload, "CONTEUDO_NAO_PERMITIDO");
     }
 
     @Test

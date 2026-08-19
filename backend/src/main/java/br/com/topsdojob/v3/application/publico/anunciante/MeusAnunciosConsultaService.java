@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.publico.anunciante;
 
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
+import br.com.topsdojob.v3.application.publico.EnderecoResumidoPublicoPolicy;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioCapaDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioAcoesDto;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.MeuAnuncioDto;
@@ -258,7 +259,8 @@ public class MeusAnunciosConsultaService {
                 cidade == null ? null : cidade.getNome(),
                 cidade == null ? null : cidade.getSlug(),
                 bairro == null ? null : bairro.getNome(),
-                bairro == null ? null : bairro.getSlug());
+                bairro == null ? null : bairro.getSlug(),
+                EnderecoResumidoPublicoPolicy.projetar(localizacao.getEnderecoResumido()));
     }
 
     private MeuAnuncioCapaDto capa(

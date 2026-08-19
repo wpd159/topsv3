@@ -148,8 +148,8 @@ class MeusAnunciosConsultaServiceTest {
         when(anuncioRepository.findByUsuarioIdAndRemovidoEmIsNullOrderByAtualizadoEmDesc(USUARIO_ID))
                 .thenReturn(List.of(publicado, pausado));
 
-        AnuncioLocalizacaoEntity localizacaoA = AnuncioLocalizacaoEntity.criarFixtureHomologacao(
-                ANUNCIO_A_ID, ESTADO_ID, CIDADE_ID, BAIRRO_ID, AGORA);
+        AnuncioLocalizacaoEntity localizacaoA = AnuncioLocalizacaoEntity.criarSolicitacaoLocal(
+                ANUNCIO_A_ID, ESTADO_ID, CIDADE_ID, BAIRRO_ID, "Endereço sintético local", AGORA);
         AnuncioLocalizacaoEntity localizacaoB = AnuncioLocalizacaoEntity.criarFixtureHomologacao(
                 ANUNCIO_B_ID, ESTADO_ID, CIDADE_ID, BAIRRO_ID, AGORA);
         when(localizacaoRepository.findByAnuncioIdIn(any())).thenReturn(List.of(localizacaoA, localizacaoB));
@@ -177,6 +177,7 @@ class MeusAnunciosConsultaServiceTest {
         assertThat(resultado.get(0).localizacao().uf()).isEqualTo("GO");
         assertThat(resultado.get(0).localizacao().cidade()).isEqualTo("Goiania");
         assertThat(resultado.get(0).localizacao().bairro()).isEqualTo("Setor Bueno");
+        assertThat(resultado.get(0).localizacao().enderecoResumido()).isNull();
         assertThat(resultado.get(0).capa().urlPublica()).isEqualTo("/capa-segura.svg");
         assertThat(resultado.get(0).capa().restrita()).isFalse();
         assertThat(resultado.get(0).visualizacoes().total()).isZero();

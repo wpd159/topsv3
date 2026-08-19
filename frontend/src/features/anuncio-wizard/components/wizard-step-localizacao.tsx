@@ -121,15 +121,21 @@ export function WizardStepLocalizacao({
             </Field>
           </div>
 
-          {showReference ? <Field label="Ponto de referência">
-            <Input
-              value={pontoReferenciaTexto}
-              onChange={(event) => onReferencia(event.target.value)}
-              placeholder="Ex.: próximo ao Flamboyant"
-              maxLength={120}
-              className="h-12 rounded-xl border-zinc-200 text-base"
-            />
-          </Field> : null}
+          {showReference ? (
+            <Field label="Complemento ou ponto de referência">
+              <Input
+                value={pontoReferenciaTexto}
+                onChange={(event) => onReferencia(event.target.value)}
+                placeholder="Ex.: próximo ao Flamboyant"
+                maxLength={120}
+                className="h-12 rounded-xl border-zinc-200 text-base"
+              />
+              <p className="mt-2 text-xs leading-5 text-zinc-500">
+                Opcional. Esta informação será exibida publicamente. Informe um estabelecimento,
+                local próprio ou ponto de referência que ajude o visitante a localizar seu atendimento.
+              </p>
+            </Field>
+          ) : null}
         </div>
 
       </div>

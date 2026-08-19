@@ -101,6 +101,7 @@ class AdminAnuncioAtualizacaoServiceTest {
                 "GO",
                 "Goiania",
                 "Setor Bueno",
+                "Regiao central",
                 Set.of(LocalAtendimentoAnuncio.MEU_LOCAL),
                 Set.of(ServicoAnuncio.VIDEOCHAMADA),
                 true,

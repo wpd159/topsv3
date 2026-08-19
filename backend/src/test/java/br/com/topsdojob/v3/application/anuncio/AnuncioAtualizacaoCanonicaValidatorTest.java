@@ -65,10 +65,37 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
                 });
     }
 
+    @Test
+    void rejeitaHtmlOuJavascriptNoComplemento() {
+        assertThatThrownBy(() -> validator.validar(request(
+                "ACOMPANHANTE_FEMININA",
+                List.of("ORAL"),
+                false,
+                "<b>Recepcao</b>"), "+5562999999999"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getReason()).contains("HTML ou JavaScript"));
+
+        assertThatThrownBy(() -> validator.validar(request(
+                "ACOMPANHANTE_FEMININA",
+                List.of("ORAL"),
+                false,
+                "javascript:alert('x')"), "+5562999999999"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getReason()).contains("HTML ou JavaScript"));
+    }
+
     private MeuAnuncioAtualizacaoRequestDto request(
             String categoria,
             List<String> servicos,
             boolean exclusivamenteVirtual) {
+        return request(categoria, servicos, exclusivamenteVirtual, null);
+    }
+
+    private MeuAnuncioAtualizacaoRequestDto request(
+            String categoria,
+            List<String> servicos,
+            boolean exclusivamenteVirtual,
+            String enderecoResumido) {
         return new MeuAnuncioAtualizacaoRequestDto(
                 "Titulo valido para anuncio",
                 "Descricao suficientemente longa para o anuncio",
@@ -77,6 +104,7 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
                 "GO",
                 "Goiania",
                 "Setor Bueno",
+                enderecoResumido,
                 List.of("A_COMBINAR"),
                 servicos,
                 exclusivamenteVirtual,

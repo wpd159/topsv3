@@ -58,7 +58,7 @@ class PainelAnuncianteRecomendacoesServiceTest {
         when(consulta.listarDoUsuario(USUARIO_ID)).thenReturn(List.of(anuncio(
                 "PUBLICADO",
                 "x".repeat(220),
-                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro"),
+                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro", null),
                 fotos,
                 List.of(beneficio("VIDEO_1"), beneficio("CARROSSEL_FOTOS"), beneficio("ANUNCIO_TOPO")))));
 
@@ -93,7 +93,7 @@ class PainelAnuncianteRecomendacoesServiceTest {
         when(consulta.listarDoUsuario(USUARIO_ID)).thenReturn(List.of(anuncio(
                 "PUBLICADO",
                 "x".repeat(220),
-                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro"),
+                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro", null),
                 fotos,
                 List.of(
                         beneficio("VIDEO_1"),
@@ -140,7 +140,7 @@ class PainelAnuncianteRecomendacoesServiceTest {
         when(consulta.listarDoUsuario(USUARIO_ID)).thenReturn(List.of(anuncio(
                 "PUBLICADO",
                 "x".repeat(220),
-                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro"),
+                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro", null),
                 IntStream.rangeClosed(1, 8).mapToObj(this::foto).toList(),
                 List.of(
                         beneficio("VIDEO_1"),

@@ -55,6 +55,7 @@ public class SolicitarAnuncioPublicoService {
             "uf",
             "cidade",
             "bairro",
+            "enderecoResumido",
             "titulo",
             "descricao",
             "preco",
@@ -154,6 +155,7 @@ public class SolicitarAnuncioPublicoService {
                 validated.estado().getId(),
                 validated.cidadeEntity().getId(),
                 validated.bairroEntity() == null ? null : validated.bairroEntity().getId(),
+                validated.enderecoResumido(),
                 now));
         documentoBuscaRepository.save(DocumentoBuscaAnuncioEntity.criarSolicitacaoLocal(
                 anuncioId,
@@ -224,6 +226,14 @@ public class SolicitarAnuncioPublicoService {
         String uf = requiredText(request.uf(), "uf", 2, 2, errors).toUpperCase(Locale.ROOT);
         String cidade = requiredText(request.cidade(), "cidade", 3, 80, errors);
         String bairro = optionalText(request.bairro(), 2, 80, "bairro", errors);
+        String enderecoResumido = optionalText(
+                request.enderecoResumido(), 2, 120, "enderecoResumido", errors);
+        if (enderecoResumido != null && contemConteudoAtivo(enderecoResumido)) {
+            errors.add(error(
+                    "enderecoResumido",
+                    "CONTEUDO_NAO_PERMITIDO",
+                    "complemento nao pode conter HTML ou JavaScript"));
+        }
         String titulo = requiredText(request.titulo(), "titulo", 10, TITULO_MAX, errors);
         String descricao = requiredText(request.descricao(), "descricao", 20, DESCRICAO_MAX, errors);
         String categoria = categoria(request.categoria(), errors);
@@ -293,6 +303,7 @@ public class SolicitarAnuncioPublicoService {
                 uf,
                 cidade,
                 bairro,
+                enderecoResumido,
                 titulo,
                 descricao,
                 preco,
@@ -326,6 +337,7 @@ public class SolicitarAnuncioPublicoService {
         payload.put("uf", request.uf());
         payload.put("cidade", request.cidade());
         payload.put("bairroInformado", request.bairro() != null);
+        payload.put("enderecoResumidoInformado", request.enderecoResumido() != null);
         payload.put("statusInicial", StatusAnuncio.PENDENTE_REVISAO.name());
         payload.put("statusModeracaoInicial", StatusModeracaoAnuncio.PENDENTE.name());
         payload.put("categoria", request.categoria());
@@ -346,7 +358,16 @@ public class SolicitarAnuncioPublicoService {
 
     private String textoBusca(ValidatedRequest request) {
         return (request.titulo() + " " + request.descricao() + " " + request.cidade() + " "
-                + (request.bairro() == null ? "" : request.bairro())).toLowerCase(Locale.ROOT);
+                + (request.bairro() == null ? "" : request.bairro()) + " "
+                + (request.enderecoResumido() == null ? "" : request.enderecoResumido()))
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private boolean contemConteudoAtivo(String value) {
+        String normalized = value.toLowerCase(Locale.ROOT);
+        return value.indexOf('<') >= 0
+                || value.indexOf('>') >= 0
+                || normalized.matches(".*\\bjavascript\\s*:.*");
     }
 
     private String requiredText(
@@ -502,6 +523,7 @@ public class SolicitarAnuncioPublicoService {
             String uf,
             String cidade,
             String bairro,
+            String enderecoResumido,
             String titulo,
             String descricao,
             BigDecimal preco,

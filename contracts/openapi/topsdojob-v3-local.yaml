@@ -7941,6 +7941,11 @@ components:
           minLength: 2
           maxLength: 80
           example: Bairro Sintetico
+        enderecoResumido:
+          type: [string, "null"]
+          minLength: 2
+          maxLength: 120
+          description: Complemento ou ponto de referencia opcional exibido publicamente.
         titulo:
           type: string
           minLength: 10
@@ -9032,7 +9037,7 @@ components:
     MeuAnuncioAtualizacaoRequest:
       type: object
       additionalProperties: false
-      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, locaisAtendimento, servicos, atendimentoExclusivamenteVirtual]
+      required: [titulo, descricao, categoria, preco, uf, cidade, bairro, enderecoResumido, locaisAtendimento, servicos, atendimentoExclusivamenteVirtual]
       properties:
         titulo:
           type: string
@@ -9060,6 +9065,11 @@ components:
           type: [string, "null"]
           minLength: 2
           maxLength: 80
+        enderecoResumido:
+          type: [string, "null"]
+          minLength: 2
+          maxLength: 120
+          description: Complemento ou ponto de referencia opcional exibido publicamente.
         locaisAtendimento:
           type: array
           uniqueItems: true
@@ -9137,7 +9147,7 @@ components:
     MeuAnuncioLocalizacao:
       type: object
       additionalProperties: false
-      required: [uf, cidade, cidadeSlug, bairro, bairroSlug]
+      required: [uf, cidade, cidadeSlug, bairro, bairroSlug, enderecoResumido]
       properties:
         uf:
           type: [string, "null"]
@@ -9149,6 +9159,9 @@ components:
           type: [string, "null"]
         bairroSlug:
           type: [string, "null"]
+        enderecoResumido:
+          type: [string, "null"]
+          description: Complemento publico; marcadores tecnicos legados sao omitidos.
     MeuAnuncioCapa:
       type: object
       additionalProperties: false

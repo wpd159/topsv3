@@ -85,12 +85,22 @@ public class AnuncioLocalizacaoEntity {
       UUID cidadeId,
       UUID bairroId,
       OffsetDateTime criadoEm) {
+    return criarSolicitacaoLocal(anuncioId, estadoId, cidadeId, bairroId, null, criadoEm);
+  }
+
+  public static AnuncioLocalizacaoEntity criarSolicitacaoLocal(
+      UUID anuncioId,
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      String enderecoResumido,
+      OffsetDateTime criadoEm) {
     AnuncioLocalizacaoEntity entity = new AnuncioLocalizacaoEntity();
     entity.anuncioId = anuncioId;
     entity.estadoId = estadoId;
     entity.cidadeId = cidadeId;
     entity.bairroId = bairroId;
-    entity.enderecoResumido = "Endereco sintetico local";
+    entity.enderecoResumido = enderecoResumido;
     entity.latitude = null;
     entity.longitude = null;
     entity.criadoEm = criadoEm;
@@ -123,12 +133,22 @@ public class AnuncioLocalizacaoEntity {
       UUID cidadeId,
       UUID bairroId,
       OffsetDateTime criadoEm) {
+    return criarEdicaoProprietario(anuncioId, estadoId, cidadeId, bairroId, null, criadoEm);
+  }
+
+  public static AnuncioLocalizacaoEntity criarEdicaoProprietario(
+      UUID anuncioId,
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      String enderecoResumido,
+      OffsetDateTime criadoEm) {
     AnuncioLocalizacaoEntity entity = new AnuncioLocalizacaoEntity();
     entity.anuncioId = anuncioId;
     entity.estadoId = estadoId;
     entity.cidadeId = cidadeId;
     entity.bairroId = bairroId;
-    entity.enderecoResumido = null;
+    entity.enderecoResumido = enderecoResumido;
     entity.latitude = null;
     entity.longitude = null;
     entity.criadoEm = criadoEm;
@@ -169,6 +189,16 @@ public class AnuncioLocalizacaoEntity {
   }
 
   public void atualizarLocalidadeAdministrativa(
+      UUID estadoId,
+      UUID cidadeId,
+      UUID bairroId,
+      String enderecoResumido,
+      OffsetDateTime atualizadoEm) {
+    atualizarLocalidade(estadoId, cidadeId, bairroId, atualizadoEm);
+    this.enderecoResumido = enderecoResumido;
+  }
+
+  public void atualizarLocalidadeProprietario(
       UUID estadoId,
       UUID cidadeId,
       UUID bairroId,

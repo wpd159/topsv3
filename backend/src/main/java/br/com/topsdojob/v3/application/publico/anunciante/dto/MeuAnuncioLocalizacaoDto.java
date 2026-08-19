@@ -5,5 +5,6 @@ public record MeuAnuncioLocalizacaoDto(
         String cidade,
         String cidadeSlug,
         String bairro,
-        String bairroSlug) {
+        String bairroSlug,
+        String enderecoResumido) {
 }

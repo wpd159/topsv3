@@ -10,6 +10,7 @@ export type MeuAnuncioLocalizacao = {
   cidadeSlug: string | null
   bairro: string | null
   bairroSlug: string | null
+  enderecoResumido: string | null
 }
 
 export type MeuAnuncioCapa = {
@@ -136,6 +137,7 @@ export type MeuAnuncioAtualizacao = {
   uf: string
   cidade: string
   bairro: string | null
+  enderecoResumido: string | null
   locaisAtendimento: string[]
   servicos: string[]
   atendimentoExclusivamenteVirtual: boolean

@@ -11,6 +11,7 @@ public record MeuAnuncioAtualizacaoRequestDto(
         String uf,
         String cidade,
         String bairro,
+        String enderecoResumido,
         List<String> locaisAtendimento,
         List<String> servicos,
         boolean atendimentoExclusivamenteVirtual,

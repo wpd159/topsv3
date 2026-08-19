@@ -198,7 +198,7 @@ class PainelAnunciantePerformanceServiceTest {
                 false,
                 "PUBLICADO",
                 "APROVADO",
-                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro"),
+                new MeuAnuncioLocalizacaoDto("GO", "Goiania", "goiania", "Centro", "centro", null),
                 new MeuAnuncioCapaDto("https://midias.example/hml/capa.jpg", false),
                 List.of(),
                 OffsetDateTime.parse("2026-07-01T00:00:00Z"),

@@ -86,6 +86,7 @@ function editPayload(state: WizardFormState): MeuAnuncioAtualizacao {
     uf: state.estadoUf,
     cidade: state.cidadeNome,
     bairro: state.bairroNome.trim() || null,
+    enderecoResumido: state.pontoReferenciaTexto.trim() || null,
     locaisAtendimento: state.locaisAtendimento,
     servicos: state.servicos,
     atendimentoExclusivamenteVirtual: state.atendimentoExclusivamenteVirtual,
@@ -260,6 +261,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
             estadoUf: anuncio.localizacao?.uf || '',
             cidadeNome: anuncio.localizacao?.cidade || '',
             bairroNome: anuncio.localizacao?.bairro || '',
+            pontoReferenciaTexto: anuncio.localizacao?.enderecoResumido || '',
           },
           kyc: { ...initialWizardKycState, documentos: [], documentoNomes: [] },
         }, editDraftSourceVersion(anuncio))
@@ -718,7 +720,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
           onCidade={handleCidade}
           onBairro={handleBairro}
           onReferencia={(value) => updateForm({ pontoReferenciaTexto: value })}
-          showReference={!isEdit}
+          showReference
         />
       )
     }

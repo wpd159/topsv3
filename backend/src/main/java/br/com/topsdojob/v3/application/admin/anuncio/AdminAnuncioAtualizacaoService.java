@@ -88,12 +88,13 @@ public class AdminAnuncioAtualizacaoService {
                 request.uf(),
                 request.cidade(),
                 request.bairro(),
+                request.enderecoResumido(),
                 request.locaisAtendimento(),
                 request.servicos(),
                 request.atendimentoExclusivamenteVirtual(),
                 null),
                 request.whatsapp());
-        String enderecoResumido = validator.validarEnderecoResumido(request.enderecoResumido());
+        String enderecoResumido = validado.enderecoResumido();
         AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
                 .filter(item -> item.getRemovidoEm() == null)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio nao encontrado"));

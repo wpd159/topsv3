@@ -142,7 +142,7 @@ class MeuAnuncioAtualizacaoServiceTest {
         assertThat(anuncio.getPublicadoEm()).isEqualTo(primeiraPublicacao);
         assertThat(anuncio.getUltimaPublicacaoEm()).isEqualTo(ultimaPublicacao);
         assertThat(localizacao.getBairroId()).isEqualTo(BAIRRO_ID);
-        assertThat(localizacao.getEnderecoResumido()).isNull();
+        assertThat(localizacao.getEnderecoResumido()).isEqualTo("Regiao central");
 
         ArgumentCaptor<RevisaoAnuncioEntity> revisaoCaptor = ArgumentCaptor.forClass(RevisaoAnuncioEntity.class);
         verify(revisaoRepository).save(revisaoCaptor.capture());
@@ -164,6 +164,7 @@ class MeuAnuncioAtualizacaoServiceTest {
                 BigDecimal.ZERO,
                 "G",
                 "",
+                null,
                 null,
                 List.of("FORA_DO_ENUM"),
                 List.of(),
@@ -207,7 +208,7 @@ class MeuAnuncioAtualizacaoServiceTest {
                 "{}",
                 USUARIO_ID,
                 PUBLICADO_EM);
-        prepararLocalidadeSemBairro(anuncio);
+        AnuncioLocalizacaoEntity localizacao = prepararLocalidadeSemBairro(anuncio);
         when(revisaoRepository.findFirstByAnuncioIdAndStatusOrderByCriadoEmDesc(
                 ANUNCIO_ID, StatusRevisaoAnuncio.ABERTA)).thenReturn(Optional.of(revisao));
         when(consultaService.detalhar("slug-preservado", authentication)).thenReturn(mock(MeuAnuncioDto.class));
@@ -217,6 +218,7 @@ class MeuAnuncioAtualizacaoServiceTest {
         verify(revisaoRepository).save(revisao);
         assertThat(revisao.getTipo()).isEqualTo(TipoRevisaoAnuncio.CRIACAO);
         assertThat(revisao.getPayloadSolicitado()).contains("Novo titulo publico");
+        assertThat(localizacao.getEnderecoResumido()).isNull();
     }
 
     @Test
@@ -267,16 +269,24 @@ class MeuAnuncioAtualizacaoServiceTest {
         verify(revisaoRepository, never()).save(any());
     }
 
-    private void prepararLocalidadeSemBairro(AnuncioEntity anuncio) {
+    private AnuncioLocalizacaoEntity prepararLocalidadeSemBairro(AnuncioEntity anuncio) {
         EstadoEntity estado = EstadoEntity.criarFixtureHomologacao(
                 ESTADO_ID, "GO", "Goias", "goias", PUBLICADO_EM);
         CidadeEntity cidade = CidadeEntity.criarFixtureHomologacao(
                 CIDADE_ID, ESTADO_ID, "Goiania", "goiania", "goiania", PUBLICADO_EM);
+        AnuncioLocalizacaoEntity localizacao = AnuncioLocalizacaoEntity.criarSolicitacaoLocal(
+                ANUNCIO_ID,
+                ESTADO_ID,
+                CIDADE_ID,
+                null,
+                "Endereço sintético local",
+                PUBLICADO_EM);
         when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio);
         when(estadoRepository.findByUfIgnoreCase("GO")).thenReturn(Optional.of(estado));
         when(cidadeRepository.findByEstadoIdAndSlug(ESTADO_ID, "goiania")).thenReturn(Optional.of(cidade));
-        when(localizacaoRepository.findByAnuncioId(ANUNCIO_ID)).thenReturn(Optional.empty());
+        when(localizacaoRepository.findByAnuncioId(ANUNCIO_ID)).thenReturn(Optional.of(localizacao));
         when(documentoBuscaRepository.findById(ANUNCIO_ID)).thenReturn(Optional.empty());
+        return localizacao;
     }
 
     private AnuncioEntity anuncio() {
@@ -300,6 +310,7 @@ class MeuAnuncioAtualizacaoServiceTest {
                 "GO",
                 "Goiania",
                 "Setor Bueno",
+                "Regiao central",
                 List.of("MEU_LOCAL", "HOTEL_MOTEL"),
                 List.of("ANAL", "ORAL"),
                 false,
@@ -315,6 +326,7 @@ class MeuAnuncioAtualizacaoServiceTest {
                 request.preco(),
                 request.uf(),
                 request.cidade(),
+                null,
                 null,
                 request.locaisAtendimento(),
                 request.servicos(),

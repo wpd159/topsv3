@@ -51,6 +51,7 @@ public class AnuncioAtualizacaoCanonicaValidator {
         }
         String cidade = textoObrigatorio(request.cidade(), "cidade", 2, 80);
         String bairro = textoOpcional(request.bairro(), "bairro", 2, 80);
+        String enderecoResumido = validarEnderecoResumido(request.enderecoResumido());
         Set<LocalAtendimentoAnuncio> locais = enums(
                 request.locaisAtendimento(), LocalAtendimentoAnuncio.class, "locaisAtendimento");
         Set<ServicoAnuncio> servicos = new LinkedHashSet<>(
@@ -72,6 +73,7 @@ public class AnuncioAtualizacaoCanonicaValidator {
                 uf,
                 cidade,
                 bairro,
+                enderecoResumido,
                 locais,
                 Set.copyOf(servicos),
                 atendimentoExclusivamenteVirtual,
@@ -95,7 +97,11 @@ public class AnuncioAtualizacaoCanonicaValidator {
     }
 
     public String validarEnderecoResumido(String value) {
-        return textoOpcional(value, "regiao", 2, 120);
+        String texto = textoOpcional(value, "enderecoResumido", 2, 120);
+        if (texto != null && contemConteudoAtivo(texto)) {
+            throw badRequest("enderecoResumido nao pode conter HTML ou JavaScript");
+        }
+        return texto;
     }
 
     public String slugify(String value) {
@@ -179,6 +185,13 @@ public class AnuncioAtualizacaoCanonicaValidator {
         return sanitized.isEmpty() ? null : sanitized;
     }
 
+    private boolean contemConteudoAtivo(String value) {
+        String normalized = value.toLowerCase(Locale.ROOT);
+        return value.indexOf('<') >= 0
+                || value.indexOf('>') >= 0
+                || normalized.matches(".*\\bjavascript\\s*:.*");
+    }
+
     private ResponseStatusException badRequest(String message) {
         return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
@@ -191,6 +204,7 @@ public class AnuncioAtualizacaoCanonicaValidator {
             String uf,
             String cidade,
             String bairro,
+            String enderecoResumido,
             Set<LocalAtendimentoAnuncio> locaisAtendimento,
             Set<ServicoAnuncio> servicos,
             boolean atendimentoExclusivamenteVirtual,
