@@ -2,10 +2,24 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { ContractState } from '@/components/feedback/contract-state'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import type { AdminKycDecision } from '@/features/admin-documentos/api'
+import { decideAdminKycSubmission } from '@/features/admin-documentos/api'
 import { AdminKycDocumentGrid } from '@/features/admin-documentos/admin-kyc-document-grid'
+import { normalizeApiError } from '@/lib/api-contract'
 
 import { listAdminAdDocuments } from './api'
 import type { AdminAdvertiserDetail, AdminKycSubmission } from './types'
@@ -22,6 +36,13 @@ export function AdminAnuncioDocumentos({
   const [submissions, setSubmissions] = useState<AdminKycSubmission[]>([])
   const [loading, setLoading] = useState(autorizado)
   const [error, setError] = useState<unknown>(null)
+  const [decisionIntent, setDecisionIntent] = useState<{
+    submission: AdminKycSubmission
+    decision: AdminKycDecision
+  } | null>(null)
+  const [decisionReason, setDecisionReason] = useState('')
+  const [decisionError, setDecisionError] = useState<unknown>(null)
+  const [decisionBusyId, setDecisionBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!autorizado) return
@@ -37,6 +58,48 @@ export function AdminAnuncioDocumentos({
   }, [anuncioId, autorizado])
 
   useEffect(() => { void load() }, [load])
+
+  function closeDecision() {
+    if (decisionBusyId) return
+    setDecisionIntent(null)
+    setDecisionReason('')
+    setDecisionError(null)
+  }
+
+  async function confirmDecision() {
+    if (!decisionIntent || decisionBusyId) return
+    const reason = decisionReason.trim()
+    if (decisionIntent.decision !== 'APROVAR' && reason.length < 3) {
+      setDecisionError(new Error('Informe um motivo com pelo menos 3 caracteres.'))
+      return
+    }
+    setDecisionBusyId(decisionIntent.submission.envioId)
+    setDecisionError(null)
+    try {
+      await decideAdminKycSubmission(
+        decisionIntent.submission.envioId,
+        decisionIntent.decision,
+        reason,
+      )
+      toast.success(decisionIntent.decision === 'APROVAR'
+        ? 'Documentos validados com sucesso.'
+        : 'Decisão documental registrada com sucesso.')
+      setDecisionIntent(null)
+      setDecisionReason('')
+      await load()
+    } catch (reasonError) {
+      setDecisionError(normalizeApiError(reasonError))
+    } finally {
+      setDecisionBusyId(null)
+    }
+  }
+
+  const decisionTitle = decisionIntent?.decision === 'APROVAR'
+    ? 'Validar documentos'
+    : decisionIntent?.decision === 'SOLICITAR_AJUSTE'
+      ? 'Solicitar ajuste dos documentos'
+      : 'Rejeitar documentos'
+  const decisionNeedsReason = decisionIntent?.decision !== 'APROVAR'
 
   if (!autorizado) {
     return <p className="text-sm font-medium text-amber-700">Seu perfil não possui DOCUMENTO_REVISAR.</p>
@@ -72,10 +135,54 @@ export function AdminAnuncioDocumentos({
             <AdminKycDocumentGrid
               submissions={submissions}
               emptyMessage="Nenhum envio documental disponível."
+              decisionBusyId={decisionBusyId}
+              onDecision={(submission, decision) => {
+                setDecisionIntent({ submission, decision })
+                setDecisionReason('')
+                setDecisionError(null)
+              }}
             />
           </div>
         )}
       </div>
+      <Dialog open={decisionIntent !== null} onOpenChange={(open) => { if (!open) closeDecision() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{decisionTitle}</DialogTitle>
+            <DialogDescription>
+              {decisionIntent?.decision === 'APROVAR'
+                ? 'Todos os documentos deste envio serão marcados como validados. O anúncio poderá ser aprovado quando os demais requisitos também estiverem atendidos.'
+                : 'A decisão será aplicada a todos os documentos deste envio e ficará registrada no histórico administrativo.'}
+            </DialogDescription>
+          </DialogHeader>
+          {decisionNeedsReason ? (
+            <div className="space-y-2">
+              <Label htmlFor="admin-kyc-decision-reason">Motivo</Label>
+              <Textarea
+                id="admin-kyc-decision-reason"
+                value={decisionReason}
+                onChange={(event) => setDecisionReason(event.target.value)}
+                maxLength={240}
+                disabled={Boolean(decisionBusyId)}
+              />
+            </div>
+          ) : null}
+          {decisionError ? <ContractState error={decisionError} compact /> : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={Boolean(decisionBusyId)} onClick={closeDecision}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant={decisionIntent?.decision === 'REPROVAR' ? 'destructive' : 'default'}
+              disabled={Boolean(decisionBusyId) || (decisionNeedsReason && decisionReason.trim().length < 3)}
+              onClick={() => void confirmDecision()}
+            >
+              {decisionBusyId ? 'Processando...' : 'Confirmar decisão'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

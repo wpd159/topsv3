@@ -55,11 +55,17 @@ assert.ok(userDetail.includes('AdminKycUploadDialog'), 'A gestao do usuario deve
 assert.ok(adDocuments.includes('AdminKycDocumentGrid'), 'Anuncios deve usar a mesma grade compartilhada.')
 assert.ok(!adDocuments.includes('AdminKycUploadDialog'), 'Anuncios deve permanecer somente leitura para documentos.')
 assert.ok(adDocuments.includes('listAdminAdDocuments(anuncioId)'), 'Anuncios deve obter documentos pelo vinculo canonico com o proprietario.')
+assert.ok(adDocuments.includes('decideAdminKycSubmission') && adDocuments.includes('confirmDecision'), 'A aba do anuncio deve usar a decisao KYC canonica.')
+assert.ok(adDocuments.includes('Todos os documentos deste envio serão marcados como validados.'), 'A confirmacao deve explicitar o escopo da validacao.')
+assert.ok(documentGrid.includes('Validar documentos') && documentGrid.includes('Solicitar ajuste') && documentGrid.includes('Rejeitar documentos'), 'Envio pendente deve oferecer as tres decisoes documentais canonicas.')
+assert.ok(documentGrid.includes("submission.status === 'PENDENTE' || submission.status === 'EM_ANALISE'"), 'Somente envio documental pendente deve exibir decisoes.')
 assert.ok(documentGrid.includes('adminDocumentThumbnailUrl(document.id)'), 'JPG, PNG e PDF devem usar o endpoint de miniatura protegida.')
 assert.ok(documentGrid.includes('getAdminDocumentTemporaryUrl(documentId)'), 'Arquivo integral deve ser solicitado somente ao abrir a visualizacao.')
 assert.ok(documentGrid.includes('object-contain'), 'Miniaturas nao podem ser cortadas.')
 assert.ok(documentGrid.includes('sm:grid-cols-2') && documentGrid.includes('xl:grid-cols-3'), 'A grade deve ser responsiva.')
 assert.ok(documentApi.includes('/miniatura') && documentApi.includes('/url-temporaria'), 'Miniatura e visualizacao devem compartilhar o contrato administrativo privado.')
+assert.ok(documentApi.includes('/documentos/envios/${encodeURIComponent(submissionId)}/decidir') && documentApi.includes("decisao: decision"), 'Decisao documental deve usar o endpoint administrativo existente.')
+assert.ok(documentApi.includes('getAdminMutationHeaders()') && documentApi.includes('preserveServerMessage: true'), 'Decisao documental deve preservar CSRF e mensagens especificas.')
 for (const forbidden of ['objectKey', 'bucket', 'chaveObjeto', 'signedUrl']) {
   assert.ok(!documentGrid.includes(forbidden), `A grade nao pode expor ${forbidden}.`)
 }

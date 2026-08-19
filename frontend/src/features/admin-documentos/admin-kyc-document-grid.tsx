@@ -1,13 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { ExternalLink, FileText, Loader2, Replace } from 'lucide-react'
+import { BadgeCheck, ExternalLink, FileText, Loader2, Replace, RotateCcw, XCircle } from 'lucide-react'
 
 import { ContractState } from '@/components/feedback/contract-state'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import type { AdminKycDocument, AdminKycSubmission } from '@/features/admin-anuncios/types'
 
+import type { AdminKycDecision } from './api'
 import { adminDocumentThumbnailUrl, getAdminDocumentTemporaryUrl } from './api'
 
 function pretty(value: string) {
@@ -28,10 +29,14 @@ export function AdminKycDocumentGrid({
   submissions,
   emptyMessage = 'Nenhum envio de KYC.',
   onReplace,
+  onDecision,
+  decisionBusyId,
 }: {
   submissions: AdminKycSubmission[]
   emptyMessage?: string
   onReplace?: (submission: AdminKycSubmission) => void
+  onDecision?: (submission: AdminKycSubmission, decision: AdminKycDecision) => void
+  decisionBusyId?: string | null
 }) {
   const [openingId, setOpeningId] = useState<string | null>(null)
   const [failedThumbnails, setFailedThumbnails] = useState<Set<string>>(new Set())
@@ -58,8 +63,10 @@ export function AdminKycDocumentGrid({
   return (
     <div className="space-y-5">
       {error ? <ContractState error={error} compact /> : null}
-      {submissions.map((submission) => (
-        <section key={submission.envioId} className="border-y border-zinc-200 py-4">
+      {submissions.map((submission) => {
+        const actionable = submission.status === 'PENDENTE' || submission.status === 'EM_ANALISE'
+        const deciding = decisionBusyId === submission.envioId
+        return <section key={submission.envioId} className="border-y border-zinc-200 py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-zinc-900">Envio de {formatDate(submission.enviadoEm)}</p>
@@ -80,6 +87,41 @@ export function AdminKycDocumentGrid({
               ) : null}
             </div>
           </div>
+          {onDecision && actionable ? (
+            <div className="mt-3 flex flex-wrap gap-2" aria-label="Decisão do envio documental">
+              <Button
+                type="button"
+                size="sm"
+                disabled={Boolean(decisionBusyId)}
+                onClick={() => onDecision(submission, 'APROVAR')}
+              >
+                {deciding
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  : <BadgeCheck className="mr-2 h-4 w-4" aria-hidden="true" />}
+                Validar documentos
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={Boolean(decisionBusyId)}
+                onClick={() => onDecision(submission, 'SOLICITAR_AJUSTE')}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                Solicitar ajuste
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={Boolean(decisionBusyId)}
+                onClick={() => onDecision(submission, 'REPROVAR')}
+              >
+                <XCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                Rejeitar documentos
+              </Button>
+            </div>
+          ) : null}
           {submission.motivo ? <p className="mt-3 text-sm text-zinc-700">Motivo: {submission.motivo}</p> : null}
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {submission.documentos.map((document) => {
@@ -130,7 +172,7 @@ export function AdminKycDocumentGrid({
             })}
           </div>
         </section>
-      ))}
+      })}
     </div>
   )
 }
