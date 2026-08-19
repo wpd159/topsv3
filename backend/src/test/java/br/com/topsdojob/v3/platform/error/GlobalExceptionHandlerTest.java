@@ -48,6 +48,38 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void conflitoAdministrativoPreservaMotivoSeguro() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST",
+                "/api/admin/anuncios/1/aprovar");
+        String mensagem = "A documentação KYC ainda não foi aprovada.";
+
+        var response = new GlobalExceptionHandler().handleResponseStatus(
+                new ResponseStatusException(HttpStatus.CONFLICT, mensagem),
+                request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo(ApiErrorCode.CONFLICT);
+        assertThat(response.getBody().message()).isEqualTo(mensagem);
+    }
+
+    @Test
+    void conflitoPublicoNaoExpoeMotivoInterno() {
+        MockHttpServletRequest request = new MockHttpServletRequest(
+                "POST",
+                "/api/public/minha-conta/anuncios/1");
+
+        var response = new GlobalExceptionHandler().handleResponseStatus(
+                new ResponseStatusException(HttpStatus.CONFLICT, "detalhe interno"),
+                request);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).isEqualTo("Conflito de estado.");
+    }
+
+    @Test
     void midiaStoryIncompativelPreservaMensagemSegura() {
         MockHttpServletRequest request = new MockHttpServletRequest(
                 "POST",

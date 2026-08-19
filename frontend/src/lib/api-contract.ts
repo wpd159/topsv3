@@ -82,29 +82,48 @@ export function adminApiUrl(path: string) {
   return `${backendApiRoot()}/api/admin${normalized}`
 }
 
-export async function apiErrorFromResponse(response: Response): Promise<ApiContractError> {
-  const requestId = response.headers.get('X-Request-Id')
+export async function apiErrorFromResponse(
+  response: Response,
+  options: { preserveServerMessage?: boolean } = {},
+): Promise<ApiContractError> {
+  let serverMessage: string | null = null
+  let bodyRequestId: string | null = null
+  if (options.preserveServerMessage) {
+    try {
+      const body = await response.clone().json() as { message?: unknown; requestId?: unknown }
+      serverMessage = typeof body.message === 'string' && body.message.trim()
+        ? body.message.trim()
+        : null
+      bodyRequestId = typeof body.requestId === 'string' && body.requestId.trim()
+        ? body.requestId.trim()
+        : null
+    } catch {
+      // O fallback por status permanece autoritativo quando o corpo nao segue o contrato.
+    }
+  }
+  const requestId = response.headers.get('X-Request-Id') || bodyRequestId
+  const message = (fallback: string) => serverMessage || fallback
   switch (response.status) {
     case 400:
     case 422:
-      return new ApiContractError('Revise os dados informados e tente novamente.', 'INVALID_REQUEST', response.status, false, requestId)
+      return new ApiContractError(message('Revise os dados informados e tente novamente.'), 'INVALID_REQUEST', response.status, false, requestId)
     case 401:
-      return new ApiContractError('Sua sessao expirou. Entre novamente.', 'SESSION_REQUIRED', 401, false, requestId)
+      return new ApiContractError(message('Sua sessao expirou. Entre novamente.'), 'SESSION_REQUIRED', 401, false, requestId)
     case 403:
-      return new ApiContractError('Voce nao tem permissao para acessar esta funcao.', 'ACCESS_DENIED', 403, false, requestId)
+      return new ApiContractError(message('Voce nao tem permissao para acessar esta funcao.'), 'ACCESS_DENIED', 403, false, requestId)
     case 404:
       return new ApiContractError(
-        'A integracao necessaria para esta funcao ainda nao esta disponivel.',
+        message('A integracao necessaria para esta funcao ainda nao esta disponivel.'),
         'INTEGRATION_MISSING',
         404,
         false,
         requestId,
       )
     case 409:
-      return new ApiContractError('A operacao entrou em conflito com o estado atual.', 'CONFLICT', 409, false, requestId)
+      return new ApiContractError(message('A operacao entrou em conflito com o estado atual.'), 'CONFLICT', 409, false, requestId)
     default:
       return new ApiContractError(
-        'Nao foi possivel carregar os dados. Tente novamente.',
+        message('Nao foi possivel carregar os dados. Tente novamente.'),
         'TECHNICAL_FAILURE',
         response.status,
         response.status >= 500,

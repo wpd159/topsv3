@@ -102,6 +102,15 @@ const LEGAL_CATEGORIES: Array<{ value: AdminLegalBlockCategory; label: string }>
 ]
 
 const AUTOMATIC_REPROVAL_REVIEW_REASON = 'Revisão aberta automaticamente para reprovação administrativa.'
+const GENERIC_CONFLICT_MESSAGES = new Set([
+  'A operacao entrou em conflito com o estado atual.',
+  'Conflito de estado.',
+])
+
+function specificConflictMessage(error: ApiContractError, fallback: string) {
+  const message = error.message.trim()
+  return message && !GENERIC_CONFLICT_MESSAGES.has(message) ? message : fallback
+}
 
 function formatDate(value?: string | null) {
   if (!value) return 'Não informado'
@@ -1044,9 +1053,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       ) {
         await load()
         setActionError(new ApiContractError(
-          'O estado do anúncio mudou. Os dados do detalhe foram atualizados; revise a decisão e tente novamente.',
+          specificConflictMessage(
+            normalized,
+            'O estado do anúncio mudou. Os dados do detalhe foram atualizados; revise a decisão e tente novamente.',
+          ),
           'CONFLICT',
           409,
+          false,
+          normalized.requestId,
         ))
         return
       }

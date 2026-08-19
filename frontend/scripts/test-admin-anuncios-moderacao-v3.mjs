@@ -27,6 +27,7 @@ const adminStoriesApi = source('lib/admin-story-management-api.ts')
 const edit = source('features/admin-anuncios/admin-anuncio-edit-form.tsx')
 const editPage = source('app/(painel-admin)/admin/anuncios/[id]/editar/page.tsx')
 const api = source('features/admin-anuncios/api.ts')
+const apiContract = source('lib/api-contract.ts')
 const removalAdapter = api.slice(
   api.indexOf('export function removeAdminAd'),
   api.indexOf('export function blockAdminAd'),
@@ -291,7 +292,10 @@ assert.ok(detail.includes('Motivo e alterações necessárias') && detail.includ
 assert.ok(detail.includes('O anúncio ficará indisponível e o anunciante receberá um e-mail com o motivo e as alterações necessárias.'), 'O modal deve explicar o efeito da reprovacao.')
 assert.ok(publicCatalogApi.includes("PUBLIC_CATALOG_CACHE_TAG = 'public-catalog'") && publicCatalogApi.includes('tags: [PUBLIC_CATALOG_CACHE_TAG]'), 'Catalogo, localidades e sitemap devem compartilhar a tag canonica de cache.')
 assert.ok(publicCatalogActions.includes('revalidateTag(PUBLIC_CATALOG_CACHE_TAG)'), 'A acao administrativa deve reutilizar a invalidacao de cache do Next.')
-assert.ok(detail.includes("intent.kind === 'OPEN_REVIEW' || intent.kind === 'APPROVE_AD' || intent.kind === 'REPROVE_AD'") && detail.includes('O estado do anúncio mudou.'), 'Conflito 409 da decisao deve atualizar o detalhe e informar a causa correta.')
+assert.ok(api.includes("apiErrorFromResponse(response, { preserveServerMessage: true })"), 'A API administrativa deve preservar a mensagem segura retornada pelo backend.')
+assert.ok(apiContract.includes('options.preserveServerMessage') && apiContract.includes('body.message.trim()'), 'O contrato deve ler a mensagem do backend somente quando solicitado pelo adapter.')
+assert.ok(detail.includes('specificConflictMessage(') && detail.includes('normalized.requestId'), 'Conflito 409 deve exibir a causa especifica e preservar o requestId.')
+assert.ok(detail.includes('O estado do anúncio mudou.'), 'Conflito sem detalhe deve manter fallback controlado após atualizar o anúncio.')
 assert.ok(detail.includes('decisionLock.current') && detail.includes('disabled={headerBusy}'), 'A aprovacao deve impedir duplo clique durante a decisao.')
 
 assert.ok(documents.includes('AdminKycDocumentGrid'), 'Documento deve reutilizar a grade documental protegida.')

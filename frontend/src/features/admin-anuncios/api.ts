@@ -84,7 +84,9 @@ export function getAdminMutationHeaders() {
 }
 
 async function readJson<T>(response: Response): Promise<T> {
-  if (!response.ok) throw await apiErrorFromResponse(response)
+  if (!response.ok) {
+    throw await apiErrorFromResponse(response, { preserveServerMessage: true })
+  }
   try {
     return corrigirEstruturaTexto(await response.json()) as T
   } catch {
@@ -108,7 +110,7 @@ async function adminAdOwnerErrorFromResponse(response: Response) {
   } catch {
     // A resposta generica abaixo preserva o contrato quando nao houver erro de campo.
   }
-  return apiErrorFromResponse(response)
+  return apiErrorFromResponse(response, { preserveServerMessage: true })
 }
 
 function pagePayload<T>(payload: unknown): AdminPage<T> {

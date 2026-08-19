@@ -80,7 +80,8 @@ public class GlobalExceptionHandler {
             ResponseStatusException exception,
             HttpServletRequest request) {
         ApiErrorCode code = fromStatus(exception.getStatusCode().value());
-        if (code == ApiErrorCode.UNSUPPORTED_MEDIA_TYPE
+        if ((code == ApiErrorCode.UNSUPPORTED_MEDIA_TYPE
+                || (isAdminRequest(request) && exception.getStatusCode().is4xxClientError()))
                 && exception.getReason() != null
                 && !exception.getReason().isBlank()) {
             return build(code, exception.getReason(), request);
@@ -160,6 +161,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(code.status())
                 .cacheControl(CacheControl.noStore())
                 .body(response);
+    }
+
+    private boolean isAdminRequest(HttpServletRequest request) {
+        return request != null
+                && request.getRequestURI() != null
+                && request.getRequestURI().startsWith("/api/admin/");
     }
 
     private ApiErrorCode fromStatus(int statusCode) {
