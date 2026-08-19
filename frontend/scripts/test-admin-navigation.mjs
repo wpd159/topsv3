@@ -121,6 +121,16 @@ assert.match(sidebarNav, /activeAdminSidebarHref/)
 assert.match(sidebarNav, /aria-current=\{isActive \? 'page' : undefined\}/)
 assert.match(sidebarView, /SheetDescription/)
 assert.equal((sidebarView.match(/sidebarLinks/g) || []).length, 2)
+assert.match(
+  sidebarView,
+  /revisoes:\s*Number\(summary\.anunciosPendentesModeracao\)/,
+  'O badge de Anuncios deve refletir somente anuncios pendentes de moderacao.',
+)
+assert.doesNotMatch(
+  sidebarView,
+  /Number\(summary\.revisoes(?:Abertas|EmAnalise)\)/,
+  'Revisoes e KYC nao podem compor o badge de Anuncios.',
+)
 assert.match(compliance, /sectionFromHash/)
 assert.match(compliance, /addEventListener\('popstate'/)
 assert.match(credits, /ADMIN_MONETIZACAO_ABAS/)

@@ -24,8 +24,6 @@ import { getPublicLogoUrl } from '@/lib/public-site-assets'
 import { adminApiUrl, apiErrorFromResponse } from '@/lib/api-contract'
 
 type ModerationSummary = {
-  revisoesAbertas: number
-  revisoesEmAnalise: number
   anunciosPendentesModeracao: number
 }
 
@@ -107,10 +105,7 @@ export default function Sidebar() {
             tickets: Number(tickets.pendentesEquipe),
             denuncias: Number(denuncias.pendentes),
             sugestoes: Number(sugestoes.novas),
-            revisoes:
-              Number(summary.revisoesAbertas) +
-              Number(summary.revisoesEmAnalise) +
-              Number(summary.anunciosPendentesModeracao),
+            revisoes: Number(summary.anunciosPendentesModeracao),
           }))
         } catch {
           if (!active) return
