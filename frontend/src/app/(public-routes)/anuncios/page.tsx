@@ -7,7 +7,11 @@ import {
   buildPublicRobotsMetadata,
   type PublicListingSearchParams,
 } from "@/lib/seo/search-indexing-policy"
-import { listarAnunciosPublicos, type PublicCategoryList } from "@/lib/public-catalog-api"
+import {
+  isPublicCatalogNotFound,
+  listarAnunciosPublicos,
+  type PublicCategoryList,
+} from "@/lib/public-catalog-api"
 
 type AnunciosSearchParams = PublicListingSearchParams & {
   page?: string
@@ -103,7 +107,7 @@ export default async function AnunciosPage({
   const categoria = searchValue(searchParams.categoria).trim() || "TODOS"
   const busca = searchValue(searchParams.busca).trim()
   const anunciante = searchValue(searchParams.anunciante).trim()
-  let initialData: PublicCategoryList | null = null
+  let initialData: PublicCategoryList
 
   try {
     initialData = await listarAnunciosPublicos(
@@ -114,14 +118,14 @@ export default async function AnunciosPage({
       undefined,
       anunciante,
     )
-  } catch {
-    // O grid cliente repete a consulta e preserva o estado de erro com opcao de nova tentativa.
+  } catch (error) {
+    if (categoria.toUpperCase() !== "TODOS" && isPublicCatalogNotFound(error)) {
+      notFound()
+    }
+    throw error
   }
 
-  if (
-    initialData &&
-    currentPage > Math.max(1, initialData.paginacao.totalPaginas)
-  ) {
+  if (currentPage > Math.max(1, initialData.paginacao.totalPaginas)) {
     notFound()
   }
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { cache } from "react"
 import { ApiContractError } from "@/lib/api-contract"
 import { fetchPublicBlogPost } from "@/lib/blog-api"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
@@ -7,11 +8,20 @@ import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 import BlogPostPageClient from "./blog-post-page-client"
 
+const loadPublicBlogPost = cache(fetchPublicBlogPost)
+
 async function resolvePost(slug: string) {
   try {
-    return await fetchPublicBlogPost(slug)
+    const post = await loadPublicBlogPost(slug)
+    if (post.status !== "PUBLICADO") notFound()
+    return post
   } catch (error) {
-    if (error instanceof ApiContractError && error.status === 404) notFound()
+    if (
+      error instanceof ApiContractError &&
+      (error.status === 400 || error.status === 404)
+    ) {
+      notFound()
+    }
     throw error
   }
 }
