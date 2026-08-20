@@ -17,11 +17,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { revalidarCacheCatalogoPublico } from '@/app/(painel-admin)/admin/anuncios/actions'
+import { getAdminAd } from '@/features/admin-anuncios/api'
 import { normalizeApiError } from '@/lib/api-contract'
+import { enviarIndexNowNoCliente, montarEventoIndexNowAnuncios } from '@/lib/seo/indexnow-client'
 
 import {
   AdminUserDeletionError,
   deleteAdminUser,
+  getAdminUser,
   getAdminUserDeletionEligibility,
 } from './api'
 import type { AdminUserDeletionEligibility, AdminUserDeletionResult } from './types'
@@ -97,8 +100,33 @@ export function AdminUsuarioDeleteDialog({
     setBusy(true)
     setError(null)
     try {
-      const result = await deleteAdminUser(usuarioId, reason.trim(), idempotencyKey.current)
+      const eventFingerprint = idempotencyKey.current
+      const publicAdsPromise = getAdminUser(usuarioId)
+        .then((user) => Promise.allSettled(
+          user.anuncios
+            .filter((anuncio) => anuncio.status === 'PUBLICADO')
+            .map((anuncio) => getAdminAd(anuncio.id))
+        ))
+        .catch(() => [])
+      const result = await deleteAdminUser(usuarioId, reason.trim(), eventFingerprint)
       await revalidarCacheCatalogoPublico()
+      void publicAdsPromise.then((results) => {
+        const previous = results.flatMap((entry) => entry.status === 'fulfilled' ? [{
+          slug: entry.value.slug,
+          estadoUf: entry.value.localizacao?.uf,
+          cidadeNome: entry.value.localizacao?.cidade,
+          bairroNome: entry.value.localizacao?.bairro,
+        }] : [])
+        if (previous.length > 0) {
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncios({
+            eventType: 'RETIRADA',
+            previous,
+            changeFingerprint: eventFingerprint,
+          }))
+        }
+      }).catch(() => {
+        // A exclusao ja foi concluida; a notificacao permanece best-effort.
+      })
       await onSuccess(result)
       onOpenChange(false)
     } catch (reason) {

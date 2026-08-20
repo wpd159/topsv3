@@ -13,6 +13,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { categorias, locais, servicos } from '@/features/anuncio-wizard/wizard-constants'
 import { getAdminSession } from '@/lib/admin-auth-api'
 import { maskPhoneBR, phoneToE164BR } from '@/lib/phone-mask'
+import {
+  anuncioEstaPublicamenteIndexavel,
+  enviarIndexNowNoCliente,
+  montarEventoIndexNowAnuncio,
+} from '@/lib/seo/indexnow-client'
 
 import { getAdminAd, updateAdminAd } from './api'
 import type { AdminAdDetail, AdminAdUpdate } from './types'
@@ -37,6 +42,7 @@ function initial(ad: AdminAdDetail): AdminAdUpdate {
 export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
   const router = useRouter()
   const [form, setForm] = useState<AdminAdUpdate | null>(null)
+  const [original, setOriginal] = useState<AdminAdDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [hadWhatsapp, setHadWhatsapp] = useState(false)
@@ -51,6 +57,7 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
         throw new Error('Seu perfil não possui permissão para editar dados comerciais.')
       }
       setForm(initial(ad))
+      setOriginal(ad)
       setHadWhatsapp(Boolean(ad.whatsapp))
     } catch (reason) {
       setError(reason)
@@ -82,10 +89,28 @@ export function AdminAnuncioEditForm({ anuncioId }: { anuncioId: string }) {
     setSaving(true)
     setError(null)
     try {
-      await updateAdminAd(anuncioId, {
+      const updated = await updateAdminAd(anuncioId, {
         ...form,
         whatsapp: normalizedWhatsapp,
       })
+      if (original && anuncioEstaPublicamenteIndexavel(original.status)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'ATUALIZACAO',
+          previous: {
+            slug: original.slug,
+            estadoUf: original.localizacao?.uf,
+            cidadeNome: original.localizacao?.cidade,
+            bairroNome: original.localizacao?.bairro,
+          },
+          current: {
+            slug: updated.slug,
+            estadoUf: updated.localizacao?.uf,
+            cidadeNome: updated.localizacao?.cidade,
+            bairroNome: updated.localizacao?.bairro,
+          },
+          changeFingerprint: updated.atualizadoEm,
+        }))
+      }
       router.push(`/admin/anuncios/${anuncioId}`)
       router.refresh()
     } catch (reason) {

@@ -56,7 +56,8 @@ foreach ($secret in @(
     "PRODUCTION_USER",
     "PRODUCTION_SSH_PORT",
     "PRODUCTION_SSH_IDENTITY",
-    "PRODUCTION_SSH_HOST_KEY"
+    "PRODUCTION_SSH_HOST_KEY",
+    "INDEXNOW_KEY"
   )) {
   Add-Check "workflow referencia $secret" ($workflow.Contains("secrets.$secret"))
 }
@@ -116,6 +117,14 @@ Add-Check "workflow compila frontend com GA4 habilitado" (
 )
 Add-Check "workflow valida GA4 habilitado no runtime" (
   $workflow.Contains("grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true'")
+)
+Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
+  ($workflow.Contains("Synchronize IndexNow key in production runtime")) -and
+  ($workflow.Contains('printf ''%s\n'' "${INDEXNOW_KEY}" | ssh')) -and
+  ($workflow.Contains("awk '\''!/^INDEXNOW_KEY=/'\''"))
+)
+Add-Check "workflow valida IndexNow no runtime sem imprimir o valor" (
+  $workflow.Contains("grep -q '^INDEXNOW_KEY='")
 )
 
 foreach ($required in @(

@@ -6,6 +6,7 @@ import { VideoUploader } from '@/components/anuncios/editar/video-uploader'
 import { FilePicker } from '@/components/forms/file-picker'
 import { useCallback, useEffect, useState } from 'react'
 import {
+  buscarMeuAnuncio,
   enviarMinhasMidiasEmLote,
   listarMinhasMidias,
   removerMinhaMidia,
@@ -13,6 +14,11 @@ import {
   type MinhaMidiaGestao,
   type MinhasMidiasResponse,
 } from '@/lib/meus-anuncios-api'
+import {
+  anuncioEstaPublicamenteIndexavel,
+  enviarIndexNowNoCliente,
+  montarEventoIndexNowAnuncio,
+} from '@/lib/seo/indexnow-client'
 import { StepPanel } from './wizard-ui'
 
 type WizardStepFotosProps = {
@@ -72,6 +78,32 @@ export function WizardStepFotos({
     })
   }, [refresh])
 
+  const notifyPublicMediaChange = useCallback(async (changeFingerprint: string) => {
+    if (!slug) return
+    try {
+      const anuncio = await buscarMeuAnuncio(slug)
+      if (!anuncioEstaPublicamenteIndexavel(anuncio.status)) return
+      void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+        eventType: 'ATUALIZACAO',
+        previous: {
+          slug: anuncio.slug,
+          estadoUf: anuncio.localizacao?.uf,
+          cidadeNome: anuncio.localizacao?.cidade,
+          bairroNome: anuncio.localizacao?.bairro,
+        },
+        current: {
+          slug: anuncio.slug,
+          estadoUf: anuncio.localizacao?.uf,
+          cidadeNome: anuncio.localizacao?.cidade,
+          bairroNome: anuncio.localizacao?.bairro,
+        },
+        changeFingerprint,
+      }))
+    } catch {
+      // A alteracao de midia ja foi concluida; notificacao segue best-effort.
+    }
+  }, [slug])
+
   const uploadPersisted = async (files: File[]) => {
     if (!slug || !files.length || busy) return
     const fotosNovas = files.filter((file) => file.type.startsWith('image/')).length
@@ -115,7 +147,9 @@ export function WizardStepFotos({
     ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
     setBusy(true)
     try {
-      setPersisted(await reordenarMinhasMidias(slug, next.map((item) => item.id)))
+      const mediaIds = next.map((item) => item.id)
+      setPersisted(await reordenarMinhasMidias(slug, mediaIds))
+      void notifyPublicMediaChange(`reorder:${mediaIds.join(',')}`)
     } catch (error) {
       setErrors({ ordenar: error instanceof Error ? error.message : 'Não foi possível alterar a ordem.' })
     } finally {
@@ -128,6 +162,7 @@ export function WizardStepFotos({
     setBusy(true)
     try {
       setPersisted(await removerMinhaMidia(slug, midia.id))
+      void notifyPublicMediaChange(`remove:${midia.id}`)
     } catch (error) {
       setErrors({ remover: error instanceof Error ? error.message : 'Não foi possível remover a mídia.' })
     } finally {

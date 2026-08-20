@@ -20,6 +20,11 @@ import {
   type MeuAnuncioCicloVida,
 } from '@/lib/meus-anuncios-api'
 import { cn } from '@/lib/utils'
+import {
+  anuncioEstaPublicamenteIndexavel,
+  enviarIndexNowNoCliente,
+  montarEventoIndexNowAnuncio,
+} from '@/lib/seo/indexnow-client'
 
 export type CicloVidaAcao = 'PAUSAR' | 'REATIVAR' | 'REMOVER'
 
@@ -66,6 +71,25 @@ export function MeuAnuncioAcoesCicloVida({ anuncio, onSuccess, className }: Prop
           : await removerMeuAnuncio(anuncio.slug)
       setConfirmacao(null)
       setSucesso(mensagemSucesso(acao))
+      const context = {
+        slug: anuncio.slug,
+        estadoUf: anuncio.localizacao?.uf,
+        cidadeNome: anuncio.localizacao?.cidade,
+        bairroNome: anuncio.localizacao?.bairro,
+      }
+      if (acao === 'REATIVAR' && anuncioEstaPublicamenteIndexavel(resultado.status)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'PUBLICACAO',
+          current: context,
+          changeFingerprint: resultado.atualizadoEm,
+        }))
+      } else if (acao !== 'REATIVAR' && anuncioEstaPublicamenteIndexavel(anuncio.status)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'RETIRADA',
+          previous: context,
+          changeFingerprint: resultado.atualizadoEm,
+        }))
+      }
       onSuccess(resultado, acao)
     } catch (error) {
       setErro(mensagemErro(error))

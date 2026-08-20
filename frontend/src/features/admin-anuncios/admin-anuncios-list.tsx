@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getAdminSession } from '@/lib/admin-auth-api'
 import { maskPhoneBR } from '@/lib/phone-mask'
 import { imagemPublicaR2 } from '@/lib/media/public-media'
+import { enviarIndexNowNoCliente, montarEventoIndexNowAnuncio } from '@/lib/seo/indexnow-client'
 import { SearchableSelect } from '@/features/anuncio-wizard/components/searchable-select'
 
 import { AdminAnuncioPremiumRapido, premiumBenefitGranted } from './admin-anuncio-premium-rapido'
@@ -281,7 +282,17 @@ export function AdminAnunciosList({ initialQuery = '' }: { initialQuery?: string
     setBusyAdId(item.id)
     setActionError(null)
     try {
-      await reactivateAdminAd(item.id)
+      const response = await reactivateAdminAd(item.id)
+      void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+        eventType: 'PUBLICACAO',
+        current: {
+          slug: item.slug,
+          estadoUf: item.localizacao?.uf,
+          cidadeNome: item.localizacao?.cidade,
+          bairroNome: item.localizacao?.bairro,
+        },
+        changeFingerprint: response.executadoEm,
+      }))
       await load()
     } catch (reason) {
       setActionError(reason)

@@ -76,6 +76,7 @@ jobs:
           PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
           PRODUCTION_SSH_IDENTITY: ${{ secrets.PRODUCTION_SSH_IDENTITY }}
           PRODUCTION_SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
         run: |
           set -euo pipefail
           test -n "${PRODUCTION_HOST}"
@@ -84,6 +85,11 @@ jobs:
           test "${PRODUCTION_SSH_PORT}" -le 65535
           test -n "${PRODUCTION_SSH_IDENTITY}"
           test -n "${PRODUCTION_SSH_HOST_KEY}"
+          test -n "${INDEXNOW_KEY}"
+          [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
+          indexnow_key_file="frontend/public/${INDEXNOW_KEY}.txt"
+          test -f "${indexnow_key_file}"
+          test "$(tr -d '\r\n' < "${indexnow_key_file}")" = "${INDEXNOW_KEY}"
 
       - name: Configure SSH
         shell: bash
@@ -145,6 +151,7 @@ jobs:
           set -euo pipefail
           test "$(id -un)" = "topsdojob"
           test -r /opt/topsv3/secrets/production.env
+          test -w /opt/topsv3/secrets/production.env
           test -r /opt/topsv3/secrets/application-production.yml
           test -r /opt/topsv3/secrets/nginx-production-local.conf
           test -r /opt/topsv3/secrets/efi-webhook-allowlist.conf
@@ -160,6 +167,35 @@ jobs:
           docker volume inspect topsv3-production-postgres-data >/dev/null
           sudo -n nginx -t >/dev/null
           REMOTE
+
+      - name: Synchronize IndexNow key in production runtime
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
+          printf '%s\n' "${INDEXNOW_KEY}" | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -c '\''
+          set -euo pipefail
+          env_file=/opt/topsv3/secrets/production.env
+          test -r "${env_file}"
+          test -w "${env_file}"
+          IFS= read -r indexnow_key
+          [[ "${indexnow_key}" =~ ^[A-Za-z0-9.-]{8,128}$ ]]
+          temporary="$(mktemp "${env_file}.indexnow.XXXXXX")"
+          cleanup() { rm -f -- "${temporary}"; }
+          trap cleanup EXIT
+          awk '\''!/^INDEXNOW_KEY=/'\'' "${env_file}" > "${temporary}"
+          printf '\''INDEXNOW_KEY=%s\n'\'' "${indexnow_key}" >> "${temporary}"
+          chmod --reference="${env_file}" "${temporary}"
+          mv -f -- "${temporary}" "${env_file}"
+          trap - EXIT
+          '\'''
 
       - name: Upload immutable release
         shell: bash
@@ -367,6 +403,7 @@ jobs:
           grep -qx 'NEXT_PUBLIC_SITE_URL=https://topsdojob.com' <<< "${frontend_env}"
           grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true' <<< "${frontend_env}"
           grep -qx 'SEARCH_INDEXING_MODE=public' <<< "${frontend_env}"
+          grep -q '^INDEXNOW_KEY=' <<< "${frontend_env}"
           backend_env="$(docker inspect topsv3-production-backend --format '{{range .Config.Env}}{{println .}}{{end}}')"
           grep -qx 'SPRING_PROFILES_ACTIVE=production' <<< "${backend_env}"
           grep -qx 'APP_ENV=producao' <<< "${backend_env}"

@@ -21,12 +21,16 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/context/AuthContext'
-import { blockAdminAdAndUser, unblockAdminUser } from '@/features/admin-anuncios/api'
+import { blockAdminAdAndUser, getAdminAd, unblockAdminUser } from '@/features/admin-anuncios/api'
 import type { AdminKycSubmission, AdminLegalBlockCategory } from '@/features/admin-anuncios/types'
 import { AdminKycDocumentGrid } from '@/features/admin-documentos/admin-kyc-document-grid'
 import { AdminKycUploadDialog } from '@/features/admin-documentos/admin-kyc-upload-dialog'
 import { normalizeApiError } from '@/lib/api-contract'
 import { maskPhoneBR } from '@/lib/phone-mask'
+import {
+  enviarIndexNowNoCliente,
+  montarEventoIndexNowAnuncios,
+} from '@/lib/seo/indexnow-client'
 
 import { getAdminUser } from './api'
 import { AdminUsuarioCreditDialog } from './admin-usuario-credit-dialog'
@@ -121,10 +125,32 @@ export function AdminUsuarioDetail() {
     setLegalError(null)
     try {
       if (legalIntent === 'BLOCK') {
-        await blockAdminAdAndUser(detail.anuncioAncoraBloqueioId, {
+        const publicAdsPromise = Promise.allSettled(
+          detail.anuncios
+            .filter((anuncio) => anuncio.status === 'PUBLICADO')
+            .map((anuncio) => getAdminAd(anuncio.id))
+        )
+        const response = await blockAdminAdAndUser(detail.anuncioAncoraBloqueioId, {
           categoria: legalCategory,
           motivo: reason,
           observacaoInterna: null,
+        })
+        void publicAdsPromise.then((results) => {
+          const previous = results.flatMap((result) => result.status === 'fulfilled' ? [{
+            slug: result.value.slug,
+            estadoUf: result.value.localizacao?.uf,
+            cidadeNome: result.value.localizacao?.cidade,
+            bairroNome: result.value.localizacao?.bairro,
+          }] : [])
+          if (previous.length > 0) {
+            void enviarIndexNowNoCliente(montarEventoIndexNowAnuncios({
+              eventType: 'RETIRADA',
+              previous,
+              changeFingerprint: response.executadoEm,
+            }))
+          }
+        }).catch(() => {
+          // O bloqueio ja foi concluido; a notificacao permanece best-effort.
         })
       } else {
         await unblockAdminUser(detail.anuncioAncoraBloqueioId, reason)

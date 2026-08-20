@@ -210,6 +210,8 @@ services:
       NEXT_PUBLIC_EFI_PIX_ENABLED: ${EFI_ENABLED:-true}
       SEARCH_INDEXING_MODE: public
       R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:?R2_PUBLIC_BASE_URL obrigatoria}
+      INDEXNOW_SITE_URL: https://topsdojob.com
+      INDEXNOW_KEY: ${INDEXNOW_KEY:?INDEXNOW_KEY obrigatoria em production.env}
     networks:
       - topsv3-production-net
 

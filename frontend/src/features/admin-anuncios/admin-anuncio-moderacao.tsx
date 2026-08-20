@@ -33,9 +33,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { getAdminSession } from '@/lib/admin-auth-api'
+import { getAdminUser } from '@/features/admin-usuarios/api'
 import { cpfDigits, isValidCpf, maskCpf } from '@/lib/cpf-mask'
 import { maskPhoneBR } from '@/lib/phone-mask'
 import { ApiContractError, normalizeApiError } from '@/lib/api-contract'
+import {
+  anuncioEstaPublicamenteIndexavel,
+  enviarIndexNowNoCliente,
+  montarEventoIndexNowAnuncio,
+  montarEventoIndexNowAnuncios,
+} from '@/lib/seo/indexnow-client'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
@@ -86,6 +93,15 @@ type LegalIntent =
   | { kind: 'BLOCK_USER'; title: string }
   | { kind: 'UNBLOCK_AD'; title: string }
   | { kind: 'UNBLOCK_USER'; title: string }
+
+function indexNowContext(ad: AdminAdDetail) {
+  return {
+    slug: ad.slug,
+    estadoUf: ad.localizacao?.uf,
+    cidadeNome: ad.localizacao?.cidade,
+    bairroNome: ad.localizacao?.bairro,
+  }
+}
 
 type PhotoDecision = {
   decisao: 'APROVAR'
@@ -922,6 +938,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
       )
       setPhotoBatchResult(response)
       applyConfirmedPhotoBatch(response)
+      if (anuncioEstaPublicamenteIndexavel(ad.status) && (response.aprovadas > 0 || response.excluidas > 0)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'ATUALIZACAO',
+          previous: indexNowContext(ad),
+          current: indexNowContext(ad),
+          changeFingerprint: response.requestId,
+        }))
+      }
       const failedIds = new Set(
         response.resultados
           .filter((item) => item.resultado === 'FALHA')
@@ -976,6 +1000,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         return next
       })
       setPhotoDeleteTarget(null)
+      if (anuncioEstaPublicamenteIndexavel(ad.status)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'ATUALIZACAO',
+          previous: indexNowContext(ad),
+          current: indexNowContext(ad),
+          changeFingerprint: response.requestId,
+        }))
+      }
       void Promise.allSettled([
         revalidarCacheCatalogoPublico(),
         load(),
@@ -996,8 +1028,13 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     try {
       if (intent.kind === 'OPEN_REVIEW') await submitAdminReview(ad.id, reason)
       else if (intent.kind === 'APPROVE_AD') {
-        await approveAdminAd(ad.id)
+        const response = await approveAdminAd(ad.id)
         await revalidarCacheCatalogoPublico()
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'PUBLICACAO',
+          current: indexNowContext(ad),
+          changeFingerprint: response.requestId,
+        }))
         setDecisionOutcome('APPROVED')
       } else if (intent.kind === 'REPROVE_AD') {
         let reviewId = reviewOpen ? ad.revisaoAberta?.id : null
@@ -1010,12 +1047,28 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           reviewId = refreshedAd.revisaoAberta?.id
         }
         if (!reviewId) throw new Error('A revisão aberta não foi retornada após o envio para análise.')
-        await decideAdminReview(reviewId, 'REPROVAR', reason)
+        const response = await decideAdminReview(reviewId, 'REPROVAR', reason)
+        if (anuncioEstaPublicamenteIndexavel(ad.status)) {
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+            eventType: 'RETIRADA',
+            previous: indexNowContext(ad),
+            changeFingerprint: response.requestId,
+          }))
+        }
         setDecisionOutcome('REPROVED')
       } else if (intent.kind === 'REVIEW') {
         if (!ad.revisaoAberta?.id) throw new Error('Não existe revisão aberta para este anúncio.')
-        await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
-        if (intent.action === 'APROVAR') await revalidarCacheCatalogoPublico()
+        const response = await decideAdminReview(ad.revisaoAberta.id, intent.action, reason)
+        if (intent.action === 'APROVAR') {
+          await revalidarCacheCatalogoPublico()
+          const updated = await getAdminAd(ad.id)
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+            eventType: anuncioEstaPublicamenteIndexavel(ad.status) ? 'ATUALIZACAO' : 'PUBLICACAO',
+            previous: anuncioEstaPublicamenteIndexavel(ad.status) ? indexNowContext(ad) : null,
+            current: indexNowContext(updated),
+            changeFingerprint: response.requestId,
+          }))
+        }
         setDecisionOutcome(intent.action === 'APROVAR' ? 'APPROVED' : intent.action === 'REPROVAR' ? 'REPROVED' : 'OTHER')
       } else if (intent.kind === 'MEDIA') {
         const motivo = intent.action === 'REPROVAR' ? reason : undefined
@@ -1033,12 +1086,28 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           observacao,
         )
         applyConfirmedMediaResponse(intent.media.id, response)
+        if (anuncioEstaPublicamenteIndexavel(ad.status)) {
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+            eventType: 'ATUALIZACAO',
+            previous: indexNowContext(ad),
+            current: indexNowContext(ad),
+            changeFingerprint: response.requestId,
+          }))
+        }
         setIntent(null)
         void load()
         return
       } else {
         const response = await reclassifyAdminMedia(intent.media.id, intent.visibility, reason)
         applyConfirmedMediaResponse(intent.media.id, response)
+        if (anuncioEstaPublicamenteIndexavel(ad.status)) {
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+            eventType: 'ATUALIZACAO',
+            previous: indexNowContext(ad),
+            current: indexNowContext(ad),
+            changeFingerprint: response.requestId,
+          }))
+        }
         setIntent(null)
         void load()
         return
@@ -1101,23 +1170,68 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     setLegalBusy(true)
     setLegalActionError(null)
     try {
-      if (legalIntent.kind === 'REACTIVATE') await reactivateAdminAd(ad.id)
+      if (legalIntent.kind === 'REACTIVATE') {
+        const response = await reactivateAdminAd(ad.id)
+        if (anuncioEstaPublicamenteIndexavel(response.statusAnuncio)) {
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+            eventType: 'PUBLICACAO',
+            current: indexNowContext(ad),
+            changeFingerprint: response.executadoEm,
+          }))
+        }
+      }
       else if (legalIntent.kind === 'BLOCK_AD') {
         if (!category) return
-        await blockAdminAd(ad.id, {
+        const response = await blockAdminAd(ad.id, {
           categoria: category,
           motivo: reason.trim(),
           observacaoInterna: internalNote.trim() || null,
         })
+        if (anuncioEstaPublicamenteIndexavel(ad.status)) {
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+            eventType: 'RETIRADA',
+            previous: indexNowContext(ad),
+            changeFingerprint: response.executadoEm,
+          }))
+        }
       } else if (legalIntent.kind === 'BLOCK_USER') {
         if (!category) return
-        await blockAdminAdAndUser(ad.id, {
+        const publicAdsPromise = ad.anunciante?.id
+          ? getAdminUser(ad.anunciante.id).then((user) => Promise.allSettled(
+              user.anuncios
+                .filter((anuncio) => anuncio.status === 'PUBLICADO')
+                .map((anuncio) => getAdminAd(anuncio.id))
+            )).then((results) => results.flatMap((result) => result.status === 'fulfilled'
+              ? [indexNowContext(result.value)]
+              : []
+            )).catch(() => anuncioEstaPublicamenteIndexavel(ad.status) ? [indexNowContext(ad)] : [])
+          : Promise.resolve(anuncioEstaPublicamenteIndexavel(ad.status) ? [indexNowContext(ad)] : [])
+        const response = await blockAdminAdAndUser(ad.id, {
           categoria: category,
           motivo: reason.trim(),
           observacaoInterna: internalNote.trim() || null,
         })
-      } else if (legalIntent.kind === 'UNBLOCK_AD') await unblockAdminAd(ad.id, reason)
-      else await unblockAdminUser(ad.id, reason)
+        void publicAdsPromise.then((previous) => {
+          if (previous.length > 0) {
+            void enviarIndexNowNoCliente(montarEventoIndexNowAnuncios({
+              eventType: 'RETIRADA',
+              previous,
+              changeFingerprint: response.executadoEm,
+            }))
+          }
+        }).catch(() => {
+          // O bloqueio ja foi concluido; a notificacao permanece best-effort.
+        })
+      } else if (legalIntent.kind === 'UNBLOCK_AD') {
+        const response = await unblockAdminAd(ad.id, reason)
+        if (anuncioEstaPublicamenteIndexavel(response.statusAnuncio)) {
+          void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+            eventType: 'PUBLICACAO',
+            current: indexNowContext(ad),
+            changeFingerprint: response.executadoEm,
+          }))
+        }
+      } else await unblockAdminUser(ad.id, reason)
       setLegalIntent(null)
       await load()
     } catch (reasonError) {
@@ -1135,7 +1249,14 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     setRemovalBusy(true)
     setRemovalActionError(null)
     try {
-      await removeAdminAd(ad.id, reason.trim())
+      const response = await removeAdminAd(ad.id, reason.trim())
+      if (anuncioEstaPublicamenteIndexavel(ad.status)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'RETIRADA',
+          previous: indexNowContext(ad),
+          changeFingerprint: response.executadoEm,
+        }))
+      }
       setRemovalOpen(false)
       await load()
     } catch (reasonError) {

@@ -36,7 +36,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { revalidarCacheCatalogoPublico } from '@/app/(painel-admin)/admin/anuncios/actions'
 import FotosAnuncioSection from '@/app/(painel-admin)/admin/components/fotos-anuncio-section'
 import { useAuth } from '@/context/AuthContext'
-import { enviarIndexNowNoCliente, montarUrlsIndexNowAnuncio } from '@/lib/seo/indexnow-client'
+import {
+  anuncioEstaPublicamenteIndexavel,
+  enviarIndexNowNoCliente,
+  montarEventoIndexNowAnuncio,
+} from '@/lib/seo/indexnow-client'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
 import { normalizarCategoria } from '@/utils/normalizer'
 import { formatCPF } from '@/utils/formatter'
@@ -426,11 +430,17 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: string | number })
       toast.success('Decisão registrada (aprovação).')
       notifyModerationDataUpdated()
       void enviarIndexNowNoCliente(
-        montarUrlsIndexNowAnuncio({
-          slug: payload?.slug as string | undefined,
-          estadoUf: (payload?.estadoUf as string | undefined) ?? anuncio?.estadoUf ?? undefined,
-          cidadeNome: (payload?.cidadeNome as string | undefined) ?? anuncio?.cidadeNome ?? undefined,
-          bairroNome: (payload?.bairroNome as string | undefined) ?? anuncio?.bairroNome ?? undefined,
+        montarEventoIndexNowAnuncio({
+          eventType: 'PUBLICACAO',
+          current: {
+            slug: (payload?.slug as string | undefined) ?? anuncio?.slug,
+            estadoUf: (payload?.estadoUf as string | undefined) ?? anuncio?.estadoUf,
+            cidadeNome: (payload?.cidadeNome as string | undefined) ?? anuncio?.cidadeNome,
+            bairroNome: (payload?.bairroNome as string | undefined) ?? anuncio?.bairroNome,
+          },
+          changeFingerprint: (payload?.requestId as string | undefined)
+            ?? (payload?.decididoEm as string | undefined)
+            ?? String(anuncioId),
         })
       )
       await load()
@@ -473,6 +483,20 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: string | number })
       }
       toast.success('Reprovação registrada.')
       notifyModerationDataUpdated()
+      if (anuncioEstaPublicamenteIndexavel(anuncio?.status)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'RETIRADA',
+          previous: {
+            slug: anuncio?.slug,
+            estadoUf: anuncio?.estadoUf,
+            cidadeNome: anuncio?.cidadeNome,
+            bairroNome: anuncio?.bairroNome,
+          },
+          changeFingerprint: (payload?.requestId as string | undefined)
+            ?? (payload?.decididoEm as string | undefined)
+            ?? String(anuncioId),
+        }))
+      }
       setRejectOpen(false)
       setRejectMotivo('')
       setAnuncio((prev) => {
@@ -518,6 +542,22 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: string | number })
       const payload = await alterarStatusStaffApi(anuncioId, next)
       toast.success(next === 'PAUSADO' ? 'Pausado.' : 'Ativado.')
       notifyModerationDataUpdated()
+      void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+        eventType: next === 'PAUSADO' ? 'RETIRADA' : 'PUBLICACAO',
+        previous: next === 'PAUSADO' ? {
+          slug: anuncio.slug,
+          estadoUf: anuncio.estadoUf,
+          cidadeNome: anuncio.cidadeNome,
+          bairroNome: anuncio.bairroNome,
+        } : null,
+        current: next === 'ATIVO' ? {
+          slug: anuncio.slug,
+          estadoUf: anuncio.estadoUf,
+          cidadeNome: anuncio.cidadeNome,
+          bairroNome: anuncio.bairroNome,
+        } : null,
+        changeFingerprint: (payload?.requestId as string | undefined) ?? `${anuncioId}:${next}`,
+      }))
       setAnuncio((prev) => {
         if (!prev) return prev
         const merged = { ...mergeStaffDetailFromPublicAnuncioPayload(prev, payload), status: next }
@@ -544,6 +584,18 @@ export function ModeracaoV2Detail({ anuncioId }: { anuncioId: string | number })
       await removerAnuncioLogicamenteStaffApi(anuncioId, m)
       toast.success('Anúncio removido logicamente (dados preservados).')
       notifyModerationDataUpdated()
+      if (anuncioEstaPublicamenteIndexavel(anuncio?.status)) {
+        void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
+          eventType: 'RETIRADA',
+          previous: {
+            slug: anuncio?.slug,
+            estadoUf: anuncio?.estadoUf,
+            cidadeNome: anuncio?.cidadeNome,
+            bairroNome: anuncio?.bairroNome,
+          },
+          changeFingerprint: `${anuncioId}:removido`,
+        }))
+      }
       setRemoveOpen(false)
       setRemoveMotivo('')
       setAnuncio((prev) => (prev ? clearPendingRevisionState({ ...prev, removidoLogicamente: true }) : prev))
