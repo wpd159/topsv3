@@ -35,7 +35,6 @@ import {
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
-export const dynamic = "force-dynamic"
 
 interface PageProps {
   params: Promise<{

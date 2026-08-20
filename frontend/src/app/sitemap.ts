@@ -13,7 +13,7 @@ import {
   resolveSearchIndexingPolicy,
 } from "@/lib/seo/search-indexing-policy"
 
-export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 function parseDate(value: unknown): Date | undefined {
   if (typeof value !== "string" || !value) return undefined

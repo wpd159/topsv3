@@ -4,7 +4,7 @@ import { SiteContentProvider } from '@/components/site-content/site-content-prov
 import { WhatsAppSafetyProvider } from '@/components/site/whatsapp-safety-provider'
 import { resolveAllPublicSiteContent } from '@/lib/site-content-server'
 
-export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function PublicRoutesLayout({ children }: { children: React.ReactNode }) {
   const siteContent = await resolveAllPublicSiteContent()

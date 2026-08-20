@@ -20,6 +20,7 @@ function rejectText(source, forbidden, label) {
 }
 
 const publicPage = read('src/app/(public-routes)/faq/page.tsx')
+const publicLayout = read('src/app/(public-routes)/layout.tsx')
 const homePage = read('src/app/(public-routes)/page.tsx')
 const footer = read('src/components/layout/footer.tsx')
 const adminPage = read('src/app/(painel-admin)/admin/faqs/page.tsx')
@@ -27,7 +28,10 @@ const publicApi = read('src/lib/faq-public-api.ts')
 const adminApi = read('src/lib/admin-faq-api.ts')
 
 rejectText(publicPage, "'use client'", 'FAQ publica deve ser SSR')
-requireText(publicPage, "export const dynamic = 'force-dynamic'", 'FAQ publica dinamica')
+rejectText(publicPage, "export const dynamic = 'force-dynamic'", 'FAQ nao deve forcar no-store')
+requireText(publicLayout, 'export const revalidate = 0', 'layout publico renderizado por requisicao')
+rejectText(publicLayout, 'export const dynamic', 'layout publico nao deve forcar no-store')
+rejectText(publicLayout, 'export const fetchCache', 'layout publico nao deve forcar fetch cache')
 requireText(publicPage, '<details', 'conteudo legivel sem JavaScript')
 requireText(publicPage, "'@type': 'FAQPage'", 'JSON-LD FAQPage')
 requireText(publicPage, 'visiveis.map', 'JSON-LD corresponde ao conteudo visivel')

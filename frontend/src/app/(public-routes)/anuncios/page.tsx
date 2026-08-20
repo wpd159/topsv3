@@ -13,7 +13,6 @@ import {
   type PublicCategoryList,
 } from "@/lib/public-catalog-server-api"
 
-export const dynamic = "force-dynamic"
 
 type AnunciosSearchParams = PublicListingSearchParams & {
   page?: string

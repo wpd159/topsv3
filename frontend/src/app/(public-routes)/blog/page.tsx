@@ -5,7 +5,6 @@ import { fetchPublicBlogCategorias, fetchPublicBlogPosts } from "@/lib/blog-api"
 import { buildPublicUrl } from "@/lib/seo/public-url"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 
-export const dynamic = "force-dynamic"
 
 const BLOG_DESCRIPTION = "Conteúdo institucional, guias e novidades do Tops do Job."
 

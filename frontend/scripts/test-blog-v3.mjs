@@ -14,6 +14,7 @@ const api = source('lib/blog-api.ts')
 const adminApi = source('lib/admin-blog-api.ts')
 const adminList = source('app/(painel-admin)/admin/blog/page.tsx')
 const form = source('app/(painel-admin)/admin/blog/components/blog-post-form.tsx')
+const publicLayout = source('app/(public-routes)/layout.tsx')
 const publicList = source('app/(public-routes)/blog/page.tsx')
 const publicDetail = source('app/(public-routes)/blog/[slug]/page.tsx')
 const detailView = source('app/(public-routes)/blog/[slug]/blog-post-page-client.tsx')
@@ -24,6 +25,7 @@ const combined = [
   adminApi,
   adminList,
   form,
+  publicLayout,
   publicList,
   publicDetail,
   detailView,
@@ -43,7 +45,9 @@ assert.match(form, /Salvar rascunho/)
 assert.match(form, /Post publicado com sucesso/)
 assert.match(form, /SafeBlogPostBody/)
 assert.match(publicList, /await Promise\.all/)
-assert.match(publicList, /export const dynamic = "force-dynamic"/)
+assert.doesNotMatch(publicList, /export const dynamic = "force-dynamic"/)
+assert.match(publicLayout, /export const revalidate = 0/)
+assert.doesNotMatch(publicLayout, /export const (?:dynamic|fetchCache)/)
 assert.match(publicList, /<h1/)
 assert.match(publicDetail, /"@type": "BlogPosting"/)
 assert.match(publicDetail, /datePublished/)

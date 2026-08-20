@@ -56,7 +56,6 @@ jobs:
         env:
           NEXT_PUBLIC_SITE_URL: https://v3.esle.cloud
           NEXT_PUBLIC_API_URL: https://v3.esle.cloud/api/public
-          INTERNAL_API_URL: http://backend:8080/api/public
           PUBLIC_API_TIMEOUT_MS: "5000"
           NEXT_PUBLIC_ANALYTICS_ENABLED: "false"
           NEXT_PUBLIC_FORCE_HTTPS: "true"

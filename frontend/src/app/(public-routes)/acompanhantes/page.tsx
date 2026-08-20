@@ -20,7 +20,6 @@ import {
   buildAcompanhantesNationalStructuredData,
 } from "@/lib/seo/acompanhantes-national-seo"
 
-export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
   title: ACOMPANHANTES_NATIONAL_TITLE,

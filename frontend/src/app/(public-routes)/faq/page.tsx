@@ -5,7 +5,6 @@ import { listarFaqsPublicadas, type FaqPublica } from '@/lib/faq-public-api'
 import { serializeJsonLd } from '@/lib/seo/json-ld'
 import { buildPublicUrl } from '@/lib/seo/public-url'
 
-export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'FAQ - Perguntas frequentes | Tops do Job',

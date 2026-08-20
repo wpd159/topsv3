@@ -67,6 +67,51 @@ function loadServerApi({ fetchImpl, environment, logs = [] }) {
   return module.exports
 }
 
+function loadServerCatalog(requests) {
+  const { outputText } = ts.transpileModule(source('src/lib/public-catalog-server-api.ts'), {
+    compilerOptions: {
+      esModuleInterop: true,
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+    },
+  })
+  const module = { exports: {} }
+  const identity = (payload) => payload
+  const requireModule = (specifier) => {
+    if (specifier === 'server-only') return {}
+    if (specifier === '@/lib/public-catalog-api') {
+      return {
+        PUBLIC_CATALOG_CACHE_TAG: 'public-catalog',
+        PUBLIC_HOME_CATEGORIES_CACHE_TAG: 'public-home-categories',
+        isPublicCatalogNotFound: () => false,
+        parsePublicCatalogCityAggregate: identity,
+        parsePublicCatalogDetail: identity,
+        parsePublicCatalogDiscovery: identity,
+        parsePublicCatalogList: identity,
+        parsePublicCategoryList: identity,
+        parsePublicHomeCategories: identity,
+        parsePublicSitemapEntries: identity,
+      }
+    }
+    if (specifier === '@/lib/public-server-api') {
+      return {
+        publicServerApiJson: async (path, options) => {
+          requests.push({ path, options })
+          return { path }
+        },
+      }
+    }
+    throw new Error(`Import inesperado no catalogo server-side: ${specifier}`)
+  }
+
+  new Function('module', 'exports', 'require', outputText)(
+    module,
+    module.exports,
+    requireModule,
+  )
+  return module.exports
+}
+
 function response(status, payload = { ok: true }) {
   return {
     ok: status >= 200 && status < 300,
@@ -101,13 +146,23 @@ await test('configuracao server-only resolve a API interna sem fallback em produ
     () => api.resolveInternalPublicApiBase({ NODE_ENV: 'production' }),
     (error) => error.reason === 'CONFIGURATION',
   )
-  assert.throws(
-    () => loadServerApi({
-      fetchImpl: async () => response(200),
-      environment: { NODE_ENV: 'production' },
+  let missingConfigurationFetches = 0
+  const missingConfigurationApi = loadServerApi({
+    fetchImpl: async () => {
+      missingConfigurationFetches += 1
+      return response(200)
+    },
+    environment: { NODE_ENV: 'production' },
+  })
+  await assert.rejects(
+    missingConfigurationApi.publicServerApiJson('/localidades', {
+      endpointFamily: 'test.missing-configuration',
+      cache: { mode: 'no-store' },
+      validate: (payload) => payload,
     }),
-    (error) => error.reason === 'CONFIGURATION',
+    (error) => error.reason === 'CONFIGURATION' && error.retryable === false,
   )
+  assert.equal(missingConfigurationFetches, 0)
   assert.throws(
     () => api.resolveInternalPublicApiBase({
       NODE_ENV: 'production',
@@ -228,6 +283,56 @@ await test('cache compartilha somente sucesso validado e nunca armazena 5xx', as
   await assert.rejects(failureApi.publicServerApiJson('/localidades/catalogo', options))
   assert.equal(await failureApi.publicServerApiJson('/localidades/catalogo', options), 9)
   assert.equal(failureCalls, 2)
+
+  let noStoreCalls = 0
+  const noStoreApi = loadServerApi({
+    environment: productionEnvironment,
+    fetchImpl: async () => {
+      noStoreCalls += 1
+      return response(200, { ordemSeed: `seed-${noStoreCalls}` })
+    },
+  })
+  const noStoreOptions = {
+    endpointFamily: 'test.random-list',
+    cache: { mode: 'no-store' },
+    validate: (payload) => payload,
+  }
+  assert.deepEqual(
+    await noStoreApi.publicServerApiJson('/anuncios?pagina=0', noStoreOptions),
+    { ordemSeed: 'seed-1' },
+  )
+  assert.deepEqual(
+    await noStoreApi.publicServerApiJson('/anuncios?pagina=0', noStoreOptions),
+    { ordemSeed: 'seed-2' },
+  )
+  assert.equal(noStoreCalls, 2)
+})
+
+await test('catalogo aplica no-store nas listagens e TTL somente aos dados estaveis', async () => {
+  const requests = []
+  const catalog = loadServerCatalog(requests)
+
+  await catalog.listarPublicosPorEstado('GO', 0, 20, 'seed-jornada')
+  await catalog.listarPublicosPorCidade('GO', 'goiania', 0, 20, 'seed-jornada')
+  await catalog.listarPublicosPorBairro('GO', 'goiania', 'centro', 0, 20, 'seed-jornada')
+  await catalog.listarAnunciosPublicos('TODOS', '', 0, 16)
+  await catalog.obterAnuncioPublicoPorSlug('perfil-publico')
+  await catalog.descobrirLocalidadesPublicas()
+  await catalog.listarCategoriasHomePublicas()
+  await catalog.obterAgregadoPublicoCidade('GO', 'goiania')
+  await catalog.descobrirAnunciosIndexaveisSitemap()
+
+  const random = requests.slice(0, 5)
+  assert.equal(random.length, 5)
+  assert.ok(random.every(({ options }) => options.cache.mode === 'no-store'))
+  assert.ok(random.slice(0, 3).every(({ path }) => path.includes('ordemSeed=seed-jornada')))
+
+  const stable = requests.slice(5)
+  assert.deepEqual(
+    stable.map(({ options }) => options.cache.seconds),
+    [3600, 3600, 300, 300],
+  )
+  assert.ok(stable.every(({ path }) => !path.includes('ordemSeed')))
 })
 
 await test('seed, autenticacao e URL assinada sao recusadas pelo cache compartilhado', async () => {
@@ -295,28 +400,37 @@ await test('fronteiras server/client, caches e deduplicacao estao explicitas', a
   assert.match(siteServer, /PUBLIC_SITE_CONTENT_REVALIDATE_SECONDS/)
   assert.doesNotMatch(sitemap, /NEXT_PUBLIC_API_URL|fetch\(/)
 
-  for (const path of [
-    'src/app/(public-routes)/layout.tsx',
-    'src/app/(private-routes)/layout.tsx',
-  ]) {
-    const layout = source(path)
-    assert.match(layout, /export const dynamic = ['"]force-dynamic['"]/)
-    assert.match(layout, /site-content-server/)
-  }
+  const publicLayout = source('src/app/(public-routes)/layout.tsx')
+  const privateLayout = source('src/app/(private-routes)/layout.tsx')
+  assert.match(publicLayout, /export const revalidate = 0/)
+  assert.doesNotMatch(publicLayout, /export const (?:dynamic|fetchCache)/)
+  assert.match(publicLayout, /site-content-server/)
+  assert.match(privateLayout, /export const dynamic = ['"]force-dynamic['"]/)
+  assert.match(privateLayout, /site-content-server/)
 
-  for (const path of [
+  const publicPages = [
+    'src/app/(public-routes)/page.tsx',
     'src/app/(public-routes)/acompanhantes/page.tsx',
     'src/app/(public-routes)/acompanhantes/[estado]/page.tsx',
     'src/app/(public-routes)/acompanhantes/[estado]/[cidade]/page.tsx',
     'src/app/(public-routes)/acompanhantes/[estado]/[cidade]/[bairro]/page.tsx',
     'src/app/(public-routes)/anuncios/page.tsx',
     'src/app/(public-routes)/anuncios/[slug]/page.tsx',
-  ]) {
+    'src/app/(public-routes)/blog/page.tsx',
+    'src/app/(public-routes)/faq/page.tsx',
+  ]
+  for (const path of publicPages) {
     const page = source(path)
-    assert.match(page, /export const dynamic = ["']force-dynamic["']/)
-    assert.doesNotMatch(page, /export const revalidate/)
-    assert.match(page, /public-catalog-server-api/)
+    assert.doesNotMatch(page, /export const dynamic = ["']force-dynamic["']/)
+    assert.doesNotMatch(page, /export const fetchCache = ["']force-no-store["']/)
   }
+
+  for (const path of publicPages.slice(1, 7)) {
+    assert.match(source(path), /public-catalog-server-api/)
+  }
+
+  assert.match(sitemap, /export const revalidate = 0/)
+  assert.doesNotMatch(sitemap, /export const dynamic|export const fetchCache/)
 
   for (const path of [
     'src/app/(public-routes)/acompanhantes/[estado]/page.tsx',
@@ -351,6 +465,9 @@ await test('configuracao versionada e gates preservam as fases anteriores', asyn
   ]) {
     const config = source(path)
     assert.match(config, /INTERNAL_API_URL:\s*http:\/\/backend:8080\/api\/public/)
+    assert.match(config, /ENV INTERNAL_API_URL=http:\/\/backend:8080\/api\/public/)
+    assert.doesNotMatch(config, /ARG INTERNAL_API_URL/)
+    assert.doesNotMatch(config, /ENV INTERNAL_API_URL=\$\{?INTERNAL_API_URL\}?/)
     assert.match(config, /PUBLIC_API_TIMEOUT_MS:\s*["']?\$\{PUBLIC_API_TIMEOUT_MS:-5000\}["']?/)
   }
 
@@ -359,10 +476,10 @@ await test('configuracao versionada e gates preservam as fases anteriores', asyn
     '../.github/workflows/deploy-preprod.yml',
   ]) {
     const workflow = source(path)
-    assert.match(workflow, /INTERNAL_API_URL:\s*http:\/\/backend:8080\/api\/public/)
+    assert.doesNotMatch(workflow, /INTERNAL_API_URL:/)
     assert.match(workflow, /PUBLIC_API_TIMEOUT_MS:\s*["']?5000["']?/)
   }
 })
 
-assert.equal(executed, 8)
+assert.equal(executed, 9)
 console.log(`PUBLIC_DATA_ACCESS_RESULT=OK tests=${executed}`)

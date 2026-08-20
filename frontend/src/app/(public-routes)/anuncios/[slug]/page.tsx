@@ -17,7 +17,6 @@ import {
   type MidiaPublica,
 } from "@/lib/media/public-media"
 
-export const dynamic = "force-dynamic"
 
 function isComplianceAssetUrl(url?: string | null) {
   if (!url) return false

@@ -157,10 +157,6 @@ export function resolvePublicApiTimeoutMs(environment: Environment = process.env
   return timeoutMs
 }
 
-const productionInternalApiBase = process.env.NODE_ENV === 'production'
-  ? resolveInternalPublicApiBase()
-  : null
-
 function normalizedPublicPath(path: string) {
   if (!path.startsWith('/') || path.startsWith('//')) {
     throw configurationError('O caminho publico server-side deve iniciar com uma unica barra.')
@@ -298,7 +294,7 @@ async function executePublicServerJson<T>(
   }, timeoutMs)
 
   try {
-    const response = await fetch(`${productionInternalApiBase ?? resolveInternalPublicApiBase()}${path}`, {
+    const response = await fetch(`${resolveInternalPublicApiBase()}${path}`, {
       method: 'GET',
       headers: {
         Accept: 'application/json',
