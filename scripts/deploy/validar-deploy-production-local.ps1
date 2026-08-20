@@ -125,7 +125,10 @@ Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
   ($workflow.Contains("} | ssh")) -and
   ($workflow.Contains("--network none")) -and
   ($workflow.Contains("--pull never")) -and
-  ($workflow.Contains("awk '!/^INDEXNOW_KEY=/'")) -and
+  ($workflow.Contains('test -n "${key}"')) -and
+  ($workflow.Contains('case "${key}" in')) -and
+  ($workflow.Contains('awk "!/^INDEXNOW_KEY=/"')) -and
+  (-not $workflow.Contains("''|*[!A-Za-z0-9-]*")) -and
   (-not $workflow.Contains('test -w /opt/topsv3/secrets/production.env'))
 )
 Add-Check "workflow valida IndexNow no runtime sem imprimir o valor" (

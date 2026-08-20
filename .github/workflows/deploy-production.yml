@@ -202,19 +202,20 @@ jobs:
           set -eu
           env_file=/secrets/production.env
           IFS= read -r key
+          test -n "${key}"
           case "${key}" in
-            ''|*[!A-Za-z0-9-]*) exit 2 ;;
+            *[!A-Za-z0-9-]*) exit 2 ;;
           esac
           key_length="${#key}"
           test "${key_length}" -ge 8
           test "${key_length}" -le 128
-          owner="$(stat -c '%u:%g' "${env_file}")"
-          mode="$(stat -c '%a' "${env_file}")"
+          owner="$(stat -c "%u:%g" "${env_file}")"
+          mode="$(stat -c "%a" "${env_file}")"
           temporary="$(mktemp "${env_file}.indexnow.XXXXXX")"
           cleanup() { rm -f -- "${temporary}"; }
           trap cleanup EXIT
-          awk '!/^INDEXNOW_KEY=/' "${env_file}" > "${temporary}"
-          printf 'INDEXNOW_KEY=%s\n' "${key}" >> "${temporary}"
+          awk "!/^INDEXNOW_KEY=/" "${env_file}" > "${temporary}"
+          printf "INDEXNOW_KEY=%s\n" "${key}" >> "${temporary}"
           chown "${owner}" "${temporary}"
           chmod "${mode}" "${temporary}"
           mv -f -- "${temporary}" "${env_file}"
