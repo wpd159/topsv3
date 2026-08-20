@@ -5,6 +5,7 @@ import {
   ProgrammaticBlogAmbiguousError,
 } from "@/lib/programmatic-blog-api"
 import ProgrammaticBlogPageClient from "./programmatic-blog-page-client"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { ContractState } from '@/components/feedback/contract-state'
@@ -151,16 +152,16 @@ export default async function ProgrammaticBlogCityPage({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbLd) }}
       />
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(webPageLd) }}
       />
       {faqLd ? (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqLd) }}
         />
       ) : null}
       <ProgrammaticBlogPageClient data={page} />

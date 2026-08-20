@@ -149,8 +149,9 @@ assert.ok(
   'visible FAQ answers must remain readable without JavaScript',
 )
 assert.ok(
-  nationalPageSource.includes('JSON.stringify(structuredData).replace(/</g, "\\\\u003c")'),
-  'JSON-LD must be serialized safely',
+  nationalPageSource.includes('__html: serializeJsonLd(structuredData)') &&
+    nationalPageSource.includes('serializeJsonLd'),
+  'JSON-LD must use the central safe serializer',
 )
 
 console.log('public SEO critical checks passed')

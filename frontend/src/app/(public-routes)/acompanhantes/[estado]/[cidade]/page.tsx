@@ -22,6 +22,7 @@ import {
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
@@ -300,20 +301,20 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbSchema) }}
       />
 
       {itemListSchema && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(itemListSchema) }}
         />
       )}
 
       {faqSchema && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqSchema) }}
         />
       )}
 

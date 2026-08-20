@@ -10,6 +10,7 @@ import { Toaster } from "sonner"
 import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provider"
 import { SiteContentProvider } from "@/components/site-content/site-content-provider"
 import { getUnavailableSiteContent, SITE_CONTENT_KEYS } from "@/lib/site-content"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 import { resolveSearchIndexingPolicy } from "@/lib/seo/search-indexing-policy"
 
@@ -64,7 +65,7 @@ export default function RootLayout({
         <meta charSet="utf-8" />
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(websiteSchema) }}
         />
       </head>
 

@@ -8,6 +8,7 @@ import {
   descobrirLocalidadesPublicas,
   listarAnunciosPublicos,
 } from "@/lib/public-catalog-api"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
@@ -263,7 +264,7 @@ export default async function AcompanhantesIndexPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
+          __html: serializeJsonLd(structuredData),
         }}
       />
     </main>

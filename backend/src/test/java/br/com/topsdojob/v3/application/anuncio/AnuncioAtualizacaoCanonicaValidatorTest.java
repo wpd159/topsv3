@@ -8,6 +8,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ServicoAnuncio;
 import java.math.BigDecimal;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -84,6 +86,39 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
                         assertThat(exception.getReason()).contains("HTML ou JavaScript"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Atendimento <script>alert('x')</script>",
+            "Atendimento seguro </script>",
+            "Atendimento <b>especial</b>",
+            "Atendimento javascript:alert('x')"
+    })
+    void rejeitaConteudoAtivoNoTituloComMensagemCanonica(String titulo) {
+        assertThatThrownBy(() -> validator.validar(request(
+                titulo,
+                "ACOMPANHANTE_FEMININA",
+                List.of("ORAL"),
+                false,
+                null), "+5562999999999"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                    assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(exception.getReason())
+                            .isEqualTo("titulo nao pode conter HTML ou JavaScript");
+                });
+    }
+
+    @Test
+    void aceitaTituloNormalComPontuacaoLegitima() {
+        var resultado = validator.validar(request(
+                "Atendimento & companhia (centro) - d'ela",
+                "ACOMPANHANTE_FEMININA",
+                List.of("ORAL"),
+                false,
+                null), "+5562999999999");
+
+        assertThat(resultado.titulo()).isEqualTo("Atendimento & companhia (centro) - d'ela");
+    }
+
     private MeuAnuncioAtualizacaoRequestDto request(
             String categoria,
             List<String> servicos,
@@ -96,8 +131,22 @@ class AnuncioAtualizacaoCanonicaValidatorTest {
             List<String> servicos,
             boolean exclusivamenteVirtual,
             String enderecoResumido) {
-        return new MeuAnuncioAtualizacaoRequestDto(
+        return request(
                 "Titulo valido para anuncio",
+                categoria,
+                servicos,
+                exclusivamenteVirtual,
+                enderecoResumido);
+    }
+
+    private MeuAnuncioAtualizacaoRequestDto request(
+            String titulo,
+            String categoria,
+            List<String> servicos,
+            boolean exclusivamenteVirtual,
+            String enderecoResumido) {
+        return new MeuAnuncioAtualizacaoRequestDto(
+                titulo,
                 "Descricao suficientemente longa para o anuncio",
                 categoria,
                 new BigDecimal("200.00"),

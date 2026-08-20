@@ -32,6 +32,9 @@ public class AnuncioAtualizacaoCanonicaValidator {
             throw badRequest("payload obrigatorio");
         }
         String titulo = textoObrigatorio(request.titulo(), "titulo", 10, TITULO_MAX);
+        if (contemConteudoAtivo(titulo)) {
+            throw badRequest("titulo nao pode conter HTML ou JavaScript");
+        }
         if (CONTATO_NO_TITULO.matcher(titulo).find()) {
             throw badRequest("titulo nao pode conter contato, rede social ou URL");
         }

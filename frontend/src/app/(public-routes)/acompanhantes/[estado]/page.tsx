@@ -10,6 +10,7 @@ import {
   isPublicCatalogNotFound,
   listarPublicosPorEstado,
 } from "@/lib/public-catalog-api"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
@@ -266,12 +267,12 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbSchema) }}
       />
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(itemListSchema) }}
       />
 
       {page > 0 && (

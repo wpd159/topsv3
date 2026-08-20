@@ -18,6 +18,7 @@ import {
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
 import { isBairroIndexavelLocal } from "@/lib/seo/local-indexing"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
@@ -300,19 +301,19 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbSchema) }}
       />
 
       {faqSchema && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqSchema) }}
         />
       )}
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(itemListSchema) }}
       />
 
       {page > 0 && (

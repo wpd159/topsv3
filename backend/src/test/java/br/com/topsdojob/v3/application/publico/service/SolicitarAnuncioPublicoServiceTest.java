@@ -39,6 +39,8 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -238,6 +240,31 @@ class SolicitarAnuncioPublicoServiceTest {
         payload.put("titulo", "Perfil instagram local");
 
         assertValidationCode(payload, "TITULO_CONTATO_OU_REDE_SOCIAL");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Atendimento <script>alert('x')</script>",
+            "Atendimento seguro </script>",
+            "Atendimento <b>especial</b>",
+            "Atendimento javascript:alert('x')"
+    })
+    void conteudoAtivoNoTituloRetornaErroEspecificoSemPersistir(String titulo) {
+        ObjectNode payload = validPayload();
+        payload.put("titulo", titulo);
+
+        assertThatThrownBy(() -> service.solicitar(payload, authentication))
+                .isInstanceOfSatisfying(SolicitarAnuncioValidationException.class, exception ->
+                        assertThat(exception.errors()).anySatisfy(error -> {
+                            assertThat(error.campo()).isEqualTo("titulo");
+                            assertThat(error.codigo()).isEqualTo("CONTEUDO_NAO_PERMITIDO");
+                            assertThat(error.mensagem())
+                                    .isEqualTo("titulo nao pode conter HTML ou JavaScript");
+                        }));
+        verify(anuncioRepository, never()).save(any());
+        verify(localizacaoRepository, never()).save(any());
+        verify(documentoBuscaRepository, never()).save(any());
+        verify(revisaoRepository, never()).save(any());
     }
 
     @Test

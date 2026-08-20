@@ -3,6 +3,7 @@ import Link from "next/link"
 import Hero from "@/components/layout/hero"
 import CategoriasSection from "@/components/layout/categoria-section"
 import { listarFaqsPublicadas, type FaqPublica } from "@/lib/faq-public-api"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
 import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
@@ -130,7 +131,7 @@ function HomeFaqSection({ faqs }: { faqs: FaqPublica[] }) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c"),
+          __html: serializeJsonLd(faqJsonLd),
         }}
       />
     </section>

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { ApiContractError } from "@/lib/api-contract"
 import { fetchPublicBlogPost } from "@/lib/blog-api"
 import { getPublicLogoUrl } from "@/lib/public-site-assets"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 import BlogPostPageClient from "./blog-post-page-client"
 
@@ -74,7 +75,7 @@ export default async function BlogPostPage({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
       />
       <BlogPostPageClient post={post} />
     </>

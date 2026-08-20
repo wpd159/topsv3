@@ -178,6 +178,30 @@ class MeuAnuncioAtualizacaoServiceTest {
     }
 
     @Test
+    void tituloComConteudoAtivoNaoAlteraAnuncio() {
+        AnuncioEntity anuncio = anuncio();
+        when(consultaService.anuncioDoUsuario("slug-preservado", authentication)).thenReturn(anuncio);
+
+        assertThatThrownBy(() -> service.atualizar(
+                "slug-preservado",
+                requestComTitulo("Atendimento <script>alert('x')</script>"),
+                authentication))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception -> {
+                    assertThat(exception.getStatusCode().value()).isEqualTo(400);
+                    assertThat(exception.getReason())
+                            .isEqualTo("titulo nao pode conter HTML ou JavaScript");
+                });
+
+        assertThat(anuncio.getTitulo()).isEqualTo("Titulo original");
+        assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
+        assertThat(anuncio.getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
+        verify(anuncioRepository, never()).saveAndFlush(any());
+        verify(localizacaoRepository, never()).save(any());
+        verify(documentoBuscaRepository, never()).save(any());
+        verify(revisaoRepository, never()).save(any());
+    }
+
+    @Test
     void preservaStatus401DaSessao() {
         when(consultaService.anuncioDoUsuario("slug-preservado", authentication))
                 .thenThrow(new ResponseStatusException(org.springframework.http.HttpStatus.UNAUTHORIZED));
@@ -315,6 +339,23 @@ class MeuAnuncioAtualizacaoServiceTest {
                 List.of("ANAL", "ORAL"),
                 false,
                 "https://example.invalid/conteudo");
+    }
+
+    private MeuAnuncioAtualizacaoRequestDto requestComTitulo(String titulo) {
+        MeuAnuncioAtualizacaoRequestDto request = requestValido();
+        return new MeuAnuncioAtualizacaoRequestDto(
+                titulo,
+                request.descricao(),
+                request.categoria(),
+                request.preco(),
+                request.uf(),
+                request.cidade(),
+                request.bairro(),
+                request.enderecoResumido(),
+                request.locaisAtendimento(),
+                request.servicos(),
+                request.atendimentoExclusivamenteVirtual(),
+                request.linkConteudo());
     }
 
     private MeuAnuncioAtualizacaoRequestDto requestSemBairro() {
