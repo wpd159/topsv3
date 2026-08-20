@@ -151,7 +151,6 @@ jobs:
           set -euo pipefail
           test "$(id -un)" = "topsdojob"
           test -r /opt/topsv3/secrets/production.env
-          test -w /opt/topsv3/secrets/production.env
           test -r /opt/topsv3/secrets/application-production.yml
           test -r /opt/topsv3/secrets/nginx-production-local.conf
           test -r /opt/topsv3/secrets/efi-webhook-allowlist.conf
@@ -161,6 +160,7 @@ jobs:
           test -w /opt/topsv3/production/releases
           command -v docker >/dev/null
           docker compose version >/dev/null
+          docker image inspect nginx:1.27-alpine >/dev/null
           docker inspect topsv3-production-postgres >/dev/null
           test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
           test "$(docker inspect topsv3-production-postgres --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "topsv3-production"
@@ -180,22 +180,49 @@ jobs:
           SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
           [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
-          printf '%s\n' "${INDEXNOW_KEY}" | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -c '\''
+          {
+            cat <<'REMOTE_HEAD'
           set -euo pipefail
-          env_file=/opt/topsv3/secrets/production.env
-          test -r "${env_file}"
-          test -w "${env_file}"
-          IFS= read -r indexnow_key
-          [[ "${indexnow_key}" =~ ^[A-Za-z0-9.-]{8,128}$ ]]
+          IFS= read -r indexnow_key <<'__INDEXNOW_VALUE__'
+          REMOTE_HEAD
+            printf '%s\n' "${INDEXNOW_KEY}"
+            cat <<'REMOTE_BODY'
+          __INDEXNOW_VALUE__
+          [[ "${indexnow_key}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
+          test -r /opt/topsv3/secrets/production.env
+          docker image inspect nginx:1.27-alpine >/dev/null
+          printf '%s\n' "${indexnow_key}" | docker run --rm -i --pull never \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --cap-add CHOWN \
+            --security-opt no-new-privileges:true \
+            --volume /opt/topsv3/secrets:/secrets:rw \
+            nginx:1.27-alpine sh -c '
+          set -eu
+          env_file=/secrets/production.env
+          IFS= read -r key
+          case "${key}" in
+            ''|*[!A-Za-z0-9-]*) exit 2 ;;
+          esac
+          key_length="${#key}"
+          test "${key_length}" -ge 8
+          test "${key_length}" -le 128
+          owner="$(stat -c '%u:%g' "${env_file}")"
+          mode="$(stat -c '%a' "${env_file}")"
           temporary="$(mktemp "${env_file}.indexnow.XXXXXX")"
           cleanup() { rm -f -- "${temporary}"; }
           trap cleanup EXIT
-          awk '\''!/^INDEXNOW_KEY=/'\'' "${env_file}" > "${temporary}"
-          printf '\''INDEXNOW_KEY=%s\n'\'' "${indexnow_key}" >> "${temporary}"
-          chmod --reference="${env_file}" "${temporary}"
+          awk '!/^INDEXNOW_KEY=/' "${env_file}" > "${temporary}"
+          printf 'INDEXNOW_KEY=%s\n' "${key}" >> "${temporary}"
+          chown "${owner}" "${temporary}"
+          chmod "${mode}" "${temporary}"
           mv -f -- "${temporary}" "${env_file}"
           trap - EXIT
-          '\'''
+          '
+          unset indexnow_key
+          REMOTE_BODY
+          } | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s'
 
       - name: Upload immutable release
         shell: bash

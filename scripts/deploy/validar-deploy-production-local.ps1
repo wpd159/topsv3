@@ -120,8 +120,13 @@ Add-Check "workflow valida GA4 habilitado no runtime" (
 )
 Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
   ($workflow.Contains("Synchronize IndexNow key in production runtime")) -and
-  ($workflow.Contains('printf ''%s\n'' "${INDEXNOW_KEY}" | ssh')) -and
-  ($workflow.Contains("awk '\''!/^INDEXNOW_KEY=/'\''"))
+  ($workflow.Contains("cat <<'REMOTE_HEAD'")) -and
+  ($workflow.Contains('printf ''%s\n'' "${INDEXNOW_KEY}"')) -and
+  ($workflow.Contains("} | ssh")) -and
+  ($workflow.Contains("--network none")) -and
+  ($workflow.Contains("--pull never")) -and
+  ($workflow.Contains("awk '!/^INDEXNOW_KEY=/'")) -and
+  (-not $workflow.Contains('test -w /opt/topsv3/secrets/production.env'))
 )
 Add-Check "workflow valida IndexNow no runtime sem imprimir o valor" (
   $workflow.Contains("grep -q '^INDEXNOW_KEY='")
