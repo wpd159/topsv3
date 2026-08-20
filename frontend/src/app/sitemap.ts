@@ -5,7 +5,6 @@ import {
   descobrirAnunciosIndexaveisSitemap,
   descobrirLocalidadesPublicas,
 } from "@/lib/public-catalog-api"
-import { isBairroIndexavelLocal, isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicPath, buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 import {
   isSafeSitemapUrl,
@@ -86,10 +85,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const descoberta = await descobrirLocalidadesPublicas()
 
   for (const estado of descoberta.estados) {
-    const cidadesIndexaveis = estado.cidades.filter((cidade) =>
-      isCidadeIndexavelLocal({ totalAnunciosAtivos: cidade.totalAnunciosAtivos })
+    if (!estado.indexacao.indexavel || !estado.indexacao.canonica) continue
+    const cidadesIndexaveis = estado.cidades.filter(
+      (cidade) => cidade.indexacao.indexavel && cidade.indexacao.canonica
     )
-    if (cidadesIndexaveis.length === 0) continue
 
     const estadoLastMod = parseDate(estado.ultimaAtualizacao)
     const estadoUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado.uf))
@@ -105,13 +104,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         dynamicCidadeRoutes.push({
           url: cidadeUrl,
           lastModified: cidadeLastMod,
-          priority: cidade.totalAnunciosAtivos >= 20 ? 0.88 : 0.82,
+          priority: 0.85,
         })
       }
       lastModAcompanhantesIndex = maxDate(lastModAcompanhantesIndex, cidadeLastMod)
 
       for (const bairro of cidade.bairros) {
-        if (!isBairroIndexavelLocal({ totalAnunciosAtivos: bairro.totalAnunciosAtivos })) continue
+        if (!bairro.indexacao.indexavel || !bairro.indexacao.canonica) continue
 
         const bairroLastMod = parseDate(bairro.ultimaAtualizacao)
         const bairroUrl = buildPublicUrl(

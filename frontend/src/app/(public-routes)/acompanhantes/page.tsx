@@ -53,14 +53,15 @@ export default async function AcompanhantesIndexPage() {
     descoberta,
     anunciosPublicados.paginacao,
   )
-  const cidadesIndexaveis = cidadesDaDescobertaPublica(descoberta)
-    .filter((cidade) => isCidadeIndexavelLocal(cidade))
+  const cidades = cidadesDaDescobertaPublica(descoberta)
     .sort(
       (a, b) =>
+        Number(isCidadeIndexavelLocal(b)) - Number(isCidadeIndexavelLocal(a)) ||
         (b.totalAnunciosAtivos ?? 0) - (a.totalAnunciosAtivos ?? 0) ||
         a.cidadeNome.localeCompare(b.cidadeNome, "pt-BR"),
     )
-  const estados = agruparCidadesPorEstado(cidadesIndexaveis)
+  const cidadesIndexaveis = cidades.filter(isCidadeIndexavelLocal)
+  const estados = agruparCidadesPorEstado(cidades)
   const cidadesPrincipais = cidadesIndexaveis.slice(0, 12)
   const structuredData = buildAcompanhantesNationalStructuredData(cidadesPrincipais)
 

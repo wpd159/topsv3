@@ -8,5 +8,6 @@ public record CidadeLocalidadePublicaDto(
         String slug,
         long totalAnunciosAtivos,
         OffsetDateTime ultimaAtualizacao,
+        IndexacaoLocalidadePublicaDto indexacao,
         List<BairroLocalidadePublicaDto> bairros) {
 }

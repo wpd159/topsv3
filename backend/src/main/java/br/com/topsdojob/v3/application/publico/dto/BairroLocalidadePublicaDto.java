@@ -6,5 +6,6 @@ public record BairroLocalidadePublicaDto(
         String nome,
         String slug,
         long totalAnunciosAtivos,
-        OffsetDateTime ultimaAtualizacao) {
+        OffsetDateTime ultimaAtualizacao,
+        IndexacaoLocalidadePublicaDto indexacao) {
 }

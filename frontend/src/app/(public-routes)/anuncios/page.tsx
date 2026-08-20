@@ -1,10 +1,15 @@
 import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 import AnunciosPageClient from "./anuncios-page-client"
 import { buildPublicUrl } from "@/lib/seo/public-url"
-import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
+import {
+  buildPublicListingIndexingDecision,
+  buildPublicRobotsMetadata,
+  type PublicListingSearchParams,
+} from "@/lib/seo/search-indexing-policy"
 import { listarAnunciosPublicos, type PublicCategoryList } from "@/lib/public-catalog-api"
 
-type AnunciosSearchParams = {
+type AnunciosSearchParams = PublicListingSearchParams & {
   page?: string
   busca?: string
   categoria?: string
@@ -14,10 +19,17 @@ type AnunciosSearchParams = {
   bairroId?: string
 }
 
-function parsePositivePage(value?: string) {
+function searchValue(value: string | string[] | undefined) {
+  return typeof value === "string" ? value : ""
+}
+
+function parsePositivePage(value?: string | string[]) {
+  if (Array.isArray(value)) return null
+  if (value === undefined) return 1
+  if (value === "") return null
+  if (!/^[1-9]\d*$/.test(value)) return null
   const parsed = Number(value)
-  if (!Number.isFinite(parsed) || parsed < 1) return 1
-  return Math.floor(parsed)
+  return Number.isSafeInteger(parsed) ? parsed : null
 }
 
 export async function generateMetadata({
@@ -27,21 +39,21 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const searchParams = await searchParamsPromise
   const page = parsePositivePage(searchParams.page)
-  const busca = (searchParams.busca || "").trim()
-  const categoria = (searchParams.categoria || "").trim()
-  const anunciante = (searchParams.anunciante || "").trim()
+  if (page === null) {
+    return {
+      title: "Página inválida | Tops do Job",
+      robots: buildPublicRobotsMetadata(false),
+    }
+  }
+  const busca = searchValue(searchParams.busca).trim()
+  const categoria = searchValue(searchParams.categoria).trim()
+  const anunciante = searchValue(searchParams.anunciante).trim()
   const possuiFiltrosLocais = Boolean(
     searchParams.estadoId || searchParams.cidadeId || searchParams.bairroId
   )
   const url = new URL(buildPublicUrl("/anuncios"))
-
-  if (page > 1) url.searchParams.set("page", String(page))
-  if (busca) url.searchParams.set("busca", busca)
-  if (categoria && categoria !== "TODOS") url.searchParams.set("categoria", categoria)
-  if (anunciante) url.searchParams.set("anunciante", anunciante)
-  if (searchParams.estadoId) url.searchParams.set("estadoId", searchParams.estadoId)
-  if (searchParams.cidadeId) url.searchParams.set("cidadeId", searchParams.cidadeId)
-  if (searchParams.bairroId) url.searchParams.set("bairroId", searchParams.bairroId)
+  const indexingDecision = buildPublicListingIndexingDecision(searchParams, page)
+  url.search = indexingDecision.canonicalQuery
 
   const contextoBusca = busca
     ? `Resultados para ${busca}`
@@ -62,9 +74,6 @@ export async function generateMetadata({
       : "Explore anúncios de acompanhantes e encontre perfis publicados em diferentes cidades do Brasil."
 
   const description = page > 1 ? `${descriptionBase} Página ${page}.` : descriptionBase
-  const indexavel =
-    !busca && !anunciante && !possuiFiltrosLocais && (!categoria || categoria === "TODOS")
-
   return {
     title,
     description,
@@ -79,7 +88,7 @@ export async function generateMetadata({
       siteName: "Tops do Job",
       locale: "pt_BR",
     },
-    robots: buildPublicRobotsMetadata(indexavel, true),
+    robots: buildPublicRobotsMetadata(indexingDecision.indexable, true),
   }
 }
 
@@ -90,9 +99,10 @@ export default async function AnunciosPage({
 }) {
   const searchParams = await searchParamsPromise
   const currentPage = parsePositivePage(searchParams.page)
-  const categoria = (searchParams.categoria || "TODOS").trim() || "TODOS"
-  const busca = (searchParams.busca || "").trim()
-  const anunciante = (searchParams.anunciante || "").trim()
+  if (currentPage === null) notFound()
+  const categoria = searchValue(searchParams.categoria).trim() || "TODOS"
+  const busca = searchValue(searchParams.busca).trim()
+  const anunciante = searchValue(searchParams.anunciante).trim()
   let initialData: PublicCategoryList | null = null
 
   try {
@@ -106,6 +116,13 @@ export default async function AnunciosPage({
     )
   } catch {
     // O grid cliente repete a consulta e preserva o estado de erro com opcao de nova tentativa.
+  }
+
+  if (
+    initialData &&
+    currentPage > Math.max(1, initialData.paginacao.totalPaginas)
+  ) {
+    notFound()
   }
 
   return (

@@ -21,7 +21,7 @@ import {
   labelAcompanhantesBairro,
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
-import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
+import { isBairroIndexavelLocal, isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
@@ -29,6 +29,8 @@ import {
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
+  isCleanPublicFirstPage,
+  isPublicPageOutOfRange,
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
@@ -53,14 +55,14 @@ async function carregarCidade(estado: string, cidade: string, page: number) {
     ...agregadoBase,
     totalBairrosAtivos: agregadoBase.bairros.length,
     totalCategoriasAtivas: agregadoBase.categoriasPrincipais.length,
-    shouldIndex: agregadoBase.totalAnunciosAtivos > 0,
   }
   return { data, agregado }
 }
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { estado, cidade } = await params
-  const page = parsePublicPage((await searchParams).page)
+  const pageValue = (await searchParams).page
+  const page = parsePublicPage(pageValue)
   if (page === null) {
     return {
       title: "Página inválida | Tops do Job",
@@ -69,9 +71,16 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   }
 
   try {
-    const { agregado } = await carregarCidade(estado, cidade, page)
+    const { data, agregado } = await carregarCidade(estado, cidade, page)
+    if (isPublicPageOutOfRange(page, data.paginacao)) {
+      return {
+        title: "Página inválida | Tops do Job",
+        robots: buildPublicRobotsMetadata(false),
+      }
+    }
     const canonicalUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado, cidade), page)
-    const indexavel = page === 0 && isCidadeIndexavelLocal(agregado)
+    const indexavel =
+      isCleanPublicFirstPage(pageValue, page) && isCidadeIndexavelLocal(agregado)
     return {
       title: gerarTituloMetadataCidade(agregado, page),
       description: gerarDescricaoMetadataCidade(agregado, page),
@@ -111,6 +120,7 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
     throw error
   }
   const { data, agregado } = carregado
+  if (isPublicPageOutOfRange(page, data.paginacao)) notFound()
   const editorial = await gerarConteudoProgramaticoCidade(agregado)
   const baseUrl = getPublicSiteBaseUrl()
   const estadoPath = buildPublicPath("acompanhantes", estado)
@@ -122,10 +132,20 @@ export default async function CidadePage({ params, searchParams }: PageProps) {
   const faqSchema = page === 0 ? gerarFaqSchema(editorial.faq) : null
   const itemListSchema =
     page === 0 ? gerarItemListSchemaCidade(baseUrl, data.itens.slice(0, 10)) : null
-  const bairrosVisiveis = agregado.bairros.slice(0, editorial.modo === "completo" ? 10 : 6)
+  const bairrosVisiveis = [...agregado.bairros]
+    .sort(
+      (a, b) =>
+        Number(isBairroIndexavelLocal(b)) - Number(isBairroIndexavelLocal(a)) ||
+        a.bairroNome.localeCompare(b.bairroNome)
+    )
+    .slice(0, editorial.modo === "completo" ? 10 : 6)
   const categoriasVisiveis = agregado.categoriasPrincipais.slice(0, editorial.modo === "completo" ? 5 : 3)
-  const cidadesRelacionadas = agregado.cidadesRelacionadas
-    .filter(isCidadeIndexavelLocal)
+  const cidadesRelacionadas = [...agregado.cidadesRelacionadas]
+    .sort(
+      (a, b) =>
+        Number(isCidadeIndexavelLocal(b)) - Number(isCidadeIndexavelLocal(a)) ||
+        a.cidadeNome.localeCompare(b.cidadeNome)
+    )
     .slice(0, editorial.modo === "completo" ? 8 : 4)
   const url = buildPublicUrl(cidadePath)
 

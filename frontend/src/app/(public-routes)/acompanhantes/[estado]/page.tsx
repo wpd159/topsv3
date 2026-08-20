@@ -19,6 +19,8 @@ import {
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
+  isCleanPublicFirstPage,
+  isPublicPageOutOfRange,
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
@@ -121,7 +123,8 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const { estado } = await params
-  const page = parsePublicPage((await searchParams).page)
+  const pageValue = (await searchParams).page
+  const page = parsePublicPage(pageValue)
   if (page === null) {
     return {
       title: "Página inválida | Tops do Job",
@@ -130,6 +133,12 @@ export async function generateMetadata({
   }
   try {
     const { data, estadoDescoberto } = await carregarEstado(estado, page)
+    if (isPublicPageOutOfRange(page, data.paginacao)) {
+      return {
+        title: "Página inválida | Tops do Job",
+        robots: buildPublicRobotsMetadata(false),
+      }
+    }
     const estadoUf = data.localidade.uf
     const estadoNome = data.localidade.estado || getEstadoNomePorUf(estadoUf)
     const canonicalUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado), page)
@@ -140,15 +149,17 @@ export async function generateMetadata({
       totalCidades: estadoDescoberto.cidades.length,
       page,
     })
-    const temCidadeIndexavel = estadoDescoberto.cidades.some((cidade) =>
-      isCidadeIndexavelLocal({ totalAnunciosAtivos: cidade.totalAnunciosAtivos })
-    )
     return {
       title,
       description,
       alternates: { canonical: canonicalUrl },
       openGraph: { title, description, url: canonicalUrl, type: "website", siteName: "Tops do Job", locale: "pt_BR" },
-      robots: buildPublicRobotsMetadata(page === 0 && temCidadeIndexavel, true),
+      robots: buildPublicRobotsMetadata(
+        isCleanPublicFirstPage(pageValue, page) &&
+          estadoDescoberto.indexacao.indexavel &&
+          estadoDescoberto.indexacao.canonica,
+        true
+      ),
     }
   } catch (error) {
     if (isPublicCatalogNotFound(error)) {
@@ -174,6 +185,7 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
     throw error
   }
   const { data, estadoDescoberto } = carregado
+  if (isPublicPageOutOfRange(page, data.paginacao)) notFound()
   const estadoUf = data.localidade.uf
   const estadoNome = data.localidade.estado || getEstadoNomePorUf(estadoUf)
 
@@ -201,8 +213,11 @@ export default async function EstadoPage({ params, searchParams }: PageProps) {
   }
 
   const cidadesOrdenadas = [...estadoDescoberto.cidades]
-    .filter((cidade) => isCidadeIndexavelLocal({ totalAnunciosAtivos: cidade.totalAnunciosAtivos }))
-    .sort((a, b) => a.nome.localeCompare(b.nome))
+    .sort(
+      (a, b) =>
+        Number(isCidadeIndexavelLocal(b)) - Number(isCidadeIndexavelLocal(a)) ||
+        a.nome.localeCompare(b.nome)
+    )
     .slice(0, 15)
 
   const url = buildPublicUrl(estadoPath)

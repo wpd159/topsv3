@@ -11,7 +11,7 @@ import { WhatsAppSafetyProvider } from "@/components/site/whatsapp-safety-provid
 import { SiteContentProvider } from "@/components/site-content/site-content-provider"
 import { getUnavailableSiteContent, SITE_CONTENT_KEYS } from "@/lib/site-content"
 import { serializeJsonLd } from "@/lib/seo/json-ld"
-import { buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
+import { getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 import { resolveSearchIndexingPolicy } from "@/lib/seo/search-indexing-policy"
 
 const publicSiteBaseUrl = getPublicSiteBaseUrl()
@@ -47,11 +47,6 @@ const websiteSchema = {
   "@type": "WebSite",
   name: "Tops do Job",
   url: publicSiteBaseUrl,
-  potentialAction: {
-    "@type": "SearchAction",
-    target: `${buildPublicUrl("/anuncios")}?busca={search_term_string}`,
-    "query-input": "required name=search_term_string",
-  },
 }
 
 export default function RootLayout({

@@ -84,11 +84,20 @@ export type PublicCatalogList = {
   seo: Record<string, unknown>
 }
 
+export type PublicLocalIndexingDecision = {
+  indexavel: boolean
+  motivo: string
+  anunciosElegiveisUnicos: number
+  minimoNecessario: number
+  canonica: boolean
+}
+
 export type PublicCatalogNeighborhood = {
   nome: string
   slug: string
   totalAnunciosAtivos: number
   ultimaAtualizacao?: string | null
+  indexacao: PublicLocalIndexingDecision
 }
 
 export type PublicCatalogCity = {
@@ -96,6 +105,7 @@ export type PublicCatalogCity = {
   slug: string
   totalAnunciosAtivos: number
   ultimaAtualizacao?: string | null
+  indexacao: PublicLocalIndexingDecision
   bairros: PublicCatalogNeighborhood[]
 }
 
@@ -104,6 +114,7 @@ export type PublicCatalogState = {
   nome: string
   totalAnunciosAtivos: number
   ultimaAtualizacao?: string | null
+  indexacao: PublicLocalIndexingDecision
   cidades: PublicCatalogCity[]
 }
 
@@ -128,11 +139,13 @@ export type PublicCatalogCityAggregate = {
   cidadeSlug: string
   totalAnunciosAtivos: number
   ultimaAtualizacao?: string | null
+  indexacao: PublicLocalIndexingDecision
   bairros: Array<{
     bairroNome: string
     bairroSlug: string
     quantidadeAnuncios: number
     ultimaAtualizacao?: string | null
+    indexacao: PublicLocalIndexingDecision
   }>
   categoriasPrincipais: Array<{
     codigo: string
@@ -145,6 +158,7 @@ export type PublicCatalogCityAggregate = {
     cidadeSlug: string
     totalAnunciosAtivos: number
     ultimaAtualizacao?: string | null
+    indexacao: PublicLocalIndexingDecision
   }>
 }
 
@@ -263,11 +277,13 @@ type RawCityAggregate = {
   cidadeSlug: string
   totalAnunciosAtivos: number
   ultimaAtualizacao?: string | null
+  indexacao: PublicLocalIndexingDecision
   bairros: Array<{
     nome: string
     slug: string
     totalAnunciosAtivos: number
     ultimaAtualizacao?: string | null
+    indexacao: PublicLocalIndexingDecision
   }>
   categorias: Array<{
     codigo: string
@@ -399,11 +415,13 @@ export async function obterAgregadoPublicoCidade(uf: string, cidade: string): Pr
     cidadeSlug: raw.cidadeSlug,
     totalAnunciosAtivos: raw.totalAnunciosAtivos,
     ultimaAtualizacao: raw.ultimaAtualizacao ?? null,
+    indexacao: raw.indexacao,
     bairros: raw.bairros.map((bairro) => ({
       bairroNome: bairro.nome,
       bairroSlug: bairro.slug,
       quantidadeAnuncios: bairro.totalAnunciosAtivos,
       ultimaAtualizacao: bairro.ultimaAtualizacao ?? null,
+      indexacao: bairro.indexacao,
     })),
     categoriasPrincipais: raw.categorias.map((categoria) => ({
       codigo: categoria.codigo,
@@ -416,6 +434,7 @@ export async function obterAgregadoPublicoCidade(uf: string, cidade: string): Pr
       cidadeSlug: relacionada.slug,
       totalAnunciosAtivos: relacionada.totalAnunciosAtivos,
       ultimaAtualizacao: relacionada.ultimaAtualizacao ?? null,
+      indexacao: relacionada.indexacao,
     })),
   }
 }

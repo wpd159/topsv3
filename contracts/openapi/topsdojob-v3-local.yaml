@@ -13586,7 +13586,7 @@ components:
     BairroLocalidadePublica:
       type: object
       additionalProperties: false
-      required: [nome, slug, totalAnunciosAtivos, ultimaAtualizacao]
+      required: [nome, slug, totalAnunciosAtivos, ultimaAtualizacao, indexacao]
       properties:
         nome:
           type: string
@@ -13598,10 +13598,12 @@ components:
         ultimaAtualizacao:
           type: [string, "null"]
           format: date-time
+        indexacao:
+          $ref: "#/components/schemas/IndexacaoLocalidadePublica"
     CidadeLocalidadePublica:
       type: object
       additionalProperties: false
-      required: [nome, slug, totalAnunciosAtivos, ultimaAtualizacao, bairros]
+      required: [nome, slug, totalAnunciosAtivos, ultimaAtualizacao, indexacao, bairros]
       properties:
         nome:
           type: string
@@ -13613,6 +13615,8 @@ components:
         ultimaAtualizacao:
           type: [string, "null"]
           format: date-time
+        indexacao:
+          $ref: "#/components/schemas/IndexacaoLocalidadePublica"
         bairros:
           type: array
           items:
@@ -13620,7 +13624,7 @@ components:
     EstadoLocalidadePublica:
       type: object
       additionalProperties: false
-      required: [uf, nome, totalAnunciosAtivos, ultimaAtualizacao, cidades]
+      required: [uf, nome, totalAnunciosAtivos, ultimaAtualizacao, indexacao, cidades]
       properties:
         uf:
           type: string
@@ -13632,6 +13636,8 @@ components:
         ultimaAtualizacao:
           type: [string, "null"]
           format: date-time
+        indexacao:
+          $ref: "#/components/schemas/IndexacaoLocalidadePublica"
         cidades:
           type: array
           items:
@@ -13645,6 +13651,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EstadoLocalidadePublica"
+    IndexacaoLocalidadePublica:
+      type: object
+      additionalProperties: false
+      required: [indexavel, motivo, anunciosElegiveisUnicos, minimoNecessario, canonica]
+      properties:
+        indexavel:
+          type: boolean
+        motivo:
+          type: string
+        anunciosElegiveisUnicos:
+          type: integer
+          format: int64
+          minimum: 0
+        minimoNecessario:
+          type: integer
+          format: int32
+          minimum: 1
+        canonica:
+          type: boolean
     CategoriaCidadePublica:
       type: object
       additionalProperties: false
@@ -13667,6 +13692,7 @@ components:
         - cidadeSlug
         - totalAnunciosAtivos
         - ultimaAtualizacao
+        - indexacao
         - bairros
         - categorias
         - cidadesRelacionadas
@@ -13685,6 +13711,8 @@ components:
         ultimaAtualizacao:
           type: [string, "null"]
           format: date-time
+        indexacao:
+          $ref: "#/components/schemas/IndexacaoLocalidadePublica"
         bairros:
           type: array
           items:

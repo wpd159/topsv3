@@ -10,6 +10,7 @@ public record AgregadoCidadePublicaDto(
         String cidadeSlug,
         long totalAnunciosAtivos,
         OffsetDateTime ultimaAtualizacao,
+        IndexacaoLocalidadePublicaDto indexacao,
         List<BairroLocalidadePublicaDto> bairros,
         List<CategoriaCidadePublicaDto> categorias,
         List<CidadeLocalidadePublicaDto> cidadesRelacionadas) {

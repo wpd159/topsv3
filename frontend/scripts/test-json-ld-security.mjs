@@ -7,6 +7,7 @@ import ts from "typescript"
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
 const serializerPath = join(frontendRoot, "src", "lib", "seo", "json-ld.ts")
 const serializerSource = readFileSync(serializerPath, "utf8")
+const rootLayoutSource = readFileSync(join(frontendRoot, "src", "app", "layout.tsx"), "utf8")
 
 const { outputText } = ts.transpileModule(serializerSource, {
   compilerOptions: {
@@ -67,5 +68,11 @@ for (const path of jsonLdFiles) {
     `${label} nao pode serializar JSON-LD diretamente`,
   )
 }
+
+assert.doesNotMatch(
+  rootLayoutSource,
+  /SearchAction|potentialAction/,
+  "o schema global nao pode reintroduzir a busca interna como SearchAction",
+)
 
 console.log(`JSON_LD_SECURITY_RESULT=OK files=${jsonLdFiles.length}`)

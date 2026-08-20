@@ -5,6 +5,7 @@ import {
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicUrl } from "@/lib/seo/public-url"
+import type { PublicLocalIndexingDecision } from "@/lib/public-catalog-api"
 
 export interface CidadeSeoCategoria {
   codigo: string
@@ -17,6 +18,7 @@ export interface CidadeSeoBairro {
   bairroNome: string
   bairroSlug: string
   quantidadeAnuncios?: number
+  indexacao: PublicLocalIndexingDecision
 }
 
 export interface CidadeSeoCidadeRelacionada {
@@ -24,7 +26,7 @@ export interface CidadeSeoCidadeRelacionada {
   cidadeNome: string
   cidadeSlug: string
   totalAnunciosAtivos?: number
-  shouldIndex?: boolean
+  indexacao: PublicLocalIndexingDecision
 }
 
 export interface CidadeSeoAggregate {
@@ -38,7 +40,7 @@ export interface CidadeSeoAggregate {
   quantidadeAnunciosDestaque?: number
   quantidadeAnunciosRecentes?: number
   ultimaAtualizacao?: string | null
-  shouldIndex: boolean
+  indexacao: PublicLocalIndexingDecision
   robots?: string | null
   reasonCodes?: string[]
   bairros: CidadeSeoBairro[]
