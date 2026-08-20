@@ -158,6 +158,8 @@ services:
       args:
         NEXT_PUBLIC_SITE_URL: http://preprod.localhost:23000
         NEXT_PUBLIC_API_URL: http://preprod.localhost:23000/api/public
+        INTERNAL_API_URL: http://backend:8080/api/public
+        PUBLIC_API_TIMEOUT_MS: "${PUBLIC_API_TIMEOUT_MS:-5000}"
         NEXT_PUBLIC_ANALYTICS_ENABLED: "false"
         NEXT_PUBLIC_FORCE_HTTPS: "false"
         NEXT_PUBLIC_EFI_PIX_ENABLED: ${EFI_ENABLED:-false}
@@ -173,6 +175,8 @@ services:
         ENV NEXT_TELEMETRY_DISABLED=1
         ARG NEXT_PUBLIC_SITE_URL
         ARG NEXT_PUBLIC_API_URL
+        ARG INTERNAL_API_URL
+        ARG PUBLIC_API_TIMEOUT_MS
         ARG NEXT_PUBLIC_ANALYTICS_ENABLED
         ARG NEXT_PUBLIC_FORCE_HTTPS
         ARG NEXT_PUBLIC_EFI_PIX_ENABLED
@@ -180,6 +184,8 @@ services:
         ARG R2_PUBLIC_BASE_URL
         ENV NEXT_PUBLIC_SITE_URL=$${NEXT_PUBLIC_SITE_URL}
         ENV NEXT_PUBLIC_API_URL=$${NEXT_PUBLIC_API_URL}
+        ENV INTERNAL_API_URL=$${INTERNAL_API_URL}
+        ENV PUBLIC_API_TIMEOUT_MS=$${PUBLIC_API_TIMEOUT_MS}
         ENV NEXT_PUBLIC_ANALYTICS_ENABLED=$${NEXT_PUBLIC_ANALYTICS_ENABLED}
         ENV NEXT_PUBLIC_FORCE_HTTPS=$${NEXT_PUBLIC_FORCE_HTTPS}
         ENV NEXT_PUBLIC_EFI_PIX_ENABLED=$${NEXT_PUBLIC_EFI_PIX_ENABLED}
@@ -196,6 +202,8 @@ services:
         ENV HOSTNAME=0.0.0.0
         ENV NEXT_PUBLIC_SITE_URL=http://preprod.localhost:23000
         ENV NEXT_PUBLIC_API_URL=http://preprod.localhost:23000/api/public
+        ENV INTERNAL_API_URL=http://backend:8080/api/public
+        ENV PUBLIC_API_TIMEOUT_MS=5000
         ENV NEXT_PUBLIC_ANALYTICS_ENABLED=false
         ENV NEXT_PUBLIC_FORCE_HTTPS=false
         ENV SEARCH_INDEXING_MODE=blocked
@@ -212,6 +220,8 @@ services:
         CMD ["node", "server.js"]
     environment:
       R2_PUBLIC_BASE_URL: ${R2_PUBLIC_BASE_URL:?defina R2_PUBLIC_BASE_URL em /opt/topsv3/secrets/preprod.env}
+      INTERNAL_API_URL: http://backend:8080/api/public
+      PUBLIC_API_TIMEOUT_MS: "${PUBLIC_API_TIMEOUT_MS:-5000}"
       SEARCH_INDEXING_MODE: blocked
     networks:
       - topsv3-preprod-net

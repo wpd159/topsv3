@@ -1,11 +1,10 @@
-import {
-  apiErrorFromResponse,
-  publicApiUrl,
-  requireArrayPayload,
-} from '@/lib/api-contract'
+import 'server-only'
+
+import { ApiContractError, requireArrayPayload } from '@/lib/api-contract'
+import { publicServerApiJson } from '@/lib/public-server-api'
 
 export const PUBLIC_BLOG_CACHE_TAG = 'public-blog'
-export const PUBLIC_BLOG_REVALIDATE_SECONDS = 3600
+export const PUBLIC_BLOG_REVALIDATE_SECONDS = 300
 
 export type BlogPostSummary = {
   id: string
@@ -46,48 +45,74 @@ export type BlogPostDetail = BlogPostSummary & {
   changeFrequency: 'daily' | 'weekly' | 'monthly'
 }
 
-async function request<T>(path: string): Promise<T> {
-  const response = await fetch(publicApiUrl(path), {
-    next: {
-      revalidate: PUBLIC_BLOG_REVALIDATE_SECONDS,
-      tags: [PUBLIC_BLOG_CACHE_TAG],
-    },
-    signal: AbortSignal.timeout(8000),
-  })
-  if (!response.ok) {
-    throw await apiErrorFromResponse(response)
+const BLOG_CACHE = {
+  mode: 'revalidate',
+  seconds: PUBLIC_BLOG_REVALIDATE_SECONDS,
+  tags: [PUBLIC_BLOG_CACHE_TAG],
+} as const
+
+function requireObjectPayload<T>(payload: unknown): T {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new ApiContractError(
+      'O servico editorial retornou um contrato incompativel.',
+      'TECHNICAL_FAILURE',
+      502,
+      false,
+    )
   }
-  return (await response.json()) as T
+  return payload as T
+}
+
+function request<T>(
+  path: string,
+  endpointFamily: string,
+  validate: (payload: unknown) => T,
+) {
+  return publicServerApiJson(path, {
+    endpointFamily,
+    cache: BLOG_CACHE,
+    validate,
+  })
 }
 
 export async function fetchPublicBlogPosts(): Promise<BlogPostSummary[]> {
-  return requireArrayPayload<BlogPostSummary>(
-    await request<unknown>('/blog-posts/public'),
+  return request(
+    '/blog-posts/public',
+    'blog.posts',
+    (payload) => requireArrayPayload<BlogPostSummary>(payload),
   )
 }
 
 export async function fetchPublicBlogPost(slug: string): Promise<BlogPostDetail> {
-  return request<BlogPostDetail>(`/blog-posts/public/${encodeURIComponent(slug)}`)
+  return request(
+    `/blog-posts/public/${encodeURIComponent(slug)}`,
+    'blog.post-detail',
+    requireObjectPayload<BlogPostDetail>,
+  )
 }
 
 export async function fetchPublicBlogSitemap() {
-  return requireArrayPayload<Record<string, unknown>>(
-    await request<unknown>('/blog-posts/public/sitemap'),
+  return request(
+    '/blog-posts/public/sitemap',
+    'blog.sitemap',
+    (payload) => requireArrayPayload<Record<string, unknown>>(payload),
   )
 }
 
 export async function fetchPublicBlogCategorias(): Promise<BlogCategoriaPublic[]> {
-  return requireArrayPayload<BlogCategoriaPublic>(
-    await request<unknown>('/blog-categorias/public'),
+  return request(
+    '/blog-categorias/public',
+    'blog.categories',
+    (payload) => requireArrayPayload<BlogCategoriaPublic>(payload),
   )
 }
 
 export async function fetchPublicBlogPostsByCategoria(
   slug: string,
 ): Promise<BlogPostSummary[]> {
-  return requireArrayPayload<BlogPostSummary>(
-    await request<unknown>(
-      `/blog-posts/public/categoria/${encodeURIComponent(slug)}`,
-    ),
+  return request(
+    `/blog-posts/public/categoria/${encodeURIComponent(slug)}`,
+    'blog.posts-by-category',
+    (payload) => requireArrayPayload<BlogPostSummary>(payload),
   )
 }

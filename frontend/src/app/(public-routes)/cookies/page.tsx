@@ -1,6 +1,6 @@
 import { CookiePreferences } from '@/app/(public-routes)/cookies/cookie-preferences'
 import { SafeSiteContentBody } from '@/components/site-content/safe-site-content-body'
-import { resolvePublicSiteContent } from '@/lib/site-content'
+import { resolvePublicSiteContent } from '@/lib/site-content-server'
 import { buildPublicStaticMetadata } from '@/lib/seo/public-static-metadata'
 
 export const metadata = buildPublicStaticMetadata({

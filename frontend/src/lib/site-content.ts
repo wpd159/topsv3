@@ -91,6 +91,12 @@ function mapPayload(payload: SiteContentPayload): SiteContentEntry | null {
   }
 }
 
+export function parseAllPublicSiteContent(payload: unknown): SiteContentEntry[] {
+  return requireArrayPayload<SiteContentPayload>(payload)
+    .map(mapPayload)
+    .filter((entry): entry is SiteContentEntry => entry !== null)
+}
+
 function logSanitizedFailure(error: unknown) {
   const status =
     typeof error === 'object' && error && 'status' in error
@@ -113,8 +119,7 @@ export async function fetchAllPublicSiteContent(): Promise<SiteContentEntry[]> {
   if (!response.ok) {
     throw await apiErrorFromResponse(response)
   }
-  const payload = requireArrayPayload<SiteContentPayload>(await response.json())
-  return payload.map(mapPayload).filter((entry): entry is SiteContentEntry => entry !== null)
+  return parseAllPublicSiteContent(await response.json())
 }
 
 export async function fetchPublicSiteContent(

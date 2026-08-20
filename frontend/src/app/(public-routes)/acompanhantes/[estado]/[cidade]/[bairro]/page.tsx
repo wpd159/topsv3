@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import { cache } from "react"
 import {
   gerarConteudoSeoBairro,
   gerarBreadcrumbSchemaBairro,
@@ -12,7 +13,7 @@ import {
   isPublicCatalogNotFound,
   listarPublicosPorBairro,
   obterAgregadoPublicoCidade,
-} from "@/lib/public-catalog-api"
+} from "@/lib/public-catalog-server-api"
 import {
   labelAcompanhantesBairro,
   labelAcompanhantesCidade,
@@ -30,7 +31,7 @@ import {
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
-export const revalidate = 3600
+export const dynamic = "force-dynamic"
 
 interface PageProps {
   params: Promise<{
@@ -43,13 +44,13 @@ interface PageProps {
   }>
 }
 
-async function carregarBairro(estado: string, cidade: string, bairro: string, page: number) {
+const carregarBairro = cache(async (estado: string, cidade: string, bairro: string, page: number) => {
   const [data, agregadoCidade] = await Promise.all([
     listarPublicosPorBairro(estado, cidade, bairro, page),
     obterAgregadoPublicoCidade(estado, cidade),
   ])
   return { data, agregadoCidade }
-}
+})
 
 export async function generateMetadata({
   params,

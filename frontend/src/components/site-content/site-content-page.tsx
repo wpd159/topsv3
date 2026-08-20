@@ -1,8 +1,8 @@
 import { SafeSiteContentBody } from '@/components/site-content/safe-site-content-body'
 import {
-  resolvePublicSiteContent,
   type SiteContentKey,
 } from '@/lib/site-content'
+import { resolvePublicSiteContent } from '@/lib/site-content-server'
 
 export async function SiteContentPage({
   contentKey,

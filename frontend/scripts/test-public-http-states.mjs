@@ -215,7 +215,7 @@ function anunciosModule(listarAnunciosPublicos) {
         buildPublicListingIndexingDecision: () => ({ indexable: true, canonicalQuery: "" }),
         buildPublicRobotsMetadata: robots,
       },
-      "@/lib/public-catalog-api": {
+      "@/lib/public-catalog-server-api": {
         isPublicCatalogNotFound: (error) => error?.status === 400 || error?.status === 404,
         listarAnunciosPublicos,
       },
@@ -238,14 +238,18 @@ function emptyCatalog() {
 }
 
 function sitemapModule(fetchImpl) {
+  const editorial = async (path) => {
+    const response = await fetchImpl(path)
+    if (!response.ok) throw new ContractError(response.status)
+    return response.json()
+  }
   return loadTypeScriptModule("src/app/sitemap.ts", {
-    environment: {
-      NEXT_PUBLIC_API_URL: "https://api.example.invalid/api/public",
-    },
-    fetchImpl,
     dependencies: {
-      "@/lib/blog-api": { PUBLIC_BLOG_CACHE_TAG: "public-blog" },
-      "@/lib/public-catalog-api": {
+      "@/lib/blog-api": {
+        fetchPublicBlogSitemap: () => editorial("blog-posts"),
+        fetchPublicBlogCategorias: () => editorial("blog-categorias"),
+      },
+      "@/lib/public-catalog-server-api": {
         descobrirLocalidadesPublicas: async () => ({
           estados: [{
             uf: "GO",

@@ -1,7 +1,9 @@
 import { PublicChrome } from '@/components/layout/public-chrome'
 import { PrivateSessionGuard } from '@/components/auth/private-session-guard'
 import { SiteContentProvider } from '@/components/site-content/site-content-provider'
-import { resolveAllPublicSiteContent } from '@/lib/site-content'
+import { resolveAllPublicSiteContent } from '@/lib/site-content-server'
+
+export const dynamic = 'force-dynamic'
 
 export default async function PrivateRoutesLayout({ children }: { children: React.ReactNode }) {
   const siteContent = await resolveAllPublicSiteContent()

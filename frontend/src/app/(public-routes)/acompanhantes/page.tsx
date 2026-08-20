@@ -7,7 +7,7 @@ import {
 import {
   descobrirLocalidadesPublicas,
   listarAnunciosPublicos,
-} from "@/lib/public-catalog-api"
+} from "@/lib/public-catalog-server-api"
 import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
@@ -21,7 +21,6 @@ import {
 } from "@/lib/seo/acompanhantes-national-seo"
 
 export const dynamic = "force-dynamic"
-export const revalidate = 3600
 
 export const metadata: Metadata = {
   title: ACOMPANHANTES_NATIONAL_TITLE,
