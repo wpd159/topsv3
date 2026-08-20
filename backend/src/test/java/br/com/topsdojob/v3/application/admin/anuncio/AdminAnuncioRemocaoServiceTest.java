@@ -63,7 +63,7 @@ class AdminAnuncioRemocaoServiceTest {
     when(statusHistoricoRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     when(cleanupService.limpar(any(), any())).thenReturn(
-        new Resultado(3, 5, 1, 0, 1, true));
+        new Resultado(3, 0, 0, 1, 1, true, 6, false));
   }
 
   @Test
@@ -81,8 +81,10 @@ class AdminAnuncioRemocaoServiceTest {
     assertThat(resultado.statusModeracao()).isEqualTo("APROVADO");
     assertThat(resultado.acao()).isEqualTo("REMOVER");
     assertThat(resultado.midiasRemovidas()).isEqualTo(3);
-    assertThat(resultado.objetosR2Excluidos()).isEqualTo(5);
-    assertThat(resultado.objetosR2JaAusentes()).isEqualTo(1);
+    assertThat(resultado.objetosR2Excluidos()).isZero();
+    assertThat(resultado.objetosR2JaAusentes()).isZero();
+    assertThat(resultado.objetosCompartilhadosPreservados()).isEqualTo(1);
+    assertThat(resultado.objetosCleanupAgendados()).isEqualTo(6);
     assertThat(resultado.storiesEncerrados()).isEqualTo(1);
     assertThat(resultado.storyAdministrativoEncerrado()).isTrue();
     assertThat(anuncio.getStatus()).isEqualTo(StatusAnuncio.REMOVIDO);
@@ -116,10 +118,11 @@ class AdminAnuncioRemocaoServiceTest {
         .contains("\"statusAnuncio\":\"REMOVIDO\"")
         .contains("\"decisao\":\"REMOVER\"")
         .contains("\"motivoSanitizado\":\"solicitacao administrativa confirmada\"")
-        .contains("\"objetosR2Excluidos\":5");
-    assertThat(limpeza.getAcao()).isEqualTo("ANUNCIO_MIDIAS_EXCLUIDAS_R2");
+        .contains("\"objetosCleanupAgendados\":6");
+    assertThat(limpeza.getAcao()).isEqualTo("ANUNCIO_MIDIAS_DESVINCULADAS");
     assertThat(limpeza.getDepoisJson())
-        .contains("\"objetosR2Excluidos\":5")
+        .contains("\"objetosR2Excluidos\":0")
+        .contains("\"objetosCleanupAgendados\":6")
         .contains("\"storiesEncerrados\":1");
     verify(cleanupService).limpar(anuncio.getId(), anuncio.getRemovidoEm());
   }
@@ -130,8 +133,9 @@ class AdminAnuncioRemocaoServiceTest {
     removido.removerLogicamente(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1));
     when(anuncioRepository.findByIdForModeration(removido.getId())).thenReturn(Optional.of(removido));
 
-    assertStatus(
+    assertStatusAndReason(
         HttpStatus.CONFLICT,
+        "anuncio ja removido",
         () -> service.remover(
             removido.getId(),
             new AdminAnuncioRemocaoRequest("retry da mesma remocao"),
@@ -140,8 +144,9 @@ class AdminAnuncioRemocaoServiceTest {
 
     AnuncioEntity bloqueado = anuncio(StatusAnuncio.BLOQUEADO);
     when(anuncioRepository.findByIdForModeration(bloqueado.getId())).thenReturn(Optional.of(bloqueado));
-    assertStatus(
+    assertStatusAndReason(
         HttpStatus.CONFLICT,
+        "anuncio bloqueado deve ser tratado pelo fluxo juridico",
         () -> service.remover(
             bloqueado.getId(),
             new AdminAnuncioRemocaoRequest("estado juridico incompativel"),
@@ -154,18 +159,18 @@ class AdminAnuncioRemocaoServiceTest {
   }
 
   @Test
-  void falhaR2NaoRemoveAnuncioNaoFingeSucessoEPermiteRetry() {
+  void falhaAntesDoCommitNaoRemoveAnuncioNemCriaAuditoriaDeSucesso() {
     AnuncioEntity anuncio = anuncio(StatusAnuncio.PUBLICADO);
     when(anuncioRepository.findByIdForModeration(anuncio.getId())).thenReturn(Optional.of(anuncio));
     when(cleanupService.limpar(any(), any()))
         .thenThrow(new CleanupException(
-            HttpStatus.SERVICE_UNAVAILABLE,
-            "FALHA_OPERACIONAL_R2",
-            new IllegalStateException("falha sintetica")))
-        .thenReturn(new Resultado(2, 3, 1, 0, 0, false));
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "TRANSACAO_CLEANUP_INDISPONIVEL",
+            new IllegalStateException("falha sintetica")));
 
-    assertStatus(
-        HttpStatus.SERVICE_UNAVAILABLE,
+    assertStatusAndReason(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        "nao foi possivel preparar a limpeza segura das midias",
         () -> service.remover(
             anuncio.getId(),
             new AdminAnuncioRemocaoRequest("limpeza administrativa confirmada"),
@@ -180,17 +185,8 @@ class AdminAnuncioRemocaoServiceTest {
         eq(anuncio.getId()),
         any(),
         eq("req-falha-r2"),
-        eq("FALHA_OPERACIONAL_R2"));
-
-    var retry = service.remover(
-        anuncio.getId(),
-        new AdminAnuncioRemocaoRequest("limpeza administrativa confirmada"),
-        admin(),
-        "req-retry-r2");
-
-    assertThat(retry.statusAnuncio()).isEqualTo("REMOVIDO");
-    assertThat(retry.objetosR2Excluidos()).isEqualTo(3);
-    verify(cleanupService, times(2)).limpar(any(), any());
+        eq("TRANSACAO_CLEANUP_INDISPONIVEL"));
+    verify(cleanupService).limpar(any(), any());
   }
 
   @Test
@@ -272,5 +268,13 @@ class AdminAnuncioRemocaoServiceTest {
     assertThatThrownBy(operation::run)
         .isInstanceOfSatisfying(ResponseStatusException.class, error ->
             assertThat(error.getStatusCode()).isEqualTo(status));
+  }
+
+  private void assertStatusAndReason(HttpStatus status, String reason, Runnable operation) {
+    assertThatThrownBy(operation::run)
+        .isInstanceOfSatisfying(ResponseStatusException.class, error -> {
+          assertThat(error.getStatusCode()).isEqualTo(status);
+          assertThat(error.getReason()).isEqualTo(reason);
+        });
   }
 }

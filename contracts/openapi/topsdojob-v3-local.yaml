@@ -3120,8 +3120,8 @@ paths:
           $ref: "#/components/responses/InternalError"
   /api/admin/anuncios/{id}/remocao-logica:
     post:
-      summary: Remove um anuncio e elimina suas midias pela administracao
-      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Move o anuncio para REMOVIDO, encerra Stories relacionados e elimina do R2 os objetos exclusivos de fotos e videos. Preserva anuncio, proprietario, historico, Premium, pagamentos, auditoria e documentos KYC.
+      summary: Remove um anuncio e trata suas midias pela administracao
+      description: Operacao exclusiva de ADMIN com ANUNCIO_MODERAR. Move o anuncio para REMOVIDO, desvincula suas midias e encaminha ao cleanup pos-commit os objetos exclusivos de fotos e videos. Preserva anuncio, proprietario, historico, Premium, pagamentos, auditoria e documentos KYC.
       operationId: postAdminAnuncioRemocaoLogica
       security:
         - AdminSessionCookie: []
@@ -10293,7 +10293,7 @@ components:
     AdminAnuncioRemocao:
       type: object
       additionalProperties: false
-      required: [anuncioId, statusAnuncio, statusModeracao, acao, midiasRemovidas, objetosR2Excluidos, objetosR2JaAusentes, objetosCompartilhadosPreservados, storiesEncerrados, storyAdministrativoEncerrado, removidoEm, executadoEm]
+      required: [anuncioId, statusAnuncio, statusModeracao, acao, midiasRemovidas, objetosR2Excluidos, objetosR2JaAusentes, objetosCompartilhadosPreservados, objetosCleanupAgendados, storiesEncerrados, storyAdministrativoEncerrado, removidoEm, executadoEm]
       properties:
         anuncioId: { type: string, format: uuid }
         statusAnuncio: { type: string, enum: [REMOVIDO] }
@@ -10303,6 +10303,7 @@ components:
         objetosR2Excluidos: { type: integer, minimum: 0 }
         objetosR2JaAusentes: { type: integer, minimum: 0 }
         objetosCompartilhadosPreservados: { type: integer, minimum: 0 }
+        objetosCleanupAgendados: { type: integer, minimum: 0 }
         storiesEncerrados: { type: integer, minimum: 0 }
         storyAdministrativoEncerrado: { type: boolean }
         removidoEm: { type: string, format: date-time }

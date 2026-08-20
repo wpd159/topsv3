@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -340,7 +342,7 @@ function RemovalDialog({ open, busy, error, onClose, onConfirm }: {
         <DialogHeader>
           <DialogTitle>{'Excluir an\u00fancio'}</DialogTitle>
           <DialogDescription>
-            {'Esta a\u00e7\u00e3o remover\u00e1 o an\u00fancio da plataforma e excluir\u00e1 definitivamente suas fotos e v\u00eddeos. O hist\u00f3rico administrativo ser\u00e1 preservado.'}
+            {'Esta a\u00e7\u00e3o remover\u00e1 o an\u00fancio da plataforma. Fotos e v\u00eddeos exclusivos ser\u00e3o exclu\u00eddos. Arquivos tamb\u00e9m vinculados a documentos KYC, revis\u00f5es, Stories ou outros registros permanecer\u00e3o preservados. O hist\u00f3rico administrativo ser\u00e1 mantido.'}
           </DialogDescription>
         </DialogHeader>
         <label className="block">
@@ -641,6 +643,7 @@ function PhotoDeleteDialog({
 }
 
 export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anuncioId: string; initialQuery?: string }) {
+  const router = useRouter()
   const queueParams = useMemo(() => new URLSearchParams(initialQuery), [initialQuery])
   const hasQueueContext = queueParams.get('fila') === '1'
   const queueContext = useMemo(() => parseAdminAdQueueContext(queueParams), [queueParams])
@@ -1258,7 +1261,9 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         }))
       }
       setRemovalOpen(false)
-      await load()
+      window.dispatchEvent(new CustomEvent('admin-revisions-updated'))
+      toast.success('An\u00fancio removido da plataforma.')
+      router.replace(navigation?.proximo ? targetHref(navigation.proximo) : backHref)
     } catch (reasonError) {
       setRemovalActionError(reasonError)
     } finally {

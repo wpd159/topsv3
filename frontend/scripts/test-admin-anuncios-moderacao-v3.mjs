@@ -32,6 +32,14 @@ const removalAdapter = api.slice(
   api.indexOf('export function removeAdminAd'),
   api.indexOf('export function blockAdminAd'),
 )
+const removalDialog = detail.slice(
+  detail.indexOf('function RemovalDialog'),
+  detail.indexOf('function MediaVisibilitySelector'),
+)
+const removalFlow = detail.slice(
+  detail.indexOf('async function confirmRemoval'),
+  detail.indexOf('const reviewOpen'),
+)
 const types = source('features/admin-anuncios/types.ts')
 const queueContext = source('features/admin-anuncios/queue-context.ts')
 const searchableSelect = source('features/anuncio-wizard/components/searchable-select.tsx')
@@ -339,16 +347,28 @@ assert.ok(!detail.includes('Situação jurídica') && !detail.includes('legal-st
 assert.ok(detail.includes('item.categoria') && detail.includes('item.motivo') && detail.includes('item.observacaoInterna') && detail.includes('item.atorId') && detail.includes('item.criadoEm') && detail.includes('item.requestId'), 'Historico deve preservar categoria, motivo, responsavel, data e requestId juridicos.')
 assert.ok(detail.includes('await load()') && !detail.includes('status: \'BLOQUEADO\''), 'Interface juridica deve atualizar somente apos resposta do backend.')
 assert.ok(detail.includes('RemovalDialog') && detail.includes('removalBusy'), 'Exclusao logica deve ter confirmacao propria e protecao contra duplo clique.')
-assert.ok(detail.includes('await removeAdminAd(ad.id, reason.trim())') && detail.includes('await load()'), 'Tela deve refletir REMOVIDO somente depois da resposta do backend.')
+assert.ok(removalFlow.includes('await removeAdminAd(ad.id, reason.trim())'), 'Tela deve refletir REMOVIDO somente depois da resposta do backend.')
+assert.ok(removalFlow.includes("window.dispatchEvent(new CustomEvent('admin-revisions-updated'))"), 'Sucesso deve atualizar o contador administrativo sem aguardar polling.')
+assert.ok(removalFlow.includes("toast.success('An\\u00fancio removido da plataforma.')"), 'Sucesso deve apresentar confirmacao curta e especifica.')
+assert.ok(removalFlow.includes('router.replace(navigation?.proximo ? targetHref(navigation.proximo) : backHref)'), 'Sucesso deve sair do item removido para o proximo anuncio ou para a fila.')
+assert.ok(!removalFlow.includes('await load()'), 'Sucesso nao deve recarregar o detalhe removido nem exigir F5.')
+assert.ok(
+  removalFlow.indexOf('await removeAdminAd(ad.id, reason.trim())') < removalFlow.indexOf('void enviarIndexNowNoCliente'),
+  'IndexNow deve ser acionado somente depois da confirmacao logica do backend.',
+)
+assert.equal((removalFlow.match(/enviarIndexNowNoCliente/g) ?? []).length, 1, 'O fluxo de remocao deve emitir no maximo uma notificacao IndexNow por sucesso.')
 assert.ok(detail.includes("const canRemove = canManageLegalStatus && !removed && ad.status !== 'BLOQUEADO'"), 'Somente ADMIN autorizado deve ver a remocao em transicao valida.')
 assert.ok(detail.includes("ad.status === 'REMOVIDO'") && detail.includes('disabledReason={removed'), 'REMOVIDO deve bloquear novas ativacoes Premium na interface.')
 assert.ok(detail.includes('reason.trim().length < 5') && detail.includes('maxLength={1000}'), 'Exclusao deve exigir motivo dentro do contrato.')
 assert.ok(detail.includes('border border-red-950 bg-red-700'), 'Exclusao deve possuir tratamento destrutivo distinto do bloqueio juridico.')
-assert.ok(detail.includes('excluir\\u00e1 definitivamente suas fotos e v\\u00eddeos') && detail.includes('hist\\u00f3rico administrativo ser\\u00e1 preservado'), 'Confirmacao deve informar a limpeza definitiva das midias e a preservacao do historico.')
+assert.ok(removalDialog.includes('Fotos e v\\u00eddeos exclusivos ser\\u00e3o exclu\\u00eddos'), 'Confirmacao deve limitar a exclusao fisica a fotos e videos exclusivos.')
+assert.ok(removalDialog.includes('documentos KYC, revis\\u00f5es, Stories ou outros registros permanecer\\u00e3o preservados'), 'Confirmacao deve informar a preservacao de arquivos compartilhados.')
+assert.ok(removalDialog.includes('hist\\u00f3rico administrativo ser\\u00e1 mantido'), 'Confirmacao deve informar a preservacao do historico.')
 assert.ok(!detail.includes('benef\\u00edcios e m\\u00eddias permanecer\\u00e3o preservados'), 'Confirmacao antiga nao pode afirmar que as midias serao preservadas.')
 assert.ok(detailHeader.includes("Excluir an\\u00fancio"), 'Excluir anuncio deve permanecer no cabecalho administrativo.')
 assert.ok(api.includes('JSON.stringify({ motivo: motivo.trim() })'), 'Adapter deve enviar somente o motivo sanitizado da remocao.')
 assert.ok(removalAdapter.includes("method: 'POST'") && !removalAdapter.includes("method: 'DELETE'"), 'Remocao administrativa deve usar a mutacao logica, nunca DELETE.')
+assert.ok(types.includes('objetosCleanupAgendados: number'), 'Contrato frontend deve distinguir cleanup fisico encaminhado ao pos-commit.')
 
 assert.ok(!detail.includes('AdminAnuncioStory') && !api.includes('/stories/selecao'), 'O detalhe de anuncio nao pode manter um fluxo administrativo paralelo de Stories.')
 assert.ok(storiesPage.includes('AdminStoriesManagement'), 'A rota administrativa de Stories deve usar a gestao canonica.')

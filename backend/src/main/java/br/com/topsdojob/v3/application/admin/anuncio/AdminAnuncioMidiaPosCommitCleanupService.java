@@ -152,18 +152,24 @@ public class AdminAnuncioMidiaPosCommitCleanupService {
       return true;
     }
     Set<UUID> ignorados = new LinkedHashSet<>(anuncioMidiaIdsDesvinculados);
-    boolean outraMidiaAtiva = anuncioMidiaRepository.findByArquivoMidiaIdIn(arquivoIds).stream()
+    List<AnuncioMidiaEntity> vinculosRelacionados =
+        anuncioMidiaRepository.findByArquivoMidiaIdIn(arquivoIds);
+    Set<UUID> ignoradosRelacionados = vinculosRelacionados.stream()
+        .map(AnuncioMidiaEntity::getId)
+        .filter(ignorados::contains)
+        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+    boolean outraMidiaAtiva = vinculosRelacionados.stream()
         .anyMatch(item -> item.getStatus() != StatusAnuncioMidia.REMOVIDA
             && !ignorados.contains(item.getId()));
     if (outraMidiaAtiva || revisaoRepository.existsByArquivoMidiaIdIn(arquivoIds)
         || storyRepository.existsByArquivoMidiaIdIn(arquivoIds)) {
       return true;
     }
-    if (ignorados.isEmpty()) {
+    if (ignoradosRelacionados.isEmpty()) {
       return false;
     }
-    return revisaoRepository.existsByAnuncioMidiaIdIn(ignorados)
-        || storyRepository.existsByAnuncioMidiaIdIn(ignorados);
+    return revisaoRepository.existsByAnuncioMidiaIdIn(ignoradosRelacionados)
+        || storyRepository.existsByAnuncioMidiaIdIn(ignoradosRelacionados);
   }
 
   private ResolucaoObjetos objetosDoArquivo(ArquivoMidiaEntity arquivo) {

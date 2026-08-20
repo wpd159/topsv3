@@ -78,9 +78,14 @@ public class AdminAnuncioRemocaoService {
     StatusAnuncio statusAnterior = anuncio.getStatus();
     OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
     if (!anuncio.podeRemoverPeloProprietario()) {
+      boolean jaRemovido = anuncio.getStatus() == StatusAnuncio.REMOVIDO
+          || anuncio.getRemovidoEm() != null;
+      String mensagem = jaRemovido
+          ? "anuncio ja removido"
+          : "anuncio bloqueado deve ser tratado pelo fluxo juridico";
       throw new ResponseStatusException(
           HttpStatus.CONFLICT,
-          "transicao para REMOVIDO nao permitida");
+          mensagem);
     }
 
     Resultado limpeza;
@@ -94,7 +99,7 @@ public class AdminAnuncioRemocaoService {
           exception.codigo());
       throw new ResponseStatusException(
           exception.status(),
-          "falha ao excluir midias do anuncio; tente novamente",
+          mensagemCleanup(exception.codigo()),
           exception);
     }
 
@@ -127,6 +132,7 @@ public class AdminAnuncioRemocaoService {
     depois.put("objetosR2Excluidos", limpeza.objetosExcluidos());
     depois.put("objetosR2JaAusentes", limpeza.objetosJaAusentes());
     depois.put("objetosCompartilhadosPreservados", limpeza.objetosCompartilhadosPreservados());
+    depois.put("objetosCleanupAgendados", limpeza.objetosCleanupAgendados());
     depois.put("storiesEncerrados", limpeza.storiesEncerrados());
     depois.put("storyAdministrativoEncerrado", limpeza.storyAdministrativoEncerrado());
     auditoriaRepository.save(AuditoriaEventoEntity.registrar(
@@ -148,12 +154,13 @@ public class AdminAnuncioRemocaoService {
     limpezaDepois.put(
         "objetosCompartilhadosPreservados",
         limpeza.objetosCompartilhadosPreservados());
+    limpezaDepois.put("objetosCleanupAgendados", limpeza.objetosCleanupAgendados());
     limpezaDepois.put("storiesEncerrados", limpeza.storiesEncerrados());
     limpezaDepois.put("storyAdministrativoEncerrado", limpeza.storyAdministrativoEncerrado());
     auditoriaRepository.save(AuditoriaEventoEntity.registrar(
         UUID.randomUUID(),
         administrador.usuarioId(),
-        "ANUNCIO_MIDIAS_EXCLUIDAS_R2",
+        "ANUNCIO_MIDIAS_DESVINCULADAS",
         "ANUNCIO",
         anuncio.getId(),
         json(limpezaAntes),
@@ -170,10 +177,21 @@ public class AdminAnuncioRemocaoService {
         limpeza.objetosExcluidos(),
         limpeza.objetosJaAusentes(),
         limpeza.objetosCompartilhadosPreservados(),
+        limpeza.objetosCleanupAgendados(),
         limpeza.storiesEncerrados(),
         limpeza.storyAdministrativoEncerrado(),
         anuncio.getRemovidoEm(),
         agora);
+  }
+
+  private String mensagemCleanup(String codigo) {
+    return switch (codigo) {
+      case "TRANSACAO_CLEANUP_INDISPONIVEL" ->
+          "nao foi possivel preparar a limpeza segura das midias";
+      case "ARQUIVO_DE_MIDIA_AUSENTE" ->
+          "uma midia vinculada ao anuncio nao possui arquivo associado";
+      default -> "nao foi possivel preparar a remocao segura das midias";
+    };
   }
 
   private void validarAdministrador(AdminUserPrincipal administrador) {

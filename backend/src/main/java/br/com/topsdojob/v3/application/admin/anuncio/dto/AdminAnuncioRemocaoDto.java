@@ -12,6 +12,7 @@ public record AdminAnuncioRemocaoDto(
     int objetosR2Excluidos,
     int objetosR2JaAusentes,
     int objetosCompartilhadosPreservados,
+    int objetosCleanupAgendados,
     int storiesEncerrados,
     boolean storyAdministrativoEncerrado,
     OffsetDateTime removidoEm,

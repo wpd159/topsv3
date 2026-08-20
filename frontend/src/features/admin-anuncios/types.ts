@@ -174,6 +174,7 @@ export type AdminAdRemovalResponse = {
   objetosR2Excluidos: number
   objetosR2JaAusentes: number
   objetosCompartilhadosPreservados: number
+  objetosCleanupAgendados: number
   storiesEncerrados: number
   storyAdministrativoEncerrado: boolean
   removidoEm: string

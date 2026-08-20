@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
 class AdminAnuncioRemocaoContratoTest {
 
   @Test
-  void contratoMantemRemocaoLogicaEDelegaLimpezaFisicaAoStorageCanonico() throws Exception {
+  void contratoMantemRemocaoLogicaEDelegaLimpezaFisicaAoPosCommitCanonico() throws Exception {
     String controller = Files.readString(Path.of(
         "src", "main", "java", "br", "com", "topsdojob", "v3", "web", "admin",
         "anuncio", "AdminAnuncioRemocaoController.java"));
@@ -19,6 +19,9 @@ class AdminAnuncioRemocaoContratoTest {
     String cleanup = Files.readString(Path.of(
         "src", "main", "java", "br", "com", "topsdojob", "v3", "application", "admin",
         "anuncio", "AdminAnuncioMidiaCleanupService.java"));
+    String posCommitCleanup = Files.readString(Path.of(
+        "src", "main", "java", "br", "com", "topsdojob", "v3", "application", "admin",
+        "anuncio", "AdminAnuncioMidiaPosCommitCleanupService.java"));
     String repository = Files.readString(Path.of(
         "src", "main", "java", "br", "com", "topsdojob", "v3", "persistence",
         "repository", "AnuncioRepository.java"));
@@ -33,17 +36,25 @@ class AdminAnuncioRemocaoContratoTest {
         .contains("findByIdForModeration")
         .contains("removerLogicamente")
         .contains("ANUNCIO_REMOVIDO_ADMINISTRATIVAMENTE")
-        .contains("ANUNCIO_MIDIAS_EXCLUIDAS_R2")
+        .contains("ANUNCIO_MIDIAS_DESVINCULADAS")
         .contains("midiaCleanupService.limpar")
         .doesNotContain(".delete(");
     assertThat(cleanup)
+        .contains("posCommitCleanupService.preparar")
+        .contains("registerSynchronization")
+        .contains("afterCommit")
+        .contains("objetosCompartilhadosPreservados")
+        .doesNotContain("ObjectStorage")
+        .doesNotContain("storage.delete");
+    assertThat(posCommitCleanup)
         .contains("ObjectStorage")
         .contains("storage.delete")
         .contains("storage.exists")
         .contains("StorageArea.PUBLIC_MEDIA")
         .contains("StorageArea.PRIVATE_MEDIA")
-        .contains("ARQUIVO_DOCUMENTAL_VINCULADO")
-        .contains("objetosCompartilhadosPreservados");
+        .contains("getDocumentBucket")
+        .contains("getDocumentPrefix")
+        .contains("existsByArquivoMidiaIdInAndRemovidoEmIsNullAndExpurgadoEmIsNull");
     assertThat(repository)
         .contains("@Lock(LockModeType.PESSIMISTIC_WRITE)")
         .contains("findByIdForModeration");
@@ -54,6 +65,7 @@ class AdminAnuncioRemocaoContratoTest {
         .contains("AdminAnuncioRemocao")
         .contains("enum: [REMOVIDO]")
         .contains("objetosR2Excluidos")
+        .contains("objetosCleanupAgendados")
         .contains("ServiceUnavailable");
   }
 }
