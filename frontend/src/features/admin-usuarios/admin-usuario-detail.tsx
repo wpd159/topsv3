@@ -23,9 +23,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAuth } from '@/context/AuthContext'
 import { blockAdminAdAndUser, getAdminAd, unblockAdminUser } from '@/features/admin-anuncios/api'
 import type { AdminKycSubmission, AdminLegalBlockCategory } from '@/features/admin-anuncios/types'
-import { AdminKycDocumentGrid } from '@/features/admin-documentos/admin-kyc-document-grid'
+import { AdminKycReviewGrid } from '@/features/admin-documentos/admin-kyc-review-grid'
 import { AdminKycUploadDialog } from '@/features/admin-documentos/admin-kyc-upload-dialog'
 import { normalizeApiError } from '@/lib/api-contract'
+import { getAdminSession } from '@/lib/admin-auth-api'
 import { maskPhoneBR } from '@/lib/phone-mask'
 import {
   enviarIndexNowNoCliente,
@@ -85,6 +86,8 @@ export function AdminUsuarioDetail() {
   const [legalError, setLegalError] = useState<unknown>(null)
   const [documentDialogOpen, setDocumentDialogOpen] = useState(false)
   const [documentReplacement, setDocumentReplacement] = useState<AdminKycSubmission | null>(null)
+  const [canReviewDocuments, setCanReviewDocuments] = useState(false)
+  const [canUploadDocuments, setCanUploadDocuments] = useState(false)
   const [creditDialogOpen, setCreditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const actionLock = useRef(false)
@@ -100,8 +103,22 @@ export function AdminUsuarioDetail() {
     if (!userId) return
     setLoading(true)
     setError(null)
+    setCanReviewDocuments(false)
+    setCanUploadDocuments(false)
     try {
-      setDetail(await getAdminUser(userId))
+      const [userDetail, session] = await Promise.all([
+        getAdminUser(userId),
+        getAdminSession(),
+      ])
+      const hasDocumentRole = Boolean(
+        session?.papeis.some((role) => role === 'ADMIN' || role === 'MODERADOR'),
+      )
+      const hasDocumentPermission = Boolean(session?.permissoes.includes('DOCUMENTO_REVISAR'))
+      setCanReviewDocuments(hasDocumentRole && hasDocumentPermission)
+      setCanUploadDocuments(Boolean(
+        session?.papeis.includes('ADMIN') && hasDocumentPermission,
+      ))
+      setDetail(userDetail)
     } catch (reason) {
       setError(reason)
     } finally {
@@ -315,7 +332,7 @@ export function AdminUsuarioDetail() {
           </div>
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5 text-zinc-500" aria-hidden="true" />
-            {admin ? (
+            {canUploadDocuments ? (
               <Button
                 type="button"
                 variant="outline"
@@ -330,13 +347,20 @@ export function AdminUsuarioDetail() {
           </div>
         </div>
         <div className="mt-3">
-          <AdminKycDocumentGrid
-            submissions={detail.kycEnvios}
-            onReplace={admin ? (submission) => {
-              setDocumentReplacement(submission)
-              setDocumentDialogOpen(true)
-            } : undefined}
-          />
+          {canReviewDocuments ? (
+            <AdminKycReviewGrid
+              submissions={detail.kycEnvios}
+              onReplace={canUploadDocuments ? (submission) => {
+                setDocumentReplacement(submission)
+                setDocumentDialogOpen(true)
+              } : undefined}
+              onDecisionComplete={load}
+            />
+          ) : (
+            <p className="border-y border-zinc-200 py-8 text-center text-sm font-medium text-amber-700">
+              Seu perfil não possui DOCUMENTO_REVISAR.
+            </p>
+          )}
         </div>
       </section> : null}
 
@@ -362,7 +386,7 @@ export function AdminUsuarioDetail() {
         )}
       </section>
 
-      {!excluded ? <AdminKycUploadDialog
+      {!excluded && canUploadDocuments ? <AdminKycUploadDialog
         open={documentDialogOpen}
         onOpenChange={setDocumentDialogOpen}
         usuarioId={detail.id}

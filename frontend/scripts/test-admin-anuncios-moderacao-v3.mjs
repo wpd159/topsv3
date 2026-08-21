@@ -19,6 +19,7 @@ const sidebar = source('app/(painel-admin)/admin/components/sidebar/sidebar-link
 const list = source('features/admin-anuncios/admin-anuncios-list.tsx')
 const detail = source('features/admin-anuncios/admin-anuncio-moderacao.tsx')
 const documents = source('features/admin-anuncios/admin-anuncio-documentos.tsx')
+const reviewGrid = source('features/admin-documentos/admin-kyc-review-grid.tsx')
 const premium = source('features/admin-anuncios/admin-anuncio-premium.tsx')
 const premiumQuick = source('features/admin-anuncios/admin-anuncio-premium-rapido.tsx')
 const storiesPage = source('app/(painel-admin)/admin/stories/page.tsx')
@@ -306,9 +307,16 @@ assert.ok(detail.includes('specificConflictMessage(') && detail.includes('normal
 assert.ok(detail.includes('O estado do anúncio mudou.'), 'Conflito sem detalhe deve manter fallback controlado após atualizar o anúncio.')
 assert.ok(detail.includes('decisionLock.current') && detail.includes('disabled={headerBusy}'), 'A aprovacao deve impedir duplo clique durante a decisao.')
 
-assert.ok(documents.includes('AdminKycDocumentGrid'), 'Documento deve reutilizar a grade documental protegida.')
+assert.ok(
+  documents.includes('AdminKycReviewGrid') && reviewGrid.includes('AdminKycDocumentGrid'),
+  'Documento deve reutilizar a grade documental protegida por meio do componente compartilhado.',
+)
 assert.ok(documents.includes('listAdminAdDocuments'), 'Documentos devem continuar vinculados ao proprietario do anuncio pelo backend.')
-assert.ok(!documents.includes('objectKey') && !documents.includes('bucket'), 'Documento nao pode expor bucket ou object key.')
+assert.ok(
+  !documents.includes('objectKey') && !documents.includes('bucket')
+    && !reviewGrid.includes('objectKey') && !reviewGrid.includes('bucket'),
+  'Documento nao pode expor bucket ou object key.',
+)
 
 assert.ok(premium.includes('listAdminPremiumCatalog'), 'Beneficios e duracoes devem vir do catalogo backend.')
 assert.ok(premium.includes('activateAdminPremiumBatch') && premium.includes('cancelAdminPremium'), 'ADMIN deve ativar varios e desativar beneficios.')
