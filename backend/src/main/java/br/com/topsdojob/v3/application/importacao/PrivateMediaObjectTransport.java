@@ -23,13 +23,32 @@ public final class PrivateMediaObjectTransport {
     ImageIO.scanForPlugins();
   }
 
-  public Result transport(
+  public Result apply(
+      ObjectStorage source,
+      ObjectStorage destination,
+      Candidate candidate,
+      ApplyAuthorization authorization) {
+    Objects.requireNonNull(authorization, "autorizacao de APPLY obrigatoria");
+    authorization.validate();
+    return process(source, destination, candidate, Mode.APPLY);
+  }
+
+  public Result plan(
       ObjectStorage source,
       ObjectStorage destination,
       Candidate candidate) {
+    return process(source, destination, candidate, Mode.PLAN);
+  }
+
+  private Result process(
+      ObjectStorage source,
+      ObjectStorage destination,
+      Candidate candidate,
+      Mode mode) {
     Objects.requireNonNull(source, "storage de origem obrigatorio");
     Objects.requireNonNull(destination, "storage de destino obrigatorio");
     Objects.requireNonNull(candidate, "candidato obrigatorio");
+    Objects.requireNonNull(mode, "modo obrigatorio");
     candidate.validate();
 
     try {
@@ -54,6 +73,11 @@ public final class PrivateMediaObjectTransport {
       if (destination.exists(StorageArea.PRIVATE_MEDIA, destinationKey)) {
         return validateDestination(
             destination, candidate, destinationKey, checksum, content.length, detected, false);
+      }
+
+      if (mode == Mode.PLAN) {
+        return Result.planned(
+            candidate, destinationKey, checksum, content.length, detected);
       }
 
       ObjectWriteResult write = destination.putIfAbsent(
@@ -104,7 +128,9 @@ public final class PrivateMediaObjectTransport {
   }
 
   private boolean usable(Result result) {
-    return result.status() == Status.MIGRADA || result.status() == Status.PRESERVADA;
+    return result.status() == Status.PLANEJADA
+        || result.status() == Status.MIGRADA
+        || result.status() == Status.PRESERVADA;
   }
 
   private int variantPriority(Variant variant) {
@@ -373,6 +399,32 @@ public final class PrivateMediaObjectTransport {
           null);
     }
 
+    private static Result planned(
+        Candidate candidate,
+        String destinationKey,
+        String checksum,
+        long size,
+        DetectedMedia detected) {
+      return new Result(
+          candidate.sourceAdId(),
+          candidate.logicalMediaHash(),
+          candidate.sourceTable(),
+          candidate.sourceId(),
+          candidate.type(),
+          candidate.variant(),
+          candidate.primary(),
+          candidate.referenceHash(),
+          destinationKey,
+          checksum,
+          size,
+          detected.contentType(),
+          detected.width(),
+          detected.height(),
+          candidate.order(),
+          Status.PLANEJADA,
+          null);
+    }
+
     private static Result quarantined(Candidate candidate, String reason) {
       return failure(candidate, Status.QUARENTENA, reason);
     }
@@ -426,10 +478,28 @@ public final class PrivateMediaObjectTransport {
   }
 
   public enum Status {
+    PLANEJADA,
     MIGRADA,
     PRESERVADA,
     QUARENTENA,
     BLOQUEADA
+  }
+
+  public record ApplyAuthorization(boolean explicitlyAuthorized, String manifestSha256) {
+
+    private void validate() {
+      if (!explicitlyAuthorized
+          || manifestSha256 == null
+          || !manifestSha256.matches("[0-9a-f]{64}")) {
+        throw new IllegalArgumentException(
+            "APPLY exige autorizacao explicita e SHA-256 do manifesto");
+      }
+    }
+  }
+
+  private enum Mode {
+    PLAN,
+    APPLY
   }
 
   private record DetectedMedia(

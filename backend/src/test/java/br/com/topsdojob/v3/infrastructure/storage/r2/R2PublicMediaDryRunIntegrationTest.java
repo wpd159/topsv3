@@ -48,14 +48,14 @@ class R2PublicMediaDryRunIntegrationTest {
         .connectTimeout(Duration.ofSeconds(20))
         .followRedirects(HttpClient.Redirect.NORMAL)
         .build();
-    ObjectStorage storage = new R2ObjectStorage(
+    ObjectStorage storage = new ReadOnlyObjectStorage(new R2ObjectStorage(
         properties,
         new R2SigV4Client(
             sourceClient,
             URI.create(properties.getEndpoint()),
             properties.getRegion(),
             properties.getAccessKey(),
-            properties.getSigningValue()));
+            properties.getSigningValue())));
     MidiaUploadProperties uploadProperties = new MidiaUploadProperties();
     MidiaUploadValidator validator = new MidiaUploadValidator(uploadProperties);
 
@@ -67,7 +67,7 @@ class R2PublicMediaDryRunIntegrationTest {
     List<Result> results = new ArrayList<>();
     try {
       List<Future<Result>> futures = candidates.stream()
-          .map(candidate -> executor.submit(() -> migrate(
+          .map(candidate -> executor.submit(() -> plan(
               candidate,
               properties,
               sourceClient,
@@ -84,18 +84,18 @@ class R2PublicMediaDryRunIntegrationTest {
 
     results.sort(Comparator.comparingLong(Result::sourceAdId).thenComparing(Result::referenceHash));
     writeResults(output, results);
-    long migrated = count(results, "MIGRADA");
+    long planned = count(results, "PLANEJADA");
     long preserved = count(results, "PRESERVADA");
     long quarantined = count(results, "QUARENTENA");
     long blocked = count(results, "BLOQUEADA");
     System.out.printf(
-        "R2_PUBLIC_MEDIA_DRY_RUN total=%d migradas=%d preservadas=%d quarentena=%d bloqueadas=%d%n",
-        results.size(), migrated, preserved, quarantined, blocked);
+        "R2_PUBLIC_MEDIA_DRY_RUN total=%d planejadas=%d preservadas=%d quarentena=%d bloqueadas=%d%n",
+        results.size(), planned, preserved, quarantined, blocked);
     assertThat(blocked).as("checksum divergente deve bloquear o dry-run").isZero();
-    assertThat(migrated + preserved).as("ao menos uma midia publica deve ser validada").isPositive();
+    assertThat(planned + preserved).as("ao menos uma midia publica deve ser validada").isPositive();
   }
 
-  private Result migrate(
+  private Result plan(
       Candidate candidate,
       R2StorageProperties properties,
       HttpClient sourceClient,
@@ -156,18 +156,7 @@ class R2PublicMediaDryRunIntegrationTest {
               candidate.sourceAdId(), candidate.referenceHash(), key, checksum, content.length,
               validated.mimeType(), validated.largura(), validated.altura());
         }
-        storage.put(StorageArea.PUBLIC_MEDIA, key, content, validated.mimeType());
-        if (!storage.exists(StorageArea.PUBLIC_MEDIA, key)) {
-          return Result.quarantine(candidate.sourceAdId(), candidate.referenceHash(), "HEAD_DESTINO_FALHOU");
-        }
-        byte[] stored = storage.get(StorageArea.PUBLIC_MEDIA, key).content();
-        if (!sha256(stored).equals(checksum)) {
-          return Result.blocked(
-              candidate.sourceAdId(), candidate.referenceHash(), key, checksum, content.length,
-              validated.mimeType(), validated.largura(), validated.altura(),
-              "CHECKSUM_POS_GRAVACAO_DIVERGENTE");
-        }
-        return Result.migrated(
+        return Result.planned(
             candidate.sourceAdId(), candidate.referenceHash(), key, checksum, content.length,
             validated.mimeType(), validated.largura(), validated.altura());
       }
@@ -294,10 +283,10 @@ class R2PublicMediaDryRunIntegrationTest {
       String status,
       String reason) {
 
-    private static Result migrated(
+    private static Result planned(
         long sourceAdId, String referenceHash, String key, String checksum, long size,
         String mime, int width, int height) {
-      return new Result(sourceAdId, referenceHash, key, checksum, size, mime, width, height, "MIGRADA", "");
+      return new Result(sourceAdId, referenceHash, key, checksum, size, mime, width, height, "PLANEJADA", "");
     }
 
     private static Result preserved(
