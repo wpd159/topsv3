@@ -87,9 +87,16 @@ export function validateWizardStep(
 ): string | null {
   const { form } = state
   if (step === 'perfil') {
-    const tituloMinimo = mode === 'edit' ? 10 : 3
-    if (form.titulo.trim().length < tituloMinimo || !form.categoria) {
-      return 'Preencha nome e categoria para continuar.'
+    const tituloLength = form.titulo.trim().length
+    if (tituloLength < 10 || tituloLength > 80) {
+      return 'O nome do anúncio deve ter entre 10 e 80 caracteres.'
+    }
+    if (!form.categoria) {
+      return 'Escolha uma categoria para continuar.'
+    }
+    const descricao = form.descricao.trim() || form.descricaoPerfil.trim()
+    if (mode === 'create' && (descricao.length < 20 || descricao.length > 500)) {
+      return 'A descrição deve ter entre 20 e 500 caracteres.'
     }
   }
   if (step === 'localizacao') {

@@ -169,6 +169,25 @@ class KycPublicoServiceTest {
   }
 
   @Test
+  void aceitaKycEmAnaliseAntesDoAnuncio() {
+    service.enviar(
+        authentication,
+        "Pessoa Civil de Teste",
+        "52998224725",
+        "1990-05-10",
+        "PDF",
+        pdf(),
+        null,
+        null,
+        "req-kyc-analysis");
+
+    documentos.get(0).marcarEmAnalise(OffsetDateTime.now(ZoneOffset.UTC));
+
+    assertThat(service.consultar(authentication).status()).isEqualTo("EM_ANALISE");
+    service.garantirProntoParaAnuncio(usuario.getId());
+  }
+
+  @Test
   void enviaFrenteEversoComoPartesDoMesmoEnvioPrivado() {
     MockMultipartFile frente = imagemPng("documentoFrente", "frente.png");
     MockMultipartFile verso = imagemPng("documentoVerso", "verso.png");

@@ -22,6 +22,7 @@ const credit = source('features/admin-usuarios/admin-usuario-credit-dialog.tsx')
 const deletion = source('features/admin-usuarios/admin-usuario-delete-dialog.tsx')
 const upload = source('features/admin-documentos/admin-kyc-upload-dialog.tsx')
 const documents = source('features/admin-documentos/admin-kyc-document-grid.tsx')
+const review = source('features/admin-documentos/admin-kyc-review-grid.tsx')
 const api = source('features/admin-usuarios/api.ts')
 const documentApi = source('features/admin-documentos/api.ts')
 const creditApi = source('lib/admin-creditos-operacionais-api.ts')
@@ -89,7 +90,9 @@ for (const section of [
 ]) {
   assert.ok(detail.includes(section), `Secao protegida ausente: ${section}.`)
 }
-assert.ok(detail.includes('AdminKycDocumentGrid'), 'KYC deve reutilizar a grade documental protegida.')
+assert.ok(detail.includes('AdminKycReviewGrid'), 'KYC deve reutilizar a revisao documental protegida.')
+assert.ok(detail.includes('getAdminSession') && detail.includes("permissoes.includes('DOCUMENTO_REVISAR')"), 'Controles KYC devem respeitar a sessao e a permissao canonica.')
+assert.ok(detail.includes('detail.kycEnvios') && detail.includes('onDecisionComplete={load}'), 'KYC deve funcionar pelo usuario, inclusive sem anuncio vinculado.')
 assert.ok(detail.includes('AdminKycUploadDialog'), 'Inclusao e substituicao devem ficar na gestao do usuario.')
 assert.ok(detail.includes('AdminUsuarioCreditDialog'), 'Saldo e ledger devem estar disponiveis no detalhe.')
 assert.ok(!detail.includes('objectKey') && !detail.includes('bucket'), 'Storage privado nao pode aparecer na interface.')
@@ -128,6 +131,8 @@ assert.ok(documentApi.includes('Idempotency-Key') && documentApi.includes('multi
 assert.ok(documents.includes('getAdminDocumentTemporaryUrl'), 'A visualizacao integral deve usar a URL temporaria privada existente.')
 assert.ok(documents.includes('adminDocumentThumbnailUrl'), 'Os cards devem usar miniaturas protegidas.')
 assert.ok(documents.includes('onReplace'), 'A grade compartilhada deve oferecer substituicao somente quando autorizada.')
+assert.ok(review.includes('decideAdminKycSubmission') && review.includes('AdminKycDocumentGrid'), 'A revisao deve centralizar as decisoes e reutilizar a grade protegida.')
+assert.ok(!review.includes('DeleteObject') && !review.includes('excluir documento'), 'O hotfix nao pode criar exclusao fisica documental.')
 
 assert.ok(credit.includes('Saldo atual') && credit.includes('Historico'), 'Modal deve exibir saldo e ledger.')
 assert.ok(credit.includes('Adicionar') && credit.includes('Remover'), 'Modal deve oferecer as duas operacoes administrativas.')

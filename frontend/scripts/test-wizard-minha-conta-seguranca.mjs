@@ -40,6 +40,11 @@ assert.ok(constants.includes('Uma boa descrição ajuda clientes a conhecerem se
 assert.ok(profile.includes('Fale sobre seu estilo, atendimento, diferenciais e a experiência que você oferece.'))
 assert.ok(profile.includes('Essa descrição será exibida no seu perfil. Seja clara, autêntica'))
 assert.ok(profile.includes('maxLength={500}'))
+assert.ok(profile.includes('minLength={10}') && profile.includes('maxLength={80}'))
+assert.ok(store.includes('tituloLength < 10 || tituloLength > 80'))
+assert.ok(store.includes("mode === 'create' && (descricao.length < 20 || descricao.length > 500)"))
+assert.ok(wizardApi.includes('Array.isArray(parsed.erros)'))
+assert.ok(wizardApi.includes('mapWizardValidationField(field, normalizedCode)'))
 
 assert.ok(store.includes('Região de atendimento'))
 assert.ok(constants.includes('Onde você atende?'))

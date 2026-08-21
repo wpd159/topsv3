@@ -43,6 +43,8 @@ export function WizardStepPerfil({
               value={titulo}
               onChange={(event) => onTituloChange(event.target.value)}
               placeholder="Ex: Alice Loira"
+              minLength={10}
+              maxLength={80}
               className="h-12 rounded-xl border-zinc-200 text-base"
             />
           </Field>
