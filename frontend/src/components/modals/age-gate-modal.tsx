@@ -73,20 +73,31 @@ export function AgeGateModal({
 
   return (
       <Dialog open={open} onOpenChange={() => {}}>
-        <DialogContent className="rounded-2xl p-6 sm:max-w-md">
-          <DialogHeader className="space-y-2 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-pink-100">
+        <DialogContent
+          className="flex h-[100dvh] max-h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-0 sm:grid sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-md sm:overflow-y-auto sm:rounded-2xl sm:border sm:p-6 [&_[data-slot=dialog-close]]:right-[max(1rem,env(safe-area-inset-right))] [&_[data-slot=dialog-close]]:top-[max(1rem,env(safe-area-inset-top))] sm:[&_[data-slot=dialog-close]]:right-4 sm:[&_[data-slot=dialog-close]]:top-4"
+          data-age-gate-layout
+        >
+          <DialogHeader className="contents space-y-2 text-center sm:flex">
+            <div
+              className="mx-auto mt-[max(1.25rem,env(safe-area-inset-top))] flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-pink-100 sm:mt-0"
+              data-age-gate-header
+            >
               <ExclamationTriangleIcon className="h-7 w-7 text-[#FC1EAD]" />
             </div>
-            <DialogTitle className="text-xl font-bold">{legalNotice.titulo}</DialogTitle>
+            <DialogTitle className="mt-2 shrink-0 pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(3.5rem,env(safe-area-inset-right))] text-xl font-bold sm:mt-0 sm:px-0">
+              {legalNotice.titulo}
+            </DialogTitle>
             <DialogDescription asChild>
-              <div className="whitespace-pre-line text-justify text-gray-600">
+              <div
+                className="mt-2 min-h-0 flex-1 overflow-y-auto whitespace-pre-line pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] text-justify text-gray-600 sm:mt-0 sm:flex-none sm:overflow-visible sm:px-0"
+                data-age-gate-body
+              >
                 <SafeInstitutionalText content={legalNotice.corpo} />
               </div>
             </DialogDescription>
           </DialogHeader>
 
-          <p className="mt-3 text-center text-sm text-gray-600">
+          <p className="mt-3 shrink-0 pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] text-center text-sm text-gray-600 sm:px-0">
             Ao clicar em <b>Aceitar</b>, declaro que sou maior de 18 anos e li os{' '}
             <a href={termsHref} className="text-[#FC1EAD] underline underline-offset-2">
               Termos de Uso
@@ -94,12 +105,18 @@ export function AgeGateModal({
             .
           </p>
           {error ? (
-            <p role="alert" className="mt-3 text-center text-sm text-red-600">
+            <p
+              role="alert"
+              className="mt-3 shrink-0 pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] text-center text-sm text-red-600 sm:px-0"
+            >
               {error}
             </p>
           ) : null}
 
-          <div className="mt-6 grid grid-cols-2 gap-3">
+          <div
+            className="mt-4 grid shrink-0 grid-cols-2 gap-3 border-t bg-background pl-[max(1.5rem,env(safe-area-inset-left))] pr-[max(1.5rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 sm:mt-6 sm:border-0 sm:bg-transparent sm:p-0"
+            data-age-gate-footer
+          >
             <Button
               onClick={() => {
                 window.location.href = denyRedirect
