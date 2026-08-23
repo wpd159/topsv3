@@ -3,6 +3,8 @@ package br.com.topsdojob.v3.application.publico.mapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService;
@@ -159,9 +161,157 @@ class MidiaPublicaMapperTest {
         assertThat(comBeneficio).hasSize(1);
     }
 
-    private AnuncioMidiaEntity midia(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade, UUID arquivoId, int ordem) {
+    @Test
+    void videoComOrdemMaiorQueFotoAindaOcupaAPrimeiraPosicao() {
+        UUID arquivoFoto = UUID.randomUUID();
+        UUID arquivoVideo = UUID.randomUUID();
+        AnuncioMidiaEntity foto = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, arquivoFoto, 0);
+        AnuncioMidiaEntity video = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, arquivoVideo, 10);
+        when(urlService.resolver(any(), any())).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/segura", null));
+
+        var resultado = mapper.publicas(
+                List.of(foto, video),
+                Map.of(arquivoFoto, arquivo(arquivoFoto), arquivoVideo, arquivo(arquivoVideo)),
+                false);
+
+        assertThat(resultado).extracting(item -> item.tipo()).containsExactly("VIDEO", "FOTO");
+        assertThat(resultado).extracting(item -> item.ordem()).containsExactly(10, 0);
+    }
+
+    @Test
+    void videoComOrdemMenorQueFotoMantemAOrdenacaoCanonica() {
+        UUID arquivoFoto = UUID.randomUUID();
+        UUID arquivoVideo = UUID.randomUUID();
+        AnuncioMidiaEntity foto = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, arquivoFoto, 9);
+        AnuncioMidiaEntity video = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, arquivoVideo, 1);
+        when(urlService.resolver(any(), any())).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/segura", null));
+
+        var resultado = mapper.publicas(
+                List.of(foto, video),
+                Map.of(arquivoFoto, arquivo(arquivoFoto), arquivoVideo, arquivo(arquivoVideo)),
+                false);
+
+        assertThat(resultado).extracting(item -> item.tipo()).containsExactly("VIDEO", "FOTO");
+    }
+
+    @Test
+    void ordemNulaFicaNoFimDoRespectivoGrupo() {
+        UUID videoComOrdemId = UUID.randomUUID();
+        UUID videoSemOrdemId = UUID.randomUUID();
+        UUID fotoComOrdemId = UUID.randomUUID();
+        UUID fotoSemOrdemId = UUID.randomUUID();
+        AnuncioMidiaEntity videoComOrdem = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, videoComOrdemId, 2);
+        AnuncioMidiaEntity videoSemOrdem = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, videoSemOrdemId, null);
+        AnuncioMidiaEntity fotoComOrdem = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, fotoComOrdemId, 1);
+        AnuncioMidiaEntity fotoSemOrdem = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, fotoSemOrdemId, null);
+        when(urlService.resolver(any(), any())).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/segura", null));
+
+        var resultado = mapper.publicas(
+                List.of(fotoSemOrdem, videoSemOrdem, fotoComOrdem, videoComOrdem),
+                Map.of(
+                        videoComOrdemId, arquivo(videoComOrdemId),
+                        videoSemOrdemId, arquivo(videoSemOrdemId),
+                        fotoComOrdemId, arquivo(fotoComOrdemId),
+                        fotoSemOrdemId, arquivo(fotoSemOrdemId)),
+                false);
+
+        assertThat(resultado).extracting(item -> item.tipo()).containsExactly("VIDEO", "VIDEO", "FOTO", "FOTO");
+        assertThat(resultado).extracting(item -> item.ordem()).containsExactly(2, null, 1, null);
+    }
+
+    @Test
+    void doisVideosAntecedemVariasFotosSemConsumirOLimiteDeFotos() {
+        UUID videoZeroId = UUID.randomUUID();
+        UUID videoUmId = UUID.randomUUID();
+        UUID fotoZeroId = UUID.randomUUID();
+        UUID fotoUmId = UUID.randomUUID();
+        UUID fotoDoisId = UUID.randomUUID();
+        AnuncioMidiaEntity videoZero = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, videoZeroId, 0);
+        AnuncioMidiaEntity videoUm = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, videoUmId, 1);
+        AnuncioMidiaEntity fotoZero = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, fotoZeroId, 0);
+        AnuncioMidiaEntity fotoUm = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, fotoUmId, 1);
+        AnuncioMidiaEntity fotoDois = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, fotoDoisId, 2);
+        when(urlService.resolver(any(), any())).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/segura", null));
+
+        var resultado = mapper.publicas(
+                List.of(fotoDois, videoUm, fotoZero, videoZero, fotoUm),
+                Map.of(
+                        videoZeroId, arquivo(videoZeroId),
+                        videoUmId, arquivo(videoUmId),
+                        fotoZeroId, arquivo(fotoZeroId),
+                        fotoUmId, arquivo(fotoUmId),
+                        fotoDoisId, arquivo(fotoDoisId)),
+                false,
+                2,
+                true);
+
+        assertThat(resultado).extracting(item -> item.tipo()).containsExactly("VIDEO", "VIDEO", "FOTO", "FOTO");
+        assertThat(resultado).extracting(item -> item.ordem()).containsExactly(0, 1, 0, 1);
+    }
+
+    @Test
+    void desempataMidiasDoMesmoTipoEOrdemPeloId() {
+        UUID primeiroId = UUID.fromString("00000000-0000-4000-8000-000000000001");
+        UUID segundoId = UUID.fromString("00000000-0000-4000-8000-000000000002");
+        UUID primeiroArquivoId = UUID.randomUUID();
+        UUID segundoArquivoId = UUID.randomUUID();
+        AnuncioMidiaEntity primeiro = midia(primeiroId, TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, primeiroArquivoId, 5);
+        AnuncioMidiaEntity segundo = midia(segundoId, TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, segundoArquivoId, 5);
+        when(urlService.resolver(any(), any())).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/segura", null));
+
+        var resultado = mapper.publicas(
+                List.of(segundo, primeiro),
+                Map.of(primeiroArquivoId, arquivo(primeiroArquivoId), segundoArquivoId, arquivo(segundoArquivoId)),
+                false);
+
+        assertThat(resultado).extracting(item -> item.id()).containsExactly(primeiroId, segundoId);
+    }
+
+    @Test
+    void storyPermaneceForaDaGaleriaPublica() {
+        UUID arquivoId = UUID.randomUUID();
+        AnuncioMidiaEntity story = midia(TipoAnuncioMidia.STORY, VisibilidadeMidia.RESTRITA_18, arquivoId, 0);
+
+        assertThat(mapper.publicas(List.of(story), Map.of(arquivoId, arquivo(arquivoId)), true)).isEmpty();
+    }
+
+    @Test
+    void ordenacaoNaoAlteraAOrdemPersistida() {
+        UUID arquivoFoto = UUID.randomUUID();
+        UUID arquivoVideo = UUID.randomUUID();
+        AnuncioMidiaEntity foto = midia(TipoAnuncioMidia.FOTO, VisibilidadeMidia.LIVRE, arquivoFoto, 0);
+        AnuncioMidiaEntity video = midia(TipoAnuncioMidia.VIDEO, VisibilidadeMidia.LIVRE, arquivoVideo, 10);
+        when(urlService.resolver(any(), any())).thenReturn(
+                new MidiaPublicaUrlService.ResultadoUrlPublica("/segura", null));
+
+        mapper.publicas(
+                List.of(foto, video),
+                Map.of(arquivoFoto, arquivo(arquivoFoto), arquivoVideo, arquivo(arquivoVideo)),
+                false);
+
+        verify(foto, never()).reordenar(any(), any());
+        verify(video, never()).reordenar(any(), any());
+        assertThat(foto.getOrdem()).isZero();
+        assertThat(video.getOrdem()).isEqualTo(10);
+    }
+
+    private AnuncioMidiaEntity midia(TipoAnuncioMidia tipo, VisibilidadeMidia visibilidade, UUID arquivoId, Integer ordem) {
+        return midia(UUID.randomUUID(), tipo, visibilidade, arquivoId, ordem);
+    }
+
+    private AnuncioMidiaEntity midia(
+            UUID id,
+            TipoAnuncioMidia tipo,
+            VisibilidadeMidia visibilidade,
+            UUID arquivoId,
+            Integer ordem) {
         AnuncioMidiaEntity entity = mock(AnuncioMidiaEntity.class);
-        when(entity.getId()).thenReturn(UUID.randomUUID());
+        when(entity.getId()).thenReturn(id);
         when(entity.getArquivoMidiaId()).thenReturn(arquivoId);
         when(entity.getTipo()).thenReturn(tipo);
         when(entity.getFinalidade()).thenReturn(tipo == TipoAnuncioMidia.STORY ? FinalidadeAnuncioMidia.STORY : FinalidadeAnuncioMidia.GALERIA);

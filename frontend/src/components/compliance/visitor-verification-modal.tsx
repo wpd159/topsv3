@@ -24,6 +24,7 @@ import {
   notificarMudancaVerificacao,
   obterStatusVisitante,
   recarregarStatusVisitante,
+  statusSatisfazEscopo,
   type StatusVisitante,
 } from "@/lib/compliance/visitor-access"
 
@@ -113,6 +114,8 @@ export function VisitorVerificationModal({
   const challengeKeyRef = useRef<string | null>(null)
   const verifyKeyRef = useRef<string | null>(null)
   const documentKeyRef = useRef<string | null>(null)
+  const callbacksRef = useRef({ onOpenChange, onVerified })
+  callbacksRef.current = { onOpenChange, onVerified }
 
   useEffect(() => {
     if (!open) {
@@ -138,13 +141,17 @@ export function VisitorVerificationModal({
     setStep("loading")
     setError(null)
     setMessage(null)
-    const challengeKey = challengeKeyRef.current
-      ?? newIdempotencyKey("visitor-challenge")
-    challengeKeyRef.current = challengeKey
     void (async () => {
       const global = await obterStatusVisitante(true)
       if (!global.globalAccepted) {
         throw new Error("Aceite o aviso geral antes de acessar o conteudo protegido.")
+      }
+      if (statusSatisfazEscopo(global, scope, level)) {
+        if (!active) return
+        notificarMudancaVerificacao(global)
+        callbacksRef.current.onVerified?.(global)
+        callbacksRef.current.onOpenChange(false)
+        return
       }
       const storyContext = scope === "STORY"
       if (storyContext && !context?.storyId) {
@@ -153,6 +160,9 @@ export function VisitorVerificationModal({
       if (!storyContext && !context?.anuncioId) {
         throw new Error("O contexto protegido do anuncio nao esta disponivel.")
       }
+      const challengeKey = challengeKeyRef.current
+        ?? newIdempotencyKey("visitor-challenge")
+      challengeKeyRef.current = challengeKey
       const created = await createVisitorChallenge({
         level,
         scope,

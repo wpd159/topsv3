@@ -118,8 +118,15 @@ assert.equal(canNavigateFromStory(released, true, false), true)
 assert.equal(canNavigateFromStory({ viewerState: 'IDADE_NAO_CONFIRMADA' }, true, false), false)
 
 assert.match(viewerSource, /if \(verificationOpen \|\| !mediaReady\) return/)
-assert.match(viewerSource, /disabled=\{isLastVisibleContent \|\| viewerNavegacaoTravada\}/)
-assert.equal((viewerSource.match(/disabled=\{viewerNavegacaoTravada\}/g) || []).length, 2)
+assert.match(viewerSource, /const viewerInteracoesTravadas = verificationOpen/)
+assert.equal((viewerSource.match(/disabled=\{viewerInteracoesTravadas\}/g) || []).length, 2)
+assert.equal(
+  (viewerSource.match(
+    /disabled=\{!possui(?:MidiaAnterior|ProximaMidia) \|\| viewerNavegacaoTravada\}/g,
+  ) || []).length,
+  4,
+  'Setas e áreas laterais da mídia devem permanecer fail-closed.',
+)
 assert.match(viewerSource, /podeNavegarAnuncio[\s\S]*canNavigateFromStory/)
 assert.match(viewerSource, /onLoad=\{markCurrentStoryVisible\}/)
 assert.match(viewerSource, /onPlaying=\{markCurrentStoryVisible\}/)
