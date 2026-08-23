@@ -24,6 +24,7 @@ type SensitiveVideoProps = {
   className?: string
   thumbnail?: boolean
   onVerificationSuccess?: () => void
+  onAuthorizationChange?: (authorized: boolean) => void
   preload?: "none" | "metadata" | "auto"
   onVideoElementChange?: (video: HTMLVideoElement | null) => void
   onPlay?: (video: HTMLVideoElement) => void
@@ -40,6 +41,7 @@ export function SensitiveVideo({
   className,
   thumbnail = false,
   onVerificationSuccess,
+  onAuthorizationChange,
   preload = "metadata",
   onVideoElementChange,
   onPlay,
@@ -89,6 +91,12 @@ export function SensitiveVideo({
 
   const authorized = midia.autorizada || sessionAuthorized
   const blocked = restricted && !authorized
+
+  useEffect(() => {
+    if (thumbnail) return
+    onAuthorizationChange?.(authorized)
+  }, [authorized, onAuthorizationChange, thumbnail])
+
   const source = thumbnail || blocked
     ? null
     : restricted

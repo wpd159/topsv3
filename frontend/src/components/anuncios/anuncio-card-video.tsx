@@ -78,6 +78,7 @@ export function AnuncioCardVideo({
         preload="none"
         className="object-cover transition-transform duration-500 group-hover:scale-[1.02]"
         onVideoElementChange={setVideoElement}
+        onAuthorizationChange={setSessionAuthorized}
         onVerificationSuccess={() => {
           setSessionAuthorized(true)
           setMediaFailed(false)
@@ -131,6 +132,22 @@ export function AnuncioCardVideo({
 
           {posterUrl ? <div className="absolute inset-0 bg-black/25" /> : null}
           <div className="absolute inset-0 flex items-center justify-center">
+            {!blocked ? (
+              <button
+                type="button"
+                className="pointer-events-auto absolute inset-0 z-10 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pink-500"
+                aria-label="Reproduzir vídeo"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  const video = videoRef.current
+                  if (!video) return
+                  void video.play().catch(() => undefined)
+                }}
+              >
+                <span className="sr-only">Reproduzir vídeo</span>
+              </button>
+            ) : null}
             <span className="flex flex-col items-center gap-2 rounded-md bg-black/70 px-3 py-2 text-xs font-semibold text-white ring-1 ring-white/30">
               <PlayCircleIcon className="h-10 w-10" aria-hidden="true" />
               {blocked ? "Confirmar maioridade" : "Reproduzir vídeo"}
