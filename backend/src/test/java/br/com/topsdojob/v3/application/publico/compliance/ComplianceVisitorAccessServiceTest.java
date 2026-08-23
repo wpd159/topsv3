@@ -110,6 +110,57 @@ class ComplianceVisitorAccessServiceTest {
   }
 
   @Test
+  void tokenGeralReforcadoAutorizaDuasMidiasRestritasDistintas() {
+    Fixture fixture = fixture();
+    IssuedAccess access = emitirAcessoGeralReforcado(fixture);
+    prepararAcesso(fixture, access, fixture.session);
+
+    MockHttpServletRequest primeiraMidia = new MockHttpServletRequest();
+    MockHttpServletRequest segundaMidia = new MockHttpServletRequest();
+
+    assertThat(access.challenge().getAnuncioMidiaId()).isNotNull();
+    assertThat(access.token().getEscopoToken()).isEqualTo(EscopoTokenVisitante.GENERAL);
+    assertThat(access.token().getNivelAcesso()).isEqualTo(NivelAcessoVisitante.REINFORCED);
+    assertThat(fixture.service.autorizado(
+        primeiraMidia,
+        EscopoConteudoVisitante.MIDIA_RESTRITA)).isTrue();
+    assertThat(fixture.service.autorizado(
+        segundaMidia,
+        EscopoConteudoVisitante.MIDIA_RESTRITA)).isTrue();
+  }
+
+  @Test
+  void tokenGeralNaoAutorizaUserAgentIncompativel() {
+    Fixture fixture = fixture();
+    IssuedAccess access = emitirAcessoGeralReforcado(fixture);
+    SessionContext userAgentIncompativel = new SessionContext(
+        fixture.session.sessionId(),
+        fixture.session.sessionHash(),
+        "9".repeat(64),
+        fixture.session.cookie(),
+        false);
+    prepararAcesso(fixture, access, userAgentIncompativel);
+
+    assertThat(fixture.service.autorizado(
+        new MockHttpServletRequest(),
+        EscopoConteudoVisitante.MIDIA_RESTRITA)).isFalse();
+  }
+
+  @Test
+  void tokenGeralRevogadoNaoAutorizaMesmoComCookieAssinado() {
+    Fixture fixture = fixture();
+    IssuedAccess access = emitirAcessoGeralReforcado(fixture);
+    access.token().revogar(
+        "REVOGADO_EM_TESTE",
+        OffsetDateTime.now(ZoneOffset.UTC).withNano(0));
+    prepararAcesso(fixture, access, fixture.session);
+
+    assertThat(fixture.service.autorizado(
+        new MockHttpServletRequest(),
+        EscopoConteudoVisitante.MIDIA_RESTRITA)).isFalse();
+  }
+
+  @Test
   void acessoGlobalIniciadoNoStoryALiberaStoryBCompativelSemTokenPorStory() {
     Fixture fixture = fixture();
     List<ComplianceVisitorTokenEntity> persisted = new ArrayList<>();
@@ -525,6 +576,51 @@ class ComplianceVisitorAccessServiceTest {
             now);
     challenge.verificar("4".repeat(64), now);
     return challenge;
+  }
+
+  private IssuedAccess emitirAcessoGeralReforcado(Fixture fixture) {
+    List<ComplianceVisitorTokenEntity> persisted = new ArrayList<>();
+    when(fixture.tokenRepository.save(any(ComplianceVisitorTokenEntity.class)))
+        .thenAnswer(invocation -> {
+          var savedEntity = invocation.getArgument(0, ComplianceVisitorTokenEntity.class);
+          persisted.add(savedEntity);
+          return savedEntity;
+        });
+    when(fixture.tokenRepository.findByChallengeIdAndStatus(
+        any(),
+        eq(StatusTokenVisitante.ACTIVE))).thenReturn(List.of());
+    ComplianceVisitorChallengeEntity challenge = challenge(
+        fixture.session.sessionHash(),
+        EscopoConteudoVisitante.MIDIA_RESTRITA,
+        false);
+    var issued = fixture.service.emitir(
+        challenge,
+        fixture.session,
+        OffsetDateTime.now(ZoneOffset.UTC).withNano(0));
+    return new IssuedAccess(
+        issued.generalCookie().getValue(),
+        persisted.get(0),
+        challenge);
+  }
+
+  private void prepararAcesso(
+      Fixture fixture,
+      IssuedAccess access,
+      SessionContext session) {
+    when(fixture.globalService.aceito(any())).thenReturn(true);
+    when(fixture.sessionService.obterOuCriar(any())).thenReturn(session);
+    when(fixture.sessionService.cookie(
+        any(),
+        eq(ComplianceSignedCookieService.ACCESS_COOKIE)))
+        .thenReturn(access.rawCookie());
+    when(fixture.tokenRepository.findByTokenHash(access.token().getTokenHash()))
+        .thenReturn(Optional.of(access.token()));
+  }
+
+  private record IssuedAccess(
+      String rawCookie,
+      ComplianceVisitorTokenEntity token,
+      ComplianceVisitorChallengeEntity challenge) {
   }
 
   private record Fixture(

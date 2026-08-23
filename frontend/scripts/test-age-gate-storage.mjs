@@ -98,7 +98,13 @@ assert.doesNotMatch(`${api}\n${access}`, /localStorage|sessionStorage/)
 assert.doesNotMatch(`${api}\n${access}\n${verification}`, /\/idade\/confirmar|\/idade\/status/)
 assert.match(sensitiveImage, /\/compliance\/visitor\/media\//)
 assert.match(sensitiveImage, /void obterStatusVisitante\(\)/)
-assert.doesNotMatch(sensitiveImage, /obterStatusVisitante\(true\)/)
+assert.equal(
+  (sensitiveImage.match(/obterStatusVisitante\(true\)/g) ?? []).length,
+  1,
+  'Erro de mídia protegida pode consultar o status autoritativo uma única vez.',
+)
+assert.match(sensitiveImage, /statusCheckedAfterError\.current/)
+assert.doesNotMatch(sensitiveImage, /setSessionAuthorized\(false\)/)
 assert.match(sensitiveImage, /loadingProtectedMedia/)
 assert.match(sensitiveImage, /role="status"/)
 assert.match(sensitiveImage, /Carregando conteúdo protegido/)
@@ -124,6 +130,17 @@ const instrumentedAccess = access.replace(
     'const acceptGlobalAgeGate = (originPath) => globalThis.__ageGateAcceptRequest(originPath)',
     'const getVisitorStatus = () => globalThis.__ageGateStatusRequest()',
     'type VisitorAccessStatus = any',
+  ].join('\n'),
+).replace(
+  /import type \{ StatusEscopoVisitante \} from '@\/lib\/compliance\/visitor-access-policy'/,
+  'type StatusEscopoVisitante = any',
+).replace(
+  /export \{[\s\S]*?\} from '@\/lib\/compliance\/visitor-access-policy'/,
+  [
+    '// A política central possui cobertura própria; este harness exercita o cache concorrente.',
+    'export const statusSatisfazEscopo = () => false',
+    'export type EscopoAcessoVisitante = any',
+    'export type NivelAcessoVisitante = any',
   ].join('\n'),
 )
 const compiledAccess = ts.transpileModule(instrumentedAccess, {

@@ -5,15 +5,14 @@ import {
   getVisitorStatus,
   type VisitorAccessStatus,
 } from '@/lib/compliance/age-gate-api'
+import type { StatusEscopoVisitante } from '@/lib/compliance/visitor-access-policy'
+export {
+  statusSatisfazEscopo,
+  type EscopoAcessoVisitante,
+  type NivelAcessoVisitante,
+} from '@/lib/compliance/visitor-access-policy'
 
-export type StatusVisitante = {
-  globalAccepted?: boolean
-  verified: boolean
-  level?: string | null
-  expiresAt?: string | null
-  explicitVerified?: boolean
-  explicitLevel?: string | null
-  explicitExpiresAt?: string | null
+export type StatusVisitante = StatusEscopoVisitante & {
   state?: string | null
   riskScore?: number | null
   decision?: string | null

@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import {
@@ -14,6 +14,7 @@ import { publicApiUrl } from "@/lib/api-contract"
 import {
   AGE_VERIFICATION_CHANGED_EVENT,
   obterStatusVisitante,
+  statusSatisfazEscopo,
 } from "@/lib/compliance/visitor-access"
 
 type SensitiveImageProps = {
@@ -53,6 +54,7 @@ export function SensitiveImage({
   const [erro, setErro] = useState(false)
   const [sessionAuthorized, setSessionAuthorized] = useState(midia.autorizada)
   const [loadedProtectedSource, setLoadedProtectedSource] = useState<string | null>(null)
+  const statusCheckedAfterError = useRef(false)
 
   useEffect(() => {
     if (midia.visibilidadeMidia !== "RESTRITA_18") return
@@ -61,14 +63,15 @@ export function SensitiveImage({
       void obterStatusVisitante()
         .then((status) => {
           if (!active) return
-          setSessionAuthorized(Boolean(
-            status.verified
-              && (status.level === "REINFORCED" || status.level === "STRONG"),
+          setSessionAuthorized(statusSatisfazEscopo(
+            status,
+            "MIDIA_RESTRITA",
+            "REINFORCED",
           ))
           setErro(false)
         })
         .catch(() => {
-          if (active) setSessionAuthorized(false)
+          // Falha ao consultar o status não revoga uma autorização já conhecida.
         })
     }
     refresh()
@@ -78,6 +81,13 @@ export function SensitiveImage({
       window.removeEventListener(AGE_VERIFICATION_CHANGED_EVENT, refresh)
     }
   }, [midia.visibilidadeMidia])
+
+  useEffect(() => {
+    setErro(false)
+    setLoadedProtectedSource(null)
+    statusCheckedAfterError.current = false
+    if (midia.autorizada) setSessionAuthorized(true)
+  }, [midia.autorizada, midia.id, midia.urlPublica])
 
   const autorizada = midia.autorizada || sessionAuthorized
   const protegida = midia.visibilidadeMidia === "RESTRITA_18" && !autorizada
@@ -121,8 +131,21 @@ export function SensitiveImage({
             }}
             onError={() => {
               if (midia.visibilidadeMidia === "RESTRITA_18") {
-                setSessionAuthorized(false)
                 setLoadedProtectedSource(null)
+                if (!statusCheckedAfterError.current) {
+                  statusCheckedAfterError.current = true
+                  void obterStatusVisitante(true)
+                    .then((status) => {
+                      setSessionAuthorized(statusSatisfazEscopo(
+                        status,
+                        "MIDIA_RESTRITA",
+                        "REINFORCED",
+                      ))
+                    })
+                    .catch(() => {
+                      // Rede, 404 ou 5xx da mídia não revogam o token.
+                    })
+                }
               }
               setErro(true)
               onError?.()
@@ -139,6 +162,18 @@ export function SensitiveImage({
                   ? "A mídia original permanece protegida."
                   : "Não foi possível carregar esta mídia."}
               </p>
+              {!protegida ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    statusCheckedAfterError.current = false
+                    setErro(false)
+                  }}
+                >
+                  Tentar novamente
+                </Button>
+              ) : null}
             </div>
           </div>
         )}
@@ -209,6 +244,7 @@ export function SensitiveImage({
           setLoadedProtectedSource(null)
           setSessionAuthorized(true)
           setErro(false)
+          statusCheckedAfterError.current = false
           setVerificationOpen(false)
           onVerificationSuccess?.()
         }}

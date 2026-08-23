@@ -3,9 +3,10 @@
 import { createPortal } from 'react-dom'
 import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
-import { ChevronLeftIcon, ChevronRightIcon, PlayIcon, XMarkIcon } from '@heroicons/react/24/solid'
+import { ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/24/solid'
 import { SensitiveImage } from '@/components/compliance/sensitive-image'
-import { fontePublicaSegura, ordenarGaleriaPublica, type MidiaPublica } from '@/lib/media/public-media'
+import { SensitiveVideo } from '@/components/compliance/sensitive-video'
+import { ordenarGaleriaPublica, type MidiaPublica } from '@/lib/media/public-media'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
 import { cn } from '@/lib/utils'
 import { FavoritoButton } from '@/components/anuncios/favorito-button'
@@ -30,6 +31,7 @@ type RenderMidiaOptions = {
   priority?: boolean
   onClick?: () => void
   sizes: string
+  thumbnail?: boolean
 }
 
 export default function HeaderTabs({
@@ -99,19 +101,17 @@ export default function HeaderTabs({
   const renderMidia = (
     midia: MidiaPublica,
     className: string,
-    { priority = false, onClick, sizes }: RenderMidiaOptions
+    { priority = false, onClick, sizes, thumbnail = false }: RenderMidiaOptions
   ) => {
-    const source = fontePublicaSegura(midia)
-    if (midia.tipo === 'VIDEO' && midia.autorizada && source) {
+    if (midia.tipo === 'VIDEO') {
       return (
-        <video
-          key={String(midia.id)}
-          src={source}
-          controls
-          muted
-          playsInline
-          preload="metadata"
+        <SensitiveVideo
+          midia={midia}
+          anuncioId={anuncio.id}
+          anuncioSlug={anuncio.slug}
           className={className}
+          thumbnail={thumbnail}
+          onVerificationSuccess={onAccessUpdated}
         />
       )
     }
@@ -195,10 +195,8 @@ export default function HeaderTabs({
                 >
                   {renderMidia(item, 'object-cover object-center', {
                     sizes: '(max-width: 640px) 80px, 96px',
+                    thumbnail: item.tipo === 'VIDEO',
                   })}
-                  {item.tipo === 'VIDEO' ? (
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/25"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-black/70 text-white"><PlayIcon className="h-4 w-4" /></span></div>
-                  ) : null}
                   <button type="button" className="absolute inset-0 z-30 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2" onClick={() => selecionarMedia(index)} aria-label={`Selecionar mídia ${index + 1}`} />
                 </div>
               ))}
