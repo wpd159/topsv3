@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { SensitiveImage } from "@/components/compliance/sensitive-image"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import { FavoritoButton } from "@/components/anuncios/favorito-button"
+import { AnuncioCardVideo } from "@/components/anuncios/anuncio-card-video"
 import {
   fontePublicaSegura,
   selecionarGaleriaPublicaSegura,
@@ -189,10 +190,11 @@ export function AnuncioCard({
       }))
     }
     return selecionarGaleriaPublicaSegura(midias).filter((midia) => {
+      if (midia.tipo === "VIDEO" && !videoHabilitado) return false
       const fonte = fontePublicaSegura(midia)
-      return fonte !== null && !badSrcs.has(fonte)
+      return fonte === null || !badSrcs.has(fonte)
     })
-  }, [badSrcs, midias, previewImagens, previewMode])
+  }, [badSrcs, midias, previewImagens, previewMode, videoHabilitado])
 
   const [index, setIndex] = useState(0)
   const visualizacoesLabel = formatarVisualizacoesCanonicas(visualizacoes)
@@ -206,7 +208,9 @@ export function AnuncioCard({
   }, [midiasSeguras.length, index])
 
   useEffect(() => {
-    if (!carrosselDisponivel || midiasSeguras.length <= 1 || typeof window === "undefined") return
+    if ((!carrosselDisponivel && !videoHabilitado)
+      || midiasSeguras.length <= 1
+      || typeof window === "undefined") return
 
     const candidates = [
       midiasSeguras[(index + 1) % midiasSeguras.length],
@@ -214,12 +218,13 @@ export function AnuncioCard({
     ]
 
     candidates.forEach((media) => {
+      if (media?.tipo !== "FOTO") return
       const fonte = media ? fontePublicaSegura(media) : null
       if (!fonte) return
       const img = new window.Image()
       img.src = fonte
     })
-  }, [carrosselDisponivel, index, midiasSeguras])
+  }, [carrosselDisponivel, index, midiasSeguras, videoHabilitado])
 
   const next = () => {
     if (!midiasSeguras.length) return
@@ -331,24 +336,34 @@ export function AnuncioCard({
     >
       <div className="relative aspect-[3/4] w-full overflow-hidden rounded-t-xl bg-gray-50">
         {midiaAtual ? (
-          <div className="absolute inset-0">
-            <SensitiveImage
+          midiaAtual.tipo === "VIDEO" ? (
+            <AnuncioCardVideo
+              key={String(midiaAtual.id)}
               midia={midiaAtual}
               anuncioId={id}
               anuncioSlug={slugRota}
-              alt={altFoto}
-              fill
-              sizes="(max-width: 768px) 100vw, 360px"
-              priority={mediaPriority}
-              className="transition-transform duration-500 group-hover:scale-[1.02]"
               onVerificationSuccess={onAccessUpdated}
-              onAbrirPaginaDoAnuncio={handleVerAnuncio}
-              onError={() => {
-                const fonte = fontePublicaSegura(midiaAtual)
-                if (fonte) markBad(fonte)
-              }}
             />
-          </div>
+          ) : (
+            <div className="absolute inset-0">
+              <SensitiveImage
+                midia={midiaAtual}
+                anuncioId={id}
+                anuncioSlug={slugRota}
+                alt={altFoto}
+                fill
+                sizes="(max-width: 768px) 100vw, 360px"
+                priority={mediaPriority}
+                className="transition-transform duration-500 group-hover:scale-[1.02]"
+                onVerificationSuccess={onAccessUpdated}
+                onAbrirPaginaDoAnuncio={handleVerAnuncio}
+                onError={() => {
+                  const fonte = fontePublicaSegura(midiaAtual)
+                  if (fonte) markBad(fonte)
+                }}
+              />
+            </div>
+          )
         ) : (
           <EmptyMediaState priority={mediaPriority} />
         )}
@@ -386,7 +401,9 @@ export function AnuncioCard({
             ) : null}
         </div>
 
-        {!previewMode && carrosselDisponivel && midiasSeguras.length > 1 && (
+        {!previewMode
+          && (carrosselDisponivel || videoHabilitado)
+          && midiasSeguras.length > 1 && (
           <>
             <button
               type="button"
@@ -395,8 +412,8 @@ export function AnuncioCard({
                 e.stopPropagation()
                 prev()
               }}
-              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-white/70 p-1 hover:bg-white"
-              aria-label="Foto anterior"
+              className="absolute left-2 top-1/2 z-20 -translate-y-1/2 cursor-pointer rounded-full bg-white/70 p-1 hover:bg-white"
+              aria-label="Mídia anterior"
             >
               <ChevronLeftIcon className="h-5 w-5 text-gray-700" />
             </button>
@@ -407,8 +424,8 @@ export function AnuncioCard({
                 e.stopPropagation()
                 next()
               }}
-              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 cursor-pointer rounded-full bg-white/70 p-1 hover:bg-white"
-              aria-label="Próxima foto"
+              className="absolute right-2 top-1/2 z-20 -translate-y-1/2 cursor-pointer rounded-full bg-white/70 p-1 hover:bg-white"
+              aria-label="Próxima mídia"
             >
               <ChevronRightIcon className="h-5 w-5 text-gray-700" />
             </button>

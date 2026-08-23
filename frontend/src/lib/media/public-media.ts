@@ -53,9 +53,12 @@ export function selecionarCapaPublicaSegura(midias?: MidiaPublica[] | null): Mid
 
 export function selecionarGaleriaPublicaSegura(midias?: MidiaPublica[] | null): MidiaPublica[] {
   if (!Array.isArray(midias)) return []
-  return [...midias]
-    .filter((midia) => midia.tipo === "FOTO" && Boolean(fontePublicaSegura(midia)))
-    .sort((a, b) => (a.ordem ?? Number.MAX_SAFE_INTEGER) - (b.ordem ?? Number.MAX_SAFE_INTEGER))
+  return ordenarGaleriaPublica(midias).filter((midia) => {
+    if (midia.tipo === "VIDEO") {
+      return midiaExigeConfirmacaoIdade(midia) || Boolean(fontePublicaSegura(midia))
+    }
+    return midia.tipo === "FOTO" && Boolean(fontePublicaSegura(midia))
+  })
 }
 
 export function fontePublicaSegura(midia: MidiaPublica): string | null {

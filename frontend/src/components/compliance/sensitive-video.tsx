@@ -24,6 +24,11 @@ type SensitiveVideoProps = {
   className?: string
   thumbnail?: boolean
   onVerificationSuccess?: () => void
+  preload?: "none" | "metadata" | "auto"
+  onVideoElementChange?: (video: HTMLVideoElement | null) => void
+  onPlay?: (video: HTMLVideoElement) => void
+  onPause?: (video: HTMLVideoElement) => void
+  onEnded?: (video: HTMLVideoElement) => void
 }
 
 export function SensitiveVideo({
@@ -33,6 +38,11 @@ export function SensitiveVideo({
   className,
   thumbnail = false,
   onVerificationSuccess,
+  preload = "metadata",
+  onVideoElementChange,
+  onPlay,
+  onPause,
+  onEnded,
 }: SensitiveVideoProps) {
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [sessionAuthorized, setSessionAuthorized] = useState(midia.autorizada)
@@ -126,10 +136,14 @@ export function SensitiveVideo({
         {source && !mediaError ? (
           <video
             key={`${String(midia.id)}:${retryKey}`}
+            ref={onVideoElementChange}
             controls
             playsInline
-            preload="metadata"
+            preload={preload}
             className={cn("h-full w-full bg-zinc-950 object-contain object-center", className)}
+            onPlay={(event) => onPlay?.(event.currentTarget)}
+            onPause={(event) => onPause?.(event.currentTarget)}
+            onEnded={(event) => onEnded?.(event.currentTarget)}
             onLoadedMetadata={() => setMediaError(false)}
             onError={() => {
               setMediaError(true)

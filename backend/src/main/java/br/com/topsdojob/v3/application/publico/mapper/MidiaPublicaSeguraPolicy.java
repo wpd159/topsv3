@@ -13,19 +13,46 @@ public class MidiaPublicaSeguraPolicy {
     }
 
     public List<MidiaPublicaDto> paraCard(List<MidiaPublicaDto> midias, boolean carrosselAtivo) {
+        return paraCard(midias, carrosselAtivo, false);
+    }
+
+    public List<MidiaPublicaDto> paraCard(
+            List<MidiaPublicaDto> midias,
+            boolean carrosselAtivo,
+            boolean videoAtivo) {
         if (midias == null || midias.isEmpty()) {
             return List.of();
         }
-        List<MidiaPublicaDto> fotos = midias.stream()
-                .filter(midia -> "FOTO".equals(midia.tipo()))
+        List<MidiaPublicaDto> ordenadas = midias.stream()
+                .filter(midia -> midia != null
+                        && ("FOTO".equals(midia.tipo())
+                        || (videoAtivo && "VIDEO".equals(midia.tipo()))))
                 .sorted(Comparator
-                        .comparingInt(this::prioridade)
-                        .thenComparing(MidiaPublicaDto::ordem, Comparator.nullsLast(Integer::compareTo)))
+                        .comparingInt(this::prioridadeTipo)
+                        .thenComparingInt(this::prioridade)
+                        .thenComparing(MidiaPublicaDto::ordem, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(MidiaPublicaDto::id, Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
         if (carrosselAtivo) {
-            return fotos;
+            return ordenadas;
         }
-        return fotos.isEmpty() ? List.of() : List.of(fotos.get(0));
+
+        MidiaPublicaDto video = ordenadas.stream()
+                .filter(midia -> "VIDEO".equals(midia.tipo()))
+                .findFirst()
+                .orElse(null);
+        MidiaPublicaDto foto = ordenadas.stream()
+                .filter(midia -> "FOTO".equals(midia.tipo()))
+                .findFirst()
+                .orElse(null);
+        if (video == null) {
+            return foto == null ? List.of() : List.of(foto);
+        }
+        return foto == null ? List.of(video) : List.of(video, foto);
+    }
+
+    private int prioridadeTipo(MidiaPublicaDto midia) {
+        return "VIDEO".equals(midia.tipo()) ? 0 : 1;
     }
 
     private int prioridade(MidiaPublicaDto midia) {
