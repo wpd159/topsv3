@@ -3,6 +3,7 @@
 import Image from "next/image"
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { RestrictedMediaOverlay } from "@/components/compliance/restricted-media-overlay"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import {
   fontePublicaSegura,
@@ -191,42 +192,10 @@ export function SensitiveImage({
         ) : null}
 
         {protegida ? (
-          <div
-            className="compliance-restricted-overlay"
-            onClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              setVerificationOpen(true)
-            }}
-          >
-            <div className="w-full max-w-sm space-y-3 text-white">
-              <p className="text-base font-semibold leading-snug sm:text-lg">
-                Conteúdo restrito apenas para maiores de 18 anos
-              </p>
-              <p className="text-sm leading-relaxed text-white/80">
-                A mídia original só será solicitada após confirmação válida de idade.
-              </p>
-              <Button
-                type="button"
-                className="mt-1 h-10 w-full bg-[#FC1EAD] text-white transition-transform duration-200 hover:scale-[1.01] hover:bg-[#e01a9a]"
-              >
-                Confirmar maioridade
-              </Button>
-              {onAbrirPaginaDoAnuncio ? (
-                <button
-                  type="button"
-                  className="mt-3 w-full text-center text-sm font-medium text-white/75 underline underline-offset-2 hover:text-white"
-                  onClick={(event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    onAbrirPaginaDoAnuncio()
-                  }}
-                >
-                  Abrir página do anúncio
-                </button>
-              ) : null}
-            </div>
-          </div>
+          <RestrictedMediaOverlay
+            onConfirm={() => setVerificationOpen(true)}
+            onAbrirPaginaDoAnuncio={onAbrirPaginaDoAnuncio}
+          />
         ) : null}
       </div>
 

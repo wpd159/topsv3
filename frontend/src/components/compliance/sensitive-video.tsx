@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { ArrowPathIcon, PlayIcon } from "@heroicons/react/24/solid"
 import { Button } from "@/components/ui/button"
+import { RestrictedMediaOverlay } from "@/components/compliance/restricted-media-overlay"
 import { VisitorVerificationModal } from "@/components/compliance/visitor-verification-modal"
 import { publicApiUrl } from "@/lib/api-contract"
 import {
@@ -25,6 +26,7 @@ type SensitiveVideoProps = {
   thumbnail?: boolean
   onVerificationSuccess?: () => void
   onAuthorizationChange?: (authorized: boolean) => void
+  onAbrirPaginaDoAnuncio?: () => void
   preload?: "none" | "metadata" | "auto"
   onVideoElementChange?: (video: HTMLVideoElement | null) => void
   onPlay?: (video: HTMLVideoElement) => void
@@ -42,6 +44,7 @@ export function SensitiveVideo({
   thumbnail = false,
   onVerificationSuccess,
   onAuthorizationChange,
+  onAbrirPaginaDoAnuncio,
   preload = "metadata",
   onVideoElementChange,
   onPlay,
@@ -168,30 +171,10 @@ export function SensitiveVideo({
             Seu navegador não oferece reprodução deste vídeo.
           </video>
         ) : blocked ? (
-          <button
-            type="button"
-            className={cn(
-              "flex h-full w-full items-center justify-center bg-zinc-950 px-5 text-center text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pink-500",
-              className,
-            )}
-            onClick={() => setVerificationOpen(true)}
-            aria-label="Confirmar maioridade para reproduzir o vídeo"
-          >
-            <span className="w-full max-w-sm space-y-3">
-              <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-black/70 ring-1 ring-white/25">
-                <PlayIcon className="h-7 w-7" aria-hidden="true" />
-              </span>
-              <span className="block text-base font-semibold leading-snug sm:text-lg">
-                Conteúdo restrito apenas para maiores de 18 anos
-              </span>
-              <span className="block text-sm leading-relaxed text-white/80">
-                O vídeo original só será solicitado após confirmação válida de idade.
-              </span>
-              <span className="block rounded-md bg-[#FC1EAD] px-4 py-2.5 text-sm font-semibold text-white">
-                Confirmar maioridade
-              </span>
-            </span>
-          </button>
+          <RestrictedMediaOverlay
+            onConfirm={() => setVerificationOpen(true)}
+            onAbrirPaginaDoAnuncio={onAbrirPaginaDoAnuncio}
+          />
         ) : (
           <div
             className={cn(

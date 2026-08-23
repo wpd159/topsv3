@@ -355,6 +355,7 @@ export function AnuncioCard({
               capa={capaVideoAtual ?? undefined}
               priority={mediaPriority}
               onVerificationSuccess={onAccessUpdated}
+              onAbrirPaginaDoAnuncio={handleVerAnuncio}
             />
           ) : (
             <div className="absolute inset-0">
