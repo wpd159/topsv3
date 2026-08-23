@@ -12,6 +12,7 @@ import { FavoritoButton } from "@/components/anuncios/favorito-button"
 import { AnuncioCardVideo } from "@/components/anuncios/anuncio-card-video"
 import {
   fontePublicaSegura,
+  selecionarCapaVideoCard,
   selecionarGaleriaPublicaSegura,
   type MidiaPublica,
 } from "@/lib/media/public-media"
@@ -197,6 +198,16 @@ export function AnuncioCard({
   }, [badSrcs, midias, previewImagens, previewMode, videoHabilitado])
 
   const [index, setIndex] = useState(0)
+  const midiaAtual = midiasSeguras[index]
+  const capaVideoAtual = useMemo(() => {
+    if (midiaAtual?.tipo !== "VIDEO") return null
+    return selecionarCapaVideoCard({
+      video: midiaAtual,
+      midiasDoAnuncio: midiasSeguras,
+      autorizacaoValida: midiaAtual.autorizada,
+      altText: `Capa do vídeo de ${corrigirTextoCorrompido(nome)}`,
+    })
+  }, [midiaAtual, midiasSeguras, nome])
   const visualizacoesLabel = formatarVisualizacoesCanonicas(visualizacoes)
 
   useEffect(() => {
@@ -220,11 +231,11 @@ export function AnuncioCard({
     candidates.forEach((media) => {
       if (media?.tipo !== "FOTO") return
       const fonte = media ? fontePublicaSegura(media) : null
-      if (!fonte) return
+      if (!fonte || fonte === capaVideoAtual?.url) return
       const img = new window.Image()
       img.src = fonte
     })
-  }, [carrosselDisponivel, index, midiasSeguras, videoHabilitado])
+  }, [capaVideoAtual?.url, carrosselDisponivel, index, midiasSeguras, videoHabilitado])
 
   const next = () => {
     if (!midiasSeguras.length) return
@@ -306,7 +317,6 @@ export function AnuncioCard({
   )
 
   const anuncioHref = `/anuncios/${encodeURIComponent(slugRota)}`
-  const midiaAtual = midiasSeguras[index]
   const nomeExibido = corrigirTextoCorrompido(nome)
   const nomeComIdade = idade != null ? `${nomeExibido}, ${idade} anos` : nomeExibido
   const altFoto = cidadeNome
@@ -342,6 +352,8 @@ export function AnuncioCard({
               midia={midiaAtual}
               anuncioId={id}
               anuncioSlug={slugRota}
+              capa={capaVideoAtual ?? undefined}
+              priority={mediaPriority}
               onVerificationSuccess={onAccessUpdated}
             />
           ) : (

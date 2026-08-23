@@ -16,6 +16,138 @@ export type MidiaPublica = {
   altura?: number | null
 }
 
+export type OrigemCapaVideoCard =
+  | "VIDEO_POSTER_EXISTENTE"
+  | "FOTO_PUBLICA_ELEGIVEL"
+  | "PREVIEW_PUBLICO_RESTRITO"
+  | "PLACEHOLDER_NEUTRO"
+
+export type ClassificacaoCapaVideoCard =
+  | "PUBLICA"
+  | "RESTRITA_AUTORIZADA"
+  | "PREVIEW_RESTRITO"
+  | "NEUTRA"
+
+export type CapaVideoCard = {
+  url: string | null
+  origem: OrigemCapaVideoCard
+  classificacao: ClassificacaoCapaVideoCard
+  podeExibir: boolean
+  altText: string
+}
+
+type SelecionarCapaVideoCardParams = {
+  video: MidiaPublica
+  midiasDoAnuncio: MidiaPublica[]
+  autorizacaoValida: boolean
+  altText?: string | null
+}
+
+const PUBLIC_CARD_MEDIA_HOSTNAMES = new Set([
+  "topsdojob.com",
+  "www.topsdojob.com",
+  "v3.esle.cloud",
+])
+
+function urlPublicaSeguraParaCapa(source?: string | null): string | null {
+  const value = source?.trim()
+  if (!value || value.includes("\0") || value.includes("\\") || value.includes("?") || value.includes("#")) {
+    return null
+  }
+
+  const relative = value.startsWith("/") && !value.startsWith("//")
+  try {
+    const url = new URL(value, "https://topsdojob.com")
+    const pathSegments = url.pathname.split("/")
+    if (
+      url.protocol !== "https:"
+      || url.username
+      || url.password
+      || url.port
+      || pathSegments.includes(".")
+      || pathSegments.includes("..")
+      || url.pathname.startsWith("/api/")
+      || url.pathname.startsWith("/admin/")
+    ) {
+      return null
+    }
+
+    if (relative) return value
+    if (PUBLIC_R2_HOSTNAME.test(url.hostname)) return value
+    return PUBLIC_CARD_MEDIA_HOSTNAMES.has(url.hostname.toLowerCase()) ? value : null
+  } catch {
+    return null
+  }
+}
+
+function compararFallbackDeCapa(a: MidiaPublica, b: MidiaPublica): number {
+  const ordem = (a.ordem ?? Number.MAX_SAFE_INTEGER) - (b.ordem ?? Number.MAX_SAFE_INTEGER)
+  if (ordem !== 0) return ordem
+
+  const idA = String(a.id)
+  const idB = String(b.id)
+  return idA < idB ? -1 : idA > idB ? 1 : 0
+}
+
+export function selecionarCapaVideoCard({
+  video,
+  midiasDoAnuncio,
+  autorizacaoValida,
+  altText,
+}: SelecionarCapaVideoCardParams): CapaVideoCard {
+  const textoAlternativo = altText?.trim() || "Vídeo"
+  const posterProprio = urlPublicaSeguraParaCapa(video.previewUrl)
+  if (posterProprio) {
+    return {
+      url: posterProprio,
+      origem: "VIDEO_POSTER_EXISTENTE",
+      classificacao: video.visibilidadeMidia === "RESTRITA_18"
+        ? autorizacaoValida ? "RESTRITA_AUTORIZADA" : "PREVIEW_RESTRITO"
+        : "PUBLICA",
+      podeExibir: true,
+      altText: textoAlternativo,
+    }
+  }
+
+  const fotosOrdenadas = [...midiasDoAnuncio]
+    .filter((midia) => midia.tipo === "FOTO")
+    .sort(compararFallbackDeCapa)
+
+  for (const foto of fotosOrdenadas) {
+    if (foto.visibilidadeMidia !== "LIVRE" || !foto.autorizada) continue
+    const url = urlPublicaSeguraParaCapa(foto.urlPublica)
+    if (!url) continue
+    return {
+      url,
+      origem: "FOTO_PUBLICA_ELEGIVEL",
+      classificacao: "PUBLICA",
+      podeExibir: true,
+      altText: textoAlternativo,
+    }
+  }
+
+  for (const foto of fotosOrdenadas) {
+    if (foto.visibilidadeMidia !== "RESTRITA_18") continue
+    const url = urlPublicaSeguraParaCapa(foto.previewUrl)
+    if (!url) continue
+    return {
+      url,
+      origem: "PREVIEW_PUBLICO_RESTRITO",
+      classificacao: autorizacaoValida ? "RESTRITA_AUTORIZADA" : "PREVIEW_RESTRITO",
+      podeExibir: true,
+      altText: textoAlternativo,
+    }
+  }
+
+  return {
+    url: null,
+    origem: "PLACEHOLDER_NEUTRO",
+    classificacao: "NEUTRA",
+    podeExibir: false,
+    altText: "Vídeo",
+  }
+}
+
 function prioridadeTipoGaleria(tipo: TipoMidiaPublica): number {
   if (tipo === "VIDEO") return 0
   if (tipo === "FOTO") return 1

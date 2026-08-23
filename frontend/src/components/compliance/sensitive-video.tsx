@@ -29,6 +29,8 @@ type SensitiveVideoProps = {
   onPlay?: (video: HTMLVideoElement) => void
   onPause?: (video: HTMLVideoElement) => void
   onEnded?: (video: HTMLVideoElement) => void
+  onError?: (video: HTMLVideoElement) => void
+  onRetry?: () => void
 }
 
 export function SensitiveVideo({
@@ -43,6 +45,8 @@ export function SensitiveVideo({
   onPlay,
   onPause,
   onEnded,
+  onError,
+  onRetry,
 }: SensitiveVideoProps) {
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [sessionAuthorized, setSessionAuthorized] = useState(midia.autorizada)
@@ -109,6 +113,7 @@ export function SensitiveVideo({
 
   const retry = () => {
     statusCheckedAfterError.current = false
+    onRetry?.()
     setMediaError(false)
     setRetryKey((current) => current + 1)
   }
@@ -145,8 +150,9 @@ export function SensitiveVideo({
             onPause={(event) => onPause?.(event.currentTarget)}
             onEnded={(event) => onEnded?.(event.currentTarget)}
             onLoadedMetadata={() => setMediaError(false)}
-            onError={() => {
+            onError={(event) => {
               setMediaError(true)
+              onError?.(event.currentTarget)
               checkAuthoritativeStatusAfterError()
             }}
           >
