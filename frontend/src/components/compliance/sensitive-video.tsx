@@ -10,7 +10,11 @@ import {
   obterStatusVisitante,
   statusSatisfazEscopo,
 } from "@/lib/compliance/visitor-access"
-import { fontePublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
+import {
+  fontePublicaSegura,
+  mimeTypeVideoDeclaravel,
+  type MidiaPublica,
+} from "@/lib/media/public-media"
 import { cn } from "@/lib/utils"
 
 type SensitiveVideoProps = {
@@ -132,7 +136,7 @@ export function SensitiveVideo({
               checkAuthoritativeStatusAfterError()
             }}
           >
-            <source src={source} type={midia.mimeType ?? undefined} />
+            <source src={source} type={mimeTypeVideoDeclaravel(midia.mimeType)} />
             Seu navegador não oferece reprodução deste vídeo.
           </video>
         ) : blocked ? (

@@ -69,6 +69,18 @@ export function midiaExigeConfirmacaoIdade(midia: MidiaPublica): boolean {
   return midia.visibilidadeMidia === "RESTRITA_18" && !midia.autorizada
 }
 
+export function mimeTypeVideoDeclaravel(mimeType?: string | null): string | undefined {
+  const normalized = mimeType?.trim().toLowerCase()
+  if (!normalized || !normalized.startsWith("video/")) return undefined
+
+  // Chrome e Edge rejeitam o source antes de inspecionar um MOV H.264/AAC
+  // quando o tipo declarado e video/quicktime. Sem o atributo, o navegador
+  // faz a deteccao pelo conteudo e preserva o MIME real da resposta HTTP.
+  if (normalized.split(";", 1)[0] === "video/quicktime") return undefined
+
+  return normalized
+}
+
 const PUBLIC_R2_HOSTNAME = /^pub-[0-9a-f]{32}\.r2\.dev$/i
 
 export function imagemPublicaR2(source?: string | null): boolean {
