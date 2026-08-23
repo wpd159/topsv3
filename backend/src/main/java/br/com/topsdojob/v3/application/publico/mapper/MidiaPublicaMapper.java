@@ -21,6 +21,14 @@ import org.springframework.stereotype.Component;
 public class MidiaPublicaMapper {
 
     private static final String MIDIA_RESTRITA_IDADE = "MIDIA_RESTRITA_IDADE";
+    private static final Comparator<AnuncioMidiaEntity> ORDEM_GALERIA = Comparator
+            .comparingInt((AnuncioMidiaEntity midia) -> prioridadeTipo(midia.getTipo()))
+            .thenComparing(AnuncioMidiaEntity::getOrdem, Comparator.nullsLast(Integer::compareTo))
+            .thenComparing(AnuncioMidiaEntity::getId, Comparator.nullsLast(UUID::compareTo));
+    private static final Comparator<MidiaPublicaDto> ORDEM_DTO_GALERIA = Comparator
+            .comparingInt((MidiaPublicaDto midia) -> prioridadeTipo(midia.tipo()))
+            .thenComparing(MidiaPublicaDto::ordem, Comparator.nullsLast(Integer::compareTo))
+            .thenComparing(MidiaPublicaDto::id, Comparator.nullsLast(UUID::compareTo));
 
     private final MidiaPublicaUrlService urlService;
 
@@ -59,17 +67,33 @@ public class MidiaPublicaMapper {
         return vinculos.stream()
                 .filter(this::isVinculoPublico)
                 .filter(vinculo -> vinculo.getTipo() != TipoAnuncioMidia.VIDEO || videoPermitido)
-                .sorted(Comparator.comparing(
-                        AnuncioMidiaEntity::getOrdem,
-                        Comparator.nullsLast(Integer::compareTo)))
+                .sorted(ORDEM_GALERIA)
                 .filter(vinculo -> vinculo.getTipo() != TipoAnuncioMidia.FOTO
                         || fotos.getAndIncrement() < Math.max(0, maxFotos))
                 .map(vinculo -> toDto(vinculo, arquivosPorId.get(vinculo.getArquivoMidiaId()), idadeConfirmada))
                 .filter(java.util.Objects::nonNull)
-                .sorted(Comparator.comparing(
-                        MidiaPublicaDto::ordem,
-                        Comparator.nullsLast(Integer::compareTo)))
+                .sorted(ORDEM_DTO_GALERIA)
                 .toList();
+    }
+
+    private static int prioridadeTipo(TipoAnuncioMidia tipo) {
+        if (tipo == TipoAnuncioMidia.VIDEO) {
+            return 0;
+        }
+        if (tipo == TipoAnuncioMidia.FOTO) {
+            return 1;
+        }
+        return 2;
+    }
+
+    private static int prioridadeTipo(String tipo) {
+        if (TipoAnuncioMidia.VIDEO.name().equals(tipo)) {
+            return 0;
+        }
+        if (TipoAnuncioMidia.FOTO.name().equals(tipo)) {
+            return 1;
+        }
+        return 2;
     }
 
     private MidiaPublicaDto toDto(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo, boolean idadeConfirmada) {

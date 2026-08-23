@@ -16,6 +16,31 @@ export type MidiaPublica = {
   altura?: number | null
 }
 
+function prioridadeTipoGaleria(tipo: TipoMidiaPublica): number {
+  if (tipo === "VIDEO") return 0
+  if (tipo === "FOTO") return 1
+  return 2
+}
+
+export function compararMidiasGaleriaPublica(a: MidiaPublica, b: MidiaPublica): number {
+  const prioridade = prioridadeTipoGaleria(a.tipo) - prioridadeTipoGaleria(b.tipo)
+  if (prioridade !== 0) return prioridade
+
+  const ordem = (a.ordem ?? Number.MAX_SAFE_INTEGER) - (b.ordem ?? Number.MAX_SAFE_INTEGER)
+  if (ordem !== 0) return ordem
+
+  const idA = String(a.id)
+  const idB = String(b.id)
+  return idA < idB ? -1 : idA > idB ? 1 : 0
+}
+
+export function ordenarGaleriaPublica(midias?: MidiaPublica[] | null): MidiaPublica[] {
+  if (!Array.isArray(midias)) return []
+  return [...midias]
+    .filter((midia) => midia.tipo === "VIDEO" || midia.tipo === "FOTO")
+    .sort(compararMidiasGaleriaPublica)
+}
+
 export function selecionarCapaPublicaSegura(midias?: MidiaPublica[] | null): MidiaPublica | null {
   if (!Array.isArray(midias)) return null
 

@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon, PlayIcon, XMarkIcon } from '@heroicons/react/24/solid'
 import { SensitiveImage } from '@/components/compliance/sensitive-image'
-import { fontePublicaSegura, type MidiaPublica } from '@/lib/media/public-media'
+import { fontePublicaSegura, ordenarGaleriaPublica, type MidiaPublica } from '@/lib/media/public-media'
 import { corrigirTextoCorrompido } from '@/lib/text/encoding'
 import { cn } from '@/lib/utils'
 import { FavoritoButton } from '@/components/anuncios/favorito-button'
@@ -49,9 +49,7 @@ export default function HeaderTabs({
     : `Foto de perfil de ${nome}`
 
   const midias = useMemo(
-    () => [...(anuncio.midias ?? [])]
-      .filter((item) => item && (item.tipo === 'FOTO' || item.tipo === 'VIDEO'))
-      .sort((a, b) => (a.ordem ?? Number.MAX_SAFE_INTEGER) - (b.ordem ?? Number.MAX_SAFE_INTEGER)),
+    () => ordenarGaleriaPublica(anuncio.midias),
     [anuncio.midias]
   )
   const fotos = useMemo(() => midias.filter((item) => item.tipo === 'FOTO'), [midias])

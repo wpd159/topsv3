@@ -298,7 +298,10 @@ class AnuncioPublicoConsultaServiceTest {
 
         assertThat(comExtras).filteredOn(item -> "FOTO".equals(item.tipo())).hasSize(10);
         assertThat(comExtras).filteredOn(item -> "VIDEO".equals(item.tipo())).hasSize(1);
-        assertThat(comExtras).extracting(item -> item.ordem()).isSorted();
+        assertThat(comExtras.get(0).tipo()).isEqualTo("VIDEO");
+        assertThat(comExtras.subList(1, comExtras.size()))
+                .allMatch(item -> "FOTO".equals(item.tipo()));
+        assertThat(comExtras).filteredOn(item -> "FOTO".equals(item.tipo())).extracting(item -> item.ordem()).isSorted();
         assertThat(semExtras).filteredOn(item -> "FOTO".equals(item.tipo())).hasSize(4);
         assertThat(semExtras).noneMatch(item -> "VIDEO".equals(item.tipo()));
         assertThat(semExtras).allSatisfy(item -> {
