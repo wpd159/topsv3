@@ -23,7 +23,7 @@ class AnuncioPublicoMapperPremiumTest {
         var dto = mapper.toCard(
                 anuncio(),
                 null,
-                List.of(foto(0), foto(1)),
+                List.of(video(), foto(0), foto(1)),
                 PremiumPublicoFlagsDto.vazio(),
                 new IdadeAnunciantePublicaService.Resultado("Perfil teste", 25, false),
                 true,
@@ -35,6 +35,7 @@ class AnuncioPublicoMapperPremiumTest {
         assertThat(dto.whatsappCard()).isFalse();
         assertThat(dto.contatoDisponivel()).isTrue();
         assertThat(dto.midias()).hasSize(1);
+        assertThat(dto.midias()).extracting(MidiaPublicaDto::tipo).containsExactly("FOTO");
         assertThat(dto.idade()).isEqualTo(25);
     }
 
@@ -49,14 +50,14 @@ class AnuncioPublicoMapperPremiumTest {
                 false,
                 false,
                 true,
-                false,
+                true,
                 true,
                 List.of("Topo", "Carrossel de fotos", "WhatsApp no card"));
 
         var dto = mapper.toCard(
                 anuncio(),
                 null,
-                List.of(foto(0), foto(1)),
+                List.of(foto(0), video(), foto(1)),
                 vigentes,
                 new IdadeAnunciantePublicaService.Resultado("Perfil teste", null, true),
                 true,
@@ -66,7 +67,8 @@ class AnuncioPublicoMapperPremiumTest {
         assertThat(dto.topo()).isTrue();
         assertThat(dto.midiaExtra()).isTrue();
         assertThat(dto.whatsappCard()).isTrue();
-        assertThat(dto.midias()).hasSize(2);
+        assertThat(dto.midias()).extracting(MidiaPublicaDto::tipo)
+                .containsExactly("VIDEO", "FOTO", "FOTO");
         assertThat(dto.idade()).isNull();
     }
 
@@ -94,5 +96,21 @@ class AnuncioPublicoMapperPremiumTest {
                 800,
                 1200,
                 "image/webp");
+    }
+
+    private MidiaPublicaDto video() {
+        return new MidiaPublicaDto(
+                UUID.randomUUID(),
+                "VIDEO",
+                "GALERIA",
+                10,
+                "RESTRITA_18",
+                false,
+                null,
+                null,
+                "MIDIA_RESTRITA_IDADE",
+                1080,
+                1920,
+                "video/quicktime");
     }
 }

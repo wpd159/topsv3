@@ -49,7 +49,7 @@ public class AnuncioPublicoMapper {
                 anuncio.getCategoria(),
                 idadePublica == null ? null : idadePublica.idade(),
                 localizacao,
-                midiaPolicy.paraCard(midias, flags.carrosselFotosAtivo()),
+                midiaPolicy.paraCard(midias, flags.carrosselFotosAtivo(), flags.videoAtivo()),
                 flags.destaqueAtivo(),
                 flags.topoAtivo(),
                 flags.carrosselFotosAtivo(),

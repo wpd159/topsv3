@@ -10,7 +10,11 @@ import {
   obterStatusVisitante,
   statusSatisfazEscopo,
 } from "@/lib/compliance/visitor-access"
-import { fontePublicaSegura, type MidiaPublica } from "@/lib/media/public-media"
+import {
+  fontePublicaSegura,
+  mimeTypeVideoDeclaravel,
+  type MidiaPublica,
+} from "@/lib/media/public-media"
 import { cn } from "@/lib/utils"
 
 type SensitiveVideoProps = {
@@ -20,6 +24,11 @@ type SensitiveVideoProps = {
   className?: string
   thumbnail?: boolean
   onVerificationSuccess?: () => void
+  preload?: "none" | "metadata" | "auto"
+  onVideoElementChange?: (video: HTMLVideoElement | null) => void
+  onPlay?: (video: HTMLVideoElement) => void
+  onPause?: (video: HTMLVideoElement) => void
+  onEnded?: (video: HTMLVideoElement) => void
 }
 
 export function SensitiveVideo({
@@ -29,6 +38,11 @@ export function SensitiveVideo({
   className,
   thumbnail = false,
   onVerificationSuccess,
+  preload = "metadata",
+  onVideoElementChange,
+  onPlay,
+  onPause,
+  onEnded,
 }: SensitiveVideoProps) {
   const [verificationOpen, setVerificationOpen] = useState(false)
   const [sessionAuthorized, setSessionAuthorized] = useState(midia.autorizada)
@@ -122,17 +136,21 @@ export function SensitiveVideo({
         {source && !mediaError ? (
           <video
             key={`${String(midia.id)}:${retryKey}`}
+            ref={onVideoElementChange}
             controls
             playsInline
-            preload="metadata"
+            preload={preload}
             className={cn("h-full w-full bg-zinc-950 object-contain object-center", className)}
+            onPlay={(event) => onPlay?.(event.currentTarget)}
+            onPause={(event) => onPause?.(event.currentTarget)}
+            onEnded={(event) => onEnded?.(event.currentTarget)}
             onLoadedMetadata={() => setMediaError(false)}
             onError={() => {
               setMediaError(true)
               checkAuthoritativeStatusAfterError()
             }}
           >
-            <source src={source} type={midia.mimeType ?? undefined} />
+            <source src={source} type={mimeTypeVideoDeclaravel(midia.mimeType)} />
             Seu navegador não oferece reprodução deste vídeo.
           </video>
         ) : blocked ? (

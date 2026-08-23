@@ -18,7 +18,7 @@ assert.match(limitSource, /FOTOS_BASE = 4/)
 assert.match(limitSource, /FOTOS_COM_EXTRA = 10/)
 assert.match(mapperSource, /vinculo\.getTipo\(\) != TipoAnuncioMidia\.VIDEO \|\| videoPermitido/)
 assert.match(mapperSource, /fotos\.getAndIncrement\(\) < Math\.max\(0, maxFotos\)/)
-assert.match(mapperSource, /Comparator\.comparing\([\s\S]*AnuncioMidiaEntity::getOrdem/)
+assert.match(mapperSource, /Comparator[\s\S]*prioridadeTipo[\s\S]*AnuncioMidiaEntity::getOrdem/)
 
 assert.match(viewerSource, /viewerItem\?\.modoConteudo === "ANUNCIO"/)
 assert.match(viewerSource, /anuncioMidiaIndex/)

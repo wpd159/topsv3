@@ -9,6 +9,10 @@ const viewerSource = await readFile(
   new URL('../src/components/stories/story-viewer-dialog.tsx', import.meta.url),
   'utf8',
 )
+const playerSource = await readFile(
+  new URL('../src/components/stories/story-video-player.tsx', import.meta.url),
+  'utf8',
+)
 const modalSource = await readFile(
   new URL('../src/components/compliance/visitor-verification-modal.tsx', import.meta.url),
   'utf8',
@@ -129,7 +133,8 @@ assert.equal(
 )
 assert.match(viewerSource, /podeNavegarAnuncio[\s\S]*canNavigateFromStory/)
 assert.match(viewerSource, /onLoad=\{markCurrentStoryVisible\}/)
-assert.match(viewerSource, /onPlaying=\{markCurrentStoryVisible\}/)
+assert.match(viewerSource, /onReady=\{markCurrentStoryVisible\}/)
+assert.match(playerSource, /onPlaying=\{\(event\) => \{[\s\S]*onReady\(\)/)
 assert.match(viewerSource, /fetch\(publicApiUrl\(`\/stories\/\$\{currentFeedItem\.storyId\}`\)/)
 assert.match(viewerSource, /onVerified=\{async \(\) => \{[\s\S]*await refreshViewerAndFeed\(\)[\s\S]*setVerificationOpen\(false\)/)
 assert.doesNotMatch(viewerSource, /Promise\.all\([\s\S]*stories/i)

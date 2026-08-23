@@ -66,6 +66,30 @@ assert.deepEqual(
 )
 assert.deepEqual(apenasFotos.map((item) => item.id), ["foto-2", "foto-0"])
 
+assert.deepEqual(
+  helper.selecionarGaleriaPublicaSegura(bugReal).map((item) => item.id),
+  ["video-10", "foto-0", "foto-1"],
+)
+
+const videoRestritoBloqueado = {
+  ...media("video-restrito", "VIDEO", 0),
+  visibilidadeMidia: "RESTRITA_18",
+  autorizada: false,
+  urlPublica: null,
+}
+assert.deepEqual(
+  helper.selecionarGaleriaPublicaSegura([media("foto", "FOTO"), videoRestritoBloqueado])
+    .map((item) => item.id),
+  ["video-restrito", "foto"],
+)
+assert.deepEqual(
+  helper.selecionarGaleriaPublicaSegura([{
+    ...media("video-inseguro", "VIDEO"),
+    urlPublica: null,
+  }]),
+  [],
+)
+
 assert.match(gallerySource, /ordenarGaleriaPublica\(anuncio\.midias\)/)
 assert.match(gallerySource, /const mediaHero = midias\[mediaAtiva\]/)
 assert.match(gallerySource, /midias\.map\(\(item, index\)/)
@@ -75,6 +99,7 @@ assert.match(gallerySource, /handleTouchEnd\(event, midias\.length, mediaAtiva, 
 assert.doesNotMatch(gallerySource, /\.sort\(\(a, b\) => \(a\.ordem/)
 
 assert.match(helperSource, /tipo === "FOTO" && Boolean\(fontePublicaSegura\(midia\)\)/)
-assert.match(helperSource, /\.filter\(\(midia\) => midia\.tipo === "FOTO"/)
+assert.match(helperSource, /ordenarGaleriaPublica\(midias\)\.filter/)
+assert.match(helperSource, /midiaExigeConfirmacaoIdade\(midia\)/)
 
 console.log("public media gallery ordering: OK")

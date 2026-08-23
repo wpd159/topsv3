@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const [serviceSource, anuncioServiceSource, viewerSource, policySource, typesSource, barSource, openapiSource] = await Promise.all([
+const [serviceSource, anuncioServiceSource, viewerSource, playerSource, policySource, typesSource, barSource, openapiSource] = await Promise.all([
   readFile(new URL('../../backend/src/main/java/br/com/topsdojob/v3/application/publico/service/StoryFeedPublicoService.java', import.meta.url), 'utf8'),
   readFile(new URL('../../backend/src/main/java/br/com/topsdojob/v3/application/publico/service/AnuncioPublicoConsultaService.java', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/stories/story-viewer-dialog.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/stories/story-video-player.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/stories/story-access-policy.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/stories/stories-types.ts', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/stories/stories-bar.tsx', import.meta.url), 'utf8'),
@@ -56,7 +57,8 @@ assert.match(viewerSource, /const identity = String\(currentFeedItem\.storyId\)/
 assert.match(viewerSource, /anuncioMidiaAtual\.tipo === "VIDEO"/)
 assert.match(viewerSource, /src=\{anuncioMidiaAtual\.urlPublica\}/)
 assert.match(viewerSource, /onLoad=\{markCurrentStoryVisible\}/)
-assert.match(viewerSource, /onPlaying=\{markCurrentStoryVisible\}/)
+assert.match(viewerSource, /onReady=\{markCurrentStoryVisible\}/)
+assert.match(playerSource, /onPlaying=\{\(event\) => \{[\s\S]*onReady\(\)/)
 assert.match(viewerSource, /Mídia \{anuncioMidiaIndex \+ 1\} de \{anuncioMidias\.length\}/)
 assert.match(viewerSource, /\{viewerItem\.anuncioTitulo \|\| "Anúncio"\}/)
 assert.match(viewerSource, />\s*Ver anúncio\s*</)

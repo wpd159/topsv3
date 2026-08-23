@@ -22,6 +22,8 @@ import {
 } from "./stories-types"
 import { canNavigateFromStory, sanitizeStoryViewerItem } from "./story-access-policy"
 import { publicApiUrl } from '@/lib/api-contract'
+import { StoryVideoPlayer } from "./story-video-player"
+import type { StorySoundPreference } from "./story-video-audio"
 
 type Props = {
   open: boolean
@@ -95,7 +97,7 @@ export function StoryViewerDialog({
   const [mediaError, setMediaError] = useState(false)
   const [mediaReady, setMediaReady] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [storySoundPreference, setStorySoundPreference] = useState<StorySoundPreference>("AUDIBLE")
   const anuncioStoryRef = useRef<HTMLElement | null>(null)
   const viewedStoryRef = useRef<string | null>(null)
 
@@ -109,6 +111,7 @@ export function StoryViewerDialog({
     setViewerError(null)
     setMediaError(false)
     setMediaReady(false)
+    setStorySoundPreference("AUDIBLE")
     viewedStoryRef.current = null
   }, [open, initialBundleIndex, bundles.length])
 
@@ -496,27 +499,17 @@ export function StoryViewerDialog({
           aria-label="Galeria de mídias do anúncio no Story"
         >
           {anuncioMidiaAtual.tipo === "VIDEO" ? (
-            <video
+            <StoryVideoPlayer
               key={mediaKey}
-              ref={videoRef}
+              mediaKey={mediaKey}
               src={anuncioMidiaAtual.urlPublica}
-              className="h-full w-full object-contain object-top"
-              autoPlay
-              muted
-              playsInline
-              preload="metadata"
-              controls={false}
-              onLoadedData={(event) => {
-                void event.currentTarget.play().catch(() => {})
-              }}
-              onPlaying={markCurrentStoryVisible}
+              videoClassName="h-full w-full object-contain object-top"
+              soundPreference={storySoundPreference}
+              onSoundPreferenceChange={setStorySoundPreference}
+              onReady={markCurrentStoryVisible}
               onEnded={nextVisibleContent}
               onError={() => setMediaError(true)}
-              onTimeUpdate={(event) => {
-                const element = event.currentTarget
-                if (!element.duration || Number.isNaN(element.duration)) return
-                setVideoProg(Math.min(1, element.currentTime / element.duration))
-              }}
+              onProgress={setVideoProg}
             />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
@@ -577,28 +570,19 @@ export function StoryViewerDialog({
     }
 
     if (viewerItem.tipo === "VIDEO") {
+      const mediaKey = `${viewerItem.storyId}:${viewerItem.midiaUrl}`
       return (
-        <video
-          key={`${viewerItem.storyId}:${viewerItem.midiaUrl}`}
-          ref={videoRef}
+        <StoryVideoPlayer
+          key={mediaKey}
+          mediaKey={mediaKey}
           src={viewerItem.midiaUrl}
-          className="h-full min-h-0 w-full max-w-[100vw] bg-black object-contain object-top"
-          autoPlay
-          muted
-          playsInline
-          preload="metadata"
-          controls={false}
-          onLoadedData={(e) => {
-            void e.currentTarget.play().catch(() => {})
-          }}
-          onPlaying={markCurrentStoryVisible}
+          videoClassName="h-full min-h-0 w-full max-w-[100vw] bg-black object-contain object-top"
+          soundPreference={storySoundPreference}
+          onSoundPreferenceChange={setStorySoundPreference}
+          onReady={markCurrentStoryVisible}
           onEnded={nextVisibleContent}
           onError={() => setMediaError(true)}
-          onTimeUpdate={(e) => {
-            const el = e.currentTarget
-            if (!el.duration || Number.isNaN(el.duration)) return
-            setVideoProg(Math.min(1, el.currentTime / el.duration))
-          }}
+          onProgress={setVideoProg}
         />
       )
     }
