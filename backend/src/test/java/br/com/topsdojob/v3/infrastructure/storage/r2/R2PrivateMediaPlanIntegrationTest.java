@@ -23,52 +23,52 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 @EnabledIfEnvironmentVariable(
-    named = "R2_PRIVATE_MEDIA_CLEAN_IMPORT_ENABLED",
+    named = "R2_PRIVATE_MEDIA_PLAN_ENABLED",
     matches = "true")
-class R2PrivateMediaCleanImportIntegrationTest {
+class R2PrivateMediaPlanIntegrationTest {
 
   @Test
-  void transportaManifestoDuasVezesSemDuplicarObjetos() throws Exception {
+  void planejaManifestoDuasVezesSemEscreverObjetos() throws Exception {
     ObjectStorage source = storage(sourceProperties());
     R2StorageProperties destinationProperties = destinationProperties();
     destinationProperties.validateConfigured();
     ObjectStorage destination = storage(destinationProperties);
     PrivateMediaObjectTransport transport = new PrivateMediaObjectTransport();
     List<Candidate> candidates = readCandidates(
-        Path.of(required("R2_PRIVATE_MEDIA_CLEAN_IMPORT_INPUT")),
+        Path.of(required("R2_PRIVATE_MEDIA_PLAN_INPUT")),
         destinationProperties.getPrivateMediaPrefix());
 
     List<Result> first = transport.normalizePrincipals(candidates.stream()
-        .map(candidate -> transport.transport(source, destination, candidate))
+        .map(candidate -> transport.plan(source, destination, candidate))
         .toList());
     List<Result> second = transport.normalizePrincipals(candidates.stream()
-        .map(candidate -> transport.transport(source, destination, candidate))
+        .map(candidate -> transport.plan(source, destination, candidate))
         .toList());
 
     writeManifest(
-        Path.of(required("R2_PRIVATE_MEDIA_CLEAN_IMPORT_OUTPUT")),
+        Path.of(required("R2_PRIVATE_MEDIA_PLAN_OUTPUT")),
         second);
-    assertThat(first)
-        .extracting(Result::status)
-        .doesNotContain(Status.BLOQUEADA);
+    assertThat(first).isEqualTo(second);
     assertThat(second)
         .extracting(Result::status)
         .doesNotContain(Status.MIGRADA, Status.BLOQUEADA);
     assertThat(second.stream()
-        .filter(result -> result.status() == Status.PRESERVADA)
+        .filter(result -> result.status() == Status.PLANEJADA
+            || result.status() == Status.PRESERVADA)
         .map(Result::destinationKey)
         .toList())
         .containsExactlyElementsOf(first.stream()
-            .filter(result -> result.status() == Status.MIGRADA
+            .filter(result -> result.status() == Status.PLANEJADA
                 || result.status() == Status.PRESERVADA)
             .map(Result::destinationKey)
             .toList());
     assertThat(second.stream()
-        .filter(result -> result.status() == Status.PRESERVADA)
+        .filter(result -> result.status() == Status.PLANEJADA
+            || result.status() == Status.PRESERVADA)
         .map(Result::checksum)
         .toList())
         .containsExactlyElementsOf(first.stream()
-            .filter(result -> result.status() == Status.MIGRADA
+            .filter(result -> result.status() == Status.PLANEJADA
                 || result.status() == Status.PRESERVADA)
             .map(Result::checksum)
             .toList());
@@ -82,7 +82,8 @@ class R2PrivateMediaCleanImportIntegrationTest {
             result -> result.sourceAdId() + ":" + result.logicalMediaHash()));
     long recoverable = groups.values().stream()
         .filter(group -> group.stream().anyMatch(result -> result.primary()
-            && result.status() == Status.PRESERVADA))
+            && (result.status() == Status.PLANEJADA
+                || result.status() == Status.PRESERVADA)))
         .count();
     long quarantined = groups.values().stream()
         .filter(group -> group.stream().allMatch(result ->
@@ -93,7 +94,9 @@ class R2PrivateMediaCleanImportIntegrationTest {
 
     assertThat(groups.values()).allSatisfy(group -> {
       var principal = group.stream()
-          .filter(result -> result.primary() && result.status() == Status.PRESERVADA)
+          .filter(result -> result.primary()
+              && (result.status() == Status.PLANEJADA
+                  || result.status() == Status.PRESERVADA))
           .toList();
       if (principal.isEmpty()) {
         assertThat(group).allSatisfy(result -> {
@@ -111,14 +114,14 @@ class R2PrivateMediaCleanImportIntegrationTest {
 
   private ObjectStorage storage(R2StorageProperties properties) {
     HttpClient http = HttpClient.newBuilder().build();
-    return new R2ObjectStorage(
+    return new ReadOnlyObjectStorage(new R2ObjectStorage(
         properties,
         new R2SigV4Client(
             http,
             URI.create(properties.getEndpoint()),
             properties.getRegion(),
             properties.getAccessKey(),
-            properties.getSigningValue()));
+            properties.getSigningValue())));
   }
 
   private List<Candidate> readCandidates(Path input, String destinationPrefix) throws Exception {

@@ -59,14 +59,14 @@ class R2PrivateKycDryRunIntegrationTest {
         .connectTimeout(Duration.ofSeconds(20))
         .followRedirects(HttpClient.Redirect.NEVER)
         .build();
-    ObjectStorage destination = new R2ObjectStorage(
+    ObjectStorage destination = new ReadOnlyObjectStorage(new R2ObjectStorage(
         destinationProperties,
         new R2SigV4Client(
             http,
             URI.create(destinationProperties.getEndpoint()),
             destinationProperties.getRegion(),
             destinationProperties.getAccessKey(),
-            destinationProperties.getSigningValue()));
+            destinationProperties.getSigningValue())));
     LegacyKycDocumentValidator validator = new LegacyKycDocumentValidator();
 
     List<Candidate> candidates = readCandidates(Path.of(required("R2_KYC_DRY_RUN_INPUT")));
@@ -77,7 +77,7 @@ class R2PrivateKycDryRunIntegrationTest {
     List<Result> results = new ArrayList<>();
     try {
       List<Future<Result>> futures = candidates.stream()
-          .map(candidate -> executor.submit(() -> migrate(
+          .map(candidate -> executor.submit(() -> plan(
               candidate,
               cacheDirectory,
               destinationRoot,
@@ -95,13 +95,13 @@ class R2PrivateKycDryRunIntegrationTest {
     results.sort(Comparator.comparing(Result::v3UserId).thenComparing(Result::referenceHash));
     writeResults(Path.of(required("R2_KYC_DRY_RUN_OUTPUT")), results);
 
-    long migrated = count(results, "MIGRADA");
+    long planned = count(results, "PLANEJADA");
     long preserved = count(results, "PRESERVADA");
     long consolidated = count(results, "CONSOLIDADA");
     long quarantined = count(results, "QUARENTENA");
     long blocked = count(results, "BLOQUEADA");
     assertThat(blocked).as("checksum divergente bloqueia o dry-run").isZero();
-    assertThat(migrated + preserved).as("ao menos um documento privado deve ser validado").isPositive();
+    assertThat(planned + preserved).as("ao menos um documento privado deve ser validado").isPositive();
     assertThat(results.stream()
         .filter(Result::successful)
         .allMatch(result -> Set.of("UNICO", "FRENTE", "VERSO").contains(result.part())
@@ -113,12 +113,12 @@ class R2PrivateKycDryRunIntegrationTest {
     assertTemporaryPrivateAccess(results, destination, http);
 
     System.out.printf(
-        "R2_KYC_DRY_RUN total=%d migradas=%d preservadas=%d consolidadas=%d "
+        "R2_KYC_DRY_RUN total=%d planejadas=%d preservadas=%d consolidadas=%d "
             + "quarentena=%d bloqueadas=%d fingerprint=%s%n",
-        results.size(), migrated, preserved, consolidated, quarantined, blocked, fingerprint(results));
+        results.size(), planned, preserved, consolidated, quarantined, blocked, fingerprint(results));
   }
 
-  private Result migrate(
+  private Result plan(
       Candidate candidate,
       Path cacheDirectory,
       String destinationRoot,
@@ -163,16 +163,8 @@ class R2PrivateKycDryRunIntegrationTest {
           }
           return Result.preserved(candidate, key, validated);
         }
-        destination.put(StorageArea.PRIVATE_DOCUMENT, key, validated.bytes(), validated.mimeType());
-        if (!destination.exists(StorageArea.PRIVATE_DOCUMENT, key)) {
-          return Result.quarantine(candidate, "HEAD_DESTINO_FALHOU");
-        }
-        byte[] stored = destination.get(StorageArea.PRIVATE_DOCUMENT, key).content();
-        if (!sha256(stored).equals(checksum)) {
-          return Result.blocked(candidate, key, validated, "CHECKSUM_POS_GRAVACAO_DIVERGENTE");
-        }
         assertThat(destination.publicUrl(StorageArea.PRIVATE_DOCUMENT, key)).isEmpty();
-        return Result.migrated(candidate, key, validated);
+        return Result.planned(candidate, key, validated);
       }
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
@@ -246,7 +238,13 @@ class R2PrivateKycDryRunIntegrationTest {
       List<Result> results,
       ObjectStorage storage,
       HttpClient http) throws Exception {
-    Result sample = results.stream().filter(Result::successful).findFirst().orElseThrow();
+    Result sample = results.stream()
+        .filter(result -> "PRESERVADA".equals(result.status()))
+        .findFirst()
+        .orElse(null);
+    if (sample == null) {
+      return;
+    }
     assertThat(storage.publicUrl(StorageArea.PRIVATE_DOCUMENT, sample.objectKey())).isEmpty();
     URI temporary = storage.temporaryGetUrl(
         StorageArea.PRIVATE_DOCUMENT,
@@ -358,11 +356,11 @@ class R2PrivateKycDryRunIntegrationTest {
       String reason,
       String kycStatus) {
 
-    private static Result migrated(
+    private static Result planned(
         Candidate candidate,
         String key,
         DocumentoUploadValidator.DocumentoValidado validated) {
-      return success(candidate, key, validated, "MIGRADA");
+      return success(candidate, key, validated, "PLANEJADA");
     }
 
     private static Result preserved(
@@ -436,7 +434,7 @@ class R2PrivateKycDryRunIntegrationTest {
     }
 
     private boolean successful() {
-      return Set.of("MIGRADA", "PRESERVADA").contains(status);
+      return Set.of("PLANEJADA", "PRESERVADA").contains(status);
     }
 
     private String toTsv() {

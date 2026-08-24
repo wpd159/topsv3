@@ -1,7 +1,9 @@
 package br.com.topsdojob.v3.application.importacao;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import br.com.topsdojob.v3.application.importacao.PrivateMediaObjectTransport.ApplyAuthorization;
 import br.com.topsdojob.v3.application.importacao.PrivateMediaObjectTransport.Candidate;
 import br.com.topsdojob.v3.application.importacao.PrivateMediaObjectTransport.MediaType;
 import br.com.topsdojob.v3.application.importacao.PrivateMediaObjectTransport.Status;
@@ -27,6 +29,58 @@ class PrivateMediaObjectTransportTest {
   private final PrivateMediaObjectTransport transport = new PrivateMediaObjectTransport();
 
   @Test
+  void planEReadOnlyEDeterministico() throws Exception {
+    MemoryStorage source = new MemoryStorage();
+    MemoryStorage destination = new MemoryStorage();
+    source.put(
+        StorageArea.PUBLIC_MEDIA,
+        "origem/anuncio-12/foto.png",
+        png(4, 3),
+        "image/png");
+
+    var first = transport.plan(source, destination, candidate("origem/anuncio-12/foto.png"));
+    var second = transport.plan(source, destination, candidate("origem/anuncio-12/foto.png"));
+
+    assertThat(first).isEqualTo(second);
+    assertThat(first.status()).isEqualTo(Status.PLANEJADA);
+    assertThat(destination.mutationCalls()).isZero();
+    assertThat(destination.objects).isEmpty();
+  }
+
+  @Test
+  void applyExigeAutorizacaoExplicitaEHashDoManifesto() throws Exception {
+    MemoryStorage source = new MemoryStorage();
+    MemoryStorage destination = new MemoryStorage();
+    source.put(
+        StorageArea.PUBLIC_MEDIA,
+        "origem/anuncio-12/foto.png",
+        png(4, 3),
+        "image/png");
+    Candidate candidate = candidate("origem/anuncio-12/foto.png");
+
+    assertThatThrownBy(() -> transport.apply(source, destination, candidate, null))
+        .isInstanceOf(NullPointerException.class)
+        .hasMessageContaining("autorizacao");
+    assertThatThrownBy(() -> transport.apply(
+        source,
+        destination,
+        candidate,
+        new ApplyAuthorization(false, "a".repeat(64))))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("SHA-256");
+    assertThatThrownBy(() -> transport.apply(
+        source,
+        destination,
+        candidate,
+        new ApplyAuthorization(true, "hash-invalido")))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("SHA-256");
+
+    assertThat(destination.mutationCalls()).isZero();
+    assertThat(destination.objects).isEmpty();
+  }
+
+  @Test
   void copiaParaDestinoPrivadoComChaveDeterministicaEIdempotencia() throws Exception {
     MemoryStorage source = new MemoryStorage();
     MemoryStorage destination = new MemoryStorage();
@@ -34,8 +88,8 @@ class PrivateMediaObjectTransportTest {
     source.put(StorageArea.PUBLIC_MEDIA, "origem/anuncio-12/foto.png", image, "image/png");
     Candidate candidate = candidate("origem/anuncio-12/foto.png");
 
-    var first = transport.transport(source, destination, candidate);
-    var second = transport.transport(source, destination, candidate);
+    var first = apply(source, destination, candidate);
+    var second = apply(source, destination, candidate);
 
     assertThat(first.status()).isEqualTo(Status.MIGRADA);
     assertThat(second.status()).isEqualTo(Status.PRESERVADA);
@@ -53,8 +107,8 @@ class PrivateMediaObjectTransportTest {
   void objetoAusenteFicaEmQuarentenaSemEscrita() {
     MemoryStorage destination = new MemoryStorage();
 
-    var first = transport.transport(new MemoryStorage(), destination, candidate("ausente.png"));
-    var second = transport.transport(new MemoryStorage(), destination, candidate("ausente.png"));
+    var first = apply(new MemoryStorage(), destination, candidate("ausente.png"));
+    var second = apply(new MemoryStorage(), destination, candidate("ausente.png"));
 
     assertThat(second).isEqualTo(first);
     assertThat(first.status()).isEqualTo(Status.QUARENTENA);
@@ -82,7 +136,7 @@ class PrivateMediaObjectTransportTest {
         0,
         "hml/preprod/midias-pendentes/");
 
-    var result = transport.transport(source, destination, video);
+    var result = apply(source, destination, video);
 
     assertThat(result.status()).isEqualTo(Status.QUARENTENA);
     assertThat(result.reason()).isEqualTo("TIPO_OU_ASSINATURA_DIVERGENTE");
@@ -101,7 +155,7 @@ class PrivateMediaObjectTransportTest {
     legacyJpeg[jpeg.length + 3] = 0x04;
     source.put(StorageArea.PUBLIC_MEDIA, "origem/foto-legada.jpeg", legacyJpeg, "image/jpeg");
 
-    var result = transport.transport(
+    var result = apply(
         source, destination, candidate("origem/foto-legada.jpeg"));
 
     assertThat(result.status()).isEqualTo(Status.MIGRADA);
@@ -121,9 +175,9 @@ class PrivateMediaObjectTransportTest {
         isoContainer("xxxx"),
         "application/octet-stream");
 
-    var valid = transport.transport(
+    var valid = apply(
         source, destination, videoCandidate("origem/video.mp4", "c".repeat(64)));
-    var invalid = transport.transport(
+    var invalid = apply(
         source, destination, videoCandidate("origem/desconhecido.bin", "d".repeat(64)));
 
     assertThat(valid.status()).isEqualTo(Status.MIGRADA);
@@ -140,14 +194,14 @@ class PrivateMediaObjectTransportTest {
     byte[] image = png(3, 2);
     source.put(StorageArea.PUBLIC_MEDIA, "origem/anuncio-12/foto.png", image, "image/png");
     Candidate candidate = candidate("origem/anuncio-12/foto.png");
-    var first = transport.transport(source, destination, candidate);
+    var first = apply(source, destination, candidate);
     destination.put(
         StorageArea.PRIVATE_MEDIA,
         first.destinationKey(),
         png(1, 1),
         "image/png");
 
-    var result = transport.transport(source, destination, candidate);
+    var result = apply(source, destination, candidate);
 
     assertThat(result.status()).isEqualTo(Status.BLOQUEADA);
     assertThat(result.reason()).isEqualTo("CHECKSUM_OU_TAMANHO_DESTINO_DIVERGENTE");
@@ -176,8 +230,8 @@ class PrivateMediaObjectTransportTest {
         0,
         "hml/preprod/midias-pendentes/");
 
-    var first = transport.transport(source, destination, firstCandidate);
-    var second = transport.transport(source, destination, secondCandidate);
+    var first = apply(source, destination, firstCandidate);
+    var second = apply(source, destination, secondCandidate);
 
     assertThat(first.destinationKey()).isNotEqualTo(second.destinationKey());
     assertThat(destination.objects).hasSize(2);
@@ -204,8 +258,8 @@ class PrivateMediaObjectTransportTest {
         "hml/preprod/midias-pendentes/");
 
     var normalized = transport.normalizePrincipals(List.of(
-        transport.transport(source, destination, original),
-        transport.transport(source, destination, preview)));
+        apply(source, destination, original),
+        apply(source, destination, preview)));
 
     assertThat(normalized)
         .filteredOn(result -> result.status() == Status.QUARENTENA)
@@ -220,7 +274,7 @@ class PrivateMediaObjectTransportTest {
   @Test
   void grupoSemObjetoRecuperavelPermaneceSemPrincipalParaQuarentenaFormal() {
     var normalized = transport.normalizePrincipals(List.of(
-        transport.transport(new MemoryStorage(), new MemoryStorage(), candidate("ausente.png"))));
+        apply(new MemoryStorage(), new MemoryStorage(), candidate("ausente.png"))));
 
     assertThat(normalized)
         .singleElement()
@@ -228,6 +282,17 @@ class PrivateMediaObjectTransportTest {
           assertThat(result.status()).isEqualTo(Status.QUARENTENA);
           assertThat(result.primary()).isFalse();
         });
+  }
+
+  private PrivateMediaObjectTransport.Result apply(
+      ObjectStorage source,
+      ObjectStorage destination,
+      Candidate candidate) {
+    return transport.apply(
+        source,
+        destination,
+        candidate,
+        new ApplyAuthorization(true, "a".repeat(64)));
   }
 
   private Candidate candidate(String sourceKey) {
@@ -290,9 +355,13 @@ class PrivateMediaObjectTransportTest {
 
   private static final class MemoryStorage implements ObjectStorage {
     private final Map<String, StoredObject> objects = new LinkedHashMap<>();
+    private int putCalls;
+    private int putIfAbsentCalls;
+    private int deleteCalls;
 
     @Override
     public void put(StorageArea area, String key, byte[] content, String contentType) {
+      putCalls++;
       objects.put(location(area, key), new StoredObject(content, contentType));
     }
 
@@ -302,6 +371,7 @@ class PrivateMediaObjectTransportTest {
         String key,
         byte[] content,
         String contentType) {
+      putIfAbsentCalls++;
       String location = location(area, key);
       if (objects.containsKey(location)) {
         return ObjectWriteResult.ALREADY_EXISTS;
@@ -326,6 +396,7 @@ class PrivateMediaObjectTransportTest {
 
     @Override
     public void delete(StorageArea area, String key) {
+      deleteCalls++;
       objects.remove(location(area, key));
     }
 
@@ -339,6 +410,10 @@ class PrivateMediaObjectTransportTest {
       return area == StorageArea.PUBLIC_MEDIA
           ? Optional.of(URI.create("https://public.invalid/" + key))
           : Optional.empty();
+    }
+
+    private int mutationCalls() {
+      return putCalls + putIfAbsentCalls + deleteCalls;
     }
 
     private String location(StorageArea area, String key) {
