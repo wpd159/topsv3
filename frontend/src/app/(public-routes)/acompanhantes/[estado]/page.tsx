@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import { cache } from "react"
 import { ListagemPublicaPaginada } from "@/components/anuncios/listagem-publica-paginada"
 import { StoriesBar } from "@/components/stories/stories-bar"
 import { gerarDescricaoSeoEstado, gerarTituloSeoEstado } from "@/lib/seo/public-metadata"
@@ -9,7 +10,7 @@ import {
   descobrirLocalidadesPublicas,
   isPublicCatalogNotFound,
   listarPublicosPorEstado,
-} from "@/lib/public-catalog-api"
+} from "@/lib/public-catalog-server-api"
 import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
@@ -24,7 +25,6 @@ import {
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
-export const revalidate = 3600
 
 interface PageProps {
   params: Promise<{
@@ -35,7 +35,7 @@ interface PageProps {
   }>
 }
 
-async function carregarEstado(estado: string, page: number) {
+const carregarEstado = cache(async (estado: string, page: number) => {
   const [data, descoberta] = await Promise.all([
     listarPublicosPorEstado(estado, page),
     descobrirLocalidadesPublicas(),
@@ -47,7 +47,7 @@ async function carregarEstado(estado: string, page: number) {
     throw new Error(`Estado ${estado} ausente da descoberta publica.`)
   }
   return { data, estadoDescoberto }
-}
+})
 
 function gerarBreadcrumbSchemaEstado(baseUrl: string, estadoUf: string) {
   return {

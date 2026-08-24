@@ -6,7 +6,7 @@ import {
   SparklesIcon,
   UsersIcon,
 } from '@heroicons/react/24/solid'
-import { listarCategoriasHomePublicas } from '@/lib/public-catalog-api'
+import { listarCategoriasHomePublicas } from '@/lib/public-catalog-server-api'
 import { CategoriaCard } from './categoria-card'
 
 type CategoriaCardData = {

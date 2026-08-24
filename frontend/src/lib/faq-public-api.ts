@@ -1,8 +1,10 @@
-import {
-  apiErrorFromResponse,
-  publicApiUrl,
-  requireArrayPayload,
-} from '@/lib/api-contract'
+import 'server-only'
+
+import { requireArrayPayload } from '@/lib/api-contract'
+import { publicServerApiJson } from '@/lib/public-server-api'
+
+export const PUBLIC_FAQ_CACHE_TAG = 'public-faq'
+export const PUBLIC_FAQ_REVALIDATE_SECONDS = 3_600
 
 export type FaqPublica = {
   id: string
@@ -18,12 +20,13 @@ export type FaqPublica = {
 }
 
 export async function listarFaqsPublicadas(): Promise<FaqPublica[]> {
-  const response = await fetch(publicApiUrl('/faqs'), {
-    cache: 'no-store',
-    signal: AbortSignal.timeout(8000),
+  return publicServerApiJson('/faqs', {
+    endpointFamily: 'faq.published',
+    cache: {
+      mode: 'revalidate',
+      seconds: PUBLIC_FAQ_REVALIDATE_SECONDS,
+      tags: [PUBLIC_FAQ_CACHE_TAG],
+    },
+    validate: (payload) => requireArrayPayload<FaqPublica>(payload),
   })
-  if (!response.ok) {
-    throw await apiErrorFromResponse(response)
-  }
-  return requireArrayPayload<FaqPublica>(await response.json())
 }

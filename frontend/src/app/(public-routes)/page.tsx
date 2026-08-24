@@ -6,10 +6,9 @@ import { listarFaqsPublicadas, type FaqPublica } from "@/lib/faq-public-api"
 import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
-import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
+import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-server-api"
 import { isCidadeIndexavelLocal, type LocalIndexingDecision } from "@/lib/seo/local-indexing"
 
-export const dynamic = "force-dynamic"
 export const metadata: Metadata = {
   title: "Acompanhantes perto de você | Tops do Job",
   description:

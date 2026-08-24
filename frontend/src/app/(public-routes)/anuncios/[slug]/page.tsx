@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { cache } from "react"
 import AnuncioDetalhesPageClient from "./anuncio-detalhes"
 import { gerarDescricaoSeoAnuncio, gerarTituloSeoAnuncio } from "@/lib/seo/public-metadata"
 import { corrigirTextoCorrompido } from "@/lib/text/encoding"
 import {
   isPublicCatalogNotFound,
   obterAnuncioPublicoPorSlug,
-} from "@/lib/public-catalog-api"
+} from "@/lib/public-catalog-server-api"
 import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
@@ -15,6 +16,7 @@ import {
   selecionarCapaPublicaSegura,
   type MidiaPublica,
 } from "@/lib/media/public-media"
+
 
 function isComplianceAssetUrl(url?: string | null) {
   if (!url) return false
@@ -30,9 +32,9 @@ function isComplianceAssetUrl(url?: string | null) {
   }
 }
 
-async function loadInitialAnuncio(slug: string) {
+const loadInitialAnuncio = cache(async (slug: string) => {
   return obterAnuncioPublicoPorSlug(slug)
-}
+})
 
 function selecionarImagemPublicaSeo(midias?: MidiaPublica[]) {
   const capa = selecionarCapaPublicaSegura(midias)

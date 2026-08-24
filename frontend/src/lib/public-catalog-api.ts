@@ -293,6 +293,134 @@ type RawCityAggregate = {
   cidadesRelacionadas: PublicCatalogCity[]
 }
 
+function contractError(message: string): never {
+  throw new ApiContractError(message, 'TECHNICAL_FAILURE', 502, false)
+}
+
+function requireObjectPayload(payload: unknown, label: string) {
+  const normalized = corrigirEstruturaTexto(payload)
+  if (!normalized || typeof normalized !== 'object' || Array.isArray(normalized)) {
+    contractError(`O contrato publico de ${label} e invalido.`)
+  }
+  return normalized as Record<string, unknown>
+}
+
+export function parsePublicCatalogList(payload: unknown): PublicCatalogList {
+  const raw = requireObjectPayload(payload, 'listagem')
+  if (
+    !Array.isArray(raw.itens) ||
+    !raw.paginacao ||
+    typeof raw.paginacao !== 'object' ||
+    !raw.localidade ||
+    typeof raw.localidade !== 'object' ||
+    !raw.seo ||
+    typeof raw.seo !== 'object'
+  ) {
+    contractError('O contrato publico de listagem esta incompleto.')
+  }
+  return mapList(raw as unknown as RawList)
+}
+
+export function parsePublicCatalogCityAggregate(
+  payload: unknown,
+): PublicCatalogCityAggregate {
+  const raw = requireObjectPayload(payload, 'localidade')
+  if (
+    !Array.isArray(raw.bairros) ||
+    !Array.isArray(raw.categorias) ||
+    !Array.isArray(raw.cidadesRelacionadas) ||
+    !raw.indexacao ||
+    typeof raw.indexacao !== 'object'
+  ) {
+    contractError('O contrato publico da localidade esta incompleto.')
+  }
+  const aggregate = raw as unknown as RawCityAggregate
+  return {
+    estadoUf: aggregate.estadoUf,
+    estadoNome: aggregate.estadoNome,
+    cidadeNome: aggregate.cidadeNome,
+    cidadeSlug: aggregate.cidadeSlug,
+    totalAnunciosAtivos: aggregate.totalAnunciosAtivos,
+    ultimaAtualizacao: aggregate.ultimaAtualizacao ?? null,
+    indexacao: aggregate.indexacao,
+    bairros: aggregate.bairros.map((bairro) => ({
+      bairroNome: bairro.nome,
+      bairroSlug: bairro.slug,
+      quantidadeAnuncios: bairro.totalAnunciosAtivos,
+      ultimaAtualizacao: bairro.ultimaAtualizacao ?? null,
+      indexacao: bairro.indexacao,
+    })),
+    categoriasPrincipais: aggregate.categorias.map((categoria) => ({
+      codigo: categoria.codigo,
+      nome: categoria.nome,
+      quantidadeAnuncios: categoria.totalAnunciosAtivos,
+    })),
+    cidadesRelacionadas: aggregate.cidadesRelacionadas.map((relacionada) => ({
+      estadoUf: aggregate.estadoUf,
+      cidadeNome: relacionada.nome,
+      cidadeSlug: relacionada.slug,
+      totalAnunciosAtivos: relacionada.totalAnunciosAtivos,
+      ultimaAtualizacao: relacionada.ultimaAtualizacao ?? null,
+      indexacao: relacionada.indexacao,
+    })),
+  }
+}
+
+export function parsePublicCatalogDetail(payload: unknown): PublicCatalogDetail {
+  const raw = requireObjectPayload(payload, 'detalhe') as unknown as RawCard
+  return {
+    ...mapCard(raw),
+    descricao: raw.descricao ?? null,
+    username: raw.username ?? null,
+    idade: raw.idade ?? null,
+    idadeOculta: Boolean(raw.idadeOculta),
+    contatoPublico: raw.contatoPublico ?? null,
+    pendenciaContatoPublico: raw.pendenciaContatoPublico ?? null,
+    indexavelSeo: raw.seo?.indexavelFuturo === true,
+    relacionados: Array.isArray(raw.relacionados)
+      ? raw.relacionados.map((item) => ({
+          id: item.id,
+          slug: item.slug,
+          titulo: item.titulo,
+          idade: item.idade ?? null,
+          preco: item.preco ?? null,
+          cidadeNome: item.cidadeNome,
+          estadoUf: item.estadoUf,
+          midias: Array.isArray(item.midias) ? item.midias : [],
+        }))
+      : [],
+  }
+}
+
+export function parsePublicCategoryList(payload: unknown): PublicCategoryList {
+  const raw = requireObjectPayload(payload, 'categorias')
+  if (!Array.isArray(raw.itens) || !raw.paginacao || typeof raw.paginacao !== 'object') {
+    contractError('O contrato publico de categorias esta incompleto.')
+  }
+  const categoryList = raw as unknown as RawCategoryList
+  return {
+    itens: categoryList.itens.map(mapCard),
+    paginacao: categoryList.paginacao,
+    categoria: categoryList.categoria ?? null,
+  }
+}
+
+export function parsePublicHomeCategories(payload: unknown) {
+  return requireArrayPayload<PublicHomeCategory>(corrigirEstruturaTexto(payload))
+}
+
+export function parsePublicCatalogDiscovery(payload: unknown): PublicCatalogDiscovery {
+  const discovery = requireObjectPayload(payload, 'descoberta')
+  if (!Array.isArray(discovery.estados)) {
+    contractError('O contrato publico de descoberta esta incompleto.')
+  }
+  return discovery as unknown as PublicCatalogDiscovery
+}
+
+export function parsePublicSitemapEntries(payload: unknown): PublicSitemapEntry[] {
+  return requireArrayPayload<PublicSitemapEntry>(corrigirEstruturaTexto(payload))
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}) {
   const response = await fetch(publicApiUrl(path), {
     ...init,
@@ -382,11 +510,11 @@ export async function listarPublicosPorEstado(
   tamanho = 20,
   ordemSeed?: string,
 ) {
-  const raw = await requestJson<RawList>(
+  const raw = await requestJson<unknown>(
     `/acompanhantes/${encodeURIComponent(uf)}${listQuery(pagina, tamanho, ordemSeed)}`,
     dynamic
   )
-  return mapList(raw)
+  return parsePublicCatalogList(raw)
 }
 
 export async function listarPublicosPorCidade(
@@ -396,47 +524,19 @@ export async function listarPublicosPorCidade(
   tamanho = 20,
   ordemSeed?: string,
 ) {
-  const raw = await requestJson<RawList>(
+  const raw = await requestJson<unknown>(
     `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}${listQuery(pagina, tamanho, ordemSeed)}`,
     dynamic
   )
-  return mapList(raw)
+  return parsePublicCatalogList(raw)
 }
 
 export async function obterAgregadoPublicoCidade(uf: string, cidade: string): Promise<PublicCatalogCityAggregate> {
-  const raw = await requestJson<RawCityAggregate>(
+  const raw = await requestJson<unknown>(
     `/localidades/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}`,
     cached
   )
-  return {
-    estadoUf: raw.estadoUf,
-    estadoNome: raw.estadoNome,
-    cidadeNome: raw.cidadeNome,
-    cidadeSlug: raw.cidadeSlug,
-    totalAnunciosAtivos: raw.totalAnunciosAtivos,
-    ultimaAtualizacao: raw.ultimaAtualizacao ?? null,
-    indexacao: raw.indexacao,
-    bairros: raw.bairros.map((bairro) => ({
-      bairroNome: bairro.nome,
-      bairroSlug: bairro.slug,
-      quantidadeAnuncios: bairro.totalAnunciosAtivos,
-      ultimaAtualizacao: bairro.ultimaAtualizacao ?? null,
-      indexacao: bairro.indexacao,
-    })),
-    categoriasPrincipais: raw.categorias.map((categoria) => ({
-      codigo: categoria.codigo,
-      nome: categoria.nome,
-      quantidadeAnuncios: categoria.totalAnunciosAtivos,
-    })),
-    cidadesRelacionadas: raw.cidadesRelacionadas.map((relacionada) => ({
-      estadoUf: raw.estadoUf,
-      cidadeNome: relacionada.nome,
-      cidadeSlug: relacionada.slug,
-      totalAnunciosAtivos: relacionada.totalAnunciosAtivos,
-      ultimaAtualizacao: relacionada.ultimaAtualizacao ?? null,
-      indexacao: relacionada.indexacao,
-    })),
-  }
+  return parsePublicCatalogCityAggregate(raw)
 }
 
 export async function listarPublicosPorBairro(
@@ -447,37 +547,16 @@ export async function listarPublicosPorBairro(
   tamanho = 20,
   ordemSeed?: string,
 ) {
-  const raw = await requestJson<RawList>(
+  const raw = await requestJson<unknown>(
     `/acompanhantes/${encodeURIComponent(uf)}/${encodeURIComponent(cidade)}/${encodeURIComponent(bairro)}${listQuery(pagina, tamanho, ordemSeed)}`,
     dynamic
   )
-  return mapList(raw)
+  return parsePublicCatalogList(raw)
 }
 
 export async function obterAnuncioPublicoPorSlug(slug: string) {
-  const raw = await requestJson<RawCard>(`/anuncios/${encodeURIComponent(slug)}`, { cache: 'no-store' })
-  return {
-    ...mapCard(raw),
-    descricao: raw.descricao ?? null,
-    username: raw.username ?? null,
-    idade: raw.idade ?? null,
-    idadeOculta: Boolean(raw.idadeOculta),
-    contatoPublico: raw.contatoPublico ?? null,
-    pendenciaContatoPublico: raw.pendenciaContatoPublico ?? null,
-    indexavelSeo: raw.seo?.indexavelFuturo === true,
-    relacionados: Array.isArray(raw.relacionados)
-      ? raw.relacionados.map((item) => ({
-          id: item.id,
-          slug: item.slug,
-          titulo: item.titulo,
-          idade: item.idade ?? null,
-          preco: item.preco ?? null,
-          cidadeNome: item.cidadeNome,
-          estadoUf: item.estadoUf,
-          midias: Array.isArray(item.midias) ? item.midias : [],
-        }))
-      : [],
-  } satisfies PublicCatalogDetail
+  const raw = await requestJson<unknown>(`/anuncios/${encodeURIComponent(slug)}`, { cache: 'no-store' })
+  return parsePublicCatalogDetail(raw)
 }
 
 export async function listarAnunciosPublicos(
@@ -493,27 +572,23 @@ export async function listarAnunciosPublicos(
   if (busca?.trim()) query.set('busca', busca.trim())
   if (ordemSeed !== undefined) query.set('ordemSeed', ordemSeed)
   if (anunciante?.trim()) query.set('anunciante', anunciante.trim())
-  const raw = await requestJson<RawCategoryList>(`/anuncios?${query.toString()}`, dynamic)
-  return {
-    itens: raw.itens.map(mapCard),
-    paginacao: raw.paginacao,
-    categoria: raw.categoria ?? null,
-  }
+  const raw = await requestJson<unknown>(`/anuncios?${query.toString()}`, dynamic)
+  return parsePublicCategoryList(raw)
 }
 
 export async function listarCategoriasHomePublicas() {
   const payload = await requestJson<unknown>('/categorias-home', homeCategoriesCached)
-  return requireArrayPayload<PublicHomeCategory>(payload)
+  return parsePublicHomeCategories(payload)
 }
 
 export async function descobrirLocalidadesPublicas() {
-  return requestJson<PublicCatalogDiscovery>('/localidades', cached)
+  return parsePublicCatalogDiscovery(await requestJson<unknown>('/localidades', cached))
 }
 
 export async function listarCatalogoCompletoLocalidades() {
-  return requestJson<PublicCatalogDiscovery>('/localidades/catalogo', cached)
+  return parsePublicCatalogDiscovery(await requestJson<unknown>('/localidades/catalogo', cached))
 }
 
 export async function descobrirAnunciosIndexaveisSitemap() {
-  return requestJson<PublicSitemapEntry[]>('/seo/sitemap', cached)
+  return parsePublicSitemapEntries(await requestJson<unknown>('/seo/sitemap', cached))
 }

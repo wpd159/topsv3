@@ -103,17 +103,17 @@ services:
     build:
       context: ../../frontend
       args:
-        # Reset do frontend V3 (copia fiel do clone real, sem renomear env vars
-        # no codigo copiado): o clone usa NEXT_PUBLIC_SITE_URL/NEXT_PUBLIC_API_URL
-        # nativamente em todo o src/. NEXT_PUBLIC_API_URL ja inclui o prefixo
-        # /api/public porque o codigo do clone chama caminhos sem prefixo
-        # (ex.: `${API}/anuncios`) e o contrato real da V3 vive sob /api/public.
+        # O navegador usa NEXT_PUBLIC_API_URL durante o build. Leituras SSR usam
+        # INTERNAL_API_URL somente no runtime, pela rede privada compartilhada
+        # com o backend. Ambas incluem /api/public porque os adapters recebem
+        # caminhos sem esse prefixo.
         # Endpoints do clone sem equivalente em /api/public (auth, kyc,
         # localidades, site-content, etc.) continuam retornando 404 e degradam
         # graciosamente (o proprio codigo do clone trata isso) - ver pendencias
         # no SDD.
         NEXT_PUBLIC_SITE_URL: https://${HML_DOMAIN:-v3.esle.cloud}
         NEXT_PUBLIC_API_URL: https://${HML_DOMAIN:-v3.esle.cloud}/api/public
+        PUBLIC_API_TIMEOUT_MS: "${PUBLIC_API_TIMEOUT_MS:-5000}"
         SEARCH_INDEXING_MODE: blocked
       dockerfile_inline: |
         FROM node:22.13.1-alpine AS deps
@@ -124,9 +124,11 @@ services:
         WORKDIR /app
         ARG NEXT_PUBLIC_SITE_URL
         ARG NEXT_PUBLIC_API_URL
+        ARG PUBLIC_API_TIMEOUT_MS
         ARG SEARCH_INDEXING_MODE
         ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
         ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+        ENV PUBLIC_API_TIMEOUT_MS=$PUBLIC_API_TIMEOUT_MS
         ENV SEARCH_INDEXING_MODE=$${SEARCH_INDEXING_MODE}
         COPY --from=deps /app/node_modules ./node_modules
         COPY . .
@@ -135,6 +137,8 @@ services:
         WORKDIR /app
         ENV NODE_ENV=production
         ENV NEXT_TELEMETRY_DISABLED=1
+        ENV INTERNAL_API_URL=http://backend:8080/api/public
+        ENV PUBLIC_API_TIMEOUT_MS=5000
         ENV SEARCH_INDEXING_MODE=blocked
         COPY --from=build /app/package.json ./package.json
         COPY --from=build /app/package-lock.json ./package-lock.json
@@ -148,6 +152,8 @@ services:
     environment:
       NEXT_PUBLIC_SITE_URL: https://${HML_DOMAIN:-v3.esle.cloud}
       NEXT_PUBLIC_API_URL: https://${HML_DOMAIN:-v3.esle.cloud}/api/public
+      INTERNAL_API_URL: http://backend:8080/api/public
+      PUBLIC_API_TIMEOUT_MS: "${PUBLIC_API_TIMEOUT_MS:-5000}"
       SEARCH_INDEXING_MODE: blocked
       NEXT_TELEMETRY_DISABLED: "1"
     ports:

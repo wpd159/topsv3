@@ -11,7 +11,8 @@ import {
   isPublicCatalogNotFound,
   listarAnunciosPublicos,
   type PublicCategoryList,
-} from "@/lib/public-catalog-api"
+} from "@/lib/public-catalog-server-api"
+
 
 type AnunciosSearchParams = PublicListingSearchParams & {
   page?: string

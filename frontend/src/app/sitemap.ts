@@ -1,23 +1,19 @@
 import type { MetadataRoute } from "next"
-import { PUBLIC_BLOG_CACHE_TAG } from "@/lib/blog-api"
+import {
+  fetchPublicBlogCategorias,
+  fetchPublicBlogSitemap,
+} from "@/lib/blog-api"
 import {
   descobrirAnunciosIndexaveisSitemap,
   descobrirLocalidadesPublicas,
-} from "@/lib/public-catalog-api"
+} from "@/lib/public-catalog-server-api"
 import { buildPublicPath, buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 import {
   isSafeSitemapUrl,
   resolveSearchIndexingPolicy,
 } from "@/lib/seo/search-indexing-policy"
 
-export const dynamic = "force-dynamic"
-
-class EditorialSitemapError extends Error {
-  constructor(readonly status: number | null = null) {
-    super("Editorial sitemap unavailable")
-    this.name = "EditorialSitemapError"
-  }
-}
+export const revalidate = 0
 
 function parseDate(value: unknown): Date | undefined {
   if (typeof value !== "string" || !value) return undefined
@@ -41,20 +37,7 @@ function numberField(row: Record<string, unknown>, field: string) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
-async function fetchEditorialList(url: string) {
-  const response = await fetch(url, {
-    next: { revalidate: 3600, tags: [PUBLIC_BLOG_CACHE_TAG] },
-    signal: AbortSignal.timeout(8000),
-  })
-  if (!response.ok) throw new EditorialSitemapError(response.status)
-
-  const payload: unknown = await response.json()
-  if (!Array.isArray(payload)) throw new EditorialSitemapError(502)
-  return payload as Record<string, unknown>[]
-}
-
 async function buildEditorialSitemap(
-  apiBase: string,
   baseUrl: string,
 ): Promise<{
   index: MetadataRoute.Sitemap
@@ -63,8 +46,8 @@ async function buildEditorialSitemap(
   lastModified?: Date
 }> {
   const [posts, categories] = await Promise.all([
-    fetchEditorialList(`${apiBase}/blog-posts/public/sitemap`),
-    fetchEditorialList(`${apiBase}/blog-categorias/public`),
+    fetchPublicBlogSitemap(),
+    fetchPublicBlogCategorias(),
   ])
 
   const postRoutes: MetadataRoute.Sitemap = []
@@ -121,9 +104,13 @@ async function buildEditorialSitemap(
 }
 
 function logEditorialSitemapFailure(error: unknown) {
+  const status =
+    typeof error === "object" && error && "status" in error
+      ? (error as { status?: unknown }).status ?? null
+      : null
   console.error("editorial_sitemap_unavailable", {
     name: error instanceof Error ? error.name : "UnknownError",
-    status: error instanceof EditorialSitemapError ? error.status : null,
+    status,
   })
 }
 
@@ -132,7 +119,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   if (!indexingPolicy.sitemapEnabled) return []
 
   const baseUrl = getPublicSiteBaseUrl()
-  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${baseUrl}/`, priority: 1.0 },
     { url: `${baseUrl}/anuncios`, priority: 0.9 },
@@ -221,16 +207,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   }
 
-  if (apiBase) {
-    try {
-      const editorial = await buildEditorialSitemap(apiBase, baseUrl)
-      dynamicBlogIndexRoutes = editorial.index
-      dynamicBlogRoutes = editorial.posts
-      dynamicBlogCategoryRoutes = editorial.categories
-      lastModBlogIndex = editorial.lastModified
-    } catch (error) {
-      logEditorialSitemapFailure(error)
-    }
+  try {
+    const editorial = await buildEditorialSitemap(baseUrl)
+    dynamicBlogIndexRoutes = editorial.index
+    dynamicBlogRoutes = editorial.posts
+    dynamicBlogCategoryRoutes = editorial.categories
+    lastModBlogIndex = editorial.lastModified
+  } catch (error) {
+    logEditorialSitemapFailure(error)
   }
 
   const finalStaticRoutes = staticRoutes.map((route) => {
