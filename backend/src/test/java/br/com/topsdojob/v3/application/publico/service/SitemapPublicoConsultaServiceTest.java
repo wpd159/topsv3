@@ -117,17 +117,19 @@ class SitemapPublicoConsultaServiceTest {
         when(premiumMapper.flagsPorAnuncios(List.of(anuncio)))
                 .thenReturn(Map.of(anuncioId, PremiumPublicoFlagsDto.vazio()));
 
-        SitemapPublicoConsultaService service = new SitemapPublicoConsultaService(
-                anuncioRepository,
-                localizacaoRepository,
+        AnuncioSeoElegibilidadeConsultaService elegibilidadeService = new AnuncioSeoElegibilidadeConsultaService(
                 midiaRepository,
                 arquivoRepository,
-                estadoRepository,
-                cidadeRepository,
-                bairroRepository,
                 new MidiaPublicaMapper(urlService),
                 premiumMapper,
                 new AnuncioSeoIndexabilidadePolicy());
+        SitemapPublicoConsultaService service = new SitemapPublicoConsultaService(
+                anuncioRepository,
+                localizacaoRepository,
+                estadoRepository,
+                cidadeRepository,
+                bairroRepository,
+                elegibilidadeService);
 
         var entradas = service.listarAnunciosIndexaveis();
 
@@ -188,11 +190,6 @@ class SitemapPublicoConsultaServiceTest {
         PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
         AnuncioSeoIndexabilidadePolicy policy = mock(AnuncioSeoIndexabilidadePolicy.class);
 
-        when(anuncioRepository.findPublicosComProprietarioAtivo()).thenReturn(List.of(anuncio));
-        when(localizacaoRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(List.of(localizacao));
-        when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
-        when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));
-        when(bairroRepository.findAllById(any())).thenReturn(List.of());
         when(midiaRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(vinculos);
         when(arquivoRepository.findByIdIn(any())).thenReturn(List.of());
         when(premiumMapper.flagsPorAnuncios(List.of(anuncio)))
@@ -200,19 +197,17 @@ class SitemapPublicoConsultaServiceTest {
         when(midiaMapper.publicas(eq(vinculos), any(), eq(false), eq(4), eq(false)))
                 .thenReturn(List.of());
 
-        SitemapPublicoConsultaService service = new SitemapPublicoConsultaService(
-                anuncioRepository,
-                localizacaoRepository,
+        AnuncioSeoElegibilidadeConsultaService service = new AnuncioSeoElegibilidadeConsultaService(
                 midiaRepository,
                 arquivoRepository,
-                estadoRepository,
-                cidadeRepository,
-                bairroRepository,
                 midiaMapper,
                 premiumMapper,
                 policy);
 
-        service.listarAnunciosIndexaveis();
+        service.avaliar(
+                List.of(anuncio),
+                Map.of(anuncioId, new br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto(
+                        "GO", "Goias", "Goiania", "goiania", null, null, null)));
 
         verify(midiaMapper).publicas(eq(vinculos), any(), eq(false), eq(4), eq(false));
     }

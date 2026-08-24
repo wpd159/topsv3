@@ -6,6 +6,7 @@ import br.com.topsdojob.v3.application.publico.dto.CategoriaCidadePublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.CidadeLocalidadePublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.DescobertaLocalidadesPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.EstadoLocalidadePublicaDto;
+import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
@@ -22,7 +23,6 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -44,18 +44,24 @@ public class LocalidadePublicaConsultaService {
     private final BairroRepository bairroRepository;
     private final AnuncioRepository anuncioRepository;
     private final AnuncioLocalizacaoRepository localizacaoRepository;
+    private final AnuncioSeoElegibilidadeConsultaService elegibilidadeService;
+    private final LocalidadeSeoIndexabilidadePolicy indexabilidadePolicy;
 
     public LocalidadePublicaConsultaService(
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
             AnuncioRepository anuncioRepository,
-            AnuncioLocalizacaoRepository localizacaoRepository) {
+            AnuncioLocalizacaoRepository localizacaoRepository,
+            AnuncioSeoElegibilidadeConsultaService elegibilidadeService,
+            LocalidadeSeoIndexabilidadePolicy indexabilidadePolicy) {
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
+        this.elegibilidadeService = elegibilidadeService;
+        this.indexabilidadePolicy = indexabilidadePolicy;
     }
 
     @Transactional(readOnly = true)
@@ -77,6 +83,15 @@ public class LocalidadePublicaConsultaService {
         Map<UUID, BairroEntity> bairros = porId(
                 bairroRepository.findAllById(ids(localizacoes, AnuncioLocalizacaoEntity::getBairroId)),
                 BairroEntity::getId);
+        Map<UUID, LocalizacaoPublicaDto> localizacoesPublicas = new LinkedHashMap<>();
+        for (AnuncioLocalizacaoEntity localizacao : localizacoes) {
+            localizacoesPublicas.putIfAbsent(
+                    localizacao.getAnuncioId(),
+                    localizacao(localizacao, estados, cidades, bairros));
+        }
+        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = elegibilidadeService.avaliar(
+                anuncios,
+                localizacoesPublicas);
 
         Map<UUID, EstadoAcc> acumulado = new LinkedHashMap<>();
         for (AnuncioLocalizacaoEntity localizacao : localizacoes) {
@@ -86,20 +101,22 @@ public class LocalidadePublicaConsultaService {
             if (anuncio == null || estado == null || cidade == null || !estado.getId().equals(cidade.getEstadoId())) {
                 continue;
             }
+            boolean indexavel = elegibilidade.containsKey(anuncio.getId())
+                    && elegibilidade.get(anuncio.getId()).indexavel();
             BairroEntity bairro = bairros.get(localizacao.getBairroId());
             OffsetDateTime atualizacao = ultimaAtualizacao(anuncio, localizacao);
             EstadoAcc estadoAcc = acumulado.computeIfAbsent(estado.getId(), ignored -> new EstadoAcc(estado));
-            estadoAcc.adicionar(anuncio.getId(), atualizacao);
+            estadoAcc.adicionar(anuncio.getId(), indexavel, atualizacao);
             CidadeAcc cidadeAcc = estadoAcc.cidades.computeIfAbsent(cidade.getId(), ignored -> new CidadeAcc(cidade));
-            cidadeAcc.adicionar(anuncio.getId(), atualizacao);
+            cidadeAcc.adicionar(anuncio.getId(), indexavel, atualizacao);
             if (bairro != null && cidade.getId().equals(bairro.getCidadeId())) {
                 BairroAcc bairroAcc = cidadeAcc.bairros.computeIfAbsent(bairro.getId(), ignored -> new BairroAcc(bairro));
-                bairroAcc.adicionar(anuncio.getId(), atualizacao);
+                bairroAcc.adicionar(anuncio.getId(), indexavel, atualizacao);
             }
         }
 
         List<EstadoLocalidadePublicaDto> resultado = acumulado.values().stream()
-                .map(EstadoAcc::toDto)
+                .map(item -> item.toDto(indexabilidadePolicy))
                 .sorted(Comparator.comparing(EstadoLocalidadePublicaDto::uf))
                 .toList();
         return new DescobertaLocalidadesPublicaDto(resultado);
@@ -121,18 +138,21 @@ public class LocalidadePublicaConsultaService {
                         estado.getNome(),
                         0,
                         null,
+                        indexabilidadePolicy.estado(0, List.of()),
                         cidadesPorEstado.getOrDefault(estado.getId(), List.of()).stream()
                                 .map(cidade -> new CidadeLocalidadePublicaDto(
                                         cidade.getNome(),
                                         cidade.getSlug(),
                                         0,
                                         null,
+                                        indexabilidadePolicy.cidade(0),
                                         bairrosPorCidade.getOrDefault(cidade.getId(), List.of()).stream()
                                                 .map(bairro -> new BairroLocalidadePublicaDto(
                                                         bairro.getNome(),
                                                         bairro.getSlug(),
                                                         0,
-                                                        null))
+                                                        null,
+                                                        indexabilidadePolicy.bairro(0)))
                                                 .sorted(Comparator.comparing(
                                                         BairroLocalidadePublicaDto::nome,
                                                         nomes))
@@ -169,20 +189,15 @@ public class LocalidadePublicaConsultaService {
         List<AnuncioLocalizacaoEntity> localizacoesPublicas = localizacoes.stream()
                 .filter(item -> anuncioPorId.containsKey(item.getAnuncioId()))
                 .toList();
-        Map<UUID, BairroEntity> bairrosPorId = porId(
-                bairroRepository.findAllById(ids(localizacoesPublicas, AnuncioLocalizacaoEntity::getBairroId)),
-                BairroEntity::getId);
-
-        Map<UUID, BairroAcc> bairros = new HashMap<>();
-        for (AnuncioLocalizacaoEntity localizacao : localizacoesPublicas) {
-            BairroEntity bairro = bairrosPorId.get(localizacao.getBairroId());
-            AnuncioEntity anuncio = anuncioPorId.get(localizacao.getAnuncioId());
-            if (bairro == null || anuncio == null || !cidade.getId().equals(bairro.getCidadeId())) {
-                continue;
-            }
-            bairros.computeIfAbsent(bairro.getId(), ignored -> new BairroAcc(bairro))
-                    .adicionar(anuncio.getId(), ultimaAtualizacao(anuncio, localizacao));
-        }
+        DescobertaLocalidadesPublicaDto descoberta = descobrir();
+        EstadoLocalidadePublicaDto estadoDescoberto = descoberta.estados().stream()
+                .filter(item -> item.uf().equalsIgnoreCase(estado.getUf()))
+                .findFirst()
+                .orElseThrow(() -> notFound("estado sem anuncios publicos"));
+        CidadeLocalidadePublicaDto cidadeDescoberta = estadoDescoberto.cidades().stream()
+                .filter(item -> item.slug().equals(cidade.getSlug()))
+                .findFirst()
+                .orElseThrow(() -> notFound("cidade sem anuncios publicos"));
 
         Map<String, Long> categorias = anuncios.stream()
                 .flatMap(anuncio -> {
@@ -205,9 +220,7 @@ public class LocalidadePublicaConsultaService {
                         .thenComparing(CategoriaCidadePublicaDto::codigo))
                 .toList();
 
-        List<CidadeLocalidadePublicaDto> relacionadas = descobrir().estados().stream()
-                .filter(item -> item.uf().equalsIgnoreCase(estado.getUf()))
-                .flatMap(item -> item.cidades().stream())
+        List<CidadeLocalidadePublicaDto> relacionadas = estadoDescoberto.cidades().stream()
                 .filter(item -> !item.slug().equals(cidade.getSlug()))
                 .toList();
 
@@ -224,10 +237,8 @@ public class LocalidadePublicaConsultaService {
                 cidade.getSlug(),
                 anuncios.size(),
                 ultimaAtualizacao,
-                bairros.values().stream()
-                        .map(BairroAcc::toDto)
-                        .sorted(Comparator.comparing(BairroLocalidadePublicaDto::nome))
-                        .toList(),
+                cidadeDescoberta.indexacao(),
+                cidadeDescoberta.bairros(),
                 categoriasDto,
                 relacionadas);
     }
@@ -236,6 +247,33 @@ public class LocalidadePublicaConsultaService {
         return anuncioRepository.findPublicosComProprietarioAtivo().stream()
                 .filter(anuncio -> !anuncio.isAtendimentoExclusivamenteVirtual())
                 .toList();
+    }
+
+    private LocalizacaoPublicaDto localizacao(
+            AnuncioLocalizacaoEntity localizacao,
+            Map<UUID, EstadoEntity> estados,
+            Map<UUID, CidadeEntity> cidades,
+            Map<UUID, BairroEntity> bairros) {
+        if (localizacao == null) {
+            return null;
+        }
+        EstadoEntity estado = estados.get(localizacao.getEstadoId());
+        CidadeEntity cidade = cidades.get(localizacao.getCidadeId());
+        if (estado == null || cidade == null || !estado.getId().equals(cidade.getEstadoId())) {
+            return null;
+        }
+        BairroEntity bairro = localizacao.getBairroId() == null ? null : bairros.get(localizacao.getBairroId());
+        if (bairro != null && !cidade.getId().equals(bairro.getCidadeId())) {
+            return null;
+        }
+        return new LocalizacaoPublicaDto(
+                estado.getUf(),
+                estado.getNome(),
+                cidade.getNome(),
+                cidade.getSlug(),
+                bairro == null ? null : bairro.getNome(),
+                bairro == null ? null : bairro.getSlug(),
+                null);
     }
 
     private OffsetDateTime ultimaAtualizacao(AnuncioEntity anuncio, AnuncioLocalizacaoEntity localizacao) {
@@ -292,10 +330,14 @@ public class LocalidadePublicaConsultaService {
 
     private abstract static class LocalidadeAcc {
         private final Set<UUID> anuncios = new java.util.HashSet<>();
+        private final Set<UUID> anunciosElegiveis = new java.util.HashSet<>();
         private OffsetDateTime ultimaAtualizacao;
 
-        void adicionar(UUID anuncioId, OffsetDateTime atualizacao) {
+        void adicionar(UUID anuncioId, boolean elegivel, OffsetDateTime atualizacao) {
             anuncios.add(anuncioId);
+            if (elegivel) {
+                anunciosElegiveis.add(anuncioId);
+            }
             if (atualizacao != null && (ultimaAtualizacao == null || atualizacao.isAfter(ultimaAtualizacao))) {
                 ultimaAtualizacao = atualizacao;
             }
@@ -303,6 +345,10 @@ public class LocalidadePublicaConsultaService {
 
         long total() {
             return anuncios.size();
+        }
+
+        long elegiveis() {
+            return anunciosElegiveis.size();
         }
 
         OffsetDateTime ultimaAtualizacao() {
@@ -318,16 +364,18 @@ public class LocalidadePublicaConsultaService {
             this.estado = estado;
         }
 
-        private EstadoLocalidadePublicaDto toDto() {
+        private EstadoLocalidadePublicaDto toDto(LocalidadeSeoIndexabilidadePolicy policy) {
+            List<CidadeLocalidadePublicaDto> cidadesDto = cidades.values().stream()
+                    .map(item -> item.toDto(policy))
+                    .sorted(Comparator.comparing(CidadeLocalidadePublicaDto::nome))
+                    .toList();
             return new EstadoLocalidadePublicaDto(
                     estado.getUf(),
                     estado.getNome(),
                     total(),
                     ultimaAtualizacao(),
-                    cidades.values().stream()
-                            .map(CidadeAcc::toDto)
-                            .sorted(Comparator.comparing(CidadeLocalidadePublicaDto::nome))
-                            .toList());
+                    policy.estado(elegiveis(), cidadesDto),
+                    cidadesDto);
         }
     }
 
@@ -339,14 +387,15 @@ public class LocalidadePublicaConsultaService {
             this.cidade = cidade;
         }
 
-        private CidadeLocalidadePublicaDto toDto() {
+        private CidadeLocalidadePublicaDto toDto(LocalidadeSeoIndexabilidadePolicy policy) {
             return new CidadeLocalidadePublicaDto(
                     cidade.getNome(),
                     cidade.getSlug(),
                     total(),
                     ultimaAtualizacao(),
+                    policy.cidade(elegiveis()),
                     bairros.values().stream()
-                            .map(BairroAcc::toDto)
+                            .map(item -> item.toDto(policy))
                             .sorted(Comparator.comparing(BairroLocalidadePublicaDto::nome))
                             .toList());
         }
@@ -359,12 +408,13 @@ public class LocalidadePublicaConsultaService {
             this.bairro = bairro;
         }
 
-        private BairroLocalidadePublicaDto toDto() {
+        private BairroLocalidadePublicaDto toDto(LocalidadeSeoIndexabilidadePolicy policy) {
             return new BairroLocalidadePublicaDto(
                     bairro.getNome(),
                     bairro.getSlug(),
                     total(),
-                    ultimaAtualizacao());
+                    ultimaAtualizacao(),
+                    policy.bairro(elegiveis()));
         }
     }
 }

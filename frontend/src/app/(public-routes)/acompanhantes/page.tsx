@@ -8,6 +8,7 @@ import {
   descobrirLocalidadesPublicas,
   listarAnunciosPublicos,
 } from "@/lib/public-catalog-api"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
 import { isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
@@ -52,14 +53,15 @@ export default async function AcompanhantesIndexPage() {
     descoberta,
     anunciosPublicados.paginacao,
   )
-  const cidadesIndexaveis = cidadesDaDescobertaPublica(descoberta)
-    .filter((cidade) => isCidadeIndexavelLocal(cidade))
+  const cidades = cidadesDaDescobertaPublica(descoberta)
     .sort(
       (a, b) =>
+        Number(isCidadeIndexavelLocal(b)) - Number(isCidadeIndexavelLocal(a)) ||
         (b.totalAnunciosAtivos ?? 0) - (a.totalAnunciosAtivos ?? 0) ||
         a.cidadeNome.localeCompare(b.cidadeNome, "pt-BR"),
     )
-  const estados = agruparCidadesPorEstado(cidadesIndexaveis)
+  const cidadesIndexaveis = cidades.filter(isCidadeIndexavelLocal)
+  const estados = agruparCidadesPorEstado(cidades)
   const cidadesPrincipais = cidadesIndexaveis.slice(0, 12)
   const structuredData = buildAcompanhantesNationalStructuredData(cidadesPrincipais)
 
@@ -263,7 +265,7 @@ export default async function AcompanhantesIndexPage() {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
+          __html: serializeJsonLd(structuredData),
         }}
       />
     </main>

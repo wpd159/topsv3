@@ -7,6 +7,7 @@ import {
   isPublicCatalogNotFound,
   obterAnuncioPublicoPorSlug,
 } from "@/lib/public-catalog-api"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicPath, buildPublicUrl } from "@/lib/seo/public-url"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import {
@@ -138,7 +139,7 @@ export default async function Page({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(webPageJsonLd).replace(/</g, "\\u003c"),
+            __html: serializeJsonLd(webPageJsonLd),
           }}
         />
         <AnuncioDetalhesPageClient initialData={initialData} />

@@ -235,6 +235,12 @@ public class SolicitarAnuncioPublicoService {
                     "complemento nao pode conter HTML ou JavaScript"));
         }
         String titulo = requiredText(request.titulo(), "titulo", 10, TITULO_MAX, errors);
+        if (titulo != null && contemConteudoAtivo(titulo)) {
+            errors.add(error(
+                    "titulo",
+                    "CONTEUDO_NAO_PERMITIDO",
+                    "titulo nao pode conter HTML ou JavaScript"));
+        }
         String descricao = requiredText(request.descricao(), "descricao", 20, DESCRICAO_MAX, errors);
         String categoria = categoria(request.categoria(), errors);
         Set<ServicoAnuncio> servicos = servicos(request.servicos(), errors);

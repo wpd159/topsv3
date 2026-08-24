@@ -1,31 +1,21 @@
 package br.com.topsdojob.v3.application.publico.service;
 
-import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_BASE;
-import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_COM_EXTRA;
-
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
-import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
 import br.com.topsdojob.v3.application.publico.dto.SitemapAnuncioPublicoDto;
-import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
-import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
-import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.BairroEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.CidadeEntity;
 import br.com.topsdojob.v3.persistence.entity.localizacao.EstadoEntity;
-import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
-import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
-import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
-import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,36 +30,24 @@ public class SitemapPublicoConsultaService {
 
     private final AnuncioRepository anuncioRepository;
     private final AnuncioLocalizacaoRepository localizacaoRepository;
-    private final AnuncioMidiaRepository anuncioMidiaRepository;
-    private final ArquivoMidiaRepository arquivoMidiaRepository;
     private final EstadoRepository estadoRepository;
     private final CidadeRepository cidadeRepository;
     private final BairroRepository bairroRepository;
-    private final MidiaPublicaMapper midiaMapper;
-    private final PremiumPublicoMapper premiumMapper;
-    private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
+    private final AnuncioSeoElegibilidadeConsultaService elegibilidadeService;
 
     public SitemapPublicoConsultaService(
             AnuncioRepository anuncioRepository,
             AnuncioLocalizacaoRepository localizacaoRepository,
-            AnuncioMidiaRepository anuncioMidiaRepository,
-            ArquivoMidiaRepository arquivoMidiaRepository,
             EstadoRepository estadoRepository,
             CidadeRepository cidadeRepository,
             BairroRepository bairroRepository,
-            MidiaPublicaMapper midiaMapper,
-            PremiumPublicoMapper premiumMapper,
-            AnuncioSeoIndexabilidadePolicy indexabilidadePolicy) {
+            AnuncioSeoElegibilidadeConsultaService elegibilidadeService) {
         this.anuncioRepository = anuncioRepository;
         this.localizacaoRepository = localizacaoRepository;
-        this.anuncioMidiaRepository = anuncioMidiaRepository;
-        this.arquivoMidiaRepository = arquivoMidiaRepository;
         this.estadoRepository = estadoRepository;
         this.cidadeRepository = cidadeRepository;
         this.bairroRepository = bairroRepository;
-        this.midiaMapper = midiaMapper;
-        this.premiumMapper = premiumMapper;
-        this.indexabilidadePolicy = indexabilidadePolicy;
+        this.elegibilidadeService = elegibilidadeService;
     }
 
     @Transactional(readOnly = true)
@@ -93,13 +71,15 @@ public class SitemapPublicoConsultaService {
                 bairroRepository.findAllById(ids(localizacoes.values(), AnuncioLocalizacaoEntity::getBairroId)),
                 BairroEntity::getId);
 
-        List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds);
-        Map<UUID, List<AnuncioMidiaEntity>> vinculosPorAnuncio = vinculos.stream()
-                .collect(Collectors.groupingBy(AnuncioMidiaEntity::getAnuncioId));
-        Map<UUID, ArquivoMidiaEntity> arquivos = porId(
-                arquivoMidiaRepository.findByIdIn(ids(vinculos, AnuncioMidiaEntity::getArquivoMidiaId)),
-                ArquivoMidiaEntity::getId);
-        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(anuncios);
+        Map<UUID, LocalizacaoPublicaDto> localizacoesPublicas = new LinkedHashMap<>();
+        for (AnuncioEntity anuncio : anuncios) {
+            localizacoesPublicas.put(
+                    anuncio.getId(),
+                    localizacao(localizacoes.get(anuncio.getId()), estados, cidades, bairros));
+        }
+        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = elegibilidadeService.avaliar(
+                anuncios,
+                localizacoesPublicas);
 
         return anuncios.stream()
                 .map(anuncio -> entrada(
@@ -108,9 +88,7 @@ public class SitemapPublicoConsultaService {
                         estados,
                         cidades,
                         bairros,
-                        vinculosPorAnuncio,
-                        arquivos,
-                        premiumPorAnuncio))
+                        elegibilidade))
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(SitemapAnuncioPublicoDto::slug))
                 .toList();
@@ -122,27 +100,15 @@ public class SitemapPublicoConsultaService {
             Map<UUID, EstadoEntity> estados,
             Map<UUID, CidadeEntity> cidades,
             Map<UUID, BairroEntity> bairros,
-            Map<UUID, List<AnuncioMidiaEntity>> vinculosPorAnuncio,
-            Map<UUID, ArquivoMidiaEntity> arquivos,
-            Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio) {
+            Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade) {
         AnuncioLocalizacaoEntity localizacaoEntity = localizacoes.get(anuncio.getId());
         LocalizacaoPublicaDto localizacao = localizacao(localizacaoEntity, estados, cidades, bairros);
         if (localizacao == null) {
             return null;
         }
 
-        List<AnuncioMidiaEntity> vinculos = vinculosPorAnuncio.getOrDefault(anuncio.getId(), List.of());
-        PremiumPublicoFlagsDto premium = premiumPorAnuncio.getOrDefault(
-                anuncio.getId(), PremiumPublicoFlagsDto.vazio());
-        int maxFotos = premium.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE;
-        List<MidiaPublicaDto> midias = midiaMapper.publicas(
-                vinculos,
-                arquivos,
-                false,
-                maxFotos,
-                premium.videoAtivo());
-        boolean indexavel = indexabilidadePolicy.indexavel(anuncio, localizacao, midias);
-        if (!indexavel) {
+        AnuncioSeoElegibilidadeConsultaService.Resultado resultado = elegibilidade.get(anuncio.getId());
+        if (resultado == null || !resultado.indexavel()) {
             return null;
         }
 
@@ -151,7 +117,7 @@ public class SitemapPublicoConsultaService {
                 localizacao.uf(),
                 localizacao.cidadeSlug(),
                 localizacao.bairroSlug(),
-                ultimaAtualizacao(anuncio, localizacaoEntity, vinculos),
+                ultimaAtualizacao(anuncio, localizacaoEntity, resultado.ultimaAtualizacaoMidia()),
                 true,
                 true);
     }
@@ -186,14 +152,13 @@ public class SitemapPublicoConsultaService {
     private OffsetDateTime ultimaAtualizacao(
             AnuncioEntity anuncio,
             AnuncioLocalizacaoEntity localizacao,
-            List<AnuncioMidiaEntity> vinculos) {
-        return java.util.stream.Stream.concat(
-                        java.util.stream.Stream.of(
-                                anuncio.getAtualizadoEm(),
-                                anuncio.getUltimaPublicacaoEm(),
-                                anuncio.getPublicadoEm(),
-                                localizacao.getAtualizadoEm()),
-                        vinculos.stream().map(AnuncioMidiaEntity::getAtualizadoEm))
+            OffsetDateTime ultimaAtualizacaoMidia) {
+        return java.util.stream.Stream.of(
+                        anuncio.getAtualizadoEm(),
+                        anuncio.getUltimaPublicacaoEm(),
+                        anuncio.getPublicadoEm(),
+                        localizacao.getAtualizadoEm(),
+                        ultimaAtualizacaoMidia)
                 .filter(Objects::nonNull)
                 .max(OffsetDateTime::compareTo)
                 .orElse(null);

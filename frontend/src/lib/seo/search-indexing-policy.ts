@@ -24,19 +24,6 @@ export const NON_INDEXABLE_ROUTE_PREFIXES = [
   "/webhooks",
 ] as const
 
-export const NON_INDEXABLE_QUERY_PATTERNS = [
-  "/*?*filter=",
-  "/*&filter=",
-  "/*?*sort=",
-  "/*&sort=",
-  "/*?*search=",
-  "/*&search=",
-  "/*?*busca=",
-  "/*&busca=",
-  "/*?*utm_",
-  "/*&utm_",
-] as const
-
 export const NEXT_NOINDEX_ROUTE_SOURCES = [
   "/acesso-negado",
   "/admin/:path*",
@@ -82,6 +69,68 @@ export interface SearchRobotsRule {
   allow?: string[]
   disallow: string[]
   crawlDelay?: number
+}
+
+export type PublicListingSearchParams = Record<
+  string,
+  string | string[] | undefined
+>
+
+export interface PublicListingIndexingDecision {
+  indexable: boolean
+  canonicalQuery: string
+}
+
+const CAMPAIGN_QUERY_PARAMETERS = new Set(["gclid", "fbclid", "msclkid"])
+const INTERNAL_QUERY_PARAMETERS = new Set(["seed", "ordemseed"])
+
+function queryValues(value: string | string[] | undefined) {
+  const values = Array.isArray(value) ? value : [value]
+  return values
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+}
+
+function isCampaignParameter(name: string) {
+  const normalized = name.toLowerCase()
+  return normalized.startsWith("utm_") || CAMPAIGN_QUERY_PARAMETERS.has(normalized)
+}
+
+export function buildPublicListingIndexingDecision(
+  searchParams: PublicListingSearchParams,
+  page: number,
+): PublicListingIndexingDecision {
+  const canonical = new URLSearchParams()
+  let materialQuery = false
+  const cleanFirstPage = page === 1 && searchParams.page === undefined
+
+  if (page > 1) canonical.set("page", String(page))
+
+  for (const name of Object.keys(searchParams).sort((a, b) => a.localeCompare(b))) {
+    const normalized = name.toLowerCase()
+    if (normalized === "page" || isCampaignParameter(normalized)) continue
+
+    if (INTERNAL_QUERY_PARAMETERS.has(normalized)) {
+      materialQuery = true
+      continue
+    }
+
+    const values = queryValues(searchParams[name])
+    if (values.length === 0) continue
+    if (normalized === "categoria" && values.every((value) => value === "TODOS")) {
+      continue
+    }
+
+    materialQuery = true
+    values.forEach((value) => canonical.append(name, value))
+  }
+
+  return {
+    indexable: cleanFirstPage && !materialQuery,
+    canonicalQuery: canonical.toString(),
+  }
 }
 
 function normalizeOrigin(rawValue: string) {
@@ -143,10 +192,7 @@ export function resolveSearchIndexingPolicy(
 }
 
 export function buildCrawlerDisallowRules() {
-  return [
-    ...NON_INDEXABLE_ROUTE_PREFIXES.flatMap((prefix) => [prefix, `${prefix}/*`]),
-    ...NON_INDEXABLE_QUERY_PATTERNS,
-  ]
+  return NON_INDEXABLE_ROUTE_PREFIXES.flatMap((prefix) => [prefix, `${prefix}/*`])
 }
 
 export function buildSearchRobotsRules(

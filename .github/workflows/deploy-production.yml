@@ -55,6 +55,11 @@ jobs:
           npm ci
           npm audit --omit=dev --audit-level=high
           npm audit --audit-level=high
+          npm run test:json-ld-security
+          npm run test:public-ordering
+          node scripts/test-public-seo-critical.mjs
+          npm run test:search-indexing
+          npm run test:seo-ai
           npm run test:sharp-security
           node scripts/test-ga4-production.mjs
           npm run lint

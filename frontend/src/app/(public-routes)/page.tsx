@@ -3,9 +3,11 @@ import Link from "next/link"
 import Hero from "@/components/layout/hero"
 import CategoriasSection from "@/components/layout/categoria-section"
 import { listarFaqsPublicadas, type FaqPublica } from "@/lib/faq-public-api"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { labelAcompanhantesCidade } from "@/lib/seo/local-labels"
 import { buildPublicUrl } from "@/lib/seo/public-url"
 import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
+import { isCidadeIndexavelLocal, type LocalIndexingDecision } from "@/lib/seo/local-indexing"
 
 export const dynamic = "force-dynamic"
 export const metadata: Metadata = {
@@ -33,6 +35,7 @@ interface CidadePopularHome {
   estadoUf: string
   cidadeNome: string
   cidadeSlug: string
+  indexacao: LocalIndexingDecision
 }
 
 async function buscarCidadesPopularesHome() {
@@ -44,9 +47,15 @@ async function buscarCidadesPopularesHome() {
         cidadeNome: cidade.nome,
         cidadeSlug: cidade.slug,
         totalAnunciosAtivos: cidade.totalAnunciosAtivos,
+        indexacao: cidade.indexacao,
       }))
     )
-    .sort((a, b) => b.totalAnunciosAtivos - a.totalAnunciosAtivos || a.cidadeNome.localeCompare(b.cidadeNome))
+    .sort(
+      (a, b) =>
+        Number(isCidadeIndexavelLocal(b)) - Number(isCidadeIndexavelLocal(a)) ||
+        b.totalAnunciosAtivos - a.totalAnunciosAtivos ||
+        a.cidadeNome.localeCompare(b.cidadeNome)
+    )
     .slice(0, 12)
 }
 
@@ -130,7 +139,7 @@ function HomeFaqSection({ faqs }: { faqs: FaqPublica[] }) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(faqJsonLd).replace(/</g, "\\u003c"),
+          __html: serializeJsonLd(faqJsonLd),
         }}
       />
     </section>

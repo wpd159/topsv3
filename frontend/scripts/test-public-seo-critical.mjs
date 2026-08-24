@@ -11,6 +11,22 @@ const nationalSeoSource = readFileSync(
   'src/lib/seo/acompanhantes-national-seo.ts',
   'utf8',
 )
+const listingPageSource = readFileSync(
+  'src/app/(public-routes)/anuncios/page.tsx',
+  'utf8',
+)
+const statePageSource = readFileSync(
+  'src/app/(public-routes)/acompanhantes/[estado]/page.tsx',
+  'utf8',
+)
+const cityPageSource = readFileSync(
+  'src/app/(public-routes)/acompanhantes/[estado]/[cidade]/page.tsx',
+  'utf8',
+)
+const neighborhoodPageSource = readFileSync(
+  'src/app/(public-routes)/acompanhantes/[estado]/[cidade]/[bairro]/page.tsx',
+  'utf8',
+)
 
 for (const expected of [
   'categoria?: string | null',
@@ -108,8 +124,8 @@ assert.ok(
   'contract failures must not be converted to false zeroes',
 )
 assert.ok(
-  nationalPageSource.includes('.filter((cidade) => isCidadeIndexavelLocal(cidade))'),
-  'national links must use the same local indexability threshold as the sitemap',
+  nationalPageSource.includes('cidades.filter(isCidadeIndexavelLocal)'),
+  'national SEO links must consume the backend local indexability decision',
 )
 assert.ok(
   !nationalPageSource.includes('{cidade.totalAnunciosAtivos} anúncios publicados'),
@@ -149,8 +165,21 @@ assert.ok(
   'visible FAQ answers must remain readable without JavaScript',
 )
 assert.ok(
-  nationalPageSource.includes('JSON.stringify(structuredData).replace(/</g, "\\\\u003c")'),
-  'JSON-LD must be serialized safely',
+  nationalPageSource.includes('__html: serializeJsonLd(structuredData)') &&
+    nationalPageSource.includes('serializeJsonLd'),
+  'JSON-LD must use the central safe serializer',
 )
+
+assert.ok(
+  listingPageSource.includes('buildPublicListingIndexingDecision(searchParams, page)') &&
+    listingPageSource.includes('if (value === "") return null'),
+  'the one-based listing must reject ambiguous pages and use the indexing policy',
+)
+for (const localityPageSource of [statePageSource, cityPageSource, neighborhoodPageSource]) {
+  assert.ok(
+    localityPageSource.includes('isCleanPublicFirstPage(pageValue, page)'),
+    'only the clean zero-based locality first page may be indexable',
+  )
+}
 
 console.log('public SEO critical checks passed')

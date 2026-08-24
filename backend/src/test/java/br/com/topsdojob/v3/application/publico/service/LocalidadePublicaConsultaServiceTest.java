@@ -20,6 +20,7 @@ import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAnuncio;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -70,7 +71,9 @@ class LocalidadePublicaConsultaServiceTest {
                 cidades,
                 bairros,
                 mock(AnuncioRepository.class),
-                mock(AnuncioLocalizacaoRepository.class)).catalogoCompleto();
+                mock(AnuncioLocalizacaoRepository.class),
+                mock(AnuncioSeoElegibilidadeConsultaService.class),
+                new LocalidadeSeoIndexabilidadePolicy()).catalogoCompleto();
 
         assertThat(catalogo.estados()).extracting(item -> item.nome())
                 .containsExactly("Goiás", "São Paulo");
@@ -132,6 +135,8 @@ class LocalidadePublicaConsultaServiceTest {
         BairroRepository bairroRepository = mock(BairroRepository.class);
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
         AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
+        AnuncioSeoElegibilidadeConsultaService elegibilidadeService = mock(
+                AnuncioSeoElegibilidadeConsultaService.class);
         when(anuncioRepository.findPublicosComProprietarioAtivo())
                 .thenReturn(List.of(anuncio, anuncioExclusivo));
         when(localizacaoRepository.findByAnuncioIdIn(any()))
@@ -139,26 +144,154 @@ class LocalidadePublicaConsultaServiceTest {
         when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
         when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));
         when(bairroRepository.findAllById(any())).thenReturn(List.of(bairro));
+        when(elegibilidadeService.avaliar(any(), any())).thenReturn(Map.of(
+                anuncioId,
+                new AnuncioSeoElegibilidadeConsultaService.Resultado(true, null)));
 
         var descoberta = new LocalidadePublicaConsultaService(
                 estadoRepository,
                 cidadeRepository,
                 bairroRepository,
                 anuncioRepository,
-                localizacaoRepository).descobrir();
+                localizacaoRepository,
+                elegibilidadeService,
+                new LocalidadeSeoIndexabilidadePolicy()).descobrir();
 
         assertThat(descoberta.estados()).hasSize(1);
         assertThat(descoberta.estados().get(0).uf()).isEqualTo("GO");
         assertThat(descoberta.estados().get(0).totalAnunciosAtivos()).isEqualTo(1);
+        assertThat(descoberta.estados().get(0).indexacao().indexavel()).isFalse();
+        assertThat(descoberta.estados().get(0).indexacao().anunciosElegiveisUnicos()).isEqualTo(1);
         assertThat(descoberta.estados().get(0).cidades()).singleElement()
                 .satisfies(item -> {
                     assertThat(item.slug()).isEqualTo("goiania");
                     assertThat(item.totalAnunciosAtivos()).isEqualTo(1);
+                    assertThat(item.indexacao().indexavel()).isFalse();
+                    assertThat(item.indexacao().anunciosElegiveisUnicos()).isEqualTo(1);
                     assertThat(item.bairros()).singleElement()
                             .satisfies(value -> {
                                 assertThat(value.slug()).isEqualTo("setor-bueno");
                                 assertThat(value.totalAnunciosAtivos()).isEqualTo(1);
+                                assertThat(value.indexacao().anunciosElegiveisUnicos()).isEqualTo(1);
                             });
                 });
+    }
+
+    @Test
+    void contaAnunciosElegiveisPorIdSemDeduplicarProprietario() {
+        UUID estadoId = UUID.randomUUID();
+        UUID cidadeId = UUID.randomUUID();
+        UUID bairroId = UUID.randomUUID();
+        UUID usuarioId = UUID.randomUUID();
+        UUID anuncioUmId = UUID.randomUUID();
+        UUID anuncioDoisId = UUID.randomUUID();
+        UUID anuncioInelegivelId = UUID.randomUUID();
+
+        EstadoEntity estado = entidadeEstado(estadoId);
+        CidadeEntity cidade = entidadeCidade(cidadeId, estadoId);
+        BairroEntity bairro = entidadeBairro(bairroId, cidadeId);
+        AnuncioEntity anuncioUm = entidadeAnuncio(anuncioUmId, usuarioId);
+        AnuncioEntity anuncioDois = entidadeAnuncio(anuncioDoisId, usuarioId);
+        AnuncioEntity anuncioInelegivel = entidadeAnuncio(anuncioInelegivelId, usuarioId);
+
+        AnuncioLocalizacaoEntity localizacaoUm = entidadeLocalizacao(
+                anuncioUmId, estadoId, cidadeId, bairroId);
+        AnuncioLocalizacaoEntity localizacaoUmDuplicada = entidadeLocalizacao(
+                anuncioUmId, estadoId, cidadeId, bairroId);
+        AnuncioLocalizacaoEntity localizacaoDois = entidadeLocalizacao(
+                anuncioDoisId, estadoId, cidadeId, bairroId);
+        AnuncioLocalizacaoEntity localizacaoInelegivel = entidadeLocalizacao(
+                anuncioInelegivelId, estadoId, cidadeId, bairroId);
+
+        EstadoRepository estadoRepository = mock(EstadoRepository.class);
+        CidadeRepository cidadeRepository = mock(CidadeRepository.class);
+        BairroRepository bairroRepository = mock(BairroRepository.class);
+        AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
+        AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
+        AnuncioSeoElegibilidadeConsultaService elegibilidadeService = mock(
+                AnuncioSeoElegibilidadeConsultaService.class);
+
+        when(anuncioRepository.findPublicosComProprietarioAtivo())
+                .thenReturn(List.of(anuncioUm, anuncioDois, anuncioInelegivel));
+        when(localizacaoRepository.findByAnuncioIdIn(any())).thenReturn(List.of(
+                localizacaoUm,
+                localizacaoUmDuplicada,
+                localizacaoDois,
+                localizacaoInelegivel));
+        when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
+        when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));
+        when(bairroRepository.findAllById(any())).thenReturn(List.of(bairro));
+        when(elegibilidadeService.avaliar(any(), any())).thenReturn(Map.of(
+                anuncioUmId, new AnuncioSeoElegibilidadeConsultaService.Resultado(true, null),
+                anuncioDoisId, new AnuncioSeoElegibilidadeConsultaService.Resultado(true, null),
+                anuncioInelegivelId, new AnuncioSeoElegibilidadeConsultaService.Resultado(false, null)));
+
+        var descoberta = new LocalidadePublicaConsultaService(
+                estadoRepository,
+                cidadeRepository,
+                bairroRepository,
+                anuncioRepository,
+                localizacaoRepository,
+                elegibilidadeService,
+                new LocalidadeSeoIndexabilidadePolicy()).descobrir();
+
+        var estadoDto = descoberta.estados().get(0);
+        var cidadeDto = estadoDto.cidades().get(0);
+        var bairroDto = cidadeDto.bairros().get(0);
+        assertThat(estadoDto.totalAnunciosAtivos()).isEqualTo(3);
+        assertThat(cidadeDto.totalAnunciosAtivos()).isEqualTo(3);
+        assertThat(bairroDto.totalAnunciosAtivos()).isEqualTo(3);
+        assertThat(cidadeDto.indexacao().anunciosElegiveisUnicos()).isEqualTo(2);
+        assertThat(bairroDto.indexacao().anunciosElegiveisUnicos()).isEqualTo(2);
+        assertThat(cidadeDto.indexacao().indexavel()).isFalse();
+        assertThat(bairroDto.indexacao().indexavel()).isFalse();
+    }
+
+    private EstadoEntity entidadeEstado(UUID estadoId) {
+        EstadoEntity estado = entity(EstadoEntity.class);
+        set(estado, "id", estadoId);
+        set(estado, "uf", "GO");
+        set(estado, "nome", "Goias");
+        return estado;
+    }
+
+    private CidadeEntity entidadeCidade(UUID cidadeId, UUID estadoId) {
+        CidadeEntity cidade = entity(CidadeEntity.class);
+        set(cidade, "id", cidadeId);
+        set(cidade, "estadoId", estadoId);
+        set(cidade, "nome", "Goiania");
+        set(cidade, "slug", "goiania");
+        return cidade;
+    }
+
+    private BairroEntity entidadeBairro(UUID bairroId, UUID cidadeId) {
+        BairroEntity bairro = entity(BairroEntity.class);
+        set(bairro, "id", bairroId);
+        set(bairro, "cidadeId", cidadeId);
+        set(bairro, "nome", "Centro");
+        set(bairro, "slug", "centro");
+        return bairro;
+    }
+
+    private AnuncioEntity entidadeAnuncio(UUID anuncioId, UUID usuarioId) {
+        AnuncioEntity anuncio = entity(AnuncioEntity.class);
+        set(anuncio, "id", anuncioId);
+        set(anuncio, "usuarioId", usuarioId);
+        set(anuncio, "status", StatusAnuncio.PUBLICADO);
+        set(anuncio, "statusModeracao", StatusModeracaoAnuncio.APROVADO);
+        return anuncio;
+    }
+
+    private AnuncioLocalizacaoEntity entidadeLocalizacao(
+            UUID anuncioId,
+            UUID estadoId,
+            UUID cidadeId,
+            UUID bairroId) {
+        AnuncioLocalizacaoEntity localizacao = entity(AnuncioLocalizacaoEntity.class);
+        set(localizacao, "anuncioId", anuncioId);
+        set(localizacao, "estadoId", estadoId);
+        set(localizacao, "cidadeId", cidadeId);
+        set(localizacao, "bairroId", bairroId);
+        return localizacao;
     }
 }

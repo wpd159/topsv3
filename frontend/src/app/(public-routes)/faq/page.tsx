@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { listarFaqsPublicadas, type FaqPublica } from '@/lib/faq-public-api'
+import { serializeJsonLd } from '@/lib/seo/json-ld'
 import { buildPublicUrl } from '@/lib/seo/public-url'
 
 export const dynamic = 'force-dynamic'
@@ -198,7 +199,7 @@ export default async function FAQPage({
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify(faqJsonLd).replace(/</g, '\\u003c'),
+            __html: serializeJsonLd(faqJsonLd),
           }}
         />
       ) : null}

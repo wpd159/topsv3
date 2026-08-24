@@ -1,11 +1,9 @@
 import type { MetadataRoute } from "next"
 import { PUBLIC_BLOG_CACHE_TAG } from "@/lib/blog-api"
-import { rewriteLegacyProgrammaticBlogPath } from "@/lib/programmatic-blog-api"
 import {
   descobrirAnunciosIndexaveisSitemap,
   descobrirLocalidadesPublicas,
 } from "@/lib/public-catalog-api"
-import { isBairroIndexavelLocal, isCidadeIndexavelLocal } from "@/lib/seo/local-indexing"
 import { buildPublicPath, buildPublicUrl, getPublicSiteBaseUrl } from "@/lib/seo/public-url"
 import {
   isSafeSitemapUrl,
@@ -13,6 +11,13 @@ import {
 } from "@/lib/seo/search-indexing-policy"
 
 export const dynamic = "force-dynamic"
+
+class EditorialSitemapError extends Error {
+  constructor(readonly status: number | null = null) {
+    super("Editorial sitemap unavailable")
+    this.name = "EditorialSitemapError"
+  }
+}
 
 function parseDate(value: unknown): Date | undefined {
   if (typeof value !== "string" || !value) return undefined
@@ -31,23 +36,95 @@ function textField(row: Record<string, unknown>, field: string) {
   return typeof value === "string" ? value : undefined
 }
 
-async function fetchList(url: string, required = false) {
+function numberField(row: Record<string, unknown>, field: string) {
+  const value = row[field]
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+async function fetchEditorialList(url: string) {
   const response = await fetch(url, {
     next: { revalidate: 3600, tags: [PUBLIC_BLOG_CACHE_TAG] },
     signal: AbortSignal.timeout(8000),
   })
-  if (!response.ok) {
-    if (required) {
-      throw new Error(`Falha no contrato editorial do sitemap: ${response.status}`)
-    }
-    return [] as Record<string, unknown>[]
-  }
+  if (!response.ok) throw new EditorialSitemapError(response.status)
+
   const payload: unknown = await response.json()
-  if (!Array.isArray(payload)) {
-    if (required) throw new Error("Resposta editorial invalida no sitemap")
-    return [] as Record<string, unknown>[]
-  }
+  if (!Array.isArray(payload)) throw new EditorialSitemapError(502)
   return payload as Record<string, unknown>[]
+}
+
+async function buildEditorialSitemap(
+  apiBase: string,
+  baseUrl: string,
+): Promise<{
+  index: MetadataRoute.Sitemap
+  posts: MetadataRoute.Sitemap
+  categories: MetadataRoute.Sitemap
+  lastModified?: Date
+}> {
+  const [posts, categories] = await Promise.all([
+    fetchEditorialList(`${apiBase}/blog-posts/public/sitemap`),
+    fetchEditorialList(`${apiBase}/blog-categorias/public`),
+  ])
+
+  const postRoutes: MetadataRoute.Sitemap = []
+  const categoryRoutes: MetadataRoute.Sitemap = []
+  const postUrls = new Set<string>()
+  const categoryUrls = new Set<string>()
+  let lastModified: Date | undefined
+
+  for (const post of posts) {
+    const slug = textField(post, "slug")
+    if (!slug) continue
+    const url = `${baseUrl}/blog/${encodeURIComponent(slug)}`
+    if (postUrls.has(url)) continue
+    postUrls.add(url)
+    const routeLastModified = parseDate(
+      textField(post, "updatedAt") || textField(post, "publishedAt"),
+    )
+    lastModified = maxDate(lastModified, routeLastModified)
+    const configuredPriority = numberField(post, "priority")
+    postRoutes.push({
+      url,
+      lastModified: routeLastModified,
+      priority: configuredPriority > 0 ? configuredPriority : 0.7,
+    })
+  }
+
+  for (const category of categories) {
+    const slug = textField(category, "slug")
+    if (
+      !slug ||
+      category.ativa !== true ||
+      numberField(category, "postCountPublicados") <= 0
+    ) {
+      continue
+    }
+    const url = `${baseUrl}/blog/categoria/${encodeURIComponent(slug)}`
+    if (categoryUrls.has(url)) continue
+    categoryUrls.add(url)
+    const routeLastModified = parseDate(
+      textField(category, "updatedAt") || textField(category, "atualizadoEm"),
+    )
+    lastModified = maxDate(lastModified, routeLastModified)
+    categoryRoutes.push({ url, lastModified: routeLastModified, priority: 0.65 })
+  }
+
+  return {
+    index: postRoutes.length > 0
+      ? [{ url: `${baseUrl}/blog`, lastModified, priority: 0.7 }]
+      : [],
+    posts: postRoutes,
+    categories: categoryRoutes,
+    lastModified,
+  }
+}
+
+function logEditorialSitemapFailure(error: unknown) {
+  console.error("editorial_sitemap_unavailable", {
+    name: error instanceof Error ? error.name : "UnknownError",
+    status: error instanceof EditorialSitemapError ? error.status : null,
+  })
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -60,7 +137,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${baseUrl}/`, priority: 1.0 },
     { url: `${baseUrl}/anuncios`, priority: 0.9 },
     { url: `${baseUrl}/acompanhantes`, priority: 0.95 },
-    { url: `${baseUrl}/blog`, priority: 0.7 },
     { url: `${baseUrl}/faq`, priority: 0.6 },
     { url: `${baseUrl}/sobre`, priority: 0.5 },
     { url: `${baseUrl}/termos-de-uso`, priority: 0.4 },
@@ -76,9 +152,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const dynamicEstadoRoutes: MetadataRoute.Sitemap = []
   const dynamicCidadeRoutes: MetadataRoute.Sitemap = []
   const dynamicBairroRoutes: MetadataRoute.Sitemap = []
-  const dynamicBlogRoutes: MetadataRoute.Sitemap = []
-  const dynamicBlogCategoryRoutes: MetadataRoute.Sitemap = []
-  const dynamicProgBlogRoutes: MetadataRoute.Sitemap = []
+  let dynamicBlogIndexRoutes: MetadataRoute.Sitemap = []
+  let dynamicBlogRoutes: MetadataRoute.Sitemap = []
+  let dynamicBlogCategoryRoutes: MetadataRoute.Sitemap = []
   let lastModAnunciosIndex: Date | undefined
   let lastModAcompanhantesIndex: Date | undefined
   let lastModBlogIndex: Date | undefined
@@ -86,10 +162,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const descoberta = await descobrirLocalidadesPublicas()
 
   for (const estado of descoberta.estados) {
-    const cidadesIndexaveis = estado.cidades.filter((cidade) =>
-      isCidadeIndexavelLocal({ totalAnunciosAtivos: cidade.totalAnunciosAtivos })
+    if (!estado.indexacao.indexavel || !estado.indexacao.canonica) continue
+    const cidadesIndexaveis = estado.cidades.filter(
+      (cidade) => cidade.indexacao.indexavel && cidade.indexacao.canonica,
     )
-    if (cidadesIndexaveis.length === 0) continue
 
     const estadoLastMod = parseDate(estado.ultimaAtualizacao)
     const estadoUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado.uf))
@@ -99,32 +175,37 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     for (const cidade of cidadesIndexaveis) {
       const cidadeLastMod = parseDate(cidade.ultimaAtualizacao)
-      const cidadeUrl = buildPublicUrl(buildPublicPath("acompanhantes", estado.uf, cidade.slug))
+      const cidadeUrl = buildPublicUrl(
+        buildPublicPath("acompanhantes", estado.uf, cidade.slug),
+      )
       if (!urlSet.has(cidadeUrl)) {
         urlSet.add(cidadeUrl)
         dynamicCidadeRoutes.push({
           url: cidadeUrl,
           lastModified: cidadeLastMod,
-          priority: cidade.totalAnunciosAtivos >= 20 ? 0.88 : 0.82,
+          priority: 0.85,
         })
       }
       lastModAcompanhantesIndex = maxDate(lastModAcompanhantesIndex, cidadeLastMod)
 
       for (const bairro of cidade.bairros) {
-        if (!isBairroIndexavelLocal({ totalAnunciosAtivos: bairro.totalAnunciosAtivos })) continue
+        if (!bairro.indexacao.indexavel || !bairro.indexacao.canonica) continue
 
         const bairroLastMod = parseDate(bairro.ultimaAtualizacao)
         const bairroUrl = buildPublicUrl(
-          buildPublicPath("acompanhantes", estado.uf, cidade.slug, bairro.slug)
+          buildPublicPath("acompanhantes", estado.uf, cidade.slug, bairro.slug),
         )
         if (!urlSet.has(bairroUrl)) {
           urlSet.add(bairroUrl)
-          dynamicBairroRoutes.push({ url: bairroUrl, lastModified: bairroLastMod, priority: 0.8 })
+          dynamicBairroRoutes.push({
+            url: bairroUrl,
+            lastModified: bairroLastMod,
+            priority: 0.8,
+          })
         }
         lastModAcompanhantesIndex = maxDate(lastModAcompanhantesIndex, bairroLastMod)
       }
     }
-
   }
 
   for (const anuncio of await descobrirAnunciosIndexaveisSitemap()) {
@@ -133,66 +214,38 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     urlSet.add(anuncioUrl)
     const anuncioLastMod = parseDate(anuncio.atualizadoEm)
     lastModAnunciosIndex = maxDate(lastModAnunciosIndex, anuncioLastMod)
-    dynamicAnuncioRoutes.push({ url: anuncioUrl, lastModified: anuncioLastMod, priority: 0.8 })
+    dynamicAnuncioRoutes.push({
+      url: anuncioUrl,
+      lastModified: anuncioLastMod,
+      priority: 0.8,
+    })
   }
 
   if (apiBase) {
     try {
-      for (const post of await fetchList(`${apiBase}/blog-posts/public/sitemap`, true)) {
-        const slug = textField(post, "slug")
-        if (!slug) continue
-        const url = `${baseUrl}/blog/${encodeURIComponent(slug)}`
-        if (urlSet.has(url)) continue
-        urlSet.add(url)
-        const lastModified = parseDate(textField(post, "updatedAt") || textField(post, "publishedAt"))
-        lastModBlogIndex = maxDate(lastModBlogIndex, lastModified)
-        dynamicBlogRoutes.push({ url, lastModified, priority: Number(post.priority ?? 0.7) })
-      }
-
-      for (const category of await fetchList(`${apiBase}/blog-categorias/public`, true)) {
-        const slug = textField(category, "slug")
-        if (!slug) continue
-        const url = `${baseUrl}/blog/categoria/${encodeURIComponent(slug)}`
-        if (urlSet.has(url)) continue
-        urlSet.add(url)
-        const lastModified = parseDate(
-          textField(category, "updatedAt") || textField(category, "atualizadoEm")
-        )
-        lastModBlogIndex = maxDate(lastModBlogIndex, lastModified)
-        dynamicBlogCategoryRoutes.push({ url, lastModified, priority: 0.65 })
-      }
-
-      for (const entry of await fetchList(`${apiBase}/blog-programmatic/public/sitemap-entries`)) {
-        const rawPath = textField(entry, "path")
-        if (!rawPath) continue
-        const path = rewriteLegacyProgrammaticBlogPath(
-          rawPath.startsWith("/") ? rawPath : `/${rawPath}`
-        )
-        const url = `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`
-        if (urlSet.has(url)) continue
-        urlSet.add(url)
-        const lastModified = parseDate(textField(entry, "lastmod"))
-        lastModBlogIndex = maxDate(lastModBlogIndex, lastModified)
-        dynamicProgBlogRoutes.push({ url, lastModified, priority: 0.65 })
-      }
+      const editorial = await buildEditorialSitemap(apiBase, baseUrl)
+      dynamicBlogIndexRoutes = editorial.index
+      dynamicBlogRoutes = editorial.posts
+      dynamicBlogCategoryRoutes = editorial.categories
+      lastModBlogIndex = editorial.lastModified
     } catch (error) {
-      console.error("Falha ao montar as rotas de blog no sitemap.", error)
-      throw error
+      logEditorialSitemapFailure(error)
     }
   }
 
   const finalStaticRoutes = staticRoutes.map((route) => {
-    if (route.url === `${baseUrl}/anuncios`) return { ...route, lastModified: lastModAnunciosIndex }
+    if (route.url === `${baseUrl}/anuncios`) {
+      return { ...route, lastModified: lastModAnunciosIndex }
+    }
     if (route.url === `${baseUrl}/acompanhantes`) {
       return { ...route, lastModified: lastModAcompanhantesIndex }
     }
-    if (route.url === `${baseUrl}/blog`) return { ...route, lastModified: lastModBlogIndex }
     if (route.url === `${baseUrl}/`) {
       return {
         ...route,
         lastModified: maxDate(
           maxDate(lastModAnunciosIndex, lastModAcompanhantesIndex),
-          lastModBlogIndex
+          lastModBlogIndex,
         ),
       }
     }
@@ -205,8 +258,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...dynamicCidadeRoutes,
     ...dynamicBairroRoutes,
     ...dynamicAnuncioRoutes,
+    ...dynamicBlogIndexRoutes,
     ...dynamicBlogRoutes,
     ...dynamicBlogCategoryRoutes,
-    ...dynamicProgBlogRoutes,
   ].filter((route) => isSafeSitemapUrl(route.url, indexingPolicy))
 }

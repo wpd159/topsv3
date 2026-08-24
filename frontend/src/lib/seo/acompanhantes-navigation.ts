@@ -1,4 +1,7 @@
-import type { PublicCatalogDiscovery } from "@/lib/public-catalog-api"
+import type {
+  PublicCatalogDiscovery,
+  PublicLocalIndexingDecision,
+} from "@/lib/public-catalog-api"
 
 export interface CidadeNavegacaoPublica {
   estadoUf: string
@@ -6,6 +9,7 @@ export interface CidadeNavegacaoPublica {
   cidadeSlug: string
   ultimaAtualizacao?: string
   totalAnunciosAtivos?: number
+  indexacao: PublicLocalIndexingDecision
 }
 
 export interface EstadoComCidadesSeo {
@@ -56,6 +60,7 @@ export function cidadesDaDescobertaPublica(descoberta: PublicCatalogDiscovery) {
       cidadeSlug: cidade.slug,
       ultimaAtualizacao: cidade.ultimaAtualizacao ?? undefined,
       totalAnunciosAtivos: cidade.totalAnunciosAtivos,
+      indexacao: cidade.indexacao,
     }))
   ) satisfies CidadeNavegacaoPublica[]
 }

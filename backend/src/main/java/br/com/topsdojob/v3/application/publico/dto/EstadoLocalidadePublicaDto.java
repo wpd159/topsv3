@@ -8,5 +8,6 @@ public record EstadoLocalidadePublicaDto(
         String nome,
         long totalAnunciosAtivos,
         OffsetDateTime ultimaAtualizacao,
+        IndexacaoLocalidadePublicaDto indexacao,
         List<CidadeLocalidadePublicaDto> cidades) {
 }

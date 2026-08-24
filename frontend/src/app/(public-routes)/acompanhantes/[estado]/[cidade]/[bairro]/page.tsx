@@ -18,12 +18,15 @@ import {
   labelAcompanhantesCidade,
 } from "@/lib/seo/local-labels"
 import { isBairroIndexavelLocal } from "@/lib/seo/local-indexing"
+import { serializeJsonLd } from "@/lib/seo/json-ld"
 import { buildPublicRobotsMetadata } from "@/lib/seo/search-indexing-policy"
 import { gerarFaqSchema } from "@/lib/seo/programmatic-content"
 import {
   buildPublicPath,
   buildPublicUrl,
   getPublicSiteBaseUrl,
+  isCleanPublicFirstPage,
+  isPublicPageOutOfRange,
   parsePublicPage,
 } from "@/lib/seo/public-url"
 
@@ -53,7 +56,8 @@ export async function generateMetadata({
   searchParams,
 }: PageProps): Promise<Metadata> {
   const { estado, cidade, bairro } = await params
-  const page = parsePublicPage((await searchParams).page)
+  const pageValue = (await searchParams).page
+  const page = parsePublicPage(pageValue)
   if (page === null) {
     return {
       title: "Página inválida | Tops do Job",
@@ -61,9 +65,9 @@ export async function generateMetadata({
     }
   }
 
-  let data
+  let carregado
   try {
-    data = (await carregarBairro(estado, cidade, bairro, page)).data
+    carregado = await carregarBairro(estado, cidade, bairro, page)
   } catch (error) {
     if (isPublicCatalogNotFound(error)) {
       return {
@@ -74,6 +78,16 @@ export async function generateMetadata({
     }
     throw error
   }
+  const { data, agregadoCidade } = carregado
+  if (isPublicPageOutOfRange(page, data.paginacao)) {
+    return {
+      title: "Página inválida | Tops do Job",
+      robots: buildPublicRobotsMetadata(false),
+    }
+  }
+  const bairroAgregado = agregadoCidade.bairros.find(
+    (item) => item.bairroSlug.toLowerCase() === bairro.toLowerCase()
+  )
 
   const bairroNome = data.localidade.bairro as string
   const cidadeNome = data.localidade.cidade as string
@@ -96,10 +110,7 @@ export async function generateMetadata({
   const description = page > 0 ? `${seo.metaDescription} Página ${page + 1}.` : seo.metaDescription
 
   const indexavel =
-    page === 0 &&
-    isBairroIndexavelLocal({
-      totalAnunciosAtivos: data.paginacao.totalItens,
-    })
+    isCleanPublicFirstPage(pageValue, page) && isBairroIndexavelLocal(bairroAgregado)
 
   return {
     title,
@@ -132,13 +143,22 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
     throw error
   }
   const { data, agregadoCidade } = carregado
+  if (isPublicPageOutOfRange(page, data.paginacao)) notFound()
+  const bairroAgregado = agregadoCidade.bairros.find(
+    (item) => item.bairroSlug.toLowerCase() === bairro.toLowerCase()
+  )
+  if (!bairroAgregado) notFound()
   const bairroNome = data.localidade.bairro as string
   const cidadeNome = data.localidade.cidade as string
   const estadoNome = data.localidade.estado
   const estadoUf = data.localidade.uf
   const outrosBairros = agregadoCidade.bairros
     .filter((item) => item.bairroSlug !== bairro)
-    .sort((a, b) => a.bairroNome.localeCompare(b.bairroNome))
+    .sort(
+      (a, b) =>
+        Number(isBairroIndexavelLocal(b)) - Number(isBairroIndexavelLocal(a)) ||
+        a.bairroNome.localeCompare(b.bairroNome)
+    )
     .slice(0, 10)
 
   const seo = gerarConteudoSeoBairro({
@@ -300,19 +320,19 @@ export default async function BairroPage({ params, searchParams }: PageProps) {
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(breadcrumbSchema) }}
       />
 
       {faqSchema && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+          dangerouslySetInnerHTML={{ __html: serializeJsonLd(faqSchema) }}
         />
       )}
 
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListSchema) }}
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(itemListSchema) }}
       />
 
       {page > 0 && (
