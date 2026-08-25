@@ -24,6 +24,9 @@ $databaseGateTests = Read-RepoFile "scripts/deploy/testar-gate-banco-production.
 $flywayGate = Read-RepoFile "scripts/deploy/validar-gate-flyway-production.sh"
 $flywayGateTests = Read-RepoFile "scripts/deploy/testar-gate-flyway-production.sh"
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
+$stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
+$backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
+$preprodWorkflow = Read-RepoFile ".github/workflows/deploy-preprod.yml"
 $rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
 $analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
 $checks = [Collections.Generic.List[object]]::new()
@@ -52,6 +55,8 @@ foreach ($required in @(
     "validar-gate-banco-production.sh",
     "validar-gate-flyway-production.sh",
     "criar-backup-validado-production.sh",
+    "testar-stdin-deploy-production.sh",
+    "testar-backup-validado-production.sh",
     "backups/postgresql",
     "api/health/readiness"
   )) {
@@ -124,6 +129,32 @@ Add-Check "workflow valida Flyway antes do startup" (
 Add-Check "workflow troca release somente depois de health e readiness" (
   ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('test "${healthy}" -eq 1')) -and
   ($workflow.Contains('curl -fsS http://127.0.0.1:28080/api/health/readiness'))
+)
+function Convert-ToLogicalShellLines {
+  param([string]$Content)
+  return [regex]::Replace($Content, '\\\r?\n\s*', ' ')
+}
+
+$deploySources = @(
+  Convert-ToLogicalShellLines $workflow
+  Convert-ToLogicalShellLines $preprodWorkflow
+  Convert-ToLogicalShellLines $backupProducer
+) -join "`n"
+$unsafeInteractiveCommandPattern = '(?m)docker\s+exec(?=[^\r\n]*\bpsql\b)(?=[^\r\n]*\s-i(?:\s|$))[^\r\n]*\bpsql\b[^\r\n]*(?:\s-c(?:\s|$)|\s--command(?:=|\s))'
+$flywayReader = [regex]::Match(
+  $workflow,
+  '(?ms)^\s{10}read_flyway_state\(\) \{.*?^\s{10}\}'
+).Value
+Add-Check "nenhum psql command reutiliza stdin interativo" (
+  -not [regex]::IsMatch($deploySources, $unsafeInteractiveCommandPattern)
+)
+Add-Check "leitura Flyway isola stdin e falha no primeiro erro SQL" (
+  (-not [string]::IsNullOrWhiteSpace($flywayReader)) -and
+  (-not ($flywayReader -match 'docker\s+exec\s+-i')) -and
+  ($flywayReader.Contains('--no-psqlrc')) -and
+  ($flywayReader.Contains('--set=ON_ERROR_STOP=1')) -and
+  ($flywayReader.Contains('--command')) -and
+  ($flywayReader.Contains('</dev/null'))
 )
 Add-Check "workflow restaura aplicacao anterior se startup falhar" (
   ($workflow.Contains('application_started=0')) -and
@@ -251,6 +282,25 @@ foreach ($required in @(
     "BACKUP_STATUS=VALIDATED"
   )) {
   Add-Check "backup validado contem $required" ($backupProducer.Contains($required))
+}
+foreach ($required in @(
+    "marcador_posterior",
+    "falha_psql_interrompe",
+    "backup_antes_flyway",
+    "flyway_antes_startup",
+    "health_antes_troca",
+    "DEPLOY_STDIN_REGRESSION_TESTS=PASS"
+  )) {
+  Add-Check "regressao de stdin contem $required" ($stdinRegressionTests.Contains($required))
+}
+foreach ($required in @(
+    "postgres:17.10-alpine",
+    "BACKUP_STATUS=VALIDATED",
+    "backup_restaurado_flyway_051",
+    "pg_restore --list",
+    "BACKUP_RESTORE_INTEGRATION_TEST=PASS"
+  )) {
+  Add-Check "integracao de backup contem $required" ($backupIntegrationTests.Contains($required))
 }
 Add-Check "snapshot Flyway ignora repeatables" (
   ($databaseGateSnapshot.Contains("version ~ '^[0-9]+$'")) -and
