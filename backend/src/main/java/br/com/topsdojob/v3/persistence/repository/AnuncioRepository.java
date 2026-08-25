@@ -336,7 +336,26 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
 
     @Query(
             value = """
-                    select a.*
+                    select
+                      a.id,
+                      a.usuario_id,
+                      a.slug,
+                      a.titulo,
+                      a.descricao,
+                      a.status,
+                      a.status_moderacao,
+                      a.categoria,
+                      a.atendimento_exclusivamente_virtual,
+                      a.preco,
+                      a.whatsapp_normalizado,
+                      a.link_conteudo,
+                      a.publicado_em,
+                      a.ultima_publicacao_em,
+                      a.criado_em,
+                      a.atualizado_em,
+                      a.removido_em,
+                      a.origem_importacao_id,
+                      a.versao
                     from anuncio a
                     join usuario u on u.id = a.usuario_id
                     where a.status = 'PUBLICADO'
@@ -364,9 +383,18 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                           and a.atendimento_exclusivamente_virtual = false
                         )
                       )
-                      and (:busca is null or lower(translate(coalesce(a.titulo, '') || ' ' || coalesce(a.descricao, ''),
-                            'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
-                            'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')) like ('%' || :busca || '%'))
+                      and (
+                        :busca is null
+                        or exists (
+                          select 1
+                          from documento_busca_anuncio d
+                          where d.anuncio_id = a.id
+                            and lower(translate(coalesce(d.texto_busca, ''),
+                                  'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
+                                  'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn'))
+                                like ('%' || :busca || '%') escape '\\'
+                        )
+                      )
                     order by
                       case when exists (
                         select 1
@@ -417,9 +445,18 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
                           and a.atendimento_exclusivamente_virtual = false
                         )
                       )
-                      and (:busca is null or lower(translate(coalesce(a.titulo, '') || ' ' || coalesce(a.descricao, ''),
-                            'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
-                            'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn')) like ('%' || :busca || '%'))
+                      and (
+                        :busca is null
+                        or exists (
+                          select 1
+                          from documento_busca_anuncio d
+                          where d.anuncio_id = a.id
+                            and lower(translate(coalesce(d.texto_busca, ''),
+                                  'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñ',
+                                  'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNn'))
+                                like ('%' || :busca || '%') escape '\\'
+                        )
+                      )
                     """,
             nativeQuery = true)
     Page<AnuncioEntity> findPublicosOrdenados(

@@ -21,6 +21,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { cn } from "@/lib/utils"
+import { PUBLIC_SEARCH_MAX_LENGTH } from "@/lib/public-search"
 import { descobrirLocalidadesPublicas } from "@/lib/public-catalog-api"
 import { ContractState } from "@/components/feedback/contract-state"
 
@@ -432,6 +433,7 @@ export function BarraLocalizacao() {
               <Input
                 ref={inputRef}
                 value={busca}
+                maxLength={PUBLIC_SEARCH_MAX_LENGTH}
                 onChange={(e) => setBusca(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
