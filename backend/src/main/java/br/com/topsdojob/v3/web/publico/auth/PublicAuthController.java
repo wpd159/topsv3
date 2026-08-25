@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.web.publico.auth;
 
 import br.com.topsdojob.v3.application.publico.auth.PublicAuthException;
+import br.com.topsdojob.v3.application.publico.auth.PublicAuthSecurityService;
 import br.com.topsdojob.v3.application.publico.auth.PublicAuthenticationService;
 import br.com.topsdojob.v3.application.publico.auth.PublicAccountLifecycleService;
 import br.com.topsdojob.v3.application.publico.auth.dto.PublicAccountActionDto;
@@ -30,7 +31,6 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -39,14 +39,17 @@ public class PublicAuthController {
 
     private final PublicAuthenticationService authenticationService;
     private final PublicAccountLifecycleService accountLifecycleService;
+    private final PublicAuthSecurityService authSecurity;
     private final boolean sessionCookieSecure;
 
     public PublicAuthController(
             PublicAuthenticationService authenticationService,
             PublicAccountLifecycleService accountLifecycleService,
+            PublicAuthSecurityService authSecurity,
             @Value("${server.servlet.session.cookie.secure:true}") boolean sessionCookieSecure) {
         this.authenticationService = authenticationService;
         this.accountLifecycleService = accountLifecycleService;
+        this.authSecurity = authSecurity;
         this.sessionCookieSecure = sessionCookieSecure;
     }
 
@@ -96,48 +99,47 @@ public class PublicAuthController {
     @PostMapping("/auth/confirm")
     public PublicAccountActionDto confirm(@RequestBody(required = false) PublicCodeRequestDto request,
                                            HttpServletRequest httpRequest) {
-        return accountLifecycleService.confirm(request, clientKey(httpRequest));
+        return accountLifecycleService.confirm(request, authSecurity.clientKey(httpRequest));
     }
 
     @PostMapping("/auth/resend-confirmation")
     public PublicAccountActionDto resend(@RequestBody(required = false) PublicEmailRequestDto request,
                                           HttpServletRequest httpRequest) {
-        return accountLifecycleService.resend(request, clientKey(httpRequest));
+        return accountLifecycleService.resend(request, authSecurity.clientKey(httpRequest));
     }
 
     @PostMapping("/auth/forgot-password")
     public PublicAccountActionDto forgot(@RequestBody(required = false) PublicEmailRequestDto request,
                                           HttpServletRequest httpRequest) {
-        return accountLifecycleService.forgot(request, clientKey(httpRequest));
+        return accountLifecycleService.forgot(request, authSecurity.clientKey(httpRequest));
     }
 
     @PostMapping("/auth/validate-reset-code")
     public PublicAccountActionDto validateReset(@RequestBody(required = false) PublicCodeRequestDto request,
                                                  HttpServletRequest httpRequest) {
-        return accountLifecycleService.validateReset(request, clientKey(httpRequest));
+        return accountLifecycleService.validateReset(request, authSecurity.clientKey(httpRequest));
     }
 
     @PostMapping("/auth/reset-password")
     public PublicAccountActionDto reset(@RequestBody(required = false) PublicResetPasswordRequestDto request,
                                          HttpServletRequest httpRequest) {
-        return accountLifecycleService.reset(request, clientKey(httpRequest));
+        return accountLifecycleService.reset(request, authSecurity.clientKey(httpRequest));
     }
 
     @GetMapping("/usuarios/verificar-duplicidade")
-    public PublicDuplicidadeDto duplicidade(
-            @RequestParam(required = false) String email,
-            @RequestParam(required = false) String username,
-            @RequestParam(required = false) String telefone) {
-        return authenticationService.duplicidade(email, username, telefone);
+    public ResponseEntity<PublicDuplicidadeDto> duplicidade(HttpServletRequest request) {
+        authSecurity.requireDuplicateLookup(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(authenticationService.duplicidade());
     }
 
     @ExceptionHandler(PublicAuthException.class)
     public ResponseEntity<PublicAuthErrorDto> handlePublicAuth(PublicAuthException exception) {
-        return ResponseEntity.status(exception.status())
-                .body(new PublicAuthErrorDto(exception.status().value(), exception.getMessage()));
-    }
-
-    private String clientKey(HttpServletRequest request) {
-        return request == null ? "unknown" : request.getRemoteAddr();
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(exception.status());
+        if (exception.retryAfterSeconds() != null) {
+            response.header(HttpHeaders.RETRY_AFTER, Long.toString(exception.retryAfterSeconds()));
+        }
+        return response.body(new PublicAuthErrorDto(exception.status().value(), exception.getMessage()));
     }
 }

@@ -109,6 +109,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /api/public/auth/confirm:
     post:
       summary: Confirma a conta publica com codigo de uso unico
@@ -121,7 +123,7 @@ paths:
       responses:
         "200": { description: conta confirmada }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "429": { description: limite de tentativas excedido }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /api/public/auth/resend-confirmation:
     post:
       summary: Solicita novo codigo de confirmacao sem enumerar e-mail
@@ -134,7 +136,7 @@ paths:
       responses:
         "200": { description: resposta generica independente da existencia da conta }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "429": { description: limite de solicitacoes excedido }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /api/public/auth/forgot-password:
     post:
       summary: Solicita recuperacao sem enumerar e-mail
@@ -147,7 +149,7 @@ paths:
       responses:
         "200": { description: resposta generica independente da existencia da conta }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "429": { description: limite de solicitacoes excedido }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /api/public/auth/validate-reset-code:
     post:
       summary: Valida codigo de recuperacao sem consumi-lo
@@ -160,7 +162,7 @@ paths:
       responses:
         "200": { description: codigo valido }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "429": { description: limite de tentativas excedido }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /api/public/auth/reset-password:
     post:
       summary: Redefine senha, consome codigo e invalida sessoes anteriores
@@ -173,7 +175,7 @@ paths:
       responses:
         "200": { description: senha redefinida }
         "400": { $ref: "#/components/responses/BadRequest" }
-        "429": { description: limite de tentativas excedido }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
   /api/public/auth/me:
     get:
       summary: Recupera a sessao publica e inicializa o token CSRF
@@ -1126,35 +1128,19 @@ paths:
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
   /api/public/usuarios/verificar-duplicidade:
     get:
-      summary: Verifica duplicidade no cadastro publico
+      summary: Resposta de compatibilidade sem enumeracao de identificadores
       operationId: checkPublicUserDuplicate
       parameters:
         - $ref: "#/components/parameters/RequestId"
-        - name: email
-          in: query
-          required: false
-          schema:
-            type: string
-            format: email
-        - name: username
-          in: query
-          required: false
-          schema:
-            type: string
-        - name: telefone
-          in: query
-          required: false
-          schema:
-            type: string
       responses:
         "200":
-          description: resultado individual de duplicidade
+          description: resposta generica; a disponibilidade e confirmada somente no cadastro
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PublicDuplicateCheck"
-        "400":
-          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /api/public/anunciar:
     post:
       summary: Cria anuncio do usuario autenticado para revisao
@@ -7502,6 +7488,12 @@ components:
       schema:
         type: string
         example: 11111111-1111-4111-8111-111111111111
+    RetryAfter:
+      description: Segundos inteiros ate uma nova tentativa ser aceita.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
   parameters:
     UuidPath:
       name: id
@@ -7681,10 +7673,12 @@ components:
           schema:
             $ref: "#/components/schemas/ApiErrorResponse"
     TooManyRequests:
-      description: Limite temporario de operacoes excedido; nenhuma cobranca ou credito adicional foi criado.
+      description: Limite temporario de operacoes excedido.
       headers:
         X-Request-Id:
           $ref: "#/components/headers/RequestId"
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
       content:
         application/json:
           schema:
@@ -9251,17 +9245,11 @@ components:
     PublicDuplicateCheck:
       type: object
       additionalProperties: false
-      required:
-        - emailExistente
-        - usernameExistente
-        - telefoneExistente
+      required: [mensagem]
       properties:
-        emailExistente:
-          type: boolean
-        usernameExistente:
-          type: boolean
-        telefoneExistente:
-          type: boolean
+        mensagem:
+          type: string
+          description: Resposta constante que nao revela a existencia de e-mail, telefone ou username.
     AdminLoginRequest:
       type: object
       additionalProperties: false

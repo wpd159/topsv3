@@ -25,6 +25,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -43,6 +44,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class PublicAuthenticationService {
 
     private static final String STATUS_LOGOUT_OK = "LOGOUT_OK";
+    private static final String DUPLICATE_CHECK_MESSAGE =
+            "A disponibilidade dos dados sera confirmada ao concluir o cadastro.";
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+[1-9][0-9]{7,14}$");
 
@@ -54,6 +57,8 @@ public class PublicAuthenticationService {
     private final PublicAccountLifecycleService accountLifecycleService;
     private final PublicSessionRegistry sessionRegistry;
     private final AnuncioRepository anuncioRepository;
+    private final PublicAuthSecurityService authSecurity;
+    private final String dummyPasswordHash;
 
     public PublicAuthenticationService(
             UsuarioRepository usuarioRepository,
@@ -63,7 +68,8 @@ public class PublicAuthenticationService {
             SecurityContextRepository securityContextRepository,
             PublicAccountLifecycleService accountLifecycleService,
             PublicSessionRegistry sessionRegistry,
-            AnuncioRepository anuncioRepository) {
+            AnuncioRepository anuncioRepository,
+            PublicAuthSecurityService authSecurity) {
         this.usuarioRepository = usuarioRepository;
         this.credencialRepository = credencialRepository;
         this.papelRepository = papelRepository;
@@ -72,13 +78,14 @@ public class PublicAuthenticationService {
         this.accountLifecycleService = accountLifecycleService;
         this.sessionRegistry = sessionRegistry;
         this.anuncioRepository = anuncioRepository;
+        this.authSecurity = authSecurity;
+        this.dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
     }
 
     @Transactional
     public PublicUserDto register(PublicRegisterRequestDto request) {
         RegistrationData data = validateRegistration(request);
-        PublicDuplicidadeDto duplicidade = duplicidade(data.email(), data.username(), data.telefone());
-        if (duplicidade.emailExistente() || duplicidade.usernameExistente() || duplicidade.telefoneExistente()) {
+        if (registrationDataAlreadyExists(data)) {
             throw conflict("E-mail, telefone ou nome de usuario ja cadastrado.");
         }
 
@@ -113,25 +120,31 @@ public class PublicAuthenticationService {
             PublicLoginRequestDto request,
             HttpServletRequest httpRequest,
             HttpServletResponse httpResponse) {
-        if (request == null || isBlank(request.email()) || isBlank(request.senha())) {
+        String email = normalizeEmail(request == null ? null : request.email());
+        String submittedValue = request == null || request.senha() == null ? "" : request.senha();
+        PublicAuthSecurityService.LoginAttempt attempt = authSecurity.beginLogin(httpRequest, email);
+
+        Optional<UsuarioEntity> userCandidate = isBlank(email)
+                ? Optional.empty()
+                : usuarioRepository.findByEmailNormalizado(email);
+        Optional<CredencialUsuarioEntity> credentialCandidate = userCandidate
+                .flatMap(user -> credencialRepository.findByUsuarioId(user.getId()));
+        String storedCredential = credentialCandidate
+                .filter(credential -> "BCRYPT".equalsIgnoreCase(credential.getAlgoritmo()))
+                .map(CredencialUsuarioEntity::getSenhaHash)
+                .orElse(dummyPasswordHash);
+        boolean passwordMatches = passwordMatches(submittedValue, storedCredential);
+        boolean eligible = userCandidate
+                .filter(user -> user.getEmailVerificadoEm() != null)
+                .filter(user -> user.getStatus() == StatusUsuario.ATIVO)
+                .filter(user -> user.getTipoConta() == TipoContaUsuario.ANUNCIANTE)
+                .filter(user -> user.getDesativadoEm() == null)
+                .isPresent();
+        if (isBlank(email) || isBlank(submittedValue) || !eligible || !passwordMatches) {
+            authSecurity.rejectLogin(attempt);
             throw unauthorized();
         }
-        String email = normalizeEmail(request.email());
-        UsuarioEntity usuario = usuarioRepository.findByEmailNormalizado(email).orElseThrow(this::unauthorized);
-        if (usuario.getEmailVerificadoEm() == null) {
-            throw new PublicAuthException(HttpStatus.UNAUTHORIZED, "Conta ainda nao confirmada.");
-        }
-        if (usuario.getStatus() != StatusUsuario.ATIVO
-                || usuario.getTipoConta() != TipoContaUsuario.ANUNCIANTE
-                || usuario.getDesativadoEm() != null) {
-            throw unauthorized();
-        }
-        CredencialUsuarioEntity credencial = credencialRepository.findByUsuarioId(usuario.getId())
-                .orElseThrow(this::unauthorized);
-        if (!"BCRYPT".equalsIgnoreCase(credencial.getAlgoritmo())
-                || !passwordEncoder.matches(request.senha(), credencial.getSenhaHash())) {
-            throw unauthorized();
-        }
+        UsuarioEntity usuario = userCandidate.orElseThrow(this::unauthorized);
 
         rotateSessionId(httpRequest);
         PublicUserPrincipal principal = new PublicUserPrincipal(
@@ -147,6 +160,7 @@ public class PublicAuthenticationService {
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, httpRequest, httpResponse);
         sessionRegistry.register(usuario.getId(), httpRequest.getSession(false));
+        authSecurity.acceptLogin(attempt);
         return toDto(usuario);
     }
 
@@ -221,18 +235,22 @@ public class PublicAuthenticationService {
     }
 
     @Transactional(readOnly = true)
-    public PublicDuplicidadeDto duplicidade(String email, String username, String telefone) {
-        boolean hasEmail = !isBlank(email);
-        boolean hasUsername = !isBlank(username);
-        boolean hasTelefone = !isBlank(telefone);
-        if (!hasEmail && !hasUsername && !hasTelefone) {
-            throw badRequest("Informe ao menos um campo para verificar duplicidade.");
+    public PublicDuplicidadeDto duplicidade() {
+        return new PublicDuplicidadeDto(DUPLICATE_CHECK_MESSAGE);
+    }
+
+    private boolean registrationDataAlreadyExists(RegistrationData data) {
+        return usuarioRepository.existsByEmailNormalizado(data.email())
+                || usuarioRepository.existsByNomeIgnoreCase(data.username())
+                || usuarioRepository.existsByTelefoneNormalizado(data.telefone());
+    }
+
+    private boolean passwordMatches(String password, String hash) {
+        try {
+            return passwordEncoder.matches(password, hash);
+        } catch (IllegalArgumentException exception) {
+            return false;
         }
-        String normalizedPhone = hasTelefone ? normalizePhone(telefone) : null;
-        return new PublicDuplicidadeDto(
-                hasEmail && usuarioRepository.existsByEmailNormalizado(normalizeEmail(email)),
-                hasUsername && usuarioRepository.existsByNomeIgnoreCase(username.trim()),
-                hasTelefone && usuarioRepository.existsByTelefoneNormalizado(normalizedPhone));
     }
 
     private RegistrationData validateRegistration(PublicRegisterRequestDto request) {

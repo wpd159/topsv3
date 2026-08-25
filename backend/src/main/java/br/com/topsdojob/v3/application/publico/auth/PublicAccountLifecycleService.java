@@ -34,6 +34,7 @@ public class PublicAccountLifecycleService {
     private static final int MAX_ATTEMPTS = 5;
     private static final Pattern EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
     private static final String GENERIC_MESSAGE = "Se houver uma conta elegivel, enviaremos as instrucoes ao e-mail informado.";
+    private static final String GENERIC_CODE_ERROR = "Código inválido ou expirado.";
 
     private final UsuarioRepository usuarios;
     private final CredencialUsuarioRepository credenciais;
@@ -45,6 +46,7 @@ public class PublicAccountLifecycleService {
     private final PublicSessionRegistry sessions;
     private final Optional<HmlAuthCodeVault> codeVault;
     private final Duration tokenTtl;
+    private final String dummyTokenHash;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public PublicAccountLifecycleService(UsuarioRepository usuarios, CredencialUsuarioRepository credenciais,
@@ -62,6 +64,7 @@ public class PublicAccountLifecycleService {
         this.sessions = sessions;
         this.codeVault = codeVault;
         this.tokenTtl = Duration.ofSeconds(Math.max(1, tokenTtlSeconds));
+        this.dummyTokenHash = encoder.encode(UUID.randomUUID().toString());
     }
 
     @Transactional
@@ -92,7 +95,7 @@ public class PublicAccountLifecycleService {
     @Transactional(noRollbackFor = PublicAuthException.class)
     public PublicAccountActionDto confirm(PublicCodeRequestDto request, String clientKey) {
         rateLimiter.require("confirm", clientKey + ':' + normalize(request == null ? null : request.email()), 10, Duration.ofMinutes(15));
-        UsuarioEntity user = user(request == null ? null : request.email());
+        UsuarioEntity user = user(request == null ? null : request.email(), request == null ? null : request.codigo());
         consumeValid(user, CONFIRMATION, request == null ? null : request.codigo());
         if (user.getEmailVerificadoEm() == null) user.confirmarEmail(now());
         return new PublicAccountActionDto("Conta confirmada com sucesso.");
@@ -101,7 +104,7 @@ public class PublicAccountLifecycleService {
     @Transactional(noRollbackFor = PublicAuthException.class)
     public PublicAccountActionDto validateReset(PublicCodeRequestDto request, String clientKey) {
         rateLimiter.require("validate-reset", clientKey + ':' + normalize(request == null ? null : request.email()), 10, Duration.ofMinutes(15));
-        UsuarioEntity user = user(request == null ? null : request.email());
+        UsuarioEntity user = user(request == null ? null : request.email(), request == null ? null : request.codigo());
         validateCurrent(user, RESET, request == null ? null : request.codigo());
         return new PublicAccountActionDto("Codigo valido.");
     }
@@ -109,9 +112,12 @@ public class PublicAccountLifecycleService {
     @Transactional(noRollbackFor = PublicAuthException.class)
     public PublicAccountActionDto reset(PublicResetPasswordRequestDto request, String clientKey) {
         rateLimiter.require("reset", clientKey + ':' + normalize(request == null ? null : request.email()), 10, Duration.ofMinutes(15));
-        if (request == null) throw invalidToken();
+        if (request == null) {
+            dummyVerify(null);
+            throw invalidToken();
+        }
         PublicPasswordPolicy.validate(request.novaSenha(), request.confirmarSenha());
-        UsuarioEntity user = user(request.email());
+        UsuarioEntity user = user(request.email(), request.codigo());
         consumeValid(user, RESET, request.codigo());
         var credential = credenciais.findByUsuarioId(user.getId()).orElseThrow(this::invalidToken);
         credential.redefinir(encoder.encode(request.novaSenha()), now());
@@ -146,20 +152,27 @@ public class PublicAccountLifecycleService {
 
     private TokenSegurancaEntity validateCurrent(UsuarioEntity user, String purpose, String code) {
         TokenSegurancaEntity securityRecord = tokens.findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(user.getId(), purpose)
-                .orElseThrow(this::invalidToken);
+                .orElseGet(() -> {
+                    dummyVerify(code);
+                    throw invalidToken();
+                });
         OffsetDateTime now = now();
         if (securityRecord.getConsumidoEm() != null) {
-            throw tokenAlreadyUsed();
+            dummyVerify(code);
+            throw invalidToken();
         }
         if (!securityRecord.getExpiraEm().isAfter(now)) {
             securityRecord.consumir(now);
-            throw tokenExpired();
+            dummyVerify(code);
+            throw invalidToken();
         }
         if (securityRecord.getTentativas() >= MAX_ATTEMPTS) {
             securityRecord.consumir(now);
+            dummyVerify(code);
             throw invalidToken();
         }
-        if (code == null || !code.matches("\\d{6}") || !encoder.matches(code, securityRecord.getTokenHash())) {
+        boolean codeMatches = matches(code, securityRecord.getTokenHash());
+        if (code == null || !code.matches("\\d{6}") || !codeMatches) {
             securityRecord.registrarTentativa();
             if (securityRecord.getTentativas() >= MAX_ATTEMPTS) securityRecord.consumir(now);
             throw invalidToken();
@@ -167,10 +180,16 @@ public class PublicAccountLifecycleService {
         return securityRecord;
     }
 
-    private UsuarioEntity user(String email) {
+    private UsuarioEntity user(String email, String code) {
         String normalized = normalize(email);
-        if (!EMAIL.matcher(normalized).matches()) throw invalidToken();
-        return usuarios.findByEmailNormalizado(normalized).orElseThrow(this::invalidToken);
+        if (!EMAIL.matcher(normalized).matches()) {
+            dummyVerify(code);
+            throw invalidToken();
+        }
+        return usuarios.findByEmailNormalizado(normalized).orElseGet(() -> {
+            dummyVerify(code);
+            throw invalidToken();
+        });
     }
 
     private String validEmail(PublicEmailRequestDto request) {
@@ -180,13 +199,15 @@ public class PublicAccountLifecycleService {
     }
 
     private PublicAuthException invalidToken() {
-        return new PublicAuthException(HttpStatus.BAD_REQUEST, "Código inválido.");
+        return new PublicAuthException(HttpStatus.BAD_REQUEST, GENERIC_CODE_ERROR);
     }
-    private PublicAuthException tokenExpired() {
-        return new PublicAuthException(HttpStatus.BAD_REQUEST, "Código expirado.");
-    }
-    private PublicAuthException tokenAlreadyUsed() {
-        return new PublicAuthException(HttpStatus.BAD_REQUEST, "Código já utilizado.");
+    private void dummyVerify(String code) { matches(code, dummyTokenHash); }
+    private boolean matches(String value, String hash) {
+        try {
+            return encoder.matches(value == null ? "" : value, hash);
+        } catch (IllegalArgumentException exception) {
+            return false;
+        }
     }
     private String normalize(String email) { return email == null ? "" : email.trim().toLowerCase(Locale.ROOT); }
     private OffsetDateTime now() { return OffsetDateTime.now(ZoneOffset.UTC); }
