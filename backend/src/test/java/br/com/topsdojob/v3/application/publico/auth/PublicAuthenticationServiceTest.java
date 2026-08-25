@@ -64,7 +64,7 @@ class PublicAuthenticationServiceTest {
         accountLifecycleService = mock(PublicAccountLifecycleService.class);
         sessionRegistry = mock(PublicSessionRegistry.class);
         authSecurity = new PublicAuthSecurityService(
-                new PublicClientIpResolver(),
+                new PublicClientIpResolver("127.0.0.0/8,::1/128"),
                 new PublicAuthRateLimiter());
         service = new PublicAuthenticationService(
                 usuarioRepository,

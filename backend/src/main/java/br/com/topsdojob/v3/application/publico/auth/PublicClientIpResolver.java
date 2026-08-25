@@ -6,20 +6,13 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
 public class PublicClientIpResolver {
 
     private static final int MAX_FORWARDED_HOPS = 32;
-    private static final List<CidrRange> INTERNAL_PROXIES = cidrs(
-            "10.0.0.0/8",
-            "127.0.0.0/8",
-            "172.16.0.0/12",
-            "192.168.0.0/16",
-            "::1/128",
-            "fc00::/7",
-            "fe80::/10");
     private static final List<CidrRange> CLOUDFLARE_PROXIES = cidrs(
             "173.245.48.0/20",
             "103.21.244.0/22",
@@ -44,6 +37,14 @@ public class PublicClientIpResolver {
             "2a06:98c0::/29",
             "2c0f:f248::/32");
 
+    private final List<CidrRange> trustedProxies;
+
+    public PublicClientIpResolver(
+            @Value("${app.security.auth.trusted-proxy-cidrs:127.0.0.0/8,::1/128}")
+            String configuredTrustedProxyCidrs) {
+        this.trustedProxies = configuredCidrs(configuredTrustedProxyCidrs);
+    }
+
     public String resolve(HttpServletRequest request) {
         InetAddress remote = parseLiteral(request == null ? null : request.getRemoteAddr());
         if (remote == null) {
@@ -53,7 +54,7 @@ public class PublicClientIpResolver {
             InetAddress connecting = cloudflareConnectingIp(request);
             return connecting == null ? normalize(remote) : normalize(connecting);
         }
-        if (!isInternalProxy(remote)) {
+        if (!isTrustedProxy(remote)) {
             return normalize(remote);
         }
 
@@ -65,7 +66,10 @@ public class PublicClientIpResolver {
         int first = Math.max(0, hops.length - MAX_FORWARDED_HOPS);
         for (int index = hops.length - 1; index >= first; index--) {
             InetAddress hop = parseLiteral(hops[index]);
-            if (hop == null || isInternalProxy(hop)) {
+            if (hop == null) {
+                return normalize(remote);
+            }
+            if (isTrustedProxy(hop)) {
                 continue;
             }
             if (isCloudflare(hop)) {
@@ -81,11 +85,11 @@ public class PublicClientIpResolver {
 
     private InetAddress cloudflareConnectingIp(HttpServletRequest request) {
         InetAddress connecting = parseLiteral(request == null ? null : request.getHeader("CF-Connecting-IP"));
-        return connecting == null || isInternalProxy(connecting) ? null : connecting;
+        return connecting == null || isTrustedProxy(connecting) ? null : connecting;
     }
 
-    private boolean isInternalProxy(InetAddress address) {
-        return INTERNAL_PROXIES.stream().anyMatch(range -> range.contains(address));
+    private boolean isTrustedProxy(InetAddress address) {
+        return trustedProxies.stream().anyMatch(range -> range.contains(address));
     }
 
     private boolean isCloudflare(InetAddress address) {
@@ -141,6 +145,22 @@ public class PublicClientIpResolver {
         List<CidrRange> ranges = new ArrayList<>(values.length);
         for (String value : values) {
             ranges.add(CidrRange.parse(value));
+        }
+        return List.copyOf(ranges);
+    }
+
+    private static List<CidrRange> configuredCidrs(String configuredCidrs) {
+        if (configuredCidrs == null || configuredCidrs.isBlank()) {
+            throw new IllegalArgumentException("Ao menos um proxy confiavel deve ser configurado");
+        }
+        String[] values = configuredCidrs.split(",", -1);
+        List<CidrRange> ranges = new ArrayList<>(values.length);
+        for (String value : values) {
+            String normalized = value.trim();
+            if (normalized.isEmpty()) {
+                throw new IllegalArgumentException("CIDR de proxy confiavel vazio");
+            }
+            ranges.add(CidrRange.parse(normalized));
         }
         return List.copyOf(ranges);
     }

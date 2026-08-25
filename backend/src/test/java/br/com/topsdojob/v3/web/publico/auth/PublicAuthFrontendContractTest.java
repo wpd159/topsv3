@@ -11,6 +11,15 @@ class PublicAuthFrontendContractTest {
     private static final Path FRONTEND = Path.of("..", "frontend", "src");
 
     @Test
+    void producaoDeclaraRedeDockerRealComoProxyConfiavel() throws Exception {
+        String compose = Files.readString(Path.of("..", "deploy", "production", "docker-compose.yml"));
+
+        assertThat(compose)
+                .contains("APP_SECURITY_AUTH_TRUSTED_PROXY_CIDRS")
+                .contains("172.18.0.0/16,127.0.0.0/8,::1/128");
+    }
+
+    @Test
     void frontendUsaUmUnicoAdapterPublicoComCookieECsrf() throws Exception {
         Path adapterPath = FRONTEND.resolve(Path.of("lib", "public-auth-api.ts"));
         String adapter = Files.readString(adapterPath);

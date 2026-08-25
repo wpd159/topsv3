@@ -50,7 +50,7 @@ class PublicAuthRateLimiterTest {
     @Test
     void falhasSaoIsoladasPorIpEIdentificador() {
         PublicAuthSecurityService security = new PublicAuthSecurityService(
-                new PublicClientIpResolver(),
+                new PublicClientIpResolver("127.0.0.0/8,::1/128"),
                 new PublicAuthRateLimiter());
         var firstIp = request("198.51.100.60");
         var secondIp = request("198.51.100.61");
@@ -81,7 +81,7 @@ class PublicAuthRateLimiterTest {
     void limitaConsultaDeDuplicidadePorIpERecuperaDepoisDaJanela() {
         MutableClock clock = new MutableClock(Instant.parse("2026-08-25T12:00:00Z"));
         PublicAuthSecurityService security = new PublicAuthSecurityService(
-                new PublicClientIpResolver(),
+                new PublicClientIpResolver("127.0.0.0/8,::1/128"),
                 new PublicAuthRateLimiter(clock));
         var request = request("198.51.100.70");
 
@@ -106,7 +106,7 @@ class PublicAuthRateLimiterTest {
         logAppender.start();
         securityLogger.addAppender(logAppender);
         PublicAuthSecurityService security = new PublicAuthSecurityService(
-                new PublicClientIpResolver(),
+                new PublicClientIpResolver("127.0.0.0/8,::1/128"),
                 new PublicAuthRateLimiter());
         String ip = "198.51.100.80";
         String identifier = "full.identifier@example.invalid";
@@ -118,6 +118,47 @@ class PublicAuthRateLimiterTest {
                 .allSatisfy(message -> assertThat(message)
                         .doesNotContain(ip, identifier, "full.identifier", "example.invalid")
                         .contains("client_ref=", "identifier_ref="));
+    }
+
+    @Test
+    void mesmoIpCompartilhaLimiteIpSemMisturarLimitePorIdentificador() {
+        PublicAuthSecurityService security = new PublicAuthSecurityService(
+                new PublicClientIpResolver("127.0.0.0/8,::1/128"),
+                new PublicAuthRateLimiter());
+        var sharedIp = request("198.51.100.90");
+
+        for (String identifier : new String[] {"first@example.invalid", "second@example.invalid"}) {
+            for (int attempt = 0; attempt < 4; attempt++) {
+                security.rejectLogin(security.beginLogin(sharedIp, identifier));
+            }
+            assertThatCode(() -> security.beginLogin(sharedIp, identifier)).doesNotThrowAnyException();
+        }
+
+        for (int attempt = 0; attempt < 41; attempt++) {
+            String identifier = "spread-" + attempt + "@example.invalid";
+            security.rejectLogin(security.beginLogin(sharedIp, identifier));
+        }
+
+        PublicAuthSecurityService.LoginAttempt fiftieth =
+                security.beginLogin(sharedIp, "spread-final@example.invalid");
+        assertThatThrownBy(() -> security.rejectLogin(fiftieth))
+                .isInstanceOfSatisfying(PublicAuthException.class,
+                        exception -> assertThat(exception.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+        assertThatCode(() -> security.beginLogin(request("198.51.100.91"), "first@example.invalid"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void novaInstanciaAposRestartComecaSemBucketsDeTentativas() {
+        MutableClock clock = new MutableClock(Instant.parse("2026-08-25T12:00:00Z"));
+        PublicAuthRateLimiter beforeRestart = new PublicAuthRateLimiter(clock);
+        beforeRestart.require("confirm", "client-a", 1, Duration.ofMinutes(15));
+        assertThatThrownBy(() -> beforeRestart.require("confirm", "client-a", 1, Duration.ofMinutes(15)))
+                .isInstanceOf(PublicAuthException.class);
+
+        PublicAuthRateLimiter afterRestart = new PublicAuthRateLimiter(clock);
+        assertThatCode(() -> afterRestart.require("confirm", "client-a", 1, Duration.ofMinutes(15)))
+                .doesNotThrowAnyException();
     }
 
     private org.springframework.mock.web.MockHttpServletRequest request(String address) {
