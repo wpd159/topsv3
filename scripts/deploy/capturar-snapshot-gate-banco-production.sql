@@ -16,7 +16,8 @@ FROM (
       SELECT version
       FROM flyway_schema_history
       WHERE success
-      ORDER BY installed_rank DESC
+        AND version ~ '^[0-9]+$'
+      ORDER BY version::integer DESC, installed_rank DESC
       LIMIT 1
     ), 'AUSENTE')
 

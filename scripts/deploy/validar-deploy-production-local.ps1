@@ -21,6 +21,9 @@ $compose = Read-RepoFile "deploy/production/docker-compose.yml"
 $databaseGate = Read-RepoFile "scripts/deploy/validar-gate-banco-production.sh"
 $databaseGateSnapshot = Read-RepoFile "scripts/deploy/capturar-snapshot-gate-banco-production.sql"
 $databaseGateTests = Read-RepoFile "scripts/deploy/testar-gate-banco-production.sh"
+$flywayGate = Read-RepoFile "scripts/deploy/validar-gate-flyway-production.sh"
+$flywayGateTests = Read-RepoFile "scripts/deploy/testar-gate-flyway-production.sh"
+$backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
 $rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
 $analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
 $checks = [Collections.Generic.List[object]]::new()
@@ -46,7 +49,11 @@ foreach ($required in @(
     "rollback_application",
     "snapshot_after",
     "snapshot_before",
-    "validar-gate-banco-production.sh"
+    "validar-gate-banco-production.sh",
+    "validar-gate-flyway-production.sh",
+    "criar-backup-validado-production.sh",
+    "backups/postgresql",
+    "api/health/readiness"
   )) {
   Add-Check "workflow contem $required" ($workflow.Contains($required))
 }
@@ -99,6 +106,29 @@ Add-Check "workflow preserva health e rollback no novo gate" (
   ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
   ($workflow -match 'bash\s+"\$\{database_gate\}"') -and
   ($workflow -match 'test\s+"\$\{healthy\}"\s+-eq\s+1')
+)
+Add-Check "workflow deriva versao Flyway sem hardcode" (
+  ($workflow.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}")"')) -and
+  (-not ($workflow -match 'database_gate[^\r\n]*(051|052)')) -and
+  (-not ($workflow -match 'flyway_gate[^\r\n]*(before|after)[^\r\n]*(051|052)'))
+)
+Add-Check "workflow exige backup antes de migration pendente" (
+  ($workflow.Contains('if [ "${migrations_pending}" = true ]; then')) -and
+  ($workflow.Contains('test "${backup_status}" = VALIDATED')) -and
+  ($workflow.IndexOf('bash "${backup_producer}"') -lt $workflow.IndexOf('flyway migrate </dev/null'))
+)
+Add-Check "workflow valida Flyway antes do startup" (
+  ($workflow.IndexOf('bash "${flyway_gate}" after') -gt $workflow.IndexOf('flyway migrate </dev/null')) -and
+  ($workflow.IndexOf('bash "${flyway_gate}" after') -lt $workflow.LastIndexOf('up -d --no-deps --force-recreate backend frontend gateway'))
+)
+Add-Check "workflow troca release somente depois de health e readiness" (
+  ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('test "${healthy}" -eq 1')) -and
+  ($workflow.Contains('curl -fsS http://127.0.0.1:28080/api/health/readiness'))
+)
+Add-Check "workflow restaura aplicacao anterior se startup falhar" (
+  ($workflow.Contains('application_started=0')) -and
+  ($workflow.Contains('application_started=1')) -and
+  ($workflow.Contains('if [ "${application_started}" -eq 1 ]; then'))
 )
 Add-Check "workflow valida host key antes do upload" (
   $workflow.IndexOf('name: Validate pinned SSH host key') -lt
@@ -170,6 +200,7 @@ foreach ($required in @(
     "perda_macica",
     "tabela_critica_ausente",
     "flyway_inesperado",
+    "transicao_flyway_051_052",
     "health_indisponivel",
     "database_trocado",
     "relacionamento_orfao",
@@ -178,6 +209,53 @@ foreach ($required in @(
   )) {
   Add-Check "testes do gate contem $required" ($databaseGateTests.Contains($required))
 }
+
+foreach ($required in @(
+    "MIGRATIONS_PENDING",
+    "banco acima da versao do repositorio",
+    "backup validado obrigatorio antes do Flyway",
+    "versao esperada deve estar aplicada exatamente uma vez",
+    "FLYWAY_PRE_MIGRATION_GATE=PASS",
+    "FLYWAY_POST_MIGRATION_GATE=PASS",
+    "R__"
+  )) {
+  Add-Check "gate Flyway contem $required" ($flywayGate.Contains($required))
+}
+
+foreach ($required in @(
+    "banco_051_repositorio_051",
+    "banco_051_repositorio_052_backup",
+    "backup_ausente",
+    "backup_invalido",
+    "migration_falha",
+    "banco_acima_repositorio",
+    "versao_final_divergente",
+    "repeatable_nao_altera_versao",
+    "FLYWAY_DYNAMIC_GATE_TESTS=PASS"
+  )) {
+  Add-Check "testes Flyway contem $required" ($flywayGateTests.Contains($required))
+}
+
+foreach ($required in @(
+    "pg_dump",
+    "--format=custom",
+    "--no-owner",
+    "--no-acl",
+    "--serializable-deferrable",
+    "pg_restore --list",
+    "--exit-on-error",
+    "--network none",
+    "sha256sum",
+    "chmod 600",
+    "docker volume rm",
+    "BACKUP_STATUS=VALIDATED"
+  )) {
+  Add-Check "backup validado contem $required" ($backupProducer.Contains($required))
+}
+Add-Check "snapshot Flyway ignora repeatables" (
+  ($databaseGateSnapshot.Contains("version ~ '^[0-9]+$'")) -and
+  ($databaseGateSnapshot.Contains("ORDER BY version::integer DESC"))
+)
 
 foreach ($required in @(
     "name: topsv3-production",

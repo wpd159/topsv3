@@ -115,6 +115,16 @@ unexpected_flyway="${temp_dir}/unexpected-flyway.snapshot"
 write_snapshot "$unexpected_flyway" 100 100 70 30 35000 052 UP 1000 500
 expect_fail flyway_inesperado "$baseline" "$unexpected_flyway"
 
+flyway_transition="${temp_dir}/flyway-transition.snapshot"
+write_snapshot "$flyway_transition" 100 100 70 30 35000 052 UP 1000 500
+if ! bash "$validator" "$baseline" "$flyway_transition" 051 052 \
+  > "${temp_dir}/transicao-flyway.log" 2>&1; then
+  echo "FALHA: transicao Flyway 051 para 052 deveria passar" >&2
+  cat "${temp_dir}/transicao-flyway.log" >&2
+  exit 1
+fi
+echo "PASS: transicao_flyway_051_052"
+
 health_down="${temp_dir}/health-down.snapshot"
 write_snapshot "$health_down" 100 100 70 30 35000 051 DOWN 1000 500
 expect_fail health_indisponivel "$baseline" "$health_down"

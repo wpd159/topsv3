@@ -22,11 +22,9 @@ import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
 import br.com.topsdojob.v3.persistence.repository.CidadeRepository;
 import br.com.topsdojob.v3.persistence.repository.EstadoRepository;
-import java.text.Normalizer;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -360,14 +358,7 @@ public class ListagemPublicaConsultaService {
     }
 
     private String termoBusca(String busca) {
-        if (busca == null || busca.isBlank()) {
-            return null;
-        }
-        String termo = busca.replaceAll("\\p{Cntrl}", " ").replaceAll("\\s+", " ").trim();
-        if (termo.length() > 80) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "busca deve ter no maximo 80 caracteres");
-        }
-        return normalizarBusca(termo);
+        return BuscaTextualPublica.normalizarParaLike(busca);
     }
 
     private UUID usuarioId(String anunciante) {
@@ -378,15 +369,6 @@ public class ListagemPublicaConsultaService {
         return anuncioRepository.findUsuarioPublicoPorUsername(username)
                 .map(AnuncioRepository.UsuarioPublicoProjection::getUsuarioId)
                 .orElseThrow(() -> notFound("anunciante nao encontrada"));
-    }
-
-    private String normalizarBusca(String valor) {
-        if (valor == null) {
-            return "";
-        }
-        return Normalizer.normalize(valor, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}+", "")
-                .toLowerCase(Locale.ROOT);
     }
 
     private LocalizacaoPublicaDto toLocalizacao(

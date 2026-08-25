@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  echo "Uso: $0 SNAPSHOT_ANTES SNAPSHOT_DEPOIS VERSAO_FLYWAY_ESPERADA" >&2
+if [[ $# -ne 3 && $# -ne 4 ]]; then
+  echo "Uso: $0 SNAPSHOT_ANTES SNAPSHOT_DEPOIS VERSAO_FLYWAY_ANTES [VERSAO_FLYWAY_DEPOIS]" >&2
   exit 2
 fi
 
 snapshot_before="$1"
 snapshot_after="$2"
-expected_flyway="$3"
+expected_flyway_before="$3"
+expected_flyway_after="${4:-$3}"
 
 # Guardrail final contra perda macica. Pequenas reducoes continuam sujeitas aos
 # invariantes relacionais; uma queda simultaneamente >= 50 linhas e >= 20% falha.
@@ -103,6 +104,7 @@ require_key() {
 validate_snapshot_integrity() {
   local label="$1"
   local array_name="$2"
+  local expected_flyway="$3"
   local -n values="$array_name"
   local invariant status status_sum=0
 
@@ -133,8 +135,8 @@ declare -A before=()
 declare -A after=()
 load_snapshot "$snapshot_before" before
 load_snapshot "$snapshot_after" after
-validate_snapshot_integrity antes before
-validate_snapshot_integrity depois after
+validate_snapshot_integrity antes before "$expected_flyway_before"
+validate_snapshot_integrity depois after "$expected_flyway_after"
 
 [[ "${before['META|database_identity']}" == "${after['META|database_identity']}" ]] \
   || die "instancia ou database mudou durante o deploy"

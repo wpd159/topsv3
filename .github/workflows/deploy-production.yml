@@ -74,7 +74,10 @@ jobs:
 
       - name: Test production database safety gate
         shell: bash
-        run: bash ./scripts/deploy/testar-gate-banco-production.sh
+        run: |
+          set -euo pipefail
+          bash ./scripts/deploy/testar-gate-banco-production.sh
+          bash ./scripts/deploy/testar-gate-flyway-production.sh
 
       - name: Validate required secrets
         shell: bash
@@ -325,12 +328,18 @@ jobs:
           user="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')"
           snapshot_sql="${release_dir}/scripts/deploy/capturar-snapshot-gate-banco-production.sql"
           database_gate="${release_dir}/scripts/deploy/validar-gate-banco-production.sh"
+          flyway_gate="${release_dir}/scripts/deploy/validar-gate-flyway-production.sh"
+          backup_producer="${release_dir}/scripts/deploy/criar-backup-validado-production.sh"
+          migration_dir="${release_dir}/backend/src/main/resources/db/migration"
           snapshot_dir="$(mktemp -d)"
           snapshot_before="${snapshot_dir}/before.snapshot"
+          snapshot_migrated="${snapshot_dir}/migrated.snapshot"
           snapshot_after="${snapshot_dir}/after.snapshot"
+          backup_receipt="${snapshot_dir}/backup.receipt"
           export TOPSV3_RELEASE_SHA="${release_sha}"
           compose=(docker compose --env-file "${env_file}" -f "${compose_file}" -p topsv3-production)
           switched=0
+          application_started=0
 
           cleanup_database_gate() {
             rm -rf -- "${snapshot_dir}"
@@ -346,20 +355,50 @@ jobs:
             LC_ALL=C sort -o "${destination}" "${destination}"
           }
 
+          read_flyway_state() {
+            expected_version="$1"
+            expected_numeric="$((10#${expected_version}))"
+            docker exec -i topsv3-production-postgres psql \
+              -v ON_ERROR_STOP=1 -U "${user}" -d "${db}" -At -F '|' \
+              -c "
+                SELECT
+                  COALESCE((
+                    SELECT version
+                    FROM flyway_schema_history
+                    WHERE success AND version ~ '^[0-9]+$'
+                    ORDER BY version::integer DESC, installed_rank DESC
+                    LIMIT 1
+                  ), 'AUSENTE'),
+                  count(*) FILTER (WHERE NOT success),
+                  count(*) FILTER (
+                    WHERE success
+                      AND CASE
+                        WHEN version ~ '^[0-9]+$' THEN version::integer
+                        ELSE NULL
+                      END = ${expected_numeric}
+                  )
+                FROM flyway_schema_history;
+              "
+          }
+
           rollback_application() {
             trap - ERR
-            if [ "${switched}" -ne 1 ] || [ ! -d "${previous_release}" ]; then
+            if [ ! -d "${previous_release}" ]; then
               return
             fi
-            rollback_link="${deploy_root}/.rollback-${release_sha}"
-            rm -f "${rollback_link}"
-            ln -s "releases/$(basename "${previous_release}")" "${rollback_link}"
-            mv -Tf "${rollback_link}" "${deploy_root}/current"
-            if [ -f "${previous_release}/deploy/production/docker-compose.yml" ]; then
-              previous_sha="$(cat "${previous_release}/.release-sha")"
-              TOPSV3_RELEASE_SHA="${previous_sha}" docker compose --env-file "${env_file}" -f "${previous_release}/deploy/production/docker-compose.yml" -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
-            else
-              TOPSV3_RELEASE_DIR="${previous_release}" docker compose --env-file "${env_file}" -f /opt/topsv3/secrets/docker-compose.production.yml -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
+            if [ "${switched}" -eq 1 ]; then
+              rollback_link="${deploy_root}/.rollback-${release_sha}"
+              rm -f "${rollback_link}"
+              ln -s "releases/$(basename "${previous_release}")" "${rollback_link}"
+              mv -Tf "${rollback_link}" "${deploy_root}/current"
+            fi
+            if [ "${application_started}" -eq 1 ]; then
+              if [ -f "${previous_release}/deploy/production/docker-compose.yml" ]; then
+                previous_sha="$(cat "${previous_release}/.release-sha")"
+                TOPSV3_RELEASE_SHA="${previous_sha}" docker compose --env-file "${env_file}" -f "${previous_release}/deploy/production/docker-compose.yml" -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
+              else
+                TOPSV3_RELEASE_DIR="${previous_release}" docker compose --env-file "${env_file}" -f /opt/topsv3/secrets/docker-compose.production.yml -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
+              fi
             fi
           }
           on_error() {
@@ -373,24 +412,54 @@ jobs:
           "${compose[@]}" config --quiet
           baseline_health=DOWN
           if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
+            && curl -fsS http://127.0.0.1:28080/api/health/readiness >/dev/null \
             && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
             baseline_health=UP
           fi
           capture_database_snapshot "${snapshot_before}" "${baseline_health}"
-          bash "${database_gate}" "${snapshot_before}" "${snapshot_before}" 051
+          expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}")"
+          IFS='|' read -r applied_before failed_before expected_count_before \
+            < <(read_flyway_state "${expected_flyway}")
+          inspection="$(bash "${flyway_gate}" inspect "${expected_flyway}" \
+            "${applied_before}" "${failed_before}" "${expected_count_before}" NOT_CHECKED)"
+          migrations_pending="$(awk -F= '$1 == "MIGRATIONS_PENDING" { print $2 }' <<< "${inspection}")"
+          test "${migrations_pending}" = true || test "${migrations_pending}" = false
+          bash "${database_gate}" "${snapshot_before}" "${snapshot_before}" "${applied_before}"
+
+          backup_status=NOT_REQUIRED
+          if [ "${migrations_pending}" = true ]; then
+            test -f "${previous_release}/.release-sha"
+            current_production_sha="$(cat "${previous_release}/.release-sha")"
+            bash "${backup_producer}" \
+              topsv3-production-postgres \
+              "${deploy_root}/backups/postgresql" \
+              "${current_production_sha}" \
+              "${backup_receipt}"
+            backup_status="$(sed -n 's/^BACKUP_STATUS=//p' "${backup_receipt}")"
+            test "${backup_status}" = VALIDATED
+          fi
+          bash "${flyway_gate}" before "${expected_flyway}" \
+            "${applied_before}" "${failed_before}" "${expected_count_before}" "${backup_status}"
+
           "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null
           "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
+          IFS='|' read -r applied_after_migration failed_after_migration expected_count_after_migration \
+            < <(read_flyway_state "${expected_flyway}")
+          bash "${flyway_gate}" after "${expected_flyway}" \
+            "${applied_after_migration}" "${failed_after_migration}" \
+            "${expected_count_after_migration}" "${backup_status}"
+          capture_database_snapshot "${snapshot_migrated}" "${baseline_health}"
+          bash "${database_gate}" "${snapshot_before}" "${snapshot_migrated}" \
+            "${applied_before}" "${expected_flyway}"
+
           "${compose[@]}" build backend frontend
-          current_link="${deploy_root}/.current-${release_sha}"
-          rm -f "${current_link}"
-          ln -s "releases/${release_sha}" "${current_link}"
-          mv -Tf "${current_link}" "${deploy_root}/current"
-          switched=1
+          application_started=1
           "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
 
           healthy=0
           for attempt in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:28080/api/health/readiness >/dev/null \
               && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
               healthy=1
               break
@@ -401,7 +470,14 @@ jobs:
           test "$(docker inspect topsv3-production-postgres --format '{{.Id}}')" = "${postgres_id_before}"
           test "$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
           capture_database_snapshot "${snapshot_after}" UP
-          bash "${database_gate}" "${snapshot_before}" "${snapshot_after}" 051
+          bash "${database_gate}" "${snapshot_migrated}" "${snapshot_after}" \
+            "${expected_flyway}"
+
+          current_link="${deploy_root}/.current-${release_sha}"
+          rm -f "${current_link}"
+          ln -s "releases/${release_sha}" "${current_link}"
+          mv -Tf "${current_link}" "${deploy_root}/current"
+          switched=1
           test "$(readlink -f "${deploy_root}/current")" = "${release_dir}"
           cleanup_database_gate
           trap - ERR

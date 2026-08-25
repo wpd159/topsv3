@@ -39,7 +39,7 @@ assert.match(viewerSource, /const rotuloDestino = podeNavegarPerfil \? "Ver anun
 assert.doesNotMatch(viewerSource, /\/anuncios\/usuario\/|usuarioId|profileToken/)
 
 assert.match(catalogPageSource, /anunciante\?: string/)
-assert.match(catalogPageSource, /const anunciante = \(searchParams\.anunciante \|\| ""\)\.trim\(\)/)
+assert.match(catalogPageSource, /const anunciante = searchValue\(searchParams\.anunciante\)\.trim\(\)/)
 assert.match(catalogPageSource, /listarAnunciosPublicos\([\s\S]*undefined,\s*anunciante,/)
 assert.match(catalogClientSource, /searchParams\.get\("anunciante"\)/)
 assert.match(catalogClientSource, /params\.delete\("anunciante"\)/)
@@ -62,7 +62,8 @@ const canonicalQueryStart = repositorySource.lastIndexOf('    @Query(', canonica
 assert.ok(canonicalQueryStart >= 0 && canonicalMethodIndex > canonicalQueryStart)
 const canonicalQuerySource = repositorySource.slice(canonicalQueryStart, canonicalMethodIndex)
 assert.match(canonicalQuerySource, /and \(:usuarioId is null or a\.usuario_id = :usuarioId\)/)
-assert.doesNotMatch(canonicalQuerySource, /documento_busca_anuncio/)
+assert.match(canonicalQuerySource, /from documento_busca_anuncio d/)
+assert.match(canonicalQuerySource, /d\.anuncio_id = a\.id/)
 assert.equal(
   (serviceSource.match(/anuncioRepository\.findPublicosOrdenados\(/g) ?? []).length,
   1,

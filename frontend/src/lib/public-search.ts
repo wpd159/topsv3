@@ -1,0 +1,1 @@
+export const PUBLIC_SEARCH_MAX_LENGTH = 80
