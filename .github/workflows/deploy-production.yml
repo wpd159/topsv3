@@ -78,6 +78,8 @@ jobs:
           set -euo pipefail
           bash ./scripts/deploy/testar-gate-banco-production.sh
           bash ./scripts/deploy/testar-gate-flyway-production.sh
+          bash ./scripts/deploy/testar-stdin-deploy-production.sh
+          bash ./scripts/deploy/testar-backup-validado-production.sh
 
       - name: Validate required secrets
         shell: bash
@@ -349,7 +351,8 @@ jobs:
             destination="$1"
             health_state="$2"
             docker exec -i topsv3-production-postgres psql \
-              -v ON_ERROR_STOP=1 -U "${user}" -d "${db}" -At -F '|' \
+              --no-psqlrc --set=ON_ERROR_STOP=1 \
+              -U "${user}" -d "${db}" -At -F '|' \
               < "${snapshot_sql}" > "${destination}"
             printf 'META|health|%s\n' "${health_state}" >> "${destination}"
             LC_ALL=C sort -o "${destination}" "${destination}"
@@ -358,9 +361,10 @@ jobs:
           read_flyway_state() {
             expected_version="$1"
             expected_numeric="$((10#${expected_version}))"
-            docker exec -i topsv3-production-postgres psql \
-              -v ON_ERROR_STOP=1 -U "${user}" -d "${db}" -At -F '|' \
-              -c "
+            docker exec topsv3-production-postgres psql \
+              --no-psqlrc --set=ON_ERROR_STOP=1 \
+              -U "${user}" -d "${db}" -At -F '|' \
+              --command "
                 SELECT
                   COALESCE((
                     SELECT version
@@ -378,7 +382,7 @@ jobs:
                       END = ${expected_numeric}
                   )
                 FROM flyway_schema_history;
-              "
+              " </dev/null
           }
 
           rollback_application() {
