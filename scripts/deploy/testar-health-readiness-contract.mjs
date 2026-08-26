@@ -23,6 +23,7 @@ const preprodCompose = read('deploy/preprod/docker-compose.yml')
 const hmlCompose = read('deploy/hml/docker-compose.yml')
 const productionWorkflow = read('.github/workflows/deploy-production.yml')
 const preprodWorkflow = read('.github/workflows/deploy-preprod.yml')
+const atomicProductionActivator = read('scripts/deploy/ativar-release-atomica-production.sh')
 
 assert.match(backendHealth, /@GetMapping\("\/liveness"\)/)
 assert.match(backendHealth, /@GetMapping\("\/readiness"\)/)
@@ -77,11 +78,16 @@ for (const [name, workflow] of [
   process.stdout.write(`ok - workflow ${name} aguarda readiness real\n`)
 }
 
-const productionStartupGate = productionWorkflow.slice(
-  productionWorkflow.indexOf('application_started=1'),
-  productionWorkflow.indexOf('current_link="${deploy_root}/.current-${release_sha}"'),
+assert.match(productionWorkflow, /bash "\$\{atomic_activator\}"/)
+assert.match(atomicProductionActivator, /verify_candidate/)
+assert.match(atomicProductionActivator, /\/api\/health\/liveness/)
+assert.match(atomicProductionActivator, /\/api\/health\/readiness/)
+assert.match(atomicProductionActivator, /\/health\/liveness/)
+assert.match(atomicProductionActivator, /\/health\/readiness/)
+assert.ok(
+  atomicProductionActivator.indexOf('stage_or_abort verify_candidate') <
+    atomicProductionActivator.indexOf('stage_or_abort switch_gateway'),
+  'a candidata deve concluir readiness antes da troca de trafego',
 )
-assert.match(productionStartupGate, /\/api\/health\/readiness/)
-assert.match(productionStartupGate, /\/health\/readiness/)
 
 console.log('HEALTH_READINESS_CONTRACT_TESTS=PASS')

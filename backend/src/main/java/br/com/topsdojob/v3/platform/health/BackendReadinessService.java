@@ -14,6 +14,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -27,6 +28,7 @@ public final class BackendReadinessService {
     private final Duration timeout;
     private final ExecutorService executor;
 
+    @Autowired
     BackendReadinessService(
             ApplicationReadinessState applicationState,
             DatabaseReadinessProbe databaseProbe,
@@ -34,7 +36,7 @@ public final class BackendReadinessService {
         this(applicationState, databaseProbe, Duration.ofMillis(timeoutMillis), readinessExecutor());
     }
 
-    BackendReadinessService(
+    private BackendReadinessService(
             ApplicationReadinessState applicationState,
             DatabaseReadinessProbe databaseProbe,
             Duration timeout,
@@ -46,6 +48,14 @@ public final class BackendReadinessService {
         this.databaseProbe = databaseProbe;
         this.timeout = timeout;
         this.executor = executor;
+    }
+
+    static BackendReadinessService forTesting(
+            ApplicationReadinessState applicationState,
+            DatabaseReadinessProbe databaseProbe,
+            Duration timeout,
+            ExecutorService executor) {
+        return new BackendReadinessService(applicationState, databaseProbe, timeout, executor);
     }
 
     ReadinessResult check() {

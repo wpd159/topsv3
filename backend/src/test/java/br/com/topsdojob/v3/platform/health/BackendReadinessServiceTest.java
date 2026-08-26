@@ -108,7 +108,7 @@ class BackendReadinessServiceTest {
             DatabaseReadinessProbe probe,
             long timeoutMillis) {
         var executor = Executors.newSingleThreadExecutor();
-        var service = new BackendReadinessService(
+        var service = BackendReadinessService.forTesting(
                 state,
                 probe,
                 Duration.ofMillis(timeoutMillis),

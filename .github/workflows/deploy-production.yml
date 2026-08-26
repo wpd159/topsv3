@@ -81,6 +81,7 @@ jobs:
           bash ./scripts/deploy/testar-gate-banco-production.sh
           bash ./scripts/deploy/testar-gate-flyway-production.sh
           bash ./scripts/deploy/testar-stdin-deploy-production.sh
+          bash ./scripts/deploy/testar-release-atomica-production.sh
           for backup_restore_run in $(seq 1 10); do
             bash ./scripts/deploy/testar-backup-validado-production.sh
           done
@@ -171,6 +172,7 @@ jobs:
           test -r /opt/topsv3/secrets/production.env
           test -r /opt/topsv3/secrets/application-production.yml
           test -r /opt/topsv3/secrets/nginx-production-local.conf
+          test -w /etc/nginx/sites-enabled/topsdojob-live
           test -r /opt/topsv3/secrets/efi-webhook-allowlist.conf
           test -d /opt/topsv3/secrets/efi
           test -L /opt/topsv3/production/current
@@ -184,6 +186,7 @@ jobs:
           test "$(docker inspect topsv3-production-postgres --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "topsv3-production"
           docker volume inspect topsv3-production-postgres-data >/dev/null
           sudo -n nginx -t >/dev/null
+          sudo -n -l /usr/bin/systemctl reload nginx >/dev/null
           REMOTE
 
       - name: Synchronize IndexNow key in production runtime
@@ -329,6 +332,15 @@ jobs:
           compose_file="${release_dir}/deploy/production/docker-compose.yml"
           env_file=/opt/topsv3/secrets/production.env
           previous_release="$(readlink -f "${deploy_root}/current")"
+          active_state_file="${deploy_root}/runtime/active-release.env"
+          active_backend_port=28080
+          active_gateway_port=23000
+          if [ -r "${active_state_file}" ]; then
+            active_backend_port="$(sed -n 's/^ACTIVE_BACKEND_PORT=//p' "${active_state_file}" | tail -1)"
+            active_gateway_port="$(sed -n 's/^ACTIVE_GATEWAY_PORT=//p' "${active_state_file}" | tail -1)"
+          fi
+          [[ "${active_backend_port}" =~ ^[0-9]+$ ]]
+          [[ "${active_gateway_port}" =~ ^[0-9]+$ ]]
           postgres_id_before="$(docker inspect topsv3-production-postgres --format '{{.Id}}')"
           postgres_volume_before="$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
           db="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')"
@@ -337,6 +349,7 @@ jobs:
           database_gate="${release_dir}/scripts/deploy/validar-gate-banco-production.sh"
           flyway_gate="${release_dir}/scripts/deploy/validar-gate-flyway-production.sh"
           backup_producer="${release_dir}/scripts/deploy/criar-backup-validado-production.sh"
+          atomic_activator="${release_dir}/scripts/deploy/ativar-release-atomica-production.sh"
           migration_dir="${release_dir}/backend/src/main/resources/db/migration"
           snapshot_dir="$(mktemp -d)"
           snapshot_before="${snapshot_dir}/before.snapshot"
@@ -345,8 +358,6 @@ jobs:
           backup_receipt="${snapshot_dir}/backup.receipt"
           export TOPSV3_RELEASE_SHA="${release_sha}"
           compose=(docker compose --env-file "${env_file}" -f "${compose_file}" -p topsv3-production)
-          switched=0
-          application_started=0
 
           cleanup_database_gate() {
             rm -rf -- "${snapshot_dir}"
@@ -390,39 +401,18 @@ jobs:
               " </dev/null
           }
 
-          rollback_application() {
-            trap - ERR
-            if [ ! -d "${previous_release}" ]; then
-              return
-            fi
-            if [ "${switched}" -eq 1 ]; then
-              rollback_link="${deploy_root}/.rollback-${release_sha}"
-              rm -f "${rollback_link}"
-              ln -s "releases/$(basename "${previous_release}")" "${rollback_link}"
-              mv -Tf "${rollback_link}" "${deploy_root}/current"
-            fi
-            if [ "${application_started}" -eq 1 ]; then
-              if [ -f "${previous_release}/deploy/production/docker-compose.yml" ]; then
-                previous_sha="$(cat "${previous_release}/.release-sha")"
-                TOPSV3_RELEASE_SHA="${previous_sha}" docker compose --env-file "${env_file}" -f "${previous_release}/deploy/production/docker-compose.yml" -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
-              else
-                TOPSV3_RELEASE_DIR="${previous_release}" docker compose --env-file "${env_file}" -f /opt/topsv3/secrets/docker-compose.production.yml -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
-              fi
-            fi
-          }
           on_error() {
             rc=$?
             cleanup_database_gate || true
-            rollback_application || true
             exit "${rc}"
           }
           trap on_error ERR
 
           "${compose[@]}" config --quiet
           baseline_health=DOWN
-          if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
-            && curl -fsS http://127.0.0.1:28080/api/health/readiness >/dev/null \
-            && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
+          if curl -fsS "http://127.0.0.1:${active_backend_port}/api/health" | grep -q '"status":"UP"' \
+            && curl -fsS "http://127.0.0.1:${active_gateway_port}/" >/dev/null \
+            && curl -fsS "http://127.0.0.1:${active_gateway_port}/anuncios" >/dev/null; then
             baseline_health=UP
           fi
           capture_database_snapshot "${snapshot_before}" "${baseline_health}"
@@ -461,34 +451,15 @@ jobs:
           bash "${database_gate}" "${snapshot_before}" "${snapshot_migrated}" \
             "${applied_before}" "${expected_flyway}"
 
-          "${compose[@]}" build backend frontend
-          application_started=1
-          "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
-
-          healthy=0
-          for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:28080/api/health/liveness | grep -q '"status":"UP"' \
-              && curl -fsS http://127.0.0.1:28080/api/health/readiness | grep -q '"status":"UP"' \
-              && curl -fsS http://127.0.0.1:23000/health/liveness | grep -q '"status":"UP"' \
-              && curl -fsS http://127.0.0.1:23000/health/readiness | grep -q '"status":"UP"' \
-              && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
-              healthy=1
-              break
-            fi
-            sleep 5
-          done
-          test "${healthy}" -eq 1
-          test "$(docker inspect topsv3-production-postgres --format '{{.Id}}')" = "${postgres_id_before}"
-          test "$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
           capture_database_snapshot "${snapshot_after}" UP
           bash "${database_gate}" "${snapshot_migrated}" "${snapshot_after}" \
             "${expected_flyway}"
+          bash "${atomic_activator}" \
+            "${release_sha}" "${release_dir}" "${env_file}" \
+            "${expected_flyway}" "${user}" "${db}"
 
-          current_link="${deploy_root}/.current-${release_sha}"
-          rm -f "${current_link}"
-          ln -s "releases/${release_sha}" "${current_link}"
-          mv -Tf "${current_link}" "${deploy_root}/current"
-          switched=1
+          test "$(docker inspect topsv3-production-postgres --format '{{.Id}}')" = "${postgres_id_before}"
+          test "$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
           test "$(readlink -f "${deploy_root}/current")" = "${release_dir}"
           cleanup_database_gate
           trap - ERR
@@ -508,36 +479,59 @@ jobs:
           set -euo pipefail
           release_sha="$1"
           release_dir="/opt/topsv3/production/releases/${release_sha}"
+          state_file=/opt/topsv3/production/runtime/active-release.env
+          state_value() {
+            sed -n "s/^$1=//p" "${state_file}" | tail -1
+          }
+          test -r "${state_file}"
+          active_sha="$(state_value ACTIVE_RELEASE_SHA)"
+          active_project="$(state_value ACTIVE_PROJECT)"
+          active_prefix="$(state_value ACTIVE_PREFIX)"
+          active_backend_port="$(state_value ACTIVE_BACKEND_PORT)"
+          active_frontend_port="$(state_value ACTIVE_FRONTEND_PORT)"
+          active_gateway_port="$(state_value ACTIVE_GATEWAY_PORT)"
+          for port in "${active_backend_port}" "${active_frontend_port}" "${active_gateway_port}"; do
+            [[ "${port}" =~ ^[0-9]+$ ]]
+            test "${port}" -ge 1024
+            test "${port}" -le 65535
+          done
+          test "${active_sha}" = "${release_sha}"
+          [[ "${active_project}" =~ ^[a-z0-9][a-z0-9_.-]+$ ]]
+          [[ "${active_prefix}" =~ ^[a-z0-9][a-z0-9_.-]+$ ]]
           test "$(readlink -f /opt/topsv3/production/current)" = "${release_dir}"
           test "$(cat /opt/topsv3/production/current/.release-sha)" = "${release_sha}"
           for service in backend frontend gateway; do
-            config_files="$(docker inspect "topsv3-production-${service}" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
+            container="${active_prefix}-${service}"
+            config_files="$(docker inspect "${container}" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
             case "${config_files}" in
               *"/releases/${release_sha}/deploy/production/docker-compose.yml"*) ;;
               *) echo "ERRO: ${service} nao usa o release ${release_sha}." >&2; exit 1 ;;
             esac
-            test "$(docker inspect "topsv3-production-${service}" --format '{{.State.Running}}')" = "true"
+            test "$(docker inspect "${container}" --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "${active_project}"
+            test "$(docker inspect "${container}" --format '{{.State.Running}}')" = "true"
           done
           test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
-          curl -fsS http://127.0.0.1:28080/api/health/liveness | grep -q '"status":"UP"'
-          curl -fsS http://127.0.0.1:28080/api/health/readiness | grep -q '"status":"UP"'
-          curl -fsS http://127.0.0.1:23000/health/liveness | grep -q '"status":"UP"'
-          curl -fsS http://127.0.0.1:23000/health/readiness | grep -q '"status":"UP"'
-          curl -fsS http://127.0.0.1:23000/ >/dev/null
-          curl -fsS http://127.0.0.1:23000/anuncios >/dev/null
-          frontend_env="$(docker inspect topsv3-production-frontend --format '{{range .Config.Env}}{{println .}}{{end}}')"
+          curl -fsS "http://127.0.0.1:${active_backend_port}/api/health/liveness" | grep -q '"status":"UP"'
+          curl -fsS "http://127.0.0.1:${active_backend_port}/api/health/readiness" | grep -q '"status":"UP"'
+          curl -fsS "http://127.0.0.1:${active_frontend_port}/health/liveness" | grep -q '"status":"UP"'
+          curl -fsS "http://127.0.0.1:${active_frontend_port}/health/readiness" | grep -q '"status":"UP"'
+          curl -fsS "http://127.0.0.1:${active_gateway_port}/health/liveness" | grep -q '"status":"UP"'
+          curl -fsS "http://127.0.0.1:${active_gateway_port}/health/readiness" | grep -q '"status":"UP"'
+          curl -fsS "http://127.0.0.1:${active_gateway_port}/" >/dev/null
+          curl -fsS "http://127.0.0.1:${active_gateway_port}/anuncios" >/dev/null
+          frontend_env="$(docker inspect "${active_prefix}-frontend" --format '{{range .Config.Env}}{{println .}}{{end}}')"
           grep -qx 'NEXT_PUBLIC_SITE_URL=https://topsdojob.com' <<< "${frontend_env}"
           grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true' <<< "${frontend_env}"
           grep -qx 'SEARCH_INDEXING_MODE=public' <<< "${frontend_env}"
           grep -q '^INDEXNOW_KEY=' <<< "${frontend_env}"
-          backend_env="$(docker inspect topsv3-production-backend --format '{{range .Config.Env}}{{println .}}{{end}}')"
+          backend_env="$(docker inspect "${active_prefix}-backend" --format '{{range .Config.Env}}{{println .}}{{end}}')"
           grep -qx 'SPRING_PROFILES_ACTIVE=production' <<< "${backend_env}"
           grep -qx 'APP_ENV=producao' <<< "${backend_env}"
           if printf '%s\n%s\n' "${backend_env}" "${frontend_env}" | grep -Eqi 'v3\.esle\.cloud|mailpit|homologacao|sandbox'; then
             echo 'ERRO: configuracao de homologacao encontrada no runtime de producao.' >&2
             exit 1
           fi
-          logs="$(docker logs topsv3-production-backend 2>&1)"
+          logs="$(docker logs "${active_prefix}-backend" 2>&1)"
           if printf '%s' "${logs}" | grep -Eqi 'IMPORTACAO_.*(INICIO|EXECUTADA)|fixture.*(INICIO|EXECUTADA|enabled=true)'; then
             echo 'ERRO: marcador de importador ou fixture encontrado na producao.' >&2
             exit 1
