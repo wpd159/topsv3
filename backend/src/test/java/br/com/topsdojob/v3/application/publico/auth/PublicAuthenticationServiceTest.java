@@ -4,6 +4,7 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -51,6 +52,7 @@ class PublicAuthenticationServiceTest {
     private PublicAuthenticationService service;
     private PublicAccountLifecycleService accountLifecycleService;
     private PublicSessionRegistry sessionRegistry;
+    private PublicAuthSecurityService authSecurity;
 
     @BeforeEach
     void setup() {
@@ -58,8 +60,12 @@ class PublicAuthenticationServiceTest {
         credencialRepository = mock(CredencialUsuarioRepository.class);
         papelRepository = mock(PapelUsuarioRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
+        when(passwordEncoder.encode(anyString())).thenReturn("dummy-hash");
         accountLifecycleService = mock(PublicAccountLifecycleService.class);
         sessionRegistry = mock(PublicSessionRegistry.class);
+        authSecurity = new PublicAuthSecurityService(
+                new PublicClientIpResolver("127.0.0.0/8,::1/128"),
+                new PublicAuthRateLimiter());
         service = new PublicAuthenticationService(
                 usuarioRepository,
                 credencialRepository,
@@ -68,7 +74,8 @@ class PublicAuthenticationServiceTest {
                 new HttpSessionSecurityContextRepository(),
                 accountLifecycleService,
                 sessionRegistry,
-                mock(AnuncioRepository.class));
+                mock(AnuncioRepository.class),
+                authSecurity);
     }
 
     @AfterEach
@@ -129,7 +136,7 @@ class PublicAuthenticationServiceTest {
         String previousSessionId = session.getId();
 
         var response = service.login(
-                new PublicLoginRequestDto("PERFIL@EXAMPLE.INVALID", SYNTHETIC_CREDENTIAL),
+                new PublicLoginRequestDto("  PERFIL@EXAMPLE.INVALID  ", SYNTHETIC_CREDENTIAL),
                 request,
                 new MockHttpServletResponse());
 
@@ -152,6 +159,55 @@ class PublicAuthenticationServiceTest {
                     assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
                     assertThat(exception.getMessage()).isEqualTo("E-mail ou senha invalidos.");
                 });
+        verify(passwordEncoder).matches(SYNTHETIC_CREDENTIAL, "dummy-hash");
+    }
+
+    @Test
+    void contaNaoConfirmadaRetornaAMesmaRespostaGenerica() {
+        UsuarioEntity usuario = UsuarioEntity.criarCadastroPublico(
+                USER_ID,
+                "Perfil Sintetico",
+                "perfil@example.invalid",
+                "+5562999999999",
+                null,
+                OffsetDateTime.now(ZoneOffset.UTC));
+        CredencialUsuarioEntity credencial = CredencialUsuarioEntity.criar(
+                UUID.randomUUID(), USER_ID, SYNTHETIC_HASH, OffsetDateTime.now(ZoneOffset.UTC));
+        when(usuarioRepository.findByEmailNormalizado("perfil@example.invalid")).thenReturn(Optional.of(usuario));
+        when(credencialRepository.findByUsuarioId(USER_ID)).thenReturn(Optional.of(credencial));
+        when(passwordEncoder.matches(SYNTHETIC_CREDENTIAL, SYNTHETIC_HASH)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.login(
+                new PublicLoginRequestDto("perfil@example.invalid", SYNTHETIC_CREDENTIAL),
+                new MockHttpServletRequest(),
+                new MockHttpServletResponse()))
+                .isInstanceOfSatisfying(PublicAuthException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+                    assertThat(exception.getMessage()).isEqualTo("E-mail ou senha invalidos.");
+                });
+    }
+
+    @Test
+    void falhasRepetidasDoMesmoIpEIdentificadorRetornam429ComRetryAfter() {
+        when(usuarioRepository.findByEmailNormalizado("perfil@example.invalid")).thenReturn(Optional.empty());
+
+        for (int attempt = 0; attempt < 4; attempt++) {
+            assertThatThrownBy(() -> service.login(
+                    new PublicLoginRequestDto(" perfil@example.invalid ", SYNTHETIC_CREDENTIAL),
+                    requestFrom("198.51.100.10"),
+                    new MockHttpServletResponse()))
+                    .isInstanceOfSatisfying(PublicAuthException.class,
+                            exception -> assertThat(exception.status()).isEqualTo(HttpStatus.UNAUTHORIZED));
+        }
+
+        assertThatThrownBy(() -> service.login(
+                new PublicLoginRequestDto("PERFIL@EXAMPLE.INVALID", SYNTHETIC_CREDENTIAL),
+                requestFrom("198.51.100.10"),
+                new MockHttpServletResponse()))
+                .isInstanceOfSatisfying(PublicAuthException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+                    assertThat(exception.retryAfterSeconds()).isPositive();
+                });
     }
 
     @Test
@@ -170,7 +226,7 @@ class PublicAuthenticationServiceTest {
                     assertThat(exception.getMessage()).isEqualTo("E-mail ou senha invalidos.");
                 });
 
-        verify(passwordEncoder, never()).matches(any(), any());
+        verify(passwordEncoder).matches(SYNTHETIC_CREDENTIAL, "dummy-hash");
     }
 
     @Test
@@ -265,19 +321,14 @@ class PublicAuthenticationServiceTest {
     }
 
     @Test
-    void duplicidadeConsultaEmailNomeETelefoneNormalizados() {
-        when(usuarioRepository.existsByEmailNormalizado("perfil@example.invalid")).thenReturn(true);
-        when(usuarioRepository.existsByNomeIgnoreCase("Perfil Sintetico")).thenReturn(true);
-        when(usuarioRepository.existsByTelefoneNormalizado("+5562999999999")).thenReturn(true);
+    void duplicidadeRetornaSomenteMensagemGenericaSemConsultarIdentificadores() {
+        var response = service.duplicidade();
 
-        var response = service.duplicidade(
-                "PERFIL@EXAMPLE.INVALID",
-                "Perfil Sintetico",
-                "(62) 99999-9999");
-
-        assertThat(response.emailExistente()).isTrue();
-        assertThat(response.usernameExistente()).isTrue();
-        assertThat(response.telefoneExistente()).isTrue();
+        assertThat(response.mensagem()).isEqualTo(
+                "A disponibilidade dos dados sera confirmada ao concluir o cadastro.");
+        verify(usuarioRepository, org.mockito.Mockito.never()).existsByEmailNormalizado(anyString());
+        verify(usuarioRepository, org.mockito.Mockito.never()).existsByNomeIgnoreCase(anyString());
+        verify(usuarioRepository, org.mockito.Mockito.never()).existsByTelefoneNormalizado(anyString());
     }
 
     private void stubValidAccount() {
@@ -322,5 +373,11 @@ class PublicAuthenticationServiceTest {
                 true,
                 true,
                 false);
+    }
+
+    private MockHttpServletRequest requestFrom(String address) {
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setRemoteAddr(address);
+        return request;
     }
 }

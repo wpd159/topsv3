@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import Image from 'next/image'
 import {
   CalendarDaysIcon,
@@ -23,10 +23,8 @@ import { cn } from '@/lib/utils'
 import { getPublicLogoUrl } from '@/lib/public-site-assets'
 import { formatPhone, validateEmail } from '@/utils/formatter'
 import {
-  checkDuplicidade,
   fetchLegalDocuments,
   submitRegister,
-  type DuplicidadeResposta,
 } from '@/lib/public-auth-api'
 import { normalizeApiError } from '@/lib/api-contract'
 
@@ -51,8 +49,6 @@ type RegisterTerms = {
   privacidade: boolean
   promo: boolean
 }
-
-type DuplicateField = 'email' | 'username' | 'telefone'
 
 const INITIAL_VALUES: RegisterValues = {
   username: '',
@@ -145,17 +141,10 @@ function InlineError({ message }: { message?: string }) {
 export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: RegisterFormProps) {
   const [values, setValues] = useState<RegisterValues>(INITIAL_VALUES)
   const [terms, setTerms] = useState<RegisterTerms>(INITIAL_TERMS)
-  const [duplicateErrors, setDuplicateErrors] = useState<Partial<Record<DuplicateField, string>>>({})
   const [credencialEmFoco, setCredencialEmFoco] = useState(false)
   const [credencialTocada, setCredencialTocada] = useState(false)
   const [loading, setLoading] = useState(false)
   const credencialInputRef = useRef<HTMLInputElement>(null)
-  const duplicateRequests = useRef<Partial<Record<DuplicateField, AbortController>>>({})
-
-  useEffect(() => {
-    const requests = duplicateRequests.current
-    return () => Object.values(requests).forEach((controller) => controller?.abort())
-  }, [])
 
   const credencialOk = passwordMeetsPolicy(values.credencial)
   const emailValid = validateEmail(values.email)
@@ -177,10 +166,7 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
     credencialOk &&
     values.credencial === values.confirmacaoCredencial &&
     terms.uso &&
-    terms.privacidade &&
-    !duplicateErrors.email &&
-    !duplicateErrors.username &&
-    !duplicateErrors.telefone
+    terms.privacidade
 
   const regrasCredencialPendentes = pendingPasswordRequirements(values.credencial)
   const mostrarAvisoCredencial =
@@ -188,41 +174,6 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
 
   const updateValue = (field: keyof RegisterValues, value: string) => {
     setValues((current) => ({ ...current, [field]: value }))
-
-    const duplicateField = field === 'phone' ? 'telefone' : field
-    if (duplicateField === 'email' || duplicateField === 'username' || duplicateField === 'telefone') {
-      setDuplicateErrors((current) => ({ ...current, [duplicateField]: undefined }))
-    }
-  }
-
-  const duplicateMessage = (field: DuplicateField) => {
-    if (field === 'email') return 'Este e-mail ja esta em uso.'
-    if (field === 'username') return 'Este username ja esta em uso.'
-    return 'Este telefone ja esta cadastrado.'
-  }
-
-  const isDuplicate = (field: DuplicateField, response: DuplicidadeResposta) => {
-    if (field === 'email') return response.emailExistente
-    if (field === 'username') return response.usernameExistente
-    return response.telefoneExistente
-  }
-
-  const verifyDuplicate = async (field: DuplicateField, value: string) => {
-    duplicateRequests.current[field]?.abort()
-    const controller = new AbortController()
-    duplicateRequests.current[field] = controller
-
-    try {
-      const response = await checkDuplicidade({ [field]: value }, controller.signal)
-      if (controller.signal.aborted) return
-      setDuplicateErrors((current) => ({
-        ...current,
-        [field]: isDuplicate(field, response) ? duplicateMessage(field) : undefined,
-      }))
-    } catch (error) {
-      if (controller.signal.aborted || (error instanceof DOMException && error.name === 'AbortError')) return
-      toast.error('Não foi possível verificar os dados informados.')
-    }
   }
 
   const getButtonLabel = () => {
@@ -231,9 +182,7 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
     if (!values.username.trim() || values.username.trim().length < 3) return 'Preencha o nome de usuario'
     if (phoneClean.length < 10) return 'Preencha o telefone'
     if (!values.email.trim()) return 'Preencha o e-mail'
-    if (duplicateErrors.email || (values.email && !emailValid)) return 'Corrija seu e-mail'
-    if (duplicateErrors.username) return 'Troque o nome de usuario'
-    if (duplicateErrors.telefone) return 'Troque o telefone'
+    if (values.email && !emailValid) return 'Corrija seu e-mail'
     if (!birthDateComplete) return 'Preencha a data de nascimento'
     if (!birthDateValid) return 'Corrija a data de nascimento'
     if (!adultBirthDate) return 'Cadastro permitido apenas para maiores de 18 anos'
@@ -253,23 +202,6 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
 
     try {
       setLoading(true)
-      const duplicateResponse = await checkDuplicidade({
-        email: values.email,
-        username: values.username,
-        telefone: values.phone,
-      })
-      const nextDuplicateErrors: Partial<Record<DuplicateField, string>> = {}
-
-      for (const field of ['email', 'username', 'telefone'] as const) {
-        if (isDuplicate(field, duplicateResponse)) nextDuplicateErrors[field] = duplicateMessage(field)
-      }
-
-      if (Object.keys(nextDuplicateErrors).length > 0) {
-        setDuplicateErrors(nextDuplicateErrors)
-        toast.error('Ha dados ja cadastrados. Corrija para continuar.')
-        return
-      }
-
       const dataNascimento = birthDateToIso(values.dataNascimento)
       if (!dataNascimento) {
         toast.error('Data de nascimento invalida.')
@@ -315,7 +247,7 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
       : birthDateValid && !adultBirthDate
         ? 'Cadastro permitido apenas para maiores de 18 anos.'
         : undefined
-  const emailError = duplicateErrors.email || (values.email && !emailValid ? 'E-mail invalido.' : undefined)
+  const emailError = values.email && !emailValid ? 'E-mail invalido.' : undefined
 
   return (
     <div className={cn('w-full', className)}>
@@ -342,12 +274,8 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
             placeholder="Nome de usuario (NOME VISIVEL NA PLATAFORMA)"
             value={values.username}
             onChange={(event) => updateValue('username', event.target.value)}
-            onBlur={() => {
-              if (values.username.trim().length >= 3) void verifyDuplicate('username', values.username)
-            }}
-            className={cn(REGISTER_INPUT_CLASS, 'pl-10 py-5', duplicateErrors.username && 'border-red-400')}
+            className={cn(REGISTER_INPUT_CLASS, 'pl-10 py-5')}
           />
-          <InlineError message={duplicateErrors.username} />
         </div>
 
         <div className="relative">
@@ -378,13 +306,9 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
             placeholder="Telefone"
             value={values.phone}
             onChange={(event) => updateValue('phone', formatPhone(event.target.value))}
-            onBlur={() => {
-              if (phoneClean.length >= 10) void verifyDuplicate('telefone', values.phone)
-            }}
             maxLength={15}
-            className={cn(REGISTER_INPUT_CLASS, 'pl-10 py-5', duplicateErrors.telefone && 'border-red-400')}
+            className={cn(REGISTER_INPUT_CLASS, 'pl-10 py-5')}
           />
-          <InlineError message={duplicateErrors.telefone} />
         </div>
 
         <div className="relative">
@@ -396,9 +320,6 @@ export function RegisterForm({ refId, onSuccess, onBackToLogin, className }: Reg
             placeholder="Seu e-mail"
             value={values.email}
             onChange={(event) => updateValue('email', event.target.value)}
-            onBlur={() => {
-              if (emailValid) void verifyDuplicate('email', values.email)
-            }}
             className={cn(REGISTER_INPUT_CLASS, 'pl-10 py-5', emailError && 'border-red-400')}
           />
           <InlineError message={emailError} />

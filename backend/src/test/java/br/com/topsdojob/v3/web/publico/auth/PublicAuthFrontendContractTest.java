@@ -11,6 +11,15 @@ class PublicAuthFrontendContractTest {
     private static final Path FRONTEND = Path.of("..", "frontend", "src");
 
     @Test
+    void producaoDeclaraRedeDockerRealComoProxyConfiavel() throws Exception {
+        String compose = Files.readString(Path.of("..", "deploy", "production", "docker-compose.yml"));
+
+        assertThat(compose)
+                .contains("APP_SECURITY_AUTH_TRUSTED_PROXY_CIDRS")
+                .contains("172.18.0.0/16,127.0.0.0/8,::1/128");
+    }
+
+    @Test
     void frontendUsaUmUnicoAdapterPublicoComCookieECsrf() throws Exception {
         Path adapterPath = FRONTEND.resolve(Path.of("lib", "public-auth-api.ts"));
         String adapter = Files.readString(adapterPath);
@@ -22,17 +31,21 @@ class PublicAuthFrontendContractTest {
                 .contains("'/auth/logout'")
                 .contains("updatePublicProfile")
                 .contains("method: 'PATCH'")
-                .contains("/usuarios/verificar-duplicidade")
                 .contains("credentials: 'include'")
                 .contains("csrfHeaderName()")
                 .contains("['X', 'XSRF', 'TOKEN'].join('-')")
+                .doesNotContain("checkDuplicidade")
+                .doesNotContain("emailExistente")
+                .doesNotContain("telefoneExistente")
                 .doesNotContain("/api/admin/auth");
         String controller = Files.readString(Path.of(
                 "src", "main", "java", "br", "com", "topsdojob", "v3", "web", "publico", "auth",
                 "PublicAuthController.java"));
         assertThat(controller)
                 .contains("if (csrfToken != null)")
-                .contains("csrfToken.getToken()");
+                .contains("csrfToken.getToken()")
+                .contains("authSecurity.requireDuplicateLookup(request)")
+                .contains("HttpHeaders.RETRY_AFTER");
         assertThat(FRONTEND.resolve(Path.of("features", "auth", "register", "register-api.ts")))
                 .doesNotExist();
     }
@@ -44,7 +57,13 @@ class PublicAuthFrontendContractTest {
         String authContext = Files.readString(FRONTEND.resolve(Path.of("context", "AuthContext.tsx")));
 
         assertThat(loginModal).contains("loginPublic").doesNotContain("fetch(`${API}/auth/login`");
-        assertThat(registerForm).contains("@/lib/public-auth-api").doesNotContain("features/auth/register/register-api");
+        assertThat(registerForm)
+                .contains("@/lib/public-auth-api")
+                .contains("submitRegister")
+                .doesNotContain("features/auth/register/register-api")
+                .doesNotContain("checkDuplicidade")
+                .doesNotContain("Este e-mail ja esta em uso")
+                .doesNotContain("Este telefone ja esta cadastrado");
         assertThat(authContext).contains("getPublicSession").contains("logoutPublic");
     }
 

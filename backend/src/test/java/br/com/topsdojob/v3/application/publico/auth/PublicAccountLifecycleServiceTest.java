@@ -42,6 +42,7 @@ class PublicAccountLifecycleServiceTest {
     private UsuarioEntity user;
 
     @BeforeEach void setup() {
+        when(encoder.encode(anyString())).thenReturn("dummy-hash");
         service = new PublicAccountLifecycleService(users, credentials, tokens, outbox, encoder,
                 new PublicAuthRateLimiter(), sessions, Optional.of(vault), emailPayloads, 900);
         user = UsuarioEntity.criarCadastroPublico(UUID.randomUUID(), "Perfil", "perfil@example.invalid",
@@ -80,7 +81,7 @@ class PublicAccountLifecycleServiceTest {
         assertThat(securityRecord.getTentativas()).isEqualTo(1);
     }
 
-    @Test void tokenExpiradoOuReutilizadoRetorna400SemErroInterno() {
+    @Test void tokenExpiradoOuReutilizadoRetornaAMesmaMensagemGenerica() {
         TokenSegurancaEntity expired = TokenSegurancaEntity.criar(user.getId(), PublicAccountLifecycleService.RESET,
                 "hash-protegido", OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(1), OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(20));
         when(tokens.findFirstByUsuarioIdAndTipoOrderByCriadoEmDesc(
@@ -89,12 +90,25 @@ class PublicAccountLifecycleServiceTest {
         assertThatThrownBy(() -> service.validateReset(
                 new PublicCodeRequestDto("perfil@example.invalid", "123456"), "ip-expired"))
                 .isInstanceOfSatisfying(PublicAuthException.class,
-                        error -> assertThat(error.getMessage()).isEqualTo("Código expirado."));
+                        error -> assertThat(error.getMessage()).isEqualTo("Código inválido ou expirado."));
         assertThat(expired.getConsumidoEm()).isNotNull();
         assertThatThrownBy(() -> service.validateReset(
                 new PublicCodeRequestDto("perfil@example.invalid", "123456"), "ip-reused"))
                 .isInstanceOfSatisfying(PublicAuthException.class,
-                        error -> assertThat(error.getMessage()).isEqualTo("Código já utilizado."));
+                        error -> assertThat(error.getMessage()).isEqualTo("Código inválido ou expirado."));
+    }
+
+    @Test void codigoDeUsuarioInexistenteTemRespostaGenericaECustoCriptografico() {
+        when(users.findByEmailNormalizado("ausente@example.invalid")).thenReturn(Optional.empty());
+        when(encoder.matches("000000", "dummy-hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.validateReset(
+                new PublicCodeRequestDto(" AUSENTE@EXAMPLE.INVALID ", "000000"), "ip-unknown"))
+                .isInstanceOfSatisfying(PublicAuthException.class, error -> {
+                    assertThat(error.status()).isEqualTo(HttpStatus.BAD_REQUEST);
+                    assertThat(error.getMessage()).isEqualTo("Código inválido ou expirado.");
+                });
+        verify(encoder).matches("000000", "dummy-hash");
     }
 
     @Test void rateLimitBloqueiaExcessoCom429() {
@@ -102,7 +116,10 @@ class PublicAccountLifecycleServiceTest {
         for (int index = 0; index < 3; index++) limiter.require("request", "same-key", 3, java.time.Duration.ofMinutes(1));
         assertThatThrownBy(() -> limiter.require("request", "same-key", 3, java.time.Duration.ofMinutes(1)))
                 .isInstanceOfSatisfying(PublicAuthException.class,
-                        error -> assertThat(error.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS));
+                        error -> {
+                            assertThat(error.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+                            assertThat(error.retryAfterSeconds()).isPositive();
+                        });
     }
 
     @Test void redefinicaoTrocaHashConsomeTokenEInvalidaSessoes() {

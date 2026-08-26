@@ -16,12 +16,6 @@ export type PublicProfileUpdatePayload = {
   telefone: string
 }
 
-export type DuplicidadeResposta = {
-  emailExistente: boolean
-  usernameExistente: boolean
-  telefoneExistente: boolean
-}
-
 export type DocumentosJuridicos = {
   termos: SiteContentEntry
   privacidade: SiteContentEntry
@@ -215,18 +209,6 @@ export const validatePublicResetCode = (email: string, codigo: string) => accoun
 export const resetPublicCredential = (...values: [string, string, string, string]) => {
   const [email, codigo, novaSenha, confirmarSenha] = values
   return accountAction('/auth/reset-password', { email, codigo, novaSenha, confirmarSenha })
-}
-
-export async function checkDuplicidade(
-  params: { email?: string; username?: string; telefone?: string },
-  signal?: AbortSignal
-): Promise<DuplicidadeResposta> {
-  const query = new URLSearchParams()
-  if (params.email) query.append('email', params.email.trim().toLowerCase())
-  if (params.username) query.append('username', params.username.trim())
-  if (params.telefone) query.append('telefone', params.telefone.replace(/\D/g, ''))
-
-  return publicRequest<DuplicidadeResposta>(`/usuarios/verificar-duplicidade?${query.toString()}`, { signal })
 }
 
 export async function fetchLegalDocuments(): Promise<DocumentosJuridicos> {
