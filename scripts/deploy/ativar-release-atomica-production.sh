@@ -290,7 +290,7 @@ prepare_candidate() {
   remove_candidate
   candidate_compose config --quiet || return 1
   candidate_compose build backend frontend || return 1
-  candidate_compose create --no-deps backend >/dev/null || return 1
+  candidate_compose up --no-start --no-deps backend >/dev/null || return 1
   docker network inspect "${CANDIDATE_NETWORK}" >/dev/null || return 1
   docker network connect --alias postgres "${CANDIDATE_NETWORK}" "${POSTGRES_CONTAINER}" || return 1
 
