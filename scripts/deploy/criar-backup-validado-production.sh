@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+wait_for_ephemeral_postgres="${script_dir}/aguardar-postgres-efemero.sh"
+
 die() {
   echo "ERRO_BACKUP_PRODUCTION: $*" >&2
   exit 1
@@ -19,6 +22,7 @@ receipt_file="$4"
 [[ "$production_sha" =~ ^[0-9a-f]{40}$ ]] || die "SHA de producao invalido"
 [[ "$backup_dir" == /* ]] || die "diretorio de backup deve ser absoluto"
 [[ "$receipt_file" == /* ]] || die "receipt deve ser absoluto"
+[[ -r "$wait_for_ephemeral_postgres" ]] || die "helper do PostgreSQL efemero ausente"
 case "$backup_dir" in
   */releases|*/releases/*|*/.git|*/.git/*) die "backup nao pode ficar em release ou Git" ;;
 esac
@@ -56,7 +60,8 @@ temporary_dir="$(mktemp -d)"
 source_metrics="${temporary_dir}/source.metrics"
 restored_metrics="${temporary_dir}/restored.metrics"
 validation_sql="${temporary_dir}/validation.sql"
-restore_container="topsv3-backup-restore-${timestamp,,}"
+restore_suffix="$(printf '%s-%s-%s' "${timestamp,,}" "$$" "${RANDOM}" | tr -cd 'a-zA-Z0-9-')"
+restore_container="topsv3-backup-restore-${restore_suffix}"
 restore_container="${restore_container:0:63}"
 restore_volume="${restore_container}-data"
 restore_started=0
@@ -120,21 +125,13 @@ docker run --pull never -d \
   --name "$restore_container" \
   --network none \
   --volume "${restore_volume}:/var/lib/postgresql/data" \
+  --env POSTGRES_DB=restore_validation \
+  --env POSTGRES_USER=postgres \
   --env POSTGRES_HOST_AUTH_METHOD=trust \
   "$postgres_image" >/dev/null
 restore_started=1
 
-ready=0
-for attempt in $(seq 1 90); do
-  if docker exec "$restore_container" pg_isready -U postgres >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  sleep 1
-done
-[[ "$ready" -eq 1 ]] || die "PostgreSQL efemero nao ficou pronto"
-
-docker exec "$restore_container" createdb -U postgres restore_validation
+bash "$wait_for_ephemeral_postgres" "$restore_container" postgres restore_validation
 docker exec -i "$restore_container" pg_restore \
   -U postgres \
   -d restore_validation \
