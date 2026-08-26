@@ -86,6 +86,20 @@ run_scenario() (
   CONTINUITY_PID=""
   CANDIDATE_READY=0
   SMOKE_COUNT=0
+  LONG_PID=""
+  STREAM_PID=""
+  LONG_STARTED_AT=0
+
+  scenario_cleanup() {
+    local pid
+    for pid in "${LONG_PID:-}" "${STREAM_PID:-}"; do
+      if [ -n "${pid}" ]; then
+        kill "${pid}" >/dev/null 2>&1 || true
+        wait "${pid}" 2>/dev/null || true
+      fi
+    done
+  }
+  trap scenario_cleanup EXIT
 
   record_event() {
     printf '%s\n' "$1" >> "${EVENT_LOG}"
@@ -103,7 +117,11 @@ run_scenario() (
           code="$(curl -sS --max-time 2 -o /dev/null -w '%{http_code}' "${fixture_origin}${path}" || printf 000)"
           printf 'LISTING|%s\n' "${code}" >> "${HARNESS_STATUS_LOG}"
         fi
-        sleep 0.002
+        if [ "${SCENARIO}" = healthy ]; then
+          sleep 0.08
+        else
+          sleep 0.002
+        fi
       done
     ) &
     CONTINUITY_PID=$!
@@ -133,6 +151,50 @@ run_scenario() (
     sleep 0.05
   }
 
+  verify_coexistence_capacity() {
+    record_event COEXISTENCE_CAPACITY_OK
+  }
+
+  active_old_requests() {
+    curl -fsS "${fixture_origin}/__active/old"
+  }
+
+  old_runtime_residuals() {
+    curl -fsS "${fixture_origin}/__residual/old"
+  }
+
+  start_long_old_requests() {
+    LONG_HEADERS="${temporary}/${SCENARIO}.long.headers"
+    LONG_BODY="${temporary}/${SCENARIO}.long.body"
+    LONG_STATUS="${temporary}/${SCENARIO}.long.status"
+    STREAM_HEADERS="${temporary}/${SCENARIO}.stream.headers"
+    STREAM_BODY="${temporary}/${SCENARIO}.stream.body"
+    STREAM_STATUS="${temporary}/${SCENARIO}.stream.status"
+    LONG_STARTED_AT="$(date +%s)"
+
+    curl --silent --show-error --max-time 30 \
+      --dump-header "${LONG_HEADERS}" \
+      --output "${LONG_BODY}" \
+      --write-out '%{http_code}' \
+      "${fixture_origin}/__long?ms=16500" > "${LONG_STATUS}" &
+    LONG_PID=$!
+    curl --silent --show-error --max-time 30 \
+      --dump-header "${STREAM_HEADERS}" \
+      --output "${STREAM_BODY}" \
+      --write-out '%{http_code}' \
+      "${fixture_origin}/__stream?chunks=17&interval=1000" > "${STREAM_STATUS}" &
+    STREAM_PID=$!
+
+    local active=0
+    for _ in $(seq 1 200); do
+      active="$(active_old_requests)"
+      [ "${active}" -ge 2 ] && break
+      sleep 0.02
+    done
+    [ "${active}" -ge 2 ] || return 1
+    record_event OLD_LONG_REQUESTS_STARTED
+  }
+
   verify_candidate() {
     record_event CANDIDATE_GATES
     sleep 0.05
@@ -154,6 +216,9 @@ run_scenario() (
     GATEWAY_CONFIG_STAGED=0
     GATEWAY_CONFIG_VALIDATED=1
     record_event NGINX_VALID
+    if [ "${SCENARIO}" = healthy ]; then
+      start_long_old_requests || return 1
+    fi
   }
 
   switch_gateway() {
@@ -175,15 +240,47 @@ run_scenario() (
   }
 
   drain_window() {
-    record_event DRAIN
-    sleep 0.05
+    record_event POST_SWITCH_MONITOR
+    if [ "${SCENARIO}" != healthy ]; then
+      sleep 0.05
+      return 0
+    fi
+
+    [ "$(release_header)" = candidate ] || return 1
+    [ "$(active_old_requests)" -ge 2 ] || return 1
+    record_event OLD_RELEASE_RUNNING_DURING_MONITOR
+    record_event NEW_REQUESTS_CANDIDATE_ONLY
+
+    wait "${LONG_PID}" || return 1
+    LONG_PID=""
+    wait "${STREAM_PID}" || return 1
+    STREAM_PID=""
+    local elapsed
+    elapsed=$(($(date +%s) - LONG_STARTED_AT))
+    [ "${elapsed}" -ge 16 ] || return 1
+    [ "$(cat "${LONG_STATUS}")" = 200 ] || return 1
+    [ "$(cat "${STREAM_STATUS}")" = 200 ] || return 1
+    tr -d '\r' < "${LONG_HEADERS}" | grep -Fqi 'x-release: old' || return 1
+    tr -d '\r' < "${STREAM_HEADERS}" | grep -Fqi 'x-release: old' || return 1
+    grep -Fq 'old-long' "${LONG_BODY}" || return 1
+    grep -Fq 'old-video-chunk-17' "${STREAM_BODY}" || return 1
+    [ "$(active_old_requests)" -eq 0 ] || return 1
+    printf 'LONG|200\nSTREAM|200\n' >> "${HARNESS_STATUS_LOG}"
+    record_event "LONG_REQUEST_COMPLETED_SECONDS=${elapsed}"
+    record_event VIDEO_STREAM_COMPLETED
+    record_event OLD_CONNECTIONS_DRAINED
   }
 
   finalize_activation() {
     record_event FINALIZE
     [ "${SMOKE_COUNT}" -ge 2 ] || return 1
+    [ "$(active_old_requests)" -eq 0 ] || return 1
+    record_event OLD_GRACEFUL_SHUTDOWN_STARTED
     proxy_control stop-old
-    record_event OLD_STOPPED
+    record_event OLD_GRACEFUL_SHUTDOWN_COMPLETED
+    proxy_control remove-old-runtime
+    [ "$(old_runtime_residuals)" -eq 0 ] || return 1
+    record_event OLD_RUNTIME_RESIDUALS_0
   }
 
   restore_staged_gateway_config() {
@@ -223,20 +320,28 @@ run_scenario() (
       [ "${rc}" -eq 0 ] || return 1
       [ "$(release_header)" = candidate ] || return 1
       [ "$(event_line CANDIDATE_READY)" -lt "$(event_line TRAFFIC_SWITCH)" ] || return 1
+      [ "$(event_line COEXISTENCE_CAPACITY_OK)" -lt "$(event_line TRAFFIC_SWITCH)" ] || return 1
       [ "$(event_line TRAFFIC_SWITCH)" -lt "$(event_line PUBLIC_SMOKE_1)" ] || return 1
-      [ "$(event_line PUBLIC_SMOKE_2)" -lt "$(event_line OLD_STOPPED)" ] || return 1
+      [ "$(event_line OLD_LONG_REQUESTS_STARTED)" -lt "$(event_line TRAFFIC_SWITCH)" ] || return 1
+      [ "$(event_line TRAFFIC_SWITCH)" -lt "$(event_line LONG_REQUEST_COMPLETED_SECONDS)" ] || return 1
+      [ "$(event_line TRAFFIC_SWITCH)" -lt "$(event_line VIDEO_STREAM_COMPLETED)" ] || return 1
+      [ "$(event_line PUBLIC_SMOKE_2)" -lt "$(event_line OLD_GRACEFUL_SHUTDOWN_STARTED)" ] || return 1
+      [ "$(event_line OLD_CONNECTIONS_DRAINED)" -lt "$(event_line OLD_GRACEFUL_SHUTDOWN_STARTED)" ] || return 1
+      grep -Fq NEW_REQUESTS_CANDIDATE_ONLY "${EVENT_LOG}" || return 1
+      grep -Fq OLD_RELEASE_RUNNING_DURING_MONITOR "${EVENT_LOG}" || return 1
+      grep -Fq OLD_RUNTIME_RESIDUALS_0 "${EVENT_LOG}" || return 1
       ;;
     post-switch-failure)
       [ "${rc}" -ne 0 ] || return 1
       [ "$(release_header)" = old ] || return 1
       grep -Fq TRAFFIC_ROLLBACK "${EVENT_LOG}" || return 1
-      ! grep -Fq OLD_STOPPED "${EVENT_LOG}" || return 1
+       ! grep -Fq OLD_GRACEFUL_SHUTDOWN_COMPLETED "${EVENT_LOG}" || return 1
       ;;
     *)
       [ "${rc}" -ne 0 ] || return 1
       [ "$(release_header)" = old ] || return 1
       ! grep -Fq TRAFFIC_SWITCH "${EVENT_LOG}" || return 1
-      ! grep -Fq OLD_STOPPED "${EVENT_LOG}" || return 1
+       ! grep -Fq OLD_GRACEFUL_SHUTDOWN_COMPLETED "${EVENT_LOG}" || return 1
       grep -Fq CANDIDATE_REMOVED "${EVENT_LOG}" || return 1
       ;;
   esac
@@ -244,7 +349,11 @@ run_scenario() (
   if awk -F'|' '$2 == "500" || $2 == "502" || $2 == "504" || $2 == "000" { found = 1 } END { exit found ? 0 : 1 }' "${HARNESS_STATUS_LOG}"; then
     return 1
   fi
-  printf 'ok - %s: 200 Home + 40 listagem, zero 500/502/504\n' "${SCENARIO}"
+  if [ "${SCENARIO}" = healthy ]; then
+    printf 'ok - %s: request >15s + stream preservados, 200 Home + 40 listagem, zero 500/502/504\n' "${SCENARIO}"
+  else
+    printf 'ok - %s: 200 Home + 40 listagem, zero 500/502/504\n' "${SCENARIO}"
+  fi
 )
 
 run_scenario unhealthy

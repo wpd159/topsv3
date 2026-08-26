@@ -101,6 +101,94 @@ expect_http_status() {
   esac
 }
 
+expect_json_up_once() {
+  local url="$1"
+  local body code
+  body="$(mktemp "${RUNTIME_DIR}/probe-once.XXXXXX")" || return 1
+  code="$(curl --silent --show-error --max-time 4 --output "${body}" --write-out '%{http_code}' "${url}" 2>/dev/null || true)"
+  if [ "${code}" = 200 ] && grep -q '"status":"UP"' "${body}"; then
+    rm -f -- "${body}"
+    return 0
+  fi
+  rm -f -- "${body}"
+  return 1
+}
+
+container_is_running() {
+  [ "$(docker inspect "$1" --format '{{.State.Running}}' 2>/dev/null)" = true ]
+}
+
+log_runtime_resources() {
+  local containers=(
+    "${ACTIVE_PREFIX}-backend"
+    "${ACTIVE_PREFIX}-frontend"
+    "${ACTIVE_PREFIX}-gateway"
+    "${CANDIDATE_BACKEND}"
+    "${CANDIDATE_FRONTEND}"
+    "${CANDIDATE_GATEWAY}"
+  )
+  local stats name cpu memory
+  stats="$(docker stats --no-stream --format '{{.Name}}|{{.CPUPerc}}|{{.MemUsage}}' "${containers[@]}" 2>/dev/null)" || return 1
+  while IFS='|' read -r name cpu memory; do
+    [ -n "${name}" ] || continue
+    log "RESOURCE container=${name} cpu=${cpu} memory=${memory}"
+  done <<< "${stats}"
+}
+
+verify_coexistence_capacity() {
+  local container available_memory_mb load_one cpus
+  for container in \
+    "${ACTIVE_PREFIX}-backend" \
+    "${ACTIVE_PREFIX}-frontend" \
+    "${ACTIVE_PREFIX}-gateway" \
+    "${CANDIDATE_BACKEND}" \
+    "${CANDIDATE_FRONTEND}" \
+    "${CANDIDATE_GATEWAY}"; do
+    container_is_running "${container}" || return 1
+  done
+
+  log_runtime_resources || return 1
+  available_memory_mb="$(awk '/^MemAvailable:/ { print int($2 / 1024) }' /proc/meminfo)"
+  load_one="$(awk '{ print $1 }' /proc/loadavg)"
+  cpus="$(nproc)"
+  [[ "${available_memory_mb}" =~ ^[0-9]+$ ]] || return 1
+  [[ "${cpus}" =~ ^[0-9]+$ ]] && [ "${cpus}" -gt 0 ] || return 1
+  log "HOST_RESOURCE available_memory_mb=${available_memory_mb} load_one=${load_one} cpus=${cpus}"
+  [ "${available_memory_mb}" -ge "${MIN_AVAILABLE_MEMORY_MB}" ] || return 1
+  awk -v load="${load_one}" -v cpus="${cpus}" -v limit="${MAX_LOAD_PER_CPU}" \
+    'BEGIN { exit !(load <= cpus * limit) }'
+}
+
+old_gateway_connection_count() {
+  command -v ss >/dev/null 2>&1 || return 2
+  local connections
+  connections="$(ss -Htn state established \
+    "( sport = :${ACTIVE_GATEWAY_PORT} or dport = :${ACTIVE_GATEWAY_PORT} )" 2>/dev/null)" || return 2
+  awk 'NF { count++ } END { print count + 0 }' <<< "${connections}"
+}
+
+verify_old_release_running() {
+  local container
+  for container in "${ACTIVE_PREFIX}-backend" "${ACTIVE_PREFIX}-frontend" "${ACTIVE_PREFIX}-gateway"; do
+    container_is_running "${container}" || return 1
+  done
+}
+
+verify_candidate_after_switch() {
+  grep -Fq "127.0.0.1:${CANDIDATE_GATEWAY_PORT}" "${HOST_NGINX_SITE}" || return 1
+  if [ "${ACTIVE_GATEWAY_PORT}" != "${CANDIDATE_GATEWAY_PORT}" ] \
+    && grep -Fq "127.0.0.1:${ACTIVE_GATEWAY_PORT}" "${HOST_NGINX_SITE}"; then
+    return 1
+  fi
+  expect_json_up_once "http://127.0.0.1:${CANDIDATE_BACKEND_PORT}/api/health/readiness" || return 1
+  expect_json_up_once "http://127.0.0.1:${CANDIDATE_FRONTEND_PORT}/health/readiness" || return 1
+  expect_json_up_once "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/api/health/readiness" || return 1
+  expect_json_up_once "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/health/readiness" || return 1
+  expect_http_status "${PUBLIC_ORIGIN}/" 200 || return 1
+  expect_http_status "${PUBLIC_ORIGIN}/anuncios" 200 || return 1
+  verify_candidate_logs
+}
+
 start_continuity() {
   CONTINUITY_LOG="$(mktemp "${RUNTIME_DIR}/continuity.XXXXXX")" || return 1
   CONTINUITY_STOP="$(mktemp "${RUNTIME_DIR}/continuity-stop.XXXXXX")" || return 1
@@ -257,8 +345,48 @@ smoke_public() {
 }
 
 drain_window() {
-  log "STAGE=DRAIN seconds=${DRAIN_SECONDS}"
-  sleep "${DRAIN_SECONDS}"
+  log "STAGE=POST_SWITCH_MONITOR min_seconds=${DRAIN_MIN_SECONDS} max_seconds=${DRAIN_MAX_SECONDS}"
+  local started now elapsed connections connection_check=UNAVAILABLE stable_zero=0
+  started="$(date +%s)"
+
+  while true; do
+    verify_candidate_after_switch || return 1
+    verify_old_release_running || return 1
+    verify_coexistence_capacity || return 1
+
+    if connections="$(old_gateway_connection_count)"; then
+      connection_check=VERIFIED
+      log "OLD_GATEWAY_CONNECTIONS=${connections}"
+      if [ "${connections}" -eq 0 ]; then
+        stable_zero=$((stable_zero + 1))
+      else
+        stable_zero=0
+      fi
+    else
+      connection_check=UNAVAILABLE
+      stable_zero=0
+      log "OLD_GATEWAY_CONNECTIONS=UNAVAILABLE"
+    fi
+
+    now="$(date +%s)"
+    elapsed=$((now - started))
+    log "DRAIN_ELAPSED_SECONDS=${elapsed} connection_check=${connection_check} stable_zero=${stable_zero}"
+    if [ "${elapsed}" -ge "${DRAIN_MIN_SECONDS}" ]; then
+      if [ "${connection_check}" = VERIFIED ] && [ "${stable_zero}" -ge "${DRAIN_ZERO_STABLE_CHECKS}" ]; then
+        log "DRAIN_RESULT=CONNECTIONS_DRAINED"
+        return 0
+      fi
+      if [ "${connection_check}" = UNAVAILABLE ]; then
+        log "DRAIN_RESULT=MINIMUM_WINDOW_WITHOUT_CONNECTION_PROBE"
+        return 0
+      fi
+    fi
+    if [ "${elapsed}" -ge "${DRAIN_MAX_SECONDS}" ]; then
+      log "DRAIN_RESULT=ACTIVE_CONNECTIONS_REMAIN"
+      return 1
+    fi
+    sleep "${DRAIN_POLL_SECONDS}"
+  done
 }
 
 restore_staged_gateway_config() {
@@ -333,18 +461,84 @@ restore_active_state() {
   fi
 }
 
-finalize_activation() {
-  log "STAGE=FINALIZE"
-  update_current_link || return 1
-  write_active_state || return 1
-
+restart_stopped_old_release() {
   local container
-  for container in "${ACTIVE_PREFIX}-gateway" "${ACTIVE_PREFIX}-frontend" "${ACTIVE_PREFIX}-backend"; do
-    if docker inspect "${container}" >/dev/null 2>&1; then
-      docker stop --time 30 "${container}" >/dev/null 2>&1 \
-        || log "WARNING=OLD_CONTAINER_STOP_FAILED container=${container}"
+  for container in "${ACTIVE_PREFIX}-backend" "${ACTIVE_PREFIX}-frontend" "${ACTIVE_PREFIX}-gateway"; do
+    if docker inspect "${container}" >/dev/null 2>&1 && ! container_is_running "${container}"; then
+      docker start "${container}" >/dev/null || return 1
     fi
   done
+}
+
+shutdown_old_release_gracefully() {
+  log "STAGE=OLD_RELEASE_GRACEFUL_SHUTDOWN timeout_seconds=${OLD_SHUTDOWN_TIMEOUT_SECONDS}"
+  local connections container
+  if connections="$(old_gateway_connection_count)"; then
+    log "OLD_GATEWAY_CONNECTIONS_BEFORE_SHUTDOWN=${connections}"
+    [ "${connections}" -eq 0 ] || return 1
+  else
+    log "OLD_GATEWAY_CONNECTIONS_BEFORE_SHUTDOWN=UNAVAILABLE"
+  fi
+
+  for container in "${ACTIVE_PREFIX}-gateway" "${ACTIVE_PREFIX}-frontend" "${ACTIVE_PREFIX}-backend"; do
+    if docker inspect "${container}" >/dev/null 2>&1; then
+      if ! docker stop --time "${OLD_SHUTDOWN_TIMEOUT_SECONDS}" "${container}" >/dev/null; then
+        restart_stopped_old_release || true
+        return 1
+      fi
+      if container_is_running "${container}"; then
+        restart_stopped_old_release || true
+        return 1
+      fi
+    fi
+  done
+  log "OLD_RELEASE_SHUTDOWN=GRACEFUL"
+}
+
+remove_old_runtime() {
+  local container flyway_container network_project remaining
+  for container in "${ACTIVE_PREFIX}-gateway" "${ACTIVE_PREFIX}-frontend" "${ACTIVE_PREFIX}-backend"; do
+    if docker inspect "${container}" >/dev/null 2>&1 && ! container_is_running "${container}"; then
+      docker rm "${container}" >/dev/null || return 1
+    fi
+  done
+
+  flyway_container="${ACTIVE_PREFIX}-flyway"
+  if docker inspect "${flyway_container}" >/dev/null 2>&1 \
+    && [ "$(docker inspect "${flyway_container}" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)" = "${ACTIVE_PROJECT}" ] \
+    && ! container_is_running "${flyway_container}"; then
+    docker rm "${flyway_container}" >/dev/null || return 1
+  fi
+
+  if [ "${ACTIVE_NETWORK}" = topsv3-production-net ]; then
+    log "OLD_NETWORK_PRESERVED=CANONICAL_DATABASE_NETWORK"
+  elif docker network inspect "${ACTIVE_NETWORK}" >/dev/null 2>&1; then
+    docker network disconnect "${ACTIVE_NETWORK}" "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
+    remaining="$(docker network inspect "${ACTIVE_NETWORK}" --format '{{range .Containers}}{{println .Name}}{{end}}' 2>/dev/null || true)"
+    network_project="$(docker network inspect "${ACTIVE_NETWORK}" --format '{{index .Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
+    if [ -z "${remaining}" ] && [ "${network_project}" = "${ACTIVE_PROJECT}" ]; then
+      docker network rm "${ACTIVE_NETWORK}" >/dev/null || return 1
+    elif [ -n "${remaining}" ]; then
+      log "WARNING=OLD_NETWORK_PRESERVED reason=attached_containers"
+      return 1
+    else
+      log "WARNING=OLD_NETWORK_PRESERVED reason=ownership_unconfirmed"
+      return 1
+    fi
+  fi
+  log "OLD_RELEASE_RUNTIME_RESIDUALS=0"
+}
+
+finalize_activation() {
+  log "STAGE=FINALIZE"
+  shutdown_old_release_gracefully || return 1
+  if ! update_current_link || ! write_active_state; then
+    restart_stopped_old_release || true
+    return 1
+  fi
+  if ! remove_old_runtime; then
+    log "WARNING=OLD_RUNTIME_CLEANUP_DEFERRED"
+  fi
   log "ACTIVE_RELEASE=${RELEASE_SHA}"
 }
 
@@ -388,6 +582,7 @@ atomic_activate() {
   stage_or_abort start_continuity || return $?
   stage_or_abort prepare_candidate || return $?
   stage_or_abort verify_candidate || return $?
+  stage_or_abort verify_coexistence_capacity || return $?
   stage_or_abort validate_gateway_candidate || return $?
   stage_or_abort switch_gateway || return $?
   stage_or_abort smoke_public || return $?
@@ -421,14 +616,33 @@ initialize_production() {
   HOST_NGINX_SITE="${TOPSV3_HOST_NGINX_SITE:-/etc/nginx/sites-enabled/topsdojob-live}"
   PUBLIC_ORIGIN="${TOPSV3_PUBLIC_ORIGIN:-https://topsdojob.com}"
   POSTGRES_CONTAINER="${TOPSV3_POSTGRES_CONTAINER:-topsv3-production-postgres}"
-  DRAIN_SECONDS="${TOPSV3_DRAIN_SECONDS:-15}"
+  DRAIN_MIN_SECONDS="${TOPSV3_DRAIN_MIN_SECONDS:-600}"
+  DRAIN_MAX_SECONDS="${TOPSV3_DRAIN_MAX_SECONDS:-1800}"
+  DRAIN_POLL_SECONDS="${TOPSV3_DRAIN_POLL_SECONDS:-10}"
+  DRAIN_ZERO_STABLE_CHECKS="${TOPSV3_DRAIN_ZERO_STABLE_CHECKS:-3}"
+  OLD_SHUTDOWN_TIMEOUT_SECONDS="${TOPSV3_OLD_SHUTDOWN_TIMEOUT_SECONDS:-300}"
+  MIN_AVAILABLE_MEMORY_MB="${TOPSV3_MIN_AVAILABLE_MEMORY_MB:-512}"
+  MAX_LOAD_PER_CPU="${TOPSV3_MAX_LOAD_PER_CPU:-4.0}"
   COMPOSE_FILE="${RELEASE_DIR}/deploy/production/docker-compose.yml"
+
+  for value in \
+    "${DRAIN_MIN_SECONDS}" \
+    "${DRAIN_MAX_SECONDS}" \
+    "${DRAIN_POLL_SECONDS}" \
+    "${DRAIN_ZERO_STABLE_CHECKS}" \
+    "${OLD_SHUTDOWN_TIMEOUT_SECONDS}" \
+    "${MIN_AVAILABLE_MEMORY_MB}"; do
+    [[ "${value}" =~ ^[0-9]+$ ]] && [ "${value}" -gt 0 ] || fail "parametro numerico de drenagem invalido"
+  done
+  [ "${DRAIN_MAX_SECONDS}" -ge "${DRAIN_MIN_SECONDS}" ] || fail "janela maxima menor que a minima"
+  [[ "${MAX_LOAD_PER_CPU}" =~ ^[0-9]+([.][0-9]+)?$ ]] || fail "limite de carga invalido"
 
   install -d -m 0750 "${RUNTIME_DIR}" || return 1
   [ -r "${COMPOSE_FILE}" ] || fail "Compose da release ausente"
   [ -w "${HOST_NGINX_SITE}" ] || fail "configuracao Nginx nao gravavel pelo usuario de deploy"
   require_command docker || return 1
   require_command curl || return 1
+  require_command nproc || return 1
   sudo -n nginx -t >/dev/null 2>&1 || fail "nginx -t indisponivel"
   sudo -n -l /usr/bin/systemctl reload nginx >/dev/null 2>&1 \
     || fail "reload gracioso do Nginx nao autorizado"

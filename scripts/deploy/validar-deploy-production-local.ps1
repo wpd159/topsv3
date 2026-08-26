@@ -342,6 +342,12 @@ foreach ($required in @(
     "restore_gateway",
     "verify_active_release",
     "drain_window",
+    "verify_coexistence_capacity",
+    "old_gateway_connection_count",
+    'TOPSV3_DRAIN_MIN_SECONDS:-600',
+    'TOPSV3_OLD_SHUTDOWN_TIMEOUT_SECONDS:-300',
+    "shutdown_old_release_gracefully",
+    "OLD_RELEASE_RUNTIME_RESIDUALS=0",
     "CONTINUITY_FAILURES"
   )) {
   Add-Check "ativador atomico contem $required" ($atomicActivator.Contains($required))
@@ -353,6 +359,13 @@ foreach ($required in @(
     "nginx-invalid",
     "post-switch-failure",
     "seq 1 200",
+    "OLD_LONG_REQUESTS_STARTED",
+    "LONG_REQUEST_COMPLETED_SECONDS",
+    "VIDEO_STREAM_COMPLETED",
+    "NEW_REQUESTS_CANDIDATE_ONLY",
+    "OLD_RELEASE_RUNNING_DURING_MONITOR",
+    "OLD_GRACEFUL_SHUTDOWN_COMPLETED",
+    "OLD_RUNTIME_RESIDUALS_0",
     "zero 500/502/504",
     "ATOMIC_RELEASE_DEPLOY_TESTS=PASS"
   )) {
@@ -361,6 +374,18 @@ foreach ($required in @(
 Add-Check "ativador nao recria gateway ativo" (
   (-not ($atomicActivator -match 'force-recreate[^\r\n]*\$\{ACTIVE_PREFIX\}')) -and
   ($atomicActivator.Contains('sudo -n systemctl reload nginx'))
+)
+Add-Check "drenagem nao usa janela fixa insegura" (
+  (-not $atomicActivator.Contains('TOPSV3_DRAIN_SECONDS:-15')) -and
+  (-not ($atomicActivator -match 'docker stop --time 30')) -and
+  ($atomicActivator.Contains('DRAIN_RESULT=CONNECTIONS_DRAINED')) -and
+  ($atomicActivator.Contains('DRAIN_RESULT=MINIMUM_WINDOW_WITHOUT_CONNECTION_PROBE')) -and
+  ($atomicActivator.Contains('docker stop --time "${OLD_SHUTDOWN_TIMEOUT_SECONDS}"'))
+)
+Add-Check "release antiga removida sem force apos shutdown" (
+  ($atomicActivator.Contains('OLD_RELEASE_SHUTDOWN=GRACEFUL')) -and
+  ($atomicActivator.Contains('docker rm "${container}"')) -and
+  (-not ($atomicActivator -match 'docker rm -f "\$\{ACTIVE_PREFIX\}'))
 )
 Add-Check "candidata usa aliases em rede isolada" (
   ($atomicActivator.Contains('TOPSV3_APP_NETWORK="${CANDIDATE_NETWORK}"')) -and
