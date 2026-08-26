@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 workflow="${repo_root}/.github/workflows/deploy-production.yml"
+atomic_helper="${repo_root}/scripts/deploy/ativar-release-atomica-production.sh"
 temp_dir="$(mktemp -d)"
 trap 'rm -rf -- "${temp_dir}"' EXIT
 
@@ -140,8 +141,9 @@ echo "PASS: falha_psql_interrompe"
 line_number() {
   local needle="$1"
   local occurrence="${2:-first}"
+  local source="${3:-$workflow}"
   local matches
-  matches="$(grep -nF -- "$needle" "$workflow" | cut -d: -f1)"
+  matches="$(grep -nF -- "$needle" "$source" | cut -d: -f1)"
   [[ -n "$matches" ]] || fail "marcador de ordem ausente: ${needle}"
   if [[ "$occurrence" == last ]]; then
     printf '%s\n' "$matches" | tail -n 1
@@ -153,9 +155,9 @@ line_number() {
 backup_line="$(line_number 'bash "${backup_producer}"')"
 flyway_line="$(line_number 'flyway migrate </dev/null')"
 flyway_gate_line="$(line_number 'bash "${flyway_gate}" after')"
-startup_line="$(line_number 'application_started=1')"
-health_line="$(line_number 'test "${healthy}" -eq 1')"
-switch_line="$(line_number 'mv -Tf "${current_link}"')"
+startup_line="$(line_number 'bash "${atomic_activator}"')"
+health_line="$(line_number 'stage_or_abort verify_candidate' first "$atomic_helper")"
+switch_line="$(line_number 'stage_or_abort switch_gateway' first "$atomic_helper")"
 
 (( backup_line < flyway_line )) || fail "backup nao antecede Flyway"
 echo "PASS: backup_antes_flyway"
@@ -163,7 +165,8 @@ echo "PASS: backup_antes_flyway"
   || fail "Flyway validado fora da ordem de startup"
 echo "PASS: flyway_antes_startup"
 (( health_line < switch_line )) || fail "troca da release antecede health/readiness"
-grep -Fq 'api/health/readiness' "$workflow" || fail "readiness ausente"
+grep -Fq 'api/health/readiness' "$atomic_helper" || fail "readiness backend ausente"
+grep -Fq 'health/readiness' "$atomic_helper" || fail "readiness frontend ausente"
 echo "PASS: health_antes_troca"
 
 echo "DEPLOY_STDIN_REGRESSION_TESTS=PASS"
