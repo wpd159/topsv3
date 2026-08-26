@@ -81,7 +81,10 @@ jobs:
           bash ./scripts/deploy/testar-gate-banco-production.sh
           bash ./scripts/deploy/testar-gate-flyway-production.sh
           bash ./scripts/deploy/testar-stdin-deploy-production.sh
-          bash ./scripts/deploy/testar-backup-validado-production.sh
+          for backup_restore_run in $(seq 1 10); do
+            bash ./scripts/deploy/testar-backup-validado-production.sh
+          done
+          echo 'BACKUP_RESTORE_RUNS=10/10'
 
       - name: Validate required secrets
         shell: bash

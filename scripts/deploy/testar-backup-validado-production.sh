@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 backup_producer="${script_dir}/criar-backup-validado-production.sh"
+wait_for_ephemeral_postgres="${script_dir}/aguardar-postgres-efemero.sh"
 suffix="$(printf '%s-%s' "$$" "${RANDOM}" | tr -cd 'a-zA-Z0-9-')"
 source_container="topsv3-backup-source-test-${suffix}"
 source_volume="${source_container}-data"
@@ -57,16 +58,7 @@ docker run -d \
   "$postgres_image" >/dev/null
 source_started=1
 
-ready=0
-for attempt in $(seq 1 90); do
-  if docker exec "$source_container" pg_isready -U postgres -d topsv3_backup_fixture \
-    >/dev/null 2>&1; then
-    ready=1
-    break
-  fi
-  sleep 1
-done
-[[ "$ready" -eq 1 ]] || { echo "FALHA: PostgreSQL de origem nao ficou pronto" >&2; exit 1; }
+bash "$wait_for_ephemeral_postgres" "$source_container" postgres topsv3_backup_fixture
 
 cat > "$fixture_sql" <<'SQL'
 CREATE TABLE usuario (id bigint PRIMARY KEY);
@@ -109,6 +101,7 @@ checksum_path="${backup_path}.sha256"
 )
 docker exec -i "$source_container" pg_restore --list < "$backup_path" >/dev/null
 echo "PASS: backup_restaurado_flyway_051"
+echo "PASS: marcador_posterior_gate_backup"
 
 if docker ps -a --format '{{.Names}}' | grep -q '^topsv3-backup-restore-'; then
   echo "FALHA: container efemero de restauracao permaneceu" >&2
@@ -118,5 +111,14 @@ if docker volume ls --format '{{.Name}}' | grep -q '^topsv3-backup-restore-'; th
   echo "FALHA: volume efemero de restauracao permaneceu" >&2
   exit 1
 fi
+
+docker stop "$source_container" >/dev/null
+if POSTGRES_EFEMERO_MAX_ATTEMPTS=3 \
+  bash "$wait_for_ephemeral_postgres" "$source_container" postgres topsv3_backup_fixture \
+  >/dev/null 2>&1; then
+  echo "FALHA: PostgreSQL interrompido foi aceito pelo gate" >&2
+  exit 1
+fi
+echo "PASS: falha_real_postgres_bloqueia"
 
 echo "BACKUP_RESTORE_INTEGRATION_TEST=PASS"

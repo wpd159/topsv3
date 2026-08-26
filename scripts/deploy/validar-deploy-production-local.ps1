@@ -24,6 +24,7 @@ $databaseGateTests = Read-RepoFile "scripts/deploy/testar-gate-banco-production.
 $flywayGate = Read-RepoFile "scripts/deploy/validar-gate-flyway-production.sh"
 $flywayGateTests = Read-RepoFile "scripts/deploy/testar-gate-flyway-production.sh"
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
+$ephemeralPostgresWaiter = Read-RepoFile "scripts/deploy/aguardar-postgres-efemero.sh"
 $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
 $preprodWorkflow = Read-RepoFile ".github/workflows/deploy-preprod.yml"
@@ -57,6 +58,7 @@ foreach ($required in @(
     "criar-backup-validado-production.sh",
     "testar-stdin-deploy-production.sh",
     "testar-backup-validado-production.sh",
+    "BACKUP_RESTORE_RUNS=10/10",
     "backups/postgresql",
     "api/health/readiness"
   )) {
@@ -284,6 +286,22 @@ foreach ($required in @(
   Add-Check "backup validado contem $required" ($backupProducer.Contains($required))
 }
 foreach ($required in @(
+    "PostgreSQL init process complete; ready for start up.",
+    "POSTGRES_EFEMERO_STABLE_PROBES",
+    "--set=ON_ERROR_STOP=1",
+    "--command 'SELECT 1;' </dev/null",
+    "POSTGRES_EFEMERO_DIAGNOSTICO"
+  )) {
+  Add-Check "espera PostgreSQL efemero contem $required" ($ephemeralPostgresWaiter.Contains($required))
+}
+Add-Check "espera PostgreSQL exige tres probes por padrao" (
+  $ephemeralPostgresWaiter.Contains('POSTGRES_EFEMERO_STABLE_PROBES:-3')
+)
+Add-Check "backup cria banco de restauracao no entrypoint" (
+  $backupProducer.Contains("POSTGRES_DB=restore_validation")
+)
+Add-Check "backup nao usa createdb" (-not $backupProducer.Contains("createdb"))
+foreach ($required in @(
     "marcador_posterior",
     "falha_psql_interrompe",
     "backup_antes_flyway",
@@ -297,6 +315,8 @@ foreach ($required in @(
     "postgres:17.10-alpine",
     "BACKUP_STATUS=VALIDATED",
     "backup_restaurado_flyway_051",
+    "marcador_posterior_gate_backup",
+    "falha_real_postgres_bloqueia",
     "pg_restore --list",
     "BACKUP_RESTORE_INTEGRATION_TEST=PASS"
   )) {
