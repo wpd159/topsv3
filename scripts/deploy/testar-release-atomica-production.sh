@@ -37,6 +37,11 @@ grep -Fq 'http://backend:8080/api/public' "${helper}" || fail "API interna candi
 grep -Fq 'systemctl reload nginx' "${helper}" || fail "reload gracioso ausente"
 grep -Fq 'EFI_WEBHOOK_REGISTRATION_ENABLED=false' "${helper}" || fail "registro Efi nao neutralizado na candidata"
 grep -Fq 'verify_candidate_job_isolation' "${helper}" || fail "flag Efi efetiva da candidata nao validada"
+if grep -Fq 'candidate_compose create --no-deps' "${helper}"; then
+  fail "ativador ainda usa compose create --no-deps, incompativel com Compose 5.5"
+fi
+grep -Fq 'candidate_compose up --no-start --no-deps backend' "${helper}" \
+  || fail "criacao parada e sem dependencias da candidata ausente"
 if grep -Fq 'docker rm -f' "${helper}"; then
   fail "ativador ainda contem remocao forcada de container"
 fi
@@ -91,6 +96,49 @@ test_candidate_efi_effective_configuration() (
     return 1
   }
   verify_candidate_job_isolation
+)
+
+test_candidate_compose55_creation_sequence() (
+  set -euo pipefail
+  local_events="${temporary}/compose55-candidate.events"
+  : > "${local_events}"
+
+  CANDIDATE_NETWORK=fixture-candidate-net
+  POSTGRES_CONTAINER=fixture-production-postgres
+  CANDIDATE_TRUSTED_PROXY_CIDRS=""
+
+  remove_candidate() {
+    printf 'REMOVE_CANDIDATE\n' >> "${local_events}"
+  }
+
+  candidate_compose() {
+    printf 'COMPOSE|%s\n' "$*" >> "${local_events}"
+  }
+
+  docker() {
+    printf 'DOCKER|%s\n' "$*" >> "${local_events}"
+    if [ "$1" = network ] && [ "$2" = inspect ] && [[ " $* " == *" --format "* ]]; then
+      printf '172.31.255.0/24\n'
+    fi
+  }
+
+  verify_candidate_job_isolation() {
+    printf 'JOB_ISOLATION_OK\n' >> "${local_events}"
+  }
+
+  prepare_candidate
+
+  grep -Fxq 'COMPOSE|up --no-start --no-deps backend' "${local_events}"
+  ! grep -Fq 'COMPOSE|create ' "${local_events}"
+  grep -Fxq 'DOCKER|network connect --alias postgres fixture-candidate-net fixture-production-postgres' "${local_events}"
+  grep -Fxq 'COMPOSE|up -d --no-deps --force-recreate backend frontend gateway' "${local_events}"
+
+  create_line="$(grep -n -m1 -F 'COMPOSE|up --no-start --no-deps backend' "${local_events}" | cut -d: -f1)"
+  connect_line="$(grep -n -m1 -F 'DOCKER|network connect --alias postgres' "${local_events}" | cut -d: -f1)"
+  start_line="$(grep -n -m1 -F 'COMPOSE|up -d --no-deps --force-recreate backend frontend gateway' "${local_events}" | cut -d: -f1)"
+  [ "${create_line}" -lt "${connect_line}" ]
+  [ "${connect_line}" -lt "${start_line}" ]
+  printf 'ok - Compose 5.5 cria candidata parada, conecta banco e inicia somente os servicos candidatos\n'
 )
 
 test_slow_smtp_graceful_shutdown() (
@@ -191,6 +239,7 @@ test_failed_graceful_shutdown_preserves_container() (
 )
 
 test_candidate_efi_effective_configuration
+test_candidate_compose55_creation_sequence
 test_slow_smtp_graceful_shutdown
 test_failed_graceful_shutdown_preserves_container
 
