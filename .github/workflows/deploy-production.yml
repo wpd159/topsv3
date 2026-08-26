@@ -60,6 +60,8 @@ jobs:
           npm run test:public-ordering
           npm run test:public-http-states
           npm run test:public-data-access
+          npm run test:health-readiness
+          node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           npm run test:search-indexing
           npm run test:seo-ai
@@ -462,8 +464,10 @@ jobs:
 
           healthy=0
           for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
-              && curl -fsS http://127.0.0.1:28080/api/health/readiness >/dev/null \
+            if curl -fsS http://127.0.0.1:28080/api/health/liveness | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:28080/api/health/readiness | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:23000/health/liveness | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:23000/health/readiness | grep -q '"status":"UP"' \
               && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
               healthy=1
               break
@@ -512,7 +516,10 @@ jobs:
             test "$(docker inspect "topsv3-production-${service}" --format '{{.State.Running}}')" = "true"
           done
           test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
-          curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"'
+          curl -fsS http://127.0.0.1:28080/api/health/liveness | grep -q '"status":"UP"'
+          curl -fsS http://127.0.0.1:28080/api/health/readiness | grep -q '"status":"UP"'
+          curl -fsS http://127.0.0.1:23000/health/liveness | grep -q '"status":"UP"'
+          curl -fsS http://127.0.0.1:23000/health/readiness | grep -q '"status":"UP"'
           curl -fsS http://127.0.0.1:23000/ >/dev/null
           curl -fsS http://127.0.0.1:23000/anuncios >/dev/null
           frontend_env="$(docker inspect topsv3-production-frontend --format '{{range .Config.Env}}{{println .}}{{end}}')"

@@ -70,6 +70,8 @@ jobs:
           npm run test:public-ordering
           npm run test:public-http-states
           npm run test:public-data-access
+          npm run test:health-readiness
+          node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           npm run test:search-indexing
           npm run test:seo-ai
@@ -315,7 +317,10 @@ jobs:
             test "$(docker inspect "topsv3-preprod-${service}" --format '{{.State.Running}}')" = "true"
           done
           for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
+            if curl -fsS http://127.0.0.1:28080/api/health/liveness | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:28080/api/health/readiness | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:23000/health/liveness | grep -q '"status":"UP"' \
+              && curl -fsS http://127.0.0.1:23000/health/readiness | grep -q '"status":"UP"' \
               && curl -fsS http://127.0.0.1:23000/ >/dev/null \
               && curl -fsSI http://127.0.0.1:23000/ | grep -qi '^X-Robots-Tag:.*noindex' \
               && curl -fsS http://127.0.0.1:23000/robots.txt | grep -q 'Disallow: /'; then

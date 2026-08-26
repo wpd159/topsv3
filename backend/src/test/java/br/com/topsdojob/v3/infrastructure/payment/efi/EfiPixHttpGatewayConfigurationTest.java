@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.domain.financeiro.FinanceiroTipos.AmbientePagamento;
+import br.com.topsdojob.v3.platform.health.BackendReadinessService;
 import br.com.topsdojob.v3.platform.health.HealthController;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.OutputStream;
@@ -43,6 +44,9 @@ class EfiPixHttpGatewayConfigurationTest {
                             Map.of("app.env", "homologacao", "efi.pix.enabled", "true")));
             context.registerBean(EfiPixProperties.class, () -> properties);
             context.registerBean(ObjectMapper.class, () -> new ObjectMapper());
+            context.registerBean(
+                    BackendReadinessService.class,
+                    () -> mock(BackendReadinessService.class));
             context.register(EfiPixHttpGateway.class);
             context.register(HealthController.class);
 
