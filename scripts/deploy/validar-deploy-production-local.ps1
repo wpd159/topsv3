@@ -345,7 +345,7 @@ foreach ($required in @(
     "verify_coexistence_capacity",
     "old_gateway_connection_count",
     'TOPSV3_DRAIN_MIN_SECONDS:-600',
-    'TOPSV3_OLD_SHUTDOWN_TIMEOUT_SECONDS:-300',
+    'TOPSV3_RELEASE_SHUTDOWN_TIMEOUT_SECONDS',
     "shutdown_old_release_gracefully",
     "OLD_RELEASE_RUNTIME_RESIDUALS=0",
     "CONTINUITY_FAILURES"
@@ -366,6 +366,8 @@ foreach ($required in @(
     "OLD_RELEASE_RUNNING_DURING_MONITOR",
     "OLD_GRACEFUL_SHUTDOWN_COMPLETED",
     "OLD_RUNTIME_RESIDUALS_0",
+    "SMTP lento concluiu aceite e commit antes da remocao normal",
+    "falha graciosa preservou container sem remocao forcada",
     "zero 500/502/504",
     "ATOMIC_RELEASE_DEPLOY_TESTS=PASS"
   )) {
@@ -380,12 +382,30 @@ Add-Check "drenagem nao usa janela fixa insegura" (
   (-not ($atomicActivator -match 'docker stop --time 30')) -and
   ($atomicActivator.Contains('DRAIN_RESULT=CONNECTIONS_DRAINED')) -and
   ($atomicActivator.Contains('DRAIN_RESULT=MINIMUM_WINDOW_WITHOUT_CONNECTION_PROBE')) -and
-  ($atomicActivator.Contains('docker stop --time "${OLD_SHUTDOWN_TIMEOUT_SECONDS}"'))
+  ($atomicActivator.Contains('docker stop --signal=TERM --time -1'))
 )
-Add-Check "release antiga removida sem force apos shutdown" (
+Add-Check "releases removidas sem force somente apos shutdown" (
   ($atomicActivator.Contains('OLD_RELEASE_SHUTDOWN=GRACEFUL')) -and
   ($atomicActivator.Contains('docker rm "${container}"')) -and
-  (-not ($atomicActivator -match 'docker rm -f "\$\{ACTIVE_PREFIX\}'))
+  ($atomicActivator.Contains('CONTAINER_REMOVAL_BLOCKED')) -and
+  (-not $atomicActivator.Contains('docker rm -f'))
+)
+Add-Check "candidata neutraliza registro Efi antes do startup" (
+  ($atomicActivator.Contains('EFI_WEBHOOK_REGISTRATION_ENABLED=false')) -and
+  ($atomicActivator.Contains('verify_candidate_job_isolation')) -and
+  ($atomicActivator.IndexOf('verify_candidate_job_isolation') -lt $atomicActivator.IndexOf('switch_gateway'))
+)
+Add-Check "shutdown excede ciclo Spring e timeouts SMTP" (
+  ($atomicActivator.Contains('SPRING_SHUTDOWN_PHASE_TIMEOUT_SECONDS=120')) -and
+  ($atomicActivator.Contains('SMTP_CONNECTION_TIMEOUT_SECONDS=5')) -and
+  ($atomicActivator.Contains('SMTP_READ_TIMEOUT_SECONDS=10')) -and
+  ($atomicActivator.Contains('SMTP_WRITE_TIMEOUT_SECONDS=10')) -and
+  ($atomicActivator.Contains('timeout de shutdown deve superar o ciclo gracioso do Spring')) -and
+  ($compose.Contains('SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 120s')) -and
+  ($compose.Contains('SPRING_TASK_SCHEDULING_SHUTDOWN_AWAIT_TERMINATION: "true"')) -and
+  ($compose.Contains('OUTBOX_SMTP_CONNECTION_TIMEOUT_MS: "5000"')) -and
+  ($compose.Contains('OUTBOX_SMTP_TIMEOUT_MS: "10000"')) -and
+  ($compose.Contains('OUTBOX_SMTP_WRITE_TIMEOUT_MS: "10000"'))
 )
 Add-Check "candidata usa aliases em rede isolada" (
   ($atomicActivator.Contains('TOPSV3_APP_NETWORK="${CANDIDATE_NETWORK}"')) -and
@@ -413,6 +433,13 @@ foreach ($required in @(
     "EFI_ENVIRONMENT: producao",
     "EFI_BASE_URL: https://pix.api.efipay.com.br",
     'OUTBOX_EMAIL_ENABLED: ${OUTBOX_EMAIL_ENABLED:-true}',
+    'OUTBOX_SMTP_CONNECTION_TIMEOUT_MS: "5000"',
+    'OUTBOX_SMTP_TIMEOUT_MS: "10000"',
+    'OUTBOX_SMTP_WRITE_TIMEOUT_MS: "10000"',
+    'SERVER_SHUTDOWN: graceful',
+    'SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 120s',
+    'SPRING_TASK_SCHEDULING_SHUTDOWN_AWAIT_TERMINATION: "true"',
+    'SPRING_TASK_SCHEDULING_SHUTDOWN_AWAIT_TERMINATION_PERIOD: 120s',
     'EFI_RECONCILIATION_ENABLED: ${EFI_RECONCILIATION_ENABLED:-true}',
     'EFI_WEBHOOK_REGISTRATION_ENABLED: ${EFI_WEBHOOK_REGISTRATION_ENABLED:-false}',
     "SEARCH_INDEXING_MODE: public",

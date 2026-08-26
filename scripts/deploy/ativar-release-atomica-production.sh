@@ -43,6 +43,7 @@ candidate_compose() {
     TOPSV3_FRONTEND_BIND_PORT="${CANDIDATE_FRONTEND_PORT}" \
     TOPSV3_GATEWAY_BIND_PORT="${CANDIDATE_GATEWAY_PORT}" \
     APP_SECURITY_AUTH_TRUSTED_PROXY_CIDRS="${CANDIDATE_TRUSTED_PROXY_CIDRS}" \
+    EFI_WEBHOOK_REGISTRATION_ENABLED=false \
     docker compose \
       --env-file "${ENV_FILE}" \
       -f "${COMPOSE_FILE}" \
@@ -55,14 +56,67 @@ container_project_is_candidate() {
   [ "$(docker inspect "${container}" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)" = "${CANDIDATE_PROJECT}" ]
 }
 
+wait_for_container_exit() {
+  local container="$1"
+  local timeout_seconds="$2"
+  local started elapsed
+  started="$(date +%s)"
+  while container_is_running "${container}"; do
+    elapsed=$(($(date +%s) - started))
+    if [ "${elapsed}" -ge "${timeout_seconds}" ]; then
+      return 1
+    fi
+    sleep "${SHUTDOWN_POLL_SECONDS}"
+  done
+}
+
+shutdown_container_gracefully() {
+  local container="$1"
+  local role="$2"
+  local stop_pid
+  docker inspect "${container}" >/dev/null 2>&1 || return 0
+  if ! container_is_running "${container}"; then
+    log "CONTAINER_ALREADY_STOPPED role=${role} container=${container}"
+    return 0
+  fi
+
+  log "CONTAINER_SIGTERM role=${role} container=${container} timeout_seconds=${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}"
+  docker stop --signal=TERM --time -1 "${container}" >/dev/null 2>&1 &
+  stop_pid=$!
+  if ! wait_for_container_exit "${container}" "${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}"; then
+    kill -TERM "${stop_pid}" >/dev/null 2>&1 || true
+    wait "${stop_pid}" 2>/dev/null || true
+    log "GRACEFUL_SHUTDOWN_FAILED role=${role} container=${container} preserved=true"
+    return 1
+  fi
+  wait "${stop_pid}" 2>/dev/null || true
+  container_is_running "${container}" && return 1
+  log "CONTAINER_GRACEFUL_SHUTDOWN_COMPLETED role=${role} container=${container}"
+}
+
+remove_stopped_container() {
+  local container="$1"
+  docker inspect "${container}" >/dev/null 2>&1 || return 0
+  if container_is_running "${container}"; then
+    log "CONTAINER_REMOVAL_BLOCKED container=${container} reason=still_running"
+    return 1
+  fi
+  docker rm "${container}" >/dev/null || return 1
+}
+
 remove_candidate() {
   local container
-  docker network disconnect "${CANDIDATE_NETWORK}" "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
   for container in "${CANDIDATE_GATEWAY}" "${CANDIDATE_FRONTEND}" "${CANDIDATE_BACKEND}"; do
     if container_project_is_candidate "${container}"; then
-      docker rm -f "${container}" >/dev/null 2>&1 || true
+      shutdown_container_gracefully "${container}" candidate || return 1
     fi
   done
+  for container in "${CANDIDATE_GATEWAY}" "${CANDIDATE_FRONTEND}" "${CANDIDATE_BACKEND}"; do
+    if container_project_is_candidate "${container}"; then
+      remove_stopped_container "${container}" || return 1
+    fi
+  done
+  docker network disconnect "${CANDIDATE_NETWORK}" "${POSTGRES_CONTAINER}" >/dev/null 2>&1 || true
   if docker network inspect "${CANDIDATE_NETWORK}" >/dev/null 2>&1; then
     local network_project
     network_project="$(docker network inspect "${CANDIDATE_NETWORK}" --format '{{index .Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
@@ -70,6 +124,15 @@ remove_candidate() {
       docker network rm "${CANDIDATE_NETWORK}" >/dev/null 2>&1 || true
     fi
   fi
+}
+
+verify_candidate_job_isolation() {
+  local registration_enabled
+  registration_enabled="$(docker inspect "${CANDIDATE_BACKEND}" \
+    --format '{{range .Config.Env}}{{println .}}{{end}}' \
+    | sed -n 's/^EFI_WEBHOOK_REGISTRATION_ENABLED=//p')" || return 1
+  [ "${registration_enabled}" = false ] || return 1
+  log "CANDIDATE_EFI_WEBHOOK_REGISTRATION_ENABLED=false"
 }
 
 wait_for_json_up() {
@@ -237,6 +300,7 @@ prepare_candidate() {
   CANDIDATE_TRUSTED_PROXY_CIDRS="${candidate_subnet},127.0.0.0/8,::1/128"
 
   candidate_compose up -d --no-deps --force-recreate backend frontend gateway || return 1
+  verify_candidate_job_isolation || return 1
 }
 
 verify_database_gate() {
@@ -471,7 +535,7 @@ restart_stopped_old_release() {
 }
 
 shutdown_old_release_gracefully() {
-  log "STAGE=OLD_RELEASE_GRACEFUL_SHUTDOWN timeout_seconds=${OLD_SHUTDOWN_TIMEOUT_SECONDS}"
+  log "STAGE=OLD_RELEASE_GRACEFUL_SHUTDOWN timeout_seconds=${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}"
   local connections container
   if connections="$(old_gateway_connection_count)"; then
     log "OLD_GATEWAY_CONNECTIONS_BEFORE_SHUTDOWN=${connections}"
@@ -482,7 +546,7 @@ shutdown_old_release_gracefully() {
 
   for container in "${ACTIVE_PREFIX}-gateway" "${ACTIVE_PREFIX}-frontend" "${ACTIVE_PREFIX}-backend"; do
     if docker inspect "${container}" >/dev/null 2>&1; then
-      if ! docker stop --time "${OLD_SHUTDOWN_TIMEOUT_SECONDS}" "${container}" >/dev/null; then
+      if ! shutdown_container_gracefully "${container}" active; then
         restart_stopped_old_release || true
         return 1
       fi
@@ -620,7 +684,12 @@ initialize_production() {
   DRAIN_MAX_SECONDS="${TOPSV3_DRAIN_MAX_SECONDS:-1800}"
   DRAIN_POLL_SECONDS="${TOPSV3_DRAIN_POLL_SECONDS:-10}"
   DRAIN_ZERO_STABLE_CHECKS="${TOPSV3_DRAIN_ZERO_STABLE_CHECKS:-3}"
-  OLD_SHUTDOWN_TIMEOUT_SECONDS="${TOPSV3_OLD_SHUTDOWN_TIMEOUT_SECONDS:-300}"
+  RELEASE_SHUTDOWN_TIMEOUT_SECONDS="${TOPSV3_RELEASE_SHUTDOWN_TIMEOUT_SECONDS:-${TOPSV3_OLD_SHUTDOWN_TIMEOUT_SECONDS:-300}}"
+  SHUTDOWN_POLL_SECONDS="${TOPSV3_SHUTDOWN_POLL_SECONDS:-1}"
+  SPRING_SHUTDOWN_PHASE_TIMEOUT_SECONDS=120
+  SMTP_CONNECTION_TIMEOUT_SECONDS=5
+  SMTP_READ_TIMEOUT_SECONDS=10
+  SMTP_WRITE_TIMEOUT_SECONDS=10
   MIN_AVAILABLE_MEMORY_MB="${TOPSV3_MIN_AVAILABLE_MEMORY_MB:-512}"
   MAX_LOAD_PER_CPU="${TOPSV3_MAX_LOAD_PER_CPU:-4.0}"
   COMPOSE_FILE="${RELEASE_DIR}/deploy/production/docker-compose.yml"
@@ -630,12 +699,20 @@ initialize_production() {
     "${DRAIN_MAX_SECONDS}" \
     "${DRAIN_POLL_SECONDS}" \
     "${DRAIN_ZERO_STABLE_CHECKS}" \
-    "${OLD_SHUTDOWN_TIMEOUT_SECONDS}" \
+    "${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}" \
+    "${SHUTDOWN_POLL_SECONDS}" \
     "${MIN_AVAILABLE_MEMORY_MB}"; do
     [[ "${value}" =~ ^[0-9]+$ ]] && [ "${value}" -gt 0 ] || fail "parametro numerico de drenagem invalido"
   done
   [ "${DRAIN_MAX_SECONDS}" -ge "${DRAIN_MIN_SECONDS}" ] || fail "janela maxima menor que a minima"
+  [ "${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}" -gt "${SPRING_SHUTDOWN_PHASE_TIMEOUT_SECONDS}" ] \
+    || fail "timeout de shutdown deve superar o ciclo gracioso do Spring"
+  [ "${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}" -gt "${SMTP_CONNECTION_TIMEOUT_SECONDS}" ] \
+    && [ "${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}" -gt "${SMTP_READ_TIMEOUT_SECONDS}" ] \
+    && [ "${RELEASE_SHUTDOWN_TIMEOUT_SECONDS}" -gt "${SMTP_WRITE_TIMEOUT_SECONDS}" ] \
+    || fail "timeout de shutdown deve superar os timeouts SMTP"
   [[ "${MAX_LOAD_PER_CPU}" =~ ^[0-9]+([.][0-9]+)?$ ]] || fail "limite de carga invalido"
+  log "SHUTDOWN_BUDGET release_seconds=${RELEASE_SHUTDOWN_TIMEOUT_SECONDS} spring_phase_seconds=${SPRING_SHUTDOWN_PHASE_TIMEOUT_SECONDS} smtp_connection_seconds=${SMTP_CONNECTION_TIMEOUT_SECONDS} smtp_read_seconds=${SMTP_READ_TIMEOUT_SECONDS} smtp_write_seconds=${SMTP_WRITE_TIMEOUT_SECONDS}"
 
   install -d -m 0750 "${RUNTIME_DIR}" || return 1
   [ -r "${COMPOSE_FILE}" ] || fail "Compose da release ausente"

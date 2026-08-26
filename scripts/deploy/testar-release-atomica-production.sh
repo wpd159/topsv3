@@ -6,6 +6,8 @@ helper="${root}/scripts/deploy/ativar-release-atomica-production.sh"
 fixture="${root}/scripts/deploy/fixture-release-atomica.mjs"
 workflow="${root}/.github/workflows/deploy-production.yml"
 compose="${root}/deploy/production/docker-compose.yml"
+outbox_repository="${root}/backend/src/main/java/br/com/topsdojob/v3/persistence/repository/OutboxEventoRepository.java"
+efi_concurrency_test="${root}/backend/src/test/java/br/com/topsdojob/v3/application/publico/pagamento/EfiPagamentoPostgres17ConcurrencyIntegrationTest.java"
 temporary="$(mktemp -d)"
 fixture_state="${temporary}/fixture.port"
 fixture_log="${temporary}/fixture.log"
@@ -33,6 +35,21 @@ grep -Fq 'verify_candidate_dns' "${helper}" || fail "prova DNS da candidata ause
 grep -Fq 's/^INTERNAL_API_URL=//p' "${helper}" || fail "leitura da API interna candidata ausente"
 grep -Fq 'http://backend:8080/api/public' "${helper}" || fail "API interna candidata nao validada"
 grep -Fq 'systemctl reload nginx' "${helper}" || fail "reload gracioso ausente"
+grep -Fq 'EFI_WEBHOOK_REGISTRATION_ENABLED=false' "${helper}" || fail "registro Efi nao neutralizado na candidata"
+grep -Fq 'verify_candidate_job_isolation' "${helper}" || fail "flag Efi efetiva da candidata nao validada"
+if grep -Fq 'docker rm -f' "${helper}"; then
+  fail "ativador ainda contem remocao forcada de container"
+fi
+grep -Fq 'docker stop --signal=TERM --time -1' "${helper}" || fail "SIGTERM sem SIGKILL automatico ausente"
+grep -Fq 'CONTAINER_REMOVAL_BLOCKED' "${helper}" || fail "remocao de container ativo nao esta bloqueada"
+grep -Fq 'SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 120s' "${compose}" || fail "timeout gracioso Spring nao configurado"
+grep -Fq 'SPRING_TASK_SCHEDULING_SHUTDOWN_AWAIT_TERMINATION: "true"' "${compose}" || fail "scheduler nao aguarda tarefa em andamento"
+grep -Fq 'OUTBOX_SMTP_CONNECTION_TIMEOUT_MS: "5000"' "${compose}" || fail "timeout de conexao SMTP nao fixado"
+grep -Fq 'OUTBOX_SMTP_TIMEOUT_MS: "10000"' "${compose}" || fail "timeout de leitura SMTP nao fixado"
+grep -Fq 'OUTBOX_SMTP_WRITE_TIMEOUT_MS: "10000"' "${compose}" || fail "timeout de escrita SMTP nao fixado"
+grep -Fqi 'for update skip locked' "${outbox_repository}" || fail "claim distribuido da outbox ausente"
+grep -Fq 'duasInstanciasDoSchedulerProcessamMesmoPagamentoSemDuplicarCredito' "${efi_concurrency_test}" \
+  || fail "prova concorrente da reconciliacao Efi ausente"
 grep -Fq 'testar-release-atomica-production.sh' "${workflow}" || fail "harness ausente do workflow"
 if grep -Fq 'up -d --no-deps --force-recreate backend frontend gateway' "${workflow}"; then
   fail "workflow ainda recria a release ativa"
@@ -63,6 +80,119 @@ release_header() {
 event_line() {
   grep -n -m1 -F "$1" "${EVENT_LOG}" | cut -d: -f1
 }
+
+test_candidate_efi_effective_configuration() (
+  CANDIDATE_BACKEND=fixture-candidate-backend
+  docker() {
+    if [ "$1" = inspect ]; then
+      printf 'EFI_WEBHOOK_REGISTRATION_ENABLED=false\n'
+      return 0
+    fi
+    return 1
+  }
+  verify_candidate_job_isolation
+)
+
+test_slow_smtp_graceful_shutdown() (
+  set -euo pipefail
+  local_state="${temporary}/smtp-container.state"
+  local_events="${temporary}/smtp-graceful.events"
+  smtp_committed="${temporary}/smtp-committed"
+  printf 'running\n' > "${local_state}"
+  : > "${local_events}"
+
+  docker() {
+    local command="$1"
+    shift
+    case "${command}" in
+      inspect)
+        if [[ " $* " == *" --format "* ]]; then
+          if grep -qx running "${local_state}"; then printf 'true\n'; else printf 'false\n'; fi
+        fi
+        return 0
+        ;;
+      stop)
+        printf 'SIGTERM\n' >> "${local_events}"
+        while [ ! -e "${smtp_committed}" ]; do sleep 0.02; done
+        printf 'stopped\n' > "${local_state}"
+        printf 'CONTAINER_STOPPED\n' >> "${local_events}"
+        ;;
+      rm)
+        ! grep -qx running "${local_state}" || return 1
+        printf 'CONTAINER_REMOVED\n' >> "${local_events}"
+        ;;
+      *) return 1 ;;
+    esac
+  }
+
+  (
+    printf 'SMTP_STARTED\n' >> "${local_events}"
+    sleep 0.10
+    printf 'SMTP_ACCEPTED\n' >> "${local_events}"
+    sleep 0.25
+    printf 'SMTP_COMMITTED\n' >> "${local_events}"
+    touch "${smtp_committed}"
+  ) &
+  smtp_pid=$!
+  for _ in $(seq 1 100); do
+    grep -Fq SMTP_STARTED "${local_events}" && break
+    sleep 0.01
+  done
+
+  RELEASE_SHUTDOWN_TIMEOUT_SECONDS=5
+  SHUTDOWN_POLL_SECONDS=0.02
+  shutdown_container_gracefully fixture-smtp-backend candidate
+  remove_stopped_container fixture-smtp-backend
+  wait "${smtp_pid}"
+
+  term_line="$(grep -n -m1 SIGTERM "${local_events}" | cut -d: -f1)"
+  accepted_line="$(grep -n -m1 SMTP_ACCEPTED "${local_events}" | cut -d: -f1)"
+  committed_line="$(grep -n -m1 SMTP_COMMITTED "${local_events}" | cut -d: -f1)"
+  removed_line="$(grep -n -m1 CONTAINER_REMOVED "${local_events}" | cut -d: -f1)"
+  [ "${term_line}" -lt "${accepted_line}" ]
+  [ "${accepted_line}" -lt "${committed_line}" ]
+  [ "${committed_line}" -lt "${removed_line}" ]
+  printf 'ok - SMTP lento concluiu aceite e commit antes da remocao normal\n'
+)
+
+test_failed_graceful_shutdown_preserves_container() (
+  set -euo pipefail
+  local_events="${temporary}/smtp-timeout.events"
+  : > "${local_events}"
+
+  docker() {
+    local command="$1"
+    shift
+    case "${command}" in
+      inspect)
+        if [[ " $* " == *" --format "* ]]; then printf 'true\n'; fi
+        return 0
+        ;;
+      stop)
+        printf 'SIGTERM\n' >> "${local_events}"
+        while true; do sleep 0.05; done
+        ;;
+      rm)
+        printf 'UNSAFE_REMOVE\n' >> "${local_events}"
+        return 1
+        ;;
+      *) return 1 ;;
+    esac
+  }
+
+  RELEASE_SHUTDOWN_TIMEOUT_SECONDS=1
+  SHUTDOWN_POLL_SECONDS=0.05
+  if shutdown_container_gracefully fixture-stuck-backend candidate; then
+    return 1
+  fi
+  ! grep -Fq UNSAFE_REMOVE "${local_events}"
+  grep -Fq SIGTERM "${local_events}"
+  printf 'ok - falha graciosa preservou container sem remocao forcada\n'
+)
+
+test_candidate_efi_effective_configuration
+test_slow_smtp_graceful_shutdown
+test_failed_graceful_shutdown_preserves_container
 
 run_scenario() (
   set -u
