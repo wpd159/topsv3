@@ -37,6 +37,9 @@ server:
 
 app:
   env: ${APP_ENV:nao_configurado}
+  health:
+    readiness-timeout-ms: ${APP_HEALTH_READINESS_TIMEOUT_MS:1500}
+    readiness-query-timeout-seconds: ${APP_HEALTH_READINESS_QUERY_TIMEOUT_SECONDS:1}
   auth:
     hml-code-vault-enabled: ${APP_AUTH_HML_CODE_VAULT_ENABLED:false}
     security-token-ttl-seconds: ${APP_AUTH_SECURITY_TOKEN_TTL_SECONDS:900}

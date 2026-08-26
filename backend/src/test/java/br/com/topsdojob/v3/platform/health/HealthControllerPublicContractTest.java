@@ -26,6 +26,15 @@ class HealthControllerPublicContractTest {
                 .doesNotContain("appEnv")
                 .doesNotContain("environment")
                 .doesNotContain("efiPixMockMode");
-        assertThat(controller).contains("String status", "String app", "String requestId");
+        assertThat(controller).contains(
+                "String status",
+                "String app",
+                "String requestId",
+                "Map<String, String> components");
+        assertThat(controller)
+                .doesNotContain("jdbc:")
+                .doesNotContain("postgres:")
+                .doesNotContain("R2")
+                .doesNotContain("Efi");
     }
 }
