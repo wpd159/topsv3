@@ -4,8 +4,6 @@ import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMid
 import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_COM_EXTRA;
 
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
-import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
-import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -13,14 +11,20 @@ import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,19 +34,16 @@ public class AnuncioSeoElegibilidadeConsultaService {
 
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
-    private final MidiaPublicaMapper midiaMapper;
     private final PremiumPublicoMapper premiumMapper;
     private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
 
     public AnuncioSeoElegibilidadeConsultaService(
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
-            MidiaPublicaMapper midiaMapper,
             PremiumPublicoMapper premiumMapper,
             AnuncioSeoIndexabilidadePolicy indexabilidadePolicy) {
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
-        this.midiaMapper = midiaMapper;
         this.premiumMapper = premiumMapper;
         this.indexabilidadePolicy = indexabilidadePolicy;
     }
@@ -90,16 +91,12 @@ public class AnuncioSeoElegibilidadeConsultaService {
             PremiumPublicoFlagsDto premium = premiumPorAnuncio.getOrDefault(
                     anuncio.getId(), PremiumPublicoFlagsDto.vazio());
             int maxFotos = premium.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE;
-            List<MidiaPublicaDto> midias = midiaMapper.publicas(
-                    vinculosDoAnuncio,
-                    arquivos,
-                    false,
-                    maxFotos,
-                    premium.videoAtivo());
+            boolean possuiFotoPublica = possuiFotoPublicaPersistida(
+                    vinculosDoAnuncio, arquivos, maxFotos);
             boolean indexavel = indexabilidadePolicy.indexavel(
                     anuncio,
                     localizacoes == null ? null : localizacoes.get(anuncio.getId()),
-                    midias);
+                    possuiFotoPublica);
             OffsetDateTime ultimaAtualizacaoMidia = vinculosDoAnuncio.stream()
                     .map(AnuncioMidiaEntity::getAtualizadoEm)
                     .filter(Objects::nonNull)
@@ -111,5 +108,41 @@ public class AnuncioSeoElegibilidadeConsultaService {
     }
 
     public record Resultado(boolean indexavel, OffsetDateTime ultimaAtualizacaoMidia) {
+    }
+
+    private boolean possuiFotoPublicaPersistida(
+            List<AnuncioMidiaEntity> vinculos,
+            Map<UUID, ArquivoMidiaEntity> arquivos,
+            int maxFotos) {
+        AtomicInteger fotos = new AtomicInteger();
+        return vinculos.stream()
+                .filter(Objects::nonNull)
+                .filter(vinculo -> vinculo.getTipo() == TipoAnuncioMidia.FOTO)
+                .filter(vinculo -> vinculo.getStatus() == StatusAnuncioMidia.PUBLICAVEL)
+                .filter(vinculo -> vinculo.getFinalidade() != FinalidadeAnuncioMidia.STORY)
+                .filter(vinculo -> vinculo.getVisibilidadeMidia() != null)
+                .sorted(Comparator
+                        .comparing(AnuncioMidiaEntity::getOrdem,
+                                Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(AnuncioMidiaEntity::getId,
+                                Comparator.nullsLast(UUID::compareTo)))
+                .filter(ignorado -> fotos.getAndIncrement() < Math.max(0, maxFotos))
+                .anyMatch(vinculo -> arquivoElegivel(
+                        vinculo,
+                        arquivos.get(vinculo.getArquivoMidiaId())));
+    }
+
+    private boolean arquivoElegivel(
+            AnuncioMidiaEntity vinculo,
+            ArquivoMidiaEntity arquivo) {
+        if (arquivo == null
+                || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO) {
+            return false;
+        }
+        return vinculo.getVisibilidadeMidia()
+                == br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.LIVRE
+                || (vinculo.getVisibilidadeMidia()
+                    == br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.RESTRITA_18
+                    && arquivo.previewRestritoDisponivel());
     }
 }
