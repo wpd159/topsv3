@@ -23,4 +23,12 @@ public interface ObjectStorage {
   URI temporaryGetUrl(StorageArea area, String key, Duration ttl);
 
   Optional<URI> publicUrl(StorageArea area, String key);
+
+  default StoredObjectPage list(
+      StorageArea area,
+      String prefix,
+      String continuationToken,
+      int maxKeys) {
+    throw new UnsupportedOperationException("Listagem de objetos nao suportada");
+  }
 }

@@ -6,8 +6,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObjectMetadata;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObjectPage;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -124,6 +127,16 @@ class R2ObjectStorageTest {
     assertThat(operations.calls).isEmpty();
   }
 
+  @Test
+  void listaPrefixoAutorizadoEmUmaOperacaoPaginada() {
+    String prefix = "hml/midias-aprovadas/restritas-borradas/v1/";
+    StoredObjectPage page = storage.list(StorageArea.PUBLIC_MEDIA, prefix, "cursor", 500);
+
+    assertThat(page.objects()).hasSize(1);
+    assertThat(operations.calls).containsExactly(
+        "LIST:public:" + prefix + ":cursor:500");
+  }
+
   private static R2StorageProperties configuredProperties() {
     R2StorageProperties properties = new R2StorageProperties();
     properties.setEnabled(true);
@@ -173,6 +186,20 @@ class R2ObjectStorageTest {
     public URI presignGet(String bucket, String key, Duration ttl) {
       calls.add("PRESIGN:" + bucket + ":" + key);
       return URI.create("https://signed.invalid/object");
+    }
+
+    @Override
+    public StoredObjectPage list(
+        String bucket,
+        String prefix,
+        String continuationToken,
+        int maxKeys) {
+      calls.add("LIST:" + bucket + ":" + prefix + ":" + continuationToken + ":" + maxKeys);
+      return new StoredObjectPage(
+          List.of(new StoredObjectMetadata(
+              prefix + "preview.jpg", 10L, "etag", Instant.parse("2026-08-27T12:00:00Z"))),
+          null,
+          false);
     }
   }
 }

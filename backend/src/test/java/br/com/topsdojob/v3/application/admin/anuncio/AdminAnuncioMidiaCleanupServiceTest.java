@@ -30,6 +30,7 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncio
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ModoConteudoStory;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDerivadoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusStoryAnuncio;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.net.URI;
@@ -326,6 +327,59 @@ class AdminAnuncioMidiaCleanupServiceTest {
 
     assertThat(foto.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
     assertThat(storage.exists(StorageArea.PUBLIC_MEDIA, foto.getChaveObjeto())).isTrue();
+  }
+
+  @Test
+  void remocaoRetiraElegibilidadeDoPreviewAntesDoCleanupFisico() {
+    UUID anuncioId = uuid(12);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity foto = arquivo(
+        uuid(112),
+        "privadas",
+        PRIVATE_PREFIX + "anuncios/remocao/foto.jpg",
+        "image/jpeg");
+    String previewKey = PUBLIC_PREFIX + "restritas-borradas/v1/preview-remocao.jpg";
+    foto.marcarPreviewRestritoDisponivel(previewKey, "v1", agora.minusHours(1));
+    AnuncioMidiaEntity vinculo = vinculo(
+        uuid(212), anuncioId, foto.getId(), TipoAnuncioMidia.FOTO, 0);
+    set(vinculo, "visibilidadeMidia", VisibilidadeMidia.RESTRITA_18);
+    prepararRepositorios(anuncioId, List.of(foto), List.of(vinculo), null);
+    when(storyRepository.findByAnuncioIdForUpdate(anuncioId)).thenReturn(List.of());
+    colocar(StorageArea.PRIVATE_MEDIA, foto.getChaveObjeto());
+    colocar(StorageArea.PUBLIC_MEDIA, previewKey);
+
+    var resultado = service.limpar(anuncioId, agora);
+
+    assertThat(resultado.objetosCleanupAgendados()).isEqualTo(3);
+    assertThat(foto.getPreviewRestritoStatus()).isEqualTo(StatusDerivadoMidia.REMOVIDO);
+    assertThat(storage.exists(StorageArea.PUBLIC_MEDIA, previewKey)).isTrue();
+
+    concluirCommit();
+
+    assertThat(storage.exists(StorageArea.PUBLIC_MEDIA, previewKey)).isFalse();
+  }
+
+  @Test
+  void remocaoMarcaPreviewFalhoComoRemovidoAntesDoCleanupFisico() {
+    UUID anuncioId = uuid(13);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity foto = arquivo(
+        uuid(113),
+        "privadas",
+        PRIVATE_PREFIX + "anuncios/remocao-falha/foto.jpg",
+        "image/jpeg");
+    String previewKey = PUBLIC_PREFIX + "restritas-borradas/v1/preview-falha.jpg";
+    foto.marcarPreviewRestritoFalha(previewKey, "v1");
+    AnuncioMidiaEntity vinculo = vinculo(
+        uuid(213), anuncioId, foto.getId(), TipoAnuncioMidia.FOTO, 0);
+    set(vinculo, "visibilidadeMidia", VisibilidadeMidia.RESTRITA_18);
+    prepararRepositorios(anuncioId, List.of(foto), List.of(vinculo), null);
+    when(storyRepository.findByAnuncioIdForUpdate(anuncioId)).thenReturn(List.of());
+    colocar(StorageArea.PRIVATE_MEDIA, foto.getChaveObjeto());
+
+    service.limpar(anuncioId, agora);
+
+    assertThat(foto.getPreviewRestritoStatus()).isEqualTo(StatusDerivadoMidia.REMOVIDO);
   }
 
   @Test

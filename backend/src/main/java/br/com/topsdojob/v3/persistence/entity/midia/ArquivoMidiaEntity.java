@@ -1,6 +1,8 @@
 package br.com.topsdojob.v3.persistence.entity.midia;
 
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusDerivadoMidia;
+import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoDerivadoMidia;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -71,6 +73,23 @@ public class ArquivoMidiaEntity {
 
   @Column(name = "sha256_origem")
   private String sha256Origem;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "preview_restrito_tipo", length = 32)
+  private TipoDerivadoMidia previewRestritoTipo;
+
+  @Column(name = "preview_restrito_chave", length = 1024)
+  private String previewRestritoChave;
+
+  @Column(name = "preview_restrito_pipeline_versao", length = 32)
+  private String previewRestritoPipelineVersao;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "preview_restrito_status", length = 32)
+  private StatusDerivadoMidia previewRestritoStatus;
+
+  @Column(name = "preview_restrito_confirmado_em")
+  private OffsetDateTime previewRestritoConfirmadoEm;
 
   public UUID getId() {
     return id;
@@ -144,6 +163,91 @@ public class ArquivoMidiaEntity {
     return sha256Origem;
   }
 
+  public TipoDerivadoMidia getPreviewRestritoTipo() {
+    return previewRestritoTipo;
+  }
+
+  public String getPreviewRestritoChave() {
+    return previewRestritoChave;
+  }
+
+  public String getPreviewRestritoPipelineVersao() {
+    return previewRestritoPipelineVersao;
+  }
+
+  public StatusDerivadoMidia getPreviewRestritoStatus() {
+    return previewRestritoStatus == null
+        ? StatusDerivadoMidia.DESCONHECIDO
+        : previewRestritoStatus;
+  }
+
+  public OffsetDateTime getPreviewRestritoConfirmadoEm() {
+    return previewRestritoConfirmadoEm;
+  }
+
+  public boolean previewRestritoDisponivel() {
+    return getPreviewRestritoStatus() == StatusDerivadoMidia.DISPONIVEL
+        && previewRestritoTipo == TipoDerivadoMidia.PREVIEW_RESTRITO
+        && previewRestritoChave != null
+        && !previewRestritoChave.isBlank()
+        && previewRestritoPipelineVersao != null
+        && !previewRestritoPipelineVersao.isBlank()
+        && previewRestritoConfirmadoEm != null;
+  }
+
+  public void marcarPreviewRestritoPendente(String chave, String pipelineVersao) {
+    validarIdentidadePreview(chave, pipelineVersao);
+    previewRestritoTipo = TipoDerivadoMidia.PREVIEW_RESTRITO;
+    previewRestritoChave = chave;
+    previewRestritoPipelineVersao = pipelineVersao;
+    previewRestritoStatus = StatusDerivadoMidia.PENDENTE;
+    previewRestritoConfirmadoEm = null;
+  }
+
+  public void marcarPreviewRestritoDisponivel(
+      String chave,
+      String pipelineVersao,
+      OffsetDateTime confirmadoEm) {
+    validarIdentidadePreview(chave, pipelineVersao);
+    if (confirmadoEm == null) {
+      throw new IllegalArgumentException("Instante de confirmacao do preview obrigatorio");
+    }
+    previewRestritoTipo = TipoDerivadoMidia.PREVIEW_RESTRITO;
+    previewRestritoChave = chave;
+    previewRestritoPipelineVersao = pipelineVersao;
+    previewRestritoStatus = StatusDerivadoMidia.DISPONIVEL;
+    previewRestritoConfirmadoEm = confirmadoEm;
+  }
+
+  public void marcarPreviewRestritoFalha(String chave, String pipelineVersao) {
+    validarIdentidadePreview(chave, pipelineVersao);
+    previewRestritoTipo = TipoDerivadoMidia.PREVIEW_RESTRITO;
+    previewRestritoChave = chave;
+    previewRestritoPipelineVersao = pipelineVersao;
+    previewRestritoStatus = StatusDerivadoMidia.FALHA;
+    previewRestritoConfirmadoEm = null;
+  }
+
+  public void marcarPreviewRestritoDesconhecido(String chave, String pipelineVersao) {
+    validarIdentidadePreview(chave, pipelineVersao);
+    previewRestritoTipo = TipoDerivadoMidia.PREVIEW_RESTRITO;
+    previewRestritoChave = chave;
+    previewRestritoPipelineVersao = pipelineVersao;
+    previewRestritoStatus = StatusDerivadoMidia.DESCONHECIDO;
+    previewRestritoConfirmadoEm = null;
+  }
+
+  public void marcarPreviewRestritoRemovido() {
+    previewRestritoStatus = StatusDerivadoMidia.REMOVIDO;
+    previewRestritoConfirmadoEm = null;
+  }
+
+  private void validarIdentidadePreview(String chave, String pipelineVersao) {
+    if (chave == null || chave.isBlank() || pipelineVersao == null || pipelineVersao.isBlank()) {
+      throw new IllegalArgumentException("Identidade do preview restrito obrigatoria");
+    }
+  }
+
   public void aplicarDecisao(StatusArquivoMidia statusArquivo) {
     this.statusArquivo = statusArquivo;
   }
@@ -197,6 +301,7 @@ public class ArquivoMidiaEntity {
     entity.etag = null;
     entity.statusArquivo = StatusArquivoMidia.PENDENTE;
     entity.criadoEm = criadoEm;
+    entity.previewRestritoStatus = StatusDerivadoMidia.DESCONHECIDO;
     return entity;
   }
 
@@ -221,6 +326,7 @@ public class ArquivoMidiaEntity {
     entity.etag = null;
     entity.statusArquivo = statusArquivo;
     entity.criadoEm = criadoEm;
+    entity.previewRestritoStatus = StatusDerivadoMidia.DESCONHECIDO;
     return entity;
   }
 

@@ -66,6 +66,14 @@ public final class PersistenceEnums {
     PENDENTE, VALIDADO, REJEITADO, REMOVIDO
   }
 
+  public enum TipoDerivadoMidia {
+    PREVIEW_RESTRITO
+  }
+
+  public enum StatusDerivadoMidia {
+    DESCONHECIDO, PENDENTE, DISPONIVEL, FALHA, REMOVIDO
+  }
+
   public enum TipoAnuncioMidia {
     FOTO, VIDEO, STORY
   }

@@ -2,6 +2,9 @@ package br.com.topsdojob.v3.infrastructure.storage.r2;
 
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObjectMetadata;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObjectPage;
+import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -13,10 +16,16 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.HexFormat;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
 final class R2SigV4Client implements R2Operations {
 
@@ -169,12 +178,48 @@ final class R2SigV4Client implements R2Operations {
         + "?" + canonicalQuery + "&X-Amz-Signature=" + signedDigest);
   }
 
+  @Override
+  public StoredObjectPage list(
+      String bucket,
+      String prefix,
+      String continuationToken,
+      int maxKeys) {
+    Map<String, String> query = new TreeMap<>();
+    query.put("list-type", "2");
+    query.put("max-keys", Integer.toString(maxKeys));
+    query.put("prefix", prefix);
+    if (continuationToken != null && !continuationToken.isBlank()) {
+      query.put("continuation-token", continuationToken);
+    }
+    RequestSignature signature = signRequest(
+        "GET", bucket, null, EMPTY_PAYLOAD_HASH, Map.of(), query);
+    HttpRequest request = requestBuilder(signature.uri())
+        .GET()
+        .header("x-amz-date", signature.amzDate())
+        .header("x-amz-content-sha256", EMPTY_PAYLOAD_HASH)
+        .header("Authorization", signature.authorization())
+        .build();
+    HttpResponse<byte[]> response = send(request, HttpResponse.BodyHandlers.ofByteArray(), "LIST");
+    requireStatus(response.statusCode(), "LIST", 200);
+    return parseListResponse(response.body());
+  }
+
   private RequestSignature signRequest(
       String method,
       String bucket,
       String key,
       String payloadHash,
       Map<String, String> additionalHeaders) {
+    return signRequest(method, bucket, key, payloadHash, additionalHeaders, Map.of());
+  }
+
+  private RequestSignature signRequest(
+      String method,
+      String bucket,
+      String key,
+      String payloadHash,
+      Map<String, String> additionalHeaders,
+      Map<String, String> query) {
     Instant now = Instant.now();
     String amzDate = AMZ_DATE.format(now);
     String dateStamp = DATE_STAMP.format(now);
@@ -187,8 +232,10 @@ final class R2SigV4Client implements R2Operations {
     String signedHeaders = String.join(";", headers.keySet());
     StringBuilder canonicalHeaders = new StringBuilder();
     headers.forEach((name, value) -> canonicalHeaders.append(name).append(':').append(value).append('\n'));
+    String canonicalQuery = canonicalQuery(new TreeMap<>(query));
     String canonicalRequest = method + "\n"
-        + canonicalPath + "\n\n"
+        + canonicalPath + "\n"
+        + canonicalQuery + "\n"
         + canonicalHeaders + "\n"
         + signedHeaders + "\n"
         + payloadHash;
@@ -201,7 +248,7 @@ final class R2SigV4Client implements R2Operations {
     String authHeaderValue = "AWS4-HMAC-SHA256 Credential=" + accessKey + "/" + scope
         + ", SignedHeaders=" + signedHeaders
         + ", Signature=" + signedDigest;
-    return new RequestSignature(objectUri(bucket, key), amzDate, authHeaderValue);
+    return new RequestSignature(objectUri(bucket, key, canonicalQuery), amzDate, authHeaderValue);
   }
 
   private HttpRequest.Builder requestBuilder(URI uri) {
@@ -209,11 +256,54 @@ final class R2SigV4Client implements R2Operations {
   }
 
   private URI objectUri(String bucket, String key) {
-    return URI.create(endpoint.getScheme() + "://" + host + rawPath(bucket, key));
+    return objectUri(bucket, key, "");
+  }
+
+  private URI objectUri(String bucket, String key, String canonicalQuery) {
+    String suffix = canonicalQuery == null || canonicalQuery.isBlank() ? "" : "?" + canonicalQuery;
+    return URI.create(endpoint.getScheme() + "://" + host + rawPath(bucket, key) + suffix);
   }
 
   private String rawPath(String bucket, String key) {
-    return "/" + R2UrlCodec.encodeQueryValue(bucket) + "/" + R2UrlCodec.encodePath(key);
+    String base = "/" + R2UrlCodec.encodeQueryValue(bucket) + "/";
+    return key == null || key.isBlank() ? base : base + R2UrlCodec.encodePath(key);
+  }
+
+  private StoredObjectPage parseListResponse(byte[] body) {
+    try {
+      DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+      factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+      factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+      factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+      factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+      factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+      var document = factory.newDocumentBuilder().parse(new ByteArrayInputStream(body));
+      List<StoredObjectMetadata> objects = new ArrayList<>();
+      NodeList contents = document.getElementsByTagName("Contents");
+      for (int index = 0; index < contents.getLength(); index++) {
+        Element element = (Element) contents.item(index);
+        objects.add(new StoredObjectMetadata(
+            childText(element, "Key"),
+            Long.parseLong(childText(element, "Size")),
+            childText(element, "ETag"),
+            Instant.parse(childText(element, "LastModified"))));
+      }
+      String nextCursor = firstText(document.getElementsByTagName("NextContinuationToken"));
+      boolean truncated = Boolean.parseBoolean(firstText(document.getElementsByTagName("IsTruncated")));
+      return new StoredObjectPage(objects, nextCursor, truncated);
+    } catch (Exception exception) {
+      throw new R2StorageException("Resposta XML invalida na listagem R2", exception);
+    }
+  }
+
+  private String childText(Element parent, String tag) {
+    return firstText(parent.getElementsByTagName(tag));
+  }
+
+  private String firstText(NodeList nodes) {
+    return nodes == null || nodes.getLength() == 0 || nodes.item(0) == null
+        ? null
+        : nodes.item(0).getTextContent();
   }
 
   private String scope(String dateStamp) {
