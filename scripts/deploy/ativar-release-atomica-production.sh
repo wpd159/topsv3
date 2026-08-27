@@ -10,6 +10,145 @@ fail() {
   return 1
 }
 
+candidate_gate_now_ms() {
+  local now
+  now="$(date +%s%3N 2>/dev/null || true)"
+  if [[ ! "${now}" =~ ^[0-9]+$ ]]; then
+    now="$(($(date +%s) * 1000))"
+  fi
+  printf '%s\n' "${now}"
+}
+
+sanitize_candidate_diagnostic() {
+  LC_ALL=C sed -E \
+    -e 's#([[:alpha:]][[:alnum:]+.-]*://)[^[:space:]"<>]+#<redacted-url>#g' \
+    -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<redacted-email>/g' \
+    -e 's/[0-9]{3}\.?[0-9]{3}\.?[0-9]{3}-?[0-9]{2}/<redacted-document>/g' \
+    -e 's/(\+?55[[:space:]]*)?\(?[0-9]{2}\)?[[:space:]-]*[0-9]{4,5}-?[0-9]{4}/<redacted-phone>/g' \
+    -e 's/([0-9]{1,3}\.){3}[0-9]{1,3}/<redacted-ip>/g' \
+    -e 's/[0-9A-Fa-f]{0,4}(:[0-9A-Fa-f]{0,4}){2,}/<redacted-ip>/g' \
+    -e 's/((authorization|cookie|set-cookie|token|secret|password|passwd|api[_-]?key|access[_-]?key|session|database|username|user|host|port|url)[[:space:]]*[:=][[:space:]]*)[^[:space:],;}"<]+/\1<redacted>/Ig' \
+    -e 's/([A-Z][A-Z0-9_]{2,}[[:space:]]*=[[:space:]]*)[^[:space:],;}"<]+/\1<redacted>/g' \
+    -e 's/[A-Za-z0-9+_\/=.-]{40,}/<redacted-value>/g'
+}
+
+candidate_gate_capture_body() {
+  local body_file="$1"
+  CANDIDATE_GATE_BODY_SNIPPET=""
+  [ -s "${body_file}" ] || return 0
+  CANDIDATE_GATE_BODY_SNIPPET="$(
+    head -c 1024 "${body_file}" \
+      | tr '\r\n\t"' "   '" \
+      | sanitize_candidate_diagnostic \
+      | sed -E 's/[[:space:]]+/ /g' \
+      | cut -c1-1024
+  )"
+}
+
+log_candidate_diagnostic_lines() {
+  local label="$1"
+  local raw="$2"
+  local line sanitized
+  while IFS= read -r line; do
+    [ -n "${line}" ] || continue
+    sanitized="$(printf '%s' "${line}" | sanitize_candidate_diagnostic | tr '"' "'" | cut -c1-1024)"
+    [ -n "${sanitized}" ] && log "${label} line=${sanitized}"
+  done <<< "${raw}"
+}
+
+collect_candidate_container_diagnostics() {
+  local container="$1"
+  local state health health_history aliases alias_csv
+  state="$(docker inspect "${container}" \
+    --format 'status={{.State.Status}} running={{.State.Running}} exit_code={{.State.ExitCode}} restart_count={{.RestartCount}}' \
+    2>&1 || true)"
+  log_candidate_diagnostic_lines "CANDIDATE_DIAGNOSTIC_CONTAINER container=${container}" "${state}"
+
+  health="$(docker inspect "${container}" \
+    --format '{{if .State.Health}}status={{.State.Health.Status}} failing_streak={{.State.Health.FailingStreak}}{{else}}status=none failing_streak=0{{end}}' \
+    2>&1 || true)"
+  log_candidate_diagnostic_lines "CANDIDATE_DIAGNOSTIC_HEALTH container=${container}" "${health}"
+  health_history="$(docker inspect "${container}" \
+    --format '{{if .State.Health}}{{range .State.Health.Log}}{{printf "start=%s end=%s exit_code=%d output=%s\n" .Start .End .ExitCode .Output}}{{end}}{{end}}' \
+    2>&1 || true)"
+  log_candidate_diagnostic_lines "CANDIDATE_DIAGNOSTIC_HEALTH_HISTORY container=${container}" "${health_history}"
+
+  aliases="$(docker inspect "${container}" \
+    --format "{{range (index .NetworkSettings.Networks \"${CANDIDATE_NETWORK}\").Aliases}}{{println .}}{{end}}" \
+    2>/dev/null || true)"
+  alias_csv="$(printf '%s\n' "${aliases}" | sed '/^$/d' | paste -sd, -)"
+  [ -n "${alias_csv}" ] || alias_csv=none
+  log "CANDIDATE_DIAGNOSTIC_NETWORK container=${container} candidate_network_attached=$([ -n "${aliases}" ] && printf true || printf false) aliases=${alias_csv}"
+}
+
+collect_candidate_internal_api_diagnostics() {
+  local configured candidate_backend_ip active_backend_ip resolved_backend
+  local configured_expected=false candidate_ip_present=false resolved=false
+  local points_candidate=false points_active=false
+  configured="$(docker inspect "${CANDIDATE_FRONTEND}" \
+    --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+    | sed -n 's/^INTERNAL_API_URL=//p')"
+  [ "${configured}" = "http://backend:8080/api/public" ] && configured_expected=true
+  candidate_backend_ip="$(docker inspect "${CANDIDATE_BACKEND}" \
+    --format "{{(index .NetworkSettings.Networks \"${CANDIDATE_NETWORK}\").IPAddress}}" 2>/dev/null || true)"
+  active_backend_ip="$(docker inspect "${ACTIVE_PREFIX}-backend" \
+    --format "{{(index .NetworkSettings.Networks \"${ACTIVE_NETWORK}\").IPAddress}}" 2>/dev/null || true)"
+  resolved_backend="$(docker exec "${CANDIDATE_FRONTEND}" node -e \
+    "require('node:dns').lookup('backend',(e,a)=>{if(e)process.exit(1);process.stdout.write(a)})" \
+    2>/dev/null || true)"
+  [ -n "${candidate_backend_ip}" ] && candidate_ip_present=true
+  [ -n "${resolved_backend}" ] && resolved=true
+  [ -n "${candidate_backend_ip}" ] && [ "${resolved_backend}" = "${candidate_backend_ip}" ] && points_candidate=true
+  [ -n "${active_backend_ip}" ] && [ "${resolved_backend}" = "${active_backend_ip}" ] && points_active=true
+  log "CANDIDATE_DIAGNOSTIC_INTERNAL_API configured_expected=${configured_expected} alias_resolved=${resolved} candidate_ip_present=${candidate_ip_present} points_candidate=${points_candidate} points_active=${points_active}"
+}
+
+collect_candidate_logs() {
+  local container raw
+  for container in "${CANDIDATE_BACKEND}" "${CANDIDATE_FRONTEND}"; do
+    raw="$(docker logs --tail 40 "${container}" 2>&1 | head -c 40960 || true)"
+    log_candidate_diagnostic_lines "CANDIDATE_DIAGNOSTIC_LOG container=${container}" "${raw}"
+  done
+}
+
+collect_candidate_diagnostics() {
+  local gate="$1"
+  local container
+  log "CANDIDATE_DIAGNOSTIC_START gate=${gate}"
+  if [ -n "${CANDIDATE_GATE_BODY_SNIPPET:-}" ]; then
+    log "CANDIDATE_GATE_HTTP_BODY gate=${gate} body=${CANDIDATE_GATE_BODY_SNIPPET}"
+  fi
+  for container in "${CANDIDATE_BACKEND}" "${CANDIDATE_FRONTEND}" "${CANDIDATE_GATEWAY}"; do
+    collect_candidate_container_diagnostics "${container}" || true
+  done
+  collect_candidate_internal_api_diagnostics || true
+  collect_candidate_logs || true
+  log "CANDIDATE_GATE_FAILED=${gate}"
+  log "CANDIDATE_DIAGNOSTIC_END gate=${gate}"
+}
+
+run_candidate_gate() {
+  local gate="$1"
+  shift
+  local started finished rc result
+  CURRENT_CANDIDATE_GATE="${gate}"
+  CANDIDATE_GATE_HTTP_STATUS=NA
+  CANDIDATE_GATE_ATTEMPT=1
+  CANDIDATE_GATE_BODY_SNIPPET=""
+  started="$(candidate_gate_now_ms)"
+  log "CANDIDATE_GATE_START=${gate}"
+  "$@"
+  rc=$?
+  finished="$(candidate_gate_now_ms)"
+  result=OK
+  [ "${rc}" -eq 0 ] || result=FAIL
+  log "CANDIDATE_GATE_RESULT=${gate} exit_code=${rc} http_status=${CANDIDATE_GATE_HTTP_STATUS} duration_ms=$((finished - started)) attempt=${CANDIDATE_GATE_ATTEMPT} result=${result}"
+  if [ "${rc}" -ne 0 ]; then
+    collect_candidate_diagnostics "${gate}" || true
+    return "${rc}"
+  fi
+}
+
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "comando obrigatorio ausente: $1"
 }
@@ -143,12 +282,15 @@ wait_for_json_up() {
   local attempt code
   for attempt in $(seq 1 "${attempts}"); do
     code="$(curl --silent --show-error --max-time 4 --output "${body}" --write-out '%{http_code}' "${url}" 2>/dev/null || true)"
+    CANDIDATE_GATE_ATTEMPT="${attempt}"
+    CANDIDATE_GATE_HTTP_STATUS="${code:-000}"
     if [ "${code}" = 200 ] && grep -q '"status":"UP"' "${body}"; then
       rm -f -- "${body}"
       return 0
     fi
     sleep 2
   done
+  candidate_gate_capture_body "${body}"
   rm -f -- "${body}"
   return 1
 }
@@ -156,12 +298,20 @@ wait_for_json_up() {
 expect_http_status() {
   local url="$1"
   local accepted="$2"
-  local code
-  code="$(curl --silent --show-error --max-time 8 --output /dev/null --write-out '%{http_code}' "${url}" 2>/dev/null || true)"
+  local body code rc
+  body="$(mktemp "${RUNTIME_DIR}/probe-status.XXXXXX")" || return 1
+  code="$(curl --silent --show-error --max-time 8 --output "${body}" --write-out '%{http_code}' "${url}" 2>/dev/null || true)"
+  CANDIDATE_GATE_ATTEMPT=1
+  CANDIDATE_GATE_HTTP_STATUS="${code:-000}"
+  rc=1
   case ",${accepted}," in
-    *",${code},"*) return 0 ;;
-    *) return 1 ;;
+    *",${code},"*) rc=0 ;;
   esac
+  if [ "${rc}" -ne 0 ]; then
+    candidate_gate_capture_body "${body}"
+  fi
+  rm -f -- "${body}"
+  return "${rc}"
 }
 
 expect_json_up_once() {
@@ -351,19 +501,19 @@ verify_candidate_logs() {
 
 verify_candidate() {
   log "STAGE=CANDIDATE_GATES"
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_BACKEND_PORT}/api/health/liveness" || return 1
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_BACKEND_PORT}/api/health/readiness" || return 1
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_FRONTEND_PORT}/health/liveness" || return 1
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_FRONTEND_PORT}/health/readiness" || return 1
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/api/health/liveness" || return 1
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/api/health/readiness" || return 1
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/health/liveness" || return 1
-  wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/health/readiness" || return 1
-  expect_http_status "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/" 200 || return 1
-  expect_http_status "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/anuncios" 200 || return 1
-  verify_database_gate || return 1
-  verify_candidate_dns || return 1
-  verify_candidate_logs || return 1
+  run_candidate_gate backend_liveness wait_for_json_up "http://127.0.0.1:${CANDIDATE_BACKEND_PORT}/api/health/liveness" || return 1
+  run_candidate_gate backend_readiness wait_for_json_up "http://127.0.0.1:${CANDIDATE_BACKEND_PORT}/api/health/readiness" || return 1
+  run_candidate_gate frontend_liveness wait_for_json_up "http://127.0.0.1:${CANDIDATE_FRONTEND_PORT}/health/liveness" || return 1
+  run_candidate_gate frontend_readiness wait_for_json_up "http://127.0.0.1:${CANDIDATE_FRONTEND_PORT}/health/readiness" || return 1
+  run_candidate_gate gateway_backend_liveness wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/api/health/liveness" || return 1
+  run_candidate_gate gateway_backend_readiness wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/api/health/readiness" || return 1
+  run_candidate_gate gateway_frontend_liveness wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/health/liveness" || return 1
+  run_candidate_gate gateway_frontend_readiness wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/health/readiness" || return 1
+  run_candidate_gate gateway_home expect_http_status "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/" 200 || return 1
+  run_candidate_gate gateway_listagem expect_http_status "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/anuncios" 200 || return 1
+  run_candidate_gate database verify_database_gate || return 1
+  run_candidate_gate internal_api_dns verify_candidate_dns || return 1
+  run_candidate_gate candidate_logs verify_candidate_logs || return 1
 }
 
 validate_gateway_candidate() {

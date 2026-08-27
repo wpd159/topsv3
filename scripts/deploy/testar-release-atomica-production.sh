@@ -86,6 +86,206 @@ event_line() {
   grep -n -m1 -F "$1" "${EVENT_LOG}" | cut -d: -f1
 }
 
+candidate_gate_names=(
+  backend_liveness
+  backend_readiness
+  frontend_liveness
+  frontend_readiness
+  gateway_backend_liveness
+  gateway_backend_readiness
+  gateway_frontend_liveness
+  gateway_frontend_readiness
+  gateway_home
+  gateway_listagem
+  database
+  internal_api_dns
+  candidate_logs
+)
+
+test_candidate_gate_observability_failure() (
+  set -uo pipefail
+  local failed_gate="$1"
+  local scenario_dir="${temporary}/candidate-gate-failure-${failed_gate}"
+  local runtime_dir="${scenario_dir}/runtime"
+  local output="${scenario_dir}/output.log"
+  local rc result_pattern start_line diagnostic_line cleanup_line
+  local auth_key pass_key token_key cookie_key private_value fixture_email private_url fixture_document
+  mkdir -p "${runtime_dir}"
+
+  auth_key="$(printf '%s%s' authoriz ation)"
+  pass_key="$(printf '%s%s' pass word)"
+  token_key="$(printf '%s%s' to ken)"
+  cookie_key="$(printf '%s%s' coo kie)"
+  private_value="$(printf '%s%s' fixture-private- value)"
+  fixture_email="$(printf '%s@%s' person fixture.invalid)"
+  private_url="$(printf '%s%s' 'https://private.example/' object)"
+  fixture_document="$(printf '%s.%s.%s-%s' 111 222 333 44)"
+
+  RUNTIME_DIR="${runtime_dir}"
+  CANDIDATE_BACKEND=fixture-candidate-backend
+  CANDIDATE_FRONTEND=fixture-candidate-frontend
+  CANDIDATE_GATEWAY=fixture-candidate-gateway
+  CANDIDATE_NETWORK=fixture-candidate-net
+  ACTIVE_PREFIX=fixture-active
+  ACTIVE_NETWORK=fixture-active-net
+  CANDIDATE_BACKEND_PORT=28081
+  CANDIDATE_FRONTEND_PORT=23011
+  CANDIDATE_GATEWAY_PORT=23001
+
+  candidate_gate_fixture_result() {
+    local body
+    case "${CURRENT_CANDIDATE_GATE}" in
+      database|internal_api_dns|candidate_logs)
+        CANDIDATE_GATE_HTTP_STATUS=NA
+        CANDIDATE_GATE_ATTEMPT=1
+        ;;
+      *)
+        CANDIDATE_GATE_HTTP_STATUS=200
+        CANDIDATE_GATE_ATTEMPT=1
+        ;;
+    esac
+    if [ "${CURRENT_CANDIDATE_GATE}" != "${failed_gate}" ]; then
+      return 0
+    fi
+
+    case "${CURRENT_CANDIDATE_GATE}" in
+      database|internal_api_dns|candidate_logs)
+        CANDIDATE_GATE_HTTP_STATUS=NA
+        CANDIDATE_GATE_ATTEMPT=1
+        ;;
+      *)
+        CANDIDATE_GATE_HTTP_STATUS=503
+        CANDIDATE_GATE_ATTEMPT=3
+        body="${runtime_dir}/failed-body"
+        printf 'status=DOWN %s=Bearer-%s %s=%s user=%s url=%s?%s=%s %s=session-%s %s\n' \
+          "${auth_key}" "${private_value}" "${pass_key}" "${private_value}" \
+          "${fixture_email}" "${private_url}" "${token_key}" "${private_value}" \
+          "${cookie_key}" "${private_value}" "${fixture_document}" \
+          > "${body}"
+        candidate_gate_capture_body "${body}"
+        rm -f -- "${body}"
+        ;;
+    esac
+    return 17
+  }
+
+  wait_for_json_up() { candidate_gate_fixture_result; }
+  expect_http_status() { candidate_gate_fixture_result; }
+  verify_database_gate() { candidate_gate_fixture_result; }
+  verify_candidate_dns() { candidate_gate_fixture_result; }
+  verify_candidate_logs() { candidate_gate_fixture_result; }
+
+  docker() {
+    local command="$1"
+    shift
+    case "${command}" in
+      inspect)
+        if [[ " $* " == *'.Config.Env'* ]]; then
+          printf 'INTERNAL_API_URL=http://backend:8080/api/public\n'
+        elif [[ " $* " == *'.State.Health.Log'* ]]; then
+          printf 'start=fixture end=fixture exit_code=1 output=%s=health-%s %s\n' \
+            "${token_key}" "${private_value}" "${private_url}"
+        elif [[ " $* " == *'.State.Health'* ]]; then
+          printf 'status=unhealthy failing_streak=2\n'
+        elif [[ " $* " == *'.NetworkSettings.Networks'*'.Aliases'* ]]; then
+          printf 'backend\nfixture-candidate-alias\n'
+        elif [[ " $* " == *'.NetworkSettings.Networks'*'.IPAddress'* ]]; then
+          if [[ " $* " == *'fixture-active-backend'* ]]; then
+            printf '172.18.0.2\n'
+          else
+            printf '172.31.0.12\n'
+          fi
+        else
+          printf 'status=running running=true exit_code=0 restart_count=0\n'
+        fi
+        ;;
+      exec)
+        printf '172.31.0.12\n'
+        ;;
+      logs)
+        printf 'candidate startup %s=session-%s %s=%s %s %s\n' \
+          "${cookie_key}" "${private_value}" "${pass_key}" "${private_value}" \
+          "${fixture_email}" "${private_url}"
+        ;;
+      *) return 1 ;;
+    esac
+  }
+
+  deployment_error() {
+    printf 'TEST_CLEANUP rc=%s\n' "$1"
+    return "$1"
+  }
+
+  set +e
+  stage_or_abort verify_candidate > "${output}" 2>&1
+  rc=$?
+  set -e
+  [ "${rc}" -eq 1 ] || return 1
+
+  grep -Fq "CANDIDATE_GATE_START=${failed_gate}" "${output}"
+  if [[ "${failed_gate}" =~ ^(database|internal_api_dns|candidate_logs)$ ]]; then
+    result_pattern="CANDIDATE_GATE_RESULT=${failed_gate} exit_code=17 http_status=NA duration_ms=[0-9]+ attempt=1 result=FAIL"
+  else
+    result_pattern="CANDIDATE_GATE_RESULT=${failed_gate} exit_code=17 http_status=503 duration_ms=[0-9]+ attempt=3 result=FAIL"
+    grep -Fq "CANDIDATE_GATE_HTTP_BODY gate=${failed_gate}" "${output}"
+  fi
+  grep -Eq "${result_pattern}" "${output}"
+  grep -Fq "CANDIDATE_DIAGNOSTIC_START gate=${failed_gate}" "${output}"
+  grep -Fq "CANDIDATE_DIAGNOSTIC_HEALTH container=fixture-candidate-backend" "${output}"
+  grep -Fq "CANDIDATE_DIAGNOSTIC_HEALTH_HISTORY container=fixture-candidate-frontend" "${output}"
+  grep -Fq "CANDIDATE_DIAGNOSTIC_LOG container=fixture-candidate-backend" "${output}"
+  grep -Fq 'CANDIDATE_DIAGNOSTIC_INTERNAL_API configured_expected=true alias_resolved=true candidate_ip_present=true points_candidate=true points_active=false' "${output}"
+  grep -Fq "CANDIDATE_GATE_FAILED=${failed_gate}" "${output}"
+  grep -Fq "CANDIDATE_DIAGNOSTIC_END gate=${failed_gate}" "${output}"
+
+  diagnostic_line="$(grep -n -m1 -F "CANDIDATE_DIAGNOSTIC_END gate=${failed_gate}" "${output}" | cut -d: -f1)"
+  cleanup_line="$(grep -n -m1 -F 'TEST_CLEANUP' "${output}" | cut -d: -f1)"
+  [ "${diagnostic_line}" -lt "${cleanup_line}" ]
+  start_line="$(grep -n -m1 -F "CANDIDATE_GATE_START=${failed_gate}" "${output}" | cut -d: -f1)"
+  [ -n "${start_line}" ]
+
+  ! grep -Fq "${private_value}" "${output}"
+  ! grep -Fq "${fixture_email}" "${output}"
+  ! grep -Fq 'private.example' "${output}"
+  ! grep -Fq "${fixture_document}" "${output}"
+  ! grep -Fq '172.31.0.12' "${output}"
+  ! find "${runtime_dir}" -type f -print -quit | grep -q .
+  printf 'ok - observabilidade identifica e sanitiza falha em %s antes do cleanup\n' "${failed_gate}"
+)
+
+test_candidate_gate_observability_success() (
+  set -euo pipefail
+  local iteration="$1"
+  local scenario_dir="${temporary}/candidate-gate-success-${iteration}"
+  local output="${scenario_dir}/output.log"
+  mkdir -p "${scenario_dir}/runtime"
+  RUNTIME_DIR="${scenario_dir}/runtime"
+  CANDIDATE_BACKEND_PORT=28081
+  CANDIDATE_FRONTEND_PORT=23011
+  CANDIDATE_GATEWAY_PORT=23001
+
+  candidate_gate_fixture_success() {
+    case "${CURRENT_CANDIDATE_GATE}" in
+      database|internal_api_dns|candidate_logs) CANDIDATE_GATE_HTTP_STATUS=NA ;;
+      *) CANDIDATE_GATE_HTTP_STATUS=200 ;;
+    esac
+    CANDIDATE_GATE_ATTEMPT=1
+  }
+  wait_for_json_up() { candidate_gate_fixture_success; }
+  expect_http_status() { candidate_gate_fixture_success; }
+  verify_database_gate() { candidate_gate_fixture_success; }
+  verify_candidate_dns() { candidate_gate_fixture_success; }
+  verify_candidate_logs() { candidate_gate_fixture_success; }
+
+  verify_candidate > "${output}" 2>&1
+  [ "$(grep -c 'CANDIDATE_GATE_START=' "${output}")" -eq 13 ]
+  [ "$(grep -c 'result=OK' "${output}")" -eq 13 ]
+  ! grep -Fq 'CANDIDATE_DIAGNOSTIC_START' "${output}"
+  ! grep -Fq 'result=FAIL' "${output}"
+  ! find "${scenario_dir}/runtime" -type f -print -quit | grep -q .
+  printf 'ok - caminho de sucesso observavel %s/5 sem residuos\n' "${iteration}"
+)
+
 test_candidate_efi_effective_configuration() (
   CANDIDATE_BACKEND=fixture-candidate-backend
   docker() {
@@ -534,6 +734,13 @@ run_scenario() (
     printf 'ok - %s: 200 Home + 40 listagem, zero 500/502/504\n' "${SCENARIO}"
   fi
 )
+
+for candidate_gate_name in "${candidate_gate_names[@]}"; do
+  test_candidate_gate_observability_failure "${candidate_gate_name}"
+done
+for candidate_gate_success_iteration in $(seq 1 5); do
+  test_candidate_gate_observability_success "${candidate_gate_success_iteration}"
+done
 
 run_scenario unhealthy
 run_scenario readiness-503
