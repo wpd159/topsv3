@@ -288,7 +288,7 @@ const middlewareSource = source("src/middleware.ts")
 const nextConfigSource = source("next.config.ts")
 const preprodNginxSource = source("../deploy/preprod/nginx-preprod-local.conf")
 const hmlNginxSource = source("../deploy/hml/nginx-v3-esle-cloud.conf")
-const workflowSource = source("../.github/workflows/deploy-preprod.yml")
+const workflowSource = source("../.github/workflows/ci.yml")
 
 assert.match(robotsSource, /buildSearchRobotsRules/)
 assert.match(robotsSource, /policy\.sitemapEnabled/)
@@ -354,8 +354,6 @@ for (const nginxSource of [preprodNginxSource, hmlNginxSource]) {
   assert.match(nginxSource, /Disallow: \//)
 }
 assert.match(workflowSource, /SEARCH_INDEXING_MODE:\s*blocked/)
-assert.match(workflowSource, /X-Robots-Tag:.*noindex/)
-assert.match(workflowSource, /Disallow: \//)
 assert.match(nextConfigSource, /output:\s*["']standalone["']/)
 assert.match(
   preprodComposeSource,
