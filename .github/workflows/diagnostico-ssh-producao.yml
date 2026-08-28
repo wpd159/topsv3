@@ -1,0 +1,190 @@
+name: Diagnostico isolado SSH da producao
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: topsv3-ssh-connectivity-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnose-ssh:
+    name: Diagnostico GitHub Actions para VPS
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+
+    steps:
+      - name: Executar 20 tentativas SSH sanitizadas
+        shell: bash
+        env:
+          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          PRODUCTION_SSH_IDENTITY: ${{ secrets.PRODUCTION_SSH_IDENTITY }}
+          PRODUCTION_SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          set +x
+
+          test -n "${PRODUCTION_HOST}"
+          test -n "${PRODUCTION_USER}"
+          test "${PRODUCTION_SSH_PORT}" -ge 1
+          test "${PRODUCTION_SSH_PORT}" -le 65535
+          test -n "${PRODUCTION_SSH_IDENTITY}"
+          if [[ ! "${PRODUCTION_SSH_HOST_KEY}" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}$ ]]; then
+            echo "DIAGNOSTIC_SETUP=FAIL reason=invalid_pinned_host_key"
+            exit 1
+          fi
+
+          diagnostic_root="$(mktemp -d "${RUNNER_TEMP}/ssh-connectivity.XXXXXX")"
+          cleanup() {
+            rm -rf -- "${diagnostic_root}"
+          }
+          trap cleanup EXIT
+
+          identity_file="${diagnostic_root}/identity"
+          known_hosts_file="${diagnostic_root}/known_hosts"
+          printf '%s\n' "${PRODUCTION_SSH_IDENTITY}" > "${identity_file}"
+          chmod 600 "${identity_file}"
+          printf '[%s]:%s %s\n' \
+            "${PRODUCTION_HOST}" \
+            "${PRODUCTION_SSH_PORT}" \
+            "${PRODUCTION_SSH_HOST_KEY}" > "${known_hosts_file}"
+          chmod 600 "${known_hosts_file}"
+          ssh-keygen -F "[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}" \
+            -f "${known_hosts_file}" >/dev/null
+
+          if ! getent ahostsv4 "${PRODUCTION_HOST}" >/dev/null; then
+            echo "DIAGNOSTIC_SETUP=FAIL reason=no_ipv4_resolution"
+            exit 1
+          fi
+
+          runner_hash="$(printf '%s' "${RUNNER_NAME}|${RUNNER_OS}|${RUNNER_ARCH}" \
+            | sha256sum | cut -c1-12)"
+          egress_ipv4="$(curl -4 -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)"
+          if [[ "${egress_ipv4}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            egress_hash="$(printf '%s' "${egress_ipv4}" | sha256sum | cut -c1-12)"
+          else
+            egress_hash=indisponivel
+          fi
+          unset egress_ipv4
+
+          ssh_target="${PRODUCTION_USER}@${PRODUCTION_HOST}"
+          ssh_options=(
+            -4
+            -T
+            -i "${identity_file}"
+            -p "${PRODUCTION_SSH_PORT}"
+            -o BatchMode=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="${known_hosts_file}"
+            -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}"
+            -o ConnectTimeout=15
+            -o ConnectionAttempts=1
+          )
+
+          successes=0
+          window_started_epoch="$(date +%s)"
+
+          for attempt in $(seq 1 20); do
+            attempt_root="${diagnostic_root}/attempt-${attempt}"
+            mkdir -p "${attempt_root}"
+            timestamp_utc="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            started_ms="$(date +%s%3N)"
+
+            tcp_ok=false
+            banner_ok=false
+            kex_ok=false
+            host_key_ok=false
+            ssh_true_ok=false
+            ssh_exit=255
+            failure_phase=TCP_CONNECT
+
+            if timeout 5 nc -4 -z -w 4 \
+              "${PRODUCTION_HOST}" "${PRODUCTION_SSH_PORT}" \
+              >"${attempt_root}/tcp.out" 2>"${attempt_root}/tcp.err"; then
+              tcp_ok=true
+            fi
+
+            set +e
+            timeout 8 ssh-keyscan -4 -T 6 \
+              -p "${PRODUCTION_SSH_PORT}" -t ed25519 "${PRODUCTION_HOST}" \
+              >"${attempt_root}/keyscan.out" 2>"${attempt_root}/keyscan.err"
+            keyscan_exit=$?
+            set -e
+            if grep -q 'SSH-2.0-' "${attempt_root}/keyscan.err"; then
+              banner_ok=true
+            fi
+            scanned_host_key="$(awk '$2 == "ssh-ed25519" { print $2 " " $3; exit }' \
+              "${attempt_root}/keyscan.out")"
+            if [ -n "${scanned_host_key}" ]; then
+              kex_ok=true
+              if [ "${scanned_host_key}" = "${PRODUCTION_SSH_HOST_KEY}" ]; then
+                host_key_ok=true
+              fi
+            fi
+            unset scanned_host_key
+
+            set +e
+            timeout 20 ssh -vv "${ssh_options[@]}" "${ssh_target}" true \
+              >"${attempt_root}/ssh.out" 2>"${attempt_root}/ssh.err"
+            ssh_exit=$?
+            set -e
+
+            if grep -q 'Connection established' "${attempt_root}/ssh.err"; then
+              tcp_ok=true
+            fi
+            if grep -q 'Remote protocol version' "${attempt_root}/ssh.err"; then
+              banner_ok=true
+            fi
+            if grep -Eq 'SSH2_MSG_KEXINIT|kex: algorithm:' "${attempt_root}/ssh.err"; then
+              kex_ok=true
+            fi
+            if [ "${ssh_exit}" -eq 0 ]; then
+              tcp_ok=true
+              banner_ok=true
+              kex_ok=true
+              host_key_ok=true
+              ssh_true_ok=true
+              failure_phase=NONE
+              successes=$((successes + 1))
+            elif grep -Eqi 'REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed' \
+              "${attempt_root}/ssh.err"; then
+              failure_phase=HOST_KEY
+            elif [ "${tcp_ok}" != true ]; then
+              failure_phase=TCP_CONNECT
+            elif [ "${banner_ok}" != true ]; then
+              failure_phase=BANNER
+            elif [ "${kex_ok}" != true ]; then
+              failure_phase=KEX
+            elif [ "${host_key_ok}" != true ]; then
+              failure_phase=HOST_KEY
+            else
+              failure_phase=SSH_TRUE
+            fi
+
+            finished_ms="$(date +%s%3N)"
+            duration_ms=$((finished_ms - started_ms))
+            result=FAIL
+            if [ "${ssh_true_ok}" = true ]; then
+              result=OK
+            fi
+
+            printf '%s\n' \
+              "SSH_DIAGNOSTIC attempt=${attempt} timestamp_utc=${timestamp_utc} runner_hash=${runner_hash} egress_hash=${egress_hash} tcp=${tcp_ok} banner=${banner_ok} kex=${kex_ok} host_key=${host_key_ok} ssh_true=${ssh_true_ok} duration_ms=${duration_ms} exit_code=${ssh_exit} phase=${failure_phase} result=${result} keyscan_exit=${keyscan_exit}"
+
+            rm -rf -- "${attempt_root}"
+            if [ "${attempt}" -lt 20 ]; then
+              next_target=$((window_started_epoch + attempt * 30))
+              now_epoch="$(date +%s)"
+              if [ "${next_target}" -gt "${now_epoch}" ]; then
+                sleep "$((next_target - now_epoch))"
+              fi
+            fi
+          done
+
+          echo "SSH_DIAGNOSTIC_SUMMARY attempts=20 ssh_true=${successes} failed=$((20 - successes)) runner_hash=${runner_hash} egress_hash=${egress_hash}"
