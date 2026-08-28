@@ -22,7 +22,7 @@ const productionCompose = read('deploy/production/docker-compose.yml')
 const preprodCompose = read('deploy/preprod/docker-compose.yml')
 const hmlCompose = read('deploy/hml/docker-compose.yml')
 const productionWorkflow = read('.github/workflows/deploy-production.yml')
-const preprodWorkflow = read('.github/workflows/deploy-preprod.yml')
+const ciWorkflow = read('.github/workflows/ci.yml')
 const atomicProductionActivator = read('scripts/deploy/ativar-release-atomica-production.sh')
 
 assert.match(backendHealth, /@GetMapping\("\/liveness"\)/)
@@ -66,17 +66,16 @@ for (const [name, compose, hasGateway] of [
   process.stdout.write(`ok - Compose ${name} usa liveness sem dependencia externa\n`)
 }
 
-for (const [name, workflow] of [
-  ['production', productionWorkflow],
-  ['preprod', preprodWorkflow],
-]) {
-  assert.match(workflow, /npm run test:health-readiness/)
-  assert.match(workflow, /\/api\/health\/liveness/)
-  assert.match(workflow, /\/api\/health\/readiness/)
-  assert.match(workflow, /\/health\/liveness/)
-  assert.match(workflow, /\/health\/readiness/)
-  process.stdout.write(`ok - workflow ${name} aguarda readiness real\n`)
-}
+assert.match(ciWorkflow, /npm run test:health-readiness/)
+assert.doesNotMatch(ciWorkflow, /\b(?:ssh|scp|rsync)\b|PREPROD_|environment:\s*preprod/)
+process.stdout.write('ok - CI preserva os testes sem acesso remoto\n')
+
+assert.match(productionWorkflow, /npm run test:health-readiness/)
+assert.match(productionWorkflow, /\/api\/health\/liveness/)
+assert.match(productionWorkflow, /\/api\/health\/readiness/)
+assert.match(productionWorkflow, /\/health\/liveness/)
+assert.match(productionWorkflow, /\/health\/readiness/)
+process.stdout.write('ok - workflow production aguarda readiness real\n')
 
 assert.match(productionWorkflow, /bash "\$\{atomic_activator\}"/)
 assert.match(atomicProductionActivator, /verify_candidate/)

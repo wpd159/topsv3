@@ -2,6 +2,13 @@ name: Deploy Producao Tops do Job V3
 
 on:
   workflow_dispatch:
+    inputs:
+      production_target:
+        description: Confirme o destino canonico da producao
+        required: true
+        type: choice
+        options:
+          - topsdojob-production-vps-779959
 
 concurrency:
   group: topsv3-production
@@ -91,20 +98,24 @@ jobs:
       - name: Validate required secrets
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
-          PRODUCTION_SSH_IDENTITY: ${{ secrets.PRODUCTION_SSH_IDENTITY }}
-          PRODUCTION_SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_IDENTITY: ${{ secrets.TOPSDOJOB_PROD_SSH_PRIVATE_KEY }}
+          TOPSDOJOB_PROD_SSH_HOST_KEY: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST_KEY }}
+          TOPSDOJOB_PROD_TARGET_CONFIRMATION: ${{ inputs.production_target }}
+          TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256: ${{ vars.TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256 }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
         run: |
           set -euo pipefail
-          test -n "${PRODUCTION_HOST}"
-          test "${PRODUCTION_USER}" = "topsdojob"
-          test "${PRODUCTION_SSH_PORT}" -ge 1
-          test "${PRODUCTION_SSH_PORT}" -le 65535
-          test -n "${PRODUCTION_SSH_IDENTITY}"
-          test -n "${PRODUCTION_SSH_HOST_KEY}"
+          test -n "${TOPSDOJOB_PROD_SSH_HOST}"
+          test "${TOPSDOJOB_PROD_SSH_USER}" = "topsdojob"
+          test "${TOPSDOJOB_PROD_SSH_PORT}" -ge 1
+          test "${TOPSDOJOB_PROD_SSH_PORT}" -le 65535
+          test -n "${TOPSDOJOB_PROD_SSH_IDENTITY}"
+          test -n "${TOPSDOJOB_PROD_SSH_HOST_KEY}"
+          test "${TOPSDOJOB_PROD_TARGET_CONFIRMATION}" = "topsdojob-production-vps-779959"
+          [[ "${TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256}" =~ ^[a-f0-9]{64}$ ]]
           test -n "${INDEXNOW_KEY}"
           [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
           indexnow_key_file="frontend/public/${INDEXNOW_KEY}.txt"
@@ -114,35 +125,35 @@ jobs:
       - name: Configure SSH
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
-          PRODUCTION_SSH_IDENTITY: ${{ secrets.PRODUCTION_SSH_IDENTITY }}
-          PRODUCTION_SSH_HOST_KEY: ${{ secrets.PRODUCTION_SSH_HOST_KEY }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_IDENTITY: ${{ secrets.TOPSDOJOB_PROD_SSH_PRIVATE_KEY }}
+          TOPSDOJOB_PROD_SSH_HOST_KEY: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST_KEY }}
         run: |
           set -euo pipefail
-          if [[ ! "${PRODUCTION_SSH_HOST_KEY}" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}$ ]]; then
+          if [[ ! "${TOPSDOJOB_PROD_SSH_HOST_KEY}" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}$ ]]; then
             echo "ERRO: chave publica SSH da producao invalida." >&2
             exit 1
           fi
           install -m 700 -d "${HOME}/.ssh"
-          printf '%s\n' "${PRODUCTION_SSH_IDENTITY}" > "${HOME}/.ssh/topsv3_production"
-          chmod 600 "${HOME}/.ssh/topsv3_production"
-          printf '[%s]:%s %s\n' "${PRODUCTION_HOST}" "${PRODUCTION_SSH_PORT}" "${PRODUCTION_SSH_HOST_KEY}" > "${HOME}/.ssh/known_hosts"
+          printf '%s\n' "${TOPSDOJOB_PROD_SSH_IDENTITY}" > "${HOME}/.ssh/topsdojob_production"
+          chmod 600 "${HOME}/.ssh/topsdojob_production"
+          printf '[%s]:%s %s\n' "${TOPSDOJOB_PROD_SSH_HOST}" "${TOPSDOJOB_PROD_SSH_PORT}" "${TOPSDOJOB_PROD_SSH_HOST_KEY}" > "${HOME}/.ssh/known_hosts"
           chmod 600 "${HOME}/.ssh/known_hosts"
-          ssh-keygen -F "[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}" -f "${HOME}/.ssh/known_hosts" >/dev/null
+          ssh-keygen -F "[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}" -f "${HOME}/.ssh/known_hosts" >/dev/null
           ssh -V
           ssh -Q kex | grep -Fxq 'sntrup761x25519-sha512@openssh.com'
 
       - name: Validate pinned SSH host key
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}" -o ConnectTimeout=15)
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}" -o ConnectTimeout=15)
           SSH_RETRY_BACKOFF=(2 4 8 16)
           for attempt in 1 2 3 4 5; do
             if ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true; then
@@ -157,16 +168,41 @@ jobs:
             sleep "${delay}"
           done
 
+      - name: Validate canonical production target
+        shell: bash
+        env:
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256: ${{ vars.TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256 }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
+          actual_identity_sha256="$(
+            ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
+              marker=/opt/topsv3/identity/production-target
+              test -f "${marker}"
+              test -r "${marker}"
+              sha256sum "${marker}" | cut -d " " -f 1
+            '
+          )"
+          if [ "${actual_identity_sha256}" != "${TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256}" ]; then
+            echo "ERRO: destino SSH nao corresponde a VPS canonica de producao." >&2
+            exit 1
+          fi
+          echo "PRODUCTION_TARGET_GUARD=PASS"
+
       - name: Validate remote production prerequisites
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s' <<'REMOTE'
           set -euo pipefail
           test "$(id -un)" = "topsdojob"
@@ -193,14 +229,14 @@ jobs:
       - name: Synchronize IndexNow key in production runtime
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
           {
             cat <<'REMOTE_HEAD'
@@ -250,14 +286,14 @@ jobs:
       - name: Upload immutable release
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
-          SCP_OPTS=(-i "${HOME}/.ssh/topsv3_production" -P "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
+          SCP_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -P "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           ARCHIVE="${RUNNER_TEMP}/topsv3-${GITHUB_SHA}.tar.gz"
           tar \
             --exclude='./.git' \
@@ -318,13 +354,13 @@ jobs:
       - name: Build and activate production release
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
           set -euo pipefail
           release_sha="$1"
@@ -495,13 +531,13 @@ jobs:
       - name: Smoke production internally without data writes
         shell: bash
         env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
           set -euo pipefail
           release_sha="$1"
