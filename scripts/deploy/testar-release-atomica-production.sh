@@ -97,6 +97,7 @@ candidate_gate_names=(
   gateway_frontend_readiness
   gateway_home
   gateway_listagem
+  gateway_localidades
   database
   internal_api_dns
   candidate_logs
@@ -278,8 +279,8 @@ test_candidate_gate_observability_success() (
   verify_candidate_logs() { candidate_gate_fixture_success; }
 
   verify_candidate > "${output}" 2>&1
-  [ "$(grep -c 'CANDIDATE_GATE_START=' "${output}")" -eq 13 ]
-  [ "$(grep -c 'result=OK' "${output}")" -eq 13 ]
+  [ "$(grep -c 'CANDIDATE_GATE_START=' "${output}")" -eq 14 ]
+  [ "$(grep -c 'result=OK' "${output}")" -eq 14 ]
   ! grep -Fq 'CANDIDATE_DIAGNOSTIC_START' "${output}"
   ! grep -Fq 'result=FAIL' "${output}"
   ! find "${scenario_dir}/runtime" -type f -print -quit | grep -q .
@@ -534,6 +535,18 @@ run_scenario() (
     record_event COEXISTENCE_CAPACITY_OK
   }
 
+  run_preview_backfill() {
+    local mode="$1"
+    local phase="$2"
+    record_event "PREVIEW_BACKFILL_${phase^^}_${mode}"
+    if [ "${SCENARIO}" = backfill-failure ] \
+      && [ "${phase}" = delta ] \
+      && [ "${mode}" = APPLY ]; then
+      record_event PREVIEW_BACKFILL_FAILED
+      return 1
+    fi
+  }
+
   active_old_requests() {
     curl -fsS "${fixture_origin}/__active/old"
   }
@@ -700,10 +713,15 @@ run_scenario() (
       [ "$(release_header)" = candidate ] || return 1
       [ "$(event_line CANDIDATE_READY)" -lt "$(event_line TRAFFIC_SWITCH)" ] || return 1
       [ "$(event_line COEXISTENCE_CAPACITY_OK)" -lt "$(event_line TRAFFIC_SWITCH)" ] || return 1
+      [ "$(event_line PREVIEW_BACKFILL_DELTA_APPLY)" -lt "$(event_line PREVIEW_BACKFILL_DELTA_VALIDATE)" ] || return 1
+      [ "$(event_line PREVIEW_BACKFILL_DELTA_VALIDATE)" -lt "$(event_line TRAFFIC_SWITCH)" ] || return 1
       [ "$(event_line TRAFFIC_SWITCH)" -lt "$(event_line PUBLIC_SMOKE_1)" ] || return 1
       [ "$(event_line OLD_LONG_REQUESTS_STARTED)" -lt "$(event_line TRAFFIC_SWITCH)" ] || return 1
       [ "$(event_line TRAFFIC_SWITCH)" -lt "$(event_line LONG_REQUEST_COMPLETED_SECONDS)" ] || return 1
       [ "$(event_line TRAFFIC_SWITCH)" -lt "$(event_line VIDEO_STREAM_COMPLETED)" ] || return 1
+      [ "$(event_line OLD_CONNECTIONS_DRAINED)" -lt "$(event_line PREVIEW_BACKFILL_FINAL_APPLY)" ] || return 1
+      [ "$(event_line PREVIEW_BACKFILL_FINAL_APPLY)" -lt "$(event_line PREVIEW_BACKFILL_FINAL_VALIDATE)" ] || return 1
+      [ "$(event_line PREVIEW_BACKFILL_FINAL_VALIDATE)" -lt "$(event_line PUBLIC_SMOKE_2)" ] || return 1
       [ "$(event_line PUBLIC_SMOKE_2)" -lt "$(event_line OLD_GRACEFUL_SHUTDOWN_STARTED)" ] || return 1
       [ "$(event_line OLD_CONNECTIONS_DRAINED)" -lt "$(event_line OLD_GRACEFUL_SHUTDOWN_STARTED)" ] || return 1
       grep -Fq NEW_REQUESTS_CANDIDATE_ONLY "${EVENT_LOG}" || return 1
@@ -744,6 +762,7 @@ done
 
 run_scenario unhealthy
 run_scenario readiness-503
+run_scenario backfill-failure
 run_scenario healthy
 run_scenario nginx-invalid
 run_scenario post-switch-failure

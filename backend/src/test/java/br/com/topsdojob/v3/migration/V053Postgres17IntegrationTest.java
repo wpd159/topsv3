@@ -3,9 +3,12 @@ package br.com.topsdojob.v3.migration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import br.com.topsdojob.v3.persistence.repository.PreviewRestritoBackfillJdbcRepository;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.sql.SQLException;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -78,19 +81,32 @@ class V053Postgres17IntegrationTest {
           .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class)
           .hasRootCauseInstanceOf(SQLException.class);
 
-      jdbc.update("""
-          UPDATE arquivo_midia
-          SET preview_restrito_tipo = 'PREVIEW_RESTRITO',
-              preview_restrito_chave = 'publicas/restritas-borradas/v1/prova.jpg',
-              preview_restrito_pipeline_versao = 'v1',
-              preview_restrito_status = 'DISPONIVEL',
-              preview_restrito_confirmado_em = now()
+      Map<String, Object> antesDoBackfill = jdbc.queryForMap("""
+          SELECT storage_provider, bucket, chave_objeto, nome_original, mime_type,
+                 tamanho_bytes, largura, altura, sha256, status_arquivo, criado_em
+          FROM arquivo_midia
           WHERE id = ?
           """, beforeMigration);
+      PreviewRestritoBackfillJdbcRepository backfill =
+          new PreviewRestritoBackfillJdbcRepository(jdbc);
+      var atualizacao = new PreviewRestritoBackfillJdbcRepository.Atualizacao(
+          beforeMigration,
+          "publicas/restritas-borradas/v1/prova.jpg",
+          "v1",
+          OffsetDateTime.now());
+
+      assertThat(backfill.marcarDisponiveis(List.of(atualizacao))).isEqualTo(1);
+      assertThat(backfill.marcarDisponiveis(List.of(atualizacao))).isZero();
       assertThat(jdbc.queryForObject(
           "SELECT preview_restrito_status FROM arquivo_midia WHERE id = ?",
           String.class,
           beforeMigration)).isEqualTo("DISPONIVEL");
+      assertThat(jdbc.queryForMap("""
+          SELECT storage_provider, bucket, chave_objeto, nome_original, mime_type,
+                 tamanho_bytes, largura, altura, sha256, status_arquivo, criado_em
+          FROM arquivo_midia
+          WHERE id = ?
+          """, beforeMigration)).isEqualTo(antesDoBackfill);
     } finally {
       commandIgnoringFailure("docker", "rm", "-f", container);
       commandIgnoringFailure("docker", "network", "rm", network);

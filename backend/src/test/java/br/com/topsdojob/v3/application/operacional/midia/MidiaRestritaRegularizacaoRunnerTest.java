@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,17 +39,17 @@ class MidiaRestritaRegularizacaoRunnerTest {
     MidiaRestritaRegularizacaoService service = mock(MidiaRestritaRegularizacaoService.class);
     ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
     Path report = tempDir.resolve("preview-plan.tsv");
-    var result = new MidiaRestritaRegularizacaoService.Resultado(
-        0, 0, 0, 0, 0, 0, 1, List.of());
+    var result = resultadoVazio();
     when(service.planejar()).thenReturn(result);
     MidiaRestritaRegularizacaoRunner runner = new MidiaRestritaRegularizacaoRunner(
-        service, context, "PLAN", false, report.toString());
+        service, context, "PLAN", false, 200, report.toString());
 
     runner.run(mock(ApplicationArguments.class));
 
     assertThat(Files.readString(report)).isEqualTo(
         "arquivo_hash\tchave_hash\tclassificacao\n");
-    verify(service, never()).aplicar(result);
+    verify(service, never()).aplicar(result, 200);
+    verify(service, never()).validarPersistencia(result, 200);
     verify(context).close();
   }
 
@@ -57,7 +58,7 @@ class MidiaRestritaRegularizacaoRunnerTest {
     MidiaRestritaRegularizacaoService service = mock(MidiaRestritaRegularizacaoService.class);
     ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
     MidiaRestritaRegularizacaoRunner runner = new MidiaRestritaRegularizacaoRunner(
-        service, context, "APPLY", false, tempDir.resolve("plan.tsv").toString());
+        service, context, "APPLY", false, 200, tempDir.resolve("plan.tsv").toString());
 
     assertThatThrownBy(() -> runner.run(mock(ApplicationArguments.class)))
         .isInstanceOf(IllegalStateException.class)
@@ -68,12 +69,53 @@ class MidiaRestritaRegularizacaoRunnerTest {
   }
 
   @Test
+  void applyExecutaLotesEValidaNovoInventarioAntesDeConcluir() {
+    MidiaRestritaRegularizacaoService service = mock(MidiaRestritaRegularizacaoService.class);
+    ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
+    var result = resultadoVazio();
+    var application = new MidiaRestritaRegularizacaoService.Aplicacao(0, 0, 0);
+    var validation = new MidiaRestritaRegularizacaoService.Validacao(0, 0, 0, 0, 0);
+    when(service.planejar()).thenReturn(result, result);
+    when(service.aplicar(result, 200)).thenReturn(application);
+    when(service.validarPersistencia(result, 200)).thenReturn(validation);
+    MidiaRestritaRegularizacaoRunner runner = new MidiaRestritaRegularizacaoRunner(
+        service, context, "APPLY", true, 200, tempDir.resolve("apply.tsv").toString());
+
+    runner.run(mock(ApplicationArguments.class));
+
+    verify(service, times(2)).planejar();
+    verify(service).aplicar(result, 200);
+    verify(service).validarPersistencia(result, 200);
+    verify(context).close();
+  }
+
+  @Test
+  void validateFalhaFechadoComPendenteOuInconsistente() {
+    MidiaRestritaRegularizacaoService service = mock(MidiaRestritaRegularizacaoService.class);
+    ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
+    var result = resultadoVazio();
+    var validation = new MidiaRestritaRegularizacaoService.Validacao(1, 0, 0, 1, 0);
+    when(service.planejar()).thenReturn(result);
+    when(service.validarPersistencia(result, 200)).thenReturn(validation);
+    MidiaRestritaRegularizacaoRunner runner = new MidiaRestritaRegularizacaoRunner(
+        service, context, "VALIDATE", false, 200,
+        tempDir.resolve("validate.tsv").toString());
+
+    assertThatThrownBy(() -> runner.run(mock(ApplicationArguments.class)))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("reprovada");
+
+    verify(service, never()).aplicar(result, 200);
+    verify(context).close();
+  }
+
+  @Test
   void recusaRelatorioDentroDaWorktreeAntesDeListar() {
     MidiaRestritaRegularizacaoService service = mock(MidiaRestritaRegularizacaoService.class);
     ConfigurableApplicationContext context = mock(ConfigurableApplicationContext.class);
     Path insideRepository = Path.of("target", "preview-plan.tsv").toAbsolutePath();
     MidiaRestritaRegularizacaoRunner runner = new MidiaRestritaRegularizacaoRunner(
-        service, context, "PLAN", false, insideRepository.toString());
+        service, context, "PLAN", false, 200, insideRepository.toString());
 
     assertThatThrownBy(() -> runner.run(mock(ApplicationArguments.class)))
         .isInstanceOf(IllegalArgumentException.class)
@@ -81,5 +123,10 @@ class MidiaRestritaRegularizacaoRunnerTest {
 
     verify(service, never()).planejar();
     verify(context).close();
+  }
+
+  private MidiaRestritaRegularizacaoService.Resultado resultadoVazio() {
+    return new MidiaRestritaRegularizacaoService.Resultado(
+        0, 0, 0, 0, 0, 0, 1, List.of());
   }
 }

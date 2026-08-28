@@ -1,6 +1,7 @@
 package br.com.topsdojob.v3.application.operacional.midia;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -8,23 +9,31 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.operacional.midia.MidiaRestritaRegularizacaoService.Classificacao;
+import br.com.topsdojob.v3.application.operacional.midia.MidiaRestritaRegularizacaoService.Item;
+import br.com.topsdojob.v3.application.operacional.midia.MidiaRestritaRegularizacaoService.Resultado;
 import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
-import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObjectMetadata;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObjectPage;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.PreviewRestritoBackfillJdbcRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.IntStream;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 
@@ -34,10 +43,7 @@ class MidiaRestritaRegularizacaoServiceTest {
   void planEhIdempotenteEUsaListagemEmLoteSemExists() {
     UUID arquivoId = UUID.randomUUID();
     AnuncioMidiaEntity vinculo = mock(AnuncioMidiaEntity.class);
-    ArquivoMidiaEntity arquivo = ArquivoMidiaEntity.criarUploadPendente(
-        arquivoId, "R2", "privado", "pendentes/origem.jpg", "origem.jpg",
-        "image/jpeg", 10L, 100, 100, null, "a".repeat(64), OffsetDateTime.now());
-    arquivo.aplicarDecisao(StatusArquivoMidia.VALIDADO);
+    ArquivoMidiaEntity arquivo = arquivoValidado(arquivoId);
     AnuncioMidiaRepository vinculoRepository = mock(AnuncioMidiaRepository.class);
     ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     MidiaRestritaDerivacaoService derivacaoService = mock(MidiaRestritaDerivacaoService.class);
@@ -51,12 +57,13 @@ class MidiaRestritaRegularizacaoServiceTest {
         .thenReturn(List.of(vinculo));
     when(arquivoRepository.findByIdIn(List.of(arquivoId))).thenReturn(List.of(arquivo));
     when(derivacaoService.chavePublica(arquivo)).thenReturn(key);
+    when(derivacaoService.versaoPipeline()).thenReturn("v1");
     when(derivacaoService.prefixoPreviews()).thenReturn("publicas/restritas-borradas/v1/");
     when(provider.getIfAvailable()).thenReturn(storage);
     when(storage.list(any(), any(), isNull(), anyInt())).thenReturn(new StoredObjectPage(
         List.of(new StoredObjectMetadata(key, 10L, "etag", Instant.now())), null, false));
 
-    MidiaRestritaRegularizacaoService service = new MidiaRestritaRegularizacaoService(
+    MidiaRestritaRegularizacaoService service = novoServico(
         vinculoRepository, arquivoRepository, derivacaoService, provider);
 
     var primeira = service.planejar();
@@ -65,20 +72,14 @@ class MidiaRestritaRegularizacaoServiceTest {
     assertThat(primeira.disponiveis()).isEqualTo(1);
     assertThat(segunda).usingRecursiveComparison().isEqualTo(primeira);
     verify(storage, times(2)).list(any(), any(), isNull(), anyInt());
-    verify(storage, never()).exists(any(), any());
-    verify(storage, never()).get(any(), any());
-    verify(storage, never()).put(any(), any(), any(), any());
-    verify(storage, never()).delete(any(), any());
+    verificarZeroEscritasStorage(storage);
   }
 
   @Test
   void falhaDaListagemMantemTodosNaoComprovados() {
     UUID arquivoId = UUID.randomUUID();
     AnuncioMidiaEntity vinculo = mock(AnuncioMidiaEntity.class);
-    ArquivoMidiaEntity arquivo = ArquivoMidiaEntity.criarUploadPendente(
-        arquivoId, "R2", "privado", "pendentes/origem.jpg", "origem.jpg",
-        "image/jpeg", 10L, 100, 100, null, "a".repeat(64), OffsetDateTime.now());
-    arquivo.aplicarDecisao(StatusArquivoMidia.VALIDADO);
+    ArquivoMidiaEntity arquivo = arquivoValidado(arquivoId);
     AnuncioMidiaRepository vinculoRepository = mock(AnuncioMidiaRepository.class);
     ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
     MidiaRestritaDerivacaoService derivacaoService = mock(MidiaRestritaDerivacaoService.class);
@@ -91,7 +92,7 @@ class MidiaRestritaRegularizacaoServiceTest {
     when(derivacaoService.chavePublica(arquivo)).thenReturn("preview.jpg");
     when(provider.getIfAvailable()).thenReturn(null);
 
-    var resultado = new MidiaRestritaRegularizacaoService(
+    var resultado = novoServico(
         vinculoRepository, arquivoRepository, derivacaoService, provider).planejar();
 
     assertThat(resultado.naoComprovados()).isEqualTo(1);
@@ -125,21 +126,20 @@ class MidiaRestritaRegularizacaoServiceTest {
     when(arquivoRepository.findByIdIn(any())).thenReturn(arquivos);
     when(derivacaoService.chavePublica(any())).thenAnswer(invocation ->
         prefix + invocation.<ArquivoMidiaEntity>getArgument(0).getId() + ".jpg");
+    when(derivacaoService.versaoPipeline()).thenReturn("v1");
     when(derivacaoService.prefixoPreviews()).thenReturn(prefix);
     when(provider.getIfAvailable()).thenReturn(storage);
     when(storage.list(any(), any(), isNull(), anyInt()))
         .thenReturn(new StoredObjectPage(objects, null, false));
 
-    var resultado = new MidiaRestritaRegularizacaoService(
+    var resultado = novoServico(
         vinculoRepository, arquivoRepository, derivacaoService, provider).planejar();
 
     assertThat(resultado.arquivos()).isEqualTo(1_344);
     assertThat(resultado.disponiveis()).isEqualTo(1_344);
     verify(storage).list(any(), any(), isNull(), anyInt());
-    verify(storage, never()).exists(any(), any());
-    verify(storage, never()).get(any(), any());
-    verify(storage, never()).put(any(), any(), any(), any());
-    verify(storage, never()).delete(any(), any());
+    verify(arquivoRepository).findByIdIn(any());
+    verificarZeroEscritasStorage(storage);
   }
 
   @Test
@@ -160,17 +160,172 @@ class MidiaRestritaRegularizacaoServiceTest {
     when(arquivoRepository.findByIdIn(any())).thenReturn(List.of(arquivo));
     when(derivacaoService.chavePublica(arquivo))
         .thenReturn("publicas/restritas-borradas/v1/atual.jpg");
+    when(derivacaoService.versaoPipeline()).thenReturn("v1");
     when(derivacaoService.prefixoPreviews())
         .thenReturn("publicas/restritas-borradas/v1/");
     when(provider.getIfAvailable()).thenReturn(storage);
     when(storage.list(any(), any(), isNull(), anyInt()))
         .thenReturn(new StoredObjectPage(List.of(), null, false));
 
-    var resultado = new MidiaRestritaRegularizacaoService(
+    var resultado = novoServico(
         vinculoRepository, arquivoRepository, derivacaoService, provider).planejar();
 
     assertThat(resultado.inconsistentes()).isEqualTo(1);
     assertThat(resultado.ausentes()).isZero();
+  }
+
+  @Test
+  void applyRecusaPlanoIncompletoAntesDeBloquearOuEscrever() {
+    ArquivoMidiaEntity arquivo = arquivoValidado(UUID.randomUUID());
+    ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+    PreviewRestritoBackfillJdbcRepository backfill =
+        mock(PreviewRestritoBackfillJdbcRepository.class);
+    MidiaRestritaRegularizacaoService service = novoServicoAplicacao(
+        arquivoRepository, backfill, mock(MidiaRestritaDerivacaoService.class));
+    Resultado plano = Resultado.de(
+        1, 1, 1, List.of(new Item(arquivo, "preview.jpg", Classificacao.AUSENTE)));
+
+    assertThatThrownBy(() -> service.aplicar(plano, 200))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessageContaining("ausente, inconsistente ou nao comprovado");
+
+    verify(arquivoRepository, never()).findByIdInForUpdate(any());
+    verifyNoInteractions(backfill);
+  }
+
+  @Test
+  void applyDe1344RegistrosUsaSeteLotesSemNMaisUm() {
+    List<ArquivoMidiaEntity> arquivos = IntStream.range(0, 1_344)
+        .mapToObj(index -> arquivoValidado(UUID.randomUUID()))
+        .toList();
+    Map<UUID, ArquivoMidiaEntity> porId = arquivos.stream().collect(Collectors.toMap(
+        ArquivoMidiaEntity::getId,
+        arquivo -> arquivo,
+        (primeiro, ignorado) -> primeiro,
+        LinkedHashMap::new));
+    String prefix = "publicas/restritas-borradas/v1/";
+    List<Item> itens = arquivos.stream()
+        .map(arquivo -> new Item(
+            arquivo,
+            prefix + arquivo.getId() + ".jpg",
+            Classificacao.DISPONIVEL))
+        .toList();
+    Resultado plano = Resultado.de(1_344, 1_344, 2, itens);
+    ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+    PreviewRestritoBackfillJdbcRepository backfill =
+        mock(PreviewRestritoBackfillJdbcRepository.class);
+    MidiaRestritaDerivacaoService derivacao = mock(MidiaRestritaDerivacaoService.class);
+    when(derivacao.versaoPipeline()).thenReturn("v1");
+    when(arquivoRepository.findByIdInForUpdate(any())).thenAnswer(invocation -> {
+      Collection<UUID> ids = invocation.getArgument(0);
+      return ids.stream().map(porId::get).toList();
+    });
+    when(backfill.marcarDisponiveis(any())).thenAnswer(invocation ->
+        invocation.<List<?>>getArgument(0).size());
+    MidiaRestritaRegularizacaoService service = novoServicoAplicacao(
+        arquivoRepository, backfill, derivacao);
+
+    var aplicacao = service.aplicar(plano, 200);
+
+    assertThat(aplicacao.atualizados()).isEqualTo(1_344);
+    assertThat(aplicacao.inalterados()).isZero();
+    assertThat(aplicacao.lotes()).isEqualTo(7);
+    verify(arquivoRepository, times(7)).findByIdInForUpdate(any());
+    verify(arquivoRepository, never()).findByIdForUpdate(any());
+    verify(backfill, times(7)).marcarDisponiveis(any());
+  }
+
+  @Test
+  void segundaPassagemNaoEscrevePreviewJaDisponivel() {
+    ArquivoMidiaEntity arquivo = arquivoValidado(UUID.randomUUID());
+    String key = "publicas/restritas-borradas/v1/preview.jpg";
+    arquivo.marcarPreviewRestritoDisponivel(key, "v1", OffsetDateTime.now());
+    Resultado plano = Resultado.de(
+        1, 1, 1, List.of(new Item(arquivo, key, Classificacao.DISPONIVEL)));
+    ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+    PreviewRestritoBackfillJdbcRepository backfill =
+        mock(PreviewRestritoBackfillJdbcRepository.class);
+    MidiaRestritaDerivacaoService derivacao = mock(MidiaRestritaDerivacaoService.class);
+    when(derivacao.versaoPipeline()).thenReturn("v1");
+    when(arquivoRepository.findByIdInForUpdate(any())).thenReturn(List.of(arquivo));
+    MidiaRestritaRegularizacaoService service = novoServicoAplicacao(
+        arquivoRepository, backfill, derivacao);
+
+    var aplicacao = service.aplicar(plano, 200);
+
+    assertThat(aplicacao.atualizados()).isZero();
+    assertThat(aplicacao.inalterados()).isEqualTo(1);
+    verifyNoInteractions(backfill);
+  }
+
+  @Test
+  void validacaoDistingueDisponivelDesconhecidoPendenteEInconsistente() {
+    String prefix = "publicas/restritas-borradas/v1/";
+    ArquivoMidiaEntity disponivel = arquivoValidado(UUID.randomUUID());
+    ArquivoMidiaEntity desconhecido = arquivoValidado(UUID.randomUUID());
+    ArquivoMidiaEntity pendente = arquivoValidado(UUID.randomUUID());
+    ArquivoMidiaEntity falho = arquivoValidado(UUID.randomUUID());
+    String keyDisponivel = prefix + disponivel.getId() + ".jpg";
+    String keyDesconhecido = prefix + desconhecido.getId() + ".jpg";
+    String keyPendente = prefix + pendente.getId() + ".jpg";
+    String keyFalho = prefix + falho.getId() + ".jpg";
+    disponivel.marcarPreviewRestritoDisponivel(keyDisponivel, "v1", OffsetDateTime.now());
+    pendente.marcarPreviewRestritoPendente(keyPendente, "v1");
+    falho.marcarPreviewRestritoFalha(keyFalho, "v1");
+    List<ArquivoMidiaEntity> arquivos = List.of(disponivel, desconhecido, pendente, falho);
+    List<Item> itens = List.of(
+        new Item(disponivel, keyDisponivel, Classificacao.DISPONIVEL),
+        new Item(desconhecido, keyDesconhecido, Classificacao.DISPONIVEL),
+        new Item(pendente, keyPendente, Classificacao.DISPONIVEL),
+        new Item(falho, keyFalho, Classificacao.DISPONIVEL));
+    ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
+    MidiaRestritaDerivacaoService derivacao = mock(MidiaRestritaDerivacaoService.class);
+    when(derivacao.versaoPipeline()).thenReturn("v1");
+    when(arquivoRepository.findByIdIn(any())).thenReturn(arquivos);
+    MidiaRestritaRegularizacaoService service = novoServicoAplicacao(
+        arquivoRepository, mock(PreviewRestritoBackfillJdbcRepository.class), derivacao);
+
+    var validacao = service.validarPersistencia(Resultado.de(4, 4, 1, itens), 200);
+
+    assertThat(validacao.disponiveis()).isEqualTo(1);
+    assertThat(validacao.desconhecidos()).isEqualTo(1);
+    assertThat(validacao.pendentes()).isEqualTo(1);
+    assertThat(validacao.inconsistentes()).isEqualTo(1);
+    assertThat(validacao.aprovada()).isFalse();
+  }
+
+  private MidiaRestritaRegularizacaoService novoServico(
+      AnuncioMidiaRepository vinculoRepository,
+      ArquivoMidiaRepository arquivoRepository,
+      MidiaRestritaDerivacaoService derivacaoService,
+      ObjectProvider<ObjectStorage> provider) {
+    return new MidiaRestritaRegularizacaoService(
+        vinculoRepository,
+        arquivoRepository,
+        mock(PreviewRestritoBackfillJdbcRepository.class),
+        derivacaoService,
+        provider);
+  }
+
+  private MidiaRestritaRegularizacaoService novoServicoAplicacao(
+      ArquivoMidiaRepository arquivoRepository,
+      PreviewRestritoBackfillJdbcRepository backfill,
+      MidiaRestritaDerivacaoService derivacaoService) {
+    @SuppressWarnings("unchecked")
+    ObjectProvider<ObjectStorage> provider = mock(ObjectProvider.class);
+    return new MidiaRestritaRegularizacaoService(
+        mock(AnuncioMidiaRepository.class),
+        arquivoRepository,
+        backfill,
+        derivacaoService,
+        provider);
+  }
+
+  private void verificarZeroEscritasStorage(ObjectStorage storage) {
+    verify(storage, never()).exists(any(), any());
+    verify(storage, never()).get(any(), any());
+    verify(storage, never()).put(any(), any(), any(), any());
+    verify(storage, never()).delete(any(), any());
   }
 
   private ArquivoMidiaEntity arquivoValidado(UUID id) {
