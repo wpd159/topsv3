@@ -8,12 +8,14 @@ import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.Locale;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -35,34 +37,44 @@ public class MidiaRestritaDerivacaoService {
   private final ObjectProvider<ObjectStorage> storageProvider;
   private final R2StorageProperties properties;
   private final FotoUploadProcessor processor;
-  private final Set<String> previewsConfirmados = ConcurrentHashMap.newKeySet();
+  private final ArquivoMidiaRepository arquivoRepository;
+  private final Clock clock;
 
+  @Autowired
   public MidiaRestritaDerivacaoService(
       ObjectProvider<ObjectStorage> storageProvider,
       R2StorageProperties properties,
-      FotoUploadProcessor processor) {
+      FotoUploadProcessor processor,
+      ArquivoMidiaRepository arquivoRepository) {
+    this(storageProvider, properties, processor, arquivoRepository, Clock.systemUTC());
+  }
+
+  MidiaRestritaDerivacaoService(
+      ObjectProvider<ObjectStorage> storageProvider,
+      R2StorageProperties properties,
+      FotoUploadProcessor processor,
+      ArquivoMidiaRepository arquivoRepository,
+      Clock clock) {
     this.storageProvider = storageProvider;
     this.properties = properties;
     this.processor = processor;
+    this.arquivoRepository = arquivoRepository;
+    this.clock = clock;
   }
 
   public ResultadoPreview resolverPreviewPublica(ArquivoMidiaEntity arquivo) {
     String key = chavePublicaOuNula(arquivo);
-    ObjectStorage storage = storage();
-    if (key == null || storage == null) {
-      return pendente(arquivo, "configuracao");
+    if (key == null || arquivo == null || !arquivo.previewRestritoDisponivel()
+        || !DERIVATION_VERSION.equals(arquivo.getPreviewRestritoPipelineVersao())
+        || !key.equals(arquivo.getPreviewRestritoChave())) {
+      return pendente(arquivo, "estado_persistido");
     }
-    try {
-      if (!previewsConfirmados.contains(key) && !storage.exists(StorageArea.PUBLIC_MEDIA, key)) {
-        return pendente(arquivo, "ausente");
-      }
-      previewsConfirmados.add(key);
-      return storage.publicUrl(StorageArea.PUBLIC_MEDIA, key)
-          .map(uri -> new ResultadoPreview(uri.toString(), null))
-          .orElseGet(() -> pendente(arquivo, "url_publica"));
-    } catch (RuntimeException exception) {
-      return pendente(arquivo, "storage");
+    String base = properties == null ? null : properties.getPublicBaseUrl();
+    if (base == null || base.isBlank()) {
+      return pendente(arquivo, "url_publica");
     }
+    String normalizedBase = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+    return new ResultadoPreview(normalizedBase + "/" + key, null);
   }
 
   public ResultadoGeracao garantir(ArquivoMidiaEntity arquivo) {
@@ -76,47 +88,69 @@ public class MidiaRestritaDerivacaoService {
 
     long inicio = System.nanoTime();
     String key = chavePublica(arquivo);
-    StorageArea sourceArea = areaOrigem(arquivo);
-    StoredObject source = storage.get(sourceArea, arquivo.getChaveObjeto());
-    long fimLeitura = System.nanoTime();
-    validarOrigem(arquivo, source);
-    FotoRestritaDerivada derivada = processor.gerarDerivacaoRestrita(
-        source.content(),
-        mime(arquivo.getMimeType(), source.contentType()));
-    long fimDerivacao = System.nanoTime();
+    arquivo.marcarPreviewRestritoPendente(key, DERIVATION_VERSION);
+    arquivoRepository.saveAndFlush(arquivo);
+    try {
+      StorageArea sourceArea = areaOrigem(arquivo);
+      StoredObject source = storage.get(sourceArea, arquivo.getChaveObjeto());
+      long fimLeitura = System.nanoTime();
+      validarOrigem(arquivo, source);
+      FotoRestritaDerivada derivada = processor.gerarDerivacaoRestrita(
+          source.content(),
+          mime(arquivo.getMimeType(), source.contentType()));
+      long fimDerivacao = System.nanoTime();
 
-    ObjectWriteResult writeResult = storage.putIfAbsent(
-        StorageArea.PUBLIC_MEDIA,
-        key,
-        derivada.bytes(),
-        derivada.mimeType());
-    long fimEscrita = System.nanoTime();
-    if (writeResult == ObjectWriteResult.ALREADY_EXISTS) {
-      StoredObject persisted = storage.get(StorageArea.PUBLIC_MEDIA, key);
-      if (!derivada.sha256().equals(sha256(persisted.content()))
-          || !derivada.mimeType().equals(mime(null, persisted.contentType()))) {
-        throw new ResponseStatusException(HttpStatus.CONFLICT, "derivacao publica restrita divergente");
+      ObjectWriteResult writeResult = storage.putIfAbsent(
+          StorageArea.PUBLIC_MEDIA,
+          key,
+          derivada.bytes(),
+          derivada.mimeType());
+      long fimEscrita = System.nanoTime();
+      if (writeResult == ObjectWriteResult.ALREADY_EXISTS) {
+        StoredObject persisted = storage.get(StorageArea.PUBLIC_MEDIA, key);
+        if (!derivada.sha256().equals(sha256(persisted.content()))
+            || !derivada.mimeType().equals(mime(null, persisted.contentType()))) {
+          throw new ResponseStatusException(HttpStatus.CONFLICT, "derivacao publica restrita divergente");
+        }
       }
-    }
-    long fimValidacao = System.nanoTime();
+      long fimValidacao = System.nanoTime();
 
-    previewsConfirmados.add(key);
-    compensarRollback(storage, key, writeResult == ObjectWriteResult.CREATED);
-    LOGGER.info(
-        "Derivacao restrita concluida: leituraR2Ms={}, derivacaoMs={}, escritaR2Ms={}, validacaoR2Ms={}, totalMs={}, resultado={}",
-        millis(inicio, fimLeitura),
-        millis(fimLeitura, fimDerivacao),
-        millis(fimDerivacao, fimEscrita),
-        millis(fimEscrita, fimValidacao),
-        millis(inicio, fimValidacao),
-        writeResult);
-    return new ResultadoGeracao(
-        writeResult == ObjectWriteResult.CREATED,
-        key,
-        derivada.sha256(),
-        derivada.largura(),
-        derivada.altura(),
-        derivada.mimeType());
+      arquivo.marcarPreviewRestritoDisponivel(
+          key, DERIVATION_VERSION, OffsetDateTime.now(clock));
+      arquivoRepository.saveAndFlush(arquivo);
+      compensarRollback(storage, key, writeResult == ObjectWriteResult.CREATED);
+      LOGGER.info(
+          "Derivacao restrita concluida: leituraR2Ms={}, derivacaoMs={}, escritaR2Ms={}, validacaoR2Ms={}, totalMs={}, resultado={}",
+          millis(inicio, fimLeitura),
+          millis(fimLeitura, fimDerivacao),
+          millis(fimDerivacao, fimEscrita),
+          millis(fimEscrita, fimValidacao),
+          millis(inicio, fimValidacao),
+          writeResult);
+      return new ResultadoGeracao(
+          writeResult == ObjectWriteResult.CREATED,
+          key,
+          derivada.sha256(),
+          derivada.largura(),
+          derivada.altura(),
+          derivada.mimeType());
+    } catch (RuntimeException exception) {
+      arquivo.marcarPreviewRestritoFalha(key, DERIVATION_VERSION);
+      arquivoRepository.saveAndFlush(arquivo);
+      throw new PreviewGenerationException(exception);
+    }
+  }
+
+  public String prefixoPreviews() {
+    if (properties == null || properties.getPublicMediaPrefix() == null
+        || properties.getPublicMediaPrefix().isBlank()) {
+      throw new IllegalStateException("Prefixo publico de midia nao configurado");
+    }
+    return properties.getPublicMediaPrefix() + DERIVATION_DIRECTORY;
+  }
+
+  public String versaoPipeline() {
+    return DERIVATION_VERSION;
   }
 
   public String chavePublica(ArquivoMidiaEntity arquivo) {
@@ -187,7 +221,6 @@ public class MidiaRestritaDerivacaoService {
         }
         try {
           storage.delete(StorageArea.PUBLIC_MEDIA, key);
-          previewsConfirmados.remove(key);
         } catch (RuntimeException ignored) {
           LOGGER.warn("Falha sanitizada ao compensar derivacao restrita");
         }
@@ -241,6 +274,12 @@ public class MidiaRestritaDerivacaoService {
 
     static ResultadoGeracao ignorado() {
       return new ResultadoGeracao(false, null, null, 0, 0, null);
+    }
+  }
+
+  public static final class PreviewGenerationException extends ResponseStatusException {
+    public PreviewGenerationException(Throwable cause) {
+      super(HttpStatus.SERVICE_UNAVAILABLE, "preview restrito indisponivel", cause);
     }
   }
 }

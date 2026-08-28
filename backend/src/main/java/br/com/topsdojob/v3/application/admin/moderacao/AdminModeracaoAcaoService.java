@@ -7,6 +7,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracao
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
+import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService.PreviewGenerationException;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -344,7 +345,7 @@ public class AdminModeracaoAcaoService {
                 mensagemRevisao(decisao));
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = PreviewGenerationException.class)
     public AdminAcaoModeracaoResponseDto decidirMidia(
             UUID id,
             AdminDecidirMidiaRequestDto request,
@@ -400,6 +401,10 @@ public class AdminModeracaoAcaoService {
             case REPROVAR -> StatusArquivoMidia.REJEITADO;
             case SOLICITAR_AJUSTE -> StatusArquivoMidia.PENDENTE;
         };
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR
+                && midia.getTipo() == TipoAnuncioMidia.FOTO) {
+            midiaStorageAprovacaoService.prepararAprovacao(arquivo, visibilidade);
+        }
         midia.aplicarDecisao(novoStatusMidia, visibilidade, agora);
         arquivo.aplicarDecisao(novoStatusArquivo);
         if (decisao == AdminDecisaoModeracaoAcao.APROVAR
@@ -410,7 +415,6 @@ public class AdminModeracaoAcaoService {
                     actor.usuarioId(),
                     requestId,
                     agora);
-            midiaStorageAprovacaoService.prepararAprovacao(arquivo, visibilidade);
         }
 
         if (decisao == AdminDecisaoModeracaoAcao.SOLICITAR_AJUSTE) {
@@ -450,7 +454,7 @@ public class AdminModeracaoAcaoService {
                 mensagemMidia(decisao));
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = PreviewGenerationException.class)
     public AdminAcaoModeracaoResponseDto reclassificarMidia(
             UUID id,
             AdminReclassificarMidiaRequestDto request,

@@ -81,6 +81,7 @@ jobs:
           bash ./scripts/deploy/testar-gate-banco-production.sh
           bash ./scripts/deploy/testar-gate-flyway-production.sh
           bash ./scripts/deploy/testar-stdin-deploy-production.sh
+          bash ./scripts/deploy/testar-backfill-previews-production.sh
           bash ./scripts/deploy/testar-release-atomica-production.sh
           for backup_restore_run in $(seq 1 10); do
             bash ./scripts/deploy/testar-backup-validado-production.sh
@@ -349,6 +350,7 @@ jobs:
           database_gate="${release_dir}/scripts/deploy/validar-gate-banco-production.sh"
           flyway_gate="${release_dir}/scripts/deploy/validar-gate-flyway-production.sh"
           backup_producer="${release_dir}/scripts/deploy/criar-backup-validado-production.sh"
+          preview_backfill="${release_dir}/scripts/deploy/executar-backfill-previews-production.sh"
           atomic_activator="${release_dir}/scripts/deploy/ativar-release-atomica-production.sh"
           migration_dir="${release_dir}/backend/src/main/resources/db/migration"
           snapshot_dir="$(mktemp -d)"
@@ -356,6 +358,7 @@ jobs:
           snapshot_migrated="${snapshot_dir}/migrated.snapshot"
           snapshot_after="${snapshot_dir}/after.snapshot"
           backup_receipt="${snapshot_dir}/backup.receipt"
+          preview_backfill_report_dir="${deploy_root}/runtime/preview-backfill/${release_sha}"
           export TOPSV3_RELEASE_SHA="${release_sha}"
           compose=(docker compose --env-file "${env_file}" -f "${compose_file}" -p topsv3-production)
 
@@ -423,10 +426,23 @@ jobs:
             "${applied_before}" "${failed_before}" "${expected_count_before}" NOT_CHECKED)"
           migrations_pending="$(awk -F= '$1 == "MIGRATIONS_PENDING" { print $2 }' <<< "${inspection}")"
           test "${migrations_pending}" = true || test "${migrations_pending}" = false
+          preview_backfill_required=false
+          if [ "$((10#${expected_flyway}))" -ge 53 ]; then
+            test -r "${preview_backfill}"
+            preview_backfill_required=true
+          fi
           bash "${database_gate}" "${snapshot_before}" "${snapshot_before}" "${applied_before}"
 
-          backup_status=NOT_REQUIRED
+          backup_required=false
           if [ "${migrations_pending}" = true ]; then
+            backup_required=true
+          fi
+          if [ "${preview_backfill_required}" = true ]; then
+            backup_required=true
+          fi
+
+          backup_status=NOT_REQUIRED
+          if [ "${backup_required}" = true ]; then
             test -f "${previous_release}/.release-sha"
             current_production_sha="$(cat "${previous_release}/.release-sha")"
             bash "${backup_producer}" \
@@ -450,6 +466,17 @@ jobs:
           capture_database_snapshot "${snapshot_migrated}" "${baseline_health}"
           bash "${database_gate}" "${snapshot_before}" "${snapshot_migrated}" \
             "${applied_before}" "${expected_flyway}"
+
+          if [ "${preview_backfill_required}" = true ]; then
+            "${compose[@]}" build backend
+            for preview_backfill_mode in PLAN APPLY VALIDATE; do
+              bash "${preview_backfill}" \
+                "${preview_backfill_mode}" initial \
+                "${release_sha}" "${release_dir}" "${env_file}" \
+                topsv3-production topsv3-production topsv3-production-net \
+                "${preview_backfill_report_dir}"
+            done
+          fi
 
           capture_database_snapshot "${snapshot_after}" UP
           bash "${database_gate}" "${snapshot_migrated}" "${snapshot_after}" \

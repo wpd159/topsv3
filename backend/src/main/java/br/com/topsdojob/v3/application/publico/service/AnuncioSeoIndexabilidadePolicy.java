@@ -38,11 +38,21 @@ public class AnuncioSeoIndexabilidadePolicy {
             AnuncioEntity anuncio,
             LocalizacaoPublicaDto localizacao,
             List<MidiaPublicaDto> midiasPublicas) {
+        return indexavel(
+                anuncio,
+                localizacao,
+                fotosPublicas(midiasPublicas) >= MIN_FOTOS_PUBLICAS_REAIS);
+    }
+
+    public boolean indexavel(
+            AnuncioEntity anuncio,
+            LocalizacaoPublicaDto localizacao,
+            boolean possuiFotoPublica) {
         return anuncioPublico(anuncio)
                 && localizacaoValida(localizacao)
                 && tituloUtil(anuncio)
                 && descricaoUtil(anuncio)
-                && fotosPublicas(midiasPublicas) >= MIN_FOTOS_PUBLICAS_REAIS;
+                && possuiFotoPublica;
     }
 
     private boolean anuncioPublico(AnuncioEntity anuncio) {
@@ -79,8 +89,8 @@ public class AnuncioSeoIndexabilidadePolicy {
         }
         return midias.stream()
                 .filter(midia -> "FOTO".equals(midia.tipo()))
-                .filter(MidiaPublicaDto::autorizada)
-                .filter(midia -> texto(midia.urlPublica()).length() > 0)
+                .filter(midia -> (midia.autorizada() && texto(midia.urlPublica()).length() > 0)
+                        || texto(midia.previewUrl()).length() > 0)
                 .count();
     }
 

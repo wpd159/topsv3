@@ -9,10 +9,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
-import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService.ResultadoUrlPublica;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioLocalizacaoEntity;
@@ -103,7 +101,6 @@ class SitemapPublicoConsultaServiceTest {
         EstadoRepository estadoRepository = mock(EstadoRepository.class);
         CidadeRepository cidadeRepository = mock(CidadeRepository.class);
         BairroRepository bairroRepository = mock(BairroRepository.class);
-        MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
         PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
 
         when(anuncioRepository.findPublicosComProprietarioAtivo()).thenReturn(List.of(anuncio));
@@ -113,14 +110,12 @@ class SitemapPublicoConsultaServiceTest {
         when(bairroRepository.findAllById(any())).thenReturn(List.of());
         when(midiaRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(vinculos);
         when(arquivoRepository.findByIdIn(any())).thenReturn(arquivos);
-        when(urlService.resolver(any(), any())).thenReturn(new ResultadoUrlPublica("/midia/publica.jpg", null));
         when(premiumMapper.flagsPorAnuncios(List.of(anuncio)))
                 .thenReturn(Map.of(anuncioId, PremiumPublicoFlagsDto.vazio()));
 
         AnuncioSeoElegibilidadeConsultaService elegibilidadeService = new AnuncioSeoElegibilidadeConsultaService(
                 midiaRepository,
                 arquivoRepository,
-                new MidiaPublicaMapper(urlService),
                 premiumMapper,
                 new AnuncioSeoIndexabilidadePolicy());
         SitemapPublicoConsultaService service = new SitemapPublicoConsultaService(
@@ -155,52 +150,45 @@ class SitemapPublicoConsultaServiceTest {
     @Test
     void aplicaAoSitemapOMesmoLimiteDeFotosDoDetalhePublico() {
         UUID anuncioId = UUID.randomUUID();
-        UUID estadoId = UUID.randomUUID();
-        UUID cidadeId = UUID.randomUUID();
         AnuncioEntity anuncio = mock(AnuncioEntity.class);
         when(anuncio.getId()).thenReturn(anuncioId);
 
-        AnuncioLocalizacaoEntity localizacao = mock(AnuncioLocalizacaoEntity.class);
-        when(localizacao.getAnuncioId()).thenReturn(anuncioId);
-        when(localizacao.getEstadoId()).thenReturn(estadoId);
-        when(localizacao.getCidadeId()).thenReturn(cidadeId);
-        EstadoEntity estado = mock(EstadoEntity.class);
-        when(estado.getId()).thenReturn(estadoId);
-        when(estado.getUf()).thenReturn("GO");
-        when(estado.getNome()).thenReturn("Goias");
-        CidadeEntity cidade = mock(CidadeEntity.class);
-        when(cidade.getId()).thenReturn(cidadeId);
-        when(cidade.getEstadoId()).thenReturn(estadoId);
-        when(cidade.getNome()).thenReturn("Goiania");
-        when(cidade.getSlug()).thenReturn("goiania");
+        List<AnuncioMidiaEntity> vinculos = new ArrayList<>();
+        List<ArquivoMidiaEntity> arquivos = new ArrayList<>();
+        for (int ordem = 0; ordem < 5; ordem++) {
+            UUID arquivoId = UUID.randomUUID();
+            AnuncioMidiaEntity vinculo = entity(AnuncioMidiaEntity.class);
+            set(vinculo, "id", UUID.randomUUID());
+            set(vinculo, "anuncioId", anuncioId);
+            set(vinculo, "arquivoMidiaId", arquivoId);
+            set(vinculo, "tipo", TipoAnuncioMidia.FOTO);
+            set(vinculo, "finalidade", FinalidadeAnuncioMidia.GALERIA);
+            set(vinculo, "ordem", ordem);
+            set(vinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
+            set(vinculo, "visibilidadeMidia", VisibilidadeMidia.LIVRE);
+            vinculos.add(vinculo);
 
-        UUID arquivoId = UUID.randomUUID();
-        AnuncioMidiaEntity vinculo = mock(AnuncioMidiaEntity.class);
-        when(vinculo.getAnuncioId()).thenReturn(anuncioId);
-        when(vinculo.getArquivoMidiaId()).thenReturn(arquivoId);
-        List<AnuncioMidiaEntity> vinculos = List.of(vinculo);
-        AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
-        AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
+            ArquivoMidiaEntity arquivo = entity(ArquivoMidiaEntity.class);
+            set(arquivo, "id", arquivoId);
+            set(arquivo, "statusArquivo", ordem == 4
+                    ? StatusArquivoMidia.VALIDADO
+                    : StatusArquivoMidia.PENDENTE);
+            arquivos.add(arquivo);
+        }
+
         AnuncioMidiaRepository midiaRepository = mock(AnuncioMidiaRepository.class);
         ArquivoMidiaRepository arquivoRepository = mock(ArquivoMidiaRepository.class);
-        EstadoRepository estadoRepository = mock(EstadoRepository.class);
-        CidadeRepository cidadeRepository = mock(CidadeRepository.class);
-        BairroRepository bairroRepository = mock(BairroRepository.class);
-        MidiaPublicaMapper midiaMapper = mock(MidiaPublicaMapper.class);
         PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
         AnuncioSeoIndexabilidadePolicy policy = mock(AnuncioSeoIndexabilidadePolicy.class);
 
         when(midiaRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(vinculos);
-        when(arquivoRepository.findByIdIn(any())).thenReturn(List.of());
+        when(arquivoRepository.findByIdIn(any())).thenReturn(arquivos);
         when(premiumMapper.flagsPorAnuncios(List.of(anuncio)))
                 .thenReturn(Map.of(anuncioId, PremiumPublicoFlagsDto.vazio()));
-        when(midiaMapper.publicas(eq(vinculos), any(), eq(false), eq(4), eq(false)))
-                .thenReturn(List.of());
 
         AnuncioSeoElegibilidadeConsultaService service = new AnuncioSeoElegibilidadeConsultaService(
                 midiaRepository,
                 arquivoRepository,
-                midiaMapper,
                 premiumMapper,
                 policy);
 
@@ -209,11 +197,11 @@ class SitemapPublicoConsultaServiceTest {
                 Map.of(anuncioId, new br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto(
                         "GO", "Goias", "Goiania", "goiania", null, null, null)));
 
-        verify(midiaMapper).publicas(eq(vinculos), any(), eq(false), eq(4), eq(false));
+        verify(policy).indexavel(eq(anuncio), any(), eq(false));
     }
 
     @Test
-    void rejeitaAnuncioComMidiaRestritaMesmoQuePublicado() {
+    void aceitaPreviewRestritoComprovadoComoImagemSeguraParaSeo() {
         AnuncioEntity anuncio = mock(AnuncioEntity.class);
         when(anuncio.getSlug()).thenReturn("perfil-publico");
         when(anuncio.getTitulo()).thenReturn("Perfil publico completo");
@@ -228,6 +216,6 @@ class SitemapPublicoConsultaServiceTest {
                         "/midia/borrada.jpg", "MIDIA_RESTRITA_IDADE", 1080, 1920, "image/jpeg"))
                 .toList();
 
-        assertThat(new AnuncioSeoIndexabilidadePolicy().indexavel(anuncio, localizacao, restritas)).isFalse();
+        assertThat(new AnuncioSeoIndexabilidadePolicy().indexavel(anuncio, localizacao, restritas)).isTrue();
     }
 }

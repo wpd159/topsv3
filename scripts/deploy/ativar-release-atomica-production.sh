@@ -190,6 +190,17 @@ candidate_compose() {
       "$@"
 }
 
+run_preview_backfill() {
+  local mode="$1"
+  local phase="$2"
+  [ "$((10#${EXPECTED_FLYWAY}))" -ge 53 ] || return 0
+  bash "${PREVIEW_BACKFILL_HELPER}" \
+    "${mode}" "${phase}" \
+    "${RELEASE_SHA}" "${RELEASE_DIR}" "${ENV_FILE}" \
+    "${CANDIDATE_PROJECT}" "${CANDIDATE_PREFIX}" "${CANDIDATE_NETWORK}" \
+    "${PREVIEW_BACKFILL_REPORT_DIR}"
+}
+
 container_project_is_candidate() {
   local container="$1"
   [ "$(docker inspect "${container}" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)" = "${CANDIDATE_PROJECT}" ]
@@ -511,6 +522,7 @@ verify_candidate() {
   run_candidate_gate gateway_frontend_readiness wait_for_json_up "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/health/readiness" || return 1
   run_candidate_gate gateway_home expect_http_status "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/" 200 || return 1
   run_candidate_gate gateway_listagem expect_http_status "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/anuncios" 200 || return 1
+  run_candidate_gate gateway_localidades expect_http_status "http://127.0.0.1:${CANDIDATE_GATEWAY_PORT}/api/public/localidades" 200 || return 1
   run_candidate_gate database verify_database_gate || return 1
   run_candidate_gate internal_api_dns verify_candidate_dns || return 1
   run_candidate_gate candidate_logs verify_candidate_logs || return 1
@@ -783,7 +795,8 @@ deployment_error() {
 
 stage_or_abort() {
   local stage="$1"
-  if "${stage}"; then
+  shift
+  if "${stage}" "$@"; then
     return 0
   else
     local rc=$?
@@ -798,9 +811,14 @@ atomic_activate() {
   stage_or_abort verify_candidate || return $?
   stage_or_abort verify_coexistence_capacity || return $?
   stage_or_abort validate_gateway_candidate || return $?
+  stage_or_abort verify_candidate || return $?
+  stage_or_abort run_preview_backfill APPLY delta || return $?
+  stage_or_abort run_preview_backfill VALIDATE delta || return $?
   stage_or_abort switch_gateway || return $?
   stage_or_abort smoke_public || return $?
   stage_or_abort drain_window || return $?
+  stage_or_abort run_preview_backfill APPLY final || return $?
+  stage_or_abort run_preview_backfill VALIDATE final || return $?
   stage_or_abort smoke_public || return $?
   stop_continuity
   stage_or_abort assert_continuity || return $?
@@ -843,6 +861,8 @@ initialize_production() {
   MIN_AVAILABLE_MEMORY_MB="${TOPSV3_MIN_AVAILABLE_MEMORY_MB:-512}"
   MAX_LOAD_PER_CPU="${TOPSV3_MAX_LOAD_PER_CPU:-4.0}"
   COMPOSE_FILE="${RELEASE_DIR}/deploy/production/docker-compose.yml"
+  PREVIEW_BACKFILL_HELPER="${RELEASE_DIR}/scripts/deploy/executar-backfill-previews-production.sh"
+  PREVIEW_BACKFILL_REPORT_DIR="${RUNTIME_DIR}/preview-backfill/${RELEASE_SHA}"
 
   for value in \
     "${DRAIN_MIN_SECONDS}" \
@@ -866,6 +886,9 @@ initialize_production() {
 
   install -d -m 0750 "${RUNTIME_DIR}" || return 1
   [ -r "${COMPOSE_FILE}" ] || fail "Compose da release ausente"
+  if [ "$((10#${EXPECTED_FLYWAY}))" -ge 53 ]; then
+    [ -r "${PREVIEW_BACKFILL_HELPER}" ] || fail "helper do backfill de previews ausente"
+  fi
   [ -w "${HOST_NGINX_SITE}" ] || fail "configuracao Nginx nao gravavel pelo usuario de deploy"
   require_command docker || return 1
   require_command curl || return 1

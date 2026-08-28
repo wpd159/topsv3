@@ -4,6 +4,7 @@ import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
+import br.com.topsdojob.v3.infrastructure.storage.StoredObjectPage;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
@@ -85,6 +86,19 @@ final class R2ObjectStorage implements ObjectStorage {
     return Optional.of(URI.create(normalizedBase + "/" + R2UrlCodec.encodePath(key)));
   }
 
+  @Override
+  public StoredObjectPage list(
+      StorageArea area,
+      String prefix,
+      String continuationToken,
+      int maxKeys) {
+    Location location = locationForPrefix(area, prefix);
+    if (maxKeys < 1 || maxKeys > 1_000) {
+      throw new IllegalArgumentException("Tamanho da pagina fora do intervalo permitido");
+    }
+    return operations.list(location.bucket(), prefix, continuationToken, maxKeys);
+  }
+
   private Location location(StorageArea area, String key) {
     if (area == null) {
       throw new IllegalArgumentException("Area de storage obrigatoria");
@@ -103,6 +117,26 @@ final class R2ObjectStorage implements ObjectStorage {
     };
     if (!key.startsWith(location.prefix()) || key.length() == location.prefix().length()) {
       throw new IllegalArgumentException("Chave fora do prefixo autorizado para a area");
+    }
+    return location;
+  }
+
+  private Location locationForPrefix(StorageArea area, String prefix) {
+    if (area == null || prefix == null || prefix.isBlank() || prefix.startsWith("/")
+        || prefix.contains("..") || prefix.contains("\\") || prefix.contains("?")
+        || prefix.contains("#")) {
+      throw new IllegalArgumentException("Prefixo de objeto invalido");
+    }
+    Location location = switch (area) {
+      case PUBLIC_MEDIA -> new Location(
+          properties.getPublicMediaBucket(), properties.getPublicMediaPrefix());
+      case PRIVATE_MEDIA -> new Location(
+          properties.getPrivateMediaBucket(), properties.getPrivateMediaPrefix());
+      case PRIVATE_DOCUMENT -> new Location(
+          properties.getDocumentBucket(), properties.getDocumentPrefix());
+    };
+    if (!prefix.startsWith(location.prefix())) {
+      throw new IllegalArgumentException("Prefixo fora da area autorizada");
     }
     return location;
   }

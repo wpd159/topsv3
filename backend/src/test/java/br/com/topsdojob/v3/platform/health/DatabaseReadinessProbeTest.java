@@ -17,7 +17,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void validaSelectReadOnlyEFlywayCompativelSemConsultaPesada() throws Exception {
-        Fixture fixture = fixture(1, 52, 0);
+        Fixture fixture = fixture(1, 53, 0);
 
         var result = fixture.probe().check();
 
@@ -33,7 +33,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void reprovaMigrationFalha() throws Exception {
-        Fixture fixture = fixture(1, 52, 1);
+        Fixture fixture = fixture(1, 53, 1);
 
         var result = fixture.probe().check();
 
@@ -43,7 +43,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void reprovaSchemaAbaixoDaVersaoMinimaDoCodigo() throws Exception {
-        Fixture fixture = fixture(1, 51, 0);
+        Fixture fixture = fixture(1, 52, 0);
 
         var result = fixture.probe().check();
 
@@ -53,7 +53,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void aceitaSchemaAditivoMaisNovoParaPreservarRollbackDaAplicacao() throws Exception {
-        Fixture fixture = fixture(1, 53, 0);
+        Fixture fixture = fixture(1, 54, 0);
 
         var result = fixture.probe().check();
 
@@ -74,7 +74,7 @@ class DatabaseReadinessProbeTest {
 
     @Test
     void reconheceBancoMasReprovaSeHistoricoFlywayNaoPodeSerLido() throws Exception {
-        Fixture fixture = fixture(1, 52, 0);
+        Fixture fixture = fixture(1, 53, 0);
         when(fixture.migrationsStatement().executeQuery(org.mockito.ArgumentMatchers.anyString()))
                 .thenThrow(new SQLException("historico indisponivel"));
 

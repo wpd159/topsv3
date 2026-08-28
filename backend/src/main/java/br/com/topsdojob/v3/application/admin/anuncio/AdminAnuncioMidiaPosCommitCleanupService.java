@@ -60,6 +60,13 @@ public class AdminAnuncioMidiaPosCommitCleanupService {
       Collection<UUID> arquivoIds,
       Collection<UUID> anuncioMidiaIdsDesvinculados) {
     Plano plano = planejar(arquivoIds, anuncioMidiaIdsDesvinculados);
+    if (plano.removivel()) {
+      plano.arquivos().stream()
+          .filter(item -> item.getPreviewRestritoTipo() != null
+              || item.getPreviewRestritoChave() != null)
+          .forEach(ArquivoMidiaEntity::marcarPreviewRestritoRemovido);
+      arquivoMidiaRepository.saveAllAndFlush(plano.arquivos());
+    }
     return new Preparacao(
         plano.arquivos().stream().map(ArquivoMidiaEntity::getId).collect(
             java.util.stream.Collectors.toCollection(LinkedHashSet::new)),
@@ -194,13 +201,20 @@ public class AdminAnuncioMidiaPosCommitCleanupService {
     } else {
       return new ResolucaoObjetos(false, Set.of());
     }
-    return new ResolucaoObjetos(true, Set.of(
-        new ObjetoStorage(
-            StorageArea.PUBLIC_MEDIA,
-            storageProperties.getPublicMediaPrefix() + relativePath),
-        new ObjetoStorage(
-            StorageArea.PRIVATE_MEDIA,
-            storageProperties.getPrivateMediaPrefix() + relativePath)));
+    Set<ObjetoStorage> objetos = new LinkedHashSet<>();
+    objetos.add(new ObjetoStorage(
+        StorageArea.PUBLIC_MEDIA,
+        storageProperties.getPublicMediaPrefix() + relativePath));
+    objetos.add(new ObjetoStorage(
+        StorageArea.PRIVATE_MEDIA,
+        storageProperties.getPrivateMediaPrefix() + relativePath));
+    if (arquivo.getPreviewRestritoChave() != null
+        && chaveCanonica(
+            arquivo.getPreviewRestritoChave(), storageProperties.getPublicMediaPrefix())) {
+      objetos.add(new ObjetoStorage(
+          StorageArea.PUBLIC_MEDIA, arquivo.getPreviewRestritoChave()));
+    }
+    return new ResolucaoObjetos(true, Set.copyOf(objetos));
   }
 
   private ResultadoStorage excluirEConfirmar(Set<ObjetoStorage> objetos) {
