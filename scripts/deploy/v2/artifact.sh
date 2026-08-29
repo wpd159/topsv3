@@ -18,11 +18,9 @@ v2_build_release_artifact() {
   local output_dir="$1" source_sha="$2" archive
   [[ ! -e "${output_dir}" ]] || v2_die "diretorio de artefato ja existe"
   mkdir -m 0700 -p -- "${output_dir}"
-  export V2_PROJECT_NAME="topsdojob-v2-build-${source_sha:0:12}-${V2_RUN_TOKEN//[^a-zA-Z0-9_.-]/-}"
+  export V2_PROJECT_NAME="topsdojob-v2-build-${source_sha:0:12}-${V2_RUN_ID//[^a-zA-Z0-9_.-]/-}"
   export V2_RUNTIME_DIR="${RUNNER_TEMP:-/tmp}/${V2_PROJECT_NAME}"
-  export V2_DB_PASSWORD="pipeline-v2-build-only"
-  export V2_MINIO_ACCESS_KEY="pipeline-v2-build"
-  export V2_MINIO_SECRET_KEY="pipeline-v2-build-secret-only"
+  v2_set_synthetic_credentials build
   mkdir -p -- "${V2_RUNTIME_DIR}/certs/minio" "${V2_RUNTIME_DIR}/reports"
   v2_set_release_images "${source_sha}"
 

@@ -53,6 +53,17 @@ v2_tool_value() {
   v2_lock_value tools "$1" "$2"
 }
 
+v2_set_synthetic_credentials() {
+  local scope="$1" suffix
+  [[ "${scope}" =~ ^[a-z0-9-]+$ ]] || v2_die "escopo sintetico invalido"
+  suffix="$(printf '%s' "${scope}:${GITHUB_RUN_ID:-local}:${GITHUB_RUN_ATTEMPT:-1}:$$" |
+    sha256sum | cut -c1-20)"
+  printf -v V2_DB_PASSWORD 'v2db-%s-%s' "${scope}" "${suffix}"
+  printf -v V2_MINIO_ACCESS_KEY 'v2access%s' "${suffix}"
+  printf -v V2_MINIO_SECRET_KEY 'v2secret-%s-%s' "${scope}" "${suffix}"
+  export V2_DB_PASSWORD V2_MINIO_ACCESS_KEY V2_MINIO_SECRET_KEY
+}
+
 v2_install_tools() {
   local compose_url compose_sha actionlint_url actionlint_sha archive
   mkdir -p -- "${V2_TOOLS_DIR}/bin"
@@ -85,9 +96,9 @@ v2_bootstrap_engine() {
   [[ -f "${V2_LOCK}" ]] || v2_die "lock de imagens ausente"
 
   export V2_HOST_DOCKER="$(command -v docker)"
-  export V2_RUN_TOKEN="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${V2_RUN_NUMBER:-0}-$$"
-  export V2_TOOLS_DIR="${RUNNER_TEMP:-/tmp}/topsdojob-v2-tools-${V2_RUN_TOKEN}"
-  export V2_DIND_CONTAINER="topsdojob-v2-dind-${V2_RUN_TOKEN//[^a-zA-Z0-9_.-]/-}"
+  export V2_RUN_ID="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-${V2_RUN_NUMBER:-0}-$$"
+  export V2_TOOLS_DIR="${RUNNER_TEMP:-/tmp}/topsdojob-v2-tools-${V2_RUN_ID}"
+  export V2_DIND_CONTAINER="topsdojob-v2-dind-${V2_RUN_ID//[^a-zA-Z0-9_.-]/-}"
   mkdir -p -- "${V2_TOOLS_DIR}/bin"
 
   cli_ref="$(v2_image_ref dockerCli)"

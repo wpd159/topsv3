@@ -41,9 +41,7 @@ trap v2_cleanup EXIT INT TERM
 v2_static_contracts() {
   export V2_PROJECT_NAME="${V2_PROJECT_NAME:-topsdojob-v2-contract}"
   export V2_RUNTIME_DIR="${V2_RUNTIME_DIR:-${RUNNER_TEMP:-/tmp}/topsdojob-v2-contract}"
-  export V2_DB_PASSWORD="pipeline-v2-contract"
-  export V2_MINIO_ACCESS_KEY="pipeline-v2-contract"
-  export V2_MINIO_SECRET_KEY="pipeline-v2-contract-secret"
+  v2_set_synthetic_credentials contract
   export V2_BACKEND_IMAGE="${V2_BACKEND_IMAGE:-topsdojob-v2-backend:contract}"
   export V2_FRONTEND_IMAGE="${V2_FRONTEND_IMAGE:-topsdojob-v2-frontend:contract}"
   export V2_GATEWAY_IMAGE="${V2_GATEWAY_IMAGE:-topsdojob-v2-gateway:contract}"
@@ -58,7 +56,7 @@ v2_static_contracts() {
 v2_scan_secrets() {
   docker run --rm --network none \
     --volume "${V2_ROOT}:/repo:ro" --workdir /repo \
-    "${V2_GITLEAKS_IMAGE}" detect --source . --redact --no-banner
+    "${V2_GITLEAKS_IMAGE}" dir . --redact --no-banner
   v2_log "GITLEAKS=OK"
 }
 
@@ -210,11 +208,9 @@ v2_verify_mode() {
   v2_pull_locked_images
   v2_tag_test_images
   v2_set_release_images "${source_sha}"
-  export V2_PROJECT_NAME="topsdojob-v2-run-${run_number}-${V2_RUN_TOKEN//[^a-zA-Z0-9_.-]/-}"
+  export V2_PROJECT_NAME="topsdojob-v2-run-${run_number}-${V2_RUN_ID//[^a-zA-Z0-9_.-]/-}"
   export V2_RUNTIME_DIR="${RUNNER_TEMP:-/tmp}/${V2_PROJECT_NAME}"
-  export V2_DB_PASSWORD="pipeline-v2-db-${run_number}-${GITHUB_RUN_ID:-local}"
-  export V2_MINIO_ACCESS_KEY="pipelinev2${run_number}"
-  export V2_MINIO_SECRET_KEY="pipeline-v2-minio-secret-${run_number}-${GITHUB_RUN_ID:-local}"
+  v2_set_synthetic_credentials "run-${run_number}"
   mkdir -m 0700 -p -- "${V2_RUNTIME_DIR}" "${evidence_dir}"
 
   v2_static_contracts
