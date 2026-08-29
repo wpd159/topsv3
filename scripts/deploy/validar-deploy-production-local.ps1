@@ -33,6 +33,9 @@ $flywayGate = Read-RepoFile "scripts/deploy/validar-gate-flyway-production.sh"
 $flywayGateTests = Read-RepoFile "scripts/deploy/testar-gate-flyway-production.sh"
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
 $ephemeralPostgresWaiter = Read-RepoFile "scripts/deploy/aguardar-postgres-efemero.sh"
+$remoteDeploy = Read-RepoFile "scripts/deploy/executar-deploy-remoto-production.sh"
+$remoteInvoker = Read-RepoFile "scripts/deploy/invocar-deploy-remoto-production.sh"
+$previewBackfill = Read-RepoFile "scripts/deploy/executar-backfill-previews-production.sh"
 $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
 $atomicActivator = Read-RepoFile "scripts/deploy/ativar-release-atomica-production.sh"
@@ -40,6 +43,7 @@ $atomicActivatorTests = Read-RepoFile "scripts/deploy/testar-release-atomica-pro
 $ciWorkflow = Read-RepoFile ".github/workflows/ci.yml"
 $rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
 $analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
+$deploymentContract = $workflow, $remoteDeploy, $remoteInvoker, $previewBackfill -join "`n"
 $checks = [Collections.Generic.List[object]]::new()
 
 function Add-Check {
@@ -60,9 +64,9 @@ foreach ($required in @(
     "TOPSDOJOB_TARGET=production",
     "TOPSDOJOB_PROJECT=topsdojob-v3",
     "TARGET_VERIFIED=production",
-    "/opt/topsv3/production/releases",
-    "/opt/topsv3/production/current",
-    "/opt/topsv3/secrets/production.env",
+    '${DEPLOY_ROOT}/releases',
+    '${DEPLOY_ROOT}/current',
+    '${SECRETS_ROOT}/production.env',
     "deploy/production/docker-compose.yml",
     "StrictHostKeyChecking=yes",
     "UserKnownHostsFile=",
@@ -82,7 +86,7 @@ foreach ($required in @(
     "backups/postgresql",
     "api/health/readiness"
   )) {
-  Add-Check "workflow contem $required" ($workflow.Contains($required))
+  Add-Check "contrato de deploy contem $required" ($deploymentContract.Contains($required))
 }
 
 foreach ($secret in @(
@@ -108,7 +112,7 @@ foreach ($forbidden in @(
     "topsv3-preprod",
     "/opt/topsv3/preprod"
   )) {
-  Add-Check "workflow nao contem $forbidden" (-not $workflow.Contains($forbidden))
+  Add-Check "deploy nao contem $forbidden" (-not $deploymentContract.Contains($forbidden))
 }
 
 Add-Check "workflow nao executa automaticamente em push" (-not ($workflow -match '(?m)^\s+push:\s*$'))
@@ -150,41 +154,41 @@ Add-Check "deploy faz checkout do SHA autorizado" (
   ($deployJob.Contains('run: test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"'))
 )
 Add-Check "workflow nao altera manutencao ou indexacao externa" (
-  -not ($workflow -match 'maintenance|manutencao|robots\.txt.*(write|cat|printf)')
+  -not ($deploymentContract -match 'maintenance|manutencao|robots\.txt.*(write|cat|printf)')
 )
 Add-Check "workflow preserva PostgreSQL" (
-  ($workflow -match 'postgres_id_before') -and
-  ($workflow -match 'postgres_volume_before') -and
-  ($workflow.Contains('bash "${atomic_activator}"')) -and
-  (-not ($workflow -match 'up -d --no-deps --force-recreate backend frontend gateway'))
+  ($remoteDeploy -match 'postgres_id_before') -and
+  ($remoteDeploy -match 'postgres_volume_before') -and
+  ($remoteDeploy.Contains('bash "${atomic_activator}"')) -and
+  (-not ($deploymentContract -match 'up -d --no-deps --force-recreate backend frontend gateway'))
 )
 Add-Check "workflow testa gate de banco antes do deploy" (
   ($workflow.Contains("Test production database safety gate")) -and
   ($workflow.IndexOf("Test production database safety gate") -lt $workflow.IndexOf("Validate pinned SSH host key"))
 )
 Add-Check "workflow nao exige igualdade absoluta de contagens mutaveis" (
-  -not ($workflow -match 'test\s+"\$\{counts_after\}"\s+=\s+"\$\{counts_before\}"')
+  -not ($deploymentContract -match 'test\s+"\$\{counts_after\}"\s+=\s+"\$\{counts_before\}"')
 )
 Add-Check "workflow preserva health e rollback no novo gate" (
-  ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_before\}"') -and
-  ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
-  ($workflow -match 'bash\s+"\$\{database_gate\}"') -and
+  ($remoteDeploy -match 'capture_database_snapshot\s+"\$\{snapshot_before\}"') -and
+  ($remoteDeploy -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
+  ($remoteDeploy -match 'bash\s+"\$\{database_gate\}"') -and
   ($atomicActivator.Contains('verify_candidate')) -and
   ($atomicActivator.Contains('restore_gateway'))
 )
 Add-Check "workflow deriva versao Flyway sem hardcode" (
-  ($workflow.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}")"')) -and
-  (-not ($workflow -match 'database_gate[^\r\n]*(051|052)')) -and
-  (-not ($workflow -match 'flyway_gate[^\r\n]*(before|after)[^\r\n]*(051|052)'))
+  ($remoteDeploy.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}" </dev/null)"')) -and
+  (-not ($remoteDeploy -match 'database_gate[^\r\n]*(051|052)')) -and
+  (-not ($remoteDeploy -match 'flyway_gate[^\r\n]*(before|after)[^\r\n]*(051|052)'))
 )
 Add-Check "workflow exige backup antes de migration pendente" (
-  ($workflow.Contains('if [ "${migrations_pending}" = true ]; then')) -and
-  ($workflow.Contains('test "${backup_status}" = VALIDATED')) -and
-  ($workflow.IndexOf('bash "${backup_producer}"') -lt $workflow.IndexOf('flyway migrate </dev/null'))
+  ($remoteDeploy.Contains('if [ "${migrations_pending}" = true ]; then')) -and
+  ($remoteDeploy.Contains('test "${backup_status}" = VALIDATED')) -and
+  ($remoteDeploy.IndexOf('bash "${backup_producer}"') -lt $remoteDeploy.IndexOf('flyway migrate </dev/null'))
 )
 Add-Check "workflow valida Flyway antes do startup" (
-  ($workflow.IndexOf('bash "${flyway_gate}" after') -gt $workflow.IndexOf('flyway migrate </dev/null')) -and
-  ($workflow.IndexOf('bash "${flyway_gate}" after') -lt $workflow.IndexOf('bash "${atomic_activator}"'))
+  ($remoteDeploy.IndexOf('bash "${flyway_gate}" after') -gt $remoteDeploy.IndexOf('flyway migrate </dev/null')) -and
+  ($remoteDeploy.IndexOf('bash "${flyway_gate}" after') -lt $remoteDeploy.IndexOf('bash "${atomic_activator}"'))
 )
 Add-Check "ativador troca trafego somente depois de health e readiness" (
   ($atomicActivator.IndexOf('verify_candidate') -lt $atomicActivator.IndexOf('switch_gateway')) -and
@@ -202,11 +206,14 @@ $deploySources = @(
   Convert-ToLogicalShellLines $ciWorkflow
   Convert-ToLogicalShellLines $backupProducer
   Convert-ToLogicalShellLines $atomicActivator
+  Convert-ToLogicalShellLines $remoteDeploy
+  Convert-ToLogicalShellLines $remoteInvoker
+  Convert-ToLogicalShellLines $previewBackfill
 ) -join "`n"
 $unsafeInteractiveCommandPattern = '(?m)docker\s+exec(?=[^\r\n]*\bpsql\b)(?=[^\r\n]*\s-i(?:\s|$))[^\r\n]*\bpsql\b[^\r\n]*(?:\s-c(?:\s|$)|\s--command(?:=|\s))'
 $flywayReader = [regex]::Match(
-  $workflow,
-  '(?ms)^\s{10}read_flyway_state\(\) \{.*?^\s{10}\}'
+  $remoteDeploy,
+  '(?ms)^\s{2}read_flyway_state\(\) \{.*?^\s{2}\}'
 ).Value
 Add-Check "nenhum psql command reutiliza stdin interativo" (
   -not [regex]::IsMatch($deploySources, $unsafeInteractiveCommandPattern)
@@ -227,11 +234,13 @@ Add-Check "ativador preserva aplicacao anterior se candidata falhar" (
 )
 Add-Check "workflow valida host key antes do upload" (
   $workflow.IndexOf('name: Validate pinned SSH host key') -lt
-  $workflow.IndexOf('name: Upload immutable release')
+  $workflow.IndexOf('name: Upload verified remote deploy controller')
 )
 Add-Check "workflow valida identidade canonica antes de qualquer mutacao remota" (
   ($workflow.IndexOf('name: Validate canonical production target') -gt
     $workflow.IndexOf('name: Validate pinned SSH host key')) -and
+  ($workflow.IndexOf('name: Validate canonical production target') -lt
+    $workflow.IndexOf('name: Upload verified remote deploy controller')) -and
   ($workflow.IndexOf('name: Validate canonical production target') -lt
     $workflow.IndexOf('name: Synchronize IndexNow key in production runtime')) -and
   ($workflow.IndexOf('name: Validate canonical production target') -lt
@@ -254,30 +263,33 @@ Add-Check "workflow limita retries SSH" (
   ($workflow -match 'for attempt in 1 2 3 4 5; do')
 )
 Add-Check "workflow rejeita residuos de homologacao no runtime" (
-  $workflow -match "grep -Eqi 'v3\\.esle\\.cloud\|mailpit\|homologacao\|sandbox'"
+  $remoteDeploy -match "grep -Eqi 'v3\\.esle\\.cloud\|mailpit\|homologacao\|sandbox'"
 )
 Add-Check "workflow compila frontend com GA4 habilitado" (
   ($workflow -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+"true"') -and
   ($workflow.Contains("node scripts/test-ga4-production.mjs"))
 )
 Add-Check "workflow valida GA4 habilitado no runtime" (
-  $workflow.Contains("grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true'")
+  $remoteDeploy.Contains("grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true'")
 )
 Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
   ($workflow.Contains("Synchronize IndexNow key in production runtime")) -and
-  ($workflow.Contains("cat <<'REMOTE_HEAD'")) -and
-  ($workflow.Contains('printf ''%s\n'' "${INDEXNOW_KEY}"')) -and
-  ($workflow.Contains("} | ssh")) -and
-  ($workflow.Contains("--network none")) -and
-  ($workflow.Contains("--pull never")) -and
-  ($workflow.Contains('test -n "${key}"')) -and
-  ($workflow.Contains('case "${key}" in')) -and
-  ($workflow.Contains('awk "!/^INDEXNOW_KEY=/"')) -and
-  (-not $workflow.Contains("''|*[!A-Za-z0-9-]*")) -and
-  (-not $workflow.Contains('test -w /opt/topsv3/secrets/production.env'))
+  ($workflow.Contains('LOCAL_INDEXNOW_MANIFEST=')) -and
+  ($workflow.Contains('REMOTE_INDEXNOW_MANIFEST=')) -and
+  ($workflow.Contains('INDEXNOW_MANIFEST_SHA256=')) -and
+  ($workflow.Contains('indexnow "${REMOTE_INDEXNOW_MANIFEST}" "${INDEXNOW_MANIFEST_SHA256}"')) -and
+  (-not ($workflow -match 'ssh[^\r\n]*bash\s+-s')) -and
+  (-not ($workflow -match '\}\s*\|\s*s[s]h\b')) -and
+  ($remoteDeploy.Contains("--network none")) -and
+  ($remoteDeploy.Contains("--pull never")) -and
+  ($remoteDeploy.Contains('test -n "${key}"')) -and
+  ($remoteDeploy.Contains('case "${key}" in')) -and
+  ($remoteDeploy.Contains('awk "!/^INDEXNOW_KEY=/"')) -and
+  ($remoteDeploy.Contains('--volume "${manifest}:/run/indexnow-key:ro"')) -and
+  (-not $remoteDeploy.Contains('test -w /opt/topsv3/secrets/production.env'))
 )
 Add-Check "workflow valida IndexNow no runtime sem imprimir o valor" (
-  $workflow.Contains("grep -q '^INDEXNOW_KEY='")
+  $remoteDeploy.Contains("grep -q '^INDEXNOW_KEY='")
 )
 
 foreach ($required in @(
@@ -385,10 +397,13 @@ Add-Check "backup cria banco de restauracao no entrypoint" (
 Add-Check "backup nao usa createdb" (-not $backupProducer.Contains("createdb"))
 foreach ($required in @(
     "marcador_posterior",
-    "falha_psql_interrompe",
+    "processo_filho_recebe_eof",
+    "falha_filho_interrompe",
+    "caminho_sucesso_5_5",
     "backup_antes_flyway",
-    "flyway_antes_startup",
-    "health_antes_troca",
+    "plan_apply_validate_e_candidate_gates_alcancados",
+    "apply_idempotente_sem_delta",
+    "residuos_zero",
     "DEPLOY_STDIN_REGRESSION_TESTS=PASS"
   )) {
   Add-Check "regressao de stdin contem $required" ($stdinRegressionTests.Contains($required))

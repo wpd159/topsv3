@@ -198,7 +198,7 @@ run_preview_backfill() {
     "${mode}" "${phase}" \
     "${RELEASE_SHA}" "${RELEASE_DIR}" "${ENV_FILE}" \
     "${CANDIDATE_PROJECT}" "${CANDIDATE_PREFIX}" "${CANDIDATE_NETWORK}" \
-    "${PREVIEW_BACKFILL_REPORT_DIR}"
+    "${PREVIEW_BACKFILL_REPORT_DIR}" </dev/null
 }
 
 container_project_is_candidate() {
@@ -473,7 +473,7 @@ verify_database_gate() {
   row="$(docker exec "${POSTGRES_CONTAINER}" psql \
     --no-psqlrc --set=ON_ERROR_STOP=1 \
     -U "${DATABASE_USER}" -d "${DATABASE_NAME}" -At -F '|' \
-    --command "
+    </dev/null --command "
       SELECT
         COALESCE((
           SELECT version
@@ -484,7 +484,7 @@ verify_database_gate() {
         ), 'AUSENTE'),
         count(*) FILTER (WHERE NOT success)
       FROM flyway_schema_history;
-    " </dev/null)" || return 1
+    ")" || return 1
   [ "${row}" = "${EXPECTED_FLYWAY}|0" ]
 }
 

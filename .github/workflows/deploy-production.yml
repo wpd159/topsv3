@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}" -o ConnectTimeout=15)
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true </dev/null
 
       - name: Preflight validate canonical production target
         shell: bash
@@ -100,24 +100,10 @@ jobs:
           set -euo pipefail
           SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          actual_target_sha256="$(
-            ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
-              marker=/etc/topsdojob/target.env
-              test -r "${marker}"
-              sha256sum "${marker}" | cut -d " " -f 1
-            '
-          )"
+          actual_target_sha256="$(ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu; marker=/etc/topsdojob/target.env; test -r "${marker}"; sha256sum "${marker}" | cut -d " " -f 1' </dev/null)"
           test "${actual_target_sha256}" = "${TOPSDOJOB_PROD_TARGET_SHA256}"
           unset actual_target_sha256
-          target_result="$(
-            ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
-              marker=/etc/topsdojob/target.env
-              grep -qx "TOPSDOJOB_TARGET=production" "${marker}"
-              grep -qx "TOPSDOJOB_PROJECT=topsdojob-v3" "${marker}"
-              test -d /opt/topsv3/production
-              printf "%s\n" "TARGET_VERIFIED=production"
-            '
-          )"
+          target_result="$(ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu; marker=/etc/topsdojob/target.env; grep -qx "TOPSDOJOB_TARGET=production" "${marker}"; grep -qx "TOPSDOJOB_PROJECT=topsdojob-v3" "${marker}"; test -d /opt/topsv3/production; printf "%s\n" "TARGET_VERIFIED=production"' </dev/null)"
           test "${target_result}" = "TARGET_VERIFIED=production"
           printf '%s\n' "${target_result}"
 
@@ -271,7 +257,7 @@ jobs:
           SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}" -o ConnectTimeout=15)
           SSH_RETRY_BACKOFF=(2 4 8 16)
           for attempt in 1 2 3 4 5; do
-            if ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true; then
+            if ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true </dev/null; then
               break
             fi
             if [ "${attempt}" -eq 5 ]; then
@@ -294,24 +280,38 @@ jobs:
           set -euo pipefail
           SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          actual_target_sha256="$(
-            ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
-              marker=/etc/topsdojob/target.env
-              test -r "${marker}"
-              sha256sum "${marker}" | cut -d " " -f 1
-            '
-          )"
+          actual_target_sha256="$(ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu; marker=/etc/topsdojob/target.env; test -r "${marker}"; sha256sum "${marker}" | cut -d " " -f 1' </dev/null)"
           if [ "${actual_target_sha256}" != "${TOPSDOJOB_PROD_TARGET_SHA256}" ]; then
             echo "ERRO: destino SSH nao corresponde a VPS canonica de producao." >&2
             exit 1
           fi
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
-            marker=/etc/topsdojob/target.env
-            grep -qx "TOPSDOJOB_TARGET=production" "${marker}"
-            grep -qx "TOPSDOJOB_PROJECT=topsdojob-v3" "${marker}"
-            test -d /opt/topsv3/production
-          '
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu; marker=/etc/topsdojob/target.env; grep -qx "TOPSDOJOB_TARGET=production" "${marker}"; grep -qx "TOPSDOJOB_PROJECT=topsdojob-v3" "${marker}"; test -d /opt/topsv3/production' </dev/null
           echo "TARGET_VERIFIED=production"
+
+      - name: Upload verified remote deploy controller
+        shell: bash
+        env:
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_RUN_ID}" =~ ^[0-9]+$ ]]
+          [[ "${GITHUB_RUN_ATTEMPT}" =~ ^[0-9]+$ ]]
+          [[ "${GITHUB_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
+          SCP_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -P "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
+          REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
+          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
+          [[ "${REMOTE_DEPLOY_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
+            'install -d -m 0750 /opt/topsv3/production/incoming' </dev/null
+          scp "${SCP_OPTS[@]}" "${REMOTE_DEPLOY_SOURCE}" "${SSH_TARGET}:${REMOTE_DEPLOY_SCRIPT}"
+          remote_command="set -euo pipefail; script='${REMOTE_DEPLOY_SCRIPT}'; expected='${REMOTE_DEPLOY_SHA256}'; test -f \"\${script}\"; actual=\$(sha256sum -- \"\${script}\" | cut -d ' ' -f 1); test \"\${actual}\" = \"\${expected}\"; chmod 0500 \"\${script}\""
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "${remote_command}" </dev/null
+          echo "REMOTE_DEPLOY_SCRIPT_SHA256=${REMOTE_DEPLOY_SHA256}"
 
       - name: Validate remote production prerequisites
         shell: bash
@@ -321,30 +321,11 @@ jobs:
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          test "$(id -un)" = "topsdojob"
-          test -r /opt/topsv3/secrets/production.env
-          test -r /opt/topsv3/secrets/application-production.yml
-          test -r /opt/topsv3/secrets/nginx-production-local.conf
-          test -w /etc/nginx/sites-enabled/topsdojob-live
-          test -r /opt/topsv3/secrets/efi-webhook-allowlist.conf
-          test -d /opt/topsv3/secrets/efi
-          test -L /opt/topsv3/production/current
-          test -w /opt/topsv3/production/incoming
-          test -w /opt/topsv3/production/releases
-          command -v docker >/dev/null
-          docker compose version >/dev/null
-          docker image inspect nginx:1.27-alpine >/dev/null
-          docker inspect topsv3-production-postgres >/dev/null
-          test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
-          test "$(docker inspect topsv3-production-postgres --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "topsv3-production"
-          docker volume inspect topsv3-production-postgres-data >/dev/null
-          sudo -n nginx -t >/dev/null
-          sudo -n -l /usr/bin/systemctl reload nginx >/dev/null
-          REMOTE
+          REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
+          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
+          bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
+            "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" prerequisites
 
       - name: Synchronize IndexNow key in production runtime
         shell: bash
@@ -356,52 +337,22 @@ jobs:
         run: |
           set -euo pipefail
           SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
+          SCP_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -P "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
-          {
-            cat <<'REMOTE_HEAD'
-          set -euo pipefail
-          IFS= read -r indexnow_key <<'__INDEXNOW_VALUE__'
-          REMOTE_HEAD
-            printf '%s\n' "${INDEXNOW_KEY}"
-            cat <<'REMOTE_BODY'
-          __INDEXNOW_VALUE__
-          [[ "${indexnow_key}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
-          test -r /opt/topsv3/secrets/production.env
-          docker image inspect nginx:1.27-alpine >/dev/null
-          printf '%s\n' "${indexnow_key}" | docker run --rm -i --pull never \
-            --network none \
-            --read-only \
-            --cap-drop ALL \
-            --cap-add CHOWN \
-            --security-opt no-new-privileges:true \
-            --volume /opt/topsv3/secrets:/secrets:rw \
-            nginx:1.27-alpine sh -c '
-          set -eu
-          env_file=/secrets/production.env
-          IFS= read -r key
-          test -n "${key}"
-          case "${key}" in
-            *[!A-Za-z0-9-]*) exit 2 ;;
-          esac
-          key_length="${#key}"
-          test "${key_length}" -ge 8
-          test "${key_length}" -le 128
-          owner="$(stat -c "%u:%g" "${env_file}")"
-          mode="$(stat -c "%a" "${env_file}")"
-          temporary="$(mktemp "${env_file}.indexnow.XXXXXX")"
-          cleanup() { rm -f -- "${temporary}"; }
-          trap cleanup EXIT
-          awk "!/^INDEXNOW_KEY=/" "${env_file}" > "${temporary}"
-          printf "INDEXNOW_KEY=%s\n" "${key}" >> "${temporary}"
-          chown "${owner}" "${temporary}"
-          chmod "${mode}" "${temporary}"
-          mv -f -- "${temporary}" "${env_file}"
-          trap - EXIT
-          '
-          unset indexnow_key
-          REMOTE_BODY
-          } | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s'
+          REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
+          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
+          LOCAL_INDEXNOW_MANIFEST="${RUNNER_TEMP}/indexnow-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.key"
+          REMOTE_INDEXNOW_MANIFEST="/opt/topsv3/production/incoming/indexnow-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.key"
+          cleanup_local_manifest() { rm -f -- "${LOCAL_INDEXNOW_MANIFEST}"; }
+          trap cleanup_local_manifest EXIT
+          umask 077
+          printf '%s\n' "${INDEXNOW_KEY}" > "${LOCAL_INDEXNOW_MANIFEST}"
+          INDEXNOW_MANIFEST_SHA256="$(sha256sum -- "${LOCAL_INDEXNOW_MANIFEST}" | cut -d ' ' -f 1)"
+          scp "${SCP_OPTS[@]}" "${LOCAL_INDEXNOW_MANIFEST}" "${SSH_TARGET}:${REMOTE_INDEXNOW_MANIFEST}"
+          bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
+            "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" \
+            indexnow "${REMOTE_INDEXNOW_MANIFEST}" "${INDEXNOW_MANIFEST_SHA256}"
 
       - name: Upload immutable release
         shell: bash
@@ -412,7 +363,6 @@ jobs:
         run: |
           set -euo pipefail
           SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           SCP_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -P "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           ARCHIVE="${RUNNER_TEMP}/topsv3-${GITHUB_SHA}.tar.gz"
           tar \
@@ -447,29 +397,12 @@ jobs:
             --exclude='./*.p12' \
             --exclude='**/*.p12' \
             -czf "${ARCHIVE}" .
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'mkdir -p /opt/topsv3/production/incoming /opt/topsv3/production/releases'
           scp "${SCP_OPTS[@]}" "${ARCHIVE}" "${SSH_TARGET}:/opt/topsv3/production/incoming/${GITHUB_SHA}.tar.gz"
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
-          set -euo pipefail
-          release_sha="$1"
-          release_root=/opt/topsv3/production/releases
-          release_dir="${release_root}/${release_sha}"
-          incoming="/opt/topsv3/production/incoming/${release_sha}.tar.gz"
-          temporary="${release_root}/.${release_sha}.incoming"
-          if [ -e "${release_dir}" ]; then
-            test -f "${release_dir}/.release-sha"
-            test "$(cat "${release_dir}/.release-sha")" = "${release_sha}"
-            rm -f "${incoming}"
-            exit 0
-          fi
-          rm -rf -- "${temporary}"
-          install -d -m 0750 "${temporary}"
-          tar -xzf "${incoming}" -C "${temporary}"
-          printf '%s\n' "${release_sha}" > "${temporary}/.release-sha"
-          chmod -R a-w "${temporary}"
-          mv -- "${temporary}" "${release_dir}"
-          rm -f "${incoming}"
-          REMOTE
+          REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
+          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
+          bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
+            "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" install "${GITHUB_SHA}"
 
       - name: Build and activate production release
         shell: bash
@@ -479,174 +412,11 @@ jobs:
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
-          set -euo pipefail
-          release_sha="$1"
-          deploy_root=/opt/topsv3/production
-          release_dir="${deploy_root}/releases/${release_sha}"
-          compose_file="${release_dir}/deploy/production/docker-compose.yml"
-          env_file=/opt/topsv3/secrets/production.env
-          previous_release="$(readlink -f "${deploy_root}/current")"
-          active_state_file="${deploy_root}/runtime/active-release.env"
-          active_backend_port=28080
-          active_gateway_port=23000
-          if [ -r "${active_state_file}" ]; then
-            active_backend_port="$(sed -n 's/^ACTIVE_BACKEND_PORT=//p' "${active_state_file}" | tail -1)"
-            active_gateway_port="$(sed -n 's/^ACTIVE_GATEWAY_PORT=//p' "${active_state_file}" | tail -1)"
-          fi
-          [[ "${active_backend_port}" =~ ^[0-9]+$ ]]
-          [[ "${active_gateway_port}" =~ ^[0-9]+$ ]]
-          postgres_id_before="$(docker inspect topsv3-production-postgres --format '{{.Id}}')"
-          postgres_volume_before="$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
-          db="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')"
-          user="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_USER=//p')"
-          snapshot_sql="${release_dir}/scripts/deploy/capturar-snapshot-gate-banco-production.sql"
-          database_gate="${release_dir}/scripts/deploy/validar-gate-banco-production.sh"
-          flyway_gate="${release_dir}/scripts/deploy/validar-gate-flyway-production.sh"
-          backup_producer="${release_dir}/scripts/deploy/criar-backup-validado-production.sh"
-          preview_backfill="${release_dir}/scripts/deploy/executar-backfill-previews-production.sh"
-          atomic_activator="${release_dir}/scripts/deploy/ativar-release-atomica-production.sh"
-          migration_dir="${release_dir}/backend/src/main/resources/db/migration"
-          snapshot_dir="$(mktemp -d)"
-          snapshot_before="${snapshot_dir}/before.snapshot"
-          snapshot_migrated="${snapshot_dir}/migrated.snapshot"
-          snapshot_after="${snapshot_dir}/after.snapshot"
-          backup_receipt="${snapshot_dir}/backup.receipt"
-          preview_backfill_report_dir="${deploy_root}/runtime/preview-backfill/${release_sha}"
-          export TOPSV3_RELEASE_SHA="${release_sha}"
-          compose=(docker compose --env-file "${env_file}" -f "${compose_file}" -p topsv3-production)
-
-          cleanup_database_gate() {
-            rm -rf -- "${snapshot_dir}"
-          }
-
-          capture_database_snapshot() {
-            destination="$1"
-            health_state="$2"
-            docker exec -i topsv3-production-postgres psql \
-              --no-psqlrc --set=ON_ERROR_STOP=1 \
-              -U "${user}" -d "${db}" -At -F '|' \
-              < "${snapshot_sql}" > "${destination}"
-            printf 'META|health|%s\n' "${health_state}" >> "${destination}"
-            LC_ALL=C sort -o "${destination}" "${destination}"
-          }
-
-          read_flyway_state() {
-            expected_version="$1"
-            expected_numeric="$((10#${expected_version}))"
-            docker exec topsv3-production-postgres psql \
-              --no-psqlrc --set=ON_ERROR_STOP=1 \
-              -U "${user}" -d "${db}" -At -F '|' \
-              --command "
-                SELECT
-                  COALESCE((
-                    SELECT version
-                    FROM flyway_schema_history
-                    WHERE success AND version ~ '^[0-9]+$'
-                    ORDER BY version::integer DESC, installed_rank DESC
-                    LIMIT 1
-                  ), 'AUSENTE'),
-                  count(*) FILTER (WHERE NOT success),
-                  count(*) FILTER (
-                    WHERE success
-                      AND CASE
-                        WHEN version ~ '^[0-9]+$' THEN version::integer
-                        ELSE NULL
-                      END = ${expected_numeric}
-                  )
-                FROM flyway_schema_history;
-              " </dev/null
-          }
-
-          on_error() {
-            rc=$?
-            cleanup_database_gate || true
-            exit "${rc}"
-          }
-          trap on_error ERR
-
-          "${compose[@]}" config --quiet
-          baseline_health=DOWN
-          if curl -fsS "http://127.0.0.1:${active_backend_port}/api/health" | grep -q '"status":"UP"' \
-            && curl -fsS "http://127.0.0.1:${active_gateway_port}/" >/dev/null \
-            && curl -fsS "http://127.0.0.1:${active_gateway_port}/anuncios" >/dev/null; then
-            baseline_health=UP
-          fi
-          capture_database_snapshot "${snapshot_before}" "${baseline_health}"
-          expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}")"
-          IFS='|' read -r applied_before failed_before expected_count_before \
-            < <(read_flyway_state "${expected_flyway}")
-          inspection="$(bash "${flyway_gate}" inspect "${expected_flyway}" \
-            "${applied_before}" "${failed_before}" "${expected_count_before}" NOT_CHECKED)"
-          migrations_pending="$(awk -F= '$1 == "MIGRATIONS_PENDING" { print $2 }' <<< "${inspection}")"
-          test "${migrations_pending}" = true || test "${migrations_pending}" = false
-          preview_backfill_required=false
-          if [ "$((10#${expected_flyway}))" -ge 53 ]; then
-            test -r "${preview_backfill}"
-            preview_backfill_required=true
-          fi
-          bash "${database_gate}" "${snapshot_before}" "${snapshot_before}" "${applied_before}"
-
-          backup_required=false
-          if [ "${migrations_pending}" = true ]; then
-            backup_required=true
-          fi
-          if [ "${preview_backfill_required}" = true ]; then
-            backup_required=true
-          fi
-
-          backup_status=NOT_REQUIRED
-          if [ "${backup_required}" = true ]; then
-            test -f "${previous_release}/.release-sha"
-            current_production_sha="$(cat "${previous_release}/.release-sha")"
-            bash "${backup_producer}" \
-              topsv3-production-postgres \
-              "${deploy_root}/backups/postgresql" \
-              "${current_production_sha}" \
-              "${backup_receipt}"
-            backup_status="$(sed -n 's/^BACKUP_STATUS=//p' "${backup_receipt}")"
-            test "${backup_status}" = VALIDATED
-          fi
-          bash "${flyway_gate}" before "${expected_flyway}" \
-            "${applied_before}" "${failed_before}" "${expected_count_before}" "${backup_status}"
-
-          "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null
-          "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
-          IFS='|' read -r applied_after_migration failed_after_migration expected_count_after_migration \
-            < <(read_flyway_state "${expected_flyway}")
-          bash "${flyway_gate}" after "${expected_flyway}" \
-            "${applied_after_migration}" "${failed_after_migration}" \
-            "${expected_count_after_migration}" "${backup_status}"
-          capture_database_snapshot "${snapshot_migrated}" "${baseline_health}"
-          bash "${database_gate}" "${snapshot_before}" "${snapshot_migrated}" \
-            "${applied_before}" "${expected_flyway}"
-
-          if [ "${preview_backfill_required}" = true ]; then
-            "${compose[@]}" build backend
-            for preview_backfill_mode in PLAN APPLY VALIDATE; do
-              bash "${preview_backfill}" \
-                "${preview_backfill_mode}" initial \
-                "${release_sha}" "${release_dir}" "${env_file}" \
-                topsv3-production topsv3-production topsv3-production-net \
-                "${preview_backfill_report_dir}"
-            done
-          fi
-
-          capture_database_snapshot "${snapshot_after}" UP
-          bash "${database_gate}" "${snapshot_migrated}" "${snapshot_after}" \
-            "${expected_flyway}"
-          bash "${atomic_activator}" \
-            "${release_sha}" "${release_dir}" "${env_file}" \
-            "${expected_flyway}" "${user}" "${db}"
-
-          test "$(docker inspect topsv3-production-postgres --format '{{.Id}}')" = "${postgres_id_before}"
-          test "$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
-          test "$(readlink -f "${deploy_root}/current")" = "${release_dir}"
-          cleanup_database_gate
-          trap - ERR
-          REMOTE
+          REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
+          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
+          bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
+            "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" deploy "${GITHUB_SHA}"
 
       - name: Smoke production internally without data writes
         shell: bash
@@ -656,67 +426,31 @@ jobs:
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
         run: |
           set -euo pipefail
+          REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
+          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
+          bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
+            "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" smoke "${GITHUB_SHA}"
+
+      - name: Cleanup remote deployment transport
+        if: ${{ always() }}
+        shell: bash
+        env:
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
+        run: |
+          set -euo pipefail
+          test -r "${HOME}/.ssh/topsdojob_production" || exit 0
+          [[ "${GITHUB_RUN_ID}" =~ ^[0-9]+$ ]]
+          [[ "${GITHUB_RUN_ATTEMPT}" =~ ^[0-9]+$ ]]
+          [[ "${GITHUB_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${TOPSDOJOB_PROD_TARGET_SHA256}" =~ ^[0-9a-f]{64}$ ]]
           SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
-          set -euo pipefail
-          release_sha="$1"
-          release_dir="/opt/topsv3/production/releases/${release_sha}"
-          state_file=/opt/topsv3/production/runtime/active-release.env
-          state_value() {
-            sed -n "s/^$1=//p" "${state_file}" | tail -1
-          }
-          test -r "${state_file}"
-          active_sha="$(state_value ACTIVE_RELEASE_SHA)"
-          active_project="$(state_value ACTIVE_PROJECT)"
-          active_prefix="$(state_value ACTIVE_PREFIX)"
-          active_backend_port="$(state_value ACTIVE_BACKEND_PORT)"
-          active_frontend_port="$(state_value ACTIVE_FRONTEND_PORT)"
-          active_gateway_port="$(state_value ACTIVE_GATEWAY_PORT)"
-          for port in "${active_backend_port}" "${active_frontend_port}" "${active_gateway_port}"; do
-            [[ "${port}" =~ ^[0-9]+$ ]]
-            test "${port}" -ge 1024
-            test "${port}" -le 65535
-          done
-          test "${active_sha}" = "${release_sha}"
-          [[ "${active_project}" =~ ^[a-z0-9][a-z0-9_.-]+$ ]]
-          [[ "${active_prefix}" =~ ^[a-z0-9][a-z0-9_.-]+$ ]]
-          test "$(readlink -f /opt/topsv3/production/current)" = "${release_dir}"
-          test "$(cat /opt/topsv3/production/current/.release-sha)" = "${release_sha}"
-          for service in backend frontend gateway; do
-            container="${active_prefix}-${service}"
-            config_files="$(docker inspect "${container}" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')"
-            case "${config_files}" in
-              *"/releases/${release_sha}/deploy/production/docker-compose.yml"*) ;;
-              *) echo "ERRO: ${service} nao usa o release ${release_sha}." >&2; exit 1 ;;
-            esac
-            test "$(docker inspect "${container}" --format '{{index .Config.Labels "com.docker.compose.project"}}')" = "${active_project}"
-            test "$(docker inspect "${container}" --format '{{.State.Running}}')" = "true"
-          done
-          test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
-          curl -fsS "http://127.0.0.1:${active_backend_port}/api/health/liveness" | grep -q '"status":"UP"'
-          curl -fsS "http://127.0.0.1:${active_backend_port}/api/health/readiness" | grep -q '"status":"UP"'
-          curl -fsS "http://127.0.0.1:${active_frontend_port}/health/liveness" | grep -q '"status":"UP"'
-          curl -fsS "http://127.0.0.1:${active_frontend_port}/health/readiness" | grep -q '"status":"UP"'
-          curl -fsS "http://127.0.0.1:${active_gateway_port}/health/liveness" | grep -q '"status":"UP"'
-          curl -fsS "http://127.0.0.1:${active_gateway_port}/health/readiness" | grep -q '"status":"UP"'
-          curl -fsS "http://127.0.0.1:${active_gateway_port}/" >/dev/null
-          curl -fsS "http://127.0.0.1:${active_gateway_port}/anuncios" >/dev/null
-          frontend_env="$(docker inspect "${active_prefix}-frontend" --format '{{range .Config.Env}}{{println .}}{{end}}')"
-          grep -qx 'NEXT_PUBLIC_SITE_URL=https://topsdojob.com' <<< "${frontend_env}"
-          grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true' <<< "${frontend_env}"
-          grep -qx 'SEARCH_INDEXING_MODE=public' <<< "${frontend_env}"
-          grep -q '^INDEXNOW_KEY=' <<< "${frontend_env}"
-          backend_env="$(docker inspect "${active_prefix}-backend" --format '{{range .Config.Env}}{{println .}}{{end}}')"
-          grep -qx 'SPRING_PROFILES_ACTIVE=production' <<< "${backend_env}"
-          grep -qx 'APP_ENV=producao' <<< "${backend_env}"
-          if printf '%s\n%s\n' "${backend_env}" "${frontend_env}" | grep -Eqi 'v3\.esle\.cloud|mailpit|homologacao|sandbox'; then
-            echo 'ERRO: configuracao de homologacao encontrada no runtime de producao.' >&2
-            exit 1
-          fi
-          logs="$(docker logs "${active_prefix}-backend" 2>&1)"
-          if printf '%s' "${logs}" | grep -Eqi 'IMPORTACAO_.*(INICIO|EXECUTADA)|fixture.*(INICIO|EXECUTADA|enabled=true)'; then
-            echo 'ERRO: marcador de importador ou fixture encontrado na producao.' >&2
-            exit 1
-          fi
-          REMOTE
+          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_INDEXNOW_MANIFEST="/opt/topsv3/production/incoming/indexnow-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.key"
+          REMOTE_ARCHIVE="/opt/topsv3/production/incoming/${GITHUB_SHA}.tar.gz"
+          remote_command="set -euo pipefail; marker=/etc/topsdojob/target.env; test -r \"\${marker}\"; actual=\$(sha256sum -- \"\${marker}\" | cut -d ' ' -f 1); test \"\${actual}\" = '${TOPSDOJOB_PROD_TARGET_SHA256}'; grep -qx 'TOPSDOJOB_TARGET=production' \"\${marker}\"; grep -qx 'TOPSDOJOB_PROJECT=topsdojob-v3' \"\${marker}\"; rm -f -- '${REMOTE_DEPLOY_SCRIPT}' '${REMOTE_INDEXNOW_MANIFEST}' '${REMOTE_ARCHIVE}'"
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "${remote_command}" </dev/null
