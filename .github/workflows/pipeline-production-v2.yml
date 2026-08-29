@@ -1,0 +1,113 @@
+name: Pipeline Hermetico V2 - Fase 1
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Modo permitido nesta fase
+        required: true
+        type: choice
+        options:
+          - verify
+
+permissions:
+  contents: read
+
+concurrency:
+  group: topsdojob-pipeline-v2-phase1-verify
+  cancel-in-progress: false
+
+jobs:
+  mode-guard:
+    name: Bloquear modos mutaveis
+    runs-on: ubuntu-24.04
+    outputs:
+      source-sha: ${{ steps.guard.outputs.source_sha }}
+    steps:
+      - name: Validate verify-only mode
+        id: guard
+        shell: bash
+        env:
+          REQUESTED_MODE: ${{ inputs.mode }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "${REQUESTED_MODE}" = "verify"
+          [[ "${SOURCE_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          printf 'source_sha=%s\n' "${SOURCE_SHA}" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' 'PIPELINE_V2_MODE=verify'
+
+  build-once:
+    name: Construir artefato unico
+    needs: mode-guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout source SHA
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.mode-guard.outputs.source-sha }}
+          fetch-depth: 1
+
+      - name: Build release exactly once
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/topsdojob-v2-release
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          bash ./scripts/deploy/v2/controller.sh build "${OUTPUT_DIR}" "${SOURCE_SHA}"
+
+      - name: Transport immutable release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: topsdojob-v2-release-${{ needs.mode-guard.outputs.source-sha }}
+          path: ${{ runner.temp }}/topsdojob-v2-release
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  verify-clean-runner:
+    name: Verify runner limpo ${{ matrix.run }}
+    needs: [mode-guard, build-once]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3]
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.mode-guard.outputs.source-sha }}
+          fetch-depth: 1
+
+      - name: Receive the same release artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: topsdojob-v2-release-${{ needs.mode-guard.outputs.source-sha }}
+          path: ${{ runner.temp }}/topsdojob-v2-release
+
+      - name: Verify on an independent clean runner
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          BUNDLE_DIR: ${{ runner.temp }}/topsdojob-v2-release
+          EVIDENCE_DIR: ${{ runner.temp }}/topsdojob-v2-evidence-${{ matrix.run }}
+          V2_RUN_NUMBER: ${{ matrix.run }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          bash ./scripts/deploy/v2/controller.sh verify \
+            "${BUNDLE_DIR}" "${SOURCE_SHA}" "${V2_RUN_NUMBER}" "${EVIDENCE_DIR}"
+
+      - name: Preserve sanitized runner evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: topsdojob-v2-evidence-${{ needs.mode-guard.outputs.source-sha }}-${{ matrix.run }}
+          path: ${{ runner.temp }}/topsdojob-v2-evidence-${{ matrix.run }}
+          if-no-files-found: warn
+          retention-days: 7
