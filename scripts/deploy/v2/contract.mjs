@@ -62,6 +62,7 @@ function contract() {
 
   const workflowFile = path.join(root, '.github/workflows/pipeline-production-v2.yml')
   const workflow = fs.readFileSync(workflowFile, 'utf8')
+  const compose = fs.readFileSync(path.join(root, 'deploy/v2/compose.yml'), 'utf8')
   const lab = fs.readFileSync(path.join(root, 'scripts/deploy/v2/lab.sh'), 'utf8')
   const runtimeFiles = required.filter((file) => path.basename(file) !== 'contract.mjs')
   const combined = runtimeFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n')
@@ -110,6 +111,9 @@ function contract() {
   }
 
   if (!/runs-on:\s*ubuntu-24\.04/.test(workflow)) fail('runner nao fixado em ubuntu-24.04')
+  if (!/dockerfile_inline:\s*\|\n\s*ARG V2_MAVEN_IMAGE\n\s*ARG V2_JRE_IMAGE\n\s*FROM \$\$\{V2_MAVEN_IMAGE\} AS build/.test(compose)) {
+    fail('ARGs globais do backend devem preceder o primeiro FROM')
+  }
   if (!/options:\s*\n\s*- verify/.test(workflow)) fail('mode=verify nao e a unica opcao')
   if (!/pull_request:\s*\n\s*branches:\s*\n\s*- main/.test(workflow)) {
     fail('workflow novo deve ser verificavel no PR antes de existir na main')

@@ -66,13 +66,13 @@ services:
         V2_JRE_IMAGE: ${V2_JRE_IMAGE:?V2_JRE_IMAGE obrigatoria}
       dockerfile_inline: |
         ARG V2_MAVEN_IMAGE
+        ARG V2_JRE_IMAGE
         FROM $${V2_MAVEN_IMAGE} AS build
         WORKDIR /workspace
         COPY pom.xml .
         RUN mvn --batch-mode --no-transfer-progress -DskipTests dependency:go-offline
         COPY src ./src
         RUN mvn --batch-mode --no-transfer-progress -DskipTests package
-        ARG V2_JRE_IMAGE
         FROM $${V2_JRE_IMAGE}
         WORKDIR /app
         COPY --from=build /workspace/target/*.jar /app/app.jar
