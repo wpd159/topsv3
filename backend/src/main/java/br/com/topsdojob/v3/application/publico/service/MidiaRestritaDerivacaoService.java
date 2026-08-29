@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.application.publico.service;
 
+import br.com.topsdojob.v3.application.operacional.midia.MidiaRestritaPreviewIdentity;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor.FotoRestritaDerivada;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
@@ -9,7 +10,6 @@ import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -31,13 +31,12 @@ public class MidiaRestritaDerivacaoService {
   public static final String PENDENTE_DERIVACAO_RESTRITA = "PENDENTE_DERIVACAO_RESTRITA";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(MidiaRestritaDerivacaoService.class);
-  private static final String DERIVATION_VERSION = "v1";
-  private static final String DERIVATION_DIRECTORY = "restritas-borradas/" + DERIVATION_VERSION + "/";
 
   private final ObjectProvider<ObjectStorage> storageProvider;
   private final R2StorageProperties properties;
   private final FotoUploadProcessor processor;
   private final ArquivoMidiaRepository arquivoRepository;
+  private final MidiaRestritaPreviewIdentity previewIdentity;
   private final Clock clock;
 
   @Autowired
@@ -45,8 +44,23 @@ public class MidiaRestritaDerivacaoService {
       ObjectProvider<ObjectStorage> storageProvider,
       R2StorageProperties properties,
       FotoUploadProcessor processor,
+      ArquivoMidiaRepository arquivoRepository,
+      MidiaRestritaPreviewIdentity previewIdentity) {
+    this(storageProvider, properties, processor, arquivoRepository, previewIdentity, Clock.systemUTC());
+  }
+
+  MidiaRestritaDerivacaoService(
+      ObjectProvider<ObjectStorage> storageProvider,
+      R2StorageProperties properties,
+      FotoUploadProcessor processor,
       ArquivoMidiaRepository arquivoRepository) {
-    this(storageProvider, properties, processor, arquivoRepository, Clock.systemUTC());
+    this(
+        storageProvider,
+        properties,
+        processor,
+        arquivoRepository,
+        new MidiaRestritaPreviewIdentity(properties),
+        Clock.systemUTC());
   }
 
   MidiaRestritaDerivacaoService(
@@ -55,17 +69,34 @@ public class MidiaRestritaDerivacaoService {
       FotoUploadProcessor processor,
       ArquivoMidiaRepository arquivoRepository,
       Clock clock) {
+    this(
+        storageProvider,
+        properties,
+        processor,
+        arquivoRepository,
+        new MidiaRestritaPreviewIdentity(properties),
+        clock);
+  }
+
+  private MidiaRestritaDerivacaoService(
+      ObjectProvider<ObjectStorage> storageProvider,
+      R2StorageProperties properties,
+      FotoUploadProcessor processor,
+      ArquivoMidiaRepository arquivoRepository,
+      MidiaRestritaPreviewIdentity previewIdentity,
+      Clock clock) {
     this.storageProvider = storageProvider;
     this.properties = properties;
     this.processor = processor;
     this.arquivoRepository = arquivoRepository;
+    this.previewIdentity = previewIdentity;
     this.clock = clock;
   }
 
   public ResultadoPreview resolverPreviewPublica(ArquivoMidiaEntity arquivo) {
     String key = chavePublicaOuNula(arquivo);
     if (key == null || arquivo == null || !arquivo.previewRestritoDisponivel()
-        || !DERIVATION_VERSION.equals(arquivo.getPreviewRestritoPipelineVersao())
+        || !previewIdentity.versaoPipeline().equals(arquivo.getPreviewRestritoPipelineVersao())
         || !key.equals(arquivo.getPreviewRestritoChave())) {
       return pendente(arquivo, "estado_persistido");
     }
@@ -88,7 +119,7 @@ public class MidiaRestritaDerivacaoService {
 
     long inicio = System.nanoTime();
     String key = chavePublica(arquivo);
-    arquivo.marcarPreviewRestritoPendente(key, DERIVATION_VERSION);
+    arquivo.marcarPreviewRestritoPendente(key, previewIdentity.versaoPipeline());
     arquivoRepository.saveAndFlush(arquivo);
     try {
       StorageArea sourceArea = areaOrigem(arquivo);
@@ -116,7 +147,7 @@ public class MidiaRestritaDerivacaoService {
       long fimValidacao = System.nanoTime();
 
       arquivo.marcarPreviewRestritoDisponivel(
-          key, DERIVATION_VERSION, OffsetDateTime.now(clock));
+          key, previewIdentity.versaoPipeline(), OffsetDateTime.now(clock));
       arquivoRepository.saveAndFlush(arquivo);
       compensarRollback(storage, key, writeResult == ObjectWriteResult.CREATED);
       LOGGER.info(
@@ -135,43 +166,26 @@ public class MidiaRestritaDerivacaoService {
           derivada.altura(),
           derivada.mimeType());
     } catch (RuntimeException exception) {
-      arquivo.marcarPreviewRestritoFalha(key, DERIVATION_VERSION);
+      arquivo.marcarPreviewRestritoFalha(key, previewIdentity.versaoPipeline());
       arquivoRepository.saveAndFlush(arquivo);
       throw new PreviewGenerationException(exception);
     }
   }
 
   public String prefixoPreviews() {
-    if (properties == null || properties.getPublicMediaPrefix() == null
-        || properties.getPublicMediaPrefix().isBlank()) {
-      throw new IllegalStateException("Prefixo publico de midia nao configurado");
-    }
-    return properties.getPublicMediaPrefix() + DERIVATION_DIRECTORY;
+    return previewIdentity.prefixoPreviews();
   }
 
   public String versaoPipeline() {
-    return DERIVATION_VERSION;
+    return previewIdentity.versaoPipeline();
   }
 
   public String chavePublica(ArquivoMidiaEntity arquivo) {
-    String key = chavePublicaOuNula(arquivo);
-    if (key == null) {
-      throw new ResponseStatusException(HttpStatus.CONFLICT, "midia restrita sem identidade canonica");
-    }
-    return key;
+    return previewIdentity.chavePublica(arquivo);
   }
 
   private String chavePublicaOuNula(ArquivoMidiaEntity arquivo) {
-    if (arquivo == null || arquivo.getId() == null || properties == null
-        || properties.getPublicMediaPrefix() == null || properties.getPublicMediaPrefix().isBlank()) {
-      return null;
-    }
-    String checksum = arquivo.getSha256() == null
-        ? "sem-checksum"
-        : arquivo.getSha256().trim().toLowerCase(Locale.ROOT);
-    String identificadorDerivado = sha256((arquivo.getId() + ":" + checksum + ":" + DERIVATION_VERSION)
-        .getBytes(StandardCharsets.UTF_8)).substring(0, 32);
-    return properties.getPublicMediaPrefix() + DERIVATION_DIRECTORY + identificadorDerivado + ".jpg";
+    return previewIdentity.chavePublicaOuNula(arquivo);
   }
 
   private boolean fotoR2Elegivel(ArquivoMidiaEntity arquivo) {
@@ -192,7 +206,7 @@ public class MidiaRestritaDerivacaoService {
     }
     if (properties.getPublicMediaBucket().equals(arquivo.getBucket())
         && key.startsWith(properties.getPublicMediaPrefix())
-        && !key.contains("/" + DERIVATION_DIRECTORY)) {
+        && !previewIdentity.isPreviewKey(key)) {
       return StorageArea.PUBLIC_MEDIA;
     }
     throw new ResponseStatusException(HttpStatus.CONFLICT, "midia restrita fora da area canonica");

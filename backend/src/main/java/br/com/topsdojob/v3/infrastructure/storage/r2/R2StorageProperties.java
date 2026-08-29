@@ -25,19 +25,23 @@ public class R2StorageProperties {
   private long signedUrlTtlSeconds = 300;
 
   public void validateConfigured() {
-    require(endpoint, "endpoint");
-    require(accessKey, "access-key");
-    require(signingValue, "signing-value");
-    require(publicMediaBucket, "public-media-bucket");
+    validatePublicListingConfigured();
     require(privateMediaBucket, "private-media-bucket");
     require(documentBucket, "document-bucket");
-    validatePrefix(publicMediaPrefix, "public-media-prefix");
     validatePrefix(privateMediaPrefix, "private-media-prefix");
     validatePrefix(documentPrefix, "document-prefix");
     validatePreservedPublicOrigin();
     if (signedUrlTtlSeconds < 1 || signedUrlTtlSeconds > Duration.ofDays(7).toSeconds()) {
       throw new IllegalStateException("app.storage.r2.signed-url-ttl-seconds fora do intervalo permitido");
     }
+  }
+
+  public void validatePublicListingConfigured() {
+    require(endpoint, "endpoint");
+    require(accessKey, "access-key");
+    require(signingValue, "signing-value");
+    require(publicMediaBucket, "public-media-bucket");
+    validatePrefix(publicMediaPrefix, "public-media-prefix");
     URI parsedEndpoint = URI.create(endpoint);
     if (!"https".equalsIgnoreCase(parsedEndpoint.getScheme()) || parsedEndpoint.getHost() == null) {
       throw new IllegalStateException("app.storage.r2.endpoint deve usar HTTPS");

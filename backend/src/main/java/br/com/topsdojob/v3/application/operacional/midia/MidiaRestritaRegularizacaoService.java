@@ -1,8 +1,7 @@
 package br.com.topsdojob.v3.application.operacional.midia;
 
-import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
-import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
+import br.com.topsdojob.v3.infrastructure.storage.ObjectStorageInventory;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObjectMetadata;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObjectPage;
@@ -42,8 +41,8 @@ public class MidiaRestritaRegularizacaoService {
   private final AnuncioMidiaRepository anuncioMidiaRepository;
   private final ArquivoMidiaRepository arquivoMidiaRepository;
   private final PreviewRestritoBackfillJdbcRepository backfillRepository;
-  private final MidiaRestritaDerivacaoService derivacaoService;
-  private final ObjectProvider<ObjectStorage> storageProvider;
+  private final MidiaRestritaPreviewIdentity previewIdentity;
+  private final ObjectProvider<ObjectStorageInventory> storageProvider;
   private final Clock clock;
 
   @Autowired
@@ -51,23 +50,23 @@ public class MidiaRestritaRegularizacaoService {
       AnuncioMidiaRepository anuncioMidiaRepository,
       ArquivoMidiaRepository arquivoMidiaRepository,
       PreviewRestritoBackfillJdbcRepository backfillRepository,
-      MidiaRestritaDerivacaoService derivacaoService,
-      ObjectProvider<ObjectStorage> storageProvider) {
+      MidiaRestritaPreviewIdentity previewIdentity,
+      ObjectProvider<ObjectStorageInventory> storageProvider) {
     this(anuncioMidiaRepository, arquivoMidiaRepository, backfillRepository,
-        derivacaoService, storageProvider, Clock.systemUTC());
+        previewIdentity, storageProvider, Clock.systemUTC());
   }
 
   MidiaRestritaRegularizacaoService(
       AnuncioMidiaRepository anuncioMidiaRepository,
       ArquivoMidiaRepository arquivoMidiaRepository,
       PreviewRestritoBackfillJdbcRepository backfillRepository,
-      MidiaRestritaDerivacaoService derivacaoService,
-      ObjectProvider<ObjectStorage> storageProvider,
+      MidiaRestritaPreviewIdentity previewIdentity,
+      ObjectProvider<ObjectStorageInventory> storageProvider,
       Clock clock) {
     this.anuncioMidiaRepository = anuncioMidiaRepository;
     this.arquivoMidiaRepository = arquivoMidiaRepository;
     this.backfillRepository = backfillRepository;
-    this.derivacaoService = derivacaoService;
+    this.previewIdentity = previewIdentity;
     this.storageProvider = storageProvider;
     this.clock = clock;
   }
@@ -96,7 +95,7 @@ public class MidiaRestritaRegularizacaoService {
     Listagem listagem = listarPreviews();
     List<Item> itens = new ArrayList<>();
     for (ArquivoMidiaEntity arquivo : arquivos.values()) {
-      String esperada = derivacaoService.chavePublica(arquivo);
+      String esperada = previewIdentity.chavePublica(arquivo);
       itens.add(new Item(arquivo, esperada, classificar(arquivo, esperada, listagem)));
     }
     return Resultado.de(vinculos.size(), arquivos.size(), listagem.paginas(), itens);
@@ -130,7 +129,7 @@ public class MidiaRestritaRegularizacaoService {
           atualizacoes.add(new Atualizacao(
               atual.getId(),
               item.chaveEsperada(),
-              derivacaoService.versaoPipeline(),
+              previewIdentity.versaoPipeline(),
               agora));
         } else {
           throw new IllegalStateException(
@@ -192,7 +191,7 @@ public class MidiaRestritaRegularizacaoService {
   }
 
   private Listagem listarPreviews() {
-    ObjectStorage storage = storageProvider.getIfAvailable();
+    ObjectStorageInventory storage = storageProvider.getIfAvailable();
     if (storage == null) {
       return Listagem.naoComprovada();
     }
@@ -203,7 +202,7 @@ public class MidiaRestritaRegularizacaoService {
       do {
         StoredObjectPage page = storage.list(
             StorageArea.PUBLIC_MEDIA,
-            derivacaoService.prefixoPreviews(),
+            previewIdentity.prefixoPreviews(),
             cursor,
             PAGE_SIZE);
         paginas++;
@@ -274,7 +273,7 @@ public class MidiaRestritaRegularizacaoService {
       String chaveEsperada) {
     return arquivo.getPreviewRestritoTipo() == TipoDerivadoMidia.PREVIEW_RESTRITO
         && chaveEsperada.equals(arquivo.getPreviewRestritoChave())
-        && derivacaoService.versaoPipeline().equals(
+        && previewIdentity.versaoPipeline().equals(
             arquivo.getPreviewRestritoPipelineVersao())
         && arquivo.getPreviewRestritoConfirmadoEm() == null;
   }
@@ -284,7 +283,7 @@ public class MidiaRestritaRegularizacaoService {
       String chaveEsperada) {
     return arquivo.previewRestritoDisponivel()
         && chaveEsperada.equals(arquivo.getPreviewRestritoChave())
-        && derivacaoService.versaoPipeline().equals(
+        && previewIdentity.versaoPipeline().equals(
             arquivo.getPreviewRestritoPipelineVersao());
   }
 
