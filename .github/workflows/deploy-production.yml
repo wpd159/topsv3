@@ -294,23 +294,15 @@ jobs:
           TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
           TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
         run: |
           set -euo pipefail
-          [[ "${GITHUB_RUN_ID}" =~ ^[0-9]+$ ]]
-          [[ "${GITHUB_RUN_ATTEMPT}" =~ ^[0-9]+$ ]]
-          [[ "${GITHUB_SHA}" =~ ^[0-9a-f]{40}$ ]]
-          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          SCP_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -P "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
-          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
           REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
           [[ "${REMOTE_DEPLOY_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" \
-            'install -d -m 0750 /opt/topsv3/production/incoming' </dev/null
-          scp "${SCP_OPTS[@]}" "${REMOTE_DEPLOY_SOURCE}" "${SSH_TARGET}:${REMOTE_DEPLOY_SCRIPT}"
-          remote_command="set -euo pipefail; script='${REMOTE_DEPLOY_SCRIPT}'; expected='${REMOTE_DEPLOY_SHA256}'; test -f \"\${script}\"; actual=\$(sha256sum -- \"\${script}\" | cut -d ' ' -f 1); test \"\${actual}\" = \"\${expected}\"; chmod 0500 \"\${script}\""
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "${remote_command}" </dev/null
+          bash ./scripts/deploy/gerenciar-staging-controlador-production.sh \
+            prepare "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}" \
+            "${REMOTE_DEPLOY_SOURCE}"
           echo "REMOTE_DEPLOY_SCRIPT_SHA256=${REMOTE_DEPLOY_SHA256}"
 
       - name: Validate remote production prerequisites
@@ -322,7 +314,7 @@ jobs:
         run: |
           set -euo pipefail
           REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
-          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SCRIPT=".cache/topsdojob-deploy/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}/deploy-remoto.sh"
           REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
           bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
             "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" prerequisites
@@ -333,26 +325,26 @@ jobs:
           TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
           TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SCP_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -P "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
           REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
-          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SCRIPT=".cache/topsdojob-deploy/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}/deploy-remoto.sh"
           REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
           LOCAL_INDEXNOW_MANIFEST="${RUNNER_TEMP}/indexnow-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.key"
-          REMOTE_INDEXNOW_MANIFEST="/opt/topsv3/production/incoming/indexnow-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.key"
           cleanup_local_manifest() { rm -f -- "${LOCAL_INDEXNOW_MANIFEST}"; }
           trap cleanup_local_manifest EXIT
           umask 077
           printf '%s\n' "${INDEXNOW_KEY}" > "${LOCAL_INDEXNOW_MANIFEST}"
           INDEXNOW_MANIFEST_SHA256="$(sha256sum -- "${LOCAL_INDEXNOW_MANIFEST}" | cut -d ' ' -f 1)"
-          scp "${SCP_OPTS[@]}" "${LOCAL_INDEXNOW_MANIFEST}" "${SSH_TARGET}:${REMOTE_INDEXNOW_MANIFEST}"
+          bash ./scripts/deploy/gerenciar-staging-controlador-production.sh \
+            upload "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}" \
+            "${LOCAL_INDEXNOW_MANIFEST}" indexnow.key
           bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
             "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" \
-            indexnow "${REMOTE_INDEXNOW_MANIFEST}" "${INDEXNOW_MANIFEST_SHA256}"
+            indexnow "${INDEXNOW_MANIFEST_SHA256}"
 
       - name: Upload immutable release
         shell: bash
@@ -360,10 +352,9 @@ jobs:
           TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
           TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
         run: |
           set -euo pipefail
-          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SCP_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -P "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
           ARCHIVE="${RUNNER_TEMP}/topsv3-${GITHUB_SHA}.tar.gz"
           tar \
             --exclude='./.git' \
@@ -397,12 +388,16 @@ jobs:
             --exclude='./*.p12' \
             --exclude='**/*.p12' \
             -czf "${ARCHIVE}" .
-          scp "${SCP_OPTS[@]}" "${ARCHIVE}" "${SSH_TARGET}:/opt/topsv3/production/incoming/${GITHUB_SHA}.tar.gz"
+          ARCHIVE_SHA256="$(sha256sum -- "${ARCHIVE}" | cut -d ' ' -f 1)"
+          bash ./scripts/deploy/gerenciar-staging-controlador-production.sh \
+            upload "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}" \
+            "${ARCHIVE}" release.tar.gz
           REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
-          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SCRIPT=".cache/topsdojob-deploy/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}/deploy-remoto.sh"
           REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
           bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
-            "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" install "${GITHUB_SHA}"
+            "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" \
+            install "${GITHUB_SHA}" "${ARCHIVE_SHA256}"
 
       - name: Build and activate production release
         shell: bash
@@ -413,7 +408,7 @@ jobs:
         run: |
           set -euo pipefail
           REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
-          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SCRIPT=".cache/topsdojob-deploy/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}/deploy-remoto.sh"
           REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
           bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
             "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" deploy "${GITHUB_SHA}"
@@ -427,7 +422,7 @@ jobs:
         run: |
           set -euo pipefail
           REMOTE_DEPLOY_SOURCE=./scripts/deploy/executar-deploy-remoto-production.sh
-          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
+          REMOTE_DEPLOY_SCRIPT=".cache/topsdojob-deploy/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}/deploy-remoto.sh"
           REMOTE_DEPLOY_SHA256="$(sha256sum -- "${REMOTE_DEPLOY_SOURCE}" | cut -d ' ' -f 1)"
           bash ./scripts/deploy/invocar-deploy-remoto-production.sh \
             "${REMOTE_DEPLOY_SCRIPT}" "${REMOTE_DEPLOY_SHA256}" smoke "${GITHUB_SHA}"
@@ -443,14 +438,5 @@ jobs:
         run: |
           set -euo pipefail
           test -r "${HOME}/.ssh/topsdojob_production" || exit 0
-          [[ "${GITHUB_RUN_ID}" =~ ^[0-9]+$ ]]
-          [[ "${GITHUB_RUN_ATTEMPT}" =~ ^[0-9]+$ ]]
-          [[ "${GITHUB_SHA}" =~ ^[0-9a-f]{40}$ ]]
-          [[ "${TOPSDOJOB_PROD_TARGET_SHA256}" =~ ^[0-9a-f]{64}$ ]]
-          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          REMOTE_DEPLOY_SCRIPT="/opt/topsv3/production/incoming/deploy-remoto-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.sh"
-          REMOTE_INDEXNOW_MANIFEST="/opt/topsv3/production/incoming/indexnow-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}.key"
-          REMOTE_ARCHIVE="/opt/topsv3/production/incoming/${GITHUB_SHA}.tar.gz"
-          remote_command="set -euo pipefail; marker=/etc/topsdojob/target.env; test -r \"\${marker}\"; actual=\$(sha256sum -- \"\${marker}\" | cut -d ' ' -f 1); test \"\${actual}\" = '${TOPSDOJOB_PROD_TARGET_SHA256}'; grep -qx 'TOPSDOJOB_TARGET=production' \"\${marker}\"; grep -qx 'TOPSDOJOB_PROJECT=topsdojob-v3' \"\${marker}\"; rm -f -- '${REMOTE_DEPLOY_SCRIPT}' '${REMOTE_INDEXNOW_MANIFEST}' '${REMOTE_ARCHIVE}'"
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "${remote_command}" </dev/null
+          bash ./scripts/deploy/gerenciar-staging-controlador-production.sh \
+            cleanup "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"

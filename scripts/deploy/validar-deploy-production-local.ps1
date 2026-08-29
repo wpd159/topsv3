@@ -35,6 +35,8 @@ $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production
 $ephemeralPostgresWaiter = Read-RepoFile "scripts/deploy/aguardar-postgres-efemero.sh"
 $remoteDeploy = Read-RepoFile "scripts/deploy/executar-deploy-remoto-production.sh"
 $remoteInvoker = Read-RepoFile "scripts/deploy/invocar-deploy-remoto-production.sh"
+$stagingManager = Read-RepoFile "scripts/deploy/gerenciar-staging-controlador-production.sh"
+$stagingTests = Read-RepoFile "scripts/deploy/testar-staging-controlador-production.sh"
 $previewBackfill = Read-RepoFile "scripts/deploy/executar-backfill-previews-production.sh"
 $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
@@ -43,7 +45,7 @@ $atomicActivatorTests = Read-RepoFile "scripts/deploy/testar-release-atomica-pro
 $ciWorkflow = Read-RepoFile ".github/workflows/ci.yml"
 $rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
 $analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
-$deploymentContract = $workflow, $remoteDeploy, $remoteInvoker, $previewBackfill -join "`n"
+$deploymentContract = $workflow, $remoteDeploy, $remoteInvoker, $stagingManager, $previewBackfill -join "`n"
 $checks = [Collections.Generic.List[object]]::new()
 
 function Add-Check {
@@ -79,6 +81,7 @@ foreach ($required in @(
     "validar-gate-banco-production.sh",
     "validar-gate-flyway-production.sh",
     "criar-backup-validado-production.sh",
+    "gerenciar-staging-controlador-production.sh",
     "testar-stdin-deploy-production.sh",
     "testar-backup-validado-production.sh",
     "testar-release-atomica-production.sh",
@@ -246,6 +249,34 @@ Add-Check "workflow valida identidade canonica antes de qualquer mutacao remota"
   ($workflow.IndexOf('name: Validate canonical production target') -lt
     $workflow.IndexOf('name: Upload immutable release'))
 )
+Add-Check "workflow envia todos os arquivos pelo staging privado" (
+  (-not $workflow.Contains('scp ')) -and
+  ($workflow.Contains('.cache/topsdojob-deploy/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}')) -and
+  ($workflow.Contains('prepare "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"')) -and
+  ($workflow.Contains('upload "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"')) -and
+  ($workflow.Contains('cleanup "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"')) -and
+  ($stagingManager.Contains('scp "${scp_opts[@]}" "${source}" "${ssh_target}:${remote_rel}" </dev/null'))
+)
+Add-Check "staging pertence ao usuario e rejeita symlink ou modo inseguro" (
+  ($stagingManager.Contains('umask 077')) -and
+  ($stagingManager.Contains('mkdir -m 0700')) -and
+  ($stagingManager.Contains('test ! -L')) -and
+  ($stagingManager.Contains('stat -c ''%u''')) -and
+  ($stagingManager.Contains('stat -c ''%a''')) -and
+  ($remoteInvoker.Contains('test \"\$(stat -c ''%a'' \"\${script}\")\" = 500'))
+)
+Add-Check "target guard permanece antes do primeiro upload" (
+  ($workflow.IndexOf('name: Validate canonical production target') -lt
+    $workflow.IndexOf('name: Upload verified remote deploy controller')) -and
+  ($stagingManager.IndexOf('guard="$(remote_guard)"') -lt
+    $stagingManager.IndexOf('scp "${scp_opts[@]}"'))
+)
+Add-Check "controlador nao depende do incoming root-owned" (
+  (-not $workflow.Contains('/opt/topsv3/production/incoming/deploy-remoto-')) -and
+  (-not $remoteInvoker.Contains('/opt/topsv3/production/incoming/deploy-remoto-')) -and
+  ($remoteDeploy.Contains('validate_transport_file release.tar.gz')) -and
+  ($remoteDeploy.Contains('validate_transport_file indexnow.key'))
+)
 foreach ($legacySecret in @(
     'secrets.PRODUCTION_HOST',
     'secrets.PRODUCTION_USER',
@@ -275,9 +306,9 @@ Add-Check "workflow valida GA4 habilitado no runtime" (
 Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
   ($workflow.Contains("Synchronize IndexNow key in production runtime")) -and
   ($workflow.Contains('LOCAL_INDEXNOW_MANIFEST=')) -and
-  ($workflow.Contains('REMOTE_INDEXNOW_MANIFEST=')) -and
   ($workflow.Contains('INDEXNOW_MANIFEST_SHA256=')) -and
-  ($workflow.Contains('indexnow "${REMOTE_INDEXNOW_MANIFEST}" "${INDEXNOW_MANIFEST_SHA256}"')) -and
+  ($workflow.Contains('"${LOCAL_INDEXNOW_MANIFEST}" indexnow.key')) -and
+  ($workflow.Contains('indexnow "${INDEXNOW_MANIFEST_SHA256}"')) -and
   (-not ($workflow -match 'ssh[^\r\n]*bash\s+-s')) -and
   (-not ($workflow -match '\}\s*\|\s*s[s]h\b')) -and
   ($remoteDeploy.Contains("--network none")) -and
@@ -405,8 +436,27 @@ foreach ($required in @(
     "apply_idempotente_sem_delta",
     "residuos_zero",
     "DEPLOY_STDIN_REGRESSION_TESTS=PASS"
-  )) {
+)) {
   Add-Check "regressao de stdin contem $required" ($stdinRegressionTests.Contains($required))
+}
+foreach ($required in @(
+    "diretorio_root_owned_reproduz_falha",
+    "staging_home_owner_mode_0700",
+    "upload_e_sha_validados",
+    "controlador_stdin_eof",
+    "marcador_posterior",
+    "hash_divergente_bloqueia",
+    "symlink_rejeitado",
+    "staging_owner_incorreto_rejeitado",
+    "staging_antigo_nao_reutilizado",
+    "target_guard_antes_upload",
+    "falha_controlador_propaga_exit_code",
+    "cleanup_normal",
+    "caminho_sucesso_5_5",
+    "residuos_zero",
+    "DEPLOY_STAGING_TESTS=PASS"
+  )) {
+  Add-Check "staging seguro contem $required" ($stagingTests.Contains($required))
 }
 foreach ($required in @(
     "postgres:17.10-alpine",

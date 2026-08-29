@@ -6,6 +6,8 @@ repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 workflow="${repo_root}/.github/workflows/deploy-production.yml"
 remote_deploy="${repo_root}/scripts/deploy/executar-deploy-remoto-production.sh"
 remote_invoker="${repo_root}/scripts/deploy/invocar-deploy-remoto-production.sh"
+staging_manager="${repo_root}/scripts/deploy/gerenciar-staging-controlador-production.sh"
+staging_test="${repo_root}/scripts/deploy/testar-staging-controlador-production.sh"
 backfill_helper="${repo_root}/scripts/deploy/executar-backfill-previews-production.sh"
 backfill_test="${repo_root}/scripts/deploy/testar-backfill-previews-production.sh"
 atomic_helper="${repo_root}/scripts/deploy/ativar-release-atomica-production.sh"
@@ -96,7 +98,21 @@ done < <(logical_commands "${deploy_sources[@]}")
 
 grep -Fq 'Upload verified remote deploy controller' "${workflow}"
 grep -Fq 'REMOTE_DEPLOY_SCRIPT_SHA256=' "${workflow}"
-grep -Fq 'scp "${SCP_OPTS[@]}" "${REMOTE_DEPLOY_SOURCE}"' "${workflow}"
+grep -Fq 'gerenciar-staging-controlador-production.sh' "${workflow}"
+grep -Fq 'prepare "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"' "${workflow}"
+grep -Fq 'upload "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"' "${workflow}"
+grep -Fq 'cleanup "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"' "${workflow}"
+grep -Fq '.cache/topsdojob-deploy/' "${workflow}"
+if grep -Fq 'scp ' "${workflow}"; then
+  fail "workflow ainda faz upload fora do helper de staging"
+fi
+if grep -Fq '/opt/topsv3/production/incoming/deploy-remoto-' "${workflow}" "${remote_invoker}"; then
+  fail "controlador ainda usa o diretorio root-owned anterior"
+fi
+grep -Fq 'umask 077' "${staging_manager}"
+grep -Fq 'mkdir -m 0700' "${staging_manager}"
+grep -Fq 'test ! -L' "${staging_manager}"
+grep -Fq 'scp "${scp_opts[@]}" "${source}" "${ssh_target}:${remote_rel}" </dev/null' "${staging_manager}"
 grep -Fq 'bash ./scripts/deploy/invocar-deploy-remoto-production.sh' "${workflow}"
 grep -Fq 'actual=\$(sha256sum -- \"\${script}\"' "${remote_invoker}"
 grep -Fq 'bash \"\${script}\"' "${remote_invoker}"
@@ -192,7 +208,7 @@ FAKE_SSH
 chmod +x "${temp_dir}/fake-bin/s""sh"
 sha64="$(printf 'a%.0s' {1..64})"
 release40="$(printf 'b%.0s' {1..40})"
-remote_path="/opt/topsv3/production/incoming/deploy-remoto-123-1-${release40}.sh"
+remote_path=".cache/topsdojob-deploy/123-1-${release40}/deploy-remoto.sh"
 SSH_CAPTURE="${temp_dir}/ssh.capture" \
 TOPSDOJOB_PROD_SSH_HOST=example.invalid \
 TOPSDOJOB_PROD_SSH_USER=topsdojob \
@@ -204,6 +220,8 @@ grep -Fq 'sha256sum -- "${script}"' "${temp_dir}/ssh.capture"
 grep -Fq '</dev/null' "${temp_dir}/ssh.capture"
 grep -Fq 'INVOKER_STDIN_EOF=SIM' "${temp_dir}/ssh.capture"
 echo "PASS: invocador_fecha_stdin_e_valida_sha"
+
+bash "${staging_test}"
 
 line_number() {
   local needle="$1"

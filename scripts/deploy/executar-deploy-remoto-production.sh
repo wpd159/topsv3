@@ -3,6 +3,10 @@ set -euo pipefail
 
 DEPLOY_ROOT=/opt/topsv3/production
 SECRETS_ROOT=/opt/topsv3/secrets
+TRANSPORT_SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+TRANSPORT_SCRIPT="$(readlink -f -- "${TRANSPORT_SCRIPT_SOURCE}")"
+TRANSPORT_STAGING_DIR="$(dirname -- "${TRANSPORT_SCRIPT}")"
+TRANSPORT_FILE=
 
 fail() {
   printf 'ERRO: %s\n' "$*" >&2
@@ -15,6 +19,70 @@ validate_release_sha() {
 
 validate_sha256() {
   [[ "$1" =~ ^[0-9a-f]{64}$ ]] || fail "SHA-256 invalido"
+}
+
+validate_transport_staging() {
+  local uid cache root leaf
+  : "${HOME:?HOME ausente no controlador remoto}"
+  uid="$(id -u)"
+  cache="${HOME}/.cache"
+  root="${cache}/topsdojob-deploy"
+  leaf="${TRANSPORT_STAGING_DIR##*/}"
+
+  case "${TRANSPORT_SCRIPT_SOURCE}" in
+    /*) ;;
+    *) fail "controlador remoto exige caminho absoluto" ;;
+  esac
+  test "${TRANSPORT_SCRIPT_SOURCE}" = "${TRANSPORT_SCRIPT}"
+  test "${TRANSPORT_SCRIPT}" = "${TRANSPORT_STAGING_DIR}/deploy-remoto.sh"
+  case "${TRANSPORT_STAGING_DIR}" in
+    "${root}/"*) ;;
+    *) fail "controlador remoto fora do staging permitido" ;;
+  esac
+  [[ "${leaf}" =~ ^[0-9]+-[0-9]+-[0-9a-f]{40}$ ]] \
+    || fail "identificador do staging invalido"
+
+  test -d "${HOME}"
+  test ! -L "${HOME}"
+  test "$(stat -c '%u' "${HOME}")" = "${uid}"
+  test -d "${cache}"
+  test ! -L "${cache}"
+  test "$(stat -c '%u' "${cache}")" = "${uid}"
+  test -z "$(find "${cache}" -maxdepth 0 -perm /022 -print -quit)"
+  test -d "${root}"
+  test ! -L "${root}"
+  test "$(stat -c '%u' "${root}")" = "${uid}"
+  test "$(stat -c '%a' "${root}")" = 700
+  test -d "${TRANSPORT_STAGING_DIR}"
+  test ! -L "${TRANSPORT_STAGING_DIR}"
+  test "$(stat -c '%u' "${TRANSPORT_STAGING_DIR}")" = "${uid}"
+  test "$(stat -c '%a' "${TRANSPORT_STAGING_DIR}")" = 700
+  test -f "${TRANSPORT_SCRIPT}"
+  test ! -L "${TRANSPORT_SCRIPT}"
+  test "$(stat -c '%u' "${TRANSPORT_SCRIPT}")" = "${uid}"
+  test "$(stat -c '%a' "${TRANSPORT_SCRIPT}")" = 500
+}
+
+validate_transport_file() {
+  local name="$1"
+  local expected_sha256="$2"
+  local expected_mode="$3"
+  local actual_sha256 uid
+
+  case "${name}" in
+    indexnow.key|release.tar.gz) ;;
+    *) fail "arquivo de transporte fora da lista permitida" ;;
+  esac
+  validate_sha256 "${expected_sha256}"
+  validate_transport_staging
+  uid="$(id -u)"
+  TRANSPORT_FILE="${TRANSPORT_STAGING_DIR}/${name}"
+  test -f "${TRANSPORT_FILE}"
+  test ! -L "${TRANSPORT_FILE}"
+  test "$(stat -c '%u' "${TRANSPORT_FILE}")" = "${uid}"
+  test "$(stat -c '%a' "${TRANSPORT_FILE}")" = "${expected_mode}"
+  actual_sha256="$(sha256sum -- "${TRANSPORT_FILE}" | cut -d ' ' -f 1)"
+  test "${actual_sha256}" = "${expected_sha256}"
 }
 
 assert_stdin_closed() {
@@ -39,7 +107,6 @@ validate_prerequisites() {
   test -r "${SECRETS_ROOT}/efi-webhook-allowlist.conf"
   test -d "${SECRETS_ROOT}/efi"
   test -L "${DEPLOY_ROOT}/current"
-  test -w "${DEPLOY_ROOT}/incoming"
   test -w "${DEPLOY_ROOT}/releases"
   command -v docker >/dev/null
   docker compose version >/dev/null
@@ -53,19 +120,13 @@ validate_prerequisites() {
 }
 
 synchronize_indexnow() (
-  [ "$#" -eq 2 ] || fail "uso: indexnow MANIFESTO SHA256"
-  local manifest="$1"
-  local expected_sha256="$2"
-  local actual_sha256
+  [ "$#" -eq 1 ] || fail "uso: indexnow SHA256"
+  local expected_sha256="$1"
+  local manifest
 
-  validate_sha256 "${expected_sha256}"
-  [[ "${manifest}" =~ ^/opt/topsv3/production/incoming/indexnow-[0-9]+-[0-9]+-[0-9a-f]{40}\.key$ ]] \
-    || fail "manifesto IndexNow fora do caminho permitido"
+  validate_transport_file indexnow.key "${expected_sha256}" 600
+  manifest="${TRANSPORT_FILE}"
   trap 'rm -f -- "${manifest}"' EXIT
-  test -f "${manifest}"
-  actual_sha256="$(sha256sum -- "${manifest}" | cut -d ' ' -f 1)"
-  test "${actual_sha256}" = "${expected_sha256}"
-  test "$(stat -c '%a' "${manifest}")" = "600"
   docker image inspect nginx:1.27-alpine >/dev/null
   docker run --rm --pull never \
     --network none \
@@ -103,16 +164,18 @@ synchronize_indexnow() (
 )
 
 install_release() {
-  [ "$#" -eq 1 ] || fail "uso: install RELEASE_SHA"
+  [ "$#" -eq 2 ] || fail "uso: install RELEASE_SHA ARCHIVE_SHA256"
   local release_sha="$1"
+  local archive_sha256="$2"
   local release_root="${DEPLOY_ROOT}/releases"
   local release_dir
   local incoming
   local temporary
 
   validate_release_sha "${release_sha}"
+  validate_transport_file release.tar.gz "${archive_sha256}" 600
   release_dir="${release_root}/${release_sha}"
-  incoming="${DEPLOY_ROOT}/incoming/${release_sha}.tar.gz"
+  incoming="${TRANSPORT_FILE}"
   temporary="${release_root}/.${release_sha}.incoming"
   test -f "${incoming}"
   if [ -e "${release_dir}" ]; then
@@ -383,6 +446,7 @@ main() {
   local command="$1"
   shift
   assert_stdin_closed
+  validate_transport_staging
   case "${command}" in
     prerequisites) validate_prerequisites "$@" ;;
     indexnow) synchronize_indexnow "$@" ;;
