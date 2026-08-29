@@ -9,6 +9,9 @@ on:
         type: choice
         options:
           - verify
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -28,7 +31,7 @@ jobs:
         id: guard
         shell: bash
         env:
-          REQUESTED_MODE: ${{ inputs.mode }}
+          REQUESTED_MODE: ${{ github.event_name == 'pull_request' && 'verify' || inputs.mode }}
           SOURCE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail

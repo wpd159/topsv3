@@ -111,6 +111,12 @@ function contract() {
 
   if (!/runs-on:\s*ubuntu-24\.04/.test(workflow)) fail('runner nao fixado em ubuntu-24.04')
   if (!/options:\s*\n\s*- verify/.test(workflow)) fail('mode=verify nao e a unica opcao')
+  if (!/pull_request:\s*\n\s*branches:\s*\n\s*- main/.test(workflow)) {
+    fail('workflow novo deve ser verificavel no PR antes de existir na main')
+  }
+  if (!/github\.event_name == 'pull_request' && 'verify' \|\| inputs\.mode/.test(workflow)) {
+    fail('evento de PR deve permanecer estritamente em mode=verify')
+  }
   if (/\n\s*- (?:deploy|candidate|switch|rollback)\s*$/m.test(workflow)) {
     fail('modo mutavel exposto no workflow da Fase 1')
   }
