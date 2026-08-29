@@ -95,7 +95,7 @@ run_backfill() {
       --app.restricted-media-preview-reconciliation.apply-confirmed="${apply_confirmed}" \
       --app.restricted-media-preview-reconciliation.batch-size="${BATCH_SIZE}" \
       --app.restricted-media-preview-reconciliation.report-path="${CONTAINER_REPORT_PATH}" \
-      >"${RAW_OUTPUT}" 2>&1
+      </dev/null >"${RAW_OUTPUT}" 2>&1
   local rc=$?
   set -e
   RESULT_LINE="$(grep '^RESTRICTED_MEDIA_PREVIEW_RECONCILIATION_RESULT ' "${RAW_OUTPUT}" | tail -1 || true)"
