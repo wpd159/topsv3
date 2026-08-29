@@ -13,7 +13,7 @@ const files = {
   ),
   frontendEnv: await readFile(new URL('../.env.local.example', import.meta.url), 'utf8'),
   workflow: await readFile(
-    new URL('../../.github/workflows/deploy-preprod.yml', import.meta.url),
+    new URL('../../.github/workflows/ci.yml', import.meta.url),
     'utf8'
   ),
   preprodCompose: await readFile(

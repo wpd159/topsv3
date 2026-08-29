@@ -433,8 +433,7 @@ function Test-TopsAllowedExternalSecretReference {
     "EFI_CLIENT_SECRET",
     "DATABASE_PASSWORD",
     "SPRING_DATASOURCE_PASSWORD",
-    "SPRING_MAIL_PASSWORD",
-    "PREPROD_SSH_PRIVATE_KEY"
+    "SPRING_MAIL_PASSWORD"
   )
   if ($clean -match '^\$\{\{\s*secrets\.(?<name>[A-Z0-9_]+)\s*\}\}$') {
     return ($matches["name"] -in $allowedNames)

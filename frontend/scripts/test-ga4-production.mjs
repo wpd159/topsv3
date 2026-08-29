@@ -25,7 +25,7 @@ const analytics = readRepoFile(
 )
 const nextConfig = readRepoFile('frontend/next.config.ts')
 const productionWorkflow = readRepoFile('.github/workflows/deploy-production.yml')
-const preprodWorkflow = readRepoFile('.github/workflows/deploy-preprod.yml')
+const ciWorkflow = readRepoFile('.github/workflows/ci.yml')
 const productionCompose = readRepoFile('deploy/production/docker-compose.yml')
 const runtimeSources = collectSourceFiles(path.join(frontendRoot, 'src'))
   .map((file) => readFileSync(file, 'utf8'))
@@ -69,7 +69,7 @@ assert.doesNotMatch(
   /NEXT_PUBLIC_ANALYTICS_ENABLED:\s+"false"/
 )
 assert.match(
-  preprodWorkflow,
+  ciWorkflow,
   /NEXT_PUBLIC_ANALYTICS_ENABLED:\s+"false"/
 )
 assert.equal(

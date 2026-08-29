@@ -17,6 +17,14 @@ function Read-RepoFile {
 }
 
 $workflow = Read-RepoFile ".github/workflows/deploy-production.yml"
+$preflightJob = [regex]::Match(
+  $workflow,
+  '(?ms)^  preflight-production:\r?\n.*?(?=^  deploy-production:)'
+).Value
+$deployJob = [regex]::Match(
+  $workflow,
+  '(?ms)^  deploy-production:\r?\n.*\z'
+).Value
 $compose = Read-RepoFile "deploy/production/docker-compose.yml"
 $databaseGate = Read-RepoFile "scripts/deploy/validar-gate-banco-production.sh"
 $databaseGateSnapshot = Read-RepoFile "scripts/deploy/capturar-snapshot-gate-banco-production.sql"
@@ -29,7 +37,7 @@ $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-produc
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
 $atomicActivator = Read-RepoFile "scripts/deploy/ativar-release-atomica-production.sh"
 $atomicActivatorTests = Read-RepoFile "scripts/deploy/testar-release-atomica-production.sh"
-$preprodWorkflow = Read-RepoFile ".github/workflows/deploy-preprod.yml"
+$ciWorkflow = Read-RepoFile ".github/workflows/ci.yml"
 $rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
 $analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
 $checks = [Collections.Generic.List[object]]::new()
@@ -43,6 +51,15 @@ foreach ($required in @(
     "workflow_dispatch:",
     "environment: production",
     "group: topsv3-production",
+    "inputs.mode",
+    "inputs.deploy_sha",
+    "inputs.confirmation",
+    "DEPLOY_PRODUCTION",
+    "TOPSDOJOB_PROD_TARGET_SHA256",
+    "/etc/topsdojob/target.env",
+    "TOPSDOJOB_TARGET=production",
+    "TOPSDOJOB_PROJECT=topsdojob-v3",
+    "TARGET_VERIFIED=production",
     "/opt/topsv3/production/releases",
     "/opt/topsv3/production/current",
     "/opt/topsv3/secrets/production.env",
@@ -69,11 +86,12 @@ foreach ($required in @(
 }
 
 foreach ($secret in @(
-    "PRODUCTION_HOST",
-    "PRODUCTION_USER",
-    "PRODUCTION_SSH_PORT",
-    "PRODUCTION_SSH_IDENTITY",
-    "PRODUCTION_SSH_HOST_KEY",
+    "TOPSDOJOB_PROD_SSH_HOST",
+    "TOPSDOJOB_PROD_SSH_USER",
+    "TOPSDOJOB_PROD_SSH_PORT",
+    "TOPSDOJOB_PROD_SSH_PRIVATE_KEY",
+    "TOPSDOJOB_PROD_SSH_HOST_KEY",
+    "TOPSDOJOB_PROD_TARGET_SHA256",
     "INDEXNOW_KEY"
   )) {
   Add-Check "workflow referencia $secret" ($workflow.Contains("secrets.$secret"))
@@ -94,6 +112,43 @@ foreach ($forbidden in @(
 }
 
 Add-Check "workflow nao executa automaticamente em push" (-not ($workflow -match '(?m)^\s+push:\s*$'))
+Add-Check "workflow separa preflight e deploy" (
+  (-not [string]::IsNullOrWhiteSpace($preflightJob)) -and
+  (-not [string]::IsNullOrWhiteSpace($deployJob)) -and
+  ($deployJob.Contains("needs: preflight-production")) -and
+  ($deployJob.Contains('if: ${{ inputs.mode == ''deploy'' }}'))
+)
+Add-Check "preflight fixa o SHA e exige confirmacao literal" (
+  ($preflightJob.Contains('test "${DEPLOY_SHA}" = "${GITHUB_SHA}"')) -and
+  ($preflightJob.Contains('test "${CONFIRMATION}" = "DEPLOY_PRODUCTION"'))
+)
+Add-Check "preflight valida somente acesso e destino canonico" (
+  ($preflightJob.Contains("Preflight validate pinned SSH host key")) -and
+  ($preflightJob.Contains("Preflight validate canonical production target")) -and
+  ($preflightJob.Contains("/etc/topsdojob/target.env")) -and
+  ($preflightJob.Contains("TOPSDOJOB_TARGET=production")) -and
+  ($preflightJob.Contains("TOPSDOJOB_PROJECT=topsdojob-v3")) -and
+  ($preflightJob.Contains("TARGET_VERIFIED=production"))
+)
+foreach ($forbiddenPreflight in @(
+    "actions/checkout",
+    "scp ",
+    "Upload immutable release",
+    "Synchronize IndexNow",
+    "flyway",
+    "backfill",
+    "docker ",
+    "nginx",
+    "systemctl",
+    "mvn ",
+    "npm "
+  )) {
+  Add-Check "preflight nao contem $forbiddenPreflight" (-not $preflightJob.Contains($forbiddenPreflight))
+}
+Add-Check "deploy faz checkout do SHA autorizado" (
+  ($deployJob.Contains('ref: ${{ inputs.deploy_sha }}')) -and
+  ($deployJob.Contains('run: test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"'))
+)
 Add-Check "workflow nao altera manutencao ou indexacao externa" (
   -not ($workflow -match 'maintenance|manutencao|robots\.txt.*(write|cat|printf)')
 )
@@ -144,7 +199,7 @@ function Convert-ToLogicalShellLines {
 
 $deploySources = @(
   Convert-ToLogicalShellLines $workflow
-  Convert-ToLogicalShellLines $preprodWorkflow
+  Convert-ToLogicalShellLines $ciWorkflow
   Convert-ToLogicalShellLines $backupProducer
   Convert-ToLogicalShellLines $atomicActivator
 ) -join "`n"
@@ -174,6 +229,26 @@ Add-Check "workflow valida host key antes do upload" (
   $workflow.IndexOf('name: Validate pinned SSH host key') -lt
   $workflow.IndexOf('name: Upload immutable release')
 )
+Add-Check "workflow valida identidade canonica antes de qualquer mutacao remota" (
+  ($workflow.IndexOf('name: Validate canonical production target') -gt
+    $workflow.IndexOf('name: Validate pinned SSH host key')) -and
+  ($workflow.IndexOf('name: Validate canonical production target') -lt
+    $workflow.IndexOf('name: Synchronize IndexNow key in production runtime')) -and
+  ($workflow.IndexOf('name: Validate canonical production target') -lt
+    $workflow.IndexOf('name: Upload immutable release'))
+)
+foreach ($legacySecret in @(
+    'secrets.PRODUCTION_HOST',
+    'secrets.PRODUCTION_USER',
+    'secrets.PRODUCTION_SSH_PORT',
+    'secrets.PRODUCTION_SSH_IDENTITY',
+    'secrets.PRODUCTION_SSH_HOST_KEY',
+    'secrets.VPS_HOST',
+    'TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256',
+    '/opt/topsv3/identity/production-target'
+  )) {
+  Add-Check "workflow nao usa secret generico $legacySecret" (-not $workflow.Contains($legacySecret))
+}
 Add-Check "workflow limita retries SSH" (
   ($workflow -match 'SSH_RETRY_BACKOFF=\(2 4 8 16\)') -and
   ($workflow -match 'for attempt in 1 2 3 4 5; do')

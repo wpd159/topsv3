@@ -473,7 +473,7 @@ await test('configuracao versionada e gates preservam as fases anteriores', asyn
 
   for (const path of [
     '../.github/workflows/deploy-production.yml',
-    '../.github/workflows/deploy-preprod.yml',
+    '../.github/workflows/ci.yml',
   ]) {
     const workflow = source(path)
     assert.doesNotMatch(workflow, /INTERNAL_API_URL:/)
