@@ -17,6 +17,14 @@ function Read-RepoFile {
 }
 
 $workflow = Read-RepoFile ".github/workflows/deploy-production.yml"
+$preflightJob = [regex]::Match(
+  $workflow,
+  '(?ms)^  preflight-production:\r?\n.*?(?=^  deploy-production:)'
+).Value
+$deployJob = [regex]::Match(
+  $workflow,
+  '(?ms)^  deploy-production:\r?\n.*\z'
+).Value
 $compose = Read-RepoFile "deploy/production/docker-compose.yml"
 $databaseGate = Read-RepoFile "scripts/deploy/validar-gate-banco-production.sh"
 $databaseGateSnapshot = Read-RepoFile "scripts/deploy/capturar-snapshot-gate-banco-production.sql"
@@ -43,10 +51,15 @@ foreach ($required in @(
     "workflow_dispatch:",
     "environment: production",
     "group: topsv3-production",
-    "inputs.production_target",
-    "TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256",
-    "/opt/topsv3/identity/production-target",
-    "PRODUCTION_TARGET_GUARD=PASS",
+    "inputs.mode",
+    "inputs.deploy_sha",
+    "inputs.confirmation",
+    "DEPLOY_PRODUCTION",
+    "TOPSDOJOB_PROD_TARGET_SHA256",
+    "/etc/topsdojob/target.env",
+    "TOPSDOJOB_TARGET=production",
+    "TOPSDOJOB_PROJECT=topsdojob-v3",
+    "TARGET_VERIFIED=production",
     "/opt/topsv3/production/releases",
     "/opt/topsv3/production/current",
     "/opt/topsv3/secrets/production.env",
@@ -78,6 +91,7 @@ foreach ($secret in @(
     "TOPSDOJOB_PROD_SSH_PORT",
     "TOPSDOJOB_PROD_SSH_PRIVATE_KEY",
     "TOPSDOJOB_PROD_SSH_HOST_KEY",
+    "TOPSDOJOB_PROD_TARGET_SHA256",
     "INDEXNOW_KEY"
   )) {
   Add-Check "workflow referencia $secret" ($workflow.Contains("secrets.$secret"))
@@ -98,6 +112,43 @@ foreach ($forbidden in @(
 }
 
 Add-Check "workflow nao executa automaticamente em push" (-not ($workflow -match '(?m)^\s+push:\s*$'))
+Add-Check "workflow separa preflight e deploy" (
+  (-not [string]::IsNullOrWhiteSpace($preflightJob)) -and
+  (-not [string]::IsNullOrWhiteSpace($deployJob)) -and
+  ($deployJob.Contains("needs: preflight-production")) -and
+  ($deployJob.Contains('if: ${{ inputs.mode == ''deploy'' }}'))
+)
+Add-Check "preflight fixa o SHA e exige confirmacao literal" (
+  ($preflightJob.Contains('test "${DEPLOY_SHA}" = "${GITHUB_SHA}"')) -and
+  ($preflightJob.Contains('test "${CONFIRMATION}" = "DEPLOY_PRODUCTION"'))
+)
+Add-Check "preflight valida somente acesso e destino canonico" (
+  ($preflightJob.Contains("Preflight validate pinned SSH host key")) -and
+  ($preflightJob.Contains("Preflight validate canonical production target")) -and
+  ($preflightJob.Contains("/etc/topsdojob/target.env")) -and
+  ($preflightJob.Contains("TOPSDOJOB_TARGET=production")) -and
+  ($preflightJob.Contains("TOPSDOJOB_PROJECT=topsdojob-v3")) -and
+  ($preflightJob.Contains("TARGET_VERIFIED=production"))
+)
+foreach ($forbiddenPreflight in @(
+    "actions/checkout",
+    "scp ",
+    "Upload immutable release",
+    "Synchronize IndexNow",
+    "flyway",
+    "backfill",
+    "docker ",
+    "nginx",
+    "systemctl",
+    "mvn ",
+    "npm "
+  )) {
+  Add-Check "preflight nao contem $forbiddenPreflight" (-not $preflightJob.Contains($forbiddenPreflight))
+}
+Add-Check "deploy faz checkout do SHA autorizado" (
+  ($deployJob.Contains('ref: ${{ inputs.deploy_sha }}')) -and
+  ($deployJob.Contains('run: test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"'))
+)
 Add-Check "workflow nao altera manutencao ou indexacao externa" (
   -not ($workflow -match 'maintenance|manutencao|robots\.txt.*(write|cat|printf)')
 )
@@ -192,7 +243,9 @@ foreach ($legacySecret in @(
     'secrets.PRODUCTION_SSH_PORT',
     'secrets.PRODUCTION_SSH_IDENTITY',
     'secrets.PRODUCTION_SSH_HOST_KEY',
-    'secrets.VPS_HOST'
+    'secrets.VPS_HOST',
+    'TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256',
+    '/opt/topsv3/identity/production-target'
   )) {
   Add-Check "workflow nao usa secret generico $legacySecret" (-not $workflow.Contains($legacySecret))
 }

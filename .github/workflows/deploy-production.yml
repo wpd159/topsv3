@@ -3,20 +3,128 @@ name: Deploy Producao Tops do Job V3
 on:
   workflow_dispatch:
     inputs:
-      production_target:
-        description: Confirme o destino canonico da producao
+      mode:
+        description: Executar somente o preflight ou prosseguir com o deploy
         required: true
         type: choice
         options:
-          - topsdojob-production-vps-779959
+          - preflight
+          - deploy
+      deploy_sha:
+        description: SHA completo da main autorizado para a operacao
+        required: true
+        type: string
+      confirmation:
+        description: Confirmacao literal da operacao de producao
+        required: true
+        type: string
 
 concurrency:
   group: topsv3-production
   cancel-in-progress: false
 
 jobs:
+  preflight-production:
+    name: Preflight do destino canonico
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Validate preflight inputs and secrets
+        shell: bash
+        env:
+          REQUESTED_MODE: ${{ inputs.mode }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_IDENTITY: ${{ secrets.TOPSDOJOB_PROD_SSH_PRIVATE_KEY }}
+          TOPSDOJOB_PROD_SSH_HOST_KEY: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST_KEY }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
+        run: |
+          set -euo pipefail
+          test "${REQUESTED_MODE}" = "preflight" || test "${REQUESTED_MODE}" = "deploy"
+          [[ "${DEPLOY_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          test "${DEPLOY_SHA}" = "${GITHUB_SHA}"
+          test "${CONFIRMATION}" = "DEPLOY_PRODUCTION"
+          test -n "${TOPSDOJOB_PROD_SSH_HOST}"
+          test "${TOPSDOJOB_PROD_SSH_USER}" = "topsdojob"
+          test "${TOPSDOJOB_PROD_SSH_PORT}" -ge 1
+          test "${TOPSDOJOB_PROD_SSH_PORT}" -le 65535
+          test -n "${TOPSDOJOB_PROD_SSH_IDENTITY}"
+          test -n "${TOPSDOJOB_PROD_SSH_HOST_KEY}"
+          [[ "${TOPSDOJOB_PROD_TARGET_SHA256}" =~ ^[a-f0-9]{64}$ ]]
+
+      - name: Preflight configure SSH
+        shell: bash
+        env:
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_SSH_IDENTITY: ${{ secrets.TOPSDOJOB_PROD_SSH_PRIVATE_KEY }}
+          TOPSDOJOB_PROD_SSH_HOST_KEY: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${TOPSDOJOB_PROD_SSH_HOST_KEY}" =~ ^ssh-ed25519\ [A-Za-z0-9+/]+={0,3}$ ]]; then
+            exit 1
+          fi
+          install -m 700 -d "${HOME}/.ssh"
+          printf '%s\n' "${TOPSDOJOB_PROD_SSH_IDENTITY}" > "${HOME}/.ssh/topsdojob_production"
+          chmod 600 "${HOME}/.ssh/topsdojob_production"
+          printf '[%s]:%s %s\n' "${TOPSDOJOB_PROD_SSH_HOST}" "${TOPSDOJOB_PROD_SSH_PORT}" "${TOPSDOJOB_PROD_SSH_HOST_KEY}" > "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+          ssh-keygen -F "[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}" -f "${HOME}/.ssh/known_hosts" >/dev/null
+
+      - name: Preflight validate pinned SSH host key
+        shell: bash
+        env:
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}" -o ConnectTimeout=15)
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" true
+
+      - name: Preflight validate canonical production target
+        shell: bash
+        env:
+          TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
+          TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
+          TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
+        run: |
+          set -euo pipefail
+          SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
+          SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
+          actual_target_sha256="$(
+            ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
+              marker=/etc/topsdojob/target.env
+              test -r "${marker}"
+              sha256sum "${marker}" | cut -d " " -f 1
+            '
+          )"
+          test "${actual_target_sha256}" = "${TOPSDOJOB_PROD_TARGET_SHA256}"
+          unset actual_target_sha256
+          target_result="$(
+            ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
+              marker=/etc/topsdojob/target.env
+              grep -qx "TOPSDOJOB_TARGET=production" "${marker}"
+              grep -qx "TOPSDOJOB_PROJECT=topsdojob-v3" "${marker}"
+              test -d /opt/topsv3/production
+              printf "%s\n" "TARGET_VERIFIED=production"
+            '
+          )"
+          test "${target_result}" = "TARGET_VERIFIED=production"
+          printf '%s\n' "${target_result}"
+
   deploy-production:
     name: Testes e deploy da producao
+    needs: preflight-production
+    if: ${{ inputs.mode == 'deploy' }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -26,7 +134,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.deploy_sha }}
           fetch-depth: 1
+
+      - name: Validate checked out deploy SHA
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+        run: test "$(git rev-parse HEAD)" = "${DEPLOY_SHA}"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -103,8 +218,8 @@ jobs:
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
           TOPSDOJOB_PROD_SSH_IDENTITY: ${{ secrets.TOPSDOJOB_PROD_SSH_PRIVATE_KEY }}
           TOPSDOJOB_PROD_SSH_HOST_KEY: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST_KEY }}
-          TOPSDOJOB_PROD_TARGET_CONFIRMATION: ${{ inputs.production_target }}
-          TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256: ${{ vars.TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256 }}
+          TOPSDOJOB_PROD_TARGET_CONFIRMATION: ${{ inputs.confirmation }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
         run: |
           set -euo pipefail
@@ -114,8 +229,8 @@ jobs:
           test "${TOPSDOJOB_PROD_SSH_PORT}" -le 65535
           test -n "${TOPSDOJOB_PROD_SSH_IDENTITY}"
           test -n "${TOPSDOJOB_PROD_SSH_HOST_KEY}"
-          test "${TOPSDOJOB_PROD_TARGET_CONFIRMATION}" = "topsdojob-production-vps-779959"
-          [[ "${TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256}" =~ ^[a-f0-9]{64}$ ]]
+          test "${TOPSDOJOB_PROD_TARGET_CONFIRMATION}" = "DEPLOY_PRODUCTION"
+          [[ "${TOPSDOJOB_PROD_TARGET_SHA256}" =~ ^[a-f0-9]{64}$ ]]
           test -n "${INDEXNOW_KEY}"
           [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
           indexnow_key_file="frontend/public/${INDEXNOW_KEY}.txt"
@@ -174,24 +289,29 @@ jobs:
           TOPSDOJOB_PROD_SSH_HOST: ${{ secrets.TOPSDOJOB_PROD_SSH_HOST }}
           TOPSDOJOB_PROD_SSH_USER: ${{ secrets.TOPSDOJOB_PROD_SSH_USER }}
           TOPSDOJOB_PROD_SSH_PORT: ${{ secrets.TOPSDOJOB_PROD_SSH_PORT }}
-          TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256: ${{ vars.TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256 }}
+          TOPSDOJOB_PROD_TARGET_SHA256: ${{ secrets.TOPSDOJOB_PROD_TARGET_SHA256 }}
         run: |
           set -euo pipefail
           SSH_TARGET="${TOPSDOJOB_PROD_SSH_USER}@${TOPSDOJOB_PROD_SSH_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsdojob_production" -p "${TOPSDOJOB_PROD_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${TOPSDOJOB_PROD_SSH_HOST}]:${TOPSDOJOB_PROD_SSH_PORT}")
-          actual_identity_sha256="$(
+          actual_target_sha256="$(
             ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
-              marker=/opt/topsv3/identity/production-target
-              test -f "${marker}"
+              marker=/etc/topsdojob/target.env
               test -r "${marker}"
               sha256sum "${marker}" | cut -d " " -f 1
             '
           )"
-          if [ "${actual_identity_sha256}" != "${TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256}" ]; then
+          if [ "${actual_target_sha256}" != "${TOPSDOJOB_PROD_TARGET_SHA256}" ]; then
             echo "ERRO: destino SSH nao corresponde a VPS canonica de producao." >&2
             exit 1
           fi
-          echo "PRODUCTION_TARGET_GUARD=PASS"
+          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'set -eu
+            marker=/etc/topsdojob/target.env
+            grep -qx "TOPSDOJOB_TARGET=production" "${marker}"
+            grep -qx "TOPSDOJOB_PROJECT=topsdojob-v3" "${marker}"
+            test -d /opt/topsv3/production
+          '
+          echo "TARGET_VERIFIED=production"
 
       - name: Validate remote production prerequisites
         shell: bash

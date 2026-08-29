@@ -67,9 +67,15 @@ foreach ($required in @(
     "TOPSDOJOB_PROD_SSH_USER",
     "TOPSDOJOB_PROD_SSH_PRIVATE_KEY",
     "TOPSDOJOB_PROD_SSH_HOST_KEY",
-    "TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256",
-    "/opt/topsv3/identity/production-target",
-    "PRODUCTION_TARGET_GUARD=PASS"
+    "TOPSDOJOB_PROD_TARGET_SHA256",
+    "inputs.mode",
+    "inputs.deploy_sha",
+    "inputs.confirmation",
+    "DEPLOY_PRODUCTION",
+    "/etc/topsdojob/target.env",
+    "TOPSDOJOB_TARGET=production",
+    "TOPSDOJOB_PROJECT=topsdojob-v3",
+    "TARGET_VERIFIED=production"
   )) {
   Assert-Contract ($production.Contains($required)) "deploy de producao nao contem $required"
 }
@@ -91,6 +97,34 @@ $upload = $production.IndexOf("name: Upload immutable release")
 Assert-Contract ($guard -ge 0) "target guard ausente"
 Assert-Contract ($guard -lt $indexNow) "target guard ocorre depois de mutacao remota"
 Assert-Contract ($guard -lt $upload) "target guard ocorre depois do upload"
+$preflight = [regex]::Match(
+  $production,
+  '(?ms)^  preflight-production:\r?\n.*?(?=^  deploy-production:)'
+).Value
+$deploy = [regex]::Match(
+  $production,
+  '(?ms)^  deploy-production:\r?\n.*\z'
+).Value
+Assert-Contract (-not [string]::IsNullOrWhiteSpace($preflight)) "job preflight ausente"
+Assert-Contract ($deploy.Contains("needs: preflight-production")) "deploy nao depende do preflight"
+Assert-Contract ($deploy.Contains('if: ${{ inputs.mode == ''deploy'' }}')) "deploy nao esta limitado ao mode=deploy"
+foreach ($forbiddenPreflight in @(
+    "actions/checkout",
+    "scp ",
+    "Upload immutable release",
+    "Synchronize IndexNow",
+    "flyway",
+    "backfill",
+    "docker ",
+    "nginx",
+    "systemctl",
+    "mvn ",
+    "npm "
+  )) {
+  Assert-Contract (-not $preflight.Contains($forbiddenPreflight)) "preflight contem operacao proibida: $forbiddenPreflight"
+}
+Assert-Contract (-not $production.Contains("TOPSDOJOB_PROD_TARGET_IDENTITY_SHA256")) "workflow ainda usa identidade legada"
+Assert-Contract (-not $production.Contains("/opt/topsv3/identity/production-target")) "workflow ainda usa marcador legado"
 
 if ($failures.Count -gt 0) {
   foreach ($failure in $failures) {
