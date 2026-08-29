@@ -82,6 +82,7 @@ run_backfill() {
       -e SPRING_TASK_SCHEDULING_ENABLED=false \
       --volume "${REPORT_DIR}:/run/topsv3-preview-backfill" \
       backend \
+      --app.bootstrap=restricted-media-preview-backfill \
       --spring.main.web-application-type=none \
       --spring.main.banner-mode=off \
       --logging.level.root=WARN \

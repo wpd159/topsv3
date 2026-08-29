@@ -8,6 +8,9 @@ activator="${root}/scripts/deploy/ativar-release-atomica-production.sh"
 atomic_test="${root}/scripts/deploy/testar-release-atomica-production.sh"
 service="${root}/backend/src/main/java/br/com/topsdojob/v3/application/operacional/midia/MidiaRestritaRegularizacaoService.java"
 repository="${root}/backend/src/main/java/br/com/topsdojob/v3/persistence/repository/PreviewRestritoBackfillJdbcRepository.java"
+bootstrap="${root}/backend/src/main/java/br/com/topsdojob/v3/application/operacional/midia/backfill/RestrictedMediaPreviewBackfillBootstrap.java"
+configuration="${root}/backend/src/main/java/br/com/topsdojob/v3/application/operacional/midia/backfill/RestrictedMediaPreviewBackfillConfiguration.java"
+inventory="${root}/backend/src/main/java/br/com/topsdojob/v3/infrastructure/storage/ObjectStorageInventory.java"
 temporary="$(mktemp -d)"
 
 cleanup() {
@@ -129,6 +132,8 @@ run_fixture() {
       fail "${name} deveria passar"
     }
   fi
+  grep -Fq -- '--app.bootstrap=restricted-media-preview-backfill' "${events}" ||
+    fail "${name} nao selecionou o bootstrap dedicado"
 }
 
 run_fixture plan PLAN
@@ -150,8 +155,25 @@ grep -Fq 'mode=APPLY status=FAIL exit_code=42' "${temporary}/apply_failure.outpu
 ! grep -Fq 'private.invalid' "${temporary}/apply_failure.output"
 
 grep -Fq 'StoredObjectPage page = storage.list(' "${service}"
+grep -Fq 'ObjectProvider<ObjectStorageInventory>' "${service}"
 if grep -Eq 'storage\.(exists|get|put|copy|delete)\(' "${service}"; then
   fail "backfill usa operacao individual ou mutavel no ObjectStorage"
+fi
+grep -Fq 'public interface ObjectStorageInventory' "${inventory}"
+grep -Fq 'StoredObjectPage list(' "${inventory}"
+if grep -Eq '(exists|get|put|copy|delete)\(' "${inventory}"; then
+  fail "inventario do backfill expoe operacao individual ou mutavel"
+fi
+grep -Fq 'WebApplicationType.NONE' "${bootstrap}"
+grep -Fq 'RestrictedMediaPreviewBackfillConfiguration.class' "${bootstrap}"
+grep -Fq '@ImportAutoConfiguration' "${configuration}"
+grep -Fq '@ConditionalOnProperty(' "${configuration}"
+grep -Fq 'havingValue = "restricted-media-preview-backfill"' "${configuration}"
+grep -Fq 'ExcludedPreviewBackfillRepositoryFilter.class' "${configuration}"
+grep -Fq 'MidiaRestritaRegularizacaoService.class' "${configuration}"
+grep -Fq 'R2PreviewInventoryConfiguration.class' "${configuration}"
+if grep -Eq 'SecurityConfig|AuthenticationManager|HealthController|EnableScheduling' "${configuration}"; then
+  fail "contexto do backfill importa pilha web, seguranca ou scheduler"
 fi
 grep -Fq 'UPDATE arquivo_midia' "${repository}"
 grep -Fq "preview_restrito_status = 'DISPONIVEL'" "${repository}"
