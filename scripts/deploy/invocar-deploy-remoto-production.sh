@@ -18,12 +18,15 @@ validate_arguments() {
       [ "$#" -eq 0 ] || fail "prerequisites nao recebe argumentos"
       ;;
     indexnow)
-      [ "$#" -eq 2 ] || fail "indexnow exige manifesto e SHA-256"
-      [[ "$1" =~ ^/opt/topsv3/production/incoming/indexnow-[0-9]+-[0-9]+-[0-9a-f]{40}\.key$ ]] \
-        || fail "manifesto IndexNow invalido"
-      [[ "$2" =~ ^[0-9a-f]{64}$ ]] || fail "SHA-256 do manifesto invalido"
+      [ "$#" -eq 1 ] || fail "indexnow exige o SHA-256 do manifesto"
+      [[ "$1" =~ ^[0-9a-f]{64}$ ]] || fail "SHA-256 do manifesto invalido"
       ;;
-    install|deploy|smoke)
+    install)
+      [ "$#" -eq 2 ] || fail "install exige o SHA da release e o SHA-256 do pacote"
+      [[ "$1" =~ ^[0-9a-f]{40}$ ]] || fail "SHA de release invalido"
+      [[ "$2" =~ ^[0-9a-f]{64}$ ]] || fail "SHA-256 do pacote invalido"
+      ;;
+    deploy|smoke)
       [ "$#" -eq 1 ] || fail "${command} exige o SHA da release"
       [[ "$1" =~ ^[0-9a-f]{40}$ ]] || fail "SHA de release invalido"
       ;;
@@ -40,10 +43,14 @@ main() {
   local command="$3"
   shift 3
 
-  [[ "${remote_script}" =~ ^/opt/topsv3/production/incoming/deploy-remoto-[0-9]+-[0-9]+-[0-9a-f]{40}\.sh$ ]] \
+  [[ "${remote_script}" =~ ^\.cache/topsdojob-deploy/([0-9]+)-([0-9]+)-([0-9a-f]{40})/deploy-remoto\.sh$ ]] \
     || fail "caminho do script remoto invalido"
+  local staging_release_sha="${BASH_REMATCH[3]}"
   [[ "${expected_sha256}" =~ ^[0-9a-f]{64}$ ]] || fail "SHA-256 do script remoto invalido"
   validate_arguments "${command}" "$@"
+  if [[ "${command}" =~ ^(install|deploy|smoke)$ ]]; then
+    test "$1" = "${staging_release_sha}" || fail "SHA da release diverge do staging"
+  fi
 
   : "${TOPSDOJOB_PROD_SSH_HOST:?host SSH ausente}"
   : "${TOPSDOJOB_PROD_SSH_USER:?usuario SSH ausente}"
@@ -67,7 +74,7 @@ main() {
   script_quoted="$(quote_argument "${remote_script}")"
   sha_quoted="$(quote_argument "${expected_sha256}")"
   command_quoted="$(quote_argument "${command}")"
-  remote_command="set -euo pipefail; script=${script_quoted}; expected=${sha_quoted}; test -f \"\${script}\"; actual=\$(sha256sum -- \"\${script}\" | cut -d ' ' -f 1); test \"\${actual}\" = \"\${expected}\"; bash \"\${script}\" ${command_quoted}"
+  remote_command="set -euo pipefail; uid=\$(id -u); script_rel=${script_quoted}; expected=${sha_quoted}; cache=\"\${HOME}/.cache\"; root=\"\${cache}/topsdojob-deploy\"; script=\"\${HOME}/\${script_rel}\"; staging=\"\${script%/*}\"; test -d \"\${HOME}\"; test ! -L \"\${HOME}\"; test \"\$(stat -c '%u' \"\${HOME}\")\" = \"\${uid}\"; test -d \"\${cache}\"; test ! -L \"\${cache}\"; test \"\$(stat -c '%u' \"\${cache}\")\" = \"\${uid}\"; test -z \"\$(find \"\${cache}\" -maxdepth 0 -perm /022 -print -quit)\"; test -d \"\${root}\"; test ! -L \"\${root}\"; test \"\$(stat -c '%u' \"\${root}\")\" = \"\${uid}\"; test \"\$(stat -c '%a' \"\${root}\")\" = 700; test -d \"\${staging}\"; test ! -L \"\${staging}\"; test \"\$(stat -c '%u' \"\${staging}\")\" = \"\${uid}\"; test \"\$(stat -c '%a' \"\${staging}\")\" = 700; test -f \"\${script}\"; test ! -L \"\${script}\"; test \"\$(stat -c '%u' \"\${script}\")\" = \"\${uid}\"; test \"\$(stat -c '%a' \"\${script}\")\" = 500; actual=\$(sha256sum -- \"\${script}\" | cut -d ' ' -f 1); test \"\${actual}\" = \"\${expected}\"; bash \"\${script}\" ${command_quoted}"
   for argument in "$@"; do
     argument_quoted="$(quote_argument "${argument}")"
     remote_command+=" ${argument_quoted}"
