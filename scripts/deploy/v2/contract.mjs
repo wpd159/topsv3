@@ -64,6 +64,7 @@ function contract() {
   const workflow = fs.readFileSync(workflowFile, 'utf8')
   const compose = fs.readFileSync(path.join(root, 'deploy/v2/compose.yml'), 'utf8')
   const lab = fs.readFileSync(path.join(root, 'scripts/deploy/v2/lab.sh'), 'utf8')
+  const controller = fs.readFileSync(path.join(root, 'scripts/deploy/v2/controller.sh'), 'utf8')
   const runtimeFiles = required.filter((file) => path.basename(file) !== 'contract.mjs')
   const combined = runtimeFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n')
   const forbiddenLegacy = [
@@ -106,11 +107,26 @@ function contract() {
     /IndexNow/i,
     /npm audit/,
     /:\s*latest(?:\s|$)/,
+    /(?:backend\.)?topsdojob\.com/i,
+    /cloudflarestorage\.com/i,
+    /api\.efipay/i,
   ]) {
     if (forbidden.test(combined)) fail(`contrato V2 contem padrao proibido: ${forbidden}`)
   }
 
   if (!/runs-on:\s*ubuntu-24\.04/.test(workflow)) fail('runner nao fixado em ubuntu-24.04')
+  if (!/minio:[\s\S]*?ports:\s*\n\s*- "127\.0\.0\.1::9000"/.test(compose)) {
+    fail('MinIO sintetico deve ser publicado somente em loopback dinamico')
+  }
+  const prepareLab = controller.indexOf('v2_prepare_lab "${evidence_dir}"')
+  const backendTests = controller.indexOf('v2_run_backend_tests "${evidence_dir}"')
+  if (prepareLab < 0 || backendTests < 0 || prepareLab > backendTests) {
+    fail('laboratorio sintetico deve preceder o Maven verify')
+  }
+  if (!lab.includes('runtime-fixtures')
+      || !controller.includes('"${V2_ROOT}/backend/target" "${v048_backend}/target"')) {
+    fail('fixtures runtime ou consolidacao V048 ausentes do controlador')
+  }
   if (!/dockerfile_inline:\s*\|\n\s*ARG V2_MAVEN_IMAGE\n\s*ARG V2_JRE_IMAGE\n\s*FROM \$\$\{V2_MAVEN_IMAGE\} AS build/.test(compose)) {
     fail('ARGs globais do backend devem preceder o primeiro FROM')
   }
@@ -260,13 +276,21 @@ function suiteAttributes(xml) {
 }
 
 function criticalReport(args) {
-  const [listFile, output] = args
+  const [listFile, output, ...requestedRoots] = args
   const discovered = JSON.parse(fs.readFileSync(listFile, 'utf8')).tests
-  const reportFiles = [
-    ...walk(path.join(root, 'backend/target/surefire-reports'), (file) => /^TEST-.*\.xml$/.test(path.basename(file))),
-    ...walk(path.join(root, 'backend/target/failsafe-reports'), (file) => /^TEST-.*\.xml$/.test(path.basename(file))),
-  ]
-  const reportMap = new Map(reportFiles.map((file) => [path.basename(file), file]))
+  const reportRoots = requestedRoots.length > 0
+    ? requestedRoots.map((entry) => path.resolve(entry))
+    : [path.join(root, 'backend/target')]
+  const reportMap = new Map()
+  for (const reportRoot of reportRoots) {
+    for (const directory of ['surefire-reports', 'failsafe-reports']) {
+      for (const file of walk(path.join(reportRoot, directory),
+        (candidate) => /^TEST-.*\.xml$/.test(path.basename(candidate)))) {
+        reportMap.set(path.basename(file), file)
+      }
+    }
+  }
+  const reportFiles = [...reportMap.values()]
   const results = []
   for (const test of discovered) {
     const exact = `TEST-${test.qualifiedName}.xml`
@@ -309,6 +333,17 @@ function fixture(args) {
   if (fs.existsSync(outputDir)) fail('diretorio de fixture ja existe')
   const objectRoot = path.join(outputDir, 'objects')
   fs.mkdirSync(objectRoot, { recursive: true, mode: 0o700 })
+  const pngBytes = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64')
+  const sourceObjectKey = 'hml/midias-aprovadas/synthetic/pipeline-v2-source.png'
+  const sourceObject = path.join(objectRoot, ...sourceObjectKey.split('/'))
+  fs.mkdirSync(path.dirname(sourceObject), { recursive: true, mode: 0o700 })
+  fs.writeFileSync(sourceObject, pngBytes, { mode: 0o600 })
+  const pngSha256 = crypto.createHash('sha256').update(pngBytes).digest('hex')
+  const kycCache = path.join(outputDir, 'kyc-cache')
+  fs.mkdirSync(kycCache, { recursive: true, mode: 0o700 })
+  fs.writeFileSync(path.join(kycCache, `${pngSha256}.bin`), pngBytes, { mode: 0o600 })
   const mediaRows = []
   const linkRows = []
   const keys = []
@@ -336,8 +371,183 @@ function fixture(args) {
     'COMMIT;',
   ].join('\n')
   fs.writeFileSync(path.join(outputDir, 'fixture.sql'), `${sql}\n`, { mode: 0o600 })
-  fs.writeFileSync(path.join(outputDir, 'fixture.json'), `${JSON.stringify({ count, keys }, null, 2)}\n`, { mode: 0o600 })
+  fs.writeFileSync(path.join(outputDir, 'fixture.json'), `${JSON.stringify({
+    count,
+    keys,
+    sourceObjectKey,
+    pngSha256,
+  }, null, 2)}\n`, { mode: 0o600 })
   console.log(`FIXTURE_PREVIEWS=${count}`)
+}
+
+function md5(value) {
+  return crypto.createHash('md5').update(value).digest('hex')
+}
+
+function uuidFromMd5(value) {
+  const hex = md5(value)
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
+function writePrivateFile(file, content) {
+  fs.writeFileSync(file, content.endsWith('\n') ? content : `${content}\n`, {
+    encoding: 'ascii',
+    mode: 0o600,
+  })
+}
+
+function runtimeFixtures(args) {
+  const [outputDir, endpoint, fixtureDir] = args
+  if (!/^https:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(endpoint ?? '')) {
+    fail('endpoint MinIO local invalido')
+  }
+  if (fs.existsSync(outputDir)) fail('diretorio de fixtures runtime ja existe')
+  const fixtureMetadata = JSON.parse(fs.readFileSync(path.join(fixtureDir, 'fixture.json'), 'utf8'))
+  const png = fs.readFileSync(path.join(fixtureDir, 'objects', ...fixtureMetadata.sourceObjectKey.split('/')))
+  const pngSha256 = crypto.createHash('sha256').update(png).digest('hex')
+  if (pngSha256 !== fixtureMetadata.pngSha256) fail('PNG sintetico divergente')
+  fs.mkdirSync(outputDir, { recursive: true, mode: 0o700 })
+
+  const sourceUrl = `${endpoint}/topsdojob-v2-public/${fixtureMetadata.sourceObjectKey}`
+  const documentReference = 'r2://pipeline-v2/kyc/documento-1.png'
+  const documentReferenceHash = md5(documentReference)
+  const sourceStorageReference = `r2://topsdojob-v2-public/${fixtureMetadata.sourceObjectKey}`
+  const privateReferenceHash = crypto.createHash('sha256')
+    .update(sourceStorageReference).digest('hex')
+  const logicalMediaHash = crypto.createHash('sha256')
+    .update('pipeline-v2-logical-media-5001').digest('hex')
+  const envioHash = crypto.createHash('sha256').update('pipeline-v2-kyc-envio').digest('hex')
+  const userV3Id = uuidFromMd5('legacy:usuario:1')
+  const destinationPrivateKey = `hml/midias-pendentes/importacao/anuncios/101/midias/${logicalMediaHash}/original/${pngSha256}.png`
+  const destinationDocumentKey = `hml/documentos/importacao/pipeline-v2/sha256/${pngSha256.slice(0, 2)}/${pngSha256}.png`
+
+  writePrivateFile(path.join(outputDir, 'r2-public-input.tsv'), [
+    '101',
+    md5(sourceUrl),
+    Buffer.from(sourceUrl, 'utf8').toString('base64'),
+    'SAFE_PUBLIC',
+    'PUBLIC_API_ANONYMOUS_NO_AGE_GATE',
+  ].join('\t'))
+  writePrivateFile(path.join(outputDir, 'r2-private-input.tsv'), [
+    '101', logicalMediaHash, 'protected_media_assets', '5001', 'FOTO', 'ORIGINAL',
+    'true', privateReferenceHash, 'PUBLIC_MEDIA', fixtureMetadata.sourceObjectKey, '0',
+  ].join('\t'))
+  writePrivateFile(path.join(outputDir, 'r2-kyc-input.tsv'), [
+    '1', documentReferenceHash, documentReferenceHash, pngSha256, 'png',
+    'PENDENTE', 'FRENTE', '', 'ELIGIVEL',
+  ].join('\t'))
+  fs.cpSync(path.join(fixtureDir, 'kyc-cache'), path.join(outputDir, 'kyc-cache'), {
+    recursive: true,
+    errorOnExist: true,
+  })
+
+  writePrivateFile(path.join(outputDir, 'import-private-media.tsv'), [
+    '101', logicalMediaHash, 'protected_media_assets', '5001', 'FOTO', 'ORIGINAL',
+    'true', privateReferenceHash, destinationPrivateKey, pngSha256, String(png.length),
+    'image/png', '1', '1', '', '0', 'MIGRADA', '',
+  ].join('\t'))
+  writePrivateFile(path.join(outputDir, 'import-kyc.tsv'), [
+    userV3Id, documentReferenceHash, documentReferenceHash, destinationDocumentKey,
+    pngSha256, String(png.length), 'image/png', 'png', 'FRENTE', envioHash,
+    'MIGRADA', '', 'PENDENTE',
+  ].join('\t'))
+
+  const sql = `
+CREATE TABLE usuarios (
+  id bigint PRIMARY KEY, username text, email text, senha text, status text, role text,
+  is_verificado boolean, two_factor_ativo boolean, nome_completo text, cpf text,
+  telefone text, data_nascimento date, advertiser_verification_status text,
+  criado_em timestamp without time zone
+);
+CREATE TABLE anuncios (
+  id bigint PRIMARY KEY, usuario_id bigint, slug text, titulo text, descricao text,
+  status text, categoria text, preco numeric(12,2), criado_em timestamp without time zone,
+  removido_logicamente_em timestamp without time zone, cidade_id bigint, bairro_id bigint,
+  visualizacoes bigint
+);
+CREATE TABLE estado (id bigint PRIMARY KEY, uf text, nome text);
+CREATE TABLE cidade (id bigint PRIMARY KEY, estado_id bigint, nome text, slug text);
+CREATE TABLE bairro (id bigint PRIMARY KEY, cidade_id bigint, nome text);
+CREATE TABLE anuncio_servicos (anuncio_id bigint, servico text);
+CREATE TABLE anuncio_local_atendimento (anuncio_id bigint, local_atendimento text);
+CREATE TABLE anuncio_fotos (anuncio_id bigint, url_foto text);
+CREATE TABLE anuncio_videos (anuncio_id bigint, url_video text);
+CREATE TABLE anuncio_view_log (id bigint PRIMARY KEY, anuncio_id bigint, visto_em timestamp without time zone);
+CREATE TABLE cliques_whatsapp (id bigint PRIMARY KEY, anuncio_id bigint, data_clique timestamp without time zone);
+CREATE TABLE protected_media_assets (
+  id bigint PRIMARY KEY, anuncio_id bigint, media_type text, original_storage_ref text,
+  legacy_original_url text, preview_public_url text
+);
+CREATE TABLE anuncio_revisions (
+  id bigint PRIMARY KEY, anuncio_id bigint, status text, reviewed_at timestamp without time zone
+);
+CREATE TABLE stories (id bigint PRIMARY KEY, anuncio_id bigint, usuario_id bigint, midia_url text);
+CREATE TABLE usuario_documentos (id bigint PRIMARY KEY, usuario_id bigint, documento_url text);
+CREATE TABLE advertiser_verification_requests (
+  id bigint PRIMARY KEY, usuario_id bigint, reviewed_by_user_id bigint,
+  reviewed_at timestamp without time zone, requested_at timestamp without time zone
+);
+CREATE TABLE usuario_favoritos (usuario_id bigint, anuncio_id bigint);
+CREATE TABLE feature_ativacao (
+  id bigint PRIMARY KEY, usuario_id bigint, anuncio_id bigint, codigo text,
+  creditos_cobrados integer, status text, ativado_em timestamp without time zone,
+  expira_em timestamp without time zone
+);
+CREATE TABLE feature_catalogo (id bigint PRIMARY KEY, codigo text, ativo boolean);
+CREATE TABLE feature_catalogo_duracoes (
+  id bigint PRIMARY KEY, feature_catalogo_id bigint, duracao_dias integer, creditos integer
+);
+CREATE TABLE creditos_usuario (id bigint PRIMARY KEY, usuario_id bigint, saldo integer);
+CREATE TABLE historico_creditos (
+  id bigint PRIMARY KEY, usuario_id bigint, quantidade integer, tipo text,
+  criado_em timestamp without time zone
+);
+CREATE TABLE pagamentos_mp (
+  id bigint PRIMARY KEY, usuario_id bigint, provider text, status text,
+  valor numeric(12,2), creditos integer
+);
+CREATE TABLE suporte_mensagens (id bigint PRIMARY KEY, enviado_por_id bigint);
+
+INSERT INTO usuarios (
+  id, username, email, senha, status, role, is_verificado, two_factor_ativo,
+  nome_completo, cpf, telefone, data_nascimento, advertiser_verification_status, criado_em
+) VALUES
+  (1, 'pipeline-user-1', 'pipeline-user-1@example.test', '$2a$10$' || repeat('A', 53),
+   'ATIVO', 'USER', true, false, 'Pessoa Pipeline Um', '52998224725', '11987654321',
+   DATE '1990-01-01', 'PENDENTE', TIMESTAMP '2026-08-29 12:00:00'),
+  (2, 'pipeline-user-2', 'pipeline-user-2@example.test', '$2a$10$' || repeat('B', 53),
+   'ATIVO', 'USER', true, false, 'Pessoa Pipeline Dois', NULL, NULL,
+   DATE '1992-02-02', 'NAO_INICIADO', TIMESTAMP '2026-08-29 12:00:00');
+INSERT INTO estado VALUES (11, 'SP', 'Sao Paulo');
+INSERT INTO cidade VALUES (21, 11, 'Sao Paulo', 'sao-paulo');
+INSERT INTO bairro VALUES (31, 21, 'Centro');
+INSERT INTO anuncios VALUES
+  (101, 1, 'pipeline-anuncio-101', 'Anuncio Pipeline 101', 'Fixture sintetica',
+   'ATIVO', 'ACOMPANHANTE_FEMININA', 100.00, TIMESTAMP '2026-08-29 12:00:00',
+   NULL, 21, 31, 0),
+  (102, 1, 'pipeline-anuncio-102', 'Anuncio Pipeline 102', 'Fixture sintetica',
+   'ATIVO', 'ACOMPANHANTE_FEMININA', 110.00, TIMESTAMP '2026-08-29 12:01:00',
+   NULL, 21, 31, 0),
+  (103, 2, 'pipeline-anuncio-103', 'Anuncio Pipeline 103', 'Fixture sintetica',
+   'ATIVO', 'ACOMPANHANTE_FEMININA', 120.00, TIMESTAMP '2026-08-29 12:02:00',
+   NULL, 21, 31, 0);
+INSERT INTO anuncio_servicos VALUES (101, 'ORAL');
+INSERT INTO anuncio_local_atendimento VALUES (101, 'A_COMBINAR');
+INSERT INTO protected_media_assets VALUES (
+  5001, 101, 'FOTO', '${sourceStorageReference}', NULL, NULL
+);
+INSERT INTO usuario_documentos VALUES (7001, 1, '${documentReference}');
+`
+  writePrivateFile(path.join(outputDir, 'source-snapshot.sql'), sql.trimStart())
+  writePrivateFile(path.join(outputDir, 'runtime-fixtures.json'), `${JSON.stringify({
+    schemaVersion: 1,
+    endpointKind: 'loopback-minio-tls',
+    files: [
+      'r2-public-input.tsv', 'r2-private-input.tsv', 'r2-kyc-input.tsv',
+      'import-private-media.tsv', 'import-kyc.tsv', 'source-snapshot.sql',
+    ],
+  }, null, 2)}`)
+  console.log('RUNTIME_FIXTURES=OK sourceRows=3 r2RealMutations=0')
 }
 
 const [command, ...args] = process.argv.slice(2)
@@ -349,6 +559,7 @@ switch (command) {
   case 'critical-list': criticalList(args); break
   case 'critical-report': criticalReport(args); break
   case 'fixture': fixture(args); break
+  case 'runtime-fixtures': runtimeFixtures(args); break
   case 'file-policy': assertRegularLfFile(path.resolve(args[0])); console.log('FILE_POLICY=OK'); break
   default: fail(`comando desconhecido: ${command}`)
 }

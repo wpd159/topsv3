@@ -44,7 +44,7 @@ v2_generate_tls() {
   local cert_dir="${V2_RUNTIME_DIR}/certs/minio"
   mkdir -m 0700 -p -- "${cert_dir}" "${V2_RUNTIME_DIR}/certs" "${V2_RUNTIME_DIR}/reports"
   openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 1 \
-    -subj '/CN=minio' -addext 'subjectAltName=DNS:minio' \
+    -subj '/CN=minio' -addext 'subjectAltName=DNS:minio,IP:127.0.0.1' \
     -keyout "${cert_dir}/private.key" -out "${cert_dir}/public.crt" >/dev/null 2>&1
   chmod 0600 "${cert_dir}/private.key" "${cert_dir}/public.crt"
   docker run --rm \
@@ -125,8 +125,42 @@ v2_psql() {
     --username topsdojob_v2 --dbname topsdojob_v2 "$@" </dev/null
 }
 
+v2_minio_host_endpoint() {
+  local binding port
+  binding="$(docker port "$(v2_lab_container minio)" 9000/tcp | tail -n 1)"
+  port="${binding##*:}"
+  [[ "${binding}" == 127.0.0.1:* && "${port}" =~ ^[1-9][0-9]{0,4}$ ]] ||
+    v2_die "porta loopback do MinIO local invalida"
+  printf 'https://127.0.0.1:%s\n' "${port}"
+}
+
+v2_create_import_snapshot() {
+  local fixture_dir="${V2_RUNTIME_DIR}/test-fixtures" container
+  container="$(v2_lab_container postgres)"
+  docker cp "${fixture_dir}/source-snapshot.sql" \
+    "${container}:/tmp/pipeline-v2-source-snapshot.sql"
+  docker exec "${container}" psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+    --username topsdojob_v2 --dbname postgres \
+    --command 'CREATE DATABASE pipeline_v2_source;' </dev/null >/dev/null
+  docker exec "${container}" psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+    --username topsdojob_v2 --dbname pipeline_v2_source \
+    --file /tmp/pipeline-v2-source-snapshot.sql </dev/null >/dev/null
+  docker exec "${container}" pg_dump --format=custom --no-owner --no-privileges \
+    --username topsdojob_v2 --dbname pipeline_v2_source \
+    --file /tmp/pipeline-v2-source-snapshot.dump </dev/null
+  docker exec "${container}" pg_restore --list \
+    /tmp/pipeline-v2-source-snapshot.dump </dev/null >/dev/null
+  docker cp "${container}:/tmp/pipeline-v2-source-snapshot.dump" \
+    "${fixture_dir}/source-snapshot.dump"
+  [[ -s "${fixture_dir}/source-snapshot.dump" ]] || v2_die "snapshot sintetico vazio"
+  docker exec "${container}" rm -- \
+    /tmp/pipeline-v2-source-snapshot.sql \
+    /tmp/pipeline-v2-source-snapshot.dump </dev/null
+  v2_log "IMPORT_SNAPSHOT=OK POSTGRESQL=17 SOURCE_ROWS=3"
+}
+
 v2_prepare_database_and_storage() {
-  local container object_count
+  local container object_count endpoint source_object
   v2_compose up -d postgres minio mailpit efi-stub
   v2_wait_postgres || v2_die "PostgreSQL 17 nao ficou pronto"
   v2_wait_minio || v2_die "MinIO TLS local nao ficou pronto"
@@ -134,6 +168,7 @@ v2_prepare_database_and_storage() {
   for bucket in topsdojob-v2-public topsdojob-v2-private topsdojob-v2-documents; do
     v2_mc --insecure mb --ignore-existing "local/${bucket}" >/dev/null
   done
+  v2_mc --insecure anonymous set download local/topsdojob-v2-public >/dev/null
 
   v2_compose run --rm --no-deps -T flyway migrate </dev/null
   [[ "$(v2_psql --tuples-only --no-align --command "SELECT max(version::int) FROM flyway_schema_history WHERE success AND version ~ '^[0-9]+$';" | tr -d '[:space:]')" == "53" ]]
@@ -148,10 +183,27 @@ v2_prepare_database_and_storage() {
     --file /tmp/pipeline-v2-fixture.sql </dev/null >/dev/null
   docker exec "${container}" rm -- /tmp/pipeline-v2-fixture.sql </dev/null
   v2_mc --insecure mirror /fixtures local/topsdojob-v2-public --overwrite >/dev/null
+  source_object="hml/midias-aprovadas/synthetic/pipeline-v2-source.png"
+  v2_mc --insecure cp --attr 'Content-Type=image/png' \
+    "/fixtures/${source_object}" "local/topsdojob-v2-public/${source_object}" >/dev/null
   object_count="$(v2_mc --insecure find local/topsdojob-v2-public/hml/midias-aprovadas/restritas-borradas/v1 \
     --name '*.jpg' | wc -l | tr -d '[:space:]')"
   [[ "${object_count}" == "1344" ]] || v2_die "inventario MinIO divergente: ${object_count}"
   export V2_OBJECT_COUNT_BEFORE="${object_count}"
+  endpoint="$(v2_minio_host_endpoint)"
+  export V2_LOCAL_MINIO_ENDPOINT="${endpoint}"
+  v2_node "scripts/deploy/v2/contract.mjs" runtime-fixtures \
+    "${V2_RUNTIME_DIR}/test-fixtures" "${endpoint}" "${V2_RUNTIME_DIR}/fixture"
+  v2_create_import_snapshot
+}
+
+v2_prepare_lab() {
+  local evidence_dir="$1"
+  v2_require_command openssl
+  mkdir -m 0700 -p -- "${evidence_dir}"
+  v2_generate_tls
+  v2_prepare_database_and_storage
+  v2_log "LAB_PREPARED=OK MINIO=LOOPBACK_TLS POSTGRESQL=17 FLYWAY=53"
 }
 
 v2_run_backfill_mode() {
@@ -357,10 +409,7 @@ v2_long_request_drain_contract() {
 
 v2_run_lab() {
   local evidence_dir="$1"
-  v2_require_command openssl
   mkdir -m 0700 -p -- "${evidence_dir}"
-  v2_generate_tls
-  v2_prepare_database_and_storage
   v2_backfill_contract
   v2_start_candidate_and_gates
   v2_port_occupied_contract

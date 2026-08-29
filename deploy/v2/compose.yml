@@ -36,6 +36,8 @@ services:
     volumes:
       - minio-data:/data
       - ${V2_RUNTIME_DIR:?V2_RUNTIME_DIR obrigatoria}/certs/minio:/root/.minio/certs:ro
+    ports:
+      - "127.0.0.1::9000"
     networks: [lab]
 
   mailpit:

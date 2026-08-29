@@ -31,7 +31,7 @@ v2_cleanup() {
     done < <(docker ps -aq --filter "name=${V2_PROJECT_NAME}-" 2>/dev/null || true)
     v2_assert_no_resources >/dev/null 2>&1 || rc=1
   fi
-  [[ -z "${V2_RUNTIME_DIR:-}" || ! -d "${V2_RUNTIME_DIR}" ]] || rm -rf -- "${V2_RUNTIME_DIR}"
+  v2_clean_generated_files >/dev/null 2>&1 || rc=1
   v2_stop_engine "${rc}" || true
   exit "${rc}"
 }
@@ -112,30 +112,111 @@ v2_negative_file_contracts() {
 }
 
 v2_run_backend_tests() {
-  local evidence_dir="$1" list_file socket_cli flag class_name
+  local evidence_dir="$1" list_file socket_cli flag class_name v048_class=""
+  local fixtures v048_backend endpoint
   local -a env_args=()
   list_file="${evidence_dir}/critical-tests.json"
+  fixtures="${V2_RUNTIME_DIR}/test-fixtures"
+  v048_backend="${V2_RUNTIME_DIR}/v048-backend"
+  endpoint="${V2_LOCAL_MINIO_ENDPOINT:?endpoint MinIO local ausente}"
+  [[ -s "${fixtures}/source-snapshot.dump" ]] || v2_die "snapshot sintetico ausente"
   v2_node "scripts/deploy/v2/contract.mjs" critical-list "${list_file}" > \
     "${evidence_dir}/critical-tests.txt"
   while IFS='|' read -r flag class_name; do
     [[ -n "${flag}" && -n "${class_name}" ]] || continue
-    env_args+=(--env "${flag}=true")
+    if [[ "${flag}" == "V048_POSTGRES17_ENABLED" ]]; then
+      v048_class="${class_name}"
+      env_args+=(--env "${flag}=false")
+    else
+      env_args+=(--env "${flag}=true")
+    fi
   done < "${evidence_dir}/critical-tests.txt"
-  [[ "${#env_args[@]}" -gt 0 ]] || v2_die "lista de testes criticos vazia"
+  [[ "${#env_args[@]}" -gt 0 && -n "${v048_class}" ]] ||
+    v2_die "lista de testes criticos incompleta"
+
+  env_args+=(
+    --env "JAVA_TOOL_OPTIONS=-Djavax.net.ssl.trustStore=${V2_RUNTIME_DIR}/certs/truststore.p12 -Djavax.net.ssl.trustStorePassword=pipeline-v2-trust -Djavax.net.ssl.trustStoreType=PKCS12"
+    --env "R2_ENDPOINT=${endpoint}"
+    --env R2_REGION=us-east-1
+    --env "R2_ACCESS_KEY=${V2_MINIO_ACCESS_KEY}"
+    --env "R2_SIGNING_VALUE=${V2_MINIO_SECRET_KEY}"
+    --env R2_PUBLIC_MEDIA_BUCKET=topsdojob-v2-public
+    --env R2_PRIVATE_MEDIA_BUCKET=topsdojob-v2-private
+    --env R2_DOCUMENT_BUCKET=topsdojob-v2-documents
+    --env R2_PUBLIC_MEDIA_PREFIX=hml/midias-aprovadas/
+    --env R2_PRIVATE_MEDIA_PREFIX=hml/midias-pendentes/
+    --env R2_DOCUMENT_PREFIX=hml/documentos/
+    --env "R2_PUBLIC_BASE_URL=${endpoint}/topsdojob-v2-public"
+    --env "R2_PUBLIC_MEDIA_DRY_RUN_INPUT=${fixtures}/r2-public-input.tsv"
+    --env "R2_PUBLIC_MEDIA_DRY_RUN_OUTPUT=${fixtures}/r2-public-output.tsv"
+    --env "R2_PRIVATE_MEDIA_PLAN_INPUT=${fixtures}/r2-private-input.tsv"
+    --env "R2_PRIVATE_MEDIA_PLAN_OUTPUT=${fixtures}/r2-private-output.tsv"
+    --env "R2_KYC_DRY_RUN_INPUT=${fixtures}/r2-kyc-input.tsv"
+    --env "R2_KYC_DRY_RUN_OUTPUT=${fixtures}/r2-kyc-output.tsv"
+    --env "R2_KYC_DRY_RUN_CACHE_DIR=${fixtures}/kyc-cache"
+    --env R2_KYC_DESTINATION_SCOPE=pipeline-v2
+    --env "R2_IMPORT_SOURCE_ENDPOINT=${endpoint}"
+    --env R2_IMPORT_SOURCE_REGION=us-east-1
+    --env "R2_IMPORT_SOURCE_ACCESS_KEY=${V2_MINIO_ACCESS_KEY}"
+    --env "R2_IMPORT_SOURCE_SIGNING_VALUE=${V2_MINIO_SECRET_KEY}"
+    --env R2_IMPORT_SOURCE_PUBLIC_BUCKET=topsdojob-v2-public
+    --env R2_IMPORT_SOURCE_PRIVATE_BUCKET=topsdojob-v2-private
+    --env R2_IMPORT_SOURCE_DOCUMENT_BUCKET=topsdojob-v2-documents
+    --env R2_IMPORT_SOURCE_PUBLIC_PREFIX=hml/midias-aprovadas/
+    --env R2_IMPORT_SOURCE_PRIVATE_PREFIX=hml/midias-pendentes/
+    --env R2_IMPORT_SOURCE_DOCUMENT_PREFIX=hml/documentos/
+    --env "IMPORTADOR_BASE_SNAPSHOT_DUMP=${fixtures}/source-snapshot.dump"
+    --env "IMPORTADOR_BASE_PRIVATE_MEDIA_TSV=${fixtures}/import-private-media.tsv"
+    --env "IMPORTADOR_BASE_KYC_TSV=${fixtures}/import-kyc.tsv"
+    --env IMPORTADOR_BASE_SNAPSHOT_AT=2026-08-29T12:00:00Z
+    --env IMPORTADOR_BASE_SNAPSHOT_ID=pipeline-v2-synthetic
+    --env IMPORTADOR_BASE_SNAPSHOT_FINGERPRINT=4a66718f2c112a85fdf8c40737e88b7b376c29625f8ad6639fbc98a7e253a9dd
+    --env IMPORTADOR_BASE_R2_PUBLIC_MEDIA_BUCKET=topsdojob-v2-public
+    --env IMPORTADOR_BASE_R2_PUBLIC_MEDIA_PREFIX=hml/midias-aprovadas/
+    --env IMPORTADOR_BASE_R2_PRIVATE_MEDIA_BUCKET=topsdojob-v2-private
+    --env IMPORTADOR_BASE_R2_PRIVATE_MEDIA_PREFIX=hml/midias-pendentes/
+    --env IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_BUCKET=topsdojob-v2-public
+    --env "IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_BASE_URL=${endpoint}/topsdojob-v2-public"
+    --env IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_PREFIX=hml/midias-aprovadas/
+    --env IMPORTADOR_BASE_R2_DOCUMENT_BUCKET=topsdojob-v2-documents
+    --env IMPORTADOR_BASE_R2_DOCUMENT_PREFIX=hml/documentos/
+  )
 
   socket_cli="${V2_TOOLS_DIR}/bin/docker"
   mkdir -m 0700 -p -- "${V2_RUNTIME_DIR}/m2"
+  docker run --rm --network none \
+    --volume "${V2_ROOT}:${V2_ROOT}:ro" \
+    --volume "${V2_RUNTIME_DIR}:${V2_RUNTIME_DIR}" \
+    "${V2_MAVEN_IMAGE}" sh -euc '
+      cp -a "$1/backend" "$2"
+      rm -rf "$2/target"
+      rm -f "$2"/src/main/resources/db/migration/V05[1-3]__*.sql
+      test "$(find "$2/src/main/resources/db/migration" -maxdepth 1 -name "V*.sql" | wc -l)" -eq 50
+    ' _ "${V2_ROOT}" "${v048_backend}" </dev/null
   docker run --rm --network host \
     --volume /var/run/docker.sock:/var/run/docker.sock \
     --volume "${socket_cli}:/usr/local/bin/docker:ro" \
     --volume "${V2_ROOT}:${V2_ROOT}" \
+    --volume "${V2_RUNTIME_DIR}:${V2_RUNTIME_DIR}" \
     --volume "${V2_RUNTIME_DIR}/m2:/root/.m2" \
     --workdir "${V2_ROOT}/backend" \
     "${env_args[@]}" \
     "${V2_MAVEN_IMAGE}" \
     mvn --batch-mode --no-transfer-progress verify </dev/null
+
+  docker run --rm --network host \
+    --volume /var/run/docker.sock:/var/run/docker.sock \
+    --volume "${socket_cli}:/usr/local/bin/docker:ro" \
+    --volume "${V2_RUNTIME_DIR}:${V2_RUNTIME_DIR}" \
+    --volume "${V2_RUNTIME_DIR}/m2:/root/.m2" \
+    --workdir "${v048_backend}" \
+    --env V048_POSTGRES17_ENABLED=true \
+    "${V2_MAVEN_IMAGE}" \
+    mvn --batch-mode --no-transfer-progress \
+      "-Dtest=${v048_class##*.}" test </dev/null
   v2_node "scripts/deploy/v2/contract.mjs" critical-report \
-    "${list_file}" "${evidence_dir}/critical-results.json"
+    "${list_file}" "${evidence_dir}/critical-results.json" \
+    "${V2_ROOT}/backend/target" "${v048_backend}/target"
   v2_log "BACKEND_VERIFY=OK CRITICAL_SKIPPED=0"
 }
 
@@ -171,10 +252,22 @@ v2_run_frontend_tests() {
   v2_log "FRONTEND_TESTS=OK REBUILD=0"
 }
 
-v2_remove_generated_backend_files() {
-  docker run --rm --network none \
-    --volume "${V2_ROOT}:${V2_ROOT}" \
-    "${V2_MAVEN_IMAGE}" rm -rf "${V2_ROOT}/backend/target" </dev/null
+v2_clean_generated_files() {
+  if command -v docker >/dev/null 2>&1 \
+      && [[ -n "${V2_MAVEN_IMAGE:-}" ]] \
+      && docker image inspect "${V2_MAVEN_IMAGE}" >/dev/null 2>&1; then
+    docker run --rm --network none \
+      --volume "${V2_ROOT}:${V2_ROOT}" \
+      --volume "${RUNNER_TEMP:-/tmp}:${RUNNER_TEMP:-/tmp}" \
+      "${V2_MAVEN_IMAGE}" sh -euc '
+        rm -rf "$1/backend/target" "$1/frontend/node_modules" "$1/frontend/.next"
+        rm -f "$1/frontend/tsconfig.tsbuildinfo"
+        if [ -n "$2" ] && [ -e "$2" ]; then rm -rf "$2"; fi
+      ' _ "${V2_ROOT}" "${V2_RUNTIME_DIR:-}" </dev/null || return 1
+  fi
+  if [[ -n "${V2_RUNTIME_DIR:-}" && -e "${V2_RUNTIME_DIR}" ]]; then
+    rm -rf -- "${V2_RUNTIME_DIR}" || return 1
+  fi
 }
 
 v2_build_mode() {
@@ -218,13 +311,13 @@ v2_verify_mode() {
   v2_load_release_artifact "${bundle}" "${source_sha}"
   v2_negative_file_contracts "${bundle}" "${source_sha}"
   v2_record_versions "${evidence_dir}/tool-versions.txt"
+  v2_prepare_lab "${evidence_dir}"
   v2_run_backend_tests "${evidence_dir}"
   v2_run_frontend_tests
   v2_run_lab "${evidence_dir}"
   v2_compose down --volumes --remove-orphans --timeout 30
   v2_assert_no_resources
-  v2_remove_generated_backend_files
-  rm -rf -- "${V2_RUNTIME_DIR}"
+  v2_clean_generated_files
   [[ ! -e "${V2_RUNTIME_DIR}" ]]
   git -C "${V2_ROOT}" diff --check
   printf 'RUN_%s=PASS\nCRITICAL_SKIPPED=0\nPRODUCTION_ACCESS=0\n' \
