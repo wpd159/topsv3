@@ -127,12 +127,11 @@ v2_psql() {
 }
 
 v2_minio_host_endpoint() {
-  local binding port
+  local binding
   binding="$(docker port "$(v2_lab_container minio)" 9000/tcp | tail -n 1)"
-  port="${binding##*:}"
-  [[ "${binding}" == 127.0.0.1:* && "${port}" =~ ^[1-9][0-9]{0,4}$ ]] ||
+  [[ "${binding}" == "127.0.0.1:19000" ]] ||
     v2_die "porta loopback do MinIO local invalida"
-  printf 'https://127.0.0.1:%s\n' "${port}"
+  printf 'https://127.0.0.1:19000\n'
 }
 
 v2_create_import_snapshot() {

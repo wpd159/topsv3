@@ -115,8 +115,12 @@ function contract() {
   }
 
   if (!/runs-on:\s*ubuntu-24\.04/.test(workflow)) fail('runner nao fixado em ubuntu-24.04')
-  if (!/minio:[\s\S]*?ports:\s*\n\s*- "127\.0\.0\.1::9000"/.test(compose)) {
-    fail('MinIO sintetico deve ser publicado somente em loopback dinamico')
+  if (!/minio:[\s\S]*?ports:\s*\n\s*- "127\.0\.0\.1:19000:9000"/.test(compose)) {
+    fail('MinIO sintetico deve ser publicado na porta fixa do daemon isolado')
+  }
+  for (const service of ['backend', 'frontend', 'gateway']) {
+    const block = compose.match(new RegExp(`\\n  ${service}:[\\s\\S]*?(?=\\n  [a-z-]+:|\\nnetworks:)`))?.[0] ?? ''
+    if (/\n\s+ports:/.test(block)) fail(`${service} nao deve publicar porta no laboratorio`)
   }
   const prepareLab = controller.indexOf('v2_prepare_lab "${evidence_dir}"')
   const backendTests = controller.indexOf('v2_run_backend_tests "${evidence_dir}"')
