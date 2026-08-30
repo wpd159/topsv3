@@ -40,6 +40,440 @@ v2_wait_probe() {
   v2_probe_once "${url}" "${expected_status}" "${required_text}"
 }
 
+v2_sanitize_diagnostic_stream() {
+  docker run --rm --network none -i "${V2_NODE_IMAGE}" node -e '
+    let value = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", chunk => { value += chunk; });
+    process.stdin.on("end", () => {
+      const sanitized = value
+        .replace(/((?:authorization|proxy-authorization|cookie|set-cookie)\s*[:=]\s*)[^\r\n]+/gi, "$1[REDACTED]")
+        .replace(/((?:password|passwd|secret|token|private[_-]?key|signing[_-]?value|access[_-]?key)\s*[:=]\s*)[^\s,;}]+/gi, "$1[REDACTED]")
+        .replace(/https?:\/\/[^\s/@:]+:[^\s/@]+@/gi, "https://[CREDENTIALS_REDACTED]@")
+        .replace(/[?&](?:x-amz-[^=&#\s]+|signature|sig|token)=[^&#\s]+/gi, "[SIGNED_QUERY_REDACTED]")
+        .replace(/hml\/(?:midias-aprovadas|midias-pendentes|documentos)\/[^\s\"<>]+/gi, "[OBJECT_KEY_REDACTED]")
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL_REDACTED]")
+        .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, "[CPF_REDACTED]")
+        .replace(/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}/g, "[PHONE_REDACTED]")
+        .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[IP_REDACTED]")
+        .replace(/https?:\/\/(backend|frontend|gateway|minio|mailpit|efi-stub)(?::\d+)?/gi, "internal://$1");
+      process.stdout.write(sanitized);
+    });
+  '
+}
+
+v2_capture_http_evidence() {
+  local name="$1" url="$2" endpoint_family="$3" evidence_dir="$4"
+  [[ "${name}" =~ ^[a-z0-9-]+$ ]] || v2_die "nome de evidencia HTTP invalido"
+  docker run --rm --network "${V2_PROJECT_NAME}_lab" \
+    --user "$(id -u):$(id -g)" \
+    --volume "${evidence_dir}:/evidence" \
+    "${V2_NODE_IMAGE}" node -e '
+      const fs = require("node:fs");
+      const crypto = require("node:crypto");
+      const [url, name, endpointFamily] = process.argv.slice(1);
+      const sanitize = input => input
+        .replace(/((?:authorization|proxy-authorization|cookie|set-cookie)\s*[:=]\s*)[^\r\n]+/gi, "$1[REDACTED]")
+        .replace(/((?:password|passwd|secret|token|private[_-]?key|signing[_-]?value|access[_-]?key)\s*[:=]\s*)[^\s,;}]+/gi, "$1[REDACTED]")
+        .replace(/https?:\/\/[^\s/@:]+:[^\s/@]+@/gi, "https://[CREDENTIALS_REDACTED]@")
+        .replace(/[?&](?:x-amz-[^=&#\s]+|signature|sig|token)=[^&#\s]+/gi, "[SIGNED_QUERY_REDACTED]")
+        .replace(/hml\/(?:midias-aprovadas|midias-pendentes|documentos)\/[^\s\"<>]+/gi, "[OBJECT_KEY_REDACTED]")
+        .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[EMAIL_REDACTED]")
+        .replace(/\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/g, "[CPF_REDACTED]")
+        .replace(/(?:\+?55\s*)?(?:\(?\d{2}\)?\s*)?\d{4,5}[-\s]?\d{4}/g, "[PHONE_REDACTED]")
+        .replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[IP_REDACTED]")
+        .replace(/https?:\/\/(backend|frontend|gateway|minio|mailpit|efi-stub)(?::\d+)?/gi, "internal://$1");
+      const started = performance.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      fetch(url, { redirect: "manual", signal: controller.signal })
+        .then(async response => {
+          const ttfbMs = Math.round(performance.now() - started);
+          const body = Buffer.from(await response.arrayBuffer());
+          const totalMs = Math.round(performance.now() - started);
+          const captured = body.subarray(0, 65536);
+          let contract = { json: false };
+          try {
+            const payload = JSON.parse(body.toString("utf8"));
+            const items = Array.isArray(payload?.itens) ? payload.itens : null;
+            contract = {
+              json: true,
+              topLevelObject: payload !== null && typeof payload === "object" && !Array.isArray(payload),
+              topLevelKeys: payload !== null && typeof payload === "object" && !Array.isArray(payload)
+                ? Object.keys(payload).sort()
+                : [],
+              itemsArray: items !== null,
+              paginationObject: payload?.paginacao !== null && typeof payload?.paginacao === "object",
+              locationObject: payload?.localidade !== null && typeof payload?.localidade === "object",
+              seoObject: payload?.seo !== null && typeof payload?.seo === "object",
+              itemCount: items?.length ?? null,
+              itemsWithLocationObject: items?.filter(item => item?.localizacao !== null && typeof item?.localizacao === "object").length ?? null,
+              itemsWithoutLocationObject: items?.filter(item => item?.localizacao === null || typeof item?.localizacao !== "object").length ?? null,
+            };
+          } catch {}
+          const sensitiveHeaders = /^(?:authorization|proxy-authorization|cookie|set-cookie)$/i;
+          const headers = Object.fromEntries(Array.from(response.headers.entries())
+            .map(([header, value]) => [
+              header,
+              sensitiveHeaders.test(header) ? "[REDACTED]" : sanitize(value),
+            ]));
+          const metadata = {
+            timestampUtc: new Date().toISOString(),
+            endpointFamily,
+            status: response.status,
+            contentType: response.headers.get("content-type"),
+            contentLength: response.headers.get("content-length"),
+            ttfbMs,
+            totalMs,
+            bodyBytes: body.length,
+            capturedBytes: captured.length,
+            truncated: body.length > captured.length,
+            bodySha256: crypto.createHash("sha256").update(body).digest("hex"),
+            headers,
+            contract,
+          };
+          fs.writeFileSync(`/evidence/${name}.json`, `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o600 });
+          fs.writeFileSync(`/evidence/${name}.body.txt`, sanitize(captured.toString("utf8")), { mode: 0o600 });
+        })
+        .catch(error => {
+          fs.writeFileSync(`/evidence/${name}.json`, `${JSON.stringify({
+            timestampUtc: new Date().toISOString(), endpointFamily,
+            error: sanitize(error?.name || "FETCH_FAILURE"),
+          }, null, 2)}\n`, { mode: 0o600 });
+          process.exitCode = 1;
+        })
+        .finally(() => clearTimeout(timer));
+    ' "${url}" "${name}" "${endpoint_family}" </dev/null
+}
+
+v2_capture_frontend_internal_api_evidence() {
+  local evidence_dir="$1" frontend
+  frontend="$(v2_lab_container frontend)"
+  docker exec "${frontend}" node -e '
+    const crypto = require("node:crypto");
+    const dns = require("node:dns").promises;
+    const result = {
+      timestampUtc: new Date().toISOString(),
+      endpointFamily: "catalog.list.all",
+      configuredForCandidate: false,
+      dnsResolved: false,
+    };
+    (async () => {
+      const rawBase = process.env.INTERNAL_API_URL || "";
+      let base;
+      try {
+        base = new URL(rawBase);
+      } catch {
+        result.error = "INVALID_INTERNAL_API_CONFIGURATION";
+        return;
+      }
+      result.configuredForCandidate = base.protocol === "http:"
+        && base.hostname === "backend"
+        && base.port === "8080"
+        && base.pathname.replace(/\/$/, "") === "/api/public";
+      if (!result.configuredForCandidate) {
+        result.error = "INTERNAL_API_OUTSIDE_CANDIDATE";
+        return;
+      }
+      try {
+        const addresses = await dns.lookup("backend", { all: true });
+        result.dnsResolved = addresses.length > 0;
+        result.dnsAddressCount = addresses.length;
+      } catch {
+        result.error = "INTERNAL_API_DNS_FAILURE";
+        return;
+      }
+      const url = `${rawBase.replace(/\/$/, "")}/anuncios?pagina=0&tamanho=16`;
+      const started = performance.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10000);
+      try {
+        const response = await fetch(url, { redirect: "manual", signal: controller.signal });
+        result.ttfbMs = Math.round(performance.now() - started);
+        const body = Buffer.from(await response.arrayBuffer());
+        result.totalMs = Math.round(performance.now() - started);
+        result.status = response.status;
+        result.contentType = response.headers.get("content-type");
+        result.contentLength = response.headers.get("content-length");
+        result.bodyBytes = body.length;
+        result.bodySha256 = crypto.createHash("sha256").update(body).digest("hex");
+        try {
+          const payload = JSON.parse(body.toString("utf8"));
+          const items = Array.isArray(payload?.itens) ? payload.itens : null;
+          result.contract = {
+            json: true,
+            topLevelObject: payload !== null && typeof payload === "object" && !Array.isArray(payload),
+            itemsArray: items !== null,
+            paginationObject: payload?.paginacao !== null && typeof payload?.paginacao === "object",
+            itemCount: items?.length ?? null,
+            itemsWithLocationObject: items?.filter(item => item?.localizacao !== null && typeof item?.localizacao === "object").length ?? null,
+            itemsWithoutLocationObject: items?.filter(item => item?.localizacao === null || typeof item?.localizacao !== "object").length ?? null,
+          };
+        } catch {
+          result.contract = { json: false };
+        }
+      } catch (error) {
+        result.error = error?.name || "INTERNAL_API_FETCH_FAILURE";
+      } finally {
+        clearTimeout(timer);
+      }
+    })().finally(() => process.stdout.write(`${JSON.stringify(result, null, 2)}\n`));
+  ' </dev/null | v2_sanitize_diagnostic_stream > "${evidence_dir}/frontend-to-backend.json"
+  chmod 0600 "${evidence_dir}/frontend-to-backend.json"
+}
+
+v2_capture_inspect_evidence() {
+  local service="$1" container="$2" evidence_dir="$3"
+  docker inspect "${container}" | docker run --rm --network none -i \
+    --user "$(id -u):$(id -g)" --volume "${evidence_dir}:/evidence" \
+    "${V2_NODE_IMAGE}" node -e '
+      const fs = require("node:fs");
+      const service = process.argv[1];
+      let input = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", chunk => { input += chunk; });
+      process.stdin.on("end", () => {
+        const item = JSON.parse(input)[0];
+        const health = item.State?.Health;
+        const result = {
+          service,
+          name: String(item.Name || "").replace(/^\//, ""),
+          imageId: item.Image,
+          state: {
+            status: item.State?.Status,
+            running: item.State?.Running,
+            exitCode: item.State?.ExitCode,
+            startedAt: item.State?.StartedAt,
+            finishedAt: item.State?.FinishedAt,
+            health: health ? {
+              status: health.Status,
+              failingStreak: health.FailingStreak,
+              history: (health.Log || []).map(entry => ({
+                start: entry.Start, end: entry.End, exitCode: entry.ExitCode,
+              })),
+            } : null,
+          },
+          networks: Object.entries(item.NetworkSettings?.Networks || {}).map(([name, network]) => ({
+            name,
+            aliases: network.Aliases || [],
+          })),
+          exposedPorts: Object.keys(item.Config?.ExposedPorts || {}).sort(),
+        };
+        fs.writeFileSync(`/evidence/inspect-${service}.json`, `${JSON.stringify(result, null, 2)}\n`, { mode: 0o600 });
+      });
+    ' "${service}"
+}
+
+v2_capture_database_evidence() {
+  local evidence_dir="$1"
+  {
+    if ! v2_psql --tuples-only --no-align --field-separator=$'\t' --command "
+      SELECT 'usuarios', count(*)::text FROM usuario
+      UNION ALL SELECT 'anuncios', count(*)::text FROM anuncio
+      UNION ALL SELECT 'anuncios_publicaveis', count(*)::text FROM anuncio
+        WHERE status='PUBLICADO' AND status_moderacao='APROVADO' AND removido_em IS NULL
+      UNION ALL SELECT 'anuncios_premium', count(*)::text FROM anuncio a
+        WHERE a.status='PUBLICADO' AND a.status_moderacao='APROVADO' AND a.removido_em IS NULL
+          AND EXISTS (
+            SELECT 1 FROM ativacao_beneficio ab
+            WHERE ab.anuncio_id=a.id AND ab.status='ATIVA'
+              AND ab.inicio_em <= now() AND ab.fim_em > now()
+          )
+      UNION ALL SELECT 'anuncios_gratuitos', count(*)::text FROM anuncio a
+        WHERE a.status='PUBLICADO' AND a.status_moderacao='APROVADO' AND a.removido_em IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM ativacao_beneficio ab
+            WHERE ab.anuncio_id=a.id AND ab.status='ATIVA'
+              AND ab.inicio_em <= now() AND ab.fim_em > now()
+          )
+      UNION ALL SELECT 'midias', count(*)::text FROM arquivo_midia
+      UNION ALL SELECT 'previews_disponiveis', count(*)::text FROM arquivo_midia
+        WHERE preview_restrito_status='DISPONIVEL'
+      UNION ALL SELECT 'estados', count(*)::text FROM estado
+      UNION ALL SELECT 'cidades', count(*)::text FROM cidade
+      UNION ALL SELECT 'bairros', count(*)::text FROM bairro
+      UNION ALL SELECT 'anuncio_localizacao', count(*)::text FROM anuncio_localizacao
+      UNION ALL SELECT 'categorias_anuncio', count(DISTINCT categoria)::text FROM anuncio
+      UNION ALL SELECT 'categorias_home', count(*)::text FROM categoria_home
+      UNION ALL SELECT 'anuncio_midia', count(*)::text FROM anuncio_midia
+      UNION ALL SELECT 'documento_busca_anuncio', count(*)::text FROM documento_busca_anuncio
+      UNION ALL SELECT 'cenarios_listagem_validos', count(DISTINCT a.id)::text
+        FROM anuncio a
+        JOIN usuario u ON u.id=a.usuario_id AND u.status='ATIVO'
+        JOIN anuncio_localizacao al ON al.anuncio_id=a.id
+        JOIN estado e ON e.id=al.estado_id
+        JOIN cidade c ON c.id=al.cidade_id AND c.estado_id=e.id
+        JOIN anuncio_midia am ON am.anuncio_id=a.id AND am.status='PUBLICAVEL'
+        JOIN arquivo_midia fm ON fm.id=am.arquivo_midia_id AND fm.status_arquivo='VALIDADO'
+        WHERE a.status='PUBLICADO' AND a.status_moderacao='APROVADO' AND a.removido_em IS NULL
+      ORDER BY 1;
+    "; then
+      printf '%s\n' 'DIAGNOSTIC_DATABASE_COUNTS_FAILED'
+    fi
+  } 2>&1 | v2_sanitize_diagnostic_stream > "${evidence_dir}/fixture-counts.tsv"
+
+  {
+    if ! v2_psql --tuples-only --no-align --field-separator=$'\t' --command "
+      SELECT
+        max(version::int) FILTER (WHERE success AND version ~ '^[0-9]+$') AS max_version,
+        count(*) FILTER (WHERE success AND version ~ '^[0-9]+$') AS successful,
+        count(*) FILTER (WHERE NOT success) AS failed
+      FROM flyway_schema_history;
+    "; then
+      printf '%s\n' 'DIAGNOSTIC_FLYWAY_QUERY_FAILED'
+    fi
+  } 2>&1 | v2_sanitize_diagnostic_stream > "${evidence_dir}/flyway.tsv"
+
+  printf '%s\n' \
+    "fixture_generator_sha256=$(v2_sha256 "${V2_ROOT}/scripts/deploy/v2/contract.mjs")" \
+    "declared_restricted_previews=${V2_OBJECT_COUNT_BEFORE:-unknown}" \
+    'fixture_completed_before_candidate=true' \
+    > "${evidence_dir}/fixture-provenance.txt"
+  chmod 0600 "${evidence_dir}/fixture-counts.tsv" \
+    "${evidence_dir}/flyway.tsv" "${evidence_dir}/fixture-provenance.txt"
+}
+
+v2_capture_service_evidence() {
+  local evidence_dir="$1" preview_count postgres_status minio_status smtp_status efi_status
+  local backend_status frontend_status gateway_status
+  postgres_status=FAIL
+  minio_status=FAIL
+  smtp_status=FAIL
+  efi_status=FAIL
+  backend_status=FAIL
+  frontend_status=FAIL
+  gateway_status=FAIL
+
+  if [[ "$(v2_psql --tuples-only --no-align --command 'SELECT 1;' 2>/dev/null | tr -d '[:space:]')" == "1" ]]; then
+    postgres_status=OK
+  fi
+  preview_count="$({
+    v2_mc --insecure find \
+      local/topsdojob-v2-public/hml/midias-aprovadas/restritas-borradas/v1 \
+      --name '*.jpg' 2>/dev/null || true
+  } | wc -l | tr -d '[:space:]')"
+  if [[ "${preview_count}" == "${V2_OBJECT_COUNT_BEFORE:-}" ]]; then
+    minio_status=OK
+  fi
+  if v2_smtp_probe >/dev/null 2>&1; then smtp_status=OK; fi
+  if v2_probe_once http://efi-stub:8090 200 '"provider":"local-stub"' >/dev/null 2>&1; then
+    efi_status=OK
+  fi
+  if v2_probe_once http://backend:8080/api/health/readiness 200 '"status":"UP"' >/dev/null 2>&1; then
+    backend_status=OK
+  fi
+  if v2_probe_once http://frontend:3000/health/readiness 200 '"status":"UP"' >/dev/null 2>&1; then
+    frontend_status=OK
+  fi
+  if v2_probe_once http://gateway:8080/health/readiness 200 '"status":"UP"' >/dev/null 2>&1; then
+    gateway_status=OK
+  fi
+
+  printf '%s\n' \
+    "postgresql=${postgres_status}" \
+    "minio=${minio_status}" \
+    "minio_restricted_preview_count=${preview_count}" \
+    "smtp_local=${smtp_status}" \
+    "efi_local=${efi_status}" \
+    "backend_readiness=${backend_status}" \
+    "frontend_readiness=${frontend_status}" \
+    "gateway_readiness=${gateway_status}" \
+    'external_calls_allowed=false' \
+    > "${evidence_dir}/service-status.txt"
+  chmod 0600 "${evidence_dir}/service-status.txt"
+}
+
+v2_capture_container_logs() {
+  local evidence_dir="$1" service container limit
+  for service in gateway frontend backend; do
+    case "${service}" in
+      gateway) limit=200 ;;
+      frontend|backend) limit=300 ;;
+    esac
+    container="$(v2_lab_container "${service}")"
+    {
+      docker logs --timestamps --tail "${limit}" "${container}" 2>&1 ||
+        printf 'DIAGNOSTIC_LOG_CAPTURE_FAILED service=%s\n' "${service}"
+    } | v2_sanitize_diagnostic_stream > "${evidence_dir}/${service}.log"
+    chmod 0600 "${evidence_dir}/${service}.log"
+  done
+
+  grep -Ei 'digest|TypeError|ReferenceError|Error:| at [A-Za-z0-9_./:$-]+' \
+    "${evidence_dir}/frontend.log" | tail -n 120 \
+    > "${evidence_dir}/next-error-digest.txt" || true
+  grep -Ei 'Exception|Caused by:|SQLState|IllegalStateException| at br\.com\.topsdojob' \
+    "${evidence_dir}/backend.log" | tail -n 180 \
+    > "${evidence_dir}/backend-stack-trace.txt" || true
+  chmod 0600 "${evidence_dir}/next-error-digest.txt" \
+    "${evidence_dir}/backend-stack-trace.txt"
+}
+
+v2_collect_gateway_listagem_diagnostics() {
+  local evidence_dir="$1" failed_gate="$2" failed_exit="$3"
+  local service container gateway
+  mkdir -m 0700 -p -- "${evidence_dir}"
+
+  if ! v2_capture_http_evidence gateway-listagem \
+    http://gateway:8080/anuncios public.page.listing "${evidence_dir}"; then
+    v2_log "DIAGNOSTIC_CAPTURE=gateway-listagem result=FAIL"
+  fi
+  if ! v2_capture_http_evidence frontend-listagem \
+    http://frontend:3000/anuncios public.page.listing "${evidence_dir}"; then
+    v2_log "DIAGNOSTIC_CAPTURE=frontend-listagem result=FAIL"
+  fi
+  if ! v2_capture_http_evidence backend-listagem \
+    'http://backend:8080/api/public/anuncios?pagina=0&tamanho=16' \
+    catalog.list.all "${evidence_dir}"; then
+    v2_log "DIAGNOSTIC_CAPTURE=backend-listagem result=FAIL"
+  fi
+  if ! v2_capture_frontend_internal_api_evidence "${evidence_dir}"; then
+    v2_log "DIAGNOSTIC_CAPTURE=frontend-to-backend result=FAIL"
+  fi
+
+  printf '%s\n' \
+    '{' \
+    '  "page": "/anuncios",' \
+    '  "serverSideCalls": [' \
+    '    {' \
+    '      "endpointFamily": "catalog.list.all",' \
+    '      "backendPathFamily": "/anuncios",' \
+    '      "method": "GET",' \
+    '      "callsPerRender": 1' \
+    '    }' \
+    '  ]' \
+    '}' > "${evidence_dir}/endpoint-map.json"
+
+  v2_capture_database_evidence "${evidence_dir}"
+  v2_capture_service_evidence "${evidence_dir}"
+  v2_capture_container_logs "${evidence_dir}"
+
+  for service in postgres minio mailpit efi-stub backend frontend gateway; do
+    container="$(v2_lab_container "${service}")"
+    if [[ -n "${container}" ]]; then
+      if ! v2_capture_inspect_evidence "${service}" "${container}" "${evidence_dir}"; then
+        v2_log "DIAGNOSTIC_CAPTURE=inspect-${service} result=FAIL"
+      fi
+    fi
+  done
+
+  gateway="$(v2_lab_container gateway)"
+  {
+    docker exec "${gateway}" nginx -T </dev/null 2>&1 ||
+      printf '%s\n' 'NGINX_EFFECTIVE_CONFIG_CAPTURE_FAILED'
+  } | v2_sanitize_diagnostic_stream |
+    grep -E '(^|[[:space:]])(listen|location|proxy_pass|upstream)([[:space:]]|$)' \
+      > "${evidence_dir}/gateway-upstream.txt" || true
+
+  printf '%s\n' \
+    "timestamp_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    "failed_gate=${failed_gate:-none}" \
+    "failed_exit=${failed_exit}" \
+    'first_unexecuted_after_gateway_listagem=gateway_localidades' \
+    'diagnostic_requests_after_failure=true' \
+    > "${evidence_dir}/diagnostic-summary.txt"
+  find "${evidence_dir}" -type f -exec chmod 0600 {} +
+}
+
 v2_generate_tls() {
   local cert_dir="${V2_RUNTIME_DIR}/certs/minio"
   mkdir -m 0700 -p -- "${cert_dir}" "${V2_RUNTIME_DIR}/certs" "${V2_RUNTIME_DIR}/reports"
@@ -265,8 +699,9 @@ v2_backfill_contract() {
 }
 
 v2_candidate_gate() {
-  local name="$1" start end rc
+  local name="$1" start end rc start_utc end_utc result
   shift
+  start_utc="$(date -u +'%Y-%m-%dT%H:%M:%S.%3NZ')"
   start="$(date +%s%3N)"
   v2_log "CANDIDATE_GATE_START=${name}"
   set +e
@@ -274,6 +709,14 @@ v2_candidate_gate() {
   rc=$?
   set -e
   end="$(date +%s%3N)"
+  end_utc="$(date -u +'%Y-%m-%dT%H:%M:%S.%3NZ')"
+  result=OK
+  [[ "${rc}" -eq 0 ]] || result=FAIL
+  if [[ -n "${V2_DIAGNOSTIC_EVIDENCE_DIR:-}" ]]; then
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "${name}" "${result}" "${rc}" "$((end-start))" "${start_utc}" "${end_utc}" \
+      >> "${V2_DIAGNOSTIC_EVIDENCE_DIR}/gate-timings.tsv"
+  fi
   if [[ "${rc}" -ne 0 ]]; then
     v2_log "CANDIDATE_GATE_RESULT=${name} result=FAIL exit=${rc} duration_ms=$((end-start))"
     return "${rc}"
@@ -305,6 +748,101 @@ v2_logs_gate() {
       return 1
     fi
   done
+}
+
+v2_diagnostic_gate() {
+  local name="$1" rc
+  shift
+  [[ -z "${V2_DIAGNOSTIC_FAILED_GATE:-}" ]] || return 0
+  if v2_candidate_gate "${name}" "$@"; then
+    return 0
+  else
+    rc=$?
+    V2_DIAGNOSTIC_FAILED_GATE="${name}"
+    V2_DIAGNOSTIC_FAILED_EXIT="${rc}"
+    return 0
+  fi
+}
+
+v2_diagnose_gateway_listagem() {
+  local evidence_dir="$1" postgres
+  export V2_DIAGNOSTIC_EVIDENCE_DIR="${evidence_dir}"
+  mkdir -m 0700 -p -- "${evidence_dir}"
+  printf '%s\n' \
+    $'position\tname' \
+    $'1\tbackend_liveness' \
+    $'2\tbackend_readiness' \
+    $'3\tfrontend_liveness' \
+    $'4\tfrontend_readiness' \
+    $'5\tgateway_backend_liveness' \
+    $'6\tgateway_backend_readiness' \
+    $'7\tgateway_frontend_liveness' \
+    $'8\tgateway_frontend_readiness' \
+    $'9\tgateway_home' \
+    $'10\tgateway_listagem' \
+    $'11\tgateway_localidades' \
+    $'12\tdatabase' \
+    $'13\tinternal_api_dns' \
+    $'14\tcandidate_logs' \
+    > "${evidence_dir}/gate-order.tsv"
+  printf '%s\n' $'name\tresult\texit_code\tduration_ms\tstart_utc\tend_utc' \
+    > "${evidence_dir}/gate-timings.tsv"
+  chmod 0600 "${evidence_dir}/gate-order.tsv" "${evidence_dir}/gate-timings.tsv"
+
+  docker image inspect "${V2_BACKEND_IMAGE}" >/dev/null
+  v2_compose up -d --no-deps --no-build backend
+  v2_wait_probe http://backend:8080/api/health/liveness 200 '"status":"UP"'
+  v2_wait_probe http://backend:8080/api/health/readiness 200 '"status":"UP"'
+
+  postgres="$(v2_lab_container postgres)"
+  docker pause "${postgres}" >/dev/null
+  v2_wait_probe http://backend:8080/api/health/readiness 503 '"status":"DOWN"'
+  v2_probe_once http://backend:8080/api/health/liveness 200 '"status":"UP"' >/dev/null
+  docker unpause "${postgres}" >/dev/null
+  v2_wait_probe http://backend:8080/api/health/readiness 200 '"status":"UP"'
+  v2_log "READINESS_503=OK LIVENESS_DEPENDENCY_FAILURE=200 RECOVERY=OK"
+
+  docker image inspect "${V2_FRONTEND_IMAGE}" >/dev/null
+  v2_compose up -d --no-deps --no-build frontend
+  v2_wait_probe http://frontend:3000/health/liveness 200 '"status":"UP"'
+  v2_wait_probe http://frontend:3000/health/readiness 200 '"status":"UP"'
+  docker image inspect "${V2_GATEWAY_IMAGE}" >/dev/null
+  v2_compose up -d --no-deps --no-build gateway
+  v2_wait_probe http://gateway:8080/health/readiness 200 '"status":"UP"'
+
+  V2_GATE_COUNT=0
+  V2_DIAGNOSTIC_FAILED_GATE=""
+  V2_DIAGNOSTIC_FAILED_EXIT=0
+  v2_diagnostic_gate backend_liveness \
+    v2_probe_once http://backend:8080/api/health/liveness 200 '"status":"UP"'
+  v2_diagnostic_gate backend_readiness \
+    v2_probe_once http://backend:8080/api/health/readiness 200 '"status":"UP"'
+  v2_diagnostic_gate frontend_liveness \
+    v2_probe_once http://frontend:3000/health/liveness 200 '"status":"UP"'
+  v2_diagnostic_gate frontend_readiness \
+    v2_probe_once http://frontend:3000/health/readiness 200 '"status":"UP"'
+  v2_diagnostic_gate gateway_backend_liveness \
+    v2_probe_once http://gateway:8080/api/health/liveness 200 '"status":"UP"'
+  v2_diagnostic_gate gateway_backend_readiness \
+    v2_probe_once http://gateway:8080/api/health/readiness 200 '"status":"UP"'
+  v2_diagnostic_gate gateway_frontend_liveness \
+    v2_probe_once http://gateway:8080/health/liveness 200 '"status":"UP"'
+  v2_diagnostic_gate gateway_frontend_readiness \
+    v2_probe_once http://gateway:8080/health/readiness 200 '"status":"UP"'
+  v2_diagnostic_gate gateway_home \
+    v2_probe_once http://gateway:8080/ 200
+  v2_diagnostic_gate gateway_listagem \
+    v2_probe_once http://gateway:8080/anuncios 200
+
+  v2_collect_gateway_listagem_diagnostics \
+    "${evidence_dir}" "${V2_DIAGNOSTIC_FAILED_GATE}" "${V2_DIAGNOSTIC_FAILED_EXIT}"
+  if [[ "${V2_DIAGNOSTIC_FAILED_GATE}" == "gateway_listagem" \
+      && "${V2_DIAGNOSTIC_FAILED_EXIT}" -ne 0 ]]; then
+    v2_log "DIAGNOSTIC_REPRODUCTION=PASS FAILED_GATE=gateway_listagem"
+    return 0
+  fi
+  v2_log "DIAGNOSTIC_REPRODUCTION=FAIL FAILED_GATE=${V2_DIAGNOSTIC_FAILED_GATE:-none}"
+  return 1
 }
 
 v2_start_candidate_and_gates() {

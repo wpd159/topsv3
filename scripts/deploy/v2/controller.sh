@@ -329,8 +329,81 @@ v2_verify_mode() {
   v2_log "RUN_${run_number}=PASS CRITICAL_SKIPPED=0 RESIDUALS=0 PRODUCTION_ACCESS=0"
 }
 
+v2_diagnose_mode() {
+  local bundle="$2" source_sha="$3" evidence_dir="$4" original_run_id="$5"
+  local original_artifact_id="$6" controller_sha diagnostic_rc=0
+  [[ "$#" -eq 6 ]] ||
+    v2_die "uso: controller.sh diagnose BUNDLE SHA EVIDENCE ORIGINAL_RUN ORIGINAL_ARTIFACT"
+  [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || v2_die "SHA do artefato invalido"
+  [[ "${original_run_id}" =~ ^[0-9]+$ ]] || v2_die "run original invalido"
+  [[ "${original_artifact_id}" =~ ^[0-9]+$ ]] || v2_die "artefato original invalido"
+  controller_sha="$(git -C "${V2_ROOT}" rev-parse HEAD)"
+  [[ "${controller_sha}" =~ ^[a-f0-9]{40}$ ]] || v2_die "SHA do controlador invalido"
+
+  export V2_RUN_NUMBER=diagnostic
+  v2_bootstrap_engine
+  V2_CLEANUP_ACTIVE=1
+  v2_export_images
+  v2_pull_locked_images
+  v2_tag_test_images
+  v2_set_release_images "${source_sha}"
+  export V2_PROJECT_NAME="topsdojob-v2-diagnostic-${V2_RUN_ID//[^a-zA-Z0-9_.-]/-}"
+  export V2_RUNTIME_DIR="${RUNNER_TEMP:-/tmp}/${V2_PROJECT_NAME}"
+  v2_set_synthetic_credentials diagnostic
+  mkdir -m 0700 -p -- "${V2_RUNTIME_DIR}" "${evidence_dir}"
+
+  printf '%s\n' \
+    "timestamp_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+    "original_run_id=${original_run_id}" \
+    "original_artifact_id=${original_artifact_id}" \
+    "original_artifact_name=topsdojob-v2-release-${source_sha}" \
+    "artifact_source_sha=${source_sha}" \
+    "diagnostic_controller_sha=${controller_sha}" \
+    'artifact_rebuilt=false' \
+    'production_access=false' \
+    > "${evidence_dir}/provenance.txt"
+  chmod 0600 "${evidence_dir}/provenance.txt"
+
+  v2_load_release_artifact "${bundle}" "${source_sha}"
+  cp -- "${bundle}/release-manifest.json" "${evidence_dir}/release-manifest.json"
+  cp -- "${bundle}/release-manifest.sha256" "${evidence_dir}/release-manifest.sha256"
+  if [[ -f "${bundle}/tool-versions.txt" ]]; then
+    cp -- "${bundle}/tool-versions.txt" "${evidence_dir}/artifact-tool-versions.txt"
+  fi
+  v2_record_versions "${evidence_dir}/diagnostic-tool-versions.txt"
+  chmod 0600 "${evidence_dir}"/*
+
+  v2_prepare_lab "${evidence_dir}"
+  v2_backfill_contract
+  if v2_diagnose_gateway_listagem "${evidence_dir}"; then
+    diagnostic_rc=0
+  else
+    diagnostic_rc=$?
+  fi
+
+  v2_compose down --volumes --remove-orphans --timeout 30
+  v2_assert_no_resources
+  v2_clean_generated_files
+  [[ ! -e "${V2_RUNTIME_DIR}" ]]
+  V2_CLEANUP_ACTIVE=0
+  printf '%s\n' \
+    "diagnostic_exit_code=${diagnostic_rc}" \
+    'resources_residual=0' \
+    'production_access=0' \
+    >> "${evidence_dir}/diagnostic-summary.txt"
+  (
+    cd -- "${evidence_dir}"
+    find . -type f ! -name checksums.sha256 -print0 |
+      sort -z | xargs -0 sha256sum > checksums.sha256
+  )
+  find "${evidence_dir}" -type f -exec chmod 0600 {} +
+  v2_log "DIAGNOSTIC_RESULT=$([[ "${diagnostic_rc}" -eq 0 ]] && printf PASS || printf FAIL) RESIDUALS=0 PRODUCTION_ACCESS=0"
+  return "${diagnostic_rc}"
+}
+
 case "${V2_MODE}" in
   build) v2_build_mode "$@" ;;
   verify) v2_verify_mode "$@" ;;
-  *) v2_die "modo permitido nesta fase: build interno ou verify" ;;
+  diagnose) v2_diagnose_mode "$@" ;;
+  *) v2_die "modo permitido nesta fase: build interno, verify ou diagnose controlado" ;;
 esac

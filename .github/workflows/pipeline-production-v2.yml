@@ -14,6 +14,7 @@ on:
       - main
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -23,6 +24,7 @@ concurrency:
 jobs:
   mode-guard:
     name: Bloquear modos mutaveis
+    if: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic') }}
     runs-on: ubuntu-24.04
     outputs:
       source-sha: ${{ steps.guard.outputs.source_sha }}
@@ -114,3 +116,50 @@ jobs:
           path: ${{ runner.temp }}/topsdojob-v2-evidence-${{ matrix.run }}
           if-no-files-found: warn
           retention-days: 7
+
+  diagnose-gateway-listagem:
+    name: Diagnosticar gateway_listagem com artefato original
+    if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout diagnostic controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - name: Receive exact artifact from failed run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: topsdojob-v2-release-2a0fc6765c034a695854cc3a9a3c757f25005933
+          path: ${{ runner.temp }}/topsdojob-v2-release-original
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: '33288113610'
+
+      - name: Reproduce gateway_listagem once with sanitized diagnostics
+        shell: bash
+        env:
+          ARTIFACT_SOURCE_SHA: 2a0fc6765c034a695854cc3a9a3c757f25005933
+          BUNDLE_DIR: ${{ runner.temp }}/topsdojob-v2-release-original
+          CONTROLLER_SHA: ${{ github.event.pull_request.head.sha }}
+          EVIDENCE_DIR: ${{ runner.temp }}/topsdojob-v2-gateway-listagem-diagnostic
+          ORIGINAL_ARTIFACT_ID: '9725168179'
+          ORIGINAL_RUN_ID: '33288113610'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CONTROLLER_SHA}"
+          bash ./scripts/deploy/v2/controller.sh diagnose \
+            "${BUNDLE_DIR}" "${ARTIFACT_SOURCE_SHA}" "${EVIDENCE_DIR}" \
+            "${ORIGINAL_RUN_ID}" "${ORIGINAL_ARTIFACT_ID}"
+
+      - name: Preserve private sanitized diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: topsdojob-v2-gateway-listagem-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/topsdojob-v2-gateway-listagem-diagnostic
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
