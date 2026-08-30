@@ -48,6 +48,7 @@ v2_generate_tls() {
     -keyout "${cert_dir}/private.key" -out "${cert_dir}/public.crt" >/dev/null 2>&1
   chmod 0600 "${cert_dir}/private.key" "${cert_dir}/public.crt"
   docker run --rm \
+    --user "$(id -u):$(id -g)" \
     --volume "${V2_RUNTIME_DIR}/certs:/certs" \
     "${V2_JRE_IMAGE}" keytool -importcert -noprompt \
     -alias pipeline-v2-minio -file /certs/minio/public.crt \
