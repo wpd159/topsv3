@@ -162,6 +162,7 @@ v2_create_import_snapshot() {
 
 v2_prepare_database_and_storage() {
   local container object_count endpoint source_object
+  v2_node "scripts/deploy/v2/contract.mjs" fixture "${V2_RUNTIME_DIR}/fixture" 1344
   v2_compose up -d postgres minio mailpit efi-stub
   v2_wait_postgres || v2_die "PostgreSQL 17 nao ficou pronto"
   v2_wait_minio || v2_die "MinIO TLS local nao ficou pronto"
@@ -176,7 +177,6 @@ v2_prepare_database_and_storage() {
   [[ "$(v2_psql --tuples-only --no-align --command "SELECT count(*) FROM flyway_schema_history WHERE success AND version ~ '^[0-9]+$';" | tr -d '[:space:]')" == "53" ]]
   [[ "$(v2_psql --tuples-only --no-align --command 'SELECT count(*) FROM flyway_schema_history WHERE NOT success;' | tr -d '[:space:]')" == "0" ]]
 
-  v2_node "scripts/deploy/v2/contract.mjs" fixture "${V2_RUNTIME_DIR}/fixture" 1344
   container="$(v2_lab_container postgres)"
   docker cp "${V2_RUNTIME_DIR}/fixture/fixture.sql" "${container}:/tmp/pipeline-v2-fixture.sql"
   docker exec "${container}" psql --no-psqlrc --set=ON_ERROR_STOP=1 \
