@@ -30,6 +30,11 @@ function relative(file) {
   return path.relative(root, file).replaceAll('\\', '/')
 }
 
+function workflowJob(workflow, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return workflow.match(new RegExp(`\\n  ${escaped}:[\\s\\S]*?(?=\\n  [a-z][a-z0-9-]*:|$)`))?.[0] ?? ''
+}
+
 function technicalFiles() {
   return [
     path.join(root, '.github/workflows/pipeline-production-v2.yml'),
@@ -66,6 +71,10 @@ function contract() {
   const lab = fs.readFileSync(path.join(root, 'scripts/deploy/v2/lab.sh'), 'utf8')
   const controller = fs.readFileSync(path.join(root, 'scripts/deploy/v2/controller.sh'), 'utf8')
   const artifact = fs.readFileSync(path.join(root, 'scripts/deploy/v2/artifact.sh'), 'utf8')
+  const modeGuardJob = workflowJob(workflow, 'mode-guard')
+  const buildOnceJob = workflowJob(workflow, 'build-once')
+  const verifyJob = workflowJob(workflow, 'verify-clean-runner')
+  const diagnosticJob = workflowJob(workflow, 'diagnose-gateway-listagem')
   const runtimeFiles = required.filter((file) => path.basename(file) !== 'contract.mjs')
   const combined = runtimeFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n')
   const forbiddenLegacy = [
@@ -157,6 +166,9 @@ function contract() {
   if (!/github\.event_name == 'pull_request' && 'verify' \|\| inputs\.mode/.test(workflow)) {
     fail('evento de PR deve permanecer estritamente em mode=verify')
   }
+  if (!modeGuardJob.includes("github.event.pull_request.head.sha || github.sha")) {
+    fail('SHA de PR deve vir explicitamente da cabeca do PR')
+  }
   if (/\n\s*- (?:deploy|candidate|switch|rollback)\s*$/m.test(workflow)) {
     fail('modo mutavel exposto no workflow da Fase 1')
   }
@@ -172,9 +184,36 @@ function contract() {
   if (!/matrix:\s*\n\s*run:\s*\[1, 2, 3\]/.test(workflow)) {
     fail('workflow deve usar tres runners independentes')
   }
-  const releaseArtifactName = 'name: topsdojob-v2-release-${{ needs.mode-guard.outputs.source-sha }}'
-  if (workflow.split(releaseArtifactName).length - 1 !== 2) {
-    fail('upload e download devem compartilhar o mesmo nome de artefato')
+  const diagnosticLabel = "contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic')"
+  if (modeGuardJob.includes(diagnosticLabel)
+      || /^\s+if:/m.test(buildOnceJob)
+      || !verifyJob.includes(`!${diagnosticLabel}`)
+      || !diagnosticJob.includes(diagnosticLabel)
+      || !diagnosticJob.includes('needs: build-once')) {
+    fail('build-once deve ser comum; diagnostico ignora a matriz e depende diretamente dele')
+  }
+  if (!buildOnceJob.includes('artifact-name: ${{ steps.artifact-identity.outputs.name }}')
+      || !buildOnceJob.includes('artifact-id: ${{ steps.release-artifact.outputs.artifact-id }}')
+      || !buildOnceJob.includes("printf 'name=topsdojob-v2-release-%s-%s-%s\\n'")
+      || !buildOnceJob.includes('name: ${{ steps.artifact-identity.outputs.name }}')) {
+    fail('build-once deve expor artefato exclusivo por SHA, run e attempt')
+  }
+  if (!verifyJob.includes('name: ${{ needs.build-once.outputs.artifact-name }}')
+      || !diagnosticJob.includes('name: ${{ needs.build-once.outputs.artifact-name }}')) {
+    fail('runners devem baixar pelo output exato do build-once')
+  }
+  if (!diagnosticJob.includes('ARTIFACT_SOURCE_SHA: ${{ needs.build-once.outputs.source-sha }}')
+      || !diagnosticJob.includes('CURRENT_ARTIFACT_ID: ${{ needs.build-once.outputs.artifact-id }}')
+      || !diagnosticJob.includes('CURRENT_RUN_ID: ${{ github.run_id }}')) {
+    fail('diagnostico deve validar proveniencia do mesmo run')
+  }
+  if (/run-id:|github-token:|repository:/.test(diagnosticJob)
+      || /33288113610|9725168179|2a0fc6765c034a695854cc3a9a3c757f25005933/.test(workflow)) {
+    fail('diagnostico ainda referencia artefato ou run anterior')
+  }
+  if (!diagnosticJob.includes('controller.sh diagnose')
+      || diagnosticJob.includes('controller.sh build')) {
+    fail('runner diagnostico deve consumir artefato sem rebuild')
   }
   if (Object.keys(lock.images).length < 10) fail('lock de imagens incompleto')
   for (const [name, image] of Object.entries(lock.images)) {
