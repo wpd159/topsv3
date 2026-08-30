@@ -50,10 +50,29 @@ v2_generate_tls() {
   docker run --rm \
     --user "$(id -u):$(id -g)" \
     --volume "${V2_RUNTIME_DIR}/certs:/certs" \
-    "${V2_JRE_IMAGE}" keytool -importcert -noprompt \
-    -alias pipeline-v2-minio -file /certs/minio/public.crt \
-    -keystore /certs/truststore.p12 -storetype PKCS12 \
-    -storepass pipeline-v2-trust >/dev/null
+    "${V2_JRE_IMAGE}" sh -eu -c '
+      keytool -importkeystore -noprompt \
+        -srckeystore "${JAVA_HOME}/lib/security/cacerts" \
+        -srcstorepass changeit \
+        -destkeystore /certs/truststore.p12 \
+        -deststoretype PKCS12 \
+        -deststorepass pipeline-v2-trust >/dev/null
+      keytool -importcert -noprompt \
+        -alias pipeline-v2-minio \
+        -file /certs/minio/public.crt \
+        -keystore /certs/truststore.p12 \
+        -storetype PKCS12 \
+        -storepass pipeline-v2-trust >/dev/null
+      keytool -list \
+        -alias pipeline-v2-minio \
+        -keystore /certs/truststore.p12 \
+        -storetype PKCS12 \
+        -storepass pipeline-v2-trust >/dev/null
+      test "$(keytool -list \
+        -keystore /certs/truststore.p12 \
+        -storetype PKCS12 \
+        -storepass pipeline-v2-trust 2>/dev/null | grep -c "trustedCertEntry")" -gt 1
+    '
   chmod 0600 "${V2_RUNTIME_DIR}/certs/truststore.p12"
 }
 
