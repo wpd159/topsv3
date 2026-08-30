@@ -171,14 +171,14 @@ v2_run_backend_tests() {
     --env IMPORTADOR_BASE_SNAPSHOT_AT=2026-08-29T12:00:00Z
     --env IMPORTADOR_BASE_SNAPSHOT_ID=pipeline-v2-synthetic
     --env IMPORTADOR_BASE_SNAPSHOT_FINGERPRINT=4a66718f2c112a85fdf8c40737e88b7b376c29625f8ad6639fbc98a7e253a9dd
-    --env IMPORTADOR_BASE_R2_PUBLIC_MEDIA_BUCKET=topsdojob-v2-public
+    --env IMPORTADOR_BASE_R2_PUBLIC_MEDIA_BUCKET=topsdojob-v2-import-public
     --env IMPORTADOR_BASE_R2_PUBLIC_MEDIA_PREFIX=hml/midias-aprovadas/
-    --env IMPORTADOR_BASE_R2_PRIVATE_MEDIA_BUCKET=topsdojob-v2-private
+    --env IMPORTADOR_BASE_R2_PRIVATE_MEDIA_BUCKET=topsdojob-v2-import-private
     --env IMPORTADOR_BASE_R2_PRIVATE_MEDIA_PREFIX=hml/midias-pendentes/
     --env IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_BUCKET=topsdojob-v2-public
-    --env "IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_BASE_URL=${endpoint}/topsdojob-v2-public"
+    --env "IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_BASE_URL=${endpoint}"
     --env IMPORTADOR_BASE_R2_PRESERVED_PUBLIC_PREFIX=hml/midias-aprovadas/
-    --env IMPORTADOR_BASE_R2_DOCUMENT_BUCKET=topsdojob-v2-documents
+    --env IMPORTADOR_BASE_R2_DOCUMENT_BUCKET=topsdojob-v2-import-documents
     --env IMPORTADOR_BASE_R2_DOCUMENT_PREFIX=hml/documentos/
   )
 
