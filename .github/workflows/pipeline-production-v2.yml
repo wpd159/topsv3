@@ -363,7 +363,7 @@ jobs:
             -o UserKnownHostsFile="${ssh_dir}/known_hosts" -o ConnectTimeout=10)
           printf -v stage_id_q '%q' "${stage_id}"
           create_stage="set -eu; umask 077; id=${stage_id_q}; base=\"\${HOME}/.cache/topsdojob-candidate\"; dir=\"\${base}/\${id}\"; test ! -e \"\${dir}\"; install -d -m 0700 \"\${base}\"; test ! -L \"\${base}\"; mkdir -m 0700 \"\${dir}\"; test \"\$(stat -c %u \"\${dir}\")\" = \"\$(id -u)\"; test \"\$(stat -c %a \"\${dir}\")\" = 700; printf '%s' \"\${dir}\""
-          # shellcheck disable=SC2029 -- the remote command is assembled from shell-escaped local values.
+          # shellcheck disable=SC2029
           remote_stage="$(ssh "${ssh_options[@]}" \
             "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
             "${create_stage}" </dev/null)"
@@ -380,13 +380,13 @@ jobs:
           printf -v candidate_run_q '%q' "${CANDIDATE_RUN_ID}"
           remote_run="set -eu; stage=${remote_stage_q}; cd \"\${stage}\"; sha256sum --check --status topsdojob-v2-candidate-payload.tar.sha256; mkdir -m 0700 runtime; tar -xf topsdojob-v2-candidate-payload.tar -C runtime; chmod 0500 runtime/scripts/deploy/v2/controller.sh runtime/scripts/deploy/v2/*.sh; bash runtime/scripts/deploy/v2/controller.sh candidate-remote runtime/artifact ${source_sha_q} ${certification_run_q} ${artifact_id_q} ${candidate_run_q} \"\${stage}/evidence\" \"\${stage}/candidate-evidence.tar\" </dev/null"
           set +e
-          # shellcheck disable=SC2029 -- the remote command is assembled from shell-escaped local values.
+          # shellcheck disable=SC2029
           ssh "${ssh_options[@]}" \
             "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
             "${remote_run}" </dev/null
           candidate_rc=$?
           set -e
-          # shellcheck disable=SC2029 -- the remote path is produced by the validated staging command.
+          # shellcheck disable=SC2029
           if ssh "${ssh_options[@]}" \
               "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
               "test -s ${remote_stage_q}/candidate-evidence.tar" </dev/null; then
@@ -397,7 +397,7 @@ jobs:
               "${evidence_tar}"
           fi
           cleanup_stage="set -eu; stage=${remote_stage_q}; case \"\${stage}\" in \"\${HOME}/.cache/topsdojob-candidate/\"*) ;; *) exit 70 ;; esac; test ! -L \"\${stage}\"; rm -rf -- \"\${stage}\""
-          # shellcheck disable=SC2029 -- the remote command is assembled from a shell-escaped path.
+          # shellcheck disable=SC2029
           ssh "${ssh_options[@]}" \
             "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
             "${cleanup_stage}" </dev/null
