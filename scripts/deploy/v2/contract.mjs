@@ -65,6 +65,7 @@ function contract() {
   const compose = fs.readFileSync(path.join(root, 'deploy/v2/compose.yml'), 'utf8')
   const lab = fs.readFileSync(path.join(root, 'scripts/deploy/v2/lab.sh'), 'utf8')
   const controller = fs.readFileSync(path.join(root, 'scripts/deploy/v2/controller.sh'), 'utf8')
+  const artifact = fs.readFileSync(path.join(root, 'scripts/deploy/v2/artifact.sh'), 'utf8')
   const runtimeFiles = required.filter((file) => path.basename(file) !== 'contract.mjs')
   const combined = runtimeFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n')
   const forbiddenLegacy = [
@@ -135,6 +136,17 @@ function contract() {
       || !controller.includes('"${V2_ROOT}/backend/target" "${v048_backend}/target"')) {
     fail('fixtures runtime ou consolidacao V048 ausentes do controlador')
   }
+  if (!artifact.includes('TEST_DEPENDENCIES=OFFLINE_VALIDATED')
+      || !artifact.includes('test-dependencies.tar')
+      || !artifact.includes('npm ci --offline')
+      || !artifact.includes('mvn --offline')) {
+    fail('artefato imutavel deve transportar dependencias Maven/npm validadas offline')
+  }
+  if ((controller.match(/mvn --offline/g) ?? []).length < 2
+      || !controller.includes('npm ci --offline')
+      || !/v2_run_frontend_tests\(\) \{[\s\S]*?docker run --rm --network none/.test(controller)) {
+    fail('runners verify devem executar Maven e npm sem acesso a repositorios externos')
+  }
   if (!/dockerfile_inline:\s*\|\n\s*ARG V2_MAVEN_IMAGE\n\s*ARG V2_JRE_IMAGE\n\s*FROM \$\$\{V2_MAVEN_IMAGE\} AS build/.test(compose)) {
     fail('ARGs globais do backend devem preceder o primeiro FROM')
   }
@@ -190,9 +202,12 @@ function contract() {
 }
 
 function manifestCreate(args) {
-  const [output, gitSha, archive, ...imageArgs] = args
+  const [output, gitSha, archive, dependencyArchive, ...imageArgs] = args
   if (!/^[a-f0-9]{40}$/.test(gitSha ?? '')) fail('git SHA invalido para manifesto')
   if (!fs.statSync(archive).isFile() || fs.statSync(archive).size === 0) fail('TAR vazio')
+  if (!fs.statSync(dependencyArchive).isFile() || fs.statSync(dependencyArchive).size === 0) {
+    fail('TAR de dependencias vazio')
+  }
   if (imageArgs.length !== 6) fail('manifesto exige tres pares imagem/id')
   const images = []
   for (let index = 0; index < imageArgs.length; index += 2) {
@@ -210,6 +225,12 @@ function manifestCreate(args) {
       name: path.basename(archive),
       sha256: sha256(archive),
       bytes: fs.statSync(archive).size,
+    },
+    testDependencies: {
+      name: path.basename(dependencyArchive),
+      sha256: sha256(dependencyArchive),
+      bytes: fs.statSync(dependencyArchive).size,
+      offlineValidated: true,
     },
     images,
     tools: lock.tools,
@@ -233,6 +254,18 @@ function manifestVerify(args) {
   if (!fs.existsSync(archive) || fs.lstatSync(archive).isSymbolicLink()) fail('TAR ausente ou symlink')
   if (sha256(archive) !== manifest.archive.sha256) fail('hash do TAR divergente')
   if (fs.statSync(archive).size !== manifest.archive.bytes) fail('tamanho do TAR divergente')
+  const dependencyArchive = path.join(bundle, manifest.testDependencies?.name ?? '')
+  if (manifest.testDependencies?.offlineValidated !== true
+    || !fs.existsSync(dependencyArchive)
+    || fs.lstatSync(dependencyArchive).isSymbolicLink()) {
+    fail('TAR de dependencias ausente, nao validado ou symlink')
+  }
+  if (sha256(dependencyArchive) !== manifest.testDependencies.sha256) {
+    fail('hash do TAR de dependencias divergente')
+  }
+  if (fs.statSync(dependencyArchive).size !== manifest.testDependencies.bytes) {
+    fail('tamanho do TAR de dependencias divergente')
+  }
   if (sha256(lockPath) !== manifest.lockedImagesSha256) fail('lock diverge do build')
   if (!Array.isArray(manifest.images) || manifest.images.length !== 3) fail('imagens de release invalidas')
   for (const [file, expected] of Object.entries(manifest.sourceFiles)) {

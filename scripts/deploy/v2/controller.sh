@@ -183,7 +183,8 @@ v2_run_backend_tests() {
   )
 
   socket_cli="${V2_TOOLS_DIR}/bin/docker"
-  mkdir -m 0700 -p -- "${V2_RUNTIME_DIR}/m2"
+  [[ -d "${V2_TEST_M2_DIR:?repositorio Maven offline ausente}/repository" ]] ||
+    v2_die "repositorio Maven offline invalido"
   docker run --rm --network none \
     --volume "${V2_ROOT}:${V2_ROOT}:ro" \
     --volume "${V2_RUNTIME_DIR}:${V2_RUNTIME_DIR}" \
@@ -198,21 +199,21 @@ v2_run_backend_tests() {
     --volume "${socket_cli}:/usr/local/bin/docker:ro" \
     --volume "${V2_ROOT}:${V2_ROOT}" \
     --volume "${V2_RUNTIME_DIR}:${V2_RUNTIME_DIR}" \
-    --volume "${V2_RUNTIME_DIR}/m2:/root/.m2" \
+    --volume "${V2_TEST_M2_DIR}:/root/.m2" \
     --workdir "${V2_ROOT}/backend" \
     "${env_args[@]}" \
     "${V2_MAVEN_IMAGE}" \
-    mvn --batch-mode --no-transfer-progress verify </dev/null
+    mvn --offline --batch-mode --no-transfer-progress verify </dev/null
 
   docker run --rm --network host \
     --volume /var/run/docker.sock:/var/run/docker.sock \
     --volume "${socket_cli}:/usr/local/bin/docker:ro" \
     --volume "${V2_RUNTIME_DIR}:${V2_RUNTIME_DIR}" \
-    --volume "${V2_RUNTIME_DIR}/m2:/root/.m2" \
+    --volume "${V2_TEST_M2_DIR}:/root/.m2" \
     --workdir "${v048_backend}" \
     --env V048_POSTGRES17_ENABLED=true \
     "${V2_MAVEN_IMAGE}" \
-    mvn --batch-mode --no-transfer-progress \
+    mvn --offline --batch-mode --no-transfer-progress \
       "-Dtest=${v048_class##*.}" test </dev/null
   v2_node "scripts/deploy/v2/contract.mjs" critical-report \
     "${list_file}" "${evidence_dir}/critical-results.json" \
@@ -221,13 +222,16 @@ v2_run_backend_tests() {
 }
 
 v2_run_frontend_tests() {
-  docker run --rm \
+  [[ -d "${V2_TEST_NPM_CACHE:?repositorio npm offline ausente}/_cacache" ]] ||
+    v2_die "repositorio npm offline invalido"
+  docker run --rm --network none \
     --volume "${V2_ROOT}:${V2_ROOT}" \
+    --volume "${V2_TEST_NPM_CACHE}:/tmp/npm-cache" \
     --workdir "${V2_ROOT}/frontend" \
     --env HOME=/tmp/pipeline-v2-home \
     --env NEXT_TELEMETRY_DISABLED=1 \
     "${V2_NODE_IMAGE}" /bin/sh -ec '
-      npm ci --cache /tmp/npm-cache
+      npm ci --offline --cache /tmp/npm-cache --no-audit --no-fund
       npm run test:json-ld-security
       npm run test:public-ordering
       npm run test:public-http-states
@@ -247,7 +251,7 @@ v2_run_frontend_tests() {
       node scripts/test-story-video-audio.mjs
       ./node_modules/.bin/tsc --noEmit
       npm run lint
-      rm -rf node_modules /tmp/npm-cache /tmp/pipeline-v2-home
+      rm -rf node_modules /tmp/pipeline-v2-home
     ' </dev/null
   v2_log "FRONTEND_TESTS=OK REBUILD=0"
 }
