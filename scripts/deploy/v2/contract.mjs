@@ -44,6 +44,11 @@ function technicalFiles() {
   ].sort()
 }
 
+function migrationFiles() {
+  return walk(path.join(root, 'backend/src/main/resources/db/migration'),
+    (file) => /^V\d+__.+\.sql$/.test(path.basename(file))).sort()
+}
+
 function assertRegularLfFile(file) {
   const stat = fs.lstatSync(file)
   if (!stat.isFile() || stat.isSymbolicLink()) fail(`arquivo inseguro: ${relative(file)}`)
@@ -76,6 +81,7 @@ function contract() {
   const buildOnceJob = workflowJob(workflow, 'build-once')
   const verifyJob = workflowJob(workflow, 'verify-clean-runner')
   const diagnosticJob = workflowJob(workflow, 'diagnose-gateway-listagem')
+  const candidateJob = workflowJob(workflow, 'candidate-only')
   const runtimeFiles = required.filter((file) => path.basename(file) !== 'contract.mjs')
   const combined = runtimeFiles.map((file) => fs.readFileSync(file, 'utf8')).join('\n')
   const forbiddenLegacy = [
@@ -110,12 +116,10 @@ function contract() {
   for (const forbidden of [
     /ubuntu-latest/,
     /environment:\s*production/,
-    /secrets\./,
-    /\bssh\b/,
-    /\bscp\b/,
-    /\/opt\/topsv3/,
+    /TOPSDOJOB_PROD_/,
+    /TOPSDOJOB_PREPROD_/,
+    /secrets\.(?!TOPSDOJOB_CANDIDATE_)/,
     /C:\\topsv3/i,
-    /IndexNow/i,
     /npm audit/,
     /:\s*latest(?:\s|$)/,
     /(?:backend\.)?topsdojob\.com/i,
@@ -136,6 +140,12 @@ function contract() {
   for (const service of ['backend', 'frontend', 'gateway']) {
     const block = compose.match(new RegExp(`\\n  ${service}:[\\s\\S]*?(?=\\n  [a-z-]+:|\\nnetworks:)`))?.[0] ?? ''
     if (/\n\s+ports:/.test(block)) fail(`${service} nao deve publicar porta no laboratorio`)
+  }
+  if (!compose.includes('INDEXNOW_KEY: ""')
+      || !compose.includes('EFI_WEBHOOK_REGISTRATION_ENABLED: "false"')
+      || !compose.includes('OUTBOX_EMAIL_ENABLED: "false"')
+      || !compose.includes('SPRING_TASK_SCHEDULING_ENABLED: "false"')) {
+    fail('efeitos externos da candidata nao estao neutralizados')
   }
   const prepareLab = controller.indexOf('v2_prepare_lab "${evidence_dir}"')
   const backendTests = controller.indexOf('v2_run_backend_tests "${evidence_dir}"')
@@ -191,7 +201,9 @@ function contract() {
   if (!/dockerfile_inline:\s*\|\n\s*ARG V2_MAVEN_IMAGE\n\s*ARG V2_JRE_IMAGE\n\s*FROM \$\$\{V2_MAVEN_IMAGE\} AS build/.test(compose)) {
     fail('ARGs globais do backend devem preceder o primeiro FROM')
   }
-  if (!/options:\s*\n\s*- verify/.test(workflow)) fail('mode=verify nao e a unica opcao')
+  if (!/options:\s*\n\s*- verify\s*\n\s*- candidate/.test(workflow)) {
+    fail('workflow deve expor somente verify e candidate')
+  }
   if (!/pull_request:\s*\n\s*branches:\s*\n\s*- main/.test(workflow)) {
     fail('workflow novo deve ser verificavel no PR antes de existir na main')
   }
@@ -201,8 +213,8 @@ function contract() {
   if (!modeGuardJob.includes("github.event.pull_request.head.sha || github.sha")) {
     fail('SHA de PR deve vir explicitamente da cabeca do PR')
   }
-  if (/\n\s*- (?:deploy|candidate|switch|rollback)\s*$/m.test(workflow)) {
-    fail('modo mutavel exposto no workflow da Fase 1')
+  if (/\n\s*- (?:deploy|switch|rollback)\s*$/m.test(workflow)) {
+    fail('modo de switch ou deploy continua proibido')
   }
   for (const action of Object.values(lock.actions)) {
     if (!workflow.includes(`uses: ${action}`)) fail(`action pinada ausente: ${action}`)
@@ -218,11 +230,11 @@ function contract() {
   }
   const diagnosticLabel = "contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic')"
   if (modeGuardJob.includes(diagnosticLabel)
-      || /^\s+if:/m.test(buildOnceJob)
+      || !buildOnceJob.includes("needs.mode-guard.outputs.mode == 'verify'")
       || !verifyJob.includes(`!${diagnosticLabel}`)
       || !diagnosticJob.includes(diagnosticLabel)
-      || !diagnosticJob.includes('needs: build-once')) {
-    fail('build-once deve ser comum; diagnostico ignora a matriz e depende diretamente dele')
+      || !diagnosticJob.includes('needs: [mode-guard, build-once]')) {
+    fail('build-once deve permanecer exclusivo de verify e alimentar o diagnostico')
   }
   if (!buildOnceJob.includes('artifact-name: ${{ steps.artifact-identity.outputs.name }}')
       || !buildOnceJob.includes('artifact-id: ${{ steps.release-artifact.outputs.artifact-id }}')
@@ -246,6 +258,70 @@ function contract() {
   if (!diagnosticJob.includes('controller.sh diagnose')
       || diagnosticJob.includes('controller.sh build')) {
     fail('runner diagnostico deve consumir artefato sem rebuild')
+  }
+  for (const required of [
+    'deploy_sha:',
+    'certification_run_id:',
+    'confirmation:',
+    'test "${CONFIRMATION}" = "CANDIDATE_ONLY"',
+    "needs.mode-guard.outputs.mode == 'candidate'",
+    'environment: candidate',
+    'run-id: ${{ needs.mode-guard.outputs.certification-run-id }}',
+    'github-token: ${{ github.token }}',
+    'controller.sh candidate-package',
+    'controller.sh candidate-remote',
+    'TARGET_VERIFIED=production',
+  ]) {
+    if (!workflow.includes(required)) fail(`contrato candidate ausente: ${required}`)
+  }
+  const candidateSecrets = [...candidateJob.matchAll(/secrets\.(TOPSDOJOB_CANDIDATE_[A-Z0-9_]+)/g)]
+    .map((match) => match[1])
+  const expectedCandidateSecrets = new Set([
+    'TOPSDOJOB_CANDIDATE_SSH_HOST',
+    'TOPSDOJOB_CANDIDATE_SSH_PORT',
+    'TOPSDOJOB_CANDIDATE_SSH_USER',
+    'TOPSDOJOB_CANDIDATE_SSH_PRIVATE_KEY',
+    'TOPSDOJOB_CANDIDATE_SSH_HOST_KEY',
+    'TOPSDOJOB_CANDIDATE_TARGET_SHA256',
+  ])
+  if (new Set(candidateSecrets).size !== expectedCandidateSecrets.size
+      || candidateSecrets.some((name) => !expectedCandidateSecrets.has(name))) {
+    fail(`secrets candidate divergentes: ${JSON.stringify([...new Set(candidateSecrets)].sort())}`)
+  }
+  const targetGuard = candidateJob.indexOf('TARGET_VERIFIED=production')
+  const firstUpload = candidateJob.indexOf('scp -4')
+  if (targetGuard < 0 || firstUpload < 0 || targetGuard > firstUpload) {
+    fail('target guard deve preceder qualquer upload candidate')
+  }
+  if (!candidateJob.includes('StrictHostKeyChecking=yes')
+      || !candidateJob.includes('ssh-keyscan -4')
+      || !candidateJob.includes('bash runtime/scripts/deploy/v2/controller.sh candidate-remote')
+      || !candidateJob.includes('</dev/null')) {
+    fail('host key, IPv4 ou stdin fechado ausente no candidate')
+  }
+  if (/nginx\s+-[st]|\/etc\/nginx|proxy_pass|upstream/.test(candidateJob)) {
+    fail('job candidate nao pode alterar ou validar Nginx do host')
+  }
+  const candidateRemote = controller.match(/v2_candidate_remote_mode\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  const candidatePackage = controller.match(/v2_candidate_package_mode\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  if (!candidateRemote.includes('v2_create_readonly_production_backup')
+      || !candidateRemote.includes('v2_prepare_candidate_from_backup')
+      || !candidateRemote.includes('v2_candidate_backfill_isolated')
+      || !candidateRemote.includes('v2_start_candidate_and_gates')
+      || !candidatePackage.includes('v2_create_candidate_payload')) {
+    fail('cadeia isolada da candidata esta incompleta')
+  }
+  if (/v2_build_release_artifact|v2_compose build|nginx\s+-[st]|switch|reload/.test(candidateRemote)
+      || /v2_build_release_artifact|v2_compose build/.test(candidatePackage)) {
+    fail('candidate contem rebuild, switch ou alteracao Nginx')
+  }
+  if (!artifact.includes('manifest-runtime-verify')
+      || !artifact.includes('candidate-metadata-verify')
+      || !artifact.includes('CANDIDATE_ARTIFACT=VERIFIED')
+      || !lab.includes('v2_compose run --rm --no-deps --pull never -T backend')
+      || !lab.includes('REAL_R2_MUTATIONS=0')
+      || !lab.includes('CANDIDATE_SHUTDOWN=GRACEFUL RESIDUALS=0')) {
+    fail('proveniencia, isolamento externo ou cleanup candidate incompleto')
   }
   if (Object.keys(lock.images).length < 10) fail('lock de imagens incompleto')
   for (const [name, image] of Object.entries(lock.images)) {
@@ -273,8 +349,22 @@ function contract() {
 }
 
 function manifestCreate(args) {
-  const [output, gitSha, archive, dependencyArchive, ...imageArgs] = args
+  const [
+    output,
+    gitSha,
+    archive,
+    dependencyArchive,
+    certificationRunId,
+    certificationRunAttempt,
+    certificationArtifactName,
+    ...imageArgs
+  ] = args
   if (!/^[a-f0-9]{40}$/.test(gitSha ?? '')) fail('git SHA invalido para manifesto')
+  if (!/^[1-9][0-9]*$/.test(certificationRunId ?? '')) fail('run de certificacao invalido')
+  if (!/^[1-9][0-9]*$/.test(certificationRunAttempt ?? '')) fail('attempt de certificacao invalido')
+  const expectedArtifactName =
+    `topsdojob-v2-release-${gitSha}-${certificationRunId}-${certificationRunAttempt}`
+  if (certificationArtifactName !== expectedArtifactName) fail('nome do artefato de certificacao invalido')
   if (!fs.statSync(archive).isFile() || fs.statSync(archive).size === 0) fail('TAR vazio')
   if (!fs.statSync(dependencyArchive).isFile() || fs.statSync(dependencyArchive).size === 0) {
     fail('TAR de dependencias vazio')
@@ -288,9 +378,16 @@ function manifestCreate(args) {
     images.push({ name, id })
   }
   const files = Object.fromEntries(technicalFiles().map((file) => [relative(file), sha256(file)]))
+  const migrations = Object.fromEntries(migrationFiles().map((file) => [relative(file), sha256(file)]))
+  if (Object.keys(migrations).length !== 53) fail('manifesto exige exatamente V001-V053')
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     gitSha,
+    certification: {
+      runId: certificationRunId,
+      runAttempt: certificationRunAttempt,
+      artifactName: certificationArtifactName,
+    },
     platform: lock.platform,
     archive: {
       name: path.basename(archive),
@@ -307,35 +404,55 @@ function manifestCreate(args) {
     tools: lock.tools,
     lockedImagesSha256: sha256(lockPath),
     sourceFiles: files,
+    migrations,
     rebuildAllowedInVerify: false,
+    rebuildAllowedOnCandidate: false,
   }
   fs.writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
 }
 
-function manifestVerify(args) {
-  const [bundle, expectedSha] = args
+function verifyManifest(bundle, expectedSha, expectedRunId, requireTestDependencies) {
   const manifestPath = path.join(bundle, 'release-manifest.json')
+  if (!fs.existsSync(manifestPath) || fs.lstatSync(manifestPath).isSymbolicLink()) {
+    fail('manifesto ausente ou symlink')
+  }
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-  if (manifest.schemaVersion !== 1 || manifest.rebuildAllowedInVerify !== false) {
+  if (manifest.schemaVersion !== 2
+      || manifest.rebuildAllowedInVerify !== false
+      || manifest.rebuildAllowedOnCandidate !== false) {
     fail('schema ou politica de rebuild invalida no manifesto')
   }
   if (expectedSha && manifest.gitSha !== expectedSha) fail('SHA do manifesto divergente')
   if (!/^[a-f0-9]{40}$/.test(manifest.gitSha)) fail('SHA do manifesto invalido')
+  if (!/^[1-9][0-9]*$/.test(manifest.certification?.runId ?? '')
+      || !/^[1-9][0-9]*$/.test(manifest.certification?.runAttempt ?? '')) {
+    fail('proveniencia de certificacao invalida')
+  }
+  if (expectedRunId && manifest.certification.runId !== expectedRunId) {
+    fail('run de certificacao divergente')
+  }
+  const expectedArtifactName =
+    `topsdojob-v2-release-${manifest.gitSha}-${manifest.certification.runId}-${manifest.certification.runAttempt}`
+  if (manifest.certification.artifactName !== expectedArtifactName) {
+    fail('identidade do artefato divergente')
+  }
   const archive = path.join(bundle, manifest.archive.name)
   if (!fs.existsSync(archive) || fs.lstatSync(archive).isSymbolicLink()) fail('TAR ausente ou symlink')
   if (sha256(archive) !== manifest.archive.sha256) fail('hash do TAR divergente')
   if (fs.statSync(archive).size !== manifest.archive.bytes) fail('tamanho do TAR divergente')
-  const dependencyArchive = path.join(bundle, manifest.testDependencies?.name ?? '')
-  if (manifest.testDependencies?.offlineValidated !== true
-    || !fs.existsSync(dependencyArchive)
-    || fs.lstatSync(dependencyArchive).isSymbolicLink()) {
-    fail('TAR de dependencias ausente, nao validado ou symlink')
-  }
-  if (sha256(dependencyArchive) !== manifest.testDependencies.sha256) {
-    fail('hash do TAR de dependencias divergente')
-  }
-  if (fs.statSync(dependencyArchive).size !== manifest.testDependencies.bytes) {
-    fail('tamanho do TAR de dependencias divergente')
+  if (requireTestDependencies) {
+    const dependencyArchive = path.join(bundle, manifest.testDependencies?.name ?? '')
+    if (manifest.testDependencies?.offlineValidated !== true
+      || !fs.existsSync(dependencyArchive)
+      || fs.lstatSync(dependencyArchive).isSymbolicLink()) {
+      fail('TAR de dependencias ausente, nao validado ou symlink')
+    }
+    if (sha256(dependencyArchive) !== manifest.testDependencies.sha256) {
+      fail('hash do TAR de dependencias divergente')
+    }
+    if (fs.statSync(dependencyArchive).size !== manifest.testDependencies.bytes) {
+      fail('tamanho do TAR de dependencias divergente')
+    }
   }
   if (sha256(lockPath) !== manifest.lockedImagesSha256) fail('lock diverge do build')
   if (!Array.isArray(manifest.images) || manifest.images.length !== 3) fail('imagens de release invalidas')
@@ -343,7 +460,58 @@ function manifestVerify(args) {
     const absolute = path.join(root, file)
     if (!fs.existsSync(absolute) || sha256(absolute) !== expected) fail(`fonte diverge: ${file}`)
   }
+  const expectedMigrations = Object.fromEntries(
+    migrationFiles().map((file) => [relative(file), sha256(file)]))
+  if (JSON.stringify(manifest.migrations) !== JSON.stringify(expectedMigrations)) {
+    fail('migrations divergem do build certificado')
+  }
   console.log(`MANIFEST_V2=OK sha=${manifest.gitSha} archive=${manifest.archive.sha256}`)
+  return manifest
+}
+
+function manifestVerify(args) {
+  const [bundle, expectedSha, expectedRunId] = args
+  verifyManifest(bundle, expectedSha, expectedRunId, true)
+}
+
+function manifestRuntimeVerify(args) {
+  const [bundle, expectedSha, expectedRunId] = args
+  verifyManifest(bundle, expectedSha, expectedRunId, false)
+}
+
+function candidateMetadataVerify(args) {
+  const [bundle, expectedSha, expectedRunId, artifactName, runFile, artifactsFile, output] = args
+  const manifest = verifyManifest(bundle, expectedSha, expectedRunId, true)
+  const run = JSON.parse(fs.readFileSync(runFile, 'utf8'))
+  const artifacts = JSON.parse(fs.readFileSync(artifactsFile, 'utf8')).artifacts
+  if (String(run.id) !== expectedRunId
+      || run.head_sha !== expectedSha
+      || run.conclusion !== 'success'
+      || run.event !== 'workflow_dispatch'
+      || run.path !== '.github/workflows/pipeline-production-v2.yml') {
+    fail('run informado nao e uma certificacao V2 aprovada para o SHA')
+  }
+  if (artifactName !== manifest.certification.artifactName) {
+    fail('diretorio baixado nao corresponde ao artefato certificado')
+  }
+  if (!Array.isArray(artifacts)) fail('lista de artefatos invalida')
+  const matches = artifacts.filter((artifact) => artifact.name === artifactName)
+  if (matches.length !== 1
+      || !Number.isInteger(matches[0].id)
+      || matches[0].id < 1
+      || matches[0].expired === true) {
+    fail('artefato certificado ausente, ambiguo ou expirado')
+  }
+  fs.writeFileSync(output, [
+    `DEPLOY_SHA=${expectedSha}`,
+    `CERTIFICATION_RUN_ID=${expectedRunId}`,
+    `CERTIFICATION_RUN_ATTEMPT=${manifest.certification.runAttempt}`,
+    `CERTIFIED_ARTIFACT_ID=${matches[0].id}`,
+    `CERTIFIED_ARTIFACT_NAME=${artifactName}`,
+    `CERTIFIED_MANIFEST_SHA256=${sha256(path.join(bundle, 'release-manifest.json'))}`,
+    'REBUILD_ALLOWED=false',
+    '',
+  ].join('\n'), { encoding: 'ascii', mode: 0o600 })
 }
 
 function manifestImages(args) {
@@ -681,6 +849,8 @@ switch (command) {
   case 'contract': contract(); break
   case 'manifest-create': manifestCreate(args); break
   case 'manifest-verify': manifestVerify(args); break
+  case 'manifest-runtime-verify': manifestRuntimeVerify(args); break
+  case 'candidate-metadata-verify': candidateMetadataVerify(args); break
   case 'manifest-images': manifestImages(args); break
   case 'critical-list': criticalList(args); break
   case 'critical-report': criticalReport(args); break

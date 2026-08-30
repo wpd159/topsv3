@@ -5,10 +5,13 @@ Documento central de Specification-Driven Development da V3. Ele consolida o est
 ## Estado canonico do Pipeline Hermetico V2
 
 - A fonte Git canonica para engenharia, auditoria e correcoes futuras e `C:\topsdojob`. `C:\topsv3` permanece apenas como referencia historica e nao e fonte autorizada.
-- A Fase 1 foi concluida sobre o HEAD tecnico `fbb934ec576113711580a619c774e87f2b95e0cf` do PR #24, exclusivamente em modo `verify`, sem acesso a VPS, secrets produtivos, banco produtivo ou R2 real.
-- O build unico e o manifesto certificado foram consumidos por tres runners limpos independentes. O resultado consolidado foi 3/3 runners aprovados, 14/14 gates por runner e `criticalSkipped=0`.
+- O estado Git canonico apos o merge do PR #24 e `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`; o CI pos-merge `33324582326` foi aprovado.
+- A Fase 1 foi concluida exclusivamente em modo `verify`, sem acesso a VPS, secrets produtivos, banco produtivo ou R2 real. O build unico e o manifesto certificado foram consumidos por tres runners limpos independentes, com 3/3 runners aprovados, 14/14 gates por runner e `criticalSkipped=0`.
 - A producao permaneceu inalterada no SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`. O artefato da Fase 1 comprova o laboratorio hermetico, mas nao deve ser reutilizado para candidata ou deploy futuro.
-- O incidente do pipeline permanece aberto. A proxima fase autorizavel e uma candidata real na VPS canonica, sem switch, sob aprovacao separada e com novo artefato certificado.
+- A Fase 2 implementa o modo `candidate`: artefato certificado de SHA/run exatos, target guard antes do upload, candidata e banco isolados, servicos externos locais, 14 gates e cleanup gracioso. Esta implementacao ainda nao foi executada contra a VPS.
+- `switch`, deploy completo e trafego publico continuam sem caminho habilitado no Pipeline V2. A candidata real depende de autorizacao separada.
+- Relatorios anteriores a conclusao da Fase 1 permanecem na linha do tempo como diagnosticos historicos; nao representam o estado operacional atual. Os bloqueios de `ubuntu:24.04`, ausencia de tres runners, ausencia dos 14 gates, `criticalSkipped` diferente de zero e inexistencia do Pipeline V2 estao superados.
+- O incidente do pipeline permanece aberto.
 - Registro formal: [Incidente do Pipeline Hermetico V2](INCIDENTE-pipeline-hermetico-v2-fase1.md).
 
 ## 1. Visao geral

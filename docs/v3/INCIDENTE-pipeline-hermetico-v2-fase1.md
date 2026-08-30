@@ -9,6 +9,8 @@
 - Producao preservada: `4e72be6c7fa0b790230e4ed416497c24843f3dcd`.
 - PR da Fase 1: #24.
 - HEAD tecnico aprovado: `fbb934ec576113711580a619c774e87f2b95e0cf`.
+- Estado Git canonico pos-merge: `9bc083dadeba09f7de9c4d48f94810f7fd6df28f`.
+- CI pos-merge: `33324582326` (`PASS`).
 
 ## Ocorrencia
 
@@ -28,15 +30,23 @@ O PR #24 implementa somente a Fase 1. Ele constroi backend, frontend e gateway u
 - Manifesto: `manifest-verify` aprovado, sem rebuild nos runners de verificacao.
 - Acesso produtivo: zero.
 
+## Classificacao dos relatorios anteriores
+
+Os diagnosticos produzidos antes do fechamento da Fase 1 permanecem preservados como linha do tempo forense pre-Fase 1. Eles nao podem ser usados como retrato operacional atual nem substituir este registro canonico.
+
+Estao superados pela evidencia pos-merge: o bloqueio de `ubuntu:24.04`, a ausencia de tres runners limpos, a falta de execucao dos 14 gates, `criticalSkipped` diferente de zero e a ausencia do Pipeline V2. As falhas e tentativas que levaram a essas correcoes nao foram apagadas.
+
 ## Limites da evidencia
 
 A Fase 1 prova a hermeticidade do laboratorio e a repetibilidade do fluxo `verify`. Ela nao prova candidata real, capacidade da VPS, target guard operacional, backup/restore produtivo, switch Nginx, drenagem ou rollback em producao.
 
 O artefato produzido para o PR #24 e efemero e nao pode ser reutilizado em candidata, switch ou deploy posterior. Cada fase futura deve gerar e certificar seu proprio artefato a partir do SHA expressamente autorizado.
 
-## Proxima fase
+## Fase 2 implementada, nao executada
 
-A Fase 2 depende de autorizacao separada e deve validar uma candidata real na VPS canonica sem switch e sem trafego publico. Somente depois de evidencia aprovada podera existir uma autorizacao independente para a Fase 3, cobrindo switch, smoke, drenagem e rollback.
+O modo `candidate` foi implementado em branch propria para exigir SHA e run de certificacao exatos, validar manifesto/hashes/digests, executar target guard antes do upload, restaurar uma copia read-only do banco em PostgreSQL 17 isolado, usar somente servicos externos locais, executar os mesmos 14 gates e remover a candidata graciosamente.
+
+Essa implementacao nao foi executada contra a VPS e nao constitui evidencia de candidata real. `switch` e deploy completo continuam bloqueados. Uma execucao `candidate` exige autorizacao separada; somente depois de sua evidencia aprovada podera existir uma autorizacao independente para a Fase 3, cobrindo switch, smoke, drenagem e rollback.
 
 ## Criterio de encerramento
 

@@ -536,6 +536,7 @@ v2_mc() {
   docker run --rm --network "${V2_PROJECT_NAME}_lab" \
     --volume "${V2_RUNTIME_DIR}/mc:/root/.mc" \
     --volume "${V2_RUNTIME_DIR}/fixture/objects:/fixtures:ro" \
+    --volume "${V2_RUNTIME_DIR}:/runtime:ro" \
     "${V2_MINIO_CLIENT_IMAGE}" "$@" </dev/null
 }
 
@@ -804,6 +805,204 @@ v2_prepare_lab() {
   v2_log "LAB_PREPARED=OK MINIO=LOOPBACK_TLS POSTGRESQL=17 FLYWAY=53"
 }
 
+v2_create_readonly_production_backup() {
+  local container='topsv3-production-postgres' host_docker database database_user
+  local image_id volume_id state_material backup_partial
+  host_docker="${V2_CANDIDATE_HOST_DOCKER:?Docker externo nao definido}"
+  "${host_docker}" inspect "${container}" >/dev/null
+  [[ "$("${host_docker}" inspect "${container}" --format '{{.State.Running}}')" == "true" ]] ||
+    v2_die "PostgreSQL de origem nao esta em execucao"
+  [[ "$("${host_docker}" inspect "${container}" \
+    --format '{{index .Config.Labels "com.docker.compose.project"}}')" == "topsv3-production" ]] ||
+    v2_die "container PostgreSQL nao pertence ao projeto esperado"
+  database="$("${host_docker}" inspect "${container}" --format '{{range .Config.Env}}{{println .}}{{end}}' |
+    sed -n 's/^POSTGRES_DB=//p')"
+  database_user="$("${host_docker}" inspect "${container}" --format '{{range .Config.Env}}{{println .}}{{end}}' |
+    sed -n 's/^POSTGRES_USER=//p')"
+  [[ "${database}" =~ ^[A-Za-z0-9_]+$ && "${database_user}" =~ ^[A-Za-z0-9_]+$ ]] ||
+    v2_die "identidade interna do banco invalida"
+  [[ "$("${host_docker}" exec "${container}" postgres --version)" == *' 17.'* ]] ||
+    v2_die "PostgreSQL de origem nao esta na major 17"
+
+  image_id="$("${host_docker}" inspect "${container}" --format '{{.Image}}')"
+  volume_id="$("${host_docker}" inspect "${container}" \
+    --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
+  state_material="$("${host_docker}" inspect "${container}" \
+    --format '{{.Id}}|{{.State.StartedAt}}|{{.Image}}')|${volume_id}"
+  export V2_PRODUCTION_CONTAINER_STATE_SHA
+  V2_PRODUCTION_CONTAINER_STATE_SHA="$(printf '%s' "${state_material}" | sha256sum | cut -d' ' -f1)"
+  export V2_PRODUCTION_BACKUP_FILE="${RUNNER_TEMP}/production-readonly.dump"
+  backup_partial="${V2_PRODUCTION_BACKUP_FILE}.partial"
+  rm -f -- "${backup_partial}" "${V2_PRODUCTION_BACKUP_FILE}"
+  "${host_docker}" exec "${container}" pg_dump \
+    --format=custom --compress=6 --no-owner --no-privileges \
+    --username "${database_user}" --dbname "${database}" > "${backup_partial}"
+  [[ -s "${backup_partial}" ]] || v2_die "backup read-only vazio"
+  chmod 0600 "${backup_partial}"
+  "${host_docker}" run --rm --network none \
+    --volume "${backup_partial}:/candidate-backup.dump:ro" \
+    "${image_id}" pg_restore --list /candidate-backup.dump </dev/null >/dev/null
+  mv -- "${backup_partial}" "${V2_PRODUCTION_BACKUP_FILE}"
+  export V2_PRODUCTION_BACKUP_SHA
+  V2_PRODUCTION_BACKUP_SHA="$(v2_sha256 "${V2_PRODUCTION_BACKUP_FILE}")"
+  v2_log "READONLY_BACKUP=VALIDATED bytes=$(stat -c %s "${V2_PRODUCTION_BACKUP_FILE}")"
+}
+
+v2_verify_production_container_unchanged() {
+  local host_docker container='topsv3-production-postgres' volume_id state_material current_sha
+  host_docker="${V2_CANDIDATE_HOST_DOCKER:?Docker externo nao definido}"
+  volume_id="$("${host_docker}" inspect "${container}" \
+    --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
+  state_material="$("${host_docker}" inspect "${container}" \
+    --format '{{.Id}}|{{.State.StartedAt}}|{{.Image}}')|${volume_id}"
+  current_sha="$(printf '%s' "${state_material}" | sha256sum | cut -d' ' -f1)"
+  [[ "${current_sha}" == "${V2_PRODUCTION_CONTAINER_STATE_SHA:?estado inicial ausente}" ]] ||
+    v2_die "release produtiva mudou durante candidate"
+  [[ "$("${host_docker}" inspect "${container}" --format '{{.State.Running}}')" == "true" ]] ||
+    v2_die "PostgreSQL produtivo deixou de executar"
+  v2_log "PRODUCTION_STATE=UNCHANGED"
+}
+
+v2_seed_candidate_storage_from_persisted_state() {
+  local key_file placeholder key object_count persisted_count
+  key_file="${V2_RUNTIME_DIR}/persisted-preview-keys.txt"
+  placeholder="${V2_RUNTIME_DIR}/candidate-preview-placeholder.bin"
+  printf '%s\n' 'candidate-local-inventory-placeholder' > "${placeholder}"
+  chmod 0600 "${placeholder}"
+  v2_psql --tuples-only --no-align --command \
+    "SELECT preview_restrito_chave FROM arquivo_midia WHERE preview_restrito_status='DISPONIVEL' AND preview_restrito_chave IS NOT NULL ORDER BY preview_restrito_chave;" \
+    > "${key_file}"
+  chmod 0600 "${key_file}"
+  persisted_count=0
+  while IFS= read -r key; do
+    [[ -n "${key}" ]] || continue
+    [[ "${key}" == hml/midias-aprovadas/restritas-borradas/v1/* ]]
+    [[ "${key}" != *'..'* && "${key}" != /* && "${key}" != *$'\n'* ]]
+    v2_mc --insecure cp /runtime/candidate-preview-placeholder.bin \
+      "local/topsdojob-v2-public/${key}" >/dev/null
+    persisted_count=$((persisted_count + 1))
+  done < "${key_file}"
+  [[ "${persisted_count}" -ge 1 ]] || v2_die "backup nao possui preview persistido elegivel"
+  object_count="$(v2_mc --insecure find \
+    local/topsdojob-v2-public/hml/midias-aprovadas/restritas-borradas/v1 \
+    --name '*.jpg' | wc -l | tr -d '[:space:]')"
+  [[ "${object_count}" == "${persisted_count}" ]] ||
+    v2_die "inventario local nao corresponde ao estado persistido"
+  export V2_OBJECT_COUNT_BEFORE="${object_count}"
+  v2_log "LOCAL_OBJECT_STORAGE=SEEDED_FROM_PERSISTED_STATE objects=${object_count} real_r2=0"
+}
+
+v2_prepare_candidate_from_backup() {
+  local postgres
+  [[ -s "${V2_PRODUCTION_BACKUP_FILE:?backup isolado ausente}" ]]
+  mkdir -m 0700 -p -- "${V2_RUNTIME_DIR}/fixture/objects" \
+    "${V2_RUNTIME_DIR}/reports" "${V2_RUNTIME_DIR}/mc"
+  v2_generate_tls
+  v2_compose up -d --no-build postgres minio mailpit efi-stub
+  v2_wait_postgres || v2_die "PostgreSQL 17 isolado nao ficou pronto"
+  v2_wait_minio || v2_die "Object storage local nao ficou pronto"
+  v2_wait_local_dependencies
+  postgres="$(v2_lab_container postgres)"
+  docker cp "${V2_PRODUCTION_BACKUP_FILE}" "${postgres}:/tmp/candidate-backup.dump"
+  docker exec "${postgres}" pg_restore --exit-on-error --no-owner --no-privileges \
+    --username topsdojob_v2 --dbname topsdojob_v2 \
+    /tmp/candidate-backup.dump </dev/null >/dev/null
+  docker exec "${postgres}" rm -- /tmp/candidate-backup.dump </dev/null
+  [[ "$(v2_psql --tuples-only --no-align --command \
+    "SELECT max(version::int) FROM flyway_schema_history WHERE success AND version ~ '^[0-9]+$';" |
+    tr -d '[:space:]')" == "53" ]]
+  [[ "$(v2_psql --tuples-only --no-align --command \
+    'SELECT count(*) FROM flyway_schema_history WHERE NOT success;' | tr -d '[:space:]')" == "0" ]]
+  for bucket in topsdojob-v2-public topsdojob-v2-private topsdojob-v2-documents; do
+    v2_mc --insecure mb --ignore-existing "local/${bucket}" >/dev/null
+  done
+  v2_mc --insecure anonymous set download local/topsdojob-v2-public >/dev/null
+  v2_seed_candidate_storage_from_persisted_state
+  export V2_LOCAL_MINIO_ENDPOINT="$(v2_minio_host_endpoint)"
+  v2_log "CANDIDATE_DATABASE=RESTORED_ISOLATED POSTGRESQL=17 FLYWAY=53"
+}
+
+v2_backfill_result_value() {
+  local file="$1" key="$2" value
+  value="$(grep '^RESTRICTED_MEDIA_PREVIEW_RECONCILIATION_RESULT ' "${file}" |
+    tail -1 | tr ' ' '\n' | sed -n "s/^${key}=//p" | tail -1)"
+  [[ "${value}" =~ ^[0-9]+$ ]] || v2_die "metrica ausente no backfill isolado: ${key}"
+  printf '%s\n' "${value}"
+}
+
+v2_run_candidate_backfill_mode() {
+  local mode="$1" output="$2" confirm=false raw rc
+  [[ "${mode}" != APPLY ]] || confirm=true
+  raw="${output}.raw"
+  docker image inspect "${V2_BACKEND_IMAGE}" >/dev/null
+  set +e
+  v2_compose run --rm --no-deps --pull never -T backend \
+    --app.bootstrap=restricted-media-preview-backfill \
+    --spring.main.web-application-type=none \
+    --spring.main.banner-mode=off \
+    --logging.level.root=WARN \
+    --app.restricted-media-preview-reconciliation.enabled=true \
+    --app.restricted-media-preview-reconciliation.mode="${mode}" \
+    --app.restricted-media-preview-reconciliation.apply-confirmed="${confirm}" \
+    --app.restricted-media-preview-reconciliation.batch-size=200 \
+    --app.restricted-media-preview-reconciliation.report-path="/reports/candidate-${mode,,}.tsv" \
+    </dev/null > "${raw}" 2>&1
+  rc=$?
+  set -e
+  v2_sanitize_diagnostic_stream < "${raw}" | tee "${output}"
+  rm -f -- "${raw}"
+  [[ "${rc}" -eq 0 ]] || return "${rc}"
+  grep -q '^RESTRICTED_MEDIA_PREVIEW_RECONCILIATION_RESULT ' "${output}"
+}
+
+v2_candidate_backfill_isolated() {
+  local full_before full_after_plan stable_before stable_after eligible object_count_after
+  local plan="${V2_RUNTIME_DIR}/reports/backfill-plan.log"
+  local apply="${V2_RUNTIME_DIR}/reports/backfill-apply.log"
+  local second="${V2_RUNTIME_DIR}/reports/backfill-second.log"
+  full_before="$(v2_psql --tuples-only --no-align --command \
+    "SELECT md5(COALESCE(string_agg(md5(to_jsonb(a)::text),'' ORDER BY id::text),'')) FROM arquivo_midia a;" |
+    tr -d '[:space:]')"
+  stable_before="$(v2_psql --tuples-only --no-align --command \
+    "SELECT md5(COALESCE(string_agg(md5((to_jsonb(a)-ARRAY['preview_restrito_tipo','preview_restrito_chave','preview_restrito_pipeline_versao','preview_restrito_status','preview_restrito_confirmado_em'])::text),'' ORDER BY id::text),'')) FROM arquivo_midia a;" |
+    tr -d '[:space:]')"
+  v2_run_candidate_backfill_mode PLAN "${plan}"
+  for metric in missing inconsistent unproven db_updated; do
+    [[ "$(v2_backfill_result_value "${plan}" "${metric}")" == "0" ]]
+  done
+  full_after_plan="$(v2_psql --tuples-only --no-align --command \
+    "SELECT md5(COALESCE(string_agg(md5(to_jsonb(a)::text),'' ORDER BY id::text),'')) FROM arquivo_midia a;" |
+    tr -d '[:space:]')"
+  [[ "${full_after_plan}" == "${full_before}" ]] || v2_die "PLAN alterou o banco isolado"
+
+  eligible="$(v2_backfill_result_value "${plan}" eligible)"
+  [[ "${eligible}" == "$(v2_backfill_result_value "${plan}" r2_available)" ]]
+  v2_run_candidate_backfill_mode APPLY "${apply}"
+  for metric in missing inconsistent unproven db_unknown db_pending db_inconsistent; do
+    [[ "$(v2_backfill_result_value "${apply}" "${metric}")" == "0" ]]
+  done
+  [[ "$(v2_backfill_result_value "${apply}" db_available)" == "${eligible}" ]]
+  v2_run_candidate_backfill_mode APPLY "${second}"
+  [[ "$(v2_backfill_result_value "${second}" db_updated)" == "0" ]]
+  for metric in missing inconsistent unproven db_unknown db_pending db_inconsistent; do
+    [[ "$(v2_backfill_result_value "${second}" "${metric}")" == "0" ]]
+  done
+  stable_after="$(v2_psql --tuples-only --no-align --command \
+    "SELECT md5(COALESCE(string_agg(md5((to_jsonb(a)-ARRAY['preview_restrito_tipo','preview_restrito_chave','preview_restrito_pipeline_versao','preview_restrito_status','preview_restrito_confirmado_em'])::text),'' ORDER BY id::text),'')) FROM arquivo_midia a;" |
+    tr -d '[:space:]')"
+  [[ "${stable_after}" == "${stable_before}" ]] ||
+    v2_die "APPLY alterou colunas fora do preview no banco isolado"
+  object_count_after="$(v2_mc --insecure find \
+    local/topsdojob-v2-public/hml/midias-aprovadas/restritas-borradas/v1 \
+    --name '*.jpg' | wc -l | tr -d '[:space:]')"
+  [[ "${object_count_after}" == "${V2_OBJECT_COUNT_BEFORE}" ]] ||
+    v2_die "backfill alterou o object storage local"
+  export V2_CANDIDATE_BACKFILL_ELIGIBLE="${eligible}"
+  export V2_CANDIDATE_BACKFILL_UPDATED
+  V2_CANDIDATE_BACKFILL_UPDATED="$(v2_backfill_result_value "${apply}" db_updated)"
+  v2_log "CANDIDATE_BACKFILL PLAN=OK APPLY=${V2_CANDIDATE_BACKFILL_UPDATED} SECOND=0 REAL_R2_MUTATIONS=0"
+}
+
 v2_run_backfill_mode() {
   local mode="$1" output="$2" confirm="false"
   [[ "${mode}" != "APPLY" ]] || confirm="true"
@@ -1050,6 +1249,112 @@ v2_start_candidate_and_gates() {
   v2_candidate_gate candidate_logs v2_logs_gate
   [[ "${V2_GATE_COUNT}" -eq 14 ]] || v2_die "candidate gates incompletos: ${V2_GATE_COUNT}/14"
   v2_log "CANDIDATE_GATES=14/14"
+}
+
+v2_collect_remote_candidate_evidence() {
+  local evidence_dir="$1" outcome="$2" exit_code="$3" service container
+  mkdir -m 0700 -p -- "${evidence_dir}"
+  if [[ -d "${V2_CANDIDATE_BUNDLE_DIR:-}" ]]; then
+    cp -- "${V2_CANDIDATE_BUNDLE_DIR}/release-manifest.json" \
+      "${V2_CANDIDATE_BUNDLE_DIR}/release-manifest.sha256" "${evidence_dir}/"
+  fi
+  for service in postgres minio mailpit efi-stub backend frontend gateway; do
+    container="$(v2_lab_container "${service}" 2>/dev/null || true)"
+    [[ -n "${container}" ]] || continue
+    docker inspect "${container}" --format \
+      '{"service":"{{index .Config.Labels "com.docker.compose.service"}}","running":{{.State.Running}},"status":"{{.State.Status}}","exitCode":{{.State.ExitCode}},"restartCount":{{.RestartCount}},"health":"{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}"}' \
+      > "${evidence_dir}/${service}-state.json" 2>/dev/null || true
+    docker logs --tail 200 "${container}" 2>&1 |
+      v2_sanitize_diagnostic_stream > "${evidence_dir}/${service}-logs.txt" || true
+  done
+  printf '%s\n' \
+    "outcome=${outcome}" \
+    "exit_code=${exit_code}" \
+    "candidate_gates=${V2_CANDIDATE_GATE_RESULT:-not-completed}" \
+    "failed_gate=${V2_DIAGNOSTIC_FAILED_GATE:-none}" \
+    'production_access=backup-read-only' \
+    'production_mutations=0' \
+    'real_r2_mutations=0' \
+    'real_efi_calls=0' \
+    'real_smtp_deliveries=0' \
+    'indexnow_calls=0' \
+    'nginx_host_changes=0' \
+    'public_switch=0' \
+    > "${evidence_dir}/candidate-result.txt"
+  find "${evidence_dir}" -type f -exec chmod 0600 {} +
+}
+
+v2_graceful_candidate_cleanup() {
+  local service container attempt all_stopped resources
+  local -a containers=()
+  resources="$(docker ps -aq --filter "label=com.docker.compose.project=${V2_PROJECT_NAME}";
+    docker network ls -q --filter "label=com.docker.compose.project=${V2_PROJECT_NAME}";
+    docker volume ls -q --filter "label=com.docker.compose.project=${V2_PROJECT_NAME}")"
+  if [[ -z "${resources}" ]]; then
+    v2_log "CANDIDATE_SHUTDOWN=GRACEFUL RESIDUALS=0"
+    return 0
+  fi
+  for service in gateway frontend backend efi-stub mailpit minio postgres; do
+    container="$(docker ps -aq \
+      --filter "label=com.docker.compose.project=${V2_PROJECT_NAME}" \
+      --filter "label=com.docker.compose.service=${service}" | head -n 1)"
+    [[ -n "${container}" ]] || continue
+    containers+=("${container}")
+  done
+  for container in "${containers[@]}"; do
+    if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null)" == "true" ]]; then
+      docker kill --signal=TERM "${container}" >/dev/null || return 1
+    fi
+  done
+  for attempt in $(seq 1 300); do
+    all_stopped=true
+    for container in "${containers[@]}"; do
+      if [[ "$(docker inspect "${container}" --format '{{.State.Running}}' 2>/dev/null)" == "true" ]]; then
+        all_stopped=false
+        break
+      fi
+    done
+    [[ "${all_stopped}" == true ]] && break
+    sleep 1
+  done
+  [[ "${all_stopped:-true}" == true ]] || return 1
+  v2_compose down --volumes --remove-orphans --timeout 1 >/dev/null
+  v2_assert_no_resources
+  v2_log "CANDIDATE_SHUTDOWN=GRACEFUL RESIDUALS=0"
+}
+
+v2_finalize_candidate_evidence() {
+  local evidence_dir="$1" evidence_tar="$2" outcome="$3" exit_code="$4"
+  local manifest_sha
+  manifest_sha="$(v2_sha256 "${evidence_dir}/release-manifest.json")"
+  printf '%s\n' \
+    '{' \
+    '  "schemaVersion": 1,' \
+    "  \"deploySha\": \"${V2_CANDIDATE_SOURCE_SHA}\"," \
+    "  \"certificationRunId\": \"${V2_CANDIDATE_CERTIFICATION_RUN_ID}\"," \
+    "  \"certifiedArtifactId\": \"${V2_CANDIDATE_ARTIFACT_ID}\"," \
+    "  \"candidateRunId\": \"${V2_CANDIDATE_RUN_ID}\"," \
+    "  \"manifestSha256\": \"${manifest_sha}\"," \
+    "  \"result\": \"${outcome}\"," \
+    "  \"exitCode\": ${exit_code}," \
+    "  \"candidateGates\": \"${V2_CANDIDATE_GATE_RESULT:-not-completed}\"," \
+    "  \"backfillEligible\": \"${V2_CANDIDATE_BACKFILL_ELIGIBLE:-not-completed}\"," \
+    "  \"backfillUpdated\": \"${V2_CANDIDATE_BACKFILL_UPDATED:-not-completed}\"," \
+    '  "externalEffects": 0,' \
+    '  "productionMutations": 0,' \
+    '  "nginxHostChanges": 0,' \
+    '  "publicSwitch": 0,' \
+    "  \"resourcesResidual\": ${V2_CANDIDATE_RESIDUALS:-1}" \
+    '}' > "${evidence_dir}/candidate-certification.json"
+  (
+    cd -- "${evidence_dir}"
+    find . -type f ! -name checksums.sha256 -print0 |
+      sort -z | xargs -0 sha256sum > checksums.sha256
+  )
+  find "${evidence_dir}" -type f -exec chmod 0600 {} +
+  tar --sort=name --mtime='UTC 2026-08-30' --owner=0 --group=0 \
+    --numeric-owner -cf "${evidence_tar}" -C "${evidence_dir}" .
+  chmod 0600 "${evidence_tar}"
 }
 
 v2_port_occupied_contract() {

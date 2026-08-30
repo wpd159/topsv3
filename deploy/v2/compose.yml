@@ -190,6 +190,8 @@ services:
       NEXT_PUBLIC_FORCE_HTTPS: "false"
       NEXT_PUBLIC_EFI_PIX_ENABLED: "false"
       SEARCH_INDEXING_MODE: blocked
+      INDEXNOW_KEY: ""
+      INDEXNOW_SITE_URL: http://gateway:8080
     networks: [lab]
 
   gateway:

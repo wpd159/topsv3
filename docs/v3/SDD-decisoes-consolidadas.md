@@ -5,10 +5,13 @@ Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuro
 ## Pipeline Hermetico V2 e fonte canonica
 
 - `C:\topsdojob` e a unica fonte autorizada para engenharia, auditoria e futuras correcoes. `C:\topsv3` fica classificado como historico e nao pode originar novas mudancas.
-- A Fase 1 do Pipeline Hermetico V2 termina no PR #24 com 3/3 runners limpos, 14/14 gates por runner e `criticalSkipped=0`, usando um unico artefato certificado pelo manifesto.
-- O modo desta fase e somente `verify`; modos mutaveis, secrets produtivos, VPS, candidata, switch e deploy permanecem bloqueados.
+- A Fase 1 do Pipeline Hermetico V2 terminou no PR #24, mesclado em `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, com CI pos-merge `33324582326`, 3/3 runners limpos, 14/14 gates por runner e `criticalSkipped=0`.
+- `verify` continua sendo a certificacao hermetica. A Fase 2 acrescenta somente `candidate`, que exige `deploy_sha`, `certification_run_id` e `CANDIDATE_ONLY`, consome artefato certificado sem rebuild e nao possui switch ou deploy completo.
+- A execucao futura de `candidate` usa ambiente e credenciais de escopo proprio, target guard antes do upload, copia read-only do banco restaurada em PostgreSQL 17 isolado e apenas MinIO, SMTP e Efi locais. Nenhum secret produtivo da aplicacao e carregado.
+- A implementacao da Fase 2 nao autoriza nem comprova uma candidata real; essa execucao depende de nova autorizacao expressa.
 - A producao nao foi alterada e permanece no SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`.
-- O incidente nao esta encerrado. A Fase 2 deve validar uma candidata real sem switch, com novo artefato e autorizacao expressa; o artefato do PR #24 nao e promovivel.
+- Os relatorios forenses anteriores ao fechamento da Fase 1 sao evidencias historicas, nao estado atual. Suas falhas permanecem na cronologia, mas os bloqueios ja vencidos nao podem ser reabertos sem nova evidencia.
+- O incidente nao esta encerrado. A proxima evidencia operacional continua sendo uma candidata real sem switch, com novo artefato e autorizacao expressa; o artefato do PR #24 nao e promovivel.
 - Decisao e evidencias: [Incidente do Pipeline Hermetico V2](INCIDENTE-pipeline-hermetico-v2-fase1.md).
 
 ## Local primeiro
