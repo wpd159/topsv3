@@ -118,6 +118,10 @@ function contract() {
   if (!/minio:[\s\S]*?ports:\s*\n\s*- "127\.0\.0\.1:19000:9000"/.test(compose)) {
     fail('MinIO sintetico deve ser publicado na porta fixa do daemon isolado')
   }
+  if ((compose.match(/networks: \[lab, host-access\]/g) ?? []).length !== 1 ||
+      !/\n  host-access:\s*\n    driver: bridge/.test(compose)) {
+    fail('somente o MinIO deve usar a bridge local de publicacao')
+  }
   for (const service of ['backend', 'frontend', 'gateway']) {
     const block = compose.match(new RegExp(`\\n  ${service}:[\\s\\S]*?(?=\\n  [a-z-]+:|\\nnetworks:)`))?.[0] ?? ''
     if (/\n\s+ports:/.test(block)) fail(`${service} nao deve publicar porta no laboratorio`)

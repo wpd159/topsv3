@@ -38,7 +38,8 @@ services:
       - ${V2_RUNTIME_DIR:?V2_RUNTIME_DIR obrigatoria}/certs/minio:/root/.minio/certs:ro
     ports:
       - "127.0.0.1:19000:9000"
-    networks: [lab]
+    # Docker 29 nao publica portas de containers ligados apenas a rede internal.
+    networks: [lab, host-access]
 
   mailpit:
     image: ${V2_MAILPIT_IMAGE:?V2_MAILPIT_IMAGE obrigatoria}
@@ -223,6 +224,8 @@ services:
 networks:
   lab:
     internal: true
+  host-access:
+    driver: bridge
 
 volumes:
   postgres-data:
