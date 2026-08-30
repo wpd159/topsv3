@@ -274,7 +274,8 @@ class AnuncianteConcorrenciaPostgres17IntegrationTest {
                     null);
         });
         when(atualizacaoValidator.slugify("Cidade QA")).thenReturn("cidade-qa");
-        when(atualizacaoValidator.textoBusca(any())).thenReturn("documento de busca qa");
+        when(atualizacaoValidator.textoBusca(any(DadosAtualizacao.class), nullable(String.class)))
+                .thenReturn("documento de busca qa");
         seedLocalidade();
 
         var executor = Executors.newFixedThreadPool(5);
