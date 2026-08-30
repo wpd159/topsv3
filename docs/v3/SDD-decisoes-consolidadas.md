@@ -2,6 +2,15 @@
 
 Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuros reabram regras sem necessidade.
 
+## Pipeline Hermetico V2 e fonte canonica
+
+- `C:\topsdojob` e a unica fonte autorizada para engenharia, auditoria e futuras correcoes. `C:\topsv3` fica classificado como historico e nao pode originar novas mudancas.
+- A Fase 1 do Pipeline Hermetico V2 termina no PR #24 com 3/3 runners limpos, 14/14 gates por runner e `criticalSkipped=0`, usando um unico artefato certificado pelo manifesto.
+- O modo desta fase e somente `verify`; modos mutaveis, secrets produtivos, VPS, candidata, switch e deploy permanecem bloqueados.
+- A producao nao foi alterada e permanece no SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`.
+- O incidente nao esta encerrado. A Fase 2 deve validar uma candidata real sem switch, com novo artefato e autorizacao expressa; o artefato do PR #24 nao e promovivel.
+- Decisao e evidencias: [Incidente do Pipeline Hermetico V2](INCIDENTE-pipeline-hermetico-v2-fase1.md).
+
 ## Local primeiro
 
 - Desenvolvimento, build, validacao e evidencias acontecem localmente.

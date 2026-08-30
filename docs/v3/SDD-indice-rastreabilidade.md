@@ -8,6 +8,7 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Decisoes consolidadas: `docs/v3/SDD-decisoes-consolidadas.md`
 - Pendencias e gates: `docs/v3/SDD-pendencias-gates.md`
 - Plano de fases: `docs/v3/11-plano-execucao-fases.md`
+- Pipeline Hermetico V2 e incidente aberto: [registro formal](INCIDENTE-pipeline-hermetico-v2-fase1.md)
 
 ## Arquitetura local
 
