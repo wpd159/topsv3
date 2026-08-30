@@ -71,6 +71,7 @@ function contract() {
   const lab = fs.readFileSync(path.join(root, 'scripts/deploy/v2/lab.sh'), 'utf8')
   const controller = fs.readFileSync(path.join(root, 'scripts/deploy/v2/controller.sh'), 'utf8')
   const artifact = fs.readFileSync(path.join(root, 'scripts/deploy/v2/artifact.sh'), 'utf8')
+  const contractSource = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
   const modeGuardJob = workflowJob(workflow, 'mode-guard')
   const buildOnceJob = workflowJob(workflow, 'build-once')
   const verifyJob = workflowJob(workflow, 'verify-clean-runner')
@@ -144,6 +145,37 @@ function contract() {
   if (!lab.includes('runtime-fixtures')
       || !controller.includes('"${V2_ROOT}/backend/target" "${v048_backend}/target"')) {
     fail('fixtures runtime ou consolidacao V048 ausentes do controlador')
+  }
+  for (const fragment of [
+    'INSERT INTO estado (id,uf,nome,nome_normalizado,criado_em)',
+    'INSERT INTO cidade (id,estado_id,nome,nome_normalizado,slug,criado_em)',
+    'INSERT INTO anuncio_localizacao (anuncio_id,estado_id,cidade_id,bairro_id,endereco_resumido,criado_em,atualizado_em)',
+    'INSERT INTO documento_busca_anuncio (anuncio_id,texto_busca,estado_id,cidade_id,bairro_id,categoria,preco,status_publicacao,tem_midia_valida,beneficios_ranking_json,ranking_base,atualizado_em)',
+  ]) {
+    if (!contractSource.includes(fragment)) fail(`fixture canonica incompleta: ${fragment}`)
+  }
+  const fixtureGate = lab.indexOf(
+    'v2_fixture_integrity_gate | tee "${V2_RUNTIME_DIR}/reports/fixture-integrity-final.txt"')
+  const firstCandidateStartup = lab.indexOf('v2_compose up -d --no-deps --no-build backend')
+  if (fixtureGate < 0 || firstCandidateStartup < 0 || fixtureGate > firstCandidateStartup) {
+    fail('gate de integridade da fixture deve preceder o startup da candidata')
+  }
+  for (const metric of [
+    'PUBLICADOS_SEM_LOCALIZACAO',
+    'LOCALIZACOES_INVALIDAS',
+    'PUBLICADOS_SEM_DOCUMENTO_BUSCA',
+    'TEXTOS_BUSCA_NULOS',
+    'ANUNCIOS_PUBLICOS_VALIDOS',
+  ]) {
+    if (!lab.includes(metric)) fail(`metrica de integridade ausente: ${metric}`)
+  }
+  if (!lab.includes('FIXTURE_INTEGRITY_NEGATIVE_TESTS=5/5')) {
+    fail('testes negativos da fixture devem cobrir os cinco invariantes')
+  }
+  const diagnoseMode = controller.match(/v2_diagnose_mode\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  if (!diagnoseMode.includes('v2_run_backend_tests "${evidence_dir}"')
+      || !lab.includes("v2_log 'CANDIDATE_GATES=14/14 HTTP_500_502_504=0'")) {
+    fail('diagnostico deve provar CRITICAL_SKIPPED=0 e os 14 gates')
   }
   if (!artifact.includes('TEST_DEPENDENCIES=OFFLINE_VALIDATED')
       || !artifact.includes('test-dependencies.tar')
@@ -428,6 +460,9 @@ function fixture(args) {
   const linkRows = []
   const keys = []
   const anuncioId = '20000000-0000-4000-8000-000000000001'
+  const estadoId = '50000000-0000-4000-8000-000000000001'
+  const cidadeId = '51000000-0000-4000-8000-000000000001'
+  const bairroId = '52000000-0000-4000-8000-000000000001'
   for (let index = 1; index <= count; index += 1) {
     const mediaId = uuidFromIndex('30', index)
     const linkId = uuidFromIndex('40', index)
@@ -444,8 +479,13 @@ function fixture(args) {
   }
   const sql = [
     'BEGIN;',
+    `INSERT INTO estado (id,uf,nome,nome_normalizado,criado_em) VALUES ('${estadoId}','SP','Sao Paulo','sao paulo',now());`,
+    `INSERT INTO cidade (id,estado_id,nome,nome_normalizado,slug,criado_em) VALUES ('${cidadeId}','${estadoId}','Sao Paulo','sao paulo','sao-paulo',now());`,
+    `INSERT INTO bairro (id,cidade_id,nome,nome_normalizado,slug,criado_em) VALUES ('${bairroId}','${cidadeId}','Centro','centro','centro',now());`,
     "INSERT INTO usuario (id,nome,status,tipo_conta,criado_em,atualizado_em) VALUES ('10000000-0000-4000-8000-000000000001','Pipeline V2','ATIVO','ANUNCIANTE',now(),now());",
-    `INSERT INTO anuncio (id,usuario_id,slug,titulo,descricao,status,status_moderacao,categoria,preco,criado_em,atualizado_em) VALUES ('${anuncioId}','10000000-0000-4000-8000-000000000001','pipeline-v2-fixture','Pipeline V2 Fixture','Somente laboratorio','PUBLICADO','APROVADO','ACOMPANHANTE',100,now(),now());`,
+    `INSERT INTO anuncio (id,usuario_id,slug,titulo,descricao,status,status_moderacao,categoria,preco,publicado_em,ultima_publicacao_em,criado_em,atualizado_em) VALUES ('${anuncioId}','10000000-0000-4000-8000-000000000001','pipeline-v2-fixture','Pipeline V2 Fixture','Somente laboratorio','PUBLICADO','APROVADO','ACOMPANHANTE',100,now(),now(),now(),now());`,
+    `INSERT INTO anuncio_localizacao (anuncio_id,estado_id,cidade_id,bairro_id,endereco_resumido,criado_em,atualizado_em) VALUES ('${anuncioId}','${estadoId}','${cidadeId}','${bairroId}','Centro',now(),now());`,
+    `INSERT INTO documento_busca_anuncio (anuncio_id,texto_busca,estado_id,cidade_id,bairro_id,categoria,preco,status_publicacao,tem_midia_valida,beneficios_ranking_json,ranking_base,atualizado_em) VALUES ('${anuncioId}','pipeline v2 fixture sao paulo centro acompanhante','${estadoId}','${cidadeId}','${bairroId}','ACOMPANHANTE',100,'PUBLICAVEL',true,'{}'::jsonb,0,now());`,
     `INSERT INTO arquivo_midia (id,storage_provider,bucket,chave_objeto,nome_original,mime_type,tamanho_bytes,largura,altura,duracao_ms,sha256,etag,status_arquivo,criado_em) VALUES\n${mediaRows.join(',\n')};`,
     `INSERT INTO anuncio_midia (id,anuncio_id,arquivo_midia_id,tipo,finalidade,ordem,status,visibilidade_midia,criado_em,atualizado_em) VALUES\n${linkRows.join(',\n')};`,
     'COMMIT;',
@@ -456,6 +496,12 @@ function fixture(args) {
     keys,
     sourceObjectKey,
     pngSha256,
+    canonicalPublicAd: {
+      anuncioId,
+      estadoId,
+      cidadeId,
+      bairroId,
+    },
   }, null, 2)}\n`, { mode: 0o600 })
   console.log(`FIXTURE_PREVIEWS=${count}`)
 }

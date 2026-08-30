@@ -374,6 +374,7 @@ v2_diagnose_mode() {
   chmod 0600 "${evidence_dir}"/*
 
   v2_prepare_lab "${evidence_dir}"
+  v2_run_backend_tests "${evidence_dir}"
   v2_backfill_contract
   if v2_diagnose_gateway_listagem "${evidence_dir}"; then
     diagnostic_rc=0
@@ -388,6 +389,7 @@ v2_diagnose_mode() {
   V2_CLEANUP_ACTIVE=0
   printf '%s\n' \
     "diagnostic_exit_code=${diagnostic_rc}" \
+    'critical_skipped=0' \
     'resources_residual=0' \
     'production_access=0' \
     >> "${evidence_dir}/diagnostic-summary.txt"

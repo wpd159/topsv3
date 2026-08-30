@@ -6,6 +6,11 @@ V2_LAB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=lib.sh
 source "${V2_LAB_DIR}/lib.sh"
 
+V2_FIXTURE_ANUNCIO_ID='20000000-0000-4000-8000-000000000001'
+V2_FIXTURE_ESTADO_ID='50000000-0000-4000-8000-000000000001'
+V2_FIXTURE_CIDADE_ID='51000000-0000-4000-8000-000000000001'
+V2_FIXTURE_BAIRRO_ID='52000000-0000-4000-8000-000000000001'
+
 v2_lab_container() {
   v2_compose ps -q "$1"
 }
@@ -413,6 +418,10 @@ v2_collect_gateway_listagem_diagnostics() {
   local service container gateway
   mkdir -m 0700 -p -- "${evidence_dir}"
 
+  if ! v2_capture_http_evidence gateway-home \
+    http://gateway:8080/ public.page.home "${evidence_dir}"; then
+    v2_log "DIAGNOSTIC_CAPTURE=gateway-home result=FAIL"
+  fi
   if ! v2_capture_http_evidence gateway-listagem \
     http://gateway:8080/anuncios public.page.listing "${evidence_dir}"; then
     v2_log "DIAGNOSTIC_CAPTURE=gateway-listagem result=FAIL"
@@ -468,8 +477,8 @@ v2_collect_gateway_listagem_diagnostics() {
     "timestamp_utc=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
     "failed_gate=${failed_gate:-none}" \
     "failed_exit=${failed_exit}" \
-    'first_unexecuted_after_gateway_listagem=gateway_localidades' \
-    'diagnostic_requests_after_failure=true' \
+    "gates_completed=${V2_GATE_COUNT:-0}" \
+    'diagnostic_requests_after_gates=true' \
     > "${evidence_dir}/diagnostic-summary.txt"
   find "${evidence_dir}" -type f -exec chmod 0600 {} +
 }
@@ -579,6 +588,139 @@ v2_psql() {
     --username topsdojob_v2 --dbname topsdojob_v2 "$@" </dev/null
 }
 
+v2_fixture_integrity_sql() {
+  cat <<'SQL'
+WITH publicos AS (
+  SELECT a.*
+  FROM anuncio a
+  WHERE a.status = 'PUBLICADO'
+    AND a.status_moderacao = 'APROVADO'
+    AND a.removido_em IS NULL
+), metricas AS (
+  SELECT
+    (SELECT count(*)
+       FROM publicos p
+       LEFT JOIN anuncio_localizacao al ON al.anuncio_id = p.id
+      WHERE al.anuncio_id IS NULL) AS publicados_sem_localizacao,
+    (SELECT count(*)
+       FROM publicos p
+       JOIN anuncio_localizacao al ON al.anuncio_id = p.id
+       LEFT JOIN estado e ON e.id = al.estado_id
+       LEFT JOIN cidade c ON c.id = al.cidade_id AND c.estado_id = al.estado_id
+      LEFT JOIN bairro b ON b.id = al.bairro_id AND b.cidade_id = al.cidade_id
+      WHERE e.id IS NULL
+         OR c.id IS NULL
+         OR btrim(e.nome) = ''
+         OR btrim(e.nome_normalizado) = ''
+         OR btrim(c.nome) = ''
+         OR btrim(c.nome_normalizado) = ''
+         OR (al.bairro_id IS NOT NULL AND (
+           b.id IS NULL OR btrim(b.nome) = '' OR btrim(b.nome_normalizado) = ''
+         ))) AS localizacoes_invalidas,
+    (SELECT count(*)
+       FROM publicos p
+       LEFT JOIN documento_busca_anuncio d ON d.anuncio_id = p.id
+      WHERE d.anuncio_id IS NULL) AS publicados_sem_documento_busca,
+    (SELECT count(*)
+       FROM publicos p
+       JOIN documento_busca_anuncio d ON d.anuncio_id = p.id
+      WHERE d.texto_busca IS NULL OR btrim(d.texto_busca) = '') AS textos_busca_nulos,
+    (SELECT count(DISTINCT p.id)
+       FROM publicos p
+       JOIN usuario u ON u.id = p.usuario_id
+         AND u.status = 'ATIVO'
+         AND u.tipo_conta = 'ANUNCIANTE'
+         AND u.desativado_em IS NULL
+         AND u.excluido_em IS NULL
+       JOIN anuncio_localizacao al ON al.anuncio_id = p.id
+       JOIN estado e ON e.id = al.estado_id
+       JOIN cidade c ON c.id = al.cidade_id AND c.estado_id = al.estado_id
+       LEFT JOIN bairro b ON b.id = al.bairro_id AND b.cidade_id = al.cidade_id
+       JOIN documento_busca_anuncio d ON d.anuncio_id = p.id
+         AND d.estado_id = al.estado_id
+         AND d.cidade_id = al.cidade_id
+         AND d.bairro_id IS NOT DISTINCT FROM al.bairro_id
+         AND d.categoria = p.categoria
+         AND d.status_publicacao = 'PUBLICAVEL'
+         AND d.tem_midia_valida = true
+         AND d.texto_busca IS NOT NULL
+         AND btrim(d.texto_busca) <> ''
+      WHERE (al.bairro_id IS NULL OR b.id IS NOT NULL)
+        AND EXISTS (
+          SELECT 1
+          FROM anuncio_midia am
+          JOIN arquivo_midia fm ON fm.id = am.arquivo_midia_id
+          WHERE am.anuncio_id = p.id
+            AND am.status = 'PUBLICAVEL'
+            AND fm.status_arquivo = 'VALIDADO'
+        )) AS anuncios_publicos_validos
+)
+SELECT chave || '=' || valor::text
+FROM metricas
+CROSS JOIN LATERAL (VALUES
+  (1, 'PUBLICADOS_SEM_LOCALIZACAO', publicados_sem_localizacao),
+  (2, 'LOCALIZACOES_INVALIDAS', localizacoes_invalidas),
+  (3, 'PUBLICADOS_SEM_DOCUMENTO_BUSCA', publicados_sem_documento_busca),
+  (4, 'TEXTOS_BUSCA_NULOS', textos_busca_nulos),
+  (5, 'ANUNCIOS_PUBLICOS_VALIDOS', anuncios_publicos_validos)
+) AS linha(ordem, chave, valor)
+ORDER BY ordem;
+SQL
+}
+
+v2_fixture_integrity_metrics() {
+  v2_psql --tuples-only --no-align --command "$(v2_fixture_integrity_sql)"
+}
+
+v2_fixture_integrity_gate() {
+  local metrics validos
+  metrics="$(v2_fixture_integrity_metrics)" || return 1
+  printf '%s\n' "${metrics}"
+  for expected in \
+    'PUBLICADOS_SEM_LOCALIZACAO=0' \
+    'LOCALIZACOES_INVALIDAS=0' \
+    'PUBLICADOS_SEM_DOCUMENTO_BUSCA=0' \
+    'TEXTOS_BUSCA_NULOS=0'; do
+    grep -Fxq -- "${expected}" <<<"${metrics}" || return 1
+  done
+  validos="$(awk -F= '$1 == "ANUNCIOS_PUBLICOS_VALIDOS" { print $2 }' <<<"${metrics}")"
+  [[ "${validos}" =~ ^[0-9]+$ && "${validos}" -ge 1 ]]
+}
+
+v2_expect_fixture_integrity_failure() {
+  local name="$1" break_sql="$2" restore_sql="$3" report rc
+  report="${V2_RUNTIME_DIR}/reports/fixture-integrity-negative-${name}.txt"
+  v2_psql --command "${break_sql}" >/dev/null
+  set +e
+  v2_fixture_integrity_gate > "${report}" 2>&1
+  rc=$?
+  set -e
+  v2_psql --command "${restore_sql}" >/dev/null
+  chmod 0600 "${report}"
+  [[ "${rc}" -ne 0 ]] || v2_die "gate aceitou fixture invalida: ${name}"
+  v2_fixture_integrity_gate >/dev/null || v2_die "fixture nao foi restaurada: ${name}"
+  v2_log "FIXTURE_INTEGRITY_NEGATIVE=${name} result=BLOCKED"
+}
+
+v2_fixture_integrity_negative_contract() {
+  v2_expect_fixture_integrity_failure sem_localizacao \
+    "DELETE FROM anuncio_localizacao WHERE anuncio_id='${V2_FIXTURE_ANUNCIO_ID}';" \
+    "INSERT INTO anuncio_localizacao (anuncio_id,estado_id,cidade_id,bairro_id,endereco_resumido,criado_em,atualizado_em) VALUES ('${V2_FIXTURE_ANUNCIO_ID}','${V2_FIXTURE_ESTADO_ID}','${V2_FIXTURE_CIDADE_ID}','${V2_FIXTURE_BAIRRO_ID}','Centro',now(),now());"
+  v2_expect_fixture_integrity_failure localizacao_invalida \
+    "UPDATE cidade SET nome='' WHERE id='${V2_FIXTURE_CIDADE_ID}';" \
+    "UPDATE cidade SET nome='Sao Paulo' WHERE id='${V2_FIXTURE_CIDADE_ID}';"
+  v2_expect_fixture_integrity_failure sem_documento_busca \
+    "DELETE FROM documento_busca_anuncio WHERE anuncio_id='${V2_FIXTURE_ANUNCIO_ID}';" \
+    "INSERT INTO documento_busca_anuncio (anuncio_id,texto_busca,estado_id,cidade_id,bairro_id,categoria,preco,status_publicacao,tem_midia_valida,beneficios_ranking_json,ranking_base,atualizado_em) VALUES ('${V2_FIXTURE_ANUNCIO_ID}','pipeline v2 fixture sao paulo centro acompanhante','${V2_FIXTURE_ESTADO_ID}','${V2_FIXTURE_CIDADE_ID}','${V2_FIXTURE_BAIRRO_ID}','ACOMPANHANTE',100,'PUBLICAVEL',true,'{}'::jsonb,0,now());"
+  v2_expect_fixture_integrity_failure texto_busca_nulo \
+    "UPDATE documento_busca_anuncio SET texto_busca='' WHERE anuncio_id='${V2_FIXTURE_ANUNCIO_ID}';" \
+    "UPDATE documento_busca_anuncio SET texto_busca='pipeline v2 fixture sao paulo centro acompanhante' WHERE anuncio_id='${V2_FIXTURE_ANUNCIO_ID}';"
+  v2_expect_fixture_integrity_failure sem_anuncio_publico_valido \
+    "UPDATE anuncio SET status='PAUSADO' WHERE id='${V2_FIXTURE_ANUNCIO_ID}';" \
+    "UPDATE anuncio SET status='PUBLICADO' WHERE id='${V2_FIXTURE_ANUNCIO_ID}';"
+  v2_log 'FIXTURE_INTEGRITY_NEGATIVE_TESTS=5/5'
+}
+
 v2_minio_host_endpoint() {
   local binding
   binding="$(docker port "$(v2_lab_container minio)" 9000/tcp | tail -n 1)"
@@ -635,6 +777,9 @@ v2_prepare_database_and_storage() {
     --username topsdojob_v2 --dbname topsdojob_v2 \
     --file /tmp/pipeline-v2-fixture.sql </dev/null >/dev/null
   docker exec "${container}" rm -- /tmp/pipeline-v2-fixture.sql </dev/null
+  v2_fixture_integrity_gate | tee "${V2_RUNTIME_DIR}/reports/fixture-integrity.txt"
+  v2_fixture_integrity_negative_contract
+  v2_fixture_integrity_gate | tee "${V2_RUNTIME_DIR}/reports/fixture-integrity-final.txt"
   v2_mc --insecure mirror /fixtures local/topsdojob-v2-public --overwrite >/dev/null
   source_object="hml/midias-aprovadas/synthetic/pipeline-v2-source.png"
   v2_mc --insecure cp --attr 'Content-Type=image/png' \
@@ -765,7 +910,7 @@ v2_diagnostic_gate() {
 }
 
 v2_diagnose_gateway_listagem() {
-  local evidence_dir="$1" postgres
+  local evidence_dir="$1" postgres probe diagnostic_http_ok=true
   export V2_DIAGNOSTIC_EVIDENCE_DIR="${evidence_dir}"
   mkdir -m 0700 -p -- "${evidence_dir}"
   printf '%s\n' \
@@ -833,15 +978,35 @@ v2_diagnose_gateway_listagem() {
     v2_probe_once http://gateway:8080/ 200
   v2_diagnostic_gate gateway_listagem \
     v2_probe_once http://gateway:8080/anuncios 200
+  v2_diagnostic_gate gateway_localidades \
+    v2_probe_once http://gateway:8080/api/public/localidades 200
+  v2_diagnostic_gate database v2_database_gate
+  v2_diagnostic_gate internal_api_dns v2_internal_api_gate
+  v2_diagnostic_gate candidate_logs v2_logs_gate
 
   v2_collect_gateway_listagem_diagnostics \
     "${evidence_dir}" "${V2_DIAGNOSTIC_FAILED_GATE}" "${V2_DIAGNOSTIC_FAILED_EXIT}"
-  if [[ "${V2_DIAGNOSTIC_FAILED_GATE}" == "gateway_listagem" \
-      && "${V2_DIAGNOSTIC_FAILED_EXIT}" -ne 0 ]]; then
-    v2_log "DIAGNOSTIC_REPRODUCTION=PASS FAILED_GATE=gateway_listagem"
+  for probe in gateway-home gateway-listagem frontend-listagem backend-listagem; do
+    if ! grep -Eq '"status": 200([,}]|$)' "${evidence_dir}/${probe}.json"; then
+      diagnostic_http_ok=false
+    fi
+  done
+  if [[ -z "${V2_DIAGNOSTIC_FAILED_GATE}" \
+      && "${V2_GATE_COUNT}" -eq 14 \
+      && "${diagnostic_http_ok}" == true ]]; then
+    printf '%s\n' \
+      'backend_direto=200' \
+      'frontend_direto=200' \
+      'gateway_home=200' \
+      'gateway_listagem=200' \
+      'http_500_502_504=0' \
+      'candidate_gates=14/14' \
+      >> "${evidence_dir}/diagnostic-summary.txt"
+    v2_log 'BACKEND_DIRETO=200 FRONTEND_DIRETO=200 GATEWAY_HOME=200 GATEWAY_LISTAGEM=200'
+    v2_log 'CANDIDATE_GATES=14/14 HTTP_500_502_504=0'
     return 0
   fi
-  v2_log "DIAGNOSTIC_REPRODUCTION=FAIL FAILED_GATE=${V2_DIAGNOSTIC_FAILED_GATE:-none}"
+  v2_log "DIAGNOSTIC_RESULT=FAIL FAILED_GATE=${V2_DIAGNOSTIC_FAILED_GATE:-none} GATES=${V2_GATE_COUNT}/14"
   return 1
 }
 
