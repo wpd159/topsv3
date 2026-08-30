@@ -9,6 +9,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Pendencias e gates: `docs/v3/SDD-pendencias-gates.md`
 - Plano de fases: `docs/v3/11-plano-execucao-fases.md`
 - Pipeline Hermetico V2 e incidente aberto: [registro formal](INCIDENTE-pipeline-hermetico-v2-fase1.md)
+- Workflow V2 (`verify` e `candidate`): `.github/workflows/pipeline-production-v2.yml`
+- Controlador unico V2: `scripts/deploy/v2/controller.sh`
+- Manifesto e proveniencia: `scripts/deploy/v2/artifact.sh` e `scripts/deploy/v2/contract.mjs`
+- Laboratorio e candidata isolada: `scripts/deploy/v2/lab.sh` e `deploy/v2/compose.yml`
+- Estado canonico da Fase 1: PR #24 mesclado, `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, CI `33324582326`, 3/3 runners, 14/14 gates e `criticalSkipped=0`.
+- Estado da Fase 2: implementacao local do modo `candidate`, sem execucao real, switch ou deploy.
 
 ## Arquitetura local
 

@@ -5,10 +5,13 @@ Este documento lista pendencias conhecidas e gates obrigatorios antes de fases f
 ## Pipeline Hermetico V2 - gates apos a Fase 1
 
 - Fechado na Fase 1: fonte canonica `C:\topsdojob`, build unico, manifesto verificado, tres runners limpos aprovados, 14/14 gates em cada runner e `criticalSkipped=0`.
-- Fechado na Fase 1: o workflow aceita somente `mode=verify` e nao acessa secrets produtivos, VPS, banco produtivo, R2 real, candidata, switch ou deploy.
+- Fechado na Fase 1: PR #24 mesclado em `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, com CI pos-merge `33324582326` aprovado e producao inalterada.
+- Implementado na Fase 2, ainda nao executado: `mode=candidate`, validacao de SHA/run/manifesto, target guard antes do upload, banco PostgreSQL 17 isolado, servicos externos locais, os mesmos 14 gates, certificacao sanitizada e cleanup gracioso.
+- Gate da Fase 2: executar uma candidata real somente mediante autorizacao separada e exigir artefato novo, `CANDIDATE_ONLY`, zero rebuild, zero efeitos externos, 14/14 gates e zero residuos.
 - Aberto: o incidente do pipeline permanece em status `OPEN` ate a conclusao das fases operacionais autorizadas separadamente.
-- Pendente para a Fase 2: gerar novo artefato certificado e validar candidata real na VPS canonica sem switch, sem promover ou reutilizar o artefato do PR #24.
+- Pendente para a Fase 2: gerar novo artefato certificado e validar candidata real na VPS canonica sem switch, sem promover ou reutilizar o artefato do PR #24. Implementacao local nao satisfaz este gate.
 - Pendente para a Fase 3: autorizar separadamente switch, smoke publico, drenagem, rollback e encerramento operacional do incidente.
+- Bloqueados: modos `switch` e `deploy`, alteracao de Nginx/upstream, trafego publico e uso de servicos externos reais.
 - Producao preservada: SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`, sem alteracao durante a Fase 1.
 - Registro e criterios: [Incidente do Pipeline Hermetico V2](INCIDENTE-pipeline-hermetico-v2-fase1.md).
 
