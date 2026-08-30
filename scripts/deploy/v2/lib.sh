@@ -155,7 +155,18 @@ v2_bootstrap_engine() {
 v2_stop_engine() {
   local exit_code="${1:-0}"
   if [[ -n "${V2_HOST_DOCKER:-}" && -n "${V2_DIND_CONTAINER:-}" ]]; then
-    "${V2_HOST_DOCKER}" rm -f "${V2_DIND_CONTAINER}" >/dev/null 2>&1 || true
+    if [[ "${V2_GRACEFUL_ENGINE:-0}" -eq 1 ]]; then
+      if [[ "$("${V2_HOST_DOCKER}" inspect "${V2_DIND_CONTAINER}" \
+          --format '{{.State.Running}}' 2>/dev/null)" == "true" ]]; then
+        "${V2_HOST_DOCKER}" stop --time 60 "${V2_DIND_CONTAINER}" >/dev/null ||
+          return 1
+      fi
+      [[ "$("${V2_HOST_DOCKER}" inspect "${V2_DIND_CONTAINER}" \
+        --format '{{.State.Running}}' 2>/dev/null)" == "false" ]] || return 1
+      "${V2_HOST_DOCKER}" rm "${V2_DIND_CONTAINER}" >/dev/null || return 1
+    else
+      "${V2_HOST_DOCKER}" rm -f "${V2_DIND_CONTAINER}" >/dev/null 2>&1 || true
+    fi
   fi
   if [[ -n "${V2_TOOLS_DIR:-}" && -d "${V2_TOOLS_DIR}" ]]; then
     rm -rf -- "${V2_TOOLS_DIR}"

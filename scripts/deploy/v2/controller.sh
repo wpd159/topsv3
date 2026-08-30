@@ -17,6 +17,32 @@ v2_cleanup() {
   local rc=$?
   trap - EXIT INT TERM
   set +e
+  if [[ "${V2_REMOTE_CANDIDATE:-0}" -eq 1 ]]; then
+    local outcome=PASS cleanup_ok=true residuals=0
+    [[ "${rc}" -eq 0 ]] || outcome=FAIL
+    v2_collect_remote_candidate_evidence \
+      "${V2_CANDIDATE_EVIDENCE_DIR}" "${outcome}" "${rc}" || rc=1
+    if [[ "${V2_CLEANUP_ACTIVE}" -eq 1 ]]; then
+      v2_graceful_candidate_cleanup || cleanup_ok=false
+    fi
+    if [[ "${cleanup_ok}" == true ]]; then
+      v2_verify_production_container_unchanged || rc=1
+      rm -rf -- "${V2_RUNTIME_DIR:-}" || rc=1
+      rm -f -- "${V2_PRODUCTION_BACKUP_FILE:-}" || rc=1
+      v2_stop_engine "${rc}" || rc=1
+    else
+      rc=1
+      residuals=1
+      printf '%s\n' 'cleanup=failed-preserved-for-diagnosis' \
+        >> "${V2_CANDIDATE_EVIDENCE_DIR}/candidate-result.txt"
+    fi
+    export V2_CANDIDATE_RESIDUALS="${residuals}"
+    [[ "${rc}" -eq 0 ]] || outcome=FAIL
+    v2_finalize_candidate_evidence \
+      "${V2_CANDIDATE_EVIDENCE_DIR}" "${V2_CANDIDATE_EVIDENCE_TAR}" \
+      "${outcome}" "${rc}" || rc=1
+    exit "${rc}"
+  fi
   if [[ "${V2_CLEANUP_ACTIVE}" -eq 1 && -n "${V2_PROJECT_NAME:-}" ]]; then
     local container
     container="$(v2_compose ps -q postgres 2>/dev/null || true)"
@@ -77,6 +103,7 @@ v2_record_versions() {
 
 v2_negative_file_contracts() {
   local bundle="$1" expected_sha="$2" temporary crlf symlink marker failure_marker
+  local missing_manifest wrong_run
   temporary="${V2_RUNTIME_DIR}/negative"
   mkdir -m 0700 -p -- "${temporary}"
 
@@ -100,6 +127,19 @@ v2_negative_file_contracts() {
     v2_die "hash divergente foi aceito"
   fi
 
+  wrong_run=999999999999
+  if v2_node "scripts/deploy/v2/contract.mjs" manifest-verify \
+    "${bundle}" "${expected_sha}" "${wrong_run}" >/dev/null 2>&1; then
+    v2_die "artefato de outro run foi aceito"
+  fi
+  missing_manifest="${temporary}/missing-manifest"
+  mkdir -m 0700 -- "${missing_manifest}"
+  cp -- "${bundle}/release-images.tar" "${missing_manifest}/release-images.tar"
+  if v2_node "scripts/deploy/v2/contract.mjs" manifest-runtime-verify \
+    "${missing_manifest}" "${expected_sha}" >/dev/null 2>&1; then
+    v2_die "artefato sem manifesto foi aceito"
+  fi
+
   marker="${temporary}/stdin-marker"
   v2_closed_stdin_contract "${marker}"
   [[ "$(cat "${marker}")" == "STDIN_EOF=OK" ]]
@@ -108,7 +148,7 @@ v2_negative_file_contracts() {
     v2_die "falha de filho nao foi propagada"
   fi
   [[ ! -e "${failure_marker}" ]]
-  v2_log "CRLF=BLOCKED SYMLINK=BLOCKED HASH_MISMATCH=BLOCKED STDIN_EOF=OK FAILURE_PROPAGATED=OK"
+  v2_log "CRLF=BLOCKED SYMLINK=BLOCKED HASH_MISMATCH=BLOCKED RUN_MISMATCH=BLOCKED MANIFEST_MISSING=BLOCKED STDIN_EOF=OK FAILURE_PROPAGATED=OK"
 }
 
 v2_run_backend_tests() {
@@ -293,6 +333,90 @@ v2_build_mode() {
   v2_log "BUILD_RESULT=PASS ARTIFACT_UNIQUE=backend,frontend,gateway"
 }
 
+v2_candidate_package_mode() {
+  local bundle="$2" source_sha="$3" certification_run_id="$4" artifact_name="$5"
+  local run_file="$6" artifacts_file="$7" output_dir="$8"
+  [[ "$#" -eq 8 ]] || v2_die \
+    "uso: controller.sh candidate-package BUNDLE SHA RUN ARTIFACT RUN_JSON ARTIFACTS_JSON OUTPUT"
+  [[ "$(git -C "${V2_ROOT}" rev-parse HEAD)" == "${source_sha}" ]]
+  [[ -z "$(git -C "${V2_ROOT}" status --short)" ]] || v2_die "checkout candidate sujo"
+  [[ "${certification_run_id}" =~ ^[1-9][0-9]*$ ]]
+  export V2_RUN_NUMBER=candidate-package
+  v2_bootstrap_engine
+  v2_export_images
+  v2_pull_locked_images
+  v2_static_contracts
+  v2_scan_secrets
+  v2_create_candidate_payload "${bundle}" "${source_sha}" \
+    "${certification_run_id}" "${artifact_name}" "${run_file}" \
+    "${artifacts_file}" "${output_dir}"
+  v2_log "CANDIDATE_PACKAGE=PASS REBUILD=0 PRODUCTION_ACCESS=0"
+}
+
+v2_candidate_context_value() {
+  local file="$1" key="$2" value
+  value="$(sed -n "s/^${key}=//p" "${file}")"
+  [[ -n "${value}" ]] || v2_die "contexto candidate incompleto: ${key}"
+  printf '%s\n' "${value}"
+}
+
+v2_candidate_remote_mode() {
+  local bundle="$2" source_sha="$3" certification_run_id="$4" artifact_id="$5"
+  local candidate_run_id="$6" evidence_dir="$7" evidence_tar="$8" context_file
+  [[ "$#" -eq 8 ]] || v2_die \
+    "uso: controller.sh candidate-remote BUNDLE SHA CERT_RUN ARTIFACT_ID CANDIDATE_RUN EVIDENCE EVIDENCE_TAR"
+  [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]]
+  [[ "${certification_run_id}" =~ ^[1-9][0-9]*$ ]]
+  [[ "${artifact_id}" =~ ^[1-9][0-9]*$ ]]
+  [[ "${candidate_run_id}" =~ ^[1-9][0-9]*$ ]]
+  context_file="${V2_ROOT}/candidate-context.env"
+  [[ -r "${context_file}" && ! -L "${context_file}" ]]
+  [[ "$(v2_candidate_context_value "${context_file}" DEPLOY_SHA)" == "${source_sha}" ]]
+  [[ "$(v2_candidate_context_value "${context_file}" CERTIFICATION_RUN_ID)" == \
+    "${certification_run_id}" ]]
+  [[ "$(v2_candidate_context_value "${context_file}" CERTIFIED_ARTIFACT_ID)" == \
+    "${artifact_id}" ]]
+  [[ "$(v2_candidate_context_value "${context_file}" REBUILD_ALLOWED)" == "false" ]]
+
+  export V2_REMOTE_CANDIDATE=1
+  export V2_GRACEFUL_ENGINE=1
+  export V2_CANDIDATE_SOURCE_SHA="${source_sha}"
+  export V2_CANDIDATE_CERTIFICATION_RUN_ID="${certification_run_id}"
+  export V2_CANDIDATE_ARTIFACT_ID="${artifact_id}"
+  export V2_CANDIDATE_RUN_ID="${candidate_run_id}"
+  export V2_CANDIDATE_BUNDLE_DIR="${bundle}"
+  export V2_CANDIDATE_EVIDENCE_DIR="${evidence_dir}"
+  export V2_CANDIDATE_EVIDENCE_TAR="${evidence_tar}"
+  export V2_CANDIDATE_HOST_DOCKER="$(command -v docker)"
+  export GITHUB_RUN_ID="${candidate_run_id}"
+  export GITHUB_RUN_ATTEMPT=1
+  export RUNNER_TEMP="$(cd -- "${V2_ROOT}/.." && pwd -P)/candidate-work-${candidate_run_id}"
+  [[ ! -e "${RUNNER_TEMP}" ]] || v2_die "runtime candidate preexistente"
+  mkdir -m 0700 -p -- "${RUNNER_TEMP}" "${evidence_dir}"
+  export V2_DIAGNOSTIC_EVIDENCE_DIR="${evidence_dir}"
+
+  v2_create_readonly_production_backup
+  export V2_RUN_NUMBER=candidate
+  v2_bootstrap_engine
+  export V2_PROJECT_NAME="topsdojob-v2-candidate-${source_sha:0:12}-${candidate_run_id}"
+  export V2_RUNTIME_DIR="${RUNNER_TEMP}/runtime"
+  v2_set_synthetic_credentials candidate
+  mkdir -m 0700 -p -- "${V2_RUNTIME_DIR}" "${evidence_dir}"
+  V2_CLEANUP_ACTIVE=1
+  v2_export_images
+  v2_pull_locked_images
+  v2_tag_test_images
+  v2_set_release_images "${source_sha}"
+  v2_node "scripts/deploy/v2/contract.mjs" contract
+  actionlint "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml"
+  v2_load_candidate_artifact "${bundle}" "${source_sha}" "${certification_run_id}"
+  v2_prepare_candidate_from_backup
+  v2_candidate_backfill_isolated
+  v2_start_candidate_and_gates
+  export V2_CANDIDATE_GATE_RESULT=14/14
+  v2_log "CANDIDATE_ONLY=PASS SWITCH=0 NGINX_HOST_CHANGES=0 EXTERNAL_EFFECTS=0"
+}
+
 v2_verify_mode() {
   local bundle="$2" source_sha="$3" run_number="$4" evidence_dir="$5"
   [[ "$#" -eq 5 ]] || v2_die "uso: controller.sh verify BUNDLE SHA RUN EVIDENCE"
@@ -407,5 +531,7 @@ case "${V2_MODE}" in
   build) v2_build_mode "$@" ;;
   verify) v2_verify_mode "$@" ;;
   diagnose) v2_diagnose_mode "$@" ;;
-  *) v2_die "modo permitido nesta fase: build interno, verify ou diagnose controlado" ;;
+  candidate-package) v2_candidate_package_mode "$@" ;;
+  candidate-remote) v2_candidate_remote_mode "$@" ;;
+  *) v2_die "modo permitido: build interno, verify, diagnose ou candidate interno" ;;
 esac

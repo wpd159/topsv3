@@ -1,14 +1,27 @@
-name: Pipeline Hermetico V2 - Fase 1
+name: Pipeline Hermetico V2
 
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Modo permitido nesta fase
+        description: Modo hermetico autorizado
         required: true
         type: choice
         options:
           - verify
+          - candidate
+      deploy_sha:
+        description: SHA exato para candidate
+        required: false
+        type: string
+      certification_run_id:
+        description: Run V2 que certificou o artefato
+        required: false
+        type: string
+      confirmation:
+        description: Confirmacao literal do modo solicitado
+        required: false
+        type: string
   pull_request:
     branches:
       - main
@@ -18,31 +31,55 @@ permissions:
   contents: read
 
 concurrency:
-  group: topsdojob-pipeline-v2-phase1-verify
+  group: topsdojob-pipeline-v2
   cancel-in-progress: false
 
 jobs:
   mode-guard:
-    name: Bloquear modos mutaveis
+    name: Validar modo e identidade
     runs-on: ubuntu-24.04
     outputs:
+      mode: ${{ steps.guard.outputs.mode }}
       source-sha: ${{ steps.guard.outputs.source_sha }}
+      certification-run-id: ${{ steps.guard.outputs.certification_run_id }}
     steps:
-      - name: Validate verify-only mode
+      - name: Validate requested mode
         id: guard
         shell: bash
         env:
           REQUESTED_MODE: ${{ github.event_name == 'pull_request' && 'verify' || inputs.mode }}
-          SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          DEPLOY_SHA: ${{ inputs.deploy_sha }}
+          CERTIFICATION_RUN_ID: ${{ inputs.certification_run_id }}
+          CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -euo pipefail
-          test "${REQUESTED_MODE}" = "verify"
+          case "${REQUESTED_MODE}" in
+            verify)
+              SOURCE_SHA="${EVENT_SOURCE_SHA}"
+              CERTIFICATION_RUN_ID=''
+              ;;
+            candidate)
+              test "${EVENT_NAME}" = "workflow_dispatch"
+              [[ "${DEPLOY_SHA}" =~ ^[a-f0-9]{40}$ ]]
+              [[ "${CERTIFICATION_RUN_ID}" =~ ^[1-9][0-9]*$ ]]
+              test "${CONFIRMATION}" = "CANDIDATE_ONLY"
+              SOURCE_SHA="${DEPLOY_SHA}"
+              ;;
+            *)
+              exit 64
+              ;;
+          esac
           [[ "${SOURCE_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          printf 'mode=%s\n' "${REQUESTED_MODE}" >> "${GITHUB_OUTPUT}"
           printf 'source_sha=%s\n' "${SOURCE_SHA}" >> "${GITHUB_OUTPUT}"
-          printf '%s\n' 'PIPELINE_V2_MODE=verify'
+          printf 'certification_run_id=%s\n' "${CERTIFICATION_RUN_ID}" >> "${GITHUB_OUTPUT}"
+          printf 'PIPELINE_V2_MODE=%s\n' "${REQUESTED_MODE}"
 
   build-once:
     name: Construir artefato unico
+    if: ${{ needs.mode-guard.outputs.mode == 'verify' }}
     needs: mode-guard
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -56,16 +93,6 @@ jobs:
         with:
           ref: ${{ needs.mode-guard.outputs.source-sha }}
           fetch-depth: 1
-
-      - name: Build release exactly once
-        shell: bash
-        env:
-          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
-          OUTPUT_DIR: ${{ runner.temp }}/topsdojob-v2-release
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
-          bash ./scripts/deploy/v2/controller.sh build "${OUTPUT_DIR}" "${SOURCE_SHA}"
 
       - name: Define same-run artifact identity
         id: artifact-identity
@@ -82,6 +109,19 @@ jobs:
           printf 'name=topsdojob-v2-release-%s-%s-%s\n' \
             "${SOURCE_SHA}" "${RUN_ID}" "${RUN_ATTEMPT}" >> "${GITHUB_OUTPUT}"
 
+      - name: Build release exactly once
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/topsdojob-v2-release
+          CERTIFICATION_RUN_ID: ${{ github.run_id }}
+          CERTIFICATION_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CERTIFICATION_ARTIFACT_NAME: ${{ steps.artifact-identity.outputs.name }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          bash ./scripts/deploy/v2/controller.sh build "${OUTPUT_DIR}" "${SOURCE_SHA}"
+
       - name: Transport immutable release artifact
         id: release-artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -94,7 +134,7 @@ jobs:
 
   verify-clean-runner:
     name: Verify runner limpo ${{ matrix.run }}
-    if: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic') }}
+    if: ${{ needs.mode-guard.outputs.mode == 'verify' && (github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic')) }}
     needs: [mode-guard, build-once]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
@@ -139,8 +179,8 @@ jobs:
 
   diagnose-gateway-listagem:
     name: Diagnosticar gateway_listagem com artefato do mesmo run
-    if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic') }}
-    needs: build-once
+    if: ${{ needs.mode-guard.outputs.mode == 'verify' && github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic') }}
+    needs: [mode-guard, build-once]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -186,3 +226,191 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 6
+
+  candidate-only:
+    name: Validar candidata real sem switch
+    if: ${{ needs.mode-guard.outputs.mode == 'candidate' }}
+    needs: mode-guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: candidate
+    steps:
+      - name: Checkout exact candidate SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.mode-guard.outputs.source-sha }}
+          fetch-depth: 1
+
+      - name: Receive certified artifact from the authorized run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: topsdojob-v2-release-${{ needs.mode-guard.outputs.source-sha }}-${{ needs.mode-guard.outputs.certification-run-id }}-*
+          path: ${{ runner.temp }}/topsdojob-v2-certified-download
+          merge-multiple: false
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.mode-guard.outputs.certification-run-id }}
+          repository: ${{ github.repository }}
+
+      - name: Validate certification and prepare immutable payload
+        id: candidate-payload
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          CERTIFICATION_RUN_ID: ${{ needs.mode-guard.outputs.certification-run-id }}
+          GH_TOKEN: ${{ github.token }}
+          DOWNLOAD_ROOT: ${{ runner.temp }}/topsdojob-v2-certified-download
+          PACKAGE_DIR: ${{ runner.temp }}/topsdojob-v2-candidate-package
+          PAYLOAD_TAR: ${{ runner.temp }}/topsdojob-v2-candidate-payload.tar
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          mapfile -t manifests < <(find "${DOWNLOAD_ROOT}" -mindepth 2 -maxdepth 2 \
+            -type f -name release-manifest.json -print)
+          test "${#manifests[@]}" -eq 1
+          bundle="$(dirname -- "${manifests[0]}")"
+          artifact_name="$(basename -- "${bundle}")"
+          curl --fail --silent --show-error --location \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${CERTIFICATION_RUN_ID}" \
+            --output "${RUNNER_TEMP}/certification-run.json"
+          curl --fail --silent --show-error --location \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${CERTIFICATION_RUN_ID}/artifacts?per_page=100" \
+            --output "${RUNNER_TEMP}/certification-artifacts.json"
+          bash ./scripts/deploy/v2/controller.sh candidate-package \
+            "${bundle}" "${SOURCE_SHA}" "${CERTIFICATION_RUN_ID}" \
+            "${artifact_name}" "${RUNNER_TEMP}/certification-run.json" \
+            "${RUNNER_TEMP}/certification-artifacts.json" "${PACKAGE_DIR}"
+          tar --sort=name --mtime='UTC 2026-08-30' --owner=0 --group=0 \
+            --numeric-owner -cf "${PAYLOAD_TAR}" -C "${PACKAGE_DIR}" .
+          (
+            cd -- "$(dirname -- "${PAYLOAD_TAR}")"
+            sha256sum -- "$(basename -- "${PAYLOAD_TAR}")" \
+              > "$(basename -- "${PAYLOAD_TAR}").sha256"
+          )
+          artifact_id="$(sed -n 's/^CERTIFIED_ARTIFACT_ID=//p' \
+            "${PACKAGE_DIR}/candidate-context.env")"
+          [[ "${artifact_id}" =~ ^[1-9][0-9]*$ ]]
+          printf 'payload_tar=%s\n' "${PAYLOAD_TAR}" >> "${GITHUB_OUTPUT}"
+          printf 'artifact_id=%s\n' "${artifact_id}" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' 'CERTIFIED_ARTIFACT=VERIFIED REBUILD=0'
+
+      - name: Validate pinned host key and target guard before upload
+        id: target-guard
+        shell: bash
+        env:
+          CANDIDATE_SSH_HOST: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_HOST }}
+          CANDIDATE_SSH_PORT: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_PORT }}
+          CANDIDATE_SSH_USER: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_USER }}
+          CANDIDATE_SSH_PRIVATE_KEY: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_PRIVATE_KEY }}
+          CANDIDATE_SSH_HOST_KEY: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_HOST_KEY }}
+          CANDIDATE_TARGET_SHA256: ${{ secrets.TOPSDOJOB_CANDIDATE_TARGET_SHA256 }}
+        run: |
+          set -euo pipefail
+          [[ "${CANDIDATE_SSH_PORT}" =~ ^[1-9][0-9]{0,4}$ ]]
+          [[ "${CANDIDATE_SSH_USER}" =~ ^[a-z_][a-z0-9_-]*$ ]]
+          [[ "${CANDIDATE_TARGET_SHA256}" =~ ^[a-f0-9]{64}$ ]]
+          ssh_dir="${RUNNER_TEMP}/topsdojob-v2-candidate-ssh"
+          install -d -m 0700 "${ssh_dir}"
+          printf '%s\n' "${CANDIDATE_SSH_PRIVATE_KEY}" > "${ssh_dir}/id"
+          printf '%s\n' "${CANDIDATE_SSH_HOST_KEY}" > "${ssh_dir}/known_hosts"
+          chmod 0600 "${ssh_dir}/id" "${ssh_dir}/known_hosts"
+          ssh-keyscan -4 -T 10 -p "${CANDIDATE_SSH_PORT}" \
+            "${CANDIDATE_SSH_HOST}" > "${ssh_dir}/scanned" 2>/dev/null
+          awk 'NF >= 3 { print $2 " " $3 }' "${ssh_dir}/known_hosts" | sort -u \
+            > "${ssh_dir}/pinned.keys"
+          awk 'NF >= 3 { print $2 " " $3 }' "${ssh_dir}/scanned" | sort -u \
+            > "${ssh_dir}/scanned.keys"
+          test -s "${ssh_dir}/pinned.keys"
+          comm -23 "${ssh_dir}/pinned.keys" "${ssh_dir}/scanned.keys" \
+            > "${ssh_dir}/missing.keys"
+          test ! -s "${ssh_dir}/missing.keys"
+          printf -v target_hash_q '%q' "${CANDIDATE_TARGET_SHA256}"
+          remote_guard="set -eu; expected=${target_hash_q}; test -f /etc/topsdojob/target.env; actual=\$(sha256sum /etc/topsdojob/target.env | awk '{print \$1}'); test \"\${actual}\" = \"\${expected}\"; . /etc/topsdojob/target.env; test \"\${TOPSDOJOB_TARGET:-}\" = production; test \"\${TOPSDOJOB_PROJECT:-}\" = topsdojob-v3; test -d /opt/topsv3/production; printf '%s\\n' TARGET_VERIFIED=production"
+          result="$(ssh -4 -p "${CANDIDATE_SSH_PORT}" -i "${ssh_dir}/id" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="${ssh_dir}/known_hosts" -o ConnectTimeout=10 \
+            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
+            "${remote_guard}" </dev/null)"
+          test "${result}" = "TARGET_VERIFIED=production"
+          printf '%s\n' "${result}"
+          printf 'verified=true\n' >> "${GITHUB_OUTPUT}"
+
+      - name: Upload and execute isolated candidate controller
+        if: ${{ steps.target-guard.outputs.verified == 'true' }}
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          CERTIFICATION_RUN_ID: ${{ needs.mode-guard.outputs.certification-run-id }}
+          CERTIFIED_ARTIFACT_ID: ${{ steps.candidate-payload.outputs.artifact_id }}
+          PAYLOAD_TAR: ${{ steps.candidate-payload.outputs.payload_tar }}
+          CANDIDATE_RUN_ID: ${{ github.run_id }}
+          CANDIDATE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CANDIDATE_SSH_HOST: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_HOST }}
+          CANDIDATE_SSH_PORT: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_PORT }}
+          CANDIDATE_SSH_USER: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh_dir="${RUNNER_TEMP}/topsdojob-v2-candidate-ssh"
+          evidence_tar="${RUNNER_TEMP}/topsdojob-v2-candidate-evidence.tar"
+          stage_id="${CANDIDATE_RUN_ID}-${CANDIDATE_RUN_ATTEMPT}-${SOURCE_SHA:0:12}"
+          ssh_options=(-4 -p "${CANDIDATE_SSH_PORT}" -i "${ssh_dir}/id"
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="${ssh_dir}/known_hosts" -o ConnectTimeout=10)
+          printf -v stage_id_q '%q' "${stage_id}"
+          create_stage="set -eu; umask 077; id=${stage_id_q}; base=\"\${HOME}/.cache/topsdojob-candidate\"; dir=\"\${base}/\${id}\"; test ! -e \"\${dir}\"; install -d -m 0700 \"\${base}\"; test ! -L \"\${base}\"; mkdir -m 0700 \"\${dir}\"; test \"\$(stat -c %u \"\${dir}\")\" = \"\$(id -u)\"; test \"\$(stat -c %a \"\${dir}\")\" = 700; printf '%s' \"\${dir}\""
+          remote_stage="$(ssh "${ssh_options[@]}" \
+            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
+            "${create_stage}" </dev/null)"
+          test -n "${remote_stage}"
+          scp -4 -P "${CANDIDATE_SSH_PORT}" -i "${ssh_dir}/id" \
+            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
+            "${PAYLOAD_TAR}" "${PAYLOAD_TAR}.sha256" \
+            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}:${remote_stage}/"
+          printf -v remote_stage_q '%q' "${remote_stage}"
+          printf -v source_sha_q '%q' "${SOURCE_SHA}"
+          printf -v certification_run_q '%q' "${CERTIFICATION_RUN_ID}"
+          printf -v artifact_id_q '%q' "${CERTIFIED_ARTIFACT_ID}"
+          printf -v candidate_run_q '%q' "${CANDIDATE_RUN_ID}"
+          remote_run="set -eu; stage=${remote_stage_q}; cd \"\${stage}\"; sha256sum --check --status topsdojob-v2-candidate-payload.tar.sha256; mkdir -m 0700 runtime; tar -xf topsdojob-v2-candidate-payload.tar -C runtime; chmod 0500 runtime/scripts/deploy/v2/controller.sh runtime/scripts/deploy/v2/*.sh; bash runtime/scripts/deploy/v2/controller.sh candidate-remote runtime/artifact ${source_sha_q} ${certification_run_q} ${artifact_id_q} ${candidate_run_q} \"\${stage}/evidence\" \"\${stage}/candidate-evidence.tar\" </dev/null"
+          set +e
+          ssh "${ssh_options[@]}" \
+            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
+            "${remote_run}" </dev/null
+          candidate_rc=$?
+          set -e
+          if ssh "${ssh_options[@]}" \
+              "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
+              "test -s ${remote_stage_q}/candidate-evidence.tar" </dev/null; then
+            scp -4 -P "${CANDIDATE_SSH_PORT}" -i "${ssh_dir}/id" \
+              -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
+              "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}:${remote_stage}/candidate-evidence.tar" \
+              "${evidence_tar}"
+          fi
+          cleanup_stage="set -eu; stage=${remote_stage_q}; case \"\${stage}\" in \"\${HOME}/.cache/topsdojob-candidate/\"*) ;; *) exit 70 ;; esac; test ! -L \"\${stage}\"; rm -rf -- \"\${stage}\""
+          ssh "${ssh_options[@]}" \
+            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
+            "${cleanup_stage}" </dev/null
+          rm -rf -- "${ssh_dir}"
+          exit "${candidate_rc}"
+
+      - name: Require diagnostic after remote candidate execution
+        if: ${{ always() && steps.target-guard.outputs.verified == 'true' }}
+        shell: bash
+        run: test -s "${RUNNER_TEMP}/topsdojob-v2-candidate-evidence.tar"
+
+      - name: Preserve sanitized candidate certification
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: topsdojob-v2-candidate-evidence-${{ needs.mode-guard.outputs.source-sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/topsdojob-v2-candidate-evidence.tar
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 0

@@ -93,6 +93,9 @@ v2_build_release_artifact() {
   v2_node "scripts/deploy/v2/contract.mjs" manifest-create \
     "${output_dir}/release-manifest.json" "${source_sha}" "${archive}" \
     "${dependency_archive}" \
+    "${CERTIFICATION_RUN_ID:?run de certificacao obrigatorio}" \
+    "${CERTIFICATION_RUN_ATTEMPT:?attempt de certificacao obrigatorio}" \
+    "${CERTIFICATION_ARTIFACT_NAME:?nome do artefato obrigatorio}" \
     "${V2_BACKEND_IMAGE}" "$(docker image inspect "${V2_BACKEND_IMAGE}" --format '{{.Id}}')" \
     "${V2_FRONTEND_IMAGE}" "$(docker image inspect "${V2_FRONTEND_IMAGE}" --format '{{.Id}}')" \
     "${V2_GATEWAY_IMAGE}" "$(docker image inspect "${V2_GATEWAY_IMAGE}" --format '{{.Id}}')"
@@ -146,4 +149,69 @@ v2_load_release_artifact() {
   done < <(v2_node "scripts/deploy/v2/contract.mjs" manifest-images "${bundle_dir}")
   v2_set_release_images "${expected_sha}"
   v2_log "ARTIFACT_VERIFIED imagesSha=$(v2_sha256 "${bundle_dir}/release-images.tar") dependenciesSha=$(v2_sha256 "${dependency_archive}")"
+}
+
+v2_load_candidate_artifact() {
+  local bundle_dir="$1" expected_sha="$2" expected_run_id="$3"
+  local image_name expected_id actual_id
+  [[ -d "${bundle_dir}" ]] || v2_die "bundle de candidata ausente"
+  if find "${bundle_dir}" -type l -print -quit | grep -q .; then
+    v2_die "bundle de candidata contem symlink"
+  fi
+  (cd -- "${bundle_dir}" && sha256sum --check --status release-manifest.sha256)
+  v2_node "scripts/deploy/v2/contract.mjs" manifest-runtime-verify \
+    "${bundle_dir}" "${expected_sha}" "${expected_run_id}"
+  docker load --input "${bundle_dir}/release-images.tar" >/dev/null
+  while IFS='|' read -r image_name expected_id; do
+    [[ -n "${image_name}" && -n "${expected_id}" ]] || v2_die "imagem candidata invalida"
+    actual_id="$(docker image inspect "${image_name}" --format '{{.Id}}')"
+    [[ "${actual_id}" == "${expected_id}" ]] ||
+      v2_die "imagem candidata diverge do manifesto: ${image_name}"
+  done < <(v2_node "scripts/deploy/v2/contract.mjs" manifest-images "${bundle_dir}")
+  v2_set_release_images "${expected_sha}"
+  v2_log "CANDIDATE_ARTIFACT=VERIFIED sha=${expected_sha} run=${expected_run_id} rebuild=0"
+}
+
+v2_create_candidate_payload() {
+  local bundle_dir="$1" expected_sha="$2" expected_run_id="$3" artifact_name="$4"
+  local run_file="$5" artifacts_file="$6" output_dir="$7" context_file
+  [[ ! -e "${output_dir}" ]] || v2_die "diretorio do payload ja existe"
+  mkdir -m 0700 -p -- \
+    "${output_dir}/.github/workflows" \
+    "${output_dir}/deploy/v2" \
+    "${output_dir}/scripts/deploy/v2" \
+    "${output_dir}/backend/src/main/resources/db/migration" \
+    "${output_dir}/artifact"
+  context_file="${output_dir}/candidate-context.env"
+  v2_node "scripts/deploy/v2/contract.mjs" candidate-metadata-verify \
+    "${bundle_dir}" "${expected_sha}" "${expected_run_id}" "${artifact_name}" \
+    "${run_file}" "${artifacts_file}" "${context_file}"
+
+  cp -- "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml" \
+    "${output_dir}/.github/workflows/"
+  cp -- "${V2_ROOT}/deploy/v2/compose.yml" "${V2_ROOT}/deploy/v2/images.lock.json" \
+    "${output_dir}/deploy/v2/"
+  cp -- "${V2_ROOT}"/scripts/deploy/v2/*.sh "${V2_ROOT}"/scripts/deploy/v2/*.mjs \
+    "${output_dir}/scripts/deploy/v2/"
+  cp -- "${V2_ROOT}"/backend/src/main/resources/db/migration/V*.sql \
+    "${output_dir}/backend/src/main/resources/db/migration/"
+  cp -- "${bundle_dir}/release-images.tar" \
+    "${bundle_dir}/release-manifest.json" \
+    "${bundle_dir}/release-manifest.sha256" \
+    "${output_dir}/artifact/"
+  if [[ -f "${bundle_dir}/tool-versions.txt" ]]; then
+    cp -- "${bundle_dir}/tool-versions.txt" "${output_dir}/artifact/"
+  fi
+  find "${output_dir}" -type d -exec chmod 0700 {} +
+  find "${output_dir}" -type f -exec chmod 0600 {} +
+  chmod 0500 "${output_dir}"/scripts/deploy/v2/*.sh
+
+  docker run --rm --network none \
+    --user "$(id -u):$(id -g)" \
+    --volume "${output_dir}:${output_dir}:ro" \
+    --workdir "${output_dir}" \
+    "${V2_NODE_IMAGE}" node scripts/deploy/v2/contract.mjs \
+    manifest-runtime-verify "${output_dir}/artifact" \
+    "${expected_sha}" "${expected_run_id}" </dev/null
+  v2_log "CANDIDATE_PAYLOAD=READY artifact=${artifact_name} rebuild=0"
 }
