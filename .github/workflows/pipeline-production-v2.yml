@@ -1,0 +1,188 @@
+name: Pipeline Hermetico V2 - Fase 1
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Modo permitido nesta fase
+        required: true
+        type: choice
+        options:
+          - verify
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: topsdojob-pipeline-v2-phase1-verify
+  cancel-in-progress: false
+
+jobs:
+  mode-guard:
+    name: Bloquear modos mutaveis
+    runs-on: ubuntu-24.04
+    outputs:
+      source-sha: ${{ steps.guard.outputs.source_sha }}
+    steps:
+      - name: Validate verify-only mode
+        id: guard
+        shell: bash
+        env:
+          REQUESTED_MODE: ${{ github.event_name == 'pull_request' && 'verify' || inputs.mode }}
+          SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          test "${REQUESTED_MODE}" = "verify"
+          [[ "${SOURCE_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          printf 'source_sha=%s\n' "${SOURCE_SHA}" >> "${GITHUB_OUTPUT}"
+          printf '%s\n' 'PIPELINE_V2_MODE=verify'
+
+  build-once:
+    name: Construir artefato unico
+    needs: mode-guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      source-sha: ${{ needs.mode-guard.outputs.source-sha }}
+      artifact-name: ${{ steps.artifact-identity.outputs.name }}
+      artifact-id: ${{ steps.release-artifact.outputs.artifact-id }}
+    steps:
+      - name: Checkout source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.mode-guard.outputs.source-sha }}
+          fetch-depth: 1
+
+      - name: Build release exactly once
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          OUTPUT_DIR: ${{ runner.temp }}/topsdojob-v2-release
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          bash ./scripts/deploy/v2/controller.sh build "${OUTPUT_DIR}" "${SOURCE_SHA}"
+
+      - name: Define same-run artifact identity
+        id: artifact-identity
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          [[ "${SOURCE_SHA}" =~ ^[a-f0-9]{40}$ ]]
+          [[ "${RUN_ID}" =~ ^[0-9]+$ ]]
+          [[ "${RUN_ATTEMPT}" =~ ^[0-9]+$ ]]
+          printf 'name=topsdojob-v2-release-%s-%s-%s\n' \
+            "${SOURCE_SHA}" "${RUN_ID}" "${RUN_ATTEMPT}" >> "${GITHUB_OUTPUT}"
+
+      - name: Transport immutable release artifact
+        id: release-artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ${{ steps.artifact-identity.outputs.name }}
+          path: ${{ runner.temp }}/topsdojob-v2-release
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  verify-clean-runner:
+    name: Verify runner limpo ${{ matrix.run }}
+    if: ${{ github.event_name != 'pull_request' || !contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic') }}
+    needs: [mode-guard, build-once]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3]
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.mode-guard.outputs.source-sha }}
+          fetch-depth: 1
+
+      - name: Receive the same release artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ needs.build-once.outputs.artifact-name }}
+          path: ${{ runner.temp }}/topsdojob-v2-release
+
+      - name: Verify on an independent clean runner
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          BUNDLE_DIR: ${{ runner.temp }}/topsdojob-v2-release
+          EVIDENCE_DIR: ${{ runner.temp }}/topsdojob-v2-evidence-${{ matrix.run }}
+          V2_RUN_NUMBER: ${{ matrix.run }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
+          bash ./scripts/deploy/v2/controller.sh verify \
+            "${BUNDLE_DIR}" "${SOURCE_SHA}" "${V2_RUN_NUMBER}" "${EVIDENCE_DIR}"
+
+      - name: Preserve sanitized runner evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: topsdojob-v2-evidence-${{ needs.mode-guard.outputs.source-sha }}-${{ matrix.run }}
+          path: ${{ runner.temp }}/topsdojob-v2-evidence-${{ matrix.run }}
+          if-no-files-found: warn
+          retention-days: 7
+
+  diagnose-gateway-listagem:
+    name: Diagnosticar gateway_listagem com artefato do mesmo run
+    if: ${{ github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'pipeline-v2-diagnostic') }}
+    needs: build-once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout diagnostic controller
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+
+      - name: Receive certified artifact from this run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ${{ needs.build-once.outputs.artifact-name }}
+          path: ${{ runner.temp }}/topsdojob-v2-release-diagnostic
+
+      - name: Reproduce gateway_listagem once with sanitized diagnostics
+        shell: bash
+        env:
+          ARTIFACT_SOURCE_SHA: ${{ needs.build-once.outputs.source-sha }}
+          ARTIFACT_NAME: ${{ needs.build-once.outputs.artifact-name }}
+          BUNDLE_DIR: ${{ runner.temp }}/topsdojob-v2-release-diagnostic
+          CONTROLLER_SHA: ${{ github.event.pull_request.head.sha }}
+          EVIDENCE_DIR: ${{ runner.temp }}/topsdojob-v2-gateway-listagem-diagnostic
+          CURRENT_ARTIFACT_ID: ${{ needs.build-once.outputs.artifact-id }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          CURRENT_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${CONTROLLER_SHA}"
+          test "${ARTIFACT_SOURCE_SHA}" = "${CONTROLLER_SHA}"
+          test "${ARTIFACT_NAME}" = \
+            "topsdojob-v2-release-${ARTIFACT_SOURCE_SHA}-${CURRENT_RUN_ID}-${CURRENT_RUN_ATTEMPT}"
+          bash ./scripts/deploy/v2/controller.sh diagnose \
+            "${BUNDLE_DIR}" "${ARTIFACT_SOURCE_SHA}" "${EVIDENCE_DIR}" \
+            "${CURRENT_RUN_ID}" "${CURRENT_ARTIFACT_ID}"
+
+      - name: Preserve private sanitized diagnostic
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: topsdojob-v2-gateway-listagem-diagnostic-${{ github.run_id }}
+          path: ${{ runner.temp }}/topsdojob-v2-gateway-listagem-diagnostic
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
