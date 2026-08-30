@@ -31,9 +31,15 @@ v2_build_test_dependency_bundle() {
       rm -rf "$2/target"
       mvn --batch-mode --no-transfer-progress \
         -Dmaven.repo.local="$3/m2/repository" -DskipTests -f "$2/pom.xml" verify
+      mvn --batch-mode --no-transfer-progress \
+        -Dmaven.repo.local="$3/m2/repository" \
+        -Dtest=CategoriaAnuncioTest -f "$2/pom.xml" test
       rm -rf "$2/target"
       mvn --offline --batch-mode --no-transfer-progress \
         -Dmaven.repo.local="$3/m2/repository" -DskipTests -f "$2/pom.xml" verify
+      mvn --offline --batch-mode --no-transfer-progress \
+        -Dmaven.repo.local="$3/m2/repository" \
+        -Dtest=CategoriaAnuncioTest -f "$2/pom.xml" test
       rm -rf "$2" /tmp/pipeline-v2-maven-home
     ' _ "${V2_ROOT}" "${backend_copy}" "${dependency_root}" </dev/null
 
