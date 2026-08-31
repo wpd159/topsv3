@@ -346,11 +346,13 @@ jobs:
           [[ "${payload_bytes}" =~ ^[1-9][0-9]*$ ]]
           [[ "${transport_sha}" =~ ^[a-f0-9]{64}$ ]]
           [[ "${jq_sha}" =~ ^[a-f0-9]{64}$ ]]
-          printf 'payload_path=%s\npayload_sha=%s\npayload_bytes=%s\n' \
-            "${payload_path}" "${payload_sha}" "${payload_bytes}" >> "${GITHUB_OUTPUT}"
-          printf 'transport_sha=%s\njq_sha=%s\n' \
-            "${transport_sha}" "${jq_sha}" >> "${GITHUB_OUTPUT}"
-          printf 'artifact_id=%s\n' "${artifact_id}" >> "${GITHUB_OUTPUT}"
+          {
+            printf 'payload_path=%s\npayload_sha=%s\npayload_bytes=%s\n' \
+              "${payload_path}" "${payload_sha}" "${payload_bytes}"
+            printf 'transport_sha=%s\njq_sha=%s\n' \
+              "${transport_sha}" "${jq_sha}"
+            printf 'artifact_id=%s\n' "${artifact_id}"
+          } >> "${GITHUB_OUTPUT}"
           printf '%s\n' 'CERTIFIED_ARTIFACT=VERIFIED REBUILD=0 REPACKAGE=0'
 
       - name: Validate pinned host key and target guard before upload
