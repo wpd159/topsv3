@@ -46,7 +46,17 @@ O artefato produzido para o PR #24 e efemero e nao pode ser reutilizado em candi
 
 O modo `candidate` foi implementado em branch propria para exigir SHA e run de certificacao exatos, validar manifesto/hashes/digests, executar target guard antes do upload, restaurar uma copia read-only do banco em PostgreSQL 17 isolado, usar somente servicos externos locais, executar os mesmos 14 gates e remover a candidata graciosamente.
 
-Essa implementacao nao foi executada contra a VPS e nao constitui evidencia de candidata real. `switch` e deploy completo continuam bloqueados. Uma execucao `candidate` exige autorizacao separada; somente depois de sua evidencia aprovada podera existir uma autorizacao independente para a Fase 3, cobrindo switch, smoke, drenagem e rollback.
+Essa implementacao ainda nao havia sido executada contra a VPS e nao constituia evidencia de candidata real. `switch` e deploy completo continuam bloqueados. Uma execucao `candidate` exige autorizacao separada; somente depois de sua evidencia aprovada podera existir uma autorizacao independente para a Fase 3, cobrindo switch, smoke, drenagem e rollback.
+
+## Ocorrencia de layout do artifact na Fase 2
+
+O `verify` `33341100028` certificou corretamente o SHA `b23c323ccf6b26d6cc77c28ca20a207bd9f2c83c` e publicou o artifact `9740656605`. No run `candidate` `33342261801`, a action oficial baixou esse artifact e extraiu `release-manifest.json` diretamente no diretorio de destino. O workflow, entretanto, procurava exclusivamente na profundidade 2 e encerrou ao obter zero resultados.
+
+A falha ocorreu antes do target guard, do SSH e de qualquer acesso a VPS. Nao houve candidata, banco isolado, switch, deploy ou alteracao da producao. O artifact, seu manifesto e a certificacao nao foram a causa.
+
+O contrato corretivo elimina profundidade fixa: um resolvedor unico ancora a raiz no unico manifesto, exige `artifactLayoutVersion=1`, valida arquivos regulares, `realpath`, ausencia de symlinks e traversal, perfis nominais sem extras, checksums, hashes e payloads. O candidate seleciona o artifact certificado por ID e exige digest valido antes do target guard. Um workflow pequeno faz round-trip real entre as mesmas actions pinadas de upload e download em jobs diferentes.
+
+Como workflow, controlador e manifesto mudaram, o artifact `9740656605` e o run `33341100028` nao podem ser promovidos. Depois do merge corretivo, a sequencia minima volta a ser novo `verify`, novo artifact do SHA resultante e nova execucao `candidate` sem switch, cada uma com autorizacao propria.
 
 ## Criterio de encerramento
 

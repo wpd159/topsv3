@@ -131,6 +131,9 @@ jobs:
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+          archive: true
 
   verify-clean-runner:
     name: Verify runner limpo ${{ matrix.run }}
@@ -241,15 +244,69 @@ jobs:
           ref: ${{ needs.mode-guard.outputs.source-sha }}
           fetch-depth: 1
 
+      - name: Select exact certified artifact
+        id: certified-artifact
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
+          CERTIFICATION_RUN_ID: ${{ needs.mode-guard.outputs.certification-run-id }}
+          RUN_FILE: ${{ runner.temp }}/certification-run.json
+          ARTIFACTS_FILE: ${{ runner.temp }}/certification-artifacts.json
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('node:fs')
+            const runId = Number(process.env.CERTIFICATION_RUN_ID)
+            if (!Number.isSafeInteger(runId) || runId < 1) throw new Error('invalid certification run')
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            })
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+                per_page: 100,
+              },
+            )
+            const expectedName = [
+              'topsdojob-v2-release',
+              process.env.SOURCE_SHA,
+              String(runId),
+              String(run.run_attempt),
+            ].join('-')
+            const matches = artifacts.filter((artifact) => artifact.name === expectedName)
+            if (run.head_sha !== process.env.SOURCE_SHA
+                || run.conclusion !== 'success'
+                || run.event !== 'workflow_dispatch'
+                || run.path !== '.github/workflows/pipeline-production-v2.yml'
+                || matches.length !== 1
+                || !Number.isSafeInteger(matches[0].id)
+                || matches[0].id < 1
+                || matches[0].expired === true
+                || !/^sha256:[a-f0-9]{64}$/.test(matches[0].digest || '')) {
+              throw new Error('certified artifact identity rejected')
+            }
+            fs.writeFileSync(process.env.RUN_FILE, `${JSON.stringify(run)}\n`, { mode: 0o600 })
+            fs.writeFileSync(process.env.ARTIFACTS_FILE,
+              `${JSON.stringify({ artifacts })}\n`, { mode: 0o600 })
+            core.setOutput('artifact_id', String(matches[0].id))
+            core.setOutput('artifact_name', matches[0].name)
+            core.setOutput('artifact_digest', matches[0].digest)
+
       - name: Receive certified artifact from the authorized run
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          pattern: topsdojob-v2-release-${{ needs.mode-guard.outputs.source-sha }}-${{ needs.mode-guard.outputs.certification-run-id }}-*
+          artifact-ids: ${{ steps.certified-artifact.outputs.artifact_id }}
           path: ${{ runner.temp }}/topsdojob-v2-certified-download
           merge-multiple: false
           github-token: ${{ github.token }}
           run-id: ${{ needs.mode-guard.outputs.certification-run-id }}
           repository: ${{ github.repository }}
+          digest-mismatch: error
 
       - name: Validate certification and prepare immutable payload
         id: candidate-payload
@@ -257,34 +314,26 @@ jobs:
         env:
           SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
           CERTIFICATION_RUN_ID: ${{ needs.mode-guard.outputs.certification-run-id }}
-          GH_TOKEN: ${{ github.token }}
           DOWNLOAD_ROOT: ${{ runner.temp }}/topsdojob-v2-certified-download
           PACKAGE_DIR: ${{ runner.temp }}/topsdojob-v2-candidate-package
           PAYLOAD_TAR: ${{ runner.temp }}/topsdojob-v2-candidate-payload.tar
+          CERTIFIED_ARTIFACT_ID: ${{ steps.certified-artifact.outputs.artifact_id }}
+          CERTIFIED_ARTIFACT_NAME: ${{ steps.certified-artifact.outputs.artifact_name }}
+          CERTIFIED_ARTIFACT_DIGEST: ${{ steps.certified-artifact.outputs.artifact_digest }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
-          mapfile -t manifests < <(find "${DOWNLOAD_ROOT}" -mindepth 2 -maxdepth 2 \
-            -type f -name release-manifest.json -print)
-          test "${#manifests[@]}" -eq 1
-          bundle="$(dirname -- "${manifests[0]}")"
-          artifact_name="$(basename -- "${bundle}")"
-          curl --fail --silent --show-error --location \
-            --header 'Accept: application/vnd.github+json' \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${CERTIFICATION_RUN_ID}" \
-            --output "${RUNNER_TEMP}/certification-run.json"
-          curl --fail --silent --show-error --location \
-            --header 'Accept: application/vnd.github+json' \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header 'X-GitHub-Api-Version: 2022-11-28' \
-            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs/${CERTIFICATION_RUN_ID}/artifacts?per_page=100" \
-            --output "${RUNNER_TEMP}/certification-artifacts.json"
           bash ./scripts/deploy/v2/controller.sh candidate-package \
-            "${bundle}" "${SOURCE_SHA}" "${CERTIFICATION_RUN_ID}" \
-            "${artifact_name}" "${RUNNER_TEMP}/certification-run.json" \
+            "${DOWNLOAD_ROOT}" "${SOURCE_SHA}" "${CERTIFICATION_RUN_ID}" \
+            "${CERTIFIED_ARTIFACT_NAME}" "${CERTIFIED_ARTIFACT_ID}" \
+            "${CERTIFIED_ARTIFACT_DIGEST}" "${RUNNER_TEMP}/certification-run.json" \
             "${RUNNER_TEMP}/certification-artifacts.json" "${PACKAGE_DIR}"
+          test "$(sed -n 's/^CERTIFIED_ARTIFACT_ID=//p' \
+            "${PACKAGE_DIR}/candidate-context.env")" = "${CERTIFIED_ARTIFACT_ID}"
+          test "$(sed -n 's/^CERTIFIED_ARTIFACT_NAME=//p' \
+            "${PACKAGE_DIR}/candidate-context.env")" = "${CERTIFIED_ARTIFACT_NAME}"
+          test "$(sed -n 's/^CERTIFIED_ARTIFACT_DIGEST=//p' \
+            "${PACKAGE_DIR}/candidate-context.env")" = "${CERTIFIED_ARTIFACT_DIGEST}"
           tar --sort=name --mtime='UTC 2026-08-30' --owner=0 --group=0 \
             --numeric-owner -cf "${PAYLOAD_TAR}" -C "${PACKAGE_DIR}" .
           (

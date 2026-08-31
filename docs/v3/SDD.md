@@ -5,10 +5,13 @@ Documento central de Specification-Driven Development da V3. Ele consolida o est
 ## Estado canonico do Pipeline Hermetico V2
 
 - A fonte Git canonica para engenharia, auditoria e correcoes futuras e `C:\topsdojob`. `C:\topsv3` permanece apenas como referencia historica e nao e fonte autorizada.
-- O estado Git canonico apos o merge do PR #24 e `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`; o CI pos-merge `33324582326` foi aprovado.
+- O estado Git canonico auditado antes da correcao do layout e `origin/main=b23c323ccf6b26d6cc77c28ca20a207bd9f2c83c`; o PR #24 e seu CI pos-merge `33324582326` permanecem como evidencia da Fase 1.
 - A Fase 1 foi concluida exclusivamente em modo `verify`, sem acesso a VPS, secrets produtivos, banco produtivo ou R2 real. O build unico e o manifesto certificado foram consumidos por tres runners limpos independentes, com 3/3 runners aprovados, 14/14 gates por runner e `criticalSkipped=0`.
 - A producao permaneceu inalterada no SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`. O artefato da Fase 1 comprova o laboratorio hermetico, mas nao deve ser reutilizado para candidata ou deploy futuro.
-- A Fase 2 implementa o modo `candidate`: artefato certificado de SHA/run exatos, target guard antes do upload, candidata e banco isolados, servicos externos locais, 14 gates e cleanup gracioso. Esta implementacao ainda nao foi executada contra a VPS.
+- A Fase 2 implementa o modo `candidate`: artefato certificado de SHA/run exatos, target guard antes do upload, candidata e banco isolados, servicos externos locais, 14 gates e cleanup gracioso.
+- A primeira tentativa `candidate` (`33342261801`) parou antes do target guard e de qualquer acesso a VPS: o artifact `9740656605`, certificado pelo run `33341100028`, foi baixado corretamente, mas o workflow procurava o manifesto apenas na profundidade 2 enquanto a action oficial o extraiu diretamente no destino. Artifact e certificacao estavam corretos.
+- O contrato passa a ancorar a raiz no unico `release-manifest.json`, sem profundidade ou nome de diretorio presumidos, rejeitando ambiguidade, symlink, traversal, hash divergente, payload ausente e arquivo inesperado. Um round-trip real e pequeno de upload/download protege esse contrato sem construir a aplicacao.
+- O artifact e o manifesto de `33341100028` nao podem ser reutilizados depois dessa alteracao. A candidata real continua pendente de novo `verify`, novo artifact certificado e nova autorizacao; `switch` permanece bloqueado.
 - `switch`, deploy completo e trafego publico continuam sem caminho habilitado no Pipeline V2. A candidata real depende de autorizacao separada.
 - Relatorios anteriores a conclusao da Fase 1 permanecem na linha do tempo como diagnosticos historicos; nao representam o estado operacional atual. Os bloqueios de `ubuntu:24.04`, ausencia de tres runners, ausencia dos 14 gates, `criticalSkipped` diferente de zero e inexistencia do Pipeline V2 estao superados.
 - O incidente do pipeline permanece aberto.
