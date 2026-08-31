@@ -8,6 +8,10 @@ Este documento lista pendencias conhecidas e gates obrigatorios antes de fases f
 - Fechado na Fase 1: PR #24 mesclado em `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, com CI pos-merge `33324582326` aprovado e producao inalterada.
 - Implementado na Fase 2, ainda nao executado: `mode=candidate`, validacao de SHA/run/manifesto, target guard antes do upload, banco PostgreSQL 17 isolado, servicos externos locais, os mesmos 14 gates, certificacao sanitizada e cleanup gracioso.
 - Gate da Fase 2: executar uma candidata real somente mediante autorizacao separada e exigir artefato novo, `CANDIDATE_ONLY`, zero rebuild, zero efeitos externos, 14/14 gates e zero residuos.
+- Falha de transporte registrada: o run `33342261801` encontrou o manifesto na raiz real do download, mas o candidate aceitava somente profundidade 2. O artifact `9740656605` e a certificacao `33341100028` estavam validos; target guard e VPS nao foram alcancados.
+- Gate fechado no codigo corretivo: resolvedor canonico exige um unico manifesto em qualquer profundidade, valida `realpath`, symlinks, traversal, perfil nominal, checksums, hashes e payloads, e o candidate baixa pelo ID certificado com verificacao de digest.
+- Gate permanente: round-trip real e minimo com as mesmas actions pinadas deve aprovar upload, download em outro job, resolvedor e `manifest-verify`, sem build da aplicacao, VPS ou secrets.
+- Gate ainda aberto: apos o merge da correcao, executar novo `verify` para o novo SHA. O run `33341100028`, artifact `9740656605` e manifesto anterior nao sao promoviveis.
 - Aberto: o incidente do pipeline permanece em status `OPEN` ate a conclusao das fases operacionais autorizadas separadamente.
 - Pendente para a Fase 2: gerar novo artefato certificado e validar candidata real na VPS canonica sem switch, sem promover ou reutilizar o artefato do PR #24. Implementacao local nao satisfaz este gate.
 - Pendente para a Fase 3: autorizar separadamente switch, smoke publico, drenagem, rollback e encerramento operacional do incidente.
