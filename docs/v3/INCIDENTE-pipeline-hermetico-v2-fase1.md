@@ -3,7 +3,7 @@
 ## Estado
 
 - Status: `OPEN`.
-- Data desta consolidacao: 2026-08-30.
+- Data desta consolidacao: 2026-08-31.
 - Fonte Git canonica: `C:\topsdojob`.
 - Fonte historica nao autorizada para novas mudancas: `C:\topsv3` e suas worktrees.
 - Producao preservada: `4e72be6c7fa0b790230e4ed416497c24843f3dcd`.
@@ -11,6 +11,9 @@
 - HEAD tecnico aprovado: `fbb934ec576113711580a619c774e87f2b95e0cf`.
 - Estado Git canonico pos-merge: `9bc083dadeba09f7de9c4d48f94810f7fd6df28f`.
 - CI pos-merge: `33324582326` (`PASS`).
+- Base da correcao do handoff remoto: `66696d5f11dd5a322b9b0850c7a4cf717fe3ff44`.
+- Verify certificado mais recente: `33350467422`; artifact `9743533209`.
+- Candidate com falha de handoff: `33354579527`.
 
 ## Ocorrencia
 
@@ -57,6 +60,20 @@ A falha ocorreu antes do target guard, do SSH e de qualquer acesso a VPS. Nao ho
 O contrato corretivo elimina profundidade fixa: um resolvedor unico ancora a raiz no unico manifesto, exige `artifactLayoutVersion=1`, valida arquivos regulares, `realpath`, ausencia de symlinks e traversal, perfis nominais sem extras, checksums, hashes e payloads. O candidate seleciona o artifact certificado por ID e exige digest valido antes do target guard. Um workflow pequeno faz round-trip real entre as mesmas actions pinadas de upload e download em jobs diferentes.
 
 Como workflow, controlador e manifesto mudaram, o artifact `9740656605` e o run `33341100028` nao podem ser promovidos. Depois do merge corretivo, a sequencia minima volta a ser novo `verify`, novo artifact do SHA resultante e nova execucao `candidate` sem switch, cada uma com autorizacao propria.
+
+## Ocorrencia de handoff remoto do artifact
+
+O `verify` `33350467422` aprovou e certificou o artifact `9743533209`. No `candidate` `33354579527`, o manifesto e a certificacao foram validados no runner, o target guard foi aprovado e o payload chegou ao staging remoto. O controlador remoto encerrou com `manifesto ausente ou fora da raiz` antes de criar a candidata.
+
+A causa foi o comando do proprio job candidate. Depois do download certificado, ele selecionava arquivos para outro diretorio, criava um segundo TAR, extraia esse TAR em `runtime` e chamava `candidate-remote runtime/artifact`. Como o runtime do Node ja usava `runtime` como workdir, a raiz relativa passou a ser interpretada como `runtime/runtime/artifact`. O manifesto nao foi perdido pelo GitHub Artifact nem pelo SCP; ele foi deslocado pelo reempacotamento e procurado a partir da raiz errada.
+
+O contrato corretivo usa uma unidade unica `candidate-payload.tar`, criada uma vez no build-once sob `candidate-root/`. A certificacao externa registra nome, tamanho, SHA-256, Git SHA e layout version 2. O candidate baixa pelo ID certificado, rejeita envelope ambiguo, nao copia arquivos internos nem cria novo TAR, envia exatamente o mesmo arquivo por SCP e exige SHA/tamanho local e remoto identicos.
+
+Antes da extracao remota sao rejeitados caminhos absolutos, traversal, raiz adicional, links e quantidade de manifestos divergente. A extracao ocorre em diretorio novo; o mesmo `transport.sh`, acompanhado de `jq` estatico certificado, resolve a raiz e executa o manifest-verify tanto no runner quanto no remoto. Nao existe fallback para outra raiz.
+
+O laboratorio Linux descartavel usa SSH/SCP real, usuario nao root e HOME proprio. Foram aprovados 10/10 transportes byte a byte, 15/15 casos negativos, uma corrupcao remota deliberada com falha propagada e diagnostico preservado antes do cleanup, e zero residuos. O round-trip pequeno do GitHub deve repetir apenas o contrato fixture -> upload -> download -> SSH local -> manifest-verify; ele nao executa build completo, candidate real, switch ou deploy.
+
+Nenhuma VPS foi acessada durante a implementacao desta correcao. A producao permaneceu no SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`. A candidata real nao foi repetida e continua dependente de novo verify, novo artifact e autorizacao expressa.
 
 ## Criterio de encerramento
 

@@ -13,10 +13,11 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Round-trip do contrato do artifact: `.github/workflows/pipeline-v2-artifact-roundtrip.yml`
 - Controlador unico V2: `scripts/deploy/v2/controller.sh`
 - Manifesto e proveniencia: `scripts/deploy/v2/artifact.sh` e `scripts/deploy/v2/contract.mjs`
+- Transporte imutavel, extracao segura e laboratorio SSH: `scripts/deploy/v2/transport.sh`
 - Laboratorio e candidata isolada: `scripts/deploy/v2/lab.sh` e `deploy/v2/compose.yml`
 - Estado canonico da Fase 1: PR #24 mesclado, `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, CI `33324582326`, 3/3 runners, 14/14 gates e `criticalSkipped=0`.
-- Estado da Fase 2: o run `33342261801` parou antes do target guard porque o workflow presumiu profundidade 2 para um manifesto extraido diretamente no destino. Artifact `9740656605` e certificacao `33341100028` estavam corretos; nao houve acesso a VPS, switch ou deploy.
-- Correcao rastreavel: `v2_resolve_artifact_root`, `artifactLayoutVersion=1`, validacao fechada dos payloads e round-trip real das actions pinadas. Nova candidata depende de novo `verify` e novo artifact.
+- Historico da Fase 2: `33342261801` revelou a profundidade fixa no download; `33350467422` certificou o artifact `9743533209`; `33354579527` revelou o segundo TAR e a duplicacao da raiz relativa no handoff remoto. Nenhum desses artifacts e promovivel depois da mudanca de contrato.
+- Correcao rastreavel: `candidate-payload.tar`, `artifactLayoutVersion=2`, certificacao externa, `transport.sh`, SHA local/remoto, tabela TAR segura, resolvedor unico, manifest-verify remoto e round-trip SSH real. Nova candidata depende de novo `verify` e novo artifact.
 
 ## Arquitetura local
 
