@@ -101,6 +101,7 @@ function workflowJob(workflow, name) {
 
 function technicalFiles() {
   return [
+    path.join(root, '.github/workflows/pipeline-v2-artifact-roundtrip.yml'),
     path.join(root, '.github/workflows/pipeline-production-v2.yml'),
     path.join(root, 'deploy/v2/images.lock.json'),
     path.join(root, 'deploy/v2/compose.yml'),
@@ -136,6 +137,8 @@ function contract() {
 
   const workflowFile = path.join(root, '.github/workflows/pipeline-production-v2.yml')
   const workflow = fs.readFileSync(workflowFile, 'utf8')
+  const roundtripWorkflow = fs.readFileSync(
+    path.join(root, '.github/workflows/pipeline-v2-artifact-roundtrip.yml'), 'utf8')
   const compose = fs.readFileSync(path.join(root, 'deploy/v2/compose.yml'), 'utf8')
   const lab = fs.readFileSync(path.join(root, 'scripts/deploy/v2/lab.sh'), 'utf8')
   const controller = fs.readFileSync(path.join(root, 'scripts/deploy/v2/controller.sh'), 'utf8')
@@ -285,9 +288,34 @@ function contract() {
     if (!/@[a-f0-9]{40}$/.test(action)) fail(`action sem commit completo: ${action}`)
   }
   const allowedActions = new Set(Object.values(lock.actions))
-  const usedActions = [...workflow.matchAll(/^\s*uses:\s*(\S+)\s*$/gm)].map((match) => match[1])
+  const usedActions = [...`${workflow}\n${roundtripWorkflow}`.matchAll(/^\s*uses:\s*(\S+)\s*$/gm)]
+    .map((match) => match[1])
   if (usedActions.length === 0 || usedActions.some((action) => !allowedActions.has(action))) {
     fail(`workflow usa action nao pinada: ${JSON.stringify(usedActions)}`)
+  }
+  for (const required of [
+    'artifact-contract-upload:',
+    'artifact-contract-download:',
+    'controller.sh artifact-fixture',
+    'controller.sh artifact-roundtrip',
+    'artifact-ids: ${{ needs.artifact-contract-upload.outputs.artifact-id }}',
+    'digest-mismatch: error',
+    'compression-level: 0',
+    'overwrite: false',
+    'include-hidden-files: false',
+    'archive: true',
+  ]) {
+    if (!roundtripWorkflow.includes(required)) {
+      fail(`round-trip real do artifact incompleto: ${required}`)
+    }
+  }
+  if (/controller\.sh (?:build|verify|diagnose|candidate)|environment:|secrets\.|ssh|scp|backend\/|frontend\//.test(roundtripWorkflow)) {
+    fail('round-trip do artifact acessa build, candidata ou recurso externo')
+  }
+  if (!roundtripWorkflow.includes(lock.actions.uploadArtifact)
+      || !roundtripWorkflow.includes(lock.actions.downloadArtifact)
+      || !roundtripWorkflow.includes(lock.actions.checkout)) {
+    fail('round-trip nao reutiliza as actions pinadas do pipeline')
   }
   if (!/matrix:\s*\n\s*run:\s*\[1, 2, 3\]/.test(workflow)) {
     fail('workflow deve usar tres runners independentes')

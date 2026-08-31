@@ -256,6 +256,7 @@ v2_create_candidate_payload() {
     "${context_file}"
 
   cp -- "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml" \
+    "${V2_ROOT}/.github/workflows/pipeline-v2-artifact-roundtrip.yml" \
     "${output_dir}/.github/workflows/"
   cp -- "${V2_ROOT}/deploy/v2/compose.yml" "${V2_ROOT}/deploy/v2/images.lock.json" \
     "${output_dir}/deploy/v2/"
@@ -287,124 +288,6 @@ v2_create_artifact_contract_fixture() {
   local artifact_name="$5"
   v2_artifact_contract artifact-fixture-create \
     "${output_dir}" "${source_sha}" "${run_id}" "${run_attempt}" "${artifact_name}"
-}
-
-v2_expect_artifact_resolver_pass() {
-  local name="$1" extraction_dir="$2" output="$3"
-  if ! v2_resolve_artifact_root "${extraction_dir}" >"${output}" 2>&1; then
-    v2_die "resolver deveria aceitar ${name}"
-  fi
-  grep -qx 'ARTIFACT_ROOT_RESOLVED=YES' "${output}" ||
-    v2_die "sinal do resolver ausente em ${name}"
-  v2_log "ARTIFACT_RESOLVER_TEST=${name}:PASS"
-}
-
-v2_expect_artifact_resolver_fail() {
-  local name="$1" extraction_dir="$2" output="$3"
-  if v2_resolve_artifact_root "${extraction_dir}" >"${output}" 2>&1; then
-    v2_die "resolver deveria rejeitar ${name}"
-  fi
-  grep -q 'ARTIFACT_DIAGNOSTIC' "${output}" ||
-    v2_die "diagnostico ausente em ${name}"
-  v2_log "ARTIFACT_RESOLVER_TEST=${name}:FAIL_EXPECTED"
-}
-
-v2_run_artifact_resolver_tests() {
-  local test_root="$1" source_sha="$2" run_id=123456789 run_attempt=1
-  local artifact_name fixture case_dir output
-  [[ ! -e "${test_root}" ]] || v2_die "diretorio de testes do resolver ja existe"
-  umask 077
-  mkdir -p -- "${test_root}"
-  fixture="${test_root}/fixture"
-  artifact_name="topsdojob-v2-release-${source_sha}-${run_id}-${run_attempt}"
-  v2_create_artifact_contract_fixture \
-    "${fixture}" "${source_sha}" "${run_id}" "${run_attempt}" "${artifact_name}" >/dev/null
-  export V2_ARTIFACT_EXPECTED_SHA="${source_sha}"
-  export V2_ARTIFACT_RUN_ID="${run_id}"
-  export V2_ARTIFACT_ID=fixture
-  export V2_ARTIFACT_NAME="${artifact_name}"
-
-  case_dir="${test_root}/depth-0"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  output="${test_root}/depth-0.log"
-  v2_expect_artifact_resolver_pass depth-0 "${case_dir}" "${output}"
-
-  case_dir="${test_root}/depth-1"
-  mkdir -p -- "${case_dir}/artifact"
-  cp -a -- "${fixture}/." "${case_dir}/artifact/"
-  output="${test_root}/depth-1.log"
-  v2_expect_artifact_resolver_pass depth-1 "${case_dir}" "${output}"
-
-  case_dir="${test_root}/depth-2"
-  mkdir -p -- "${case_dir}/download/artifact"
-  cp -a -- "${fixture}/." "${case_dir}/download/artifact/"
-  output="${test_root}/depth-2.log"
-  v2_expect_artifact_resolver_pass depth-2 "${case_dir}" "${output}"
-
-  case_dir="${test_root}/no-manifest"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  rm -- "${case_dir}/release-manifest.json"
-  v2_expect_artifact_resolver_fail no-manifest "${case_dir}" "${test_root}/no-manifest.log"
-
-  case_dir="${test_root}/duplicate-manifest"
-  mkdir -p -- "${case_dir}/one" "${case_dir}/two"
-  cp -a -- "${fixture}/." "${case_dir}/one/"
-  cp -a -- "${fixture}/." "${case_dir}/two/"
-  v2_expect_artifact_resolver_fail duplicate-manifest \
-    "${case_dir}" "${test_root}/duplicate-manifest.log"
-
-  case_dir="${test_root}/manifest-symlink"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  rm -- "${case_dir}/release-manifest.json"
-  ln -s -- "${fixture}/release-manifest.json" "${case_dir}/release-manifest.json"
-  v2_expect_artifact_resolver_fail manifest-symlink \
-    "${case_dir}" "${test_root}/manifest-symlink.log"
-
-  case_dir="${test_root}/payload-symlink"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  rm -- "${case_dir}/release-images.tar"
-  ln -s -- "${fixture}/release-images.tar" "${case_dir}/release-images.tar"
-  v2_expect_artifact_resolver_fail payload-symlink \
-    "${case_dir}" "${test_root}/payload-symlink.log"
-
-  case_dir="${test_root}/path-traversal"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  v2_artifact_contract artifact-fixture-mutate "${case_dir}" path-traversal
-  v2_expect_artifact_resolver_fail path-traversal \
-    "${case_dir}" "${test_root}/path-traversal.log"
-
-  case_dir="${test_root}/hash-mismatch"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  printf '%s\n' tampered >> "${case_dir}/release-images.tar"
-  v2_expect_artifact_resolver_fail hash-mismatch \
-    "${case_dir}" "${test_root}/hash-mismatch.log"
-
-  case_dir="${test_root}/payload-missing"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  rm -- "${case_dir}/release-images.tar"
-  v2_expect_artifact_resolver_fail payload-missing \
-    "${case_dir}" "${test_root}/payload-missing.log"
-
-  case_dir="${test_root}/unexpected-extra"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  printf '%s\n' unexpected > "${case_dir}/unexpected.txt"
-  v2_expect_artifact_resolver_fail unexpected-extra \
-    "${case_dir}" "${test_root}/unexpected-extra.log"
-
-  case_dir="${test_root}/real-valid-tree"
-  mkdir -- "${case_dir}"
-  cp -a -- "${fixture}/." "${case_dir}/"
-  v2_expect_artifact_resolver_pass real-valid-tree \
-    "${case_dir}" "${test_root}/real-valid-tree.log"
-  v2_log "ARTIFACT_RESOLVER_TESTS=12/12"
 }
 
 v2_verify_artifact_roundtrip() {

@@ -73,7 +73,9 @@ v2_static_contracts() {
   export V2_GATEWAY_IMAGE="${V2_GATEWAY_IMAGE:-topsdojob-v2-gateway:contract}"
 
   v2_node "scripts/deploy/v2/contract.mjs" contract
-  actionlint "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml"
+  actionlint \
+    "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml" \
+    "${V2_ROOT}/.github/workflows/pipeline-v2-artifact-roundtrip.yml"
   v2_compose config --quiet
   git -C "${V2_ROOT}" diff --check
   v2_log "STATIC_CONTRACTS=OK"
@@ -408,7 +410,9 @@ v2_candidate_remote_mode() {
   v2_tag_test_images
   v2_set_release_images "${source_sha}"
   v2_node "scripts/deploy/v2/contract.mjs" contract
-  actionlint "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml"
+  actionlint \
+    "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml" \
+    "${V2_ROOT}/.github/workflows/pipeline-v2-artifact-roundtrip.yml"
   v2_load_candidate_artifact "${bundle}" "${source_sha}" "${certification_run_id}"
   v2_prepare_candidate_from_backup
   v2_candidate_backfill_isolated
