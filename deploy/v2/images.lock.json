@@ -25,6 +25,10 @@
       "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
       "justification": "Release oficial atual fixada por SHA-256 para validar o workflow real."
     },
+    "jq": {
+      "version": "1.7.1",
+      "justification": "Parser JSON estatico transportado no pacote canonico para validar o manifesto sem depender do host remoto."
+    },
     "jdk": {
       "version": "17.0.13+11",
       "justification": "Linha Java 17 usada pela aplicacao e pela imagem produtiva auditada."
@@ -138,6 +142,20 @@
       "digest": "sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb",
       "reference": "zricethezav/gitleaks@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb",
       "purpose": "Scanner de secrets sem instalacao implicita"
+    },
+    "jq": {
+      "tag": "ghcr.io/jqlang/jq:1.7.1",
+      "indexDigest": "sha256:096b83865ad59b5b02841f103f83f45c51318394331bf1995e187ea3be937432",
+      "digest": "sha256:328ec66d1c8ac87621a55c58980adfba4c3a77045cf989d96ee5da307b70d0c4",
+      "reference": "ghcr.io/jqlang/jq@sha256:328ec66d1c8ac87621a55c58980adfba4c3a77045cf989d96ee5da307b70d0c4",
+      "purpose": "Binario jq estatico incluido no pacote remoto para validacao estruturada do manifesto"
+    },
+    "sshServer": {
+      "tag": "lscr.io/linuxserver/openssh-server:version-10.2_p1-r0",
+      "indexDigest": "sha256:67d4c3a1402179a6579aa217a38b52ced557eb8a0c17a8e32fe986a4549fdee4",
+      "digest": "sha256:1692b9d76dbc39a81d5defa121d0022b30f5553347cdfb0da101e673803ce89f",
+      "reference": "lscr.io/linuxserver/openssh-server@sha256:1692b9d76dbc39a81d5defa121d0022b30f5553347cdfb0da101e673803ce89f",
+      "purpose": "Servidor SSH descartavel e fixado para provar o transporte SCP real sem VPS"
     }
   },
   "candidateGates": [

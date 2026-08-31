@@ -197,6 +197,8 @@ v2_export_images() {
   export V2_MINIO_CLIENT_IMAGE="$(v2_image_ref minioClient)"
   export V2_MAILPIT_IMAGE="$(v2_image_ref mailpit)"
   export V2_GITLEAKS_IMAGE="$(v2_image_ref gitleaks)"
+  export V2_JQ_IMAGE="$(v2_image_ref jq)"
+  export V2_TRANSPORT_SSH_IMAGE="$(v2_image_ref sshServer)"
 }
 
 v2_tag_test_images() {

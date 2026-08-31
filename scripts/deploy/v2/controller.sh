@@ -334,51 +334,32 @@ v2_build_mode() {
   v2_log "BUILD_RESULT=PASS ARTIFACT_UNIQUE=backend,frontend,gateway"
 }
 
-v2_candidate_package_mode() {
+v2_candidate_metadata_mode() {
   local extraction_dir="$2" source_sha="$3" certification_run_id="$4" artifact_name="$5"
   local artifact_id="$6" artifact_digest="$7" run_file="$8" artifacts_file="$9"
-  local output_dir="${10}"
+  local context_file="${10}"
   [[ "$#" -eq 10 ]] || v2_die \
-    "uso: controller.sh candidate-package EXTRACTION SHA RUN ARTIFACT ID DIGEST RUN_JSON ARTIFACTS_JSON OUTPUT"
+    "uso: controller.sh candidate-metadata DOWNLOAD SHA RUN ARTIFACT ID DIGEST RUN_JSON ARTIFACTS_JSON CONTEXT"
   [[ "$(git -C "${V2_ROOT}" rev-parse HEAD)" == "${source_sha}" ]]
   [[ -z "$(git -C "${V2_ROOT}" status --short)" ]] || v2_die "checkout candidate sujo"
   [[ "${certification_run_id}" =~ ^[1-9][0-9]*$ ]]
-  export V2_RUN_NUMBER=candidate-package
-  v2_bootstrap_engine
-  v2_export_images
-  v2_pull_locked_images
-  v2_static_contracts
-  v2_scan_secrets
-  v2_create_candidate_payload "${extraction_dir}" "${source_sha}" \
+  export V2_ARTIFACT_USE_HOST_NODE=1
+  v2_validate_candidate_metadata "${extraction_dir}" "${source_sha}" \
     "${certification_run_id}" "${artifact_name}" "${artifact_id}" \
-    "${artifact_digest}" "${run_file}" "${artifacts_file}" "${output_dir}"
-  v2_log "CANDIDATE_PACKAGE=PASS REBUILD=0 PRODUCTION_ACCESS=0"
-}
-
-v2_candidate_context_value() {
-  local file="$1" key="$2" value
-  value="$(sed -n "s/^${key}=//p" "${file}")"
-  [[ -n "${value}" ]] || v2_die "contexto candidate incompleto: ${key}"
-  printf '%s\n' "${value}"
+    "${artifact_digest}" "${run_file}" "${artifacts_file}" "${context_file}"
+  v2_log "CANDIDATE_METADATA=PASS REBUILD=0 REPACKAGE=0 PRODUCTION_ACCESS=0"
 }
 
 v2_candidate_remote_mode() {
-  local bundle="$2" source_sha="$3" certification_run_id="$4" artifact_id="$5"
-  local candidate_run_id="$6" evidence_dir="$7" evidence_tar="$8" context_file
-  [[ "$#" -eq 8 ]] || v2_die \
-    "uso: controller.sh candidate-remote BUNDLE SHA CERT_RUN ARTIFACT_ID CANDIDATE_RUN EVIDENCE EVIDENCE_TAR"
+  local extraction_root="$2" source_sha="$3" certification_run_id="$4" artifact_id="$5"
+  local candidate_run_id="$6" jq_sha="$7" evidence_dir="$8" evidence_tar="$9" bundle
+  [[ "$#" -eq 9 ]] || v2_die \
+    "uso: controller.sh candidate-remote EXTRACTION SHA CERT_RUN ARTIFACT_ID CANDIDATE_RUN JQ_SHA EVIDENCE EVIDENCE_TAR"
   [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]]
   [[ "${certification_run_id}" =~ ^[1-9][0-9]*$ ]]
   [[ "${artifact_id}" =~ ^[1-9][0-9]*$ ]]
   [[ "${candidate_run_id}" =~ ^[1-9][0-9]*$ ]]
-  context_file="${V2_ROOT}/candidate-context.env"
-  [[ -r "${context_file}" && ! -L "${context_file}" ]]
-  [[ "$(v2_candidate_context_value "${context_file}" DEPLOY_SHA)" == "${source_sha}" ]]
-  [[ "$(v2_candidate_context_value "${context_file}" CERTIFICATION_RUN_ID)" == \
-    "${certification_run_id}" ]]
-  [[ "$(v2_candidate_context_value "${context_file}" CERTIFIED_ARTIFACT_ID)" == \
-    "${artifact_id}" ]]
-  [[ "$(v2_candidate_context_value "${context_file}" REBUILD_ALLOWED)" == "false" ]]
+  [[ "${jq_sha}" =~ ^[a-f0-9]{64}$ ]]
 
   export V2_REMOTE_CANDIDATE=1
   export V2_GRACEFUL_ENGINE=1
@@ -386,7 +367,6 @@ v2_candidate_remote_mode() {
   export V2_CANDIDATE_CERTIFICATION_RUN_ID="${certification_run_id}"
   export V2_CANDIDATE_ARTIFACT_ID="${artifact_id}"
   export V2_CANDIDATE_RUN_ID="${candidate_run_id}"
-  export V2_CANDIDATE_BUNDLE_DIR="${bundle}"
   export V2_CANDIDATE_EVIDENCE_DIR="${evidence_dir}"
   export V2_CANDIDATE_EVIDENCE_TAR="${evidence_tar}"
   export V2_CANDIDATE_HOST_DOCKER="$(command -v docker)"
@@ -396,6 +376,13 @@ v2_candidate_remote_mode() {
   [[ ! -e "${RUNNER_TEMP}" ]] || v2_die "runtime candidate preexistente"
   mkdir -m 0700 -p -- "${RUNNER_TEMP}" "${evidence_dir}"
   export V2_DIAGNOSTIC_EVIDENCE_DIR="${evidence_dir}"
+  export V2_ARTIFACT_EXPECTED_SHA="${source_sha}"
+  export V2_ARTIFACT_RUN_ID="${certification_run_id}"
+  export V2_TRANSPORT_JQ_SHA256="${jq_sha}"
+  v2_resolve_artifact_root "${extraction_root}"
+  bundle="${V2_RESOLVED_ARTIFACT_ROOT}"
+  [[ "${bundle}" == "${V2_ROOT}" ]] || v2_die "controlador fora da raiz certificada"
+  export V2_CANDIDATE_BUNDLE_DIR="${bundle}"
 
   v2_create_readonly_production_backup
   export V2_RUN_NUMBER=candidate
@@ -423,6 +410,7 @@ v2_candidate_remote_mode() {
 
 v2_verify_mode() {
   local bundle="$2" source_sha="$3" run_number="$4" evidence_dir="$5"
+  local certification_run artifact_name
   [[ "$#" -eq 5 ]] || v2_die "uso: controller.sh verify BUNDLE SHA RUN EVIDENCE"
   [[ "${run_number}" =~ ^[123]$ ]] || v2_die "runner deve ser 1, 2 ou 3"
   [[ "$(git -C "${V2_ROOT}" rev-parse HEAD)" == "${source_sha}" ]]
@@ -440,7 +428,10 @@ v2_verify_mode() {
 
   v2_static_contracts
   v2_scan_secrets
-  v2_load_release_artifact "${bundle}" "${source_sha}"
+  certification_run="${GITHUB_RUN_ID:?run de certificacao ausente}"
+  artifact_name="topsdojob-v2-release-${source_sha}-${certification_run}-${GITHUB_RUN_ATTEMPT:?}"
+  v2_load_release_artifact "${bundle}" "${source_sha}" "${certification_run}" \
+    "${artifact_name}"
   v2_negative_file_contracts "${V2_RESOLVED_ARTIFACT_ROOT}" "${source_sha}"
   v2_record_versions "${evidence_dir}/tool-versions.txt"
   v2_prepare_lab "${evidence_dir}"
@@ -492,11 +483,15 @@ v2_diagnose_mode() {
     > "${evidence_dir}/provenance.txt"
   chmod 0600 "${evidence_dir}/provenance.txt"
 
-  v2_load_release_artifact "${bundle}" "${source_sha}"
-  cp -- "${bundle}/release-manifest.json" "${evidence_dir}/release-manifest.json"
-  cp -- "${bundle}/release-manifest.sha256" "${evidence_dir}/release-manifest.sha256"
-  if [[ -f "${bundle}/tool-versions.txt" ]]; then
-    cp -- "${bundle}/tool-versions.txt" "${evidence_dir}/artifact-tool-versions.txt"
+  v2_load_release_artifact "${bundle}" "${source_sha}" "${original_run_id}" \
+    "topsdojob-v2-release-${source_sha}-${original_run_id}-${GITHUB_RUN_ATTEMPT:?}"
+  cp -- "${V2_RESOLVED_ARTIFACT_ROOT}/release-manifest.json" \
+    "${evidence_dir}/release-manifest.json"
+  cp -- "${V2_RESOLVED_ARTIFACT_ROOT}/release-manifest.sha256" \
+    "${evidence_dir}/release-manifest.sha256"
+  if [[ -f "${V2_RESOLVED_ARTIFACT_ROOT}/tool-versions.txt" ]]; then
+    cp -- "${V2_RESOLVED_ARTIFACT_ROOT}/tool-versions.txt" \
+      "${evidence_dir}/artifact-tool-versions.txt"
   fi
   v2_record_versions "${evidence_dir}/diagnostic-tool-versions.txt"
   chmod 0600 "${evidence_dir}"/*
@@ -536,16 +531,10 @@ v2_artifact_fixture_mode() {
   [[ "$#" -eq 6 ]] || v2_die \
     "uso: controller.sh artifact-fixture OUTPUT SHA RUN ATTEMPT ARTIFACT"
   export V2_ARTIFACT_USE_HOST_NODE=1
+  V2_JQ_IMAGE="$(v2_image_ref jq)"
+  export V2_JQ_IMAGE
   v2_create_artifact_contract_fixture \
     "${output_dir}" "${source_sha}" "${run_id}" "${run_attempt}" "${artifact_name}"
-}
-
-v2_artifact_resolver_tests_mode() {
-  local test_root="$2" source_sha="$3"
-  [[ "$#" -eq 3 ]] || v2_die "uso: controller.sh artifact-resolver-tests DIR SHA"
-  [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || v2_die "SHA invalido nos testes do resolver"
-  export V2_ARTIFACT_USE_HOST_NODE=1
-  v2_artifact_contract artifact-resolver-tests "${test_root}" "${source_sha}"
 }
 
 v2_artifact_roundtrip_mode() {
@@ -554,6 +543,8 @@ v2_artifact_roundtrip_mode() {
   [[ "$#" -eq 7 ]] || v2_die \
     "uso: controller.sh artifact-roundtrip EXTRACTION SHA RUN ID NAME DIGEST"
   export V2_ARTIFACT_USE_HOST_NODE=1
+  V2_TRANSPORT_SSH_IMAGE="$(v2_image_ref sshServer)"
+  export V2_TRANSPORT_SSH_IMAGE
   v2_verify_artifact_roundtrip "${extraction_dir}" "${source_sha}" "${run_id}" \
     "${artifact_id}" "${artifact_name}" "${artifact_digest}"
   rm -rf -- "${extraction_dir}"
@@ -561,14 +552,50 @@ v2_artifact_roundtrip_mode() {
   v2_log "ARTIFACT_ROUNDTRIP_RESIDUES=0"
 }
 
+v2_transport_tests_mode() {
+  local test_root="$2" source_sha="$3" run_id=9001 run_attempt=1 artifact_id=7001
+  local artifact_name envelope context package package_sha package_bytes transport_sha jq_sha
+  local negative_root ssh_evidence
+  [[ "$#" -eq 3 ]] || v2_die "uso: controller.sh transport-tests DIR SHA"
+  [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || v2_die "SHA invalido no teste de transporte"
+  [[ ! -e "${test_root}" ]] || v2_die "diretorio de transporte preexistente"
+  export V2_ARTIFACT_USE_HOST_NODE=1
+  V2_JQ_IMAGE="$(v2_image_ref jq)"
+  V2_TRANSPORT_SSH_IMAGE="$(v2_image_ref sshServer)"
+  export V2_JQ_IMAGE V2_TRANSPORT_SSH_IMAGE
+  mkdir -p -- "${test_root}"
+  envelope="${test_root}/envelope"
+  artifact_name="topsdojob-v2-release-${source_sha}-${run_id}-${run_attempt}"
+  v2_create_artifact_contract_fixture "${envelope}" "${source_sha}" "${run_id}" \
+    "${run_attempt}" "${artifact_name}"
+  negative_root="${test_root}/negative"
+  v2_transport_negative_tests "${envelope}" "${source_sha}" "${run_id}" \
+    "${artifact_name}" "${negative_root}"
+  context="${test_root}/payload-context.env"
+  v2_payload_envelope_context "${envelope}" "${source_sha}" "${run_id}" \
+    "${artifact_name}" "${context}"
+  package="$(v2_payload_context_value "${context}" PAYLOAD_PATH)"
+  package_sha="$(v2_payload_context_value "${context}" PAYLOAD_SHA256)"
+  package_bytes="$(v2_payload_context_value "${context}" PAYLOAD_BYTES)"
+  transport_sha="$(v2_payload_context_value "${context}" TRANSPORT_SHA256)"
+  jq_sha="$(v2_payload_context_value "${context}" TRANSPORT_JQ_SHA256)"
+  ssh_evidence="${test_root}/ssh"
+  bash "${V2_ROOT}/scripts/deploy/v2/transport.sh" ssh-lab \
+    "${package}" "${package_sha}" "${package_bytes}" "${transport_sha}" "${jq_sha}" \
+    "${source_sha}" "${run_id}" "${artifact_id}" 10 "${ssh_evidence}"
+  rm -rf -- "${test_root}"
+  [[ ! -e "${test_root}" ]] || v2_die "residuos do transporte"
+  v2_log "TRANSPORT_TESTS=PASS RESIDUES=0 PRODUCTION_ACCESS=0"
+}
+
 case "${V2_MODE}" in
   build) v2_build_mode "$@" ;;
   verify) v2_verify_mode "$@" ;;
   diagnose) v2_diagnose_mode "$@" ;;
-  candidate-package) v2_candidate_package_mode "$@" ;;
+  candidate-metadata) v2_candidate_metadata_mode "$@" ;;
   candidate-remote) v2_candidate_remote_mode "$@" ;;
   artifact-fixture) v2_artifact_fixture_mode "$@" ;;
-  artifact-resolver-tests) v2_artifact_resolver_tests_mode "$@" ;;
   artifact-roundtrip) v2_artifact_roundtrip_mode "$@" ;;
+  transport-tests) v2_transport_tests_mode "$@" ;;
   *) v2_die "modo permitido: build, verify, diagnose, candidate ou contrato de artifact" ;;
 esac
