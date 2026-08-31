@@ -11,7 +11,11 @@ Este documento lista pendencias conhecidas e gates obrigatorios antes de fases f
 - Falha de transporte registrada: o run `33342261801` encontrou o manifesto na raiz real do download, mas o candidate aceitava somente profundidade 2. O artifact `9740656605` e a certificacao `33341100028` estavam validos; target guard e VPS nao foram alcancados.
 - Gate fechado no codigo corretivo: resolvedor canonico exige um unico manifesto em qualquer profundidade, valida `realpath`, symlinks, traversal, perfil nominal, checksums, hashes e payloads, e o candidate baixa pelo ID certificado com verificacao de digest.
 - Gate permanente: round-trip real e minimo com as mesmas actions pinadas deve aprovar upload, download em outro job, resolvedor e `manifest-verify`, sem build da aplicacao, VPS ou secrets.
-- Gate ainda aberto: apos o merge da correcao, executar novo `verify` para o novo SHA. O run `33341100028`, artifact `9740656605` e manifesto anterior nao sao promoviveis.
+- Falha remota mais recente: o `candidate` `33354579527` recebeu conteudo reempacotado e executou `candidate-remote runtime/artifact` a partir de `runtime`, fazendo a raiz relativa apontar para `runtime/runtime/artifact`. O `verify` `33350467422` e o artifact `9743533209` nao sao promoviveis depois da correcao.
+- Gate fechado no codigo: `candidate-payload.tar` e criado uma vez no build-once, certificado externamente, transportado sem transformacao e comparado byte a byte antes da extracao. Layout atual: `artifactLayoutVersion=2` e raiz unica `candidate-root`.
+- Gate fechado no laboratorio local: SSH/SCP real para usuario nao root, 10/10 SHA local/remoto, 10/10 manifest-verify, 15/15 negativos, diagnostico antes do cleanup e zero residuos.
+- Gate ainda aberto neste PR: o round-trip pequeno do GitHub deve aprovar `ARTIFACT_ROUND_TRIP=PASS` e `REMOTE_TRANSPORT_CONTRACT=PASS` sem executar os tres runners completos.
+- Gate ainda aberto depois do merge: executar novo `verify` para o novo SHA somente mediante autorizacao. Runs e artifacts anteriores nao sao promoviveis.
 - Aberto: o incidente do pipeline permanece em status `OPEN` ate a conclusao das fases operacionais autorizadas separadamente.
 - Pendente para a Fase 2: gerar novo artefato certificado e validar candidata real na VPS canonica sem switch, sem promover ou reutilizar o artefato do PR #24. Implementacao local nao satisfaz este gate.
 - Pendente para a Fase 3: autorizar separadamente switch, smoke publico, drenagem, rollback e encerramento operacional do incidente.

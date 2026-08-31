@@ -308,45 +308,50 @@ jobs:
           repository: ${{ github.repository }}
           digest-mismatch: error
 
-      - name: Validate certification and prepare immutable payload
+      - name: Validate certified immutable payload metadata
         id: candidate-payload
         shell: bash
         env:
           SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
           CERTIFICATION_RUN_ID: ${{ needs.mode-guard.outputs.certification-run-id }}
           DOWNLOAD_ROOT: ${{ runner.temp }}/topsdojob-v2-certified-download
-          PACKAGE_DIR: ${{ runner.temp }}/topsdojob-v2-candidate-package
-          PAYLOAD_TAR: ${{ runner.temp }}/topsdojob-v2-candidate-payload.tar
+          PAYLOAD_CONTEXT: ${{ runner.temp }}/topsdojob-v2-candidate-payload.env
           CERTIFIED_ARTIFACT_ID: ${{ steps.certified-artifact.outputs.artifact_id }}
           CERTIFIED_ARTIFACT_NAME: ${{ steps.certified-artifact.outputs.artifact_name }}
           CERTIFIED_ARTIFACT_DIGEST: ${{ steps.certified-artifact.outputs.artifact_digest }}
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
-          bash ./scripts/deploy/v2/controller.sh candidate-package \
+          bash ./scripts/deploy/v2/controller.sh candidate-metadata \
             "${DOWNLOAD_ROOT}" "${SOURCE_SHA}" "${CERTIFICATION_RUN_ID}" \
             "${CERTIFIED_ARTIFACT_NAME}" "${CERTIFIED_ARTIFACT_ID}" \
             "${CERTIFIED_ARTIFACT_DIGEST}" "${RUNNER_TEMP}/certification-run.json" \
-            "${RUNNER_TEMP}/certification-artifacts.json" "${PACKAGE_DIR}"
+            "${RUNNER_TEMP}/certification-artifacts.json" "${PAYLOAD_CONTEXT}"
           test "$(sed -n 's/^CERTIFIED_ARTIFACT_ID=//p' \
-            "${PACKAGE_DIR}/candidate-context.env")" = "${CERTIFIED_ARTIFACT_ID}"
+            "${PAYLOAD_CONTEXT}")" = "${CERTIFIED_ARTIFACT_ID}"
           test "$(sed -n 's/^CERTIFIED_ARTIFACT_NAME=//p' \
-            "${PACKAGE_DIR}/candidate-context.env")" = "${CERTIFIED_ARTIFACT_NAME}"
+            "${PAYLOAD_CONTEXT}")" = "${CERTIFIED_ARTIFACT_NAME}"
           test "$(sed -n 's/^CERTIFIED_ARTIFACT_DIGEST=//p' \
-            "${PACKAGE_DIR}/candidate-context.env")" = "${CERTIFIED_ARTIFACT_DIGEST}"
-          tar --sort=name --mtime='UTC 2026-08-30' --owner=0 --group=0 \
-            --numeric-owner -cf "${PAYLOAD_TAR}" -C "${PACKAGE_DIR}" .
-          (
-            cd -- "$(dirname -- "${PAYLOAD_TAR}")"
-            sha256sum -- "$(basename -- "${PAYLOAD_TAR}")" \
-              > "$(basename -- "${PAYLOAD_TAR}").sha256"
-          )
+            "${PAYLOAD_CONTEXT}")" = "${CERTIFIED_ARTIFACT_DIGEST}"
           artifact_id="$(sed -n 's/^CERTIFIED_ARTIFACT_ID=//p' \
-            "${PACKAGE_DIR}/candidate-context.env")"
+            "${PAYLOAD_CONTEXT}")"
           [[ "${artifact_id}" =~ ^[1-9][0-9]*$ ]]
-          printf 'payload_tar=%s\n' "${PAYLOAD_TAR}" >> "${GITHUB_OUTPUT}"
+          payload_path="$(sed -n 's/^PAYLOAD_PATH=//p' "${PAYLOAD_CONTEXT}")"
+          payload_sha="$(sed -n 's/^PAYLOAD_SHA256=//p' "${PAYLOAD_CONTEXT}")"
+          payload_bytes="$(sed -n 's/^PAYLOAD_BYTES=//p' "${PAYLOAD_CONTEXT}")"
+          transport_sha="$(sed -n 's/^TRANSPORT_SHA256=//p' "${PAYLOAD_CONTEXT}")"
+          jq_sha="$(sed -n 's/^TRANSPORT_JQ_SHA256=//p' "${PAYLOAD_CONTEXT}")"
+          test "$(basename -- "${payload_path}")" = candidate-payload.tar
+          [[ "${payload_sha}" =~ ^[a-f0-9]{64}$ ]]
+          [[ "${payload_bytes}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${transport_sha}" =~ ^[a-f0-9]{64}$ ]]
+          [[ "${jq_sha}" =~ ^[a-f0-9]{64}$ ]]
+          printf 'payload_path=%s\npayload_sha=%s\npayload_bytes=%s\n' \
+            "${payload_path}" "${payload_sha}" "${payload_bytes}" >> "${GITHUB_OUTPUT}"
+          printf 'transport_sha=%s\njq_sha=%s\n' \
+            "${transport_sha}" "${jq_sha}" >> "${GITHUB_OUTPUT}"
           printf 'artifact_id=%s\n' "${artifact_id}" >> "${GITHUB_OUTPUT}"
-          printf '%s\n' 'CERTIFIED_ARTIFACT=VERIFIED REBUILD=0'
+          printf '%s\n' 'CERTIFIED_ARTIFACT=VERIFIED REBUILD=0 REPACKAGE=0'
 
       - name: Validate pinned host key and target guard before upload
         id: target-guard
@@ -396,7 +401,12 @@ jobs:
           SOURCE_SHA: ${{ needs.mode-guard.outputs.source-sha }}
           CERTIFICATION_RUN_ID: ${{ needs.mode-guard.outputs.certification-run-id }}
           CERTIFIED_ARTIFACT_ID: ${{ steps.candidate-payload.outputs.artifact_id }}
-          PAYLOAD_TAR: ${{ steps.candidate-payload.outputs.payload_tar }}
+          CERTIFIED_ARTIFACT_NAME: ${{ steps.certified-artifact.outputs.artifact_name }}
+          PAYLOAD_PATH: ${{ steps.candidate-payload.outputs.payload_path }}
+          PAYLOAD_SHA: ${{ steps.candidate-payload.outputs.payload_sha }}
+          PAYLOAD_BYTES: ${{ steps.candidate-payload.outputs.payload_bytes }}
+          TRANSPORT_SHA: ${{ steps.candidate-payload.outputs.transport_sha }}
+          TRANSPORT_JQ_SHA: ${{ steps.candidate-payload.outputs.jq_sha }}
           CANDIDATE_RUN_ID: ${{ github.run_id }}
           CANDIDATE_RUN_ATTEMPT: ${{ github.run_attempt }}
           CANDIDATE_SSH_HOST: ${{ secrets.TOPSDOJOB_CANDIDATE_SSH_HOST }}
@@ -406,64 +416,50 @@ jobs:
           set -euo pipefail
           ssh_dir="${RUNNER_TEMP}/topsdojob-v2-candidate-ssh"
           evidence_tar="${RUNNER_TEMP}/topsdojob-v2-candidate-evidence.tar"
+          diagnostic_log="${RUNNER_TEMP}/topsdojob-v2-candidate-transport.log"
           stage_id="${CANDIDATE_RUN_ID}-${CANDIDATE_RUN_ATTEMPT}-${SOURCE_SHA:0:12}"
-          ssh_options=(-4 -p "${CANDIDATE_SSH_PORT}" -i "${ssh_dir}/id"
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes
-            -o UserKnownHostsFile="${ssh_dir}/known_hosts" -o ConnectTimeout=10)
-          printf -v stage_id_q '%q' "${stage_id}"
-          create_stage="set -eu; umask 077; id=${stage_id_q}; base=\"\${HOME}/.cache/topsdojob-candidate\"; dir=\"\${base}/\${id}\"; test ! -e \"\${dir}\"; install -d -m 0700 \"\${base}\"; test ! -L \"\${base}\"; mkdir -m 0700 \"\${dir}\"; test \"\$(stat -c %u \"\${dir}\")\" = \"\$(id -u)\"; test \"\$(stat -c %a \"\${dir}\")\" = 700; printf '%s' \"\${dir}\""
-          # shellcheck disable=SC2029
-          remote_stage="$(ssh "${ssh_options[@]}" \
-            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
-            "${create_stage}" </dev/null)"
-          test -n "${remote_stage}"
-          scp -4 -P "${CANDIDATE_SSH_PORT}" -i "${ssh_dir}/id" \
-            -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
-            "${PAYLOAD_TAR}" "${PAYLOAD_TAR}.sha256" \
-            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}:${remote_stage}/"
-          printf -v remote_stage_q '%q' "${remote_stage}"
-          printf -v source_sha_q '%q' "${SOURCE_SHA}"
-          printf -v certification_run_q '%q' "${CERTIFICATION_RUN_ID}"
-          printf -v artifact_id_q '%q' "${CERTIFIED_ARTIFACT_ID}"
-          printf -v candidate_run_q '%q' "${CANDIDATE_RUN_ID}"
-          remote_run="set -eu; stage=${remote_stage_q}; cd \"\${stage}\"; sha256sum --check --status topsdojob-v2-candidate-payload.tar.sha256; mkdir -m 0700 runtime; tar -xf topsdojob-v2-candidate-payload.tar -C runtime; chmod 0500 runtime/scripts/deploy/v2/controller.sh runtime/scripts/deploy/v2/*.sh; bash runtime/scripts/deploy/v2/controller.sh candidate-remote runtime/artifact ${source_sha_q} ${certification_run_q} ${artifact_id_q} ${candidate_run_q} \"\${stage}/evidence\" \"\${stage}/candidate-evidence.tar\" </dev/null"
-          set +e
-          # shellcheck disable=SC2029
-          ssh "${ssh_options[@]}" \
-            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
-            "${remote_run}" </dev/null
-          candidate_rc=$?
-          set -e
-          # shellcheck disable=SC2029
-          if ssh "${ssh_options[@]}" \
-              "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
-              "test -s ${remote_stage_q}/candidate-evidence.tar" </dev/null; then
-            scp -4 -P "${CANDIDATE_SSH_PORT}" -i "${ssh_dir}/id" \
-              -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-              -o UserKnownHostsFile="${ssh_dir}/known_hosts" \
-              "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}:${remote_stage}/candidate-evidence.tar" \
-              "${evidence_tar}"
-          fi
-          cleanup_stage="set -eu; stage=${remote_stage_q}; case \"\${stage}\" in \"\${HOME}/.cache/topsdojob-candidate/\"*) ;; *) exit 70 ;; esac; test ! -L \"\${stage}\"; rm -rf -- \"\${stage}\""
-          # shellcheck disable=SC2029
-          ssh "${ssh_options[@]}" \
-            "${CANDIDATE_SSH_USER}@${CANDIDATE_SSH_HOST}" \
-            "${cleanup_stage}" </dev/null
-          rm -rf -- "${ssh_dir}"
-          exit "${candidate_rc}"
+          V2_TRANSPORT_SSH_HOST="${CANDIDATE_SSH_HOST}" \
+          V2_TRANSPORT_SSH_PORT="${CANDIDATE_SSH_PORT}" \
+          V2_TRANSPORT_SSH_USER="${CANDIDATE_SSH_USER}" \
+          V2_TRANSPORT_SSH_KEY="${ssh_dir}/id" \
+          V2_TRANSPORT_KNOWN_HOSTS="${ssh_dir}/known_hosts" \
+          V2_TRANSPORT_PACKAGE="${PAYLOAD_PATH}" \
+          V2_TRANSPORT_PACKAGE_SHA="${PAYLOAD_SHA}" \
+          V2_TRANSPORT_PACKAGE_BYTES="${PAYLOAD_BYTES}" \
+          V2_TRANSPORT_BOOTSTRAP_SHA="${TRANSPORT_SHA}" \
+          V2_TRANSPORT_JQ_SHA="${TRANSPORT_JQ_SHA}" \
+          V2_TRANSPORT_SOURCE_SHA="${SOURCE_SHA}" \
+          V2_TRANSPORT_CERTIFICATION_RUN_ID="${CERTIFICATION_RUN_ID}" \
+          V2_TRANSPORT_ARTIFACT_ID="${CERTIFIED_ARTIFACT_ID}" \
+          V2_TRANSPORT_ARTIFACT_NAME="${CERTIFIED_ARTIFACT_NAME}" \
+          V2_TRANSPORT_EXECUTION=candidate \
+          V2_TRANSPORT_EXECUTION_RUN_ID="${CANDIDATE_RUN_ID}" \
+          V2_TRANSPORT_STAGE_ID="${stage_id}" \
+          V2_TRANSPORT_STAGE_NAMESPACE=topsdojob-candidate \
+          V2_TRANSPORT_EVIDENCE_TAR="${evidence_tar}" \
+          V2_TRANSPORT_DIAGNOSTIC_LOG="${diagnostic_log}" \
+            bash ./scripts/deploy/v2/transport.sh handoff
+
+      - name: Remove candidate SSH material
+        if: always()
+        shell: bash
+        run: rm -rf -- "${RUNNER_TEMP}/topsdojob-v2-candidate-ssh"
 
       - name: Require diagnostic after remote candidate execution
         if: ${{ always() && steps.target-guard.outputs.verified == 'true' }}
         shell: bash
-        run: test -s "${RUNNER_TEMP}/topsdojob-v2-candidate-evidence.tar"
+        run: |
+          test -s "${RUNNER_TEMP}/topsdojob-v2-candidate-evidence.tar" \
+            || test -s "${RUNNER_TEMP}/topsdojob-v2-candidate-transport.log"
 
       - name: Preserve sanitized candidate certification
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: topsdojob-v2-candidate-evidence-${{ needs.mode-guard.outputs.source-sha }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/topsdojob-v2-candidate-evidence.tar
+          path: |
+            ${{ runner.temp }}/topsdojob-v2-candidate-evidence.tar
+            ${{ runner.temp }}/topsdojob-v2-candidate-transport.log
           if-no-files-found: warn
           retention-days: 14
           compression-level: 0

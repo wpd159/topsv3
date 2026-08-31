@@ -62,8 +62,10 @@ function safeTreeFiles(directory) {
 }
 
 function regularArtifactFile(bundle, name, label, allowEmpty = false) {
+  const parts = typeof name === 'string' ? name.split('/') : []
   if (typeof name !== 'string' || name.length === 0 || name.includes('\0')
-      || path.isAbsolute(name) || path.basename(name) !== name) {
+      || name.includes('\\') || path.isAbsolute(name)
+      || parts.some((part) => !part || part === '.' || part === '..')) {
     fail(`${label} possui path traversal ou nome invalido`)
   }
   const absoluteBundle = path.resolve(bundle)
@@ -114,6 +116,12 @@ function migrationFiles() {
     (file) => /^V\d+__.+\.sql$/.test(path.basename(file))).sort()
 }
 
+function packageSourceFiles() {
+  for (const file of [...technicalFiles(), ...migrationFiles()].sort()) {
+    console.log(relative(file))
+  }
+}
+
 function assertRegularLfFile(file) {
   const stat = fs.lstatSync(file)
   if (!stat.isFile() || stat.isSymbolicLink()) fail(`arquivo inseguro: ${relative(file)}`)
@@ -133,7 +141,7 @@ function contract() {
 
   const helpers = walk(path.join(root, 'scripts/deploy/v2'), (file) =>
     /\.(?:sh|mjs)$/.test(file) && path.basename(file) !== 'controller.sh')
-  if (helpers.length > 4) fail(`maximo de quatro helpers excedido: ${helpers.length}`)
+  if (helpers.length > 5) fail(`maximo de cinco helpers excedido: ${helpers.length}`)
 
   const workflowFile = path.join(root, '.github/workflows/pipeline-production-v2.yml')
   const workflow = fs.readFileSync(workflowFile, 'utf8')
@@ -143,6 +151,7 @@ function contract() {
   const lab = fs.readFileSync(path.join(root, 'scripts/deploy/v2/lab.sh'), 'utf8')
   const controller = fs.readFileSync(path.join(root, 'scripts/deploy/v2/controller.sh'), 'utf8')
   const artifact = fs.readFileSync(path.join(root, 'scripts/deploy/v2/artifact.sh'), 'utf8')
+  const transport = fs.readFileSync(path.join(root, 'scripts/deploy/v2/transport.sh'), 'utf8')
   const contractSource = fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
   const modeGuardJob = workflowJob(workflow, 'mode-guard')
   const buildOnceJob = workflowJob(workflow, 'build-once')
@@ -304,13 +313,14 @@ function contract() {
     'overwrite: false',
     'include-hidden-files: false',
     'archive: true',
+    'scripts/deploy/v2/transport.sh',
   ]) {
     if (!roundtripWorkflow.includes(required)) {
       fail(`round-trip real do artifact incompleto: ${required}`)
     }
   }
-  if (/controller\.sh (?:build|verify|diagnose|candidate)|environment:|secrets\.|ssh|scp|backend\/|frontend\//.test(roundtripWorkflow)) {
-    fail('round-trip do artifact acessa build, candidata ou recurso externo')
+  if (/controller\.sh (?:build|verify|diagnose|candidate-(?:metadata|remote))|environment:|secrets\.|backend\/|frontend\//.test(roundtripWorkflow)) {
+    fail('round-trip do artifact acessa build, candidata real ou recurso produtivo')
   }
   if (!roundtripWorkflow.includes(lock.actions.uploadArtifact)
       || !roundtripWorkflow.includes(lock.actions.downloadArtifact)
@@ -360,11 +370,14 @@ function contract() {
     'environment: candidate',
     'run-id: ${{ needs.mode-guard.outputs.certification-run-id }}',
     'github-token: ${{ github.token }}',
-    'controller.sh candidate-package',
-    'controller.sh candidate-remote',
+    'controller.sh candidate-metadata',
+    'scripts/deploy/v2/transport.sh handoff',
     'TARGET_VERIFIED=production',
   ]) {
     if (!workflow.includes(required)) fail(`contrato candidate ausente: ${required}`)
+  }
+  if (!/controller\.sh\\\" candidate-remote/.test(transport)) {
+    fail('handoff nao invoca o controlador remoto certificado')
   }
   const candidateSecrets = [...candidateJob.matchAll(/secrets\.(TOPSDOJOB_CANDIDATE_[A-Z0-9_]+)/g)]
     .map((match) => match[1])
@@ -381,38 +394,57 @@ function contract() {
     fail(`secrets candidate divergentes: ${JSON.stringify([...new Set(candidateSecrets)].sort())}`)
   }
   const targetGuard = candidateJob.indexOf('TARGET_VERIFIED=production')
-  const firstUpload = candidateJob.indexOf('scp -4')
+  const firstUpload = candidateJob.indexOf('scripts/deploy/v2/transport.sh handoff')
   if (targetGuard < 0 || firstUpload < 0 || targetGuard > firstUpload) {
     fail('target guard deve preceder qualquer upload candidate')
   }
   if (!candidateJob.includes('StrictHostKeyChecking=yes')
       || !candidateJob.includes('ssh-keyscan -4')
-      || !candidateJob.includes('bash runtime/scripts/deploy/v2/controller.sh candidate-remote')
-      || !candidateJob.includes('</dev/null')) {
+      || !transport.includes('scp -4')
+      || !/controller\.sh\\\" candidate-remote/.test(transport)
+      || !transport.includes('</dev/null')) {
     fail('host key, IPv4 ou stdin fechado ausente no candidate')
   }
   if (/nginx\s+-[st]|\/etc\/nginx|proxy_pass|upstream/.test(candidateJob)) {
     fail('job candidate nao pode alterar ou validar Nginx do host')
   }
   const candidateRemote = controller.match(/v2_candidate_remote_mode\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
-  const candidatePackage = controller.match(/v2_candidate_package_mode\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+  const candidateMetadata = controller.match(/v2_candidate_metadata_mode\(\) \{[\s\S]*?\n\}/)?.[0] ?? ''
   if (!candidateRemote.includes('v2_create_readonly_production_backup')
       || !candidateRemote.includes('v2_prepare_candidate_from_backup')
       || !candidateRemote.includes('v2_candidate_backfill_isolated')
       || !candidateRemote.includes('v2_start_candidate_and_gates')
-      || !candidatePackage.includes('v2_create_candidate_payload')) {
+      || !candidateMetadata.includes('v2_validate_candidate_metadata')) {
     fail('cadeia isolada da candidata esta incompleta')
   }
   if (/v2_build_release_artifact|v2_compose build|nginx\s+-[st]|switch|reload/.test(candidateRemote)
-      || /v2_build_release_artifact|v2_compose build/.test(candidatePackage)) {
+      || /v2_build_release_artifact|v2_compose build/.test(candidateMetadata)) {
     fail('candidate contem rebuild, switch ou alteracao Nginx')
+  }
+  if (/\btar\s+(?:[^\n]*\s)?-c|\b(?:cp|rsync)\s/.test(candidateJob)
+      || candidateJob.includes('candidate-payload.tar.sha256')) {
+    fail('candidate nao pode copiar seletivamente ou reempacotar o payload certificado')
+  }
+  for (const required of [
+    'candidate-payload.tar',
+    'candidate-payload-certification.json',
+    'CANONICAL_PAYLOAD=CREATED',
+    'PAYLOAD_BYTE_IDENTICAL=YES',
+    'v2_transport_validate_tar_table',
+    'v2_transport_resolve',
+    'v2_transport_verify_manifest',
+    'TRANSPORT_SUCCESS=${iterations}/${iterations}',
+    'DIAGNOSTIC_BEFORE_CLEANUP=PASS',
+  ]) {
+    if (!`${artifact}\n${transport}`.includes(required)) {
+      fail(`contrato de transporte byte a byte ausente: ${required}`)
+    }
   }
   if (!artifact.includes('manifest-runtime-verify')
       || !artifact.includes('candidate-metadata-verify')
       || !artifact.includes('v2_resolve_artifact_root')
-      || !artifact.includes('artifact-root-resolve')
       || !artifact.includes('ARTIFACT_ROOT_RESOLVED=YES')
-      || !contractSource.includes('artifactLayoutVersion: 1')
+      || !contractSource.includes('artifactLayoutVersion: 2')
       || !artifact.includes('CANDIDATE_ARTIFACT=VERIFIED')
       || !lab.includes('v2_compose run --rm --no-deps --pull never -T backend')
       || !lab.includes('REAL_R2_MUTATIONS=0')
@@ -458,6 +490,7 @@ function manifestCreate(args) {
     archive,
     dependencyArchive,
     toolVersions,
+    transportJq,
     certificationRunId,
     certificationRunAttempt,
     certificationArtifactName,
@@ -476,6 +509,9 @@ function manifestCreate(args) {
   if (!fs.statSync(toolVersions).isFile() || fs.statSync(toolVersions).size === 0) {
     fail('metadados de ferramentas vazios')
   }
+  if (!fs.statSync(transportJq).isFile() || fs.statSync(transportJq).size === 0) {
+    fail('jq hermetico ausente')
+  }
   if (imageArgs.length !== 6) fail('manifesto exige tres pares imagem/id')
   const images = []
   for (let index = 0; index < imageArgs.length; index += 2) {
@@ -490,6 +526,7 @@ function manifestCreate(args) {
   const archiveName = path.basename(archive)
   const dependencyArchiveName = path.basename(dependencyArchive)
   const toolVersionsName = path.basename(toolVersions)
+  const transportJqName = 'tools/jq'
   const certifiedFiles = [
     'release-manifest.json',
     'release-manifest.sha256',
@@ -497,11 +534,15 @@ function manifestCreate(args) {
     dependencyArchiveName,
     toolVersionsName,
   ].sort()
-  const candidateRuntimeFiles = certifiedFiles
-    .filter((name) => name !== dependencyArchiveName)
+  const packageFiles = [...new Set([
+    ...certifiedFiles,
+    transportJqName,
+    ...Object.keys(files),
+    ...Object.keys(migrations),
+  ])].sort()
   const manifest = {
     schemaVersion: 2,
-    artifactLayoutVersion: 1,
+    artifactLayoutVersion: 2,
     gitSha,
     certification: {
       runId: certificationRunId,
@@ -521,6 +562,8 @@ function manifestCreate(args) {
       offlineValidated: true,
     },
     artifactLayout: {
+      packageRoot: 'candidate-root',
+      packageName: 'candidate-payload.tar',
       manifest: 'release-manifest.json',
       checksum: 'release-manifest.sha256',
       payloads: {
@@ -535,10 +578,22 @@ function manifestCreate(args) {
         },
       },
       profiles: {
-        certified: certifiedFiles,
-        candidateRuntime: candidateRuntimeFiles,
+        certified: packageFiles,
+        candidateRuntime: packageFiles,
       },
+      packageFiles,
       unexpectedFilesAllowed: false,
+    },
+    transport: {
+      bootstrap: {
+        name: 'scripts/deploy/v2/transport.sh',
+        sha256: files['scripts/deploy/v2/transport.sh'],
+      },
+      jq: {
+        name: transportJqName,
+        sha256: sha256(transportJq),
+        bytes: fs.statSync(transportJq).size,
+      },
     },
     images,
     tools: lock.tools,
@@ -553,7 +608,9 @@ function manifestCreate(args) {
 
 function verifyArtifactLayout(bundle, manifest, requireTestDependencies) {
   const layout = manifest.artifactLayout
-  if (manifest.artifactLayoutVersion !== 1 || !layout || typeof layout !== 'object'
+  if (manifest.artifactLayoutVersion !== 2 || !layout || typeof layout !== 'object'
+      || layout.packageRoot !== 'candidate-root'
+      || layout.packageName !== 'candidate-payload.tar'
       || layout.manifest !== 'release-manifest.json'
       || layout.checksum !== 'release-manifest.sha256'
       || layout.unexpectedFilesAllowed !== false) {
@@ -567,21 +624,23 @@ function verifyArtifactLayout(bundle, manifest, requireTestDependencies) {
   if (!toolMetadata || typeof toolMetadata !== 'object') {
     fail('metadados de ferramentas ausentes no layout')
   }
-  const certifiedFiles = [
+  const packageFiles = [...new Set([
     layout.manifest,
     layout.checksum,
     manifest.archive.name,
     manifest.testDependencies.name,
     toolMetadata.name,
-  ].sort()
-  const runtimeFiles = certifiedFiles.filter((name) => name !== manifest.testDependencies.name)
-  if (!sameStringSet(layout.profiles?.certified, certifiedFiles)
-      || !sameStringSet(layout.profiles?.candidateRuntime, runtimeFiles)) {
+    manifest.transport?.jq?.name,
+    ...Object.keys(manifest.sourceFiles ?? {}),
+    ...Object.keys(manifest.migrations ?? {}),
+  ])].sort()
+  if (!sameStringSet(layout.packageFiles, packageFiles)
+      || !sameStringSet(layout.profiles?.certified, packageFiles)
+      || !sameStringSet(layout.profiles?.candidateRuntime, packageFiles)) {
     fail('perfis nominais do layout invalidos')
   }
-  const expectedFiles = requireTestDependencies ? certifiedFiles : runtimeFiles
   const actualFiles = safeTreeFiles(bundle)
-  if (!sameStringSet(actualFiles, expectedFiles)) {
+  if (!sameStringSet(actualFiles, packageFiles)) {
     fail('arquivos presentes divergem do perfil nominal do artifact')
   }
 
@@ -597,13 +656,28 @@ function verifyArtifactLayout(bundle, manifest, requireTestDependencies) {
       || fs.statSync(toolVersions).size !== toolMetadata.bytes) {
     fail('metadados de ferramentas divergentes')
   }
+  const transportJq = regularArtifactFile(bundle, manifest.transport?.jq?.name, 'jq hermetico')
+  if (!/^[a-f0-9]{64}$/.test(manifest.transport?.jq?.sha256 ?? '')
+      || sha256(transportJq) !== manifest.transport.jq.sha256
+      || fs.statSync(transportJq).size !== manifest.transport.jq.bytes) {
+    fail('jq hermetico divergente')
+  }
+  const bootstrap = regularArtifactFile(
+    bundle, manifest.transport?.bootstrap?.name, 'bootstrap de transporte')
+  if (!/^[a-f0-9]{64}$/.test(manifest.transport?.bootstrap?.sha256 ?? '')
+      || sha256(bootstrap) !== manifest.transport.bootstrap.sha256) {
+    fail('bootstrap de transporte divergente')
+  }
+  if (requireTestDependencies !== true && requireTestDependencies !== false) {
+    fail('perfil de verificacao invalido')
+  }
 }
 
 function verifyManifest(bundle, expectedSha, expectedRunId, requireTestDependencies, emit = true) {
   const manifestPath = regularArtifactFile(bundle, 'release-manifest.json', 'manifesto')
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
   if (manifest.schemaVersion !== 2
-      || manifest.artifactLayoutVersion !== 1
+      || manifest.artifactLayoutVersion !== 2
       || manifest.rebuildAllowedInVerify !== false
       || manifest.rebuildAllowedOnCandidate !== false) {
     fail('schema, layout ou politica de rebuild invalida no manifesto')
@@ -658,10 +732,20 @@ function verifyManifest(bundle, expectedSha, expectedRunId, requireTestDependenc
   if (JSON.stringify(manifest.sourceFiles) !== JSON.stringify(expectedSources)) {
     fail('fontes tecnicas divergem do build certificado')
   }
+  for (const [name, expectedHash] of Object.entries(manifest.sourceFiles)) {
+    if (sha256(regularArtifactFile(bundle, name, 'fonte tecnica')) !== expectedHash) {
+      fail('fonte tecnica empacotada diverge do manifesto')
+    }
+  }
   const expectedMigrations = Object.fromEntries(
     migrationFiles().map((file) => [relative(file), sha256(file)]))
   if (JSON.stringify(manifest.migrations) !== JSON.stringify(expectedMigrations)) {
     fail('migrations divergem do build certificado')
+  }
+  for (const [name, expectedHash] of Object.entries(manifest.migrations)) {
+    if (sha256(regularArtifactFile(bundle, name, 'migration empacotada')) !== expectedHash) {
+      fail('migration empacotada diverge do manifesto')
+    }
   }
   if (emit) console.log(`MANIFEST_V2=OK sha=${manifest.gitSha} archive=${manifest.archive.sha256}`)
   return manifest
@@ -677,54 +761,134 @@ function manifestRuntimeVerify(args) {
   verifyManifest(bundle, expectedSha, expectedRunId, false)
 }
 
-function resolveArtifactRoot(extractionDirectory, expectedSha, expectedRunId) {
-  const extractionRoot = path.resolve(extractionDirectory)
-  if (!fs.existsSync(extractionRoot)) fail('diretorio de extracao ausente')
-  const extractionStat = fs.lstatSync(extractionRoot)
-  if (!extractionStat.isDirectory() || extractionStat.isSymbolicLink()) {
-    fail('diretorio de extracao inseguro')
+function payloadCertificationCreate(args) {
+  const [output, packageFile, payloadRoot, gitSha, runId, runAttempt, artifactName] = args
+  if (args.length !== 7 || path.basename(packageFile) !== 'candidate-payload.tar'
+      || path.basename(payloadRoot) !== 'candidate-root'
+      || !/^[a-f0-9]{40}$/.test(gitSha ?? '')
+      || !/^[1-9][0-9]*$/.test(runId ?? '')
+      || !/^[1-9][0-9]*$/.test(runAttempt ?? '')) {
+    fail('uso invalido da certificacao do payload')
   }
-  const extractionReal = fs.realpathSync(extractionRoot)
-  const files = safeTreeFiles(extractionRoot)
-  const manifests = files.filter((file) => path.basename(file) === 'release-manifest.json')
-  if (manifests.length === 0) fail('nenhum manifesto encontrado')
-  if (manifests.length !== 1) fail('multiplos manifestos encontrados')
-  const manifest = path.resolve(extractionRoot, manifests[0])
-  if (!isInside(extractionRoot, manifest)) fail('manifesto fora da extracao')
-  const manifestStat = fs.lstatSync(manifest)
-  if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) {
-    fail('manifesto resolvido nao e arquivo regular')
+  const expectedName = `topsdojob-v2-release-${gitSha}-${runId}-${runAttempt}`
+  if (artifactName !== expectedName) fail('artifact name invalido na certificacao do payload')
+  const transport = regularArtifactFile(
+    payloadRoot, 'scripts/deploy/v2/transport.sh', 'bootstrap de transporte')
+  const jq = regularArtifactFile(payloadRoot, 'tools/jq', 'jq hermetico')
+  const certification = {
+    schemaVersion: 1,
+    layoutVersion: 2,
+    packageRoot: 'candidate-root',
+    gitSha,
+    certification: { runId, runAttempt, artifactName },
+    package: {
+      name: 'candidate-payload.tar',
+      sha256: sha256(packageFile),
+      bytes: fs.statSync(packageFile).size,
+    },
+    bootstrap: {
+      transport: {
+        name: 'scripts/deploy/v2/transport.sh',
+        sha256: sha256(transport),
+      },
+      jq: {
+        name: 'tools/jq',
+        sha256: sha256(jq),
+        bytes: fs.statSync(jq).size,
+      },
+    },
   }
-  try {
-    fs.accessSync(manifest, fs.constants.R_OK)
-  } catch {
-    fail('manifesto resolvido nao pode ser lido')
-  }
-  if (manifestStat.size === 0) fail('manifesto vazio')
-  const artifactRoot = fs.realpathSync(path.dirname(manifest))
-  if (!isInside(extractionReal, artifactRoot)) fail('raiz do artifact fora da extracao')
-  for (const file of files) {
-    const real = fs.realpathSync(path.join(extractionRoot, file))
-    if (!isInside(artifactRoot, real)) fail('arquivo encontrado fora da raiz resolvida')
-  }
-  verifyManifest(artifactRoot, expectedSha, expectedRunId, true, false)
-  return artifactRoot
+  fs.writeFileSync(output, `${JSON.stringify(certification, null, 2)}\n`, { mode: 0o600 })
 }
 
-function artifactRootResolve(args) {
-  const [extractionDirectory, expectedSha, expectedRunId] = args
-  if (!extractionDirectory || args.length > 3) fail('uso invalido do resolver de artifact')
-  process.stdout.write(`${resolveArtifactRoot(extractionDirectory, expectedSha, expectedRunId)}\n`)
+function payloadEnvelope(downloadRoot, expectedSha, expectedRunId, expectedArtifactName) {
+  const absoluteRoot = path.resolve(downloadRoot)
+  const files = safeTreeFiles(absoluteRoot)
+  const expectedBasenames = new Set([
+    'candidate-payload.tar',
+    'candidate-payload.sha256',
+    'candidate-payload-certification.json',
+  ])
+  if (files.length !== 3 || files.some((file) => !expectedBasenames.has(path.basename(file)))) {
+    fail('envelope do payload possui arquivos ausentes, ambiguos ou inesperados')
+  }
+  const byName = Object.fromEntries(files.map((file) => [path.basename(file), file]))
+  if (Object.keys(byName).length !== 3) fail('multiplos pacotes ou metadados encontrados')
+  const parents = new Set(Object.values(byName).map((file) => path.dirname(file)))
+  if (parents.size !== 1) fail('arquivos do envelope nao compartilham a mesma raiz')
+  const packageFile = regularArtifactFile(
+    absoluteRoot, byName['candidate-payload.tar'], 'pacote canonico')
+  const checksumFile = regularArtifactFile(
+    absoluteRoot, byName['candidate-payload.sha256'], 'checksum externo')
+  const certificationFile = regularArtifactFile(
+    absoluteRoot, byName['candidate-payload-certification.json'], 'certificacao externa')
+  const certification = JSON.parse(fs.readFileSync(certificationFile, 'utf8'))
+  if (certification.schemaVersion !== 1 || certification.layoutVersion !== 2
+      || certification.packageRoot !== 'candidate-root'
+      || certification.gitSha !== expectedSha
+      || certification.certification?.runId !== expectedRunId
+      || certification.certification?.artifactName !== expectedArtifactName
+      || certification.package?.name !== 'candidate-payload.tar'
+      || certification.bootstrap?.transport?.name !== 'scripts/deploy/v2/transport.sh'
+      || certification.bootstrap?.jq?.name !== 'tools/jq') {
+    fail('certificacao externa do payload divergente')
+  }
+  const packageHash = sha256(packageFile)
+  const packageBytes = fs.statSync(packageFile).size
+  if (!/^[a-f0-9]{64}$/.test(certification.package.sha256 ?? '')
+      || certification.package.sha256 !== packageHash
+      || certification.package.bytes !== packageBytes
+      || !/^[a-f0-9]{64}$/.test(certification.bootstrap.transport.sha256 ?? '')
+      || !/^[a-f0-9]{64}$/.test(certification.bootstrap.jq.sha256 ?? '')
+      || !Number.isSafeInteger(certification.bootstrap.jq.bytes)
+      || certification.bootstrap.jq.bytes < 1) {
+    fail('hash ou tamanho da certificacao externa divergente')
+  }
+  const checksum = fs.readFileSync(checksumFile, 'utf8').trimEnd()
+  if (checksum !== `${packageHash}  candidate-payload.tar`) {
+    fail('checksum externo do payload divergente')
+  }
+  return { packageFile, packageHash, packageBytes, certification }
+}
+
+function writePayloadContext(output, envelope) {
+  writePrivateFile(output, [
+    `PAYLOAD_PATH=${envelope.packageFile}`,
+    `PAYLOAD_SHA256=${envelope.packageHash}`,
+    `PAYLOAD_BYTES=${envelope.packageBytes}`,
+    `PAYLOAD_LAYOUT_VERSION=${envelope.certification.layoutVersion}`,
+    `TRANSPORT_SHA256=${envelope.certification.bootstrap.transport.sha256}`,
+    `TRANSPORT_JQ_SHA256=${envelope.certification.bootstrap.jq.sha256}`,
+    '',
+  ].join('\n'))
+}
+
+function payloadEnvelopeVerify(args) {
+  const [downloadRoot, expectedSha, expectedRunId, expectedArtifactName, output] = args
+  if (args.length !== 5) fail('uso invalido do verificador do envelope')
+  const envelope = payloadEnvelope(
+    downloadRoot, expectedSha, expectedRunId, expectedArtifactName)
+  writePayloadContext(output, envelope)
+  console.log(`PAYLOAD_ENVELOPE=PASS layoutVersion=2 bytes=${envelope.packageBytes} sha=${envelope.packageHash.slice(0, 12)}`)
 }
 
 function artifactFixtureCreate(args) {
   const [output, gitSha, certificationRunId, certificationRunAttempt, artifactName] = args
   if (!output || args.length !== 5) fail('uso invalido da fixture de artifact')
-  if (fs.existsSync(output)) fail('diretorio da fixture ja existe')
-  fs.mkdirSync(output, { recursive: true, mode: 0o700 })
+  if (!fs.existsSync(output)) {
+    fs.mkdirSync(output, { recursive: true, mode: 0o700 })
+    for (const source of [...technicalFiles(), ...migrationFiles()]) {
+      const destination = path.join(output, relative(source))
+      fs.mkdirSync(path.dirname(destination), { recursive: true, mode: 0o700 })
+      fs.copyFileSync(source, destination)
+    }
+    fs.mkdirSync(path.join(output, 'tools'), { recursive: true, mode: 0o700 })
+    fs.writeFileSync(path.join(output, 'tools/jq'), 'fixture-jq-static\n', { mode: 0o500 })
+  }
   const archive = path.join(output, 'release-images.tar')
   const dependencies = path.join(output, 'test-dependencies.tar')
   const versions = path.join(output, 'tool-versions.txt')
+  const transportJq = path.join(output, 'tools/jq')
   fs.writeFileSync(archive, 'fixture-release-images\n', { mode: 0o600 })
   fs.writeFileSync(dependencies, 'fixture-test-dependencies\n', { mode: 0o600 })
   fs.writeFileSync(versions, 'fixture-tools=contract-only\n', { mode: 0o600 })
@@ -735,6 +899,7 @@ function artifactFixtureCreate(args) {
     archive,
     dependencies,
     versions,
+    transportJq,
     certificationRunId,
     certificationRunAttempt,
     artifactName,
@@ -749,125 +914,66 @@ function artifactFixtureCreate(args) {
   console.log('ARTIFACT_FIXTURE=OK')
 }
 
-function artifactFixtureMutate(args) {
-  const [bundle, mutation] = args
-  if (args.length !== 2 || mutation !== 'path-traversal') {
-    fail('mutacao de fixture invalida')
-  }
-  const manifestPath = path.join(bundle, 'release-manifest.json')
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-  const previous = manifest.archive.name
-  const traversal = '../release-images.tar'
-  manifest.archive.name = traversal
-  manifest.artifactLayout.payloads.releaseImages = traversal
-  manifest.artifactLayout.profiles.certified = manifest.artifactLayout.profiles.certified
-    .map((name) => name === previous ? traversal : name)
-  manifest.artifactLayout.profiles.candidateRuntime = manifest.artifactLayout.profiles.candidateRuntime
-    .map((name) => name === previous ? traversal : name)
-  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
-  fs.writeFileSync(path.join(bundle, 'release-manifest.sha256'),
-    `${sha256(manifestPath)}  release-manifest.json\n`, { mode: 0o600 })
-}
-
-function artifactResolverTests(args) {
-  const [testDirectory, sourceSha] = args
-  if (args.length !== 2 || !/^[a-f0-9]{40}$/.test(sourceSha ?? '')
-      || !path.basename(testDirectory ?? '').startsWith('topsdojob-v2-artifact-resolver-')) {
-    fail('uso invalido dos testes do resolver')
+function payloadEnvelopeTests(args) {
+  const [validEnvelope, sourceSha, runId, artifactName, testDirectory] = args
+  if (args.length !== 5 || !path.basename(testDirectory).startsWith('topsdojob-v2-envelope-tests-')) {
+    fail('uso invalido dos testes do envelope')
   }
   const testRoot = path.resolve(testDirectory)
-  if (fs.existsSync(testRoot)) fail('diretorio dos testes do resolver ja existe')
+  if (fs.existsSync(testRoot)) fail('diretorio de testes do envelope preexistente')
   fs.mkdirSync(testRoot, { recursive: true, mode: 0o700 })
-  const runId = '123456789'
-  const runAttempt = '1'
-  const artifactName = `topsdojob-v2-release-${sourceSha}-${runId}-${runAttempt}`
-  const fixture = path.join(testRoot, 'fixture')
-  const copyFixture = (destination) => {
-    fs.cpSync(fixture, destination, { recursive: true, errorOnExist: true })
+  const copyEnvelope = (name) => {
+    const destination = path.join(testRoot, name)
+    fs.cpSync(validEnvelope, destination, { recursive: true, errorOnExist: true })
     return destination
   }
-  const expectPass = (name, extraction, expectedRoot) => {
-    const resolved = resolveArtifactRoot(extraction, sourceSha, runId)
-    if (resolved !== fs.realpathSync(expectedRoot)) fail(`caso deveria passar: ${name}`)
-    console.log(`ARTIFACT_RESOLVER_TEST=${name}:PASS`)
-  }
-  const expectFail = (name, extraction) => {
+  const expectFail = (name, mutate) => {
+    const fixture = copyEnvelope(name)
+    mutate(fixture)
     try {
-      resolveArtifactRoot(extraction, sourceSha, runId)
+      payloadEnvelope(fixture, sourceSha, runId, artifactName)
     } catch {
-      console.log(`ARTIFACT_RESOLVER_TEST=${name}:FAIL_EXPECTED`)
+      console.log(`PAYLOAD_ENVELOPE_TEST=${name}:FAIL_EXPECTED`)
       return
     }
-    fail(`caso deveria falhar: ${name}`)
+    fail(`envelope deveria falhar: ${name}`)
   }
-
   try {
-    artifactFixtureCreate([fixture, sourceSha, runId, runAttempt, artifactName])
-
-    const depth0 = copyFixture(path.join(testRoot, 'depth-0'))
-    expectPass('depth-0', depth0, depth0)
-
-    const depth1Root = path.join(testRoot, 'depth-1')
-    fs.mkdirSync(depth1Root)
-    const depth1 = copyFixture(path.join(depth1Root, 'artifact'))
-    expectPass('depth-1', depth1Root, depth1)
-
-    const depth2Root = path.join(testRoot, 'depth-2')
-    fs.mkdirSync(path.join(depth2Root, 'download'), { recursive: true })
-    const depth2 = copyFixture(path.join(depth2Root, 'download', 'artifact'))
-    expectPass('depth-2', depth2Root, depth2)
-
-    const noManifest = copyFixture(path.join(testRoot, 'no-manifest'))
-    fs.rmSync(path.join(noManifest, 'release-manifest.json'))
-    expectFail('no-manifest', noManifest)
-
-    const duplicateRoot = path.join(testRoot, 'duplicate-manifest')
-    fs.mkdirSync(duplicateRoot)
-    copyFixture(path.join(duplicateRoot, 'one'))
-    copyFixture(path.join(duplicateRoot, 'two'))
-    expectFail('duplicate-manifest', duplicateRoot)
-
-    const manifestSymlink = copyFixture(path.join(testRoot, 'manifest-symlink'))
-    fs.rmSync(path.join(manifestSymlink, 'release-manifest.json'))
-    fs.symlinkSync(path.join(fixture, 'release-manifest.json'),
-      path.join(manifestSymlink, 'release-manifest.json'))
-    expectFail('manifest-symlink', manifestSymlink)
-
-    const payloadSymlink = copyFixture(path.join(testRoot, 'payload-symlink'))
-    fs.rmSync(path.join(payloadSymlink, 'release-images.tar'))
-    fs.symlinkSync(path.join(fixture, 'release-images.tar'),
-      path.join(payloadSymlink, 'release-images.tar'))
-    expectFail('payload-symlink', payloadSymlink)
-
-    const traversal = copyFixture(path.join(testRoot, 'path-traversal'))
-    artifactFixtureMutate([traversal, 'path-traversal'])
-    expectFail('path-traversal', traversal)
-
-    const hashMismatch = copyFixture(path.join(testRoot, 'hash-mismatch'))
-    fs.appendFileSync(path.join(hashMismatch, 'release-images.tar'), 'tampered\n')
-    expectFail('hash-mismatch', hashMismatch)
-
-    const payloadMissing = copyFixture(path.join(testRoot, 'payload-missing'))
-    fs.rmSync(path.join(payloadMissing, 'release-images.tar'))
-    expectFail('payload-missing', payloadMissing)
-
-    const unexpected = copyFixture(path.join(testRoot, 'unexpected-extra'))
-    fs.writeFileSync(path.join(unexpected, 'unexpected.txt'), 'unexpected\n')
-    expectFail('unexpected-extra', unexpected)
-
-    const realTree = copyFixture(path.join(testRoot, 'real-valid-tree'))
-    expectPass('real-valid-tree', realTree, realTree)
-    console.log('ARTIFACT_RESOLVER_TESTS=12/12')
+    payloadEnvelope(validEnvelope, sourceSha, runId, artifactName)
+    console.log('PAYLOAD_ENVELOPE_TEST=valid:PASS')
+    expectFail('zero-package', (fixture) => {
+      fs.rmSync(path.join(fixture, 'candidate-payload.tar'))
+    })
+    expectFail('multiple-packages', (fixture) => {
+      fs.mkdirSync(path.join(fixture, 'duplicate'))
+      fs.copyFileSync(path.join(fixture, 'candidate-payload.tar'),
+        path.join(fixture, 'duplicate/candidate-payload.tar'))
+    })
+    expectFail('package-symlink', (fixture) => {
+      const packageFile = path.join(fixture, 'candidate-payload.tar')
+      fs.rmSync(packageFile)
+      fs.symlinkSync(path.join(validEnvelope, 'candidate-payload.tar'), packageFile)
+    })
+    expectFail('package-empty', (fixture) => {
+      fs.writeFileSync(path.join(fixture, 'candidate-payload.tar'), '')
+    })
+    expectFail('package-name', (fixture) => {
+      fs.renameSync(path.join(fixture, 'candidate-payload.tar'),
+        path.join(fixture, 'payload-invalido.tar'))
+    })
+    expectFail('package-hash', (fixture) => {
+      fs.appendFileSync(path.join(fixture, 'candidate-payload.tar'), 'x')
+    })
   } finally {
     fs.rmSync(testRoot, { recursive: true, force: true })
   }
-  if (fs.existsSync(testRoot)) fail('residuos dos testes do resolver')
-  console.log('ARTIFACT_RESOLVER_RESIDUES=0')
+  if (fs.existsSync(testRoot)) fail('residuos dos testes do envelope')
+  console.log('PAYLOAD_ENVELOPE_TESTS=7/7 RESIDUES=0')
 }
 
 function candidateMetadataVerify(args) {
   const [
-    bundle,
+    downloadRoot,
     expectedSha,
     expectedRunId,
     expectedArtifactName,
@@ -877,7 +983,9 @@ function candidateMetadataVerify(args) {
     artifactsFile,
     output,
   ] = args
-  const manifest = verifyManifest(bundle, expectedSha, expectedRunId, true)
+  const envelope = payloadEnvelope(
+    downloadRoot, expectedSha, expectedRunId, expectedArtifactName)
+  const certification = envelope.certification
   const run = JSON.parse(fs.readFileSync(runFile, 'utf8'))
   const artifacts = JSON.parse(fs.readFileSync(artifactsFile, 'utf8')).artifacts
   if (String(run.id) !== expectedRunId
@@ -885,10 +993,10 @@ function candidateMetadataVerify(args) {
       || run.conclusion !== 'success'
       || run.event !== 'workflow_dispatch'
       || run.path !== '.github/workflows/pipeline-production-v2.yml'
-      || String(run.run_attempt) !== manifest.certification.runAttempt) {
+      || String(run.run_attempt) !== certification.certification.runAttempt) {
     fail('run informado nao e uma certificacao V2 aprovada para o SHA')
   }
-  const artifactName = manifest.certification.artifactName
+  const artifactName = certification.certification.artifactName
   if (expectedArtifactName !== artifactName) {
     fail('nome baixado nao corresponde ao artefato certificado')
   }
@@ -903,17 +1011,22 @@ function candidateMetadataVerify(args) {
       || !/^sha256:[a-f0-9]{64}$/.test(matches[0].digest ?? '')) {
     fail('artefato certificado ausente, ambiguo, expirado ou divergente')
   }
-  fs.writeFileSync(output, [
+  writePrivateFile(output, [
     `DEPLOY_SHA=${expectedSha}`,
     `CERTIFICATION_RUN_ID=${expectedRunId}`,
-    `CERTIFICATION_RUN_ATTEMPT=${manifest.certification.runAttempt}`,
+    `CERTIFICATION_RUN_ATTEMPT=${certification.certification.runAttempt}`,
     `CERTIFIED_ARTIFACT_ID=${matches[0].id}`,
     `CERTIFIED_ARTIFACT_NAME=${artifactName}`,
     `CERTIFIED_ARTIFACT_DIGEST=${matches[0].digest}`,
-    `CERTIFIED_MANIFEST_SHA256=${sha256(path.join(bundle, 'release-manifest.json'))}`,
+    `PAYLOAD_PATH=${envelope.packageFile}`,
+    `PAYLOAD_SHA256=${envelope.packageHash}`,
+    `PAYLOAD_BYTES=${envelope.packageBytes}`,
+    `PAYLOAD_LAYOUT_VERSION=${certification.layoutVersion}`,
+    `TRANSPORT_SHA256=${certification.bootstrap.transport.sha256}`,
+    `TRANSPORT_JQ_SHA256=${certification.bootstrap.jq.sha256}`,
     'REBUILD_ALLOWED=false',
     '',
-  ].join('\n'), { encoding: 'ascii', mode: 0o600 })
+  ].join('\n'))
 }
 
 function manifestImages(args) {
@@ -1259,10 +1372,11 @@ try {
     case 'manifest-create': manifestCreate(args); break
     case 'manifest-verify': manifestVerify(args); break
     case 'manifest-runtime-verify': manifestRuntimeVerify(args); break
-    case 'artifact-root-resolve': artifactRootResolve(args); break
+    case 'package-source-files': packageSourceFiles(); break
+    case 'payload-certification-create': payloadCertificationCreate(args); break
+    case 'payload-envelope-verify': payloadEnvelopeVerify(args); break
+    case 'payload-envelope-tests': payloadEnvelopeTests(args); break
     case 'artifact-fixture-create': artifactFixtureCreate(args); break
-    case 'artifact-fixture-mutate': artifactFixtureMutate(args); break
-    case 'artifact-resolver-tests': artifactResolverTests(args); break
     case 'candidate-metadata-verify': candidateMetadataVerify(args); break
     case 'manifest-images': manifestImages(args); break
     case 'manifest-artifact-name': manifestArtifactName(args); break
