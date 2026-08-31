@@ -26,6 +26,70 @@ function walk(directory, predicate = () => true) {
   })
 }
 
+function isInside(parent, candidate) {
+  const rel = path.relative(parent, candidate)
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel))
+}
+
+function safeTreeFiles(directory) {
+  const absoluteRoot = path.resolve(directory)
+  if (!fs.existsSync(absoluteRoot)) fail('diretorio de artifact ausente')
+  const rootStat = fs.lstatSync(absoluteRoot)
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    fail('diretorio de artifact inseguro')
+  }
+  const realRoot = fs.realpathSync(absoluteRoot)
+  const files = []
+  const visit = (current) => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name)
+      const rel = path.relative(absoluteRoot, full).replaceAll('\\', '/')
+      const stat = fs.lstatSync(full)
+      if (stat.isSymbolicLink()) fail(`symlink proibido no artifact: ${rel}`)
+      const real = fs.realpathSync(full)
+      if (!isInside(realRoot, real)) fail(`caminho fora do artifact: ${rel}`)
+      if (stat.isDirectory()) {
+        visit(full)
+      } else if (stat.isFile()) {
+        files.push(rel)
+      } else {
+        fail(`entrada nao regular no artifact: ${rel}`)
+      }
+    }
+  }
+  visit(absoluteRoot)
+  return files.sort()
+}
+
+function regularArtifactFile(bundle, name, label, allowEmpty = false) {
+  if (typeof name !== 'string' || name.length === 0 || name.includes('\0')
+      || path.isAbsolute(name) || path.basename(name) !== name) {
+    fail(`${label} possui path traversal ou nome invalido`)
+  }
+  const absoluteBundle = path.resolve(bundle)
+  const candidate = path.resolve(absoluteBundle, name)
+  if (!isInside(absoluteBundle, candidate) || !fs.existsSync(candidate)) {
+    fail(`${label} ausente ou fora da raiz`)
+  }
+  const stat = fs.lstatSync(candidate)
+  if (!stat.isFile() || stat.isSymbolicLink()) fail(`${label} nao e arquivo regular`)
+  const realBundle = fs.realpathSync(absoluteBundle)
+  const realCandidate = fs.realpathSync(candidate)
+  if (!isInside(realBundle, realCandidate)) fail(`${label} saiu da raiz por realpath`)
+  try {
+    fs.accessSync(candidate, fs.constants.R_OK)
+  } catch {
+    fail(`${label} nao pode ser lido`)
+  }
+  if (!allowEmpty && stat.size === 0) fail(`${label} vazio`)
+  return candidate
+}
+
+function sameStringSet(actual, expected) {
+  return Array.isArray(actual)
+    && JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort())
+}
+
 function relative(file) {
   return path.relative(root, file).replaceAll('\\', '/')
 }
@@ -317,11 +381,22 @@ function contract() {
   }
   if (!artifact.includes('manifest-runtime-verify')
       || !artifact.includes('candidate-metadata-verify')
+      || !artifact.includes('v2_resolve_artifact_root')
+      || !artifact.includes('artifact-root-resolve')
+      || !artifact.includes('ARTIFACT_ROOT_RESOLVED=YES')
+      || !contractSource.includes('artifactLayoutVersion: 1')
       || !artifact.includes('CANDIDATE_ARTIFACT=VERIFIED')
       || !lab.includes('v2_compose run --rm --no-deps --pull never -T backend')
       || !lab.includes('REAL_R2_MUTATIONS=0')
       || !lab.includes('CANDIDATE_SHUTDOWN=GRACEFUL RESIDUALS=0')) {
     fail('proveniencia, isolamento externo ou cleanup candidate incompleto')
+  }
+  if (/find[\s\S]{0,160}release-manifest\.json[\s\S]{0,80}-(?:min|max)depth/.test(candidateJob)
+      || /-(?:min|max)depth[\s\S]{0,160}release-manifest\.json/.test(candidateJob)
+      || !candidateJob.includes('artifact-ids: ${{ steps.certified-artifact.outputs.artifact_id }}')
+      || !candidateJob.includes('digest-mismatch: error')
+      || !candidateJob.includes('actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd')) {
+    fail('candidate ainda depende de profundidade ou identidade nao certificada')
   }
   if (Object.keys(lock.images).length < 10) fail('lock de imagens incompleto')
   for (const [name, image] of Object.entries(lock.images)) {
@@ -354,6 +429,7 @@ function manifestCreate(args) {
     gitSha,
     archive,
     dependencyArchive,
+    toolVersions,
     certificationRunId,
     certificationRunAttempt,
     certificationArtifactName,
@@ -369,6 +445,9 @@ function manifestCreate(args) {
   if (!fs.statSync(dependencyArchive).isFile() || fs.statSync(dependencyArchive).size === 0) {
     fail('TAR de dependencias vazio')
   }
+  if (!fs.statSync(toolVersions).isFile() || fs.statSync(toolVersions).size === 0) {
+    fail('metadados de ferramentas vazios')
+  }
   if (imageArgs.length !== 6) fail('manifesto exige tres pares imagem/id')
   const images = []
   for (let index = 0; index < imageArgs.length; index += 2) {
@@ -380,8 +459,21 @@ function manifestCreate(args) {
   const files = Object.fromEntries(technicalFiles().map((file) => [relative(file), sha256(file)]))
   const migrations = Object.fromEntries(migrationFiles().map((file) => [relative(file), sha256(file)]))
   if (Object.keys(migrations).length !== 53) fail('manifesto exige exatamente V001-V053')
+  const archiveName = path.basename(archive)
+  const dependencyArchiveName = path.basename(dependencyArchive)
+  const toolVersionsName = path.basename(toolVersions)
+  const certifiedFiles = [
+    'release-manifest.json',
+    'release-manifest.sha256',
+    archiveName,
+    dependencyArchiveName,
+    toolVersionsName,
+  ].sort()
+  const candidateRuntimeFiles = certifiedFiles
+    .filter((name) => name !== dependencyArchiveName)
   const manifest = {
     schemaVersion: 2,
+    artifactLayoutVersion: 1,
     gitSha,
     certification: {
       runId: certificationRunId,
@@ -390,15 +482,35 @@ function manifestCreate(args) {
     },
     platform: lock.platform,
     archive: {
-      name: path.basename(archive),
+      name: archiveName,
       sha256: sha256(archive),
       bytes: fs.statSync(archive).size,
     },
     testDependencies: {
-      name: path.basename(dependencyArchive),
+      name: dependencyArchiveName,
       sha256: sha256(dependencyArchive),
       bytes: fs.statSync(dependencyArchive).size,
       offlineValidated: true,
+    },
+    artifactLayout: {
+      manifest: 'release-manifest.json',
+      checksum: 'release-manifest.sha256',
+      payloads: {
+        releaseImages: archiveName,
+        testDependencies: dependencyArchiveName,
+      },
+      metadata: {
+        toolVersions: {
+          name: toolVersionsName,
+          sha256: sha256(toolVersions),
+          bytes: fs.statSync(toolVersions).size,
+        },
+      },
+      profiles: {
+        certified: certifiedFiles,
+        candidateRuntime: candidateRuntimeFiles,
+      },
+      unexpectedFilesAllowed: false,
     },
     images,
     tools: lock.tools,
@@ -411,16 +523,62 @@ function manifestCreate(args) {
   fs.writeFileSync(output, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
 }
 
-function verifyManifest(bundle, expectedSha, expectedRunId, requireTestDependencies) {
-  const manifestPath = path.join(bundle, 'release-manifest.json')
-  if (!fs.existsSync(manifestPath) || fs.lstatSync(manifestPath).isSymbolicLink()) {
-    fail('manifesto ausente ou symlink')
+function verifyArtifactLayout(bundle, manifest, requireTestDependencies) {
+  const layout = manifest.artifactLayout
+  if (manifest.artifactLayoutVersion !== 1 || !layout || typeof layout !== 'object'
+      || layout.manifest !== 'release-manifest.json'
+      || layout.checksum !== 'release-manifest.sha256'
+      || layout.unexpectedFilesAllowed !== false) {
+    fail('contrato de layout do artifact invalido')
   }
+  if (layout.payloads?.releaseImages !== manifest.archive?.name
+      || layout.payloads?.testDependencies !== manifest.testDependencies?.name) {
+    fail('payloads do layout divergem do manifesto')
+  }
+  const toolMetadata = layout.metadata?.toolVersions
+  if (!toolMetadata || typeof toolMetadata !== 'object') {
+    fail('metadados de ferramentas ausentes no layout')
+  }
+  const certifiedFiles = [
+    layout.manifest,
+    layout.checksum,
+    manifest.archive.name,
+    manifest.testDependencies.name,
+    toolMetadata.name,
+  ].sort()
+  const runtimeFiles = certifiedFiles.filter((name) => name !== manifest.testDependencies.name)
+  if (!sameStringSet(layout.profiles?.certified, certifiedFiles)
+      || !sameStringSet(layout.profiles?.candidateRuntime, runtimeFiles)) {
+    fail('perfis nominais do layout invalidos')
+  }
+  const expectedFiles = requireTestDependencies ? certifiedFiles : runtimeFiles
+  const actualFiles = safeTreeFiles(bundle)
+  if (!sameStringSet(actualFiles, expectedFiles)) {
+    fail('arquivos presentes divergem do perfil nominal do artifact')
+  }
+
+  const manifestPath = regularArtifactFile(bundle, layout.manifest, 'manifesto')
+  const checksumPath = regularArtifactFile(bundle, layout.checksum, 'checksums')
+  const expectedChecksum = `${sha256(manifestPath)}  ${layout.manifest}`
+  if (fs.readFileSync(checksumPath, 'utf8').trimEnd() !== expectedChecksum) {
+    fail('checksum do manifesto divergente')
+  }
+  const toolVersions = regularArtifactFile(bundle, toolMetadata.name, 'metadados de ferramentas')
+  if (!/^[a-f0-9]{64}$/.test(toolMetadata.sha256 ?? '')
+      || sha256(toolVersions) !== toolMetadata.sha256
+      || fs.statSync(toolVersions).size !== toolMetadata.bytes) {
+    fail('metadados de ferramentas divergentes')
+  }
+}
+
+function verifyManifest(bundle, expectedSha, expectedRunId, requireTestDependencies, emit = true) {
+  const manifestPath = regularArtifactFile(bundle, 'release-manifest.json', 'manifesto')
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
   if (manifest.schemaVersion !== 2
+      || manifest.artifactLayoutVersion !== 1
       || manifest.rebuildAllowedInVerify !== false
       || manifest.rebuildAllowedOnCandidate !== false) {
-    fail('schema ou politica de rebuild invalida no manifesto')
+    fail('schema, layout ou politica de rebuild invalida no manifesto')
   }
   if (expectedSha && manifest.gitSha !== expectedSha) fail('SHA do manifesto divergente')
   if (!/^[a-f0-9]{40}$/.test(manifest.gitSha)) fail('SHA do manifesto invalido')
@@ -436,18 +594,22 @@ function verifyManifest(bundle, expectedSha, expectedRunId, requireTestDependenc
   if (manifest.certification.artifactName !== expectedArtifactName) {
     fail('identidade do artefato divergente')
   }
-  const archive = path.join(bundle, manifest.archive.name)
-  if (!fs.existsSync(archive) || fs.lstatSync(archive).isSymbolicLink()) fail('TAR ausente ou symlink')
-  if (sha256(archive) !== manifest.archive.sha256) fail('hash do TAR divergente')
+
+  verifyArtifactLayout(bundle, manifest, requireTestDependencies)
+  const archive = regularArtifactFile(bundle, manifest.archive?.name, 'TAR de imagens')
+  if (!/^[a-f0-9]{64}$/.test(manifest.archive?.sha256 ?? '')
+      || sha256(archive) !== manifest.archive.sha256) {
+    fail('hash do TAR divergente')
+  }
   if (fs.statSync(archive).size !== manifest.archive.bytes) fail('tamanho do TAR divergente')
   if (requireTestDependencies) {
-    const dependencyArchive = path.join(bundle, manifest.testDependencies?.name ?? '')
-    if (manifest.testDependencies?.offlineValidated !== true
-      || !fs.existsSync(dependencyArchive)
-      || fs.lstatSync(dependencyArchive).isSymbolicLink()) {
-      fail('TAR de dependencias ausente, nao validado ou symlink')
+    const dependencyArchive = regularArtifactFile(
+      bundle, manifest.testDependencies?.name, 'TAR de dependencias')
+    if (manifest.testDependencies?.offlineValidated !== true) {
+      fail('TAR de dependencias nao foi validado offline')
     }
-    if (sha256(dependencyArchive) !== manifest.testDependencies.sha256) {
+    if (!/^[a-f0-9]{64}$/.test(manifest.testDependencies.sha256 ?? '')
+        || sha256(dependencyArchive) !== manifest.testDependencies.sha256) {
       fail('hash do TAR de dependencias divergente')
     }
     if (fs.statSync(dependencyArchive).size !== manifest.testDependencies.bytes) {
@@ -455,17 +617,25 @@ function verifyManifest(bundle, expectedSha, expectedRunId, requireTestDependenc
     }
   }
   if (sha256(lockPath) !== manifest.lockedImagesSha256) fail('lock diverge do build')
-  if (!Array.isArray(manifest.images) || manifest.images.length !== 3) fail('imagens de release invalidas')
-  for (const [file, expected] of Object.entries(manifest.sourceFiles)) {
-    const absolute = path.join(root, file)
-    if (!fs.existsSync(absolute) || sha256(absolute) !== expected) fail(`fonte diverge: ${file}`)
+  if (JSON.stringify(manifest.tools) !== JSON.stringify(lock.tools)) {
+    fail('ferramentas do manifesto divergem do lock')
+  }
+  if (!Array.isArray(manifest.images) || manifest.images.length !== 3
+      || manifest.images.some((image) => typeof image?.name !== 'string'
+        || !/^sha256:[a-f0-9]{64}$/.test(image?.id ?? ''))) {
+    fail('imagens de release invalidas')
+  }
+  const expectedSources = Object.fromEntries(
+    technicalFiles().map((file) => [relative(file), sha256(file)]))
+  if (JSON.stringify(manifest.sourceFiles) !== JSON.stringify(expectedSources)) {
+    fail('fontes tecnicas divergem do build certificado')
   }
   const expectedMigrations = Object.fromEntries(
     migrationFiles().map((file) => [relative(file), sha256(file)]))
   if (JSON.stringify(manifest.migrations) !== JSON.stringify(expectedMigrations)) {
     fail('migrations divergem do build certificado')
   }
-  console.log(`MANIFEST_V2=OK sha=${manifest.gitSha} archive=${manifest.archive.sha256}`)
+  if (emit) console.log(`MANIFEST_V2=OK sha=${manifest.gitSha} archive=${manifest.archive.sha256}`)
   return manifest
 }
 
@@ -479,8 +649,206 @@ function manifestRuntimeVerify(args) {
   verifyManifest(bundle, expectedSha, expectedRunId, false)
 }
 
+function resolveArtifactRoot(extractionDirectory, expectedSha, expectedRunId) {
+  const extractionRoot = path.resolve(extractionDirectory)
+  if (!fs.existsSync(extractionRoot)) fail('diretorio de extracao ausente')
+  const extractionStat = fs.lstatSync(extractionRoot)
+  if (!extractionStat.isDirectory() || extractionStat.isSymbolicLink()) {
+    fail('diretorio de extracao inseguro')
+  }
+  const extractionReal = fs.realpathSync(extractionRoot)
+  const files = safeTreeFiles(extractionRoot)
+  const manifests = files.filter((file) => path.basename(file) === 'release-manifest.json')
+  if (manifests.length === 0) fail('nenhum manifesto encontrado')
+  if (manifests.length !== 1) fail('multiplos manifestos encontrados')
+  const manifest = path.resolve(extractionRoot, manifests[0])
+  if (!isInside(extractionRoot, manifest)) fail('manifesto fora da extracao')
+  const manifestStat = fs.lstatSync(manifest)
+  if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) {
+    fail('manifesto resolvido nao e arquivo regular')
+  }
+  try {
+    fs.accessSync(manifest, fs.constants.R_OK)
+  } catch {
+    fail('manifesto resolvido nao pode ser lido')
+  }
+  if (manifestStat.size === 0) fail('manifesto vazio')
+  const artifactRoot = fs.realpathSync(path.dirname(manifest))
+  if (!isInside(extractionReal, artifactRoot)) fail('raiz do artifact fora da extracao')
+  for (const file of files) {
+    const real = fs.realpathSync(path.join(extractionRoot, file))
+    if (!isInside(artifactRoot, real)) fail('arquivo encontrado fora da raiz resolvida')
+  }
+  verifyManifest(artifactRoot, expectedSha, expectedRunId, true, false)
+  return artifactRoot
+}
+
+function artifactRootResolve(args) {
+  const [extractionDirectory, expectedSha, expectedRunId] = args
+  if (!extractionDirectory || args.length > 3) fail('uso invalido do resolver de artifact')
+  process.stdout.write(`${resolveArtifactRoot(extractionDirectory, expectedSha, expectedRunId)}\n`)
+}
+
+function artifactFixtureCreate(args) {
+  const [output, gitSha, certificationRunId, certificationRunAttempt, artifactName] = args
+  if (!output || args.length !== 5) fail('uso invalido da fixture de artifact')
+  if (fs.existsSync(output)) fail('diretorio da fixture ja existe')
+  fs.mkdirSync(output, { recursive: true, mode: 0o700 })
+  const archive = path.join(output, 'release-images.tar')
+  const dependencies = path.join(output, 'test-dependencies.tar')
+  const versions = path.join(output, 'tool-versions.txt')
+  fs.writeFileSync(archive, 'fixture-release-images\n', { mode: 0o600 })
+  fs.writeFileSync(dependencies, 'fixture-test-dependencies\n', { mode: 0o600 })
+  fs.writeFileSync(versions, 'fixture-tools=contract-only\n', { mode: 0o600 })
+  const fakeIds = ['1', '2', '3'].map((digit) => `sha256:${digit.repeat(64)}`)
+  manifestCreate([
+    path.join(output, 'release-manifest.json'),
+    gitSha,
+    archive,
+    dependencies,
+    versions,
+    certificationRunId,
+    certificationRunAttempt,
+    artifactName,
+    `topsdojob-v2-backend:${gitSha}`, fakeIds[0],
+    `topsdojob-v2-frontend:${gitSha}`, fakeIds[1],
+    `topsdojob-v2-gateway:${gitSha}`, fakeIds[2],
+  ])
+  const manifestPath = path.join(output, 'release-manifest.json')
+  fs.writeFileSync(path.join(output, 'release-manifest.sha256'),
+    `${sha256(manifestPath)}  release-manifest.json\n`, { mode: 0o600 })
+  verifyManifest(output, gitSha, certificationRunId, true, false)
+  console.log('ARTIFACT_FIXTURE=OK')
+}
+
+function artifactFixtureMutate(args) {
+  const [bundle, mutation] = args
+  if (args.length !== 2 || mutation !== 'path-traversal') {
+    fail('mutacao de fixture invalida')
+  }
+  const manifestPath = path.join(bundle, 'release-manifest.json')
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+  const previous = manifest.archive.name
+  const traversal = '../release-images.tar'
+  manifest.archive.name = traversal
+  manifest.artifactLayout.payloads.releaseImages = traversal
+  manifest.artifactLayout.profiles.certified = manifest.artifactLayout.profiles.certified
+    .map((name) => name === previous ? traversal : name)
+  manifest.artifactLayout.profiles.candidateRuntime = manifest.artifactLayout.profiles.candidateRuntime
+    .map((name) => name === previous ? traversal : name)
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 })
+  fs.writeFileSync(path.join(bundle, 'release-manifest.sha256'),
+    `${sha256(manifestPath)}  release-manifest.json\n`, { mode: 0o600 })
+}
+
+function artifactResolverTests(args) {
+  const [testDirectory, sourceSha] = args
+  if (args.length !== 2 || !/^[a-f0-9]{40}$/.test(sourceSha ?? '')
+      || !path.basename(testDirectory ?? '').startsWith('topsdojob-v2-artifact-resolver-')) {
+    fail('uso invalido dos testes do resolver')
+  }
+  const testRoot = path.resolve(testDirectory)
+  if (fs.existsSync(testRoot)) fail('diretorio dos testes do resolver ja existe')
+  fs.mkdirSync(testRoot, { recursive: true, mode: 0o700 })
+  const runId = '123456789'
+  const runAttempt = '1'
+  const artifactName = `topsdojob-v2-release-${sourceSha}-${runId}-${runAttempt}`
+  const fixture = path.join(testRoot, 'fixture')
+  const copyFixture = (destination) => {
+    fs.cpSync(fixture, destination, { recursive: true, errorOnExist: true })
+    return destination
+  }
+  const expectPass = (name, extraction, expectedRoot) => {
+    const resolved = resolveArtifactRoot(extraction, sourceSha, runId)
+    if (resolved !== fs.realpathSync(expectedRoot)) fail(`caso deveria passar: ${name}`)
+    console.log(`ARTIFACT_RESOLVER_TEST=${name}:PASS`)
+  }
+  const expectFail = (name, extraction) => {
+    try {
+      resolveArtifactRoot(extraction, sourceSha, runId)
+    } catch {
+      console.log(`ARTIFACT_RESOLVER_TEST=${name}:FAIL_EXPECTED`)
+      return
+    }
+    fail(`caso deveria falhar: ${name}`)
+  }
+
+  try {
+    artifactFixtureCreate([fixture, sourceSha, runId, runAttempt, artifactName])
+
+    const depth0 = copyFixture(path.join(testRoot, 'depth-0'))
+    expectPass('depth-0', depth0, depth0)
+
+    const depth1Root = path.join(testRoot, 'depth-1')
+    fs.mkdirSync(depth1Root)
+    const depth1 = copyFixture(path.join(depth1Root, 'artifact'))
+    expectPass('depth-1', depth1Root, depth1)
+
+    const depth2Root = path.join(testRoot, 'depth-2')
+    fs.mkdirSync(path.join(depth2Root, 'download'), { recursive: true })
+    const depth2 = copyFixture(path.join(depth2Root, 'download', 'artifact'))
+    expectPass('depth-2', depth2Root, depth2)
+
+    const noManifest = copyFixture(path.join(testRoot, 'no-manifest'))
+    fs.rmSync(path.join(noManifest, 'release-manifest.json'))
+    expectFail('no-manifest', noManifest)
+
+    const duplicateRoot = path.join(testRoot, 'duplicate-manifest')
+    fs.mkdirSync(duplicateRoot)
+    copyFixture(path.join(duplicateRoot, 'one'))
+    copyFixture(path.join(duplicateRoot, 'two'))
+    expectFail('duplicate-manifest', duplicateRoot)
+
+    const manifestSymlink = copyFixture(path.join(testRoot, 'manifest-symlink'))
+    fs.rmSync(path.join(manifestSymlink, 'release-manifest.json'))
+    fs.symlinkSync(path.join(fixture, 'release-manifest.json'),
+      path.join(manifestSymlink, 'release-manifest.json'))
+    expectFail('manifest-symlink', manifestSymlink)
+
+    const payloadSymlink = copyFixture(path.join(testRoot, 'payload-symlink'))
+    fs.rmSync(path.join(payloadSymlink, 'release-images.tar'))
+    fs.symlinkSync(path.join(fixture, 'release-images.tar'),
+      path.join(payloadSymlink, 'release-images.tar'))
+    expectFail('payload-symlink', payloadSymlink)
+
+    const traversal = copyFixture(path.join(testRoot, 'path-traversal'))
+    artifactFixtureMutate([traversal, 'path-traversal'])
+    expectFail('path-traversal', traversal)
+
+    const hashMismatch = copyFixture(path.join(testRoot, 'hash-mismatch'))
+    fs.appendFileSync(path.join(hashMismatch, 'release-images.tar'), 'tampered\n')
+    expectFail('hash-mismatch', hashMismatch)
+
+    const payloadMissing = copyFixture(path.join(testRoot, 'payload-missing'))
+    fs.rmSync(path.join(payloadMissing, 'release-images.tar'))
+    expectFail('payload-missing', payloadMissing)
+
+    const unexpected = copyFixture(path.join(testRoot, 'unexpected-extra'))
+    fs.writeFileSync(path.join(unexpected, 'unexpected.txt'), 'unexpected\n')
+    expectFail('unexpected-extra', unexpected)
+
+    const realTree = copyFixture(path.join(testRoot, 'real-valid-tree'))
+    expectPass('real-valid-tree', realTree, realTree)
+    console.log('ARTIFACT_RESOLVER_TESTS=12/12')
+  } finally {
+    fs.rmSync(testRoot, { recursive: true, force: true })
+  }
+  if (fs.existsSync(testRoot)) fail('residuos dos testes do resolver')
+  console.log('ARTIFACT_RESOLVER_RESIDUES=0')
+}
+
 function candidateMetadataVerify(args) {
-  const [bundle, expectedSha, expectedRunId, artifactName, runFile, artifactsFile, output] = args
+  const [
+    bundle,
+    expectedSha,
+    expectedRunId,
+    expectedArtifactName,
+    expectedArtifactId,
+    expectedArtifactDigest,
+    runFile,
+    artifactsFile,
+    output,
+  ] = args
   const manifest = verifyManifest(bundle, expectedSha, expectedRunId, true)
   const run = JSON.parse(fs.readFileSync(runFile, 'utf8'))
   const artifacts = JSON.parse(fs.readFileSync(artifactsFile, 'utf8')).artifacts
@@ -488,19 +856,24 @@ function candidateMetadataVerify(args) {
       || run.head_sha !== expectedSha
       || run.conclusion !== 'success'
       || run.event !== 'workflow_dispatch'
-      || run.path !== '.github/workflows/pipeline-production-v2.yml') {
+      || run.path !== '.github/workflows/pipeline-production-v2.yml'
+      || String(run.run_attempt) !== manifest.certification.runAttempt) {
     fail('run informado nao e uma certificacao V2 aprovada para o SHA')
   }
-  if (artifactName !== manifest.certification.artifactName) {
-    fail('diretorio baixado nao corresponde ao artefato certificado')
+  const artifactName = manifest.certification.artifactName
+  if (expectedArtifactName !== artifactName) {
+    fail('nome baixado nao corresponde ao artefato certificado')
   }
   if (!Array.isArray(artifacts)) fail('lista de artefatos invalida')
   const matches = artifacts.filter((artifact) => artifact.name === artifactName)
   if (matches.length !== 1
       || !Number.isInteger(matches[0].id)
       || matches[0].id < 1
-      || matches[0].expired === true) {
-    fail('artefato certificado ausente, ambiguo ou expirado')
+      || matches[0].expired === true
+      || String(matches[0].id) !== expectedArtifactId
+      || matches[0].digest !== expectedArtifactDigest
+      || !/^sha256:[a-f0-9]{64}$/.test(matches[0].digest ?? '')) {
+    fail('artefato certificado ausente, ambiguo, expirado ou divergente')
   }
   fs.writeFileSync(output, [
     `DEPLOY_SHA=${expectedSha}`,
@@ -508,6 +881,7 @@ function candidateMetadataVerify(args) {
     `CERTIFICATION_RUN_ATTEMPT=${manifest.certification.runAttempt}`,
     `CERTIFIED_ARTIFACT_ID=${matches[0].id}`,
     `CERTIFIED_ARTIFACT_NAME=${artifactName}`,
+    `CERTIFIED_ARTIFACT_DIGEST=${matches[0].digest}`,
     `CERTIFIED_MANIFEST_SHA256=${sha256(path.join(bundle, 'release-manifest.json'))}`,
     'REBUILD_ALLOWED=false',
     '',
@@ -517,6 +891,12 @@ function candidateMetadataVerify(args) {
 function manifestImages(args) {
   const manifest = JSON.parse(fs.readFileSync(path.join(args[0], 'release-manifest.json'), 'utf8'))
   for (const image of manifest.images) console.log(`${image.name}|${image.id}`)
+}
+
+function manifestArtifactName(args) {
+  const [bundle, expectedSha, expectedRunId] = args
+  const manifest = verifyManifest(bundle, expectedSha, expectedRunId, true, false)
+  console.log(manifest.certification.artifactName)
 }
 
 function criticalList(args) {
@@ -845,17 +1225,30 @@ INSERT INTO usuario_documentos VALUES (7001, 1, '${documentReference}');
 }
 
 const [command, ...args] = process.argv.slice(2)
-switch (command) {
-  case 'contract': contract(); break
-  case 'manifest-create': manifestCreate(args); break
-  case 'manifest-verify': manifestVerify(args); break
-  case 'manifest-runtime-verify': manifestRuntimeVerify(args); break
-  case 'candidate-metadata-verify': candidateMetadataVerify(args); break
-  case 'manifest-images': manifestImages(args); break
-  case 'critical-list': criticalList(args); break
-  case 'critical-report': criticalReport(args); break
-  case 'fixture': fixture(args); break
-  case 'runtime-fixtures': runtimeFixtures(args); break
-  case 'file-policy': assertRegularLfFile(path.resolve(args[0])); console.log('FILE_POLICY=OK'); break
-  default: fail(`comando desconhecido: ${command}`)
+try {
+  switch (command) {
+    case 'contract': contract(); break
+    case 'manifest-create': manifestCreate(args); break
+    case 'manifest-verify': manifestVerify(args); break
+    case 'manifest-runtime-verify': manifestRuntimeVerify(args); break
+    case 'artifact-root-resolve': artifactRootResolve(args); break
+    case 'artifact-fixture-create': artifactFixtureCreate(args); break
+    case 'artifact-fixture-mutate': artifactFixtureMutate(args); break
+    case 'artifact-resolver-tests': artifactResolverTests(args); break
+    case 'candidate-metadata-verify': candidateMetadataVerify(args); break
+    case 'manifest-images': manifestImages(args); break
+    case 'manifest-artifact-name': manifestArtifactName(args); break
+    case 'critical-list': criticalList(args); break
+    case 'critical-report': criticalReport(args); break
+    case 'fixture': fixture(args); break
+    case 'runtime-fixtures': runtimeFixtures(args); break
+    case 'file-policy': assertRegularLfFile(path.resolve(args[0])); console.log('FILE_POLICY=OK'); break
+    default: fail(`comando desconhecido: ${command}`)
+  }
+} catch (error) {
+  const message = String(error?.message ?? 'falha desconhecida')
+    .replaceAll(root, '<repo>')
+    .replace(/[\r\n]+/g, ' ')
+  console.error(`CONTRACT_V2_ERROR ${message}`)
+  process.exitCode = 1
 }

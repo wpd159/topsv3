@@ -327,17 +327,17 @@ v2_build_mode() {
   v2_static_contracts
   v2_scan_secrets
   v2_record_versions "${RUNNER_TEMP:-/tmp}/pipeline-v2-build-versions.txt"
-  v2_build_release_artifact "${output_dir}" "${source_sha}"
-  cp -- "${RUNNER_TEMP:-/tmp}/pipeline-v2-build-versions.txt" "${output_dir}/tool-versions.txt"
-  chmod 0600 "${output_dir}/tool-versions.txt"
+  v2_build_release_artifact "${output_dir}" "${source_sha}" \
+    "${RUNNER_TEMP:-/tmp}/pipeline-v2-build-versions.txt"
   v2_log "BUILD_RESULT=PASS ARTIFACT_UNIQUE=backend,frontend,gateway"
 }
 
 v2_candidate_package_mode() {
-  local bundle="$2" source_sha="$3" certification_run_id="$4" artifact_name="$5"
-  local run_file="$6" artifacts_file="$7" output_dir="$8"
-  [[ "$#" -eq 8 ]] || v2_die \
-    "uso: controller.sh candidate-package BUNDLE SHA RUN ARTIFACT RUN_JSON ARTIFACTS_JSON OUTPUT"
+  local extraction_dir="$2" source_sha="$3" certification_run_id="$4" artifact_name="$5"
+  local artifact_id="$6" artifact_digest="$7" run_file="$8" artifacts_file="$9"
+  local output_dir="${10}"
+  [[ "$#" -eq 10 ]] || v2_die \
+    "uso: controller.sh candidate-package EXTRACTION SHA RUN ARTIFACT ID DIGEST RUN_JSON ARTIFACTS_JSON OUTPUT"
   [[ "$(git -C "${V2_ROOT}" rev-parse HEAD)" == "${source_sha}" ]]
   [[ -z "$(git -C "${V2_ROOT}" status --short)" ]] || v2_die "checkout candidate sujo"
   [[ "${certification_run_id}" =~ ^[1-9][0-9]*$ ]]
@@ -347,9 +347,9 @@ v2_candidate_package_mode() {
   v2_pull_locked_images
   v2_static_contracts
   v2_scan_secrets
-  v2_create_candidate_payload "${bundle}" "${source_sha}" \
-    "${certification_run_id}" "${artifact_name}" "${run_file}" \
-    "${artifacts_file}" "${output_dir}"
+  v2_create_candidate_payload "${extraction_dir}" "${source_sha}" \
+    "${certification_run_id}" "${artifact_name}" "${artifact_id}" \
+    "${artifact_digest}" "${run_file}" "${artifacts_file}" "${output_dir}"
   v2_log "CANDIDATE_PACKAGE=PASS REBUILD=0 PRODUCTION_ACCESS=0"
 }
 
@@ -437,7 +437,7 @@ v2_verify_mode() {
   v2_static_contracts
   v2_scan_secrets
   v2_load_release_artifact "${bundle}" "${source_sha}"
-  v2_negative_file_contracts "${bundle}" "${source_sha}"
+  v2_negative_file_contracts "${V2_RESOLVED_ARTIFACT_ROOT}" "${source_sha}"
   v2_record_versions "${evidence_dir}/tool-versions.txt"
   v2_prepare_lab "${evidence_dir}"
   v2_run_backend_tests "${evidence_dir}"
@@ -527,11 +527,44 @@ v2_diagnose_mode() {
   return "${diagnostic_rc}"
 }
 
+v2_artifact_fixture_mode() {
+  local output_dir="$2" source_sha="$3" run_id="$4" run_attempt="$5" artifact_name="$6"
+  [[ "$#" -eq 6 ]] || v2_die \
+    "uso: controller.sh artifact-fixture OUTPUT SHA RUN ATTEMPT ARTIFACT"
+  export V2_ARTIFACT_USE_HOST_NODE=1
+  v2_create_artifact_contract_fixture \
+    "${output_dir}" "${source_sha}" "${run_id}" "${run_attempt}" "${artifact_name}"
+}
+
+v2_artifact_resolver_tests_mode() {
+  local test_root="$2" source_sha="$3"
+  [[ "$#" -eq 3 ]] || v2_die "uso: controller.sh artifact-resolver-tests DIR SHA"
+  [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || v2_die "SHA invalido nos testes do resolver"
+  export V2_ARTIFACT_USE_HOST_NODE=1
+  v2_artifact_contract artifact-resolver-tests "${test_root}" "${source_sha}"
+}
+
+v2_artifact_roundtrip_mode() {
+  local extraction_dir="$2" source_sha="$3" run_id="$4" artifact_id="$5"
+  local artifact_name="$6" artifact_digest="$7"
+  [[ "$#" -eq 7 ]] || v2_die \
+    "uso: controller.sh artifact-roundtrip EXTRACTION SHA RUN ID NAME DIGEST"
+  export V2_ARTIFACT_USE_HOST_NODE=1
+  v2_verify_artifact_roundtrip "${extraction_dir}" "${source_sha}" "${run_id}" \
+    "${artifact_id}" "${artifact_name}" "${artifact_digest}"
+  rm -rf -- "${extraction_dir}"
+  [[ ! -e "${extraction_dir}" ]] || v2_die "residuo do round-trip"
+  v2_log "ARTIFACT_ROUNDTRIP_RESIDUES=0"
+}
+
 case "${V2_MODE}" in
   build) v2_build_mode "$@" ;;
   verify) v2_verify_mode "$@" ;;
   diagnose) v2_diagnose_mode "$@" ;;
   candidate-package) v2_candidate_package_mode "$@" ;;
   candidate-remote) v2_candidate_remote_mode "$@" ;;
-  *) v2_die "modo permitido: build interno, verify, diagnose ou candidate interno" ;;
+  artifact-fixture) v2_artifact_fixture_mode "$@" ;;
+  artifact-resolver-tests) v2_artifact_resolver_tests_mode "$@" ;;
+  artifact-roundtrip) v2_artifact_roundtrip_mode "$@" ;;
+  *) v2_die "modo permitido: build, verify, diagnose, candidate ou contrato de artifact" ;;
 esac

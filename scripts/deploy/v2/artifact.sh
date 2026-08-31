@@ -6,6 +6,62 @@ V2_ARTIFACT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=lib.sh
 source "${V2_ARTIFACT_DIR}/lib.sh"
 
+v2_artifact_contract() {
+  if [[ "${V2_ARTIFACT_USE_HOST_NODE:-0}" == "1" ]]; then
+    node "${V2_ROOT}/scripts/deploy/v2/contract.mjs" "$@" </dev/null
+  else
+    v2_node "scripts/deploy/v2/contract.mjs" "$@"
+  fi
+}
+
+v2_artifact_layout_diagnostic() {
+  local extraction_dir="$1" error_code="$2" file_count=0 manifest_count=0
+  local manifest_depths=none relative
+  if [[ -d "${extraction_dir}" && ! -L "${extraction_dir}" ]]; then
+    file_count="$(find -P "${extraction_dir}" -type f -printf '.' | wc -c | tr -d ' ')"
+    manifest_count="$(find -P "${extraction_dir}" -type f \
+      -name release-manifest.json -printf '.' | wc -c | tr -d ' ')"
+    manifest_depths="$(find -P "${extraction_dir}" -type f \
+      -name release-manifest.json -printf '%P\n' |
+      awk -F/ '{print NF}' | sort -nu | paste -sd, -)"
+    [[ -n "${manifest_depths}" ]] || manifest_depths=none
+  fi
+  v2_log "ARTIFACT_DIAGNOSTIC files=${file_count} manifests=${manifest_count} depths=${manifest_depths} artifactId=${V2_ARTIFACT_ID:-unknown} artifactName=${V2_ARTIFACT_NAME:-unknown} runId=${V2_ARTIFACT_RUN_ID:-unknown} expectedSha=${V2_ARTIFACT_EXPECTED_SHA:-unknown} errorCode=${error_code}"
+  if [[ -d "${extraction_dir}" && ! -L "${extraction_dir}" ]]; then
+    while IFS= read -r relative; do
+      [[ -n "${relative}" ]] || continue
+      relative="${relative//$'\n'/?}"
+      relative="${relative//$'\r'/?}"
+      v2_log "ARTIFACT_PATH=${relative}"
+    done < <(find -P "${extraction_dir}" -mindepth 1 -maxdepth 3 -printf '%P\n' | sort)
+  fi
+}
+
+v2_resolve_artifact_root() {
+  local extraction_dir="$1" resolved error_file rc=0
+  [[ "$#" -eq 1 ]] || v2_die "resolver recebe somente o diretorio de extracao"
+  error_file="$(mktemp "${RUNNER_TEMP:-/tmp}/artifact-resolver-error.XXXXXX")"
+  if resolved="$(v2_artifact_contract artifact-root-resolve \
+      "${extraction_dir}" "${V2_ARTIFACT_EXPECTED_SHA:-}" \
+      "${V2_ARTIFACT_RUN_ID:-}" 2>"${error_file}")"; then
+    rc=0
+  else
+    rc=$?
+  fi
+  if [[ "${rc}" -ne 0 ]]; then
+    v2_artifact_layout_diagnostic "${extraction_dir}" "${rc}"
+    sed -n '1p' "${error_file}" >&2
+    rm -f -- "${error_file}"
+    return "${rc}"
+  fi
+  rm -f -- "${error_file}"
+  [[ -n "${resolved}" && -d "${resolved}" && ! -L "${resolved}" ]] ||
+    v2_die "resolver retornou raiz invalida"
+  V2_RESOLVED_ARTIFACT_ROOT="${resolved}"
+  export V2_RESOLVED_ARTIFACT_ROOT
+  printf '%s\n' 'ARTIFACT_ROOT_RESOLVED=YES'
+}
+
 v2_set_release_images() {
   local source_sha="$1"
   [[ "${source_sha}" =~ ^[a-f0-9]{40}$ ]] || v2_die "SHA de origem invalido"
@@ -69,8 +125,10 @@ v2_build_test_dependency_bundle() {
 }
 
 v2_build_release_artifact() {
-  local output_dir="$1" source_sha="$2" archive dependency_archive
+  local output_dir="$1" source_sha="$2" versions_file="$3" archive dependency_archive
   [[ ! -e "${output_dir}" ]] || v2_die "diretorio de artefato ja existe"
+  [[ -s "${versions_file}" && ! -L "${versions_file}" ]] ||
+    v2_die "metadados de ferramentas ausentes"
   mkdir -m 0700 -p -- "${output_dir}"
   export V2_PROJECT_NAME="topsdojob-v2-build-${source_sha:0:12}-${V2_RUN_ID//[^a-zA-Z0-9_.-]/-}"
   export V2_RUNTIME_DIR="${RUNNER_TEMP:-/tmp}/${V2_PROJECT_NAME}"
@@ -89,10 +147,12 @@ v2_build_release_artifact() {
   docker save --output "${archive}" \
     "${V2_BACKEND_IMAGE}" "${V2_FRONTEND_IMAGE}" "${V2_GATEWAY_IMAGE}"
   [[ -s "${archive}" ]] || v2_die "arquivo de imagens vazio"
+  cp -- "${versions_file}" "${output_dir}/tool-versions.txt"
+  chmod 0600 "${output_dir}/tool-versions.txt"
 
-  v2_node "scripts/deploy/v2/contract.mjs" manifest-create \
+  v2_artifact_contract manifest-create \
     "${output_dir}/release-manifest.json" "${source_sha}" "${archive}" \
-    "${dependency_archive}" \
+    "${dependency_archive}" "${output_dir}/tool-versions.txt" \
     "${CERTIFICATION_RUN_ID:?run de certificacao obrigatorio}" \
     "${CERTIFICATION_RUN_ATTEMPT:?attempt de certificacao obrigatorio}" \
     "${CERTIFICATION_ARTIFACT_NAME:?nome do artefato obrigatorio}" \
@@ -104,21 +164,21 @@ v2_build_release_artifact() {
     sha256sum -- release-manifest.json > release-manifest.sha256
   )
   chmod 0600 "${archive}" "${dependency_archive}" "${output_dir}/release-manifest.json" \
-    "${output_dir}/release-manifest.sha256"
-  v2_node "scripts/deploy/v2/contract.mjs" manifest-verify "${output_dir}"
+    "${output_dir}/release-manifest.sha256" "${output_dir}/tool-versions.txt"
+  v2_artifact_contract manifest-verify "${output_dir}"
   v2_log "ARTIFACT_CREATED imagesSha256=$(v2_sha256 "${archive}") dependenciesSha256=$(v2_sha256 "${dependency_archive}")"
   rm -rf -- "${V2_RUNTIME_DIR}"
 }
 
 v2_load_release_artifact() {
-  local bundle_dir="$1" expected_sha="$2" image_name expected_id actual_id
+  local extraction_dir="$1" expected_sha="$2" bundle_dir image_name expected_id actual_id
   local dependency_archive entry entry_type
-  [[ -d "${bundle_dir}" ]] || v2_die "bundle ausente"
-  if find "${bundle_dir}" -type l -print -quit | grep -q .; then
-    v2_die "bundle contem symlink"
-  fi
+  export V2_ARTIFACT_EXPECTED_SHA="${expected_sha}"
+  export V2_ARTIFACT_RUN_ID="${V2_ARTIFACT_RUN_ID:-}"
+  v2_resolve_artifact_root "${extraction_dir}" || v2_die "raiz do artifact rejeitada"
+  bundle_dir="${V2_RESOLVED_ARTIFACT_ROOT}"
   (cd -- "${bundle_dir}" && sha256sum --check --status release-manifest.sha256)
-  v2_node "scripts/deploy/v2/contract.mjs" manifest-verify \
+  v2_artifact_contract manifest-verify \
     "${bundle_dir}" "${expected_sha}"
   dependency_archive="${bundle_dir}/test-dependencies.tar"
   while IFS= read -r entry; do
@@ -146,7 +206,7 @@ v2_load_release_artifact() {
     actual_id="$(docker image inspect "${image_name}" --format '{{.Id}}')"
     [[ "${actual_id}" == "${expected_id}" ]] ||
       v2_die "imagem carregada diverge do manifesto: ${image_name}"
-  done < <(v2_node "scripts/deploy/v2/contract.mjs" manifest-images "${bundle_dir}")
+  done < <(v2_artifact_contract manifest-images "${bundle_dir}")
   v2_set_release_images "${expected_sha}"
   v2_log "ARTIFACT_VERIFIED imagesSha=$(v2_sha256 "${bundle_dir}/release-images.tar") dependenciesSha=$(v2_sha256 "${dependency_archive}")"
 }
@@ -159,7 +219,7 @@ v2_load_candidate_artifact() {
     v2_die "bundle de candidata contem symlink"
   fi
   (cd -- "${bundle_dir}" && sha256sum --check --status release-manifest.sha256)
-  v2_node "scripts/deploy/v2/contract.mjs" manifest-runtime-verify \
+  v2_artifact_contract manifest-runtime-verify \
     "${bundle_dir}" "${expected_sha}" "${expected_run_id}"
   docker load --input "${bundle_dir}/release-images.tar" >/dev/null
   while IFS='|' read -r image_name expected_id; do
@@ -167,14 +227,21 @@ v2_load_candidate_artifact() {
     actual_id="$(docker image inspect "${image_name}" --format '{{.Id}}')"
     [[ "${actual_id}" == "${expected_id}" ]] ||
       v2_die "imagem candidata diverge do manifesto: ${image_name}"
-  done < <(v2_node "scripts/deploy/v2/contract.mjs" manifest-images "${bundle_dir}")
+  done < <(v2_artifact_contract manifest-images "${bundle_dir}")
   v2_set_release_images "${expected_sha}"
   v2_log "CANDIDATE_ARTIFACT=VERIFIED sha=${expected_sha} run=${expected_run_id} rebuild=0"
 }
 
 v2_create_candidate_payload() {
-  local bundle_dir="$1" expected_sha="$2" expected_run_id="$3" artifact_name="$4"
-  local run_file="$5" artifacts_file="$6" output_dir="$7" context_file
+  local extraction_dir="$1" expected_sha="$2" expected_run_id="$3" artifact_name="$4"
+  local artifact_id="$5" artifact_digest="$6" run_file="$7" artifacts_file="$8"
+  local output_dir="$9" context_file bundle_dir
+  export V2_ARTIFACT_EXPECTED_SHA="${expected_sha}"
+  export V2_ARTIFACT_RUN_ID="${expected_run_id}"
+  export V2_ARTIFACT_ID="${artifact_id}"
+  export V2_ARTIFACT_NAME="${artifact_name}"
+  v2_resolve_artifact_root "${extraction_dir}" || v2_die "raiz do artifact rejeitada"
+  bundle_dir="${V2_RESOLVED_ARTIFACT_ROOT}"
   [[ ! -e "${output_dir}" ]] || v2_die "diretorio do payload ja existe"
   mkdir -m 0700 -p -- \
     "${output_dir}/.github/workflows" \
@@ -183,9 +250,10 @@ v2_create_candidate_payload() {
     "${output_dir}/backend/src/main/resources/db/migration" \
     "${output_dir}/artifact"
   context_file="${output_dir}/candidate-context.env"
-  v2_node "scripts/deploy/v2/contract.mjs" candidate-metadata-verify \
+  v2_artifact_contract candidate-metadata-verify \
     "${bundle_dir}" "${expected_sha}" "${expected_run_id}" "${artifact_name}" \
-    "${run_file}" "${artifacts_file}" "${context_file}"
+    "${artifact_id}" "${artifact_digest}" "${run_file}" "${artifacts_file}" \
+    "${context_file}"
 
   cp -- "${V2_ROOT}/.github/workflows/pipeline-production-v2.yml" \
     "${output_dir}/.github/workflows/"
@@ -198,10 +266,8 @@ v2_create_candidate_payload() {
   cp -- "${bundle_dir}/release-images.tar" \
     "${bundle_dir}/release-manifest.json" \
     "${bundle_dir}/release-manifest.sha256" \
+    "${bundle_dir}/tool-versions.txt" \
     "${output_dir}/artifact/"
-  if [[ -f "${bundle_dir}/tool-versions.txt" ]]; then
-    cp -- "${bundle_dir}/tool-versions.txt" "${output_dir}/artifact/"
-  fi
   find "${output_dir}" -type d -exec chmod 0700 {} +
   find "${output_dir}" -type f -exec chmod 0600 {} +
   chmod 0500 "${output_dir}"/scripts/deploy/v2/*.sh
@@ -214,4 +280,147 @@ v2_create_candidate_payload() {
     manifest-runtime-verify "${output_dir}/artifact" \
     "${expected_sha}" "${expected_run_id}" </dev/null
   v2_log "CANDIDATE_PAYLOAD=READY artifact=${artifact_name} rebuild=0"
+}
+
+v2_create_artifact_contract_fixture() {
+  local output_dir="$1" source_sha="$2" run_id="$3" run_attempt="$4"
+  local artifact_name="$5"
+  v2_artifact_contract artifact-fixture-create \
+    "${output_dir}" "${source_sha}" "${run_id}" "${run_attempt}" "${artifact_name}"
+}
+
+v2_expect_artifact_resolver_pass() {
+  local name="$1" extraction_dir="$2" output="$3"
+  if ! v2_resolve_artifact_root "${extraction_dir}" >"${output}" 2>&1; then
+    v2_die "resolver deveria aceitar ${name}"
+  fi
+  grep -qx 'ARTIFACT_ROOT_RESOLVED=YES' "${output}" ||
+    v2_die "sinal do resolver ausente em ${name}"
+  v2_log "ARTIFACT_RESOLVER_TEST=${name}:PASS"
+}
+
+v2_expect_artifact_resolver_fail() {
+  local name="$1" extraction_dir="$2" output="$3"
+  if v2_resolve_artifact_root "${extraction_dir}" >"${output}" 2>&1; then
+    v2_die "resolver deveria rejeitar ${name}"
+  fi
+  grep -q 'ARTIFACT_DIAGNOSTIC' "${output}" ||
+    v2_die "diagnostico ausente em ${name}"
+  v2_log "ARTIFACT_RESOLVER_TEST=${name}:FAIL_EXPECTED"
+}
+
+v2_run_artifact_resolver_tests() {
+  local test_root="$1" source_sha="$2" run_id=123456789 run_attempt=1
+  local artifact_name fixture case_dir output
+  [[ ! -e "${test_root}" ]] || v2_die "diretorio de testes do resolver ja existe"
+  umask 077
+  mkdir -p -- "${test_root}"
+  fixture="${test_root}/fixture"
+  artifact_name="topsdojob-v2-release-${source_sha}-${run_id}-${run_attempt}"
+  v2_create_artifact_contract_fixture \
+    "${fixture}" "${source_sha}" "${run_id}" "${run_attempt}" "${artifact_name}" >/dev/null
+  export V2_ARTIFACT_EXPECTED_SHA="${source_sha}"
+  export V2_ARTIFACT_RUN_ID="${run_id}"
+  export V2_ARTIFACT_ID=fixture
+  export V2_ARTIFACT_NAME="${artifact_name}"
+
+  case_dir="${test_root}/depth-0"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  output="${test_root}/depth-0.log"
+  v2_expect_artifact_resolver_pass depth-0 "${case_dir}" "${output}"
+
+  case_dir="${test_root}/depth-1"
+  mkdir -p -- "${case_dir}/artifact"
+  cp -a -- "${fixture}/." "${case_dir}/artifact/"
+  output="${test_root}/depth-1.log"
+  v2_expect_artifact_resolver_pass depth-1 "${case_dir}" "${output}"
+
+  case_dir="${test_root}/depth-2"
+  mkdir -p -- "${case_dir}/download/artifact"
+  cp -a -- "${fixture}/." "${case_dir}/download/artifact/"
+  output="${test_root}/depth-2.log"
+  v2_expect_artifact_resolver_pass depth-2 "${case_dir}" "${output}"
+
+  case_dir="${test_root}/no-manifest"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  rm -- "${case_dir}/release-manifest.json"
+  v2_expect_artifact_resolver_fail no-manifest "${case_dir}" "${test_root}/no-manifest.log"
+
+  case_dir="${test_root}/duplicate-manifest"
+  mkdir -p -- "${case_dir}/one" "${case_dir}/two"
+  cp -a -- "${fixture}/." "${case_dir}/one/"
+  cp -a -- "${fixture}/." "${case_dir}/two/"
+  v2_expect_artifact_resolver_fail duplicate-manifest \
+    "${case_dir}" "${test_root}/duplicate-manifest.log"
+
+  case_dir="${test_root}/manifest-symlink"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  rm -- "${case_dir}/release-manifest.json"
+  ln -s -- "${fixture}/release-manifest.json" "${case_dir}/release-manifest.json"
+  v2_expect_artifact_resolver_fail manifest-symlink \
+    "${case_dir}" "${test_root}/manifest-symlink.log"
+
+  case_dir="${test_root}/payload-symlink"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  rm -- "${case_dir}/release-images.tar"
+  ln -s -- "${fixture}/release-images.tar" "${case_dir}/release-images.tar"
+  v2_expect_artifact_resolver_fail payload-symlink \
+    "${case_dir}" "${test_root}/payload-symlink.log"
+
+  case_dir="${test_root}/path-traversal"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  v2_artifact_contract artifact-fixture-mutate "${case_dir}" path-traversal
+  v2_expect_artifact_resolver_fail path-traversal \
+    "${case_dir}" "${test_root}/path-traversal.log"
+
+  case_dir="${test_root}/hash-mismatch"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  printf '%s\n' tampered >> "${case_dir}/release-images.tar"
+  v2_expect_artifact_resolver_fail hash-mismatch \
+    "${case_dir}" "${test_root}/hash-mismatch.log"
+
+  case_dir="${test_root}/payload-missing"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  rm -- "${case_dir}/release-images.tar"
+  v2_expect_artifact_resolver_fail payload-missing \
+    "${case_dir}" "${test_root}/payload-missing.log"
+
+  case_dir="${test_root}/unexpected-extra"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  printf '%s\n' unexpected > "${case_dir}/unexpected.txt"
+  v2_expect_artifact_resolver_fail unexpected-extra \
+    "${case_dir}" "${test_root}/unexpected-extra.log"
+
+  case_dir="${test_root}/real-valid-tree"
+  mkdir -- "${case_dir}"
+  cp -a -- "${fixture}/." "${case_dir}/"
+  v2_expect_artifact_resolver_pass real-valid-tree \
+    "${case_dir}" "${test_root}/real-valid-tree.log"
+  v2_log "ARTIFACT_RESOLVER_TESTS=12/12"
+}
+
+v2_verify_artifact_roundtrip() {
+  local extraction_dir="$1" source_sha="$2" run_id="$3" artifact_id="$4"
+  local artifact_name="$5" artifact_digest="$6" manifest_name
+  [[ "${artifact_id}" =~ ^[1-9][0-9]*$ ]] || v2_die "ID do round-trip invalido"
+  [[ "${artifact_digest}" =~ ^sha256:[a-f0-9]{64}$ ]] ||
+    v2_die "digest do round-trip invalido"
+  export V2_ARTIFACT_EXPECTED_SHA="${source_sha}"
+  export V2_ARTIFACT_RUN_ID="${run_id}"
+  export V2_ARTIFACT_ID="${artifact_id}"
+  export V2_ARTIFACT_NAME="${artifact_name}"
+  v2_resolve_artifact_root "${extraction_dir}"
+  manifest_name="$(v2_artifact_contract manifest-artifact-name \
+    "${V2_RESOLVED_ARTIFACT_ROOT}" "${source_sha}" "${run_id}")"
+  [[ "${manifest_name}" == "${artifact_name}" ]] ||
+    v2_die "nome do artifact diverge no round-trip"
+  v2_log "ARTIFACT_ROUNDTRIP=PASS manifest=verified payload=verified residues=0"
 }
