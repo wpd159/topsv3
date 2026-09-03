@@ -21,6 +21,7 @@ import {
   confirmarAceiteGlobal,
   obterStatusVisitante,
 } from '@/lib/compliance/visitor-access'
+import { isAgeGateExemptPath } from '@/lib/compliance/age-gate-route-policy'
 
 type AgeGateModalProps = {
   termsHref?: string
@@ -34,13 +35,14 @@ export function AgeGateModal({
   denyRedirect = 'https://www.google.com',
 }: AgeGateModalProps) {
   const pathname = usePathname()
+  const ageGateExempt = isAgeGateExemptPath(pathname)
   const legalNotice = useSiteContent('popup-login')
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (pathname === '/termos-de-uso' || pathname === '/registrar') {
+    if (ageGateExempt) {
       setOpen(false)
       return
     }
@@ -56,7 +58,7 @@ export function AgeGateModal({
     return () => {
       active = false
     }
-  }, [pathname])
+  }, [ageGateExempt, pathname])
 
   async function accept() {
     setSubmitting(true)
@@ -72,7 +74,7 @@ export function AgeGateModal({
   }
 
   return (
-      <Dialog open={open} onOpenChange={() => {}}>
+      <Dialog open={!ageGateExempt && open} onOpenChange={() => {}}>
         <DialogContent
           className="flex h-[100dvh] max-h-[100dvh] w-full max-w-none flex-col overflow-hidden rounded-none border-0 p-0 sm:grid sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-md sm:overflow-y-auto sm:rounded-2xl sm:border sm:p-6 [&_[data-slot=dialog-close]]:right-[max(1rem,env(safe-area-inset-right))] [&_[data-slot=dialog-close]]:top-[max(1rem,env(safe-area-inset-top))] sm:[&_[data-slot=dialog-close]]:right-4 sm:[&_[data-slot=dialog-close]]:top-4"
           data-age-gate-layout

@@ -6,6 +6,8 @@ function source(relativePath) {
   return readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8")
 }
 
+const ageGateRoutePolicySource = source("src/lib/compliance/age-gate-route-policy.ts")
+
 function loadNationalSeoModule() {
   const { outputText } = ts.transpileModule(
     source("src/lib/seo/acompanhantes-national-seo.ts"),
@@ -31,7 +33,23 @@ function loadNationalSeoModule() {
   return module.exports
 }
 
+function loadAgeGateRoutePolicyModule() {
+  const { outputText } = ts.transpileModule(
+    ageGateRoutePolicySource,
+    {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    },
+  )
+  const module = { exports: {} }
+  new Function("module", "exports", outputText)(module, module.exports)
+  return module.exports
+}
+
 const nationalSeo = loadNationalSeoModule()
+const ageGateRoutePolicy = loadAgeGateRoutePolicyModule()
 const descoberta = {
   estados: [
     {
@@ -120,15 +138,71 @@ const publicLayoutSource = source("src/app/(public-routes)/layout.tsx")
 const ageGateSource = source("src/components/modals/age-gate-modal.tsx")
 const detailSource = source("src/app/(public-routes)/anuncios/[slug]/page.tsx")
 
+for (const pathname of [
+  "/acesso-negado",
+  "/aviso-seguranca-whatsapp",
+  "/consentimento-promocional",
+  "/contato",
+  "/cookies",
+  "/faq",
+  "/politica-de-privacidade",
+  "/registrar",
+  "/sobre",
+  "/termos-de-uso",
+  "/blog",
+  "/blog/golpe-falsa-faccao-sites-acompanhantes",
+  "/blog/categoria/seguranca",
+  "/blog/cidade/tema/goiania",
+  "/politicas",
+  "/politicas/verificacao-etaria",
+]) {
+  assert.equal(
+    ageGateRoutePolicy.isAgeGateExemptPath(pathname),
+    true,
+    `${pathname} deve ficar sem age gate`,
+  )
+}
+
+for (const pathname of [
+  undefined,
+  null,
+  "",
+  "/",
+  "/anuncios",
+  "/anuncios/perfil",
+  "/acompanhantes",
+  "/acompanhantes/go/goiania",
+  "/checkout/creditos/plano",
+  "/planos-e-creditos",
+  "/blogue",
+  "/politicas-publicas",
+  "/sobre/equipe",
+]) {
+  assert.equal(
+    ageGateRoutePolicy.isAgeGateExemptPath(pathname),
+    false,
+    `${pathname} deve continuar com age gate`,
+  )
+}
+
 assert.match(analyticsSource, /params\.get\(["']utm_source["']\)/)
 assert.doesNotMatch(middlewareSource, /utm_source|utm_/i)
 assert.doesNotMatch(
-  `${middlewareSource}\n${publicLayoutSource}\n${ageGateSource}\n${detailSource}`,
+  `${middlewareSource}\n${publicLayoutSource}\n${ageGateRoutePolicySource}\n${ageGateSource}\n${detailSource}`,
   /Googlebot|Google-Extended|OAI-SearchBot|GPTBot|ChatGPT-User|Applebot|bingbot/i,
 )
 assert.match(publicLayoutSource, /<AgeGateModal/)
 assert.match(publicLayoutSource, /<PublicChrome>\{children\}<\/PublicChrome>/)
 assert.doesNotMatch(publicLayoutSource, /if\s*\([^)]*AgeGate/)
+const ageGateExemptionCheckIndex = ageGateSource.indexOf("if (ageGateExempt)")
+const ageGateStatusRequestIndex = ageGateSource.indexOf("void obterStatusVisitante(true)")
+assert.ok(
+  ageGateExemptionCheckIndex >= 0 &&
+    ageGateStatusRequestIndex >= 0 &&
+    ageGateExemptionCheckIndex < ageGateStatusRequestIndex,
+  "a excecao editorial deve ser decidida antes da consulta do age gate",
+)
+assert.match(ageGateSource, /open=\{!ageGateExempt && open\}/)
 assert.match(detailSource, /obterAnuncioPublicoPorSlug/)
 assert.match(detailSource, /application\/ld\+json/)
 
