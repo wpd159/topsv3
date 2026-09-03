@@ -177,6 +177,7 @@ jobs:
           node scripts/test-ga4-production.mjs
           npm run lint
           npm run build
+          node scripts/test-search-indexing-artifact.mjs public
 
       - name: Validate production deployment contract
         shell: pwsh

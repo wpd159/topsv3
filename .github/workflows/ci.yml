@@ -69,10 +69,12 @@ jobs:
           node ../scripts/deploy/testar-health-readiness-contract.mjs
           node scripts/test-public-seo-critical.mjs
           npm run test:search-indexing
+          node scripts/test-search-indexing-artifact-selftest.mjs
           npm run test:seo-ai
           npm run test:sharp-security
           npm run lint
           npm run build
+          node scripts/test-search-indexing-artifact.mjs blocked
 
       - name: Validate isolated infrastructure contract
         shell: pwsh

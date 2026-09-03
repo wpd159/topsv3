@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import { existsSync, readFileSync } from "node:fs"
 import ts from "typescript"
 
+import { EXPECTED_SCOPED_NOINDEX_ROUTES } from "./test-search-indexing-artifact.mjs"
+
 function source(relativePath) {
   return readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8")
 }
@@ -41,6 +43,7 @@ const publicUrlModule = loadTypeScriptModule(
 const localIndexingModule = loadTypeScriptModule("src/lib/seo/local-indexing.ts")
 const preprodComposeSource = source("../deploy/preprod/docker-compose.yml")
 const {
+  NEXT_NOINDEX_ROUTE_SOURCES,
   buildPublicListingIndexingDecision,
   buildPublicRobotsMetadata,
   buildSearchRobotsRules,
@@ -55,6 +58,25 @@ const {
   isPublicPageOutOfRange,
   parsePublicPage,
 } = publicUrlModule
+
+assert.deepEqual(
+  NEXT_NOINDEX_ROUTE_SOURCES,
+  [...EXPECTED_SCOPED_NOINDEX_ROUTES.keys()],
+  "artifact gate allowlist must match the current Next.js noindex sources",
+)
+
+const defaultBlocked = resolveSearchIndexingPolicy({})
+assert.equal(defaultBlocked.mode, "blocked")
+assert.equal(defaultBlocked.publicIndexingEnabled, false)
+assert.equal(defaultBlocked.sitemapEnabled, false)
+
+for (const emptyMode of ["", "   "]) {
+  const emptyModePolicy = resolveSearchIndexingPolicy({
+    SEARCH_INDEXING_MODE: emptyMode,
+  })
+  assert.equal(emptyModePolicy.mode, "blocked")
+  assert.equal(emptyModePolicy.publicIndexingEnabled, false)
+}
 
 const blocked = resolveSearchIndexingPolicy({
   NEXT_PUBLIC_SITE_URL: "https://v3.esle.cloud",
@@ -87,6 +109,9 @@ const production = resolveSearchIndexingPolicy({
   NEXT_PUBLIC_SITE_URL: "https://topsdojob.com",
   SEARCH_INDEXING_MODE: "public",
 })
+assert.equal(production.mode, "public")
+assert.equal(production.publicIndexingEnabled, true)
+assert.equal(production.sitemapEnabled, true)
 assert.equal(production.googlebotEnabled, true)
 assert.equal(production.googleExtendedEnabled, true)
 assert.equal(production.oaiSearchBotEnabled, true)
@@ -241,7 +266,28 @@ for (const path of [
 ]) {
   assert.equal(isNonIndexableRoute(path), true, `${path} must remain private`)
 }
-assert.equal(isNonIndexableRoute("/acompanhantes/go/goiania"), false)
+for (const source of [
+  "/admin/:path*",
+  "/api/:path*",
+  "/painel/:path*",
+  "/preview/:path*",
+  "/registrar",
+]) {
+  assert.ok(
+    NEXT_NOINDEX_ROUTE_SOURCES.includes(source),
+    `${source} must keep its Next.js noindex header rule`,
+  )
+}
+for (const path of [
+  "/",
+  "/anuncios",
+  "/acompanhantes/go/goiania",
+  "/blog/guia-seguro",
+  "/contato",
+  "/politica-de-privacidade",
+]) {
+  assert.equal(isNonIndexableRoute(path), false, `${path} must remain public`)
+}
 assert.equal(
   isSafeSitemapUrl("https://topsdojob.com/acompanhantes/go/goiania", production),
   true,
