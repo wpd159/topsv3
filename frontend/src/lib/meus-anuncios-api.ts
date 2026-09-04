@@ -1,4 +1,4 @@
-import { publicApiUrl } from '@/lib/api-contract'
+import { publicApiUrl, resolveUnsupportedPhotoUploadMessage } from '@/lib/api-contract'
 import {
   parseVisualizacoesCanonicas,
   type VisualizacoesCanonicas,
@@ -156,6 +156,75 @@ export class MeusAnunciosApiError extends Error {
   }
 }
 
+type MeusAnunciosErrorEnvelope = {
+  message?: unknown
+  detail?: unknown
+  mensagem?: unknown
+  error?: unknown
+  code?: unknown
+  requestId?: unknown
+}
+
+function nonBlankString(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function parseErrorEnvelope(value: string): MeusAnunciosErrorEnvelope | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return parsed && typeof parsed === 'object' ? parsed as MeusAnunciosErrorEnvelope : null
+  } catch {
+    return null
+  }
+}
+
+const PHOTO_UPLOAD_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp'])
+
+function isPhotoUploadFile(file: Pick<File, 'name' | 'type'>) {
+  const mimeType = file.type.trim().toLowerCase()
+  if (mimeType) return mimeType.startsWith('image/')
+
+  const extension = file.name.trim().toLowerCase().match(/\.([^.]+)$/)?.[1]
+  return extension ? PHOTO_UPLOAD_EXTENSIONS.has(extension) : false
+}
+
+function containsOnlyPhotoUploads(files: readonly Pick<File, 'name' | 'type'>[]) {
+  return files.length > 0 && files.every(isPhotoUploadFile)
+}
+
+function uploadErrorFromXhr(
+  xhr: XMLHttpRequest,
+  envelope: MeusAnunciosErrorEnvelope | null,
+  fallback: string,
+  unsupportedPhotoUpload: boolean,
+) {
+  const usefulMessage = [envelope?.message, envelope?.detail, envelope?.mensagem]
+    .map(nonBlankString)
+    .find(Boolean) ?? null
+  const candidateMessage = usefulMessage || nonBlankString(envelope?.error)
+  const message = xhr.status === 415 && unsupportedPhotoUpload
+    ? resolveUnsupportedPhotoUploadMessage(candidateMessage)
+    : candidateMessage || fallback
+  return new MeusAnunciosApiError(
+    message,
+    xhr.status,
+    nonBlankString(envelope?.code),
+    nonBlankString(envelope?.requestId) || xhr.getResponseHeader('X-Request-Id'),
+  )
+}
+
+export function meusAnunciosErrorMessage(error: unknown, fallback: string) {
+  if (!(error instanceof MeusAnunciosApiError)) {
+    return error instanceof Error && error.message ? error.message : fallback
+  }
+  return [
+    error.message || fallback,
+    error.code ? `Código: ${error.code}` : null,
+    error.requestId ? `Request ID: ${error.requestId}` : null,
+  ].filter(Boolean).join(' · ')
+}
+
 function csrfCookieName() {
   return ['XSRF', 'TOKEN'].join('-')
 }
@@ -203,10 +272,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     let message = `Não foi possível concluir a solicitação (HTTP ${response.status}).`
     let code: string | null = null
+    let bodyRequestId: string | null = null
     try {
-      const body = (await response.json()) as { message?: unknown; code?: unknown }
+      const body = (await response.json()) as { message?: unknown; code?: unknown; requestId?: unknown }
       if (typeof body.message === 'string' && body.message.trim()) message = body.message
       if (typeof body.code === 'string' && body.code.trim()) code = body.code
+      bodyRequestId = typeof body.requestId === 'string' && body.requestId.trim()
+        ? body.requestId.trim()
+        : null
     } catch {
       // A resposta sem JSON preserva o status HTTP real no erro abaixo.
     }
@@ -214,7 +287,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       message,
       response.status,
       code,
-      response.headers.get('X-Request-Id')
+      bodyRequestId || response.headers.get('X-Request-Id')
     )
   }
 
@@ -454,6 +527,7 @@ export async function enviarMinhaMidia(
   onProgress?: (percentual: number) => void
 ) {
   const csrfValue = readCsrfValue() || (await bootstrapCsrfValue())
+  const unsupportedPhotoUpload = containsOnlyPhotoUploads([arquivo])
   return new Promise<MinhasMidiasResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', publicApiUrl(`/minha-conta/anuncios/${encodeURIComponent(slug)}/midias`))
@@ -464,7 +538,12 @@ export async function enviarMinhaMidia(
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
     }
-    xhr.onerror = () => reject(new MeusAnunciosApiError('Não foi possível enviar a mídia.', 0))
+    xhr.onerror = () => reject(uploadErrorFromXhr(
+      xhr,
+      parseErrorEnvelope(xhr.responseText),
+      'Não foi possível enviar a mídia.',
+      unsupportedPhotoUpload,
+    ))
     xhr.onload = () => {
       let body: unknown = null
       try {
@@ -473,10 +552,12 @@ export async function enviarMinhaMidia(
         body = null
       }
       if (xhr.status < 200 || xhr.status >= 300) {
-        const message = body && typeof body === 'object' && 'message' in body
-          ? String((body as { message?: unknown }).message || '')
-          : `Não foi possível enviar a mídia (HTTP ${xhr.status}).`
-        reject(new MeusAnunciosApiError(message, xhr.status))
+        reject(uploadErrorFromXhr(
+          xhr,
+          body && typeof body === 'object' ? body as MeusAnunciosErrorEnvelope : null,
+          `Não foi possível enviar a mídia (HTTP ${xhr.status}).`,
+          unsupportedPhotoUpload,
+        ))
         return
       }
       onProgress?.(100)
@@ -507,6 +588,7 @@ export async function enviarMinhasMidiasEmLote(
   const signature = mediaBatchSignature(arquivos)
   const idempotencyKey = mediaBatchIdempotencyKeys.get(signature) || crypto.randomUUID()
   mediaBatchIdempotencyKeys.set(signature, idempotencyKey)
+  const unsupportedPhotoUpload = containsOnlyPhotoUploads(arquivos)
   return new Promise<MinhasMidiasResponse>((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', publicApiUrl(`/minha-conta/anuncios/${encodeURIComponent(slug)}/midias/lote`))
@@ -517,7 +599,12 @@ export async function enviarMinhasMidiasEmLote(
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100))
     }
-    xhr.onerror = () => reject(new MeusAnunciosApiError('Não foi possível enviar as mídias.', 0))
+    xhr.onerror = () => reject(uploadErrorFromXhr(
+      xhr,
+      parseErrorEnvelope(xhr.responseText),
+      'Não foi possível enviar as mídias.',
+      unsupportedPhotoUpload,
+    ))
     xhr.onload = () => {
       let body: unknown = null
       try {
@@ -526,18 +613,11 @@ export async function enviarMinhasMidiasEmLote(
         body = null
       }
       if (xhr.status < 200 || xhr.status >= 300) {
-        const errorBody = body && typeof body === 'object'
-          ? body as Record<string, unknown>
-          : null
-        const message = errorBody
-          ? [errorBody.message, errorBody.detail, errorBody.mensagem, errorBody.error]
-              .find((value) => typeof value === 'string' && value.trim())
-          : null
-        reject(new MeusAnunciosApiError(
-          typeof message === 'string'
-            ? message
-            : `Não foi possível enviar as mídias (HTTP ${xhr.status}).`,
-          xhr.status
+        reject(uploadErrorFromXhr(
+          xhr,
+          body && typeof body === 'object' ? body as MeusAnunciosErrorEnvelope : null,
+          `Não foi possível enviar as mídias (HTTP ${xhr.status}).`,
+          unsupportedPhotoUpload,
         ))
         return
       }

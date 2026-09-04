@@ -7,6 +7,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracao
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminRemeterRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoService.PreviewGenerationException;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
@@ -77,6 +78,7 @@ public class AdminModeracaoAcaoService {
     private final ObjectMapper objectMapper;
     private final MidiaStorageAprovacaoService midiaStorageAprovacaoService;
     private final BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService;
+    private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy;
     private final String canonicalDomain;
     private final Clock clock;
 
@@ -95,6 +97,7 @@ public class AdminModeracaoAcaoService {
             ObjectMapper objectMapper,
             MidiaStorageAprovacaoService midiaStorageAprovacaoService,
             BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService,
+            FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy,
             @Value("${app.canonical-domain:http://localhost}") String canonicalDomain) {
         this(
                 revisaoRepository,
@@ -110,6 +113,7 @@ public class AdminModeracaoAcaoService {
                 objectMapper,
                 midiaStorageAprovacaoService,
                 fotosExtrasModeracaoService,
+                fotoElegivelAnuncioPolicy,
                 canonicalDomain,
                 Clock.systemUTC());
     }
@@ -128,6 +132,7 @@ public class AdminModeracaoAcaoService {
             ObjectMapper objectMapper,
             MidiaStorageAprovacaoService midiaStorageAprovacaoService,
             BeneficioFotosExtrasModeracaoService fotosExtrasModeracaoService,
+            FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy,
             String canonicalDomain,
             Clock clock) {
         this.revisaoRepository = revisaoRepository;
@@ -143,6 +148,7 @@ public class AdminModeracaoAcaoService {
         this.objectMapper = objectMapper;
         this.midiaStorageAprovacaoService = midiaStorageAprovacaoService;
         this.fotosExtrasModeracaoService = fotosExtrasModeracaoService;
+        this.fotoElegivelAnuncioPolicy = fotoElegivelAnuncioPolicy;
         this.canonicalDomain = canonicalDomain;
         this.clock = clock;
     }
@@ -157,6 +163,7 @@ public class AdminModeracaoAcaoService {
                         anuncioId,
                         AdminDecisaoModeracaoAcao.APROVAR)
                 .anuncio();
+        fotoElegivelAnuncioPolicy.validarParaAprovacao(anuncio.getId());
 
         if (anuncio.getStatus() == StatusAnuncio.PUBLICADO
                 && anuncio.getStatusModeracao() == StatusModeracaoAnuncio.APROVADO) {
@@ -219,6 +226,9 @@ public class AdminModeracaoAcaoService {
                         .orElseThrow(() -> new ResponseStatusException(
                                 HttpStatus.NOT_FOUND,
                                 "anuncio da revisao nao encontrado"));
+        if (decisao == AdminDecisaoModeracaoAcao.APROVAR) {
+            fotoElegivelAnuncioPolicy.validarParaAprovacao(anuncio.getId());
+        }
         RevisaoAnuncioEntity revisao = revisaoRepository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "revisao nao encontrada"));
         if (!revisao.getAnuncioId().equals(anuncio.getId())) {
@@ -352,21 +362,65 @@ public class AdminModeracaoAcaoService {
             AdminUserPrincipal actor,
             String requestId) {
         validarAtor(actor);
-        AdminDecisaoModeracaoAcao decisao = validarDecisao(request == null ? null : request.decisao());
-        String motivo = motivoSeguroObrigatorioQuandoNecessario(
-                decisao,
-                request == null ? null : request.motivo(),
-                request == null ? null : request.observacao());
-        AnuncioMidiaEntity midia = anuncioMidiaRepository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
         if (request == null || request.anuncioId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "anuncio obrigatorio para decidir midia");
         }
-        if (!midia.getAnuncioId().equals(request.anuncioId())) {
+        AdminDecisaoModeracaoAcao decisao = validarDecisao(request.decisao());
+        String motivo = motivoSeguroObrigatorioQuandoNecessario(
+                decisao,
+                request.motivo(),
+                request.observacao());
+        AnuncioMidiaRepository.ReferenciaMidiaProjection referencia =
+                anuncioMidiaRepository.findReferenciaById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "midia nao encontrada"));
+        if (!request.anuncioId().equals(referencia.getAnuncioId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "midia nao pertence ao anuncio informado");
         }
-        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(midia.getAnuncioId())
+        if (referencia.getArquivoMidiaId() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "arquivo da midia nao encontrado");
+        }
+
+        AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(request.anuncioId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "anuncio da midia nao encontrado"));
+        List<AnuncioMidiaEntity> vinculosBloqueados =
+                anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncio.getId());
+        AnuncioMidiaEntity midia = vinculosBloqueados.stream()
+                .filter(item -> id.equals(item.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "midia nao pertence ao anuncio informado"));
+        if (!anuncio.getId().equals(midia.getAnuncioId())
+                || !referencia.getArquivoMidiaId().equals(midia.getArquivoMidiaId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "associacao da midia mudou durante a decisao");
+        }
+        List<AnuncioMidiaEntity> associacoesAntesDoArquivo =
+                anuncioMidiaRepository.findByArquivoMidiaId(referencia.getArquivoMidiaId());
+        if (possuiAssociacaoAtivaComOutroAnuncio(associacoesAntesDoArquivo, anuncio.getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "arquivo associado a outro anuncio nao pode ser moderado");
+        }
+        List<UUID> vinculoIdsReafirmados = associacoesAntesDoArquivo.stream()
+                .filter(item -> anuncio.getId().equals(item.getAnuncioId()))
+                .map(AnuncioMidiaEntity::getId)
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .sorted()
+                .toList();
+        if (!vinculoIdsReafirmados.isEmpty()) {
+            anuncioMidiaRepository.findByIdInForUpdate(vinculoIdsReafirmados);
+        }
+        ArquivoMidiaEntity arquivo = arquivoMidiaRepository
+                .findByIdInForUpdate(List.of(referencia.getArquivoMidiaId())).stream()
+                .filter(item -> referencia.getArquivoMidiaId().equals(item.getId()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
+
+        if (!anuncio.getId().equals(midia.getAnuncioId())
+                || !referencia.getArquivoMidiaId().equals(midia.getArquivoMidiaId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "associacao da midia mudou durante a decisao");
+        }
         if (anuncio.getStatus() == StatusAnuncio.BLOQUEADO || anuncio.getStatus() == StatusAnuncio.REMOVIDO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "estado do anuncio impede moderacao de midia");
         }
@@ -377,12 +431,16 @@ public class AdminModeracaoAcaoService {
                 && midia.getStatus() != StatusAnuncioMidia.AJUSTE_SOLICITADO) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "midia ja finalizada");
         }
-        if (documentoUsuarioRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(midia.getArquivoMidiaId())) {
+        List<AnuncioMidiaEntity> associacoesRevalidadas =
+                anuncioMidiaRepository.findByArquivoMidiaId(midia.getArquivoMidiaId());
+        if (possuiAssociacaoAtivaComOutroAnuncio(associacoesRevalidadas, anuncio.getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "arquivo associado a outro anuncio nao pode ser moderado");
+        }
+        if (anuncioMidiaRepository.existsDocumentoUsuarioHistoricoPorArquivoId(midia.getArquivoMidiaId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "arquivo privado nao moderavel como midia publica");
         }
-
-        ArquivoMidiaEntity arquivo = arquivoMidiaRepository.findByIdForUpdate(midia.getArquivoMidiaId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "arquivo da midia nao encontrado"));
         OffsetDateTime agora = agora();
         VisibilidadeMidia visibilidade = visibilidadeParaDecisao(midia, request, decisao);
         if (decisao == AdminDecisaoModeracaoAcao.APROVAR && visibilidade == VisibilidadeMidia.LIVRE) {
@@ -452,6 +510,14 @@ public class AdminModeracaoAcaoService {
                 requestId,
                 agora,
                 mensagemMidia(decisao));
+    }
+
+    private boolean possuiAssociacaoAtivaComOutroAnuncio(
+            List<AnuncioMidiaEntity> associacoes,
+            UUID anuncioId) {
+        return associacoes.stream()
+                .anyMatch(item -> item.getStatus() != StatusAnuncioMidia.REMOVIDA
+                        && !anuncioId.equals(item.getAnuncioId()));
     }
 
     @Transactional(noRollbackFor = PreviewGenerationException.class)

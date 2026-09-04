@@ -3,6 +3,7 @@ package br.com.topsdojob.v3.application.admin.moderacao;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -13,6 +14,7 @@ import static org.mockito.Mockito.when;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirRevisaoRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioBloqueioJuridicoEntity;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -66,6 +68,8 @@ class AdminModeracaoAnuncioServiceTest {
     private final MidiaStorageAprovacaoService storageService = mock(MidiaStorageAprovacaoService.class);
     private final BeneficioFotosExtrasModeracaoService fotosExtrasService =
             mock(BeneficioFotosExtrasModeracaoService.class);
+    private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy =
+            mock(FotoElegivelAnuncioPolicy.class);
     private AdminModeracaoAcaoService service;
 
     @BeforeEach
@@ -84,6 +88,7 @@ class AdminModeracaoAnuncioServiceTest {
                 new ObjectMapper(),
                 storageService,
                 fotosExtrasService,
+                fotoElegivelAnuncioPolicy,
                 "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -109,6 +114,26 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(audit.getValue().getAtorUsuarioId()).isEqualTo(fixture.actor().usuarioId());
         assertThat(audit.getValue().getRequestId()).isEqualTo("req-moderacao-anuncio");
         assertThat(audit.getValue().getAcao()).isEqualTo("MODERACAO_REVISAO_DECIDIR");
+    }
+
+    @Test
+    void guardDeFotosFalhaAntesDeQualquerMutacaoDaRevisaoOuAnuncio() {
+        Fixture fixture = fixtureComKycValidado();
+        doThrow(new ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT,
+                FotoElegivelAnuncioPolicy.MENSAGEM_FOTO_AGUARDANDO_DECISAO))
+                .when(fotoElegivelAnuncioPolicy)
+                .validarParaAprovacao(fixture.anuncio().getId());
+
+        assertThatThrownBy(() -> decidir(fixture, AdminDecisaoModeracaoAcao.APROVAR, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining(FotoElegivelAnuncioPolicy.MENSAGEM_FOTO_AGUARDANDO_DECISAO);
+
+        assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PENDENTE_REVISAO);
+        assertThat(fixture.revisao().getStatus()).isEqualTo(StatusRevisaoAnuncio.ABERTA);
+        verify(decisaoRepository, never()).save(any());
+        verify(auditoriaRepository, never()).save(any());
     }
 
     @Test
@@ -178,6 +203,8 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(retry.mensagem()).contains("ja estava aprovado e publicado");
         verify(decisaoRepository, times(1)).save(any());
         verify(auditoriaRepository, times(1)).save(any());
+        verify(fotoElegivelAnuncioPolicy, times(2))
+                .validarParaAprovacao(fixture.anuncio().getId());
         verify(documentoRepository, times(1))
                 .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(
                         fixture.usuario().getId());
@@ -274,6 +301,8 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(fixture.anuncio().getUltimaPublicacaoEm()).isEqualTo(primeiraPublicacao);
         verify(decisaoRepository, times(1)).save(any());
         verify(auditoriaRepository, times(1)).save(any());
+        verify(fotoElegivelAnuncioPolicy, times(2))
+                .validarParaAprovacao(fixture.anuncio().getId());
         verify(documentoRepository, times(1))
                 .findByUsuarioIdAndRemovidoEmIsNullAndExpurgadoEmIsNullOrderByCriadoEmDescIdDesc(
                         fixture.usuario().getId());
@@ -431,6 +460,7 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(fixture.anuncio().getPublicadoEm()).isNotNull();
         assertThat(response.auditoriaRegistrada()).isTrue();
         assertThat(response.mensagem()).contains("publicado agora");
+        verify(fotoElegivelAnuncioPolicy).validarParaAprovacao(fixture.anuncio().getId());
         verify(decisaoRepository, never()).save(any());
         verifyNoInteractions(documentoRepository);
         ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);
@@ -455,6 +485,7 @@ class AdminModeracaoAnuncioServiceTest {
         assertThat(fixture.anuncio().getStatus()).isEqualTo(StatusAnuncio.PUBLICADO);
         assertThat(fixture.anuncio().getStatusModeracao()).isEqualTo(StatusModeracaoAnuncio.APROVADO);
         assertThat(response.mensagem()).contains("publicado agora");
+        verify(fotoElegivelAnuncioPolicy).validarParaAprovacao(fixture.anuncio().getId());
         verify(decisaoRepository, never()).save(any());
         verify(revisaoRepository, never()).save(any());
         ArgumentCaptor<AuditoriaEventoEntity> audit = ArgumentCaptor.forClass(AuditoriaEventoEntity.class);

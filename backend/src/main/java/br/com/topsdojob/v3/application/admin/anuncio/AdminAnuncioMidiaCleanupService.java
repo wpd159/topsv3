@@ -1,9 +1,13 @@
 package br.com.topsdojob.v3.application.admin.anuncio;
 
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy.UltimaFotoAprovadaException;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.StorySelecaoAdministrativaRepository;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
@@ -30,20 +34,26 @@ public class AdminAnuncioMidiaCleanupService {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AdminAnuncioMidiaCleanupService.class);
 
+  private final AnuncioRepository anuncioRepository;
   private final AnuncioMidiaRepository anuncioMidiaRepository;
   private final StoryAnuncioRepository storyRepository;
   private final StorySelecaoAdministrativaRepository storyAdminRepository;
   private final AdminAnuncioMidiaPosCommitCleanupService posCommitCleanupService;
+  private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy;
 
   public AdminAnuncioMidiaCleanupService(
+      AnuncioRepository anuncioRepository,
       AnuncioMidiaRepository anuncioMidiaRepository,
       StoryAnuncioRepository storyRepository,
       StorySelecaoAdministrativaRepository storyAdminRepository,
-      AdminAnuncioMidiaPosCommitCleanupService posCommitCleanupService) {
+      AdminAnuncioMidiaPosCommitCleanupService posCommitCleanupService,
+      FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy) {
+    this.anuncioRepository = anuncioRepository;
     this.anuncioMidiaRepository = anuncioMidiaRepository;
     this.storyRepository = storyRepository;
     this.storyAdminRepository = storyAdminRepository;
     this.posCommitCleanupService = posCommitCleanupService;
+    this.fotoElegivelAnuncioPolicy = fotoElegivelAnuncioPolicy;
   }
 
   @Transactional(propagation = Propagation.MANDATORY)
@@ -54,6 +64,8 @@ public class AdminAnuncioMidiaCleanupService {
 
   @Transactional(propagation = Propagation.MANDATORY)
   public Resultado limparMidia(UUID anuncioId, UUID midiaId, OffsetDateTime agora) {
+    AnuncioEntity anuncio = anuncioRepository.findByIdForModeration(anuncioId)
+        .orElseThrow(() -> conflito("ANUNCIO_NAO_ENCONTRADO"));
     List<AnuncioMidiaEntity> vinculosDoAnuncio =
         anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId);
     AnuncioMidiaEntity alvo = vinculosDoAnuncio.stream()
@@ -68,6 +80,14 @@ public class AdminAnuncioMidiaCleanupService {
     }
     if (alvo.getStatus() == StatusAnuncioMidia.REMOVIDA) {
       return Resultado.resultadoJaProcessado();
+    }
+    try {
+      fotoElegivelAnuncioPolicy.validarRemocaoIndividual(anuncio, alvo.getId());
+    } catch (UltimaFotoAprovadaException exception) {
+      throw new CleanupException(
+          HttpStatus.CONFLICT,
+          FotoElegivelAnuncioPolicy.CODIGO_ULTIMA_FOTO_APROVADA,
+          exception);
     }
 
     List<UUID> vinculoIds = List.of(alvo.getId());

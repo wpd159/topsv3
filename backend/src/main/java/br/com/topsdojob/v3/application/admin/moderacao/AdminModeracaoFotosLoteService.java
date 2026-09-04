@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.admin.moderacao;
 
 import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.CleanupException;
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLotePrevalidacaoService.ItemValidado;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteResponseDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoFotoLoteAcao;
@@ -276,6 +277,8 @@ public class AdminModeracaoFotosLoteService {
 
     private String mensagemSanitizada(String codigo) {
         return switch (codigo) {
+            case FotoElegivelAnuncioPolicy.CODIGO_ULTIMA_FOTO_APROVADA ->
+                    FotoElegivelAnuncioPolicy.MENSAGEM_ULTIMA_FOTO_APROVADA;
             case "FALHA_OPERACIONAL_R2", "OBJETO_PERMANECE_NO_R2", "STORAGE_INDISPONIVEL" ->
                     "Nao foi possivel remover a foto do armazenamento. Tente novamente.";
             case "CONFLITO_DE_ESTADO" ->

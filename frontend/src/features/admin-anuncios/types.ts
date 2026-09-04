@@ -126,6 +126,8 @@ export type AdminAdDetail = Omit<AdminAdListItem, 'anunciante' | 'miniaturaUrl' 
   locaisAtendimento: string[]
   servicos: string[]
   atendimentoExclusivamenteVirtual: boolean
+  fotosAprovadasTotal: number
+  fotosAguardandoDecisaoTotal: number
   anunciante?: AdminAdvertiserDetail | null
   metricas: AdminAdMetrics
   bloqueioJuridico?: AdminLegalBlock | null
@@ -303,6 +305,18 @@ export type AdminMediaPreview = {
   expiraEm?: string | null
   publica: boolean
   mimeType: string
+}
+
+export type AdminAdMediaUploadResponse = {
+  midiaId: string
+  anuncioId: string
+  tipo: 'FOTO'
+  finalidade: 'GALERIA'
+  ordem: number
+  status: string
+  statusArquivo: string
+  idempotente: boolean
+  requestId: string
 }
 
 export type AdminModerationHistoryItem = {
