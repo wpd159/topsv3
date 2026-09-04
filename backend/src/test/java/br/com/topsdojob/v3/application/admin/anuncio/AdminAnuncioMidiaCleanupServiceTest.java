@@ -7,21 +7,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy.UltimaFotoAprovadaException;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StoryAnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.StorySelecaoAdministrativaEntity;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRevisaoRepository;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.DocumentoUsuarioRepository;
 import br.com.topsdojob.v3.persistence.repository.StoryAnuncioRepository;
@@ -61,6 +67,7 @@ class AdminAnuncioMidiaCleanupServiceTest {
 
   private final AnuncioMidiaRepository anuncioMidiaRepository =
       mock(AnuncioMidiaRepository.class);
+  private final AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
   private final ArquivoMidiaRepository arquivoMidiaRepository =
       mock(ArquivoMidiaRepository.class);
   private final AnuncioMidiaRevisaoRepository revisaoRepository =
@@ -74,6 +81,9 @@ class AdminAnuncioMidiaCleanupServiceTest {
   @SuppressWarnings("unchecked")
   private final ObjectProvider<ObjectStorage> storageProvider = mock(ObjectProvider.class);
   private final R2StorageProperties properties = properties();
+  private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy =
+      mock(FotoElegivelAnuncioPolicy.class);
+  private final AnuncioEntity anuncio = mock(AnuncioEntity.class);
   private final AdminAnuncioMidiaPosCommitCleanupService posCommitCleanupService =
       new AdminAnuncioMidiaPosCommitCleanupService(
           anuncioMidiaRepository,
@@ -84,16 +94,19 @@ class AdminAnuncioMidiaCleanupServiceTest {
           storageProvider,
           properties);
   private final AdminAnuncioMidiaCleanupService service = new AdminAnuncioMidiaCleanupService(
+      anuncioRepository,
       anuncioMidiaRepository,
       storyRepository,
       storyAdminRepository,
-      posCommitCleanupService);
+      posCommitCleanupService,
+      fotoElegivelAnuncioPolicy);
 
   @BeforeEach
   void setUp() {
     TransactionSynchronizationManager.initSynchronization();
     when(storageProvider.getIfAvailable()).thenReturn(storage);
     when(storyAdminRepository.bloquearAtivasDoAnuncio(any())).thenReturn(List.of());
+    when(anuncioRepository.findByIdForModeration(any())).thenReturn(Optional.of(anuncio));
   }
 
   @AfterEach
@@ -293,6 +306,74 @@ class AdminAnuncioMidiaCleanupServiceTest {
         StorageArea.PUBLIC_MEDIA,
         outraArquivo.getChaveObjeto())).isTrue();
     assertThat(storage.exists(StorageArea.PRIVATE_DOCUMENT, kycKey)).isTrue();
+  }
+
+  @Test
+  void ultimaFotoAprovadaProtegidaRetornaCodigoCanonicoSemMutacaoOuCleanup() {
+    UUID anuncioId = uuid(31);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity arquivo = arquivo(
+        uuid(132),
+        "publicas",
+        PUBLIC_PREFIX + "anuncios/ultima/foto.jpg",
+        "image/jpeg");
+    AnuncioMidiaEntity vinculo = vinculo(
+        uuid(232), anuncioId, arquivo.getId(), TipoAnuncioMidia.FOTO, 0);
+    when(anuncioMidiaRepository.findByAnuncioIdForUpdate(anuncioId))
+        .thenReturn(List.of(vinculo));
+    doThrow(new UltimaFotoAprovadaException())
+        .when(fotoElegivelAnuncioPolicy)
+        .validarRemocaoIndividual(anuncio, vinculo.getId());
+
+    assertThatThrownBy(() -> service.limparMidia(anuncioId, vinculo.getId(), agora))
+        .isInstanceOfSatisfying(AdminAnuncioMidiaCleanupService.CleanupException.class, error -> {
+          assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
+          assertThat(error.codigo())
+              .isEqualTo(FotoElegivelAnuncioPolicy.CODIGO_ULTIMA_FOTO_APROVADA);
+          assertThat(error.getCause()).isInstanceOf(UltimaFotoAprovadaException.class);
+        });
+
+    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.PUBLICAVEL);
+    verify(arquivoMidiaRepository, never()).findByIdInForUpdate(any());
+    verify(anuncioMidiaRepository, never()).saveAndFlush(any());
+  }
+
+  @Test
+  void cleanupIntegralRemoveFotoElegivelEAgendaCleanupSemConsultarPolicyDaUltimaFoto() {
+    UUID anuncioId = uuid(32);
+    OffsetDateTime agora = OffsetDateTime.now(ZoneOffset.UTC);
+    ArquivoMidiaEntity arquivo = arquivo(
+        uuid(133),
+        "publicas",
+        PUBLIC_PREFIX + "anuncios/cleanup-integral/foto-elegivel.jpg",
+        "image/jpeg");
+    AnuncioMidiaEntity vinculo = AnuncioMidiaEntity.criarFixtureHomologacao(
+        uuid(233),
+        anuncioId,
+        arquivo.getId(),
+        TipoAnuncioMidia.FOTO,
+        FinalidadeAnuncioMidia.CAPA,
+        0,
+        StatusAnuncioMidia.PUBLICAVEL,
+        VisibilidadeMidia.LIVRE,
+        agora.minusHours(1));
+    prepararRepositorios(anuncioId, List.of(arquivo), List.of(vinculo), null);
+    when(storyRepository.findByAnuncioIdForUpdate(anuncioId)).thenReturn(List.of());
+    colocar(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto());
+
+    var resultado = service.limpar(anuncioId, agora);
+
+    assertThat(resultado.midiasRemovidas()).isEqualTo(1);
+    assertThat(resultado.objetosCleanupAgendados()).isEqualTo(2);
+    assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
+    assertThat(arquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.VALIDADO);
+    assertThat(TransactionSynchronizationManager.getSynchronizations()).hasSize(1);
+    verifyNoInteractions(anuncioRepository, fotoElegivelAnuncioPolicy);
+
+    concluirCommit();
+
+    assertThat(arquivo.getStatusArquivo()).isEqualTo(StatusArquivoMidia.REMOVIDO);
+    assertThat(storage.exists(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto())).isFalse();
   }
 
   @Test

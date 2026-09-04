@@ -9,6 +9,7 @@ import {
   buscarMeuAnuncio,
   enviarMinhasMidiasEmLote,
   listarMinhasMidias,
+  meusAnunciosErrorMessage,
   removerMinhaMidia,
   reordenarMinhasMidias,
   type MinhaMidiaGestao,
@@ -61,6 +62,7 @@ export function WizardStepFotos({
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState<Record<string, number>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [pendingPersistedFiles, setPendingPersistedFiles] = useState<File[]>([])
 
   const refresh = useCallback(async () => {
     if (!slug) return
@@ -130,13 +132,28 @@ export function WizardStepFotos({
         ]))
       })
       setPersisted(latest)
+      setPendingPersistedFiles([])
     } catch (error) {
       setErrors({
-        lote: error instanceof Error ? error.message : 'Falha ao enviar os arquivos.',
+        lote: meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.'),
       })
     } finally {
       setBusy(false)
     }
+  }
+
+  const pendingPersistedPhotos = pendingPersistedFiles.filter((file) => file.type.startsWith('image/'))
+  const pendingPersistedVideos = pendingPersistedFiles.filter((file) => file.type.startsWith('video/'))
+
+  function selectPersistedFiles(files: File[]) {
+    setPendingPersistedFiles(files)
+    void uploadPersisted(files)
+  }
+
+  function removePendingPersistedFile(file: File) {
+    if (busy) return
+    setPendingPersistedFiles((current) => current.filter((item) => item !== file))
+    setErrors({})
   }
 
   const move = async (index: number, direction: -1 | 1) => {
@@ -164,7 +181,9 @@ export function WizardStepFotos({
       setPersisted(await removerMinhaMidia(slug, midia.id))
       void notifyPublicMediaChange(`remove:${midia.id}`)
     } catch (error) {
-      setErrors({ remover: error instanceof Error ? error.message : 'Não foi possível remover a mídia.' })
+      setErrors({
+        remover: meusAnunciosErrorMessage(error, 'Não foi possível remover a mídia.'),
+      })
     } finally {
       setBusy(false)
     }
@@ -266,25 +285,25 @@ export function WizardStepFotos({
             ariaLabel="Selecionar fotos do anúncio"
             buttonLabel="Selecionar foto"
             accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-            files={[]}
+            files={pendingPersistedPhotos}
             multiple
             disabled={busy || !persisted || persisted.limites.fotosDisponiveis === 0}
             helperText={persisted?.limites.fotosExtrasAtivo
               ? 'Seu anúncio permite até 10 fotos com o benefício de fotos extras.'
               : 'Você pode adicionar até 4 fotos gratuitamente.'}
-            onSelect={(files) => void uploadPersisted(files)}
-            onRemove={() => undefined}
+            onSelect={selectPersistedFiles}
+            onRemove={(index) => removePendingPersistedFile(pendingPersistedPhotos[index])}
           />
           {persisted?.limites.videoAtivo ? (
             <FilePicker
               ariaLabel="Selecionar vídeo do anúncio"
               buttonLabel="Selecionar vídeo"
               accept="video/mp4,video/quicktime,.mp4,.mov"
-              files={[]}
+              files={pendingPersistedVideos}
               disabled={busy || persisted.limites.videosDisponiveis === 0}
               helperText="Você pode adicionar 1 vídeo em MP4 ou MOV."
-              onSelect={(files) => void uploadPersisted(files.slice(0, 1))}
-              onRemove={() => undefined}
+              onSelect={(files) => selectPersistedFiles(files.slice(0, 1))}
+              onRemove={(index) => removePendingPersistedFile(pendingPersistedVideos[index])}
             />
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4">
@@ -313,6 +332,17 @@ export function WizardStepFotos({
         {Object.entries(errors).map(([key, message]) => (
           <p key={key} className="rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700">{message}</p>
         ))}
+
+        {errors.lote && pendingPersistedFiles.length ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void uploadPersisted(pendingPersistedFiles)}
+            className="min-h-11 rounded-xl border border-zinc-300 bg-white px-4 text-sm font-semibold text-zinc-900 disabled:opacity-50"
+          >
+            {busy ? 'Enviando novamente...' : 'Tentar enviar novamente'}
+          </button>
+        ) : null}
 
         {loading ? (
           <div className="flex min-h-40 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-zinc-400" /></div>

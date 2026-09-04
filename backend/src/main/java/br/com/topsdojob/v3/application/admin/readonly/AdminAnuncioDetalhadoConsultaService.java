@@ -13,6 +13,7 @@ import br.com.topsdojob.v3.application.admin.readonly.dto.AdminModeracaoHistoric
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPaginaDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminPremiumFilaItemDto;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminRevisaoAbertaDto;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminStoryAnuncioAcaoDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
 import br.com.topsdojob.v3.application.admin.documento.AdminKycService;
@@ -101,6 +102,7 @@ public class AdminAnuncioDetalhadoConsultaService {
     private final AdminKycService kycService;
     private final MeuAnuncioStoryConsultaService storyConsultaService;
     private final ObjectMapper objectMapper;
+    private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy;
 
     public AdminAnuncioDetalhadoConsultaService(
             AnuncioRepository anuncioRepository,
@@ -120,7 +122,8 @@ public class AdminAnuncioDetalhadoConsultaService {
             MidiaPublicaUrlService midiaPublicaUrlService,
             AdminKycService kycService,
             MeuAnuncioStoryConsultaService storyConsultaService,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy) {
         this.anuncioRepository = anuncioRepository;
         this.bloqueioJuridicoRepository = bloqueioJuridicoRepository;
         this.anuncioMidiaRepository = anuncioMidiaRepository;
@@ -139,6 +142,7 @@ public class AdminAnuncioDetalhadoConsultaService {
         this.kycService = kycService;
         this.storyConsultaService = storyConsultaService;
         this.objectMapper = objectMapper;
+        this.fotoElegivelAnuncioPolicy = fotoElegivelAnuncioPolicy;
     }
 
     @Transactional(readOnly = true)
@@ -231,6 +235,8 @@ public class AdminAnuncioDetalhadoConsultaService {
         List<String> beneficios = beneficiosVigentes(List.of(anuncio.getId()))
                 .getOrDefault(anuncio.getId(), List.of());
         List<AdminModeracaoHistoricoItemDto> historico = historico(anuncio.getId());
+        FotoElegivelAnuncioPolicy.Totais fotos =
+                fotoElegivelAnuncioPolicy.consultarTotais(anuncio.getId());
         return new AdminAnuncioDetalheDto(
                 anuncio.getId(),
                 anuncio.getSlug(),
@@ -246,6 +252,8 @@ public class AdminAnuncioDetalhadoConsultaService {
                 anuncio.getPublicadoEm(),
                 anuncio.getUltimaPublicacaoEm(),
                 anuncioMidiaRepository.countByAnuncioIdAndTipoNot(anuncio.getId(), TipoAnuncioMidia.STORY),
+                fotos.fotosAprovadasTotal(),
+                fotos.fotosAguardandoDecisaoTotal(),
                 revisoesTotal,
                 anuncio.getWhatsappNormalizado() != null,
                 documentoPendente(anuncio),

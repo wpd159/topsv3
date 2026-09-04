@@ -20,6 +20,8 @@ public record AdminAnuncioDetalheDto(
         OffsetDateTime publicadoEm,
         OffsetDateTime ultimaPublicacaoEm,
         Long midiasTotal,
+        Long fotosAprovadasTotal,
+        Long fotosAguardandoDecisaoTotal,
         Long revisoesTotal,
         boolean contatoConfigurado,
         boolean documentoPendente,

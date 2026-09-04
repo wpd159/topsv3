@@ -12,6 +12,7 @@ import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirMidiaRequ
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoModeracaoAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminReclassificarMidiaRequestDto;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioFotosExtrasModeracaoService;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
 import br.com.topsdojob.v3.persistence.entity.auditoria.AuditoriaEventoEntity;
@@ -71,6 +72,8 @@ class AdminModeracaoAcaoServiceTest {
     private final MidiaStorageAprovacaoService storageAprovacaoService = mock(MidiaStorageAprovacaoService.class);
     private final BeneficioFotosExtrasModeracaoService fotosExtrasService =
             mock(BeneficioFotosExtrasModeracaoService.class);
+    private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy =
+            mock(FotoElegivelAnuncioPolicy.class);
     private final Map<UUID, UUID> anuncioIdPorMidia = new HashMap<>();
     private AdminModeracaoAcaoService service;
 
@@ -91,6 +94,7 @@ class AdminModeracaoAcaoServiceTest {
                 new ObjectMapper(),
                 storageAprovacaoService,
                 fotosExtrasService,
+                fotoElegivelAnuncioPolicy,
                 "https://v3.example.invalid");
         when(auditoriaRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
@@ -294,7 +298,8 @@ class AdminModeracaoAcaoServiceTest {
     @Test
     void midiaInexistenteRetorna404() {
         UUID id = UUID.randomUUID();
-        when(midiaRepository.findByIdForUpdate(id)).thenReturn(Optional.empty());
+        anuncioIdPorMidia.put(id, UUID.randomUUID());
+        when(midiaRepository.findReferenciaById(id)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> decidir(id, AdminDecisaoModeracaoAcao.APROVAR, VisibilidadeMidia.LIVRE, null))
                 .isInstanceOf(ResponseStatusException.class)
@@ -405,6 +410,74 @@ class AdminModeracaoAcaoServiceTest {
         assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
         assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.PENDENTE);
         verify(arquivoRepository, never()).findByIdForUpdate(fixture.midia().getArquivoMidiaId());
+    }
+
+    @Test
+    void referenciaAlteradaAntesDoLockFalhaFechadoSemTravarArquivoErrado() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        AnuncioMidiaRepository.ReferenciaMidiaProjection referenciaAntiga =
+                mock(AnuncioMidiaRepository.ReferenciaMidiaProjection.class);
+        when(referenciaAntiga.getAnuncioId()).thenReturn(fixture.anuncio().getId());
+        when(referenciaAntiga.getArquivoMidiaId()).thenReturn(UUID.randomUUID());
+        when(midiaRepository.findReferenciaById(fixture.id())).thenReturn(Optional.of(referenciaAntiga));
+
+        assertThatThrownBy(() -> decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.RESTRITA_18,
+                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("associacao da midia mudou");
+
+        verify(arquivoRepository, never()).findByIdInForUpdate(any());
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
+    }
+
+    @Test
+    void associacaoHistoricaComDocumentoMesmoRemovidoOuExpurgadoFalhaFechado() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        when(midiaRepository.existsDocumentoUsuarioHistoricoPorArquivoId(
+                fixture.midia().getArquivoMidiaId())).thenReturn(true);
+
+        assertThatThrownBy(() -> decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.RESTRITA_18,
+                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("400")
+                .hasMessageContaining("arquivo privado nao moderavel");
+
+        assertThat(fixture.midia().getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
+        assertThat(fixture.arquivo().getStatusArquivo()).isEqualTo(StatusArquivoMidia.PENDENTE);
+        verify(storageAprovacaoService, never()).prepararAprovacao(any(), any());
+    }
+
+    @Test
+    void arquivoComVinculoAtivoEmOutroAnuncioFalhaAntesDoLockDoArquivo() {
+        Fixture fixture = fixture(TipoAnuncioMidia.FOTO, null);
+        AnuncioMidiaEntity outroVinculo = entity(AnuncioMidiaEntity.class);
+        ReflectionTestUtils.setField(outroVinculo, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(outroVinculo, "anuncioId", UUID.randomUUID());
+        ReflectionTestUtils.setField(
+                outroVinculo,
+                "arquivoMidiaId",
+                fixture.midia().getArquivoMidiaId());
+        ReflectionTestUtils.setField(outroVinculo, "status", StatusAnuncioMidia.PUBLICAVEL);
+        when(midiaRepository.findByArquivoMidiaId(fixture.midia().getArquivoMidiaId()))
+                .thenReturn(List.of(fixture.midia(), outroVinculo));
+
+        assertThatThrownBy(() -> decidir(
+                fixture.id(),
+                AdminDecisaoModeracaoAcao.APROVAR,
+                VisibilidadeMidia.RESTRITA_18,
+                null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("409")
+                .hasMessageContaining("outro anuncio");
+
+        verify(arquivoRepository, never()).findByIdInForUpdate(any());
     }
 
     @Test
@@ -537,10 +610,20 @@ class AdminModeracaoAcaoServiceTest {
         AnuncioEntity anuncio = entity(AnuncioEntity.class);
         ReflectionTestUtils.setField(anuncio, "id", anuncioId);
         ReflectionTestUtils.setField(anuncio, "status", StatusAnuncio.PENDENTE_REVISAO);
+        AnuncioMidiaRepository.ReferenciaMidiaProjection referencia =
+                mock(AnuncioMidiaRepository.ReferenciaMidiaProjection.class);
+        when(referencia.getAnuncioId()).thenReturn(anuncioId);
+        when(referencia.getArquivoMidiaId()).thenReturn(arquivoId);
         anuncioIdPorMidia.put(id, anuncioId);
+        when(midiaRepository.findReferenciaById(id)).thenReturn(Optional.of(referencia));
+        when(midiaRepository.findByAnuncioIdForUpdate(anuncioId)).thenReturn(List.of(midia));
+        when(midiaRepository.findByArquivoMidiaId(arquivoId)).thenReturn(List.of(midia));
+        when(midiaRepository.findByIdInForUpdate(List.of(id))).thenReturn(List.of(midia));
         when(midiaRepository.findByIdForUpdate(id)).thenReturn(Optional.of(midia));
         when(anuncioRepository.findByIdForModeration(anuncioId)).thenReturn(Optional.of(anuncio));
+        when(arquivoRepository.findByIdInForUpdate(List.of(arquivoId))).thenReturn(List.of(arquivo));
         when(arquivoRepository.findByIdForUpdate(arquivoId)).thenReturn(Optional.of(arquivo));
+        when(midiaRepository.existsDocumentoUsuarioHistoricoPorArquivoId(arquivoId)).thenReturn(false);
         when(documentoRepository.existsByArquivoMidiaIdAndRemovidoEmIsNullAndExpurgadoEmIsNull(arquivoId)).thenReturn(false);
         return new Fixture(id, midia, arquivo, anuncio);
     }

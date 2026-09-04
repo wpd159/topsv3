@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLotePrevalidacaoService.ItemValidado;
 import br.com.topsdojob.v3.application.admin.moderacao.AdminModeracaoFotosLotePrevalidacaoService.Prevalidacao;
+import br.com.topsdojob.v3.application.admin.anuncio.AdminAnuncioMidiaCleanupService.CleanupException;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecidirFotosLoteRequestDto;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminDecisaoFotoLoteAcao;
 import br.com.topsdojob.v3.application.admin.moderacao.dto.AdminResultadoFotoLoteItemDto;
@@ -102,6 +104,43 @@ class AdminModeracaoFotosLoteServiceTest {
         verify(itemService, never()).executar(any(), any(), any(), any());
         verify(auditoria, never()).registrarLote(any(), any());
         verify(auditoria, never()).registrarFalha(any(), any(), any(), any());
+    }
+
+    @Test
+    void ultimaFotoAprovadaPreservaCodigoEMensagemCanonicosNoResultado() {
+        ItemValidado excluir = item(AdminDecisaoFotoLoteAcao.EXCLUIR, null, false);
+        when(prevalidacao.validar(any(), any(), any()))
+                .thenReturn(new Prevalidacao(anuncioId, List.of(excluir), 1L));
+        CleanupException conflito = mock(CleanupException.class);
+        when(conflito.codigo()).thenReturn(FotoElegivelAnuncioPolicy.CODIGO_ULTIMA_FOTO_APROVADA);
+        when(itemService.executar(anuncioId, excluir, ator, "request-ultima-foto"))
+                .thenThrow(conflito);
+
+        var resposta = service.decidir(
+                anuncioId,
+                new AdminDecidirFotosLoteRequestDto(List.of()),
+                ator,
+                "request-ultima-foto");
+
+        assertThat(resposta.concluido()).isFalse();
+        assertThat(resposta.aprovadas()).isZero();
+        assertThat(resposta.excluidas()).isZero();
+        assertThat(resposta.jaProcessadas()).isZero();
+        assertThat(resposta.falhas()).isEqualTo(1);
+        assertThat(resposta.resultados()).singleElement().satisfies(item -> {
+            assertThat(item.resultado()).isEqualTo("FALHA");
+            assertThat(item.status()).isNull();
+            assertThat(item.codigo())
+                    .isEqualTo(FotoElegivelAnuncioPolicy.CODIGO_ULTIMA_FOTO_APROVADA);
+            assertThat(item.motivo())
+                    .isEqualTo(FotoElegivelAnuncioPolicy.MENSAGEM_ULTIMA_FOTO_APROVADA);
+        });
+        verify(auditoria).registrarFalha(
+                ator.usuarioId(),
+                excluir.mediaId(),
+                "request-ultima-foto",
+                FotoElegivelAnuncioPolicy.CODIGO_ULTIMA_FOTO_APROVADA);
+        verify(auditoria).registrarLote(ator.usuarioId(), resposta);
     }
 
     @Test

@@ -160,6 +160,122 @@ class MeusAnunciosFrontendContractTest {
                 .doesNotContain("email");
     }
 
+    @Test
+    void doisUploadsXhrPreservamEnvelopeIdempotenciaEArquivoAposFalha() throws Exception {
+        String adapter = Files.readString(FRONTEND.resolve(Path.of("lib", "meus-anuncios-api.ts")));
+        String unitario = recorte(
+                adapter,
+                "export async function enviarMinhaMidia(",
+                "const mediaBatchIdempotencyKeys");
+        String lote = recorte(
+                adapter,
+                "export async function enviarMinhasMidiasEmLote(",
+                "export function reordenarMinhasMidias");
+        String fotos = Files.readString(FRONTEND.resolve(Path.of(
+                "features", "anuncio-wizard", "components", "wizard-step-fotos.tsx")));
+        String uploadPersistido = recorte(
+                fotos,
+                "const uploadPersisted = async (files: File[]) => {",
+                "const pendingPersistedPhotos");
+
+        assertThat(adapter)
+                .contains("type MeusAnunciosErrorEnvelope")
+                .contains("message?: unknown")
+                .contains("code?: unknown")
+                .contains("requestId?: unknown")
+                .contains("nonBlankString(envelope?.code)")
+                .contains("nonBlankString(envelope?.requestId) || xhr.getResponseHeader('X-Request-Id')")
+                .contains("xhr.status === 415 && unsupportedPhotoUpload")
+                .contains("resolveUnsupportedPhotoUploadMessage(candidateMessage)");
+        assertThat(unitario)
+                .contains("parseErrorEnvelope(xhr.responseText)")
+                .contains("const unsupportedPhotoUpload = containsOnlyPhotoUploads([arquivo])")
+                .contains("mediaUploadIdempotencyKey(arquivo)")
+                .contains("mediaUploadIdempotencyKeys.delete(arquivo)")
+                .contains("form.append('arquivo', arquivo)")
+                .doesNotContain("setRequestHeader('Content-Type'");
+        assertThat(unitario.indexOf("mediaUploadIdempotencyKeys.delete(arquivo)"))
+                .isGreaterThan(unitario.indexOf("if (xhr.status < 200 || xhr.status >= 300)"));
+        assertThat(lote)
+                .contains("parseErrorEnvelope(xhr.responseText)")
+                .contains("const unsupportedPhotoUpload = containsOnlyPhotoUploads(arquivos)")
+                .contains("mediaBatchIdempotencyKeys.set(signature, idempotencyKey)")
+                .contains("mediaBatchIdempotencyKeys.delete(signature)")
+                .contains("arquivos.forEach((arquivo) => form.append('arquivos', arquivo))")
+                .doesNotContain("setRequestHeader('Content-Type'");
+        assertThat(lote.indexOf("mediaBatchIdempotencyKeys.delete(signature)"))
+                .isGreaterThan(lote.indexOf("if (xhr.status < 200 || xhr.status >= 300)"));
+
+        assertThat(uploadPersistido)
+                .contains("setPendingPersistedFiles([])")
+                .contains("meusAnunciosErrorMessage(error, 'Falha ao enviar os arquivos.')");
+        String falha = recorte(uploadPersistido, "} catch (error) {", "} finally {");
+        assertThat(falha).doesNotContain("setPendingPersistedFiles([])");
+        assertThat(fotos)
+                .contains("setPendingPersistedFiles(files)")
+                .contains("pendingPersistedFiles.filter")
+                .contains("errors.lote && pendingPersistedFiles.length")
+                .contains("uploadPersisted(pendingPersistedFiles)")
+                .contains("Tentar enviar novamente");
+    }
+
+    @Test
+    void fallback415PublicoDistingueFotosDeVideoMistoEConteudoDesconhecido() throws Exception {
+        String adapter = Files.readString(FRONTEND.resolve(Path.of("lib", "meus-anuncios-api.ts")));
+        String contrato = Files.readString(FRONTEND.resolve(Path.of("lib", "api-contract.ts")));
+        String documentos = Files.readString(FRONTEND.resolve(Path.of(
+                "features", "admin-documentos", "api.ts")));
+        String kyc = Files.readString(FRONTEND.resolve(Path.of(
+                "features", "anuncio-wizard", "api.ts")));
+        String classificacao = recorte(
+                adapter,
+                "const PHOTO_UPLOAD_EXTENSIONS",
+                "function uploadErrorFromXhr(");
+
+        assertThat(contrato)
+                .contains("unsupportedPhotoUpload?: boolean")
+                .contains("options.unsupportedPhotoUpload")
+                .contains("? resolveUnsupportedPhotoUploadMessage(serverMessage)")
+                .contains(": message('Não foi possível processar o arquivo enviado.')");
+        assertThat(classificacao)
+                .contains("new Set(['jpg', 'jpeg', 'png', 'webp'])")
+                .contains("file.type.trim().toLowerCase()")
+                .contains("if (mimeType) return mimeType.startsWith('image/')")
+                .contains("file.name.trim().toLowerCase()")
+                .contains("files.length > 0 && files.every(isPhotoUploadFile)");
+        assertThat(adapter)
+                .contains("const message = xhr.status === 415 && unsupportedPhotoUpload")
+                .contains("candidateMessage || fallback");
+        assertThat(documentos).doesNotContain("unsupportedPhotoUpload");
+        assertThat(kyc).doesNotContain("unsupportedPhotoUpload");
+    }
+
+    @Test
+    void remocaoDeMidiaExibeMensagemCodigoERequestIdDoEnvelope() throws Exception {
+        String adapter = Files.readString(FRONTEND.resolve(Path.of("lib", "meus-anuncios-api.ts")));
+        String fotos = Files.readString(FRONTEND.resolve(Path.of(
+                "features", "anuncio-wizard", "components", "wizard-step-fotos.tsx")));
+        String remocao = recorte(
+                fotos,
+                "const remove = async (midia: MinhaMidiaGestao) => {",
+                "if (!slug) {");
+
+        assertThat(adapter)
+                .contains("error.code ? `Código: ${error.code}` : null")
+                .contains("error.requestId ? `Request ID: ${error.requestId}` : null");
+        assertThat(remocao)
+                .contains("meusAnunciosErrorMessage(error, 'Não foi possível remover a mídia.')")
+                .doesNotContain("error instanceof Error ? error.message");
+    }
+
+    private static String recorte(String conteudo, String inicio, String fim) {
+        int inicioIndex = conteudo.indexOf(inicio);
+        int fimIndex = inicioIndex < 0 ? -1 : conteudo.indexOf(fim, inicioIndex + inicio.length());
+        assertThat(inicioIndex).as("inicio do contrato").isGreaterThanOrEqualTo(0);
+        assertThat(fimIndex).as("fim do contrato").isGreaterThan(inicioIndex);
+        return conteudo.substring(inicioIndex, fimIndex);
+    }
+
     private static int contarOcorrencias(String conteudo, String trecho) {
         int quantidade = 0;
         int inicio = 0;

@@ -47,6 +47,7 @@ import {
 } from '@/lib/seo/indexnow-client'
 
 import { AdminAnuncioDocumentos } from './admin-anuncio-documentos'
+import { AdminAnuncioMidiaUploader } from './admin-anuncio-midia-uploader'
 import { AdminAnuncioPremium } from './admin-anuncio-premium'
 import {
   AdminAdOwnerFormError,
@@ -76,7 +77,6 @@ import type {
   AdminLegalBlockCategory,
   AdminMediaItem,
   AdminMediaPreview,
-  AdminModerationActionResponse,
   AdminModerationHistoryItem,
   AdminPhotoBatchResponse,
 } from './types'
@@ -128,6 +128,16 @@ const GENERIC_CONFLICT_MESSAGES = new Set([
 function specificConflictMessage(error: ApiContractError, fallback: string) {
   const message = error.message.trim()
   return message && !GENERIC_CONFLICT_MESSAGES.has(message) ? message : fallback
+}
+
+function ErrorIdentifiers({ error }: { error: ApiContractError }) {
+  if (!error.code && !error.requestId) return null
+  return (
+    <dl className="mt-2 grid gap-1 text-xs">
+      {error.code ? <div className="flex gap-1"><dt className="font-semibold">code:</dt><dd>{error.code}</dd></div> : null}
+      {error.requestId ? <div className="flex min-w-0 gap-1"><dt className="shrink-0 font-semibold">requestId:</dt><dd className="break-all">{error.requestId}</dd></div> : null}
+    </dl>
+  )
 }
 
 function formatDate(value?: string | null) {
@@ -238,6 +248,7 @@ function DecisionDialog({ intent, busy, error, onClose, onConfirm }: {
                 : 'Não foi possível concluir'}
             </p>
             <p className="mt-1 text-amber-800">{normalizedError.message}</p>
+            <ErrorIdentifiers error={normalizedError} />
           </div>
         ) : null}
         <DialogFooter><Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button><Button type="button" variant={isAdReproval ? 'destructive' : 'default'} onClick={() => onConfirm(reason)} disabled={busy || Boolean(intent?.requiresReason && !reason.trim())}>{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}{isAdReproval ? 'Confirmar reprovação' : 'Confirmar'}</Button></DialogFooter>
@@ -514,6 +525,7 @@ function PhotoBatchDialog({
           <div role="alert" className="border border-red-200 bg-red-50 p-3 text-sm text-red-900">
             <p className="font-semibold">Não foi possível concluir o lote</p>
             <p className="mt-1">{normalizedError.message}</p>
+            <ErrorIdentifiers error={normalizedError} />
           </div>
         ) : null}
         <DialogFooter>
@@ -629,7 +641,12 @@ function PhotoDeleteDialog({
         <p className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
           Somente arquivos exclusivos e sem outras referências poderão ser removidos do armazenamento.
         </p>
-        {error ? <ContractState error={error} compact /> : null}
+        {error ? (
+          <div>
+            <ContractState error={error} compact />
+            <ErrorIdentifiers error={normalizeApiError(error)} />
+          </div>
+        ) : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancelar</Button>
           <Button type="button" variant="destructive" onClick={onConfirm} disabled={busy}>
@@ -691,9 +708,9 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     mediaId: string
     value: 'LIVRE' | 'RESTRITA_18'
     mode: 'DECISION' | 'RECLASSIFY'
-  }) => {
+  }, surfaceError = true) => {
     setLoading(true)
-    setError(null)
+    if (surfaceError) setError(null)
     try {
       const [adResponse, session] = await Promise.all([getAdminAd(anuncioId), getAdminSession()])
       const sessionPermissions = session?.permissoes ?? []
@@ -730,6 +747,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         return next
       })
     } catch (reason) {
+      if (!surfaceError) throw reason
       setError(reason)
     } finally {
       setLoading(false)
@@ -870,51 +888,6 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     }
   }
 
-  function applyConfirmedMediaResponse(
-    mediaId: string,
-    response: AdminModerationActionResponse,
-  ) {
-    setMedia((current) => current.map((item) => item.id === mediaId
-      ? {
-          ...item,
-          status: response.status,
-          visibilidadeMidia: response.visibilidadeMidia ?? item.visibilidadeMidia,
-          atualizadoEm: response.decididoEm,
-        }
-      : item))
-    if (response.visibilidadeMidia) {
-      setVisibility((current) => ({
-        ...current,
-        [mediaId]: response.visibilidadeMidia as 'LIVRE' | 'RESTRITA_18',
-      }))
-    }
-  }
-
-  function applyConfirmedPhotoBatch(response: AdminPhotoBatchResponse) {
-    const confirmed = new Map(
-      response.resultados
-        .filter((item) => item.resultado !== 'FALHA')
-        .map((item) => [item.mediaId, item]),
-    )
-    setMedia((current) => current.map((item) => {
-      const result = confirmed.get(item.id)
-      if (!result) return item
-      return {
-        ...item,
-        status: result.status ?? item.status,
-        visibilidadeMidia: result.classificacao ?? item.visibilidadeMidia,
-        atualizadoEm: response.processadoEm,
-      }
-    }))
-    setVisibility((current) => {
-      const next = { ...current }
-      confirmed.forEach((result, mediaId) => {
-        if (result.classificacao) next[mediaId] = result.classificacao
-      })
-      return next
-    })
-  }
-
   async function confirmPhotoBatch() {
     if (
       photoBatchLock.current
@@ -939,8 +912,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           }
         }),
       )
+      await load(undefined, false)
       setPhotoBatchResult(response)
-      applyConfirmedPhotoBatch(response)
       if (anuncioEstaPublicamenteIndexavel(ad.status) && (response.aprovadas > 0 || response.excluidas > 0)) {
         void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
           eventType: 'ATUALIZACAO',
@@ -958,7 +931,6 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
         Object.entries(current).filter(([mediaId]) => failedIds.has(mediaId)),
       ))
       setPhotoBatchOpen(false)
-      void load()
     } catch (reason) {
       setPhotoBatchError(reason)
     } finally {
@@ -984,24 +956,11 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           'CONFLICT',
           409,
           false,
+          response.requestId,
+          result?.codigo ?? null,
         )
       }
-      setMedia((current) => {
-        return current
-          .filter((item) => item.id !== photoDeleteTarget.id)
-          .sort((left, right) => (left.ordem ?? Number.MAX_SAFE_INTEGER) - (right.ordem ?? Number.MAX_SAFE_INTEGER))
-          .map((item, ordem) => ({ ...item, ordem }))
-      })
-      setVisibility((current) => {
-        const next = { ...current }
-        delete next[photoDeleteTarget.id]
-        return next
-      })
-      setPhotoDecisions((current) => {
-        const next = { ...current }
-        delete next[photoDeleteTarget.id]
-        return next
-      })
+      await load(undefined, false)
       setPhotoDeleteTarget(null)
       if (anuncioEstaPublicamenteIndexavel(ad.status)) {
         void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
@@ -1011,10 +970,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           changeFingerprint: response.requestId,
         }))
       }
-      void Promise.allSettled([
-        revalidarCacheCatalogoPublico(),
-        load(),
-      ])
+      void revalidarCacheCatalogoPublico()
     } catch (reason) {
       setPhotoDeleteError(reason)
     } finally {
@@ -1088,7 +1044,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           motivo,
           observacao,
         )
-        applyConfirmedMediaResponse(intent.media.id, response)
+        await load(undefined, false)
         if (anuncioEstaPublicamenteIndexavel(ad.status)) {
           void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
             eventType: 'ATUALIZACAO',
@@ -1098,11 +1054,10 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           }))
         }
         setIntent(null)
-        void load()
         return
       } else {
         const response = await reclassifyAdminMedia(intent.media.id, intent.visibility, reason)
-        applyConfirmedMediaResponse(intent.media.id, response)
+        await load(undefined, false)
         if (anuncioEstaPublicamenteIndexavel(ad.status)) {
           void enviarIndexNowNoCliente(montarEventoIndexNowAnuncio({
             eventType: 'ATUALIZACAO',
@@ -1112,7 +1067,6 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           }))
         }
         setIntent(null)
-        void load()
         return
       }
       await load()
@@ -1133,6 +1087,7 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           409,
           false,
           normalized.requestId,
+          normalized.code,
         ))
         return
       }
@@ -1147,6 +1102,9 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
             'O estado da mídia mudou. Os dados do detalhe foram atualizados; revise a decisão e tente novamente.',
             'CONFLICT',
             409,
+            false,
+            normalized.requestId,
+            normalized.code,
           ))
           return
         }
@@ -1302,7 +1260,15 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
     && ad.anunciante?.status === 'ATIVO'
     && !legalBlock?.usuarioBloqueado
   const canRemove = canManageLegalStatus && !removed && ad.status !== 'BLOQUEADO'
-  const headerBusy = busy || legalBusy || removalBusy
+  const photoApprovalBlocked = ad.fotosAprovadasTotal === 0
+    || ad.fotosAguardandoDecisaoTotal > 0
+  const photoApprovalBlockReason = ad.fotosAguardandoDecisaoTotal > 0
+    ? 'Conclua a análise de todas as fotos antes de aprovar o anúncio.'
+    : ad.fotosAprovadasTotal === 0
+      ? 'Aprove ao menos uma foto antes de aprovar o anúncio.'
+      : null
+  const canUploadAdminMedia = isAdmin && canModerateAd && canModerateMedia && !removed
+  const headerBusy = loading || busy || legalBusy || removalBusy
   const headerActionClass = 'h-8 whitespace-nowrap px-2.5 text-xs'
 
   return (
@@ -1329,7 +1295,8 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                 type="button"
                 size="sm"
                 className={`${headerActionClass} bg-emerald-700 text-white hover:bg-emerald-800`}
-                disabled={headerBusy}
+                disabled={headerBusy || photoApprovalBlocked}
+                aria-describedby={photoApprovalBlockReason ? 'admin-ad-photo-approval-block' : undefined}
                 onClick={() => setIntent({
                   kind: 'APPROVE_AD',
                   title: 'Aprovar anúncio',
@@ -1386,6 +1353,12 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           </div>
         </div>
       </header>
+
+      {canApproveAd && photoApprovalBlockReason ? (
+        <div id="admin-ad-photo-approval-block" role="status" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">
+          {photoApprovalBlockReason}
+        </div>
+      ) : null}
 
       {!ownerEligibleForModeration ? (
         <div role="status" className="border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
@@ -1534,7 +1507,26 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
           </section>
         </TabsContent>
 
-        <TabsContent value="midias">
+        <TabsContent value="midias" className="space-y-4">
+          {canModerateMedia ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                <span className="block text-xs font-semibold uppercase tracking-wide text-emerald-700">Fotos aprovadas</span>
+                <strong className="text-xl">{ad.fotosAprovadasTotal}</strong>
+              </div>
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                <span className="block text-xs font-semibold uppercase tracking-wide text-amber-700">Aguardando decisão</span>
+                <strong className="text-xl">{ad.fotosAguardandoDecisaoTotal}</strong>
+              </div>
+            </div>
+          ) : null}
+          {canUploadAdminMedia ? (
+            <AdminAnuncioMidiaUploader
+              anuncioId={ad.id}
+              disabled={loading}
+              onReload={() => load(undefined, false)}
+            />
+          ) : null}
           {!canModerateMedia ? (
             <p className="text-sm font-medium text-amber-700">Seu perfil não possui MIDIA_REVISAR.</p>
           ) : media.length === 0 ? (
@@ -1580,6 +1572,24 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                             disabled={busy}
                             onChange={(value) => setVisibility((current) => ({ ...current, [item.id]: value }))}
                           />
+                        ) : null}
+                        {pendingPhoto ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="destructive"
+                            className="mt-4 w-full"
+                            disabled={busy || photoBatchBusy || photoDeleteBusy}
+                            onClick={() => setIntent({
+                              kind: 'MEDIA',
+                              title: 'Rejeitar foto',
+                              media: item,
+                              action: 'REPROVAR',
+                              requiresReason: true,
+                            })}
+                          >
+                            Rejeitar foto
+                          </Button>
                         ) : null}
                         {actionableVideo ? (
                           <div className="mt-4 grid grid-cols-2 gap-2">
@@ -1639,10 +1649,12 @@ export function AdminAnuncioModeracao({ anuncioId, initialQuery = '' }: { anunci
                         .map((item) => (
                           <li key={item.mediaId}>
                             Foto #{mediaOrdinal[item.mediaId] ?? item.mediaId.slice(0, 8)}: {item.motivo || 'Não foi possível concluir a decisão.'}
+                            {item.codigo ? ` (code: ${item.codigo})` : null}
                           </li>
                         ))}
                     </ul>
                   ) : null}
+                  <p className="mt-2 break-all text-xs">requestId: {photoBatchResult.requestId}</p>
                 </div>
               ) : null}
               {pendingPhotos.length > 0 ? (
