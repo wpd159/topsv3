@@ -11,6 +11,7 @@ import type {
   AdminAdDetail,
   AdminAdFilters,
   AdminAdListItem,
+  AdminAdMediaUploadResponse,
   AdminAdQueueNavigation,
   AdminAdRemovalResponse,
   AdminAdOwnerUpdate,
@@ -64,7 +65,7 @@ function readCsrfValue() {
   return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null
 }
 
-async function csrfHeaders() {
+async function csrfHeaders(contentType: 'json' | 'multipart' = 'json') {
   let value = readCsrfValue()
   if (!value) {
     await fetch(adminApiUrl('/auth/me'), { credentials: 'include', cache: 'no-store' })
@@ -73,19 +74,26 @@ async function csrfHeaders() {
   if (!value) {
     throw new ApiContractError('Nao foi possivel validar a seguranca da sessao.', 'ACCESS_DENIED', 403)
   }
-  return {
-    'Content-Type': 'application/json',
-    [csrfHeaderName()]: value,
-  }
+  return contentType === 'json'
+    ? { 'Content-Type': 'application/json', [csrfHeaderName()]: value }
+    : { [csrfHeaderName()]: value }
 }
 
 export function getAdminMutationHeaders() {
   return csrfHeaders()
 }
 
-async function readJson<T>(response: Response): Promise<T> {
+type AdminRequestOptions = {
+  parseOwnerFormError?: boolean
+  unsupportedPhotoUpload?: boolean
+}
+
+async function readJson<T>(response: Response, options: AdminRequestOptions = {}): Promise<T> {
   if (!response.ok) {
-    throw await apiErrorFromResponse(response, { preserveServerMessage: true })
+    throw await apiErrorFromResponse(response, {
+      preserveServerMessage: true,
+      unsupportedPhotoUpload: options.unsupportedPhotoUpload === true,
+    })
   }
   try {
     return corrigirEstruturaTexto(await response.json()) as T
@@ -121,11 +129,12 @@ function pagePayload<T>(payload: unknown): AdminPage<T> {
   return { ...page, itens: requireArrayPayload<T>(page.itens) } as AdminPage<T>
 }
 
-async function request<T>(path: string, init: RequestInit = {}, parseOwnerFormError = false) {
+async function request<T>(path: string, init: RequestInit = {}, options: AdminRequestOptions = {}) {
   const method = (init.method || 'GET').toUpperCase()
   const headers = new Headers(init.headers)
   if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-    const secureHeaders = await csrfHeaders()
+    const multipart = typeof FormData !== 'undefined' && init.body instanceof FormData
+    const secureHeaders = await csrfHeaders(multipart ? 'multipart' : 'json')
     Object.entries(secureHeaders).forEach(([name, value]) => headers.set(name, value))
   }
   try {
@@ -135,10 +144,10 @@ async function request<T>(path: string, init: RequestInit = {}, parseOwnerFormEr
       credentials: 'include',
       cache: 'no-store',
     })
-    if (!response.ok && parseOwnerFormError) {
+    if (!response.ok && options.parseOwnerFormError) {
       throw await adminAdOwnerErrorFromResponse(response)
     }
-    return await readJson<T>(response)
+    return await readJson<T>(response, options)
   } catch (error) {
     throw normalizeApiError(error)
   }
@@ -172,7 +181,7 @@ export function updateAdminAdOwner(id: string, payload: AdminAdOwnerUpdate) {
   return request<AdminAdOwnerUpdateResponse>(`/anuncios/${encodeURIComponent(id)}/proprietario`, {
     method: 'PATCH',
     body: JSON.stringify(payload),
-  }, true)
+  }, { parseOwnerFormError: true })
 }
 
 export function reactivateAdminAd(id: string) {
@@ -275,9 +284,94 @@ export async function getAdminAdQueueNavigation(id: string, context: AdminAdQueu
   } satisfies AdminAdQueueNavigation
 }
 
+const ADMIN_AD_MEDIA_PAGE_SIZE = 50
+const ADMIN_AD_MEDIA_MAX_PAGES = 20
+
+function invalidAdminAdMediaPagination() {
+  return new ApiContractError(
+    'O serviço retornou uma paginação de mídias incompatível.',
+    'TECHNICAL_FAILURE',
+    502,
+    true,
+    null,
+    'ADMIN_MEDIA_PAGINATION_INVALID',
+  )
+}
+
+function validateAdminAdMediaPage(page: AdminPage<AdminMediaItem>, requestedPage: number) {
+  const metadataIsValid = Number.isSafeInteger(page.page)
+    && page.page === requestedPage
+    && Number.isSafeInteger(page.size)
+    && page.size === ADMIN_AD_MEDIA_PAGE_SIZE
+    && Number.isSafeInteger(page.totalElements)
+    && page.totalElements >= 0
+    && Number.isSafeInteger(page.totalPages)
+    && page.totalPages >= 0
+    && page.totalPages <= ADMIN_AD_MEDIA_MAX_PAGES
+    && typeof page.last === 'boolean'
+    && page.itens.length <= page.size
+  if (!metadataIsValid) throw invalidAdminAdMediaPagination()
+
+  const expectedTotalPages = page.totalElements === 0
+    ? 0
+    : Math.ceil(page.totalElements / page.size)
+  const expectedLast = expectedTotalPages === 0 || requestedPage === expectedTotalPages - 1
+  if (
+    page.totalPages !== expectedTotalPages
+    || page.last !== expectedLast
+    || (!page.last && page.itens.length !== page.size)
+  ) {
+    throw invalidAdminAdMediaPagination()
+  }
+}
+
+async function collectAdminAdMediaPages(
+  firstPage: AdminPage<AdminMediaItem>,
+  loadPage: (page: number) => Promise<AdminPage<AdminMediaItem>>,
+) {
+  validateAdminAdMediaPage(firstPage, 0)
+  const baseline = {
+    totalElements: firstPage.totalElements,
+    totalPages: firstPage.totalPages,
+  }
+  const itens = [...firstPage.itens]
+
+  for (let requestedPage = 1; requestedPage < baseline.totalPages; requestedPage += 1) {
+    const page = await loadPage(requestedPage)
+    validateAdminAdMediaPage(page, requestedPage)
+    if (
+      page.totalElements !== baseline.totalElements
+      || page.totalPages !== baseline.totalPages
+    ) {
+      throw invalidAdminAdMediaPagination()
+    }
+    itens.push(...page.itens)
+  }
+
+  if (itens.length !== baseline.totalElements) throw invalidAdminAdMediaPagination()
+  const uniqueIds = new Set(itens.map((item) => item.id))
+  if (uniqueIds.size !== itens.length) throw invalidAdminAdMediaPagination()
+  return { ...firstPage, itens }
+}
+
 export async function listAdminAdMedia(id: string) {
-  const payload = await request<unknown>(`/anuncios/${encodeURIComponent(id)}/midias?page=0&size=50`)
-  return pagePayload<AdminMediaItem>(payload)
+  const loadPage = async (page: number) => pagePayload<AdminMediaItem>(
+    await request<unknown>(
+      `/anuncios/${encodeURIComponent(id)}/midias?page=${page}&size=${ADMIN_AD_MEDIA_PAGE_SIZE}`,
+    ),
+  )
+  const firstPage = await loadPage(0)
+  return collectAdminAdMediaPages(firstPage, loadPage)
+}
+
+export function uploadAdminAdMedia(id: string, arquivo: File, idempotencyKey: string) {
+  const form = new FormData()
+  form.append('arquivo', arquivo)
+  return request<AdminAdMediaUploadResponse>(`/anuncios/${encodeURIComponent(id)}/midias`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: form,
+  }, { unsupportedPhotoUpload: true })
 }
 
 export async function listAdminAdHistory(id: string) {
@@ -421,6 +515,7 @@ export async function decideAdminPhotosBatch(
         response.status,
         response.status >= 500,
         payload.requestId || response.headers.get('X-Request-Id'),
+        falha?.codigo ?? null,
       )
     }
     if (!response.ok) throw await apiErrorFromResponse(response)

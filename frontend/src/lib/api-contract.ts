@@ -12,6 +12,7 @@ export class ApiContractError extends Error {
   readonly kind: ApiFailureKind
   readonly retryable: boolean
   readonly requestId: string | null
+  readonly code: string | null
 
   constructor(
     message: string,
@@ -19,6 +20,7 @@ export class ApiContractError extends Error {
     status: number | null,
     retryable = false,
     requestId: string | null = null,
+    code: string | null = null,
   ) {
     super(message)
     this.name = 'ApiContractError'
@@ -26,7 +28,36 @@ export class ApiContractError extends Error {
     this.status = status
     this.retryable = retryable
     this.requestId = requestId
+    this.code = code
   }
+}
+
+export const UNSUPPORTED_PHOTO_UPLOAD_MESSAGE =
+  'Não foi possível ler a foto. Envie um arquivo JPG, PNG ou WebP verdadeiro. Apenas mudar a extensão não resolve.'
+
+const GENERIC_UNSUPPORTED_PHOTO_MESSAGES = new Set([
+  'formato de arquivo nao permitido',
+  'unsupported media type',
+])
+
+function normalizeUnsupportedPhotoMessage(message: string) {
+  return message
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[.!?:;]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function resolveUnsupportedPhotoUploadMessage(message: unknown) {
+  const candidate = typeof message === 'string' && message.trim()
+    ? message.trim()
+    : null
+  if (!candidate) return UNSUPPORTED_PHOTO_UPLOAD_MESSAGE
+  return GENERIC_UNSUPPORTED_PHOTO_MESSAGES.has(normalizeUnsupportedPhotoMessage(candidate))
+    ? UNSUPPORTED_PHOTO_UPLOAD_MESSAGE
+    : candidate
 }
 
 export class BackendContractPendingError extends ApiContractError {
@@ -84,15 +115,22 @@ export function adminApiUrl(path: string) {
 
 export async function apiErrorFromResponse(
   response: Response,
-  options: { preserveServerMessage?: boolean } = {},
+  options: {
+    preserveServerMessage?: boolean
+    unsupportedPhotoUpload?: boolean
+  } = {},
 ): Promise<ApiContractError> {
   let serverMessage: string | null = null
   let bodyRequestId: string | null = null
+  let serverCode: string | null = null
   if (options.preserveServerMessage) {
     try {
-      const body = await response.clone().json() as { message?: unknown; requestId?: unknown }
+      const body = await response.clone().json() as { message?: unknown; code?: unknown; requestId?: unknown }
       serverMessage = typeof body.message === 'string' && body.message.trim()
         ? body.message.trim()
+        : null
+      serverCode = typeof body.code === 'string' && body.code.trim()
+        ? body.code.trim()
         : null
       bodyRequestId = typeof body.requestId === 'string' && body.requestId.trim()
         ? body.requestId.trim()
@@ -101,16 +139,16 @@ export async function apiErrorFromResponse(
       // O fallback por status permanece autoritativo quando o corpo nao segue o contrato.
     }
   }
-  const requestId = response.headers.get('X-Request-Id') || bodyRequestId
+  const requestId = bodyRequestId || response.headers.get('X-Request-Id')
   const message = (fallback: string) => serverMessage || fallback
   switch (response.status) {
     case 400:
     case 422:
-      return new ApiContractError(message('Revise os dados informados e tente novamente.'), 'INVALID_REQUEST', response.status, false, requestId)
+      return new ApiContractError(message('Revise os dados informados e tente novamente.'), 'INVALID_REQUEST', response.status, false, requestId, serverCode)
     case 401:
-      return new ApiContractError(message('Sua sessao expirou. Entre novamente.'), 'SESSION_REQUIRED', 401, false, requestId)
+      return new ApiContractError(message('Sua sessao expirou. Entre novamente.'), 'SESSION_REQUIRED', 401, false, requestId, serverCode)
     case 403:
-      return new ApiContractError(message('Voce nao tem permissao para acessar esta funcao.'), 'ACCESS_DENIED', 403, false, requestId)
+      return new ApiContractError(message('Voce nao tem permissao para acessar esta funcao.'), 'ACCESS_DENIED', 403, false, requestId, serverCode)
     case 404:
       return new ApiContractError(
         message('A integracao necessaria para esta funcao ainda nao esta disponivel.'),
@@ -118,9 +156,21 @@ export async function apiErrorFromResponse(
         404,
         false,
         requestId,
+        serverCode,
       )
     case 409:
-      return new ApiContractError(message('A operacao entrou em conflito com o estado atual.'), 'CONFLICT', 409, false, requestId)
+      return new ApiContractError(message('A operacao entrou em conflito com o estado atual.'), 'CONFLICT', 409, false, requestId, serverCode)
+    case 415:
+      return new ApiContractError(
+        options.unsupportedPhotoUpload
+          ? resolveUnsupportedPhotoUploadMessage(serverMessage)
+          : message('Não foi possível processar o arquivo enviado.'),
+        'INVALID_REQUEST',
+        415,
+        false,
+        requestId,
+        serverCode,
+      )
     default:
       return new ApiContractError(
         message('Nao foi possivel carregar os dados. Tente novamente.'),
@@ -128,6 +178,7 @@ export async function apiErrorFromResponse(
         response.status,
         response.status >= 500,
         requestId,
+        serverCode,
       )
   }
 }

@@ -11,6 +11,7 @@ function source(file) {
 }
 
 const detail = source('admin-anuncio-moderacao.tsx')
+const uploader = source('admin-anuncio-midia-uploader.tsx')
 const api = source('api.ts')
 const types = source('types.ts')
 const contractState = readFileSync(
@@ -31,8 +32,16 @@ const photoDelete = detail.slice(
   detail.indexOf('async function confirmDecision'),
 )
 const mediaTab = detail.slice(
-  detail.indexOf('<TabsContent value="midias">'),
-  detail.indexOf('<TabsContent value="documentos">'),
+  detail.indexOf('<TabsContent value="midias"'),
+  detail.indexOf('<TabsContent value="documentos"'),
+)
+const uploadAdapter = api.slice(
+  api.indexOf('export function uploadAdminAdMedia'),
+  api.indexOf('export async function listAdminAdHistory'),
+)
+const uploadSubmit = uploader.slice(
+  uploader.indexOf('async function submit'),
+  uploader.indexOf('\n  return ('),
 )
 
 assert.ok(selection.includes("choice: 'LIVRE' | 'RESTRITA_18'"))
@@ -52,11 +61,10 @@ assert.ok(detail.includes("'CONFLICT'"))
 assert.ok(!detail.includes("throw new Error(result?.motivo || 'A limpeza da foto não foi concluída.')"))
 assert.ok(detail.includes('também estiver vinculado a um documento KYC ou a outro registro'))
 assert.ok(detail.includes('Somente arquivos exclusivos e sem outras referências'))
-assert.ok(photoDelete.includes('setMedia((current) =>'))
-assert.ok(photoDelete.includes('.filter((item) => item.id !== photoDeleteTarget.id)'))
-assert.ok(photoDelete.includes('void Promise.allSettled(['))
+assert.ok(!photoDelete.includes('setMedia('))
+assert.ok(photoDelete.includes('await load(undefined, false)'))
+assert.ok(photoDelete.indexOf('await load(undefined, false)') < photoDelete.indexOf('setPhotoDeleteTarget(null)'))
 assert.ok(photoDelete.includes('revalidarCacheCatalogoPublico()'))
-assert.ok(photoDelete.includes('load()'))
 assert.ok(detail.includes("media.tipo === 'FOTO' ? 'aspect-video' : 'aspect-[16/7]'"))
 assert.ok(detail.includes('object-contain'))
 assert.ok(mediaTab.includes('data-admin-media-card') && detail.includes('data-admin-media-preview'))
@@ -65,7 +73,8 @@ assert.ok(detail.includes('<legend className="sr-only">Decisão individual da fo
 assert.ok(detail.includes('>Decisão:</span>') && detail.includes('grid min-w-[13rem] flex-1 grid-cols-2'))
 assert.ok(detail.includes('min-h-9') && detail.includes('focus-visible:ring-2'))
 assert.ok(detail.includes('rows={2}') && detail.includes('placeholder="Observação individual desta foto"'))
-assert.ok(!mediaTab.includes('Rejeitar foto'))
+assert.ok(mediaTab.includes('Rejeitar foto'))
+assert.ok(mediaTab.includes("action: 'REPROVAR'"))
 assert.ok(mediaTab.includes('Confirmar decisões das fotos ({selectedPhotoCount})'))
 assert.equal((detail.match(/<PhotoBatchDialog/g) ?? []).length, 1)
 assert.ok(detail.includes('selectedPhotoCount === pendingPhotos.length'))
@@ -74,6 +83,11 @@ assert.ok(batch.includes('pendingPhotos.map'))
 assert.ok(batch.includes("decision.classificacao === 'RESTRITA_18'"))
 assert.ok(batch.includes("filter((item) => item.resultado === 'FALHA')"))
 assert.ok(batch.includes('failedIds.has(mediaId)'))
+assert.ok(batch.includes('await load(undefined, false)'))
+assert.ok(batch.indexOf('await load(undefined, false)') < batch.indexOf('setPhotoBatchResult(response)'))
+assert.ok(!batch.includes('setMedia('))
+assert.ok(detail.includes('item.codigo ? ` (code: ${item.codigo})` : null'))
+assert.ok(detail.includes('requestId: {photoBatchResult.requestId}'))
 assert.ok(detail.includes('photoBatchLock.current'))
 assert.ok(mediaTab.includes("item.tipo === 'VIDEO'"))
 assert.ok(mediaTab.includes('Sempre RESTRITA_18'))
@@ -86,6 +100,21 @@ assert.ok(api.includes("falha?.motivo || 'A operação não pôde ser concluída
 assert.ok(types.includes("decisao: 'APROVAR' | 'EXCLUIR'"))
 assert.ok(types.includes("resultado: 'APROVADA' | 'EXCLUIDA' | 'JA_PROCESSADA' | 'FALHA'"))
 assert.ok(types.includes('codigo: string | null'))
+assert.ok(types.includes('fotosAprovadasTotal: number'))
+assert.ok(types.includes('fotosAguardandoDecisaoTotal: number'))
+assert.ok(types.includes('export type AdminAdMediaUploadResponse'))
+assert.ok(types.includes('status: string') && types.includes('statusArquivo: string'))
+assert.ok(detail.includes('disabled={headerBusy || photoApprovalBlocked}'))
+assert.ok(detail.includes('Aprove ao menos uma foto antes de aprovar o anúncio.'))
+assert.ok(detail.includes('Conclua a análise de todas as fotos antes de aprovar o anúncio.'))
+assert.ok(detail.includes('const canUploadAdminMedia = isAdmin && canModerateAd && canModerateMedia && !removed'))
+assert.ok(mediaTab.includes('<AdminAnuncioMidiaUploader'))
+assert.ok(uploadAdapter.includes("form.append('arquivo', arquivo)"))
+assert.ok(uploadAdapter.includes("headers: { 'Idempotency-Key': idempotencyKey }"))
+assert.ok(!uploadAdapter.includes("'Content-Type'"))
+assert.ok(uploadSubmit.indexOf('await uploadAdminAdMedia') < uploadSubmit.indexOf('await onReload()'))
+assert.ok(uploadSubmit.indexOf('await onReload()') < uploadSubmit.indexOf('setArquivo(null)'))
+assert.ok(uploader.includes('error.code') && uploader.includes('error.requestId'))
 assert.match(contractState, /normalized\.kind === 'NETWORK_FAILURE'/)
 assert.match(contractState, /normalized\.kind === 'CONFLICT'/)
 assert.match(contractState, /Operacao nao concluida/)

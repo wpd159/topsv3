@@ -5,6 +5,7 @@ import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import java.util.List;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.UUID;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -53,6 +54,13 @@ public interface AnuncioMidiaRepository
 
     List<AnuncioMidiaEntity> findByAnuncioIdIn(Collection<UUID> anuncioIds);
 
+    @Query("""
+            select midia.anuncioId as anuncioId, midia.arquivoMidiaId as arquivoMidiaId
+            from AnuncioMidiaEntity midia
+            where midia.id = :id
+            """)
+    Optional<ReferenciaMidiaProjection> findReferenciaById(@Param("id") UUID id);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select midia
@@ -76,6 +84,46 @@ public interface AnuncioMidiaRepository
     List<AnuncioMidiaEntity> findByArquivoMidiaId(UUID arquivoMidiaId);
 
     List<AnuncioMidiaEntity> findByArquivoMidiaIdIn(Collection<UUID> arquivoMidiaIds);
+
+    @Query(value = """
+            select am.id
+            from anuncio_midia am
+            join arquivo_midia arquivo on arquivo.id = am.arquivo_midia_id
+            where am.anuncio_id = :anuncioId
+              and am.tipo = 'FOTO'
+              and am.finalidade in ('CAPA', 'GALERIA')
+              and am.status = 'PUBLICAVEL'
+              and am.visibilidade_midia is not null
+              and arquivo.status_arquivo = 'VALIDADO'
+              and not exists (
+                select 1
+                from documento_usuario documento
+                where documento.arquivo_midia_id = am.arquivo_midia_id
+              )
+            order by am.id
+            """, nativeQuery = true)
+    List<UUID> findFotosAprovadasElegiveisIds(@Param("anuncioId") UUID anuncioId);
+
+    @Query(value = """
+            select am.id
+            from anuncio_midia am
+            where am.anuncio_id = :anuncioId
+              and am.tipo = 'FOTO'
+              and am.finalidade in ('CAPA', 'GALERIA')
+              and am.status in ('PENDENTE', 'AJUSTE_SOLICITADO')
+            order by am.id
+            """, nativeQuery = true)
+    List<UUID> findFotosAguardandoDecisaoIds(@Param("anuncioId") UUID anuncioId);
+
+    @Query(value = """
+            select exists (
+              select 1
+              from documento_usuario documento
+              where documento.arquivo_midia_id = :arquivoMidiaId
+            )
+            """, nativeQuery = true)
+    boolean existsDocumentoUsuarioHistoricoPorArquivoId(
+            @Param("arquivoMidiaId") UUID arquivoMidiaId);
 
     @Query("""
             select midia
@@ -131,5 +179,11 @@ public interface AnuncioMidiaRepository
         UUID getAnuncioId();
 
         long getTotalMidias();
+    }
+
+    interface ReferenciaMidiaProjection {
+        UUID getAnuncioId();
+
+        UUID getArquivoMidiaId();
     }
 }

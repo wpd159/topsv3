@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import ts from 'typescript'
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const sourceRoot = path.resolve(scriptDirectory, '../src')
@@ -11,6 +13,24 @@ function source(relativePath) {
   return readFileSync(path.resolve(sourceRoot, relativePath), 'utf8')
 }
 
+function uniqueSourceBlock(contents, startMarker, endMarker) {
+  const start = contents.indexOf(startMarker)
+  assert.notEqual(start, -1, `Inicio do bloco nao localizado: ${startMarker}`)
+  assert.equal(
+    contents.indexOf(startMarker, start + startMarker.length),
+    -1,
+    `Inicio do bloco localizado mais de uma vez: ${startMarker}`,
+  )
+  const end = contents.indexOf(endMarker, start + startMarker.length)
+  assert.notEqual(end, -1, `Fim do bloco nao localizado: ${endMarker}`)
+  assert.equal(
+    contents.indexOf(endMarker, end + endMarker.length),
+    -1,
+    `Fim do bloco localizado mais de uma vez: ${endMarker}`,
+  )
+  return contents.slice(start, end)
+}
+
 const listPage = source('app/(painel-admin)/admin/anuncios/page.tsx')
 const detailPage = source('app/(painel-admin)/admin/anuncios/[id]/page.tsx')
 const legacyListPage = source('app/(painel-admin)/admin/moderacao-v2/page.tsx')
@@ -18,6 +38,7 @@ const legacyDetailPage = source('app/(painel-admin)/admin/moderacao-v2/[anuncioI
 const sidebar = source('app/(painel-admin)/admin/components/sidebar/sidebar-links.tsx')
 const list = source('features/admin-anuncios/admin-anuncios-list.tsx')
 const detail = source('features/admin-anuncios/admin-anuncio-moderacao.tsx')
+const uploader = source('features/admin-anuncios/admin-anuncio-midia-uploader.tsx')
 const documents = source('features/admin-anuncios/admin-anuncio-documentos.tsx')
 const reviewGrid = source('features/admin-documentos/admin-kyc-review-grid.tsx')
 const premium = source('features/admin-anuncios/admin-anuncio-premium.tsx')
@@ -29,6 +50,23 @@ const edit = source('features/admin-anuncios/admin-anuncio-edit-form.tsx')
 const editPage = source('app/(painel-admin)/admin/anuncios/[id]/editar/page.tsx')
 const api = source('features/admin-anuncios/api.ts')
 const apiContract = source('lib/api-contract.ts')
+const paginationBlock = uniqueSourceBlock(
+  api,
+  'const ADMIN_AD_MEDIA_PAGE_SIZE',
+  'export async function listAdminAdMedia',
+)
+const uploadAdapter = api.slice(
+  api.indexOf('export function uploadAdminAdMedia'),
+  api.indexOf('export async function listAdminAdHistory'),
+)
+const uploadSubmit = uploader.slice(
+  uploader.indexOf('async function submit'),
+  uploader.indexOf('\n  return ('),
+)
+const uploadFailure = uploadSubmit.slice(
+  uploadSubmit.indexOf('} catch (uploadError)'),
+  uploadSubmit.indexOf('} finally'),
+)
 const removalAdapter = api.slice(
   api.indexOf('export function removeAdminAd'),
   api.indexOf('export function blockAdminAd'),
@@ -83,7 +121,8 @@ for (const contract of [
   "request(`/anuncios?${query.toString()}`)",
   "request<AdminAdDetail>(`/anuncios/${encodeURIComponent(id)}`)",
   '`/anuncios/${encodeURIComponent(id)}/proprietario`',
-  '`/anuncios/${encodeURIComponent(id)}/midias?page=0&size=50`',
+  '`/anuncios/${encodeURIComponent(id)}/midias?page=${page}&size=${ADMIN_AD_MEDIA_PAGE_SIZE}`',
+  '`/anuncios/${encodeURIComponent(id)}/midias`',
   '`/anuncios/${encodeURIComponent(id)}/historico-moderacao`',
   '`/anuncios/${encodeURIComponent(id)}/documentos`',
   '`/premium/anuncios/${encodeURIComponent(id)}/beneficios`',
@@ -112,9 +151,158 @@ assert.ok(
 assert.ok(api.includes('[csrfHeaderName()]: value'), 'Mutacoes devem enviar CSRF.')
 assert.ok(api.includes("credentials: 'include'"), 'A sessao deve ser a unica fonte do ator.')
 assert.ok(api.includes('throw normalizeApiError(error)'), 'Falhas nao podem ser convertidas em sucesso ou vazio.')
+assert.ok(api.includes('const ADMIN_AD_MEDIA_PAGE_SIZE = 50'), 'A leitura de midias deve respeitar o limite de pagina do backend.')
+assert.ok(api.includes('const ADMIN_AD_MEDIA_MAX_PAGES = 20'), 'A leitura administrativa deve rejeitar mais de 20 paginas.')
+assert.ok(api.includes('for (let requestedPage = 1; requestedPage < baseline.totalPages; requestedPage += 1)'), 'A coleta deve percorrer um total fixo de paginas, sem depender de metadado mutavel para continuar.')
+assert.ok(api.includes('page.page === requestedPage') && api.includes('page.totalPages !== baseline.totalPages'), 'Cada pagina deve ser validada contra a requisicao e a linha de base autoritativa.')
+assert.ok(api.includes('itens.length !== baseline.totalElements') && api.includes('uniqueIds.size !== itens.length'), 'Colecao incompleta ou duplicada deve falhar explicitamente.')
+
+const paginationTypeScript = `
+    import assert from 'node:assert/strict'
+    class ApiContractError extends Error {
+      constructor(message, kind, status, retryable, requestId, code) {
+        super(message)
+        this.kind = kind
+        this.status = status
+        this.retryable = retryable
+        this.requestId = requestId
+        this.code = code
+      }
+    }
+    ${paginationBlock}
+
+    const itens = Array.from({ length: 121 }, (_, index) => ({
+      id: String(index).padStart(3, '0'),
+      ordem: index,
+    }))
+    const paginas = [
+      { itens: itens.slice(0, 50), page: 0, size: 50, totalElements: 121, totalPages: 3, last: false },
+      { itens: itens.slice(50, 100), page: 1, size: 50, totalElements: 121, totalPages: 3, last: false },
+      { itens: itens.slice(100), page: 2, size: 50, totalElements: 121, totalPages: 3, last: true },
+    ]
+    const requestedPages = []
+    const collected = await collectAdminAdMediaPages(paginas[0], async (page) => {
+      requestedPages.push(page)
+      return paginas[page]
+    })
+    assert.deepEqual(requestedPages, [1, 2])
+    assert.deepEqual(collected.itens.map((item) => item.id), itens.map((item) => item.id))
+    assert.equal(collected.totalElements, 121)
+    assert.equal(collected.totalPages, 3)
+
+    await assert.rejects(
+      collectAdminAdMediaPages(paginas[0], async (page) => {
+        if (page !== 1) return paginas[page]
+        return {
+          ...paginas[1],
+          itens: [...paginas[1].itens.slice(0, -1), itens[0]],
+        }
+      }),
+      (error) => error.code === 'ADMIN_MEDIA_PAGINATION_INVALID',
+    )
+
+    let wrongPageRequests = 0
+    await assert.rejects(
+      collectAdminAdMediaPages(
+        { itens: itens.slice(0, 50), page: 0, size: 50, totalElements: 51, totalPages: 2, last: false },
+        async () => {
+          wrongPageRequests += 1
+          return { itens: itens.slice(50, 51), page: 0, size: 50, totalElements: 51, totalPages: 2, last: true }
+        },
+      ),
+      (error) => error.code === 'ADMIN_MEDIA_PAGINATION_INVALID',
+    )
+    assert.equal(wrongPageRequests, 1)
+
+    let inconsistentMetadataRequests = 0
+    await assert.rejects(
+      collectAdminAdMediaPages(
+        { itens: itens.slice(0, 50), page: 0, size: 50, totalElements: 101, totalPages: 3, last: false },
+        async () => {
+          inconsistentMetadataRequests += 1
+          return { itens: itens.slice(50, 51), page: 1, size: 50, totalElements: 51, totalPages: 2, last: true }
+        },
+      ),
+      (error) => error.code === 'ADMIN_MEDIA_PAGINATION_INVALID',
+    )
+    assert.equal(inconsistentMetadataRequests, 1)
+
+    let incompleteRequests = 0
+    await assert.rejects(
+      collectAdminAdMediaPages(
+        { itens: itens.slice(0, 50), page: 0, size: 50, totalElements: 51, totalPages: 2, last: false },
+        async () => {
+          incompleteRequests += 1
+          return { itens: [], page: 1, size: 50, totalElements: 51, totalPages: 2, last: true }
+        },
+      ),
+      (error) => error.code === 'ADMIN_MEDIA_PAGINATION_INVALID',
+    )
+    assert.equal(incompleteRequests, 1)
+
+    let excessiveRequests = 0
+    await assert.rejects(
+      collectAdminAdMediaPages(
+        {
+          itens: itens.slice(0, 50),
+          page: 0,
+          size: 50,
+          totalElements: (ADMIN_AD_MEDIA_MAX_PAGES + 1) * 50,
+          totalPages: ADMIN_AD_MEDIA_MAX_PAGES + 1,
+          last: false,
+        },
+        async () => { excessiveRequests += 1; return paginas[0] },
+      ),
+      (error) => error.code === 'ADMIN_MEDIA_PAGINATION_INVALID',
+    )
+    assert.equal(excessiveRequests, 0)
+    console.log('ADMIN_MEDIA_PAGINATION_RESULT=OK items=121')
+`
+const paginationCompilation = ts.transpileModule(paginationTypeScript, {
+  compilerOptions: {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+  },
+  fileName: 'admin-media-pagination.test.ts',
+  reportDiagnostics: true,
+})
+const paginationCompilationErrors = (paginationCompilation.diagnostics ?? [])
+  .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error)
+  .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))
+assert.deepEqual(paginationCompilationErrors, [], 'O bloco TypeScript de paginacao deve transpilar sem erros.')
+const paginationRuntime = spawnSync(process.execPath, [
+  '--no-warnings',
+  '--input-type=module',
+  '--eval',
+  paginationCompilation.outputText,
+], { encoding: 'utf8' })
+assert.equal(paginationRuntime.status, 0, paginationRuntime.stderr || paginationRuntime.stdout)
+assert.match(paginationRuntime.stdout, /ADMIN_MEDIA_PAGINATION_RESULT=OK items=121/)
+assert.ok(api.includes("csrfHeaders(multipart ? 'multipart' : 'json')"), 'Multipart deve preservar CSRF sem fixar Content-Type.')
+assert.ok(uploadAdapter.includes('new FormData()') && uploadAdapter.includes("form.append('arquivo', arquivo)"), 'Upload admin deve enviar somente a parte arquivo.')
+assert.ok(uploadAdapter.includes("method: 'POST'") && uploadAdapter.includes("headers: { 'Idempotency-Key': idempotencyKey }"), 'Upload admin deve usar POST e Idempotency-Key.')
+assert.ok(uploadAdapter.includes('{ unsupportedPhotoUpload: true }'), 'Upload admin de foto deve ativar explicitamente o fallback fotografico.')
+assert.equal((api.match(/unsupportedPhotoUpload: true/g) ?? []).length, 1, 'Somente o upload admin de foto pode ativar o fallback fotografico.')
+assert.ok(api.includes('unsupportedPhotoUpload: options.unsupportedPhotoUpload === true'), 'O adapter deve propagar o opt-in fotografico explicitamente ao contrato HTTP.')
+assert.ok(!uploadAdapter.includes("'Content-Type'") && !uploadAdapter.match(/objectKey|storage|bucket|nomeArquivo|arquivoNome/), 'Upload admin nao pode fixar boundary nem expor metadados internos.')
 
 assert.ok(types.includes("tipo: 'FOTO' | 'VIDEO'"), 'A fila de midia nao pode tipar Story.')
 assert.ok(!types.includes("'FOTO' | 'VIDEO' | 'STORY'"), 'Story nao pode integrar o contrato V3 da fila.')
+for (const field of [
+  'fotosAprovadasTotal: number',
+  'fotosAguardandoDecisaoTotal: number',
+  'midiaId: string',
+  'anuncioId: string',
+  "tipo: 'FOTO'",
+  "finalidade: 'GALERIA'",
+  'ordem: number',
+  'status: string',
+  'statusArquivo: string',
+  'idempotente: boolean',
+  'requestId: string',
+]) {
+  assert.ok(types.includes(field), `Campo do contrato de upload/fotos ausente: ${field}`)
+}
 assert.ok(detail.includes("item.tipo === 'VIDEO' ? 'RESTRITA_18'"), 'Video aprovado deve permanecer RESTRITA_18.')
 assert.ok(detail.includes('Sempre RESTRITA_18'), 'A interface deve informar a classificacao fixa do video.')
 assert.ok(detail.includes('PendingPhotoDecisionSelector'), 'Foto pendente deve preservar a classificacao local.')
@@ -129,8 +317,9 @@ const photoDeleteFlow = detail.slice(
   detail.indexOf('async function confirmDecision'),
 )
 assert.ok(detail.includes('também estiver vinculado a um documento KYC ou a outro registro'), 'O modal deve informar a preservacao de referencias legitimas.')
-assert.ok(photoDeleteFlow.includes('setMedia((current) =>') && photoDeleteFlow.includes('.filter((item) => item.id !== photoDeleteTarget.id)'), 'O card confirmado deve sair imediatamente da lista local.')
-assert.ok(photoDeleteFlow.includes('void Promise.allSettled([') && photoDeleteFlow.includes('revalidarCacheCatalogoPublico()') && photoDeleteFlow.includes('load()'), 'Cache e detalhe devem reconciliar em segundo plano.')
+assert.ok(!photoDeleteFlow.includes('setMedia('), 'A exclusao nao pode remover o card de forma otimista.')
+assert.ok(photoDeleteFlow.includes('await load(undefined, false)') && photoDeleteFlow.indexOf('await load(undefined, false)') < photoDeleteFlow.indexOf('setPhotoDeleteTarget(null)'), 'A exclusao deve recarregar detalhe e lista antes de fechar o modal.')
+assert.ok(photoDeleteFlow.includes('revalidarCacheCatalogoPublico()'), 'A exclusao confirmada deve invalidar o cache publico aplicavel.')
 assert.ok(api.includes('if (!response.ok && respostaValida)') && api.includes('falha?.motivo'), 'Falha funcional HTTP deve preservar a mensagem sanitizada do backend.')
 assert.ok(types.includes('codigo: string | null'), 'O contrato deve transportar o codigo funcional sanitizado.')
 assert.ok(detail.includes("media.tipo === 'FOTO' ? 'aspect-video' : 'aspect-[16/7]'") && detail.includes('object-contain'), 'A foto deve ganhar area util sem cortar a midia e sem alterar o video.')
@@ -139,7 +328,7 @@ assert.ok(detail.includes('data-admin-media-metadata') && detail.includes('data-
 assert.ok(detail.includes('<legend className="sr-only">Decisão individual da foto</legend>') && detail.includes('>Decisão:</span>'), 'O grupo compacto deve preservar fieldset e legend acessiveis.')
 assert.ok(detail.includes('grid min-w-[13rem] flex-1 grid-cols-2') && detail.includes('focus-visible:ring-2'), 'Radios devem ficar lado a lado, envolver de forma controlada e manter foco visivel.')
 assert.ok(detail.includes("title: 'Aplicar e aprovar vídeo'") && detail.includes('Aplicar classificação'), 'Video e foto finalizada devem preservar suas operacoes fora do lote.')
-assert.ok(!detail.includes('Rejeitar foto'), 'Foto pendente nao pode manter a rejeicao logica anterior.')
+assert.ok(detail.includes("title: 'Rejeitar foto'") && detail.includes("action: 'REPROVAR'"), 'Foto pendente deve oferecer rejeicao pela API canonica com motivo.')
 assert.ok(detail.includes('Confirmar decisões das fotos ({selectedPhotoCount})'), 'O lote deve usar um unico botao com a quantidade selecionada.')
 assert.ok(detail.includes('<PhotoBatchDialog') && detail.includes('Confirmar decisões das fotos'), 'O lote deve usar um unico modal de confirmacao.')
 assert.ok(detail.includes('decideAdminPhotosBatch') && detail.includes('pendingPhotos.map'), 'O frontend deve enviar uma unica requisicao batch.')
@@ -153,7 +342,13 @@ assert.ok(!localPhotoSelection.includes("'EXCLUIR'") && detail.includes("choice 
 assert.ok(detail.includes("choice === 'RESTRITA_18' ? previous?.observacao ?? '' : ''"), 'Trocar para LIVRE deve limpar observacao residual.')
 assert.ok(detail.includes("decision.classificacao === 'RESTRITA_18'") && detail.includes('decision.observacao.trim() || undefined'), 'Somente RESTRITA_18 pode enviar observacao individual.')
 assert.ok(detail.includes("filter((item) => item.resultado === 'FALHA')") && detail.includes('failedIds.has(mediaId)'), 'Falha parcial deve preservar somente itens que exigem retry.')
-assert.ok(detail.includes('applyConfirmedPhotoBatch(response)') && detail.includes('void load()'), 'O lote deve refletir o 2xx localmente antes da reconciliacao secundaria.')
+assert.ok(!detail.includes('applyConfirmedPhotoBatch'), 'O lote nao pode marcar fotos como aprovadas de forma otimista.')
+const confirmedPhotoBatchFlow = detail.slice(
+  detail.indexOf('async function confirmPhotoBatch'),
+  detail.indexOf('async function confirmPhotoDelete'),
+)
+assert.ok(confirmedPhotoBatchFlow.includes('await load(undefined, false)') && confirmedPhotoBatchFlow.indexOf('await load(undefined, false)') < confirmedPhotoBatchFlow.indexOf('setPhotoBatchResult(response)'), 'O lote deve recarregar detalhe e midias antes de confirmar sucesso.')
+assert.ok(detail.includes('item.codigo ? ` (code: ${item.codigo})` : null') && detail.includes('requestId: {photoBatchResult.requestId}'), 'Falha parcial deve exibir code e requestId devolvidos pelo backend.')
 assert.ok(detail.includes('Editar dados do usuário') && detail.includes('<OwnerEditDialog'), 'O detalhe deve oferecer a correcao cadastral no contexto do proprietario.')
 assert.ok(detail.includes('isAdmin && canModerateAd && ad.anunciante'), 'A acao cadastral deve permanecer invisivel para MODERADOR.')
 assert.ok(list.includes('Proprietário suspenso') && list.includes("owner?.status === 'SUSPENSO'"), 'A visao administrativa deve sinalizar o proprietario suspenso.')
@@ -178,22 +373,39 @@ assert.ok(ownerUpdateAdapter.includes("method: 'PATCH'") && ownerUpdateAdapter.i
 assert.ok(!ownerUpdateAdapter.includes('usuarioId'), 'O cliente nao pode escolher o usuario atualizado.')
 assert.ok(api.includes('AdminAdOwnerFormError') && api.includes('body.mensagem'), 'Conflitos cadastrais devem preservar a mensagem e os erros de campo do backend.')
 assert.ok(!detail.includes('CPF já vinculado a outro usuário.'), 'A mensagem de conflito nao pode ser fabricada no componente.')
-assert.ok(detail.includes('applyConfirmedMediaResponse(intent.media.id, response)'), 'A classificacao individual deve refletir somente a resposta confirmada pelo servidor.')
-assert.ok(detail.includes('status: response.status') && detail.includes('response.visibilidadeMidia ?? item.visibilidadeMidia'), 'O estado local deve usar status e classificacao retornados pela mutation.')
 const confirmedMediaFlow = detail.slice(
   detail.indexOf("} else if (intent.kind === 'MEDIA')"),
   detail.indexOf('} else {', detail.indexOf("} else if (intent.kind === 'MEDIA')")),
 )
-assert.ok(!confirmedMediaFlow.includes('await load()'), 'O loading da classificacao nao pode aguardar o refetch secundario.')
+assert.ok(!confirmedMediaFlow.includes('setMedia('), 'A decisao individual nao pode simular status local.')
+assert.ok(confirmedMediaFlow.includes('await load(undefined, false)') && confirmedMediaFlow.indexOf('await load(undefined, false)') < confirmedMediaFlow.indexOf('setIntent(null)'), 'A decisao individual deve recarregar detalhe e midias antes de fechar.')
 const confirmedReclassificationFlow = detail.slice(
   detail.indexOf('} else {', detail.indexOf("} else if (intent.kind === 'MEDIA')")),
-  detail.indexOf('\n      await load()', detail.indexOf("} else if (intent.kind === 'MEDIA')")),
+  detail.indexOf('\n      }\n      await load()', detail.indexOf("} else if (intent.kind === 'MEDIA')")),
 )
-assert.ok(!confirmedReclassificationFlow.includes('await load()'), 'O loading da reclassificacao nao pode aguardar o refetch secundario.')
+assert.ok(!confirmedReclassificationFlow.includes('setMedia('), 'A reclassificacao nao pode simular status local.')
+assert.ok(confirmedReclassificationFlow.includes('await load(undefined, false)') && confirmedReclassificationFlow.indexOf('await load(undefined, false)') < confirmedReclassificationFlow.indexOf('setIntent(null)'), 'A reclassificacao deve recarregar detalhe e midias antes de fechar.')
 assert.ok(detail.includes('else delete next[intent.media.id]'), 'Falha deve restaurar o estado persistido da classificacao, sem simular sucesso.')
 assert.ok(detail.includes("normalized.kind === 'CONFLICT'") && detail.includes('O estado da mídia mudou.'), 'Conflito real deve atualizar o detalhe e explicar a mudanca de estado.')
 assert.ok(detail.includes('preserveSelection.mode') && detail.includes('selectionStillApplies'), 'A selecao deve ser preservada somente enquanto a decisao continuar aplicavel.')
 assert.ok(detail.includes('await load()') && detail.includes('setIntent(null)'), 'Sucesso deve atualizar o card antes de fechar o modal.')
+assert.ok(detail.includes('const canUploadAdminMedia = isAdmin && canModerateAd && canModerateMedia && !removed'), 'Upload deve exigir cumulativamente ADMIN, ANUNCIO_MODERAR e MIDIA_REVISAR.')
+assert.ok(detail.includes('<AdminAnuncioMidiaUploader') && detail.includes('onReload={() => load(undefined, false)}'), 'A aba Midias deve integrar o uploader com recarga autoritativa.')
+assert.ok(detail.includes('ad.fotosAprovadasTotal === 0') && detail.includes('ad.fotosAguardandoDecisaoTotal > 0'), 'A aprovacao do anuncio deve respeitar os contadores do backend.')
+assert.ok(detail.includes('disabled={headerBusy || photoApprovalBlocked}'), 'O botao Aprovar anuncio deve ficar visualmente desabilitado quando houver bloqueio de fotos.')
+assert.ok(detail.includes('Aprove ao menos uma foto antes de aprovar o anúncio.'), 'Mensagem de ausencia de foto aprovada deve ser exata.')
+assert.ok(detail.includes('Conclua a análise de todas as fotos antes de aprovar o anúncio.'), 'Mensagem de fotos pendentes deve ser exata.')
+assert.ok(uploader.includes('const [arquivo, setArquivo] = useState<File | null>(null)') && uploader.includes('const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null)'), 'Uploader deve manter arquivo e chave como estado da tentativa logica.')
+assert.ok(uploader.includes('setIdempotencyKey(selected ? crypto.randomUUID() : null)'), 'Selecionar outro arquivo deve iniciar nova tentativa logica.')
+assert.ok(uploadSubmit.indexOf('await uploadAdminAdMedia') < uploadSubmit.indexOf('await onReload()') && uploadSubmit.indexOf('await onReload()') < uploadSubmit.indexOf('setArquivo(null)') && uploadSubmit.indexOf('setArquivo(null)') < uploadSubmit.indexOf("setSuccess('Foto enviada"), 'Arquivo e chave so podem ser limpos apos 2xx e recarga bem-sucedida.')
+assert.ok(!uploadFailure.includes('setArquivo(null)') && !uploadFailure.includes('setIdempotencyKey(null)') && uploadFailure.includes('setError(normalizeApiError(uploadError))'), 'Falha deve preservar arquivo e Idempotency-Key para retry.')
+assert.ok(uploader.includes("error ? 'Tentar novamente' : 'Enviar foto'"), 'Uploader deve oferecer retry explicito sem nova selecao.')
+assert.ok(uploader.includes('error.code') && uploader.includes('error.requestId'), 'Falha de upload deve exibir code e requestId.')
+assert.ok(apiContract.includes('const requestId = bodyRequestId || response.headers.get(\'X-Request-Id\')'), 'requestId do corpo deve preceder o cabecalho.')
+assert.ok(apiContract.includes('UNSUPPORTED_PHOTO_UPLOAD_MESSAGE') && apiContract.includes('Não foi possível ler a foto. Envie um arquivo JPG, PNG ou WebP verdadeiro. Apenas mudar a extensão não resolve.'), 'Fallback 415 deve permanecer exato.')
+assert.ok(apiContract.includes("'formato de arquivo nao permitido'") && apiContract.includes("'unsupported media type'"), 'Resolver 415 deve reconhecer as mensagens genericas conhecidas independentemente de caixa e acentos.')
+assert.ok(apiContract.includes('resolveUnsupportedPhotoUploadMessage(serverMessage)'), 'Erro HTTP administrativo 415 deve usar o resolver central.')
+assert.ok(apiContract.includes('? UNSUPPORTED_PHOTO_UPLOAD_MESSAGE\n    : candidate'), 'Mensagem 415 especifica deve ser preservada.')
 assert.ok(detail.includes('mediaOrdinal[item.id]') && !detail.includes('item.ordem + 1'), 'Capa e galeria nao podem repetir a mesma numeracao visual.')
 assert.ok(detail.includes("filter((item) => String(item.tipo) !== 'STORY')"), 'Story nao pode entrar na secao de midias.')
 assert.ok(detail.includes("action: 'APROVAR'") && detail.includes("action: 'REPROVAR'"), 'Aprovar e rejeitar devem permanecer disponiveis.')

@@ -11,6 +11,8 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
+import br.com.topsdojob.v3.application.anuncio.midia.AnuncioMidiaUploadCoreService;
 import br.com.topsdojob.v3.application.publico.anunciante.dto.ReordenarMinhasMidiasRequestDto;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService;
 import br.com.topsdojob.v3.application.publico.anunciante.midia.FotoUploadProcessor;
@@ -74,9 +76,12 @@ class MinhasMidiasServiceTest {
     private final Map<String, StoredObject> objetos = new LinkedHashMap<>();
     private final Authentication authentication = mock(Authentication.class);
     private final R2StorageProperties storageProperties = storageProperties();
+    private final FotoElegivelAnuncioPolicy fotoElegivelPolicy = mock(FotoElegivelAnuncioPolicy.class);
+    private final AnuncioMidiaUploadCoreService uploadCoreService = new AnuncioMidiaUploadCoreService(
+            midiaRepository, arquivoRepository, validator, fotoProcessor, storageProperties, storageProvider);
     private final MinhasMidiasService service = new MinhasMidiasService(
             consultaService, anuncioRepository, midiaRepository, arquivoRepository, revisaoRepository, limiteService,
-            validator, fotoProcessor, new MidiaUploadProperties(), storageProperties, storageProvider);
+            new MidiaUploadProperties(), storageProperties, storageProvider, uploadCoreService, fotoElegivelPolicy);
 
     @BeforeEach
     void setUp() {
@@ -101,6 +106,19 @@ class MinhasMidiasServiceTest {
                 objetos.get(invocation.getArgument(1)));
         when(fotoProcessor.processar(any())).thenReturn(processada());
         when(midiaRepository.findByAnuncioId(ANUNCIO_ID)).thenAnswer(ignored -> List.copyOf(vinculos));
+        when(midiaRepository.findByAnuncioIdForUpdate(ANUNCIO_ID)).thenAnswer(ignored -> vinculos.stream()
+                .filter(item -> ANUNCIO_ID.equals(item.getAnuncioId()))
+                .toList());
+        when(midiaRepository.findByIdInForUpdate(any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<UUID> ids = (List<UUID>) invocation.getArgument(0);
+            return vinculos.stream().filter(item -> ids.contains(item.getId())).toList();
+        });
+        when(midiaRepository.findByArquivoMidiaId(any())).thenAnswer(invocation ->
+                vinculos.stream()
+                        .filter(item -> item.getArquivoMidiaId().equals(invocation.getArgument(0)))
+                        .toList());
+        when(midiaRepository.existsDocumentoUsuarioHistoricoPorArquivoId(any())).thenReturn(false);
         when(midiaRepository.findById(any())).thenAnswer(invocation ->
                 vinculos.stream().filter(item -> item.getId().equals(invocation.getArgument(0))).findFirst());
         when(midiaRepository.existsById(any())).thenAnswer(invocation ->
@@ -117,6 +135,11 @@ class MinhasMidiasServiceTest {
         });
         when(arquivoRepository.findById(any())).thenAnswer(invocation ->
                 java.util.Optional.ofNullable(arquivos.get(invocation.getArgument(0))));
+        when(arquivoRepository.findByIdInForUpdate(any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            List<UUID> ids = (List<UUID>) invocation.getArgument(0);
+            return ids.stream().map(arquivos::get).filter(java.util.Objects::nonNull).toList();
+        });
         when(arquivoRepository.save(any())).thenAnswer(invocation -> {
             ArquivoMidiaEntity value = invocation.getArgument(0);
             arquivos.put(value.getId(), value);
@@ -349,7 +372,27 @@ class MinhasMidiasServiceTest {
 
         assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.REMOVIDA);
         assertThat(response.midias()).isEmpty();
+        verify(fotoElegivelPolicy).validarRemocaoIndividual(any(AnuncioEntity.class), eq(vinculo.getId()));
         verify(storage, never()).delete(any(), any());
+    }
+
+    @Test
+    void remocaoConsultaGuardDaUltimaFotoAntesDeAlterarVinculo() {
+        AnuncioMidiaEntity vinculo = vinculo(TipoAnuncioMidia.FOTO, 0);
+        vinculos.add(vinculo);
+        org.mockito.Mockito.doThrow(new FotoElegivelAnuncioPolicy.UltimaFotoAprovadaException())
+                .when(fotoElegivelPolicy)
+                .validarRemocaoIndividual(any(AnuncioEntity.class), eq(vinculo.getId()));
+
+        assertThatThrownBy(() -> service.remover(SLUG, vinculo.getId(), authentication))
+                .isInstanceOfSatisfying(
+                        FotoElegivelAnuncioPolicy.UltimaFotoAprovadaException.class,
+                        exception -> assertThat(exception.getReason())
+                                .isEqualTo(FotoElegivelAnuncioPolicy.MENSAGEM_ULTIMA_FOTO_APROVADA));
+
+        assertThat(vinculo.getStatus()).isEqualTo(StatusAnuncioMidia.PENDENTE);
+        verify(midiaRepository).findByAnuncioIdForUpdate(ANUNCIO_ID);
+        verify(midiaRepository, never()).flush();
     }
 
     @Test

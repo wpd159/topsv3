@@ -182,7 +182,7 @@ services:
         ENV R2_PUBLIC_BASE_URL=$${R2_PUBLIC_BASE_URL}
         COPY --from=deps /app/node_modules ./node_modules
         COPY . .
-        RUN npm run build
+        RUN npm run build && node scripts/test-search-indexing-artifact.mjs public
         FROM node:22.13.1-alpine AS runtime
         WORKDIR /app
         ENV NODE_ENV=production

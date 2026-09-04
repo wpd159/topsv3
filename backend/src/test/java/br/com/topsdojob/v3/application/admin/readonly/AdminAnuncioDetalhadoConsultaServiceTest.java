@@ -17,6 +17,7 @@ import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaSer
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.application.admin.readonly.dto.AdminLocalizacaoSanitizadaDto;
+import br.com.topsdojob.v3.application.anuncio.FotoElegivelAnuncioPolicy;
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
 import br.com.topsdojob.v3.application.metrica.VisualizacoesCanonicasDto;
 import br.com.topsdojob.v3.application.publico.anunciante.MeuAnuncioStoryConsultaService;
@@ -86,6 +87,7 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
     private final MidiaPublicaUrlService urlService = mock(MidiaPublicaUrlService.class);
     private final AdminKycService kycService = mock(AdminKycService.class);
     private final MeuAnuncioStoryConsultaService storyConsultaService = mock(MeuAnuncioStoryConsultaService.class);
+    private final FotoElegivelAnuncioPolicy fotoElegivelAnuncioPolicy = mock(FotoElegivelAnuncioPolicy.class);
     private final AdminAnuncioDetalhadoConsultaService service = new AdminAnuncioDetalhadoConsultaService(
             anuncioRepository,
             bloqueioRepository,
@@ -104,7 +106,8 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
             urlService,
             kycService,
             storyConsultaService,
-            new ObjectMapper());
+            new ObjectMapper(),
+            fotoElegivelAnuncioPolicy);
     private UUID anuncioId;
     private AnuncioEntity anuncio;
     private UsuarioEntity usuario;
@@ -147,6 +150,8 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
                 anuncioId, new AdminLocalizacaoSanitizadaDto(
                         "GO", "Goiania", "Setor Bueno", "Regiao central")));
         when(revisaoRepository.countByAnuncioId(anuncioId)).thenReturn(0L);
+        when(fotoElegivelAnuncioPolicy.consultarTotais(anuncioId))
+                .thenReturn(new FotoElegivelAnuncioPolicy.Totais(2, 1));
         when(revisaoRepository.findFirstByAnuncioIdAndStatusInOrderByCriadoEmDesc(any(), any()))
                 .thenReturn(Optional.empty());
         when(revisaoRepository.findByAnuncioId(anuncioId)).thenReturn(List.of());
@@ -349,6 +354,8 @@ class AdminAnuncioDetalhadoConsultaServiceTest {
         assertThat(detalhe.metricas().visualizacoes().total()).isEqualTo(25);
         assertThat(detalhe.metricas().cliquesWhatsapp()).isEqualTo(5);
         assertThat(detalhe.metricas().ctr()).isEqualByComparingTo("20.00");
+        assertThat(detalhe.fotosAprovadasTotal()).isEqualTo(2);
+        assertThat(detalhe.fotosAguardandoDecisaoTotal()).isEqualTo(1);
     }
 
     @Test

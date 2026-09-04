@@ -14,6 +14,7 @@ import {
   buscarMeuAnuncio,
   consultarLimitesMinhasMidias,
   enviarMinhasMidiasEmLote,
+  meusAnunciosErrorMessage,
   MeusAnunciosApiError,
   type MeuAnuncio,
   type MeuAnuncioAtualizacao,
@@ -575,7 +576,7 @@ export default function AnuncioWizard({ mode = 'create', slug }: AnuncioWizardPr
         setCreateMediaErrors(Object.fromEntries(
           arquivos.map((file) => [
             uploadFileKey(file),
-            error instanceof Error ? error.message : 'Falha ao enviar o lote.',
+            meusAnunciosErrorMessage(error, 'Falha ao enviar o lote.'),
           ])
         ))
         setStep('fotos')
