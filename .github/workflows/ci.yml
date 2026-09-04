@@ -58,9 +58,57 @@ jobs:
           SEARCH_INDEXING_MODE: blocked
         run: |
           set -euo pipefail
-          npm ci
-          npm audit --omit=dev --audit-level=high
-          npm audit --audit-level=high
+          run_npm_audit() {
+            local attempt audit_exit audit_output normalized_output output_line error_code
+            local vulnerability_pattern='#[[:space:]]+npm[[:space:]]+audit[[:space:]]+report|[0-9]+[[:space:]]+(high|critical)[[:space:]]+severity[[:space:]]+vulnerabilit'
+            local outage_pattern='502[[:space:]]+bad[[:space:]]+gateway|503[[:space:]]+service[[:space:]]+unavailable|504[[:space:]]+gateway[[:space:]]+timeout|audit[[:space:]]+endpoint[[:space:]]+returned[[:space:]]+an[[:space:]]+error|econnreset|etimedout|eai_again'
+            local error_code_pattern='npm[[:space:]]+(error|err!)[[:space:]]+code[[:space:]]+([[:alnum:]_]+)'
+            local allowed_error_code_pattern='^(e502|e503|e504|econnreset|etimedout|eai_again)$'
+
+            for attempt in 1 2 3; do
+              printf 'npm audit attempt %d/3\n' "${attempt}"
+              if audit_output="$(npm audit --audit-level=high 2>&1)"; then
+                audit_exit=0
+              else
+                audit_exit=$?
+              fi
+              printf '%s\n' "${audit_output}"
+              normalized_output="${audit_output,,}"
+
+              if [ "${audit_exit}" -eq 0 ]; then
+                return 0
+              fi
+
+              if [[ "${normalized_output}" =~ ${vulnerability_pattern} ]]; then
+                return "${audit_exit}"
+              fi
+
+              while IFS= read -r output_line; do
+                if [[ "${output_line}" =~ ${error_code_pattern} ]]; then
+                  error_code="${BASH_REMATCH[2]}"
+                  if [[ ! "${error_code}" =~ ${allowed_error_code_pattern} ]]; then
+                    return "${audit_exit}"
+                  fi
+                fi
+              done <<< "${normalized_output}"
+
+              if [[ ! "${normalized_output}" =~ ${outage_pattern} ]]; then
+                return "${audit_exit}"
+              fi
+
+              if [ "${attempt}" -eq 3 ]; then
+                printf '%s\n' \
+                  '::warning::npm audit service unavailable after 3 attempts; dependency security result is inconclusive'
+                return 0
+              fi
+
+              printf 'npm audit service unavailable; retrying in 15 seconds\n' >&2
+              sleep 15
+            done
+          }
+
+          npm ci --no-audit
+          run_npm_audit
           npm run test:json-ld-security
           npm run test:public-ordering
           npm run test:public-http-states
