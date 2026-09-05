@@ -52,26 +52,76 @@ backup_partial="${backup_file}.partial"
 checksum_file="${backup_file}.sha256"
 checksum_partial="${checksum_file}.partial"
 receipt_partial="${receipt_file}.partial"
+for output_file in "$backup_file" "$backup_partial" "$checksum_file" "$checksum_partial" "$receipt_file" "$receipt_partial"; do
+  [[ ! -e "$output_file" && ! -L "$output_file" ]] || die "arquivo de backup ou receipt ja existe"
+done
 temporary_dir="$(mktemp -d)"
 source_metrics="${temporary_dir}/source.metrics"
 restored_metrics="${temporary_dir}/restored.metrics"
 validation_sql="${temporary_dir}/validation.sql"
-restore_container="topsv3-backup-restore-${timestamp,,}"
-restore_container="${restore_container:0:63}"
+readiness_error="${temporary_dir}/readiness.error"
+restore_token="${temporary_dir##*/}"
+restore_container="topsv3-backup-restore-${restore_token,,}"
 restore_volume="${restore_container}-data"
+restore_cid_file="${temporary_dir}/restore.cid"
+restore_cid_argument="$restore_cid_file"
+if [[ "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* ]]; then
+  restore_cid_argument="$(cygpath -m "$restore_cid_file")"
+fi
+restore_id=''
 restore_started=0
 volume_created=0
 
 cleanup() {
   local rc=$?
+  local cleanup_failed=0 owner='' resource_identity=''
+  trap - EXIT
   if [[ "$restore_started" -eq 1 ]]; then
-    docker rm -f "$restore_container" >/dev/null 2>&1 || true
+    if [[ -s "$restore_cid_file" ]]; then
+      if ! restore_id="$(cat "$restore_cid_file")"; then
+        echo 'ERRO_BACKUP_CLEANUP: nao foi possivel ler a identidade temporaria' >&2
+        cleanup_failed=1
+      fi
+    fi
+    if resource_identity="$(docker inspect --format '{{.Id}}|{{index .Config.Labels "topsv3.backup.owner"}}' "${restore_id:-$restore_container}")"; then
+      IFS='|' read -r restore_id owner <<< "$resource_identity"
+      if [[ "$restore_id" =~ ^[0-9a-f]{64}$ && "$owner" == "$restore_token" ]]; then
+        if ! docker rm -f "$restore_id" >/dev/null; then
+          echo 'ERRO_BACKUP_CLEANUP: nao foi possivel remover o container temporario proprio' >&2
+          cleanup_failed=1
+        fi
+      else
+        echo 'ERRO_BACKUP_CLEANUP: container nao pertence a esta execucao; preservado' >&2
+        cleanup_failed=1
+      fi
+    else
+      echo 'ERRO_BACKUP_CLEANUP: identidade do container temporario nao confirmada; remocao nao executada' >&2
+      cleanup_failed=1
+    fi
   fi
   if [[ "$volume_created" -eq 1 ]]; then
-    docker volume rm "$restore_volume" >/dev/null 2>&1 || true
+    if owner="$(docker volume inspect --format '{{index .Labels "topsv3.backup.owner"}}' "$restore_volume")" \
+      && [[ "$owner" == "$restore_token" ]]; then
+      if ! docker volume rm "$restore_volume" >/dev/null; then
+        echo 'ERRO_BACKUP_CLEANUP: nao foi possivel remover o volume temporario proprio' >&2
+        cleanup_failed=1
+      fi
+    else
+      echo 'ERRO_BACKUP_CLEANUP: identidade do volume temporario nao confirmada; preservado' >&2
+      cleanup_failed=1
+    fi
   fi
-  rm -rf -- "$temporary_dir"
-  rm -f -- "$backup_partial" "$checksum_partial" "$receipt_partial"
+  if ! rm -rf -- "$temporary_dir"; then
+    echo 'ERRO_BACKUP_CLEANUP: nao foi possivel remover o diretorio temporario proprio' >&2
+    cleanup_failed=1
+  fi
+  if ! rm -f -- "$backup_partial" "$checksum_partial" "$receipt_partial"; then
+    echo 'ERRO_BACKUP_CLEANUP: nao foi possivel remover os arquivos parciais proprios' >&2
+    cleanup_failed=1
+  fi
+  if [[ "$rc" -eq 0 && "$cleanup_failed" -ne 0 ]]; then
+    rc=1
+  fi
   exit "$rc"
 }
 trap cleanup EXIT
@@ -114,39 +164,70 @@ docker exec "$postgres_container" pg_dump \
 chmod 600 "$backup_partial"
 docker exec -i "$postgres_container" pg_restore --list < "$backup_partial" >/dev/null
 
-docker volume create "$restore_volume" >/dev/null
+docker volume create --label "topsv3.backup.owner=${restore_token}" "$restore_volume" >/dev/null
 volume_created=1
+[[ "$(docker volume inspect --format '{{index .Labels "topsv3.backup.owner"}}' "$restore_volume")" == "$restore_token" ]] \
+  || die "volume temporario nao pertence a esta execucao"
+restore_started=1
 docker run --pull never -d \
   --name "$restore_container" \
+  --cidfile "$restore_cid_argument" \
+  --label "topsv3.backup.owner=${restore_token}" \
   --network none \
   --volume "${restore_volume}:/var/lib/postgresql/data" \
   --env POSTGRES_HOST_AUTH_METHOD=trust \
   "$postgres_image" >/dev/null
-restore_started=1
+restore_id="$(cat "$restore_cid_file")"
+[[ "$restore_id" =~ ^[0-9a-f]{64}$ ]] || die "identidade do container temporario invalida"
 
+# The image's initialization server accepts Unix sockets before its normal
+# shutdown. Only the final server accepts this TCP connection and SQL query.
+# BEGIN RESTORE_POSTGRES_READINESS
 ready=0
+ready_deadline=$((SECONDS + 90))
 for attempt in $(seq 1 90); do
-  if docker exec "$restore_container" pg_isready -U postgres >/dev/null 2>&1; then
+  remaining=$((ready_deadline - SECONDS))
+  (( remaining > 1 )) || break
+  attempt_timeout=$((remaining - 1))
+  if (( attempt_timeout > 5 )); then
+    attempt_timeout=5
+  fi
+  if ready_output="$(timeout --kill-after=1s "${attempt_timeout}s" \
+    docker exec --env PGCONNECT_TIMEOUT=2 --env 'PGOPTIONS=-c statement_timeout=2000' \
+      "$restore_id" psql --no-psqlrc --set=ON_ERROR_STOP=1 --no-password \
+      --host=127.0.0.1 --port=5432 --username=postgres --dbname=postgres \
+      -At --command 'SELECT 1' </dev/null 2> "$readiness_error")" \
+    && [[ "$ready_output" == 1 ]]; then
     ready=1
     break
   fi
+  (( SECONDS < ready_deadline )) || break
   sleep 1
 done
-[[ "$ready" -eq 1 ]] || die "PostgreSQL efemero nao ficou pronto"
+if [[ "$ready" -ne 1 ]]; then
+  if [[ -s "$readiness_error" ]]; then
+    cat "$readiness_error" >&2
+  fi
+  die "PostgreSQL efemero nao ficou pronto via TCP e SQL em 90s"
+fi
+# END RESTORE_POSTGRES_READINESS
 
-docker exec "$restore_container" createdb -U postgres restore_validation
-docker exec -i "$restore_container" pg_restore \
-  -U postgres \
-  -d restore_validation \
+docker exec "$restore_id" createdb \
+  --host=127.0.0.1 --port=5432 --username=postgres --maintenance-db=postgres \
+  --no-password restore_validation </dev/null
+docker exec -i "$restore_id" pg_restore \
+  --host=127.0.0.1 --port=5432 --username=postgres \
+  --dbname=restore_validation --no-password \
   --no-owner \
   --no-acl \
   --exit-on-error < "$backup_partial"
-docker exec -i "$restore_container" psql -X -v ON_ERROR_STOP=1 \
-  -U postgres -d restore_validation -At -F '|' < "$validation_sql" \
+docker exec -i "$restore_id" psql -X -v ON_ERROR_STOP=1 --no-password \
+  --host=127.0.0.1 --port=5432 --username=postgres --dbname=restore_validation \
+  -At -F '|' < "$validation_sql" \
   | LC_ALL=C sort > "$restored_metrics"
 cmp -s "$source_metrics" "$restored_metrics" || die "schema restaurado diverge da origem"
 
-docker rm -f "$restore_container" >/dev/null
+docker rm -f "$restore_id" >/dev/null
 restore_started=0
 docker volume rm "$restore_volume" >/dev/null
 volume_created=0
