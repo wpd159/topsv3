@@ -1,5 +1,6 @@
 package br.com.topsdojob.v3.infrastructure.storage.r2;
 
+import br.com.topsdojob.v3.application.publico.service.LocalidadesConsultaOrcamento;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import java.net.URI;
@@ -86,14 +87,24 @@ final class R2SigV4Client implements R2Operations {
 
   @Override
   public boolean exists(String bucket, String key) {
+    LocalidadesConsultaOrcamento orcamento = LocalidadesConsultaOrcamento.atualOuNulo();
+    if (orcamento != null) orcamento.conferir();
     RequestSignature signature = signRequest("HEAD", bucket, key, EMPTY_PAYLOAD_HASH, Map.of());
-    HttpRequest request = requestBuilder(signature.uri())
+    HttpRequest.Builder builder = requestBuilder(signature.uri());
+    if (orcamento != null) {
+      orcamento.conferir();
+      builder.timeout(Duration.ofMillis(Math.min(Duration.ofMinutes(3).toMillis(), orcamento.restanteMillis())));
+    }
+    HttpRequest request = builder
         .method("HEAD", HttpRequest.BodyPublishers.noBody())
         .header("x-amz-date", signature.amzDate())
         .header("x-amz-content-sha256", EMPTY_PAYLOAD_HASH)
         .header("Authorization", signature.authorization())
         .build();
-    HttpResponse<Void> response = send(request, HttpResponse.BodyHandlers.discarding(), "HEAD");
+    HttpResponse<Void> response = orcamento == null
+        ? send(request, HttpResponse.BodyHandlers.discarding(), "HEAD")
+        : orcamento.medir("storage_head", () -> send(request, HttpResponse.BodyHandlers.discarding(), "HEAD"));
+    if (orcamento != null) orcamento.conferir();
     if (response.statusCode() == 200) {
       return true;
     }

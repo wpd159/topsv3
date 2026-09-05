@@ -11,9 +11,12 @@ import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -31,6 +34,8 @@ public class MidiaRestritaDerivacaoService {
   private static final Logger LOGGER = LoggerFactory.getLogger(MidiaRestritaDerivacaoService.class);
   private static final String DERIVATION_VERSION = "v1";
   private static final String DERIVATION_DIRECTORY = "restritas-borradas/" + DERIVATION_VERSION + "/";
+  private static final int MAX_PREVIEWS_LOCALIDADES = 4096;
+  private static final ThreadLocal<PreviewsLocalidades> PREVIEWS_LOCALIDADES = new ThreadLocal<>();
 
   private final ObjectProvider<ObjectStorage> storageProvider;
   private final R2StorageProperties properties;
@@ -47,6 +52,10 @@ public class MidiaRestritaDerivacaoService {
   }
 
   public ResultadoPreview resolverPreviewPublica(ArquivoMidiaEntity arquivo) {
+    PreviewsLocalidades operacao = PREVIEWS_LOCALIDADES.get();
+    if (operacao != null) {
+      return operacao.resolver(this, arquivo);
+    }
     String key = chavePublicaOuNula(arquivo);
     ObjectStorage storage = storage();
     if (key == null || storage == null) {
@@ -62,6 +71,104 @@ public class MidiaRestritaDerivacaoService {
           .orElseGet(() -> pendente(arquivo, "url_publica"));
     } catch (RuntimeException exception) {
       return pendente(arquivo, "storage");
+    }
+  }
+
+  /** Keeps the original mapper in both reads, but performs storage I/O between transactions. */
+  public static <T> T comPreviewsDeLocalidades(Runnable coleta, Supplier<T> validacaoFinal) {
+    if (PREVIEWS_LOCALIDADES.get() != null) {
+      throw indisponivelLocalidades("operacao de previews ja iniciada");
+    }
+    PreviewsLocalidades operacao = new PreviewsLocalidades();
+    PREVIEWS_LOCALIDADES.set(operacao);
+    try {
+      conferirOrcamentoLocalidades();
+      coleta.run();
+      conferirOrcamentoLocalidades();
+      if (TransactionSynchronizationManager.isActualTransactionActive()) {
+        throw indisponivelLocalidades("verificacao remota exige transacao encerrada");
+      }
+      operacao.fase = FasePreviewsLocalidades.VERIFICACAO_REMOTA;
+      Supplier<Void> verificacao = () -> {
+        for (Map.Entry<String, Supplier<ResultadoPreview>> pedido : operacao.pedidos.entrySet()) {
+          conferirOrcamentoLocalidades();
+          operacao.verificados.put(pedido.getKey(), pedido.getValue().get());
+          conferirOrcamentoLocalidades();
+        }
+        return null;
+      };
+      LocalidadesConsultaOrcamento orcamento = LocalidadesConsultaOrcamento.atualOuNulo();
+      if (orcamento == null) verificacao.get();
+      else orcamento.medir("previews_verificacao_remota", verificacao);
+      operacao.fase = FasePreviewsLocalidades.FINAL;
+      T resultado = validacaoFinal.get();
+      conferirOrcamentoLocalidades();
+      return resultado;
+    } finally {
+      PREVIEWS_LOCALIDADES.remove();
+    }
+  }
+
+  private ResultadoPreview verificarPreviewLocalidades(String key) {
+    conferirOrcamentoLocalidades();
+    if (TransactionSynchronizationManager.isActualTransactionActive()) {
+      throw indisponivelLocalidades("verificacao remota exige transacao encerrada");
+    }
+    try {
+      ObjectStorage storage = storage();
+      if (storage == null) {
+        throw indisponivelLocalidades("storage de preview indisponivel");
+      }
+      // Unlike the gallery's positive cache, this proof belongs only to this operation.
+      if (!storage.exists(StorageArea.PUBLIC_MEDIA, key)) {
+        return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
+      }
+      return storage.publicUrl(StorageArea.PUBLIC_MEDIA, key)
+          .map(uri -> new ResultadoPreview(uri.toString(), null))
+          .orElseThrow(() -> indisponivelLocalidades("url de preview indisponivel"));
+    } catch (RuntimeException exception) {
+      if (exception instanceof ResponseStatusException status && status.getStatusCode().value() == 503) {
+        throw status;
+      }
+      throw new ResponseStatusException(
+          HttpStatus.SERVICE_UNAVAILABLE, "verificacao de preview de localidades indisponivel", exception);
+    }
+  }
+
+  private static void conferirOrcamentoLocalidades() {
+    LocalidadesConsultaOrcamento orcamento = LocalidadesConsultaOrcamento.atualOuNulo();
+    if (orcamento != null) orcamento.conferir();
+  }
+
+  private static ResponseStatusException indisponivelLocalidades(String motivo) {
+    return new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, motivo);
+  }
+
+  private enum FasePreviewsLocalidades { COLETA, VERIFICACAO_REMOTA, FINAL }
+
+  private static final class PreviewsLocalidades {
+    private FasePreviewsLocalidades fase = FasePreviewsLocalidades.COLETA;
+    private final Map<String, Supplier<ResultadoPreview>> pedidos = new LinkedHashMap<>();
+    private final Map<String, ResultadoPreview> verificados = new LinkedHashMap<>();
+
+    private ResultadoPreview resolver(MidiaRestritaDerivacaoService service, ArquivoMidiaEntity arquivo) {
+      conferirOrcamentoLocalidades();
+      String key = service.chavePublicaOuNula(arquivo);
+      if (key == null) throw indisponivelLocalidades("preview sem identidade canonica");
+      if (fase == FasePreviewsLocalidades.COLETA) {
+        if (!pedidos.containsKey(key)) {
+          if (pedidos.size() >= MAX_PREVIEWS_LOCALIDADES) {
+            throw indisponivelLocalidades("limite de previews por consulta excedido");
+          }
+          pedidos.put(key, () -> service.verificarPreviewLocalidades(key));
+        }
+        // This intermediate result is discarded; FINAL uses only the verified result.
+        return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
+      }
+      if (fase != FasePreviewsLocalidades.FINAL || !verificados.containsKey(key)) {
+        throw indisponivelLocalidades("preview alterado durante consulta de localidades");
+      }
+      return verificados.get(key);
     }
   }
 

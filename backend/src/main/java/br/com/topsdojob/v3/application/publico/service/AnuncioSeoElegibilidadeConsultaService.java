@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,7 +69,8 @@ public class AnuncioSeoElegibilidadeConsultaService {
         }
 
         List<UUID> anuncioIds = List.copyOf(anunciosUnicos.keySet());
-        List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds);
+        List<AnuncioMidiaEntity> vinculos = medirLocalidades("midias",
+                () -> anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds));
         Map<UUID, List<AnuncioMidiaEntity>> vinculosPorAnuncio = vinculos.stream()
                 .collect(Collectors.groupingBy(AnuncioMidiaEntity::getAnuncioId));
         List<UUID> arquivoIds = vinculos.stream()
@@ -78,13 +80,15 @@ public class AnuncioSeoElegibilidadeConsultaService {
                 .toList();
         Map<UUID, ArquivoMidiaEntity> arquivos = arquivoIds.isEmpty()
                 ? Map.of()
-                : arquivoMidiaRepository.findByIdIn(arquivoIds).stream()
+                : medirLocalidades("arquivos", () -> arquivoMidiaRepository.findByIdIn(arquivoIds)).stream()
                         .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
-        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(
-                anunciosUnicos.values());
+        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = medirLocalidades("beneficios",
+                () -> premiumMapper.flagsPorAnuncios(anunciosUnicos.values()));
 
         Map<UUID, Resultado> resultados = new LinkedHashMap<>();
         for (AnuncioEntity anuncio : anunciosUnicos.values()) {
+            LocalidadesConsultaOrcamento orcamento = LocalidadesConsultaOrcamento.atualOuNulo();
+            if (orcamento != null) orcamento.conferir();
             List<AnuncioMidiaEntity> vinculosDoAnuncio = vinculosPorAnuncio.getOrDefault(
                     anuncio.getId(), List.of());
             PremiumPublicoFlagsDto premium = premiumPorAnuncio.getOrDefault(
@@ -111,5 +115,10 @@ public class AnuncioSeoElegibilidadeConsultaService {
     }
 
     public record Resultado(boolean indexavel, OffsetDateTime ultimaAtualizacaoMidia) {
+    }
+
+    private <T> T medirLocalidades(String fase, Supplier<T> consulta) {
+        LocalidadesConsultaOrcamento orcamento = LocalidadesConsultaOrcamento.atualOuNulo();
+        return orcamento == null ? consulta.get() : orcamento.medir(fase, consulta);
     }
 }

@@ -4,6 +4,7 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -22,6 +23,8 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusModeracaoAn
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.time.Duration;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 
 class LocalidadePublicaConsultaServiceTest {
@@ -73,7 +76,7 @@ class LocalidadePublicaConsultaServiceTest {
                 mock(AnuncioRepository.class),
                 mock(AnuncioLocalizacaoRepository.class),
                 mock(AnuncioSeoElegibilidadeConsultaService.class),
-                new LocalidadeSeoIndexabilidadePolicy()).catalogoCompleto();
+                new LocalidadeSeoIndexabilidadePolicy(), coordenadorUnitario()).catalogoCompleto();
 
         assertThat(catalogo.estados()).extracting(item -> item.nome())
                 .containsExactly("Goiás", "São Paulo");
@@ -155,7 +158,7 @@ class LocalidadePublicaConsultaServiceTest {
                 anuncioRepository,
                 localizacaoRepository,
                 elegibilidadeService,
-                new LocalidadeSeoIndexabilidadePolicy()).descobrir();
+                new LocalidadeSeoIndexabilidadePolicy(), coordenadorUnitario()).descobrir();
 
         assertThat(descoberta.estados()).hasSize(1);
         assertThat(descoberta.estados().get(0).uf()).isEqualTo("GO");
@@ -233,7 +236,7 @@ class LocalidadePublicaConsultaServiceTest {
                 anuncioRepository,
                 localizacaoRepository,
                 elegibilidadeService,
-                new LocalidadeSeoIndexabilidadePolicy()).descobrir();
+                new LocalidadeSeoIndexabilidadePolicy(), coordenadorUnitario()).descobrir();
 
         var estadoDto = descoberta.estados().get(0);
         var cidadeDto = estadoDto.cidades().get(0);
@@ -245,6 +248,18 @@ class LocalidadePublicaConsultaServiceTest {
         assertThat(bairroDto.indexacao().anunciosElegiveisUnicos()).isEqualTo(2);
         assertThat(cidadeDto.indexacao().indexavel()).isFalse();
         assertThat(bairroDto.indexacao().indexavel()).isFalse();
+    }
+
+    private LocalidadesConsultaCoordenador coordenadorUnitario() {
+        LocalidadesConsultaCoordenador coordenador = mock(LocalidadesConsultaCoordenador.class);
+        when(coordenador.executar(anyString(), any())).thenAnswer(call ->
+                new LocalidadesConsultaOrcamento(Duration.ofSeconds(5)).executar(
+                        () -> ((Supplier<?>) call.getArgument(1)).get()));
+        when(coordenador.transacao(anyString(), any())).thenAnswer(call ->
+                ((Supplier<?>) call.getArgument(1)).get());
+        when(coordenador.medir(anyString(), any())).thenAnswer(call ->
+                ((Supplier<?>) call.getArgument(1)).get());
+        return coordenador;
     }
 
     private EstadoEntity entidadeEstado(UUID estadoId) {

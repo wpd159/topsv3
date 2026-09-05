@@ -2,6 +2,7 @@ package br.com.topsdojob.v3.application.publico.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -26,9 +27,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 class MidiaRestritaDerivacaoServiceTest {
@@ -111,6 +116,187 @@ class MidiaRestritaDerivacaoServiceTest {
     assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNull();
   }
 
+  @Test
+  void localidadesVerificamUmaVezEntreTransacoesSemUsarCacheGlobal() {
+    MemoryStorage storage = new MemoryStorage();
+    storage.requireNoTransaction = true;
+    MidiaRestritaDerivacaoService service = service(storage, properties());
+    ArquivoMidiaEntity arquivo = arquivoLocal();
+    String key = service.chavePublica(arquivo);
+    storage.put(StorageArea.PUBLIC_MEDIA, key, new byte[] {1}, "image/jpeg");
+    // Prime the existing gallery cache; the scoped operation must still make a fresh HEAD.
+    assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNotNull();
+    assertThat(storage.existsCalls).isEqualTo(1);
+
+    var resultado = MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> emTransacao(() -> {
+          assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNull();
+          assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNull();
+          assertThat(storage.existsCalls).isEqualTo(1);
+          return null;
+        }),
+        () -> emTransacao(() -> {
+          assertThat(storage.existsCalls).isEqualTo(2);
+          return service.resolverPreviewPublica(arquivo);
+        }));
+
+    assertThat(resultado.previewUrl()).endsWith(key);
+    assertThat(storage.existsCalls).isEqualTo(2);
+    storage.delete(StorageArea.PUBLIC_MEDIA, key);
+    var ausente = MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> service.resolverPreviewPublica(arquivo), () -> service.resolverPreviewPublica(arquivo));
+    assertThat(ausente.previewUrl()).isNull();
+    assertThat(ausente.pendencia()).isEqualTo(MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA);
+    assertThat(storage.existsCalls).isEqualTo(3);
+    // Outside the scope, the pre-existing positive-cache behavior is unchanged.
+    assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNotNull();
+    assertThat(storage.existsCalls).isEqualTo(3);
+  }
+
+  @Test
+  void localidadesNaoConfundemFalhaTecnicaComAusenciaELimpamContexto() {
+    ObjectStorage storage = mock(ObjectStorage.class);
+    MidiaRestritaDerivacaoService service = service(storage, properties());
+    ArquivoMidiaEntity arquivo = arquivoLocal();
+    String key = service.chavePublica(arquivo);
+    when(storage.exists(StorageArea.PUBLIC_MEDIA, key)).thenThrow(new IllegalStateException("erro tecnico sintetico"));
+    AtomicInteger validacoesFinais = new AtomicInteger();
+
+    assertThatThrownBy(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> service.resolverPreviewPublica(arquivo), () -> validacoesFinais.incrementAndGet()))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode().value()).isEqualTo(503));
+    assertThat(validacoesFinais).hasValue(0);
+    // The legacy method still degrades to a pending preview, proving no scoped context leaked.
+    assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNull();
+    doReturn(true).when(storage).exists(StorageArea.PUBLIC_MEDIA, key);
+    when(storage.publicUrl(StorageArea.PUBLIC_MEDIA, key)).thenReturn(Optional.of(URI.create("https://preview.invalid/foto.jpg")));
+    var seguinte = MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> service.resolverPreviewPublica(arquivo), () -> service.resolverPreviewPublica(arquivo));
+    assertThat(seguinte.previewUrl()).isEqualTo("https://preview.invalid/foto.jpg");
+  }
+
+  @Test
+  void localidadesExigemConfiguracaoSomenteQuandoSolicitamPreview() {
+    MidiaRestritaDerivacaoService semStorage = service(null, properties());
+    ArquivoMidiaEntity arquivo = arquivoLocal();
+    assertThat(MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(() -> {}, () -> "sem pedidos"))
+        .isEqualTo("sem pedidos");
+    assertThatThrownBy(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> semStorage.resolverPreviewPublica(arquivo), () -> "nao executar"))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode().value()).isEqualTo(503));
+
+    ObjectStorage semUrl = mock(ObjectStorage.class);
+    MidiaRestritaDerivacaoService service = service(semUrl, properties());
+    String key = service.chavePublica(arquivo);
+    when(semUrl.exists(StorageArea.PUBLIC_MEDIA, key)).thenReturn(true);
+    when(semUrl.publicUrl(StorageArea.PUBLIC_MEDIA, key)).thenReturn(Optional.empty());
+    assertThatThrownBy(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> service.resolverPreviewPublica(arquivo), () -> "nao executar"))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode().value()).isEqualTo(503));
+  }
+
+  @Test
+  void releituraComIdentidadeNovaFalhaSemFazerHeadNaTransacao() {
+    MemoryStorage storage = new MemoryStorage();
+    storage.requireNoTransaction = true;
+    MidiaRestritaDerivacaoService service = service(storage, properties());
+    ArquivoMidiaEntity arquivo = arquivoLocal();
+    assertThatThrownBy(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> emTransacao(() -> service.resolverPreviewPublica(arquivo)),
+        () -> emTransacao(() -> {
+          when(arquivo.getSha256()).thenReturn("b".repeat(64));
+          return service.resolverPreviewPublica(arquivo);
+        })))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode().value()).isEqualTo(503));
+    assertThat(storage.existsCalls).isEqualTo(1);
+    assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNull();
+    assertThat(storage.existsCalls).isEqualTo(2);
+  }
+
+  @Test
+  void contextoRecusaHeadQuandoColetaNaoEncerrouTransacao() {
+    MemoryStorage storage = new MemoryStorage();
+    MidiaRestritaDerivacaoService service = service(storage, properties());
+    ArquivoMidiaEntity arquivo = arquivoLocal();
+    assertThatThrownBy(() -> emTransacao(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> service.resolverPreviewPublica(arquivo), () -> "nao executar")))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode().value()).isEqualTo(503));
+    assertThat(storage.existsCalls).isZero();
+  }
+
+  @Test
+  void localidadesLimitamChavesELimpamContextoQuandoColetaOuValidacaoFalha() {
+    MemoryStorage storage = new MemoryStorage();
+    MidiaRestritaDerivacaoService service = service(storage, properties());
+    ArquivoMidiaEntity arquivo = arquivoLocal();
+    AtomicInteger checksumVersion = new AtomicInteger();
+    AtomicInteger acceptedKeys = new AtomicInteger();
+    when(arquivo.getSha256()).thenAnswer(ignored -> "checksum-" + checksumVersion.get());
+    int acceptedBefore = acceptedKeys.get();
+    assertThatThrownBy(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(() -> {
+      for (int i = 0; i < 4096; i++) {
+        checksumVersion.set(i);
+        service.resolverPreviewPublica(arquivo);
+        acceptedKeys.incrementAndGet();
+      }
+      checksumVersion.set(4096);
+      service.resolverPreviewPublica(arquivo);
+    }, () -> "nao executar"))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode().value()).isEqualTo(503));
+    assertThat(acceptedKeys.get() - acceptedBefore).isEqualTo(4096);
+    assertThat(storage.existsCalls).isZero();
+    doReturn("c".repeat(64)).when(arquivo).getSha256();
+    assertThatThrownBy(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> service.resolverPreviewPublica(arquivo), () -> { throw new IllegalArgumentException("validacao sintetica"); }))
+        .isInstanceOf(IllegalArgumentException.class).hasMessage("validacao sintetica");
+    assertThat(storage.existsCalls).isEqualTo(1);
+    assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNull();
+    assertThat(storage.existsCalls).isEqualTo(2);
+  }
+
+  @Test
+  void prazoExcedidoNaVerificacaoImpedeReleituraELimpaAmbosContextos() {
+    AtomicLong relogio = new AtomicLong();
+    ObjectStorage storage = mock(ObjectStorage.class);
+    MidiaRestritaDerivacaoService service = service(storage, properties());
+    ArquivoMidiaEntity arquivo = arquivoLocal();
+    String key = service.chavePublica(arquivo);
+    when(storage.exists(StorageArea.PUBLIC_MEDIA, key)).thenAnswer(ignored -> {
+      assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+      relogio.set(Duration.ofSeconds(2).toNanos());
+      return false;
+    });
+    AtomicInteger validacoesFinais = new AtomicInteger();
+    var orcamento = new LocalidadesConsultaOrcamento(Duration.ofSeconds(1), relogio::get);
+    assertThatThrownBy(() -> orcamento.executar(() -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+        () -> service.resolverPreviewPublica(arquivo), () -> validacoesFinais.incrementAndGet())))
+        .isInstanceOfSatisfying(ResponseStatusException.class,
+            exception -> assertThat(exception.getStatusCode().value()).isEqualTo(503));
+    assertThat(validacoesFinais).hasValue(0);
+    assertThat(LocalidadesConsultaOrcamento.atualOuNulo()).isNull();
+    assertThat(service.resolverPreviewPublica(arquivo).previewUrl()).isNull();
+  }
+
+  private <T> T emTransacao(Supplier<T> callback) {
+    assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+    TransactionSynchronizationManager.setActualTransactionActive(true);
+    try {
+      return callback.get();
+    } finally {
+      TransactionSynchronizationManager.setActualTransactionActive(false);
+    }
+  }
+
+  private ArquivoMidiaEntity arquivoLocal() {
+    return arquivo(UUID.randomUUID(), "privadas", "origem.jpg", "a".repeat(64));
+  }
+
   private MidiaRestritaDerivacaoService service(
       ObjectStorage storage,
       R2StorageProperties properties) {
@@ -174,6 +360,8 @@ class MidiaRestritaDerivacaoServiceTest {
         new EnumMap<>(StorageArea.class);
     private int putIfAbsentCalls;
     private int publicGetCalls;
+    private int existsCalls;
+    private boolean requireNoTransaction;
 
     private MemoryStorage() {
       for (StorageArea area : StorageArea.values()) {
@@ -206,6 +394,8 @@ class MidiaRestritaDerivacaoServiceTest {
 
     @Override
     public boolean exists(StorageArea area, String key) {
+      if (requireNoTransaction) assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+      existsCalls++;
       return objects.get(area).containsKey(key);
     }
 
