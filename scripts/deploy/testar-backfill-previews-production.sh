@@ -3,10 +3,6 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 helper="${root}/scripts/deploy/executar-backfill-previews-production.sh"
-workflow="${root}/.github/workflows/deploy-production.yml"
-remote_deploy="${root}/scripts/deploy/executar-deploy-remoto-production.sh"
-activator="${root}/scripts/deploy/ativar-release-atomica-production.sh"
-atomic_test="${root}/scripts/deploy/testar-release-atomica-production.sh"
 service="${root}/backend/src/main/java/br/com/topsdojob/v3/application/operacional/midia/MidiaRestritaRegularizacaoService.java"
 repository="${root}/backend/src/main/java/br/com/topsdojob/v3/persistence/repository/PreviewRestritoBackfillJdbcRepository.java"
 bootstrap="${root}/backend/src/main/java/br/com/topsdojob/v3/application/operacional/midia/backfill/RestrictedMediaPreviewBackfillBootstrap.java"
@@ -22,18 +18,6 @@ trap cleanup EXIT
 fail() {
   printf 'ERRO: %s\n' "$*" >&2
   exit 1
-}
-
-line_of() {
-  local file="$1"
-  local pattern="$2"
-  grep -n -m1 -F "${pattern}" "${file}" | cut -d: -f1
-}
-
-assert_before() {
-  local first="$1"
-  local second="$2"
-  [ -n "${first}" ] && [ -n "${second}" ] && [ "${first}" -lt "${second}" ]
 }
 
 mock_bin="${temporary}/bin"
@@ -180,31 +164,5 @@ grep -Fq 'UPDATE arquivo_midia' "${repository}"
 grep -Fq "preview_restrito_status = 'DISPONIVEL'" "${repository}"
 ! grep -Eq 'docker (cp|save)|r2 (put|copy|delete)|aws s3 (cp|mv|rm)' "${helper}"
 ! grep -Fq 'docker rm -f' "${helper}"
-
-backup_line="$(line_of "${remote_deploy}" 'bash "${backup_producer}"')"
-flyway_line="$(line_of "${remote_deploy}" '"${compose[@]}" run --rm -T --no-deps flyway migrate')"
-initial_line="$(line_of "${remote_deploy}" 'for preview_backfill_mode in PLAN APPLY VALIDATE; do')"
-candidate_line="$(line_of "${remote_deploy}" 'bash "${atomic_activator}"')"
-assert_before "${backup_line}" "${flyway_line}"
-assert_before "${flyway_line}" "${initial_line}"
-assert_before "${initial_line}" "${candidate_line}"
-
-delta_apply_line="$(line_of "${activator}" 'stage_or_abort run_preview_backfill APPLY delta')"
-delta_validate_line="$(line_of "${activator}" 'stage_or_abort run_preview_backfill VALIDATE delta')"
-candidate_gate_last_line="$(grep -nF 'stage_or_abort verify_candidate' "${activator}" | tail -1 | cut -d: -f1)"
-switch_line="$(line_of "${activator}" 'stage_or_abort switch_gateway')"
-drain_line="$(line_of "${activator}" 'stage_or_abort drain_window')"
-final_apply_line="$(line_of "${activator}" 'stage_or_abort run_preview_backfill APPLY final')"
-final_validate_line="$(line_of "${activator}" 'stage_or_abort run_preview_backfill VALIDATE final')"
-assert_before "${delta_apply_line}" "${delta_validate_line}"
-assert_before "${candidate_gate_last_line}" "${delta_apply_line}"
-assert_before "${delta_validate_line}" "${switch_line}"
-assert_before "${switch_line}" "${drain_line}"
-assert_before "${drain_line}" "${final_apply_line}"
-assert_before "${final_apply_line}" "${final_validate_line}"
-
-grep -Fq 'run_scenario backfill-failure' "${atomic_test}"
-grep -Fq 'PREVIEW_BACKFILL_DELTA_VALIDATE' "${atomic_test}"
-grep -Fq 'PREVIEW_BACKFILL_FINAL_VALIDATE' "${atomic_test}"
 
 printf 'PREVIEW_BACKFILL_DEPLOY_TESTS=PASS\n'

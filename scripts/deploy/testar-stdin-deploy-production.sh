@@ -4,13 +4,8 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 workflow="${repo_root}/.github/workflows/deploy-production.yml"
-remote_deploy="${repo_root}/scripts/deploy/executar-deploy-remoto-production.sh"
-remote_invoker="${repo_root}/scripts/deploy/invocar-deploy-remoto-production.sh"
-staging_manager="${repo_root}/scripts/deploy/gerenciar-staging-controlador-production.sh"
-staging_test="${repo_root}/scripts/deploy/testar-staging-controlador-production.sh"
 backfill_helper="${repo_root}/scripts/deploy/executar-backfill-previews-production.sh"
 backfill_test="${repo_root}/scripts/deploy/testar-backfill-previews-production.sh"
-atomic_helper="${repo_root}/scripts/deploy/ativar-release-atomica-production.sh"
 temp_dir="$(mktemp -d)"
 trap 'rm -rf -- "${temp_dir}"' EXIT
 
@@ -63,16 +58,6 @@ mapfile -d '' -t deploy_sources < <(
 )
 [[ "${#deploy_sources[@]}" -gt 0 ]] || fail "fontes de deploy ausentes"
 
-if grep -Eqs 's[s]h[^[:cntrl:]]*b[a]sh[[:space:]]+-s' "${deploy_sources[@]}"; then
-  fail "execucao remota ainda transmite script pelo stdin"
-fi
-if grep -Eqs 's[s]h[^[:cntrl:]]*<<' "${deploy_sources[@]}"; then
-  fail "heredoc executavel via SSH ainda presente"
-fi
-if grep -Eqs '[|][[:space:]]*ssh[[:space:]]' "${deploy_sources[@]}"; then
-  fail "pipe geral para SSH ainda presente"
-fi
-
 while IFS= read -r command; do
   if is_psql_command "$command"; then
     has_interactive_exec "$command" \
@@ -92,40 +77,30 @@ while IFS= read -r command; do
   fi
   if [[ "$command" == *'ssh "${SSH_OPTS[@]}" "${SSH_TARGET}"'* \
       || "$command" == *'ssh "${ssh_opts[@]}" "${ssh_target}"'* ]]; then
-    [[ "$command" == *"</dev/null"* ]] || fail "sessao SSH sem stdin fechado"
+    if [[ "$command" != *"</dev/null"* && "$command" != *"<<"* && "$command" != *"| ssh"* ]]; then
+      fail "sessao SSH sem entrada explicitamente controlada"
+    fi
   fi
 done < <(logical_commands "${deploy_sources[@]}")
 
-grep -Fq 'Upload verified remote deploy controller' "${workflow}"
-grep -Fq 'REMOTE_DEPLOY_SCRIPT_SHA256=' "${workflow}"
-grep -Fq 'gerenciar-staging-controlador-production.sh' "${workflow}"
-grep -Fq 'prepare "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"' "${workflow}"
-grep -Fq 'upload "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"' "${workflow}"
-grep -Fq 'cleanup "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"' "${workflow}"
-grep -Fq '.cache/topsdojob-deploy/' "${workflow}"
-if grep -Fq 'scp ' "${workflow}"; then
-  fail "workflow ainda faz upload fora do helper de staging"
-fi
-if grep -Fq '/opt/topsv3/production/incoming/deploy-remoto-' "${workflow}" "${remote_invoker}"; then
-  fail "controlador ainda usa o diretorio root-owned anterior"
-fi
-grep -Fq 'umask 077' "${staging_manager}"
-grep -Fq 'mkdir -m 0700' "${staging_manager}"
-grep -Fq 'test ! -L' "${staging_manager}"
-grep -Fq 'scp "${scp_opts[@]}" "${source}" "${ssh_target}:${remote_rel}" </dev/null' "${staging_manager}"
-grep -Fq 'bash ./scripts/deploy/invocar-deploy-remoto-production.sh' "${workflow}"
-grep -Fq 'actual=\$(sha256sum -- \"\${script}\"' "${remote_invoker}"
-grep -Fq 'bash \"\${script}\"' "${remote_invoker}"
-grep -Fq "remote_command+=' </dev/null'" "${remote_invoker}"
-grep -Fq 'assert_stdin_closed' "${remote_deploy}"
+flyway_reader="$(sed -n '/read_flyway_state() {/,/^          }/p' "$workflow")"
+[[ -n "$flyway_reader" ]] || fail "read_flyway_state ausente"
+[[ "$flyway_reader" != *"docker exec -i"* ]] || fail "read_flyway_state ainda usa -i"
+[[ "$flyway_reader" == *"--no-psqlrc"* ]] || fail "read_flyway_state sem --no-psqlrc"
+[[ "$flyway_reader" == *"--set=ON_ERROR_STOP=1"* ]] || fail "read_flyway_state sem ON_ERROR_STOP"
+[[ "$flyway_reader" == *"--command"* ]] || fail "read_flyway_state sem --command"
+[[ "$flyway_reader" == *"</dev/null"* ]] || fail "read_flyway_state sem stdin isolado"
+
 grep -Fq '</dev/null >"${RAW_OUTPUT}"' "${backfill_helper}"
-echo "PASS: transporte_remoto_em_arquivo_com_sha"
+grep -Fq 'ARCHIVE_SHA256="$(sha256sum -- "${ARCHIVE}"' "${workflow}"
+grep -Fq 'test "$(sha256sum -- "${incoming}"' "${workflow}"
+echo "PASS: transporte_release_com_sha"
 
 target_line="$(grep -nF '      - name: Validate canonical production target' "${workflow}" | tail -1 | cut -d: -f1)"
-controller_upload_line="$(grep -nF '      - name: Upload verified remote deploy controller' "${workflow}" | cut -d: -f1)"
+indexnow_line="$(grep -nF '      - name: Synchronize IndexNow key in production runtime' "${workflow}" | cut -d: -f1)"
 release_upload_line="$(grep -nF '      - name: Upload immutable release' "${workflow}" | cut -d: -f1)"
-(( target_line < controller_upload_line && controller_upload_line < release_upload_line )) \
-  || fail "target guard nao antecede todos os uploads"
+(( target_line < indexnow_line && target_line < release_upload_line )) \
+  || fail "target guard nao antecede todas as mutacoes remotas"
 echo "PASS: target_guard_antes_upload"
 
 mkdir -p "${temp_dir}/fixtures"
@@ -193,35 +168,68 @@ fi
 echo "PASS: falha_filho_interrompe"
 echo "PASS: producao_e_diagnostico_preservados"
 
-mkdir -p "${temp_dir}/fake-bin" "${temp_dir}/fake-home/.ssh"
-touch "${temp_dir}/fake-home/.ssh/topsdojob_production" "${temp_dir}/fake-home/.ssh/known_hosts"
-cat > "${temp_dir}/fake-bin/s""sh" <<'FAKE_SSH'
+mkdir -p "${temp_dir}/bin"
+cat > "${temp_dir}/bin/docker" <<'FAKE_DOCKER'
 #!/usr/bin/env bash
 set -euo pipefail
-if IFS= read -r -t 0.05 unexpected; then
-  printf 'stdin inesperado no invocador\n' >&2
-  exit 9
+interactive=false
+for argument in "$@"; do
+  if [[ "$argument" == "-i" ]]; then
+    interactive=true
+  fi
+done
+if [[ "$interactive" == true ]]; then
+  cat >/dev/null
 fi
-printf '%s\n' "$*" > "${SSH_CAPTURE}"
-printf 'INVOKER_STDIN_EOF=SIM\n' >> "${SSH_CAPTURE}"
-FAKE_SSH
-chmod +x "${temp_dir}/fake-bin/s""sh"
-sha64="$(printf 'a%.0s' {1..64})"
-release40="$(printf 'b%.0s' {1..40})"
-remote_path=".cache/topsdojob-deploy/123-1-${release40}/deploy-remoto.sh"
-SSH_CAPTURE="${temp_dir}/ssh.capture" \
-TOPSDOJOB_PROD_SSH_HOST=example.invalid \
-TOPSDOJOB_PROD_SSH_USER=topsdojob \
-TOPSDOJOB_PROD_SSH_PORT=22 \
-HOME="${temp_dir}/fake-home" \
-PATH="${temp_dir}/fake-bin:${PATH}" \
-  bash "${remote_invoker}" "${remote_path}" "${sha64}" prerequisites
-grep -Fq 'sha256sum -- "${script}"' "${temp_dir}/ssh.capture"
-grep -Fq '</dev/null' "${temp_dir}/ssh.capture"
-grep -Fq 'INVOKER_STDIN_EOF=SIM' "${temp_dir}/ssh.capture"
-echo "PASS: invocador_fecha_stdin_e_valida_sha"
+if [[ "${FAKE_PSQL_FAIL:-false}" == true ]]; then
+  exit 42
+fi
+FAKE_DOCKER
+chmod +x "${temp_dir}/bin/docker"
 
-bash "${staging_test}"
+safe_log="${temp_dir}/safe.log"
+PATH="${temp_dir}/bin:${PATH}" bash -s > "$safe_log" <<'SAFE_REMOTE'
+set -euo pipefail
+printf 'marcador_anterior\n'
+docker exec postgres psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+  --command 'SELECT 1' </dev/null
+printf 'marcador_posterior\n'
+SAFE_REMOTE
+grep -qx 'marcador_anterior' "$safe_log" || fail "marcador anterior ausente"
+grep -qx 'marcador_posterior' "$safe_log" || fail "marcador posterior nao executou"
+echo "PASS: marcador_posterior"
+
+interactive_flag="-i"
+unsafe_log="${temp_dir}/unsafe-control.log"
+PATH="${temp_dir}/bin:${PATH}" INTERACTIVE_FLAG="$interactive_flag" \
+  bash -s > "$unsafe_log" <<'UNSAFE_REMOTE'
+set -euo pipefail
+printf 'controle_anterior\n'
+docker exec "${INTERACTIVE_FLAG}" postgres psql --command 'SELECT 1'
+printf 'controle_posterior\n'
+UNSAFE_REMOTE
+grep -qx 'controle_anterior' "$unsafe_log" || fail "controle negativo nao iniciou"
+if grep -qx 'controle_posterior' "$unsafe_log"; then
+  fail "controle negativo nao reproduziu o consumo do heredoc"
+fi
+echo "PASS: consumo_indesejado_reproduzido"
+
+failure_log="${temp_dir}/failure.log"
+if PATH="${temp_dir}/bin:${PATH}" FAKE_PSQL_FAIL=true \
+  bash -s > "$failure_log" 2>&1 <<'FAIL_REMOTE'
+set -euo pipefail
+printf 'falha_anterior\n'
+docker exec postgres psql --no-psqlrc --set=ON_ERROR_STOP=1 \
+  --command 'SELECT invalido' </dev/null
+printf 'falha_posterior\n'
+FAIL_REMOTE
+then
+  fail "falha simulada do psql nao interrompeu o script"
+fi
+if grep -qx 'falha_posterior' "$failure_log"; then
+  fail "script prosseguiu depois da falha simulada do psql"
+fi
+echo "PASS: falha_psql_interrompe"
 
 line_number() {
   local needle="$1"
@@ -237,27 +245,23 @@ line_number() {
   fi
 }
 
-backup_line="$(line_number 'bash "${backup_producer}"' "${remote_deploy}")"
-flyway_line="$(line_number 'flyway migrate </dev/null' "${remote_deploy}")"
-flyway_gate_line="$(line_number 'bash "${flyway_gate}" after' "${remote_deploy}")"
-initial_line="$(line_number 'for preview_backfill_mode in PLAN APPLY VALIDATE; do' "${remote_deploy}")"
-after_child_line="$(line_number 'REMOTE_DEPLOY_MARKER=after_initial_backfill' "${remote_deploy}")"
-startup_line="$(line_number 'bash "${atomic_activator}"' "${remote_deploy}")"
-candidate_gate_line="$(line_number 'stage_or_abort verify_candidate' "${atomic_helper}" last)"
-delta_apply_line="$(line_number 'stage_or_abort run_preview_backfill APPLY delta' "${atomic_helper}")"
-switch_line="$(line_number 'stage_or_abort switch_gateway' "${atomic_helper}")"
+backup_line="$(line_number 'bash "${backup_producer}"' "${workflow}")"
+flyway_line="$(line_number 'flyway migrate </dev/null' "${workflow}")"
+flyway_gate_line="$(line_number 'bash "${flyway_gate}" after' "${workflow}")"
+startup_line="$(line_number 'application_started=1' "${workflow}")"
+health_line="$(line_number 'test "${healthy}" -eq 1' "${workflow}")"
+switch_line="$(line_number 'mv -Tf "${current_link}"' "${workflow}")"
 
 (( backup_line < flyway_line )) || fail "backup nao antecede Flyway"
-(( flyway_line < flyway_gate_line && flyway_gate_line < initial_line )) \
-  || fail "Flyway ou backfill inicial fora de ordem"
-(( initial_line < after_child_line && after_child_line < startup_line )) \
-  || fail "comandos posteriores ao backfill nao sao alcancaveis"
-(( candidate_gate_line < delta_apply_line && delta_apply_line < switch_line )) \
-  || fail "candidate gates, delta e switch fora de ordem"
+(( flyway_line < flyway_gate_line && flyway_gate_line < startup_line )) \
+  || fail "Flyway validado fora da ordem de startup"
+(( health_line < switch_line )) || fail "troca da release antecede health/readiness"
+grep -Fq 'api/health/readiness' "${workflow}" || fail "readiness ausente"
 grep -Fq 'run_fixture apply_idempotent APPLY 0' "${backfill_test}"
 grep -Fq 'updated=0 unchanged=1344' "${backfill_test}"
 echo "PASS: backup_antes_flyway"
-echo "PASS: plan_apply_validate_e_candidate_gates_alcancados"
+echo "PASS: flyway_antes_startup"
+echo "PASS: health_antes_troca"
 echo "PASS: apply_idempotente_sem_delta"
 
 if find "${temp_dir}" -maxdepth 1 -name 'transport-residual-*' -print -quit | grep -q .; then

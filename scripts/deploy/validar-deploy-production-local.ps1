@@ -33,19 +33,13 @@ $flywayGate = Read-RepoFile "scripts/deploy/validar-gate-flyway-production.sh"
 $flywayGateTests = Read-RepoFile "scripts/deploy/testar-gate-flyway-production.sh"
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
 $ephemeralPostgresWaiter = Read-RepoFile "scripts/deploy/aguardar-postgres-efemero.sh"
-$remoteDeploy = Read-RepoFile "scripts/deploy/executar-deploy-remoto-production.sh"
-$remoteInvoker = Read-RepoFile "scripts/deploy/invocar-deploy-remoto-production.sh"
-$stagingManager = Read-RepoFile "scripts/deploy/gerenciar-staging-controlador-production.sh"
-$stagingTests = Read-RepoFile "scripts/deploy/testar-staging-controlador-production.sh"
 $previewBackfill = Read-RepoFile "scripts/deploy/executar-backfill-previews-production.sh"
 $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
-$atomicActivator = Read-RepoFile "scripts/deploy/ativar-release-atomica-production.sh"
-$atomicActivatorTests = Read-RepoFile "scripts/deploy/testar-release-atomica-production.sh"
 $ciWorkflow = Read-RepoFile ".github/workflows/ci.yml"
 $rootLayout = Read-RepoFile "frontend/src/app/layout.tsx"
 $analyticsComponent = Read-RepoFile "frontend/src/components/analytics/consent-aware-analytics.tsx"
-$deploymentContract = $workflow, $remoteDeploy, $remoteInvoker, $stagingManager, $previewBackfill -join "`n"
+$deploymentContract = $workflow, $previewBackfill -join "`n"
 $checks = [Collections.Generic.List[object]]::new()
 
 function Add-Check {
@@ -66,25 +60,23 @@ foreach ($required in @(
     "TOPSDOJOB_TARGET=production",
     "TOPSDOJOB_PROJECT=topsdojob-v3",
     "TARGET_VERIFIED=production",
-    '${DEPLOY_ROOT}/releases',
-    '${DEPLOY_ROOT}/current',
-    '${SECRETS_ROOT}/production.env',
+    '/opt/topsv3/production/releases',
+    '/opt/topsv3/production/current',
+    '/opt/topsv3/secrets/production.env',
     "deploy/production/docker-compose.yml",
     "StrictHostKeyChecking=yes",
     "UserKnownHostsFile=",
     "HostKeyAlias=",
     "flyway migrate </dev/null",
     "flyway validate </dev/null",
-    "ativar-release-atomica-production.sh",
+    "rollback_application",
     "snapshot_after",
     "snapshot_before",
     "validar-gate-banco-production.sh",
     "validar-gate-flyway-production.sh",
     "criar-backup-validado-production.sh",
-    "gerenciar-staging-controlador-production.sh",
     "testar-stdin-deploy-production.sh",
     "testar-backup-validado-production.sh",
-    "testar-release-atomica-production.sh",
     "BACKUP_RESTORE_RUNS=10/10",
     "backups/postgresql",
     "api/health/readiness"
@@ -160,10 +152,9 @@ Add-Check "workflow nao altera manutencao ou indexacao externa" (
   -not ($deploymentContract -match 'maintenance|manutencao|robots\.txt.*(write|cat|printf)')
 )
 Add-Check "workflow preserva PostgreSQL" (
-  ($remoteDeploy -match 'postgres_id_before') -and
-  ($remoteDeploy -match 'postgres_volume_before') -and
-  ($remoteDeploy.Contains('bash "${atomic_activator}"')) -and
-  (-not ($deploymentContract -match 'up -d --no-deps --force-recreate backend frontend gateway'))
+  ($workflow -match 'postgres_id_before') -and
+  ($workflow -match 'postgres_volume_before') -and
+  ($workflow -match 'up -d --no-deps --force-recreate backend frontend gateway')
 )
 Add-Check "workflow testa gate de banco antes do deploy" (
   ($workflow.Contains("Test production database safety gate")) -and
@@ -173,31 +164,28 @@ Add-Check "workflow nao exige igualdade absoluta de contagens mutaveis" (
   -not ($deploymentContract -match 'test\s+"\$\{counts_after\}"\s+=\s+"\$\{counts_before\}"')
 )
 Add-Check "workflow preserva health e rollback no novo gate" (
-  ($remoteDeploy -match 'capture_database_snapshot\s+"\$\{snapshot_before\}"') -and
-  ($remoteDeploy -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
-  ($remoteDeploy -match 'bash\s+"\$\{database_gate\}"') -and
-  ($atomicActivator.Contains('verify_candidate')) -and
-  ($atomicActivator.Contains('restore_gateway'))
+  ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_before\}"') -and
+  ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
+  ($workflow -match 'bash\s+"\$\{database_gate\}"') -and
+  ($workflow -match 'test\s+"\$\{healthy\}"\s+-eq\s+1')
 )
 Add-Check "workflow deriva versao Flyway sem hardcode" (
-  ($remoteDeploy.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}" </dev/null)"')) -and
-  (-not ($remoteDeploy -match 'database_gate[^\r\n]*(051|052)')) -and
-  (-not ($remoteDeploy -match 'flyway_gate[^\r\n]*(before|after)[^\r\n]*(051|052)'))
+  ($workflow.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}" </dev/null)"')) -and
+  (-not ($workflow -match 'database_gate[^\r\n]*(051|052)')) -and
+  (-not ($workflow -match 'flyway_gate[^\r\n]*(before|after)[^\r\n]*(051|052)'))
 )
 Add-Check "workflow exige backup antes de migration pendente" (
-  ($remoteDeploy.Contains('if [ "${migrations_pending}" = true ]; then')) -and
-  ($remoteDeploy.Contains('test "${backup_status}" = VALIDATED')) -and
-  ($remoteDeploy.IndexOf('bash "${backup_producer}"') -lt $remoteDeploy.IndexOf('flyway migrate </dev/null'))
+  ($workflow.Contains('if [ "${migrations_pending}" = true ]; then')) -and
+  ($workflow.Contains('test "${backup_status}" = VALIDATED')) -and
+  ($workflow.IndexOf('bash "${backup_producer}"') -lt $workflow.IndexOf('flyway migrate </dev/null'))
 )
 Add-Check "workflow valida Flyway antes do startup" (
-  ($remoteDeploy.IndexOf('bash "${flyway_gate}" after') -gt $remoteDeploy.IndexOf('flyway migrate </dev/null')) -and
-  ($remoteDeploy.IndexOf('bash "${flyway_gate}" after') -lt $remoteDeploy.IndexOf('bash "${atomic_activator}"'))
+  ($workflow.IndexOf('bash "${flyway_gate}" after') -gt $workflow.IndexOf('flyway migrate </dev/null')) -and
+  ($workflow.IndexOf('bash "${flyway_gate}" after') -lt $workflow.LastIndexOf('up -d --no-deps --force-recreate backend frontend gateway'))
 )
-Add-Check "ativador troca trafego somente depois de health e readiness" (
-  ($atomicActivator.IndexOf('verify_candidate') -lt $atomicActivator.IndexOf('switch_gateway')) -and
-  ($atomicActivator.Contains('/api/health/readiness')) -and
-  ($atomicActivator.Contains('/health/readiness')) -and
-  ($atomicActivator.IndexOf('smoke_public') -lt $atomicActivator.IndexOf('finalize_activation'))
+Add-Check "workflow troca release somente depois de health e readiness" (
+  ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('test "${healthy}" -eq 1')) -and
+  ($workflow.Contains('curl -fsS http://127.0.0.1:28080/api/health/readiness'))
 )
 function Convert-ToLogicalShellLines {
   param([string]$Content)
@@ -208,15 +196,12 @@ $deploySources = @(
   Convert-ToLogicalShellLines $workflow
   Convert-ToLogicalShellLines $ciWorkflow
   Convert-ToLogicalShellLines $backupProducer
-  Convert-ToLogicalShellLines $atomicActivator
-  Convert-ToLogicalShellLines $remoteDeploy
-  Convert-ToLogicalShellLines $remoteInvoker
   Convert-ToLogicalShellLines $previewBackfill
 ) -join "`n"
 $unsafeInteractiveCommandPattern = '(?m)docker\s+exec(?=[^\r\n]*\bpsql\b)(?=[^\r\n]*\s-i(?:\s|$))[^\r\n]*\bpsql\b[^\r\n]*(?:\s-c(?:\s|$)|\s--command(?:=|\s))'
 $flywayReader = [regex]::Match(
-  $remoteDeploy,
-  '(?ms)^\s{2}read_flyway_state\(\) \{.*?^\s{2}\}'
+  $workflow,
+  '(?ms)^\s{10}read_flyway_state\(\) \{.*?^\s{10}\}'
 ).Value
 Add-Check "nenhum psql command reutiliza stdin interativo" (
   -not [regex]::IsMatch($deploySources, $unsafeInteractiveCommandPattern)
@@ -229,53 +214,22 @@ Add-Check "leitura Flyway isola stdin e falha no primeiro erro SQL" (
   ($flywayReader.Contains('--command')) -and
   ($flywayReader.Contains('</dev/null'))
 )
-Add-Check "ativador preserva aplicacao anterior se candidata falhar" (
-  ($atomicActivator.Contains('remove_candidate')) -and
-  ($atomicActivator.Contains('restore_gateway')) -and
-  ($atomicActivator.Contains('verify_active_release')) -and
-  (-not ($atomicActivator -match 'force-recreate[^\r\n]*(ACTIVE|active)'))
+Add-Check "workflow restaura aplicacao anterior se startup falhar" (
+  ($workflow.Contains('application_started=0')) -and
+  ($workflow.Contains('application_started=1')) -and
+  ($workflow.Contains('if [ "${application_started}" -eq 1 ]; then'))
 )
 Add-Check "workflow valida host key antes do upload" (
   $workflow.IndexOf('name: Validate pinned SSH host key') -lt
-  $workflow.IndexOf('name: Upload verified remote deploy controller')
+  $workflow.IndexOf('name: Upload immutable release')
 )
 Add-Check "workflow valida identidade canonica antes de qualquer mutacao remota" (
   ($workflow.IndexOf('name: Validate canonical production target') -gt
     $workflow.IndexOf('name: Validate pinned SSH host key')) -and
   ($workflow.IndexOf('name: Validate canonical production target') -lt
-    $workflow.IndexOf('name: Upload verified remote deploy controller')) -and
-  ($workflow.IndexOf('name: Validate canonical production target') -lt
     $workflow.IndexOf('name: Synchronize IndexNow key in production runtime')) -and
   ($workflow.IndexOf('name: Validate canonical production target') -lt
     $workflow.IndexOf('name: Upload immutable release'))
-)
-Add-Check "workflow envia todos os arquivos pelo staging privado" (
-  (-not $workflow.Contains('scp ')) -and
-  ($workflow.Contains('.cache/topsdojob-deploy/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}')) -and
-  ($workflow.Contains('prepare "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"')) -and
-  ($workflow.Contains('upload "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"')) -and
-  ($workflow.Contains('cleanup "${GITHUB_RUN_ID}" "${GITHUB_RUN_ATTEMPT}" "${GITHUB_SHA}"')) -and
-  ($stagingManager.Contains('scp "${scp_opts[@]}" "${source}" "${ssh_target}:${remote_rel}" </dev/null'))
-)
-Add-Check "staging pertence ao usuario e rejeita symlink ou modo inseguro" (
-  ($stagingManager.Contains('umask 077')) -and
-  ($stagingManager.Contains('mkdir -m 0700')) -and
-  ($stagingManager.Contains('test ! -L')) -and
-  ($stagingManager.Contains('stat -c ''%u''')) -and
-  ($stagingManager.Contains('stat -c ''%a''')) -and
-  ($remoteInvoker.Contains('test \"\$(stat -c ''%a'' \"\${script}\")\" = 500'))
-)
-Add-Check "target guard permanece antes do primeiro upload" (
-  ($workflow.IndexOf('name: Validate canonical production target') -lt
-    $workflow.IndexOf('name: Upload verified remote deploy controller')) -and
-  ($stagingManager.IndexOf('guard="$(remote_guard)"') -lt
-    $stagingManager.IndexOf('scp "${scp_opts[@]}"'))
-)
-Add-Check "controlador nao depende do incoming root-owned" (
-  (-not $workflow.Contains('/opt/topsv3/production/incoming/deploy-remoto-')) -and
-  (-not $remoteInvoker.Contains('/opt/topsv3/production/incoming/deploy-remoto-')) -and
-  ($remoteDeploy.Contains('validate_transport_file release.tar.gz')) -and
-  ($remoteDeploy.Contains('validate_transport_file indexnow.key'))
 )
 foreach ($legacySecret in @(
     'secrets.PRODUCTION_HOST',
@@ -294,33 +248,30 @@ Add-Check "workflow limita retries SSH" (
   ($workflow -match 'for attempt in 1 2 3 4 5; do')
 )
 Add-Check "workflow rejeita residuos de homologacao no runtime" (
-  $remoteDeploy -match "grep -Eqi 'v3\\.esle\\.cloud\|mailpit\|homologacao\|sandbox'"
+  $workflow -match "grep -Eqi 'v3\\.esle\\.cloud\|mailpit\|homologacao\|sandbox'"
 )
 Add-Check "workflow compila frontend com GA4 habilitado" (
   ($workflow -match 'NEXT_PUBLIC_ANALYTICS_ENABLED:\s+"true"') -and
   ($workflow.Contains("node scripts/test-ga4-production.mjs"))
 )
 Add-Check "workflow valida GA4 habilitado no runtime" (
-  $remoteDeploy.Contains("grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true'")
+  $workflow.Contains("grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true'")
 )
 Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
   ($workflow.Contains("Synchronize IndexNow key in production runtime")) -and
-  ($workflow.Contains('LOCAL_INDEXNOW_MANIFEST=')) -and
-  ($workflow.Contains('INDEXNOW_MANIFEST_SHA256=')) -and
-  ($workflow.Contains('"${LOCAL_INDEXNOW_MANIFEST}" indexnow.key')) -and
-  ($workflow.Contains('indexnow "${INDEXNOW_MANIFEST_SHA256}"')) -and
-  (-not ($workflow -match 'ssh[^\r\n]*bash\s+-s')) -and
-  (-not ($workflow -match '\}\s*\|\s*s[s]h\b')) -and
-  ($remoteDeploy.Contains("--network none")) -and
-  ($remoteDeploy.Contains("--pull never")) -and
-  ($remoteDeploy.Contains('test -n "${key}"')) -and
-  ($remoteDeploy.Contains('case "${key}" in')) -and
-  ($remoteDeploy.Contains('awk "!/^INDEXNOW_KEY=/"')) -and
-  ($remoteDeploy.Contains('--volume "${manifest}:/run/indexnow-key:ro"')) -and
-  (-not $remoteDeploy.Contains('test -w /opt/topsv3/secrets/production.env'))
+  ($workflow.Contains("cat <<'REMOTE_HEAD'")) -and
+  ($workflow.Contains('printf ''%s\n'' "${INDEXNOW_KEY}"')) -and
+  ($workflow.Contains("} | ssh")) -and
+  ($workflow.Contains("--network none")) -and
+  ($workflow.Contains("--pull never")) -and
+  ($workflow.Contains('test -n "${key}"')) -and
+  ($workflow.Contains('case "${key}" in')) -and
+  ($workflow.Contains('awk "!/^INDEXNOW_KEY=/"')) -and
+  (-not $workflow.Contains("''|*[!A-Za-z0-9-]*")) -and
+  (-not $workflow.Contains('test -w /opt/topsv3/secrets/production.env'))
 )
 Add-Check "workflow valida IndexNow no runtime sem imprimir o valor" (
-  $remoteDeploy.Contains("grep -q '^INDEXNOW_KEY='")
+  $workflow.Contains("grep -q '^INDEXNOW_KEY='")
 )
 
 foreach ($required in @(
@@ -432,31 +383,14 @@ foreach ($required in @(
     "falha_filho_interrompe",
     "caminho_sucesso_5_5",
     "backup_antes_flyway",
-    "plan_apply_validate_e_candidate_gates_alcancados",
+    "flyway_antes_startup",
+    "health_antes_troca",
+    "consumo_indesejado_reproduzido",
     "apply_idempotente_sem_delta",
     "residuos_zero",
     "DEPLOY_STDIN_REGRESSION_TESTS=PASS"
 )) {
   Add-Check "regressao de stdin contem $required" ($stdinRegressionTests.Contains($required))
-}
-foreach ($required in @(
-    "diretorio_root_owned_reproduz_falha",
-    "staging_home_owner_mode_0700",
-    "upload_e_sha_validados",
-    "controlador_stdin_eof",
-    "marcador_posterior",
-    "hash_divergente_bloqueia",
-    "symlink_rejeitado",
-    "staging_owner_incorreto_rejeitado",
-    "staging_antigo_nao_reutilizado",
-    "target_guard_antes_upload",
-    "falha_controlador_propaga_exit_code",
-    "cleanup_normal",
-    "caminho_sucesso_5_5",
-    "residuos_zero",
-    "DEPLOY_STAGING_TESTS=PASS"
-  )) {
-  Add-Check "staging seguro contem $required" ($stagingTests.Contains($required))
 }
 foreach ($required in @(
     "postgres:17.10-alpine",
@@ -469,88 +403,12 @@ foreach ($required in @(
   )) {
   Add-Check "integracao de backup contem $required" ($backupIntegrationTests.Contains($required))
 }
-foreach ($required in @(
-    "CANDIDATE_PROJECT",
-    "CANDIDATE_NETWORK",
-    "CANDIDATE_BACKEND_PORT",
-    "CANDIDATE_FRONTEND_PORT",
-    "CANDIDATE_GATEWAY_PORT",
-    "verify_candidate_dns",
-    "verify_database_gate",
-    "validate_gateway_candidate",
-    "systemctl reload nginx",
-    "restore_gateway",
-    "verify_active_release",
-    "drain_window",
-    "verify_coexistence_capacity",
-    "old_gateway_connection_count",
-    'TOPSV3_DRAIN_MIN_SECONDS:-600',
-    'TOPSV3_RELEASE_SHUTDOWN_TIMEOUT_SECONDS',
-    "shutdown_old_release_gracefully",
-    "OLD_RELEASE_RUNTIME_RESIDUALS=0",
-    "CONTINUITY_FAILURES"
-  )) {
-  Add-Check "ativador atomico contem $required" ($atomicActivator.Contains($required))
-}
-foreach ($required in @(
-    "unhealthy",
-    "readiness-503",
-    "healthy",
-    "nginx-invalid",
-    "post-switch-failure",
-    "seq 1 200",
-    "OLD_LONG_REQUESTS_STARTED",
-    "LONG_REQUEST_COMPLETED_SECONDS",
-    "VIDEO_STREAM_COMPLETED",
-    "NEW_REQUESTS_CANDIDATE_ONLY",
-    "OLD_RELEASE_RUNNING_DURING_MONITOR",
-    "OLD_GRACEFUL_SHUTDOWN_COMPLETED",
-    "OLD_RUNTIME_RESIDUALS_0",
-    "SMTP lento concluiu aceite e commit antes da remocao normal",
-    "falha graciosa preservou container sem remocao forcada",
-    "zero 500/502/504",
-    "ATOMIC_RELEASE_DEPLOY_TESTS=PASS"
-  )) {
-  Add-Check "harness atomico contem $required" ($atomicActivatorTests.Contains($required))
-}
-Add-Check "ativador nao recria gateway ativo" (
-  (-not ($atomicActivator -match 'force-recreate[^\r\n]*\$\{ACTIVE_PREFIX\}')) -and
-  ($atomicActivator.Contains('sudo -n systemctl reload nginx'))
-)
-Add-Check "drenagem nao usa janela fixa insegura" (
-  (-not $atomicActivator.Contains('TOPSV3_DRAIN_SECONDS:-15')) -and
-  (-not ($atomicActivator -match 'docker stop --time 30')) -and
-  ($atomicActivator.Contains('DRAIN_RESULT=CONNECTIONS_DRAINED')) -and
-  ($atomicActivator.Contains('DRAIN_RESULT=MINIMUM_WINDOW_WITHOUT_CONNECTION_PROBE')) -and
-  ($atomicActivator.Contains('docker stop --signal=TERM --time -1'))
-)
-Add-Check "releases removidas sem force somente apos shutdown" (
-  ($atomicActivator.Contains('OLD_RELEASE_SHUTDOWN=GRACEFUL')) -and
-  ($atomicActivator.Contains('docker rm "${container}"')) -and
-  ($atomicActivator.Contains('CONTAINER_REMOVAL_BLOCKED')) -and
-  (-not $atomicActivator.Contains('docker rm -f'))
-)
-Add-Check "candidata neutraliza registro Efi antes do startup" (
-  ($atomicActivator.Contains('EFI_WEBHOOK_REGISTRATION_ENABLED=false')) -and
-  ($atomicActivator.Contains('verify_candidate_job_isolation')) -and
-  ($atomicActivator.IndexOf('verify_candidate_job_isolation') -lt $atomicActivator.IndexOf('switch_gateway'))
-)
-Add-Check "shutdown excede ciclo Spring e timeouts SMTP" (
-  ($atomicActivator.Contains('SPRING_SHUTDOWN_PHASE_TIMEOUT_SECONDS=120')) -and
-  ($atomicActivator.Contains('SMTP_CONNECTION_TIMEOUT_SECONDS=5')) -and
-  ($atomicActivator.Contains('SMTP_READ_TIMEOUT_SECONDS=10')) -and
-  ($atomicActivator.Contains('SMTP_WRITE_TIMEOUT_SECONDS=10')) -and
-  ($atomicActivator.Contains('timeout de shutdown deve superar o ciclo gracioso do Spring')) -and
+Add-Check "compose preserva shutdown gracioso e timeouts SMTP" (
   ($compose.Contains('SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 120s')) -and
   ($compose.Contains('SPRING_TASK_SCHEDULING_SHUTDOWN_AWAIT_TERMINATION: "true"')) -and
   ($compose.Contains('OUTBOX_SMTP_CONNECTION_TIMEOUT_MS: "5000"')) -and
   ($compose.Contains('OUTBOX_SMTP_TIMEOUT_MS: "10000"')) -and
   ($compose.Contains('OUTBOX_SMTP_WRITE_TIMEOUT_MS: "10000"'))
-)
-Add-Check "candidata usa aliases em rede isolada" (
-  ($atomicActivator.Contains('TOPSV3_APP_NETWORK="${CANDIDATE_NETWORK}"')) -and
-  ($atomicActivator.Contains('docker network connect --alias postgres')) -and
-  ($atomicActivator.Contains('http://backend:8080/api/public'))
 )
 Add-Check "snapshot Flyway ignora repeatables" (
   ($databaseGateSnapshot.Contains("version ~ '^[0-9]+$'")) -and
@@ -583,9 +441,9 @@ foreach ($required in @(
     'EFI_RECONCILIATION_ENABLED: ${EFI_RECONCILIATION_ENABLED:-true}',
     'EFI_WEBHOOK_REGISTRATION_ENABLED: ${EFI_WEBHOOK_REGISTRATION_ENABLED:-false}',
     "SEARCH_INDEXING_MODE: public",
-    '127.0.0.1:${TOPSV3_BACKEND_BIND_PORT:-28080}:8080',
-    '127.0.0.1:${TOPSV3_FRONTEND_BIND_PORT:-23010}:3000',
-    '127.0.0.1:${TOPSV3_GATEWAY_BIND_PORT:-23000}:23000',
+    '127.0.0.1:28080:8080',
+    '127.0.0.1:23010:3000',
+    '127.0.0.1:23000:23000',
     '/opt/topsv3/secrets/application-production.yml:',
     '/opt/topsv3/secrets/efi:',
     '/opt/topsv3/secrets/nginx-production-local.conf:',

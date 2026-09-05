@@ -23,9 +23,6 @@ const preprodCompose = read('deploy/preprod/docker-compose.yml')
 const hmlCompose = read('deploy/hml/docker-compose.yml')
 const productionWorkflow = read('.github/workflows/deploy-production.yml')
 const ciWorkflow = read('.github/workflows/ci.yml')
-const remoteProductionController = read('scripts/deploy/executar-deploy-remoto-production.sh')
-const atomicProductionActivator = read('scripts/deploy/ativar-release-atomica-production.sh')
-const productionDeployFlow = `${productionWorkflow}\n${remoteProductionController}`
 
 assert.match(backendHealth, /@GetMapping\("\/liveness"\)/)
 assert.match(backendHealth, /@GetMapping\("\/readiness"\)/)
@@ -73,24 +70,40 @@ assert.doesNotMatch(ciWorkflow, /\b(?:ssh|scp|rsync)\b|PREPROD_|environment:\s*p
 process.stdout.write('ok - CI preserva os testes sem acesso remoto\n')
 
 assert.match(productionWorkflow, /npm run test:health-readiness/)
-assert.match(productionWorkflow, /executar-deploy-remoto-production\.sh/)
-assert.match(productionWorkflow, /invocar-deploy-remoto-production\.sh/)
-assert.match(productionDeployFlow, /\/api\/health\/liveness/)
-assert.match(productionDeployFlow, /\/api\/health\/readiness/)
-assert.match(productionDeployFlow, /\/health\/liveness/)
-assert.match(productionDeployFlow, /\/health\/readiness/)
+assert.match(productionWorkflow, /\/api\/health\/liveness/)
+assert.match(productionWorkflow, /\/api\/health\/readiness/)
+assert.match(productionWorkflow, /\/health\/liveness/)
+assert.match(productionWorkflow, /\/health\/readiness/)
 process.stdout.write('ok - workflow production aguarda readiness real\n')
 
-assert.match(remoteProductionController, /bash "\$\{atomic_activator\}"/)
-assert.match(atomicProductionActivator, /verify_candidate/)
-assert.match(atomicProductionActivator, /\/api\/health\/liveness/)
-assert.match(atomicProductionActivator, /\/api\/health\/readiness/)
-assert.match(atomicProductionActivator, /\/health\/liveness/)
-assert.match(atomicProductionActivator, /\/health\/readiness/)
+const activation = productionWorkflow.match(
+  /name: Build and activate production release[\s\S]*?(?=\n      - name:)/,
+)?.[0]
+assert.ok(activation, 'etapa de ativacao ausente')
+const baseline = activation.slice(
+  activation.indexOf('baseline_health=DOWN'),
+  activation.indexOf('capture_database_snapshot "${snapshot_before}"'),
+)
+assert.match(baseline, /28080\/api\/health\/readiness/)
+assert.match(baseline, /23000\/anuncios/)
+assert.doesNotMatch(
+  baseline,
+  /(?:23010|23000)\/health\//,
+  'o baseline deve aceitar a release de referencia sem health frontend',
+)
+const startup = activation.indexOf('application_started=1')
+const health = activation.indexOf('test "${healthy}" -eq 1')
+const switchLink = activation.indexOf('mv -Tf "${current_link}"')
+assert.ok(startup >= 0 && health > startup && switchLink > health)
+const healthLoop = activation.slice(startup, health)
+assert.match(healthLoop, /28080\/api\/health\/readiness/)
+assert.match(healthLoop, /23010\/health\/readiness/)
+assert.match(healthLoop, /23000\/health\/readiness/)
+assert.match(activation, /trap on_error ERR/)
+assert.match(activation, /rollback_application/)
 assert.ok(
-  atomicProductionActivator.indexOf('stage_or_abort verify_candidate') <
-    atomicProductionActivator.indexOf('stage_or_abort switch_gateway'),
-  'a candidata deve concluir readiness antes da troca de trafego',
+  activation.indexOf('capture_database_snapshot "${snapshot_after}" UP') < switchLink,
+  'a release deve passar health e gate de banco antes da confirmacao do symlink',
 )
 
 console.log('HEALTH_READINESS_CONTRACT_TESTS=PASS')
