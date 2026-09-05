@@ -5,6 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import sharp from 'sharp'
 
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = path.join(frontendRoot, 'src')
@@ -170,11 +171,12 @@ assert.match(api, /xhr\.status === 415 && unsupportedPhotoUpload/)
 assert.match(api, /resolveUnsupportedPhotoUploadMessage\(candidateMessage\)/)
 assert.match(api, /const unsupportedPhotoUpload = containsOnlyPhotoUploads\(\[arquivo\]\)/)
 assert.match(api, /const unsupportedPhotoUpload = containsOnlyPhotoUploads\(arquivos\)/)
-assert.match(api, /if \(mimeType\) return mimeType\.startsWith\('image\/'\)/)
+assert.match(api, /if \(isVideoUploadFile\(file\)\) return false/)
 assert.match(api, /new Set\(\['jpg', 'jpeg', 'png', 'webp'\]\)/)
 assert.match(api, /error\.code \? `Código: \$\{error\.code\}`/)
 assert.match(api, /error\.requestId \? `Request ID: \$\{error\.requestId\}`/)
-assert.match(apiContract, /Não foi possível ler a foto\. Envie um arquivo JPG, PNG ou WebP verdadeiro\. Apenas mudar a extensão não resolve\./)
+const safePhotoMessage = 'Não conseguimos enviar esta foto. Abra a imagem em um editor e salve uma nova cópia em JPG ou PNG. Depois, selecione essa cópia.'
+assert.ok(apiContract.includes(safePhotoMessage))
 assert.match(apiContract, /unsupportedPhotoUpload\?: boolean/)
 assert.match(apiContract, /options\.unsupportedPhotoUpload/)
 assert.match(apiContract, /Não foi possível processar o arquivo enviado\./)
@@ -278,6 +280,11 @@ const transpiledAdapter = ts.transpileModule(api, {
 }).outputText
 const apiContractImport = "import { publicApiUrl, resolveUnsupportedPhotoUploadMessage } from '@/lib/api-contract';"
 const visualizacoesImport = "import { parseVisualizacoesCanonicas, } from '@/lib/visualizacoes-canonicas';"
+const photoValidationImport = "import { isSupportedUploadVideo, validatePhotoUpload } from '@/lib/photo-upload-validation';"
+const transpiledPhotoValidation = ts.transpileModule(source('lib/photo-upload-validation.ts'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+}).outputText
+const photoValidationUrl = `data:text/javascript;base64,${Buffer.from(transpiledPhotoValidation).toString('base64')}`
 assert.ok(transpiledAdapter.includes(apiContractImport), 'Import do contrato da API não localizado no adapter transpilado.')
 assert.ok(transpiledAdapter.includes(visualizacoesImport), 'Import de visualizações não localizado no adapter transpilado.')
 const adapterRuntimeSource = transpiledAdapter
@@ -288,11 +295,12 @@ const adapterRuntimeSource = transpiledAdapter
         ? message.normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toLowerCase().replace(/[.!?:;]+$/g, '').trim()
         : ''
       return !normalizedMessage || normalizedMessage === 'formato de arquivo nao permitido' || normalizedMessage === 'unsupported media type'
-        ? ${JSON.stringify('Não foi possível ler a foto. Envie um arquivo JPG, PNG ou WebP verdadeiro. Apenas mudar a extensão não resolve.')}
+        ? ${JSON.stringify(safePhotoMessage)}
         : message
     }
   `)
   .replace(visualizacoesImport, 'const parseVisualizacoesCanonicas = (value) => value;')
+  .replace(photoValidationImport, `import { isSupportedUploadVideo, validatePhotoUpload } from ${JSON.stringify(photoValidationUrl)};`)
 assert.doesNotMatch(adapterRuntimeSource, /from ['"]@\//, 'O harness deve substituir todos os aliases usados pelo adapter.')
 
 const adapterRuntimeUrl = `data:text/javascript;base64,${Buffer.from(adapterRuntimeSource).toString('base64')}`
@@ -336,6 +344,9 @@ class ContractXMLHttpRequest {
 
 globalThis.document = { cookie: 'XSRF-TOKEN=csrf-contract' }
 globalThis.XMLHttpRequest = ContractXMLHttpRequest
+// Browser decoding is mocked here; these tests exercise the actual request/error
+// adapters with synthetic encoded fixtures, not browser codec compatibility.
+globalThis.createImageBitmap = async () => ({ width: 2, height: 2, close() {} })
 
 async function expectRejectedUpload(action, response) {
   pendingXhrResponses.push(response)
@@ -358,20 +369,23 @@ const generic415 = (bodyRequestId = undefined) => ({
   },
   headers: { 'X-Request-Id': 'request-header-415' },
 })
-const photoByMime = new File(['foto-mime'], 'arquivo.informado', { type: 'image/jpeg', lastModified: 1 })
-const photoByExtension = new File(['foto-extensao'], 'arquivo.WEBP', { type: '', lastModified: 2 })
-const videoWithPhotoExtension = new File(['video'], 'video.jpg', { type: 'video/mp4', lastModified: 3 })
+const syntheticPixels = { create: { width: 2, height: 2, channels: 3, background: '#456789' } }
+const photoByMime = new File([await sharp(syntheticPixels).jpeg().toBuffer()], 'arquivo.jpg', { type: 'image/jpeg', lastModified: 1 })
+const photoByExtension = new File([await sharp(syntheticPixels).webp().toBuffer()], 'arquivo.WEBP', { type: '', lastModified: 2 })
+const videoWithPhotoExtension = new File(['video'], 'video.mp4', { type: 'video/mp4', lastModified: 3 })
 const videoMovWithoutMime = new File(['video-mov'], 'video.mov', { type: '', lastModified: 4 })
-const unknownFile = new File(['desconhecido'], 'arquivo.bin', { type: '', lastModified: 5 })
+const unknownFile = new File(['video-nao-suportado'], 'arquivo.avi', { type: '', lastModified: 5 })
 
 const firstPhotoFailure = await expectRejectedUpload(
   () => adapterRuntime.enviarMinhaMidia('anuncio', photoByMime),
   generic415('request-body-prioritario'),
 )
 assert.equal(firstPhotoFailure.error.status, 415)
-assert.equal(firstPhotoFailure.error.message, 'Não foi possível ler a foto. Envie um arquivo JPG, PNG ou WebP verdadeiro. Apenas mudar a extensão não resolve.')
+assert.equal(firstPhotoFailure.error.message, safePhotoMessage)
 assert.equal(firstPhotoFailure.error.code, 'MIDIA_FORMATO_INVALIDO')
 assert.equal(firstPhotoFailure.error.requestId, 'request-body-prioritario')
+assert.equal(adapterRuntime.meusAnunciosErrorMessage(firstPhotoFailure.error, 'Falha'), safePhotoMessage, 'Mensagem principal da foto não deve anexar metadados técnicos.')
+assert.doesNotMatch(adapterRuntime.meusAnunciosErrorMessage(firstPhotoFailure.error, 'Falha'), /Código:|Request ID:/)
 assert.equal(firstPhotoFailure.request.body.get('arquivo').name, photoByMime.name)
 
 const retriedPhotoFailure = await expectRejectedUpload(
@@ -389,7 +403,7 @@ const firstPhotoBatchFailure = await expectRejectedUpload(
   () => adapterRuntime.enviarMinhasMidiasEmLote('anuncio', photoBatch),
   generic415(),
 )
-assert.equal(firstPhotoBatchFailure.error.message, 'Não foi possível ler a foto. Envie um arquivo JPG, PNG ou WebP verdadeiro. Apenas mudar a extensão não resolve.')
+assert.equal(firstPhotoBatchFailure.error.message, safePhotoMessage)
 assert.equal(firstPhotoBatchFailure.request.body.getAll('arquivos').length, 2)
 assert.equal(firstPhotoBatchFailure.error.requestId, 'request-header-415')
 
@@ -411,6 +425,7 @@ assert.equal(videoFailure.error.message, 'Formato de arquivo não permitido.')
 assert.doesNotMatch(videoFailure.error.message, /JPG|PNG|WebP/)
 assert.equal(videoFailure.error.code, 'MIDIA_FORMATO_INVALIDO')
 assert.equal(videoFailure.error.requestId, 'request-header-415')
+assert.match(adapterRuntime.meusAnunciosErrorMessage(videoFailure.error, 'Falha'), /Código: MIDIA_FORMATO_INVALIDO/, 'Tratamento de erro de vídeo permanece separado.')
 
 const movFailure = await expectRejectedUpload(
   () => adapterRuntime.enviarMinhaMidia('anuncio', videoMovWithoutMime),
@@ -425,6 +440,7 @@ const mixedFailure = await expectRejectedUpload(
 )
 assert.equal(mixedFailure.error.message, 'Formato de arquivo não permitido.')
 assert.doesNotMatch(mixedFailure.error.message, /JPG|PNG|WebP/)
+assert.match(adapterRuntime.meusAnunciosErrorMessage(mixedFailure.error, 'Falha'), /Request ID:/, 'Lote misto mantém o tratamento anterior.')
 
 const safeSpecificMessage = 'O conteúdo enviado não corresponde ao formato declarado.'
 const unknownFailure = await expectRejectedUpload(
@@ -460,9 +476,9 @@ const createFailure = createUpload.slice(createUpload.indexOf('} catch (error)')
 assert.doesNotMatch(createFailure, /setFotos\(\[\]\)|setVideos\(\[\]\)/)
 assert.match(wizardPhotos, /meusAnunciosErrorMessage\(error, 'Falha ao enviar os arquivos\.'\)/)
 assert.match(wizardPhotos, /const \[pendingPersistedFiles, setPendingPersistedFiles\] = useState<File\[]>\(\[\]\)/)
-assert.ok(persistedUpload.indexOf('await enviarMinhasMidiasEmLote') < persistedUpload.indexOf('setPendingPersistedFiles([])'), 'Edicao deve limpar a selecao apenas depois do 2xx.')
+assert.ok(persistedUpload.indexOf('await enviarMinhasMidiasEmLote') < persistedUpload.indexOf('updatePendingFiles([])'), 'Edicao deve limpar a selecao apenas depois do 2xx.')
 const persistedFailure = persistedUpload.slice(persistedUpload.indexOf('} catch (error)'), persistedUpload.indexOf('} finally'))
-assert.doesNotMatch(persistedFailure, /setPendingPersistedFiles\(\[\]\)/)
+assert.doesNotMatch(persistedFailure, /setPendingPersistedFiles\(\[\]\)|updatePendingFiles\(\[\]\)/)
 assert.match(wizardPhotos, /onClick=\{\(\) => void uploadPersisted\(pendingPersistedFiles\)\}/)
 assert.match(normalized(wizardPhotos), /Tentar enviar novamente/)
 

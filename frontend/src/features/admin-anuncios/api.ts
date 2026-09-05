@@ -6,6 +6,7 @@ import {
   requireArrayPayload,
 } from '@/lib/api-contract'
 import { corrigirEstruturaTexto } from '@/lib/text/encoding'
+import { validatePhotoUpload } from '@/lib/photo-upload-validation'
 
 import type {
   AdminAdDetail,
@@ -364,7 +365,18 @@ export async function listAdminAdMedia(id: string) {
   return collectAdminAdMediaPages(firstPage, loadPage)
 }
 
-export function uploadAdminAdMedia(id: string, arquivo: File, idempotencyKey: string) {
+export async function uploadAdminAdMedia(id: string, arquivo: File, idempotencyKey: string) {
+  const validation = await validatePhotoUpload(arquivo)
+  if (!validation.valid) {
+    throw new ApiContractError(
+      `${arquivo.name}: ${validation.message}`,
+      'INVALID_REQUEST',
+      null,
+      false,
+      null,
+      'PHOTO_UPLOAD_LOCAL_INVALID',
+    )
+  }
   const form = new FormData()
   form.append('arquivo', arquivo)
   return request<AdminAdMediaUploadResponse>(`/anuncios/${encodeURIComponent(id)}/midias`, {
