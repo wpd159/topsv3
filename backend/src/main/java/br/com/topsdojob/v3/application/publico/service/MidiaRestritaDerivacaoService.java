@@ -7,11 +7,13 @@ import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import br.com.topsdojob.v3.infrastructure.storage.r2.R2VerificacaoAgrupadaPreviews;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -20,6 +22,7 @@ import java.util.function.Supplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -40,15 +43,26 @@ public class MidiaRestritaDerivacaoService {
   private final ObjectProvider<ObjectStorage> storageProvider;
   private final R2StorageProperties properties;
   private final FotoUploadProcessor processor;
+  private final R2VerificacaoAgrupadaPreviews verificacaoAgrupada;
   private final Set<String> previewsConfirmados = ConcurrentHashMap.newKeySet();
 
+  @Autowired
   public MidiaRestritaDerivacaoService(
       ObjectProvider<ObjectStorage> storageProvider,
       R2StorageProperties properties,
       FotoUploadProcessor processor) {
+    this(storageProvider, properties, processor, new R2VerificacaoAgrupadaPreviews(properties));
+  }
+
+  public MidiaRestritaDerivacaoService(
+      ObjectProvider<ObjectStorage> storageProvider,
+      R2StorageProperties properties,
+      FotoUploadProcessor processor,
+      R2VerificacaoAgrupadaPreviews verificacaoAgrupada) {
     this.storageProvider = storageProvider;
     this.properties = properties;
     this.processor = processor;
+    this.verificacaoAgrupada = verificacaoAgrupada;
   }
 
   public ResultadoPreview resolverPreviewPublica(ArquivoMidiaEntity arquivo) {
@@ -90,10 +104,8 @@ public class MidiaRestritaDerivacaoService {
       }
       operacao.fase = FasePreviewsLocalidades.VERIFICACAO_REMOTA;
       Supplier<Void> verificacao = () -> {
-        for (Map.Entry<String, Supplier<ResultadoPreview>> pedido : operacao.pedidos.entrySet()) {
-          conferirOrcamentoLocalidades();
-          operacao.verificados.put(pedido.getKey(), pedido.getValue().get());
-          conferirOrcamentoLocalidades();
+        if (!operacao.pedidos.isEmpty()) {
+          operacao.verificados.putAll(operacao.responsavel.verificarPreviewsLocalidades(operacao.pedidos));
         }
         return null;
       };
@@ -109,23 +121,36 @@ public class MidiaRestritaDerivacaoService {
     }
   }
 
-  private ResultadoPreview verificarPreviewLocalidades(String key) {
+  private Map<String, ResultadoPreview> verificarPreviewsLocalidades(Set<String> chaves) {
     conferirOrcamentoLocalidades();
     if (TransactionSynchronizationManager.isActualTransactionActive()) {
       throw indisponivelLocalidades("verificacao remota exige transacao encerrada");
     }
     try {
       ObjectStorage storage = storage();
-      if (storage == null) {
+      if (storage == null || verificacaoAgrupada == null) {
         throw indisponivelLocalidades("storage de preview indisponivel");
       }
-      // Unlike the gallery's positive cache, this proof belongs only to this operation.
-      if (!storage.exists(StorageArea.PUBLIC_MEDIA, key)) {
-        return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
+      // Only this operation's requested identities may receive a proof. The helper
+      // never retains an inventory or falls back to per-object HEAD requests.
+      Set<String> solicitadas = Set.copyOf(chaves);
+      Set<String> presentes = verificacaoAgrupada.verificar(solicitadas);
+      conferirOrcamentoLocalidades();
+      if (presentes == null || !solicitadas.containsAll(presentes)) {
+        throw indisponivelLocalidades("prova agrupada de preview invalida");
       }
-      return storage.publicUrl(StorageArea.PUBLIC_MEDIA, key)
-          .map(uri -> new ResultadoPreview(uri.toString(), null))
-          .orElseThrow(() -> indisponivelLocalidades("url de preview indisponivel"));
+      Map<String, ResultadoPreview> resultados = new LinkedHashMap<>();
+      for (String key : solicitadas) {
+        conferirOrcamentoLocalidades();
+        ResultadoPreview resultado = presentes.contains(key)
+            ? storage.publicUrl(StorageArea.PUBLIC_MEDIA, key)
+                .map(uri -> new ResultadoPreview(uri.toString(), null))
+                .orElseThrow(() -> indisponivelLocalidades("url de preview indisponivel"))
+            : new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
+        resultados.put(key, resultado);
+      }
+      conferirOrcamentoLocalidades();
+      return resultados;
     } catch (RuntimeException exception) {
       if (exception instanceof ResponseStatusException status && status.getStatusCode().value() == 503) {
         throw status;
@@ -148,19 +173,24 @@ public class MidiaRestritaDerivacaoService {
 
   private static final class PreviewsLocalidades {
     private FasePreviewsLocalidades fase = FasePreviewsLocalidades.COLETA;
-    private final Map<String, Supplier<ResultadoPreview>> pedidos = new LinkedHashMap<>();
+    private MidiaRestritaDerivacaoService responsavel;
+    private final Set<String> pedidos = new LinkedHashSet<>();
     private final Map<String, ResultadoPreview> verificados = new LinkedHashMap<>();
 
     private ResultadoPreview resolver(MidiaRestritaDerivacaoService service, ArquivoMidiaEntity arquivo) {
       conferirOrcamentoLocalidades();
       String key = service.chavePublicaOuNula(arquivo);
       if (key == null) throw indisponivelLocalidades("preview sem identidade canonica");
+      if (responsavel != null && responsavel != service) {
+        throw indisponivelLocalidades("origem de preview alterada durante consulta de localidades");
+      }
       if (fase == FasePreviewsLocalidades.COLETA) {
-        if (!pedidos.containsKey(key)) {
+        responsavel = service;
+        if (!pedidos.contains(key)) {
           if (pedidos.size() >= MAX_PREVIEWS_LOCALIDADES) {
             throw indisponivelLocalidades("limite de previews por consulta excedido");
           }
-          pedidos.put(key, () -> service.verificarPreviewLocalidades(key));
+          pedidos.add(key);
         }
         // This intermediate result is discarded; FINAL uses only the verified result.
         return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);

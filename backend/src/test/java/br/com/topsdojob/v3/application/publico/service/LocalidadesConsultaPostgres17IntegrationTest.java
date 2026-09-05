@@ -19,6 +19,7 @@ import br.com.topsdojob.v3.infrastructure.storage.ObjectWriteResult;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.StoredObject;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import br.com.topsdojob.v3.infrastructure.storage.r2.R2VerificacaoAgrupadaPreviews;
 import br.com.topsdojob.v3.persistence.repository.AnuncioLocalizacaoRepository;
 import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import br.com.topsdojob.v3.persistence.repository.BairroRepository;
@@ -65,6 +66,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -95,7 +97,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Import({LocalidadePublicaConsultaService.class, LocalidadesConsultaCoordenador.class,
         AnuncioSeoElegibilidadeConsultaService.class, AnuncioSeoIndexabilidadePolicy.class,
         LocalidadeSeoIndexabilidadePolicy.class, MidiaPublicaMapper.class,
-        MidiaPublicaUrlService.class, MidiaRestritaDerivacaoService.class,
+        MidiaPublicaUrlService.class,
         PremiumPublicoMapper.class, BeneficioAnuncioConsultaService.class,
         PremiumExpiracaoPolicyService.class, FotoUploadProcessor.class,
         LocalidadesConsultaPostgres17IntegrationTest.TestBeans.class})
@@ -713,6 +715,19 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     @EnableConfigurationProperties({R2StorageProperties.class, MidiaUploadProperties.class})
     static class TestBeans {
         @Bean ControlledStorage controlledStorage() { return new ControlledStorage(); }
+        @Bean MidiaRestritaDerivacaoService derivacaoControlada(ObjectProvider<ObjectStorage> provider,
+                ControlledStorage storage, R2StorageProperties properties, FotoUploadProcessor processor) {
+            // Complementary ownership tests keep their controlled blocking boundary.
+            // The separate capacity integration uses the real grouped R2 HTTP client.
+            R2VerificacaoAgrupadaPreviews verifier = org.mockito.Mockito.mock(R2VerificacaoAgrupadaPreviews.class);
+            org.mockito.Mockito.when(verifier.verificar(org.mockito.ArgumentMatchers.anySet())).thenAnswer(call -> {
+                java.util.Set<String> requested = call.getArgument(0);
+                java.util.Set<String> found = new java.util.LinkedHashSet<>();
+                for (String key : requested) if (storage.exists(StorageArea.PUBLIC_MEDIA, key)) found.add(key);
+                return java.util.Set.copyOf(found);
+            });
+            return new MidiaRestritaDerivacaoService(provider, properties, processor, verifier);
+        }
     }
 
     static final class Gate {
