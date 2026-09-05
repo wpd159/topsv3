@@ -224,9 +224,13 @@ _op_verify_runtime() {
   [ "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = healthy ] || return 1
 }
 _op_http_probe() {
-  local url="$1" kind="$2" correlation="$3" limit=7 result status duration rc=0
+  local url="$1" kind="$2" correlation="$3" limit=7 result status duration rc=0 remaining="${4:-}"
   local body="${OP_DIR}/probe-${BASHPID}.body"
   [ "${kind}" != readiness ] || limit=2
+  if [ -n "${remaining}" ]; then
+    [[ "${remaining}" =~ ^[0-9]+$ ]] && [ "${remaining}" -gt 0 ] || return 1
+    [ "${remaining}" -ge "${limit}" ] || limit="${remaining}"
+  fi
   result="$(curl --silent --show-error --connect-timeout 1 --max-time "${limit}" \
     --header "X-Request-ID: ${correlation}" --output "${body}" \
     --write-out '%{http_code} %{time_total}' "${url}")" || rc=$?
@@ -251,7 +255,7 @@ _op_http_probe() {
   rm -f -- "${body}"
 }
 op_smoke() {
-  local sha="$1" attempt manifest correlation readiness_deadline ready=0
+  local sha="$1" attempt manifest correlation readiness_deadline ready=0 recovery_deadline remaining pause
   _op_sha "${sha}" || return 2
   if [ "${sha}" = "${OP_PREVIOUS_SHA}" ]; then
     manifest="${OP_DIR}/images.tsv"
@@ -259,6 +263,33 @@ op_smoke() {
     manifest="${OP_DIR}/candidate.images.tsv"
     [ -s "${manifest}" ] || return 1
     (cd "${OP_SECRETS}" && sha256sum -c --status "${OP_DIR}/candidate.config.sha256") || return 1
+  fi
+  if [ "${OP_RECOVERING:-0}" -eq 1 ] && [ "${sha}" = "${OP_PREVIOUS_SHA}" ]; then
+    # The old release historically became ready at ~32s but served home only
+    # around 183s. Give recovery 300s, independent of candidate acceptance.
+    # This is a probe-wait window, not a timeout for Docker/identity commands.
+    # _op_restore has already recreated the services once; this loop only reads.
+    recovery_deadline=$((SECONDS + 300))
+    attempt=0
+    while [ "${SECONDS}" -lt "${recovery_deadline}" ]; do
+      [ "${OP_CANCEL_RC:-0}" -eq 0 ] || return "${OP_CANCEL_RC}"
+      attempt=$((attempt + 1))
+      correlation="deploy-${OP_ID}-recovery-${attempt}"
+      if _op_verify_runtime "${sha}" "${manifest}" &&
+        _op_http_probe http://127.0.0.1:28080/api/health/readiness readiness "${correlation}-ready" "$((recovery_deadline - SECONDS))" &&
+        _op_http_probe http://127.0.0.1:23000/ home "${correlation}-home" "$((recovery_deadline - SECONDS))" &&
+        _op_http_probe http://127.0.0.1:23000/anuncios catalog "${correlation}-catalog" "$((recovery_deadline - SECONDS))"; then
+        [ "${SECONDS}" -lt "${recovery_deadline}" ] || return 1
+        [ "${OP_CANCEL_RC:-0}" -eq 0 ] || return "${OP_CANCEL_RC}"
+        return 0
+      fi
+      remaining=$((recovery_deadline - SECONDS))
+      [ "${remaining}" -gt 0 ] || break
+      pause=15
+      [ "${remaining}" -ge "${pause}" ] || pause="${remaining}"
+      sleep "${pause}"
+    done
+    return 1
   fi
   # Boot readiness is cheap and independent of locality/SSR fan-out. Java may
   # need tens of seconds to boot, even when connection refusal is immediate.

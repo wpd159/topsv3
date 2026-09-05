@@ -94,7 +94,7 @@ server_program="$(cat <<'NODE_SERVER'
 const http = require('node:http');
 const role = process.env.SERVICE;
 const prefix = process.env.TEST_PREFIX;
-let readinessFailures = 1, mode = '';
+let readinessFailures = 1, mode = '', recoveryStarted = 0;
 http.createServer(async (request, response) => {
   const correlation = request.headers['x-request-id'] || 'none';
   const send = (status, body, contentType = 'text/html; charset=utf-8') => {
@@ -103,12 +103,14 @@ http.createServer(async (request, response) => {
   try {
     if (request.url.startsWith('/__test/control/')) {
       mode = request.url.split('/').at(-1);
+      if (mode.startsWith('recovery_')) recoveryStarted = Date.now();
       if (mode === 'final_failure') console.log('fixture enabled=true');
       return send(200, 'CONTROLLED');
     }
     if (role === 'backend') {
       if (request.url === '/api/health/readiness') {
-        const ready = readinessFailures-- <= 0;
+        const ready = mode.startsWith('recovery_')
+          ? Date.now() - recoveryStarted >= 32000 : readinessFailures-- <= 0;
         return send(ready ? 200 : 503, JSON.stringify({status: ready ? 'UP' : 'DOWN', app: 'topsdojob-v3-backend'}), 'application/json');
       }
       if (request.url === '/api/public/localidades') {
@@ -124,6 +126,9 @@ http.createServer(async (request, response) => {
     const locality = await fetch(`http://${prefix}-backend:8080/api/public/localidades`, {headers: {'X-Request-ID': correlation}, signal: AbortSignal.timeout(2000)});
     const data = await locality.json();
     if (!locality.ok || !Array.isArray(data.cidades)) return send(503, 'LOCALITY_UNAVAILABLE');
+    if (mode === 'recovery_absent' || (mode === 'recovery_late' && Date.now() - recoveryStarted < 183000)) {
+      return send(503, 'CONTROLLED_OLD_RELEASE_WARMUP');
+    }
     if (mode === 'http_failure') return send(200, '<h1>Application error</h1>');
     return send(200, request.url === '/anuncios'
       ? '<h1>Anúncios de acompanhantes</h1><p>Explore perfis publicados</p><p>Nenhum anúncio publicado.</p>'
@@ -184,11 +189,22 @@ if [[ "${args[0]:-}" == compose && "$joined" == *' up '* ]]; then
     if [[ "$TEST_SCENARIO" != success ]]; then
       target=frontend
       [[ "$TEST_SCENARIO" != final_failure ]] || target=backend
+      failure_mode="$TEST_SCENARIO"
+      [[ "$TEST_SCENARIO" != recovery_* ]] || failure_mode=http_failure
+      "$TEST_REAL_DOCKER" exec "${TEST_PREFIX}-${target}" node -e '
+        (async () => { for (let i=0;i<30;i++) { try {
+          const r=await fetch("http://127.0.0.1:8080/__test/control/"+process.argv[1]); if(r.ok)return;
+        } catch {} await new Promise(r=>setTimeout(r,100)); } process.exit(70); })();' "$failure_mode"
+    fi
+  elif [[ "$TEST_SCENARIO" == recovery_* && -s "$TEST_ROOT/candidate-runtime" ]]; then
+    printf 'RESTORE_UP time_ms=%s\n' "$(date +%s%3N)" >> "$TEST_EVENTS"
+    touch "$TEST_ROOT/recovery-started"
+    for target in backend frontend; do
       "$TEST_REAL_DOCKER" exec "${TEST_PREFIX}-${target}" node -e '
         (async () => { for (let i=0;i<30;i++) { try {
           const r=await fetch("http://127.0.0.1:8080/__test/control/"+process.argv[1]); if(r.ok)return;
         } catch {} await new Promise(r=>setTimeout(r,100)); } process.exit(70); })();' "$TEST_SCENARIO"
-    fi
+    done
   fi
   exit 0
 fi
@@ -198,6 +214,7 @@ cat > "${work_dir}/bin/curl" <<'CURL_BOUNDARY'
 #!/usr/bin/env bash
 set -euo pipefail
 args=()
+kind=unknown
 for argument in "$@"; do
   case "$argument" in
     http://127.0.0.1:28080/*) target=backend; suffix="${argument#http://127.0.0.1:28080}" ;;
@@ -205,11 +222,22 @@ for argument in "$@"; do
     http:*|https:*) echo 'URL fora do ensaio' >&2; exit 71 ;;
     *) args+=("$argument"); continue ;;
   esac
+  case "$suffix" in /api/health/readiness) kind=readiness ;; /) kind=home ;; /anuncios) kind=catalog ;; esac
   ip="$("$TEST_REAL_DOCKER" inspect "${TEST_PREFIX}-${target}" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')"
   [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 72
   args+=("http://${ip}:8080${suffix}")
 done
-exec "$TEST_REAL_CURL" "${args[@]}"
+# Real wall-clock traces and an exclusive marker prove requests do not overlap.
+# Only synthetic URLs are accepted above; no response body or credential is logged.
+stage=activation
+[[ ! -f "$TEST_ROOT/recovery-started" ]] || stage=recovery
+mkdir "$TEST_ROOT/probe-active" || { echo 'PROBE_OVERLAP' >> "$TEST_EVENTS"; exit 73; }
+trap 'rmdir "$TEST_ROOT/probe-active"' EXIT
+printf 'PROBE_TRACE event=start stage=%s kind=%s time_ms=%s\n' "$stage" "$kind" "$(date +%s%3N)" >> "$TEST_EVENTS"
+rc=0
+"$TEST_REAL_CURL" "${args[@]}" || rc=$?
+printf 'PROBE_TRACE event=end stage=%s kind=%s time_ms=%s rc=%s\n' "$stage" "$kind" "$(date +%s%3N)" "$rc" >> "$TEST_EVENTS"
+exit "$rc"
 CURL_BOUNDARY
 chmod +x "${work_dir}/bin/docker" "${work_dir}/bin/curl"
 export TEST_REAL_DOCKER="$real_docker" TEST_REAL_CURL="$real_curl" TEST_PREFIX="$prefix" TEST_TOKEN="$token" TEST_RESOURCES="$resources"
@@ -231,7 +259,7 @@ application_identity() {
 # database/Flyway validators still execute; no application schema is recreated.
 source <(sed -n '/^write_snapshot() {$/,/^}$/p' "${script_dir}/testar-gate-banco-production.sh")
 
-for scenario in http_failure final_failure success; do
+for scenario in http_failure final_failure success recovery_late recovery_absent; do
   case_dir="${work_dir}/${scenario}"
   test_root="${case_dir}/production"
   secrets="${case_dir}/secrets"
@@ -304,7 +332,9 @@ COMPOSE_SERVICE
   done < "$workflow" > "${case_dir}/activation.sh"
   bash -n "${case_dir}/activation.sh"
   started=$SECONDS
-  if timeout --kill-after=5s 120s bash "${case_dir}/activation.sh" "$candidate_sha" > "${work_dir}/last-operation.log" 2>&1; then rc=0; else rc=$?; fi
+  case_timeout=120
+  [[ "$scenario" != recovery_* ]] || case_timeout=390
+  if timeout --kill-after=5s "${case_timeout}s" bash "${case_dir}/activation.sh" "$candidate_sha" > "${work_dir}/last-operation.log" 2>&1; then rc=0; else rc=$?; fi
   expected=1
   [[ "$scenario" != success ]] || expected=0
   [[ "$rc" -eq "$expected" ]] || fail "${scenario}: exit=${rc}, esperado=${expected}"
@@ -325,7 +355,9 @@ COMPOSE_SERVICE
     bash "$helper" rollback "$test_root" "$operation_id" --confirm-daemon-quiescent >> "${work_dir}/last-operation.log" 2>&1
     [[ "$(grep -c '^CONTROLLED_BOUNDARY app_build_prepared_images$' "$TEST_EVENTS")" == "$docker_cmd_before" ]] || fail 'rollback reconstruiu imagens'
   fi
-  grep -qx result=ROLLED_BACK "${test_root}/operations/active.state" || fail "${scenario}: recuperacao nao concluida"
+  expected_result=ROLLED_BACK
+  [[ "$scenario" != recovery_absent ]] || expected_result=INCOMPLETE
+  grep -qx "result=${expected_result}" "${test_root}/operations/active.state" || fail "${scenario}: resultado de recuperacao divergente"
   [[ "$(readlink -e "${test_root}/current")" == "${test_root}/releases/${previous_sha}" ]] || fail 'release anterior nao restaurada'
   [[ "$(cat "${secrets}/production.env")" == "INDEXNOW_KEY=${previous_key}" ]] || fail 'env anterior nao restaurado'
   [[ "$(stat -c '%u %a' "${secrets}/production.env")" == "${EUID} 644" ]] || fail 'owner/mode anterior nao restaurado'
@@ -337,6 +369,41 @@ COMPOSE_SERVICE
   [[ "$before_ids" != "$after_ids" ]] || fail 'nao houve recriacao real de containers'
   [[ "$("$real_docker" inspect "${prefix}-postgres" --format '{{.Id}}')" == "$postgres_id" ]] || fail 'PostgreSQL foi trocado'
   [[ "$("$real_docker" inspect "$sentinel" --format '{{.Id}}')" == "$sentinel_id" ]] || fail 'sentinela alheia alterada'
+  if [[ "$scenario" == recovery_* ]]; then
+    [[ "$(grep -c '^RESTORE_UP ' "$TEST_EVENTS")" -eq 1 ]] || fail 'recuperacao recriou servicos mais de uma vez'
+    grep -qx original_rc=1 "${test_root}/operations/active.state" || fail 'recuperacao perdeu erro original'
+    ! grep -q '^PROBE_OVERLAP$' "$TEST_EVENTS" || fail 'sondas sobrepostas'
+    # The real helper waits 15s AFTER a failed batch. Readiness is the first
+    # request of each batch; every next start must follow the prior batch end.
+    awk '
+      /^RESTORE_UP / {split($2,a,"="); restore=a[2]}
+      /^PROBE_TRACE / && /stage=recovery/ {
+        delete f; for(i=2;i<=NF;i++){split($i,a,"=");f[a[1]]=a[2]}
+        if(f["event"]=="start") {
+          if(active) exit 1;
+          if(f["kind"]=="readiness") {
+            if(batches && f["time_ms"]-last_end<14500) exit 2;
+            if(!batches) first=f["time_ms"];
+            batches++;
+          }
+          if(f["kind"]=="home") {if(!homes) first_home=f["time_ms"]; homes++}
+          if(f["kind"]=="catalog") catalogs++;
+          active=1;
+        } else {if(!active)exit 3;active=0;last_end=f["time_ms"]}
+      }
+      END {
+        if(active || batches<10 || batches>21 || homes<5 || first_home-restore<32000) exit 4;
+        if(scenario=="recovery_late" && (catalogs!=1 || last_end-restore<183000 || last_end-first>305000))exit 5;
+        if(scenario=="recovery_absent" && (catalogs || last_end-first>305000))exit 6;
+        printf "RECOVERY_TIMING scenario=%s clock=real batches=%s homes=%s catalogs=%s first_home_after_restore_ms=%s last_probe_after_restore_ms=%s\n",scenario,batches,homes,catalogs,first_home-restore,last_end-restore;
+      }' scenario="$scenario" "$TEST_EVENTS" || fail 'prazo/espacamento/serialidade de recuperacao divergente'
+    if [[ "$scenario" == recovery_absent ]]; then
+      restore_started_ms="$(sed -n 's/^RESTORE_UP time_ms=//p' "$TEST_EVENTS")"
+      elapsed_recovery_ms=$(($(date +%s%3N) - restore_started_ms))
+      (( elapsed_recovery_ms >= 300000 && elapsed_recovery_ms <= 325000 )) || fail 'ausencia nao respeitou prazo real de 300s'
+      printf 'RECOVERY_DEADLINE clock=real elapsed_ms=%s result=INCOMPLETE original_rc=1 recreate_count=1\n' "$elapsed_recovery_ms"
+    fi
+  fi
   if [[ "$scenario" == success ]]; then
     restored_identity="$(application_identity)"
     bash "$helper" rollback "$test_root" "$operation_id" --confirm-daemon-quiescent >> "${work_dir}/last-operation.log" 2>&1
@@ -350,6 +417,12 @@ COMPOSE_SERVICE
     [[ "$(grep -c '^CONTROLLED_BOUNDARY app_build_prepared_images$' "$TEST_EVENTS")" == "$docker_cmd_before" ]] || fail 'recuperacao manual repetida reconstruiu imagens'
     echo 'PASS: rollback_manual_idempotente_e_reconciliacao_sem_mutacao_do_runtime'
   fi
+  # Retain sanitized evidence in the caller/CI log before deleting private temp
+  # snapshots. The emitted helper lines contain only fixed URLs and technical IDs.
+  printf 'PROBE_EVIDENCE_BEGIN scenario=%s\n' "$scenario"
+  grep '^PROBE ' "${work_dir}/last-operation.log"
+  if [[ "$scenario" == recovery_* ]]; then grep -E '^(RESTORE_UP|PROBE_TRACE).*' "$TEST_EVENTS"; fi
+  printf 'PROBE_EVIDENCE_END scenario=%s\n' "$scenario"
   printf 'PASS: containers_%s elapsed_s=%s uid=%s snapshot_mode=600 previous=%s candidate=%s restored=%s\n' \
     "$scenario" "$((SECONDS - started))" "$EUID" "$previous_image" "$candidate_image" "$previous_image"
 done

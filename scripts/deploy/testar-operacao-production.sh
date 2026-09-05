@@ -428,5 +428,86 @@ expect_rc 0 bash "$self" --fixture "$test_root" success
 assert_result COMPLETED
 echo 'PASS: cli_exit1_nao_prova_daemon_parado_recuperacao_exige_confirmacao'
 
+# Exercise the actual smoke scheduler with an explicitly controlled clock.
+# These fast checks prove branching/deadline arithmetic, NOT elapsed real time;
+# the container suite separately waits the full 32/183/300 seconds.
+for smoke_mode in recovery_late recovery_absent candidate_late baseline_late; do
+  (
+    source "$helper"
+    OP_DIR="${temp_dir}/clock-${smoke_mode}"
+    mkdir "$OP_DIR"
+    OP_ID=11111111-1111-1111-1111-111111111111 OP_PREVIOUS_SHA="$previous_sha"
+    OP_SECRETS="$OP_DIR" OP_CANCEL_RC=0 OP_RECOVERING=1
+    printf 'fixture\n' > "${OP_DIR}/candidate.images.tsv"
+    sha256sum "${OP_DIR}/candidate.images.tsv" > "${OP_DIR}/candidate.config.sha256"
+    selected_sha="$previous_sha"
+    [[ "$smoke_mode" != candidate_late ]] || selected_sha="$candidate_sha"
+    [[ "$smoke_mode" != baseline_late ]] || OP_RECOVERING=0
+    probe_count=0 home_count=0 catalog_count=0 active_probe=0 last_probe_end=0
+    _op_verify_runtime() { [[ "$1" == "$selected_sha" ]]; }
+    sleep() {
+      if [[ "$smoke_mode" == recovery_* ]]; then
+        (( $1 == 15 || SECONDS + $1 == 300 )) || fail 'intervalo de recovery alterado'
+      fi
+      SECONDS=$((SECONDS + $1))
+    }
+    _op_http_probe() {
+      local kind="$2" remaining="${4:-999}" cost=1 result=0 start="$SECONDS"
+      (( active_probe == 0 )) || fail 'probe controlada sobreposta'
+      active_probe=1
+      if [[ "$smoke_mode" == recovery_* ]]; then
+        (( remaining == 300 - SECONDS && remaining > 0 )) || fail 'saldo absoluto do probe divergente'
+        if [[ "$kind" == readiness && "$probe_count" -gt 0 ]]; then
+          (( SECONDS - last_probe_end >= 15 )) || fail 'novo lote sem espacamento'
+        fi
+      fi
+      case "$kind" in
+        readiness) if (( SECONDS < 32 )); then cost=2; result=1; fi ;;
+        home|catalog)
+          (( SECONDS >= 32 )) || fail 'SSR antes de readiness'
+          if [[ "$kind" == home ]]; then home_count=$((home_count + 1)); else catalog_count=$((catalog_count + 1)); fi
+          if (( SECONDS < 183 )) || [[ "$smoke_mode" == recovery_absent ]]; then cost=7; result=1; fi ;;
+        *) fail 'tipo de probe desconhecido' ;;
+      esac
+      (( cost <= remaining )) || cost="$remaining"
+      SECONDS=$((SECONDS + cost))
+      last_probe_end="$SECONDS" probe_count=$((probe_count + 1)) active_probe=0
+      printf 'CLOCK_PROBE scenario=%s kind=%s start_s=%s end_s=%s remaining_s=%s rc=%s clock=controlled\n' \
+        "$smoke_mode" "$kind" "$start" "$SECONDS" "$remaining" "$result"
+      return "$result"
+    }
+    SECONDS=0
+    if op_smoke "$selected_sha"; then smoke_rc=0; else smoke_rc=$?; fi
+    case "$smoke_mode" in
+      recovery_late) (( smoke_rc == 0 && SECONDS >= 183 && SECONDS < 300 && catalog_count == 1 && home_count > 4 )) || fail 'recuperacao tardia nao coberta' ;;
+      recovery_absent) (( smoke_rc == 1 && SECONDS == 300 && catalog_count == 0 && probe_count <= 42 )) || fail 'limite recovery nao finito/exato' ;;
+      *) (( smoke_rc == 1 && SECONDS < 183 && home_count == 4 && catalog_count == 0 )) || fail 'janela candidata/baseline ampliada indevidamente' ;;
+    esac
+    printf 'PASS: smoke_%s clock=controlled elapsed_s=%s probes=%s exit=%s\n' "$smoke_mode" "$SECONDS" "$probe_count" "$smoke_rc"
+  )
+done
+
+(
+  source "$helper"
+  OP_DIR="${temp_dir}/probe-budget"
+  mkdir "$OP_DIR"
+  curl() {
+    local body= limit= argument
+    while (( $# )); do
+      argument="$1"; shift
+      case "$argument" in --output) body="$1"; shift ;; --max-time) limit="$1"; shift ;; esac
+    done
+    printf '%s\n' "$limit" >> "${OP_DIR}/limits"
+    printf '%s\n' '{"status":"UP","app":"topsdojob-v3-backend"}<h1>Encontre acompanhantes perto de você</h1>' > "$body"
+    printf '200 0.001'
+  }
+  _op_http_probe http://127.0.0.1:23000/ home fixture-budget 1
+  _op_http_probe http://127.0.0.1:23000/ home fixture-budget 300
+  _op_http_probe http://127.0.0.1:28080/api/health/readiness readiness fixture-budget 300
+  if _op_http_probe http://127.0.0.1:23000/ home fixture-budget 0; then fail 'probe sem saldo executou'; fi
+  [[ "$(cat "${OP_DIR}/limits")" == $'1\n7\n2' ]] || fail 'curl nao limitado pelo saldo ou probe zero fez I/O'
+)
+echo 'PASS: probe_real_clampa_timeout_ao_saldo_e_zero_nao_chama_curl'
+
 sha256sum "$helper"
 echo 'PRODUCTION_OPERATION_PROCESS_TESTS=PASS'
