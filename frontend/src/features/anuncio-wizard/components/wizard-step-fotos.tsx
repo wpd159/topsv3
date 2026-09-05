@@ -91,7 +91,7 @@ export function WizardStepFotos({
   const pendingFilesRef = useRef(pendingPersistedFiles)
   const uploadLockRef = useRef(false)
   const selectionVersionRef = useRef(0)
-  const photoFilesRef = useRef(new Set<File>())
+  const photoFilesRef = useRef(new WeakSet<File>())
   const validationReady = persistedValidation.files === pendingPersistedFiles
   const validationPending = pendingPersistedFiles.length > 0 && !validationReady
   const invalidSelection = validationReady && persistedValidation.results.some((result) => !result.valid)

@@ -33,7 +33,7 @@ const iconMocks = new Proxy({}, { get: (_, key) => String(key) })
 
 // Minimal deterministic hook runner: executes real component callbacks/effects,
 // not React DOM/layout or browser image decoding. Dependencies retain identity.
-function hooks() {
+function hooks(onRef) {
   const values = []
   const effects = []
   let index = 0
@@ -54,7 +54,10 @@ function hooks() {
     },
     useRef(initial) {
       const slot = index++
-      if (!values[slot]) values[slot] = { current: initial }
+      if (!values[slot]) {
+        values[slot] = { current: initial }
+        onRef?.(values[slot])
+      }
       return values[slot]
     },
     useMemo(callback, dependencies) {
@@ -592,7 +595,8 @@ assert.equal(wizardCalls.upload, beforeRejectedWizardRetry + 1)
 wizardRunner.unmount()
 console.log('PHOTO_WIZARD_PUBLICATION_RESULT=OK createAndUploadBlocked=true asyncSelection=OK')
 
-const editorRunner = hooks()
+const editorRefs = []
+const editorRunner = hooks((ref) => editorRefs.push(ref))
 const editorUploads = []
 const photoStepImports = (runner) => componentImports(runner, {
   '@/components/anuncios/editar/video-uploader': { VideoUploader: 'VideoUploader' },
@@ -609,6 +613,9 @@ editorRunner.mount(WizardStepFotos, {
   slug: 'synthetic', initialFiles: [], fotoNomes: [], videosNovos: [], onChange() {}, onChangeVideosNovos() {},
 })
 await editorRunner.settle()
+const photoOriginRefs = editorRefs.filter((ref) => ref.current instanceof WeakSet)
+assert.equal(photoOriginRefs.length, 1, 'A origem das fotos deve usar referência fraca, sem reter arquivos enviados até o unmount.')
+const photoOriginRef = photoOriginRefs[0]
 const editorPhotos = () => picker(editorRunner.tree, 'Selecionar fotos do anúncio')
 const editorVideos = () => picker(editorRunner.tree, 'Selecionar vídeo do anúncio')
 const editorSubmit = () => find(editorRunner.tree, (node) => node.type === 'button' && /Enviar arquivos|Verificando|Tentar enviar novamente|Enviando/.test(text(node)), 'Enviar arquivos')
@@ -622,6 +629,8 @@ const beforeEditorRequests = requests.length
 editorSubmit().props.onClick()
 await editorRunner.settle()
 assert.deepEqual(editorPhotos().props.files, [good, bad])
+assert.equal(photoOriginRef.current.has(good), true)
+assert.equal(photoOriginRef.current.has(bad), true)
 assert.match(text(editorRunner.tree), /trailer.jpeg/)
 assert.equal(editorSubmit().props.disabled, true)
 assert.doesNotMatch(text(editorRunner.tree), /Tentar enviar novamente/)
@@ -634,6 +643,8 @@ assert.deepEqual(editorVideos().props.files, [video])
 editorPhotos().props.onRemove(1)
 await editorRunner.settle()
 assert.deepEqual(editorPhotos().props.files, [good])
+assert.equal(photoOriginRef.current.has(bad), false, 'Remoção deve limpar a associação de origem do arquivo recusado.')
+assert.equal(photoOriginRef.current.has(good), true, 'Remoção da recusada preserva a origem da foto válida.')
 assert.equal(editorSubmit().props.disabled, false)
 assert.equal(editorUploads.length, 0, 'Remover inválida não deve disparar upload parcial automático.')
 const previouslyValidEditorSubmit = editorSubmit()
@@ -651,6 +662,7 @@ button(editorRunner.tree, 'Tentar enviar novamente').props.onClick()
 await editorRunner.settle()
 assert.equal(editorPhotos().props.files.length, 0)
 assert.equal(editorVideos().props.files.length, 0)
+assert.ok(photoOriginRef.current instanceof WeakSet, 'Após sucesso, a coleção de origem continua sem referências fortes aos arquivos liberados pela seleção.')
 
 const bootstrapPhoto = fixture('csrf-network-retry.jpg')
 selectThroughFilePicker(editorPhotos().props, [bootstrapPhoto])
