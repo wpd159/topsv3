@@ -2,24 +2,15 @@
 
 Este documento consolida decisoes ja assumidas pela V3 e evita que blocos futuros reabram regras sem necessidade.
 
-## Pipeline Hermetico V2 e fonte canonica
+## Deploy mantido e fonte canonica
 
 - `C:\topsdojob` e a unica fonte autorizada para engenharia, auditoria e futuras correcoes. `C:\topsv3` fica classificado como historico e nao pode originar novas mudancas.
-- A Fase 1 do Pipeline Hermetico V2 terminou no PR #24, mesclado em `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, com CI pos-merge `33324582326`, 3/3 runners limpos, 14/14 gates por runner e `criticalSkipped=0`.
-- `verify` continua sendo a certificacao hermetica. A Fase 2 acrescenta somente `candidate`, que exige `deploy_sha`, `certification_run_id` e `CANDIDATE_ONLY`, consome artefato certificado sem rebuild e nao possui switch ou deploy completo.
-- A execucao futura de `candidate` usa ambiente e credenciais de escopo proprio, target guard antes do upload, copia read-only do banco restaurada em PostgreSQL 17 isolado e apenas MinIO, SMTP e Efi locais. Nenhum secret produtivo da aplicacao e carregado.
-- A implementacao da Fase 2 nao autoriza nem comprova uma candidata real; essa execucao depende de nova autorizacao expressa.
-- O run `33342261801` nao reprovou o artifact certificado: a action oficial o baixou e extraiu com o manifesto diretamente no destino, enquanto o workflow assumia profundidade fixa 2. A execucao parou antes do target guard, sem acesso a VPS ou alteracao produtiva.
-- O `verify` `33350467422` certificou o artifact `9743533209`; o `candidate` `33354579527` falhou no remoto porque um segundo TAR alterou a raiz e `candidate-remote runtime/artifact`, executado a partir de `runtime`, duplicou esse prefixo na resolucao. A certificacao local nao foi a causa.
-- O contrato `artifactLayoutVersion=2` define `candidate-payload.tar` como unidade imutavel unica. O build-once cria o pacote sob uma raiz `candidate-root`; a certificacao externa registra nome, tamanho, SHA, Git SHA e layout, sem hash circular.
-- Depois da certificacao sao proibidos reempacotamento, copia seletiva, glob, rsync ou rebuild. O mesmo arquivo deve atravessar upload-artifact, download-artifact e SCP, com igualdade de SHA e tamanho antes da extracao.
-- A extracao valida previamente tabela, raiz unica, traversal, links e manifesto unico; o mesmo `transport.sh` resolve a raiz e executa o manifest-verify local e remoto. Um `jq` estatico e certificado viaja no proprio pacote.
-- O round-trip pequeno entre as mesmas actions pinadas e um servidor SSH local e gate permanente. O laboratorio local aprovou 10/10 transportes, 15/15 negativos, falha propagada, diagnostico antes do cleanup e zero residuos.
-- Mudanca em workflow, controlador ou contrato invalida a promocao do artifact anterior. Uma nova candidata exige primeiro novo `verify` do SHA resultante e artifact criado no mesmo run; `33350467422` e `9743533209` ficam apenas como evidencia historica.
-- A producao nao foi alterada e permanece no SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`.
-- Os relatorios forenses anteriores ao fechamento da Fase 1 sao evidencias historicas, nao estado atual. Suas falhas permanecem na cronologia, mas os bloqueios ja vencidos nao podem ser reabertos sem nova evidencia.
-- O incidente nao esta encerrado. A proxima evidencia operacional continua sendo uma candidata real sem switch, com novo artefato e autorizacao expressa; o artefato do PR #24 nao e promovivel.
-- Decisao e evidencias: [Incidente do Pipeline Hermetico V2](INCIDENTE-pipeline-hermetico-v2-fase1.md).
+- A decisao mais recente do proprietario remove da arvore ativa o Pipeline Hermetico V2 e os componentes exclusivos do controlador/candidata rejeitado. As fases, runs e instrucoes anteriores desse sistema sao historicos preservados no Git, nao um caminho operacional alternativo.
+- O mecanismo produtivo mantido e `.github/workflows/deploy-production.yml`, exclusivamente manual, com selecao explicita da ref, identificacao por SHA, empacotamento, transferencia, build, verificacao de saude e rollback. A troca atomica do symlink desse mecanismo permanece preservada.
+- A release publicada `4fac7d9034fba38180043a261d96f3c94865b4af` e somente referencia do mecanismo comprovado. A main nao e certificada como equivalente a essa release e a producao nao foi novamente consultada nesta tarefa.
+- Backup validado, Flyway, health/readiness, rollback e ferramentas de dados com utilidade independente permanecem preservados. A remocao nao autoriza backfill, migration externa ou alteracao de dados.
+- O hotfix P0.1, a V053 e as demais migrations permanecem preservados. O gate SEO continua `blocked` no CI e `public` depois do build de producao e no estagio que produz a imagem frontend.
+- Esta tarefa remove somente o sistema rejeitado no repositorio, sem acesso a producao e sem novo deploy. Publicacao futura exige autorizacao propria; nao e consequencia automatica de push, PR ou merge.
 
 ## Local primeiro
 

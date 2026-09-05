@@ -2,7 +2,8 @@ node_modules
 .next
 .env
 .env.*
-scripts
+scripts/*
+!scripts/test-search-indexing-artifact.mjs
 coverage
 tsconfig.tsbuildinfo
 npm-debug.log*

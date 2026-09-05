@@ -8,16 +8,12 @@ Este indice conecta os temas centrais do SDD aos documentos, contratos, scripts 
 - Decisoes consolidadas: `docs/v3/SDD-decisoes-consolidadas.md`
 - Pendencias e gates: `docs/v3/SDD-pendencias-gates.md`
 - Plano de fases: `docs/v3/11-plano-execucao-fases.md`
-- Pipeline Hermetico V2 e incidente aberto: [registro formal](INCIDENTE-pipeline-hermetico-v2-fase1.md)
-- Workflow V2 (`verify` e `candidate`): `.github/workflows/pipeline-production-v2.yml`
-- Round-trip do contrato do artifact: `.github/workflows/pipeline-v2-artifact-roundtrip.yml`
-- Controlador unico V2: `scripts/deploy/v2/controller.sh`
-- Manifesto e proveniencia: `scripts/deploy/v2/artifact.sh` e `scripts/deploy/v2/contract.mjs`
-- Transporte imutavel, extracao segura e laboratorio SSH: `scripts/deploy/v2/transport.sh`
-- Laboratorio e candidata isolada: `scripts/deploy/v2/lab.sh` e `deploy/v2/compose.yml`
-- Estado canonico da Fase 1: PR #24 mesclado, `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, CI `33324582326`, 3/3 runners, 14/14 gates e `criticalSkipped=0`.
-- Historico da Fase 2: `33342261801` revelou a profundidade fixa no download; `33350467422` certificou o artifact `9743533209`; `33354579527` revelou o segundo TAR e a duplicacao da raiz relativa no handoff remoto. Nenhum desses artifacts e promovivel depois da mudanca de contrato.
-- Correcao rastreavel: `candidate-payload.tar`, `artifactLayoutVersion=2`, certificacao externa, `transport.sh`, SHA local/remoto, tabela TAR segura, resolvedor unico, manifest-verify remoto e round-trip SSH real. Nova candidata depende de novo `verify` e novo artifact.
+- Deploy produtivo mantido, exclusivamente manual: `.github/workflows/deploy-production.yml` e `deploy/production/docker-compose.yml`.
+- Validacao local do mecanismo mantido: `scripts/deploy/validar-deploy-production-local.ps1`.
+- Backup e Flyway preservados: `scripts/deploy/criar-backup-validado-production.sh` e `scripts/deploy/validar-gate-flyway-production.sh`.
+- Gates SEO do artefato preservados: `frontend/scripts/test-search-indexing-artifact.mjs` e `frontend/scripts/test-search-indexing-artifact-selftest.mjs`.
+- Referencia publicada do mecanismo: `4fac7d9034fba38180043a261d96f3c94865b4af`, sem nova consulta a producao nesta tarefa e sem equivalencia integral presumida com a main.
+- O Pipeline Hermetico V2, o controlador/candidata rejeitado e seu documento exclusivo foram removidos da arvore ativa por decisao do proprietario; sua cronologia permanece no historico Git. Esta remocao nao executa nem inicia deploy.
 
 ## Arquitetura local
 

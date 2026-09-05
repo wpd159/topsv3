@@ -9,7 +9,6 @@ import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.MetodoPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.OrigemConciliacaoPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.ProvedorPagamento;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusInternoPagamento;
-import br.com.topsdojob.v3.platform.scheduling.BackgroundJobsModeCondition;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HashSet;
@@ -18,13 +17,11 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Conditional;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
-@Conditional(BackgroundJobsModeCondition.class)
 public class EfiPagamentoReconciliacaoScheduler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EfiPagamentoReconciliacaoScheduler.class);

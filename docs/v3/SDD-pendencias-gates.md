@@ -2,26 +2,14 @@
 
 Este documento lista pendencias conhecidas e gates obrigatorios antes de fases futuras, homologacao ou producao.
 
-## Pipeline Hermetico V2 - gates apos a Fase 1
+## Deploy mantido - gates e limites
 
-- Fechado na Fase 1: fonte canonica `C:\topsdojob`, build unico, manifesto verificado, tres runners limpos aprovados, 14/14 gates em cada runner e `criticalSkipped=0`.
-- Fechado na Fase 1: PR #24 mesclado em `origin/main=9bc083dadeba09f7de9c4d48f94810f7fd6df28f`, com CI pos-merge `33324582326` aprovado e producao inalterada.
-- Implementado na Fase 2, ainda nao executado: `mode=candidate`, validacao de SHA/run/manifesto, target guard antes do upload, banco PostgreSQL 17 isolado, servicos externos locais, os mesmos 14 gates, certificacao sanitizada e cleanup gracioso.
-- Gate da Fase 2: executar uma candidata real somente mediante autorizacao separada e exigir artefato novo, `CANDIDATE_ONLY`, zero rebuild, zero efeitos externos, 14/14 gates e zero residuos.
-- Falha de transporte registrada: o run `33342261801` encontrou o manifesto na raiz real do download, mas o candidate aceitava somente profundidade 2. O artifact `9740656605` e a certificacao `33341100028` estavam validos; target guard e VPS nao foram alcancados.
-- Gate fechado no codigo corretivo: resolvedor canonico exige um unico manifesto em qualquer profundidade, valida `realpath`, symlinks, traversal, perfil nominal, checksums, hashes e payloads, e o candidate baixa pelo ID certificado com verificacao de digest.
-- Gate permanente: round-trip real e minimo com as mesmas actions pinadas deve aprovar upload, download em outro job, resolvedor e `manifest-verify`, sem build da aplicacao, VPS ou secrets.
-- Falha remota mais recente: o `candidate` `33354579527` recebeu conteudo reempacotado e executou `candidate-remote runtime/artifact` a partir de `runtime`, fazendo a raiz relativa apontar para `runtime/runtime/artifact`. O `verify` `33350467422` e o artifact `9743533209` nao sao promoviveis depois da correcao.
-- Gate fechado no codigo: `candidate-payload.tar` e criado uma vez no build-once, certificado externamente, transportado sem transformacao e comparado byte a byte antes da extracao. Layout atual: `artifactLayoutVersion=2` e raiz unica `candidate-root`.
-- Gate fechado no laboratorio local: SSH/SCP real para usuario nao root, 10/10 SHA local/remoto, 10/10 manifest-verify, 15/15 negativos, diagnostico antes do cleanup e zero residuos.
-- Gate ainda aberto neste PR: o round-trip pequeno do GitHub deve aprovar `ARTIFACT_ROUND_TRIP=PASS` e `REMOTE_TRANSPORT_CONTRACT=PASS` sem executar os tres runners completos.
-- Gate ainda aberto depois do merge: executar novo `verify` para o novo SHA somente mediante autorizacao. Runs e artifacts anteriores nao sao promoviveis.
-- Aberto: o incidente do pipeline permanece em status `OPEN` ate a conclusao das fases operacionais autorizadas separadamente.
-- Pendente para a Fase 2: gerar novo artefato certificado e validar candidata real na VPS canonica sem switch, sem promover ou reutilizar o artefato do PR #24. Implementacao local nao satisfaz este gate.
-- Pendente para a Fase 3: autorizar separadamente switch, smoke publico, drenagem, rollback e encerramento operacional do incidente.
-- Bloqueados: modos `switch` e `deploy`, alteracao de Nginx/upstream, trafego publico e uso de servicos externos reais.
-- Producao preservada: SHA `4e72be6c7fa0b790230e4ed416497c24843f3dcd`, sem alteracao durante a Fase 1.
-- Registro e criterios: [Incidente do Pipeline Hermetico V2](INCIDENTE-pipeline-hermetico-v2-fase1.md).
+- O Pipeline Hermetico V2 e o controlador/candidata rejeitado foram removidos da arvore ativa por decisao do proprietario. Executar suas fases restantes deixou de ser pendencia; os registros anteriores permanecem historicos no Git.
+- O deploy produtivo mantido usa `.github/workflows/deploy-production.yml`, exclusivamente por acionamento manual com ref explicita e identidade por SHA. Push, PR e merge desta remocao nao autorizam nem iniciam deploy.
+- Permanecem obrigatorios backup validado quando houver migrations pendentes, gates Flyway, build, health/readiness, smoke e rollback do mecanismo mantido, incluindo sua troca atomica de symlink.
+- Os gates SEO permanecem `blocked` no CI e `public` no build de producao e no estagio de construcao da imagem frontend. Testes e verificacoes compartilhados continuam obrigatorios.
+- Ferramentas independentes de backfill e banco permanecem disponiveis, mas sua execucao com dados externos exige autorizacao propria. V053 e demais migrations, hotfix P0.1 e protecoes de midia nao fazem parte da remocao.
+- A release publicada `4fac7d9034fba38180043a261d96f3c94865b4af` e referencia, nao uma nova constatacao produtiva. Esta tarefa nao acessa producao, nao publica a main e nao certifica equivalencia integral entre as arvores.
 
 ## Gates sempre obrigatorios
 

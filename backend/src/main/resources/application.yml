@@ -37,8 +37,6 @@ server:
 
 app:
   env: ${APP_ENV:nao_configurado}
-  background-jobs:
-    mode: ${APP_BACKGROUND_JOBS_MODE:LEGACY}
   health:
     readiness-timeout-ms: ${APP_HEALTH_READINESS_TIMEOUT_MS:1500}
     readiness-query-timeout-seconds: ${APP_HEALTH_READINESS_QUERY_TIMEOUT_SECONDS:1}
