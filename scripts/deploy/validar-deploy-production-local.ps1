@@ -24,6 +24,7 @@ $databaseGateTests = Read-RepoFile "scripts/deploy/testar-gate-banco-production.
 $flywayGate = Read-RepoFile "scripts/deploy/validar-gate-flyway-production.sh"
 $flywayGateTests = Read-RepoFile "scripts/deploy/testar-gate-flyway-production.sh"
 $backupProducer = Read-RepoFile "scripts/deploy/criar-backup-validado-production.sh"
+$operationHelper = Read-RepoFile "scripts/deploy/proteger-operacao-production.sh"
 $stdinRegressionTests = Read-RepoFile "scripts/deploy/testar-stdin-deploy-production.sh"
 $backupIntegrationTests = Read-RepoFile "scripts/deploy/testar-backup-validado-production.sh"
 $preprodWorkflow = Read-RepoFile ".github/workflows/deploy-preprod.yml"
@@ -49,7 +50,11 @@ foreach ($required in @(
     "HostKeyAlias=",
     "flyway migrate </dev/null",
     "flyway validate </dev/null",
-    "rollback_application",
+    "proteger-operacao-production.sh",
+    'op_begin "${deploy_root}" "${release_sha}"',
+    'op_run mutating "${compose[@]}"',
+    'op_smoke "${release_sha}"',
+    "op_finish",
     "snapshot_after",
     "snapshot_before",
     "validar-gate-banco-production.sh",
@@ -57,8 +62,7 @@ foreach ($required in @(
     "criar-backup-validado-production.sh",
     "testar-stdin-deploy-production.sh",
     "testar-backup-validado-production.sh",
-    "backups/postgresql",
-    "api/health/readiness"
+    "backups/postgresql"
   )) {
   Add-Check "workflow contem $required" ($workflow.Contains($required))
 }
@@ -110,7 +114,8 @@ Add-Check "workflow preserva health e rollback no novo gate" (
   ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_before\}"') -and
   ($workflow -match 'capture_database_snapshot\s+"\$\{snapshot_after\}"\s+UP') -and
   ($workflow -match 'bash\s+"\$\{database_gate\}"') -and
-  ($workflow -match 'test\s+"\$\{healthy\}"\s+-eq\s+1')
+  ($workflow.Contains('op_smoke "${release_sha}"')) -and
+  ($workflow.Contains('source "${release_dir}/scripts/deploy/proteger-operacao-production.sh"'))
 )
 Add-Check "workflow deriva versao Flyway sem hardcode" (
   ($workflow.Contains('expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}")"')) -and
@@ -127,8 +132,114 @@ Add-Check "workflow valida Flyway antes do startup" (
   ($workflow.IndexOf('bash "${flyway_gate}" after') -lt $workflow.LastIndexOf('up -d --no-deps --force-recreate backend frontend gateway'))
 )
 Add-Check "workflow troca release somente depois de health e readiness" (
-  ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('test "${healthy}" -eq 1')) -and
-  ($workflow.Contains('curl -fsS http://127.0.0.1:28080/api/health/readiness'))
+  ($workflow.IndexOf('op_smoke "${release_sha}"') -gt $workflow.IndexOf('op_phase ACTIVATING')) -and
+  ($workflow.LastIndexOf('mv -Tf "${current_link}"') -gt $workflow.IndexOf('op_smoke "${release_sha}"')) -and
+  ($operationHelper.Contains('api/health/readiness'))
+)
+Add-Check "workflow empacota e carrega o helper compartilhado antes da posse" (
+  ($workflow.Contains('tar -tzf "${ARCHIVE}" | grep -Fx ''./scripts/deploy/proteger-operacao-production.sh''')) -and
+  ($workflow.IndexOf('source "${release_dir}/scripts/deploy/proteger-operacao-production.sh"') -lt
+    $workflow.IndexOf('op_begin "${deploy_root}" "${release_sha}"'))
+)
+Add-Check "workflow mantem uma unica operacao ate os checks finais" (
+  ([regex]::Matches($workflow, '(?m)^\s+op_begin\s').Count -eq 1) -and
+  ([regex]::Matches($workflow, '(?m)^\s+op_finish\s*$').Count -eq 1) -and
+  ($workflow.IndexOf('op_begin "${deploy_root}" "${release_sha}"') -lt $workflow.IndexOf('op_smoke "${previous_sha}"')) -and
+  ($workflow.LastIndexOf('op_finish') -gt $workflow.LastIndexOf('mv -Tf "${current_link}"')) -and
+  ($workflow.LastIndexOf('op_finish') -gt $workflow.IndexOf("grep -qx 'SEARCH_INDEXING_MODE=public'")) -and
+  ($workflow.LastIndexOf('op_finish') -gt $workflow.IndexOf("IMPORTACAO_.*(INICIO|EXECUTADA)")) -and
+  (-not ($workflow -match '(?m)^\s+- name: Smoke production release\s*$')) -and
+  (-not ($workflow -match '(?m)^\s+trap\s+-\s+ERR\s*$'))
+)
+Add-Check "workflow preserva gates reais de processos e containers antes do SSH" (
+  (Test-Path -LiteralPath (Join-Path $repoRoot 'scripts/deploy/testar-operacao-production.sh') -PathType Leaf) -and
+  (Test-Path -LiteralPath (Join-Path $repoRoot 'scripts/deploy/testar-operacao-containers-production.sh') -PathType Leaf) -and
+  ($workflow.Contains('bash ./scripts/deploy/testar-operacao-production.sh')) -and
+  ($workflow.Contains('bash ./scripts/deploy/testar-operacao-containers-production.sh')) -and
+  ($workflow.IndexOf('bash ./scripts/deploy/testar-operacao-production.sh') -lt $workflow.IndexOf('name: Validate pinned SSH host key')) -and
+  ($workflow.IndexOf('bash ./scripts/deploy/testar-operacao-containers-production.sh') -lt $workflow.IndexOf('name: Validate pinned SSH host key'))
+)
+foreach ($required in @(
+    'mvn --batch-mode --no-transfer-progress verify',
+    'LOCALIDADES_POSTGRES17_ENABLED: "true"',
+    'FOTO_ELEGIVEL_POSTGRES17_ENABLED: "true"',
+    'npm ci',
+    'npm audit --omit=dev --audit-level=high',
+    'npm audit --audit-level=high',
+    'npm run test:json-ld-security',
+    'npm run test:public-ordering',
+    'npm run test:public-http-states',
+    'npm run test:public-data-access',
+    'node scripts/test-public-seo-critical.mjs',
+    'npm run test:search-indexing',
+    'npm run test:seo-ai',
+    'npm run test:sharp-security',
+    'node scripts/test-ga4-production.mjs',
+    'npm run lint',
+    'npm run build',
+    'node scripts/test-search-indexing-artifact.mjs public'
+  )) {
+  Add-Check "workflow preserva gate obrigatorio $required" (
+    ($workflow.Contains($required)) -and
+    ($workflow.IndexOf($required) -lt $workflow.IndexOf('name: Validate pinned SSH host key'))
+  )
+}
+
+function Read-ShellFunction {
+  param([string]$Content, [string]$Name)
+  $pattern = '(?ms)^(?<indent>[ \t]*)' + [regex]::Escape($Name) + '\(\) \{\r?\n.*?^\k<indent>\}[ \t]*\r?$'
+  return [regex]::Match($Content, $pattern).Value
+}
+$operationBegin = Read-ShellFunction $operationHelper 'op_begin'
+$operationManual = Read-ShellFunction $operationHelper '_op_manual'
+$operationRestore = Read-ShellFunction $operationHelper '_op_restore'
+$operationExit = Read-ShellFunction $operationHelper '_op_exit'
+$operationState = Read-ShellFunction $operationHelper '_op_state'
+$operationWatcher = Read-ShellFunction $operationHelper '_op_watch_parent'
+foreach ($name in @('op_begin', 'op_run', 'op_phase', 'op_expect_indexnow', 'op_expect_candidate', 'op_smoke', 'op_finish', '_op_manual', '_op_restore', '_op_exit')) {
+  Add-Check "helper define contrato $name" (-not [string]::IsNullOrWhiteSpace((Read-ShellFunction $operationHelper $name)))
+}
+Add-Check "helper compartilha lock entre ativacao e rollback manual sem readquirir na restauracao" (
+  ($operationBegin.Contains('_op_lock "$1"')) -and
+  ($operationManual.Contains('_op_lock "${root}"')) -and
+  ($operationHelper.Contains('flock -n "${OP_LOCK_FD}"')) -and
+  (-not $operationRestore.Contains('_op_lock')) -and
+  (-not ($operationHelper -match '(?m)^\s*flock\s+-u\b'))
+)
+Add-Check "helper persiste identidade e fase atomicamente" (
+  ($operationState.Contains('operations/active.state')) -and
+  ($operationState.Contains('mv -f -- "${temporary}"')) -and
+  ($operationState.Contains('"candidate=${OP_CANDIDATE}"')) -and
+  ($operationState.Contains('"previous=${OP_PREVIOUS_SHA:-}"')) -and
+  ($operationState.Contains('"phase=${OP_PHASE}"')) -and
+  ($operationState.Contains('"pid=${OP_PID}"')) -and
+  ($operationState.Contains('"start=${OP_START}"')) -and
+  ($operationState.Contains('"boot=${OP_BOOT}"')) -and
+  ($operationHelper.Contains('/proc/sys/kernel/random/boot_id')) -and
+  ($operationHelper.Contains('images.tsv')) -and
+  ($operationHelper.Contains('config.sha256'))
+)
+Add-Check "helper trata EXIT e sinais preservando erro e estado incompleto" (
+  ($operationHelper.Contains("trap '_op_signal 130' INT")) -and
+  ($operationHelper.Contains("trap '_op_signal 143' TERM")) -and
+  ($operationHelper.Contains("trap '_op_signal 129' HUP")) -and
+  ($operationHelper.Contains("trap '_op_signal 141' PIPE")) -and
+  ($operationHelper.Contains('trap ''_op_exit "$?"'' EXIT')) -and
+  ($operationExit.Contains('[ "${BASHPID}" = "${OP_PID:-}" ]')) -and
+  ($operationExit.Contains('OP_ORIGINAL_RC="${rc}"')) -and
+  ($operationExit.Contains('OP_RESULT=INCOMPLETE')) -and
+  ($operationExit.Contains('exit "${rc}"')) -and
+  ($operationWatcher.Contains('exec {OP_LOCK_FD}>&-'))
+)
+Add-Check "helper exige reconciliacao explicita e recupera sem reconstruir imagens" (
+  ($operationBegin.Contains('COMPLETED|ROLLED_BACK|ABORTED|RECONCILED')) -and
+  ($operationManual.Contains('--confirm-daemon-quiescent')) -and
+  ($operationManual.Contains('_op_alive')) -and
+  ($operationRestore.Contains('--no-build --pull never backend frontend gateway')) -and
+  ($operationRestore.Contains('sha256sum -c --status')) -and
+  ($operationRestore.Contains('_op_verify_runtime')) -and
+  ($operationRestore.Contains('op_smoke "${OP_PREVIOUS_SHA}"')) -and
+  ($operationRestore.Contains('"${OP_ROOT}/current"'))
 )
 function Convert-ToLogicalShellLines {
   param([string]$Content)
@@ -139,12 +250,10 @@ $deploySources = @(
   Convert-ToLogicalShellLines $workflow
   Convert-ToLogicalShellLines $preprodWorkflow
   Convert-ToLogicalShellLines $backupProducer
+  Convert-ToLogicalShellLines $operationHelper
 ) -join "`n"
 $unsafeInteractiveCommandPattern = '(?m)docker\s+exec(?=[^\r\n]*\bpsql\b)(?=[^\r\n]*\s-i(?:\s|$))[^\r\n]*\bpsql\b[^\r\n]*(?:\s-c(?:\s|$)|\s--command(?:=|\s))'
-$flywayReader = [regex]::Match(
-  $workflow,
-  '(?ms)^\s{10}read_flyway_state\(\) \{.*?^\s{10}\}'
-).Value
+$flywayReader = Read-ShellFunction $workflow 'read_flyway_state'
 Add-Check "nenhum psql command reutiliza stdin interativo" (
   -not [regex]::IsMatch($deploySources, $unsafeInteractiveCommandPattern)
 )
@@ -154,12 +263,26 @@ Add-Check "leitura Flyway isola stdin e falha no primeiro erro SQL" (
   ($flywayReader.Contains('--no-psqlrc')) -and
   ($flywayReader.Contains('--set=ON_ERROR_STOP=1')) -and
   ($flywayReader.Contains('--command')) -and
-  ($flywayReader.Contains('</dev/null'))
+  ($flywayReader.Contains('</dev/null')) -and
+  ($workflow.Contains('flyway_before_state="$(read_flyway_state "${expected_flyway}")"')) -and
+  ($workflow.Contains('flyway_after_state="$(read_flyway_state "${expected_flyway}")"'))
 )
-Add-Check "workflow restaura aplicacao anterior se startup falhar" (
-  ($workflow.Contains('application_started=0')) -and
-  ($workflow.Contains('application_started=1')) -and
-  ($workflow.Contains('if [ "${application_started}" -eq 1 ]; then'))
+Add-Check "workflow registra mutacoes de configuracao e servicos sob a mesma posse" (
+  ($workflow.Contains('op_phase CONFIGURING')) -and
+  ($workflow.Contains('op_run mutating docker run --rm -i --pull never')) -and
+  ($workflow.Contains('op_run mutating "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null')) -and
+  ($workflow.Contains('op_run mutating "${compose[@]}" build backend frontend')) -and
+  ($workflow.Contains('op_run mutating "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway')) -and
+  ($workflow.IndexOf('op_begin "${deploy_root}" "${release_sha}"') -lt $workflow.IndexOf('op_phase CONFIGURING')) -and
+  ($workflow.IndexOf('op_phase ACTIVATING') -lt $workflow.IndexOf('op_run mutating "${compose[@]}" up -d'))
+)
+Add-Check "workflow fixa identidades esperadas antes de configurar e ativar" (
+  ($workflow.Contains('op_expect_indexnow "${indexnow_key}"')) -and
+  ($workflow.Contains('op_expect_candidate')) -and
+  ($workflow.IndexOf('op_expect_indexnow "${indexnow_key}"') -gt $workflow.IndexOf('op_begin "${deploy_root}" "${release_sha}"')) -and
+  ($workflow.IndexOf('op_expect_indexnow "${indexnow_key}"') -lt $workflow.IndexOf('op_run mutating docker run --rm -i --pull never')) -and
+  ($workflow.IndexOf('op_expect_candidate') -gt $workflow.IndexOf('op_run mutating "${compose[@]}" build backend frontend')) -and
+  ($workflow.IndexOf('op_expect_candidate') -lt $workflow.IndexOf('op_run mutating "${compose[@]}" up -d'))
 )
 Add-Check "workflow valida host key antes do upload" (
   $workflow.IndexOf('name: Validate pinned SSH host key') -lt
@@ -183,14 +306,29 @@ Add-Check "workflow sincroniza IndexNow sem expor a chave em argumento" (
   ($workflow.Contains("Synchronize IndexNow key in production runtime")) -and
   ($workflow.Contains("cat <<'REMOTE_HEAD'")) -and
   ($workflow.Contains('printf ''%s\n'' "${INDEXNOW_KEY}"')) -and
+  ($workflow.Contains('IFS= read -r indexnow_key <<''__INDEXNOW_VALUE__''')) -and
+  ($workflow.Contains(''' <<<"${indexnow_key}"')) -and
   ($workflow.Contains("} | ssh")) -and
   ($workflow.Contains("--network none")) -and
   ($workflow.Contains("--pull never")) -and
   ($workflow.Contains('test -n "${key}"')) -and
   ($workflow.Contains('case "${key}" in')) -and
   ($workflow.Contains('awk "!/^INDEXNOW_KEY=/"')) -and
+  ($workflow.IndexOf('op_phase CONFIGURING') -gt $workflow.IndexOf('op_begin "${deploy_root}" "${release_sha}"')) -and
+  (-not ($workflow -match '(?m)^\s+- name: Synchronize IndexNow key in production runtime\s*$')) -and
   (-not $workflow.Contains("''|*[!A-Za-z0-9-]*")) -and
   (-not $workflow.Contains('test -w /opt/topsv3/secrets/production.env'))
+)
+$activationBlock = [regex]::Match(
+  $workflow,
+  '(?ms)^\s+- name: Build and activate production release\r?\n.*?(?=^\s{6}- name:|\z)'
+).Value
+$indexnowLocalValidation = '[[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]'
+Add-Check "workflow valida chave localmente antes de interpolar heredoc SSH" (
+  (-not [string]::IsNullOrWhiteSpace($activationBlock)) -and
+  ($activationBlock.Contains($indexnowLocalValidation)) -and
+  ($activationBlock.IndexOf($indexnowLocalValidation) -lt $activationBlock.IndexOf("cat <<'REMOTE_HEAD'")) -and
+  ($activationBlock.IndexOf($indexnowLocalValidation) -lt $activationBlock.IndexOf('printf ''%s\n'' "${INDEXNOW_KEY}"'))
 )
 Add-Check "workflow valida IndexNow no runtime sem imprimir o valor" (
   $workflow.Contains("grep -q '^INDEXNOW_KEY='")
@@ -286,6 +424,7 @@ foreach ($required in @(
 foreach ($required in @(
     "marcador_posterior",
     "falha_psql_interrompe",
+    "funcao_flyway_real_propaga_erro",
     "backup_antes_flyway",
     "flyway_antes_startup",
     "health_antes_troca",
@@ -387,4 +526,5 @@ if ($failed.Count -gt 0) {
   exit 1
 }
 
+Write-Host "CONTRACT_SCOPE=STATIC_REQUIRES_OPERATIONAL_PROCESS_AND_CONTAINER_GATES"
 Write-Host "VALIDATION_RESULT=OK_DEPLOY_PRODUCTION_LOCAL"

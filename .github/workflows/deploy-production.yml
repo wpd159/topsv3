@@ -31,6 +31,9 @@ jobs:
       - name: Run full backend Maven gate
         working-directory: backend
         shell: bash
+        env:
+          LOCALIDADES_POSTGRES17_ENABLED: "true"
+          FOTO_ELEGIVEL_POSTGRES17_ENABLED: "true"
         run: mvn --batch-mode --no-transfer-progress verify
 
       - name: Set up Node.js 22
@@ -81,6 +84,8 @@ jobs:
           bash ./scripts/deploy/testar-gate-flyway-production.sh
           bash ./scripts/deploy/testar-stdin-deploy-production.sh
           bash ./scripts/deploy/testar-backup-validado-production.sh
+          bash ./scripts/deploy/testar-operacao-production.sh
+          bash ./scripts/deploy/testar-operacao-containers-production.sh
 
       - name: Validate required secrets
         shell: bash
@@ -182,63 +187,6 @@ jobs:
           sudo -n nginx -t >/dev/null
           REMOTE
 
-      - name: Synchronize IndexNow key in production runtime
-        shell: bash
-        env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
-          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
-        run: |
-          set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
-          [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
-          {
-            cat <<'REMOTE_HEAD'
-          set -euo pipefail
-          IFS= read -r indexnow_key <<'__INDEXNOW_VALUE__'
-          REMOTE_HEAD
-            printf '%s\n' "${INDEXNOW_KEY}"
-            cat <<'REMOTE_BODY'
-          __INDEXNOW_VALUE__
-          [[ "${indexnow_key}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
-          test -r /opt/topsv3/secrets/production.env
-          docker image inspect nginx:1.27-alpine >/dev/null
-          printf '%s\n' "${indexnow_key}" | docker run --rm -i --pull never \
-            --network none \
-            --read-only \
-            --cap-drop ALL \
-            --cap-add CHOWN \
-            --security-opt no-new-privileges:true \
-            --volume /opt/topsv3/secrets:/secrets:rw \
-            nginx:1.27-alpine sh -c '
-          set -eu
-          env_file=/secrets/production.env
-          IFS= read -r key
-          test -n "${key}"
-          case "${key}" in
-            *[!A-Za-z0-9-]*) exit 2 ;;
-          esac
-          key_length="${#key}"
-          test "${key_length}" -ge 8
-          test "${key_length}" -le 128
-          owner="$(stat -c "%u:%g" "${env_file}")"
-          mode="$(stat -c "%a" "${env_file}")"
-          temporary="$(mktemp "${env_file}.indexnow.XXXXXX")"
-          cleanup() { rm -f -- "${temporary}"; }
-          trap cleanup EXIT
-          awk "!/^INDEXNOW_KEY=/" "${env_file}" > "${temporary}"
-          printf "INDEXNOW_KEY=%s\n" "${key}" >> "${temporary}"
-          chown "${owner}" "${temporary}"
-          chmod "${mode}" "${temporary}"
-          mv -f -- "${temporary}" "${env_file}"
-          trap - EXIT
-          '
-          unset indexnow_key
-          REMOTE_BODY
-          } | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'bash -s'
-
       - name: Upload immutable release
         shell: bash
         env:
@@ -283,6 +231,7 @@ jobs:
             --exclude='./*.p12' \
             --exclude='**/*.p12' \
             -czf "${ARCHIVE}" .
+          tar -tzf "${ARCHIVE}" | grep -Fx './scripts/deploy/proteger-operacao-production.sh' >/dev/null
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" 'mkdir -p /opt/topsv3/production/incoming /opt/topsv3/production/releases'
           scp "${SCP_OPTS[@]}" "${ARCHIVE}" "${SSH_TARGET}:/opt/topsv3/production/incoming/${GITHUB_SHA}.tar.gz"
           ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
@@ -313,18 +262,29 @@ jobs:
           PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
           PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
           PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
         run: |
           set -euo pipefail
           SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
           SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
-          set -euo pipefail
+          [[ "${INDEXNOW_KEY}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
+          {
+            cat <<'REMOTE_HEAD'
+          set -Eeuo pipefail
+          IFS= read -r indexnow_key <<'__INDEXNOW_VALUE__'
+          REMOTE_HEAD
+            printf '%s\n' "${INDEXNOW_KEY}"
+            cat <<'REMOTE'
+          __INDEXNOW_VALUE__
           release_sha="$1"
           deploy_root=/opt/topsv3/production
           release_dir="${deploy_root}/releases/${release_sha}"
           compose_file="${release_dir}/deploy/production/docker-compose.yml"
           env_file=/opt/topsv3/secrets/production.env
+          source "${release_dir}/scripts/deploy/proteger-operacao-production.sh"
+          op_begin "${deploy_root}" "${release_sha}"
           previous_release="$(readlink -f "${deploy_root}/current")"
+          previous_sha="$(cat "${previous_release}/.release-sha")"
           postgres_id_before="$(docker inspect topsv3-production-postgres --format '{{.Id}}')"
           postgres_volume_before="$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')"
           db="$(docker inspect topsv3-production-postgres --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n 's/^POSTGRES_DB=//p')"
@@ -341,8 +301,6 @@ jobs:
           backup_receipt="${snapshot_dir}/backup.receipt"
           export TOPSV3_RELEASE_SHA="${release_sha}"
           compose=(docker compose --env-file "${env_file}" -f "${compose_file}" -p topsv3-production)
-          switched=0
-          application_started=0
 
           cleanup_database_gate() {
             rm -rf -- "${snapshot_dir}"
@@ -386,50 +344,57 @@ jobs:
               " </dev/null
           }
 
-          rollback_application() {
-            trap - ERR
-            if [ ! -d "${previous_release}" ]; then
-              return
-            fi
-            if [ "${switched}" -eq 1 ]; then
-              rollback_link="${deploy_root}/.rollback-${release_sha}"
-              rm -f "${rollback_link}"
-              ln -s "releases/$(basename "${previous_release}")" "${rollback_link}"
-              mv -Tf "${rollback_link}" "${deploy_root}/current"
-            fi
-            if [ "${application_started}" -eq 1 ]; then
-              if [ -f "${previous_release}/deploy/production/docker-compose.yml" ]; then
-                previous_sha="$(cat "${previous_release}/.release-sha")"
-                TOPSV3_RELEASE_SHA="${previous_sha}" docker compose --env-file "${env_file}" -f "${previous_release}/deploy/production/docker-compose.yml" -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
-              else
-                TOPSV3_RELEASE_DIR="${previous_release}" docker compose --env-file "${env_file}" -f /opt/topsv3/secrets/docker-compose.production.yml -p topsv3-production up -d --no-deps --force-recreate backend frontend gateway
-              fi
-            fi
-          }
-          on_error() {
-            rc=$?
-            cleanup_database_gate || true
-            rollback_application || true
-            exit "${rc}"
-          }
-          trap on_error ERR
 
           "${compose[@]}" config --quiet
-          baseline_health=DOWN
-          if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
-            && curl -fsS http://127.0.0.1:28080/api/health/readiness >/dev/null \
-            && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
-            baseline_health=UP
-          fi
+          op_smoke "${previous_sha}"
+          baseline_health=UP
           capture_database_snapshot "${snapshot_before}" "${baseline_health}"
           expected_flyway="$(bash "${flyway_gate}" expected "${migration_dir}")"
-          IFS='|' read -r applied_before failed_before expected_count_before \
-            < <(read_flyway_state "${expected_flyway}")
+          flyway_before_state="$(read_flyway_state "${expected_flyway}")"
+          IFS='|' read -r applied_before failed_before expected_count_before <<<"${flyway_before_state}"
           inspection="$(bash "${flyway_gate}" inspect "${expected_flyway}" \
             "${applied_before}" "${failed_before}" "${expected_count_before}" NOT_CHECKED)"
           migrations_pending="$(awk -F= '$1 == "MIGRATIONS_PENDING" { print $2 }' <<< "${inspection}")"
           test "${migrations_pending}" = true || test "${migrations_pending}" = false
           bash "${database_gate}" "${snapshot_before}" "${snapshot_before}" "${applied_before}"
+
+          # Synchronize IndexNow key in production runtime, under the shared lock.
+          op_phase CONFIGURING
+          [[ "${indexnow_key}" =~ ^[A-Za-z0-9-]{8,128}$ ]]
+          test -r /opt/topsv3/secrets/production.env
+          docker image inspect nginx:1.27-alpine >/dev/null
+          op_expect_indexnow "${indexnow_key}"
+          op_run mutating docker run --rm -i --pull never \
+            --network none \
+            --read-only \
+            --cap-drop ALL \
+            --cap-add CHOWN \
+            --security-opt no-new-privileges:true \
+            --volume /opt/topsv3/secrets:/secrets:rw \
+            nginx:1.27-alpine sh -c '
+          set -eu
+          env_file=/secrets/production.env
+          IFS= read -r key
+          test -n "${key}"
+          case "${key}" in
+            *[!A-Za-z0-9-]*) exit 2 ;;
+          esac
+          key_length="${#key}"
+          test "${key_length}" -ge 8
+          test "${key_length}" -le 128
+          owner="$(stat -c "%u:%g" "${env_file}")"
+          mode="$(stat -c "%a" "${env_file}")"
+          temporary="$(mktemp "${env_file}.indexnow.XXXXXX")"
+          cleanup() { rm -f -- "${temporary}"; }
+          trap cleanup EXIT
+          awk "!/^INDEXNOW_KEY=/" "${env_file}" > "${temporary}"
+          printf "INDEXNOW_KEY=%s\n" "${key}" >> "${temporary}"
+          chmod "${mode}" "${temporary}"
+          chown "${owner}" "${temporary}"
+          mv -f -- "${temporary}" "${env_file}"
+          trap - EXIT
+          ' <<<"${indexnow_key}"
+          unset indexnow_key
 
           backup_status=NOT_REQUIRED
           if [ "${migrations_pending}" = true ]; then
@@ -446,10 +411,11 @@ jobs:
           bash "${flyway_gate}" before "${expected_flyway}" \
             "${applied_before}" "${failed_before}" "${expected_count_before}" "${backup_status}"
 
-          "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null
-          "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
-          IFS='|' read -r applied_after_migration failed_after_migration expected_count_after_migration \
-            < <(read_flyway_state "${expected_flyway}")
+          op_phase MIGRATING
+          op_run mutating "${compose[@]}" run --rm -T --no-deps flyway migrate </dev/null
+          op_run readonly "${compose[@]}" run --rm -T --no-deps flyway validate </dev/null
+          flyway_after_state="$(read_flyway_state "${expected_flyway}")"
+          IFS='|' read -r applied_after_migration failed_after_migration expected_count_after_migration <<<"${flyway_after_state}"
           bash "${flyway_gate}" after "${expected_flyway}" \
             "${applied_after_migration}" "${failed_after_migration}" \
             "${expected_count_after_migration}" "${backup_status}"
@@ -457,51 +423,27 @@ jobs:
           bash "${database_gate}" "${snapshot_before}" "${snapshot_migrated}" \
             "${applied_before}" "${expected_flyway}"
 
-          "${compose[@]}" build backend frontend
-          application_started=1
-          "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
+          op_phase BUILDING
+          op_run mutating "${compose[@]}" build backend frontend
+          op_expect_candidate
+          op_phase ACTIVATING
+          op_run mutating "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway
 
-          healthy=0
-          for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"' \
-              && curl -fsS http://127.0.0.1:28080/api/health/readiness >/dev/null \
-              && curl -fsS http://127.0.0.1:23000/ >/dev/null; then
-              healthy=1
-              break
-            fi
-            sleep 5
-          done
-          test "${healthy}" -eq 1
+          op_phase SMOKE
+          op_smoke "${release_sha}"
           test "$(docker inspect topsv3-production-postgres --format '{{.Id}}')" = "${postgres_id_before}"
           test "$(docker inspect topsv3-production-postgres --format '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}')" = "${postgres_volume_before}"
           capture_database_snapshot "${snapshot_after}" UP
           bash "${database_gate}" "${snapshot_migrated}" "${snapshot_after}" \
             "${expected_flyway}"
 
+          op_phase PROMOTING
           current_link="${deploy_root}/.current-${release_sha}"
           rm -f "${current_link}"
           ln -s "releases/${release_sha}" "${current_link}"
           mv -Tf "${current_link}" "${deploy_root}/current"
-          switched=1
           test "$(readlink -f "${deploy_root}/current")" = "${release_dir}"
-          cleanup_database_gate
-          trap - ERR
-          REMOTE
-
-      - name: Smoke production internally without data writes
-        shell: bash
-        env:
-          PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
-          PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
-          PRODUCTION_SSH_PORT: ${{ secrets.PRODUCTION_SSH_PORT }}
-        run: |
-          set -euo pipefail
-          SSH_TARGET="${PRODUCTION_USER}@${PRODUCTION_HOST}"
-          SSH_OPTS=(-i "${HOME}/.ssh/topsv3_production" -p "${PRODUCTION_SSH_PORT}" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="${HOME}/.ssh/known_hosts" -o HostKeyAlias="[${PRODUCTION_HOST}]:${PRODUCTION_SSH_PORT}")
-          ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}" <<'REMOTE'
-          set -euo pipefail
-          release_sha="$1"
-          release_dir="/opt/topsv3/production/releases/${release_sha}"
+          # The former final smoke stays inside the same ownership and failure handler.
           test "$(readlink -f /opt/topsv3/production/current)" = "${release_dir}"
           test "$(cat /opt/topsv3/production/current/.release-sha)" = "${release_sha}"
           for service in backend frontend gateway; do
@@ -513,9 +455,6 @@ jobs:
             test "$(docker inspect "topsv3-production-${service}" --format '{{.State.Running}}')" = "true"
           done
           test "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = "healthy"
-          curl -fsS http://127.0.0.1:28080/api/health | grep -q '"status":"UP"'
-          curl -fsS http://127.0.0.1:23000/ >/dev/null
-          curl -fsS http://127.0.0.1:23000/anuncios >/dev/null
           frontend_env="$(docker inspect topsv3-production-frontend --format '{{range .Config.Env}}{{println .}}{{end}}')"
           grep -qx 'NEXT_PUBLIC_SITE_URL=https://topsdojob.com' <<< "${frontend_env}"
           grep -qx 'NEXT_PUBLIC_ANALYTICS_ENABLED=true' <<< "${frontend_env}"
@@ -533,4 +472,7 @@ jobs:
             echo 'ERRO: marcador de importador ou fixture encontrado na producao.' >&2
             exit 1
           fi
+          cleanup_database_gate
+          op_finish
           REMOTE
+          } | ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s -- "${GITHUB_SHA}"

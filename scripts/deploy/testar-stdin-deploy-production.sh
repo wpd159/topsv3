@@ -4,6 +4,8 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 workflow="${repo_root}/.github/workflows/deploy-production.yml"
+operation_helper="${script_dir}/proteger-operacao-production.sh"
+[[ -f "$operation_helper" ]] || { echo "FALHA: helper de operacao ausente" >&2; exit 1; }
 temp_dir="$(mktemp -d)"
 trap 'rm -rf -- "${temp_dir}"' EXIT
 
@@ -66,7 +68,18 @@ while IFS= read -r command; do
   fi
 done < <(logical_commands "${deploy_sources[@]}")
 
-flyway_reader="$(sed -n '/read_flyway_state() {/,/^          }/p' "$workflow")"
+flyway_reader="$(awk '
+  { sub(/\r$/, "") }
+  /^[[:space:]]*read_flyway_state\(\) \{$/ {
+    match($0, /^[[:space:]]*/)
+    indentation = substr($0, 1, RLENGTH)
+    reading = 1
+  }
+  reading {
+    print
+    if ($0 ~ "^" indentation "}[[:space:]]*$") exit
+  }
+' "$workflow")"
 [[ -n "$flyway_reader" ]] || fail "read_flyway_state ausente"
 [[ "$flyway_reader" != *"docker exec -i"* ]] || fail "read_flyway_state ainda usa -i"
 [[ "$flyway_reader" == *"--no-psqlrc"* ]] || fail "read_flyway_state sem --no-psqlrc"
@@ -137,6 +150,24 @@ if grep -qx 'falha_posterior' "$failure_log"; then
 fi
 echo "PASS: falha_psql_interrompe"
 
+reader_failure_log="${temp_dir}/reader-failure.log"
+reader_status=0
+{
+  printf '%s\n' 'set -euo pipefail' 'db=fixture' 'user=fixture' "$flyway_reader"
+  printf '%s\n' 'flyway_before_state="$(read_flyway_state 053)"'
+  printf '%s\n' 'printf "leitura_flyway_prosseguiu\n"'
+} | PATH="${temp_dir}/bin:${PATH}" FAKE_PSQL_FAIL=true bash -s > "$reader_failure_log" 2>&1 \
+  || reader_status=$?
+[[ "$reader_status" -eq 42 ]] || fail "funcao Flyway real nao preservou o erro SQL 42"
+if grep -qx 'leitura_flyway_prosseguiu' "$reader_failure_log"; then
+  fail "atribuicao da leitura Flyway real prosseguiu apos erro SQL"
+fi
+grep -Fq 'flyway_before_state="$(read_flyway_state "${expected_flyway}")"' "$workflow" \
+  || fail "leitura Flyway anterior nao propaga falha da funcao"
+grep -Fq 'flyway_after_state="$(read_flyway_state "${expected_flyway}")"' "$workflow" \
+  || fail "leitura Flyway posterior nao propaga falha da funcao"
+echo "PASS: funcao_flyway_real_propaga_erro"
+
 line_number() {
   local needle="$1"
   local occurrence="${2:-first}"
@@ -153,17 +184,47 @@ line_number() {
 backup_line="$(line_number 'bash "${backup_producer}"')"
 flyway_line="$(line_number 'flyway migrate </dev/null')"
 flyway_gate_line="$(line_number 'bash "${flyway_gate}" after')"
-startup_line="$(line_number 'application_started=1')"
-health_line="$(line_number 'test "${healthy}" -eq 1')"
+begin_line="$(line_number 'op_begin "${deploy_root}" "${release_sha}"')"
+baseline_line="$(line_number 'op_smoke "${previous_sha}"')"
+expected_indexnow_line="$(line_number 'op_expect_indexnow "${indexnow_key}"')"
+indexnow_line="$(line_number 'op_run mutating docker run --rm -i --pull never')"
+build_line="$(line_number 'op_run mutating "${compose[@]}" build backend frontend')"
+expected_candidate_line="$(line_number 'op_expect_candidate')"
+startup_phase_line="$(line_number 'op_phase ACTIVATING')"
+startup_line="$(line_number 'op_run mutating "${compose[@]}" up -d --no-deps --force-recreate backend frontend gateway')"
+health_line="$(line_number 'op_smoke "${release_sha}"')"
 switch_line="$(line_number 'mv -Tf "${current_link}"')"
+final_runtime_line="$(line_number "grep -qx 'SEARCH_INDEXING_MODE=public'")"
+final_logs_line="$(line_number 'IMPORTACAO_.*(INICIO|EXECUTADA)')"
+finish_line="$(line_number '          op_finish')"
 
+(( begin_line < baseline_line && baseline_line < expected_indexnow_line && expected_indexnow_line < indexnow_line && indexnow_line < backup_line )) \
+  || fail "baseline ou primeira mutacao de configuracao fora da posse compartilhada"
+echo "PASS: indexnow_sob_posse"
+(( build_line < expected_candidate_line && expected_candidate_line < startup_phase_line )) \
+  || fail "identidades candidatas nao foram fixadas apos build e antes da ativacao"
+echo "PASS: identidades_antes_ativacao"
 (( backup_line < flyway_line )) || fail "backup nao antecede Flyway"
 echo "PASS: backup_antes_flyway"
-(( flyway_line < flyway_gate_line && flyway_gate_line < startup_line )) \
+(( flyway_line < flyway_gate_line && flyway_gate_line < startup_phase_line && startup_phase_line < startup_line )) \
   || fail "Flyway validado fora da ordem de startup"
 echo "PASS: flyway_antes_startup"
-(( health_line < switch_line )) || fail "troca da release antecede health/readiness"
-grep -Fq 'api/health/readiness' "$workflow" || fail "readiness ausente"
+(( startup_line < health_line && health_line < switch_line )) || fail "troca da release antecede health/readiness"
+grep -Fq 'api/health/readiness' "$operation_helper" || fail "readiness ausente do smoke compartilhado"
 echo "PASS: health_antes_troca"
+(( switch_line < final_runtime_line && final_runtime_line < finish_line && final_logs_line < finish_line )) \
+  || fail "checks finais fora da operacao protegida"
+[[ "$(grep -Ec '^[[:space:]]+op_begin[[:space:]]' "$workflow")" -eq 1 ]] \
+  || fail "mais de uma entrada de operacao no workflow"
+[[ "$(grep -Ec '^[[:space:]]+op_finish[[:space:]]*$' "$workflow")" -eq 1 ]] \
+  || fail "conclusao protegida ausente ou duplicada"
+if grep -Eq '^[[:space:]]+- name: (Smoke production release|Synchronize IndexNow key in production runtime)[[:space:]]*$' "$workflow"; then
+  fail "smoke critico ou mutacao IndexNow ainda fora da operacao protegida"
+fi
+echo "PASS: smoke_final_sob_posse"
+grep -Fq 'tar -tzf "${ARCHIVE}" | grep -Fx '\''./scripts/deploy/proteger-operacao-production.sh'\''' "$workflow" \
+  || fail "empacotamento nao exige o helper compartilhado"
+echo "PASS: helper_no_empacotamento"
 
+echo "CONTRACT_SCOPE=STATIC_ORDER_AND_STDIN_REQUIRES_OPERATIONAL_GATES"
 echo "DEPLOY_STDIN_REGRESSION_TESTS=PASS"
