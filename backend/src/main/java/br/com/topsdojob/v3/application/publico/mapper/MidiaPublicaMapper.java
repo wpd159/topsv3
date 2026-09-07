@@ -7,10 +7,10 @@ import br.com.topsdojob.v3.application.publico.service.MidiaRestritaDerivacaoSer
 import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
 import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
+import br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura;
+import br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +21,6 @@ import org.springframework.stereotype.Component;
 public class MidiaPublicaMapper {
 
     private static final String MIDIA_RESTRITA_IDADE = "MIDIA_RESTRITA_IDADE";
-    private static final Comparator<AnuncioMidiaEntity> ORDEM_GALERIA = Comparator
-            .comparingInt((AnuncioMidiaEntity midia) -> prioridadeTipo(midia.getTipo()))
-            .thenComparing(AnuncioMidiaEntity::getOrdem, Comparator.nullsLast(Integer::compareTo))
-            .thenComparing(AnuncioMidiaEntity::getId, Comparator.nullsLast(UUID::compareTo));
     private static final Comparator<MidiaPublicaDto> ORDEM_DTO_GALERIA = Comparator
             .comparingInt((MidiaPublicaDto midia) -> prioridadeTipo(midia.tipo()))
             .thenComparing(MidiaPublicaDto::ordem, Comparator.nullsLast(Integer::compareTo))
@@ -63,27 +59,61 @@ public class MidiaPublicaMapper {
             boolean idadeConfirmada,
             int maxFotos,
             boolean videoPermitido) {
-        java.util.concurrent.atomic.AtomicInteger fotos = new java.util.concurrent.atomic.AtomicInteger();
-        return vinculos.stream()
-                .filter(this::isVinculoPublico)
-                .filter(vinculo -> vinculo.getTipo() != TipoAnuncioMidia.VIDEO || videoPermitido)
-                .sorted(ORDEM_GALERIA)
-                .filter(vinculo -> vinculo.getTipo() != TipoAnuncioMidia.FOTO
-                        || fotos.getAndIncrement() < Math.max(0, maxFotos))
-                .map(vinculo -> toDto(vinculo, arquivosPorId.get(vinculo.getArquivoMidiaId()), idadeConfirmada))
-                .filter(java.util.Objects::nonNull)
-                .sorted(ORDEM_DTO_GALERIA)
-                .toList();
+        // Keep existing entity-based URL contracts for other consumers, while using
+        // exactly the same position selector and DTO mapping as the projected read.
+        var originais = new java.util.IdentityHashMap<MidiaVinculoLeitura, AnuncioMidiaEntity>();
+        var leituras = vinculos.stream().map(item -> {
+            var leitura = MidiaVinculoLeitura.de(item);
+            originais.put(leitura, item);
+            return leitura;
+        }).toList();
+        return SelecaoMidiasPublicas.selecionar(leituras, maxFotos, videoPermitido).stream()
+                .map(vinculo -> {
+                    var arquivo = arquivosPorId.get(vinculo.arquivoMidiaId());
+                    return toDto(vinculo, ArquivoPublicoLeitura.de(arquivo), idadeConfirmada,
+                            () -> urlService.resolverPreviewRestrita(arquivo),
+                            () -> urlService.resolver(originais.get(vinculo), arquivo));
+                })
+                .filter(java.util.Objects::nonNull).sorted(ORDEM_DTO_GALERIA).toList();
     }
 
-    private static int prioridadeTipo(TipoAnuncioMidia tipo) {
-        if (tipo == TipoAnuncioMidia.VIDEO) {
-            return 0;
-        }
-        if (tipo == TipoAnuncioMidia.FOTO) {
-            return 1;
-        }
-        return 2;
+    public List<MidiaPublicaDto> publicasLeituras(List<MidiaVinculoLeitura> vinculos,
+            Map<UUID, ArquivoPublicoLeitura> arquivos, boolean idadeConfirmada,
+            int maxFotos, boolean videoPermitido) {
+        return SelecaoMidiasPublicas.selecionar(vinculos, maxFotos, videoPermitido).stream()
+                .map(vinculo -> {
+                    var arquivo = arquivos.get(vinculo.arquivoMidiaId());
+                    return toDto(vinculo, arquivo, idadeConfirmada,
+                            () -> urlService.resolverPreviewRestritaLeitura(arquivo),
+                            () -> urlService.resolverLeitura(vinculo, arquivo));
+                })
+                .filter(java.util.Objects::nonNull)
+                .sorted(ORDEM_DTO_GALERIA).toList();
+    }
+
+    /**
+     * Only inputs that can count as photos in anonymous locality eligibility. Position
+     * selection remains shared with the gallery and precedes file/visibility filtering.
+     * The original policy still decides eligibility from the resulting public URLs.
+     */
+    public List<MidiaPublicaDto> fotosElegiveisLocalidades(List<MidiaVinculoLeitura> vinculos,
+            Map<UUID, ArquivoPublicoLeitura> arquivos, int maxFotos, boolean videoPermitido) {
+        return SelecaoMidiasPublicas.selecionar(vinculos, maxFotos, videoPermitido).stream()
+                .filter(vinculo -> vinculo.tipo() == TipoAnuncioMidia.FOTO
+                        && vinculo.visibilidadeMidia() == VisibilidadeMidia.LIVRE)
+                .map(vinculo -> {
+                    var arquivo = vinculo.arquivoMidiaId() == null
+                            ? null : arquivos.get(vinculo.arquivoMidiaId());
+                    // Free photos never invoke the preview resolver in the shared mapping.
+                    return toDto(vinculo, arquivo, false, () -> null,
+                            () -> urlService.resolverLeitura(vinculo, arquivo));
+                })
+                .filter(java.util.Objects::nonNull).sorted(ORDEM_DTO_GALERIA).toList();
+    }
+
+    /** Collection registers identities only; no public DTO or URL is constructed. */
+    public void coletarPreview(ArquivoPublicoLeitura arquivo) {
+        if (isArquivoPublico(arquivo)) urlService.coletarPreviewRestrita(arquivo.id(), arquivo.sha256());
     }
 
     private static int prioridadeTipo(String tipo) {
@@ -96,14 +126,16 @@ public class MidiaPublicaMapper {
         return 2;
     }
 
-    private MidiaPublicaDto toDto(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo, boolean idadeConfirmada) {
+    private MidiaPublicaDto toDto(MidiaVinculoLeitura vinculo, ArquivoPublicoLeitura arquivo,
+            boolean idadeConfirmada, java.util.function.Supplier<ResultadoUrlPublica> resolverPreview,
+            java.util.function.Supplier<ResultadoUrlPublica> resolverOriginal) {
         if (!isArquivoPublico(arquivo)) {
             return null;
         }
-        boolean autorizada = vinculo.getVisibilidadeMidia() == VisibilidadeMidia.LIVRE || idadeConfirmada;
-        ResultadoUrlPublica preview = vinculo.getTipo() == TipoAnuncioMidia.FOTO
-                && vinculo.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18
-                ? urlService.resolverPreviewRestrita(arquivo)
+        boolean autorizada = vinculo.visibilidadeMidia() == VisibilidadeMidia.LIVRE || idadeConfirmada;
+        ResultadoUrlPublica preview = vinculo.tipo() == TipoAnuncioMidia.FOTO
+                && vinculo.visibilidadeMidia() == VisibilidadeMidia.RESTRITA_18
+                ? resolverPreview.get()
                 : new ResultadoUrlPublica(null, null);
         if (preview == null) {
             preview = new ResultadoUrlPublica(
@@ -111,38 +143,30 @@ public class MidiaPublicaMapper {
                     MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA);
         }
         ResultadoUrlPublica urlPublica = autorizada
-                ? urlService.resolver(vinculo, arquivo)
+                ? resolverOriginal.get()
                 : new ResultadoUrlPublica(null, MIDIA_RESTRITA_IDADE);
         String pendencia = urlPublica.pendenciaMidia();
         if (!autorizada && preview.urlPublica() == null) {
             pendencia = preview.pendenciaMidia();
         }
         return new MidiaPublicaDto(
-                vinculo.getId(),
-                enumName(vinculo.getTipo()),
-                enumName(vinculo.getFinalidade()),
-                vinculo.getOrdem(),
-                enumName(vinculo.getVisibilidadeMidia()),
+                vinculo.id(),
+                enumName(vinculo.tipo()),
+                enumName(vinculo.finalidade()),
+                vinculo.ordem(),
+                enumName(vinculo.visibilidadeMidia()),
                 autorizada,
                 urlPublica.urlPublica(),
                 preview.urlPublica(),
                 pendencia,
-                arquivo.getLargura(),
-                arquivo.getAltura(),
-                arquivo.getMimeType());
+                arquivo.largura(),
+                arquivo.altura(),
+                arquivo.mimeType());
     }
 
-    private boolean isVinculoPublico(AnuncioMidiaEntity vinculo) {
-        return vinculo != null
-                && vinculo.getStatus() == StatusAnuncioMidia.PUBLICAVEL
-                && vinculo.getTipo() != TipoAnuncioMidia.STORY
-                && vinculo.getFinalidade() != FinalidadeAnuncioMidia.STORY
-                && vinculo.getVisibilidadeMidia() != null;
-    }
-
-    private boolean isArquivoPublico(ArquivoMidiaEntity arquivo) {
+    private boolean isArquivoPublico(ArquivoPublicoLeitura arquivo) {
         return arquivo != null
-                && arquivo.getStatusArquivo() == StatusArquivoMidia.VALIDADO;
+                && arquivo.statusArquivo() == StatusArquivoMidia.VALIDADO;
     }
 
     private String enumName(Enum<?> value) {

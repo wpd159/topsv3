@@ -10,6 +10,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
+import br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura;
+import br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
 import br.com.topsdojob.v3.application.publico.service.MidiaPublicaUrlService.ResultadoUrlPublica;
@@ -111,10 +113,11 @@ class SitemapPublicoConsultaServiceTest {
         when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
         when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));
         when(bairroRepository.findAllById(any())).thenReturn(List.of());
-        when(midiaRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(vinculos);
-        when(arquivoRepository.findByIdIn(any())).thenReturn(arquivos);
-        when(urlService.resolver(any(), any())).thenReturn(new ResultadoUrlPublica("/midia/publica.jpg", null));
-        when(premiumMapper.flagsPorAnuncios(List.of(anuncio)))
+        var leituras = vinculos.stream().map(MidiaVinculoLeitura::de).toList();
+        when(midiaRepository.findLeiturasPublicas(List.of(anuncioId))).thenReturn(leituras);
+        when(arquivoRepository.findLeiturasPublicas(any())).thenReturn(arquivos.stream().map(ArquivoPublicoLeitura::de).toList());
+        when(urlService.resolverLeitura(any(), any())).thenReturn(new ResultadoUrlPublica("/midia/publica.jpg", null));
+        when(premiumMapper.flagsMidiaPorAnuncioIds(List.of(anuncioId)))
                 .thenReturn(Map.of(anuncioId, PremiumPublicoFlagsDto.vazio()));
 
         AnuncioSeoElegibilidadeConsultaService elegibilidadeService = new AnuncioSeoElegibilidadeConsultaService(
@@ -148,8 +151,8 @@ class SitemapPublicoConsultaServiceTest {
                     .doesNotContain("midia/publica.jpg");
         });
         verify(localizacaoRepository).findByAnuncioIdIn(List.of(anuncioId));
-        verify(midiaRepository).findByAnuncioIdIn(List.of(anuncioId));
-        verify(arquivoRepository).findByIdIn(any());
+        verify(midiaRepository).findLeiturasPublicas(List.of(anuncioId));
+        verify(arquivoRepository).findLeiturasPublicas(any());
     }
 
     @Test
@@ -178,6 +181,9 @@ class SitemapPublicoConsultaServiceTest {
         AnuncioMidiaEntity vinculo = mock(AnuncioMidiaEntity.class);
         when(vinculo.getAnuncioId()).thenReturn(anuncioId);
         when(vinculo.getArquivoMidiaId()).thenReturn(arquivoId);
+        when(vinculo.getStatus()).thenReturn(StatusAnuncioMidia.PUBLICAVEL);
+        when(vinculo.getTipo()).thenReturn(TipoAnuncioMidia.FOTO);
+        when(vinculo.getVisibilidadeMidia()).thenReturn(VisibilidadeMidia.LIVRE);
         List<AnuncioMidiaEntity> vinculos = List.of(vinculo);
         AnuncioRepository anuncioRepository = mock(AnuncioRepository.class);
         AnuncioLocalizacaoRepository localizacaoRepository = mock(AnuncioLocalizacaoRepository.class);
@@ -190,11 +196,12 @@ class SitemapPublicoConsultaServiceTest {
         PremiumPublicoMapper premiumMapper = mock(PremiumPublicoMapper.class);
         AnuncioSeoIndexabilidadePolicy policy = mock(AnuncioSeoIndexabilidadePolicy.class);
 
-        when(midiaRepository.findByAnuncioIdIn(List.of(anuncioId))).thenReturn(vinculos);
-        when(arquivoRepository.findByIdIn(any())).thenReturn(List.of());
-        when(premiumMapper.flagsPorAnuncios(List.of(anuncio)))
+        var leituras = vinculos.stream().map(MidiaVinculoLeitura::de).toList();
+        when(midiaRepository.findLeiturasPublicas(List.of(anuncioId))).thenReturn(leituras);
+        when(arquivoRepository.findLeiturasPublicas(any())).thenReturn(List.of());
+        when(premiumMapper.flagsMidiaPorAnuncioIds(List.of(anuncioId)))
                 .thenReturn(Map.of(anuncioId, PremiumPublicoFlagsDto.vazio()));
-        when(midiaMapper.publicas(eq(vinculos), any(), eq(false), eq(4), eq(false)))
+        when(midiaMapper.publicasLeituras(eq(vinculos.stream().map(MidiaVinculoLeitura::de).toList()), any(), eq(false), eq(4), eq(false)))
                 .thenReturn(List.of());
 
         AnuncioSeoElegibilidadeConsultaService service = new AnuncioSeoElegibilidadeConsultaService(
@@ -209,7 +216,7 @@ class SitemapPublicoConsultaServiceTest {
                 Map.of(anuncioId, new br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto(
                         "GO", "Goias", "Goiania", "goiania", null, null, null)));
 
-        verify(midiaMapper).publicas(eq(vinculos), any(), eq(false), eq(4), eq(false));
+        verify(midiaMapper).publicasLeituras(eq(vinculos.stream().map(MidiaVinculoLeitura::de).toList()), any(), eq(false), eq(4), eq(false));
     }
 
     @Test

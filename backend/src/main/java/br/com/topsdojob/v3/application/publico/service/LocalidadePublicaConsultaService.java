@@ -75,12 +75,10 @@ public class LocalidadePublicaConsultaService {
         // Global and city endpoints consume exactly the same public, unfiltered snapshot.
         // No completed result is retained; all public/moderation/removal rules are reread.
         return coordenador.executar("descoberta-publica-global", () ->
-                MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
-                        () -> coordenador.transacao("coleta_previews", () -> carregar(false)),
-                        () -> coordenador.transacao("releitura_e_agregacao", () -> carregar(true))));
+                coordenador.transacao("avaliacao_e_agregacao", this::carregar));
     }
 
-    private ResultadoConsulta carregar(boolean incluirAgregados) {
+    private ResultadoConsulta carregar() {
         List<AnuncioEntity> anuncios = coordenador.medir("anuncios", this::anunciosPublicos);
         if (anuncios.isEmpty()) {
             return new ResultadoConsulta(new DescobertaLocalidadesPublicaDto(List.of()), Map.of());
@@ -106,15 +104,9 @@ public class LocalidadePublicaConsultaService {
                     localizacao.getAnuncioId(),
                     localizacao(localizacao, estados, cidades, bairros));
         }
-        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = coordenador.medir("elegibilidade", () -> elegibilidadeService.avaliar(
+        Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> elegibilidade = coordenador.medir("elegibilidade", () -> elegibilidadeService.avaliarLocalidades(
                 anuncios,
                 localizacoesPublicas));
-
-        if (!incluirAgregados) {
-            // Only collect the exact previews selected by the unchanged media rules.
-            // This provisional read is never a public response.
-            return new ResultadoConsulta(new DescobertaLocalidadesPublicaDto(List.of()), Map.of());
-        }
 
         Map<UUID, EstadoAcc> acumulado = new LinkedHashMap<>();
         for (AnuncioLocalizacaoEntity localizacao : localizacoes) {

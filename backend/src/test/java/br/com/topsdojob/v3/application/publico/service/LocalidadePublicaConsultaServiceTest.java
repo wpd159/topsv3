@@ -147,7 +147,7 @@ class LocalidadePublicaConsultaServiceTest {
         when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
         when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));
         when(bairroRepository.findAllById(any())).thenReturn(List.of(bairro));
-        when(elegibilidadeService.avaliar(any(), any())).thenReturn(Map.of(
+        when(elegibilidadeService.avaliarLocalidades(any(), any())).thenReturn(Map.of(
                 anuncioId,
                 new AnuncioSeoElegibilidadeConsultaService.Resultado(true, null)));
 
@@ -224,7 +224,7 @@ class LocalidadePublicaConsultaServiceTest {
         when(estadoRepository.findAllById(any())).thenReturn(List.of(estado));
         when(cidadeRepository.findAllById(any())).thenReturn(List.of(cidade));
         when(bairroRepository.findAllById(any())).thenReturn(List.of(bairro));
-        when(elegibilidadeService.avaliar(any(), any())).thenReturn(Map.of(
+        when(elegibilidadeService.avaliarLocalidades(any(), any())).thenReturn(Map.of(
                 anuncioUmId, new AnuncioSeoElegibilidadeConsultaService.Resultado(true, null),
                 anuncioDoisId, new AnuncioSeoElegibilidadeConsultaService.Resultado(true, null),
                 anuncioInelegivelId, new AnuncioSeoElegibilidadeConsultaService.Resultado(false, null)));

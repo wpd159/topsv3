@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import br.com.topsdojob.v3.TopsDoJobBackendApplication;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
@@ -23,7 +26,6 @@ import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageConfiguration;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2VerificacaoAgrupadaPreviews;
-import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.zaxxer.hikari.HikariDataSource;
@@ -40,10 +42,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.Duration;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -63,7 +63,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -118,18 +117,21 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
     private static final UUID CITY_SP = UUID.fromString("72000000-0000-4000-8000-000000000002");
     private static final LocalS3 REMOTE = LocalS3.start();
     @Autowired private LocalidadePublicaConsultaService service;
-    @Autowired private LocalidadesConsultaCoordenador coordinator;
+    @SpyBean private LocalidadesConsultaCoordenador coordinator;
     @Autowired private HikariDataSource pool;
     @Autowired private JdbcTemplate jdbc;
-    @Autowired private MidiaRestritaDerivacaoService derivation;
     @Autowired private R2VerificacaoAgrupadaPreviews verifier;
     @Autowired private R2StorageProperties properties;
     @Autowired private ObjectStorage objectStorage;
     @SpyBean private AnuncioSeoElegibilidadeConsultaService eligibility;
+    @SpyBean private MidiaRestritaDerivacaoService derivation;
     @PersistenceContext private EntityManager em;
     private final List<ExecutorService> executors = new ArrayList<>();
     private final AtomicReference<Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado>> evaluated = new AtomicReference<>();
     private final AtomicReference<Set<String>> verifiedKeys = new AtomicReference<>();
+    private final java.util.Random identities = new java.util.Random(0x0165656bL);
+    private final LocalidadesConsultaPostgres17IntegrationTest.EvaluationBoundary evaluation =
+            new LocalidadesConsultaPostgres17IntegrationTest.EvaluationBoundary();
 
     @BeforeEach
     void prepare() {
@@ -146,7 +148,12 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         drained();
         REMOTE.reset();
         REMOTE.pool = pool;
-        reset(verifier, eligibility);
+        reset(verifier, eligibility, derivation, coordinator);
+        evaluation.reset();
+        doAnswer(call -> {
+            evaluation.beforeSnapshot();
+            return call.callRealMethod();
+        }).when(coordinator).transacao(anyString(), any());
         verifiedKeys.set(null);
         doAnswer(call -> {
             @SuppressWarnings("unchecked") Set<String> result = (Set<String>) call.callRealMethod();
@@ -160,8 +167,9 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
                     (Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado>) call.callRealMethod();
             evaluated.set(result);
             return result;
-        }).when(eligibility).avaliar(any(), any());
+        }).when(eligibility).avaliarLocalidades(any(), any());
         evaluated.set(null);
+        identities.setSeed(0x0165656bL);
         jdbc.execute("truncate usuario, estado, arquivo_midia cascade");
         assertThat(pool.getMaximumPoolSize()).isEqualTo(5);
         assertThat(pool.getConnectionTimeout()).isEqualTo(30_000);
@@ -171,6 +179,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
     @AfterEach
     void cleanup() throws Exception {
         REMOTE.release.countDown();
+        evaluation.release();
         for (ExecutorService executor : executors) {
             executor.shutdownNow();
             assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
@@ -192,7 +201,11 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
     @AfterAll
     static void stopOwnedResources() throws Exception {
         try { REMOTE.close(); }
-        finally { LocalidadesConsultaPostgres17IntegrationTest.PostgresSupport.stop(); }
+        finally {
+            // A child JVM borrows only the controller's disposable DB; it does not own Docker resources.
+            if (System.getenv("TOPS_COLD_JDBC") == null)
+                LocalidadesConsultaPostgres17IntegrationTest.PostgresSupport.stop();
+        }
     }
 
     @ParameterizedTest
@@ -211,14 +224,14 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             assertComplete(response, fixture.ads());
             if (reference == null) reference = response;
             else assertThat(response).isEqualTo(reference);
-            assertThat(verifiedKeys.get()).containsExactlyInAnyOrderElementsOf(fixture.keys());
+            assertNoPreviewCalls();
             assertThat(duration).isLessThan(3500.0); // Functional deadline: NO cleanup tolerance.
-            assertThat(metrics().transactions - before.transactions).isEqualTo(2);
-            assertThat(REMOTE.lists.get() - before.lists).isEqualTo(2);
+            assertThat(metrics().transactions - before.transactions).isEqualTo(1);
+            assertThat(REMOTE.lists.get() - before.lists).isZero();
             assertThat(REMOTE.heads.get() - before.heads).isZero();
-            assertThat(REMOTE.bytes.get() - before.bytes).isGreaterThanOrEqualTo(401_907);
+            assertThat(REMOTE.bytes.get() - before.bytes).isZero();
             assertThat(coordinator.produtoresIniciados() - before.producers).isEqualTo(1);
-            assertThat(REMOTE.maxActive.get()).isEqualTo(1);
+            assertThat(REMOTE.maxActive.get()).isZero();
             assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
             drained();
             evidence("healthy_" + previews + "_round_" + round, started, duration, before);
@@ -231,7 +244,43 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
     }
 
     @Test
-    void terceiraPaginaComObjetosNaoPertinentesAindaRespeitaOrcamento() {
+    @Order(0)
+    @org.junit.jupiter.api.Timeout(value = 10, unit = TimeUnit.MINUTES)
+    void primeiraDescobertaPassaEmTresJvmsRepresentativasSeparadas() throws Exception {
+        LocalidadesDescobertaFriaGate.executar(pool);
+    }
+
+    @Test
+    @Order(0)
+    void replayAConcluiDtoInteiroNaPrimeiraDescobertaENoProcessoReutilizado() {
+        Inventory fixture = seed(715, 975);
+        // Differential replay of the recorded A profile, not a forecast of future R2 latency.
+        REMOTE.configure(fixture.keys(), 1358, 1839, 837);
+        DescobertaLocalidadesPublicaDto reference = null;
+        for (int round = 1; round <= 3; round++) {
+            Metrics before = metrics();
+            long started = System.nanoTime();
+            DescobertaLocalidadesPublicaDto response = service.descobrir();
+            double duration = milliseconds(started);
+            assertComplete(response, fixture.ads());
+            if (reference == null) reference = response;
+            else assertThat(response).isEqualTo(reference);
+            assertNoPreviewCalls();
+            assertThat(duration).isLessThan(3500.0);
+            assertThat(metrics().transactions - before.transactions).isEqualTo(1);
+            assertThat(REMOTE.lists.get() - before.lists).isZero();
+            assertThat(REMOTE.bytes.get() - before.bytes).isZero();
+            assertThat(REMOTE.heads.get() - before.heads).isZero();
+            assertThat(coordinator.produtoresIniciados() - before.producers).isEqualTo(1);
+            assertThat(REMOTE.maxActive.get()).isZero();
+            assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
+            drained();
+            evidence("replay_a_1839_837_round_" + round, started, duration, before);
+        }
+    }
+
+    @Test
+    void inventarioComTerceiraPaginaNaoParticipaDaDescoberta() {
         Inventory fixture = seed(715, 1311);
         REMOTE.configure(fixture.keys(), 2358, 1250, 800, 800);
         Metrics before = metrics();
@@ -240,8 +289,8 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         double duration = milliseconds(started);
         assertComplete(response, fixture.ads());
         assertThat(duration).isLessThan(3500.0);
-        assertThat(REMOTE.lists.get()).isEqualTo(3);
-        assertThat(REMOTE.bytes.get()).isGreaterThanOrEqualTo(690_000);
+        assertNoPreviewCalls();
+        assertThat(metrics().transactions - before.transactions).isEqualTo(1);
         assertThat(REMOTE.heads.get()).isZero();
         assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
         evidence("three_pages_with_unrelated_objects", started, duration, before);
@@ -249,34 +298,34 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {6, 20})
-    void consumidoresGlobaisECidadesCompartilhamListagemReal(int count) throws Exception {
+    void consumidoresGlobaisECidadesCompartilhamAvaliacaoRealSemPreview(int count) throws Exception {
         Inventory fixture = seed(715, 1311);
         REMOTE.configure(fixture.keys(), 1358, 1250, 850);
-        REMOTE.gatePage = 1;
+        var gate = evaluation.block(false);
         Metrics before = metrics();
         long started = System.nanoTime();
         List<Future<Object>> consumers = consumers(count);
-        assertThat(REMOTE.entered.await(2, TimeUnit.SECONDS)).isTrue();
+        assertThat(gate.entered.await(2, TimeUnit.SECONDS)).isTrue();
         await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == count);
         assertThat(coordinator.produtoresIniciados() - before.producers).isEqualTo(1);
         assertPoolFree();
         assertThat(observerCount("state in ('active','idle in transaction')")).isZero();
-        REMOTE.release.countDown();
+        gate.release.countDown();
         for (int i = 0; i < count; i++) assertConsumer(i, consumers.get(i).get(3500, TimeUnit.MILLISECONDS), fixture.ads());
         double duration = milliseconds(started);
         assertThat(duration).isLessThan(3500.0);
-        assertThat(REMOTE.lists.get()).isEqualTo(2);
-        assertThat(REMOTE.maxActive.get()).isEqualTo(1);
+        assertNoPreviewCalls();
+        assertThat(metrics().transactions - before.transactions).isEqualTo(1);
         assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
         evidence("consumers_" + count, started, duration, before);
     }
 
     @Test
-    void headSerialRealDe240msContinuaSendoReferenciaReprovada() {
+    void headSerialRealDe240msContinuaReprovadoSomenteNaCamadaPreview() {
         Inventory fixture = seed(715, 975);
+        List<UUID> files = previewFiles();
         REMOTE.configure(fixture.keys(), 1358, 1250, 850);
         REMOTE.headDelayMs = 240;
-        // Only this regression restores the former serial algorithm, using real signed HTTP HEADs.
         doAnswer(call -> {
             Set<String> requested = call.getArgument(0);
             Set<String> found = new LinkedHashSet<>();
@@ -285,71 +334,139 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         }).when(verifier).verificar(anySet());
         Metrics before = metrics();
         long started = System.nanoTime();
-        assertThat(status(service::descobrir)).isEqualTo(503);
+        assertThat(status(() -> previewOperation(files))).isEqualTo(503);
         double duration = milliseconds(started);
         drained();
         assertThat(duration).isBetween(3400.0, 4000.0);
-        assertThat(REMOTE.heads.get()).isBetween(1, 16);
-        assertThat(REMOTE.heads.get()).isLessThan(975);
+        assertThat(REMOTE.heads.get()).isBetween(1, 16).isLessThan(975);
         assertThat(REMOTE.lists.get()).isZero();
-        assertThat(metrics().transactions - before.transactions).isEqualTo(1);
+        assertThat(metrics().transactions - before.transactions).isZero();
         assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
-        evidence("serial_head_240ms_expected_503", started, duration, before);
-        reset(verifier);
-        REMOTE.headDelayMs = 0;
+        evidence("preview_serial_head_240ms_expected_503", started, duration, before);
         await().atMost(Duration.ofSeconds(1)).until(() -> REMOTE.active.get() == 0);
+        REMOTE.reset();
         assertComplete(service.descobrir(), fixture.ads());
+        assertThat(REMOTE.heads.get()).isZero();
+        assertThat(REMOTE.lists.get()).isZero();
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {6, 20})
+    void consumidoresAguardamAvaliacaoNoSnapshotComUmaUnicaConexaoDoProdutor(int count) throws Exception {
+        Inventory fixture = seed(715, 1311);
+        REMOTE.configure(fixture.keys(), 1358, 1839, 837);
+        CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+        doAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isTrue();
+            assertThat(jdbc.queryForObject("show transaction_isolation", String.class)).isEqualTo("repeatable read");
+            entered.countDown();
+            assertThat(release.await(2, TimeUnit.SECONDS)).isTrue();
+            @SuppressWarnings("unchecked")
+            Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado> result =
+                    (Map<UUID, AnuncioSeoElegibilidadeConsultaService.Resultado>) call.callRealMethod();
+            evaluated.set(result);
+            return result;
+        }).when(eligibility).avaliarLocalidades(any(), any());
+        Metrics before = metrics();
+        long started = System.nanoTime();
+        List<Future<Object>> consumers = consumers(count);
+        try {
+            assertThat(entered.await(2, TimeUnit.SECONDS)).isTrue();
+            await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == count);
+            assertThat(pool.getHikariPoolMXBean().getActiveConnections()).isEqualTo(1);
+            assertThat(pool.getHikariPoolMXBean().getThreadsAwaitingConnection()).isZero();
+            assertThat(observerCount("state in ('active','idle in transaction')")).isEqualTo(1);
+            assertThat(coordinator.produtoresIniciados() - before.producers).isEqualTo(1);
+        } finally {
+            release.countDown();
+        }
+        for (int i = 0; i < count; i++) assertConsumer(i, consumers.get(i).get(3500, TimeUnit.MILLISECONDS), fixture.ads());
+        assertThat(milliseconds(started)).isLessThan(3500);
+        assertThat(metrics().transactions - before.transactions).isEqualTo(1);
+        assertNoPreviewCalls();
+        drained();
+        assertPoolFree();
+        evidence("consumers_" + count + "_inside_repeatable_read", started, milliseconds(started), before);
+    }
+
+    @Test
+    void paginacaoRealSeparadaEncontraProvasAposTerceiraPagina() {
+        Inventory fixture = seed(715, 1311);
+        List<UUID> files = previewFiles();
+        REMOTE.configure(fixture.keys(), 2358, 1250, 800, 800);
+        long started = System.nanoTime();
+        Map<UUID, MidiaRestritaDerivacaoService.ResultadoPreview> response = previewOperation(files);
+        assertThat(response).hasSize(1311);
+        assertThat(response.values()).allSatisfy(value -> {
+            assertThat(value.previewUrl()).startsWith("https://public.example.invalid/");
+            assertThat(value.pendencia()).isNull();
+        });
+        assertThat(verifiedKeys.get()).containsExactlyInAnyOrderElementsOf(fixture.keys());
+        assertThat(milliseconds(started)).isLessThan(3500);
+        assertThat(REMOTE.lists.get()).isEqualTo(3);
+        assertThat(REMOTE.bytes.get()).isGreaterThanOrEqualTo(690_000);
+        assertThat(REMOTE.heads.get()).isZero();
+        assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
     }
 
     @Test
     void ausenciasExatasEDuplicatasNaoViraramCacheOuCorrespondenciaParcial() {
         Inventory fixture = seed(3, 3);
         UUID absentAd = fixture.ads().get(0);
+        UUID absentFile = fixture.fileByAd().get(absentAd);
         String absent = fixture.keyByAd().get(absentAd);
+        List<UUID> files = previewFiles();
         Set<String> present = new LinkedHashSet<>(fixture.keys());
         present.remove(absent);
         present.add(PREFIX + absent.substring(PREFIX.length()).toUpperCase(Locale.ROOT));
         present.add(absent + ".original");
         present.add(PREFIX + "original-" + absent.substring(PREFIX.length()));
-        REMOTE.configure(present, 1358, 1250, 850);
-        // Restricted previews do not become authorized originals; the existing free photo
-        // keeps the ad eligible according to the unchanged real SEO policy.
+        REMOTE.configure(present, 1358, 120, 120);
         assertComplete(service.descobrir(), fixture.ads());
+        assertNoPreviewCalls();
+        var first = previewOperation(files);
+        assertThat(first.get(absentFile).previewUrl()).isNull();
+        assertThat(first.get(absentFile).pendencia()).isEqualTo(MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA);
         assertThat(verifiedKeys.get()).doesNotContain(absent).hasSize(2);
-        assertThat(REMOTE.lists.get()).isEqualTo(2); // Absence requires exhaustion, not a partial page.
+        assertThat(REMOTE.lists.get()).isEqualTo(2); // Absence requires exhaustion.
         assertThat(REMOTE.heads.get()).isZero();
-        // The first ad now uses exactly the second ad's preview; dedup stays operation-local.
-        jdbc.update("update anuncio_midia set arquivo_midia_id=? where anuncio_id=? and ordem=0",
-                fixture.fileByAd().get(fixture.ads().get(1)), absentAd);
-        REMOTE.configure(new HashSet<>(fixture.keys()).stream().filter(key -> !key.equals(absent)).collect(Collectors.toSet()),
-                1358, 1250, 850);
-        assertComplete(service.descobrir(), fixture.ads());
+
+        // Explicit duplicate identities belong to this preview operation, not to discovery.
+        UUID shared = fixture.fileByAd().get(fixture.ads().get(1));
+        REMOTE.configure(present, 1358, 120, 120);
+        previewOperation(List.of(shared, shared, fixture.fileByAd().get(fixture.ads().get(2))));
         @SuppressWarnings("unchecked")
         Set<String> lastRequested = (Set<String>) org.mockito.Mockito.mockingDetails(verifier).getInvocations()
                 .stream().filter(call -> call.getMethod().getName().equals("verificar")).reduce((a, b) -> b)
                 .orElseThrow().getArgument(0);
         assertThat(lastRequested).hasSize(2);
-        // A completed positive proof is not reused after the remote object disappears.
-        REMOTE.configure(Set.of(), 1358, 1250, 850);
-        assertComplete(service.descobrir(), fixture.ads());
+        REMOTE.configure(Set.of(), 1358, 120, 120);
+        assertThat(previewOperation(files).values()).allSatisfy(value -> {
+            assertThat(value.previewUrl()).isNull();
+            assertThat(value.pendencia()).isEqualTo(MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA);
+        });
         assertThat(verifiedKeys.get()).isEmpty();
+        assertComplete(service.descobrir(), fixture.ads());
     }
 
     @Test
     void catalogoLegitimamenteVazioNaoExecutaStorage() {
         assertThat(service.descobrir().estados()).isEmpty();
-        assertThat(REMOTE.lists.get()).isZero();
-        assertThat(REMOTE.heads.get()).isZero();
+        assertNoPreviewCalls();
     }
 
     @ParameterizedTest
     @ValueSource(strings = {"403", "429", "500", "malformed", "missing_token", "repeated_token", "incomplete"})
-    void erroDeInventarioNuncaProduzCatalogoVazioEProximaOperacaoRecupera(String fault) {
+    void erroDeInventarioFalhaNaCamadaPreviewMasNaoNaDescoberta(String fault) {
         Inventory fixture = seed(3, 3);
+        List<UUID> files = previewFiles();
         REMOTE.configure(fixture.keys(), 1358, 120, 120);
         REMOTE.fault = fault;
+        assertComplete(service.descobrir(), fixture.ads());
+        assertNoPreviewCalls();
         long started = System.nanoTime();
-        assertThat(status(service::descobrir)).isEqualTo(503);
+        assertThat(status(() -> previewOperation(files))).isEqualTo(503);
         assertThat(milliseconds(started)).isLessThan(3500.0);
         drained();
         assertPoolFree();
@@ -358,27 +475,33 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
         int failedCalls = REMOTE.lists.get();
         REMOTE.fault = "";
-        assertComplete(service.descobrir(), fixture.ads());
+        assertThat(previewOperation(files).values()).allSatisfy(value -> assertThat(value.previewUrl()).isNotBlank());
         assertThat(REMOTE.lists.get() - failedCalls).isEqualTo(2);
-        System.out.printf("CAPACITY_NEGATIVE fault=%s status=503 recovery=complete listsFailed=%d heads=0%n", fault, failedCalls);
+        System.out.printf("CAPACITY_PREVIEW_NEGATIVE fault=%s previewStatus=503 discoveryStatus=200 recovery=complete listsFailed=%d heads=0%n", fault, failedCalls);
+    }
+
+    @Test
+    void limiteDeIdentidadesPreviewContinuaFalhandoSemHttp() {
+        List<UUID> files = new ArrayList<>();
+        for (int i = 0; i < 4097; i++) files.add(nextIdentity());
+        assertThat(status(() -> previewOperation(files))).isEqualTo(503);
+        assertThat(REMOTE.lists.get()).isZero();
+        assertThat(REMOTE.heads.get()).isZero();
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"publication", "owner", "moderation", "removal", "media", "file", "identity", "identity_listed_extra"})
-    void releituraFinalPreservaElegibilidadeDurantePaginacao(String change) throws Exception {
+    @ValueSource(strings = {"publication", "owner", "moderation", "removal", "media", "file",
+            "identity", "identity_listed_extra", "new_media", "free_to_restricted", "restricted_to_free", "location"})
+    void snapshotDefinitivoObservaMudancasConfirmadasESemCacheEntreDescobertas(String change) throws Exception {
         Inventory fixture = seed(3, 3);
         UUID ad = fixture.ads().get(0);
         UUID file = fixture.fileByAd().get(ad);
-        Set<String> inventory = new LinkedHashSet<>(fixture.keys());
-        if (change.equals("identity_listed_extra")) {
-            inventory.add(previewKey(file, "a".repeat(64)));
-        }
-        REMOTE.configure(inventory, 1358, 120, 120);
-        REMOTE.gatePage = 2;
-        Future<Integer> result = executor(1).submit(() -> status(service::descobrir));
-        assertThat(REMOTE.entered.await(2, TimeUnit.SECONDS)).isTrue();
+        REMOTE.configure(fixture.keys(), 1358, 1839, 837);
+        assertComplete(service.descobrir(), fixture.ads());
+        var gate = evaluation.block(false);
+        Future<DescobertaLocalidadesPublicaDto> result = executor(1).submit(service::descobrir);
+        assertThat(gate.entered.await(2, TimeUnit.SECONDS)).isTrue();
         assertPoolFree();
-        // A separate observer connection mutates only synthetic rows; it never consumes the app pool.
         switch (change) {
             case "publication" -> observerUpdate("update anuncio set status='PAUSADO' where id=?", ad);
             case "owner" -> observerUpdate("update usuario set status='DESATIVADO' where id=(select usuario_id from anuncio where id=?)", ad);
@@ -386,86 +509,207 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             case "removal" -> observerUpdate("update anuncio set removido_em=now() where id=?", ad);
             case "media" -> observerUpdate("update anuncio_midia set status='REJEITADA' where anuncio_id=? and ordem=1", ad);
             case "file" -> observerUpdate("update arquivo_midia set status_arquivo='REMOVIDO' where id=(select arquivo_midia_id from anuncio_midia where anuncio_id=? and ordem=1)", ad);
+            case "new_media" -> photo(ad, 2, true);
+            case "free_to_restricted" -> observerUpdate("update anuncio_midia set visibilidade_midia='RESTRITA_18' where anuncio_id=? and ordem=1", ad);
+            case "restricted_to_free" -> observerUpdate("update anuncio_midia set visibilidade_midia='LIVRE' where anuncio_id=? and ordem=0", ad);
+            case "location" -> observerUpdate("delete from anuncio_localizacao where anuncio_id=?", ad);
             default -> observerUpdate("update arquivo_midia set sha256=? where id=?", "a".repeat(64), file);
         }
-        REMOTE.release.countDown();
-        if (change.startsWith("identity")) assertThat(result.get(3500, TimeUnit.MILLISECONDS)).isEqualTo(503);
-        else {
-            assertThat(result.get(3500, TimeUnit.MILLISECONDS)).isEqualTo(200);
-            assertEligibleIds(fixture.ads().subList(1, 3));
-        }
-        assertThat(REMOTE.jdbcWhileWaiting.get()).isZero();
-        assertThat(REMOTE.heads.get()).isZero();
+        gate.release.countDown();
+        var response = result.get(3500, TimeUnit.MILLISECONDS);
+        boolean staysEligible = change.startsWith("identity") || change.equals("new_media") || change.equals("restricted_to_free");
+        assertEligibleIds(staysEligible ? fixture.ads() : fixture.ads().subList(1, 3));
+        boolean excludedPublic = Set.of("publication", "owner", "moderation", "removal", "location").contains(change);
+        assertThat(response.estados().stream().mapToLong(value -> value.totalAnunciosAtivos()).sum())
+                .isEqualTo(excludedPublic ? 2 : 3);
+        service.descobrir(); // A fresh completed discovery must see the same committed state.
+        assertEligibleIds(staysEligible ? fixture.ads() : fixture.ads().subList(1, 3));
+        assertNoPreviewCalls();
     }
 
-    @Test
-    void mudancaAposUltimaPaginaAntesDaReleituraNaoHerdaProva() {
+    @ParameterizedTest
+    @ValueSource(strings = {"checksum", "new_identity"})
+    void identidadeNaoSolicitadaNaoHerdaProvaMesmoListadaComoExtra(String change) {
         Inventory fixture = seed(3, 3);
-        REMOTE.configure(fixture.keys(), 1358, 120, 120);
-        doAnswer(call -> {
-            Object verified = call.callRealMethod();
-            observerUpdate("update arquivo_midia set sha256=? where id=?", "b".repeat(64), fixture.fileByAd().get(fixture.ads().get(0)));
-            return verified;
-        }).when(verifier).verificar(anySet());
-        assertThat(status(service::descobrir)).isEqualTo(503);
+        List<UUID> files = previewFiles();
+        UUID changed = files.get(0), newFile = nextIdentity();
+        Set<String> inventory = new LinkedHashSet<>(fixture.keys());
+        inventory.add(previewKey(changed, "b".repeat(64)));
+        inventory.add(previewKey(newFile, null));
+        REMOTE.configure(inventory, 1358, 120, 120);
+        assertThat(status(() -> coordinator.executar("preview_identity", () ->
+                MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+                        () -> files.forEach(id -> derivation.coletarPreviewLocalidades(id, null)),
+                        () -> derivation.resolverPreviewPublicaLeitura(
+                                change.equals("checksum") ? changed : newFile,
+                                change.equals("checksum") ? "b".repeat(64) : null))))).isEqualTo(503);
         assertThat(REMOTE.lists.get()).isEqualTo(2);
         assertThat(REMOTE.heads.get()).isZero();
+        assertComplete(service.descobrir(), fixture.ads());
     }
 
     @Test
-    void timeoutHttpRealNaoMantemProdutorOuJdbcERecupera() throws Exception {
+    void trocaLivreRestritaLivreReavaliaOMesmoArquivoPublicoEntreDescobertas() {
+        Inventory fixture = seed(1, 1);
+        UUID ad = fixture.ads().get(0);
+        UUID freeLink = jdbc.queryForObject(
+                "select id from anuncio_midia where anuncio_id=? and ordem=1", UUID.class, ad);
+        // The same selected, validated public file remains unchanged throughout all snapshots.
+        // The first restricted fixture image never satisfies the anonymous photo requirement.
+        assertThat(jdbc.queryForObject("""
+                select count(*) from anuncio_midia m join arquivo_midia a on a.id=m.arquivo_midia_id
+                where m.id=? and a.status_arquivo='VALIDADO' and a.bucket='publicas-teste'
+                    and a.chave_objeto like 'hml/publicas/%'
+                """, Integer.class, freeLink)).isEqualTo(1);
+        REMOTE.configure(fixture.keys(), 1358, 1839, 837);
+        assertComplete(service.descobrir(), fixture.ads());
+        assertNoPreviewCalls();
+        jdbc.update("update anuncio_midia set visibilidade_midia='RESTRITA_18' where id=?", freeLink);
+        var restricted = service.descobrir();
+        assertThat(restricted.estados()).singleElement()
+                .satisfies(state -> assertThat(state.totalAnunciosAtivos()).isEqualTo(1));
+        assertEligibleIds(List.of());
+        assertNoPreviewCalls();
+        jdbc.update("update anuncio_midia set visibilidade_midia='LIVRE' where id=?", freeLink);
+        assertComplete(service.descobrir(), fixture.ads());
+        assertNoPreviewCalls();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"gain", "loss", "expiry"})
+    void beneficioConfirmadoEntreDescobertasReavaliaFotoLivreNaQuintaPosicao(String change) throws Exception {
+        Inventory fixture = seed(1, 1);
+        UUID ad = fixture.ads().get(0);
+        jdbc.update("update anuncio_midia set visibilidade_midia='RESTRITA_18' where anuncio_id=? and ordem=1", ad);
+        photo(ad, 2, true);
+        photo(ad, 3, true);
+        photo(ad, 4, false); // Independent oracle: only this fifth image can satisfy photo eligibility.
+        UUID user = jdbc.queryForObject("select usuario_id from anuncio where id=?", UUID.class, ad);
+        UUID group = nextIdentity(), activation = nextIdentity();
+        jdbc.update("""
+                insert into grupo_ativacao_beneficio(id,tipo,origem,usuario_id,anuncio_id,
+                validade_inicio_em,validade_fim_em,status,criado_em,atualizado_em)
+                values (?,'PACOTE','ADMIN',?,?,now()-interval '1 day',now()+interval '2 days','ATIVO',now(),now())
+                """, group, user, ad);
+        jdbc.update("""
+                insert into ativacao_beneficio(id,beneficio_id,usuario_id,anuncio_id,grupo_ativacao_id,
+                origem,inicio_em,fim_em,status,custo_creditos_snapshot,criado_em)
+                select ?,id,?,?,?,'ADMIN',now()-interval '1 hour',now()+interval '1 day',?,0,now()
+                from beneficio_premium where codigo='FOTOS_EXTRA_5'
+                """, activation, user, ad, group, change.equals("gain") ? "AGENDADA" : "ATIVA");
+        service.descobrir();
+        assertEligibleIds(change.equals("gain") ? List.of() : fixture.ads());
+        var gate = evaluation.block(false);
+        Future<DescobertaLocalidadesPublicaDto> result = executor(1).submit(service::descobrir);
+        assertThat(gate.entered.await(2, TimeUnit.SECONDS)).isTrue();
+        assertPoolFree();
+        if (change.equals("expiry")) observerUpdate("update ativacao_beneficio set fim_em=now()-interval '1 minute' where id=?", activation);
+        else observerUpdate("update ativacao_beneficio set status=? where id=?",
+                change.equals("gain") ? "ATIVA" : "REVOGADA", activation);
+        gate.release.countDown();
+        result.get(3500, TimeUnit.MILLISECONDS);
+        assertEligibleIds(change.equals("gain") ? fixture.ads() : List.of());
+        service.descobrir();
+        assertEligibleIds(change.equals("gain") ? fixture.ads() : List.of());
+        assertNoPreviewCalls();
+    }
+
+    @Test
+    void timeoutHttpRealNaCamadaPreviewNaoMantemProdutorOuJdbcERecupera() throws Exception {
         Inventory fixture = seed(715, 1311);
+        List<UUID> files = previewFiles();
         REMOTE.configure(fixture.keys(), 1358, 1250, 850);
+        assertComplete(service.descobrir(), fixture.ads());
+        assertNoPreviewCalls();
         REMOTE.gatePage = 2;
         Metrics before = metrics();
         long started = System.nanoTime();
-        Future<Integer> response = executor(1).submit(() -> status(service::descobrir));
+        Future<Integer> response = executor(1).submit(() -> status(() -> previewOperation(files)));
         assertThat(REMOTE.entered.await(2, TimeUnit.SECONDS)).isTrue();
         assertPoolFree();
         assertThat(response.get(4, TimeUnit.SECONDS)).isEqualTo(503);
         double duration = milliseconds(started);
         assertThat(duration).isLessThanOrEqualTo(4000.0);
         drained();
-        // HttpClient cancellation ends local work, not the deliberately held remote handler.
-        assertThat(REMOTE.active.get()).isEqualTo(1);
+        assertThat(REMOTE.active.get()).isEqualTo(1); // Deliberately held remote handler is not local client work.
         assertPoolFree();
         REMOTE.release.countDown();
         await().atMost(Duration.ofSeconds(2)).until(() -> REMOTE.active.get() == 0);
-        evidence("timeout_second_page", started, duration, before);
+        evidence("preview_timeout_second_page", started, duration, before);
         REMOTE.gatePage = 0;
+        assertThat(previewOperation(files)).hasSize(1311);
         assertComplete(service.descobrir(), fixture.ads());
     }
 
     @Test
-    void desistenciasNaoAbremListagensPorConsumidorEClienteSeguinteRecupera() throws Exception {
-        Inventory fixture = seed(715, 975);
-        REMOTE.configure(fixture.keys(), 1358, 1250, 850);
+    void cancelamentoPreviewInterrompeClienteELiberaProximaOperacao() throws Exception {
+        Inventory fixture = seed(3, 3);
+        List<UUID> files = previewFiles();
+        REMOTE.configure(fixture.keys(), 1358, 120, 120);
         REMOTE.gatePage = 1;
-        long producers = coordinator.produtoresIniciados();
-        List<Future<Object>> consumers = consumers(6);
+        Future<?> response = executor(1).submit(() -> previewOperation(files));
         assertThat(REMOTE.entered.await(2, TimeUnit.SECONDS)).isTrue();
-        await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == 6);
-        assertThat(consumers.get(0).cancel(true)).isTrue();
-        await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == 5);
-        assertThat(coordinator.trabalhoRemanescente()).isEqualTo(1);
-        REMOTE.release.countDown();
-        for (int i = 1; i < 6; i++) assertConsumer(i, consumers.get(i).get(3500, TimeUnit.MILLISECONDS), fixture.ads());
-        assertThat(coordinator.produtoresIniciados() - producers).isEqualTo(1);
-        assertThat(REMOTE.lists.get()).isEqualTo(2);
-        drained();
-        REMOTE.configure(fixture.keys(), 1358, 1250, 850);
-        REMOTE.gatePage = 1;
-        consumers = consumers(6);
-        assertThat(REMOTE.entered.await(2, TimeUnit.SECONDS)).isTrue();
-        await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == 6);
-        for (Future<Object> consumer : consumers) assertThat(consumer.cancel(true)).isTrue();
+        assertThat(response.cancel(true)).isTrue();
         drained();
         assertPoolFree();
         REMOTE.release.countDown();
         await().atMost(Duration.ofSeconds(2)).until(() -> REMOTE.active.get() == 0);
         REMOTE.gatePage = 0;
+        assertThat(previewOperation(files)).hasSize(3);
+    }
+
+    @Test
+    void desistenciasNaoCriamAvaliacaoPorConsumidorEClienteSeguinteRecupera() throws Exception {
+        Inventory fixture = seed(715, 975);
+        REMOTE.configure(fixture.keys(), 1358, 1839, 837);
+        var gate = evaluation.block(false);
+        long producers = coordinator.produtoresIniciados();
+        List<Future<Object>> consumers = consumers(6);
+        assertThat(gate.entered.await(2, TimeUnit.SECONDS)).isTrue();
+        await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == 6);
+        assertPoolFree();
+        assertThat(consumers.get(0).cancel(true)).isTrue();
+        await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == 5);
+        assertThat(coordinator.trabalhoRemanescente()).isEqualTo(1);
+        gate.release.countDown();
+        for (int i = 1; i < 6; i++) assertConsumer(i, consumers.get(i).get(3500, TimeUnit.MILLISECONDS), fixture.ads());
+        assertThat(coordinator.produtoresIniciados() - producers).isEqualTo(1);
+        drained();
+        gate = evaluation.block(false);
+        consumers = consumers(6);
+        assertThat(gate.entered.await(2, TimeUnit.SECONDS)).isTrue();
+        await().atMost(Duration.ofMillis(500)).until(() -> coordinator.consumidoresAguardando() == 6);
+        for (Future<Object> consumer : consumers) assertThat(consumer.cancel(true)).isTrue();
+        drained();
+        assertPoolFree();
+        gate.release.countDown();
         assertComplete(service.descobrir(), fixture.ads());
-        assertThat(REMOTE.maxActive.get()).isEqualTo(1);
+        assertNoPreviewCalls();
+    }
+
+    private List<UUID> previewFiles() {
+        return jdbc.queryForList("select arquivo_midia_id from anuncio_midia where visibilidade_midia='RESTRITA_18' order by id", UUID.class);
+    }
+
+    private Map<UUID, MidiaRestritaDerivacaoService.ResultadoPreview> previewOperation(List<UUID> files) {
+        return coordinator.executar("preview_layer", () -> MidiaRestritaDerivacaoService.comPreviewsDeLocalidades(
+                () -> files.forEach(id -> derivation.coletarPreviewLocalidades(id, null)),
+                () -> {
+                    Map<UUID, MidiaRestritaDerivacaoService.ResultadoPreview> result = new LinkedHashMap<>();
+                    files.forEach(id -> result.put(id, derivation.resolverPreviewPublicaLeitura(id, null)));
+                    return result;
+                }));
+    }
+
+    private void assertNoPreviewCalls() {
+        assertThat(REMOTE.lists.get()).isZero();
+        assertThat(REMOTE.heads.get()).isZero();
+        assertThat(REMOTE.bytes.get()).isZero();
+        assertThat(REMOTE.maxActive.get()).isZero();
+        verify(verifier, never()).verificar(anySet());
+        verify(derivation, never()).resolverPreviewPublica(any());
+        verify(derivation, never()).resolverPreviewPublicaLeitura(any(), any());
+        verify(derivation, never()).coletarPreviewLocalidades(any(), any());
     }
 
     private Inventory seed(int ads, int previews) {
@@ -476,7 +720,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         Map<UUID, UUID> fileByAd = new LinkedHashMap<>();
         Set<String> keys = new LinkedHashSet<>();
         for (int i = 0; i < ads; i++) {
-            UUID user = UUID.randomUUID(), ad = UUID.randomUUID();
+            UUID user = nextIdentity(), ad = nextIdentity();
             ids.add(ad);
             jdbc.update("insert into usuario(id,nome,status,tipo_conta,criado_em,atualizado_em,versao) values (?,'Pessoa sintetica','ATIVO','ANUNCIANTE',now(),now(),0)", user);
             jdbc.update("""
@@ -502,7 +746,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
     }
 
     private UUID photo(UUID ad, int order, boolean restricted) {
-        UUID file = UUID.randomUUID();
+        UUID file = nextIdentity();
         jdbc.update("""
                 insert into arquivo_midia(id,storage_provider,bucket,chave_objeto,mime_type,tamanho_bytes,status_arquivo,criado_em)
                 values (?,'R2',?,?,'image/jpeg',1024,'VALIDADO',now())
@@ -510,19 +754,53 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
         jdbc.update("""
                 insert into anuncio_midia(id,anuncio_id,arquivo_midia_id,tipo,finalidade,ordem,status,visibilidade_midia,criado_em,atualizado_em)
                 values (?,?,?,'FOTO','GALERIA',?,'PUBLICAVEL',?,now(),now())
-                """, UUID.randomUUID(), ad, file, order, restricted ? "RESTRITA_18" : "LIVRE");
+                """, nextIdentity(), ad, file, order, restricted ? "RESTRITA_18" : "LIVRE");
         return file;
     }
 
     private String previewKey(UUID id, String checksum) {
-        return derivation.chavePublica(ArquivoMidiaEntity.criarUploadPendente(id, "R2", "privadas-teste",
-                "hml/privadas/" + id + ".jpg", null, "image/jpeg", 1024L, null, null, null,
-                checksum, OffsetDateTime.now()));
+        // Independent fixture oracle: seeding must not prime the runtime derivation.
+        String canonical = id + ":" + (checksum == null ? "sem-checksum" : checksum.trim().toLowerCase(Locale.ROOT)) + ":v1";
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(canonical.getBytes(StandardCharsets.UTF_8));
+            return PREFIX + java.util.HexFormat.of().formatHex(digest).substring(0, 32) + ".jpg";
+        } catch (java.security.NoSuchAlgorithmException error) {
+            throw new AssertionError(error);
+        }
     }
+
+    private UUID nextIdentity() { return new UUID(identities.nextLong(), identities.nextLong()); }
 
     private void assertComplete(DescobertaLocalidadesPublicaDto result, List<UUID> expected) {
         assertThat(result.estados().stream().mapToLong(state -> state.totalAnunciosAtivos()).sum()).isEqualTo(expected.size());
         assertThat(result.estados().stream().mapToLong(state -> state.indexacao().anunciosElegiveisUnicos()).sum()).isEqualTo(expected.size());
+        // Seed order alternates GO/SP. These explicit values are an independent DTO oracle,
+        // not a second invocation of the production locality policy or aggregator.
+        assertThat(result.estados()).extracting(state -> state.uf())
+                .containsExactlyElementsOf(expected.isEmpty() ? List.of()
+                        : expected.size() == 1 ? List.of("GO") : List.of("GO", "SP"));
+        for (var state : result.estados()) {
+            boolean go = state.uf().equals("GO");
+            long count = go ? (expected.size() + 1L) / 2 : expected.size() / 2L;
+            boolean indexable = count >= 5;
+            assertThat(state.nome()).isEqualTo(go ? "Goias" : "Sao Paulo");
+            assertThat(state.totalAnunciosAtivos()).isEqualTo(count);
+            assertThat(state.ultimaAtualizacao()).isNotNull();
+            assertThat(state.indexacao()).isEqualTo(
+                    new br.com.topsdojob.v3.application.publico.dto.IndexacaoLocalidadePublicaDto(
+                            indexable, indexable ? "CIDADE_INDEXAVEL" : "SEM_CIDADE_INDEXAVEL", count, 5, true));
+            assertThat(state.cidades()).singleElement().satisfies(city -> {
+                assertThat(city.nome()).isEqualTo(go ? "Central Goias" : "Central Paulista");
+                assertThat(city.slug()).isEqualTo("central");
+                assertThat(city.totalAnunciosAtivos()).isEqualTo(count);
+                assertThat(city.ultimaAtualizacao()).isNotNull();
+                assertThat(city.bairros()).isEmpty();
+                assertThat(city.indexacao()).isEqualTo(
+                        new br.com.topsdojob.v3.application.publico.dto.IndexacaoLocalidadePublicaDto(
+                                indexable, indexable ? "INVENTARIO_SUFICIENTE" : "INVENTARIO_INSUFICIENTE", count, 5, true));
+            });
+        }
         assertEligibleIds(expected);
     }
     private void assertEligibleIds(List<UUID> expected) {
@@ -555,6 +833,18 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             assertThat(city.estadoUf()).isEqualTo(index % 3 == 1 ? "GO" : "SP");
             assertThat(city.totalAnunciosAtivos()).isEqualTo(index % 3 == 1 ? (ids.size() + 1) / 2 : ids.size() / 2);
             assertThat(city.indexacao().anunciosElegiveisUnicos()).isEqualTo(city.totalAnunciosAtivos());
+            assertThat(city.estadoNome()).isEqualTo(index % 3 == 1 ? "Goias" : "Sao Paulo");
+            assertThat(city.cidadeNome()).isEqualTo(index % 3 == 1 ? "Central Goias" : "Central Paulista");
+            assertThat(city.cidadeSlug()).isEqualTo("central");
+            assertThat(city.ultimaAtualizacao()).isNotNull();
+            assertThat(city.bairros()).isEmpty();
+            assertThat(city.cidadesRelacionadas()).isEmpty();
+            assertThat(city.categorias()).containsExactly(
+                    new br.com.topsdojob.v3.application.publico.dto.CategoriaCidadePublicaDto(
+                            "ACOMPANHANTE_FEMININA", "Acompanhante Feminina", city.totalAnunciosAtivos()));
+            assertThat(city.indexacao()).isEqualTo(
+                    new br.com.topsdojob.v3.application.publico.dto.IndexacaoLocalidadePublicaDto(
+                            true, "INVENTARIO_SUFICIENTE", city.totalAnunciosAtivos(), 5, true));
         }
     }
     private ExecutorService executor(int count) { ExecutorService result = Executors.newFixedThreadPool(count); executors.add(result); return result; }
@@ -601,7 +891,8 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
 
     static final class CapacidadeInitializer implements ApplicationContextInitializer<ConfigurableApplicationContext> {
         @Override public void initialize(ConfigurableApplicationContext context) {
-            new LocalidadesConsultaPostgres17IntegrationTest.PostgresInitializer().initialize(context);
+            if (!LocalidadesDescobertaFriaProcesso.configurarJdbc(context))
+                new LocalidadesConsultaPostgres17IntegrationTest.PostgresInitializer().initialize(context);
             // The binding source must contain the local values; programmatic bean setters alone are overwritten.
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("localidades-capacidade-r2",
                     Map.ofEntries(
@@ -639,7 +930,7 @@ class LocalidadesConsultaCapacidadePostgres17IntegrationTest {
             return local;
         }
         @Bean R2VerificacaoAgrupadaPreviews realGroupedVerifier(R2StorageProperties properties) {
-            // Default production constructor: lazy HttpClient creation is inside the first measured discovery.
+            // Same production constructor; locality discovery must not enter its remote path.
             return spy(new R2VerificacaoAgrupadaPreviews(properties));
         }
         @Bean MidiaRestritaDerivacaoService derivation(ObjectProvider<ObjectStorage> storage,

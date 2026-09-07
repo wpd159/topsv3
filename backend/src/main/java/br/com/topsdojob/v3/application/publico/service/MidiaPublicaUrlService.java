@@ -9,6 +9,9 @@ import org.springframework.stereotype.Service;
 import br.com.topsdojob.v3.infrastructure.storage.ObjectStorage;
 import br.com.topsdojob.v3.infrastructure.storage.StorageArea;
 import br.com.topsdojob.v3.infrastructure.storage.r2.R2StorageProperties;
+import br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura;
+import br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura;
+import java.util.UUID;
 import java.net.URI;
 import java.util.Locale;
 import java.util.Objects;
@@ -64,17 +67,30 @@ public class MidiaPublicaUrlService {
     }
 
     public ResultadoUrlPublica resolverPreviewRestrita(ArquivoMidiaEntity arquivo) {
+        return resolverPreviewRestritaLeitura(ArquivoPublicoLeitura.de(arquivo));
+    }
+
+    public void coletarPreviewRestrita(UUID id, String sha256) {
+        if (derivacaoService == null) throw new IllegalStateException("Derivacao indisponivel");
+        derivacaoService.coletarPreviewLocalidades(id, sha256);
+    }
+
+    public ResultadoUrlPublica resolverPreviewRestritaLeitura(ArquivoPublicoLeitura arquivo) {
         if (arquivo == null || derivacaoService == null) {
             return new ResultadoUrlPublica(
                     null,
                     MidiaRestritaDerivacaoService.PENDENTE_DERIVACAO_RESTRITA);
         }
         MidiaRestritaDerivacaoService.ResultadoPreview preview =
-                derivacaoService.resolverPreviewPublica(arquivo);
+                derivacaoService.resolverPreviewPublicaLeitura(arquivo.id(), arquivo.sha256());
         return new ResultadoUrlPublica(preview.previewUrl(), preview.pendencia());
     }
 
     public ResultadoUrlPublica resolver(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo) {
+        return resolverLeitura(MidiaVinculoLeitura.de(vinculo), ArquivoPublicoLeitura.de(arquivo));
+    }
+
+    public ResultadoUrlPublica resolverLeitura(MidiaVinculoLeitura vinculo, ArquivoPublicoLeitura arquivo) {
         if (vinculo == null || arquivo == null) {
             return new ResultadoUrlPublica(null, PENDENTE_URL_PUBLICA_MIDIA_CDN);
         }
@@ -92,25 +108,25 @@ public class MidiaPublicaUrlService {
         return new ResultadoUrlPublica(null, PENDENTE_URL_PUBLICA_MIDIA_CDN);
     }
 
-    private ResultadoUrlPublica resolverR2(AnuncioMidiaEntity vinculo, ArquivoMidiaEntity arquivo) {
-        if (!"R2".equals(arquivo.getStorageProvider()) || storageProvider == null || storageProperties == null) {
+    private ResultadoUrlPublica resolverR2(MidiaVinculoLeitura vinculo, ArquivoPublicoLeitura arquivo) {
+        if (!"R2".equals(arquivo.storageProvider()) || storageProvider == null || storageProperties == null) {
             return null;
         }
         ObjectStorage storage = storageProvider.getIfAvailable();
         if (storage == null) return null;
         try {
-            if (vinculo.getVisibilidadeMidia() == VisibilidadeMidia.LIVRE
-                    && storageProperties.getPublicMediaBucket().equals(arquivo.getBucket())
-                    && arquivo.getChaveObjeto().startsWith(storageProperties.getPublicMediaPrefix())) {
-                return storage.publicUrl(StorageArea.PUBLIC_MEDIA, arquivo.getChaveObjeto())
+            if (vinculo.visibilidadeMidia() == VisibilidadeMidia.LIVRE
+                    && storageProperties.getPublicMediaBucket().equals(arquivo.bucket())
+                    && arquivo.chaveObjeto().startsWith(storageProperties.getPublicMediaPrefix())) {
+                return storage.publicUrl(StorageArea.PUBLIC_MEDIA, arquivo.chaveObjeto())
                         .map(uri -> new ResultadoUrlPublica(uri.toString(), null))
                         .orElseGet(() -> new ResultadoUrlPublica(null, PENDENTE_URL_PUBLICA_MIDIA_CDN));
             }
-            if (vinculo.getVisibilidadeMidia() == VisibilidadeMidia.RESTRITA_18
-                    && storageProperties.getPrivateMediaBucket().equals(arquivo.getBucket())
-                    && arquivo.getChaveObjeto().startsWith(storageProperties.getPrivateMediaPrefix())) {
+            if (vinculo.visibilidadeMidia() == VisibilidadeMidia.RESTRITA_18
+                    && storageProperties.getPrivateMediaBucket().equals(arquivo.bucket())
+                    && arquivo.chaveObjeto().startsWith(storageProperties.getPrivateMediaPrefix())) {
                 return new ResultadoUrlPublica(
-                        "/api/public/compliance/visitor/media/" + vinculo.getId(),
+                        "/api/public/compliance/visitor/media/" + vinculo.id(),
                         null);
             }
         } catch (RuntimeException ignored) {
@@ -120,24 +136,24 @@ public class MidiaPublicaUrlService {
     }
 
     private ResultadoUrlPublica resolverOrigemPublicaPreservada(
-            AnuncioMidiaEntity vinculo,
-            ArquivoMidiaEntity arquivo) {
+            MidiaVinculoLeitura vinculo,
+            ArquivoPublicoLeitura arquivo) {
         if (storageProperties == null
-                || vinculo.getVisibilidadeMidia() != VisibilidadeMidia.LIVRE
-                || !"R2".equals(arquivo.getStorageProvider())
-                || !Objects.equals(storageProperties.getPreservedPublicMediaBucket(), arquivo.getBucket())
-                || arquivo.getChaveObjeto() == null
-                || arquivo.getMimeType() == null
-                || !IMAGE_MIME_TYPES.contains(arquivo.getMimeType().toLowerCase(Locale.ROOT))) {
+                || vinculo.visibilidadeMidia() != VisibilidadeMidia.LIVRE
+                || !"R2".equals(arquivo.storageProvider())
+                || !Objects.equals(storageProperties.getPreservedPublicMediaBucket(), arquivo.bucket())
+                || arquivo.chaveObjeto() == null
+                || arquivo.mimeType() == null
+                || !IMAGE_MIME_TYPES.contains(arquivo.mimeType().toLowerCase(Locale.ROOT))) {
             return null;
         }
         String prefix = storageProperties.getPreservedPublicMediaPrefix();
         String base = storageProperties.getPreservedPublicBaseUrl();
         if (prefix == null || prefix.isBlank() || base == null || base.isBlank()
-                || !arquivo.getChaveObjeto().startsWith(prefix)) {
+                || !arquivo.chaveObjeto().startsWith(prefix)) {
             return null;
         }
-        String nome = arquivo.getChaveObjeto().substring(prefix.length());
+        String nome = arquivo.chaveObjeto().substring(prefix.length());
         if (!nome.matches("[0-9a-f]{32}\\.(jpg|jpeg|png|webp)")) {
             return null;
         }
@@ -155,7 +171,7 @@ public class MidiaPublicaUrlService {
             }
             String normalizedBase = base.replaceAll("/+$", "");
             return new ResultadoUrlPublica(
-                    normalizedBase + "/" + arquivo.getChaveObjeto(),
+                    normalizedBase + "/" + arquivo.chaveObjeto(),
                     null);
         } catch (IllegalArgumentException ignored) {
             return null;
@@ -163,16 +179,16 @@ public class MidiaPublicaUrlService {
     }
 
     private boolean fixtureHomologacaoSeguro(
-            AnuncioMidiaEntity vinculo,
-            ArquivoMidiaEntity arquivo) {
+            MidiaVinculoLeitura vinculo,
+            ArquivoPublicoLeitura arquivo) {
         return "homologacao".equalsIgnoreCase(appEnv == null ? "" : appEnv.trim())
                 && canonicalDomain != null
                 && canonicalDomain.startsWith("https://")
-                && vinculo.getVisibilidadeMidia() == VisibilidadeMidia.LIVRE
-                && HML_FIXTURE_PROVIDER.equals(arquivo.getStorageProvider())
-                && HML_FIXTURE_BUCKET.equals(arquivo.getBucket())
-                && arquivo.getChaveObjeto() != null
-                && arquivo.getChaveObjeto().startsWith(HML_FIXTURE_PREFIX);
+                && vinculo.visibilidadeMidia() == VisibilidadeMidia.LIVRE
+                && HML_FIXTURE_PROVIDER.equals(arquivo.storageProvider())
+                && HML_FIXTURE_BUCKET.equals(arquivo.bucket())
+                && arquivo.chaveObjeto() != null
+                && arquivo.chaveObjeto().startsWith(HML_FIXTURE_PREFIX);
     }
 
     public record ResultadoUrlPublica(

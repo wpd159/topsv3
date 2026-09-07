@@ -55,6 +55,20 @@ public interface AnuncioMidiaRepository
     List<AnuncioMidiaEntity> findByAnuncioIdIn(Collection<UUID> anuncioIds);
 
     @Query("""
+            select new br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura(
+                m.id, m.anuncioId, m.arquivoMidiaId, m.tipo, m.finalidade,
+                m.ordem, m.status, m.visibilidadeMidia, m.atualizadoEm)
+            from AnuncioMidiaEntity m where array_contains(:anuncioIds, m.anuncioId)
+            """)
+    List<br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura> findLeiturasPublicasArray(
+            @Param("anuncioIds") UUID[] anuncioIds);
+
+    default List<br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura> findLeiturasPublicas(
+            Collection<UUID> anuncioIds) {
+        return findLeiturasPublicasArray(anuncioIds.toArray(UUID[]::new));
+    }
+
+    @Query("""
             select midia.anuncioId as anuncioId, midia.arquivoMidiaId as arquivoMidiaId
             from AnuncioMidiaEntity midia
             where midia.id = :id

@@ -66,29 +66,42 @@ public class MidiaRestritaDerivacaoService {
   }
 
   public ResultadoPreview resolverPreviewPublica(ArquivoMidiaEntity arquivo) {
+    return resolverPreviewPublicaLeitura(arquivo == null ? null : arquivo.getId(),
+        arquivo == null ? null : arquivo.getSha256());
+  }
+
+  public void coletarPreviewLocalidades(java.util.UUID id, String checksum) {
+    PreviewsLocalidades operacao = PREVIEWS_LOCALIDADES.get();
+    if (operacao == null || operacao.fase != FasePreviewsLocalidades.COLETA) {
+      throw indisponivelLocalidades("coleta fora da operacao de localidades");
+    }
+    operacao.resolver(this, id, checksum);
+  }
+
+  public ResultadoPreview resolverPreviewPublicaLeitura(java.util.UUID id, String checksum) {
     PreviewsLocalidades operacao = PREVIEWS_LOCALIDADES.get();
     if (operacao != null) {
-      return operacao.resolver(this, arquivo);
+      return operacao.resolver(this, id, checksum);
     }
-    String key = chavePublicaOuNula(arquivo);
+    String key = chavePublicaOuNula(id, checksum);
     ObjectStorage storage = storage();
     if (key == null || storage == null) {
-      return pendente(arquivo, "configuracao");
+      return pendente(id, "configuracao");
     }
     try {
       if (!previewsConfirmados.contains(key) && !storage.exists(StorageArea.PUBLIC_MEDIA, key)) {
-        return pendente(arquivo, "ausente");
+        return pendente(id, "ausente");
       }
       previewsConfirmados.add(key);
       return storage.publicUrl(StorageArea.PUBLIC_MEDIA, key)
           .map(uri -> new ResultadoPreview(uri.toString(), null))
-          .orElseGet(() -> pendente(arquivo, "url_publica"));
+          .orElseGet(() -> pendente(id, "url_publica"));
     } catch (RuntimeException exception) {
-      return pendente(arquivo, "storage");
+      return pendente(id, "storage");
     }
   }
 
-  /** Keeps the original mapper in both reads, but performs storage I/O between transactions. */
+  /** Shared position selection in both reads; storage I/O only between transactions. */
   public static <T> T comPreviewsDeLocalidades(Runnable coleta, Supplier<T> validacaoFinal) {
     if (PREVIEWS_LOCALIDADES.get() != null) {
       throw indisponivelLocalidades("operacao de previews ja iniciada");
@@ -177,9 +190,9 @@ public class MidiaRestritaDerivacaoService {
     private final Set<String> pedidos = new LinkedHashSet<>();
     private final Map<String, ResultadoPreview> verificados = new LinkedHashMap<>();
 
-    private ResultadoPreview resolver(MidiaRestritaDerivacaoService service, ArquivoMidiaEntity arquivo) {
+    private ResultadoPreview resolver(MidiaRestritaDerivacaoService service, java.util.UUID id, String checksum) {
       conferirOrcamentoLocalidades();
-      String key = service.chavePublicaOuNula(arquivo);
+      String key = service.chavePublicaOuNula(id, checksum);
       if (key == null) throw indisponivelLocalidades("preview sem identidade canonica");
       if (responsavel != null && responsavel != service) {
         throw indisponivelLocalidades("origem de preview alterada durante consulta de localidades");
@@ -192,8 +205,8 @@ public class MidiaRestritaDerivacaoService {
           }
           pedidos.add(key);
         }
-        // This intermediate result is discarded; FINAL uses only the verified result.
-        return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
+        // Legacy callers may still request an intermediate result; collection needs none.
+        return PREVIEW_PENDENTE;
       }
       if (fase != FasePreviewsLocalidades.FINAL || !verificados.containsKey(key)) {
         throw indisponivelLocalidades("preview alterado durante consulta de localidades");
@@ -265,16 +278,23 @@ public class MidiaRestritaDerivacaoService {
   }
 
   private String chavePublicaOuNula(ArquivoMidiaEntity arquivo) {
-    if (arquivo == null || arquivo.getId() == null || properties == null
-        || properties.getPublicMediaPrefix() == null || properties.getPublicMediaPrefix().isBlank()) {
+    return arquivo == null ? null : chavePublicaOuNula(arquivo.getId(), arquivo.getSha256());
+  }
+
+  private String chavePublicaOuNula(java.util.UUID id, String sha256) {
+    if (id == null || properties == null) {
       return null;
     }
-    String checksum = arquivo.getSha256() == null
+    String prefix = properties.getPublicMediaPrefix();
+    if (prefix == null || prefix.isBlank()) {
+      return null;
+    }
+    String checksum = sha256 == null
         ? "sem-checksum"
-        : arquivo.getSha256().trim().toLowerCase(Locale.ROOT);
-    String identificadorDerivado = sha256((arquivo.getId() + ":" + checksum + ":" + DERIVATION_VERSION)
+        : sha256.trim().toLowerCase(Locale.ROOT);
+    String identificadorDerivado = sha256((id + ":" + checksum + ":" + DERIVATION_VERSION)
         .getBytes(StandardCharsets.UTF_8)).substring(0, 32);
-    return properties.getPublicMediaPrefix() + DERIVATION_DIRECTORY + identificadorDerivado + ".jpg";
+    return prefix + DERIVATION_DIRECTORY + identificadorDerivado + ".jpg";
   }
 
   private boolean fotoR2Elegivel(ArquivoMidiaEntity arquivo) {
@@ -338,10 +358,10 @@ public class MidiaRestritaDerivacaoService {
         : null;
   }
 
-  private ResultadoPreview pendente(ArquivoMidiaEntity arquivo, String motivo) {
+  private ResultadoPreview pendente(java.util.UUID id, String motivo) {
     LOGGER.warn(
         "Derivacao restrita indisponivel para arquivo {} ({})",
-        arquivo == null || arquivo.getId() == null ? "desconhecido" : arquivo.getId(),
+        id == null ? "desconhecido" : id,
         motivo);
     return new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
   }
@@ -367,6 +387,9 @@ public class MidiaRestritaDerivacaoService {
 
   public record ResultadoPreview(String previewUrl, String pendencia) {
   }
+
+  private static final ResultadoPreview PREVIEW_PENDENTE =
+      new ResultadoPreview(null, PENDENTE_DERIVACAO_RESTRITA);
 
   public record ResultadoGeracao(
       boolean criada,

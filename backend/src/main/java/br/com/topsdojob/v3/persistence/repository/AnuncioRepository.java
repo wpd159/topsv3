@@ -257,6 +257,23 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
     List<AnuncioEntity> findPublicosComProprietarioAtivo();
 
     @Query(value = """
+            select a.id
+            from anuncio a join usuario u on u.id = a.usuario_id
+            where a.status = 'PUBLICADO' and a.status_moderacao = 'APROVADO'
+              and a.removido_em is null and a.atendimento_exclusivamente_virtual = false
+              and u.status = 'ATIVO' and u.tipo_conta = 'ANUNCIANTE'
+              and u.desativado_em is null and u.excluido_em is null
+            """, nativeQuery = true)
+    List<UUID> findIdsPublicosPresenciaisComProprietarioAtivo();
+
+    @Query("""
+            select distinct a.anuncioId
+            from AtivacaoBeneficioEntity a join BeneficioPremiumEntity b on b.id = a.beneficioId
+            where array_contains(:ids, a.anuncioId) and b.codigo in ('FOTOS_EXTRA_5', 'VIDEO_1')
+            """)
+    List<UUID> findIdsComBeneficiosDeMidia(@Param("ids") UUID[] ids);
+
+    @Query(value = """
             select a.*
             from anuncio a
             join usuario u on u.id = a.usuario_id

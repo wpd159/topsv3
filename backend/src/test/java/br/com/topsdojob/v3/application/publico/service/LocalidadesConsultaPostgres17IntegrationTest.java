@@ -3,6 +3,10 @@ package br.com.topsdojob.v3.application.publico.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.reset;
 
 import br.com.topsdojob.v3.TopsDoJobBackendApplication;
 import br.com.topsdojob.v3.application.admin.premium.BeneficioAnuncioConsultaService;
@@ -72,6 +76,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.context.ApplicationContextInitializer;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -113,7 +118,7 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     private static final UUID CIDADE_SP = UUID.fromString("72000000-0000-4000-8000-000000000002");
 
     @Autowired private LocalidadePublicaConsultaService service;
-    @Autowired private LocalidadesConsultaCoordenador coordenador;
+    @SpyBean private LocalidadesConsultaCoordenador coordenador;
     @Autowired private HikariDataSource dataSource;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager manager;
@@ -126,11 +131,20 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     @Autowired private AnuncioSeoElegibilidadeConsultaService elegibilidade;
     @PersistenceContext private EntityManager em;
     private final List<ExecutorService> executores = new ArrayList<>();
+    private final EvaluationBoundary evaluation = new EvaluationBoundary();
 
     @BeforeEach
     void preparar() {
         esperarTerminoReal();
         storage.reset();
+        evaluation.reset();
+        reset(coordenador);
+        // Test-only scheduling boundary: the producer entered coordination, but JDBC/snapshot
+        // have not started. Release always invokes the real final transaction and evaluation.
+        doAnswer(call -> {
+            evaluation.beforeSnapshot();
+            return call.callRealMethod();
+        }).when(coordenador).transacao(anyString(), any());
         jdbc.execute("truncate usuario, estado, arquivo_midia cascade");
         assertThat(dataSource.getMaximumPoolSize()).isEqualTo(5);
         assertThat(dataSource.getConnectionTimeout()).isEqualTo(30_000);
@@ -141,6 +155,7 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     @AfterEach
     void liberarRecursosDoCenario() throws Exception {
         storage.release();
+        evaluation.release();
         for (ExecutorService executor : executores) {
             executor.shutdownNow();
             assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
@@ -168,7 +183,7 @@ class LocalidadesConsultaPostgres17IntegrationTest {
         long sqlAntes = sqlPreparados();
         long inicio = System.nanoTime();
         assertDescoberta(service.descobrir(), 1, 2);
-        assertThat(storage.calls.get()).isEqualTo(3);
+        assertThat(storage.calls.get()).isZero();
         assertThat(storage.dentroTransacao.get()).isZero();
         assertThat(sqlPreparados() - sqlAntes).isPositive();
         assertThat(coordenador.produtoresIniciados() - antes).isEqualTo(1);
@@ -177,7 +192,7 @@ class LocalidadesConsultaPostgres17IntegrationTest {
         long inicioSegunda = System.nanoTime();
         assertDescoberta(service.descobrir(), 1, 2);
         assertThat(coordenador.produtoresIniciados() - antes).isEqualTo(2);
-        assertThat(storage.calls.get()).isEqualTo(6); // no completed result/positive proof reused.
+        assertThat(storage.calls.get()).isZero(); // Fresh DB evaluation, not a completed eligibility cache.
         assertThat(elapsed(inicioSegunda)).isLessThanOrEqualTo(LIMITE_TOTAL_MS);
         evidence("cold_segunda_sem_cache", inicioSegunda, antes + 1);
         AgregadoCidadePublicaDto paulista = service.agregadoCidade("SP", "central");
@@ -217,28 +232,29 @@ class LocalidadesConsultaPostgres17IntegrationTest {
             assertThat(duracao).isLessThanOrEqualTo(LIMITE_TOTAL_MS);
             assertThat(quantidadeSql).isPositive();
             assertThat(coordenador.produtoresIniciados() - produtoresAntes).isEqualTo(1);
-            assertThat(storage.calls.get() - headsAntes).isEqualTo(103);
+            assertThat(storage.calls.get() - headsAntes).isZero();
             assertThat(storage.dentroTransacao.get()).isZero();
             assertPoolLivre();
-            System.out.printf("LOCALIDADES_EVIDENCIA inventario_sintetico=103 passagem=%d duracaoMs=%d sqlPreparados=%d produtoresDelta=1 heads=103 headDentroTx=0 poolAtivo=0 poolEspera=0 storage=CONTROLADO%n",
+            System.out.printf("LOCALIDADES_EVIDENCIA inventario_sintetico=103 passagem=%d duracaoMs=%d sqlPreparados=%d produtoresDelta=1 heads=0 headDentroTx=0 poolAtivo=0 poolEspera=0 storage=NAO_CONSULTADO%n",
                     passagem, duracao, quantidadeSql);
         }
     }
 
     @Test
-    void erroRemotoControladoFalha503SemReterJdbcEProximaCargaRecupera() {
+    void erroRemotoIrrelevanteNaoImpedeElegibilidadeComFotoLivre() {
         fixture();
         storage.failure = new IllegalStateException("indisponibilidade remota sintetica");
         long antes = coordenador.produtoresIniciados();
         long inicio = System.nanoTime();
-        assertThat(status(service::descobrir)).isEqualTo(503);
+        assertDescoberta(service.descobrir(), 1, 2);
         esperarTerminoReal();
         assertThat(elapsed(inicio)).isLessThanOrEqualTo(LIMITE_TOTAL_MS);
         assertThat(storage.active.get()).isZero();
+        assertThat(storage.calls.get()).isZero();
         assertThat(storage.dentroTransacao.get()).isZero();
         assertThat(atividade("state in ('active','idle in transaction')")).isZero();
         assertPoolLivre();
-        evidence("erro_remoto_controlado", inicio, antes);
+        evidence("erro_remoto_nao_consultado", inicio, antes);
         storage.failure = null;
         assertDescoberta(service.descobrir(), 1, 2);
         assertThat(coordenador.produtoresIniciados() - antes).isEqualTo(2);
@@ -246,9 +262,9 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     }
 
     @Test
-    void prazoInterrompeHeadControladoSemJdbcEEsperaSeuTerminoReal() throws Exception {
+    void prazoInterrompeEsperaAntesDoSnapshotSemJdbcEEsperaTerminoReal() throws Exception {
         fixture();
-        Gate gate = storage.block(1, false);
+        Gate gate = evaluation.block(false);
         long antes = coordenador.produtoresIniciados();
         long inicio = System.nanoTime();
         Future<Integer> futuro = executor(1).submit(() -> status(service::descobrir));
@@ -258,12 +274,13 @@ class LocalidadesConsultaPostgres17IntegrationTest {
         assertThat(futuro.get(4, TimeUnit.SECONDS)).isEqualTo(503);
         esperarTerminoReal();
         assertThat(elapsed(inicio)).isLessThanOrEqualTo(LIMITE_TOTAL_MS);
-        assertThat(gate.release.getCount()).isEqualTo(1); // only the real worker interrupt ended HEAD.
-        assertThat(storage.interruptions.get()).isEqualTo(1);
-        assertThat(storage.active.get()).isZero();
+        assertThat(gate.release.getCount()).isEqualTo(1); // Real worker interruption ends the controlled wait.
+        assertThat(evaluation.interruptions.get()).isEqualTo(1);
+        assertThat(evaluation.active.get()).isZero();
+        assertThat(storage.calls.get()).isZero();
         assertThat(storage.dentroTransacao.get()).isZero();
         assertPoolLivre();
-        evidence("timeout_head_controlado_interruptivel", inicio, antes);
+        evidence("timeout_entrada_snapshot_interruptivel", inicio, antes);
         gate.release.countDown();
         assertDescoberta(service.descobrir(), 1, 2);
         assertThat(coordenador.produtoresIniciados() - antes).isEqualTo(2);
@@ -282,9 +299,9 @@ class LocalidadesConsultaPostgres17IntegrationTest {
 
     @ParameterizedTest
     @ValueSource(ints = {6, 20})
-    void consumidoresMistosCompartilhamUmProdutorSemConexaoDuranteHead(int quantidade) throws Exception {
+    void consumidoresMistosCompartilhamUmProdutorSemConexaoDuranteEsperaDoSnapshot(int quantidade) throws Exception {
         fixture();
-        Gate gate = storage.block(1, false);
+        Gate gate = evaluation.block(false);
         long antes = coordenador.produtoresIniciados();
         long inicio = System.nanoTime();
         List<Future<Object>> futuros = consumidoresMistos(quantidade);
@@ -295,13 +312,14 @@ class LocalidadesConsultaPostgres17IntegrationTest {
         assertThat(coordenador.trabalhoRemanescente()).isEqualTo(1);
         assertPoolLivre();
         assertThat(storage.dentroTransacao.get()).isZero();
-        assertThat(storage.maxActive.get()).isEqualTo(1);
-        evidence("concorrencia_" + quantidade + "_durante_head", inicio, antes);
+        assertThat(evaluation.active.get()).isEqualTo(1);
+        assertThat(storage.calls.get()).isZero();
+        evidence("concorrencia_" + quantidade + "_antes_snapshot", inicio, antes);
         gate.release.countDown();
         for (int i = 0; i < futuros.size(); i++) assertConsumidor(i, futuros.get(i).get(4, TimeUnit.SECONDS));
         assertThat(coordenador.produtoresIniciados() - antes).isEqualTo(1);
         assertThat(elapsed(inicio)).isLessThanOrEqualTo(LIMITE_TOTAL_MS);
-        assertThat(storage.calls.get()).isEqualTo(3);
+        assertThat(storage.calls.get()).isZero();
         evidence("concorrencia_" + quantidade + "_final", inicio, antes);
     }
 
@@ -339,7 +357,7 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     @Test
     void cancelamentoDeUmConsumidorNaoCancelaOsDemais() throws Exception {
         fixture();
-        Gate gate = storage.block(1, false);
+        Gate gate = evaluation.block(false);
         long antes = coordenador.produtoresIniciados();
         List<Future<Object>> futuros = consumidoresMistos(6);
         assertThat(gate.entered.await(2, TimeUnit.SECONDS)).isTrue();
@@ -355,7 +373,7 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     @Test
     void retryAposPrazoNaoAcumulaWorkerEnquantoTrabalhoRealNaoTerminou() throws Exception {
         fixture();
-        Gate gate = storage.block(1, true);
+        Gate gate = evaluation.block(true);
         long antes = coordenador.produtoresIniciados();
         long inicio = System.nanoTime();
         Future<Integer> primeiro = executor(1).submit(() -> status(service::descobrir));
@@ -397,9 +415,10 @@ class LocalidadesConsultaPostgres17IntegrationTest {
     }
 
     @Test
-    void releituraFinalExcluiRemocaoEModeracaoAlteradasDuranteHead() throws Exception {
+    void snapshotFinalExcluiRemocaoEModeracaoConfirmadasAntesDaEntrada() throws Exception {
         Fixture ids = fixture();
-        Gate gate = storage.block(1, false);
+        assertDescoberta(service.descobrir(), 1, 2);
+        Gate gate = evaluation.block(false);
         Future<DescobertaLocalidadesPublicaDto> futuro = executor(1).submit(service::descobrir);
         assertThat(gate.entered.await(2, TimeUnit.SECONDS)).isTrue();
         assertPoolLivre();
@@ -407,6 +426,7 @@ class LocalidadesConsultaPostgres17IntegrationTest {
         jdbc.update("update anuncio set status_moderacao='REJEITADO', atualizado_em=now() where id=?", ids.spUm());
         gate.release.countDown();
         assertDescoberta(futuro.get(4, TimeUnit.SECONDS), 0, 1);
+        assertThat(storage.calls.get()).isZero();
         assertThatThrownBy(() -> service.agregadoCidade("GO", "central"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
@@ -737,6 +757,41 @@ class LocalidadesConsultaPostgres17IntegrationTest {
         Gate(int entradas, boolean ignoreInterrupt) {
             this.entered = new CountDownLatch(entradas);
             this.ignoreInterrupt = ignoreInterrupt;
+        }
+    }
+
+    static final class EvaluationBoundary {
+        final AtomicInteger active = new AtomicInteger();
+        final AtomicInteger interruptions = new AtomicInteger();
+        volatile Gate gate;
+
+        Gate block(boolean ignoreInterrupt) { return gate = new Gate(1, ignoreInterrupt); }
+        void release() { if (gate != null) gate.release.countDown(); }
+        void reset() { release(); gate = null; active.set(0); interruptions.set(0); }
+        void beforeSnapshot() {
+            Gate current = gate;
+            if (current == null) return;
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            active.incrementAndGet();
+            boolean interrupted = false;
+            try {
+                current.entered.countDown();
+                while (true) {
+                    try {
+                        if (!current.release.await(10, TimeUnit.SECONDS))
+                            throw new AssertionError("entrada transacional controlada nao liberada");
+                        return;
+                    } catch (InterruptedException error) {
+                        interrupted = true;
+                        interruptions.incrementAndGet();
+                        if (!current.ignoreInterrupt)
+                            throw new IllegalStateException("entrada transacional controlada interrompida", error);
+                    }
+                }
+            } finally {
+                active.decrementAndGet();
+                if (interrupted) Thread.currentThread().interrupt();
+            }
         }
     }
 

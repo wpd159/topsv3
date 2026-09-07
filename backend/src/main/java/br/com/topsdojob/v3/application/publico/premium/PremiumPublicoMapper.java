@@ -12,6 +12,7 @@ import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioCalculado;
 import br.com.topsdojob.v3.application.admin.premium.PremiumBeneficioStatusCalculado;
 import br.com.topsdojob.v3.application.premium.PremiumBeneficioCodigo;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
+import br.com.topsdojob.v3.persistence.repository.AnuncioRepository;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,9 +34,16 @@ public class PremiumPublicoMapper {
             CARROSSEL_FOTOS);
 
     private final BeneficioAnuncioConsultaService beneficioService;
+    private final AnuncioRepository anuncioRepository;
 
     public PremiumPublicoMapper(BeneficioAnuncioConsultaService beneficioService) {
+        this(beneficioService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public PremiumPublicoMapper(BeneficioAnuncioConsultaService beneficioService, AnuncioRepository anuncioRepository) {
         this.beneficioService = beneficioService;
+        this.anuncioRepository = anuncioRepository;
     }
 
     @Transactional(readOnly = true)
@@ -51,12 +59,27 @@ public class PremiumPublicoMapper {
         if (anuncios == null || anuncios.isEmpty()) {
             return Map.of();
         }
+        return flagsPorAnuncioIds(anuncios.stream().map(AnuncioEntity::getId).toList());
+    }
+
+    /** Reuses the complete consistency/expiry policy without hydrating advertisements. */
+    @Transactional(readOnly = true)
+    public Map<UUID, PremiumPublicoFlagsDto> flagsPorAnuncioIds(Collection<UUID> anuncioIds) {
+        if (anuncioIds == null || anuncioIds.isEmpty()) return Map.of();
         Map<UUID, List<PremiumBeneficioCalculado>> calculados = beneficioService.consultarCalculadosPorAnuncio(
-                anuncios.stream().map(AnuncioEntity::getId).toList());
-        return anuncios.stream().collect(Collectors.toMap(
-                AnuncioEntity::getId,
-                anuncio -> flags(calculados.getOrDefault(anuncio.getId(), List.of())),
+                anuncioIds);
+        return anuncioIds.stream().collect(Collectors.toMap(
+                java.util.function.Function.identity(),
+                id -> flags(calculados.getOrDefault(id, List.of())),
                 (primeiro, ignorado) -> primeiro));
+    }
+
+    /** Scalar preselection only. Validity/status/consistency still belong to the original premium policy. */
+    @Transactional(readOnly = true)
+    public Map<UUID, PremiumPublicoFlagsDto> flagsMidiaPorAnuncioIds(Collection<UUID> anuncioIds) {
+        if (anuncioIds == null || anuncioIds.isEmpty()) return Map.of();
+        if (anuncioRepository == null) return flagsPorAnuncioIds(anuncioIds);
+        return flagsPorAnuncioIds(anuncioRepository.findIdsComBeneficiosDeMidia(anuncioIds.toArray(UUID[]::new)));
     }
 
     @Transactional(readOnly = true)
