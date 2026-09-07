@@ -28,6 +28,20 @@ jobs:
           java-version: "17"
           cache: maven
 
+      - name: Preparar imagens dos testes PostgreSQL
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          for test_image in \
+            postgres:17.10-alpine \
+            postgres:17-alpine \
+            flyway/flyway:12.10.0
+          do
+            timeout --signal=TERM --kill-after=15s 180s docker pull "$test_image"
+            docker image inspect --format '{{.Id}} {{json .RepoDigests}}' "$test_image"
+          done
+
       - name: Run full backend Maven gate
         working-directory: backend
         shell: bash
