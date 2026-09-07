@@ -230,6 +230,161 @@ operation_id() { basename "$(find "${test_root}/operations" -mindepth 1 -maxdept
 
 (
   source "$helper"
+  OP_DIR="${temp_dir}/content-corpus"
+  mkdir "$OP_DIR"
+  fixture="${OP_DIR}/captured.body"
+  # Only this 25-byte token was retained by the incident diagnostic (one
+  # backslash per quote). Wrappers below are synthetic, not captured HTML.
+  observed='\"digest\":\"$undefined\"'
+  [[ "${#observed}" -eq 25 ]] || fail 'referencia de bytes do incidente alterada'
+  # Next 15.5.23 installed serializer: undefined -> $undefined, production
+  # error -> id:E{digest}; writeFlightDataInstruction JSON.stringify([1, chunk]).
+  benign='<script>self.__next_f.push([1,"1:{'${observed}'}\n"])</script>'
+  concrete='<script>self.__next_f.push([1,"2:{\"digest\":\"12345\"}\n"])</script>'
+  flight_error='<script>self.__next_f.push([1,"2:E{\"digest\":\"12345\"}\n"])</script>'
+  home='<h1>Encontre acompanhantes perto de você</h1>'
+  catalog='<h1>Anúncios de acompanhantes</h1><p>Explore perfis publicados</p>'
+  empty_catalog="${catalog}<p>Nenhum anúncio publicado.</p>"
+  corpus_count=0
+  # Historical reference ONLY, preserved verbatim for old/new discrimination.
+  # All corrected results below come from the actual sourced helper.
+  old_content() {
+    ! grep -Eq 'NEXT_HTTP_ERROR_FALLBACK|Application error|Internal Server Error|:E\{|\\?"digest\\?"[[:space:]]*:' "$2" || return 1
+    grep -F '<h1' "$2" >/dev/null || return 1
+    if [[ "$1" == home ]]; then
+      grep -F 'Encontre ' "$2" >/dev/null && grep -F 'perto de voc' "$2" >/dev/null || return 1
+    else
+      grep -F 'Anúncios de acompanhantes' "$2" >/dev/null && grep -F 'Explore perfis publicados' "$2" >/dev/null || return 1
+    fi
+  }
+  curl() {
+    local output=
+    while (( $# )); do
+      case "$1" in --output) output="$2"; shift ;; esac
+      shift
+    done
+    cp -- "$fixture" "$output" || return 23
+    printf '%s 0.001' "$http_status"
+    return "$transport_rc"
+  }
+  content_case() {
+    local name="$1" kind="$2" payload="$3" expected="$4" old_expected="$5"
+    local expected_probe="$expected" old_rc=0 pure_rc=0 precheck_rc=0 probe_rc=0 before
+    http_status="${6:-200}" transport_rc="${7:-0}"
+    [[ "$http_status" == 200 && "$transport_rc" == 0 ]] || expected_probe=1
+    printf '%s' "$payload" > "$fixture"
+    before="$(sha256sum "$fixture")"
+    old_content "$kind" "$fixture" || old_rc=$?
+    _op_validate_content "$kind" "$fixture" || pure_rc=$?
+    # Future precheck invocation: fresh shell, no OP_* state, no op_begin/lock.
+    bash -eu -c 'source "$1"; _op_validate_content "$2" "$3"' _ "$helper" "$kind" "$fixture" || precheck_rc=$?
+    [[ "$(sha256sum "$fixture")" == "$before" ]] || fail 'predicado modificou corpo'
+    [[ ! -e "${OP_DIR}/operations" && ! -e "${OP_DIR}/deploy.lock" ]] || fail 'precheck criou estado'
+    _op_http_probe http://127.0.0.1:23000/ "$kind" "corpus-$name" || probe_rc=$?
+    printf 'CONTENT_CASE name=%s kind=%s old_rc=%s pure_rc=%s precheck_rc=%s probe_rc=%s http=%s transport_rc=%s expected=%s expected_probe=%s\n' \
+      "$name" "$kind" "$old_rc" "$pure_rc" "$precheck_rc" "$probe_rc" "$http_status" "$transport_rc" "$expected" "$expected_probe"
+    [[ "$old_rc" -eq "$old_expected" && "$pure_rc" -eq "$expected" && "$precheck_rc" -eq "$expected" && "$probe_rc" -eq "$expected_probe" ]] || fail "classificacao divergente: $name"
+    corpus_count=$((corpus_count + 1))
+  }
+  content_case home_plain home "$home" 0 0
+  content_case catalog_plain catalog "$catalog" 0 0
+  content_case home_incident_format home "$home$benign" 0 1
+  content_case catalog_incident_format catalog "$catalog$benign" 0 1
+  content_case catalog_empty catalog "$empty_catalog" 0 0
+  content_case catalog_empty_benign catalog "$empty_catalog$benign" 0 1
+  content_case multiple_benign home "$home$benign$benign" 0 1
+  content_case comma_boundaries home "$home"'<script>self.__next_f.push([1,"1:{\"a\":1,\"digest\":\"$undefined\",\"b\":2}\n"])</script>' 0 1
+  content_case concrete_digest home "$home$concrete" 1 1
+  content_case flight_error home "$home$flight_error" 1 1
+  content_case raw_error home "$home"'{"digest":"12345"}' 1 1
+  content_case same_line_benign_error home "$home$benign$concrete" 1 1
+  content_case same_line_error_benign home "$home$concrete$benign" 1 1
+  content_case different_lines_benign_error home "$home$benign"$'\n'"$concrete" 1 1
+  content_case different_lines_error_benign home "$home$concrete"$'\n'"$benign" 1 1
+  content_case same_push_benign_error home "$home"'<script>self.__next_f.push([1,"1:{\"digest\":\"$undefined\"}\n2:{\"digest\":\"12345\"}\n"])</script>' 1 1
+  content_case same_push_error_benign home "$home"'<script>self.__next_f.push([1,"2:{\"digest\":\"12345\"}\n1:{\"digest\":\"$undefined\"}\n"])</script>' 1 1
+  content_case same_object_benign_error home "$home"'{\"digest\":\"$undefined\",\"digest\":\"12345\"}' 1 1
+  content_case same_object_error_benign home "$home"'{\"digest\":\"12345\",\"digest\":\"$undefined\"}' 1 1
+  for marker in NEXT_HTTP_ERROR_FALLBACK 'Application error' 'Internal Server Error' ':E{'; do
+    content_case "benign_marker_${corpus_count}" home "$home$benign$marker" 1 1
+    content_case "marker_benign_${corpus_count}" home "$home$marker$benign" 1 1
+  done
+  content_case flight_error_empty home "$home$benign"'<script>self.__next_f.push([1,"2:E{\"digest\":\"\"}\n"])</script>' 1 1
+  content_case flight_error_undefined home "$home"'<script>self.__next_f.push([1,"2:E{\"digest\":\"$undefined\"}\n"])</script>' 1 1
+  for value in '\"$undefined-extra\"' '\"$$undefined\"' '\"$undefinedX\"' 'null' '\"\"' '\"$unknown\"' '12345' 'undefined'; do
+    content_case "non_benign_value_${corpus_count}" home "$home$benign"'{\"digest\":'"$value"'}' 1 1
+  done
+  content_case raw_undefined_not_observed home "$home"'{"digest":"$undefined"}' 1 1
+  # Historical predicate missed this extra layer; the exact exception must not.
+  content_case extra_escape_layer home "$home"'{\\\"digest\\\":\\\"$undefined\\\"}' 1 0
+  content_case extra_opening_escape home "$home"'{\\\"digest\":\"$undefined\"}' 1 1
+  content_case property_without_context home "$home$observed" 1 1
+  content_case invalid_value_suffix home "$home"'{\"digest\":\"$undefined\"extra}' 1 1
+  content_case truncated_value home "$home"'{\"digest\":\"$undefined' 1 1
+  content_case missing_value_boundary home "$home"'{\"digest\":\"$undefined\"' 1 1
+  content_case fragmented_value home "$home"'<script>self.__next_f.push([1,"1:{\"digest\":\"$undef"])</script><script>self.__next_f.push([1,"ined\"}\n"])</script>' 1 1
+  # JSON.stringify emits compact properties. Synthetic spacing variants are
+  # intentionally not evidence to broaden the confirmed compact exception.
+  content_case spacing_before_colon home "$home"'{\"digest\" :\"$undefined\"}' 1 1
+  content_case spacing_after_colon home "$home"'{\"digest\": \"$undefined\"}' 1 1
+  content_case newline_after_colon home "$home"'{\"digest\":'$'\n''\"$undefined\"}' 1 1
+  content_case whitespace_outside_script home "$home"$'\n \t'"$benign"$'\n' 0 1
+  content_case error_200 home '<h1>Application error</h1>' 1 1
+  content_case empty_200 home '' 1 1
+  content_case incomplete_200 home '<html><head><title>Loading</title></head><body>' 1 1
+  content_case heading_only home '<h1>Loading</h1>' 1 1
+  content_case missing_heading home 'Encontre acompanhantes perto de você' 1 1
+  content_case missing_home_second home '<h1>Encontre acompanhantes</h1>' 1 1
+  content_case missing_catalog_second catalog '<h1>Anúncios de acompanhantes</h1>' 1 1
+  content_case trailing_error home "$home$benign"$'\n<footer>End</footer>\n'"$flight_error" 1 1
+  for status in 204 301 404 500 503; do
+    content_case "http_$status" home "$home$benign" 0 1 "$status"
+  done
+  content_case timeout_with_partial_healthy_body home "$home$benign" 0 1 200 28
+  content_case transport_failure home "$home$benign" 0 1 000 7
+  # Actual helper failures, not assertions about text in its source.
+  missing_rc=0 directory_rc=0 invalid_kind_rc=0
+  _op_validate_content home "${OP_DIR}/missing" || missing_rc=$?
+  _op_validate_content home "$OP_DIR" || directory_rc=$?
+  _op_validate_content unknown "$fixture" || invalid_kind_rc=$?
+  printf 'CONTENT_FAILURE missing_rc=%s directory_rc=%s invalid_kind_rc=%s\n' "$missing_rc" "$directory_rc" "$invalid_kind_rc"
+  [[ "$missing_rc" == 1 && "$directory_rc" == 1 && "$invalid_kind_rc" == 2 ]] || fail 'leitura/tipo invalido aceito'
+  printf '%s' "$home$benign" > "$fixture"
+  http_status=200 transport_rc=0
+  awk() { return 2; }
+  tool_rc=0 probe_tool_rc=0
+  _op_validate_content home "$fixture" || tool_rc=$?
+  _op_http_probe http://127.0.0.1:23000/ home corpus-tool-failure || probe_tool_rc=$?
+  unset -f awk
+  printf 'CONTENT_FAILURE awk_rc=2 pure_rc=%s probe_rc=%s\n' "$tool_rc" "$probe_tool_rc"
+  [[ "$tool_rc" == 1 && "$probe_tool_rc" == 1 ]] || fail 'falha da ferramenta foi aceita'
+  # Linux non-root final run also proves the actual unreadable-file boundary.
+  if [[ "$EUID" -ne 0 ]]; then
+    chmod 000 "$fixture"
+    unreadable_rc=0
+    _op_validate_content home "$fixture" || unreadable_rc=$?
+    chmod 600 "$fixture"
+    printf 'CONTENT_FAILURE unreadable_rc=%s uid=%s\n' "$unreadable_rc" "$EUID"
+    [[ "$unreadable_rc" == 1 ]] || fail 'arquivo ilegivel aceito'
+  fi
+  for readiness_case in healthy down wrong_app empty; do
+    case "$readiness_case" in
+      healthy) payload='{"status":"UP","app":"topsdojob-v3-backend"}'; expected=0 ;;
+      down) payload='{"status":"DOWN","app":"topsdojob-v3-backend"}'; expected=1 ;;
+      wrong_app) payload='{"status":"UP","app":"another-app"}'; expected=1 ;;
+      empty) payload=''; expected=1 ;;
+    esac
+    printf '%s' "$payload" > "$fixture"
+    readiness_rc=0
+    _op_http_probe http://127.0.0.1:28080/api/health/readiness readiness "corpus-$readiness_case" || readiness_rc=$?
+    printf 'READINESS_CASE name=%s probe_rc=%s expected=%s\n' "$readiness_case" "$readiness_rc" "$expected"
+    [[ "$readiness_rc" == "$expected" ]] || fail 'classificacao readiness alterada'
+  done
+  printf 'CONTENT_CORPUS=PASS cases=%s failure_checks=5 unreadable_checked=%s readiness_cases=4 precheck_implementation=shared\n' "$corpus_count" "$((EUID != 0))"
+)
+
+(
+  source "$helper"
   docker() { printf '%s\n' "$effective_fixture"; }
   effective_fixture=$'env "ALPHA=one"\nenv "BETA=two"\nmount {"Source":"/one","Destination":"/a","RW":false}\nmount {"Source":"/two","Destination":"/b","RW":true}\nports {}\nnetwork "isolated"'
   first="$(_op_effective_hash backend)"

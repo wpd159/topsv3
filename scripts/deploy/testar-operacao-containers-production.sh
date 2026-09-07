@@ -94,6 +94,10 @@ server_program="$(cat <<'NODE_SERVER'
 const http = require('node:http');
 const role = process.env.SERVICE;
 const prefix = process.env.TEST_PREFIX;
+// Preserve the installed Next/Flight string escaping; only synthetic values.
+const flightScript = record => '<script>self.__next_f.push([1,' + JSON.stringify(record + '\n') + '])</script>';
+const benignDigest = process.env.CONTENT_PROFILE === 'benign' ? flightScript('1:{"digest":"$undefined"}') : '';
+const errorDigest = flightScript('2:E{"digest":"12345"}');
 let readinessFailures = 1, mode = '', recoveryStarted = 0;
 http.createServer(async (request, response) => {
   const correlation = request.headers['x-request-id'] || 'none';
@@ -130,9 +134,11 @@ http.createServer(async (request, response) => {
       return send(503, 'CONTROLLED_OLD_RELEASE_WARMUP');
     }
     if (mode === 'http_failure') return send(200, '<h1>Application error</h1>');
-    return send(200, request.url === '/anuncios'
+    const functional = request.url === '/anuncios'
       ? '<h1>Anúncios de acompanhantes</h1><p>Explore perfis publicados</p><p>Nenhum anúncio publicado.</p>'
-      : '<h1>Encontre acompanhantes perto de você</h1>');
+      : '<h1>Encontre acompanhantes perto de você</h1>';
+    const concreteError = mode === 'benign_mixed_error' || mode === 'recovery_benign_mixed_error';
+    return send(200, functional + benignDigest + (concreteError ? errorDigest : ''));
   } catch { send(503, 'CONTROLLED_DEPENDENCY_FAILURE'); }
 }).listen(8080, '0.0.0.0');
 NODE_SERVER
@@ -186,25 +192,28 @@ if [[ "${args[0]:-}" == compose && "$joined" == *' up '* ]]; then
     for service in backend frontend gateway; do
       "$TEST_REAL_DOCKER" inspect "${TEST_PREFIX}-${service}" --format '{{.Id}} {{.Image}} {{json .Config.Env}}' >> "$TEST_ROOT/candidate-runtime"
     done
-    if [[ "$TEST_SCENARIO" != success ]]; then
+    if [[ "$TEST_SCENARIO" != success && "$TEST_SCENARIO" != benign_success ]]; then
       target=frontend
       [[ "$TEST_SCENARIO" != final_failure ]] || target=backend
       failure_mode="$TEST_SCENARIO"
       [[ "$TEST_SCENARIO" != recovery_* ]] || failure_mode=http_failure
+      [[ "$TEST_SCENARIO" != recovery_benign_mixed_error ]] || failure_mode=benign_mixed_error
       "$TEST_REAL_DOCKER" exec "${TEST_PREFIX}-${target}" node -e '
         (async () => { for (let i=0;i<30;i++) { try {
           const r=await fetch("http://127.0.0.1:8080/__test/control/"+process.argv[1]); if(r.ok)return;
         } catch {} await new Promise(r=>setTimeout(r,100)); } process.exit(70); })();' "$failure_mode"
     fi
-  elif [[ "$TEST_SCENARIO" == recovery_* && -s "$TEST_ROOT/candidate-runtime" ]]; then
+  elif [[ -s "$TEST_ROOT/candidate-runtime" ]]; then
     printf 'RESTORE_UP time_ms=%s\n' "$(date +%s%3N)" >> "$TEST_EVENTS"
     touch "$TEST_ROOT/recovery-started"
-    for target in backend frontend; do
-      "$TEST_REAL_DOCKER" exec "${TEST_PREFIX}-${target}" node -e '
-        (async () => { for (let i=0;i<30;i++) { try {
-          const r=await fetch("http://127.0.0.1:8080/__test/control/"+process.argv[1]); if(r.ok)return;
-        } catch {} await new Promise(r=>setTimeout(r,100)); } process.exit(70); })();' "$TEST_SCENARIO"
-    done
+    if [[ "$TEST_SCENARIO" == recovery_* ]]; then
+      for target in backend frontend; do
+        "$TEST_REAL_DOCKER" exec "${TEST_PREFIX}-${target}" node -e '
+          (async () => { for (let i=0;i<30;i++) { try {
+            const r=await fetch("http://127.0.0.1:8080/__test/control/"+process.argv[1]); if(r.ok)return;
+          } catch {} await new Promise(r=>setTimeout(r,100)); } process.exit(70); })();' "$TEST_SCENARIO"
+      done
+    fi
   fi
   exit 0
 fi
@@ -229,13 +238,27 @@ for argument in "$@"; do
 done
 # Real wall-clock traces and an exclusive marker prove requests do not overlap.
 # Only synthetic URLs are accepted above; no response body or credential is logged.
-stage=activation
+stage=baseline
+[[ ! -s "$TEST_ROOT/candidate-runtime" ]] || stage=activation
 [[ ! -f "$TEST_ROOT/recovery-started" ]] || stage=recovery
 mkdir "$TEST_ROOT/probe-active" || { echo 'PROBE_OVERLAP' >> "$TEST_EVENTS"; exit 73; }
 trap 'rmdir "$TEST_ROOT/probe-active"' EXIT
 printf 'PROBE_TRACE event=start stage=%s kind=%s time_ms=%s\n' "$stage" "$kind" "$(date +%s%3N)" >> "$TEST_EVENTS"
 rc=0
 "$TEST_REAL_CURL" "${args[@]}" || rc=$?
+# Observe exact fixture tokens in the actual HTTP body, without classifying it
+# or copying the helper predicate. The helper still decides acceptance later.
+body_file=
+for ((i=0; i<${#args[@]}; i++)); do
+  [[ "${args[i]}" != --output ]] || body_file="${args[i+1]:-}"
+done
+if [[ ( "$kind" == home || "$kind" == catalog ) && -r "$body_file" ]]; then
+  benign=0 concrete_error=0
+  if grep -Fq '\"digest\":\"$undefined\"' "$body_file"; then benign=1; fi
+  if grep -Fq '2:E{\"digest\":\"12345\"}' "$body_file"; then concrete_error=1; fi
+  printf 'CONTENT_TRACE stage=%s kind=%s benign=%s concrete_error=%s\n' \
+    "$stage" "$kind" "$benign" "$concrete_error" >> "$TEST_EVENTS"
+fi
 printf 'PROBE_TRACE event=end stage=%s kind=%s time_ms=%s rc=%s\n' "$stage" "$kind" "$(date +%s%3N)" "$rc" >> "$TEST_EVENTS"
 exit "$rc"
 CURL_BOUNDARY
@@ -259,10 +282,12 @@ application_identity() {
 # database/Flyway validators still execute; no application schema is recreated.
 source <(sed -n '/^write_snapshot() {$/,/^}$/p' "${script_dir}/testar-gate-banco-production.sh")
 
-for scenario in http_failure final_failure success recovery_late recovery_absent; do
+for scenario in http_failure final_failure success recovery_late recovery_absent benign_success benign_mixed_error recovery_benign_mixed_error; do
   case_dir="${work_dir}/${scenario}"
   test_root="${case_dir}/production"
   secrets="${case_dir}/secrets"
+  content_profile=plain
+  [[ "$scenario" != *benign* ]] || content_profile=benign
   mkdir -p "$secrets" "${test_root}/releases"
   # Public synthetic IndexNow value only. The directory is writable by the
   # restricted root utility on any runner GID; the private snapshot stays 0600.
@@ -291,6 +316,7 @@ for scenario in http_failure final_failure success recovery_late recovery_absent
     environment:
       SERVICE: ${service}
       TEST_PREFIX: ${prefix}
+      CONTENT_PROFILE: ${content_profile}
       RELEASE_ID: ${sha}
       CONFIG_MARKER: configuration-${sha}
       INDEXNOW_KEY: \${INDEXNOW_KEY:?synthetic key required}
@@ -336,7 +362,7 @@ COMPOSE_SERVICE
   [[ "$scenario" != recovery_* ]] || case_timeout=390
   if timeout --kill-after=5s "${case_timeout}s" bash "${case_dir}/activation.sh" "$candidate_sha" > "${work_dir}/last-operation.log" 2>&1; then rc=0; else rc=$?; fi
   expected=1
-  [[ "$scenario" != success ]] || expected=0
+  [[ "$scenario" != success && "$scenario" != benign_success ]] || expected=0
   [[ "$rc" -eq "$expected" ]] || fail "${scenario}: exit=${rc}, esperado=${expected}"
   [[ -s "${test_root}/candidate-runtime" ]] || fail 'candidata nunca alterou os tres servicos'
   [[ "$(wc -l < "${test_root}/candidate-runtime")" -eq 3 ]] || fail 'nao observou troca de tres servicos'
@@ -348,15 +374,28 @@ COMPOSE_SERVICE
   operation_id="$(sed -n 's/^id=//p' "${test_root}/operations/active.state")"
   snapshot="${test_root}/operations/${operation_id}"
   [[ "$(stat -c '%u %a' "${snapshot}/env.copy")" == "${EUID} 600" ]] || fail 'snapshot nao pertence ao UID nao-zero com modo0600'
-  if [[ "$scenario" == success ]]; then
+  if [[ "$scenario" == *benign* ]]; then
+    for kind in home catalog; do
+      grep -Fxq "CONTENT_TRACE stage=baseline kind=${kind} benign=1 concrete_error=0" "$TEST_EVENTS" || fail "${scenario}: base sem fixture benigna real em ${kind}"
+    done
+    if [[ "$scenario" == benign_success ]]; then
+      for kind in home catalog; do
+        grep -Fxq "CONTENT_TRACE stage=activation kind=${kind} benign=1 concrete_error=0" "$TEST_EVENTS" || fail "candidata saudavel sem fixture benigna real em ${kind}"
+      done
+    else
+      grep -Fxq 'CONTENT_TRACE stage=activation kind=home benign=1 concrete_error=1' "$TEST_EVENTS" || fail 'candidata nao serviu benigno e erro concreto no mesmo corpo real'
+    fi
+  fi
+  if [[ "$scenario" == success || "$scenario" == benign_success ]]; then
     grep -qx result=COMPLETED "${test_root}/operations/active.state" || fail 'sucesso sem conclusao'
     [[ "$(readlink -e "${test_root}/current")" == "${test_root}/releases/${candidate_sha}" ]] || fail 'candidata nao promovida'
+    printf 'ACTIVATION_VERIFIED scenario=%s result=COMPLETED candidate=%s\n' "$scenario" "$candidate_sha"
     docker_cmd_before="$(grep -c '^CONTROLLED_BOUNDARY app_build_prepared_images$' "$TEST_EVENTS")"
     bash "$helper" rollback "$test_root" "$operation_id" --confirm-daemon-quiescent >> "${work_dir}/last-operation.log" 2>&1
     [[ "$(grep -c '^CONTROLLED_BOUNDARY app_build_prepared_images$' "$TEST_EVENTS")" == "$docker_cmd_before" ]] || fail 'rollback reconstruiu imagens'
   fi
   expected_result=ROLLED_BACK
-  [[ "$scenario" != recovery_absent ]] || expected_result=INCOMPLETE
+  [[ "$scenario" != recovery_absent && "$scenario" != recovery_benign_mixed_error ]] || expected_result=INCOMPLETE
   grep -qx "result=${expected_result}" "${test_root}/operations/active.state" || fail "${scenario}: resultado de recuperacao divergente"
   [[ "$(readlink -e "${test_root}/current")" == "${test_root}/releases/${previous_sha}" ]] || fail 'release anterior nao restaurada'
   [[ "$(cat "${secrets}/production.env")" == "INDEXNOW_KEY=${previous_key}" ]] || fail 'env anterior nao restaurado'
@@ -369,6 +408,20 @@ COMPOSE_SERVICE
   [[ "$before_ids" != "$after_ids" ]] || fail 'nao houve recriacao real de containers'
   [[ "$("$real_docker" inspect "${prefix}-postgres" --format '{{.Id}}')" == "$postgres_id" ]] || fail 'PostgreSQL foi trocado'
   [[ "$("$real_docker" inspect "$sentinel" --format '{{.Id}}')" == "$sentinel_id" ]] || fail 'sentinela alheia alterada'
+  if [[ "$scenario" == *benign* ]]; then
+    [[ "$(grep -c '^RESTORE_UP ' "$TEST_EVENTS")" -eq 1 ]] || fail 'cenario benigno recriou a base mais de uma vez'
+    if [[ "$scenario" == recovery_benign_mixed_error ]]; then
+      grep -Fxq 'CONTENT_TRACE stage=recovery kind=home benign=1 concrete_error=1' "$TEST_EVENTS" || fail 'base restaurada nao serviu a mistura real de erro'
+      ! grep -Eq '^result=(ROLLED_BACK|RECONCILED)$' "${test_root}/operations/active.state" || fail 'erro real na base foi aprovado'
+    else
+      for kind in home catalog; do
+        grep -Fxq "CONTENT_TRACE stage=recovery kind=${kind} benign=1 concrete_error=0" "$TEST_EVENTS" || fail "base restaurada sem fixture benigna real em ${kind}"
+      done
+    fi
+    [[ "$scenario" == benign_success ]] || grep -qx original_rc=1 "${test_root}/operations/active.state" || fail 'erro original da candidata perdido'
+    printf 'CONTENT_OPERATION_RESULT scenario=%s activation_rc=%s result=%s original_rc=%s restore_count=1\n' \
+      "$scenario" "$rc" "$expected_result" "$(sed -n 's/^original_rc=//p' "${test_root}/operations/active.state")"
+  fi
   if [[ "$scenario" == recovery_* ]]; then
     [[ "$(grep -c '^RESTORE_UP ' "$TEST_EVENTS")" -eq 1 ]] || fail 'recuperacao recriou servicos mais de uma vez'
     grep -qx original_rc=1 "${test_root}/operations/active.state" || fail 'recuperacao perdeu erro original'
@@ -394,10 +447,10 @@ COMPOSE_SERVICE
       END {
         if(active || batches<10 || batches>21 || homes<5 || first_home-restore<32000) exit 4;
         if(scenario=="recovery_late" && (catalogs!=1 || last_end-restore<183000 || last_end-first>305000))exit 5;
-        if(scenario=="recovery_absent" && (catalogs || last_end-first>305000))exit 6;
+        if((scenario=="recovery_absent" || scenario=="recovery_benign_mixed_error") && (catalogs || last_end-first>305000))exit 6;
         printf "RECOVERY_TIMING scenario=%s clock=real batches=%s homes=%s catalogs=%s first_home_after_restore_ms=%s last_probe_after_restore_ms=%s\n",scenario,batches,homes,catalogs,first_home-restore,last_end-restore;
       }' scenario="$scenario" "$TEST_EVENTS" || fail 'prazo/espacamento/serialidade de recuperacao divergente'
-    if [[ "$scenario" == recovery_absent ]]; then
+    if [[ "$scenario" == recovery_absent || "$scenario" == recovery_benign_mixed_error ]]; then
       restore_started_ms="$(sed -n 's/^RESTORE_UP time_ms=//p' "$TEST_EVENTS")"
       elapsed_recovery_ms=$(($(date +%s%3N) - restore_started_ms))
       (( elapsed_recovery_ms >= 300000 && elapsed_recovery_ms <= 325000 )) || fail 'ausencia nao respeitou prazo real de 300s'
@@ -421,6 +474,7 @@ COMPOSE_SERVICE
   # snapshots. The emitted helper lines contain only fixed URLs and technical IDs.
   printf 'PROBE_EVIDENCE_BEGIN scenario=%s\n' "$scenario"
   grep '^PROBE ' "${work_dir}/last-operation.log"
+  if [[ "$scenario" == *benign* ]]; then grep '^CONTENT_TRACE ' "$TEST_EVENTS"; fi
   if [[ "$scenario" == recovery_* ]]; then grep -E '^(RESTORE_UP|PROBE_TRACE).*' "$TEST_EVENTS"; fi
   printf 'PROBE_EVIDENCE_END scenario=%s\n' "$scenario"
   printf 'PASS: containers_%s elapsed_s=%s uid=%s snapshot_mode=600 previous=%s candidate=%s restored=%s\n' \

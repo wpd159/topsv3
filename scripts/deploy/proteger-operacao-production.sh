@@ -223,6 +223,44 @@ _op_verify_runtime() {
   [ "$(_op_postgres_identity)" = "$(cat "${OP_DIR}/postgres.identity")" ] || return 1
   [ "$(docker inspect topsv3-production-postgres --format '{{.State.Health.Status}}')" = healthy ] || return 1
 }
+# Read-only content check, also usable by a precheck on an already obtained body:
+# source scripts/deploy/proteger-operacao-production.sh
+# _op_validate_content home /path/to/body.html
+# No OP_* state, locks or journal; the caller must still check transport/HTTP.
+_op_validate_content() {
+  local kind="$1" body="$2"
+  case "${kind}" in home|catalog) ;; *) return 2 ;; esac
+  [ -f "${body}" ] && [ -r "${body}" ] && [ -s "${body}" ] || return 1
+  LC_ALL=C awk -v kind="${kind}" '
+    BEGIN { benign = "\\\"digest\\\":\\\"$undefined\\\"" }
+    {
+      if (/NEXT_HTTP_ERROR_FALLBACK|Application error|Internal Server Error|:E\{/) bad = 1
+      rest = $0
+      while (match(rest, /\\*"digest\\*"[[:space:]]*:/)) {
+        before = substr(rest, 1, RSTART - 1)
+        tail = substr(rest, RSTART)
+        # Next 15.5.23: exact undefined property inside one escaped JSON string.
+        # Require compact property/value boundaries; no raw JSON, extra escape
+        # layer, prefix value, or truncated token inherits this exception.
+        if (before !~ /[,{]$/ ||
+            substr(tail, 1, length(benign)) != benign ||
+            substr(tail, length(benign) + 1, 1) !~ /^[},]$/) bad = 1
+        # Advance only past this key, never discard its line/script or any
+        # later digest. Other error markers were checked on the original line.
+        rest = substr(tail, RLENGTH + 1)
+      }
+      if (index($0, "<h1")) heading = 1
+      if (kind == "home") {
+        if (index($0, "Encontre ")) first = 1
+        if (index($0, "perto de voc")) second = 1
+      } else {
+        if (index($0, "Anúncios de acompanhantes")) first = 1
+        if (index($0, "Explore perfis publicados")) second = 1
+      }
+    }
+    END { exit (bad || !heading || !first || !second) ? 1 : 0 }
+  ' "${body}" || return 1
+}
 _op_http_probe() {
   local url="$1" kind="$2" correlation="$3" limit=7 result status duration rc=0 remaining="${4:-}"
   local body="${OP_DIR}/probe-${BASHPID}.body"
@@ -243,13 +281,7 @@ _op_http_probe() {
       grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' "${body}" || return 1
       grep -Eq '"app"[[:space:]]*:[[:space:]]*"topsdojob-v3-backend"' "${body}" || return 1 ;;
     home|catalog)
-      ! grep -Eq 'NEXT_HTTP_ERROR_FALLBACK|Application error|Internal Server Error|:E\{|\\?"digest\\?"[[:space:]]*:' "${body}" || return 1
-      grep -F '<h1' "${body}" >/dev/null || return 1
-      if [ "${kind}" = home ]; then
-        grep -F 'Encontre ' "${body}" >/dev/null && grep -F 'perto de voc' "${body}" >/dev/null || return 1
-      else
-        grep -F 'Anúncios de acompanhantes' "${body}" >/dev/null && grep -F 'Explore perfis publicados' "${body}" >/dev/null || return 1
-      fi ;;
+      _op_validate_content "${kind}" "${body}" || return 1 ;;
     *) return 2 ;;
   esac
   rm -f -- "${body}"
