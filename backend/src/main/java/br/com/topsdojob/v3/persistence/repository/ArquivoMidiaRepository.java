@@ -18,6 +18,20 @@ public interface ArquivoMidiaRepository
 
     List<ArquivoMidiaEntity> findByIdIn(Collection<UUID> ids);
 
+    @Query("""
+            select new br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura(
+                a.id, a.sha256, a.statusArquivo, a.storageProvider, a.bucket,
+                a.chaveObjeto, a.mimeType, a.largura, a.altura)
+            from ArquivoMidiaEntity a where array_contains(:ids, a.id)
+            """)
+    List<br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura> findLeiturasPublicasArray(
+            @Param("ids") UUID[] ids);
+
+    default List<br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura> findLeiturasPublicas(
+            Collection<UUID> ids) {
+        return findLeiturasPublicasArray(ids.toArray(UUID[]::new));
+    }
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select arquivo

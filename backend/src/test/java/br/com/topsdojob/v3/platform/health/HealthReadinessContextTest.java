@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import br.com.topsdojob.v3.application.publico.service.LocalidadesConsultaCoordenador;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -130,6 +131,11 @@ class HealthReadinessContextTest {
         ApplicationReadinessState.class
     })
     static class HealthContextApplication {
+
+        @Bean
+        LocalidadesConsultaCoordenador localidadesConsultaCoordenador() {
+            return mock(LocalidadesConsultaCoordenador.class);
+        }
 
         @Bean
         DataSource dataSource() {

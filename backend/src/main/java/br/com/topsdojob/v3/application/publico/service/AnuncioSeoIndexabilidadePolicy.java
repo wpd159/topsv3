@@ -89,8 +89,8 @@ public class AnuncioSeoIndexabilidadePolicy {
         }
         return midias.stream()
                 .filter(midia -> "FOTO".equals(midia.tipo()))
-                .filter(midia -> (midia.autorizada() && texto(midia.urlPublica()).length() > 0)
-                        || texto(midia.previewUrl()).length() > 0)
+                .filter(midia -> "LIVRE".equals(midia.visibilidadeMidia()))
+                .filter(midia -> midia.autorizada() && texto(midia.urlPublica()).length() > 0)
                 .count();
     }
 

@@ -49,16 +49,21 @@ public class MidiaRestritaPreviewIdentity {
   }
 
   public String chavePublicaOuNula(ArquivoMidiaEntity arquivo) {
-    if (arquivo == null || arquivo.getId() == null || properties == null
+    return arquivo == null ? null : chavePublicaOuNula(arquivo.getId(), arquivo.getSha256());
+  }
+
+  /** Pure scalar overload; producers retain the same canonical algorithm. */
+  public String chavePublicaOuNula(java.util.UUID id, String sha256) {
+    if (id == null || properties == null
         || properties.getPublicMediaPrefix() == null
         || properties.getPublicMediaPrefix().isBlank()) {
       return null;
     }
-    String checksum = arquivo.getSha256() == null
+    String checksum = sha256 == null
         ? "sem-checksum"
-        : arquivo.getSha256().trim().toLowerCase(Locale.ROOT);
+        : sha256.trim().toLowerCase(Locale.ROOT);
     String identificadorDerivado = sha256(
-        (arquivo.getId() + ":" + checksum + ":" + DERIVATION_VERSION)
+        (id + ":" + checksum + ":" + DERIVATION_VERSION)
             .getBytes(StandardCharsets.UTF_8)).substring(0, 32);
     return properties.getPublicMediaPrefix()
         + DERIVATION_DIRECTORY

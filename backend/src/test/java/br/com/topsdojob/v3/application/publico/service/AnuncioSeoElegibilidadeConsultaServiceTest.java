@@ -4,7 +4,8 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSupport.set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -36,7 +37,7 @@ class AnuncioSeoElegibilidadeConsultaServiceTest {
   private static final String PREVIEW_KEY = "hml/midias-aprovadas/restritas-borradas/v1/teste.jpg";
 
   @Test
-  void somentePreviewDisponivelEhElegivelEEstadosDesconhecidosFalhamFechado() {
+  void nenhumEstadoDePreviewRestritoSubstituiFotoLivreParaSeo() {
     for (StatusDerivadoMidia status : StatusDerivadoMidia.values()) {
       Fixture fixture = fixture(1);
       aplicarEstado(fixture.arquivos().get(0), status);
@@ -45,21 +46,22 @@ class AnuncioSeoElegibilidadeConsultaServiceTest {
 
       assertThat(resultado.get(fixture.anuncios().get(0).getId()).indexavel())
           .as("estado %s", status)
-          .isEqualTo(status == StatusDerivadoMidia.DISPONIVEL);
+          .isFalse();
     }
   }
 
   @Test
-  void milTrezentosEQuarentaEQuatroPreviewsUsamDuasConsultasEmLoteESemStorage() {
+  void milTrezentosEQuarentaEQuatroRestritosNaoHidratamArquivosNemSatisfazemSeo() {
     Fixture fixture = fixture(1_344);
     fixture.arquivos().forEach(arquivo -> aplicarEstado(arquivo, StatusDerivadoMidia.DISPONIVEL));
 
     var resultado = fixture.service().avaliar(fixture.anuncios(), Map.of());
 
     assertThat(resultado).hasSize(1_344);
-    assertThat(resultado.values()).allMatch(AnuncioSeoElegibilidadeConsultaService.Resultado::indexavel);
-    verify(fixture.midiaRepository(), times(1)).findByAnuncioIdIn(any());
-    verify(fixture.arquivoRepository(), times(1)).findByIdIn(any());
+    assertThat(resultado.values()).noneMatch(AnuncioSeoElegibilidadeConsultaService.Resultado::indexavel);
+    verify(fixture.midiaRepository(), times(1)).findLeiturasPublicas(any());
+    verify(fixture.arquivoRepository(), never()).findByIdIn(any());
+    verify(fixture.arquivoRepository(), never()).findLeiturasPublicas(any());
   }
 
   private Fixture fixture(int total) {
@@ -106,15 +108,21 @@ class AnuncioSeoElegibilidadeConsultaServiceTest {
       arquivos.add(arquivo);
     }
 
-    when(midiaRepository.findByAnuncioIdIn(any())).thenReturn(vinculos);
-    when(arquivoRepository.findByIdIn(any())).thenReturn(arquivos);
-    when(premiumMapper.flagsPorAnuncios(any())).thenReturn(Map.of());
-    when(policy.indexavel(any(), any(), anyBoolean()))
-        .thenAnswer(invocation -> invocation.getArgument(2));
+    when(midiaRepository.findByAnuncioIdIn(any())).thenAnswer(call -> vinculos.stream().map(br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura::de).toList());
+
+    when(premiumMapper.flagsMidiaPorAnuncioIds(any())).thenReturn(Map.of());
+    when(policy.indexavel(any(), any(), anyList()))
+        .thenAnswer(invocation -> {
+          java.util.List<br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto> media = invocation.getArgument(2);
+          return media.stream().anyMatch(m -> "FOTO".equals(m.tipo()) && "LIVRE".equals(m.visibilidadeMidia())
+              && m.autorizada() && m.urlPublica() != null && !m.urlPublica().isBlank());
+        });
 
     return new Fixture(
         new AnuncioSeoElegibilidadeConsultaService(
-            midiaRepository, arquivoRepository, premiumMapper, policy),
+            midiaRepository, arquivoRepository,
+            new br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper(new MidiaPublicaUrlService()),
+            premiumMapper, policy),
         anuncios,
         arquivos,
         midiaRepository,

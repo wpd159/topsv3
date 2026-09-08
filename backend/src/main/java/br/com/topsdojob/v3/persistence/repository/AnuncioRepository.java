@@ -256,6 +256,13 @@ public interface AnuncioRepository extends JpaRepository<AnuncioEntity, UUID>, J
             """, nativeQuery = true)
     List<AnuncioEntity> findPublicosComProprietarioAtivo();
 
+    @Query("""
+            select distinct a.anuncioId
+            from AtivacaoBeneficioEntity a join BeneficioPremiumEntity b on b.id = a.beneficioId
+            where array_contains(:ids, a.anuncioId) and b.codigo in ('FOTOS_EXTRA_5', 'VIDEO_1')
+            """)
+    List<UUID> findIdsComBeneficiosDeMidia(@Param("ids") UUID[] ids);
+
     @Query(value = """
             select a.*
             from anuncio a

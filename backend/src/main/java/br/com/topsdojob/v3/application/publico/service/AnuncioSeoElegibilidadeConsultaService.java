@@ -4,27 +4,27 @@ import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMid
 import static br.com.topsdojob.v3.application.publico.anunciante.midia.LimiteMidiasAnuncioService.FOTOS_COM_EXTRA;
 
 import br.com.topsdojob.v3.application.publico.dto.LocalizacaoPublicaDto;
+import br.com.topsdojob.v3.application.publico.dto.MidiaPublicaDto;
+import br.com.topsdojob.v3.application.publico.mapper.MidiaPublicaMapper;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoFlagsDto;
 import br.com.topsdojob.v3.application.publico.premium.PremiumPublicoMapper;
+import br.com.topsdojob.v3.domain.shared.VisibilidadeMidia;
 import br.com.topsdojob.v3.persistence.entity.anuncio.AnuncioEntity;
-import br.com.topsdojob.v3.persistence.entity.midia.AnuncioMidiaEntity;
-import br.com.topsdojob.v3.persistence.entity.midia.ArquivoMidiaEntity;
+import br.com.topsdojob.v3.persistence.repository.projection.MidiaVinculoLeitura;
+import br.com.topsdojob.v3.persistence.repository.projection.ArquivoPublicoLeitura;
+import br.com.topsdojob.v3.application.publico.mapper.SelecaoMidiasPublicas;
 import br.com.topsdojob.v3.persistence.repository.AnuncioMidiaRepository;
 import br.com.topsdojob.v3.persistence.repository.ArquivoMidiaRepository;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.FinalidadeAnuncioMidia;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusAnuncioMidia;
-import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.StatusArquivoMidia;
 import br.com.topsdojob.v3.persistence.shared.PersistenceEnums.TipoAnuncioMidia;
 import java.time.OffsetDateTime;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,16 +34,19 @@ public class AnuncioSeoElegibilidadeConsultaService {
 
     private final AnuncioMidiaRepository anuncioMidiaRepository;
     private final ArquivoMidiaRepository arquivoMidiaRepository;
+    private final MidiaPublicaMapper midiaMapper;
     private final PremiumPublicoMapper premiumMapper;
     private final AnuncioSeoIndexabilidadePolicy indexabilidadePolicy;
 
     public AnuncioSeoElegibilidadeConsultaService(
             AnuncioMidiaRepository anuncioMidiaRepository,
             ArquivoMidiaRepository arquivoMidiaRepository,
+            MidiaPublicaMapper midiaMapper,
             PremiumPublicoMapper premiumMapper,
             AnuncioSeoIndexabilidadePolicy indexabilidadePolicy) {
         this.anuncioMidiaRepository = anuncioMidiaRepository;
         this.arquivoMidiaRepository = arquivoMidiaRepository;
+        this.midiaMapper = midiaMapper;
         this.premiumMapper = premiumMapper;
         this.indexabilidadePolicy = indexabilidadePolicy;
     }
@@ -52,97 +55,83 @@ public class AnuncioSeoElegibilidadeConsultaService {
     public Map<UUID, Resultado> avaliar(
             Collection<AnuncioEntity> anuncios,
             Map<UUID, LocalizacaoPublicaDto> localizacoes) {
-        if (anuncios == null || anuncios.isEmpty()) {
-            return Map.of();
-        }
+        return avaliarFotosLivres(anuncios, localizacoes);
+    }
 
-        Map<UUID, AnuncioEntity> anunciosUnicos = anuncios.stream()
-                .filter(Objects::nonNull)
+    /** Anonymous locality eligibility does not depend on restricted previews. */
+    @Transactional(readOnly = true)
+    public Map<UUID, Resultado> avaliarLocalidades(
+            Collection<AnuncioEntity> anuncios,
+            Map<UUID, LocalizacaoPublicaDto> localizacoes) {
+        return avaliarFotosLivres(anuncios, localizacoes);
+    }
+
+    private Map<UUID, Resultado> avaliarFotosLivres(Collection<AnuncioEntity> anuncios,
+            Map<UUID, LocalizacaoPublicaDto> localizacoes) {
+        if (anuncios == null || anuncios.isEmpty()) return Map.of();
+        Map<UUID, AnuncioEntity> unicos = anuncios.stream().filter(Objects::nonNull)
                 .filter(anuncio -> anuncio.getId() != null)
-                .collect(Collectors.toMap(
-                        AnuncioEntity::getId,
-                        Function.identity(),
-                        (primeiro, ignorado) -> primeiro,
-                        LinkedHashMap::new));
-        if (anunciosUnicos.isEmpty()) {
-            return Map.of();
-        }
-
-        List<UUID> anuncioIds = List.copyOf(anunciosUnicos.keySet());
-        List<AnuncioMidiaEntity> vinculos = anuncioMidiaRepository.findByAnuncioIdIn(anuncioIds);
-        Map<UUID, List<AnuncioMidiaEntity>> vinculosPorAnuncio = vinculos.stream()
-                .collect(Collectors.groupingBy(AnuncioMidiaEntity::getAnuncioId));
-        List<UUID> arquivoIds = vinculos.stream()
-                .map(AnuncioMidiaEntity::getArquivoMidiaId)
-                .filter(Objects::nonNull)
-                .distinct()
-                .toList();
-        Map<UUID, ArquivoMidiaEntity> arquivos = arquivoIds.isEmpty()
-                ? Map.of()
-                : arquivoMidiaRepository.findByIdIn(arquivoIds).stream()
-                        .collect(Collectors.toMap(ArquivoMidiaEntity::getId, Function.identity()));
-        Map<UUID, PremiumPublicoFlagsDto> premiumPorAnuncio = premiumMapper.flagsPorAnuncios(
-                anunciosUnicos.values());
-
+                .collect(Collectors.toMap(AnuncioEntity::getId, Function.identity(),
+                        (primeiro, ignorado) -> primeiro, LinkedHashMap::new));
+        if (unicos.isEmpty()) return Map.of();
+        var ids = List.copyOf(unicos.keySet());
+        var vinculos = vinculos(ids);
+        var premium = medirLocalidades("beneficios", () -> premiumMapper.flagsMidiaPorAnuncioIds(ids));
+        var selecionados = selecionar(ids, vinculos, premium);
+        // Select positions over ALL links before filtering the files to read. Restricted,
+        // missing and later-invalid files must not promote a photo beyond the limit.
+        var arquivoIds = selecionados.values().stream().flatMap(Collection::stream)
+                        .filter(vinculo -> vinculo.tipo() == TipoAnuncioMidia.FOTO
+                                && vinculo.visibilidadeMidia() == VisibilidadeMidia.LIVRE)
+                        .map(MidiaVinculoLeitura::arquivoMidiaId).filter(Objects::nonNull).distinct().toList();
+        Map<UUID, ArquivoPublicoLeitura> arquivos = arquivoIds.isEmpty() ? Map.of()
+                : medirLocalidades("arquivos", () -> arquivoMidiaRepository.findLeiturasPublicas(arquivoIds))
+                        .stream().collect(Collectors.toMap(ArquivoPublicoLeitura::id, Function.identity()));
         Map<UUID, Resultado> resultados = new LinkedHashMap<>();
-        for (AnuncioEntity anuncio : anunciosUnicos.values()) {
-            List<AnuncioMidiaEntity> vinculosDoAnuncio = vinculosPorAnuncio.getOrDefault(
-                    anuncio.getId(), List.of());
-            PremiumPublicoFlagsDto premium = premiumPorAnuncio.getOrDefault(
-                    anuncio.getId(), PremiumPublicoFlagsDto.vazio());
-            int maxFotos = premium.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE;
-            boolean possuiFotoPublica = possuiFotoPublicaPersistida(
-                    vinculosDoAnuncio, arquivos, maxFotos);
-            boolean indexavel = indexabilidadePolicy.indexavel(
-                    anuncio,
-                    localizacoes == null ? null : localizacoes.get(anuncio.getId()),
-                    possuiFotoPublica);
-            OffsetDateTime ultimaAtualizacaoMidia = vinculosDoAnuncio.stream()
-                    .map(AnuncioMidiaEntity::getAtualizadoEm)
-                    .filter(Objects::nonNull)
-                    .max(OffsetDateTime::compareTo)
-                    .orElse(null);
-            resultados.put(anuncio.getId(), new Resultado(indexavel, ultimaAtualizacaoMidia));
+        for (var anuncio : unicos.values()) {
+            conferir();
+            var flags = premium.getOrDefault(anuncio.getId(), PremiumPublicoFlagsDto.vazio());
+            int limiteFotos = flags.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE;
+            List<MidiaPublicaDto> midias = midiaMapper.fotosElegiveisLocalidades(
+                            vinculos.getOrDefault(anuncio.getId(), List.of()), arquivos,
+                            limiteFotos, flags.videoAtivo());
+            boolean indexavel = indexabilidadePolicy.indexavel(anuncio,
+                    localizacoes == null ? null : localizacoes.get(anuncio.getId()), midias);
+            OffsetDateTime atualizado = vinculos.getOrDefault(anuncio.getId(), List.of()).stream()
+                    .map(MidiaVinculoLeitura::atualizadoEm).filter(Objects::nonNull)
+                    .max(OffsetDateTime::compareTo).orElse(null);
+            resultados.put(anuncio.getId(), new Resultado(indexavel, atualizado));
         }
         return Map.copyOf(resultados);
+    }
+
+    private Map<UUID, List<MidiaVinculoLeitura>> vinculos(Collection<UUID> ids) {
+        return medirLocalidades("midias", () -> anuncioMidiaRepository.findLeiturasPublicas(ids))
+                .stream().collect(Collectors.groupingBy(MidiaVinculoLeitura::anuncioId));
+    }
+
+    private Map<UUID, List<MidiaVinculoLeitura>> selecionar(Collection<UUID> ids,
+            Map<UUID, List<MidiaVinculoLeitura>> vinculos, Map<UUID, PremiumPublicoFlagsDto> premium) {
+        Map<UUID, List<MidiaVinculoLeitura>> resultado = new LinkedHashMap<>();
+        for (UUID id : ids) {
+            conferir();
+            var flags = premium.getOrDefault(id, PremiumPublicoFlagsDto.vazio());
+            resultado.put(id, SelecaoMidiasPublicas.selecionar(vinculos.getOrDefault(id, List.of()),
+                    flags.fotosExtrasAtivo() ? FOTOS_COM_EXTRA : FOTOS_BASE, flags.videoAtivo()));
+        }
+        return resultado;
+    }
+
+    private void conferir() {
+        var orcamento = LocalidadesConsultaOrcamento.atualOuNulo();
+        if (orcamento != null) orcamento.conferir();
     }
 
     public record Resultado(boolean indexavel, OffsetDateTime ultimaAtualizacaoMidia) {
     }
 
-    private boolean possuiFotoPublicaPersistida(
-            List<AnuncioMidiaEntity> vinculos,
-            Map<UUID, ArquivoMidiaEntity> arquivos,
-            int maxFotos) {
-        AtomicInteger fotos = new AtomicInteger();
-        return vinculos.stream()
-                .filter(Objects::nonNull)
-                .filter(vinculo -> vinculo.getTipo() == TipoAnuncioMidia.FOTO)
-                .filter(vinculo -> vinculo.getStatus() == StatusAnuncioMidia.PUBLICAVEL)
-                .filter(vinculo -> vinculo.getFinalidade() != FinalidadeAnuncioMidia.STORY)
-                .filter(vinculo -> vinculo.getVisibilidadeMidia() != null)
-                .sorted(Comparator
-                        .comparing(AnuncioMidiaEntity::getOrdem,
-                                Comparator.nullsLast(Integer::compareTo))
-                        .thenComparing(AnuncioMidiaEntity::getId,
-                                Comparator.nullsLast(UUID::compareTo)))
-                .filter(ignorado -> fotos.getAndIncrement() < Math.max(0, maxFotos))
-                .anyMatch(vinculo -> arquivoElegivel(
-                        vinculo,
-                        arquivos.get(vinculo.getArquivoMidiaId())));
-    }
-
-    private boolean arquivoElegivel(
-            AnuncioMidiaEntity vinculo,
-            ArquivoMidiaEntity arquivo) {
-        if (arquivo == null
-                || arquivo.getStatusArquivo() != StatusArquivoMidia.VALIDADO) {
-            return false;
-        }
-        return vinculo.getVisibilidadeMidia()
-                == br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.LIVRE
-                || (vinculo.getVisibilidadeMidia()
-                    == br.com.topsdojob.v3.domain.shared.VisibilidadeMidia.RESTRITA_18
-                    && arquivo.previewRestritoDisponivel());
+    private <T> T medirLocalidades(String fase, Supplier<T> consulta) {
+        LocalidadesConsultaOrcamento orcamento = LocalidadesConsultaOrcamento.atualOuNulo();
+        return orcamento == null ? consulta.get() : orcamento.medir(fase, consulta);
     }
 }

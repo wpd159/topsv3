@@ -84,6 +84,39 @@ class PremiumPublicoMapperTest {
     }
 
     @Test
+    void leituraPorIdsPreservaBeneficiosERecalculaSemCache() {
+        AnuncioEntity anuncio = anuncio();
+        var ids = List.of(anuncio.getId());
+        when(beneficioService.consultarCalculadosPorAnuncio(ids))
+                .thenReturn(Map.of(anuncio.getId(), List.of(
+                        calculado(FOTOS_EXTRA_5, PremiumBeneficioStatusCalculado.VENCENDO),
+                        calculado(VIDEO_1, PremiumBeneficioStatusCalculado.EXPIRADO))));
+        var flags = mapper.flagsPorAnuncioIds(ids).get(anuncio.getId());
+        assertThat(flags.fotosExtrasAtivo()).isTrue();
+        assertThat(flags.videoAtivo()).isFalse();
+        assertThat(flags.beneficiosPublicos()).containsExactly("Fotos extras");
+        assertThat(mapper.flagsPorAnuncios(List.of(anuncio)).get(anuncio.getId())).isEqualTo(flags);
+        when(beneficioService.consultarCalculadosPorAnuncio(ids)).thenReturn(Map.of());
+        assertThat(mapper.flagsPorAnuncioIds(ids)).containsEntry(anuncio.getId(), PremiumPublicoFlagsDto.vazio());
+        assertThat(mapper.flagsPorAnuncioIds(List.of())).isEmpty();
+    }
+
+    @Test
+    void preSelecaoEscalarDeMidiaNaoDispensaAPoliticaNemHidrataAnuncio() {
+        UUID comMidia = UUID.randomUUID(), semMidia = UUID.randomUUID();
+        var repository = mock(br.com.topsdojob.v3.persistence.repository.AnuncioRepository.class);
+        var focal = new PremiumPublicoMapper(beneficioService, repository);
+        when(repository.findIdsComBeneficiosDeMidia(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of(comMidia));
+        when(beneficioService.consultarCalculadosPorAnuncio(List.of(comMidia)))
+                .thenReturn(Map.of(comMidia, List.of(calculado(FOTOS_EXTRA_5, PremiumBeneficioStatusCalculado.INCONSISTENTE))));
+        assertThat(focal.flagsMidiaPorAnuncioIds(List.of(comMidia, semMidia)))
+                .containsOnlyKeys(comMidia).containsEntry(comMidia, PremiumPublicoFlagsDto.vazio());
+        org.mockito.Mockito.verify(beneficioService).consultarCalculadosPorAnuncio(List.of(comMidia));
+        org.mockito.Mockito.verify(repository, org.mockito.Mockito.never()).findAllById(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void ocultarIdadeAtivoOcultaIndependentementeDaOrigemCanonica() {
         AnuncioEntity anuncio = anuncio();
         when(beneficioService.consultarCalculados(anuncio.getId())).thenReturn(List.of(

@@ -5,9 +5,13 @@ import static br.com.topsdojob.v3.application.publico.PublicApiReflectionTestSup
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import br.com.topsdojob.v3.application.metrica.VisualizacaoTotalCanonicaService;
@@ -40,13 +44,44 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.time.OffsetDateTime;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
+import org.springframework.orm.jpa.EntityManagerHolder;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.SimpleTransactionStatus;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 class ListagemPublicaConsultaServiceTest {
+
+    private final EntityManager entityManager = mock(EntityManager.class);
+    private final EntityManagerFactory entityManagerFactory = mock(EntityManagerFactory.class);
+    private int leiturasEsperadas = 1;
+
+    @BeforeEach
+    void fabricaDoProxyNaoExigeConexao() {
+        when(entityManager.getEntityManagerFactory()).thenReturn(entityManagerFactory);
+    }
+
+    @AfterEach
+    void limpaContextoDePersistenciaAntesDaLeitura() {
+        try {
+            verify(entityManager, times(leiturasEsperadas)).clear();
+        } finally {
+            // Only this test's mock factory key can have been bound by the fixtures below.
+            TransactionSynchronizationManager.unbindResourceIfPossible(entityManagerFactory);
+        }
+    }
 
     @Test
     void rejeitaPaginacaoInvalidaCom400() {
@@ -63,7 +98,9 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         assertThatThrownBy(() -> service.porEstado("SP", -1, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -87,7 +124,9 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         assertThatThrownBy(() -> service.porEstado("sp", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -119,7 +158,9 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         assertThatThrownBy(() -> service.porCidade("sp", "cidade-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -158,7 +199,9 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         assertThatThrownBy(() -> service.porBairro("go", "goiania", "bairro-ausente", 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
@@ -225,7 +268,7 @@ class ListagemPublicaConsultaServiceTest {
                 .thenReturn(List.of(localizacaoPublicada));
         when(premiumMapper.flagsPorAnuncios(List.of(anuncioPublicado)))
                 .thenReturn(Map.of(anuncioPublicadoId, premiumVazio));
-        when(anuncioConsultaService.midiasPorAnuncios(
+        when(anuncioConsultaService.midiasParaCardsPorAnuncios(
                 List.of(anuncioPublicadoId),
                 Map.of(anuncioPublicadoId, premiumVazio))).thenReturn(Map.of(anuncioPublicadoId, List.of()));
         AnuncioRepository.PrimeiraPublicacaoAnuncianteProjection primeiraPublicacao =
@@ -257,7 +300,9 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         ListaAnunciosPublicaDto dto = service.porCidade("sp", "sao-paulo", 0, 20, null);
 
@@ -333,7 +378,7 @@ class ListagemPublicaConsultaServiceTest {
         when(cidadeRepository.findAllById(List.of(cidadeId))).thenReturn(List.of(cidade));
         when(bairroRepository.findAllById(List.of())).thenReturn(List.of());
         when(anuncioRepository.findPrimeiraPublicacaoByUsuarioIdIn(List.of(usuarioId))).thenReturn(List.of());
-        when(anuncioConsultaService.midiasPorAnuncios(
+        when(anuncioConsultaService.midiasParaCardsPorAnuncios(
                 List.of(anuncioId),
                 Map.of(anuncioId, premium))).thenReturn(Map.of(anuncioId, List.of()));
         when(contatoService.podeExporContato(anuncio)).thenReturn(false);
@@ -351,7 +396,9 @@ class ListagemPublicaConsultaServiceTest {
                 contatoService,
                 mock(OrdemSeedPublicaService.class),
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         ListaAnunciosCategoriaPublicaDto resposta =
                 service.listar("VENDA_DE_CONTEUDO", null, null, 0, 20, null);
@@ -396,7 +443,9 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PoliticaContatoPublicoService.class),
                 ordemSeedService,
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         ListaAnunciosCategoriaPublicaDto resposta =
                 service.listar(null, null, null, 1, 20, seedSegura);
@@ -429,11 +478,156 @@ class ListagemPublicaConsultaServiceTest {
                 mock(PoliticaContatoPublicoService.class),
                 mock(OrdemSeedPublicaService.class),
                 visualizacoesCanonicas(),
-                mock(IdadeAnunciantePublicaService.class));
+                mock(IdadeAnunciantePublicaService.class),
+                transacoesSomenteLeitura(),
+                entityManager);
 
         assertThatThrownBy(() -> service.listar("ENCONTROS_CASUAIS", null, null, 0, 20, null))
                 .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
                         assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
+    void restauraMesmoHolderOsivDepoisDaLeituraSemTocarNoEntityManagerExterno() {
+        EntityManager externo = mock(EntityManager.class);
+        EntityManagerHolder holder = new EntityManagerHolder(externo);
+        AnuncioRepository repository = mock(AnuncioRepository.class);
+        when(repository.findPublicosOrdenados(eq(null), eq(null), eq(null), any(), anyLong(), any()))
+                .thenAnswer(call -> {
+                    assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isNull();
+                    return Page.empty(PageRequest.of(0, 20));
+                });
+        PlatformTransactionManager manager = transacoesSomenteLeitura();
+        ListagemPublicaConsultaService service = serviceParaLeituraPrivada(repository, manager);
+        TransactionSynchronizationManager.bindResource(entityManagerFactory, holder);
+
+        assertThat(service.listar(null, null, null, 0, 20, "27").itens()).isEmpty();
+
+        assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isSameAs(holder);
+        assertThat(holder.isSynchronizedWithTransaction()).isFalse();
+        verifyNoInteractions(externo);
+        verify(manager).commit(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"inicio", "consulta", "commit"})
+    void restauraHolderOsivEPreservaFalhaOriginalDaLeitura(String etapa) {
+        EntityManager externo = mock(EntityManager.class);
+        EntityManagerHolder holder = new EntityManagerHolder(externo);
+        IllegalStateException falha = new IllegalStateException("falha sintetica em " + etapa);
+        AnuncioRepository repository = mock(AnuncioRepository.class);
+        when(repository.findPublicosOrdenados(eq(null), eq(null), eq(null), any(), anyLong(), any()))
+                .thenAnswer(call -> {
+                    assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isNull();
+                    if (etapa.equals("consulta")) throw falha;
+                    return Page.empty(PageRequest.of(0, 20));
+                });
+        PlatformTransactionManager manager = transacoesSomenteLeitura();
+        if (etapa.equals("inicio")) {
+            leiturasEsperadas = 0;
+            doThrow(falha).when(manager).getTransaction(any());
+        } else if (etapa.equals("commit")) {
+            doThrow(falha).when(manager).commit(any());
+        }
+        ListagemPublicaConsultaService service = serviceParaLeituraPrivada(repository, manager);
+        TransactionSynchronizationManager.bindResource(entityManagerFactory, holder);
+
+        assertThatThrownBy(() -> service.listar(null, null, null, 0, 20, "27")).isSameAs(falha);
+
+        assertThat(falha.getSuppressed()).isEmpty();
+        assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isSameAs(holder);
+        verifyNoInteractions(externo);
+        if (etapa.equals("inicio")) verifyNoInteractions(repository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"desconhecido", "sincronizado"})
+    void rejeitaHolderExternoDesconhecidoOuSincronizadoSemDesvincular(String tipo) {
+        leiturasEsperadas = 0;
+        EntityManager externo = mock(EntityManager.class);
+        EntityManagerHolder holder = new EntityManagerHolder(externo);
+        holder.setSynchronizedWithTransaction(true);
+        Object recurso = tipo.equals("sincronizado") ? holder : new Object();
+        AnuncioRepository repository = mock(AnuncioRepository.class);
+        PlatformTransactionManager manager = transacoesSomenteLeitura();
+        ListagemPublicaConsultaService service = serviceParaLeituraPrivada(repository, manager);
+        TransactionSynchronizationManager.bindResource(entityManagerFactory, recurso);
+
+        assertThatThrownBy(() -> service.listar(null, null, null, 0, 20, "27"))
+                .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                        assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+
+        assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isSameAs(recurso);
+        verifyNoInteractions(manager, repository, externo);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void conflitoDeRestauracaoNaoSobrescreveRecursoNemMascaraFalhaPrincipal(boolean consultaFalha) {
+        EntityManager externo = mock(EntityManager.class);
+        EntityManagerHolder holder = new EntityManagerHolder(externo);
+        Object conflito = new Object();
+        IllegalStateException falha = new IllegalStateException("falha sintetica da consulta");
+        AnuncioRepository repository = mock(AnuncioRepository.class);
+        when(repository.findPublicosOrdenados(eq(null), eq(null), eq(null), any(), anyLong(), any()))
+                .thenAnswer(call -> {
+                    assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isNull();
+                    // A deliberately broken unit collaborator simulates cleanup leaving another binding.
+                    TransactionSynchronizationManager.bindResource(entityManagerFactory, conflito);
+                    if (consultaFalha) throw falha;
+                    return Page.empty(PageRequest.of(0, 20));
+                });
+        ListagemPublicaConsultaService service = serviceParaLeituraPrivada(repository, transacoesSomenteLeitura());
+        TransactionSynchronizationManager.bindResource(entityManagerFactory, holder);
+
+        if (consultaFalha) {
+            assertThatThrownBy(() -> service.listar(null, null, null, 0, 20, "27")).isSameAs(falha);
+            assertThat(falha.getSuppressed()).singleElement()
+                    .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+        } else {
+            assertThatThrownBy(() -> service.listar(null, null, null, 0, 20, "27"))
+                    .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+        }
+        assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isSameAs(conflito);
+        verifyNoInteractions(externo);
+    }
+
+    @Test
+    void guardaDeTransacaoExternaContinuaAntesDeQualquerSuspensaoOuLeitura() {
+        leiturasEsperadas = 0;
+        EntityManager externo = mock(EntityManager.class);
+        EntityManagerHolder holder = new EntityManagerHolder(externo);
+        AnuncioRepository repository = mock(AnuncioRepository.class);
+        PlatformTransactionManager manager = transacoesSomenteLeitura();
+        ListagemPublicaConsultaService service = serviceParaLeituraPrivada(repository, manager);
+        TransactionSynchronizationManager.bindResource(entityManagerFactory, holder);
+        boolean ativaAntes = TransactionSynchronizationManager.isActualTransactionActive();
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        try {
+            assertThatThrownBy(() -> service.listar(null, null, null, 0, 20, "27"))
+                    .isInstanceOfSatisfying(ResponseStatusException.class, exception ->
+                            assertThat(exception.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE));
+            assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isSameAs(holder);
+            verifyNoInteractions(manager, repository, externo);
+        } finally {
+            TransactionSynchronizationManager.setActualTransactionActive(ativaAntes);
+        }
+    }
+
+    private ListagemPublicaConsultaService serviceParaLeituraPrivada(
+            AnuncioRepository repository, PlatformTransactionManager manager) {
+        PremiumPublicoMapper premium = mock(PremiumPublicoMapper.class);
+        when(premium.flagsPorAnuncios(List.of())).thenReturn(Map.of());
+        OrdemSeedPublicaService seed = mock(OrdemSeedPublicaService.class);
+        when(seed.resolver("27")).thenReturn(27L);
+        return new ListagemPublicaConsultaService(
+                mock(EstadoRepository.class), mock(CidadeRepository.class), mock(BairroRepository.class),
+                mock(AnuncioLocalizacaoRepository.class), repository,
+                new AnuncioPublicoMapper(new MidiaPublicaSeguraPolicy()), mock(AnuncioPublicoConsultaService.class),
+                mock(SeoPublicoConsultaService.class), premium, mock(PoliticaContatoPublicoService.class),
+                seed, visualizacoesCanonicas(), mock(IdadeAnunciantePublicaService.class), manager, entityManager);
     }
 
     private static VisualizacaoTotalCanonicaService visualizacoesCanonicas() {
@@ -445,5 +639,17 @@ class ListagemPublicaConsultaServiceTest {
             return totais;
         });
         return service;
+    }
+
+    /** Unit-test transaction collaborator; real JDBC boundaries are covered by the HTTP/PG17 suite. */
+    private PlatformTransactionManager transacoesSomenteLeitura() {
+        PlatformTransactionManager manager = mock(PlatformTransactionManager.class);
+        when(manager.getTransaction(any())).thenAnswer(call -> {
+            TransactionDefinition definition = call.getArgument(0);
+            assertThat(definition.isReadOnly()).isTrue();
+            assertThat(TransactionSynchronizationManager.getResource(entityManagerFactory)).isNull();
+            return new SimpleTransactionStatus();
+        });
+        return manager;
     }
 }
